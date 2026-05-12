@@ -47,6 +47,8 @@ import { createStorageDestructiveService } from "../lib/storage-destructive-serv
 import { createStorageWriteService } from "../lib/storage-write-service.js";
 import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
+import { registerPluginTools, registerPluginAgentPresets } from "../lib/session-tool-registry.js";
+import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "../lib/session-tool-registry-novel.js";
 import { createSession, listSessions } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
@@ -387,6 +389,10 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
   const narrativeService = createNarrativeLineService({ state, checkpoint: resourceCheckpointService });
   configureSessionToolExecutor({ cockpitService, candidateService, narrativeService });
+
+  // 动态注册小说插件工具与 Agent 预设
+  registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+  registerPluginAgentPresets(NOVEL_AGENT_PRESETS);
 
   // Note: bookId validation middleware is registered globally in server.ts
 
