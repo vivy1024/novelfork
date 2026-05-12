@@ -41,7 +41,7 @@ describe("project-bootstrap", () => {
 
     try {
       const prepared = await prepareStudioBookProjectBootstrap(
-        buildCreateBody(),
+        buildCreateBody({ projectInit: { repositorySource: "new", workflowMode: "outline-first", templatePreset: "genre-default", gitBranch: "main", worktreeName: "draft-测试书", repositoryPath: studioRoot } }),
         "2026-04-20T00:00:00.000Z",
         { root: studioRoot },
       );
