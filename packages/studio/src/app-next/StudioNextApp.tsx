@@ -913,6 +913,10 @@ function toConversationStatus(
   const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
   const isWorking = runtimeState === "running" || narratorState === "working";
+  const turnStartedAt = (state.session as { turnStartedAt?: string } | null)?.turnStartedAt;
+  const lastTurnDurationMs = (state.session as { lastTurnDurationMs?: number } | null)?.lastTurnDurationMs;
+  const serverSubstatus = (state.session as { substatus?: string } | null)?.substatus;
+  const toolName = (state.session as { toolName?: string } | null)?.toolName;
 
   // Context usage estimation — always provide contextUsage so ContextRing is always visible
   const cumulativeUsage = state.session?.cumulativeUsage;
@@ -927,6 +931,10 @@ function toConversationStatus(
   return {
     state: runtimeState,
     narratorState: isWorking ? "working" : narratorState === "idle" ? "idle" : undefined,
+    substatus: isWorking && serverSubstatus ? serverSubstatus as ConversationRouteStatus["substatus"] : (!isWorking && serverSubstatus === "interrupted" ? "interrupted" : undefined),
+    streamingStartedAt: isWorking && turnStartedAt ? new Date(turnStartedAt).getTime() : undefined,
+    lastTurnDurationMs: !isWorking && lastTurnDurationMs ? lastTurnDurationMs : undefined,
+    toolName: isWorking ? toolName : undefined,
     label: state.error?.message ?? (modelPoolError ?? (isWorking ? "生成中" : state.session ? "就绪" : `加载会话 ${sessionId}`)),
     providerId,
     providerLabel: selectedModel?.providerLabel ?? providerId,

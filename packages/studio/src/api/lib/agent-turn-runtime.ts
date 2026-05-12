@@ -61,6 +61,7 @@ export interface AgentTurnRuntimeInput {
   readonly shouldContinueAfterToolResult?: (input: { readonly toolName: string; readonly result: SessionToolExecutionResult }) => boolean;
   readonly maxSteps?: number;
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onEvent?: (event: AgentTurnEvent) => void;
   readonly signal?: AbortSignal;
 }
 
@@ -140,13 +141,14 @@ function isPendingConfirmationResult(result: SessionToolExecutionResult): boolea
 
 export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentTurnEvent[]> {
   const events: AgentTurnEvent[] = [];
+  const emit = (event: AgentTurnEvent) => { events.push(event); input.onEvent?.(event); };
   const messages = buildInitialMessages(input);
   const filteredTools = filterSessionToolsForProvider(input.tools, input.sessionConfig.toolPolicy, {
     permissionMode: input.permissionMode,
     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
   });
   if (input.tools.length > 0 && filteredTools.tools.length === 0) {
-    events.push({
+    emit({
       type: "turn_failed",
       reason: "policy-disabled",
       message: "当前 session 工具策略禁用了所有可发送给模型的工具。",
@@ -168,7 +170,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
   for (;;) {
     if (input.signal?.aborted) {
-      events.push({ type: "turn_completed" });
+      emit({ type: "turn_completed" });
       return events;
     }
 
@@ -183,25 +185,27 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
 
     if (!reply.success) {
-      events.push(buildFailureEvent(reply));
+      emit(buildFailureEvent(reply));
       return events;
     }
 
     if (reply.type !== "tool_use") {
       const content = reply.content.trim();
       if (!content) {
-        events.push({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
+        emit({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
         return events;
       }
-      events.push(
+      emit(
         { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },
+      );
+      emit(
         { type: "turn_completed" },
       );
       return events;
     }
 
     if (reply.toolUses.length === 0) {
-      events.push({ type: "turn_failed", reason: "empty-tool-use", message: "Agent runtime received a tool_use reply without executable tools" });
+      emit({ type: "turn_failed", reason: "empty-tool-use", message: "Agent runtime received a tool_use reply without executable tools" });
       return events;
     }
 
@@ -213,7 +217,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
     for (const toolUse of reply.toolUses) {
       if (executedToolSteps >= maxSteps) {
-        events.push({
+        emit({
           type: "turn_failed",
           reason: "tool-loop-limit",
           message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。`,
@@ -229,7 +233,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         input: toolUse.input,
         runtime: reply.metadata,
       };
-      events.push(toolCallEvent);
+      emit(toolCallEvent);
       messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
       recentToolCalls.push(toolUse.name);
 
@@ -249,7 +253,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       if (!duplicateResult) {
         toolResultsBySignature.set(signature, toolResult);
       }
-      events.push({
+      emit({
         type: "tool_result",
         id: toolUse.id,
         toolName: toolUse.name,
@@ -266,7 +270,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       });
 
       if (isPendingConfirmationResult(toolResult)) {
-        events.push({
+        emit({
           type: "confirmation_required",
           id: toolResult.confirmation?.id ?? toolUse.id,
           toolName: toolUse.name,
@@ -277,7 +281,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       }
 
       if (input.shouldContinueAfterToolResult && !input.shouldContinueAfterToolResult({ toolName: toolUse.name, result: toolResult })) {
-        events.push({
+        emit({
           type: "turn_failed",
           reason: toolResult.error ?? "tool-execution-failed",
           message: toolResult.summary,

@@ -174,7 +174,8 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
       const pattern = extractGrepPattern(toolCall.input);
       const path = extractGrepPath(toolCall.input);
       if (pattern && path) return `${pattern} in ${path.split(/[/\\]/).pop()}`;
-      return pattern ?? toolCall.summary ?? null;
+      if (pattern) return toolCall.toolName === "Glob" ? `Glob: ${pattern}` : pattern;
+      return toolCall.summary ?? null;
     }
     case "write":
       return extractFilePath(toolCall.input) ?? toolCall.summary ?? null;
