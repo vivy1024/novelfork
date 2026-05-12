@@ -43,13 +43,27 @@ export function ProfilePanel() {
       alert("头像文件不能超过 2MB");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
+    // 压缩为 128x128 JPEG 以避免 config JSON 膨胀
+    const img = new Image();
+    const objectUrl = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement("canvas");
+      const size = 128;
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      // 居中裁剪
+      const minDim = Math.min(img.width, img.height);
+      const sx = (img.width - minDim) / 2;
+      const sy = (img.height - minDim) / 2;
+      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
       setAvatarPreview(dataUrl);
       setProfile((p) => ({ ...p, avatar: dataUrl }));
     };
-    reader.readAsDataURL(file);
+    img.src = objectUrl;
   }
 
   if (loading) {

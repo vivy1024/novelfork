@@ -113,6 +113,7 @@ function ProxyCardItem({ card, saving, saved, onChange, onSave }: {
   onChange: (value: string) => void;
   onSave: (value: string) => void;
 }) {
+  const isValidUrl = !card.value.trim() || /^(https?|socks5?):\/\/.+/.test(card.value.trim());
   const statusBadge = card.value.trim()
     ? <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600"><CheckCircle className="size-2.5" />已配置</span>
     : <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"><AlertCircle className="size-2.5" />未配置</span>;
@@ -131,19 +132,20 @@ function ProxyCardItem({ card, saving, saved, onChange, onSave }: {
           placeholder="http://127.0.0.1:7890"
           value={card.value}
           onChange={(e) => onChange(e.target.value)}
-          className="flex-1 text-xs font-mono"
+          className={`flex-1 text-xs font-mono ${!isValidUrl ? "border-destructive" : ""}`}
         />
         <Button
           variant="outline"
           size="sm"
           onClick={() => onSave(card.value)}
-          disabled={saving}
+          disabled={saving || (!isValidUrl && card.value.trim() !== "")}
           className="gap-1"
         >
           <Save className="size-3" />
           {saving ? "..." : saved ? "已保存" : "保存"}
         </Button>
       </div>
+      {!isValidUrl && <p className="text-[10px] text-destructive">格式无效，需以 http://、https:// 或 socks5:// 开头</p>}
     </div>
   );
 }
