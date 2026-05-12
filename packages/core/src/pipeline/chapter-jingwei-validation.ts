@@ -10,7 +10,7 @@ import {
   retrySettlementAfterValidationFailure,
 } from "./chapter-state-recovery.js";
 
-export async function validateChapterTruthPersistence(params: {
+export async function validateChapterJingweiPersistence(params: {
   readonly writer: Pick<WriterAgent, "settleChapterState">;
   readonly validator: Pick<StateValidatorAgent, "validate">;
   readonly book: BookConfig;
