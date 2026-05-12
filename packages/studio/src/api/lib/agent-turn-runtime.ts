@@ -14,7 +14,7 @@ import type { RuntimeToolUse } from "./provider-adapters/index.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 
 export type AgentTurnItem =
-  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
+  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
   | { readonly type: "tool_call"; readonly id: string; readonly name: string; readonly input: Record<string, unknown> }
   | { readonly type: "tool_result"; readonly toolCallId: string; readonly name: string; readonly content: string; readonly data?: unknown; readonly metadata?: Record<string, unknown> };
 
@@ -203,6 +203,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     if (reply.toolUses.length === 0) {
       events.push({ type: "turn_failed", reason: "empty-tool-use", message: "Agent runtime received a tool_use reply without executable tools" });
       return events;
+    }
+
+    // Insert assistant message with reasoning_content before tool calls
+    // This ensures DeepSeek/Claude thinking content is passed back in the next request
+    if (reply.reasoningContent) {
+      messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent });
     }
 
     for (const toolUse of reply.toolUses) {

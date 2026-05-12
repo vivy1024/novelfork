@@ -12,7 +12,7 @@ export interface RuntimeProviderRef {
 }
 
 export type RuntimeChatMessage =
-  | { readonly role: "system" | "user" | "assistant"; readonly content: string; readonly toolCalls?: readonly RuntimeToolUse[] }
+  | { readonly role: "system" | "user" | "assistant"; readonly content: string; readonly toolCalls?: readonly RuntimeToolUse[]; readonly reasoning_content?: string }
   | { readonly role: "tool"; readonly toolCallId: string; readonly name?: string; readonly content: string };
 
 export interface TestModelInput extends RuntimeProviderRef {
@@ -220,16 +220,16 @@ function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record
         })),
       };
       // Pass back reasoning_content for DeepSeek thinking mode tool loops
-      if ("reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
-        msg.reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+      if (message.reasoning_content) {
+        msg.reasoning_content = message.reasoning_content;
       }
       return msg;
     }
 
     const msg: Record<string, unknown> = { role: message.role, content: message.content };
     // Pass back reasoning_content for DeepSeek thinking mode
-    if (message.role === "assistant" && "reasoning_content" in message && typeof (message as { reasoning_content?: unknown }).reasoning_content === "string") {
-      msg.reasoning_content = (message as { reasoning_content: string }).reasoning_content;
+    if (message.role === "assistant" && message.reasoning_content) {
+      msg.reasoning_content = message.reasoning_content;
     }
     return msg;
   });
@@ -431,10 +431,15 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
 
   private async sendResponsesRequest(input: GenerateInput): Promise<GenerateResult> {
     const hasTools = Boolean(input.tools?.length);
+    // Extract system message as instructions
+    const systemMessage = input.messages.find((m) => m.role === "system");
+    const instructions = systemMessage && "content" in systemMessage ? systemMessage.content : "";
+
     const body: Record<string, unknown> = {
       model: input.modelId,
       input: this.toResponsesInput(input.messages),
       stream: false,
+      ...(instructions ? { instructions } : {}),
       ...(hasTools ? { tools: input.tools!.map((t) => ({ type: "function", name: toProviderSafeToolName(t.name), description: t.description, parameters: t.inputSchema })) } : {}),
     };
 
