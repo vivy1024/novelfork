@@ -3,7 +3,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import { useState, useEffect, type ReactNode } from "react";
-import { ChevronDown, ChevronRight, Copy, Check } from "lucide-react";
+import { Copy, Check } from "lucide-react";
 import { createHighlighter, type Highlighter } from "shiki";
 import { Button } from "./ui/button";
 
@@ -59,7 +59,6 @@ interface CodeBlockProps {
 }
 
 function CodeBlock({ inline, className, children }: CodeBlockProps) {
-  const [collapsed, setCollapsed] = useState(false);
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const match = /language-(\w+)/.exec(className || "");
@@ -67,7 +66,7 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
   const code = String(children).replace(/\n$/, "");
 
   useEffect(() => {
-    if (inline || collapsed) return;
+    if (inline) return;
     let cancelled = false;
     highlightCode(code, lang)
       .then((html) => {
@@ -77,7 +76,7 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
         if (!cancelled) setHighlightedHtml(null);
       });
     return () => { cancelled = true; };
-  }, [code, lang, inline, collapsed]);
+  }, [code, lang, inline]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -90,38 +89,26 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
   }
 
   return (
-    <div className="my-3 rounded-lg border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 bg-secondary/50 border-b border-border">
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground"
-        >
-          {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-          <span className="font-mono">{lang || "code"}</span>
-        </Button>
-        <Button
-          variant="ghost"
-          size="xs"
-          onClick={handleCopy}
-          className="flex items-center gap-1 px-2 py-1 text-xs"
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          <span>{copied ? "已复制" : "复制"}</span>
-        </Button>
-      </div>
-      {!collapsed && (
-        highlightedHtml ? (
-          <div
-            className="shiki-code-block [&_pre]:!m-0 [&_pre]:!rounded-none [&_pre]:!text-sm [&_pre]:!leading-relaxed [&_pre]:!p-4"
-            dangerouslySetInnerHTML={{ __html: highlightedHtml }}
-          />
-        ) : (
-          <pre className="m-0 rounded-none bg-[#24292e] p-4 text-sm leading-relaxed text-gray-200 overflow-x-auto">
-            <code>{code}</code>
-          </pre>
-        )
+    <div className="code-block group/code relative my-3 rounded-lg overflow-hidden">
+      {/* 复制按钮 — 悬浮右上角，hover 时显示 */}
+      <Button
+        variant="ghost"
+        size="xs"
+        onClick={handleCopy}
+        className="absolute top-2 right-2 z-10 opacity-0 group-hover/code:opacity-100 transition-opacity flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-gray-200 bg-gray-800/80 hover:bg-gray-700/80 rounded"
+      >
+        {copied ? <Check size={12} /> : <Copy size={12} />}
+        <span>{copied ? "已复制" : "复制"}</span>
+      </Button>
+      {highlightedHtml ? (
+        <div
+          className="shiki-code-block [&_pre]:!m-0 [&_pre]:!rounded-lg [&_pre]:!text-sm [&_pre]:!leading-relaxed [&_pre]:!p-4"
+          dangerouslySetInnerHTML={{ __html: highlightedHtml }}
+        />
+      ) : (
+        <pre className="m-0 rounded-lg bg-[#24292e] p-4 text-sm leading-relaxed text-gray-200 overflow-x-auto">
+          <code>{code}</code>
+        </pre>
       )}
     </div>
   );
