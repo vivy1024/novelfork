@@ -47,7 +47,7 @@ function sessionTool(
 }
 
 /**
- * 19 个小说领域工具定义
+ * 24 个小说领域工具定义
  */
 export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
@@ -309,6 +309,76 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     risk: "read",
     renderer: "health.summary",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  // --- 新增小说工具组 (5 tools) ---
+  sessionTool({
+    name: "chapter.audit",
+    description: "对单章执行质量审计，包括节奏分析、AI 味检测、伏笔到期检查、连续性检查。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("章节序号。"),
+      checks: arraySchema("要执行的检查项（可选，默认全部）。可选值: continuity, rhythm, ai_taste, hooks, character", { type: "string" }),
+    }, ["bookId", "chapterNumber"]),
+    risk: "read",
+    renderer: "chapter.audit",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "rewrite.segment",
+    description: "对章节中选定段落执行改写（续写/扩写/去AI味/风格改写），调用 LLM 生成改写结果。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("章节序号。"),
+      selection: { type: "object", description: "选中行号范围 { start: number, end: number }。" },
+      mode: stringSchema("改写模式：continue | expand | reduce_ai | restyle。"),
+      styleHint: stringSchema("restyle 模式的风格提示（可选）。"),
+      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
+    }, ["bookId", "chapterNumber", "selection", "mode"]),
+    risk: "read",
+    renderer: "tool.rewrite-segment",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "outline.suggest_next",
+    description: "基于大纲、最近章节和待兑现伏笔，推荐下一章的 2-3 个写作方向。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
+    }, ["bookId"]),
+    risk: "read",
+    renderer: "outline.suggestions",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "character.check_consistency",
+    description: "检查角色在指定章节范围内的出现频率和上下文，辅助人设一致性审查。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      characterName: stringSchema("角色名（可选，不传则检查所有角色）。"),
+      chapterRange: { type: "object", description: "章节范围 { from: number, to: number }（可选，默认最近 5 章）。" },
+    }, ["bookId"]),
+    risk: "read",
+    renderer: "character.consistency",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "hooks.manage",
+    description: "伏笔统一管理：埋设、兑现、检查到期、列出所有伏笔。",
+    inputSchema: objectSchema({
+      bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("操作类型：plant | payoff | check_due | list。"),
+      hookId: stringSchema("伏笔 ID（payoff 时需要）。"),
+      chapterNumber: numberSchema("章节号（plant/check_due 时使用）。"),
+      description: stringSchema("伏笔描述（plant 时需要）。"),
+    }, ["bookId", "action"]),
+    risk: "draft-write",
+    renderer: "hooks.manage",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
 ] as const;
