@@ -3,6 +3,14 @@ import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
 
 import { GitPanel } from "./GitPanel";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { Composer } from "./Composer";
@@ -458,15 +466,10 @@ export function ConversationSurface({
           </button>
           {/* Right: Git action buttons */}
           <div className="flex items-center gap-0.5 shrink-0">
-            <button type="button" onClick={() => { navigator.clipboard.writeText(status.workspace?.path ?? ""); }} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="复制路径">
+            <button type="button" onClick={() => setGitPanelOpen(!gitPanelOpen)} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 变更">
               <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
             </button>
-            <button type="button" onClick={() => setGitPanelOpen(!gitPanelOpen)} className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 管理">
-              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><line x1="3" y1="12" x2="9" y2="12"/><line x1="15" y1="12" x2="21" y2="12"/></svg>
-            </button>
-            <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 分支">
-              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>
-            </button>
+            <GitBranchMenu workDir={status.workspace?.path} />
             <button type="button" className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="会话设置">
               <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 010 2.83 2 2 0 01-2.83 0l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-2 2 2 2 0 01-2-2v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 01-2.83 0 2 2 0 010-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 01-2-2 2 2 0 012-2h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 010-2.83 2 2 0 012.83 0l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 012-2 2 2 0 012 2v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 012.83 0 2 2 0 010 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 012 2 2 2 0 01-2 2h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
             </button>
@@ -506,6 +509,54 @@ export function ConversationSurface({
       </div>
     </section>
     </TooltipProvider>
+  );
+}
+
+// ── GitBranchMenu — 分叉/合并快捷菜单 ──
+
+function GitBranchMenu({ workDir }: { workDir?: string }) {
+  const handleFork = async () => {
+    const name = prompt("新分支名称：");
+    if (!name?.trim() || !workDir) return;
+    try {
+      await fetch("/api/git/worktree/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workDir, name: name.trim() }),
+      });
+    } catch { /* ignore */ }
+  };
+
+  const handleMerge = async () => {
+    const branch = prompt("要合并的分支名：");
+    if (!branch?.trim() || !workDir) return;
+    try {
+      await fetch("/api/git/merge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: workDir, sourceBranch: branch.trim() }),
+      });
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger className="rounded p-1 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors" title="Git 分支操作">
+        <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="end" className="min-w-[120px]">
+        <DropdownMenuLabel>Git</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onClick={() => void handleFork()} className="gap-2 text-xs">
+          <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 01-9 9"/></svg>
+          分叉
+        </DropdownMenuItem>
+        <DropdownMenuItem onClick={() => void handleMerge()} className="gap-2 text-xs">
+          <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M6 21V9a9 9 0 009 9"/></svg>
+          合并
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
