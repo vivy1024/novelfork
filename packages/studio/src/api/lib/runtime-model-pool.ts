@@ -85,6 +85,7 @@ export async function buildRuntimeModelPool(store: ProviderRuntimeStore): Promis
         maxOutputTokens: model.maxOutputTokens,
         source: model.source,
         lastTestStatus: model.lastTestStatus,
+        protocol: provider.protocol,
         capabilities: {
           functionCalling: model.supportsFunctionCalling === true,
           vision: model.supportsVision === true,
