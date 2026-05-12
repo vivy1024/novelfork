@@ -276,22 +276,22 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                     size="icon"
                     title="选择文件夹"
                     onClick={async () => {
-                      // Try backend directory picker first (works in desktop mode)
+                      // 优先用浏览器原生 showDirectoryPicker（秒弹，返回完整路径需要 File System Access API）
+                      try {
+                        if ("showDirectoryPicker" in window) {
+                          const handle = await (window as unknown as { showDirectoryPicker: () => Promise<{ name: string }> }).showDirectoryPicker();
+                          setNewBookRepoPath(handle.name);
+                          return;
+                        }
+                      } catch { /* user cancelled or API unavailable */ }
+                      // Fallback: backend PowerShell directory picker（桌面模式，返回完整绝对路径）
                       try {
                         const res = await fetch("/api/system/browse-directory", { method: "POST", signal: AbortSignal.timeout(35000) });
                         if (res.ok) {
                           const data = await res.json() as { path?: string; cancelled?: boolean };
                           if (data.path) { setNewBookRepoPath(data.path); return; }
-                          if (data.cancelled) return; // 用户取消了对话框
                         }
-                      } catch { /* backend unavailable or timeout, fall through to browser API */ }
-                      // Fallback: browser showDirectoryPicker
-                      try {
-                        if ("showDirectoryPicker" in window) {
-                          const handle = await (window as unknown as { showDirectoryPicker: () => Promise<{ name: string }> }).showDirectoryPicker();
-                          setNewBookRepoPath(handle.name);
-                        }
-                      } catch { /* user cancelled */ }
+                      } catch { /* backend unavailable */ }
                     }}
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-4"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></svg>
