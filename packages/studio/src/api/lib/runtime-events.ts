@@ -274,6 +274,8 @@ export function runtimeEventsFromAgentTurnEvent(event: AgentTurnEvent, context: 
   switch (event.type) {
     case "streaming_chunk":
       return [{ type: "assistant_delta", ...base, delta: event.content }];
+    case "reasoning_chunk":
+      return [{ type: "assistant_delta", ...base, delta: "" }]; // reasoning chunks are not shown as text deltas
     case "assistant_message": {
       const events: RuntimeEvent[] = [{ type: "message", ...base, role: "assistant", content: event.content, runtime: event.runtime }];
       if (event.runtime.usage) events.push({ type: "usage", ...base, usage: event.runtime.usage, runtime: event.runtime });

@@ -40,6 +40,7 @@ export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionCo
 export type AgentTurnEvent =
   | { readonly type: "assistant_message"; readonly content: string; readonly reasoningContent?: string; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "streaming_chunk"; readonly content: string }
+  | { readonly type: "reasoning_chunk"; readonly content: string }
   | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "tool_result"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly runtime?: NarratorSessionRuntimeMetadata }
   | { readonly type: "confirmation_required"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly sourceToolUseId?: string }
