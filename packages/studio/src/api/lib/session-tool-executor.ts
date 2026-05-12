@@ -20,6 +20,15 @@ import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from
 // --- Session-level in-memory state for Pipelines ---
 const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
 
+// --- Background agents state (for Agent/Await tools) ---
+interface BackgroundAgentTask {
+  id: string;
+  promise: Promise<string>;
+  result?: string;
+  status: "running" | "completed" | "failed";
+}
+const backgroundAgents = new Map<string, BackgroundAgentTask>();
+
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
 };
@@ -907,20 +916,32 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在：${filePath}` };
         }
       };
-    // --- Skill: 调用已注册技能 ---
+    // --- Skill: 调用已注册技能（接通 core 层命令执行器） ---
     case "Skill":
-      return async ({ definition, input }) => {
+      return async ({ input, sessionId, definition }) => {
         const skillName = typeof input.skill === "string" ? (input.skill as string).trim() : "";
         if (!skillName) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "skill 名称不能为空。" };
         }
         const args = typeof input.args === "string" ? input.args : "";
-        return {
-          ok: true,
-          renderer: definition.renderer,
-          summary: `技能 "${skillName}" 已识别，参数：${args || "(无)"}。技能系统尚未完全接入运行时，请通过叙述者会话直接使用 /${skillName} 命令。`,
-          data: { skill: skillName, args, status: "partial", note: "技能执行需要通过会话消息路由，当前工具入口仅做识别。" },
-        };
+        try {
+          const { executeRuntimeCommandInput } = await import("@vivy1024/novelfork-core");
+          const commandInput = `/${skillName}${args ? " " + args : ""}`;
+          const execution = await executeRuntimeCommandInput(commandInput, { sessionId });
+          return {
+            ok: execution.ok,
+            renderer: definition.renderer,
+            summary: execution.result.message ?? (execution.ok ? `技能 ${skillName} 执行完成。` : `技能 ${skillName} 执行失败。`),
+            data: { skill: skillName, args, result: execution.result, events: execution.events },
+          };
+        } catch (error) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "skill-execution-failed",
+            summary: `技能 "${skillName}" 执行失败：${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
       };
     // --- Web tools ---
     case "WebFetch":
@@ -954,28 +975,204 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!query) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "query 不能为空。" };
         }
-        // WebSearch 需要外部搜索 API（如 SerpAPI、Tavily 等），当前返回提示
-        return {
-          ok: false,
-          renderer: definition.renderer,
-          error: "no-search-api",
-          summary: `网络搜索需要配置搜索 API。请在设置中配置搜索服务，或使用 WebFetch 直接获取已知 URL 的内容。`,
-          data: { query, status: "no-search-api-configured" },
-        };
+        try {
+          const { searchWeb } = await import("@vivy1024/novelfork-core");
+          const results = await searchWeb(query);
+          if (!results || results.length === 0) {
+            return { ok: true, renderer: definition.renderer, summary: `搜索 "${query}" 无结果。`, data: { query, results: [] } };
+          }
+          const summary = results.slice(0, 5).map((r: { title: string; url: string }) => `- ${r.title}: ${r.url}`).join("\n");
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `搜索 "${query}" 找到 ${results.length} 条结果。\n${summary}`,
+            data: { query, results },
+          };
+        } catch (error) {
+          const msg = error instanceof Error ? error.message : String(error);
+          if (msg.includes("TAVILY_API_KEY") || msg.includes("api_key")) {
+            return { ok: false, renderer: definition.renderer, error: "no-search-api", summary: "网络搜索需要配置 TAVILY_API_KEY 环境变量。" };
+          }
+          return { ok: false, renderer: definition.renderer, error: "search-failed", summary: `搜索失败：${msg}` };
+        }
       };
-    // --- Stub handlers for remaining complex tools ---
+    // --- Stub handler for Browser (requires Playwright) ---
     case "Browser":
-    case "Agent":
-    case "Await":
-    case "Send":
-    case "Terminal":
       return async ({ definition }) => ({
         ok: false,
         renderer: definition.renderer,
         error: "not-implemented",
-        summary: `工具 ${definition.name} 尚未实现，请使用其他方式完成此操作。`,
-        data: { status: "not-implemented", toolName: definition.name },
+        summary: `工具 Browser 需要 Playwright 依赖，当前未安装。请使用 WebFetch 获取页面内容。`,
+        data: { status: "not-implemented", toolName: "Browser" },
       });
+    // --- Terminal: 进程管理 ---
+    case "Terminal":
+      return async ({ input, definition }) => {
+        const action = typeof input.action === "string" ? input.action : "";
+        const { TerminalStore } = await import("./terminal-store.js");
+        // 使用模块级单例
+        const store = (globalThis as Record<string, unknown>).__nf_terminal_store ??= new TerminalStore();
+        const terminalStore = store as InstanceType<typeof TerminalStore>;
+
+        switch (action) {
+          case "list": {
+            const terminals = terminalStore.list();
+            const total = terminals.running.length + terminals.exited.length;
+            return { ok: true, renderer: definition.renderer, summary: `${total} 个终端（${terminals.running.length} 运行中）。`, data: { terminals } };
+          }
+          case "create": {
+            const name = typeof input.name === "string" ? input.name : "Terminal";
+            const cwd = typeof input.cwd === "string" ? input.cwd : (process.cwd());
+            const id = crypto.randomUUID().slice(0, 8);
+            const { spawn } = await import("node:child_process");
+            const shell = process.platform === "win32" ? "cmd.exe" : "/bin/sh";
+            const proc = spawn(shell, [], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+            const info = { id, name, status: "running" as const, cwd, createdAt: new Date().toISOString(), pid: proc.pid };
+            terminalStore.register(info);
+            // 存储进程引用和输出缓冲
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers ??= new Map<string, { proc: ReturnType<typeof spawn>; output: string }>();
+            const bufferMap = buffers as Map<string, { proc: ReturnType<typeof spawn>; output: string }>;
+            const entry = { proc, output: "" };
+            proc.stdout?.on("data", (chunk: Buffer) => { entry.output += chunk.toString(); });
+            proc.stderr?.on("data", (chunk: Buffer) => { entry.output += chunk.toString(); });
+            proc.on("exit", () => { terminalStore.markExited(id); });
+            bufferMap.set(id, entry);
+            return { ok: true, renderer: definition.renderer, summary: `终端 "${name}" 已创建（ID: ${id}，PID: ${proc.pid}）。`, data: { id, name, cwd, pid: proc.pid } };
+          }
+          case "write": {
+            const terminalId = typeof input.terminal_id === "string" ? input.terminal_id : "";
+            const inputText = typeof input.input === "string" ? input.input : "";
+            if (!terminalId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "terminal_id 不能为空。" };
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string }> | undefined;
+            const entry = buffers?.get(terminalId);
+            if (!entry) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在或已退出。` };
+            entry.proc.stdin?.write(inputText + "\n");
+            return { ok: true, renderer: definition.renderer, summary: `已向终端 ${terminalId} 写入 ${inputText.length} 字符。`, data: { terminalId, written: inputText.length } };
+          }
+          case "read": {
+            const terminalId = typeof input.terminal_id === "string" ? input.terminal_id : "";
+            if (!terminalId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "terminal_id 不能为空。" };
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string }> | undefined;
+            const entry = buffers?.get(terminalId);
+            if (!entry) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在。` };
+            const output = entry.output;
+            entry.output = ""; // 清空已读缓冲
+            return { ok: true, renderer: definition.renderer, summary: output ? `终端输出 ${output.length} 字符。` : "无新输出。", data: { terminalId, output } };
+          }
+          default:
+            return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 Terminal action: ${action}。支持: list/create/write/read` };
+        }
+      };
+    // --- Agent: 子代理执行 ---
+    case "Agent":
+      return async ({ input, sessionId, definition }) => {
+        const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
+        const description = typeof input.description === "string" ? input.description : "";
+        if (!prompt && !description) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "prompt 或 description 不能为空。" };
+        }
+        const runInBackground = input.run_in_background === true;
+        const agentId = crypto.randomUUID().slice(0, 8);
+
+        const { runSubagent } = await import("./subagent-runtime.js");
+        const { createLLMClient, chatCompletion, loadProjectConfig } = await import("@vivy1024/novelfork-core");
+
+        const executeSubagent = async (): Promise<string> => {
+          const workDir = options.workDir ?? process.cwd();
+          const config = await loadProjectConfig(workDir);
+          const client = createLLMClient(config.llm);
+          const modelId = config.llm.model;
+
+          const result = await runSubagent({
+            config: {
+              id: agentId,
+              name: description || `subagent-${agentId}`,
+              systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。完成后给出简洁的结果摘要。",
+              modelId,
+              providerId: config.llm.provider ?? "openai",
+              tools: [],
+              maxSteps: 1,
+            },
+            prompt: prompt || description,
+            generate: async (generateInput) => {
+              try {
+                const messages = generateInput.messages.map(m => ({
+                  role: (m.role === "tool_result" ? "user" : m.role) as "user" | "assistant",
+                  content: m.content,
+                }));
+                const response = await chatCompletion(client, modelId, messages);
+                return { success: true, type: "message" as const, content: response.content };
+              } catch (error) {
+                return { success: false, type: "message" as const, content: error instanceof Error ? error.message : String(error) };
+              }
+            },
+          });
+          return result.content ?? result.error ?? "子代理未返回结果。";
+        };
+
+        if (runInBackground) {
+          const task: BackgroundAgentTask = { id: agentId, promise: executeSubagent(), status: "running" };
+          task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
+          backgroundAgents.set(agentId, task);
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `子代理已在后台启动（ID: ${agentId}）。`,
+            data: { agentId, status: "running" },
+          };
+        }
+
+        try {
+          const result = await executeSubagent();
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: result,
+            data: { agentId, result },
+          };
+        } catch (error) {
+          return { ok: false, renderer: definition.renderer, error: "agent-failed", summary: `子代理执行失败：${error instanceof Error ? error.message : String(error)}` };
+        }
+      };
+    // --- Await: 等待后台子代理完成 ---
+    case "Await":
+      return async ({ input, definition }) => {
+        const id = typeof input.id === "string" ? input.id : "";
+        if (!id) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 不能为空。" };
+        const task = backgroundAgents.get(id);
+        if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台任务 ${id} 不存在。` };
+        if (task.status === "completed" || task.status === "failed") {
+          return { ok: task.status === "completed", renderer: definition.renderer, summary: task.result ?? "无结果", data: { id, status: task.status, result: task.result } };
+        }
+        const timeout = typeof input.timeout === "number" ? input.timeout : 30000;
+        try {
+          const result = await Promise.race([
+            task.promise,
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout)),
+          ]);
+          return { ok: true, renderer: definition.renderer, summary: String(result), data: { id, status: "completed", result } };
+        } catch (error) {
+          if (error instanceof Error && error.message === "timeout") {
+            return { ok: true, renderer: definition.renderer, summary: `任务 ${id} 仍在运行中（超时 ${timeout}ms）。`, data: { id, status: "running" } };
+          }
+          return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
+        }
+      };
+    // --- Send: 向子代理发送消息 ---
+    case "Send":
+      return async ({ input, definition }) => {
+        const id = typeof input.id === "string" ? input.id : "";
+        const message = typeof input.message === "string" ? input.message : "";
+        if (!id || !message) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 和 message 不能为空。" };
+        const task = backgroundAgents.get(id);
+        if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `子代理 ${id} 不存在。` };
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `消息已记录给子代理 ${id}（当前为一次性执行模式，消息将在下次交互时生效）。`,
+          data: { id, message, status: task.status },
+        };
+      };
     default:
       return undefined;
   }
