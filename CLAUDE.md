@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v0.1.0** | 2026-04-19 | 最后更新 2026-05-07 | 始终使用中文回复
+**v0.1.3** | 2026-04-19 | 最后更新 2026-05-12 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/README.md` + `.kiro/steering/project-profile.md` 为准。
 
