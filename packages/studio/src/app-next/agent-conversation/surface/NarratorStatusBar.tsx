@@ -163,7 +163,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
 
   return (
     <TooltipProvider>
-      <div className="relative flex shrink-0 items-center justify-between border-t border-border/50 px-4 py-1">
+      <div className="relative flex shrink-0 items-center justify-between border-t border-border/50 px-4 py-1.5 min-h-[36px]">
         {/* Progress bar — 工作中/等待中时显示底部进度线 */}
         {(isWorking || isWaiting) && (
           <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
@@ -175,7 +175,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
           </div>
         )}
 
-        {/* Left: status icon + label + timer */}
+        {/* Left: status icon + label + timer + context ring */}
         <div className="flex items-center gap-1.5">
           {isWorking ? (
             <Loader2 className="size-3.5 animate-spin text-blue-500 shrink-0" />
@@ -200,11 +200,8 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
               )}
             </>
           )}
-        </div>
 
-        {/* Right: controls */}
-        <div className="flex items-center gap-1">
-          {/* Context usage ring — always visible, dropdown menu */}
+          {/* Context usage ring — 紧跟状态文字 */}
           <ContextRingMenu
             used={status.contextUsage?.usedTokens ?? 0}
             max={status.contextUsage?.maxTokens ?? 0}
@@ -212,7 +209,10 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
             onCompact={onCompact}
             onReset={onReset}
           />
+        </div>
 
+        {/* Right: controls — 确保垂直居中 */}
+        <div className="flex items-center gap-1.5">
           {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
             options={status.modelOptions}
@@ -265,7 +265,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
           {/* Permission mode dropdown — 显示完整文字 */}
           <DropdownMenu>
             <DropdownMenuTrigger
-              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors"
+              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors h-7"
               title={`权限：${permissionFullLabel}`}
             >
               <span className="text-[10px]">◇</span>
@@ -329,7 +329,7 @@ function ModelDropdown({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
-        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors"
+        className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors h-7"
         title={`模型：${modelLabel}`}
       >
         <span className="max-w-[160px] truncate">{modelFullName}</span>
@@ -407,7 +407,7 @@ function ContextRingMenu({
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="cursor-default rounded px-1 py-0.5">
+      <DropdownMenuTrigger className="cursor-default rounded px-1 py-0.5 h-7 inline-flex items-center">
         <ContextRing used={used} max={max} />
       </DropdownMenuTrigger>
       <DropdownMenuContent side="top" align="end" className="min-w-[200px]">
