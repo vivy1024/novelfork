@@ -59,6 +59,8 @@ const SUBSTATUS_DOT_COLORS: Partial<Record<NarratorSubstatus, string>> = {
   retrying: "bg-yellow-500",
   queued: "bg-yellow-400",
   unread: "bg-green-400",
+  tool_calling: "bg-cyan-500",
+  thinking: "bg-blue-500",
 };
 
 const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
@@ -72,6 +74,8 @@ const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
   planning: "计划中",
   retrying: "重试中",
   queued: "排队中",
+  tool_calling: "调用工具中",
+  thinking: "思考中",
 };
 
 const STATE_LABELS: Record<NarratorState, string> = {
@@ -186,7 +190,9 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
           )}
           {isWorking && streamingStartedAt && elapsed > 0 ? (
             <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
-              思考中 {formatDuration(elapsed)}
+              {substatus === "tool_calling" && status.toolName
+                ? `调用 ${status.toolName}... ${formatDuration(elapsed)}`
+                : `思考中 ${formatDuration(elapsed)}`}
             </span>
           ) : isWaiting ? (
             <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
