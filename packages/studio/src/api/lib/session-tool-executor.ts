@@ -807,6 +807,81 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           data: { rule, captures, result: allContent },
         };
       };
+    // --- ForkNarrator: 创建新的独立 session ---
+    case "ForkNarrator":
+      return async ({ input, sessionId, definition }) => {
+        const mode = typeof input.mode === "string" ? input.mode : "fresh";
+        const message = typeof input.message === "string" ? (input.message as string).trim() : "";
+        const title = typeof input.title === "string" ? (input.title as string).trim() : "";
+
+        if (!message) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "message 不能为空。" };
+        }
+
+        const { createSession, getSessionById } = await import("./session-service.js");
+
+        const parentSession = await getSessionById(sessionId);
+        const newSession = await createSession({
+          title: title || `Fork: ${message.slice(0, 30)}`,
+          agentId: parentSession?.agentId ?? "writer",
+          sessionMode: "chat",
+          projectId: parentSession?.projectId,
+          worktree: parentSession?.worktree,
+          parentSessionId: mode === "fork" ? sessionId : undefined,
+          forkMode: mode === "fork" ? "full" : undefined,
+          sessionConfig: parentSession ? { permissionMode: parentSession.sessionConfig.permissionMode } : undefined,
+        });
+
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已创建新叙述者：${newSession.title}（ID: ${newSession.id}）`,
+          data: { sessionId: newSession.id, title: newSession.title, mode },
+        };
+      };
+    // --- ShareFile: 生成文件分享信息 ---
+    case "ShareFile":
+      return async ({ input, definition }) => {
+        const filePath = typeof input.path === "string" ? (input.path as string).trim() : "";
+        if (!filePath) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "path 不能为空。" };
+        }
+
+        const { stat } = await import("node:fs/promises");
+        const { join, basename } = await import("node:path");
+        const workDir = options.workDir ?? process.cwd();
+        const resolvedPath = join(workDir, filePath);
+
+        try {
+          const stats = await stat(resolvedPath);
+          const fileName = basename(resolvedPath);
+          const sizeKb = Math.round(stats.size / 1024);
+          const shareId = crypto.randomUUID().slice(0, 8);
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `文件 ${fileName}（${sizeKb}KB）已准备分享。`,
+            data: { shareId, fileName, path: filePath, sizeBytes: stats.size, isDirectory: stats.isDirectory() },
+          };
+        } catch {
+          return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在：${filePath}` };
+        }
+      };
+    // --- Skill: 调用已注册技能 ---
+    case "Skill":
+      return async ({ definition, input }) => {
+        const skillName = typeof input.skill === "string" ? (input.skill as string).trim() : "";
+        if (!skillName) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "skill 名称不能为空。" };
+        }
+        const args = typeof input.args === "string" ? input.args : "";
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `技能 "${skillName}" 已识别，参数：${args || "(无)"}。技能系统尚未完全接入运行时，请通过叙述者会话直接使用 /${skillName} 命令。`,
+          data: { skill: skillName, args, status: "partial", note: "技能执行需要通过会话消息路由，当前工具入口仅做识别。" },
+        };
+      };
     // --- Stub handlers for remaining Phase 3-5 tools ---
     case "WebSearch":
     case "WebFetch":
@@ -814,10 +889,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     case "Agent":
     case "Await":
     case "Send":
-    case "ForkNarrator":
     case "Terminal":
-    case "ShareFile":
-    case "Skill":
       return async ({ definition }) => ({
         ok: false,
         renderer: definition.renderer,
