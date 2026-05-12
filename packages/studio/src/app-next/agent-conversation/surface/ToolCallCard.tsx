@@ -103,10 +103,17 @@ function extractBashCommand(input: unknown): string | null {
 function extractFilePath(input: unknown): string | null {
   if (!input || typeof input !== "object") return null;
   const record = input as Record<string, unknown>;
-  return typeof record.file_path === "string" ? record.file_path
+  const path = typeof record.file_path === "string" ? record.file_path
     : typeof record.path === "string" ? record.path
     : typeof record.filePath === "string" ? record.filePath
     : null;
+  if (!path) return null;
+  // 附加参数说明（如 offset/limit/pages）
+  const extras: string[] = [];
+  if (typeof record.offset === "number") extras.push(`${record.offset}`);
+  if (typeof record.limit === "number") extras.push(`~${record.offset ? Number(record.offset) + Number(record.limit) : record.limit}`);
+  if (typeof record.pages === "string") extras.push(`p${record.pages}`);
+  return extras.length > 0 ? `${path} (${extras.join("")})` : path;
 }
 
 function extractGrepPattern(input: unknown): string | null {
@@ -157,31 +164,31 @@ function extractEditStrings(input: unknown): { oldStr: string; newStr: string } 
 // ---------------------------------------------------------------------------
 
 function getDescription(toolCall: ConversationToolCall, category: ToolCategory): string | null {
-  if (toolCall.summary) return toolCall.summary;
-
+  // 折叠态只显示输入参数的描述，不显示输出/结果摘要
+  // summary 仅在无法从 input 提取描述时作为 fallback
   switch (category) {
     case "bash":
-      return extractBashCommand(toolCall.input);
+      return extractBashCommand(toolCall.input) ?? toolCall.summary ?? null;
     case "read":
-      return extractFilePath(toolCall.input);
+      return extractFilePath(toolCall.input) ?? toolCall.summary ?? null;
     case "search": {
       const pattern = extractGrepPattern(toolCall.input);
       const path = extractGrepPath(toolCall.input);
       if (pattern && path) return `${pattern} in ${path.split(/[/\\]/).pop()}`;
-      return pattern;
+      return pattern ?? toolCall.summary ?? null;
     }
     case "write":
-      return extractFilePath(toolCall.input);
+      return extractFilePath(toolCall.input) ?? toolCall.summary ?? null;
     case "browser": {
       const action = extractBrowserAction(toolCall.input);
       const url = extractBrowserUrl(toolCall.input);
       if (action && url) return `${action}: ${url}`;
-      return action;
+      return action ?? toolCall.summary ?? null;
     }
     case "agent":
-      return extractAgentDescription(toolCall.input);
+      return extractAgentDescription(toolCall.input) ?? toolCall.summary ?? null;
     default:
-      return null;
+      return toolCall.summary ?? null;
   }
 }
 
