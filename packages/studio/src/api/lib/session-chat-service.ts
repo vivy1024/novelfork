@@ -1402,16 +1402,13 @@ export async function handleSessionChatTransportMessage(
   }
 
   const content = ("content" in payload ? payload.content : "").trim();
-  if (!content) {
-    sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
-    return;
-  }
+  const effectiveContent = content || "继续";
 
   const timestamp = Date.now();
   const userMessage = appendMessageToState(loaded.state, {
     id: payload.messageId?.trim() || `session-msg-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
     role: "user",
-    content,
+    content: effectiveContent,
     timestamp,
     ...(canvasContext ? { metadata: { canvasContext } } : {}),
   });
@@ -1424,7 +1421,9 @@ export async function handleSessionChatTransportMessage(
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
 
   // 推送 working 状态给所有连接的客户端
-  const workingSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, turnStartedAt: new Date().toISOString() };
+  const turnStartedAt = Date.now();
+  const turnStartedAtIso = new Date(turnStartedAt).toISOString();
+  const workingSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
   broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: workingSession, cursor: createCursor(loaded.state) }));
 
   try {
@@ -1454,6 +1453,15 @@ export async function handleSessionChatTransportMessage(
       shouldContinueAfterToolResult,
       onStreamChunk: (chunk: string) => {
         broadcastStreamChunk(sessionId, loaded.state, chunk);
+      },
+      onEvent: (event) => {
+        if (event.type === "tool_call") {
+          const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "tool_calling" as const, toolName: event.toolName, turnStartedAt: turnStartedAtIso };
+          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+        } else if (event.type === "tool_result") {
+          const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
+          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+        }
       },
       signal: abortController.signal,
       generate: async (generateInput): Promise<AgentGenerateResult> => {
@@ -1613,7 +1621,10 @@ export async function handleSessionChatTransportMessage(
   }
 
   // 推送 idle 状态（turn 结束）
-  const idleSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "idle" as const };
+  const lastTurnDurationMs = Date.now() - turnStartedAt;
+  const wasAborted = abortControllerBySessionId.get(sessionId) === undefined && failure?.reason !== "provider-unavailable";
+  const idleSubstatus = (failure && !wasAborted) ? undefined : (wasAborted && !failure ? "interrupted" as const : undefined);
+  const idleSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "idle" as const, lastTurnDurationMs, ...(idleSubstatus ? { substatus: idleSubstatus } : {}) };
   broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: idleSession, cursor: createCursor(loaded.state) }));
 
   // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block

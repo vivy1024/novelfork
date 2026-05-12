@@ -78,7 +78,9 @@ export type NarratorSubstatus =
   | "compacting"
   | "planning"
   | "retrying"
-  | "queued";
+  | "queued"
+  | "tool_calling"
+  | "thinking";
 
 export interface ConversationStatus {
   state: string;
@@ -91,6 +93,8 @@ export interface ConversationStatus {
   streamingStartedAt?: number;
   /** 上一轮耗时（毫秒） */
   lastTurnDurationMs?: number;
+  /** 当前正在调用的工具名 */
+  toolName?: string;
   providerId?: string;
   providerLabel?: string;
   modelId?: string;
