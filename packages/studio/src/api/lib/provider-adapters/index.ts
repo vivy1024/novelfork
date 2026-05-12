@@ -169,6 +169,11 @@ function readOpenAiError(payload: unknown, fallback: string): string {
   return fallback;
 }
 
+function safeJsonParse(str: string): Record<string, unknown> {
+  try { return JSON.parse(str) as Record<string, unknown>; }
+  catch { return {}; }
+}
+
 function toProviderSafeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/gu, "_");
 }
@@ -409,6 +414,11 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     const configFailure = requireOpenAiConfig(input);
     if (configFailure) return configFailure;
 
+    // Responses API mode — use /responses endpoint
+    if (input.apiMode === "responses") {
+      return this.sendResponsesRequest(input);
+    }
+
     const useStreaming = Boolean(input.onStreamChunk);
     console.log(`[adapter.generate] useStreaming=${useStreaming}, hasOnStreamChunk=${typeof input.onStreamChunk}, model=${input.modelId}`);
 
@@ -417,6 +427,115 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     }
 
     return this.sendChatCompletion(input, input.messages, undefined, input.tools, input.signal);
+  }
+
+  private async sendResponsesRequest(input: GenerateInput): Promise<GenerateResult> {
+    const hasTools = Boolean(input.tools?.length);
+    const body: Record<string, unknown> = {
+      model: input.modelId,
+      input: this.toResponsesInput(input.messages),
+      stream: false,
+      ...(hasTools ? { tools: input.tools!.map((t) => ({ type: "function", name: toProviderSafeToolName(t.name), description: t.description, parameters: t.inputSchema })) } : {}),
+    };
+
+    const urls = openAiUrls(input, "/responses");
+    let lastError = "Responses API request failed";
+
+    for (const [index, url] of urls.entries()) {
+      const canRetry = index < urls.length - 1;
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers: openAiHeaders(input.apiKey!),
+          body: JSON.stringify(body),
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
+
+        if (!response.ok) {
+          let errorMessage = `Responses request failed with HTTP ${response.status}`;
+          try {
+            const errorPayload = await parseJsonResponse(response);
+            errorMessage = readOpenAiError(errorPayload, errorMessage);
+          } catch { /* use default */ }
+          if (canRetry && (response.status === 404 || response.status === 405)) {
+            lastError = errorMessage;
+            continue;
+          }
+          return failure("upstream-error", errorMessage);
+        }
+
+        const payload = await parseJsonResponse(response) as Record<string, unknown>;
+        return this.parseResponsesPayload(payload, input.tools);
+      } catch (error) {
+        if (input.signal?.aborted) return failure("network-error", "Request aborted");
+        lastError = error instanceof Error ? error.message : String(error);
+        if (canRetry) continue;
+        return failure("network-error", lastError);
+      }
+    }
+
+    return failure("network-error", lastError);
+  }
+
+  private toResponsesInput(messages: readonly RuntimeChatMessage[]): Array<Record<string, unknown>> {
+    // Convert internal messages to Responses API input items
+    const items: Array<Record<string, unknown>> = [];
+    for (const msg of messages) {
+      if (msg.role === "system") {
+        // system goes as instructions, skip from input
+        continue;
+      }
+      if (msg.role === "tool") {
+        items.push({ type: "function_call_output", call_id: msg.toolCallId, output: msg.content });
+        continue;
+      }
+      if (msg.role === "assistant" && msg.toolCalls?.length) {
+        // Text + function calls
+        if (msg.content.trim()) {
+          items.push({ type: "message", role: "assistant", content: [{ type: "output_text", text: msg.content }] });
+        }
+        for (const tc of msg.toolCalls) {
+          items.push({ type: "function_call", name: toProviderSafeToolName(tc.name), arguments: JSON.stringify(tc.input), call_id: tc.id });
+        }
+        continue;
+      }
+      // user or assistant text
+      items.push({ type: "message", role: msg.role, content: [{ type: msg.role === "user" ? "input_text" : "output_text", text: msg.content }] });
+    }
+    return items;
+  }
+
+  private parseResponsesPayload(payload: Record<string, unknown>, tools?: readonly RuntimeToolDefinition[]): GenerateResult {
+    const output = Array.isArray(payload.output) ? payload.output as Array<Record<string, unknown>> : [];
+    const toolUses: RuntimeToolUse[] = [];
+    let textContent = "";
+    let reasoningContent = "";
+
+    for (const item of output) {
+      if (item.type === "message" && Array.isArray(item.content)) {
+        for (const block of item.content as Array<Record<string, unknown>>) {
+          if (block.type === "output_text" && typeof block.text === "string") textContent += block.text;
+        }
+      } else if (item.type === "reasoning" && Array.isArray(item.content)) {
+        for (const block of item.content as Array<Record<string, unknown>>) {
+          if (typeof block.text === "string") reasoningContent += block.text;
+        }
+      } else if (item.type === "function_call") {
+        const providerName = typeof item.name === "string" ? item.name : "";
+        const internalName = tools ? toInternalToolName(providerName, tools) : providerName;
+        toolUses.push({
+          id: typeof item.call_id === "string" ? item.call_id : `call-${toolUses.length + 1}`,
+          name: internalName,
+          input: typeof item.arguments === "string" ? safeJsonParse(item.arguments) : {},
+        });
+      }
+    }
+
+    const usage = readOpenAiUsage(payload);
+    if (toolUses.length > 0) {
+      return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+    }
+    return { success: true, type: "message", content: textContent, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
   }
 
   private async sendStreamingChatCompletion(

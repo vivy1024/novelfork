@@ -228,6 +228,8 @@ export interface NarratorSessionChatMessage {
   id: string;
   role: NarratorSessionChatRole;
   content: string;
+  /** Provider reasoning/thinking content (DeepSeek reasoning_content, Claude thinking) */
+  reasoning_content?: string;
   timestamp: number;
   seq?: number;
   toolCalls?: ToolCall[];
