@@ -173,6 +173,11 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const providerList = Array.isArray(summary?.providers) ? (summary.providers as readonly unknown[]) : null;
   const providerCount = providerList?.length;
   const activeProviderId = typeof summary?.activeProviderId === "string" ? summary.activeProviderId : runtimeStatus?.defaultProvider;
+  const activeProviderName = (() => {
+    if (!activeProviderId || !providerList) return activeProviderId;
+    const provider = providerList.find((p) => p && typeof p === "object" && (p as { id?: string }).id === activeProviderId) as { name?: string } | undefined;
+    return provider?.name || activeProviderId;
+  })();
   const latestSession = sessions[0];
 
   const handleCreateBook = async (event: FormEvent<HTMLFormElement>) => {
@@ -240,7 +245,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <HomeStatCard label="最近作品" value={`${books.length} 本`} />
         <HomeStatCard label="最近会话" value={`${standaloneSessions.length} 条`} />
         <HomeStatCard label="模型健康" value={runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"} />
-        <HomeStatCard label="当前提供方" value={activeProviderId ?? "未配置"} />
+        <HomeStatCard label="当前提供方" value={activeProviderName ?? "未配置"} />
       </div>
 
       <Dialog open={createBookOpen} onOpenChange={setCreateBookOpen}>
@@ -367,7 +372,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
           </div>
           <div className="mt-3 space-y-2 text-sm text-muted-foreground">
             <p>状态：{runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"}</p>
-            <p>默认提供方：{runtimeStatus?.defaultProvider ?? activeProviderId ?? "未配置"}</p>
+            <p>默认提供方：{activeProviderName ?? "未配置"}</p>
             <p>默认模型：{runtimeStatus?.defaultModel ?? "未配置"}</p>
             {providerCount !== undefined ? <p>摘要中的提供方数量：{providerCount}</p> : null}
             {runtimeStatus?.lastConnectionError ? <p role="status">最近错误：{runtimeStatus.lastConnectionError}</p> : null}
