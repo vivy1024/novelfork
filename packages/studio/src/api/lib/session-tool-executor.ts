@@ -643,13 +643,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!plan) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "plan 内容为空。" };
         }
-        const { updateSession } = await import("./session-service.js");
-        await updateSession(sessionId, { sessionMode: "chat" });
+        // 不在此处切换 sessionMode，等 confirmation approve 后由 confirmSessionToolDecision 切换
         return {
           ok: true,
           renderer: "tool.plan-approval",
-          summary: `计划已提交，已退出计划模式。`,
-          data: { status: "plan-submitted", plan },
+          summary: `计划已提交，等待用户批准。批准后将退出计划模式。`,
+          data: { status: "pending-confirmation", plan, sessionId },
           confirmation: {
             id: crypto.randomUUID(),
             toolName: "ExitPlanMode",
@@ -714,6 +713,36 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             summary: `读取了最近 ${messages.length} 条消息。`,
             data: { action: "read_conversation", messages },
           };
+        }
+
+        if (action === "read_tool_call") {
+          const toolCallId = typeof input.tool_call_id === "string" ? input.tool_call_id : "";
+          if (!toolCallId) {
+            return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "read_tool_call 需要 tool_call_id。" };
+          }
+          for (const msg of history) {
+            if (!msg.toolCalls) continue;
+            for (const tc of msg.toolCalls) {
+              if (tc.id === toolCallId) {
+                return {
+                  ok: true,
+                  renderer: definition.renderer,
+                  summary: `找到工具调用 ${tc.toolName}（ID: ${toolCallId}）`,
+                  data: {
+                    action: "read_tool_call",
+                    toolCallId,
+                    toolName: tc.toolName,
+                    status: tc.status,
+                    input: tc.input,
+                    output: tc.output,
+                    result: tc.result,
+                    duration: tc.duration,
+                  },
+                };
+              }
+            }
+          }
+          return { ok: false, renderer: definition.renderer, error: "not-found", summary: `未找到工具调用 ${toolCallId}。` };
         }
 
         return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `不支持的 action: ${action}` };
@@ -847,15 +876,15 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!pipeline) {
           return { ok: false, renderer: definition.renderer, error: "no-pipeline", summary: "当前没有活跃的管道会话。" };
         }
-        const rule = typeof input.rule === "string" ? input.rule : "";
-        const captures = Object.fromEntries(pipeline.captures);
+        const rule = typeof input.rule === "string" ? input.rule.trim() : "";
         sessionPipelines.delete(sessionId);
-        const allContent = [...pipeline.captures.values()].join("\n");
+
+        const result = executePipelineRule(rule, pipeline.captures);
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `管道结束，共 ${pipeline.captures.size} 个捕获。`,
-          data: { rule, captures, result: allContent },
+          summary: `管道结束，共 ${pipeline.captures.size} 个捕获。${rule ? ` 规则: ${rule}` : ""}`,
+          data: { rule, captureCount: pipeline.captures.size, result },
         };
       };
     // --- ForkNarrator: 创建新的独立 session ---
@@ -1264,6 +1293,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
 
         const { runSubagent } = await import("./subagent-runtime.js");
         const { createLLMClient, chatCompletion, loadProjectConfig } = await import("@vivy1024/novelfork-core");
+        const { getEnabledSessionTools } = await import("./session-tool-registry.js");
 
         const executeSubagent = async (): Promise<string> => {
           const workDir = options.workDir ?? process.cwd();
@@ -1271,15 +1301,23 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const client = createLLMClient(config.llm);
           const modelId = config.llm.model;
 
+          // 子代理获得通用工具集（排除 Agent/ForkNarrator/Send/Await 避免无限递归）
+          const subTools = getEnabledSessionTools(
+            "edit",
+            "subagent",
+            { disabledTools: ["Agent", "ForkNarrator", "Send", "Await"] },
+          );
+          const subToolNames = subTools.map(t => t.name);
+
           const result = await runSubagent({
             config: {
               id: agentId,
               name: description || `subagent-${agentId}`,
-              systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。完成后给出简洁的结果摘要。",
+              systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。你可以使用工具来读写文件、搜索代码、执行命令。完成后给出简洁的结果摘要。",
               modelId,
               providerId: config.llm.provider ?? "openai",
-              tools: [],
-              maxSteps: 1,
+              tools: subToolNames,
+              maxSteps: 6,
             },
             prompt: prompt || description,
             generate: async (generateInput) => {
@@ -1294,6 +1332,16 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
                 return { success: false, type: "message" as const, content: error instanceof Error ? error.message : String(error) };
               }
             },
+            executeTool: async (toolName, toolInput) => {
+              const executor = createSessionToolExecutor({ workDir });
+              const toolResult = await executor.execute({
+                sessionId,
+                toolName,
+                input: toolInput,
+                permissionMode: "edit",
+              });
+              return { ok: toolResult.ok, summary: toolResult.summary ?? "", data: toolResult.data };
+            },
           });
           return result.content ?? result.error ?? "子代理未返回结果。";
         };
@@ -1305,7 +1353,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `子代理已在后台启动（ID: ${agentId}）。`,
+            summary: `子代理已在后台启动（ID: ${agentId}）。使用 Await 工具等待结果。`,
             data: { agentId, status: "running" },
           };
         }
@@ -1364,6 +1412,111 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     default:
       return undefined;
   }
+}
+
+// --- Pipeline rule execution ---
+
+function executePipelineRule(rule: string, captures: Map<string, string>): string {
+  if (!rule.trim()) {
+    return [...captures.values()].join("\n");
+  }
+
+  // 解析 pipeline: "from p1 p2 | grep pattern | head -n 5"
+  const segments = rule.split("|").map(s => s.trim());
+  let lines: string[] = [];
+
+  // 第一段：from 或默认全部
+  const first = segments[0] ?? "";
+  if (first.startsWith("from ")) {
+    const aliases = first.slice(5).trim().split(/\s+/);
+    lines = aliases.flatMap(alias => {
+      const content = captures.get(alias);
+      return content ? content.split("\n") : [];
+    });
+    // 后续段从 index 1 开始
+  } else if (first) {
+    // 第一段也是命令（如 grep），用全部 captures
+    lines = [...captures.values()].flatMap(v => v.split("\n"));
+    // 把 first 作为命令处理
+    lines = applyPipelineCommand(first, lines);
+  } else {
+    lines = [...captures.values()].flatMap(v => v.split("\n"));
+  }
+
+  // 后续段：管道命令
+  const startIdx = first.startsWith("from ") ? 1 : (first ? 1 : 1);
+  for (let i = (first.startsWith("from ") ? 1 : (first ? 1 : 1)); i < segments.length; i++) {
+    const cmd = segments[i]!.trim();
+    if (!cmd) continue;
+    lines = applyPipelineCommand(cmd, lines);
+  }
+
+  return lines.join("\n");
+}
+
+function applyPipelineCommand(cmd: string, lines: string[]): string[] {
+  // grep [-i] [-v] PATTERN
+  const grepMatch = cmd.match(/^grep\s+(?:(-[iv]+)\s+)?(.+)$/);
+  if (grepMatch) {
+    const flags = grepMatch[1] ?? "";
+    const pattern = grepMatch[2]!.replace(/^["']|["']$/g, "");
+    const ignoreCase = flags.includes("i");
+    const invert = flags.includes("v");
+    const regex = new RegExp(pattern, ignoreCase ? "i" : "");
+    return lines.filter(line => invert ? !regex.test(line) : regex.test(line));
+  }
+
+  // head [-n] N
+  const headMatch = cmd.match(/^head\s+(?:-n\s+)?(\d+)$/);
+  if (headMatch) {
+    return lines.slice(0, parseInt(headMatch[1]!, 10));
+  }
+
+  // tail [-n] N
+  const tailMatch = cmd.match(/^tail\s+(?:-n\s+)?(\d+)$/);
+  if (tailMatch) {
+    const n = parseInt(tailMatch[1]!, 10);
+    return lines.slice(-n);
+  }
+
+  // sort [-r]
+  if (cmd === "sort" || cmd === "sort -r") {
+    const sorted = [...lines].sort();
+    return cmd.includes("-r") ? sorted.reverse() : sorted;
+  }
+
+  // uniq
+  if (cmd === "uniq") {
+    return lines.filter((line, i) => i === 0 || line !== lines[i - 1]);
+  }
+
+  // cut -d DELIM -f FIELDS
+  const cutMatch = cmd.match(/^cut\s+-d\s+(\S)\s+-f\s+(.+)$/);
+  if (cutMatch) {
+    const delim = cutMatch[1]!;
+    const fieldSpec = cutMatch[2]!;
+    const fields = fieldSpec.split(",").flatMap(spec => {
+      const range = spec.match(/^(\d+)-(\d+)$/);
+      if (range) {
+        const start = parseInt(range[1]!, 10);
+        const end = parseInt(range[2]!, 10);
+        return Array.from({ length: end - start + 1 }, (_, i) => start + i);
+      }
+      return [parseInt(spec, 10)];
+    }).filter(n => !isNaN(n));
+    return lines.map(line => {
+      const parts = line.split(delim);
+      return fields.map(f => parts[f - 1] ?? "").join(delim);
+    });
+  }
+
+  // wc -l (count lines)
+  if (cmd === "wc -l") {
+    return [String(lines.length)];
+  }
+
+  // 未识别的命令，原样返回
+  return lines;
 }
 
 async function resolveQuestionnaireService(options: SessionToolExecutorOptions): Promise<QuestionnaireToolService> {
