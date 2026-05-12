@@ -119,9 +119,11 @@ export function upgradeMessage(message: NarratorSessionChatMessage): Conversatio
     }
   }
 
-  // 3. Text content → TextBlock (only if non-empty and not a tool-call-only message)
+  // 3. Text content → TextBlock
+  // 只丢弃自动生成的工具调用模板文本（"请求调用工具..."），保留其他有意义的文本
   const textContent = message.content.trim();
-  if (textContent && !message.toolCalls?.length) {
+  const isToolCallTemplate = !!(message.toolCalls?.length) && textContent.startsWith("请求调用工具");
+  if (textContent && !isToolCallTemplate) {
     blocks.push({ type: "text", content: textContent });
   }
 

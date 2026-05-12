@@ -17,14 +17,35 @@ import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./se
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
 
+// --- Browser page interface (extracted from playwright Page) ---
+interface BrowserPageLike {
+  goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
+  title(): Promise<string>;
+  url(): string;
+  click(sel: string, opts?: Record<string, unknown>): Promise<void>;
+  fill(sel: string, val: string, opts?: Record<string, unknown>): Promise<void>;
+  hover(sel: string, opts?: Record<string, unknown>): Promise<void>;
+  screenshot(opts?: Record<string, unknown>): Promise<Buffer>;
+  evaluate(expr: string | ((...args: unknown[]) => unknown), ...args: unknown[]): Promise<unknown>;
+  goBack(): Promise<unknown>;
+  goForward(): Promise<unknown>;
+  waitForSelector(sel: string, opts?: Record<string, unknown>): Promise<unknown>;
+  selectOption(sel: string, val: string | string[], opts?: Record<string, unknown>): Promise<string[]>;
+  locator(sel: string): { first(): { textContent(opts?: Record<string, unknown>): Promise<string | null>; innerHTML(opts?: Record<string, unknown>): Promise<string> } };
+  keyboard: { press(key: string): Promise<void>; type(text: string): Promise<void> };
+}
+
 // --- Browser session management ---
 interface BrowserSession {
   id: string;
-  browser: unknown; // playwright Browser instance
-  page: unknown; // playwright Page instance
+  browser: { close(): Promise<void> };
+  page: BrowserPageLike;
   createdAt: number;
 }
 const browserSessions = new Map<string, BrowserSession>();
+
+// --- User-Agent constant ---
+const NOVELFORK_USER_AGENT = "NovelFork";
 
 // --- Session-level in-memory state for Pipelines ---
 const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
@@ -993,7 +1014,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         const maxLength = typeof input.max_length === "number" ? input.max_length : 20000;
         try {
-          const response = await fetch(url, { headers: { "User-Agent": "NovelFork/0.2.0" }, signal: AbortSignal.timeout(15000) });
+          const response = await fetch(url, { headers: { "User-Agent": NOVELFORK_USER_AGENT }, signal: AbortSignal.timeout(15000) });
           if (!response.ok) {
             return { ok: false, renderer: definition.renderer, error: "fetch-failed", summary: `HTTP ${response.status}: ${response.statusText}` };
           }
@@ -1060,22 +1081,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               }
             }
             const headless = input.headless !== false;
-            const browser = await pw.chromium.launch({ headless, channel: "chrome" }) as { newPage: () => Promise<unknown>; close: () => Promise<void> };
-            const page = await browser.newPage() as {
-              goto: (url: string, opts?: Record<string, unknown>) => Promise<unknown>;
-              title: () => Promise<string>;
-              url: () => string;
-              click: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
-              fill: (sel: string, val: string, opts?: Record<string, unknown>) => Promise<void>;
-              hover: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
-              screenshot: (opts?: Record<string, unknown>) => Promise<Buffer>;
-              evaluate: (expr: string | ((...args: unknown[]) => unknown), ...args: unknown[]) => Promise<unknown>;
-              goBack: () => Promise<unknown>;
-              goForward: () => Promise<unknown>;
-              waitForSelector: (sel: string, opts?: Record<string, unknown>) => Promise<unknown>;
-              locator: (sel: string) => { first: () => { textContent: (opts?: Record<string, unknown>) => Promise<string | null>; innerHTML: (opts?: Record<string, unknown>) => Promise<string> } };
-              keyboard: { press: (key: string) => Promise<void>; type: (text: string) => Promise<void> };
-            };
+            const browser = await pw.chromium.launch({ headless, channel: "chrome" }) as { newPage: () => Promise<BrowserPageLike>; close: () => Promise<void> };
+            const page = await browser.newPage();
             await page.goto(url, { timeout: 30000 });
             const sessionId = crypto.randomUUID().slice(0, 8);
             browserSessions.set(sessionId, { id: sessionId, browser, page, createdAt: Date.now() });
@@ -1104,23 +1111,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!sessionId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 session_id。" };
         const session = browserSessions.get(sessionId);
         if (!session) return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: `浏览器会话 ${sessionId} 不存在。` };
-        const page = session.page as {
-          goto: (url: string, opts?: Record<string, unknown>) => Promise<unknown>;
-          title: () => Promise<string>;
-          url: () => string;
-          click: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
-          fill: (sel: string, val: string, opts?: Record<string, unknown>) => Promise<void>;
-          hover: (sel: string, opts?: Record<string, unknown>) => Promise<void>;
-          screenshot: (opts?: Record<string, unknown>) => Promise<Buffer>;
-          evaluate: (expr: string | ((...args: unknown[]) => unknown), ...args: unknown[]) => Promise<unknown>;
-          goBack: () => Promise<unknown>;
-          goForward: () => Promise<unknown>;
-          waitForSelector: (sel: string, opts?: Record<string, unknown>) => Promise<unknown>;
-          locator: (sel: string) => { first: () => { textContent: (opts?: Record<string, unknown>) => Promise<string | null>; innerHTML: (opts?: Record<string, unknown>) => Promise<string> } };
-          keyboard: { press: (key: string) => Promise<void>; type: (text: string) => Promise<void> };
-          selectOption: (sel: string, val: string | string[], opts?: Record<string, unknown>) => Promise<string[]>;
-        };
-        const browser = session.browser as { close: () => Promise<void> };
+        const page = session.page;
+        const browser = session.browser;
 
         try {
           switch (action) {
@@ -1227,7 +1219,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       };
     // --- Terminal: 进程管理 ---
     case "Terminal":
-      return async ({ input, definition }) => {
+      return async ({ input, sessionId, definition }) => {
         const action = typeof input.action === "string" ? input.action : "";
         const { TerminalStore } = await import("./terminal-store.js");
         // 使用模块级单例
@@ -1237,22 +1229,32 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         switch (action) {
           case "list": {
             const terminals = terminalStore.list();
-            const total = terminals.running.length + terminals.exited.length;
-            return { ok: true, renderer: definition.renderer, summary: `${total} 个终端（${terminals.running.length} 运行中）。`, data: { terminals } };
+            // 只返回当前 session 拥有的终端
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string; ownerSessionId: string }> | undefined;
+            const ownedIds = new Set<string>();
+            if (buffers) {
+              for (const [id, entry] of buffers.entries()) {
+                if (entry.ownerSessionId === sessionId) ownedIds.add(id);
+              }
+            }
+            const running = terminals.running.filter(t => ownedIds.has(t.id));
+            const exited = terminals.exited.filter(t => ownedIds.has(t.id));
+            const total = running.length + exited.length;
+            return { ok: true, renderer: definition.renderer, summary: `${total} 个终端（${running.length} 运行中）。`, data: { terminals: { running, exited } } };
           }
           case "create": {
             const name = typeof input.name === "string" ? input.name : "Terminal";
             const cwd = typeof input.cwd === "string" ? input.cwd : (process.cwd());
-            const id = crypto.randomUUID().slice(0, 8);
+            const id = `${sessionId}:${crypto.randomUUID().slice(0, 8)}`;
             const { spawn } = await import("node:child_process");
             const shell = process.platform === "win32" ? "cmd.exe" : "/bin/sh";
             const proc = spawn(shell, [], { cwd, stdio: ["pipe", "pipe", "pipe"] });
             const info = { id, name, status: "running" as const, cwd, createdAt: new Date().toISOString(), pid: proc.pid };
             terminalStore.register(info);
-            // 存储进程引用和输出缓冲
-            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers ??= new Map<string, { proc: ReturnType<typeof spawn>; output: string }>();
-            const bufferMap = buffers as Map<string, { proc: ReturnType<typeof spawn>; output: string }>;
-            const entry = { proc, output: "" };
+            // 存储进程引用和输出缓冲（含 ownerSessionId）
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers ??= new Map<string, { proc: ReturnType<typeof spawn>; output: string; ownerSessionId: string }>();
+            const bufferMap = buffers as Map<string, { proc: ReturnType<typeof spawn>; output: string; ownerSessionId: string }>;
+            const entry = { proc, output: "", ownerSessionId: sessionId };
             proc.stdout?.on("data", (chunk: Buffer) => { entry.output += chunk.toString(); });
             proc.stderr?.on("data", (chunk: Buffer) => { entry.output += chunk.toString(); });
             proc.on("exit", () => { terminalStore.markExited(id); });
@@ -1263,18 +1265,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             const terminalId = typeof input.terminal_id === "string" ? input.terminal_id : "";
             const inputText = typeof input.input === "string" ? input.input : "";
             if (!terminalId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "terminal_id 不能为空。" };
-            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string }> | undefined;
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string; ownerSessionId: string }> | undefined;
             const entry = buffers?.get(terminalId);
-            if (!entry) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在或已退出。` };
+            if (!entry || entry.ownerSessionId !== sessionId) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在或无权访问。` };
             entry.proc.stdin?.write(inputText + "\n");
             return { ok: true, renderer: definition.renderer, summary: `已向终端 ${terminalId} 写入 ${inputText.length} 字符。`, data: { terminalId, written: inputText.length } };
           }
           case "read": {
             const terminalId = typeof input.terminal_id === "string" ? input.terminal_id : "";
             if (!terminalId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "terminal_id 不能为空。" };
-            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string }> | undefined;
+            const buffers = (globalThis as Record<string, unknown>).__nf_terminal_buffers as Map<string, { proc: ReturnType<typeof import("node:child_process").spawn>; output: string; ownerSessionId: string }> | undefined;
             const entry = buffers?.get(terminalId);
-            if (!entry) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在。` };
+            if (!entry || entry.ownerSessionId !== sessionId) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `终端 ${terminalId} 不存在或无权访问。` };
             const output = entry.output;
             entry.output = ""; // 清空已读缓冲
             return { ok: true, renderer: definition.renderer, summary: output ? `终端输出 ${output.length} 字符。` : "无新输出。", data: { terminalId, output } };
@@ -1444,9 +1446,8 @@ function executePipelineRule(rule: string, captures: Map<string, string>): strin
     lines = [...captures.values()].flatMap(v => v.split("\n"));
   }
 
-  // 后续段：管道命令
-  const startIdx = first.startsWith("from ") ? 1 : (first ? 1 : 1);
-  for (let i = (first.startsWith("from ") ? 1 : (first ? 1 : 1)); i < segments.length; i++) {
+  // 后续段：管道命令（始终从 index 1 开始，第一段已在上面处理）
+  for (let i = 1; i < segments.length; i++) {
     const cmd = segments[i]!.trim();
     if (!cmd) continue;
     lines = applyPipelineCommand(cmd, lines);
@@ -1463,8 +1464,17 @@ function applyPipelineCommand(cmd: string, lines: string[]): string[] {
     const pattern = grepMatch[2]!.replace(/^["']|["']$/g, "");
     const ignoreCase = flags.includes("i");
     const invert = flags.includes("v");
-    const regex = new RegExp(pattern, ignoreCase ? "i" : "");
-    return lines.filter(line => invert ? !regex.test(line) : regex.test(line));
+    try {
+      const regex = new RegExp(pattern, ignoreCase ? "i" : "");
+      return lines.filter(line => invert ? !regex.test(line) : regex.test(line));
+    } catch {
+      // 无效正则，fallback 到字符串匹配
+      const lowerPattern = ignoreCase ? pattern.toLowerCase() : pattern;
+      return lines.filter(line => {
+        const target = ignoreCase ? line.toLowerCase() : line;
+        return invert ? !target.includes(lowerPattern) : target.includes(lowerPattern);
+      });
+    }
   }
 
   // head [-n] N

@@ -58,12 +58,35 @@ describe("conversation-blocks", () => {
         }],
       };
       const item = upgradeMessage(message);
-      // toolCalls present → content not rendered as text block
-      expect(item.blocks).toHaveLength(1);
+      // toolCalls present with non-template text → text block preserved alongside tool_result
+      expect(item.blocks).toHaveLength(2);
       expect(item.blocks[0]!.type).toBe("tool_result");
       const toolResult = item.blocks[0] as { type: "tool_result"; toolName: string; status: string };
       expect(toolResult.toolName).toBe("Glob");
       expect(toolResult.status).toBe("success");
+      expect(item.blocks[1]!.type).toBe("text");
+    });
+
+    it("suppresses template text when tool calls present", () => {
+      const message: NarratorSessionChatMessage = {
+        id: "msg-3b",
+        role: "assistant",
+        content: "请求调用工具 Glob。",
+        timestamp: 3000,
+        toolCalls: [{
+          id: "tc-1b",
+          toolName: "Glob",
+          status: "success",
+          summary: "Found 5 files",
+          input: { pattern: "**/*.ts" },
+          output: "file1.ts\nfile2.ts",
+          duration: 120,
+        }],
+      };
+      const item = upgradeMessage(message);
+      // 模板文本 "请求调用工具..." 被丢弃
+      expect(item.blocks).toHaveLength(1);
+      expect(item.blocks[0]!.type).toBe("tool_result");
     });
 
     it("converts a message with pending tool call", () => {
