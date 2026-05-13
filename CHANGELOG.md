@@ -4,6 +4,72 @@
 
 ---
 
+## v0.5.0 (2026-05-14)
+
+### 新功能
+
+**对话体验对齐 Claude Code：**
+- 重试按钮：失败后一键重发上一条消息
+- 中断长按确认：按住 1 秒才触发，防止误触
+- Bash 实时输出流：stdout 通过 WebSocket 实时推送到前端
+- 工具长时间运行通知：10s 后显示"仍在执行中..."
+- "始终允许此类操作"：确认门一键加入白名单
+- 计划反思可见反馈：状态栏显示"计划审核中..."
+- 语法高亮：Read 工具展开后代码块有颜色（react-syntax-highlighter）
+- Git 分支 + 变更数：状态栏显示当前分支和未提交变更
+- 工具卡片耗时/超时显示：`7ms / 2m` 格式
+- 每条消息 Token 用量：`↑9.6k ↓0.1k` 显示
+
+**Agent 质量提升：**
+- 工具结果截断：Grep 50 条 / Glob 200 个 / Read 500 行 / Bash 200 行
+- 错误恢复提示词：失败 2 次换方案，3 次停下说明
+- 失败计数器：连续失败时自动注入警告
+- 项目启动探索：自动加载 package.json + AGENTS.md/CLAUDE.md 到上下文
+- Agent 工具使用规范：TOOL_USE_GUIDELINES 注入所有 Agent prompt
+
+**小说创作流程闭环：**
+- 建书后 AI 自动生成经纬：向导完成 → LLM 丰富 story_bible 内容
+- 经纬条目可编辑：资源树 + 按钮新建 / 右键删除重命名
+- 经纬空态教学：空分区显示功能说明 + 操作入口
+- 经纬卡片化渲染：## 段落渲染为独立卡片，未填写显示"让 AI 生成"
+- "让 AI 生成"按钮：点击调用 LLM 填充对应段落
+- 文件路径隐藏：画布不再暴露 story/story_bible.md
+- Word (.docx) 导出：零依赖实现，宋体 + 1.5 倍行距
+- 写作工具 404 修复：GET/POST 方法匹配修正
+
+**UI 可见性增强：**
+- 工具调用实时渲染：不再等 turn 结束，每个 tool_call 立即推送
+- 工具卡片展开内容：Bash 终端风格 / Read 代码块 / Edit diff / Grep 列表
+- 危险反思可见性：状态栏显示"安全评估中..."
+- 重试可见性：状态栏显示"重试中"
+- 输出速率显示：streaming 时显示"42字/秒"
+- 桌面通知：任务完成时浏览器通知
+- 首页无供应商引导横幅
+- exe 启动失败错误提示（不再黑屏闪退）
+- 目录白名单快捷按钮
+- 文件修改面板自动弹出
+
+**其他：**
+- API Token 认证：外部调用方 Bearer Token
+- Toast 通知系统
+- 学习中心全部重写（13 篇对齐 NarraFork 风格）
+
+### 修复
+- 并行工具 tool_call/tool_result 消息格式修复（Claude API 兼容）
+- drainSessionQueue 竞态条件
+- emergencyTruncateMessages orphaned tool_result
+- captureOriginalContent 路径解析
+- LLM 安全反思超时保护
+- 工具执行异常静默 hang → catch + 日志 + 透传
+- exe 从 Downloads 启动时 novelfork.json not found
+- 首 token 超时错误信息明确化
+- 工具循环超限引导文案
+- API 网络错误代理检查引导
+- 中断按钮无反馈 → spinner + "中断中..."
+- sessionId 作用域错误（tool-stream confirmation path）
+
+---
+
 ## v0.4.0 (2026-05-14)
 
 ### 新功能
