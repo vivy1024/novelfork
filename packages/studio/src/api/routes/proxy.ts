@@ -27,6 +27,10 @@ export function createProxyRouter() {
     try {
       const body = await c.req.json<Partial<ProxySettings>>();
       const updated = await updateUserConfig({ proxy: body });
+      // 同步 adapter 层内存状态
+      const { setGlobalProxyUrl, setPerProviderProxy } = await import("../lib/provider-adapters/index.js");
+      if (updated.proxy.platforms?.ai !== undefined) setGlobalProxyUrl(updated.proxy.platforms.ai || undefined);
+      if (updated.proxy.providers) setPerProviderProxy(updated.proxy.providers);
       return c.json(updated.proxy);
     } catch (error) {
       console.error("Failed to update proxy config:", error);
@@ -60,6 +64,9 @@ export function createProxyRouter() {
         delete providers[providerId];
       }
       const updated = await updateUserConfig({ proxy: { providers } });
+      // 同步 adapter 层
+      const { setPerProviderProxy } = await import("../lib/provider-adapters/index.js");
+      setPerProviderProxy(providers);
       return c.json({ providerId, proxy: updated.proxy.providers[providerId] ?? "" });
     } catch (error) {
       console.error("Failed to update provider proxy:", error);
