@@ -19,7 +19,7 @@ async function getApiToken(): Promise<string | null> {
   try {
     const { loadUserConfig } = await import("./user-config-service.js");
     const config = await loadUserConfig();
-    cachedToken = (config as Record<string, unknown>).apiToken as string | null ?? null;
+    cachedToken = (config as unknown as Record<string, unknown>).apiToken as string | null ?? null;
     // Refresh cache every 60s
     setTimeout(() => { cachedToken = undefined; }, 60_000);
     return cachedToken;

@@ -165,8 +165,10 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   app.use("/*", cors());
 
   // API Token 认证（外部调用方如羽书需要 Bearer Token）
-  const { apiTokenAuth } = await import("./lib/api-token-auth.js");
-  app.use("/api/*", apiTokenAuth);
+  app.use("/api/*", async (c, next) => {
+    const { apiTokenAuth } = await import("./lib/api-token-auth.js");
+    return apiTokenAuth(c, next);
+  });
 
   // Structured error handler
   app.onError((error, c) => {
