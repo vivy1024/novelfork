@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
+import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image, Terminal } from "lucide-react";
+import { requestNotificationPermission, sendDesktopNotification } from "../../notifications/desktop-notification";
 
 import { GitPanel } from "./GitPanel";
 import { FileChangesPanel } from "./FileChangesPanel";
@@ -211,6 +212,18 @@ export function ConversationSurface({
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
 
+  // 桌面通知：任务完成时通知用户（仅当标签页不可见时）
+  const wasWorkingRef = useRef(false);
+  useEffect(() => {
+    if (wasWorkingRef.current && !isWorking) {
+      sendDesktopNotification("NovelFork", "叙述者已完成任务");
+    }
+    wasWorkingRef.current = isWorking;
+  }, [isWorking]);
+
+  // 请求通知权限（首次渲染时）
+  useEffect(() => { requestNotificationPermission(); }, []);
+
   // 检测回复到达，重置 localSending
   useEffect(() => {
     if (messages.length > prevMessageCount.current && localSending) {
@@ -297,6 +310,14 @@ export function ConversationSurface({
               </Button>
             </TooltipTrigger>
             <TooltipContent>图片附件</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" onClick={() => window.open("/next/terminal", "_blank")}>
+                <Terminal className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>终端</TooltipContent>
           </Tooltip>
           <Sheet>
             <SheetTrigger
