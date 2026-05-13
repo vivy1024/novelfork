@@ -147,7 +147,7 @@ export function UsagePanel() {
   // Filters
   const [filterProvider, setFilterProvider] = useState("");
   const [filterModel, setFilterModel] = useState("");
-  const [filterStatus, setFilterStatus] = useState("");
+  const [filterStatus, setFilterStatus] = useState("all");
   const [filtersApplied, setFiltersApplied] = useState(false);
 
   const handleRefresh = useCallback(async () => {
@@ -172,7 +172,7 @@ export function UsagePanel() {
     if (filtersApplied) {
       if (filterProvider) params.set("provider", filterProvider);
       if (filterModel) params.set("model", filterModel);
-      if (filterStatus) params.set("status", filterStatus);
+      if (filterStatus && filterStatus !== "all") params.set("status", filterStatus);
     }
     fetchJson<RequestsResponse>(`/usage/requests?${params}`)
       .then(setRequests)
@@ -181,7 +181,7 @@ export function UsagePanel() {
   }, [page, filtersApplied, filterProvider, filterModel, filterStatus]);
 
   const applyFilters = () => { setPage(1); setFiltersApplied(true); };
-  const resetFilters = () => { setFilterProvider(""); setFilterModel(""); setFilterStatus(""); setFiltersApplied(false); setPage(1); };
+  const resetFilters = () => { setFilterProvider(""); setFilterModel(""); setFilterStatus("all"); setFiltersApplied(false); setPage(1); };
 
   return (
     <div className="space-y-6">
@@ -247,7 +247,7 @@ export function UsagePanel() {
                 value={filterStatus}
                 onValueChange={setFilterStatus}
                 options={[
-                  { value: "", label: "全部状态" },
+                  { value: "all", label: "全部状态" },
                   { value: "success", label: "成功" },
                   { value: "error", label: "错误" },
                 ]}
