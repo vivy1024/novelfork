@@ -125,7 +125,7 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     inputSchema: NO_ARGS,
     permissionImpact: TOOL_READ,
     runtimeHandler: "tools.list",
-    status: "planned",
+    status: "current",
     source: "claude-adapter",
   },
   {
@@ -138,7 +138,7 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     inputSchema: NO_ARGS,
     permissionImpact: TOOL_READ,
     runtimeHandler: "mcp.list",
-    status: "planned",
+    status: "current",
     source: "claude-adapter",
   },
   {
@@ -151,7 +151,7 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     inputSchema: NO_ARGS,
     permissionImpact: TOOL_READ,
     runtimeHandler: "agents.list",
-    status: "planned",
+    status: "current",
     source: "claude-adapter",
   },
   {
