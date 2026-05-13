@@ -23,6 +23,15 @@
 - **SWE-bench 评测框架**：runEvalTask/runEvalSuite + 并发控制 + 超时处理
 - **WebSocket 自动重连**：指数退避 + visibilitychange 监听 + 断点续传
 - **消息渲染性能**：useMemo/useCallback 优化高频组件
+- **工具调用实时渲染**：不再等 turn 结束，每个 tool_call/tool_result 立即推送到前端
+- **工具卡片展开内容增强**：Bash 终端风格 / Read 代码块 / Edit diff 视图 / Grep 匹配列表
+- **Agent 工具使用规范**：TOOL_USE_GUIDELINES 注入所有 Agent system prompt
+- **危险反思可见性**：状态栏显示"安全评估中..."
+- **重试可见性**：状态栏显示"重试中"+ onRetry 回调
+- **输出速率显示**：streaming 时状态栏显示"42字/秒"
+- **桌面通知**：任务完成时浏览器通知（标签页不可见时）
+- **API Token 认证**：外部调用方（如 QQ bot）Bearer Token 认证
+- **Toast 通知系统**：全局轻量 toast 组件
 
 ### 修复
 - 并行工具执行后 tool_call/tool_result 消息格式不符合 Claude API 要求（连续 user 消息被拒绝）
@@ -31,6 +40,13 @@
 - captureOriginalContent 相对路径无法解析（文件恢复失效）
 - LLM 安全反思无超时（可能无限阻塞）
 - void drainSessionQueue 未捕获异常（session 永久锁死风险）
+- 工具执行异常静默 hang（现在 catch + 日志 + 透传错误给模型）
+- exe 从 Downloads 文件夹启动时 novelfork.json not found
+- 首 token 超时后错误信息不明确（现在区分 timeout vs abort）
+- 工具循环超限时不告诉用户怎么调（现在附带设置路径）
+- API 网络错误时不提示检查代理（现在附带代理检查引导）
+- 中断按钮无反馈（现在有 spinner + "中断中..."）
+- 新用户无供应商时无明确引导（现在有醒目黄色横幅）
 
 ---
 
