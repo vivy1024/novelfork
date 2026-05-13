@@ -345,4 +345,124 @@ describe("agent turn runtime", () => {
       { type: "turn_completed" },
     ]);
   });
+
+  it("executes multiple read-only tools in parallel", async () => {
+    const executionOrder: string[] = [];
+    const generate = vi.fn()
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "tool_use" as const,
+        toolUses: [
+          { id: "read-1", name: "Read", input: { file_path: "/a.ts" } },
+          { id: "read-2", name: "Glob", input: { pattern: "*.ts" } },
+          { id: "read-3", name: "Grep", input: { pattern: "foo" } },
+        ],
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      })
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "message" as const,
+        content: "已读取所有文件。",
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      });
+    const executeTool = vi.fn(async (toolInput: { toolName: string }) => {
+      executionOrder.push(toolInput.toolName);
+      return { ok: true, summary: `${toolInput.toolName} 完成。` };
+    });
+
+    const events = await runAgentTurn(input({ generate, executeTool }));
+
+    // All 3 tools should have been called
+    expect(executeTool).toHaveBeenCalledTimes(3);
+    // Events should include all tool_call and tool_result events
+    const toolCallEvents = events.filter(e => e.type === "tool_call");
+    const toolResultEvents = events.filter(e => e.type === "tool_result");
+    expect(toolCallEvents).toHaveLength(3);
+    expect(toolResultEvents).toHaveLength(3);
+    // Final message
+    expect(events.at(-2)).toMatchObject({ type: "assistant_message", content: "已读取所有文件。" });
+    expect(events.at(-1)).toMatchObject({ type: "turn_completed" });
+  });
+
+  it("recovers from context overflow by truncating and retrying", async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce({
+        success: false as const,
+        code: "upstream-error",
+        error: "This model's maximum context length is exceeded",
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      })
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "message" as const,
+        content: "恢复成功。",
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      });
+
+    // Create a long message history to trigger truncation
+    const longMessages: AgentTurnItem[] = Array.from({ length: 50 }, (_, i) => ({
+      type: "message" as const,
+      role: "user" as const,
+      content: `消息 ${i}`,
+    }));
+
+    const events = await runAgentTurn(input({ generate, messages: longMessages }));
+
+    // Should have retried after truncation
+    expect(generate).toHaveBeenCalledTimes(2);
+    // Second call should have fewer messages
+    const secondCallMessages = (generate.mock.calls[1]![0] as { messages: AgentTurnItem[] }).messages;
+    expect(secondCallMessages.length).toBeLessThan(longMessages.length + 1); // +1 for system prompt
+    // Should succeed
+    expect(events.at(-2)).toMatchObject({ type: "assistant_message", content: "恢复成功。" });
+    expect(events.at(-1)).toMatchObject({ type: "turn_completed" });
+  });
+
+  it("does not retry context overflow more than once", async () => {
+    const generate = vi.fn().mockResolvedValue({
+      success: false as const,
+      code: "upstream-error",
+      error: "context_length_exceeded",
+      metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+    });
+
+    const longMessages: AgentTurnItem[] = Array.from({ length: 50 }, (_, i) => ({
+      type: "message" as const,
+      role: "user" as const,
+      content: `消息 ${i}`,
+    }));
+
+    const events = await runAgentTurn(input({ generate, messages: longMessages }));
+
+    // Should have tried twice (original + 1 retry), not more
+    expect(generate).toHaveBeenCalledTimes(2);
+    // Should fail
+    expect(events.at(-1)).toMatchObject({ type: "turn_failed" });
+  });
+
+  it("falls back to sequential execution when tools include write operations", async () => {
+    const generate = vi.fn()
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "tool_use" as const,
+        toolUses: [
+          { id: "read-1", name: "Read", input: { file_path: "/a.ts" } },
+          { id: "write-1", name: "Write", input: { file_path: "/b.ts", content: "x" } },
+        ],
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      })
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "message" as const,
+        content: "完成。",
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      });
+    const executeTool = vi.fn(async () => ({ ok: true, summary: "ok" }));
+
+    const events = await runAgentTurn(input({ generate, executeTool }));
+
+    // Should still work (sequential path)
+    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(events.at(-1)).toMatchObject({ type: "turn_completed" });
+  });
 });

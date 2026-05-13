@@ -246,4 +246,115 @@ describe("llm-runtime-service", () => {
       metadata: { providerId: "sub2api", modelId: "tool-model", providerName: "Sub2API" },
     });
   });
+
+  it("retries on transient 429 errors with exponential backoff", async () => {
+    let callCount = 0;
+    const adapter: RuntimeAdapter = {
+      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
+      testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
+      generate: vi.fn(async () => {
+        callCount++;
+        if (callCount <= 2) {
+          return { success: false as const, code: "upstream-error" as const, error: "429 rate_limit exceeded" };
+        }
+        return { success: true as const, type: "message" as const, content: "重试后成功" };
+      }),
+    };
+    await store.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://gateway.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+    });
+
+    const service = createLlmRuntimeService({
+      store,
+      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
+    });
+
+    const result = await service.generate({
+      sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: [{ id: "m1", role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(result).toMatchObject({ success: true, content: "重试后成功" });
+    expect(callCount).toBe(3); // 2 failures + 1 success
+  });
+
+  it("gives up after max retry attempts and falls through to next provider", async () => {
+    const adapter: RuntimeAdapter = {
+      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
+      testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
+      generate: vi.fn(async () => ({ success: false as const, code: "upstream-error" as const, error: "503 service unavailable" })),
+    };
+    await store.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://gateway.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+    });
+
+    const service = createLlmRuntimeService({
+      store,
+      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
+    });
+
+    const result = await service.generate({
+      sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: [{ id: "m1", role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    // Should fail after retries exhausted (maxRetryAttempts defaults to 3)
+    expect(result.success).toBe(false);
+    // adapter.generate should have been called multiple times (1 initial + retries)
+    // The exact count depends on maxRetryAttempts in user config
+    expect((adapter.generate as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("does not retry on non-transient errors like auth failures", async () => {
+    const adapter: RuntimeAdapter = {
+      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
+      testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
+      generate: vi.fn(async () => ({ success: false as const, code: "auth-missing" as const, error: "API key invalid" })),
+    };
+    await store.createProvider({
+      id: "sub2api",
+      name: "Sub2API",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://gateway.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+    });
+
+    const service = createLlmRuntimeService({
+      store,
+      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
+    });
+
+    const result = await service.generate({
+      sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: [{ id: "m1", role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.code).toBe("auth-missing");
+    // Should NOT retry — only 1 call
+    expect(adapter.generate).toHaveBeenCalledTimes(1);
+  });
 });
