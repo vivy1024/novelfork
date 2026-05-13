@@ -725,6 +725,59 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       await writeFile(join(storyDir, "current_state.md"), stateLines.join("\n"), "utf-8");
 
       broadcast("book:updated", { bookId: id });
+
+      // 异步调用 LLM 丰富经纬内容（不阻塞响应）
+      void (async () => {
+        try {
+          const { loadUserConfig } = await import("../lib/user-config-service.js");
+          const config = await loadUserConfig();
+          const defaultModel = config.modelDefaults?.defaultSessionModel;
+          if (!defaultModel) return; // 无模型配置，跳过 AI 生成
+
+          const { generateSessionReply } = await import("../lib/llm-runtime-service.js");
+          const [providerId, modelId] = defaultModel.includes(":") ? defaultModel.split(":") : ["", defaultModel];
+
+          // 将向导答案格式化为 prompt
+          const contextParts: string[] = [];
+          for (const [field, label] of Object.entries(fieldLabels)) {
+            const answer = answers[field];
+            if (answer && answer.mode !== "random" && answer.value.trim()) {
+              contextParts.push(`${label}：${answer.value.trim()}`);
+            }
+          }
+          if (contextParts.length === 0) return; // 全部跳过，无需生成
+
+          const userPrompt = `基于以下创作设定，生成一份详细的故事经纬（story_bible.md）。要求：
+1. 扩展世界观细节（地理/历史/社会结构）
+2. 丰富主角设定（性格/背景/动机/成长方向）
+3. 设计 2-3 个重要配角（各有独立动机）
+4. 明确力量体系的层级和规则
+5. 提出 3-5 个初始伏笔种子
+
+用户设定：
+${contextParts.join("\n")}
+
+请直接输出 Markdown 格式的故事经纬内容，用 ## 二级标题分区。`;
+
+          const result = await generateSessionReply({
+            sessionConfig: { providerId, modelId, permissionMode: "read", reasoningEffort: "low" },
+            messages: [
+              { type: "message", role: "system", content: "你是一个专业的网文世界观架构师。根据用户提供的创作方向，生成详细、具体、可直接用于写作的故事经纬。输出纯 Markdown，不要解释。" },
+              { type: "message", role: "user", content: userPrompt },
+            ],
+            tools: [],
+          });
+
+          if (result.success && result.type === "message" && result.content?.trim()) {
+            await writeFile(join(storyDir, "story_bible.md"), result.content.trim(), "utf-8");
+            broadcast("book:updated", { bookId: id });
+            console.log(JSON.stringify({ component: "guided-setup", event: "ai-enrich-complete", bookId: id }));
+          }
+        } catch (err) {
+          console.log(JSON.stringify({ component: "guided-setup", event: "ai-enrich-failed", bookId: id, error: err instanceof Error ? err.message : String(err) }));
+        }
+      })();
+
       return c.json({ ok: true, bookId: id });
     } catch (e) {
       if (isMissingFileError(e)) {
