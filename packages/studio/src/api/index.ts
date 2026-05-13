@@ -47,7 +47,32 @@ startStudioServer(root, port, {
       console.log(`NovelFork opened in default browser via ${launchPlan.command}`);
     }
   })
-  .catch((e) => {
-    console.error("Failed to start studio:", e);
+  .catch(async (e) => {
+    const message = e instanceof Error ? e.message : String(e);
+    console.error("Failed to start studio:", message);
+    console.error("");
+    console.error("═══════════════════════════════════════════════════════");
+    console.error("  NovelFork 启动失败");
+    console.error("═══════════════════════════════════════════════════════");
+    console.error("");
+    console.error(`  错误: ${message}`);
+    console.error("");
+    console.error("  常见原因:");
+    console.error(`    1. 端口 ${port} 被占用 → 关闭占用程序或用 --port=其他端口`);
+    console.error("    2. Windows Defender 拦截 → 允许 novelfork.exe 通过防火墙");
+    console.error("    3. 数据库损坏 → 删除 C:\\Users\\<你>\\. novelfork\\ 目录重试");
+    console.error("");
+    console.error("  按 Enter 退出...");
+    console.error("═══════════════════════════════════════════════════════");
+
+    // 等待用户按键再退出（防止窗口一闪而过）
+    if (process.stdin.isTTY) {
+      await new Promise<void>((resolve) => {
+        process.stdin.once("data", () => resolve());
+      });
+    } else {
+      // 非 TTY 环境（如 cmd 双击），等 10 秒让用户看到错误
+      await new Promise<void>((resolve) => setTimeout(resolve, 10000));
+    }
     process.exit(1);
   });
