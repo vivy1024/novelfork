@@ -3,11 +3,103 @@
  * 根据 bookId 聚合当前作品的关键状态信息，注入到 Agent 的 system prompt 中。
  */
 
+import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import type { BookDetail } from "../../shared/contracts.js";
 import { StateManager } from "@vivy1024/novelfork-core";
 
 function getProjectRoot(): string {
   return process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+}
+
+// --- Phase 4.2: Project Rules File Support ---
+
+const PROJECT_RULES_CANDIDATES = [
+  "AGENTS.md",
+  "CLAUDE.md",
+  ".cursorrules",
+  ".github/copilot-instructions.md",
+] as const;
+
+const PROJECT_RULES_MAX_CHARS = 2000;
+
+/**
+ * 检测并加载项目规则文件（AGENTS.md / CLAUDE.md / .cursorrules 等）。
+ * 按优先级返回第一个找到的文件内容（截断到 2000 字符）。
+ */
+export async function loadProjectRulesFile(workDir: string): Promise<string | null> {
+  for (const name of PROJECT_RULES_CANDIDATES) {
+    const filePath = join(workDir, name);
+    try {
+      if (existsSync(filePath)) {
+        const content = await readFile(filePath, "utf-8");
+        if (content.trim()) {
+          return content.slice(0, PROJECT_RULES_MAX_CHARS);
+        }
+      }
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+// --- Phase 4.1: Project Info (package.json) ---
+
+const PROJECT_INFO_MAX_CHARS = 500;
+
+interface ProjectInfo {
+  name?: string;
+  description?: string;
+  scripts?: Record<string, string>;
+}
+
+/**
+ * 从 package.json 加载项目基本信息（名称、描述、脚本列表）。
+ */
+export async function loadProjectInfo(workDir: string): Promise<string | null> {
+  const pkgPath = join(workDir, "package.json");
+  try {
+    if (!existsSync(pkgPath)) return null;
+    const raw = await readFile(pkgPath, "utf-8");
+    const pkg: ProjectInfo = JSON.parse(raw);
+    const lines: string[] = [];
+    if (pkg.name) lines.push(`- 项目名称：${pkg.name}`);
+    if (pkg.description) lines.push(`- 描述：${pkg.description}`);
+    if (pkg.scripts && Object.keys(pkg.scripts).length > 0) {
+      const scriptEntries = Object.entries(pkg.scripts).slice(0, 10);
+      lines.push(`- 脚本：${scriptEntries.map(([k]) => k).join(", ")}`);
+    }
+    if (lines.length === 0) return null;
+    const result = lines.join("\n");
+    return result.slice(0, PROJECT_INFO_MAX_CHARS);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 构建项目探索上下文块（规则文件 + package.json 信息）。
+ * 用于注入到 Agent 的 runtime context 中。
+ */
+export async function buildProjectExplorationContext(workDir: string): Promise<string> {
+  const [rulesContent, projectInfo] = await Promise.all([
+    loadProjectRulesFile(workDir),
+    loadProjectInfo(workDir),
+  ]);
+
+  const blocks: string[] = [];
+
+  if (projectInfo) {
+    blocks.push(`## 项目信息\n\n${projectInfo}`);
+  }
+
+  if (rulesContent) {
+    blocks.push(`## 项目规则\n\n${rulesContent}`);
+  }
+
+  return blocks.join("\n\n");
 }
 
 interface ContextInput {

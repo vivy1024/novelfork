@@ -49,7 +49,7 @@ import {
 } from "./session-runtime/recovery.js";
 import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-service.js";
 import { getSessionById, updateSession } from "./session-service.js";
-import { buildAgentContext } from "./agent-context.js";
+import { buildAgentContext, buildProjectExplorationContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
@@ -903,6 +903,11 @@ async function appendModelContinuationAfterToolDecision(
         bookContext = await buildAgentContext({ bookId: projectId });
       } catch { /* context build failure is non-fatal */ }
     }
+    const continuationWorkDir = loaded.session.worktree?.trim() || process.cwd();
+    let continuationProjectContext = "";
+    try {
+      continuationProjectContext = await buildProjectExplorationContext(continuationWorkDir);
+    } catch { /* non-fatal */ }
     const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, loaded.session.id);
@@ -911,7 +916,7 @@ async function appendModelContinuationAfterToolDecision(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`,
-      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree),
+      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
@@ -1414,9 +1419,10 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
   });
 }
 
-function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext, workDir?: string): string {
+function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext, workDir?: string, projectExplorationContext?: string): string {
   const parts = [
     workDir ? `## 当前工作目录\n\n${workDir}\n\n所有文件操作（Read/Write/Edit/Glob/Grep）的根目录。` : "",
+    projectExplorationContext?.trim() ?? "",
     bookContext.trim(),
     canvasContext ? formatCanvasContextForPrompt(canvasContext) : "",
   ].filter(Boolean);
@@ -1530,6 +1536,13 @@ export async function handleSessionChatTransportMessage(
       } catch { /* context build failure is non-fatal */ }
     }
 
+    // Phase 4: 项目探索上下文（规则文件 + package.json）
+    const workDir = loaded.session.worktree?.trim() || process.cwd();
+    let projectExplorationContext = "";
+    try {
+      projectExplorationContext = await buildProjectExplorationContext(workDir);
+    } catch { /* project exploration failure is non-fatal */ }
+
     const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`;
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
@@ -1555,7 +1568,7 @@ export async function handleSessionChatTransportMessage(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: fullSystemPrompt,
-      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree),
+      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, projectExplorationContext),
       tools: sessionTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
