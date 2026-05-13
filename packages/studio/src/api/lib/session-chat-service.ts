@@ -926,6 +926,10 @@ async function appendModelContinuationAfterToolDecision(
           messages: generateInput.messages,
           tools: generateInput.tools,
           onStreamChunk: generateInput.onStreamChunk,
+          onRetry: () => {
+            const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const };
+            broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
+          },
           signal: generateInput.signal,
         });
         return result as AgentGenerateResult;
@@ -1607,6 +1611,10 @@ export async function handleSessionChatTransportMessage(
           messages: generateInput.messages,
           tools: generateInput.tools,
           onStreamChunk: generateInput.onStreamChunk,
+          onRetry: (_attempt, _max) => {
+            const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const, turnStartedAt: turnStartedAtIso };
+            broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
+          },
           signal: generateInput.signal,
         });
         return result as AgentGenerateResult;
