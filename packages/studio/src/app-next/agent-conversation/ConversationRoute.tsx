@@ -55,6 +55,9 @@ export interface ConversationRouteProps {
   onForkSession?: (title?: string) => void;
   /** 更新工作目录 */
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
+  /** 固定会话 */
+  onPin?: () => void;
+  isPinned?: boolean;
   /** 附件上传回调 */
   onAttach?: (files: FileList) => void;
   /** 会话详情数据 */
@@ -102,6 +105,8 @@ export function ConversationRoute({
   onArchive,
   onForkSession,
   onUpdateWorkDir,
+  onPin,
+  isPinned,
   onAttach,
   sessionDetail,
 }: ConversationRouteProps) {
@@ -171,6 +176,8 @@ export function ConversationRoute({
         onArchive={onArchive}
         onForkSession={onForkSession}
         onUpdateWorkDir={onUpdateWorkDir}
+        onPin={onPin}
+        isPinned={isPinned}
         sessionDetail={sessionDetail}
       />
     </section>
