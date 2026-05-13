@@ -4,6 +4,7 @@ import { collectMetrics } from "../lib/metrics-service.js";
 import { buildStudioReleaseSnapshot } from "../lib/release-metadata.js";
 import { resolveRuntimeStoragePath } from "../lib/runtime-storage-paths.js";
 import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status.js";
+import { setGlobalProxyUrl, setPerProviderProxy } from "../lib/provider-adapters/index.js";
 import type { UserConfigPatch } from "../../types/settings.js";
 import type { StudioReleaseSnapshot } from "../../shared/release-manifest.js";
 
@@ -31,6 +32,13 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     try {
       const partial = await c.req.json<UserConfigPatch>();
       const updated = await updateUserConfig(partial);
+
+      // 如果 proxy 配置变更，同步更新 provider adapter 层的代理设置
+      if (partial.proxy) {
+        setGlobalProxyUrl(updated.proxy?.platforms?.ai || undefined);
+        setPerProviderProxy(updated.proxy?.providers ?? {});
+      }
+
       return c.json(updated);
     } catch (error) {
       console.error("Failed to update user config:", error);
