@@ -1,6 +1,8 @@
 import { useState, useCallback, type ReactNode } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { Sparkles, Pencil } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 
 export type ResourceViewerKind =
@@ -158,10 +160,94 @@ function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewer
   );
 }
 
+/** Parse markdown into sections by ## headers for card-based rendering */
+function parseJingweiSections(content: string): Array<{ title: string; body: string }> {
+  const parts = content.split(/^## /m);
+  // First part before any ## is preamble (e.g. # title), skip it
+  return parts.slice(1).map((s) => {
+    const [titleLine, ...bodyLines] = s.split("\n");
+    return { title: titleLine.trim(), body: bodyLines.join("\n").trim() };
+  });
+}
+
+function isUnfilledSection(body: string): boolean {
+  if (!body.trim()) return true;
+  return /\*\(待\s*(AI\s*生成|规划)\)\*/.test(body);
+}
+
+function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void }) {
+  const [editingRaw, setEditingRaw] = useState(false);
+  const content = node.content ?? "";
+  const sections = parseJingweiSections(content);
+
+  if (editingRaw) {
+    return (
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-muted-foreground">原始编辑模式</span>
+          <Button size="sm" variant="outline" onClick={() => setEditingRaw(false)}>
+            返回卡片视图
+          </Button>
+        </div>
+        <Textarea
+          aria-label="经纬资料原始编辑"
+          value={content}
+          rows={20}
+          onChange={(e) => onContentChange?.(e.currentTarget.value)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3 p-4">
+      <div className="flex items-center justify-end">
+        <Button size="sm" variant="ghost" className="text-xs gap-1" onClick={() => setEditingRaw(true)}>
+          <Pencil className="size-3" />
+          编辑源文件
+        </Button>
+      </div>
+      {sections.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+          <p className="text-sm">暂无经纬内容</p>
+        </div>
+      ) : (
+        sections.map((section, i) => (
+          <div key={i} className="rounded-lg border border-border bg-card p-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">{section.title}</h3>
+            {isUnfilledSection(section.body) ? (
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span>尚未填写</span>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 text-primary hover:underline"
+                  onClick={() => {/* TODO: trigger AI generation for this section */}}
+                >
+                  <Sparkles className="size-3" />
+                  让 AI 生成
+                </button>
+              </div>
+            ) : (
+              <div className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{section.body}</div>
+            )}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function renderJingweiFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
+  return (
+    <ViewerShell node={node} label="经纬资料">
+      <JingweiCardView node={node} onContentChange={options.onContentChange} />
+    </ViewerShell>
+  );
+}
+
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
-    <ViewerShell node={node} label={node.kind === "jingwei" ? "经纬资料文件" : "Story 文本文件"}>
-      {node.path ? <p className="resource-viewer__path">{node.path}</p> : null}
+    <ViewerShell node={node} label="Story 文本文件">
       <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} bookId={options.bookId} />
     </ViewerShell>
   );
@@ -217,7 +303,7 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   candidate: { kind: "candidate", label: "候选稿", render: renderCandidateText },
   draft: { kind: "draft", label: "草稿", render: renderEditableText },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
-  jingwei: { kind: "jingwei", label: "经纬资料", render: renderTextFile },
+  jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
   "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderReadonlySummary },
