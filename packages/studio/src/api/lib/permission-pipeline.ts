@@ -9,6 +9,7 @@
  */
 
 import { resolve, relative, sep } from "node:path";
+import type { CommandBlockRule } from "../../types/settings.js";
 
 // --- Types ---
 
@@ -187,6 +188,70 @@ export function isPathWithinWorkDir(filePath: string, workDir: string): boolean 
   // 检查解析后的绝对路径是否在 workDir 内（或等于 workDir）
   const relativePath = relative(normalizedWorkDir, absolutePath);
   return relativePath === "" || (!relativePath.startsWith("..") && !relativePath.startsWith(sep + ".."));
+}
+
+// --- Command allow/block list (Phase 4.2) ---
+
+export function checkCommandAgainstLists(
+  command: string,
+  allowlist: readonly string[],
+  blocklist: readonly CommandBlockRule[],
+): { allowed: boolean; blocked: boolean; reason?: string } {
+  const trimmed = command.trim();
+
+  // Blocklist takes priority (deny > allow)
+  for (const rule of blocklist) {
+    if (commandMatchesPattern(trimmed, rule.pattern)) {
+      return { allowed: false, blocked: true, reason: rule.rejectHint ?? `命令匹配黑名单规则: ${rule.pattern}` };
+    }
+  }
+
+  // If allowlist is non-empty, command must match at least one pattern
+  if (allowlist.length > 0) {
+    const isAllowed = allowlist.some(pattern => commandMatchesPattern(trimmed, pattern));
+    if (isAllowed) {
+      return { allowed: true, blocked: false };
+    }
+    // Not in allowlist — don't block, but don't auto-allow either (let other checks decide)
+  }
+
+  return { allowed: false, blocked: false }; // neutral
+}
+
+// --- Directory access control (Phase 4.3) ---
+
+export function checkPathAgainstDirectoryLists(
+  filePath: string,
+  workDir: string,
+  allowlist: readonly string[],
+  blocklist: readonly string[],
+): { allowed: boolean; blocked: boolean; reason?: string } {
+  const absolutePath = (filePath.startsWith("/") || /^[A-Za-z]:/.test(filePath))
+    ? resolve(filePath)
+    : resolve(workDir, filePath);
+  const normalizedPath = absolutePath.toLowerCase().replace(/\\/g, "/");
+
+  // Blocklist takes priority
+  for (const dir of blocklist) {
+    const normalizedDir = resolve(dir).toLowerCase().replace(/\\/g, "/");
+    if (normalizedPath.startsWith(normalizedDir)) {
+      return { allowed: false, blocked: true, reason: `路径在黑名单目录内: ${dir}` };
+    }
+  }
+
+  // If allowlist is non-empty, path must be within at least one allowed directory
+  if (allowlist.length > 0) {
+    const isAllowed = allowlist.some(dir => {
+      const normalizedDir = resolve(dir).toLowerCase().replace(/\\/g, "/");
+      return normalizedPath.startsWith(normalizedDir);
+    });
+    if (isAllowed) {
+      return { allowed: true, blocked: false };
+    }
+    // Not in allowlist — soft check, don't block (workDir boundary is the hard check)
+  }
+
+  return { allowed: false, blocked: false }; // neutral
 }
 
 // --- Tool permission validation ---
