@@ -1,7 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense, type CSSProperties } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+
+// Lazy-load syntax highlighter to avoid blocking initial render
+const SyntaxHighlighter = lazy(() => import("react-syntax-highlighter"));
+const syntaxStylePromise = import("react-syntax-highlighter/dist/esm/styles/hljs").then((mod) => mod.vs2015);
+
 
 export interface ConversationToolCall {
   id: string;
@@ -379,14 +384,28 @@ function inferLanguageClass(filePath: string): string {
   return map[ext] ?? "";
 }
 
+/** Map language-* class to highlight.js language name */
+function langClassToName(langClass: string): string | undefined {
+  if (!langClass) return undefined;
+  return langClass.replace("language-", "") || undefined;
+}
+
 function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const filePath = extractFilePath(toolCall.input);
   const langClass = filePath ? inferLanguageClass(filePath) : "";
+  const language = langClassToName(langClass);
+  const [syntaxStyle, setSyntaxStyle] = useState<Record<string, CSSProperties> | null>(null);
+
+  useEffect(() => {
+    syntaxStylePromise.then(setSyntaxStyle).catch(() => {});
+  }, []);
 
   // WebSearch / WebFetch 特殊处理
   if (toolCall.toolName === "WebSearch" || toolCall.toolName === "WebFetch") {
     return <WebSearchExpanded toolCall={toolCall} />;
   }
+
+  const canHighlight = language && syntaxStyle && toolCall.output;
 
   return (
     <>
@@ -396,9 +415,27 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         </code>
       )}
       {toolCall.output && (
-        <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
-          {toolCall.output}
-        </pre>
+        canHighlight ? (
+          <Suspense fallback={
+            <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
+              {toolCall.output}
+            </pre>
+          }>
+            <SyntaxHighlighter
+              language={language}
+              style={syntaxStyle}
+              customStyle={{ maxHeight: "18rem", overflow: "auto", borderRadius: "0.375rem", padding: "0.5rem 0.75rem", fontSize: "11px", lineHeight: "1.625", margin: 0 }}
+              showLineNumbers
+              lineNumberStyle={{ minWidth: "2em", paddingRight: "0.75em", color: "rgba(128,128,128,0.5)", userSelect: "none" }}
+            >
+              {toolCall.output}
+            </SyntaxHighlighter>
+          </Suspense>
+        ) : (
+          <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
+            {toolCall.output}
+          </pre>
+        )
       )}
     </>
   );

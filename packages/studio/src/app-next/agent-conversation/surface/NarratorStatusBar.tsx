@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine } from "lucide-react";
+import { Loader2, Zap, PenLine, GitBranch } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
@@ -59,6 +59,7 @@ const SUBSTATUS_DOT_COLORS: Partial<Record<NarratorSubstatus, string>> = {
   reflecting: "bg-amber-500",
   compacting: "bg-orange-400",
   planning: "bg-green-500",
+  plan_reflecting: "bg-green-500",
   retrying: "bg-yellow-500",
   queued: "bg-yellow-400",
   unread: "bg-green-400",
@@ -76,6 +77,7 @@ const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
   reflecting: "安全评估中",
   compacting: "压缩中",
   planning: "计划中",
+  plan_reflecting: "计划审核中",
   retrying: "重试中",
   queued: "排队中",
   tool_calling: "调用工具中",
@@ -198,6 +200,8 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
                 ? `调用 ${status.toolName}... ${formatDuration(elapsed)}`
                 : substatus === "reflecting"
                 ? `安全评估中 ${formatDuration(elapsed)}`
+                : substatus === "plan_reflecting"
+                ? `计划审核中 ${formatDuration(elapsed)}`
                 : substatus === "retrying"
                 ? `重试中 ${formatDuration(elapsed)}`
                 : `思考中 ${formatDuration(elapsed)}${streamingChars && elapsed > 1000 ? ` · ${Math.round(streamingChars / (elapsed / 1000))}字/秒` : ""}`}
@@ -215,6 +219,21 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
             </>
           )}
         </div>
+
+        {/* Center: Git branch + changes (if available) */}
+        {status.workspace?.branch && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <GitBranch className="size-3 shrink-0" />
+            <span className="max-w-[120px] truncate font-mono text-[11px]" title={status.workspace.branch}>
+              {status.workspace.branch}
+            </span>
+            {typeof status.workspace.changes === "number" && status.workspace.changes > 0 && (
+              <span className="rounded-full bg-orange-500/15 px-1.5 py-px text-[10px] font-medium text-orange-600 dark:text-orange-400">
+                {status.workspace.changes}
+              </span>
+            )}
+          </div>
+        )}
 
         {/* Right: context ring + model + reasoning + fast + permission */}
         <div className="flex items-center gap-1.5">
