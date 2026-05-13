@@ -65,6 +65,8 @@ export interface AgentTurnRuntimeInput {
   readonly onEvent?: (event: AgentTurnEvent) => void;
   readonly reasoningPolicy?: ProviderReasoningPolicy;
   readonly signal?: AbortSignal;
+  /** Fix: silentToolCallThreshold — 连续无文本输出的工具调用次数阈值，超过后注入提示 */
+  readonly silentToolCallThreshold?: number;
 }
 
 function buildSystemContent(systemPrompt: string, context?: string): string {
@@ -162,6 +164,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let executedToolSteps = 0;
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
+  // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
+  let consecutiveSilentToolCalls = 0;
+  const silentThreshold = input.silentToolCallThreshold ?? -1; // -1 = disabled
 
   const emitStreamChunk = input.onStreamChunk
     ? (chunk: string) => {
@@ -204,6 +209,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         emit({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
         return events;
       }
+      consecutiveSilentToolCalls = 0; // Fix: reset on assistant message
       emit(
         { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },
       );
@@ -301,6 +307,18 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         });
         return events;
       }
+
+      // Fix: silentToolCallThreshold — 递增连续无文本输出计数
+      consecutiveSilentToolCalls += 1;
+    }
+
+    // Fix: silentToolCallThreshold — 超过阈值时注入提示
+    if (silentThreshold > 0 && consecutiveSilentToolCalls >= silentThreshold) {
+      messages.push({
+        type: "message",
+        role: "system",
+        content: `注意：你已经连续执行了 ${consecutiveSilentToolCalls} 次工具调用而没有向用户输出任何文字。请在下一步中向用户汇报当前进展或结果。`,
+      });
     }
   }
 }

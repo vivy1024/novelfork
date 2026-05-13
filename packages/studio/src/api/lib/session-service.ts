@@ -282,7 +282,7 @@ export async function createSession(input: CreateNarratorSessionInput): Promise<
     title: input.title?.trim() || "Untitled Session",
     agentId: input.agentId?.trim() || "writer",
     kind: input.kind ?? "standalone",
-    sessionMode: input.sessionMode ?? (input.agentId === "planner" ? "plan" : "chat"),
+    sessionMode: input.sessionMode ?? (userConfig.runtimeControls?.defaultPlanMode ? "plan" : (input.agentId === "planner" ? "plan" : "chat")),
     status: "active",
     createdAt: now,
     lastModified: now,
