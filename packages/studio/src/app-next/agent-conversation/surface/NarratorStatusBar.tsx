@@ -219,15 +219,6 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
         {/* Right: context ring + model + reasoning + fast + permission */}
         <div className="flex items-center gap-1.5">
           {/* Writing preset shortcut */}
-          <Tooltip>
-            <TooltipTrigger
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted transition-colors"
-              onClick={() => { /* TODO: open writing preset popover */ }}
-            >
-              <PenLine className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipContent side="top">写作预设（开发中）</TooltipContent>
-          </Tooltip>
           {/* Context usage ring — 在模型下拉左边 */}
           <ContextRingMenu
             used={status.contextUsage?.usedTokens ?? 0}
