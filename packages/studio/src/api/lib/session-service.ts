@@ -167,6 +167,7 @@ function toNarratorSessionRecord(record: StoredSessionRecord): NarratorSessionRe
     recovery: normalizeRecoveryMetadata(metadata.recovery),
     ...(metadata.cumulativeUsage ? { cumulativeUsage: metadata.cumulativeUsage } : {}),
     goals: Array.isArray(metadata.goals) ? metadata.goals : undefined,
+    pinned: metadata.pinned === true ? true : undefined,
   };
 }
 
