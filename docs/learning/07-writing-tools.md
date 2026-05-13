@@ -64,10 +64,13 @@ routes:
 - 健康度组件：`ChapterHealthCard`（章节级）+ `BookHealthSummary`（全书级）
 - 文风漂移：`StyleDriftPanel`，对比当前章与目标文风的向量距离
 - 角色弧线：`CharacterArcsPanel`，从经纬角色设定 + 章节内容提取 arc beats
-- 合规导出：`CompliancePanel` 扫描 → `ExportPanel` 输出
-- 日更进度：`DailyProgressCard` + `BeatProgressBar`
+- 合规导出：`CompliancePanel` 扫描 → `ExportPanel` 输出（TXT/ePub/Word）
+- Word 导出：零依赖 .docx 生成，直接构建 OpenXML 包，无需安装 Office
+- 日更进度：`DailyProgressCard` + `BeatProgressBar`（节拍表支持交互式 checklist 勾选）
 - 模板市场：`TemplateMarketPanel`，模板应用走 resource 层写入
 - Checkpoint：`CheckpointPanel`，快照存储在 SQLite，回滚恢复全部资源状态
+- 预设面板：每个预设支持启用/禁用 Switch，关闭后不注入生成提示
+- 叙事线视图：结构化展示全书叙事线脉络，可视化各线交汇点
 
 ## 可跳转功能入口
 
