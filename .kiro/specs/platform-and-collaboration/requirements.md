@@ -85,42 +85,93 @@ interface Hook {
 ### 3.1 用户认证系统
 
 **现状**: 只有 API Token（单用户），无用户注册/登录
-**目标**: 对标 NarraFork——支持多用户注册、登录、会话隔离
+**目标**: 对标 NarraFork + 学习 Sub2API 的成熟用户系统设计
 
-**NarraFork 的做法**:
-- Web 登录页面（用户名 + 密码）
-- 登录后看到自己的叙述者和叙事线
-- 管理员可管理用户
+**Sub2API 用户系统参考**:
+- Email + 验证码注册
+- 多种 OAuth（LinuxDo/微信/OIDC/GitHub/Google）
+- Access Token + Refresh Token 双 token 模式
+- role 分层（admin/user）
+- balance 余额 + concurrency 并发限制
+- Turnstile 人机验证
+- TOTP 双因素认证
+- 邀请码/推广码系统
 
-**设计**:
-- 支持两种认证模式（通过配置切换）：
-  1. **内置模式**（默认）：SQLite 用户表 + bcrypt + JWT
-  2. **外部模式**：验证外部系统签发的 JWT（通过配置的 JWKS/secret）
-- 内置模式：用户数据存储在 SQLite（users 表：id/username/password_hash/role/created_at）
-- 外部模式：NovelFork 不管注册/登录，只验证 token 有效性并提取 user_id
-- 配置项：`auth.mode: "builtin" | "external" | "none"`
-  - `none`：当前行为（单用户，无认证）
-  - `builtin`：内置用户系统
-  - `external`：验证外部 JWT（玉珍健身 PHP 后端签发的 token）
-- 外部模式配置：`auth.external.jwtSecret` 或 `auth.external.jwksUrl`
+**NovelFork 用户模型设计**:
+```
+users 表:
+  id: UUID
+  email: string (unique)
+  username: string
+  password_hash: string
+  role: "admin" | "user"
+  status: "active" | "banned" | "pending"
+  signup_source: "email" | "oidc" | "external"
+  avatar_url: string?
+  balance: decimal (用量追踪，可选)
+  concurrency: int (并发会话限制)
+  totp_enabled: boolean
+  totp_secret_encrypted: string?
+  last_login_at: datetime?
+  created_at: datetime
+  updated_at: datetime
+```
 
-**为什么需要外部模式**:
-- 玉珍健身（YuzhenFork）的用户系统在 PHP 后端
-- 用户在 PHP 端注册/登录，拿到 JWT
-- 前端带着 JWT 调用 YuzhenFork（NovelFork fork）的 API
-- YuzhenFork 需要验证这个 JWT 并提取 user_id，而不是自己管用户
+**认证模式（三种，通过配置切换）**:
+
+| 模式 | 配置值 | 适用场景 |
+|------|--------|---------|
+| 无认证 | `auth.mode: "none"` | 单用户本地使用（当前默认） |
+| 内置 | `auth.mode: "builtin"` | NovelFork 独立部署，自管用户 |
+| 外部 | `auth.mode: "external"` | YuzhenFork 等 fork 项目，用户在外部系统 |
+
+**内置模式功能**:
+- Email + 密码注册/登录
+- Access Token（短期，15min）+ Refresh Token（长期，7d）
+- 管理员面板：用户列表、封禁、角色变更
+- 可选：OIDC OAuth 接入（GitHub/Google 等）
+- 可选：Turnstile 人机验证
+- 首次启动创建默认管理员（从环境变量或交互式输入）
+
+**外部模式功能**:
+- 验证外部系统签发的 JWT（通过 `auth.external.jwtSecret` 或 JWKS URL）
+- 从 JWT payload 提取 user_id、role、email
+- 不管注册/登录流程（外部系统负责）
+- 玉珍健身场景：PHP 后端签发 JWT → 前端带 JWT → YuzhenFork 验证
+
+**管理员 vs 普通用户权限**:
+
+| 能力 | 管理员 | 普通用户 |
+|------|--------|---------|
+| 配置 AI 供应商（API Key） | ✅ | ❌ 不可见 |
+| 选择模型 | ✅ | ✅（从管理员配的列表中选） |
+| 管理其他用户 | ✅ | ❌ |
+| 查看所有会话 | ✅ | ❌ 只看自己的 |
+| 修改全局设置 | ✅ | ❌ |
+| 创建书籍/会话 | ✅ | ✅ |
+| 修改自己的偏好 | ✅ | ✅ |
 
 **实现方案**:
-- 创建 `packages/studio/src/api/lib/user-auth.ts`
-  - `verifyBuiltinAuth(token)` — 验证内置 JWT
-  - `verifyExternalAuth(token, config)` — 验证外部 JWT
-  - `resolveAuthUser(request, config)` — 统一入口，按 mode 分发
-- 创建 `packages/studio/src/api/routes/auth-users.ts`
-  - POST /auth/register（仅 builtin 模式）
-  - POST /auth/login（仅 builtin 模式）
-  - GET /auth/me（两种模式都支持）
-- 前端：builtin 模式显示登录页；external 模式从 cookie/header 读 token
-- `auth.mode: "none"` 时跳过所有认证（向后兼容）
+- `packages/studio/src/api/lib/user-auth.ts` — 认证核心
+  - `hashPassword(plain)` / `verifyPassword(plain, hash)` — bcrypt
+  - `generateTokenPair(userId)` → `{ accessToken, refreshToken, expiresIn }`
+  - `verifyAccessToken(token)` → `{ userId, role, email }`
+  - `refreshAccessToken(refreshToken)` → 新的 token pair
+  - `verifyExternalJwt(token, config)` → `{ userId, role, email }`
+- `packages/studio/src/api/routes/auth-users.ts` — API 路由
+  - POST /auth/register（builtin 模式）
+  - POST /auth/login（builtin 模式）
+  - POST /auth/refresh（两种模式）
+  - GET /auth/me（两种模式）
+  - POST /auth/logout（撤销 refresh token）
+- `packages/studio/src/api/middleware/auth-guard.ts` — 路由守卫
+  - 从 cookie 或 Authorization header 读取 token
+  - 验证后注入 `c.set("user", { id, role, email })`
+  - `auth.mode: "none"` 时跳过
+- 前端：
+  - builtin 模式：登录/注册页面
+  - external 模式：从 cookie/header 读 token（外部系统已登录）
+  - none 模式：无登录页（当前行为）
 
 ### 3.2 资源隔离
 
