@@ -18,14 +18,23 @@ export interface HookResult {
 
 /**
  * 替换命令中的占位符并执行 shell 命令
+ * 安全：占位符值通过环境变量传递，不直接注入命令字符串
  */
 export async function executeHook(hook: Hook, context: HookContext): Promise<HookResult> {
   const timeout = hook.timeout ?? 10000;
 
-  // 替换占位符
-  let command = hook.command;
-  command = command.replaceAll("{tool}", context.toolName);
-  command = command.replaceAll("{file}", context.file ?? "");
+  // 通过环境变量传递上下文（避免命令注入）
+  const hookEnv = {
+    ...process.env,
+    HOOK_TOOL: context.toolName,
+    HOOK_FILE: context.file ?? "",
+    HOOK_WORKDIR: context.workDir,
+  };
+
+  // 命令中的 {tool}/{file} 替换为环境变量引用（仅用于显示，实际值从 env 读取）
+  const command = hook.command
+    .replaceAll("{tool}", "$HOOK_TOOL")
+    .replaceAll("{file}", "$HOOK_FILE");
 
   return new Promise<HookResult>((resolve) => {
     const shell = process.platform === "win32" ? "cmd.exe" : "/bin/sh";
@@ -33,6 +42,7 @@ export async function executeHook(hook: Hook, context: HookContext): Promise<Hoo
 
     const proc = spawn(shell, shellArgs, {
       cwd: context.workDir,
+      env: hookEnv,
       stdio: ["ignore", "pipe", "pipe"],
       timeout,
     });
