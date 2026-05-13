@@ -16,6 +16,10 @@
   - 后台任务持久化：background_tasks SQLite 表 + 启动时恢复遗留任务
   - 命令白/黑名单实际执行：Bash 工具执行前检查用户配置的命令名单
   - 目录访问控制实际执行：Read/Write/Edit 执行前检查目录名单
+- Agent 运行时健壮性 Phase 3.1/3.3/4.1 完成：
+  - 子代理 Detach/Attach：SubagentRegistry 状态追踪 + detach/attach 操作
+  - MCP 工具继承：resolveSubagentTools() 按 none/read-only/full 三级解析
+  - YOLO 安全反思增强：LLM 安全评估（做什么/风险/是否可逆）
 
 ---
 
