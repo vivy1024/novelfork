@@ -198,6 +198,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let hasAttemptedOverflowRecovery = false;
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
+  // Error recovery: track consecutive failures per tool name
+  const consecutiveFailures = new Map<string, number>();
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
   const silentThreshold = input.silentToolCallThreshold ?? -1; // -1 = disabled
@@ -444,7 +446,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       );
 
       // Process results sequentially to maintain event order
-      for (const { toolUse, toolResult, toolDurationMs, signature, isDuplicate } of parallelResults) {
+      for (let { toolUse, toolResult, toolDurationMs, signature, isDuplicate } of parallelResults) {
         if (input.signal?.aborted) {
           emit({ type: "turn_completed" });
           return events;
@@ -455,6 +457,20 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         if (!isDuplicate) {
           toolResultsBySignature.set(signature, toolResult);
         }
+
+        // Error recovery: track consecutive failures
+        if (!toolResult.ok) {
+          const count = (consecutiveFailures.get(toolUse.name) ?? 0) + 1;
+          consecutiveFailures.set(toolUse.name, count);
+          if (count >= 3) {
+            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n❌ 该工具已连续失败 ${count} 次，请停下来向用户说明情况。` };
+          } else if (count >= 2) {
+            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n⚠️ 该工具已连续失败 ${count} 次，请考虑换一种方法。` };
+          }
+        } else {
+          consecutiveFailures.delete(toolUse.name);
+        }
+
         emit({
           type: "tool_result",
           id: toolUse.id,
@@ -541,6 +557,20 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         if (!duplicateResult) {
           toolResultsBySignature.set(signature, toolResult);
         }
+
+        // Error recovery: track consecutive failures
+        if (!toolResult.ok) {
+          const count = (consecutiveFailures.get(toolUse.name) ?? 0) + 1;
+          consecutiveFailures.set(toolUse.name, count);
+          if (count >= 3) {
+            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n❌ 该工具已连续失败 ${count} 次，请停下来向用户说明情况。` };
+          } else if (count >= 2) {
+            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n⚠️ 该工具已连续失败 ${count} 次，请考虑换一种方法。` };
+          }
+        } else {
+          consecutiveFailures.delete(toolUse.name);
+        }
+
         emit({
           type: "tool_result",
           id: toolUse.id,

@@ -983,7 +983,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const { glob } = await import("glob");
           const cwd = searchPath === "." ? workDir : (await import("node:path")).resolve(workDir, searchPath);
           const matches = await glob(pattern, { cwd, nodir: false });
-          return { ok: true, renderer: definition.renderer, summary: `匹配到 ${matches.length} 个文件。`, data: { matches, pattern, cwd } };
+          const GLOB_MAX = 200;
+          const total = matches.length;
+          const truncated = total > GLOB_MAX ? matches.slice(0, GLOB_MAX) : matches;
+          const summary = total > GLOB_MAX
+            ? `匹配到 ${total} 个文件。（显示前 ${GLOB_MAX} 个，共 ${total} 个匹配文件。用更精确的 pattern 或 path 缩小范围。）`
+            : `匹配到 ${total} 个文件。`;
+          return { ok: true, renderer: definition.renderer, summary, data: { matches: truncated, pattern, cwd, totalMatches: total } };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "glob-failed", summary: `Glob 执行失败：${error instanceof Error ? error.message : String(error)}` };
         }
@@ -1007,7 +1013,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           args.push(pattern);
           const { stdout } = await execFileAsync("rg", args, { cwd, maxBuffer: 1024 * 1024 }).catch(() => ({ stdout: "" }));
           const lines = stdout.trim().split("\n").filter(Boolean);
-          return { ok: true, renderer: definition.renderer, summary: `搜索完成，${lines.length} 条结果。`, data: { results: lines.slice(0, 200), pattern, outputMode, totalResults: lines.length } };
+          const GREP_MAX = 50;
+          const total = lines.length;
+          const truncated = total > GREP_MAX ? lines.slice(0, GREP_MAX) : lines;
+          const summary = total > GREP_MAX
+            ? `搜索完成，${total} 条结果。（显示前 ${GREP_MAX} 条，共 ${total} 条匹配。用更精确的 pattern 或 path 缩小范围。）`
+            : `搜索完成，${total} 条结果。`;
+          return { ok: true, renderer: definition.renderer, summary, data: { results: truncated, pattern, outputMode, totalResults: total, fullOutput: total > GREP_MAX ? lines : undefined } };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "grep-failed", summary: `Grep 执行失败：${error instanceof Error ? error.message : String(error)}` };
         }
