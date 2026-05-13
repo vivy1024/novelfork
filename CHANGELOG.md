@@ -4,9 +4,41 @@
 
 ---
 
-## Unreleased
+## v0.3.0 (2026-05-13)
 
-（无）
+### 新功能
+- 实时状态栏：思考中/调用工具中/已中断 + 工具名显示 + 上轮耗时
+- 48 个 Agent 工具全部实现（含子代理递归、Browser Playwright、Terminal spawn）
+- 5 个新小说工具：chapter.audit / rewrite.segment / outline.suggest_next / character.check_consistency / hooks.manage
+- 小说功能可插拔：动态注册 + scope 过滤 + novel-plugin 包
+- 代理接通：proxyFetch 注入用户配置的 proxy 到 AI 请求
+- ConversationBlock 类型系统 + reasoningPolicy 控制
+- EndPipeline rule 解析器（grep/head/tail/sort/uniq/cut）
+- Provider protocol 传递到前端（按协议显示推理强度/Fast Mode）
+- Goals 持久化 + 注入 system prompt
+- 结构化日志增强（generate/tool/abort/continue）
+- 会话详情面板数据接通
+- 固定会话功能（onPin/isPinned）
+
+### 重构
+- 小说工具定义拆分到 session-tool-registry-novel.ts
+- Agent 预设拆分到 novel-plugin
+- 小说 handler 提取到 getNovelServiceHandler 独立函数
+- 设置页模型面板精简（删除 18 个重复控件）
+- InkOS 残留清理：Sub2API OAuth 删除 + truth→jingwei 统一
+
+### 修复
+- 中断/继续功能修复（空消息→"继续"）
+- ExitPlanMode 时序修复（批准后才切换 sessionMode）
+- Agent 子代理工具链路修复（generateSessionReply 传 tools schema）
+- 工具卡片渲染修复（去重、隐藏模板文本、填充 output）
+- 设置页 6 个 UI 问题修复（Select value=""崩溃、dirty 检测、保存反馈）
+- Terminal 隔离（按 sessionId）
+- Browser 类型安全（BrowserPageLike interface）
+- EndPipeline grep regex try-catch
+- 重复注册去重
+
+---
 
 ## v0.2.0 — 2026-05-12
 

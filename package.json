@@ -1,6 +1,6 @@
 {
   "name": "novelfork",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",
   "keywords": [
@@ -48,14 +48,16 @@
     "@playwright/test": "1.59.1",
     "esbuild": "0.28.0"
   },
-  "pnpm": {
-    "overrides": {
-      "@tiptap/core": "2.27.2",
-      "@tiptap/pm": "2.27.2",
-      "@tiptap/extension-code-block": "2.27.2",
-      "@tiptap/extension-text-style": "2.27.2",
-      "@tiptap/react": "2.27.2",
-      "@tiptap/starter-kit": "2.27.2"
-    }
-  }
+  "overrides": {
+    "@tiptap/core": "2.27.2",
+    "@tiptap/pm": "2.27.2",
+    "@tiptap/extension-code-block": "2.27.2",
+    "@tiptap/extension-text-style": "2.27.2",
+    "@tiptap/react": "2.27.2",
+    "@tiptap/starter-kit": "2.27.2"
+  },
+  "workspaces": [
+    "packages/*",
+    "!packages/desktop"
+  ]
 }
