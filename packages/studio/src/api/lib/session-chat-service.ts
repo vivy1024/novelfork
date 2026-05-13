@@ -942,7 +942,7 @@ async function appendModelContinuationAfterToolDecision(
       executeTool: (toolInput) => {
         const onToolOutputStream = toolInput.toolCallId
           ? (chunk: string) => {
-              const envelope = { type: "session:tool-stream" as const, sessionId, toolCallId: toolInput.toolCallId!, content: chunk };
+              const envelope = { type: "session:tool-stream" as const, sessionId: loaded.session.id, toolCallId: toolInput.toolCallId!, content: chunk };
               broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
             }
           : undefined;
@@ -1642,7 +1642,7 @@ export async function handleSessionChatTransportMessage(
       executeTool: (toolInput) => {
         const onToolOutputStream = toolInput.toolCallId
           ? (chunk: string) => {
-              const envelope = { type: "session:tool-stream" as const, sessionId, toolCallId: toolInput.toolCallId!, content: chunk };
+              const envelope = { type: "session:tool-stream" as const, sessionId: loaded.session.id, toolCallId: toolInput.toolCallId!, content: chunk };
               broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
             }
           : undefined;
