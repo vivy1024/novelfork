@@ -3,6 +3,50 @@ import type { RuntimeModelInput } from "../provider-runtime-store.js";
 export type RuntimeAdapterId = "openai-compatible" | "anthropic-compatible" | "codex-platform" | "kiro-platform";
 export type RuntimeAdapterFailureCode = "unsupported" | "auth-missing" | "config-missing" | "upstream-error" | "network-error";
 
+// ─── Proxy-aware fetch ───────────────────────────────────────────────────────
+// Bun 原生支持 fetch({ proxy: "http://..." })，无需额外依赖。
+// 通过 setProviderProxy 设置全局代理 URL 或按 providerId 的代理映射。
+
+let _globalProxyUrl: string | undefined;
+let _perProviderProxy: Record<string, string> = {};
+
+/**
+ * 设置全局 AI 代理 URL（对所有 provider 生效，除非该 provider 有独立代理配置）。
+ */
+export function setGlobalProxyUrl(url: string | undefined): void {
+  _globalProxyUrl = url?.trim() || undefined;
+}
+
+/**
+ * 设置按 providerId 的代理映射。
+ */
+export function setPerProviderProxy(mapping: Record<string, string>): void {
+  _perProviderProxy = { ...mapping };
+}
+
+/**
+ * 获取指定 provider 应使用的代理 URL。
+ * 优先级：per-provider > global > undefined
+ */
+function resolveProxyUrl(providerId?: string): string | undefined {
+  if (providerId && _perProviderProxy[providerId]) {
+    return _perProviderProxy[providerId];
+  }
+  return _globalProxyUrl;
+}
+
+/**
+ * 代理感知的 fetch 封装。当有代理配置时，注入 Bun 的 proxy 选项。
+ */
+function proxyFetch(url: string | URL | Request, init?: RequestInit, providerId?: string): Promise<Response> {
+  const proxy = resolveProxyUrl(providerId);
+  if (proxy) {
+    return fetch(url, { ...init, proxy } as any);
+  }
+  return fetch(url, init);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 export interface RuntimeProviderRef {
   readonly providerId: string;
   readonly providerName: string;
@@ -125,7 +169,7 @@ async function requestOpenAiJson(ref: RuntimeProviderRef, path: string, init: Re
   for (const [index, url] of urls.entries()) {
     const canRetry = index < urls.length - 1;
     try {
-      const response = await fetch(url, init);
+      const response = await proxyFetch(url, init, ref.providerId);
       const contentType = response.headers.get("content-type") ?? "";
       if (!contentType.includes("application/json")) {
         lastError = `Upstream returned non-JSON response from ${url}`;
@@ -356,9 +400,6 @@ function normalizeOpenAiModel(value: unknown): RuntimeModelInput | null {
 }
 
 class OpenAiCompatibleAdapter implements RuntimeAdapter {
-  // [proxy-injection] 代理注入 — 当 ProxySettings.providers[providerId] 非空时，
-  // 通过 https-proxy-agent 或 undici ProxyAgent 将请求经代理发出。
-  // 当前仅实现配置存储，实际注入需引入 proxy-agent 依赖后完成。
   async listModels(ref: RuntimeProviderRef): Promise<ListModelsResult> {
     const configFailure = requireOpenAiConfig(ref);
     if (configFailure) return configFailure;
@@ -450,12 +491,12 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     for (const [index, url] of urls.entries()) {
       const canRetry = index < urls.length - 1;
       try {
-        const response = await fetch(url, {
+        const response = await proxyFetch(url, {
           method: "POST",
           headers: openAiHeaders(input.apiKey!),
           body: JSON.stringify(body),
           ...(input.signal ? { signal: input.signal } : {}),
-        });
+        }, input.providerId);
 
         if (!response.ok) {
           let errorMessage = `Responses request failed with HTTP ${response.status}`;
@@ -639,12 +680,12 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     for (const [index, url] of urls.entries()) {
       const canRetry = index < urls.length - 1;
       try {
-        const response = await fetch(url, {
+        const response = await proxyFetch(url, {
           method: "POST",
           headers: openAiHeaders(input.apiKey!),
           body: JSON.stringify(body),
           signal,
-        });
+        }, input.providerId);
 
         if (!response.ok) {
           let errorMessage = `Chat completion failed with HTTP ${response.status}`;
@@ -884,10 +925,10 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
 
     for (const url of modelsUrls) {
     try {
-      const response = await fetch(url, {
+      const response = await proxyFetch(url, {
         method: "GET",
         headers: this.buildHeaders(ref.apiKey!),
-      });
+      }, ref.providerId);
 
       if (response.ok) {
         const payload = await response.json() as { data?: Array<{ id: string; display_name?: string; created_at?: string }> };
@@ -908,10 +949,10 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
       }
 
       // Anthropic 格式失败，尝试 OpenAI 格式（Bearer token）
-      const openaiResponse = await fetch(url, {
+      const openaiResponse = await proxyFetch(url, {
         method: "GET",
         headers: { Authorization: `Bearer ${ref.apiKey}`, "Content-Type": "application/json" },
-      });
+      }, ref.providerId);
       if (openaiResponse.ok) {
         const payload = await openaiResponse.json() as { data?: Array<{ id: string; owned_by?: string }> };
         if (Array.isArray(payload.data) && payload.data.length > 0) {
@@ -951,7 +992,7 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     const base = trimTrailingSlash(input.baseUrl!);
     const url = base.endsWith("/v1") ? `${base}/messages` : `${base}/v1/messages`;
     try {
-      const response = await fetch(url, {
+      const response = await proxyFetch(url, {
         method: "POST",
         headers: this.buildHeaders(input.apiKey!),
         body: JSON.stringify({
@@ -959,7 +1000,7 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
           messages: [{ role: "user", content: "ping" }],
           max_tokens: 1,
         }),
-      });
+      }, input.providerId);
 
       if (!response.ok) {
         const errorText = await this.readAnthropicError(response);
@@ -1000,12 +1041,12 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
     }
 
     try {
-      const response = await fetch(url, {
+      const response = await proxyFetch(url, {
         method: "POST",
         headers: this.buildHeaders(input.apiKey!),
         body: JSON.stringify(body),
         ...(input.signal ? { signal: input.signal } : {}),
-      });
+      }, input.providerId);
 
       if (!response.ok) {
         const errorText = await this.readAnthropicError(response);
@@ -1352,12 +1393,12 @@ class CodexPlatformAdapter implements RuntimeAdapter {
     for (const [index, url] of urls.entries()) {
       const canRetry = index < urls.length - 1;
       try {
-        const response = await fetch(url, {
+        const response = await proxyFetch(url, {
           method: "POST",
           headers: openAiHeaders(input.apiKey!),
           body: JSON.stringify(body),
           ...(input.signal ? { signal: input.signal } : {}),
-        });
+        }, input.providerId);
 
         if (!response.ok) {
           let errorMessage = `Codex completion failed with HTTP ${response.status}`;
