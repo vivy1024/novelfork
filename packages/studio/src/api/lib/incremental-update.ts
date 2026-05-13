@@ -12,9 +12,12 @@
  * The actual zstd --patch-from requires the zstd CLI tool.
  */
 
-import { execSync } from "node:child_process";
+import { execSync, execFile } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { resolve, basename } from "node:path";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 
 export interface PatchResult {
   ok: boolean;
@@ -45,7 +48,7 @@ export function isZstdAvailable(): boolean {
  * @param outputDir - Directory to write the patch file
  * @returns PatchResult with patch path and compression stats
  */
-export function generatePatch(oldFile: string, newFile: string, outputDir: string): PatchResult {
+export async function generatePatch(oldFile: string, newFile: string, outputDir: string): Promise<PatchResult> {
   if (!existsSync(oldFile)) {
     return { ok: false, error: `Old file not found: ${oldFile}` };
   }
@@ -61,9 +64,7 @@ export function generatePatch(oldFile: string, newFile: string, outputDir: strin
   const patchPath = resolve(outputDir, patchName);
 
   try {
-    // zstd --patch-from=OLD NEW -o PATCH
-    execSync(`zstd --patch-from="${oldFile}" "${newFile}" -o "${patchPath}" --ultra -22`, {
-      stdio: "pipe",
+    await execFileAsync("zstd", ["--patch-from", oldFile, newFile, "-o", patchPath, "--ultra", "-22"], {
       timeout: 120000,
     });
 
@@ -93,7 +94,7 @@ export function generatePatch(oldFile: string, newFile: string, outputDir: strin
  * @param patchFile - Path to the patch file
  * @param outputFile - Path to write the reconstructed new binary
  */
-export function applyPatch(oldFile: string, patchFile: string, outputFile: string): { ok: boolean; error?: string } {
+export async function applyPatch(oldFile: string, patchFile: string, outputFile: string): Promise<{ ok: boolean; error?: string }> {
   if (!existsSync(oldFile)) {
     return { ok: false, error: `Old file not found: ${oldFile}` };
   }
@@ -106,9 +107,7 @@ export function applyPatch(oldFile: string, patchFile: string, outputFile: strin
   }
 
   try {
-    // zstd -d --patch-from=OLD PATCH -o NEW
-    execSync(`zstd -d --patch-from="${oldFile}" "${patchFile}" -o "${outputFile}"`, {
-      stdio: "pipe",
+    await execFileAsync("zstd", ["-d", "--patch-from", oldFile, patchFile, "-o", outputFile], {
       timeout: 120000,
     });
     return { ok: true };
