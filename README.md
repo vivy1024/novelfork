@@ -2,9 +2,9 @@
 
 > AI 辅助中文网文创作工作台 — 本地优先、Agent 驱动、引导式生成
 
-**v0.1.0** | TypeScript + Bun + React 19 + Hono + SQLite
+**v0.4.0** | TypeScript + Bun + React 19 + Hono + SQLite
 
-[![Release](https://img.shields.io/github/v/release/vivy1024/novelfork)](https://github.com/vivy1024/novelfork/releases/tag/v0.1.0)
+[![Release](https://img.shields.io/github/v/release/vivy1024/novelfork)](https://github.com/vivy1024/novelfork/releases/latest)
 
 ---
 
@@ -27,7 +27,7 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。作者可以
 
 ### 方式一：下载 exe（推荐）
 
-从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/tag/v0.1.0) 下载 `novelfork-v0.1.0-windows-x64.exe`，双击运行。
+从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/latest) 下载 `novelfork-v0.4.0-windows-x64.exe`，双击运行。
 
 ### 方式二：从源码构建
 
@@ -41,7 +41,7 @@ cd packages/studio
 bun run dev          # Vite 前端 http://localhost:4567
 
 # 编译单文件 exe
-pnpm --dir packages/studio compile   # → dist/novelfork-v0.1.0-windows-x64.exe
+pnpm --dir packages/studio compile   # → dist/novelfork-v0.4.0-windows-x64.exe
 ```
 
 首次打开会显示欢迎引导，建议先配置 AI 供应商（设置 → AI 供应商）。新建书籍后自动进入引导向导，帮助 AI 理解你的创作意图。
@@ -109,6 +109,20 @@ AI 味检测（12 规则）· 章节健康度 · 段落节奏 · 对话比例 ·
 - Slash 命令：`/help` `/model` `/permission` `/compact` `/fork`
 - 会话恢复、fork、归档
 - 工具调用渲染、确认门
+- **v0.4.0** 并行工具执行（只读工具自动并行）
+- **v0.4.0** 消息多选批量操作（Ctrl+Click / Shift 范围选）
+- **v0.4.0** 文件修改面板（追踪 + diff + 单文件恢复）
+- **v0.4.0** WebSocket 自动重连 + 断点续传
+
+### 运行时健壮性（v0.4.0）
+
+- 上下文溢出自动恢复（紧急截断 + 重试）
+- 缓冲消息队列（Agent 工作中消息不丢失）
+- 智能重试（429/502/503 指数退避）
+- 命令/目录白黑名单（安全防护）
+- YOLO 安全反思（高风险操作 LLM 评估）
+- 子代理 Detach/Attach + 后台任务持久化
+- 模型聚合（多供应商同模型自动路由/故障切换）
 
 ### 设置与套路
 
