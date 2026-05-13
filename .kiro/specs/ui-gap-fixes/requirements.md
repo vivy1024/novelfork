@@ -50,9 +50,31 @@
 
 ---
 
-## Phase 3：套路页功能验证（P1）
+## Phase 3：设置页断裂修复（P1）
 
-### 3.1 套路页各 Tab 功能确认
+### 3.1 终端设置面板接通后端
+
+**现状**: TerminalSettingsPanel 是纯占位 UI——无 API 调用、无持久化、setTimeout 模拟加载、"新建终端"是假按钮
+**后端**: `/api/terminals` 路由已存在（TerminalStore），支持 CRUD
+**修复**: 
+- 加载时调用 `GET /api/terminals`
+- 保存时调用 `PUT /api/settings/user` 持久化终端配置（字体/主题）
+- "新建终端"调用 `POST /api/terminals`
+- 终端列表显示真实 session
+
+### 3.2 通知 Webhook 消费端
+
+**现状**: 钉钉/飞书 Webhook URL 能保存但无代码在 Agent 完成/出错时发送通知
+**修复**: 
+- 在 `session-chat-service.ts` turn 结束后，读取通知配置
+- 如果配置了 Webhook URL，POST 通知到对应平台
+- 通知内容：会话标题 + 完成/失败状态 + 耗时
+
+---
+
+## Phase 4：套路页功能验证（P1）
+
+### 4.1 套路页各 Tab 功能确认
 
 需要验证的 Tab：
 - 命令 Tab — 能否添加/编辑/删除自定义命令？
@@ -64,7 +86,7 @@
 - MCP 工具 Tab — 能否添加/连接 MCP 服务器？
 - 钩子 Tab — 能否配置 Pre/Post/TurnComplete 钩子？
 
-### 3.2 套路页保存是否生效
+### 4.2 套路页保存是否生效
 
 **关键问题**: 套路页的配置保存后，是否真的影响 Agent 行为？
 - 权限规则 → 是否在 session-tool-executor 中被读取？
@@ -86,9 +108,13 @@ Phase 2 — 功能补全（P1）
   2.2 叙事线前端交互
   2.3 Slash 命令补全
 
-Phase 3 — 套路页验证（P1）
-  3.1 各 Tab 功能确认
-  3.2 保存是否生效
+Phase 3 — 设置页断裂修复（P1）
+  3.1 终端设置面板接通后端
+  3.2 通知 Webhook 消费端
+
+Phase 4 — 套路页验证（P1）
+  4.1 各 Tab 功能确认
+  4.2 保存是否生效
 ```
 
 ---
@@ -97,4 +123,5 @@ Phase 3 — 套路页验证（P1）
 
 - Phase 1：预设执行不报 400；预设可启用/禁用；章节图显示线性章节关系
 - Phase 2：节拍表显示真实进度；叙事线可交互编辑；/tools 返回工具列表
-- Phase 3：套路页保存的权限规则在下次工具调用时生效
+- Phase 3：终端设置保存后刷新不丢失；Agent 完成后钉钉收到通知
+- Phase 4：套路页保存的权限规则在下次工具调用时生效
