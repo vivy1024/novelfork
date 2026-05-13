@@ -229,7 +229,7 @@ function matchesSessionSearch(session: NarratorSessionRecord, search: string): b
 function filterSessions(records: NarratorSessionRecord[], options: ListSessionsOptions): NarratorSessionRecord[] {
   const search = normalizeSearch(options.search);
   return records.filter((session) => {
-    if (options.ownerId && (session as Record<string, unknown>).ownerId !== options.ownerId) return false;
+    if (options.ownerId && (session as unknown as Record<string, unknown>).ownerId !== options.ownerId) return false;
     if (options.kind && session.kind !== options.kind) return false;
     if (options.status && session.status !== options.status) return false;
     if (options.projectId && session.projectId !== options.projectId) return false;
