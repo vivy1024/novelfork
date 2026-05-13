@@ -278,6 +278,8 @@ export interface UserConfig {
   proxy: ProxySettings;
   workspace: WorkspaceSettings;
   writing: WritingSettings;
+  /** 外部 API 调用 Token（如羽书 bot 调用时需要携带） */
+  apiToken: string;
 }
 
 export interface UserConfigPatch {
@@ -291,6 +293,7 @@ export interface UserConfigPatch {
   proxy?: Partial<ProxySettings>;
   workspace?: Partial<WorkspaceSettings>;
   writing?: Partial<WritingSettings>;
+  apiToken?: string;
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -432,4 +435,5 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     contentRating: "all-ages",
     customSensitiveWords: "",
   },
+  apiToken: "",
 };
