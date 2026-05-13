@@ -219,11 +219,44 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 - 所有写入操作使用相对于工作目录的路径`,
 };
 
+/** 工具使用指南——附加到所有 Agent system prompt */
+export const TOOL_USE_GUIDELINES = `
+<tool_use>
+使用专用工具而非终端命令：
+- 读取文件用 Read，不要用 Bash cat/head/tail
+- 编辑文件用 Edit，不要用 Bash sed/awk
+- 搜索文件用 Glob/Grep，不要用 Bash find/grep
+- 终端命令仅用于真正需要 shell 执行的操作（git、npm、bun、编译、运行脚本等）
+
+工具调用效率：
+- 独立的工具调用并行发起（系统会自动并行执行只读工具）
+- 有依赖关系的调用顺序执行，不要猜测结果
+- Glob 搜索子目录时用 path 参数而非在 pattern 中写路径
+  正确: Glob({ pattern: "*.ts", path: "src/api" })
+  错误: Glob({ pattern: "src/api/**/*.ts" })
+- Grep 搜索特定目录时用 path 参数
+  正确: Grep({ pattern: "loadConfig", path: "packages/core/src" })
+  错误: Grep({ pattern: "loadConfig" }) 然后手动过滤结果
+- Read 大文件时用 offset/limit 分页读取，不要一次读取超过 200 行的文件
+
+写入安全：
+- Write 会覆盖整个文件，修改部分内容必须用 Edit
+- Edit 的 old_string 必须在文件中唯一匹配，提供足够上下文
+- 写入前先 Read 确认当前内容，不要凭记忆编辑
+
+输出规范：
+- 工具调用间的文字保持最短
+- 先做事再解释，不要在工具调用前写长段分析
+- 不复述用户说的话
+- 多个文件需要读取时，一次性并行调用多个 Read
+</tool_use>`;
+
 /** 默认 system prompt（agentId 不匹配任何已知角色时使用） */
 export const DEFAULT_SYSTEM_PROMPT = `你是 NovelFork 的小说创作助手。
 你可以帮助作者规划章节、检查连续性、分析数据、搜索信息和执行 Shell 命令。
 当前你可以调用多种工具来完成写作管线任务。请根据作者的意图选择合适的工具。
-生成结果先保存到候选区，等作者确认后再写入正式章节。`;
+生成结果先保存到候选区，等作者确认后再写入正式章节。
+${TOOL_USE_GUIDELINES}`;
 
 /**
  * 根据 agentId 获取对应的 system prompt。
@@ -234,7 +267,7 @@ export function getAgentSystemPrompt(agentId?: string): string {
   if (!agentId) return DEFAULT_SYSTEM_PROMPT;
 
   for (const [key, prompt] of Object.entries(AGENT_SYSTEM_PROMPTS)) {
-    if (agentId.toLowerCase().includes(key)) return prompt;
+    if (agentId.toLowerCase().includes(key)) return `${prompt}\n${TOOL_USE_GUIDELINES}`;
   }
   return DEFAULT_SYSTEM_PROMPT;
 }
