@@ -72,6 +72,11 @@ function contractResultErrorMessage(result: ContractResult<unknown>, fallback: s
 
 const WEB_SOCKET_OPEN = 1;
 
+/** Reconnection config */
+const RECONNECT_BASE_DELAY_MS = 1000;
+const RECONNECT_MAX_DELAY_MS = 30000;
+const RECONNECT_MAX_ATTEMPTS = 10;
+
 function dispatchRuntimeError(dispatch: (envelope: SessionServerEnvelope) => void, sessionId: string | undefined, message: string, runtime?: unknown) {
   dispatch({ type: "session:error", sessionId, error: message, code: "runtime-error", runtime });
 }
@@ -93,6 +98,15 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   const [state, dispatch] = useReducer(reduceSessionEnvelope, undefined, createInitialAgentConversationRuntimeState);
   const socketRef = useRef<AgentConversationRuntimeSocket | null>(null);
   const pendingClientEnvelopesRef = useRef<string[]>([]);
+  const reconnectAttemptRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const intentionalCloseRef = useRef(false);
+  const lastSeqRef = useRef(0);
+
+  // Keep lastSeqRef in sync with state for reconnection sync checks
+  useEffect(() => {
+    lastSeqRef.current = state.lastSeq;
+  }, [state.lastSeq]);
 
   const applyEnvelope = useCallback((envelope: SessionServerEnvelope) => dispatch(envelope), []);
   const flushPendingClientEnvelopes = useCallback((socket: AgentConversationRuntimeSocket | null = socketRef.current) => {
@@ -103,11 +117,57 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
     }
   }, []);
 
+  const connectWebSocket = useCallback((sid: string, resumeFromSeq: number, runtimeClient: AgentConversationRuntimeClient) => {
+    const socket = createWebSocket(buildSessionWebSocketUrl(sid, { baseUrl, resumeFromSeq }));
+    socketRef.current = socket;
+    intentionalCloseRef.current = false;
+
+    socket.onmessage = (event) => {
+      try {
+        dispatch(parseSessionServerEnvelope(event.data) as SessionServerEnvelope);
+      } catch (error) {
+        dispatchRuntimeError(dispatch, sid, error instanceof Error ? error.message : String(error), error);
+      }
+    };
+
+    socket.onopen = () => {
+      reconnectAttemptRef.current = 0;
+      if (socketRef.current === socket) flushPendingClientEnvelopes(socket);
+    };
+
+    socket.onerror = (event) => {
+      dispatchRuntimeError(dispatch, sid, "会话 WebSocket 连接失败", event);
+    };
+
+    socket.onclose = () => {
+      if (intentionalCloseRef.current || socketRef.current !== socket) return;
+
+      // Auto-reconnect with exponential backoff
+      const attempt = reconnectAttemptRef.current;
+      if (attempt >= RECONNECT_MAX_ATTEMPTS) {
+        dispatchRuntimeError(dispatch, sid, "WebSocket 重连次数已达上限，请刷新页面");
+        return;
+      }
+
+      const delay = Math.min(RECONNECT_BASE_DELAY_MS * Math.pow(2, attempt), RECONNECT_MAX_DELAY_MS);
+      reconnectAttemptRef.current = attempt + 1;
+
+      reconnectTimerRef.current = setTimeout(() => {
+        reconnectTimerRef.current = null;
+        if (intentionalCloseRef.current) return;
+        connectWebSocket(sid, lastSeqRef.current, runtimeClient);
+      }, delay);
+    };
+
+    return socket;
+  }, [baseUrl, createWebSocket, flushPendingClientEnvelopes]);
+
   useEffect(() => {
     if (!sessionId) return undefined;
 
     let cancelled = false;
-    let socket: AgentConversationRuntimeSocket | null = null;
+    intentionalCloseRef.current = false;
+    reconnectAttemptRef.current = 0;
     const runtimeClient = client ?? createDefaultRuntimeClient();
 
     void runtimeClient.getChatState(sessionId).then(
@@ -121,32 +181,43 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
         const snapshot = result.data;
         dispatch({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "initial-hydration" } });
         const resumeFromSeq = snapshot.cursor?.lastSeq ?? Math.max(0, ...snapshot.messages.map((message) => message.seq ?? 0));
-        socket = createWebSocket(buildSessionWebSocketUrl(sessionId, { baseUrl, resumeFromSeq }));
-        socketRef.current = socket;
-        socket.onmessage = (event) => {
-          try {
-            dispatch(parseSessionServerEnvelope(event.data) as SessionServerEnvelope);
-          } catch (error) {
-            dispatchRuntimeError(dispatch, sessionId, error instanceof Error ? error.message : String(error), error);
-          }
-        };
-        socket.onopen = () => {
-          if (socketRef.current === socket) flushPendingClientEnvelopes(socket);
-        };
-        socket.onerror = (event) => dispatchRuntimeError(dispatch, sessionId, "会话 WebSocket 连接失败", event);
+        connectWebSocket(sessionId, resumeFromSeq, runtimeClient);
       },
       (error: unknown) => {
         if (!cancelled) dispatchRuntimeError(dispatch, sessionId, error instanceof Error ? error.message : String(error), error);
       },
     );
 
+    // Visibility change detection: reconnect when tab becomes visible
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const socket = socketRef.current;
+      // If socket is closed/closing, trigger reconnect
+      if (!socket || (typeof socket.readyState === "number" && socket.readyState > WEB_SOCKET_OPEN)) {
+        // Clear any pending reconnect timer and reconnect immediately
+        if (reconnectTimerRef.current) {
+          clearTimeout(reconnectTimerRef.current);
+          reconnectTimerRef.current = null;
+        }
+        reconnectAttemptRef.current = 0;
+        connectWebSocket(sessionId, lastSeqRef.current, runtimeClient);
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     return () => {
       cancelled = true;
+      intentionalCloseRef.current = true;
       pendingClientEnvelopesRef.current = [];
-      socket?.close();
-      if (socketRef.current === socket) socketRef.current = null;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+        reconnectTimerRef.current = null;
+      }
+      socketRef.current?.close();
+      socketRef.current = null;
     };
-  }, [baseUrl, flushPendingClientEnvelopes, sessionId]);
+  }, [baseUrl, connectWebSocket, flushPendingClientEnvelopes, sessionId]);
 
   const sendClientEnvelope = useCallback((envelope: ReturnType<typeof buildMessageEnvelope> | ReturnType<typeof buildAckEnvelope> | ReturnType<typeof buildAbortEnvelope>) => {
     const payload = serializeSessionClientEnvelope(envelope);

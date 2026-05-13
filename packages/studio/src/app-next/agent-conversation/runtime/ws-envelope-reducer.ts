@@ -95,6 +95,9 @@ export function reduceSessionEnvelope(
       };
     }
     case "session:stream": {
+      // Streaming chunks are appended in arrival order. WebSocket guarantees
+      // ordered delivery within a single connection, so no timestamp-based
+      // reordering is needed here — chunks are naturally sequential.
       const streamed = appendStreamChunk(state.messages, envelope.sessionId, envelope.content, envelope.timestamp);
       return {
         ...state,
