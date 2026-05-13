@@ -79,6 +79,7 @@ export type NarratorSubstatus =
   | "reflecting"
   | "compacting"
   | "planning"
+  | "plan_reflecting"
   | "retrying"
   | "queued"
   | "tool_calling"

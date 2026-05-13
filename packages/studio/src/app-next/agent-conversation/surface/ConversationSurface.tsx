@@ -49,6 +49,8 @@ export interface ConversationSurfaceProps {
   streamingStartedAt?: number | null;
   onApproveConfirmation: (id: string, answers?: Record<string, unknown>) => void;
   onRejectConfirmation: (id: string) => void;
+  /** Called when user clicks "始终允许此类" — approves + adds pattern to session toolPolicy */
+  onAlwaysAllowConfirmation?: (id: string, pattern: string) => void;
   onSend: (content: string) => void;
   onAbort?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
@@ -92,6 +94,7 @@ export function ConversationSurface({
   streamingStartedAt,
   onApproveConfirmation,
   onRejectConfirmation,
+  onAlwaysAllowConfirmation,
   onSend,
   onAbort = () => undefined,
   onUpdateSessionConfig,
@@ -423,7 +426,7 @@ export function ConversationSurface({
                     onSkip={onRejectConfirmation}
                   />
                 ) : (
-                  <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} />
+                  <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} onAlwaysAllow={onAlwaysAllowConfirmation} />
                 )}
               </div>
             )}
