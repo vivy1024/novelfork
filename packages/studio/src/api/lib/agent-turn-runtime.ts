@@ -155,17 +155,52 @@ function toolResultContent(result: SessionToolExecutionResult): string {
   // 将 data 中的关键结果附加到 content（让模型能看到实际数据）
   if (result.data && typeof result.data === "object") {
     const data = result.data as Record<string, unknown>;
-    // Glob: 附加匹配的文件列表
+    // Glob: 文件列表
     if (Array.isArray(data.matches) && data.matches.length > 0) {
       content += "\n\n" + (data.matches as string[]).join("\n");
     }
-    // Grep: 附加匹配行
+    // Grep: 匹配行
+    if (Array.isArray(data.results) && data.results.length > 0) {
+      content += "\n\n" + (data.results as string[]).join("\n");
+    }
+    // Read/LearningGuide: 文件内容
+    if (typeof data.content === "string" && data.content.trim()) {
+      content += "\n\n" + data.content;
+    }
+    // Grep fallback: output 字段
     if (typeof data.output === "string" && data.output.trim()) {
       content += "\n\n" + data.output;
     }
-    // Read: 附加文件内容
-    if (typeof data.content === "string" && data.content.trim()) {
-      content += "\n\n" + data.content;
+    // Terminal read: 终端输出
+    if (typeof data.terminalId === "string" && typeof data.output === "string") {
+      // already handled above
+    }
+    // Browser: text/html/result
+    if (typeof data.text === "string" && data.text.trim()) {
+      content += "\n\n" + data.text;
+    }
+    if (typeof data.html === "string" && data.html.trim()) {
+      content += "\n\n" + data.html;
+    }
+    if (typeof data.result === "string" && data.result.trim() && !data.text && !data.html) {
+      content += "\n\n" + data.result;
+    }
+    // Hooks list / generic arrays with meaningful string content
+    if (Array.isArray(data.hooks) && data.hooks.length > 0 && !data.matches && !data.results) {
+      content += "\n\n" + (data.hooks as Array<{ description?: string; done?: boolean }>).map((h, i) => `${i + 1}. ${h.done ? "[已兑现]" : "[待兑现]"} ${h.description ?? ""}`).join("\n");
+    }
+    // LearningGuide list/search: docs array
+    if (Array.isArray(data.docs) && data.docs.length > 0) {
+      content += "\n\n" + (data.docs as Array<{ id?: string; title?: string }>).map(d => `- ${d.title ?? d.id ?? ""}`).join("\n");
+    }
+    // Recall/search results
+    if (Array.isArray(data.sessions) && data.sessions.length > 0 && !data.docs) {
+      content += "\n\n" + (data.sessions as Array<{ id?: string; title?: string }>).map(s => `- ${s.title ?? s.id ?? ""}`).join("\n");
+    }
+    // Terminal list
+    if (data.terminals && typeof data.terminals === "object" && !Array.isArray(data.terminals)) {
+      const terms = data.terminals as { running?: Array<{ id: string; name: string }>; exited?: Array<{ id: string; name: string }> };
+      if (terms.running?.length) content += "\n\n运行中: " + terms.running.map(t => `${t.name}(${t.id})`).join(", ");
     }
   }
   return content ? `${content}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}` : TOOL_RESULT_CONTINUATION_INSTRUCTION;
