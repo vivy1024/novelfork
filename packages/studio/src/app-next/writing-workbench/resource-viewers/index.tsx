@@ -221,7 +221,26 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-primary hover:underline"
-                  onClick={() => {/* TODO: trigger AI generation for this section */}}
+                  onClick={async () => {
+                    try {
+                      const res = await fetch("/api/ai-relay/generate", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ prompt: `请为小说的"${section.title}"部分生成详细内容。要求具体、生动、可直接用于写作。输出纯文本，不要解释。`, maxTokens: 1000 }),
+                      });
+                      if (res.ok) {
+                        const data = await res.json() as { content?: string };
+                        if (data.content) {
+                          // Replace placeholder with generated content
+                          const updated = node.content?.replace(
+                            new RegExp(`## ${section.title}\\n[\\s\\S]*?(?=\\n## |$)`),
+                            `## ${section.title}\n${data.content}\n`,
+                          );
+                          if (updated && onContentChange) onContentChange(updated);
+                        }
+                      }
+                    } catch { /* non-fatal */ }
+                  }}
                 >
                   <Sparkles className="size-3" />
                   让 AI 生成
