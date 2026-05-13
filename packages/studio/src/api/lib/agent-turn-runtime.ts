@@ -151,7 +151,24 @@ function toolSignature(toolName: string, input: Record<string, unknown>): string
 const TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
 
 function toolResultContent(result: SessionToolExecutionResult): string {
-  return result.summary ? `${result.summary}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}` : TOOL_RESULT_CONTINUATION_INSTRUCTION;
+  let content = result.summary ?? "";
+  // 将 data 中的关键结果附加到 content（让模型能看到实际数据）
+  if (result.data && typeof result.data === "object") {
+    const data = result.data as Record<string, unknown>;
+    // Glob: 附加匹配的文件列表
+    if (Array.isArray(data.matches) && data.matches.length > 0) {
+      content += "\n\n" + (data.matches as string[]).join("\n");
+    }
+    // Grep: 附加匹配行
+    if (typeof data.output === "string" && data.output.trim()) {
+      content += "\n\n" + data.output;
+    }
+    // Read: 附加文件内容
+    if (typeof data.content === "string" && data.content.trim()) {
+      content += "\n\n" + data.content;
+    }
+  }
+  return content ? `${content}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}` : TOOL_RESULT_CONTINUATION_INSTRUCTION;
 }
 
 function createDuplicateToolResult(firstResult: SessionToolExecutionResult): SessionToolExecutionResult {
