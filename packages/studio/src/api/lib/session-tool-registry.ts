@@ -549,3 +549,49 @@ export function getProviderSessionToolDefinitions(
     },
   }));
 }
+
+/**
+ * Initialize MCP tools from user config.
+ * Connects to configured MCP servers and registers their tools as session tools.
+ * Should be called once at startup or when MCP config changes.
+ */
+export async function initializeMcpTools(): Promise<{ connected: number; tools: number }> {
+  try {
+    const { getMcpRegistry } = await import("./mcp-registry.js");
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+
+    const mcpServers = config.mcpServers ?? [];
+    const autoConnectServers = mcpServers.filter((s: { autoConnect?: boolean }) => s.autoConnect !== false);
+
+    if (autoConnectServers.length === 0) {
+      return { connected: 0, tools: 0 };
+    }
+
+    const registry = getMcpRegistry({
+      mcpStrategy: config.runtimeControls.toolAccess.mcpStrategy,
+    });
+
+    // Convert McpServerEntry to McpServerConfig format
+    const configs = autoConnectServers.map((entry: { id: string; name: string; transport: string; command?: string; args?: string[]; env?: Record<string, string>; cwd?: string; url?: string }) => ({
+      id: entry.id,
+      name: entry.name,
+      transport: entry.transport as "stdio" | "sse" | "http",
+      command: entry.command ?? "",
+      args: entry.args ?? [] as string[],
+      env: entry.env,
+      cwd: entry.cwd,
+      url: entry.url,
+    }));
+
+    await registry.loadFromConfigs(configs);
+
+    const statuses = registry.getServerStatuses();
+    const connected = statuses.filter((s: { status: string }) => s.status === "connected").length;
+    const tools = statuses.reduce((sum: number, s: { toolCount: number }) => sum + s.toolCount, 0);
+
+    return { connected, tools };
+  } catch {
+    return { connected: 0, tools: 0 };
+  }
+}

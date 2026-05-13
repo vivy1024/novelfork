@@ -3,6 +3,7 @@ import { join, dirname } from "node:path";
 import { existsSync } from "node:fs";
 import type {
   CommandBlockRule,
+  Hook,
   ModelAggregation,
   ModelDefaultSettings,
   OnboardingSettings,
@@ -117,6 +118,25 @@ function sanitizeRuntimeDebug(runtimeDebug?: Partial<RuntimeDebugSettings> | nul
   };
 }
 
+const VALID_HOOK_EVENTS = new Set(["PreToolUse", "PostToolUse", "TurnComplete"]);
+
+function sanitizeHooks(hooks: unknown): Hook[] {
+  if (!Array.isArray(hooks)) return [];
+  return hooks.filter((item): item is Hook =>
+    item != null
+    && typeof item === "object"
+    && typeof item.command === "string"
+    && item.command.trim().length > 0
+    && VALID_HOOK_EVENTS.has(item.event),
+  ).map((hook) => ({
+    event: hook.event,
+    command: hook.command.trim(),
+    ...(typeof hook.toolName === "string" && hook.toolName.trim() ? { toolName: hook.toolName.trim() } : {}),
+    ...(typeof hook.timeout === "number" && Number.isFinite(hook.timeout) ? { timeout: Math.max(1000, Math.min(hook.timeout, 60000)) } : {}),
+    ...(typeof hook.blocking === "boolean" ? { blocking: hook.blocking } : {}),
+  }));
+}
+
 function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
   const defaults = DEFAULT_USER_CONFIG.runtimeControls;
   const rawPermissionMode = (runtimeControls as { defaultPermissionMode?: unknown } | undefined)?.defaultPermissionMode;
@@ -179,6 +199,7 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     retryRules: Array.isArray(runtimeControls?.retryRules)
       ? runtimeControls.retryRules.filter((r): r is RetryRule => r != null && typeof r === "object" && typeof r.id === "string")
       : defaults.retryRules,
+    hooks: sanitizeHooks(runtimeControls?.hooks ?? defaults.hooks),
   };
 }
 

@@ -34,6 +34,8 @@ export interface ListSessionsOptions {
   readonly binding?: SessionListBinding;
   readonly search?: string;
   readonly sort?: SessionListSort;
+  /** Owner user ID for multi-user filtering (admin sees all when undefined) */
+  readonly ownerId?: string;
 }
 
 export let sessionStoreMutationQueue: Promise<void> = Promise.resolve();
