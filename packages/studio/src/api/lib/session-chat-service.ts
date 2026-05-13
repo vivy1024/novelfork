@@ -940,11 +940,18 @@ async function appendModelContinuationAfterToolDecision(
         return result as AgentGenerateResult;
       },
       executeTool: (toolInput) => {
+        const onToolOutputStream = toolInput.toolCallId
+          ? (chunk: string) => {
+              const envelope = { type: "session:tool-stream" as const, sessionId, toolCallId: toolInput.toolCallId!, content: chunk };
+              broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+            }
+          : undefined;
+        const enrichedInput = { ...toolInput, onToolOutputStream };
         const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
         if (sessionWorkDir) {
-          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(toolInput);
+          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(enrichedInput);
         }
-        return sessionToolExecutor.execute(toolInput);
+        return sessionToolExecutor.execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
@@ -1633,11 +1640,18 @@ export async function handleSessionChatTransportMessage(
         return result as AgentGenerateResult;
       },
       executeTool: (toolInput) => {
+        const onToolOutputStream = toolInput.toolCallId
+          ? (chunk: string) => {
+              const envelope = { type: "session:tool-stream" as const, sessionId, toolCallId: toolInput.toolCallId!, content: chunk };
+              broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+            }
+          : undefined;
+        const enrichedInput = { ...toolInput, onToolOutputStream };
         const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
         if (sessionWorkDir) {
-          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(toolInput);
+          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(enrichedInput);
         }
-        return sessionToolExecutor.execute(toolInput);
+        return sessionToolExecutor.execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;

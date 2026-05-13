@@ -396,9 +396,17 @@ export interface NarratorSessionChatStreamEnvelope {
   content: string;
 }
 
+export interface NarratorSessionChatToolStreamEnvelope {
+  type: "session:tool-stream";
+  sessionId: string;
+  toolCallId: string;
+  content: string;
+}
+
 export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatSnapshotEnvelope
   | NarratorSessionChatStateEnvelope
   | NarratorSessionChatMessageEnvelope
   | NarratorSessionChatErrorEnvelope
-  | NarratorSessionChatStreamEnvelope;
+  | NarratorSessionChatStreamEnvelope
+  | NarratorSessionChatToolStreamEnvelope;
