@@ -142,6 +142,8 @@ export interface RuntimeControlSettings {
   silentToolCallThreshold: number;
   /** 自定义可重试错误规则 */
   retryRules: RetryRule[];
+  /** 用户自定义 hooks（工具执行前后 / turn 结束时触发 shell 命令） */
+  hooks: Hook[];
 }
 
 export interface RetryRule {
@@ -151,6 +153,19 @@ export interface RetryRule {
   httpStatus: string;
   /** 内容关键词匹配（空=不匹配内容） */
   contentKeyword: string;
+}
+
+export interface Hook {
+  /** 触发事件 */
+  event: "PreToolUse" | "PostToolUse" | "TurnComplete";
+  /** 仅对指定工具触发（可选，不填则对所有工具触发） */
+  toolName?: string;
+  /** Shell 命令（支持 {file}、{tool} 占位符） */
+  command: string;
+  /** 超时毫秒（默认 10000） */
+  timeout?: number;
+  /** PreToolUse: 若为 true，exit code 2 将阻止工具执行 */
+  blocking?: boolean;
 }
 
 export type ModelReferenceValidationStatus = "empty" | "valid" | "invalid";
@@ -267,6 +282,34 @@ export interface ProxySettings {
   platforms: Record<string, string>;
 }
 
+export interface AuthSettings {
+  /** 认证模式：none=无认证（默认），builtin=内置邮箱密码，external=外部JWT */
+  mode: "none" | "builtin" | "external";
+  /** JWT 签名密钥（首次运行时自动生成） */
+  secret: string;
+  /** 外部 JWT 验证密钥（external 模式） */
+  externalSecret?: string;
+  /** 外部 JWKS URL（external 模式，替代 externalSecret） */
+  externalJwksUrl?: string;
+  /** 默认管理员邮箱（首次运行时创建） */
+  adminEmail?: string;
+  /** 默认管理员密码（首次运行时创建，之后应删除） */
+  adminPassword?: string;
+}
+
+export interface McpServerEntry {
+  id: string;
+  name: string;
+  transport: "stdio" | "sse" | "http";
+  command?: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  url?: string;
+  /** 是否在启动时自动连接 */
+  autoConnect?: boolean;
+}
+
 export interface UserConfig {
   profile: UserProfile;
   preferences: UserPreferences;
@@ -280,6 +323,10 @@ export interface UserConfig {
   writing: WritingSettings;
   /** 外部 API 调用 Token（如羽书 bot 调用时需要携带） */
   apiToken: string;
+  /** 用户认证配置 */
+  auth?: AuthSettings;
+  /** MCP 服务器配置列表 */
+  mcpServers?: McpServerEntry[];
 }
 
 export interface UserConfigPatch {
@@ -294,6 +341,8 @@ export interface UserConfigPatch {
   workspace?: Partial<WorkspaceSettings>;
   writing?: Partial<WritingSettings>;
   apiToken?: string;
+  auth?: Partial<AuthSettings>;
+  mcpServers?: McpServerEntry[];
 }
 
 export const DEFAULT_USER_CONFIG: UserConfig = {
@@ -379,6 +428,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     firstTokenTimeout: 0,
     silentToolCallThreshold: 25,
     retryRules: [],
+    hooks: [],
   },
   modelDefaults: {
     defaultSessionModel: "",
@@ -436,4 +486,5 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     customSensitiveWords: "",
   },
   apiToken: "",
+  mcpServers: [],
 };
