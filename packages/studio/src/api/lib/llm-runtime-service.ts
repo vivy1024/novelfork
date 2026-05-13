@@ -44,6 +44,7 @@ export interface LlmRuntimeGenerateInput {
   readonly messages: readonly LlmRuntimeInputMessage[];
   readonly tools?: readonly SessionToolDefinition[];
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onRetry?: (attempt: number, maxAttempts: number) => void;
   readonly signal?: AbortSignal;
 }
 
@@ -295,6 +296,8 @@ export class LlmRuntimeService {
               providerId: candidate.providerId,
               modelId: candidate.rawModelId,
             }));
+
+            input.onRetry?.(retryAttempt + 1, retrySettings.maxRetryAttempts);
 
             try {
               await abortableSleep(delayMs, input.signal);

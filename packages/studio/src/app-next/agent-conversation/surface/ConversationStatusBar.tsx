@@ -76,6 +76,7 @@ export type NarratorSubstatus =
   | "suspended"
   | "manual_override"
   | "reasoning"
+  | "reflecting"
   | "compacting"
   | "planning"
   | "retrying"
