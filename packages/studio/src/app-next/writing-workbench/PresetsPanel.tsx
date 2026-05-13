@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -9,8 +9,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { Loader2, Play } from "lucide-react";
-import { useApi, fetchJson } from "@/hooks/use-api";
+import { useApi, fetchJson, putApi } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -67,6 +68,27 @@ export function PresetsPanel({ bookId, currentChapter }: PresetsPanelProps) {
   const [result, setResult] = useState<{ presetId: string; data: unknown } | null>(null);
   const [execError, setExecError] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [enabledIds, setEnabledIds] = useState<string[]>([]);
+
+  // Load book's enabled preset IDs
+  useEffect(() => {
+    fetchJson<{ enabledPresetIds?: string[] }>(`/books/${bookId}`)
+      .then((book) => setEnabledIds(book.enabledPresetIds ?? []))
+      .catch(() => {});
+  }, [bookId]);
+
+  async function handleTogglePreset(presetId: string, enabled: boolean) {
+    const nextIds = enabled
+      ? [...enabledIds, presetId]
+      : enabledIds.filter((id) => id !== presetId);
+    setEnabledIds(nextIds);
+    try {
+      await putApi(`/books/${bookId}/presets`, { enabledPresetIds: nextIds });
+    } catch {
+      // Revert on failure
+      setEnabledIds(enabledIds);
+    }
+  }
 
   const presets = data?.presets ?? [];
   const filteredPresets = filterCategory
@@ -172,15 +194,23 @@ export function PresetsPanel({ bookId, currentChapter }: PresetsPanelProps) {
                 {preset.description}
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="shrink-0 size-7"
-              onClick={() => setSelectedPreset(preset)}
-              title={`执行预设: ${preset.name}`}
-            >
-              <Play className="size-3.5" />
-            </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <Switch
+                checked={enabledIds.includes(preset.id)}
+                onCheckedChange={(checked) => void handleTogglePreset(preset.id, checked)}
+                aria-label={`启用预设 ${preset.name}`}
+                className="scale-75"
+              />
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-7"
+                onClick={() => setSelectedPreset(preset)}
+                title={`执行预设: ${preset.name}`}
+              >
+                <Play className="size-3.5" />
+              </Button>
+            </div>
           </div>
         ))}
         {filteredPresets.length === 0 && (
