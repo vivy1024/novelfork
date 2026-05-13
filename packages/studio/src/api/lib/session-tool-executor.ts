@@ -826,6 +826,21 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
   }
 }
 
+/** Helper: check file path against user-configured directory allow/blocklist */
+async function checkDirectoryAccess(
+  filePath: string,
+  workDir: string,
+): Promise<{ blocked: boolean; allowed: boolean; reason?: string }> {
+  try {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+    const { directoryAllowlist, directoryBlocklist } = config.runtimeControls.toolAccess;
+    return checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlist, directoryBlocklist);
+  } catch {
+    return { blocked: false, allowed: false };
+  }
+}
+
 function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
   // 先尝试小说领域 handler
   const novelHandler = getNovelServiceHandler(toolName, options);
@@ -890,15 +905,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        let directoryAllowlist: string[] = [];
-        let directoryBlocklist: string[] = [];
-        try {
-          const { loadUserConfig } = await import("./user-config-service.js");
-          const config = await loadUserConfig();
-          directoryAllowlist = config.runtimeControls.toolAccess.directoryAllowlist;
-          directoryBlocklist = config.runtimeControls.toolAccess.directoryBlocklist;
-        } catch { /* config load failure */ }
-        const dirCheck = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlist, directoryBlocklist);
+        const dirCheck = await checkDirectoryAccess(filePath, workDir);
         if (dirCheck.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "路径在黑名单目录内。" };
         }
@@ -917,15 +924,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        let directoryAllowlistW: string[] = [];
-        let directoryBlocklistW: string[] = [];
-        try {
-          const { loadUserConfig } = await import("./user-config-service.js");
-          const config = await loadUserConfig();
-          directoryAllowlistW = config.runtimeControls.toolAccess.directoryAllowlist;
-          directoryBlocklistW = config.runtimeControls.toolAccess.directoryBlocklist;
-        } catch { /* config load failure */ }
-        const dirCheckW = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlistW, directoryBlocklistW);
+        const dirCheckW = await checkDirectoryAccess(filePath, workDir);
         if (dirCheckW.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckW.reason ?? "路径在黑名单目录内。" };
         }
@@ -952,15 +951,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        let directoryAllowlistE: string[] = [];
-        let directoryBlocklistE: string[] = [];
-        try {
-          const { loadUserConfig } = await import("./user-config-service.js");
-          const config = await loadUserConfig();
-          directoryAllowlistE = config.runtimeControls.toolAccess.directoryAllowlist;
-          directoryBlocklistE = config.runtimeControls.toolAccess.directoryBlocklist;
-        } catch { /* config load failure */ }
-        const dirCheckE = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlistE, directoryBlocklistE);
+        const dirCheckE = await checkDirectoryAccess(filePath, workDir);
         if (dirCheckE.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckE.reason ?? "路径在黑名单目录内。" };
         }

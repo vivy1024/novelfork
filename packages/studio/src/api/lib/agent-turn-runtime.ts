@@ -110,6 +110,10 @@ function emergencyTruncateMessages(messages: AgentTurnItem[], keepRecent: number
   if (messages.length <= keepRecent + 2) return messages;
 
   const firstSystem = messages.find(m => m.type === "message" && m.role === "system");
+  // Keep at most 1/3 of messages — aggressive truncation to ensure the retry
+  // fits within context limits even if individual messages are large.
+  // The 1/3 ratio is a heuristic: system prompt ≈ 1/3, recent context ≈ 1/3,
+  // leaving 1/3 headroom for the model's response.
   const actualKeep = Math.min(keepRecent, Math.floor(messages.length / 3));
   let recentMessages = messages.slice(-actualKeep);
 
