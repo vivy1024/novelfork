@@ -70,11 +70,22 @@ export function reduceSessionEnvelope(
     }
     case "session:state": {
       const cursor = envelope.cursor ?? state.cursor;
+      // When turn ends (idle) or is interrupted, mark all running tool calls as completed/cancelled
+      const sessionNarratorState = (envelope.session as { narratorState?: string }).narratorState;
+      const sessionSubstatus = (envelope.session as { substatus?: string }).substatus;
+      let messages = state.messages;
+      if (sessionNarratorState === "idle" || sessionSubstatus === "interrupted") {
+        messages = state.messages.map((msg) => {
+          if (!msg.toolCalls?.some((tc) => tc.status === "running")) return msg;
+          return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.status === "running" ? { ...tc, status: sessionSubstatus === "interrupted" ? "error" : "success" } : tc) };
+        });
+      }
       return {
         ...state,
         session: envelope.session,
+        messages,
         cursor,
-        lastSeq: lastSeqFrom(cursor, state.messages, state.lastSeq),
+        lastSeq: lastSeqFrom(cursor, messages, state.lastSeq),
         recovery: envelope.recovery ?? state.recovery,
       };
     }
@@ -83,10 +94,24 @@ export function reduceSessionEnvelope(
       const baseMessages = state.streamingMessageId
         ? state.messages.filter((m) => m.id !== state.streamingMessageId)
         : state.messages;
-      const nextMessages = mergeSessionMessages(baseMessages, [envelope.message]);
+
+      // If this is a tool_result message, update the corresponding tool_call's status
+      let updatedBase = baseMessages;
+      const incomingToolCalls = envelope.message.toolCalls;
+      if (incomingToolCalls?.length && incomingToolCalls[0].status && incomingToolCalls[0].status !== "running") {
+        const resultToolId = incomingToolCalls[0].id;
+        updatedBase = baseMessages.map((msg) => {
+          if (!msg.toolCalls?.length) return msg;
+          const match = msg.toolCalls.find((tc) => tc.id === resultToolId && tc.status === "running");
+          if (!match) return msg;
+          return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.id === resultToolId ? { ...tc, status: incomingToolCalls[0].status, durationMs: incomingToolCalls[0].durationMs } : tc) };
+        });
+      }
+
+      const nextMessages = mergeSessionMessages(updatedBase, [envelope.message]);
       const cursor = envelope.cursor ?? state.cursor;
       // Only clear waitingForResponse for final assistant messages (not tool_call/tool_result)
-      const isToolMessage = envelope.message.toolCalls?.length && envelope.message.toolCalls.length > 0;
+      const isToolMessage = incomingToolCalls?.length && incomingToolCalls.length > 0;
       const shouldClearWaiting = !isToolMessage && envelope.message.role === "assistant";
       return {
         ...state,
