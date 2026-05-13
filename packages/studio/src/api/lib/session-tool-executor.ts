@@ -15,7 +15,7 @@ import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
-import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir } from "./permission-pipeline.js";
+import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir, checkCommandAgainstLists, checkPathAgainstDirectoryLists } from "./permission-pipeline.js";
 
 // --- Browser page interface (extracted from playwright Page) ---
 interface BrowserPageLike {
@@ -793,6 +793,33 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, permissionMode, definition }) => {
         const workDir = typeof input.workDir === "string" ? input.workDir : (options.workDir ?? process.cwd());
         const command = String(input.command);
+
+        // Phase 4.2: Check command against user-configured allow/block lists
+        let commandAllowlist: string[] = [];
+        let commandBlocklist: import("../../types/settings.js").CommandBlockRule[] = [];
+        try {
+          const { loadUserConfig } = await import("./user-config-service.js");
+          const config = await loadUserConfig();
+          commandAllowlist = config.runtimeControls.toolAccess.commandAllowlist;
+          commandBlocklist = config.runtimeControls.toolAccess.commandBlocklist;
+        } catch { /* config load failure — use empty lists */ }
+
+        const listCheck = checkCommandAgainstLists(command, commandAllowlist, commandBlocklist);
+        if (listCheck.blocked) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "command-blocklist",
+            summary: listCheck.reason ?? "命令被黑名单拦截。",
+            data: { command },
+          };
+        }
+        // If explicitly allowed by allowlist, skip further permission checks
+        if (listCheck.allowed) {
+          const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
+          return executeBashTool({ command, workDir, timeoutMs });
+        }
+
         // 对标 Claude Code: 在执行前通过 permission-pipeline 做命令级权限检查
         const permResult = validateToolPermission({
           toolName: "Bash",
@@ -818,7 +845,20 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
-        if (!isPathWithinWorkDir(filePath, workDir)) {
+        // Phase 4.3: Check directory blocklist
+        let directoryAllowlist: string[] = [];
+        let directoryBlocklist: string[] = [];
+        try {
+          const { loadUserConfig } = await import("./user-config-service.js");
+          const config = await loadUserConfig();
+          directoryAllowlist = config.runtimeControls.toolAccess.directoryAllowlist;
+          directoryBlocklist = config.runtimeControls.toolAccess.directoryBlocklist;
+        } catch { /* config load failure */ }
+        const dirCheck = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlist, directoryBlocklist);
+        if (dirCheck.blocked) {
+          return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "路径在黑名单目录内。" };
+        }
+        if (!isPathWithinWorkDir(filePath, workDir) && !dirCheck.allowed) {
           return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
         }
         return executeFileReadTool({
@@ -832,7 +872,20 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
-        if (!isPathWithinWorkDir(filePath, workDir)) {
+        // Phase 4.3: Check directory blocklist
+        let directoryAllowlistW: string[] = [];
+        let directoryBlocklistW: string[] = [];
+        try {
+          const { loadUserConfig } = await import("./user-config-service.js");
+          const config = await loadUserConfig();
+          directoryAllowlistW = config.runtimeControls.toolAccess.directoryAllowlist;
+          directoryBlocklistW = config.runtimeControls.toolAccess.directoryBlocklist;
+        } catch { /* config load failure */ }
+        const dirCheckW = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlistW, directoryBlocklistW);
+        if (dirCheckW.blocked) {
+          return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckW.reason ?? "路径在黑名单目录内。" };
+        }
+        if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckW.allowed) {
           return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
         }
         return executeFileWriteTool({ path: filePath, content: String(input.content), workDir });
@@ -841,7 +894,20 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return async ({ input, definition }) => {
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
-        if (!isPathWithinWorkDir(filePath, workDir)) {
+        // Phase 4.3: Check directory blocklist
+        let directoryAllowlistE: string[] = [];
+        let directoryBlocklistE: string[] = [];
+        try {
+          const { loadUserConfig } = await import("./user-config-service.js");
+          const config = await loadUserConfig();
+          directoryAllowlistE = config.runtimeControls.toolAccess.directoryAllowlist;
+          directoryBlocklistE = config.runtimeControls.toolAccess.directoryBlocklist;
+        } catch { /* config load failure */ }
+        const dirCheckE = checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlistE, directoryBlocklistE);
+        if (dirCheckE.blocked) {
+          return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckE.reason ?? "路径在黑名单目录内。" };
+        }
+        if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckE.allowed) {
           return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
         }
         return executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir });
