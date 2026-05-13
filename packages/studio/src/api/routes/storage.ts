@@ -427,7 +427,12 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     try {
       await access(join(bookDir, "book.json"));
       await access(join(bookDir, "story", "story_bible.md"));
-      return c.json({ error: `Book "${bookId}" already exists` }, 409);
+      // 文件存在，但检查数据库中是否也存在（可能是删除书后文件残留）
+      const existingBook = await state.loadBookConfig(bookId).catch(() => null);
+      if (existingBook) {
+        return c.json({ error: `Book "${bookId}" already exists` }, 409);
+      }
+      // 文件残留但数据库中已删除 → 允许重新创建（覆盖旧文件）
     } catch {
       // The target book is not fully initialized yet, so creation can continue.
     }
