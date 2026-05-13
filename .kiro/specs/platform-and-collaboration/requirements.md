@@ -80,88 +80,42 @@ interface Hook {
 
 ---
 
-## Phase 3：非交互 CLI 模式（P2）
+## Phase 3：多用户协作（P1）
 
-### 3.1 Headless 执行
-
-**现状**: 只有 Web UI 交互模式
-**目标**: 支持命令行一次性执行（类似 `claude -p "fix the bug"`）
-
-**设计**:
-```bash
-novelfork-cli --prompt "修复 src/api/server.ts 中的类型错误" --model claude-opus-4-6
-novelfork-cli --prompt "运行测试并修复失败" --json  # 结构化输出
-novelfork-cli --resume <session-id>  # 恢复会话
-```
-
-**实现方案**:
-- `packages/cli/src/headless.ts` — 无 UI 的 agent turn 执行
-- 复用 `session-chat-service.ts` 的核心逻辑
-- 输出模式：plain text / JSON / streaming JSON
-- 支持 `--max-turns`、`--max-budget`、`--permission-mode` 参数
-
-### 3.2 结构化输出
-
-**现状**: 无
-**目标**: CLI 模式支持 JSON 输出，方便程序化调用
-
-**输出格式**:
-```json
-{
-  "success": true,
-  "message": "已修复 3 个类型错误",
-  "files_changed": ["src/api/server.ts"],
-  "tool_calls": 5,
-  "tokens": { "input": 12000, "output": 800 },
-  "cost_usd": 0.05,
-  "session_id": "abc-123"
-}
-```
-
----
-
-## Phase 4：多用户协作（P1）
-
-### 4.1 用户认证系统
+### 3.1 用户认证系统
 
 **现状**: 只有 API Token（单用户），无用户注册/登录
-**目标**: 支持多用户注册、登录、会话隔离
+**目标**: 对标 NarraFork——支持多用户注册、登录、会话隔离
+
+**NarraFork 的做法**:
+- Web 登录页面（用户名 + 密码）
+- 登录后看到自己的叙述者和叙事线
+- 管理员可管理用户
 
 **设计**:
 - 用户数据存储在 SQLite（users 表：id/username/password_hash/role/created_at）
-- 登录返回 JWT token，后续请求携带
+- 登录返回 JWT token（httpOnly cookie 或 Authorization header）
 - 会话（session）绑定 user_id，用户只能看到自己的会话
-- 管理员可查看所有用户和会话
+- 管理员角色可查看所有用户和会话
+- 首次启动时创建默认管理员账户
 
 **实现方案**:
 - 创建 `packages/studio/src/api/lib/user-auth.ts`（注册/登录/JWT 验证）
 - 创建 `packages/studio/src/api/routes/auth-users.ts`（POST /register, POST /login, GET /me）
-- 修改 `session-service.ts`：createSession 时绑定 user_id
-- 修改 `listSessions`：按 user_id 过滤
-- 前端添加登录页面
+- 前端添加登录页面（对标 NarraFork 的登录页）
+- 修改现有 API 中间件：未登录 → 重定向到登录页
 
-### 4.2 PHP 后端用户系统集成（玉珍健身）
-
-**现状**: 玉珍健身准备用 PHP 后端做用户系统
-**目标**: NovelFork 支持外部认证源（PHP 后端签发的 token）
-
-**设计**:
-- 支持两种认证模式：
-  1. 内置（SQLite 用户表 + JWT）
-  2. 外部（验证外部签发的 JWT/token，通过配置的 JWKS endpoint）
-- 配置项：`auth.mode: "builtin" | "external"`
-- 外部模式：NovelFork 不管注册/登录，只验证 token 有效性
-
-### 4.3 资源隔离
+### 3.2 资源隔离
 
 **现状**: 所有数据全局共享
 **目标**: 每个用户只能访问自己的书籍、会话、经纬
 
 **设计**:
 - book 表添加 `owner_id` 字段
-- session 表已有 `projectId`，添加 `owner_id`
+- session 表添加 `owner_id` 字段
 - API 路由添加 user 过滤中间件
 - 管理员角色可跨用户访问
+- 单用户模式（不配置用户系统时）保持当前行为
 
 ---
 
@@ -176,14 +130,9 @@ Phase 2 — MCP 工具扩展（P1，可扩展性）
   2.1 MCP Server 连接
   2.2 MCP 工具权限
 
-Phase 3 — 非交互 CLI 模式（P2，CI/CD 集成）
-  3.1 Headless 执行
-  3.2 结构化输出
-
-Phase 4 — 多用户协作（P1，团队使用）
-  4.1 用户认证系统
-  4.2 PHP 后端集成
-  4.3 资源隔离
+Phase 3 — 多用户协作（P1，团队使用）
+  3.1 用户认证系统
+  3.2 资源隔离
 ```
 
 ---
@@ -192,5 +141,4 @@ Phase 4 — 多用户协作（P1，团队使用）
 
 - Phase 1：配置 PostToolUse hook 后，Edit 文件自动触发 prettier
 - Phase 2：连接 MCP server 后，Agent 能调用外部工具
-- Phase 3：`novelfork-cli --prompt "..." --json` 返回结构化结果
-- Phase 4：两个用户登录后只能看到各自的书籍和会话
+- Phase 3：两个用户登录后只能看到各自的书籍和会话
