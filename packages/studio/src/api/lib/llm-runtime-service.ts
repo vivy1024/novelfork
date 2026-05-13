@@ -102,8 +102,15 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
         continue;
       }
       if (message.type === "tool_call") {
-        // Merge pending reasoning_content into the tool_call assistant message
-        result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}) });
+        // Merge consecutive tool_calls into a single assistant message with multiple toolCalls
+        // (required by Claude API: one assistant message can have multiple tool_use blocks)
+        const lastMsg = result[result.length - 1];
+        if (lastMsg && lastMsg.role === "assistant" && lastMsg.toolCalls && lastMsg.toolCalls.length > 0) {
+          // Replace last message with expanded toolCalls array
+          result[result.length - 1] = { ...lastMsg, toolCalls: [...lastMsg.toolCalls, { id: message.id, name: message.name, input: message.input }] };
+        } else {
+          result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}) });
+        }
         pendingReasoning = undefined;
         continue;
       }
