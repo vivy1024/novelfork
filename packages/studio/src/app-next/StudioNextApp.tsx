@@ -969,9 +969,10 @@ function toConversationStatus(
   const providerId = sessionConfig?.providerId || undefined;
   const modelId = sessionConfig?.modelId || undefined;
   const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
-  const runtimeState = state.error ? "error" : state.streamingMessageId || hasRunningToolCall(state.messages) || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
-  const isWorking = runtimeState === "running" || narratorState === "working";
+  // 状态判断完全信任后端广播的 narratorState，不再前端自己算
+  const isWorking = narratorState === "working";
+  const runtimeState = state.error ? "error" : isWorking || state.streamingMessageId || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
   const turnStartedAt = (state.session as { turnStartedAt?: string } | null)?.turnStartedAt;
   const lastTurnDurationMs = (state.session as { lastTurnDurationMs?: number } | null)?.lastTurnDurationMs;
   const serverSubstatus = (state.session as { substatus?: string } | null)?.substatus;
