@@ -249,7 +249,18 @@ export const TOOL_USE_GUIDELINES = `
 - 先做事再解释，不要在工具调用前写长段分析
 - 不复述用户说的话
 - 多个文件需要读取时，一次性并行调用多个 Read
-</tool_use>`;
+</tool_use>
+
+<error_recovery>
+错误恢复原则：
+- 同一方法失败 2 次，必须换方案。不要第三次尝试相同的修改。
+- 遇到 typecheck 错误：先读错误信息，定位到具体文件和行号，再修复。
+- 遇到"文件不存在"：先用 Glob 确认正确路径，不要猜测。
+- 遇到"权限拒绝"：停下来告诉用户，不要尝试绕过。
+- 遇到"命令不存在"：检查是否需要先安装依赖。
+- Edit 匹配失败：先 Read 文件确认当前内容，再用正确的 old_string 重试。
+- 连续 3 次工具调用失败：停下来向用户说明情况和已尝试的方法。
+</error_recovery>`;
 
 /** 默认 system prompt（agentId 不匹配任何已知角色时使用） */
 export const DEFAULT_SYSTEM_PROMPT = `你是 NovelFork 的小说创作助手。
