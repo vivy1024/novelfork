@@ -27,6 +27,8 @@ import { startHttpServer } from "./start-http-server.js";
 import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
 import { ProviderRuntimeStore } from "./lib/provider-runtime-store.js";
+import { setGlobalProxyUrl, setPerProviderProxy } from "./lib/provider-adapters/index.js";
+import { loadUserConfig } from "./lib/user-config-service.js";
 import {
   rebuildSearchIndex,
 } from "./lib/search-index-rebuild.js";
@@ -708,6 +710,24 @@ function logStartupHealthSummary(summary: StartupOrchestratorSummary, options?: 
   }
 }
 
+/**
+ * 从用户配置加载代理设置并注入到 provider adapter 层。
+ * 启动时调用一次；设置页更新 proxy 时由 settings 路由再次调用。
+ */
+export async function initializeProviderProxy(): Promise<void> {
+  try {
+    const config = await loadUserConfig();
+    const globalProxy = config.proxy?.platforms?.ai || "";
+    setGlobalProxyUrl(globalProxy || undefined);
+    setPerProviderProxy(config.proxy?.providers ?? {});
+    if (globalProxy) {
+      console.log(`[proxy] AI proxy configured: ${globalProxy}`);
+    }
+  } catch (error) {
+    console.warn("[proxy] Failed to load proxy config:", error);
+  }
+}
+
 export async function startStudioServer(
   root: string,
   port = 4567,
@@ -818,6 +838,9 @@ export async function startStudioServer(
 
   const { app, ctx } = createStudioServer(config, root);
   const startupProviderStore = ctx.providerStore ?? new ProviderRuntimeStore();
+
+  // Initialize proxy settings from user config for AI API requests
+  await initializeProviderProxy();
 
   // Serve frontend static files — single process for API + frontend
   const staticProvider = options?.staticProvider
