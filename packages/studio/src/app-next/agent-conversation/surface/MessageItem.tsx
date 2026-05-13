@@ -1,4 +1,4 @@
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
 import { Copy, Pencil, Trash2 } from "lucide-react";
@@ -133,6 +133,34 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
     }
   }, [onSelect, message.id]);
 
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(message.content);
+  }, [message.content]);
+
+  const handleEditRegenerate = useCallback(() => handleAction("edit-regenerate"), [handleAction]);
+  const handleDelete = useCallback(() => handleAction("delete"), [handleAction]);
+
+  // Memoize expensive content rendering for assistant messages
+  const renderedContent = useMemo(() => {
+    if (!message.content || message.toolCalls?.length) return null;
+    if (message.isStreaming) {
+      return (
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
+        </div>
+      );
+    }
+    return <MarkdownRenderer content={message.content} />;
+  }, [message.content, message.isStreaming, message.toolCalls?.length]);
+
+  // Memoize tool call cards
+  const renderedToolCalls = useMemo(() => {
+    if (!message.toolCalls?.length) return null;
+    return message.toolCalls.map((toolCall) => (
+      <ToolCallCard key={toolCall.id} toolCall={toolCall} />
+    ));
+  }, [message.toolCalls]);
+
   const selectionClasses = isSelected
     ? "border-l-2 border-l-primary bg-primary/5"
     : "border-l-2 border-l-transparent";
@@ -229,7 +257,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
                       variant="ghost"
                       size="icon"
                       className="size-6"
-                      onClick={() => navigator.clipboard.writeText(message.content)}
+                      onClick={handleCopy}
                     >
                       <Copy className="size-3" />
                     </Button>
@@ -238,7 +266,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-6" onClick={() => handleAction("edit-regenerate")}>
+                    <Button variant="ghost" size="icon" className="size-6" onClick={handleEditRegenerate}>
                       <Pencil className="size-3" />
                     </Button>
                   </TooltipTrigger>
@@ -246,7 +274,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
                 </Tooltip>
                 <Tooltip>
                   <TooltipTrigger asChild>
-                    <Button variant="ghost" size="icon" className="size-6 text-destructive" onClick={() => handleAction("delete")}>
+                    <Button variant="ghost" size="icon" className="size-6 text-destructive" onClick={handleDelete}>
                       <Trash2 className="size-3" />
                     </Button>
                   </TooltipTrigger>
@@ -269,18 +297,8 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
-          {message.content && !message.toolCalls?.length && (
-            message.isStreaming ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
-              </div>
-            ) : (
-              <MarkdownRenderer content={message.content} />
-            )
-          )}
-          {message.toolCalls?.map((toolCall) => (
-            <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-          ))}
+          {renderedContent}
+          {renderedToolCalls}
         </div>
       </ContextMenuTrigger>
       <MessageContextMenuContent onAction={handleAction} />
