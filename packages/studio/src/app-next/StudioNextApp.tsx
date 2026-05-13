@@ -15,7 +15,7 @@ import {
   type ConversationRouteMessage,
   type ConversationRouteStatus,
 } from "./agent-conversation";
-import type { ConversationConfirmation, ConversationSessionConfigPatch } from "./agent-conversation/surface";
+import type { ConversationConfirmation, ConversationSessionConfigPatch, SessionDetailData } from "./agent-conversation/surface";
 import type { RuntimeModelPoolEntry } from "../shared/provider-catalog";
 import type { CanvasContext, ToolConfirmationRequest } from "../shared/agent-native-workspace";
 import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord, SessionCumulativeUsage, SessionPermissionMode, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
@@ -715,6 +715,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       sendDisabledReason={missingSession ? "会话缺失或快照不可用，请返回会话列表或新建会话。" : modelPoolEmpty ? "模型池为空，请先到设置页启用模型" : undefined}
       settingsHref={missingSession ? "/next" : modelPoolEmpty ? "/next/settings" : undefined}
       footerActions={missingSession ? <MissingSessionActions /> : null}
+      sessionDetail={buildSessionDetail(runtime.state.session, runtime.state.messages)}
       onSendMessage={runtime.sendMessage}
       onAbortSession={runtime.abort}
       onUpdateSessionConfig={updateSessionConfig}
@@ -876,6 +877,27 @@ function usageFromSessionState(session: ReturnType<typeof useAgentConversationRu
     ...(currentTurn ? { currentTurn } : {}),
     ...(cumulative ? { cumulative } : {}),
     cost: { status: "unknown" },
+  };
+}
+
+function buildSessionDetail(session: NarratorSessionRecord | null | undefined, messages: readonly NarratorSessionChatMessage[]): SessionDetailData | undefined {
+  if (!session) return undefined;
+  return {
+    sessionId: session.id,
+    narratorType: session.parentSessionId ? "subagent" : "primary",
+    createdAt: session.createdAt,
+    updatedAt: session.lastModified,
+    lastMessageAt: messages.length > 0 ? new Date(messages[messages.length - 1]!.timestamp).toISOString() : undefined,
+    workDir: session.worktree,
+    chapterId: session.chapterId,
+    parentSessionId: session.parentSessionId,
+    inheritMode: session.forkMode ?? "fresh",
+    stats: {
+      messageCount: session.messageCount,
+      totalInput: session.cumulativeUsage?.totalInputTokens,
+      totalOutput: session.cumulativeUsage?.totalOutputTokens,
+      cacheRead: session.cumulativeUsage?.totalCacheReadInputTokens,
+    },
   };
 }
 

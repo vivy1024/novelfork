@@ -12,6 +12,7 @@ import {
   type ConversationSessionConfigPatch,
   type ConversationStatus,
   type ConversationSurfaceMessage,
+  type SessionDetailData,
 } from "./surface";
 
 export type ConversationRouteMessage = ConversationSurfaceMessage;
@@ -56,6 +57,8 @@ export interface ConversationRouteProps {
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
   /** 附件上传回调 */
   onAttach?: (files: FileList) => void;
+  /** 会话详情数据 */
+  sessionDetail?: SessionDetailData;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -100,6 +103,7 @@ export function ConversationRoute({
   onForkSession,
   onUpdateWorkDir,
   onAttach,
+  sessionDetail,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -167,6 +171,7 @@ export function ConversationRoute({
         onArchive={onArchive}
         onForkSession={onForkSession}
         onUpdateWorkDir={onUpdateWorkDir}
+        sessionDetail={sessionDetail}
       />
     </section>
   );
