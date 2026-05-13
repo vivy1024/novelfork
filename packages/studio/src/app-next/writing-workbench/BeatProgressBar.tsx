@@ -27,18 +27,20 @@ interface BeatsResponse {
 }
 
 // ---------------------------------------------------------------------------
-// BeatProgressBar
+// BeatProgressBar — checklist mode (manual tracking)
 // ---------------------------------------------------------------------------
 
 export interface BeatProgressBarProps {
   readonly templateId: string;
-  readonly currentBeatIndex: number;
+  readonly currentBeatIndex?: number;
   readonly beats?: ReadonlyArray<Beat>;
+  readonly completedBeats?: ReadonlyArray<number>;
+  readonly onToggleBeat?: (beatIndex: number, completed: boolean) => void;
 }
 
-export function BeatProgressBar({ templateId, currentBeatIndex, beats }: BeatProgressBarProps) {
+export function BeatProgressBar({ templateId, beats, completedBeats = [], onToggleBeat }: BeatProgressBarProps) {
   const { data } = useApi<BeatsResponse>(!beats ? "/api/presets/beats" : null);
-  const [hoveredBeat, setHoveredBeat] = useState<Beat | null>(null);
+  const [expandedBeat, setExpandedBeat] = useState<number | null>(null);
 
   const template = beats
     ? { beats }
@@ -46,36 +48,27 @@ export function BeatProgressBar({ templateId, currentBeatIndex, beats }: BeatPro
 
   if (!template) return null;
 
+  const completedSet = new Set(completedBeats);
+  const completedCount = completedSet.size;
   const totalBeats = template.beats.length;
 
   return (
     <div className="space-y-1.5" data-testid="beat-progress-bar">
-      {/* Progress nodes */}
+      {/* Summary bar */}
       <div className="flex items-center gap-0.5 relative">
         {template.beats.map((beat, i) => {
-          const isCompleted = i < currentBeatIndex;
-          const isCurrent = i === currentBeatIndex;
+          const isCompleted = completedSet.has(i);
           return (
             <div
               key={beat.index}
-              className="flex-1 relative group"
-              onMouseEnter={() => setHoveredBeat(beat)}
-              onMouseLeave={() => setHoveredBeat(null)}
+              className="flex-1"
+              title={beat.name}
             >
               <div
                 className={`h-2 rounded-sm transition-colors ${
-                  isCompleted
-                    ? "bg-primary"
-                    : isCurrent
-                      ? "bg-primary/60 ring-1 ring-primary"
-                      : "bg-muted"
+                  isCompleted ? "bg-primary" : "bg-muted"
                 }`}
-                title={beat.name}
               />
-              {/* Current marker */}
-              {isCurrent && (
-                <div className="absolute -top-1 left-1/2 -translate-x-1/2 size-1.5 rounded-full bg-primary" />
-              )}
             </div>
           );
         })}
@@ -83,41 +76,67 @@ export function BeatProgressBar({ templateId, currentBeatIndex, beats }: BeatPro
 
       {/* Progress text */}
       <div className="flex items-center justify-between text-[10px] text-muted-foreground">
-        <span>{currentBeatIndex} / {totalBeats} 节拍</span>
-        <span>{Math.round((currentBeatIndex / totalBeats) * 100)}%</span>
+        <span>{completedCount} / {totalBeats} 节拍已完成</span>
+        <span>{totalBeats > 0 ? Math.round((completedCount / totalBeats) * 100) : 0}%</span>
       </div>
 
-      {/* Hover tooltip */}
-      {hoveredBeat && (
-        <div className="rounded border border-border bg-popover p-2 text-xs space-y-0.5 shadow-sm">
-          <div className="font-medium">{hoveredBeat.name}</div>
-          {hoveredBeat.englishName && (
-            <div className="text-[10px] text-muted-foreground">{hoveredBeat.englishName}</div>
-          )}
-          <div className="text-[10px] text-muted-foreground">{hoveredBeat.purpose}</div>
-          <div className="text-[10px] text-muted-foreground">
-            情绪基调: {hoveredBeat.emotionalTone} · 篇幅占比: {Math.round(hoveredBeat.wordRatio * 100)}%
-          </div>
-          {hoveredBeat.networkNovelTip && (
-            <div className="text-[10px] text-blue-600">网文提示: {hoveredBeat.networkNovelTip}</div>
-          )}
-        </div>
+      {/* Beat checklist */}
+      <div className="space-y-0.5 mt-1">
+        {template.beats.map((beat, i) => {
+          const isCompleted = completedSet.has(i);
+          const isExpanded = expandedBeat === i;
+          return (
+            <div key={beat.index} className="rounded border border-border">
+              <div className="flex items-center gap-2 px-2 py-1.5">
+                <input
+                  type="checkbox"
+                  checked={isCompleted}
+                  onChange={() => onToggleBeat?.(i, !isCompleted)}
+                  className="size-3.5 rounded border-border"
+                  aria-label={`标记 ${beat.name} 为${isCompleted ? "未完成" : "已完成"}`}
+                />
+                <button
+                  type="button"
+                  className="flex-1 text-left text-xs truncate hover:text-primary transition-colors"
+                  onClick={() => setExpandedBeat(isExpanded ? null : i)}
+                >
+                  <span className={isCompleted ? "line-through text-muted-foreground" : ""}>{beat.name}</span>
+                </button>
+                <span className="text-[10px] text-muted-foreground shrink-0">{Math.round(beat.wordRatio * 100)}%</span>
+              </div>
+              {isExpanded && (
+                <div className="px-2 pb-2 text-[10px] text-muted-foreground space-y-0.5 border-t border-border pt-1.5">
+                  {beat.englishName && <div>{beat.englishName}</div>}
+                  <div>{beat.purpose}</div>
+                  <div>情绪基调: {beat.emotionalTone}</div>
+                  {beat.networkNovelTip && <div className="text-blue-600">网文提示: {beat.networkNovelTip}</div>}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {!onToggleBeat && (
+        <p className="text-[10px] text-muted-foreground text-center mt-1">手动标记进度功能开发中</p>
       )}
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
-// BeatTemplateList — shows available templates with progress bar preview
+// BeatTemplateList — shows available templates with checklist progress
 // ---------------------------------------------------------------------------
 
 export interface BeatTemplateListProps {
   readonly selectedTemplateId?: string;
   readonly currentBeatIndex?: number;
+  readonly completedBeats?: ReadonlyArray<number>;
   readonly onSelectTemplate?: (templateId: string) => void;
+  readonly onToggleBeat?: (beatIndex: number, completed: boolean) => void;
 }
 
-export function BeatTemplateList({ selectedTemplateId, currentBeatIndex = 0, onSelectTemplate }: BeatTemplateListProps) {
+export function BeatTemplateList({ selectedTemplateId, completedBeats = [], onSelectTemplate, onToggleBeat }: BeatTemplateListProps) {
   const { data, loading } = useApi<BeatsResponse>("/api/presets/beats");
 
   if (loading) {
@@ -158,8 +177,9 @@ export function BeatTemplateList({ selectedTemplateId, currentBeatIndex = 0, onS
               <div className="mt-2">
                 <BeatProgressBar
                   templateId={template.id}
-                  currentBeatIndex={currentBeatIndex}
                   beats={template.beats}
+                  completedBeats={completedBeats}
+                  onToggleBeat={onToggleBeat}
                 />
               </div>
             )}
