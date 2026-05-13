@@ -4,6 +4,17 @@
 
 ---
 
+## Unreleased
+
+### 新功能
+- Agent 运行时健壮性 Phase 1 完成：
+  - 并行工具执行：Read/Glob/Grep/WebSearch/WebFetch 等只读工具 Promise.all 并行
+  - 上下文溢出自动恢复：检测 context_length_exceeded → 紧急截断 → 重试
+  - 缓冲消息队列：Agent 工作中新消息入队，turn 完成后自动消费
+  - 智能重试恢复：429/502/503 瞬态错误指数退避重试（可配置）
+
+---
+
 ## v0.3.0 (2026-05-13)
 
 ### 新功能
