@@ -246,10 +246,25 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
         return;
       }
 
+      // Truncation: if stdout > 200 lines, keep head 50 + tail 50
+      const BASH_MAX_LINES = 200;
+      const BASH_HEAD = 50;
+      const BASH_TAIL = 50;
+      const stdoutLines = stdoutStr.split("\n");
+      let displayStdout = stdoutStr;
+      let fullOutput: string | undefined;
+      if (stdoutLines.length > BASH_MAX_LINES) {
+        const omitted = stdoutLines.length - BASH_HEAD - BASH_TAIL;
+        const head = stdoutLines.slice(0, BASH_HEAD).join("\n");
+        const tail = stdoutLines.slice(-BASH_TAIL).join("\n");
+        displayStdout = `${head}\n\n... (省略 ${omitted} 行) ...\n\n${tail}`;
+        fullOutput = stdoutStr;
+      }
+
       resolveResult({
         ok: true,
-        summary: stdoutStr.trim().slice(0, 200) || "(无输出)",
-        data: { exitCode: 0, stdout: stdoutStr, stderr: stderrStr, command },
+        summary: displayStdout.trim().slice(0, 200) || "(无输出)",
+        data: { exitCode: 0, stdout: displayStdout, stderr: stderrStr, command, ...(fullOutput ? { fullOutput } : {}) },
         newWorkDir,
       });
     });
@@ -294,14 +309,28 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     }
 
     const lines = content.split("\n");
+    const totalLines = lines.length;
     const offset = input.offset ?? 0;
     const limit = input.limit ?? lines.length;
     const sliced = lines.slice(offset, offset + limit).join("\n");
 
+    // Truncation: if no explicit offset/limit and file > 500 lines, truncate
+    const READ_MAX_LINES = 500;
+    const callerSpecifiedRange = input.offset !== undefined || input.limit !== undefined;
+    if (!callerSpecifiedRange && totalLines > READ_MAX_LINES) {
+      const truncatedContent = lines.slice(0, READ_MAX_LINES).join("\n");
+      const truncationNote = `\n\n（文件共 ${totalLines} 行，已显示前 ${READ_MAX_LINES} 行。用 offset/limit 参数读取后续内容。）`;
+      return {
+        ok: true,
+        summary: `已读取 ${input.path}（${totalLines} 行，截断至前 ${READ_MAX_LINES} 行）`,
+        data: { content: truncatedContent + truncationNote, totalLines, path: input.path, truncated: true, fullContent: sliced },
+      };
+    }
+
     return {
       ok: true,
-      summary: `已读取 ${input.path}（${lines.length} 行）`,
-      data: { content: sliced, totalLines: lines.length, path: input.path },
+      summary: `已读取 ${input.path}（${totalLines} 行）`,
+      data: { content: sliced, totalLines, path: input.path },
     };
   } catch (error) {
     return {
