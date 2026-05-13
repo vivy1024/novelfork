@@ -148,7 +148,37 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
         <div className="flex flex-1 min-h-0">
           {/* 左侧资源树 */}
           <section aria-label="资源树" className="w-64 shrink-0 border-r border-border overflow-y-auto p-2">
-            <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={onOpen} />
+            <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={onOpen} onAction={async (nodeId, action) => {
+              if (action === "create") {
+                const title = prompt("新建条目标题：");
+                if (!title?.trim()) return;
+                try {
+                  const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ parentId: nodeId, title: title.trim(), content: `# ${title.trim()}\n\n` }),
+                  });
+                  if (res.ok) window.location.reload();
+                } catch { /* non-fatal */ }
+              } else if (action === "delete") {
+                if (!confirm("确定删除此条目？")) return;
+                try {
+                  await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(nodeId)}`, { method: "DELETE" });
+                  window.location.reload();
+                } catch { /* non-fatal */ }
+              } else if (action === "rename") {
+                const newTitle = prompt("新标题：");
+                if (!newTitle?.trim()) return;
+                try {
+                  await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(nodeId)}`, {
+                    method: "PATCH",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ title: newTitle.trim() }),
+                  });
+                  window.location.reload();
+                } catch { /* non-fatal */ }
+              }
+            }} />
           </section>
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
