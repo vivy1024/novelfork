@@ -8,8 +8,7 @@
 
 | Spec | 任务数 | 状态 | 说明 |
 |------|-----:|------|------|
-| `agent-tool-parity` | — | 📋 仅 requirements | Agent 工具全量对齐（5 Phase） |
-| `provider-block-history` | 20 | 🔧 进行中（18/20） | 剩余 2.4-2.5 存储格式升级（非阻塞） |
+| `agent-runtime-robustness` | 6 Phase | 📋 新建 | NarraFork 能力对齐：并行工具/溢出恢复/消息队列/子代理/安全/性能 |
 
 ### 已整合进 `v0-1-0-experience-and-pipeline-fix` 并删除的旧 Spec
 
