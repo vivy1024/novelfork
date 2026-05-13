@@ -62,7 +62,26 @@
 - "新建终端"调用 `POST /api/terminals`
 - 终端列表显示真实 session
 
-### 3.2 通知 Webhook 消费端
+### 3.3 外观设置字体不生效
+
+**现状**: 字体大小/字体族保存到后端但从未应用到 DOM（无 `document.documentElement.style.fontSize = ...`）
+**修复**: 
+- 保存后立即应用到 `<html>` 元素的 style
+- 页面加载时从配置读取并应用
+- 字体族同理
+
+### 3.4 设置页保存设计不一致
+
+**现状**: AI 代理/模型/写作面板有"保存"按钮 + dirty 检测；外观/通知面板是 auto-save（onChange 立即保存），无确认/取消
+**修复**: 统一为两种模式之一：
+- 方案 A：全部改为手动保存（有 dirty 状态 + 保存/取消按钮）
+- 方案 B：全部改为 auto-save + toast 提示"已保存"
+- 推荐方案 B（NarraFork 就是 auto-save 模式）
+
+### 3.5 服务器与系统面板硬编码
+
+**现状**: ServerSection 显示的信息可能是硬编码的静态文本
+**修复**: 从后端 API 动态获取：运行时版本、启动时间、端口、projectRoot、数据库路径等
 
 **现状**: 钉钉/飞书 Webhook URL 能保存但无代码在 Agent 完成/出错时发送通知
 **修复**: 
