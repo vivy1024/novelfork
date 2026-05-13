@@ -4,6 +4,41 @@
 
 ---
 
+## v0.5.1 (2026-05-14)
+
+### 新功能
+- **智能预设系统**：建书时自动启用题材对应套装（25 种映射）；candidate.create_chapter 注入已启用预设的 promptInjection
+- **写作设置生效**：文风/句长/对话比例/去AI味/视角设置注入到章节生成 prompt
+- **Hooks 系统**：PreToolUse/PostToolUse/TurnComplete shell 钩子，支持阻塞和超时
+- **MCP 工具扩展**：连接外部 MCP Server，动态注册工具，路由调用
+- **多用户认证**：三种模式（none/builtin/external），JWT 双 token，角色分层，资源隔离
+- **章节图**：从资源树提取章节数据，react-flow 可视化
+- **预设启用/禁用**：Switch 开关 + 预览对话框
+- **节拍表交互**：从假进度条改为可勾选 checklist
+- **叙事线结构化视图**：从 JSON 原文改为节点/冲突/伏笔卡片
+- **Slash 命令补全**：/tools /mcp /agents 可用
+- **终端设置接通后端**：字体/主题持久化
+- **通知 Webhook**：钉钉/飞书 turn 完成后自动发送
+- **服务器面板动态数据**：Bun/Node 版本、端口、运行时间
+- **字体设置生效**：fontSize/fontFamily 应用到 DOM
+- **保存 toast 反馈**：外观/通知面板保存后显示"已保存"
+
+### 修复
+- 删书时级联删除关联 Agent session
+- 重建书时文件残留不再 409（检查 DB 记录而非仅文件）
+- 预设执行不再 400（改为预览对话框）
+- 状态栏工具调用时不再显示"空闲"（tool_call 带 status:"running"）
+- sessionId 作用域错误（tool-stream confirmation path）
+- ownerId 过滤实际执行
+- Hook 命令注入防护（环境变量传递）
+- JWT secret 持久化（~/.novelfork/.auth-secret）
+- Rate limiting（login 5次/15min，register 3次/hour）
+- Refresh token 可撤销（token_version）
+- MCP 自动重连（3 次重试）
+- SSE stub 不再假装 connected
+
+---
+
 ## v0.5.0 (2026-05-14)
 
 ### 新功能
