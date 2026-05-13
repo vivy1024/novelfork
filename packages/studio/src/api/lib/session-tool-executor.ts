@@ -243,11 +243,51 @@ export async function executeSessionTool(
       const { loadUserConfig } = await import("./user-config-service.js");
       const config = await loadUserConfig();
       if (config.runtimeControls?.dangerReflection) {
+        // Attempt LLM safety reflection
+        let reflectionSummary = `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`;
+
+        const summaryModel = config.modelDefaults?.summaryModel;
+        if (summaryModel) {
+          const colonIndex = summaryModel.indexOf(":");
+          const providerId = colonIndex > 0 ? summaryModel.slice(0, colonIndex) : "";
+          const modelId = colonIndex > 0 ? summaryModel.slice(colonIndex + 1) : summaryModel;
+          if (providerId && modelId) {
+            try {
+              const { generateSessionReply } = await import("./llm-runtime-service.js");
+              const reflectionResult = await generateSessionReply({
+                sessionConfig: {
+                  providerId,
+                  modelId,
+                  permissionMode: "read",
+                  reasoningEffort: "low",
+                },
+                messages: [
+                  {
+                    type: "message" as const,
+                    id: "sys-reflection",
+                    role: "system" as const,
+                    content: "你是安全评估助手。用 1-3 句中文简要评估以下工具操作的安全性：它会做什么、可能出什么问题、是否可逆。",
+                  },
+                  {
+                    type: "message" as const,
+                    id: "usr-reflection",
+                    role: "user" as const,
+                    content: `工具: ${definition.name}\n描述: ${definition.description}\n输入参数: ${JSON.stringify(input.input).slice(0, 500)}`,
+                  },
+                ],
+              });
+              if (reflectionResult.success && reflectionResult.type === "message" && reflectionResult.content?.trim()) {
+                reflectionSummary = `⚠️ 安全评估：${reflectionResult.content.trim()}`;
+              }
+            } catch { /* LLM reflection failure — use default summary */ }
+          }
+        }
+
         const confirmation = createConfirmationRequest(input, definition, options);
         const result: SessionToolExecutionResult = {
           ok: true,
           renderer: definition.renderer,
-          summary: `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`,
+          summary: reflectionSummary,
           data: { status: "pending-confirmation", reason: "danger-reflection" },
           confirmation,
         };

@@ -178,3 +178,179 @@ export async function runSubagent(input: RunSubagentInput): Promise<SubagentResu
   } while (!result.done);
   return result.value;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3.1 — Subagent Detach/Attach Registry
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SubagentState = "running" | "completed" | "failed" | "detached" | "interrupted";
+
+export interface SubagentEntry {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly config: SubagentConfig;
+  readonly state: SubagentState;
+  readonly result?: SubagentResult;
+  readonly createdAt: number;
+  readonly completedAt?: number;
+  readonly detachedAt?: number;
+}
+
+/**
+ * 子代理注册表 — 追踪所有子代理的生命周期状态。
+ *
+ * 对标：
+ * - Claude Code: AgentTool 内部的 sidechain 管理
+ * - Codex CLI: subagent registry with detach/attach semantics
+ */
+export class SubagentRegistry {
+  private entries = new Map<string, SubagentEntry>();
+
+  /** 注册一个新的子代理（初始状态为 running） */
+  register(sessionId: string, config: SubagentConfig): void {
+    const entry: SubagentEntry = {
+      id: config.id,
+      sessionId,
+      config,
+      state: "running",
+      createdAt: Date.now(),
+    };
+    this.entries.set(config.id, entry);
+  }
+
+  /** 更新子代理状态，可选附带结果 */
+  updateState(id: string, state: SubagentState, result?: SubagentResult): void {
+    const entry = this.entries.get(id);
+    if (!entry) return;
+
+    const updated: SubagentEntry = {
+      ...entry,
+      state,
+      result: result ?? entry.result,
+      completedAt: state === "completed" || state === "failed" ? Date.now() : entry.completedAt,
+    };
+    this.entries.set(id, updated);
+  }
+
+  /** 将运行中的子代理分离到后台 */
+  detach(id: string): boolean {
+    const entry = this.entries.get(id);
+    if (!entry || entry.state !== "running") return false;
+
+    const updated: SubagentEntry = {
+      ...entry,
+      state: "detached",
+      detachedAt: Date.now(),
+    };
+    this.entries.set(id, updated);
+    return true;
+  }
+
+  /** 将后台子代理重新附加到前台 */
+  attach(id: string): SubagentEntry | null {
+    const entry = this.entries.get(id);
+    if (!entry || entry.state !== "detached") return null;
+
+    const updated: SubagentEntry = {
+      ...entry,
+      state: "running",
+    };
+    this.entries.set(id, updated);
+    return updated;
+  }
+
+  /** 获取单个子代理条目 */
+  get(id: string): SubagentEntry | undefined {
+    return this.entries.get(id);
+  }
+
+  /** 列出子代理，可按 sessionId 过滤 */
+  list(sessionId?: string): SubagentEntry[] {
+    const all = [...this.entries.values()];
+    if (!sessionId) return all;
+    return all.filter((e) => e.sessionId === sessionId);
+  }
+
+  /** 清理过期条目，返回清理数量 */
+  cleanup(olderThanMs: number = 30 * 60 * 1000): number {
+    const cutoff = Date.now() - olderThanMs;
+    let removed = 0;
+    for (const [id, entry] of this.entries) {
+      const isTerminal = entry.state === "completed" || entry.state === "failed";
+      if (isTerminal && entry.completedAt && entry.completedAt < cutoff) {
+        this.entries.delete(id);
+        removed++;
+      }
+    }
+    return removed;
+  }
+}
+
+/** 全局单例注册表 */
+export const subagentRegistry = new SubagentRegistry();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase 3.3 — MCP Tool Inheritance
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type SubagentToolPermissionLevel = "none" | "read-only" | "full";
+
+export interface SubagentToolInheritanceConfig {
+  /** 从父会话继承哪些工具 */
+  readonly inheritLevel: SubagentToolPermissionLevel;
+  /** 显式包含的工具名（覆盖 level 限制） */
+  readonly includeTools?: readonly string[];
+  /** 显式排除的工具名 */
+  readonly excludeTools?: readonly string[];
+}
+
+/** read-only 级别下允许的安全工具集 */
+const READ_SAFE_TOOLS = new Set([
+  "Read",
+  "Glob",
+  "Grep",
+  "WebSearch",
+  "WebFetch",
+  "GetGoals",
+  "LearningGuide",
+  "Recall",
+]);
+
+/**
+ * 根据继承配置解析子代理可用的工具列表。
+ *
+ * 解析逻辑：
+ * 1. none → 仅返回 includeTools（如有）
+ * 2. read-only → 父工具中仅保留 READ_SAFE_TOOLS，再合并 includeTools
+ * 3. full → 继承全部父工具，再合并 includeTools
+ * 4. 最后移除 excludeTools
+ */
+export function resolveSubagentTools(
+  parentTools: readonly string[],
+  inheritance: SubagentToolInheritanceConfig,
+): string[] {
+  if (inheritance.inheritLevel === "none") {
+    return inheritance.includeTools ? [...inheritance.includeTools] : [];
+  }
+
+  let tools = [...parentTools];
+
+  if (inheritance.inheritLevel === "read-only") {
+    tools = tools.filter((t) => READ_SAFE_TOOLS.has(t));
+  }
+
+  // Apply explicit includes
+  if (inheritance.includeTools) {
+    for (const tool of inheritance.includeTools) {
+      if (!tools.includes(tool)) tools.push(tool);
+    }
+  }
+
+  // Apply explicit excludes
+  if (inheritance.excludeTools) {
+    const excludeSet = new Set(inheritance.excludeTools);
+    tools = tools.filter((t) => !excludeSet.has(t));
+  }
+
+  return tools;
+}
