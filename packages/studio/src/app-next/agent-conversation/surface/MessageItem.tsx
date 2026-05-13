@@ -299,6 +299,13 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
           ))}
           {renderedContent}
           {renderedToolCalls}
+          {/* Token 用量（metadata.usage 存在时显示） */}
+          {message.metadata?.usage && (
+            <div className="mt-1 text-[10px] text-muted-foreground/60">
+              {(message.metadata.usage as { input_tokens?: number }).input_tokens != null && `↑${((message.metadata.usage as { input_tokens: number }).input_tokens / 1000).toFixed(1)}k`}
+              {(message.metadata.usage as { output_tokens?: number }).output_tokens != null && ` ↓${((message.metadata.usage as { output_tokens: number }).output_tokens / 1000).toFixed(1)}k`}
+            </div>
+          )}
         </div>
       </ContextMenuTrigger>
       <MessageContextMenuContent onAction={handleAction} />

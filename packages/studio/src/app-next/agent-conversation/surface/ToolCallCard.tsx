@@ -14,6 +14,8 @@ export interface ConversationToolCall {
   error?: string;
   exitCode?: number;
   durationMs?: number;
+  /** 工具超时上限（毫秒） */
+  timeoutMs?: number;
   /** 子代理调用数 */
   childCallCount?: number;
 }
@@ -272,7 +274,9 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
           {isSuccess && <Check className="size-3 text-green-600" />}
           {isError && <X className="size-3 text-red-500" />}
           {typeof toolCall.durationMs === "number" && (
-            <span className="text-[10px] text-muted-foreground">{formatDuration(toolCall.durationMs)}</span>
+            <span className="text-[10px] text-muted-foreground">
+              {formatDuration(toolCall.durationMs)}{toolCall.timeoutMs ? ` / ${formatDuration(toolCall.timeoutMs)}` : ""}
+            </span>
           )}
         </span>
 
