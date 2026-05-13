@@ -5,8 +5,8 @@ import { buildAgentContext } from "./agent-context";
 const baseBook = { title: "灵潮纪元", genre: "玄幻", chapterCount: 5, targetChapters: 100 } as never;
 
 describe("agent context with narrative line and jingwei", () => {
-  it("injects narrative line nodes and warnings into context", () => {
-    const context = buildAgentContext({
+  it("injects narrative line nodes and warnings into context", async () => {
+    const context = await buildAgentContext({
       bookId: "book-1",
       book: baseBook,
       narrativeLine: {
@@ -27,8 +27,8 @@ describe("agent context with narrative line and jingwei", () => {
     expect(context).toContain("时间线矛盾");
   });
 
-  it("injects jingwei core settings into context", () => {
-    const context = buildAgentContext({
+  it("injects jingwei core settings into context", async () => {
+    const context = await buildAgentContext({
       bookId: "book-1",
       book: baseBook,
       jingwei: {
@@ -58,8 +58,8 @@ describe("agent context with narrative line and jingwei", () => {
     expect(context).toContain("姓名：林远");
   });
 
-  it("includes both narrative line and jingwei when both provided", () => {
-    const context = buildAgentContext({
+  it("includes both narrative line and jingwei when both provided", async () => {
+    const context = await buildAgentContext({
       bookId: "book-1",
       book: baseBook,
       narrativeLine: { nodes: [{ id: "n1", label: "开篇", type: "start" }] },
@@ -70,8 +70,8 @@ describe("agent context with narrative line and jingwei", () => {
     expect(context).toContain("经纬核心设定");
   });
 
-  it("returns base context when narrative/jingwei not provided", () => {
-    const context = buildAgentContext({ bookId: "book-1", book: baseBook });
+  it("returns base context when narrative/jingwei not provided", async () => {
+    const context = await buildAgentContext({ bookId: "book-1", book: baseBook });
 
     expect(context).toContain("灵潮纪元");
     expect(context).not.toContain("叙事线状态");
