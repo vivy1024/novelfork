@@ -77,8 +77,14 @@ export function resolvePermissionRules(rules: readonly PermissionRule[], toolNam
   return "ask";
 }
 
+/**
+ * 命令模式匹配规则：
+ * - "*" 匹配所有命令
+ * - "rm*" 匹配所有以 "rm" 开头的命令（包括 rm、rmdir、rm -rf 等）
+ * - "git push" 匹配 "git push" 及其所有子命令（如 "git push --force"）
+ * - 匹配基于命令文本前缀，不做 token 分词
+ */
 function commandMatchesPattern(command: string, pattern: string): boolean {
-  // 简单前缀匹配 + 通配符支持
   if (pattern === "*") return true;
   if (pattern.endsWith("*")) {
     return command.startsWith(pattern.slice(0, -1));
