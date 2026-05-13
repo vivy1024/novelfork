@@ -344,6 +344,8 @@ function ToolCallExpanded({ toolCall, category }: { toolCall: ConversationToolCa
 
 function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const command = extractBashCommand(toolCall.input);
+  const streamingOutput = (toolCall as Record<string, unknown>)._streamingOutput as string | undefined;
+  const displayOutput = toolCall.output || streamingOutput;
   return (
     <>
       {command && (
@@ -351,11 +353,13 @@ function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           <span className="text-gray-500 select-none">$ </span>{command}
         </pre>
       )}
-      {toolCall.output && (
+      {displayOutput && (
         <div className="space-y-1">
-          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">输出</span>
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            {toolCall.output ? "输出" : "实时输出"}
+          </span>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-[11px] font-mono">
-            {toolCall.output}
+            {displayOutput}
           </pre>
         </div>
       )}

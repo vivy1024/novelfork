@@ -26,6 +26,7 @@ export type SessionServerEnvelope =
   | { type: "session:state"; session: NarratorSessionRecord; cursor?: NarratorSessionChatCursor; recovery?: AgentConversationRuntimeState["recovery"] }
   | { type: "session:message"; sessionId: string; message: NarratorSessionChatMessage; cursor?: NarratorSessionChatCursor }
   | { type: "session:stream"; sessionId: string; content: string; timestamp?: number }
+  | { type: "session:tool-stream"; sessionId: string; toolCallId: string; content: string }
   | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown }
   | { type: "client:message-sent" };
 
@@ -105,6 +106,22 @@ export function reduceSessionEnvelope(
         streamingMessageId: streamed.streamingMessageId,
         waitingForResponse: false,
       };
+    }
+    case "session:tool-stream": {
+      // Append stdout chunk to the matching tool call message's output
+      const updatedMessages = state.messages.map((msg) => {
+        if (!msg.toolCalls?.length) return msg;
+        const matchingTool = msg.toolCalls.find((tc) => tc.id === envelope.toolCallId);
+        if (!matchingTool) return msg;
+        // Append to the tool call's streaming output
+        const updatedToolCalls = msg.toolCalls.map((tc) =>
+          tc.id === envelope.toolCallId
+            ? { ...tc, _streamingOutput: ((tc as Record<string, unknown>)._streamingOutput as string ?? "") + envelope.content }
+            : tc,
+        );
+        return { ...msg, toolCalls: updatedToolCalls };
+      });
+      return { ...state, messages: updatedMessages };
     }
     case "session:error":
       return {
