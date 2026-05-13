@@ -125,6 +125,8 @@ export interface BashToolInput {
   readonly command: string;
   readonly workDir: string;
   readonly timeoutMs?: number;
+  /** 实时流式输出回调：每次 stdout/stderr 产生数据时调用 */
+  readonly onStdoutChunk?: (chunk: string) => void;
 }
 
 export interface BashToolResult extends SessionToolExecutionResult {
@@ -204,8 +206,21 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
       });
     }, timeoutMs);
 
-    child.stdout?.on("data", (chunk) => stdout.push(chunk));
-    child.stderr?.on("data", (chunk) => stderr.push(chunk));
+    child.stdout?.on("data", (chunk) => {
+      stdout.push(chunk);
+      if (input.onStdoutChunk) {
+        const text = chunk.toString("utf-8");
+        if (!text.includes(CWD_MARKER)) {
+          input.onStdoutChunk(text);
+        }
+      }
+    });
+    child.stderr?.on("data", (chunk) => {
+      stderr.push(chunk);
+      if (input.onStdoutChunk) {
+        input.onStdoutChunk(chunk.toString("utf-8"));
+      }
+    });
 
     child.on("error", (error) => {
       clearTimeout(timeout);

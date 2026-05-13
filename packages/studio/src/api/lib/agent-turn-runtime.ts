@@ -305,6 +305,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 : await input.executeTool({
                   sessionId: input.sessionId,
                   toolName: toolUse.name,
+                  toolCallId: toolUse.id,
                   input: toolUse.input,
                   permissionMode: input.permissionMode,
                   sessionConfig: input.sessionConfig,
@@ -431,6 +432,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
               : await input.executeTool({
                 sessionId: input.sessionId,
                 toolName: toolUse.name,
+                toolCallId: toolUse.id,
                 input: toolUse.input,
                 permissionMode: input.permissionMode,
                 sessionConfig: input.sessionConfig,
@@ -542,6 +544,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             : await input.executeTool({
               sessionId: input.sessionId,
               toolName: toolUse.name,
+              toolCallId: toolUse.id,
               input: toolUse.input,
               permissionMode: input.permissionMode,
               sessionConfig: input.sessionConfig,

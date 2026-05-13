@@ -456,11 +456,14 @@ export type AgentNativeToolMetadata = {
 export type SessionToolExecutionInput = {
   readonly sessionId: string;
   readonly toolName: string;
+  readonly toolCallId?: string;
   readonly input: Record<string, unknown>;
   readonly permissionMode: SessionPermissionMode;
   readonly sessionConfig?: SessionConfig;
   readonly canvasContext?: CanvasContext;
   readonly confirmationDecision?: ToolConfirmationDecision;
+  /** 实时流式输出回调（Bash 工具 stdout/stderr 流） */
+  readonly onToolOutputStream?: (chunk: string) => void;
 };
 
 export type SessionToolExecutionResult = AgentNativeToolMetadata & {

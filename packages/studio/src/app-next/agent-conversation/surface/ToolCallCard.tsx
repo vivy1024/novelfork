@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -198,6 +198,7 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
 
 export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onOpenArtifact?: unknown }) {
   const [expanded, setExpanded] = useState(false);
+  const [longRunning, setLongRunning] = useState(false);
   const category = getToolCategory(toolCall.toolName);
   const colors = CATEGORY_COLORS[category];
 
@@ -205,6 +206,16 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
   const isPending = toolCall.status === "pending";
   const isError = toolCall.status === "error";
   const isSuccess = toolCall.status === "success";
+
+  // Long-running notification: show after 10s with no result
+  useEffect(() => {
+    if (!isRunning && !isPending) {
+      setLongRunning(false);
+      return;
+    }
+    const timer = setTimeout(() => setLongRunning(true), 10000);
+    return () => clearTimeout(timer);
+  }, [isRunning, isPending]);
 
   const description = getDescription(toolCall, category);
 
@@ -246,6 +257,14 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
         {/* 子代理调用数 */}
         {toolCall.childCallCount != null && toolCall.childCallCount > 0 && (
           <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{toolCall.childCallCount} calls</Badge>
+        )}
+
+        {/* 长时间运行提示 */}
+        {longRunning && (isRunning || isPending) && (
+          <span className="flex items-center gap-1 text-xs text-amber-600 dark:text-amber-400 shrink-0">
+            <Loader2 className="size-3 animate-spin" />
+            仍在执行中...
+          </span>
         )}
 
         {/* 状态图标 + 耗时 */}
