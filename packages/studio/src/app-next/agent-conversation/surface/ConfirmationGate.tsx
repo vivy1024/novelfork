@@ -1,4 +1,4 @@
-import { ShieldAlert, Check, X } from "lucide-react";
+import { ShieldAlert, Check, X, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export interface ConversationConfirmationResource {
@@ -63,14 +63,44 @@ const RISK_COLORS: Record<string, string> = {
   destructive: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200",
 };
 
+/**
+ * Extract a pattern for "always allow this type" from the confirmation.
+ * - Bash tools: first token + `*` (e.g. `git *`)
+ * - File tools: directory + `/*`
+ * - Otherwise: toolName + `:*`
+ */
+function extractAllowPattern(confirmation: ConversationConfirmation): string {
+  const toolName = confirmation.toolName ?? "";
+  const target = confirmation.target ?? "";
+
+  // Bash-like: extract first command token
+  if (/bash|shell|terminal|execute/i.test(toolName) && target) {
+    const firstToken = target.trim().split(/\s+/)[0] ?? target;
+    return `Bash:${firstToken} *`;
+  }
+
+  // File tools: use directory
+  if (/read|write|edit|glob|grep/i.test(toolName) && target) {
+    const lastSlash = Math.max(target.lastIndexOf("/"), target.lastIndexOf("\\"));
+    const dir = lastSlash > 0 ? target.slice(0, lastSlash) : target;
+    return `${toolName}:${dir}/*`;
+  }
+
+  // Default: tool name wildcard
+  return `${toolName || "unknown"}:*`;
+}
+
 export function ConfirmationGate({
   confirmation,
   onApprove,
   onReject,
+  onAlwaysAllow,
 }: {
   confirmation: ConversationConfirmation;
   onApprove: (id: string) => void;
   onReject: (id: string) => void;
+  /** Optional: called with the allow pattern when user clicks "始终允许此类" */
+  onAlwaysAllow?: (id: string, pattern: string) => void;
 }) {
   const riskClass = RISK_COLORS[confirmation.risk ?? ""] ?? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200";
 
@@ -128,6 +158,22 @@ export function ConfirmationGate({
               <Check className="size-3" />
               批准
             </Button>
+            {onAlwaysAllow && (
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={confirmation.busy}
+                onClick={() => {
+                  const pattern = extractAllowPattern(confirmation);
+                  onAlwaysAllow(confirmation.id, pattern);
+                }}
+                className="inline-flex items-center gap-1 border-green-300 text-green-700 hover:bg-green-50 dark:border-green-700 dark:text-green-400 dark:hover:bg-green-950/30"
+                title={`始终允许: ${extractAllowPattern(confirmation)}`}
+              >
+                <ShieldCheck className="size-3" />
+                始终允许此类
+              </Button>
+            )}
             <Button
               variant="outline"
               size="sm"
