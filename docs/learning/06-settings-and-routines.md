@@ -48,6 +48,39 @@ routes:
 - 会话创建时套路注入 sessionConfig：commands / tools / permissionMode / skills / subAgents / systemPrompt
 - 模型聚合配置在供应商设置中，路由策略影响 LLMClient 的请求分发
 
+## Hooks 系统
+
+套路支持三种 shell 钩子，在 Agent 操作生命周期中自动触发：
+
+| 钩子 | 触发时机 | 典型用途 |
+|------|---------|---------|
+| PreToolUse | 工具调用执行前 | 参数校验、日志记录、拦截危险操作 |
+| PostToolUse | 工具调用执行后 | 结果后处理、通知推送、审计日志 |
+| TurnComplete | 一轮对话结束后 | 自动提交、同步状态、触发下游流程 |
+
+钩子脚本在套路的 Hooks tab 中配置，支持任意 shell 命令。脚本退出码非 0 时阻止后续操作（PreToolUse）或记录警告（PostToolUse/TurnComplete）。
+
+## MCP 工具扩展
+
+通过连接外部 MCP Server 为 Agent 注入额外工具能力：
+
+- 在套路的 MCP tab 中添加 MCP Server 地址（本地 stdio 或远程 HTTP）
+- 连接成功后，Server 暴露的工具自动出现在 Agent 工具列表中
+- 支持按套路粒度启用/禁用特定 MCP 工具
+- MCP 工具与内置工具共享权限模式和确认门机制
+
+## 多用户认证
+
+支持三种认证模式，适配不同部署场景：
+
+| 模式 | 说明 |
+|------|------|
+| none | 无认证，单用户本地使用 |
+| builtin | 内置用户名密码认证，适合小团队 |
+| external | 对接外部 OAuth/SSO，适合企业部署 |
+
+认证模式在设置 → 安全 tab 中切换。切换后需重启服务生效。
+
 ## 可跳转功能入口
 
 | 功能 | 路径 |

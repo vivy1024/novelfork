@@ -99,6 +99,10 @@ NovelFork 的写作不是单次 API 调用，而是多 Agent 协作的管线：
 - 确认门触发条件：写入正式章节、修改经纬、删除资源、执行修订
 - 安全原则：最小权限（默认只读）、可回退（写入前自动 Checkpoint）、透明（工具调用对话可见）、用户主权（随时中断）
 - WorkflowProgressCard 组件展示步骤状态：pending / running / success / failed / approval-pending
+- 工具结果截断上限：Grep 50 行 / Glob 200 条 / Read 500 行 / Bash 200 行，超出自动截断并提示
+- 错误恢复策略：同一方案失败 2 次自动换方案，连续 3 次失败停下向用户说明原因
+- 智能预设注入：建书时自动启用题材对应预设套装，生成时将预设的 promptInjection 注入系统提示
+- 项目启动探索：新会话自动加载项目根目录的 package.json + AGENTS.md 建立上下文基线
 
 ## 可跳转功能入口
 
