@@ -4,6 +4,7 @@ import { join } from "node:path";
 
 import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
 import { createLlmRuntimeService, type LlmRuntimeService } from "./llm-runtime-service.js";
+import { getPreset, buildPresetInjections, type Preset } from "@vivy1024/novelfork-core";
 
 export type CandidateGenerationInput = {
   readonly bookId: string;
@@ -70,7 +71,7 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
       const promptPreview = buildCandidatePrompt({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan });
 
       const sessionConfig = isSessionConfig(input.sessionConfig) ? input.sessionConfig : undefined;
-      const generator = options.generateContent ?? createRuntimeGenerator(options.runtimeService ?? createLlmRuntimeService());
+      const generator = options.generateContent ?? createRuntimeGenerator(options.runtimeService ?? createLlmRuntimeService(), options.root);
       const generated = normalizeGeneratedContent(await generator({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan, promptPreview, sessionConfig }));
       if (!generated.ok) {
         return {
@@ -208,16 +209,32 @@ async function getWritingStyleConstraints(): Promise<string> {
   }
 }
 
-function createRuntimeGenerator(runtimeService: LlmRuntimeService): CandidateContentGenerator {
-  return async ({ promptPreview, sessionConfig }) => {
+/** 从书籍配置中读取已启用预设，返回格式化的 prompt 注入文本 */
+async function getEnabledPresetInjections(bookId: string, root: string): Promise<string> {
+  try {
+    const bookJsonPath = join(root, "books", bookId, "book.json");
+    const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[] };
+    const ids = raw.enabledPresetIds;
+    if (!ids || ids.length === 0) return "";
+    const presets: Preset[] = ids.map((id) => getPreset(id)).filter((p): p is Preset => Boolean(p));
+    if (presets.length === 0) return "";
+    return "\n\n" + buildPresetInjections(presets);
+  } catch {
+    return "";
+  }
+}
+
+function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string): CandidateContentGenerator {
+  return async ({ bookId, promptPreview, sessionConfig }) => {
     if (!sessionConfig?.providerId?.trim() || !sessionConfig.modelId?.trim()) {
       return { ok: false, reason: "当前会话未配置可用模型。" };
     }
     const writingConstraints = await getWritingStyleConstraints();
+    const presetInjections = root ? await getEnabledPresetInjections(bookId, root) : "";
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
-        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}`, timestamp: 0 },
+        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}`, timestamp: 0 },
         { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
       ],
     });

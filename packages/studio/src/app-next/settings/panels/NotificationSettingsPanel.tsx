@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Play } from "lucide-react";
 import { fetchJson, putApi } from "@/hooks/use-api";
+import { notify } from "@/lib/notify";
 
 interface NotificationConfig {
   browserNotifications: boolean;
@@ -97,6 +98,7 @@ export function NotificationSettingsPanel() {
     setSaving(true);
     try {
       await putApi("/settings/user", { preferences: { notifications: updated } });
+      notify.success("已保存");
     } catch { /* non-critical */ }
     finally { setSaving(false); }
   }, [config]);

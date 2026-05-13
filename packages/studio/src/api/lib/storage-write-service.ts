@@ -135,7 +135,7 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
   const { state } = options;
 
   return {
-    async updateBook(bookId: string, updates: { readonly chapterWordCount?: number; readonly targetChapters?: number; readonly status?: string; readonly language?: string }) {
+    async updateBook(bookId: string, updates: { readonly chapterWordCount?: number; readonly targetChapters?: number; readonly status?: string; readonly language?: string; readonly enabledPresetIds?: string[] }) {
       const book = await state.loadBookConfig(bookId);
       const updated: BookConfig = {
         ...book,
@@ -143,6 +143,7 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
         ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
         ...(updates.status !== undefined ? { status: updates.status as BookConfig["status"] } : {}),
         ...(updates.language !== undefined ? { language: updates.language as "zh" | "en" } : {}),
+        ...(updates.enabledPresetIds !== undefined ? { enabledPresetIds: updates.enabledPresetIds } : {}),
         updatedAt: currentIso(options),
       };
       await state.saveBookConfig(bookId, updated);

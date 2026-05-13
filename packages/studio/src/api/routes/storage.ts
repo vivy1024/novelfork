@@ -729,6 +729,40 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       stateLines.push("*（暂无）*\n");
       await writeFile(join(storyDir, "current_state.md"), stateLines.join("\n"), "utf-8");
 
+      // 根据题材自动启用对应预设
+      const GENRE_TO_PRESET: Record<string, string[]> = {
+        "玄幻": ["xuanhuan-bloodline"],
+        "仙侠": ["classical-travel-xianxia"],
+        "都市": ["institutional-cultivation-satire"],
+        "科幻": ["near-future-hard-scifi"],
+        "末日": ["apocalypse-survival"],
+        "穿越": ["transmigration-knowledge"],
+        "重生": ["rebirth-revenge"],
+        "系统流": ["system-flow-growth"],
+        "无限流": ["infinite-flow-survival"],
+        "悬疑": ["industrial-occult-mystery"],
+        "武侠": ["wuxia-jianghu"],
+        "官场": ["politics-career"],
+        "游戏": ["game-esports"],
+        "赘婿": ["son-in-law-reveal"],
+        "克苏鲁": ["cthulhu-investigator"],
+        "赛博朋克": ["cyberpunk-street"],
+        "修真": ["cultivation-hardcore"],
+        "灵异": ["supernatural-detective"],
+        "种田": ["farming-development"],
+        "军事": ["military-tactics"],
+        "诡秘": ["occult-sequence"],
+        "轻小说": ["light-novel-campus"],
+        "体育": ["sports-competition"],
+        "同人": ["fanfiction-crossover"],
+        "历史": ["historical-governance"],
+      };
+      const setupGenre = answers.genre?.value ?? "";
+      const presetIds = GENRE_TO_PRESET[setupGenre] ?? [];
+      if (presetIds.length > 0) {
+        await storageWriteService.updateBook(id, { enabledPresetIds: presetIds });
+      }
+
       broadcast("book:updated", { bookId: id });
 
       // 异步调用 LLM 丰富经纬内容（不阻塞响应）
