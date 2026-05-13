@@ -254,30 +254,34 @@ export async function executeSessionTool(
           if (providerId && modelId) {
             try {
               const { generateSessionReply } = await import("./llm-runtime-service.js");
-              const reflectionResult = await generateSessionReply({
-                sessionConfig: {
-                  providerId,
-                  modelId,
-                  permissionMode: "read",
-                  reasoningEffort: "low",
-                },
-                messages: [
-                  {
-                    type: "message" as const,
-                    id: "sys-reflection",
-                    role: "system" as const,
-                    content: "你是安全评估助手。用 1-3 句中文简要评估以下工具操作的安全性：它会做什么、可能出什么问题、是否可逆。",
+              const reflectionResult = await Promise.race([
+                generateSessionReply({
+                  sessionConfig: {
+                    providerId,
+                    modelId,
+                    permissionMode: "read",
+                    reasoningEffort: "low",
                   },
-                  {
-                    type: "message" as const,
-                    id: "usr-reflection",
-                    role: "user" as const,
-                    content: `工具: ${definition.name}\n描述: ${definition.description}\n输入参数: ${JSON.stringify(input.input).slice(0, 500)}`,
-                  },
-                ],
-              });
-              if (reflectionResult.success && reflectionResult.type === "message" && reflectionResult.content?.trim()) {
-                reflectionSummary = `⚠️ 安全评估：${reflectionResult.content.trim()}`;
+                  messages: [
+                    {
+                      type: "message" as const,
+                      id: "sys-reflection",
+                      role: "system" as const,
+                      content: "你是安全评估助手。用 1-3 句中文简要评估以下工具操作的安全性：它会做什么、可能出什么问题、是否可逆。",
+                    },
+                    {
+                      type: "message" as const,
+                      id: "usr-reflection",
+                      role: "user" as const,
+                      content: `工具: ${definition.name}\n描述: ${definition.description}\n输入参数: ${JSON.stringify(input.input).slice(0, 500)}`,
+                    },
+                  ],
+                  tools: [],
+                }),
+                new Promise<{ success: false }>((resolve) => setTimeout(() => resolve({ success: false }), 8000)),
+              ]);
+              if (reflectionResult.success && "type" in reflectionResult && reflectionResult.type === "message" && "content" in reflectionResult && (reflectionResult.content as string)?.trim()) {
+                reflectionSummary = `⚠️ 安全评估：${(reflectionResult.content as string).trim()}`;
               }
             } catch { /* LLM reflection failure — use default summary */ }
           }
@@ -938,6 +942,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             type: originalContent === null ? "created" : "modified",
             originalContent,
             toolName: "Write",
+            toolCallId: `write-${Date.now()}`,
           });
         }
         return result;
@@ -972,6 +977,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             type: "modified",
             originalContent: originalContentE,
             toolName: "Edit",
+            toolCallId: `edit-${Date.now()}`,
           });
         }
         return result;
