@@ -54,6 +54,7 @@ const SUBSTATUS_DOT_COLORS: Partial<Record<NarratorSubstatus, string>> = {
   error: "bg-red-500",
   interrupted: "bg-orange-500",
   reasoning: "bg-purple-500",
+  reflecting: "bg-amber-500",
   compacting: "bg-orange-400",
   planning: "bg-green-500",
   retrying: "bg-yellow-500",
@@ -70,6 +71,7 @@ const SUBSTATUS_LABELS: Record<NarratorSubstatus, string> = {
   suspended: "已暂停",
   manual_override: "手动接管",
   reasoning: "推理中",
+  reflecting: "安全评估中",
   compacting: "压缩中",
   planning: "计划中",
   retrying: "重试中",
@@ -192,6 +194,10 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
             <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
               {substatus === "tool_calling" && status.toolName
                 ? `调用 ${status.toolName}... ${formatDuration(elapsed)}`
+                : substatus === "reflecting"
+                ? `安全评估中 ${formatDuration(elapsed)}`
+                : substatus === "retrying"
+                ? `重试中 ${formatDuration(elapsed)}`
                 : `思考中 ${formatDuration(elapsed)}`}
             </span>
           ) : isWaiting ? (
