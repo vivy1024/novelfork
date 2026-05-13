@@ -126,15 +126,13 @@ export function createMcpClient(config: McpServerConfig): McpClient {
           status = "error";
           throw new Error("SSE/HTTP transport requires url in config");
         }
-        // SSE/HTTP 传输层需要真实的 EventSource/fetch 实现
-        // 当前标记为 needs-auth 如果缺少 token，否则标记 connected
         if (config.transport === "http" && !config.authToken) {
           status = "needs-auth";
           throw new Error("HTTP transport requires authToken (OAuth)");
         }
-        // TODO: 实现真实 SSE EventSource 连接
-        status = "connected";
-        return;
+        // SSE transport is not yet implemented — do not falsely claim connected
+        status = "error";
+        throw new Error("SSE transport not implemented");
       }
 
       // stdio transport
@@ -167,10 +165,38 @@ export function createMcpClient(config: McpServerConfig): McpClient {
         readline = createInterface({ input: child.stdout! });
         readline.on("line", handleLine);
 
-        child.on("exit", () => {
+        child.on("exit", (code, signal) => {
           status = "disconnected";
           process = null;
           readline = null;
+
+          // Auto-reconnect on unexpected exit (non-zero code or signal kill)
+          const wasUnexpected = code !== 0 && code !== null || signal !== null;
+          if (wasUnexpected) {
+            let retries = 0;
+            const MAX_RECONNECT_RETRIES = 3;
+            const RECONNECT_DELAY_MS = 2000;
+
+            const attemptReconnect = () => {
+              retries++;
+              console.log(`[MCP] Server "${config.name}" exited unexpectedly (code=${code}, signal=${signal}). Reconnect attempt ${retries}/${MAX_RECONNECT_RETRIES}...`);
+              setTimeout(async () => {
+                try {
+                  await client.connect();
+                  console.log(`[MCP] Server "${config.name}" reconnected successfully.`);
+                } catch (err) {
+                  if (retries < MAX_RECONNECT_RETRIES) {
+                    attemptReconnect();
+                  } else {
+                    console.error(`[MCP] Server "${config.name}" failed to reconnect after ${MAX_RECONNECT_RETRIES} attempts. Marking as permanently disconnected.`);
+                    status = "error";
+                  }
+                }
+              }, RECONNECT_DELAY_MS);
+            };
+
+            attemptReconnect();
+          }
         });
 
         // Initialize MCP protocol

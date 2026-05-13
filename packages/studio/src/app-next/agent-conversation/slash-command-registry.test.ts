@@ -23,7 +23,7 @@ describe("slash-command-registry", () => {
     expect(registry.commands.find((command) => command.name === "tools")).toMatchObject({
       id: "/tools",
       source: "claude-adapter",
-      status: "planned",
+      status: "current",
       scope: "tooling",
       runtimeHandler: "tools.list",
     });
