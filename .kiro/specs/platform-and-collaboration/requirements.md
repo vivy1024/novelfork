@@ -93,17 +93,34 @@ interface Hook {
 - 管理员可管理用户
 
 **设计**:
-- 用户数据存储在 SQLite（users 表：id/username/password_hash/role/created_at）
-- 登录返回 JWT token（httpOnly cookie 或 Authorization header）
-- 会话（session）绑定 user_id，用户只能看到自己的会话
-- 管理员角色可查看所有用户和会话
-- 首次启动时创建默认管理员账户
+- 支持两种认证模式（通过配置切换）：
+  1. **内置模式**（默认）：SQLite 用户表 + bcrypt + JWT
+  2. **外部模式**：验证外部系统签发的 JWT（通过配置的 JWKS/secret）
+- 内置模式：用户数据存储在 SQLite（users 表：id/username/password_hash/role/created_at）
+- 外部模式：NovelFork 不管注册/登录，只验证 token 有效性并提取 user_id
+- 配置项：`auth.mode: "builtin" | "external" | "none"`
+  - `none`：当前行为（单用户，无认证）
+  - `builtin`：内置用户系统
+  - `external`：验证外部 JWT（玉珍健身 PHP 后端签发的 token）
+- 外部模式配置：`auth.external.jwtSecret` 或 `auth.external.jwksUrl`
+
+**为什么需要外部模式**:
+- 玉珍健身（YuzhenFork）的用户系统在 PHP 后端
+- 用户在 PHP 端注册/登录，拿到 JWT
+- 前端带着 JWT 调用 YuzhenFork（NovelFork fork）的 API
+- YuzhenFork 需要验证这个 JWT 并提取 user_id，而不是自己管用户
 
 **实现方案**:
-- 创建 `packages/studio/src/api/lib/user-auth.ts`（注册/登录/JWT 验证）
-- 创建 `packages/studio/src/api/routes/auth-users.ts`（POST /register, POST /login, GET /me）
-- 前端添加登录页面（对标 NarraFork 的登录页）
-- 修改现有 API 中间件：未登录 → 重定向到登录页
+- 创建 `packages/studio/src/api/lib/user-auth.ts`
+  - `verifyBuiltinAuth(token)` — 验证内置 JWT
+  - `verifyExternalAuth(token, config)` — 验证外部 JWT
+  - `resolveAuthUser(request, config)` — 统一入口，按 mode 分发
+- 创建 `packages/studio/src/api/routes/auth-users.ts`
+  - POST /auth/register（仅 builtin 模式）
+  - POST /auth/login（仅 builtin 模式）
+  - GET /auth/me（两种模式都支持）
+- 前端：builtin 模式显示登录页；external 模式从 cookie/header 读 token
+- `auth.mode: "none"` 时跳过所有认证（向后兼容）
 
 ### 3.2 资源隔离
 
