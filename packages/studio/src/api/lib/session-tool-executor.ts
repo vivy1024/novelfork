@@ -310,6 +310,29 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
+  // --- PreToolUse hooks ---
+  try {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+    const config = await loadUserConfig();
+    const hooks = config.runtimeControls?.hooks ?? [];
+    const preHooks = getMatchingHooks(hooks, "PreToolUse", definition.name);
+    const workDir = options.workDir ?? process.cwd();
+    const hookContext = { toolName: definition.name, file: typeof input.input.path === "string" ? input.input.path : undefined, workDir };
+
+    for (const hook of preHooks) {
+      const hookResult = await executeHook(hook, hookContext);
+      if (hook.blocking && hookResult.exitCode === 2) {
+        return withDuration({
+          ok: false,
+          renderer: definition.renderer,
+          error: "hook-blocked",
+          summary: `PreToolUse hook 阻止了 ${definition.name} 执行。${hookResult.stderr || hookResult.stdout}`.trim(),
+        }, startedAt, options);
+      }
+    }
+  } catch { /* hook execution failure is non-fatal */ }
+
   try {
     const result = await handler({ ...input, definition });
     // Pipeline 拦截：如果当前 session 有活跃 pipeline，捕获成功结果
@@ -319,9 +342,33 @@ export async function executeSessionTool(
       const alias = `p${pipeline.counter}`;
       pipeline.captures.set(alias, result.summary ?? JSON.stringify(result.data).slice(0, 100));
     }
+
+    // --- PostToolUse hooks ---
+    let postHookAppend = "";
+    try {
+      const { loadUserConfig } = await import("./user-config-service.js");
+      const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+      const config = await loadUserConfig();
+      const hooks = config.runtimeControls?.hooks ?? [];
+      const postHooks = getMatchingHooks(hooks, "PostToolUse", definition.name);
+      const workDir = options.workDir ?? process.cwd();
+      const hookContext = { toolName: definition.name, file: typeof input.input.path === "string" ? input.input.path : undefined, workDir };
+
+      for (const hook of postHooks) {
+        const hookResult = await executeHook(hook, hookContext);
+        if (hookResult.stdout) {
+          postHookAppend += `\n[Hook] ${hookResult.stdout}`;
+        }
+      }
+    } catch { /* hook execution failure is non-fatal */ }
+
+    const finalResult = postHookAppend
+      ? { ...result, summary: (result.summary ?? "") + postHookAppend }
+      : result;
+
     return withDuration(withConfirmationAudit({
-      ...result,
-      renderer: result.renderer ?? definition.renderer,
+      ...finalResult,
+      renderer: finalResult.renderer ?? definition.renderer,
     }, input, definition), startedAt, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -842,6 +889,38 @@ async function checkDirectoryAccess(
 }
 
 function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
+  // MCP 工具路由：mcp__<serverName>__<toolName> 格式的工具名
+  if (toolName.startsWith("mcp__")) {
+    return async ({ input, definition }) => {
+      try {
+        const { getMcpRegistry } = await import("./mcp-registry.js");
+        const registry = getMcpRegistry();
+        const result = await registry.callTool(toolName, input as Record<string, unknown>);
+        if (result.isError) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "mcp-tool-error",
+            summary: result.content,
+          };
+        }
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: result.content.length > 2000 ? result.content.slice(0, 2000) + "\n...(truncated)" : result.content,
+          data: { content: result.content },
+        };
+      } catch (error) {
+        return {
+          ok: false,
+          renderer: definition.renderer,
+          error: "mcp-call-failed",
+          summary: `MCP 工具调用失败：${error instanceof Error ? error.message : String(error)}`,
+        };
+      }
+    };
+  }
+
   // 先尝试小说领域 handler
   const novelHandler = getNovelServiceHandler(toolName, options);
   if (novelHandler) return novelHandler;

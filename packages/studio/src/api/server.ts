@@ -108,10 +108,12 @@ import {
   createStorageDiagnosticsRouter,
   createLearningRouter,
   createFileChangesRouter,
+  createAuthUsersRouter,
 } from "./routes/index.js";
 import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
+import { authGuard } from "./middleware/auth-guard.js";
 
 // --- Studio event bus for SSE ---
 
@@ -163,6 +165,14 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   let startupRecoveryRunner: (() => Promise<StartupOrchestratorSummary>) | null = null;
 
   app.use("/*", cors());
+
+  // User auth routes — must be before authGuard so login/register/refresh are accessible
+  app.route("", createAuthUsersRouter());
+
+  // Auth guard — protects /api/* routes when auth mode is not "none"
+  app.use("/api/*", async (c, next) => {
+    return authGuard(c, next);
+  });
 
   // API Token 认证（外部调用方如羽书需要 Bearer Token）
   app.use("/api/*", async (c, next) => {

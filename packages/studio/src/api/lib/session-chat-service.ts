@@ -1808,6 +1808,21 @@ export async function handleSessionChatTransportMessage(
   const idleSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "idle" as const, lastTurnDurationMs, ...(idleSubstatus ? { substatus: idleSubstatus } : {}) };
   broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: idleSession, cursor: createCursor(loaded.state) }));
 
+  // --- TurnComplete hooks (fire-and-forget) ---
+  void (async () => {
+    try {
+      const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+      const config = await loadUserConfig();
+      const hooks = config.runtimeControls?.hooks ?? [];
+      const turnHooks = getMatchingHooks(hooks, "TurnComplete", "");
+      if (turnHooks.length === 0) return;
+      const workDir = loaded.session.worktree?.trim() || process.cwd();
+      for (const hook of turnHooks) {
+        await executeHook(hook, { toolName: "", workDir });
+      }
+    } catch { /* TurnComplete hook failure is non-fatal */ }
+  })();
+
   // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block
   const assistantMessages = messagesToPersist.filter((m) => m.role === "assistant");
   if (assistantMessages.length > 0) {
