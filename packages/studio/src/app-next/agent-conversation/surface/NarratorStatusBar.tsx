@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap } from "lucide-react";
+import { Loader2, Zap, PenLine } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
@@ -34,6 +34,8 @@ import {
 export interface NarratorStatusBarProps {
   status: ConversationStatus;
   streamingStartedAt?: number | null;
+  /** 当前 streaming 消息的总字符数（用于计算输出速率） */
+  streamingChars?: number;
   onUpdateModel?: (providerId: string, modelId: string) => void;
   onUpdateReasoningEffort?: (effort: SessionReasoningEffort) => void;
   onUpdatePermissionMode?: (mode: SessionPermissionMode) => void;
@@ -128,7 +130,7 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
@@ -198,7 +200,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
                 ? `安全评估中 ${formatDuration(elapsed)}`
                 : substatus === "retrying"
                 ? `重试中 ${formatDuration(elapsed)}`
-                : `思考中 ${formatDuration(elapsed)}`}
+                : `思考中 ${formatDuration(elapsed)}${streamingChars && elapsed > 1000 ? ` · ${Math.round(streamingChars / (elapsed / 1000))}字/秒` : ""}`}
             </span>
           ) : isWaiting ? (
             <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
@@ -216,6 +218,16 @@ export function NarratorStatusBar({ status, streamingStartedAt, onUpdateModel, o
 
         {/* Right: context ring + model + reasoning + fast + permission */}
         <div className="flex items-center gap-1.5">
+          {/* Writing preset shortcut */}
+          <Tooltip>
+            <TooltipTrigger
+              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted transition-colors"
+              onClick={() => { /* TODO: open writing preset popover */ }}
+            >
+              <PenLine className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipContent side="top">写作预设（开发中）</TooltipContent>
+          </Tooltip>
           {/* Context usage ring — 在模型下拉左边 */}
           <ContextRingMenu
             used={status.contextUsage?.usedTokens ?? 0}

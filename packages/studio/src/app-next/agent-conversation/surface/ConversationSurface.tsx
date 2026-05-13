@@ -212,6 +212,9 @@ export function ConversationSurface({
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
 
+  // 计算当前 streaming 消息的字符数（用于输出速率显示）
+  const streamingChars = isWorking ? (messages.filter(m => m.isStreaming).reduce((sum, m) => sum + m.content.length, 0)) : 0;
+
   // 桌面通知：任务完成时通知用户（仅当标签页不可见时）
   const wasWorkingRef = useRef(false);
   useEffect(() => {
@@ -505,6 +508,7 @@ export function ConversationSurface({
       <NarratorStatusBar
         status={status}
         streamingStartedAt={effectiveStreamingStartedAt}
+        streamingChars={streamingChars}
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
         onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
