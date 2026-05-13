@@ -110,10 +110,12 @@ export function clearSessionFileChanges(sessionId: string): void {
  * Capture original file content before a write/edit operation.
  * Returns null if file doesn't exist (will be a "created" change).
  */
-export async function captureOriginalContent(filePath: string): Promise<string | null> {
+export async function captureOriginalContent(filePath: string, workDir?: string): Promise<string | null> {
   try {
-    if (!existsSync(filePath)) return null;
-    return await readFile(filePath, "utf-8");
+    const { resolve } = await import("node:path");
+    const resolvedPath = workDir ? resolve(workDir, filePath) : filePath;
+    if (!existsSync(resolvedPath)) return null;
+    return await readFile(resolvedPath, "utf-8");
   } catch {
     return null;
   }

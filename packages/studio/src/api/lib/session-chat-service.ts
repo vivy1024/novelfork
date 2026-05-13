@@ -1773,7 +1773,10 @@ export async function handleSessionChatTransportMessage(
   }
 
   // ─── Buffered Message Queue: drain after turn completes ─────────────────────
-  void drainSessionQueue(sessionId);
+  void drainSessionQueue(sessionId).catch((err) => {
+    console.log(JSON.stringify({ component: "session-chat", event: "drain-queue-unhandled-error", sessionId, error: err instanceof Error ? err.message : "unknown" }));
+    sessionBusy.delete(sessionId);
+  });
 }
 
 async function drainSessionQueue(sessionId: string): Promise<void> {
