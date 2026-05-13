@@ -426,7 +426,10 @@ export function ConversationSurface({
                     onSkip={onRejectConfirmation}
                   />
                 ) : (
-                  <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} onAlwaysAllow={onAlwaysAllowConfirmation} />
+                  <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} onAlwaysAllow={onAlwaysAllowConfirmation ?? ((id, pattern) => {
+                    onApproveConfirmation?.(id);
+                    void onUpdateSessionConfig?.({ toolPolicy: { allow: [pattern] } } as ConversationSessionConfigPatch);
+                  })} />
                 )}
               </div>
             )}
