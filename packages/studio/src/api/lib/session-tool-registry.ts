@@ -88,7 +88,7 @@ export function clearPluginRegistrations(): void {
 const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
     name: "Bash",
-    description: "在工作目录中执行 shell 命令。支持 cwd 追踪和超时控制。",
+    description: "在工作目录中执行 shell 命令（Git Bash）。用于 git、npm、bun、编译、运行脚本等需要 shell 的操作。不要用 Bash 执行 cat/head/grep/find——用专用的 Read/Grep/Glob 工具代替。超时默认 120 秒。",
     inputSchema: objectSchema({
       command: stringSchema("要执行的 shell 命令。"),
       workDir: stringSchema("工作目录路径（可选，默认使用 session workDir）。"),
@@ -100,7 +100,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Read",
-    description: "读取工作目录内的文件内容，支持行偏移和行数限制。",
+    description: "读取文件内容。大文件（>500行）会自动截断，用 offset/limit 参数分页读取后续内容。优先使用此工具而非 Bash cat/head/tail。",
     inputSchema: objectSchema({
       path: stringSchema("要读取的文件路径（相对于工作目录）。"),
       offset: numberSchema("起始行号（0-based）。"),
@@ -112,7 +112,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Write",
-    description: "将内容写入工作目录内的文件，自动创建父目录。",
+    description: "创建或完整覆盖文件。注意：会覆盖整个文件内容。如果只需修改部分内容，用 Edit 工具代替。写入前建议先 Read 确认当前内容。",
     inputSchema: objectSchema({
       path: stringSchema("要写入的文件路径（相对于工作目录）。"),
       content: stringSchema("要写入的文件内容。"),
@@ -123,7 +123,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Edit",
-    description: "在工作目录内的文件中执行精确文本替换。",
+    description: "精确文本替换。old_string 必须在文件中唯一匹配（提供足够上下文确保唯一性）。修改部分内容时优先使用此工具而非 Write。编辑前先 Read 确认当前内容。",
     inputSchema: objectSchema({
       path: stringSchema("要编辑的文件路径（相对于工作目录）。"),
       oldText: stringSchema("要替换的原始文本。"),
@@ -186,7 +186,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 用户交互工具 ---
   sessionTool({
     name: "AskUserQuestion",
-    description: "向用户提出结构化问题（单选/多选/自由文本），等待用户回答后继续。",
+    description: "向用户提出结构化问题（单选/多选），等待回答后继续。用于需要用户决策的场景，不要用于可以自行判断的情况。",
     inputSchema: objectSchema({
       questions: arraySchema("问题数组，每个含 question、options、multiSelect 字段。"),
     }, ["questions"]),
@@ -225,7 +225,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 网络与浏览器 ---
   sessionTool({
     name: "WebSearch",
-    description: "搜索网络获取最新信息，返回搜索结果摘要和链接。",
+    description: "搜索网络获取最新信息。用于需要实时数据、文档查询或验证事实的场景。返回搜索结果摘要和链接。",
     inputSchema: objectSchema({
       query: stringSchema("搜索查询文本。"),
       allowed_domains: arraySchema("仅包含这些域名的结果。", { type: "string" }),
@@ -264,7 +264,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 子代理与并行 ---
   sessionTool({
     name: "Agent",
-    description: "启动隔离子代理执行专项任务（explore/plan/general 类型），支持后台运行。",
+    description: "启动隔离子代理执行专项任务。仅在任务需要隔离上下文或并行执行时使用。单个 Read/Grep/Glob 能解决的查找不要用子代理。类型：explore（只读调查）、plan（架构设计）、general（可写入）。",
     inputSchema: objectSchema({
       prompt: stringSchema("子代理要执行的任务描述。"),
       subagent_type: stringSchema("子代理类型：explore | plan | general。"),
