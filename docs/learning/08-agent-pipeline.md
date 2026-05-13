@@ -28,7 +28,41 @@ NovelFork 的写作不是单次 API 调用，而是多 Agent 协作的管线：
 | 审校 Agent | 连续性审计，检测矛盾与设定冲突 |
 | 大纲与经纬 Agent | 全书架构规划 + 经纬维护 |
 
-**48 个工具**覆盖文件、网络、子代理、终端、浏览器、驾驶舱、PGI、经纬等操作域。
+**48 个工具**分为三大类：
+
+**通用开发工具（26 个）**：Bash · Read · Write · Edit · Glob · Grep · EnterWorktree · ExitWorktree · AskUserQuestion · EnterPlanMode · ExitPlanMode · TaskCreate · WebSearch · WebFetch · Browser · Agent · Await · Send · ForkNarrator · Terminal · ShareFile · Recall · StartPipeline · EndPipeline · LearningGuide · Skill · GetGoals · AddGoal · UpdateGoal
+
+**小说专属工具（17 个）**：cockpit.get_snapshot · cockpit.list_open_hooks · cockpit.list_recent_candidates · questionnaire.list_templates · questionnaire.start · questionnaire.suggest_answer · questionnaire.submit_response · pgi.generate_questions · pgi.record_answers · pgi.format_answers_for_prompt · guided.enter · guided.answer_question · guided.exit · candidate.create_chapter · narrative.read_line · narrative.propose_change
+
+**核心管线工具（5 个）**：plan_chapter · compose_chapter · audit_chapter · revise_chapter · import_chapters
+
+### 写下一章完整流程
+
+```
+用户: "写下一章"
+    │
+    ▼
+1. cockpit.get_snapshot ← 读取进度/伏笔/设定
+    │
+    ▼
+2. pgi.generate_questions ← 生成 2-5 个追问
+    │
+    ▼ 用户回答（或跳过）
+3. guided.enter ← 进入引导式生成
+    │
+    ▼
+4. guided.exit ← 提交写作计划
+    ⚠️ 确认门：用户必须批准
+    │
+    ▼ 用户批准
+5. candidate.create_chapter ← 生成候选稿
+    ⚠️ 候选稿进入候选区，用户在画布中预览
+```
+
+**关键规则**：
+- PGI 无问题时说明 `skippedReason=no-questions` 并继续
+- `guided.exit` 必须等用户批准；拒绝后禁止执行 `candidate.create_chapter`
+- 任一步失败时停止后续写入，保留已完成的只读结果
 
 ## 推荐使用流程
 
