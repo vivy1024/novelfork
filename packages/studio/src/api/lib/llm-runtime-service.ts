@@ -1,5 +1,6 @@
 import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, SessionConfig } from "../../shared/session-types.js";
+import type { RuntimeRecoverySettings } from "../../types/settings.js";
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
 import { getAggregation, isAggregationId, resolveAggregation } from "./model-aggregation-service.js";
 import {
@@ -14,6 +15,7 @@ import { getAdapterForProtocol } from "./provider-adapters/registry.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
 import { inferProtocol } from "../../shared/provider-catalog.js";
+import { loadUserConfig } from "./user-config-service.js";
 
 export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed";
 
@@ -130,6 +132,35 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
   return result;
 }
 
+// --- Smart Retry Helpers ---
+
+function isRetriableError(code: RuntimeAdapterFailureCode, errorMessage: string): boolean {
+  if (code !== "upstream-error" && code !== "network-error") return false;
+  const retriableStatuses = ["429", "502", "503", "rate_limit", "rate limit", "overloaded"];
+  return retriableStatuses.some(s => errorMessage.toLowerCase().includes(s.toLowerCase()));
+}
+
+function calculateRetryDelay(attempt: number, settings: RuntimeRecoverySettings): number {
+  const baseDelay = settings.initialRetryDelayMs * Math.pow(settings.backoffMultiplier, attempt);
+  const cappedDelay = Math.min(baseDelay, settings.maxRetryDelayMs);
+  const jitter = cappedDelay * (settings.jitterPercent / 100) * (Math.random() * 2 - 1);
+  return Math.max(0, Math.round(cappedDelay + jitter));
+}
+
+function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) return Promise.reject(signal.reason);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    if (signal) {
+      const onAbort = () => {
+        clearTimeout(timer);
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", onAbort, { once: true });
+    }
+  });
+}
+
 export class LlmRuntimeService {
   private readonly store: ProviderRuntimeStore;
   private readonly adapters: ProviderAdapterRegistry;
@@ -194,6 +225,10 @@ export class LlmRuntimeService {
     const MAX_FALLBACK_ATTEMPTS = 3;
     let lastFailure: LlmRuntimeGenerateResult | undefined;
 
+    // Load retry settings from user config
+    const userConfig = await loadUserConfig();
+    const retrySettings = userConfig.runtimeControls.recovery;
+
     for (let attempt = 0; attempt < Math.min(candidates.length, MAX_FALLBACK_ATTEMPTS); attempt++) {
       const candidate = candidates[attempt];
 
@@ -208,42 +243,87 @@ export class LlmRuntimeService {
       }
 
       const adapter = getAdapter(provider, this.adapters);
-      const result = await adapter.generate({
-        ...providerRef(provider),
-        modelId: candidate.rawModelId,
-        messages: toRuntimeMessages(input.messages),
-        ...(requestedTools ? { tools: requestedTools } : {}),
-        ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
-        ...(input.signal ? { signal: input.signal } : {}),
-      });
 
-      const metadata: LlmRuntimeMetadata = {
-        providerId: candidate.providerId,
-        providerName: candidate.providerName,
-        modelId: candidate.rawModelId,
-        ...(result.success && result.usage ? { usage: result.usage } : {}),
-        ...(attempt > 0 ? { fallbackAttempts: attempt } : {}),
-      };
+      // Retry loop with exponential backoff for transient errors
+      let retryAttempt = 0;
 
-      if (!result.success) {
-        // Only fallback on network-error or upstream-error
-        if (result.code === "network-error" || result.code === "upstream-error") {
-          lastFailure = { success: false, code: result.code, error: result.error, metadata };
-          continue;
+      while (true) {
+        // Check abort before each attempt
+        if (input.signal?.aborted) {
+          return {
+            success: false,
+            code: "network-error" as LlmRuntimeFailureCode,
+            error: "Request aborted",
+            metadata: { providerId: candidate.providerId, providerName: candidate.providerName, modelId: candidate.rawModelId },
+          };
         }
-        // Non-retriable errors: return immediately
-        return { success: false, code: result.code, error: result.error, metadata };
-      }
 
-      if (result.type === "tool_use") {
-        return { success: true, type: "tool_use", toolUses: result.toolUses, metadata };
-      }
+        const result = await adapter.generate({
+          ...providerRef(provider),
+          modelId: candidate.rawModelId,
+          messages: toRuntimeMessages(input.messages),
+          ...(requestedTools ? { tools: requestedTools } : {}),
+          ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
+          ...(input.signal ? { signal: input.signal } : {}),
+        });
 
-      if (!result.content.trim()) {
-        return { success: false, code: "empty-response", error: "LLM runtime returned an empty response", metadata };
-      }
+        const metadata: LlmRuntimeMetadata = {
+          providerId: candidate.providerId,
+          providerName: candidate.providerName,
+          modelId: candidate.rawModelId,
+          ...(result.success && result.usage ? { usage: result.usage } : {}),
+          ...(attempt > 0 ? { fallbackAttempts: attempt } : {}),
+        };
 
-      return { success: true, type: "message", content: result.content, metadata };
+        if (!result.success) {
+          // Check if this is a retriable transient error
+          if (isRetriableError(result.code, result.error) && retryAttempt < retrySettings.maxRetryAttempts) {
+            const delayMs = calculateRetryDelay(retryAttempt, retrySettings);
+            console.log(JSON.stringify({
+              component: "llm-runtime",
+              event: "retry",
+              attempt: retryAttempt + 1,
+              delayMs,
+              reason: result.error,
+              providerId: candidate.providerId,
+              modelId: candidate.rawModelId,
+            }));
+
+            try {
+              await abortableSleep(delayMs, input.signal);
+            } catch {
+              // Aborted during sleep
+              return {
+                success: false,
+                code: "network-error" as LlmRuntimeFailureCode,
+                error: "Request aborted during retry backoff",
+                metadata,
+              };
+            }
+
+            retryAttempt++;
+            continue;
+          }
+
+          // Not retriable or retries exhausted — fallback to next provider on network/upstream errors
+          if (result.code === "network-error" || result.code === "upstream-error") {
+            lastFailure = { success: false, code: result.code, error: result.error, metadata };
+            break;
+          }
+          // Non-retriable errors: return immediately
+          return { success: false, code: result.code, error: result.error, metadata };
+        }
+
+        if (result.type === "tool_use") {
+          return { success: true, type: "tool_use", toolUses: result.toolUses, metadata };
+        }
+
+        if (!result.content.trim()) {
+          return { success: false, code: "empty-response", error: "LLM runtime returned an empty response", metadata };
+        }
+
+        return { success: true, type: "message", content: result.content, metadata };
+      }
     }
 
     // All candidates exhausted

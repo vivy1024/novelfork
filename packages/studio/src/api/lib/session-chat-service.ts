@@ -262,6 +262,20 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
 }
 const abortControllerBySessionId = new Map<string, AbortController>();
 
+// ─── Buffered Message Queue ───────────────────────────────────────────────────
+interface QueuedMessage {
+  readonly content: string;
+  readonly messageId: string;
+  readonly canvasContext?: CanvasContext;
+  readonly transport: SessionChatTransport;
+  readonly queuedAt: number;
+}
+
+const sessionMessageQueue = new Map<string, QueuedMessage[]>();
+const sessionBusy = new Set<string>();
+const MAX_QUEUE_SIZE = 10;
+// ──────────────────────────────────────────────────────────────────────────────
+
 function abortSession(sessionId: string): void {
   const controller = abortControllerBySessionId.get(sessionId);
   if (controller) {
@@ -1306,6 +1320,18 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
   }
 
   state.transports.delete(transport);
+
+  // Remove queued messages belonging to the disconnected transport
+  const queue = sessionMessageQueue.get(sessionId);
+  if (queue) {
+    const filtered = queue.filter((msg) => msg.transport !== transport);
+    if (filtered.length === 0) {
+      sessionMessageQueue.delete(sessionId);
+    } else {
+      sessionMessageQueue.set(sessionId, filtered);
+    }
+  }
+
   if (state.transports.size === 0 && state.messages.length === 0) {
     runtimeStateBySessionId.delete(sessionId);
   }
@@ -1428,6 +1454,8 @@ export async function handleSessionChatTransportMessage(
 
   if (payload.type === "session:abort") {
     abortSession(sessionId);
+    sessionMessageQueue.delete(sessionId);
+    sessionBusy.delete(sessionId);
     return;
   }
 
@@ -1437,9 +1465,27 @@ export async function handleSessionChatTransportMessage(
     console.log(JSON.stringify({ component: "session-chat", event: "continue", sessionId }));
   }
 
+  const messageId = ("messageId" in payload ? payload.messageId?.trim() : "") || `session-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+  // ─── Buffered Message Queue: check if session is busy ───────────────────────
+  if (sessionBusy.has(sessionId)) {
+    const queue = sessionMessageQueue.get(sessionId) ?? [];
+    if (queue.length >= MAX_QUEUE_SIZE) {
+      sendEnvelope(transport, createSessionChatError(sessionId, "消息队列已满，请等待当前任务完成"));
+      return;
+    }
+    queue.push({ content: effectiveContent, messageId, canvasContext, transport, queuedAt: Date.now() });
+    sessionMessageQueue.set(sessionId, queue);
+    console.log(JSON.stringify({ component: "session-chat", event: "message-queued", sessionId, queueLength: queue.length }));
+    return;
+  }
+
+  sessionBusy.add(sessionId);
+  // ────────────────────────────────────────────────────────────────────────────
+
   const timestamp = Date.now();
   const userMessage = appendMessageToState(loaded.state, {
-    id: payload.messageId?.trim() || `session-msg-${timestamp}-${Math.random().toString(36).slice(2, 8)}`,
+    id: messageId,
     role: "user",
     content: effectiveContent,
     timestamp,
@@ -1715,6 +1761,37 @@ export async function handleSessionChatTransportMessage(
         void updateSession(sessionId, { title });
       }
     }).catch(() => { /* auto-title failure is non-fatal */ });
+  }
+
+  // ─── Buffered Message Queue: drain after turn completes ─────────────────────
+  void drainSessionQueue(sessionId);
+}
+
+async function drainSessionQueue(sessionId: string): Promise<void> {
+  const queue = sessionMessageQueue.get(sessionId);
+  if (!queue || queue.length === 0) {
+    sessionBusy.delete(sessionId);
+    return;
+  }
+
+  const next = queue.shift()!;
+  if (queue.length === 0) {
+    sessionMessageQueue.delete(sessionId);
+  }
+
+  console.log(JSON.stringify({ component: "session-chat", event: "message-dequeued", sessionId, queueLength: queue.length }));
+
+  // Clear busy flag before re-entering handleSessionChatTransportMessage
+  // so it will re-acquire it normally (not re-queue the message)
+  sessionBusy.delete(sessionId);
+
+  try {
+    // Replay the queued message through the normal transport handler
+    const syntheticPayload = JSON.stringify({ type: "session:message", content: next.content, messageId: next.messageId });
+    await handleSessionChatTransportMessage(sessionId, next.transport, syntheticPayload);
+  } catch (error) {
+    console.log(JSON.stringify({ component: "session-chat", event: "drain-queue-error", sessionId, error: error instanceof Error ? error.message : "unknown" }));
+    sessionBusy.delete(sessionId);
   }
 }
 
