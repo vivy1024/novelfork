@@ -1083,14 +1083,25 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
       if (message.role === "system") continue; // system is handled separately
 
       if (message.role === "tool") {
-        result.push({
-          role: "user",
-          content: [{
+        // Merge consecutive tool results into a single user message
+        // (Claude API requires all tool_results for a multi-tool-use turn in one user message)
+        const lastResult = result[result.length - 1];
+        if (lastResult && lastResult.role === "user" && Array.isArray(lastResult.content) && lastResult.content.length > 0 && lastResult.content[0]?.type === "tool_result") {
+          (lastResult.content as Array<Record<string, unknown>>).push({
             type: "tool_result",
             tool_use_id: message.toolCallId,
             content: message.content,
-          }],
-        });
+          });
+        } else {
+          result.push({
+            role: "user",
+            content: [{
+              type: "tool_result",
+              tool_use_id: message.toolCallId,
+              content: message.content,
+            }],
+          });
+        }
         continue;
       }
 
