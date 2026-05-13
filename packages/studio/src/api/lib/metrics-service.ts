@@ -1,8 +1,11 @@
-import { cpus, totalmem, freemem } from "node:os";
+import { cpus, totalmem, freemem, platform } from "node:os";
 import { statfs } from "node:fs";
 import { promisify } from "node:util";
+import { execSync } from "node:child_process";
 
 const statfsAsync = promisify(statfs);
+
+const startedAt = Date.now();
 
 export interface SystemMetrics {
   cpu: {
@@ -22,6 +25,16 @@ export interface SystemMetrics {
     usagePercent: number; // 0-100
   };
   timestamp: number;
+  // Server info fields
+  bunVersion?: string;
+  nodeVersion?: string;
+  port?: number;
+  host?: string;
+  platform?: string;
+  uptime?: number;
+  gitVersion?: string;
+  rgVersion?: string;
+  dbPath?: string;
 }
 
 let lastCpuUsage: { idle: number; total: number } | null = null;
@@ -71,6 +84,20 @@ export async function collectMetrics(projectRoot: string): Promise<SystemMetrics
 
   const disk = await getDiskUsage(projectRoot);
 
+  // Server info
+  const bunVersion = (process.versions as Record<string, string | undefined>).bun ?? undefined;
+  const nodeVersion = process.version;
+  const port = Number(process.env.PORT) || 1422;
+  const host = process.env.HOST || "127.0.0.1";
+
+  let gitVersion: string | undefined;
+  try { gitVersion = execSync("git --version", { encoding: "utf-8", timeout: 3000 }).trim().replace("git version ", ""); } catch { /* */ }
+
+  let rgVersion: string | undefined;
+  try { rgVersion = execSync("rg --version", { encoding: "utf-8", timeout: 3000 }).split("\n")[0]?.trim(); } catch { /* */ }
+
+  const uptime = Math.floor((Date.now() - startedAt) / 1000);
+
   return {
     cpu: {
       usage: getCpuUsage(),
@@ -84,5 +111,13 @@ export async function collectMetrics(projectRoot: string): Promise<SystemMetrics
     },
     disk,
     timestamp: Date.now(),
+    bunVersion,
+    nodeVersion,
+    port,
+    host,
+    platform: platform(),
+    uptime,
+    gitVersion,
+    rgVersion,
   };
 }
