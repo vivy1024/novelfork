@@ -184,8 +184,11 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
             <DialogTitle>写作工具</DialogTitle>
           </DialogHeader>
           {bookId && (
-            <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params) => {
-              const res = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
+            <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params, method) => {
+              const httpMethod = method ?? "POST";
+              const res = httpMethod === "GET"
+                ? await fetch(endpoint)
+                : await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
               if (!res.ok) throw new Error(`工具执行失败：${res.status}`);
               return res.json();
             }} />
