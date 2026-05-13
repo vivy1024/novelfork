@@ -1597,7 +1597,7 @@ export async function handleSessionChatTransportMessage(
             content: `请求调用工具 ${event.toolName}。`,
             timestamp: timestamp + messagesToPersist.length,
             runtime: event.runtime,
-            toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input }],
+            toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input, status: "running" as const }],
           });
           messagesToPersist.push(toolUseMessage);
           broadcastMessageEnvelope(sessionId, loaded.state, toolUseMessage);

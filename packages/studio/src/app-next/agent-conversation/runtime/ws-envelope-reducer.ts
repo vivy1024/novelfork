@@ -85,6 +85,9 @@ export function reduceSessionEnvelope(
         : state.messages;
       const nextMessages = mergeSessionMessages(baseMessages, [envelope.message]);
       const cursor = envelope.cursor ?? state.cursor;
+      // Only clear waitingForResponse for final assistant messages (not tool_call/tool_result)
+      const isToolMessage = envelope.message.toolCalls?.length && envelope.message.toolCalls.length > 0;
+      const shouldClearWaiting = !isToolMessage && envelope.message.role === "assistant";
       return {
         ...state,
         messages: nextMessages,
@@ -92,7 +95,7 @@ export function reduceSessionEnvelope(
         cursor,
         lastSeq: lastSeqFrom(cursor, nextMessages, state.lastSeq),
         streamingMessageId: null,
-        waitingForResponse: false,
+        waitingForResponse: shouldClearWaiting ? false : state.waitingForResponse,
       };
     }
     case "session:stream": {
