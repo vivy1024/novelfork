@@ -55,6 +55,10 @@ export interface MessageItemProps {
   onOpenArtifact?: unknown;
   onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
   codeCollapsed?: boolean;
+  /** Whether this message is currently selected (multi-select) */
+  isSelected?: boolean;
+  /** Callback for multi-select click (Ctrl/Cmd+Click or Shift+Click) */
+  onSelect?: (id: string, event: React.MouseEvent) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -116,11 +120,22 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
 // MessageItem — 对标 NarraFork 消息样式
 // ---------------------------------------------------------------------------
 
-export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false, isSelected = false, onSelect }: MessageItemProps) {
   const [hovered, setHovered] = useState(false);
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
   }, [onContextAction, message.id]);
+
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if ((e.ctrlKey || e.metaKey || e.shiftKey) && onSelect) {
+      e.preventDefault();
+      onSelect(message.id, e);
+    }
+  }, [onSelect, message.id]);
+
+  const selectionClasses = isSelected
+    ? "border-l-2 border-l-primary bg-primary/5"
+    : "border-l-2 border-l-transparent";
 
   // ── System message ──
   if (message.role === "system") {
@@ -188,9 +203,10 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className="group relative mt-4 pt-4 border-t border-border/50 select-text"
+            className={`group relative mt-4 pt-4 border-t border-border/50 select-text ${selectionClasses}`}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
+            onClick={handleClick}
           >
             {/* Header: avatar + name + time */}
             <div className="flex items-center gap-2 mb-1.5">
@@ -249,7 +265,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={`py-2 select-text ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`}>
+        <div className={`py-2 select-text ${selectionClasses} ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`} onClick={handleClick}>
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
