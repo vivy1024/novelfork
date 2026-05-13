@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import BidirectionalList, { type BidirectionalListRef } from "broad-infinite-list/react";
 import type { ToolResultArtifact } from "../../tool-results";
 import { MessageItem, type ConversationSurfaceMessage, type MessageContextAction } from "./MessageItem";
+import { useMessageSelection } from "./useMessageSelection";
+import { SelectionActionBar } from "./SelectionActionBar";
 
 export interface MessageStreamProps {
   messages: readonly ConversationSurfaceMessage[];
@@ -18,6 +20,9 @@ export interface MessageStreamProps {
 export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
+
+  const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
+  const { selectedIds, isSelected, selectionCount, toggle, clear } = useMessageSelection(messageIds);
 
   // 新消息到达时自动滚动到底部
   useEffect(() => {
@@ -41,11 +46,53 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
     [onLoadPrevious],
   );
 
+  const handleSelect = useCallback(
+    (id: string, event: React.MouseEvent) => {
+      toggle(id, { ctrlKey: event.ctrlKey, metaKey: event.metaKey, shiftKey: event.shiftKey });
+    },
+    [toggle],
+  );
+
+  // Batch actions
+  const handleCopy = useCallback(() => {
+    const selected = messages.filter((m) => selectedIds.has(m.id));
+    const markdown = selected
+      .map((m) => {
+        const prefix = m.role === "user" ? "**用户**" : m.role === "assistant" ? "**助手**" : `**${m.role}**`;
+        return `${prefix}\n\n${m.content}`;
+      })
+      .join("\n\n---\n\n");
+    void navigator.clipboard.writeText(markdown);
+    clear();
+  }, [messages, selectedIds, clear]);
+
+  const handleDelete = useCallback(() => {
+    if (!onContextAction) return;
+    for (const id of selectedIds) {
+      onContextAction(id, "delete");
+    }
+    clear();
+  }, [selectedIds, onContextAction, clear]);
+
+  const handleFork = useCallback(() => {
+    const ids = Array.from(selectedIds);
+    console.log("[MessageStream] Fork requested for messages:", ids);
+    // TODO: Implement fork from selected messages
+    clear();
+  }, [selectedIds, clear]);
+
   const renderItem = useCallback(
     (message: ConversationSurfaceMessage) => (
-      <MessageItem message={message} onOpenArtifact={onOpenArtifact} onContextAction={onContextAction} codeCollapsed={codeCollapsed} />
+      <MessageItem
+        message={message}
+        onOpenArtifact={onOpenArtifact}
+        onContextAction={onContextAction}
+        codeCollapsed={codeCollapsed}
+        isSelected={isSelected(message.id)}
+        onSelect={handleSelect}
+      />
     ),
-    [onOpenArtifact, onContextAction, codeCollapsed],
+    [onOpenArtifact, onContextAction, codeCollapsed, isSelected, handleSelect],
   );
 
   const itemKey = useCallback((message: ConversationSurfaceMessage) => message.id, []);
@@ -56,7 +103,7 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   }
 
   return (
-    <section data-testid="message-stream" className="min-h-0 flex-1">
+    <section data-testid="message-stream" className="relative min-h-0 flex-1">
       <BidirectionalList<ConversationSurfaceMessage>
         ref={listRef}
         items={messages as ConversationSurfaceMessage[]}
@@ -73,6 +120,13 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
             <span className="text-xs text-muted-foreground">加载中...</span>
           </div>
         }
+      />
+      <SelectionActionBar
+        count={selectionCount}
+        onCopy={handleCopy}
+        onDelete={handleDelete}
+        onFork={handleFork}
+        onClear={clear}
       />
     </section>
   );
