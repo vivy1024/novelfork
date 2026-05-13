@@ -776,6 +776,15 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         shellDataStore.upsertSession(result.data);
         await refreshSnapshot();
       }}
+      onPin={async () => {
+        const current = runtime.state.session?.pinned ?? false;
+        const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { pinned: !current });
+        if (result.ok) {
+          shellDataStore.upsertSession(result.data);
+          await refreshSnapshot();
+        }
+      }}
+      isPinned={runtime.state.session?.pinned ?? false}
       onAttach={async (files) => {
         for (const file of Array.from(files)) {
           const formData = new FormData();

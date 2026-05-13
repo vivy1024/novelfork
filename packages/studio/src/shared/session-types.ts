@@ -169,6 +169,7 @@ export interface NarratorSessionRecord {
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
   goals?: SessionGoal[];
+  pinned?: boolean;
 }
 
 export interface CreateNarratorSessionInput {
@@ -200,6 +201,7 @@ export interface UpdateNarratorSessionInput {
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
   goals?: SessionGoal[];
+  pinned?: boolean;
 }
 
 export const DEFAULT_SESSION_CONFIG: SessionConfig = {
