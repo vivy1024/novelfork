@@ -132,7 +132,7 @@ export function AgentSettingsPanel() {
         if (!ta.commandAllowlist) ta.commandAllowlist = [];
         if (!ta.commandBlocklist) ta.commandBlocklist = [];
         setConfig(rc as RuntimeControlSettings);
-        savedRef.current = rc;
+        savedRef.current = JSON.parse(JSON.stringify(rc));
       })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -149,9 +149,9 @@ export function AgentSettingsPanel() {
       const updated = await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: config });
       if (updated?.runtimeControls) {
         setConfig(updated.runtimeControls);
-        savedRef.current = updated.runtimeControls;
+        savedRef.current = JSON.parse(JSON.stringify(updated.runtimeControls));
       } else {
-        savedRef.current = { ...config };
+        savedRef.current = JSON.parse(JSON.stringify(config));
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -182,12 +182,14 @@ export function AgentSettingsPanel() {
       <Section title="基础设置">
         <FieldRow label="默认权限模式">
           <SimpleSelect
-            value={config.defaultPermissionMode}
+            value={config.defaultPermissionMode ?? "edit"}
             onValueChange={(v) => patch({ defaultPermissionMode: v as RuntimeControlSettings["defaultPermissionMode"] })}
             options={[
-              { value: "allow-all", label: "全部允许" },
-              { value: "ask-always", label: "需要审批" },
-              { value: "deny-all", label: "只读" },
+              { value: "allow", label: "全部允许" },
+              { value: "edit", label: "编辑模式" },
+              { value: "ask", label: "逐项询问" },
+              { value: "read", label: "只读" },
+              { value: "plan", label: "计划模式" },
             ]}
             className="w-32"
             aria-label="默认权限模式"

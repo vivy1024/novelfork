@@ -28,6 +28,7 @@ export function AppearancePanel() {
   const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_CONFIG.preferences);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const { setTheme } = useTheme();
 
   useEffect(() => {
@@ -45,8 +46,11 @@ export function AppearancePanel() {
   const save = async (patch: Partial<UserPreferences>) => {
     setPreferences((prev) => ({ ...prev, ...patch }));
     setSaving(true);
+    setSaved(false);
     try {
       await putApi("/settings/user", { preferences: patch });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 1500);
     } finally {
       setSaving(false);
     }
@@ -247,6 +251,11 @@ export function AppearancePanel() {
         {saving && (
           <div className="text-xs text-muted-foreground">
             保存中...
+          </div>
+        )}
+        {saved && (
+          <div className="text-xs text-emerald-600">
+            ✓ 已保存
           </div>
         )}
       </div>

@@ -196,6 +196,7 @@ export function RuntimeControlPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
 
   function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults" | "proxy">) {
     setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
@@ -205,6 +206,7 @@ export function RuntimeControlPanel() {
       subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
     });
     setProxy({ ...DEFAULT_PROXY_SETTINGS, ...(data.proxy ?? {}) });
+    setIsDirty(false);
   }
 
   async function refetchUserConfig() {
@@ -251,6 +253,7 @@ export function RuntimeControlPanel() {
       await putApi<ProxySettings>(PROXY_API_PATH, proxy);
       await refetchUserConfig();
       setSaved(true);
+      setIsDirty(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -259,7 +262,7 @@ export function RuntimeControlPanel() {
   }
 
   // --- shorthand updaters ---
-  const dirty = () => setSaved(false);
+  const dirty = () => { setSaved(false); setIsDirty(true); };
   const patchRc = (patch: Partial<ExtendedRuntimeControls>) => { dirty(); setRc((c) => ({ ...c, ...patch })); };
   const patchMd = (patch: Partial<ModelDefaultSettings>) => { dirty(); setMd((c) => ({ ...c, ...patch })); };
   const patchProxy = (patch: Partial<ProxySettings>) => { dirty(); setProxy((c) => ({ ...c, ...patch })); };
@@ -588,14 +591,16 @@ export function RuntimeControlPanel() {
       </Section>
 
       {/* ---- 底部状态 + 保存 ---- */}
-      <div className="flex items-center justify-between border-t border-border pt-4">
-        <div className="text-sm">
-          {error ? <span className="text-destructive">保存失败：{error}</span> : saved ? <span className="text-primary">已保存</span> : null}
+      {(isDirty || saved || error) && (
+        <div className="sticky bottom-0 flex items-center justify-between border-t border-border bg-background pt-4 pb-2">
+          <div className="text-sm">
+            {error ? <span className="text-destructive">保存失败：{error}</span> : saved ? <span className="text-emerald-600">✓ 已保存</span> : isDirty ? <span className="text-muted-foreground">有未保存的变更</span> : null}
+          </div>
+          <Button type="button" onClick={handleSave} disabled={loading || saving || !isDirty}>
+            {saving ? "保存中…" : "保存变更"}
+          </Button>
         </div>
-        <Button type="button" onClick={handleSave} disabled={loading || saving}>
-          {saving ? "保存中…" : "保存"}
-        </Button>
-      </div>
+      )}
     </div>
   );
 }
