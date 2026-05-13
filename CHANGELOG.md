@@ -4,31 +4,33 @@
 
 ---
 
-## Unreleased
+## v0.4.0 (2026-05-14)
 
 ### 新功能
-- Agent 运行时健壮性 Phase 1 完成：
-  - 并行工具执行：Read/Glob/Grep/WebSearch/WebFetch 等只读工具 Promise.all 并行
-  - 上下文溢出自动恢复：检测 context_length_exceeded → 紧急截断 → 重试
-  - 缓冲消息队列：Agent 工作中新消息入队，turn 完成后自动消费
-  - 智能重试恢复：429/502/503 瞬态错误指数退避重试（可配置）
-- Agent 运行时健壮性 Phase 3.2 + Phase 4.2/4.3 完成：
-  - 后台任务持久化：background_tasks SQLite 表 + 启动时恢复遗留任务
-  - 命令白/黑名单实际执行：Bash 工具执行前检查用户配置的命令名单
-  - 目录访问控制实际执行：Read/Write/Edit 执行前检查目录名单
-- Agent 运行时健壮性 Phase 3.1/3.3/4.1 完成：
-  - 子代理 Detach/Attach：SubagentRegistry 状态追踪 + detach/attach 操作
-  - MCP 工具继承：resolveSubagentTools() 按 none/read-only/full 三级解析
-  - YOLO 安全反思增强：LLM 安全评估（做什么/风险/是否可逆）
-- Agent 运行时健壮性 Phase 5 + 6 完成：
-  - 消息多选批量操作：Ctrl/Cmd+Click 切换 + Shift 范围选 + 浮动操作栏
-  - 文件修改面板：追踪 Write/Edit 操作 + diff 预览 + 单文件恢复
-  - 增量更新：zstd patch-from 二进制补丁生成/应用
-  - 模型聚合：已有完整实现（priority/round-robin/random 路由）
-  - SWE-bench 评测框架：runEvalTask/runEvalSuite + 并发 + 超时
-  - 流式输出按时间顺序：WebSocket 有序保证 + 注释确认
-  - 消息渲染性能：useMemo/useCallback 优化
-  - WebSocket 重连：指数退避 + visibilitychange + 断点续传
+- **并行工具执行**：Read/Glob/Grep/WebSearch/WebFetch 等只读工具 Promise.all 并行，多工具调用速度提升 2-5x
+- **上下文溢出自动恢复**：检测 context_length_exceeded → 紧急截断 → 自动重试
+- **缓冲消息队列**：Agent 工作中新消息入队（最大 10 条），turn 完成后自动消费
+- **智能重试恢复**：429/502/503 瞬态错误指数退避重试（可配置退避参数）
+- **命令白/黑名单**：Bash 工具执行前检查用户配置的命令名单，黑名单命令直接拒绝
+- **目录访问控制**：Read/Write/Edit 执行前检查目录名单，黑名单目录禁止访问
+- **YOLO 安全反思**：高风险操作前 LLM 自动评估安全性（做什么/风险/是否可逆）
+- **子代理生命周期**：SubagentRegistry 状态追踪 + detach/attach 操作
+- **后台任务持久化**：background_tasks SQLite 表，服务重启后恢复遗留任务状态
+- **MCP 工具继承**：子代理按 none/read-only/full 三级继承父会话工具
+- **消息多选批量操作**：Ctrl/Cmd+Click 切换 + Shift 范围选 + 浮动操作栏（复制/删除/分叉）
+- **文件修改面板**：追踪 Write/Edit 操作 + diff 预览 + 单文件恢复
+- **增量更新**：zstd patch-from 二进制补丁生成/应用（异步非阻塞）
+- **SWE-bench 评测框架**：runEvalTask/runEvalSuite + 并发控制 + 超时处理
+- **WebSocket 自动重连**：指数退避 + visibilitychange 监听 + 断点续传
+- **消息渲染性能**：useMemo/useCallback 优化高频组件
+
+### 修复
+- 并行工具执行后 tool_call/tool_result 消息格式不符合 Claude API 要求（连续 user 消息被拒绝）
+- drainSessionQueue 竞态条件导致并发 turn
+- emergencyTruncateMessages 可能产生 orphaned tool_result
+- captureOriginalContent 相对路径无法解析（文件恢复失效）
+- LLM 安全反思无超时（可能无限阻塞）
+- void drainSessionQueue 未捕获异常（session 永久锁死风险）
 
 ---
 
