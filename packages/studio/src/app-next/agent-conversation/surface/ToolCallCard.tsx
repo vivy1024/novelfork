@@ -339,8 +339,32 @@ function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
 // Read 展开 — 文件路径 + 代码内容（带行号）
 // ---------------------------------------------------------------------------
 
+function inferLanguageClass(filePath: string): string {
+  const ext = filePath.split(".").pop()?.toLowerCase() ?? "";
+  const map: Record<string, string> = {
+    ts: "language-typescript", tsx: "language-typescript",
+    js: "language-javascript", jsx: "language-javascript",
+    json: "language-json", md: "language-markdown",
+    css: "language-css", scss: "language-css",
+    html: "language-html", xml: "language-xml",
+    py: "language-python", rs: "language-rust",
+    go: "language-go", sql: "language-sql",
+    yaml: "language-yaml", yml: "language-yaml",
+    sh: "language-bash", bash: "language-bash",
+    toml: "language-toml",
+  };
+  return map[ext] ?? "";
+}
+
 function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const filePath = extractFilePath(toolCall.input);
+  const langClass = filePath ? inferLanguageClass(filePath) : "";
+
+  // WebSearch / WebFetch 特殊处理
+  if (toolCall.toolName === "WebSearch" || toolCall.toolName === "WebFetch") {
+    return <WebSearchExpanded toolCall={toolCall} />;
+  }
+
   return (
     <>
       {filePath && (
@@ -349,7 +373,7 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         </code>
       )}
       {toolCall.output && (
-        <pre className="max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed">
+        <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
           {toolCall.output}
         </pre>
       )}
@@ -364,11 +388,14 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
 function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const pattern = extractGrepPattern(toolCall.input);
   const searchPath = extractGrepPath(toolCall.input);
+  const isGlob = toolCall.toolName === "Glob" || toolCall.toolName === "Find";
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
         {pattern && (
           <Badge variant="secondary" className="h-5 font-mono text-[10px]">
+            <Search className="size-2.5 mr-1" />
             {pattern}
           </Badge>
         )}
@@ -377,9 +404,21 @@ function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         )}
       </div>
       {toolCall.output && (
-        <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
-          {toolCall.output}
-        </pre>
+        isGlob ? (
+          /* Glob: 匹配路径列表，每行一个 */
+          <div className="max-h-48 overflow-auto rounded-md bg-muted/40 px-3 py-2">
+            {toolCall.output.split("\n").filter(Boolean).map((line, i) => (
+              <div key={i} className="text-[11px] font-mono text-muted-foreground py-px truncate" title={line}>
+                {line}
+              </div>
+            ))}
+          </div>
+        ) : (
+          /* Grep: file:line:content 格式 */
+          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
+            {toolCall.output}
+          </pre>
+        )
       )}
     </>
   );
@@ -392,6 +431,15 @@ function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
 function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const filePath = extractFilePath(toolCall.input);
   const editStrings = extractEditStrings(toolCall.input);
+  const isWrite = toolCall.toolName === "Write" || toolCall.toolName === "create_file" || toolCall.toolName === "write_file";
+
+  // Extract write content from input
+  const writeContent = useMemo(() => {
+    if (!isWrite || !toolCall.input || typeof toolCall.input !== "object") return null;
+    const record = toolCall.input as Record<string, unknown>;
+    if (typeof record.content === "string") return record.content;
+    return null;
+  }, [isWrite, toolCall.input]);
 
   const diffLines = useMemo(() => {
     if (!editStrings) return null;
@@ -411,6 +459,7 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           {filePath}
         </code>
       )}
+      {/* Edit: diff 渲染 */}
       {diffLines && (
         <div className="rounded-md border border-border overflow-hidden text-[11px] font-mono leading-relaxed">
           {diffLines.map((line, i) => (
@@ -429,7 +478,17 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           ))}
         </div>
       )}
-      {!diffLines && toolCall.output && (
+      {/* Write: 写入内容 */}
+      {!diffLines && writeContent && (
+        <div className="space-y-1">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">写入内容</span>
+          <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono">
+            {writeContent}
+          </pre>
+        </div>
+      )}
+      {/* Fallback: output */}
+      {!diffLines && !writeContent && toolCall.output && (
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
           {toolCall.output}
         </pre>
@@ -494,6 +553,43 @@ function AgentExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
             {toolCall.output}
           </pre>
+        </div>
+      )}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// WebSearch 展开 — query badge + 结果列表
+// ---------------------------------------------------------------------------
+
+function extractWebSearchQuery(input: unknown): string | null {
+  if (!input || typeof input !== "object") return null;
+  const record = input as Record<string, unknown>;
+  return typeof record.query === "string" ? record.query
+    : typeof record.q === "string" ? record.q
+    : null;
+}
+
+function WebSearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
+  const query = extractWebSearchQuery(toolCall.input);
+  return (
+    <>
+      {query && (
+        <div className="flex items-center gap-2">
+          <Badge variant="secondary" className="h-5 font-mono text-[10px]">
+            <Globe className="size-2.5 mr-1" />
+            {query}
+          </Badge>
+        </div>
+      )}
+      {toolCall.output && (
+        <div className="max-h-60 overflow-auto rounded-md bg-muted/40 px-3 py-2 space-y-1">
+          {toolCall.output.split("\n").filter(Boolean).map((line, i) => (
+            <div key={i} className="text-[11px] text-muted-foreground">
+              {line}
+            </div>
+          ))}
         </div>
       )}
     </>
