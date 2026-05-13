@@ -272,8 +272,212 @@ function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRend
   );
 }
 
+// ---------------------------------------------------------------------------
+// Narrative Line structured viewer
+// ---------------------------------------------------------------------------
+
+interface NarrativeNodeData {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly summary?: string;
+  readonly chapterNumber?: number;
+  readonly status?: string;
+}
+
+interface NarrativeEdgeData {
+  readonly id: string;
+  readonly fromNodeId: string;
+  readonly toNodeId: string;
+  readonly type: string;
+  readonly label?: string;
+  readonly confidence: string;
+}
+
+interface NarrativeWarningData {
+  readonly type: string;
+  readonly severity: string;
+  readonly summary: string;
+}
+
+interface NarrativeSnapshotData {
+  readonly nodes?: readonly NarrativeNodeData[];
+  readonly edges?: readonly NarrativeEdgeData[];
+  readonly warnings?: readonly NarrativeWarningData[];
+  readonly lines?: readonly { readonly id: string; readonly title: string; readonly summary?: string; readonly nodeIds?: readonly string[] }[];
+  readonly beats?: readonly { readonly id: string; readonly title: string; readonly summary?: string; readonly chapterNumber?: number }[];
+  readonly conflictThreads?: readonly { readonly id: string; readonly title: string; readonly status: string }[];
+  readonly foreshadowThreads?: readonly { readonly id: string; readonly title: string; readonly status: string; readonly dueChapter?: number }[];
+}
+
+const NODE_TYPE_LABELS: Record<string, string> = {
+  chapter: "章节",
+  event: "事件",
+  conflict: "冲突",
+  foreshadow: "伏笔",
+  payoff: "回收",
+  "character-arc": "角色弧",
+  setting: "场景",
+};
+
+const SEVERITY_STYLES: Record<string, string> = {
+  critical: "border-red-500/50 bg-red-50 dark:bg-red-950/20",
+  warning: "border-yellow-500/50 bg-yellow-50 dark:bg-yellow-950/20",
+  info: "border-blue-500/50 bg-blue-50 dark:bg-blue-950/20",
+};
+
+function NarrativeLineView({ node }: { node: WorkbenchResourceNode }) {
+  const snapshot: NarrativeSnapshotData | null = node.metadata?.snapshot ?? null;
+
+  // If we have plain string content but no structured snapshot, show as readable text
+  if (!snapshot && typeof node.content === "string" && node.content.trim()) {
+    // Try to parse as JSON snapshot
+    let parsed: NarrativeSnapshotData | null = null;
+    try {
+      const obj = JSON.parse(node.content);
+      if (obj && typeof obj === "object" && (obj.nodes || obj.edges || obj.lines)) {
+        parsed = obj as NarrativeSnapshotData;
+      }
+    } catch { /* not JSON, show as text */ }
+
+    if (parsed) {
+      return <NarrativeLineStructuredView snapshot={parsed} />;
+    }
+
+    // Plain text content — show in a readable textarea
+    return (
+      <Textarea aria-label="叙事线内容" readOnly value={node.content} rows={12} onChange={() => undefined} />
+    );
+  }
+
+  if (!snapshot) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 text-center text-muted-foreground">
+        <p className="text-sm">暂无叙事线数据</p>
+        <p className="text-xs mt-1">通过 Agent 对话生成叙事线</p>
+      </div>
+    );
+  }
+
+  return <NarrativeLineStructuredView snapshot={snapshot} />;
+}
+
+function NarrativeLineStructuredView({ snapshot }: { snapshot: NarrativeSnapshotData }) {
+  const nodes = snapshot.nodes ?? [];
+  const edges = snapshot.edges ?? [];
+  const warnings = snapshot.warnings ?? [];
+  const lines = snapshot.lines ?? [];
+  const conflicts = snapshot.conflictThreads ?? [];
+  const foreshadows = snapshot.foreshadowThreads ?? [];
+
+  return (
+    <div className="space-y-4 p-4 overflow-y-auto max-h-[600px]">
+      {/* Warnings */}
+      {warnings.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">警告</h4>
+          {warnings.map((w, i) => (
+            <div key={i} className={`rounded border p-2 text-xs ${SEVERITY_STYLES[w.severity] ?? SEVERITY_STYLES.info}`}>
+              <span className="font-medium">[{w.type}]</span> {w.summary}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Narrative Lines */}
+      {lines.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">叙事线 ({lines.length})</h4>
+          {lines.map((line) => (
+            <div key={line.id} className="rounded-lg border border-border bg-card p-3">
+              <div className="text-sm font-medium">{line.title}</div>
+              {line.summary && <div className="text-xs text-muted-foreground mt-0.5">{line.summary}</div>}
+              {line.nodeIds && <div className="text-[10px] text-muted-foreground mt-1">包含 {line.nodeIds.length} 个节点</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Conflict Threads */}
+      {conflicts.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">冲突线 ({conflicts.length})</h4>
+          {conflicts.map((c) => (
+            <div key={c.id} className="flex items-center gap-2 rounded border border-border p-2 text-xs">
+              <span className={`inline-block size-2 rounded-full ${c.status === "resolved" ? "bg-green-500" : c.status === "escalating" ? "bg-red-500" : "bg-yellow-500"}`} />
+              <span className="font-medium">{c.title}</span>
+              <span className="text-muted-foreground ml-auto">{c.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Foreshadow Threads */}
+      {foreshadows.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">伏笔线 ({foreshadows.length})</h4>
+          {foreshadows.map((f) => (
+            <div key={f.id} className="flex items-center gap-2 rounded border border-border p-2 text-xs">
+              <span className={`inline-block size-2 rounded-full ${f.status === "paid-off" ? "bg-green-500" : f.status === "due" ? "bg-orange-500" : f.status === "abandoned" ? "bg-gray-400" : "bg-blue-500"}`} />
+              <span className="font-medium">{f.title}</span>
+              {f.dueChapter && <span className="text-muted-foreground">预计第{f.dueChapter}章</span>}
+              <span className="text-muted-foreground ml-auto">{f.status}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Nodes */}
+      {nodes.length > 0 && (
+        <div className="space-y-1.5">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">节点 ({nodes.length})</h4>
+          <div className="grid gap-1.5">
+            {nodes.slice(0, 50).map((n) => (
+              <div key={n.id} className="rounded border border-border p-2 text-xs">
+                <div className="flex items-center gap-1.5">
+                  <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
+                  <span className="font-medium">{n.title}</span>
+                  {n.chapterNumber != null && <span className="text-muted-foreground ml-auto">第{n.chapterNumber}章</span>}
+                </div>
+                {n.summary && <div className="text-muted-foreground mt-0.5 line-clamp-2">{n.summary}</div>}
+              </div>
+            ))}
+            {nodes.length > 50 && <div className="text-[10px] text-muted-foreground text-center">…还有 {nodes.length - 50} 个节点</div>}
+          </div>
+        </div>
+      )}
+
+      {/* Edges summary */}
+      {edges.length > 0 && (
+        <div className="space-y-1">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">关系 ({edges.length})</h4>
+          <p className="text-[10px] text-muted-foreground">
+            {edges.length} 条关系连接（{[...new Set(edges.map(e => e.type))].join("、")}）
+          </p>
+        </div>
+      )}
+
+      {/* Agent hint */}
+      <div className="rounded border border-dashed border-border p-2 text-center text-[10px] text-muted-foreground">
+        通过 Agent 对话编辑叙事线 · 叙事线由写作管线自动维护
+      </div>
+    </div>
+  );
+}
+
+function renderNarrativeLine(node: WorkbenchResourceNode) {
+  return (
+    <ViewerShell node={node} label="叙事线">
+      <NarrativeLineView node={node} />
+    </ViewerShell>
+  );
+}
+
 function renderReadonlySummary(node: WorkbenchResourceNode) {
-  const label = node.kind === "storyline" || node.kind === "narrative-line" ? "叙事线" : "经纬资料";
+  if (node.kind === "narrative-line" || node.kind === "storyline") {
+    return renderNarrativeLine(node);
+  }
+  const label = "经纬资料";
   const content = node.content ?? JSON.stringify(node.metadata?.snapshot ?? node.metadata?.section ?? node.metadata?.entry ?? node.metadata ?? {}, null, 2);
   return (
     <ViewerShell node={node} label={label}>

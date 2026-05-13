@@ -414,9 +414,7 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
 
         <TabsContent value="beats">
           <div className="pt-2">
-            <BeatTemplateList
-              currentBeatIndex={currentChapter ? currentChapter - 1 : 0}
-            />
+            <BeatTemplateList />
           </div>
         </TabsContent>
 
