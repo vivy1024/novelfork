@@ -263,6 +263,12 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
 const abortControllerBySessionId = new Map<string, AbortController>();
 
 // ─── Buffered Message Queue ───────────────────────────────────────────────────
+// Spec §1.3 mentions SQLite persistence for the queue. Current implementation is
+// in-memory only because: (1) queued messages have a very short lifespan (seconds
+// to minutes while agent is working), (2) on restart the agent turn itself is lost
+// so replaying queued messages would produce confusing results, (3) the background
+// task store already handles long-lived task persistence. If persistence becomes
+// needed, add a `queued_messages` table and drain on startup.
 interface QueuedMessage {
   readonly content: string;
   readonly messageId: string;
@@ -1468,7 +1474,8 @@ export async function handleSessionChatTransportMessage(
   const messageId = ("messageId" in payload ? payload.messageId?.trim() : "") || `session-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // ─── Buffered Message Queue: check if session is busy ───────────────────────
-  if (sessionBusy.has(sessionId)) {
+  const isFromQueue = "_fromQueue" in payload && payload._fromQueue === true;
+  if (sessionBusy.has(sessionId) && !isFromQueue) {
     const queue = sessionMessageQueue.get(sessionId) ?? [];
     if (queue.length >= MAX_QUEUE_SIZE) {
       sendEnvelope(transport, createSessionChatError(sessionId, "消息队列已满，请等待当前任务完成"));
@@ -1480,7 +1487,9 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
-  sessionBusy.add(sessionId);
+  if (!isFromQueue) {
+    sessionBusy.add(sessionId);
+  }
   // ────────────────────────────────────────────────────────────────────────────
 
   const timestamp = Date.now();
@@ -1781,16 +1790,15 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
 
   console.log(JSON.stringify({ component: "session-chat", event: "message-dequeued", sessionId, queueLength: queue.length }));
 
-  // Clear busy flag before re-entering handleSessionChatTransportMessage
-  // so it will re-acquire it normally (not re-queue the message)
-  sessionBusy.delete(sessionId);
-
+  // NOTE: Do NOT clear sessionBusy here — we stay busy while processing the queued message.
+  // The drain will be called again at the end of handleSessionChatTransportMessage.
+  // We use a special internal flag to bypass the busy check on re-entry.
   try {
-    // Replay the queued message through the normal transport handler
-    const syntheticPayload = JSON.stringify({ type: "session:message", content: next.content, messageId: next.messageId });
+    const syntheticPayload = JSON.stringify({ type: "session:message", content: next.content, messageId: next.messageId, _fromQueue: true });
     await handleSessionChatTransportMessage(sessionId, next.transport, syntheticPayload);
   } catch (error) {
     console.log(JSON.stringify({ component: "session-chat", event: "drain-queue-error", sessionId, error: error instanceof Error ? error.message : "unknown" }));
+    // On error, release the busy lock so the session isn't permanently stuck
     sessionBusy.delete(sessionId);
   }
 }

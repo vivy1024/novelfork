@@ -111,7 +111,12 @@ function emergencyTruncateMessages(messages: AgentTurnItem[], keepRecent: number
 
   const firstSystem = messages.find(m => m.type === "message" && m.role === "system");
   const actualKeep = Math.min(keepRecent, Math.floor(messages.length / 3));
-  const recentMessages = messages.slice(-actualKeep);
+  let recentMessages = messages.slice(-actualKeep);
+
+  // Ensure we don't start with an orphaned tool_result (models reject this)
+  while (recentMessages.length > 0 && recentMessages[0]!.type === "tool_result") {
+    recentMessages = recentMessages.slice(1);
+  }
 
   const truncationNotice: AgentTurnItem = {
     type: "message",
