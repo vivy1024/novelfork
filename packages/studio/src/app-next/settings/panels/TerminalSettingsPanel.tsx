@@ -1,7 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { fetchJson, putApi } from "@/hooks/use-api";
+import { notify } from "@/lib/notify";
 
 interface TerminalConfig {
   shell: string;
@@ -9,22 +11,16 @@ interface TerminalConfig {
   fontSize: number;
   scrollback: number;
   autoCloseOnExit: boolean;
-}
-
-interface TerminalSession {
-  id: string;
-  title: string;
-  status: "running" | "exited";
-  pid?: number;
-  createdAt: string;
+  theme: "auto" | "dark" | "light";
 }
 
 const DEFAULT_CONFIG: TerminalConfig = {
   shell: typeof navigator !== "undefined" && navigator.platform?.startsWith("Win") ? "powershell.exe" : "/bin/bash",
   defaultCwd: "",
-  fontSize: 13,
+  fontSize: 14,
   scrollback: 5000,
   autoCloseOnExit: false,
+  theme: "auto",
 };
 
 function SwitchRow({ label, description, checked, onChange }: {
@@ -46,26 +42,42 @@ function SwitchRow({ label, description, checked, onChange }: {
 
 export function TerminalSettingsPanel() {
   const [config, setConfig] = useState<TerminalConfig>(DEFAULT_CONFIG);
-  const [sessions, setSessions] = useState<TerminalSession[]>([]);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    // 模拟加载终端配置（后端 API 就绪后替换）
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 300);
-    return () => clearTimeout(timer);
+    fetchJson<{ preferences?: { terminalFontSize?: number; terminalTheme?: "auto" | "dark" | "light" } }>("/settings/user")
+      .then((data) => {
+        if (data.preferences) {
+          setConfig((prev) => ({
+            ...prev,
+            fontSize: data.preferences?.terminalFontSize ?? prev.fontSize,
+            theme: data.preferences?.terminalTheme ?? prev.theme,
+          }));
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const handleNewTerminal = () => {
-    const newSession: TerminalSession = {
-      id: crypto.randomUUID(),
-      title: `终端 ${sessions.length + 1}`,
-      status: "running",
-      createdAt: new Date().toISOString(),
-    };
-    setSessions((prev) => [...prev, newSession]);
-  };
+  const save = useCallback(async (patch: Partial<TerminalConfig>) => {
+    const updated = { ...config, ...patch };
+    setConfig(updated);
+    setSaving(true);
+    try {
+      await putApi("/settings/user", {
+        preferences: {
+          terminalFontSize: updated.fontSize,
+          terminalTheme: updated.theme,
+        },
+      });
+      notify.success("终端设置已保存");
+    } catch {
+      notify.error("保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }, [config]);
 
   if (loading) {
     return <p className="text-sm text-muted-foreground">加载终端配置中…</p>;
@@ -75,7 +87,7 @@ export function TerminalSettingsPanel() {
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold mb-2 text-foreground">终端</h2>
-        <p className="text-sm text-muted-foreground">终端 Shell 配置与活跃会话管理。</p>
+        <p className="text-sm text-muted-foreground">终端 Shell 配置与显示偏好。</p>
       </div>
 
       {/* 配置区 */}
@@ -107,7 +119,7 @@ export function TerminalSettingsPanel() {
             min={8}
             max={24}
             value={config.fontSize}
-            onChange={(e) => setConfig((prev) => ({ ...prev, fontSize: Number(e.currentTarget.value) || 13 }))}
+            onChange={(e) => setConfig((prev) => ({ ...prev, fontSize: Number(e.currentTarget.value) || 14 }))}
           />
         </label>
 
@@ -122,6 +134,19 @@ export function TerminalSettingsPanel() {
           />
         </label>
 
+        <label className="block space-y-1">
+          <span className="text-sm text-muted-foreground">终端主题</span>
+          <select
+            value={config.theme}
+            onChange={(e) => setConfig((prev) => ({ ...prev, theme: e.currentTarget.value as "auto" | "dark" | "light" }))}
+            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+          >
+            <option value="auto">跟随系统</option>
+            <option value="dark">深色</option>
+            <option value="light">浅色</option>
+          </select>
+        </label>
+
         <SwitchRow
           label="退出时自动关闭"
           description="Shell 进程退出后自动关闭终端标签"
@@ -130,57 +155,26 @@ export function TerminalSettingsPanel() {
         />
       </div>
 
-      {/* 活跃会话区 */}
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-foreground">活跃终端会话</h3>
-          <Button type="button" variant="outline" size="sm" onClick={handleNewTerminal}>
-            新建终端
-          </Button>
-        </div>
-
-        {sessions.length === 0 ? (
-          <p className="text-sm text-muted-foreground">暂无活跃终端会话。点击"新建终端"创建一个。</p>
-        ) : (
-          <div className="space-y-2">
-            {sessions.map((session) => (
-              <div
-                key={session.id}
-                className="flex items-center justify-between rounded-md border border-border px-3 py-2"
-              >
-                <div className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium text-foreground">{session.title}</span>
-                  <span className="block text-xs text-muted-foreground">
-                    {session.pid ? `PID: ${session.pid} · ` : ""}
-                    {new Date(session.createdAt).toLocaleTimeString("zh-CN")}
-                  </span>
-                </div>
-                <span
-                  className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${
-                    session.status === "running"
-                      ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
-                      : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-                  }`}
-                >
-                  {session.status === "running" ? "运行中" : "已退出"}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      {/* 保存按钮 */}
+      <Button
+        type="button"
+        onClick={() => void save(config)}
+        disabled={saving}
+      >
+        {saving ? "保存中…" : "保存设置"}
+      </Button>
 
       {/* 运行时状态 */}
       <div className="space-y-2 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">运行时状态</h3>
+        <h3 className="text-sm font-semibold text-foreground">当前配置</h3>
         <div className="grid grid-cols-2 gap-3 text-sm">
           <div>
             <span className="text-muted-foreground">Shell</span>
             <p className="font-mono text-foreground">{config.shell}</p>
           </div>
           <div>
-            <span className="text-muted-foreground">活跃会话数</span>
-            <p className="font-mono text-foreground">{sessions.filter((s) => s.status === "running").length}</p>
+            <span className="text-muted-foreground">主题</span>
+            <p className="font-mono text-foreground">{config.theme}</p>
           </div>
           <div>
             <span className="text-muted-foreground">字体大小</span>

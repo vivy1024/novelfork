@@ -1823,6 +1823,34 @@ export async function handleSessionChatTransportMessage(
     } catch { /* TurnComplete hook failure is non-fatal */ }
   })();
 
+  // --- Webhook notification (fire-and-forget) ---
+  void (async () => {
+    try {
+      const config = await loadUserConfig();
+      const notifications = (config.preferences as unknown as Record<string, unknown>)?.notifications as
+        | { dingtalk?: { enabled?: boolean; webhookUrl?: string }; feishu?: { enabled?: boolean; webhookUrl?: string } }
+        | undefined;
+      if (!notifications) return;
+      const urls: string[] = [];
+      if (notifications.dingtalk?.enabled && notifications.dingtalk.webhookUrl) {
+        urls.push(notifications.dingtalk.webhookUrl);
+      }
+      if (notifications.feishu?.enabled && notifications.feishu.webhookUrl) {
+        urls.push(notifications.feishu.webhookUrl);
+      }
+      if (urls.length === 0) return;
+
+      const body = JSON.stringify({
+        msgtype: "text",
+        text: { content: `[NovelFork] 叙述者已完成任务：${loaded.session.title}` },
+      });
+
+      for (const url of urls) {
+        await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {});
+      }
+    } catch { /* webhook notification failure is non-fatal */ }
+  })();
+
   // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block
   const assistantMessages = messagesToPersist.filter((m) => m.role === "assistant");
   if (assistantMessages.length > 0) {
