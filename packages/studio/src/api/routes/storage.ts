@@ -1397,6 +1397,20 @@ ${contextParts.join("\n")}
         filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
       );
 
+      if (format === "docx") {
+        const { generateDocx } = await import("../lib/docx-generator.js");
+        const chapters = contents.map((content, i) => {
+          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `第${i + 1}章`;
+          return { title, content };
+        });
+        const docxBuf = generateDocx(chapters, book.title);
+        return new Response(docxBuf.buffer as ArrayBuffer, {
+          headers: {
+            "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "Content-Disposition": `attachment; filename="${id}.docx"`,
+          },
+        });
+      }
       if (format === "epub") {
         const chapters = contents.map((content, i) => {
           const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `Chapter ${i + 1}`;
@@ -1461,6 +1475,18 @@ ${contextParts.join("\n")}
       const { writeFile: writeFileFs } = await import("node:fs/promises");
       let outputPath: string;
       let body: string;
+
+      if (fmt === "docx") {
+        const { generateDocx } = await import("../lib/docx-generator.js");
+        const docxChapters = contents.map((content, i) => {
+          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `第${i + 1}章`;
+          return { title, content };
+        });
+        const docxBuf = generateDocx(docxChapters, book.title);
+        outputPath = join(bookDir, `${id}.docx`);
+        await writeFileFs(outputPath, docxBuf);
+        return c.json({ ok: true, path: outputPath, format: fmt, chapters: filteredFiles.length });
+      }
 
       if (fmt === "md") {
         body = contents.join("\n\n---\n\n");
