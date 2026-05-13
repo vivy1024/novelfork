@@ -1,4 +1,5 @@
 import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useDesktopNotification } from "./notifications/useDesktopNotification";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
@@ -32,6 +33,7 @@ import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
+import { ToastContainer } from "../components/ui/toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
 
@@ -637,6 +639,18 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       autoCompactTriggeredRef.current = false;
     }
   }, [autoCompactEnabled, status.contextUsage, sessionClient, sessionId]);
+
+  // Desktop notification: notify when narrator finishes while tab is hidden
+  const { notifyIfHidden } = useDesktopNotification();
+  const prevNarratorStateRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const currentState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
+    const prevState = prevNarratorStateRef.current;
+    prevNarratorStateRef.current = currentState;
+    if (prevState === "working" && currentState === "idle") {
+      notifyIfHidden("叙述者已完成任务", runtime.state.session?.title ?? sessionId);
+    }
+  }, [status.narratorState, status.state, notifyIfHidden, runtime.state.session?.title, sessionId]);
 
   const applyConfirmationSnapshot = useCallback((snapshot: NarratorSessionChatSnapshot) => {
     runtime.applyEnvelope({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "confirmation-refresh" } });
@@ -1285,6 +1299,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         onOpenWorkbenchIntro={() => { dismissFirstRun(); navigate({ kind: "routines" }); }}
         onDismiss={dismissFirstRun}
       />
+      <ToastContainer />
     </AgentShell>
   );
 }
