@@ -132,7 +132,7 @@
 Phase 1 — 可见性反馈（最高优先级，直接影响内测体验）
   1.1 危险反思反馈
   1.2 重试提示
-  1.3 超时错误明确化
+  1.3 超时错误明确化 ✅
   1.4 自动批准通知
   1.5 弧线追踪反馈
 
@@ -145,8 +145,86 @@ Phase 3 — 缺失入口
   3.2 终端面板入口
 
 Phase 4 — 缺失引导
-  4.1 工具循环超限引导
-  4.2 API 失败代理引导
+  4.1 工具循环超限引导 ✅
+  4.2 API 失败代理引导 ✅
+
+Phase 5 — 工具调用渲染质量
+  5.1 工具调用卡片展开内容增强
+  5.2 Agent System Prompt 工具使用规范
+```
+
+---
+
+## Phase 5：工具调用渲染质量 + Agent 提示词
+
+### 5.1 工具调用卡片展开内容增强
+
+**现状**: 展开工具调用卡片后只显示一行 summary 文本
+**目标**: 对标 NarraFork，展开后显示完整的输入/输出，按工具类型渲染
+
+**各工具展开内容规范**:
+
+| 工具 | 展开后显示 |
+|------|-----------|
+| Bash | `$ command`（终端风格代码块）+ 输出内容（代码块） |
+| Read | 文件内容（代码块 + 语法高亮，按扩展名推断语言） |
+| Write | 写入的完整内容（代码块） |
+| Edit | diff 视图（红色删除行 + 绿色新增行） |
+| Glob | 匹配的文件路径列表（每行一个，monospace） |
+| Grep | 匹配结果（文件:行号:内容，带关键词高亮） |
+| WebSearch | 搜索结果列表（标题 + URL + 摘要） |
+| Agent | 子代理描述 + 最终结论 |
+
+**实现方案**:
+- 修改 `ToolCallCard.tsx` 的展开区域渲染逻辑
+- 从 tool_result 消息的 `data` 字段提取完整输入/输出
+- 按 toolName 分发到不同的渲染组件
+- Bash/Read/Write 用 `<pre><code>` 代码块
+- Edit 用简单的红绿 diff 渲染（不需要完整 diff 库）
+- Grep 用带行号的匹配列表
+
+### 5.2 Agent System Prompt 工具使用规范
+
+**现状**: DEFAULT_SYSTEM_PROMPT 只有 4 行，Agent 不知道工具最佳用法（如用 `Glob: 游戏设计/**/*` 而非 `Glob: { pattern: "*", path: "游戏设计" }`）
+**目标**: 注入完整的工具使用规范，对标 NarraFork/Claude Code 的 system prompt 质量
+
+**需要添加的内容**:
+
+```
+<tool_use>
+使用专用工具而非终端命令：
+- 读取文件用 Read，不要用 Bash cat/head/tail
+- 编辑文件用 Edit，不要用 Bash sed/awk
+- 搜索文件用 Glob/Grep，不要用 Bash find/grep
+- 终端命令仅用于真正需要 shell 执行的操作（git、npm、编译等）
+
+工具调用效率：
+- 独立的工具调用并行发起（系统会自动 Promise.all）
+- 有依赖关系的调用顺序执行
+- Glob 搜索子目录时用 path 参数而非在 pattern 中写路径
+  ✅ Glob({ pattern: "*.ts", path: "src/api" })
+  ❌ Glob({ pattern: "src/api/**/*.ts" })
+- Grep 搜索特定目录时用 path 参数
+  ✅ Grep({ pattern: "loadConfig", path: "packages/core/src" })
+  ❌ Grep({ pattern: "loadConfig" }) 然后手动过滤
+- Read 大文件时用 offset/limit 分页读取
+
+写入安全：
+- Write 会覆盖整个文件，修改部分内容用 Edit
+- Edit 的 old_string 必须在文件中唯一匹配
+- 写入前先 Read 确认当前内容
+
+输出规范：
+- 工具调用间的文字保持最短
+- 先做事再解释
+- 不复述用户说的话
+</tool_use>
+```
+
+**实现方案**:
+- 修改 `packages/core/src/pipeline/agent-prompts.ts` 中的 `DEFAULT_SYSTEM_PROMPT`
+- 将工具使用规范作为 `<tool_use>` 标签块追加到 system prompt
+- 所有 Agent 角色（writer/planner/auditor/architect/explorer）都继承这段规范
 ```
 
 ---
