@@ -195,9 +195,33 @@ export function getOrGenerateAuthSecret(): string {
     return envSecret;
   }
 
-  // Auto-generate a secret for this process lifetime
-  cachedAuthSecret = randomBytes(32).toString("base64url");
-  return cachedAuthSecret;
+  // Try to read persisted secret from config directory
+  try {
+    const { existsSync, readFileSync, writeFileSync, mkdirSync } = require("node:fs");
+    const { join } = require("node:path");
+    const { homedir } = require("node:os");
+    const configDir = join(homedir(), ".novelfork");
+    const secretPath = join(configDir, ".auth-secret");
+
+    if (existsSync(secretPath)) {
+      const persisted = readFileSync(secretPath, "utf-8").trim();
+      if (persisted) {
+        cachedAuthSecret = persisted;
+        return persisted;
+      }
+    }
+
+    // Generate and persist
+    const generated = randomBytes(32).toString("base64url");
+    if (!existsSync(configDir)) mkdirSync(configDir, { recursive: true });
+    writeFileSync(secretPath, generated, "utf-8");
+    cachedAuthSecret = generated;
+    return generated;
+  } catch {
+    // Fallback: ephemeral secret (tokens invalidate on restart)
+    cachedAuthSecret = randomBytes(32).toString("base64url");
+    return cachedAuthSecret;
+  }
 }
 
 export function extractBearerToken(authHeader: string | undefined): string | null {
