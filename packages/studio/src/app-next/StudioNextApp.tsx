@@ -243,6 +243,19 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         </div>
       ) : null}
 
+      {!loading && !runtimeStatus?.hasUsableModel && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 flex items-center gap-3">
+          <span className="text-amber-600 dark:text-amber-400 text-lg">⚠️</span>
+          <div className="flex-1">
+            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">尚未配置 AI 供应商</p>
+            <p className="text-xs text-amber-600 dark:text-amber-400">配置后可使用 AI 写作、续写、审校、去 AI 味等全部功能。未配置时仅支持本地编辑。</p>
+          </div>
+          <Button size="sm" variant="outline" className="shrink-0 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300" onClick={() => onNavigate({ kind: "settings" })}>
+            去配置
+          </Button>
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <HomeStatCard label="最近作品" value={`${books.length} 本`} />
         <HomeStatCard label="最近会话" value={`${standaloneSessions.length} 条`} />
