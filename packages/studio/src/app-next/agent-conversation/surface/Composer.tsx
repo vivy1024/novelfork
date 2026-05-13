@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, ListPlus, Loader2, Square } from "lucide-react";
+import { Send, Paperclip, ListPlus, Loader2, Square, RotateCcw } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -12,15 +12,82 @@ import {
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 
+// ── HoldAbortButton — 长按确认中断 ──
+
+function HoldAbortButton({ onAbort, aborting }: { onAbort: () => void; aborting: boolean }) {
+  const [holding, setHolding] = useState(false);
+  const [progress, setProgress] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef = useRef(0);
+
+  const startHold = () => {
+    setHolding(true);
+    startTimeRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const pct = Math.min(elapsed / 1000, 1);
+      setProgress(pct);
+      if (pct >= 1) {
+        cancelHold();
+        onAbort();
+      }
+    }, 50);
+  };
+
+  const cancelHold = () => {
+    setHolding(false);
+    setProgress(0);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+  };
+
+  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+
+  if (aborting) {
+    return (
+      <Button variant="destructive" size="sm" className="font-medium text-sm px-4 shrink-0 gap-1.5" disabled>
+        <Loader2 className="size-3 animate-spin" /> 中断中...
+      </Button>
+    );
+  }
+
+  return (
+    <Button
+      variant="destructive"
+      size="sm"
+      className="font-medium text-sm px-4 shrink-0 gap-1.5 relative overflow-hidden"
+      onMouseDown={startHold}
+      onMouseUp={cancelHold}
+      onMouseLeave={cancelHold}
+      onTouchStart={startHold}
+      onTouchEnd={cancelHold}
+      aria-label="中断（长按确认）"
+    >
+      {holding && (
+        <div
+          className="absolute inset-0 bg-red-800/30 transition-none"
+          style={{ width: `${progress * 100}%` }}
+        />
+      )}
+      <Square className="size-3 fill-current relative z-10" />
+      <span className="relative z-10">{holding ? "松开取消" : "长按中断"}</span>
+    </Button>
+  );
+}
+
 export interface ComposerProps {
   onSend: (content: string) => void;
   onAbort: () => void;
   onContinue?: () => void;
+  onRetry?: () => void;
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
   onAttach?: (files: FileList) => void;
   slashCommandContext?: SlashCommandExecutionContext;
   isRunning?: boolean;
   isInterrupted?: boolean;
+  lastTurnFailed?: boolean;
   disabledReason?: string;
   settingsHref?: string;
 }
@@ -29,11 +96,13 @@ export function Composer({
   onSend,
   onAbort,
   onContinue,
+  onRetry,
   onSlashCommandResult,
   onAttach,
   slashCommandContext,
   isRunning = false,
   isInterrupted = false,
+  lastTurnFailed = false,
   disabledReason,
   settingsHref,
 }: ComposerProps) {
@@ -160,23 +229,24 @@ export function Composer({
           rows={1}
         />
 
-        {/* Action button — NarraFork 优先级：
-            1. running + 无输入 → 中断（红色，带 loading 反馈）
-            2. idle + 无输入 + 可继续 → 继续（蓝色文字）
-            3. running + 有输入 → 队列发送（排队）
-            4. 默认（有输入） → 发送
+        {/* Action button — 优先级：
+            1. running + 无输入 → 长按中断（hold-to-confirm）
+            2. idle + 无输入 + lastTurnFailed → 重试（橙色）
+            3. idle + 无输入 + 可继续 → 继续（蓝色文字）
+            4. running + 有输入 → 队列发送（排队）
+            5. 默认（有输入） → 发送
         */}
         {isRunning && !value.trim() ? (
+          <HoldAbortButton onAbort={() => { setAborting(true); onAbort(); }} aborting={aborting} />
+        ) : !isRunning && !value.trim() && lastTurnFailed && onRetry ? (
           <Button
-            variant="destructive"
             size="sm"
-            className="font-medium text-sm px-4 shrink-0 gap-1.5"
-            onClick={() => { setAborting(true); onAbort(); }}
-            disabled={aborting}
-            aria-label="中断"
+            className="bg-orange-600 hover:bg-orange-700 text-white font-medium text-sm px-4 shrink-0 gap-1.5"
+            onClick={onRetry}
+            aria-label="重试"
           >
-            {aborting ? <Loader2 className="size-3 animate-spin" /> : <Square className="size-3 fill-current" />}
-            {aborting ? "中断中..." : "中断"}
+            <RotateCcw className="size-3.5" />
+            重试
           </Button>
         ) : !isRunning && !value.trim() && (isInterrupted || onContinue) ? (
           <Button

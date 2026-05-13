@@ -849,7 +849,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
   switch (toolName) {
     // --- Claude Code / Codex 级开发工具 ---
     case "Bash":
-      return async ({ input, permissionMode, definition }) => {
+      return async ({ input, permissionMode, definition, onToolOutputStream }) => {
         const workDir = typeof input.workDir === "string" ? input.workDir : (options.workDir ?? process.cwd());
         const command = String(input.command);
 
@@ -876,7 +876,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         // If explicitly allowed by allowlist, skip further permission checks
         if (listCheck.allowed) {
           const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
-          return executeBashTool({ command, workDir, timeoutMs });
+          return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
         }
 
         // 对标 Claude Code: 在执行前通过 permission-pipeline 做命令级权限检查
@@ -898,7 +898,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           };
         }
         const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
-        return executeBashTool({ command, workDir, timeoutMs });
+        return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
       };
     case "Read":
       return async ({ input, definition }) => {

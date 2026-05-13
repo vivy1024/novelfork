@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image, Terminal } from "lucide-react";
 
@@ -210,6 +210,21 @@ export function ConversationSurface({
   const isWorking = localSending || status.narratorState === "working" || status.state === "running";
   const isInterrupted = status.substatus === "interrupted";
   const effectiveStreamingStartedAt = isWorking ? (status.streamingStartedAt ?? streamingStartedAt) : null;
+
+  // 检测最后一轮是否失败（用于显示重试按钮）
+  const lastTurnFailed = !isWorking && (
+    status.substatus === "error" ||
+    (messages.length > 0 && messages[messages.length - 1]?.role === "assistant" &&
+      (messages[messages.length - 1]?.metadata as Record<string, unknown> | undefined)?.error != null)
+  );
+
+  // 重试：重新发送最后一条用户消息
+  const handleRetry = useCallback(() => {
+    const lastUserMsg = [...messages].reverse().find(m => m.role === "user");
+    if (lastUserMsg) {
+      onSend(lastUserMsg.content);
+    }
+  }, [messages, onSend]);
 
   // 计算当前 streaming 消息的字符数（用于输出速率显示）
   const streamingChars = isWorking ? (messages.filter(m => m.isStreaming).reduce((sum, m) => sum + m.content.length, 0)) : 0;
@@ -508,11 +523,13 @@ export function ConversationSurface({
         onSend={(content) => { setLocalSending(true); onSend(content); }}
         onAbort={onAbort}
         onContinue={() => { setLocalSending(true); onSend(""); }}
+        onRetry={handleRetry}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
         slashCommandContext={{ status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
         isRunning={isWorking}
         isInterrupted={isInterrupted}
+        lastTurnFailed={lastTurnFailed}
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
       />

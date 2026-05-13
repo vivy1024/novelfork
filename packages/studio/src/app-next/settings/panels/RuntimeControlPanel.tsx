@@ -5,6 +5,7 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { USER_SETTINGS_API_PATH, createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
 import { runtimeModelLabel, usableRuntimeModels, type RuntimeModelOption } from "@/lib/runtime-model-options";
+import { notify } from "@/lib/notify";
 import type { ModelDefaultSettings, RuntimeControlSettings, UserConfig } from "@/types/settings";
 import { DEFAULT_USER_CONFIG } from "@/types/settings";
 
@@ -123,6 +124,7 @@ export function RuntimeControlPanel() {
       await refetchUserConfig();
       setSaved(true);
       setIsDirty(false);
+      notify.success("运行时设置已保存");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
