@@ -323,7 +323,7 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
       return {
         ok: true,
         summary: `已读取 ${input.path}（${totalLines} 行，截断至前 ${READ_MAX_LINES} 行）`,
-        data: { content: truncatedContent + truncationNote, totalLines, path: input.path, truncated: true, fullContent: sliced },
+        data: { content: truncatedContent + truncationNote, totalLines, path: input.path, truncated: true },
       };
     }
 
