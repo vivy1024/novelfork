@@ -422,16 +422,22 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           const toolStartedAt = Date.now();
           const signature = toolSignature(toolUse.name, toolUse.input);
           const duplicateResult = toolResultsBySignature.get(signature);
-          const toolResult = duplicateResult
-            ? createDuplicateToolResult(duplicateResult)
-            : await input.executeTool({
-              sessionId: input.sessionId,
-              toolName: toolUse.name,
-              input: toolUse.input,
-              permissionMode: input.permissionMode,
-              sessionConfig: input.sessionConfig,
-              ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-            });
+          let toolResult: SessionToolExecutionResult;
+          try {
+            toolResult = duplicateResult
+              ? createDuplicateToolResult(duplicateResult)
+              : await input.executeTool({
+                sessionId: input.sessionId,
+                toolName: toolUse.name,
+                input: toolUse.input,
+                permissionMode: input.permissionMode,
+                sessionConfig: input.sessionConfig,
+                ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+              });
+          } catch (err) {
+            console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
+            toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
+          }
           const toolDurationMs = Date.now() - toolStartedAt;
           return { toolUse, toolResult, toolDurationMs, signature, isDuplicate: Boolean(duplicateResult) };
         }),
@@ -513,16 +519,22 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         const toolStartedAt = Date.now();
         const signature = toolSignature(toolUse.name, toolUse.input);
         const duplicateResult = toolResultsBySignature.get(signature);
-        const toolResult = duplicateResult
-          ? createDuplicateToolResult(duplicateResult)
-          : await input.executeTool({
-            sessionId: input.sessionId,
-            toolName: toolUse.name,
-            input: toolUse.input,
-            permissionMode: input.permissionMode,
-            sessionConfig: input.sessionConfig,
-            ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-          });
+        let toolResult: SessionToolExecutionResult;
+        try {
+          toolResult = duplicateResult
+            ? createDuplicateToolResult(duplicateResult)
+            : await input.executeTool({
+              sessionId: input.sessionId,
+              toolName: toolUse.name,
+              input: toolUse.input,
+              permissionMode: input.permissionMode,
+              sessionConfig: input.sessionConfig,
+              ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+            });
+        } catch (err) {
+          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
+          toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
+        }
         const toolDurationMs = Date.now() - toolStartedAt;
         executedToolSteps += 1;
         console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps }));
