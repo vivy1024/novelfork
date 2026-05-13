@@ -1735,7 +1735,13 @@ export async function handleSessionChatTransportMessage(
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : "LLM runtime request failed";
+    let message = error instanceof Error ? error.message : "LLM runtime request failed";
+    // 区分首 token 超时和其他错误
+    if (error instanceof Error && (error.name === "TimeoutError" || message.includes("timeout"))) {
+      message = `API 响应超时。可在设置 → AI 代理 → 首 token 超时中调整超时时间，或检查网络连接。`;
+    } else if (error instanceof Error && message.includes("aborted")) {
+      message = "已中断。";
+    }
     failure = {
       reason: "provider-unavailable",
       message,

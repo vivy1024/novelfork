@@ -288,7 +288,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             }
             for (const toolUse of retryReply.toolUses) {
               if (executedToolSteps >= maxSteps) {
-                emit({ type: "turn_failed", reason: "tool-loop-limit", message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。`, data: { maxSteps, recentToolCalls } });
+                emit({ type: "turn_failed", reason: "tool-loop-limit", message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。可在设置 → AI 代理 → 每条消息最大轮次中调高此限制。`, data: { maxSteps, recentToolCalls } });
                 return events;
               }
               emit({ type: "tool_call", id: toolUse.id, toolName: toolUse.name, input: toolUse.input, runtime: retryReply.metadata });
@@ -395,7 +395,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         emit({
           type: "turn_failed",
           reason: "tool-loop-limit",
-          message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。`,
+          message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。可在设置 → AI 代理 → 每条消息最大轮次中调高此限制。`,
           data: { maxSteps, recentToolCalls },
         });
         return events;
@@ -500,7 +500,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           emit({
             type: "turn_failed",
             reason: "tool-loop-limit",
-            message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。`,
+            message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。可在设置 → AI 代理 → 每条消息最大轮次中调高此限制。`,
             data: { maxSteps, recentToolCalls },
           });
           return events;
