@@ -136,10 +136,10 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 文件搜索工具 ---
   sessionTool({
     name: "Glob",
-    description: "使用 glob 模式匹配工作目录内的文件，返回匹配的文件路径列表。",
+    description: "快速文件模式匹配。用 path 参数指定搜索子目录（而非在 pattern 中写路径）。示例：pattern=\"*.ts\", path=\"src/api\" 搜索 src/api 下的 ts 文件。pattern 支持 **（递归）和 *（单层）。返回匹配的文件路径列表（按修改时间排序）。",
     inputSchema: objectSchema({
-      pattern: stringSchema("Glob 模式（如 **/*.ts, src/**/*.json）。"),
-      path: stringSchema("搜索目录（相对于工作目录，默认为根目录）。"),
+      pattern: stringSchema("Glob 模式（如 *.ts, *.md, **/*.json）。不要在 pattern 中写目录路径，用 path 参数代替。"),
+      path: stringSchema("搜索起始目录（相对于工作目录）。指定子目录比在 pattern 中写路径更高效。"),
     }, ["pattern"]),
     risk: "read",
     renderer: "tool.glob",
@@ -147,10 +147,10 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Grep",
-    description: "使用正则表达式搜索工作目录内文件的内容，支持文件过滤和上下文行。",
+    description: "正则表达式内容搜索。用 path 参数限定搜索范围（而非搜索全部文件后手动过滤）。支持文件类型过滤（glob 参数）和上下文行显示。返回匹配行及其文件位置。",
     inputSchema: objectSchema({
       pattern: stringSchema("正则表达式搜索模式。"),
-      path: stringSchema("搜索路径（相对于工作目录，默认为根目录）。"),
+      path: stringSchema("搜索路径（相对于工作目录）。指定子目录可大幅减少搜索范围。"),
       glob: stringSchema("文件过滤 glob 模式（如 *.ts, **/*.json）。"),
       output_mode: stringSchema("输出模式：content（显示匹配行）| files_with_matches（仅文件路径）| count（匹配计数）。"),
       context: numberSchema("显示匹配行前后的上下文行数。"),
