@@ -8,7 +8,17 @@ import { resolveStartupPort, resolveStartupRoot } from "./startup-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const root = resolveStartupRoot(process.argv, process.env, () => process.cwd());
+// 编译后的 exe 使用 exe 所在目录作为默认项目根（而非 process.cwd()）
+// 这解决了从 Edge 下载临时目录双击运行时 cwd 不正确的问题
+const defaultProjectRoot = () => {
+  // Bun 编译后 process.execPath 是 exe 路径
+  if (process.execPath && process.execPath.endsWith(".exe")) {
+    return dirname(process.execPath);
+  }
+  return process.cwd();
+};
+
+const root = resolveStartupRoot(process.argv, process.env, defaultProjectRoot);
 const port = resolveStartupPort(process.argv, process.env);
 
 const studioRoot = resolve(__dirname, "../..");

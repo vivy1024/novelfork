@@ -785,6 +785,16 @@ export async function startStudioServer(
   }
 
   // Multi-user mode: don't require global API key at startup.
+  // If novelfork.json doesn't exist (e.g., first run from Downloads folder), create a default one.
+  const { join: joinPath } = await import("node:path");
+  const { existsSync: fsExists, writeFileSync } = await import("node:fs");
+  const configPath = joinPath(root, "novelfork.json");
+  if (!fsExists(configPath)) {
+    try {
+      writeFileSync(configPath, JSON.stringify({ name: "NovelFork Studio", mode: "standalone", version: "0.4.0" }, null, 2), "utf-8");
+      logStartupEvent({ level: "info", component: "config.init", msg: "Created default novelfork.json", ok: true, extra: { path: configPath } });
+    } catch { /* non-fatal — loadProjectConfig will throw with a clear message */ }
+  }
   const config = await loadProjectConfig(root, { requireApiKey: false });
 
   const mode = getNovelForkMode();
