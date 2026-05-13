@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, ListPlus } from "lucide-react";
+import { Send, Paperclip, ListPlus, Loader2, Square } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -39,9 +39,15 @@ export function Composer({
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
+  const [aborting, setAborting] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const registry = useMemo(() => slashCommandContext?.registry ?? createDefaultSlashCommandRegistry(), [slashCommandContext?.registry]);
+
+  // Reset aborting state when turn ends
+  useEffect(() => {
+    if (!isRunning) setAborting(false);
+  }, [isRunning]);
   const slashSuggestions = getSlashCommandSuggestions(value, registry);
   const showSlashSuggestions = parseSlashCommandInput(value).ok && slashSuggestions.length > 0;
 
@@ -155,7 +161,7 @@ export function Composer({
         />
 
         {/* Action button — NarraFork 优先级：
-            1. running + 无输入 → 中断（红色文字）
+            1. running + 无输入 → 中断（红色，带 loading 反馈）
             2. idle + 无输入 + 可继续 → 继续（蓝色文字）
             3. running + 有输入 → 队列发送（排队）
             4. 默认（有输入） → 发送
@@ -164,11 +170,13 @@ export function Composer({
           <Button
             variant="destructive"
             size="sm"
-            className="font-medium text-sm px-4 shrink-0"
-            onClick={onAbort}
+            className="font-medium text-sm px-4 shrink-0 gap-1.5"
+            onClick={() => { setAborting(true); onAbort(); }}
+            disabled={aborting}
             aria-label="中断"
           >
-            中断
+            {aborting ? <Loader2 className="size-3 animate-spin" /> : <Square className="size-3 fill-current" />}
+            {aborting ? "中断中..." : "中断"}
           </Button>
         ) : !isRunning && !value.trim() && (isInterrupted || onContinue) ? (
           <Button
