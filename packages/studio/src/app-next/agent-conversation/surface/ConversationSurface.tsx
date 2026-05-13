@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image, Terminal } from "lucide-react";
-import { requestNotificationPermission, sendDesktopNotification } from "../../notifications/desktop-notification";
 
 import { GitPanel } from "./GitPanel";
 import { FileChangesPanel } from "./FileChangesPanel";
@@ -215,18 +214,6 @@ export function ConversationSurface({
   // 计算当前 streaming 消息的字符数（用于输出速率显示）
   const streamingChars = isWorking ? (messages.filter(m => m.isStreaming).reduce((sum, m) => sum + m.content.length, 0)) : 0;
 
-  // 桌面通知：任务完成时通知用户（仅当标签页不可见时）
-  const wasWorkingRef = useRef(false);
-  useEffect(() => {
-    if (wasWorkingRef.current && !isWorking) {
-      sendDesktopNotification("NovelFork", "叙述者已完成任务");
-    }
-    wasWorkingRef.current = isWorking;
-  }, [isWorking]);
-
-  // 请求通知权限（首次渲染时）
-  useEffect(() => { requestNotificationPermission(); }, []);
-
   // 检测回复到达，重置 localSending
   useEffect(() => {
     if (messages.length > prevMessageCount.current && localSending) {
@@ -316,7 +303,7 @@ export function ConversationSurface({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => window.open("/next/terminal", "_blank")}>
+              <Button variant="ghost" size="icon-sm" onClick={() => window.open("/next/settings?section=terminals", "_blank")} title="终端设置">
                 <Terminal className="size-4" />
               </Button>
             </TooltipTrigger>
