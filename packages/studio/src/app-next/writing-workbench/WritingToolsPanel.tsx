@@ -37,6 +37,7 @@ export interface WritingToolDefinition {
   description: string;
   icon: React.ReactNode;
   endpoint: string;
+  method?: "GET" | "POST";
   requiresChapter?: boolean;
 }
 
@@ -44,7 +45,7 @@ export interface WritingToolsPanelProps {
   bookId: string;
   currentChapter?: number;
   chapterContent?: string;
-  onRunTool: (toolId: string, endpoint: string, params: Record<string, unknown>) => Promise<unknown>;
+  onRunTool: (toolId: string, endpoint: string, params: Record<string, unknown>, method?: "GET" | "POST") => Promise<unknown>;
 }
 
 const WRITING_TOOLS: WritingToolDefinition[] = [
@@ -54,6 +55,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "检测文本中的 AI 生成痕迹并给出修复建议",
     icon: <ShieldAlert className="size-4" />,
     endpoint: "/api/filter/scan",
+    method: "POST",
     requiresChapter: true,
   },
   {
@@ -62,6 +64,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "生成 3-5 个章末钩子方案",
     icon: <Anchor className="size-4" />,
     endpoint: "/api/books/:bookId/hooks/generate",
+    method: "POST",
     requiresChapter: true,
   },
   {
@@ -70,6 +73,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "分析句长分布和节奏多样性",
     icon: <BarChart3 className="size-4" />,
     endpoint: "/api/books/:bookId/chapters/:ch/rhythm",
+    method: "POST",
     requiresChapter: true,
   },
   {
@@ -78,6 +82,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "计算对话占比和角色对话分布",
     icon: <MessageSquare className="size-4" />,
     endpoint: "/api/books/:bookId/chapters/:ch/dialogue",
+    method: "POST",
     requiresChapter: true,
   },
   {
@@ -86,6 +91,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "人设一致性、伏笔回收率、AI味均值",
     icon: <Activity className="size-4" />,
     endpoint: "/api/books/:bookId/health",
+    method: "GET",
   },
   {
     id: "conflicts",
@@ -93,6 +99,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "主要/次要矛盾的辩证转化追踪",
     icon: <Swords className="size-4" />,
     endpoint: "/api/books/:bookId/conflicts/map",
+    method: "GET",
   },
   {
     id: "arcs",
@@ -100,6 +107,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "角色成长弧线进度和 arc beat",
     icon: <TrendingUp className="size-4" />,
     endpoint: "/api/books/:bookId/arcs",
+    method: "GET",
   },
   {
     id: "tone-check",
@@ -107,6 +115,7 @@ const WRITING_TOOLS: WritingToolDefinition[] = [
     description: "检测章节文风与声明基调的偏离度",
     icon: <Palette className="size-4" />,
     endpoint: "/api/books/:bookId/chapters/:ch/tone-check",
+    method: "POST",
     requiresChapter: true,
   },
 ];
@@ -177,7 +186,7 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
       .replace(":ch", String(currentChapter ?? 1));
 
     try {
-      const result = await onRunTool(tool.id, endpoint, { bookId, chapterNumber: currentChapter });
+      const result = await onRunTool(tool.id, endpoint, { bookId, chapterNumber: currentChapter }, tool.method ?? "POST");
       setLastResult({ toolId: tool.id, data: result });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "工具执行失败");
