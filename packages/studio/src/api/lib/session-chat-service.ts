@@ -1507,6 +1507,8 @@ export async function handleSessionChatTransportMessage(
   let canonicalEvents: readonly RuntimeEvent[] = [];
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
+  const toolInputsById = new Map<string, Record<string, unknown>>();
+  const realtimeBroadcastedIds = new Set<string>();
 
   // 推送 working 状态给所有连接的客户端
   const turnStartedAt = Date.now();
@@ -1564,9 +1566,38 @@ export async function handleSessionChatTransportMessage(
         if (event.type === "tool_call") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "tool_calling" as const, toolName: event.toolName, turnStartedAt: turnStartedAtIso };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          // 实时推送 tool_call 消息到前端（不等 turn 结束）
+          const toolUseMessage = appendMessageToState(loaded.state, {
+            id: `${userMessage.id}-tool-use-${event.id}`,
+            role: "assistant",
+            content: `请求调用工具 ${event.toolName}。`,
+            timestamp: timestamp + messagesToPersist.length,
+            runtime: event.runtime,
+            toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input }],
+          });
+          messagesToPersist.push(toolUseMessage);
+          broadcastMessageEnvelope(sessionId, loaded.state, toolUseMessage);
+          toolInputsById.set(event.id, event.input);
+          realtimeBroadcastedIds.add(`tool-call-${event.id}`);
         } else if (event.type === "tool_result") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          // 实时推送 tool_result 消息到前端（不等 turn 结束）
+          const toolUse = { id: event.id, toolName: event.toolName, input: toolInputsById.get(event.id) ?? {} };
+          const messageId = `${userMessage.id}-tool-result-${event.id}`;
+          const toolResult = normalizeToolResultConfirmation(event.result, { sessionId, messageId, toolUseId: event.id, input: toolUse.input });
+          const toolResultMessage = appendMessageToState(loaded.state, {
+            id: messageId,
+            role: "assistant",
+            content: toolResult.summary,
+            timestamp: timestamp + messagesToPersist.length,
+            runtime: event.runtime,
+            toolCalls: [buildToolResultCall(toolUse, toolResult)],
+            metadata: buildToolResultMetadata(toolResult),
+          });
+          messagesToPersist.push(toolResultMessage);
+          broadcastMessageEnvelope(sessionId, loaded.state, toolResultMessage);
+          realtimeBroadcastedIds.add(`tool-result-${event.id}`);
         }
       },
       signal: combinedSignal,
@@ -1592,7 +1623,6 @@ export async function handleSessionChatTransportMessage(
     canonicalEvents = runtimeTurn.runtimeEvents;
     clearSessionAbortController(sessionId);
 
-    const toolInputsById = new Map<string, Record<string, unknown>>();
     let assistantIndex = 0;
     for (const event of runtimeEvents) {
       if (event.type === "assistant_message") {
@@ -1613,6 +1643,8 @@ export async function handleSessionChatTransportMessage(
       }
 
       if (event.type === "tool_call") {
+        // 如果已在 onEvent 中实时广播，跳过
+        if (realtimeBroadcastedIds.has(`tool-call-${event.id}`)) continue;
         toolInputsById.set(event.id, event.input);
         const toolUseMessage = appendMessageToState(loaded.state, {
           id: `${userMessage.id}-tool-use-${event.id}`,
@@ -1634,6 +1666,8 @@ export async function handleSessionChatTransportMessage(
       }
 
       if (event.type === "tool_result") {
+        // 如果已在 onEvent 中实时广播，跳过
+        if (realtimeBroadcastedIds.has(`tool-result-${event.id}`)) continue;
         const toolUse = {
           id: event.id,
           toolName: event.toolName,
