@@ -335,13 +335,17 @@ export class LlmRuntimeService {
 
     // All candidates exhausted
     if (lastFailure) {
+      // Append proxy hint for network errors
+      if (!lastFailure.success && (lastFailure.code === "network-error" || lastFailure.code === "upstream-error")) {
+        return { ...lastFailure, error: `${lastFailure.error}。如果使用了代理，请检查设置 → 代理管理中的配置是否正确。` };
+      }
       return lastFailure;
     }
 
     return {
       success: false,
       code: "all-providers-failed",
-      error: `All fallback providers failed for model: ${modelId}`,
+      error: `所有供应商均不可用（模型: ${modelId}）。请检查设置 → AI 供应商中的 API Key 和网络连接。`,
       metadata: { providerId, modelId, providerName: "" },
     };
   }
