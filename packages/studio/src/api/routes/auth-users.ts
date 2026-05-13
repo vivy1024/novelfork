@@ -27,10 +27,54 @@ import {
   getUserByEmail,
   getUserById,
   getUserCount,
+  incrementTokenVersion,
   listUsers,
   toAuthUser,
 } from "../lib/user-store.js";
 import { getAuthMode } from "../lib/auth-config.js";
+
+// --- Rate Limiting ---
+
+interface RateLimitEntry {
+  count: number;
+  resetAt: number;
+}
+
+const loginAttempts = new Map<string, RateLimitEntry>();
+const registerAttempts = new Map<string, RateLimitEntry>();
+
+const LOGIN_MAX_ATTEMPTS = 5;
+const LOGIN_WINDOW_MS = 15 * 60 * 1000; // 15 minutes
+const REGISTER_MAX_ATTEMPTS = 3;
+const REGISTER_WINDOW_MS = 60 * 60 * 1000; // 1 hour
+
+function getClientIp(c: { req: { header: (name: string) => string | undefined } }): string {
+  return c.req.header("x-forwarded-for")?.split(",")[0]?.trim()
+    ?? c.req.header("x-real-ip")
+    ?? "unknown";
+}
+
+function checkRateLimit(
+  store: Map<string, RateLimitEntry>,
+  key: string,
+  maxAttempts: number,
+  windowMs: number,
+): boolean {
+  const now = Date.now();
+  const entry = store.get(key);
+
+  if (!entry || now >= entry.resetAt) {
+    store.set(key, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+
+  if (entry.count >= maxAttempts) {
+    return false;
+  }
+
+  entry.count++;
+  return true;
+}
 
 const authUsersRouter = new Hono();
 
@@ -39,6 +83,12 @@ authUsersRouter.post("/auth/register", async (c) => {
   const mode = getAuthMode();
   if (mode !== "builtin") {
     return c.json({ error: "Registration is only available in builtin auth mode" }, 403);
+  }
+
+  // Rate limit
+  const ip = getClientIp(c);
+  if (!checkRateLimit(registerAttempts, ip, REGISTER_MAX_ATTEMPTS, REGISTER_WINDOW_MS)) {
+    return c.json({ error: "Too many attempts, try again later" }, 429);
   }
 
   let email: string | undefined;
@@ -87,6 +137,12 @@ authUsersRouter.post("/auth/login", async (c) => {
     return c.json({ error: "Login is only available in builtin auth mode" }, 403);
   }
 
+  // Rate limit
+  const ip = getClientIp(c);
+  if (!checkRateLimit(loginAttempts, ip, LOGIN_MAX_ATTEMPTS, LOGIN_WINDOW_MS)) {
+    return c.json({ error: "Too many attempts, try again later" }, 429);
+  }
+
   let email: string | undefined;
   let password: string | undefined;
   try {
@@ -113,7 +169,7 @@ authUsersRouter.post("/auth/login", async (c) => {
 
   const authUser: AuthUser = toAuthUser(stored);
   const secret = getOrGenerateAuthSecret();
-  const tokens = generateTokenPair(authUser, secret);
+  const tokens = generateTokenPair(authUser, secret, stored.tokenVersion);
 
   return c.json({
     user: authUser,
@@ -151,8 +207,13 @@ authUsersRouter.post("/auth/refresh", async (c) => {
     return c.json({ error: "User not found" }, 401);
   }
 
+  // Verify token version — reject if token was revoked
+  if (result.tokenVersion !== stored.tokenVersion) {
+    return c.json({ error: "Token has been revoked" }, 401);
+  }
+
   const authUser: AuthUser = toAuthUser(stored);
-  const tokens = generateTokenPair(authUser, secret);
+  const tokens = generateTokenPair(authUser, secret, stored.tokenVersion);
 
   return c.json({
     user: authUser,
@@ -187,8 +248,15 @@ authUsersRouter.get("/auth/me", async (c) => {
 
 // --- POST /auth/logout ---
 authUsersRouter.post("/auth/logout", async (c) => {
-  // Stateless JWT — logout is handled client-side by discarding tokens.
-  // This endpoint exists for API completeness and future server-side token revocation.
+  // Revoke all refresh tokens by incrementing token_version
+  const token = extractBearerToken(c.req.header("authorization"));
+  if (token) {
+    const secret = getOrGenerateAuthSecret();
+    const user = verifyAccessToken(token, secret);
+    if (user) {
+      incrementTokenVersion(user.id);
+    }
+  }
   return c.json({ success: true });
 });
 
