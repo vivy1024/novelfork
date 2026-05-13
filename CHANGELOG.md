@@ -20,6 +20,15 @@
   - 子代理 Detach/Attach：SubagentRegistry 状态追踪 + detach/attach 操作
   - MCP 工具继承：resolveSubagentTools() 按 none/read-only/full 三级解析
   - YOLO 安全反思增强：LLM 安全评估（做什么/风险/是否可逆）
+- Agent 运行时健壮性 Phase 5 + 6 完成：
+  - 消息多选批量操作：Ctrl/Cmd+Click 切换 + Shift 范围选 + 浮动操作栏
+  - 文件修改面板：追踪 Write/Edit 操作 + diff 预览 + 单文件恢复
+  - 增量更新：zstd patch-from 二进制补丁生成/应用
+  - 模型聚合：已有完整实现（priority/round-robin/random 路由）
+  - SWE-bench 评测框架：runEvalTask/runEvalSuite + 并发 + 超时
+  - 流式输出按时间顺序：WebSocket 有序保证 + 注释确认
+  - 消息渲染性能：useMemo/useCallback 优化
+  - WebSocket 重连：指数退避 + visibilitychange + 断点续传
 
 ---
 
