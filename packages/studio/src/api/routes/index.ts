@@ -45,4 +45,5 @@ export { createShareRouter } from "./share.js";
 export { createUploadRouter } from "./upload.js";
 export { createStorageDiagnosticsRouter } from "./storage-diagnostics.js";
 export { createLearningRouter } from "./learning.js";
+export { createFileChangesRouter } from "./file-changes.js";
 export type { RouterContext } from "./context.js";

@@ -909,7 +909,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         });
       };
     case "Write":
-      return async ({ input, definition }) => {
+      return async ({ input, sessionId, definition }) => {
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
@@ -928,10 +928,22 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckW.allowed) {
           return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
         }
-        return executeFileWriteTool({ path: filePath, content: String(input.content), workDir });
+        // File changes tracking: capture original content before write
+        const { captureOriginalContent, trackFileChange } = await import("./file-changes-tracker.js");
+        const originalContent = await captureOriginalContent(filePath, workDir);
+        const result = await executeFileWriteTool({ path: filePath, content: String(input.content), workDir });
+        if (result.ok) {
+          trackFileChange(sessionId, {
+            path: filePath,
+            type: originalContent === null ? "created" : "modified",
+            originalContent,
+            toolName: "Write",
+          });
+        }
+        return result;
       };
     case "Edit":
-      return async ({ input, definition }) => {
+      return async ({ input, sessionId, definition }) => {
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
@@ -950,7 +962,19 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckE.allowed) {
           return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
         }
-        return executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir });
+        // File changes tracking: capture original content before edit
+        const { captureOriginalContent: captureOrigE, trackFileChange: trackE } = await import("./file-changes-tracker.js");
+        const originalContentE = await captureOrigE(filePath, workDir);
+        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir });
+        if (result.ok) {
+          trackE(sessionId, {
+            path: filePath,
+            type: "modified",
+            originalContent: originalContentE,
+            toolName: "Edit",
+          });
+        }
+        return result;
       };
     // --- Glob/Grep (real handlers) ---
     case "Glob":

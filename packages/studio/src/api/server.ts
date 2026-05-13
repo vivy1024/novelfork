@@ -107,6 +107,7 @@ import {
   setupMonitorWebSocket,
   createStorageDiagnosticsRouter,
   createLearningRouter,
+  createFileChangesRouter,
 } from "./routes/index.js";
 import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
@@ -436,6 +437,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Learning center
     app.route("/api/learn", createLearningRouter());
+
+    // File changes tracking
+    app.route("/api/file-changes", createFileChangesRouter());
 
     // Filesystem browsing — in-app directory picker
     app.get("/api/fs/browse", async (c) => {
