@@ -9,10 +9,11 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine, GitBranch } from "lucide-react";
+import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
+import { notify } from "@/lib/notify";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -135,6 +136,9 @@ function formatDuration(ms: number): string {
 export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
+
+  // 目录白名单按钮状态
+  const [dirAdded, setDirAdded] = useState(false);
 
   // 实时计时器
   const isWorking = narratorState === "working";
@@ -293,6 +297,49 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
               <Zap className="size-4" />
             </TooltipTrigger>
             <TooltipContent side="top">{fastMode ? "Fast Mode 开启" : "Fast Mode 关闭"}</TooltipContent>
+          </Tooltip>
+          )}
+
+          {/* Directory whitelist quick-add button */}
+          {status.workspace?.path && (
+          <Tooltip>
+            <TooltipTrigger
+              className={`rounded-md p-1.5 transition-colors ${dirAdded ? "text-green-500 cursor-default" : "text-muted-foreground hover:bg-muted"}`}
+              disabled={dirAdded}
+              onClick={async () => {
+                if (dirAdded) return;
+                try {
+                  const getResp = await fetch("/api/settings");
+                  const config = getResp.ok ? await getResp.json() : {};
+                  const currentList: string[] = config?.runtimeControls?.toolAccess?.directoryAllowlist ?? [];
+                  const workPath = status.workspace!.path!;
+                  if (currentList.includes(workPath)) {
+                    setDirAdded(true);
+                    notify.info(`${workPath} 已在目录白名单中`);
+                    return;
+                  }
+                  const newList = [...currentList, workPath];
+                  const putResp = await fetch("/api/settings", {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ runtimeControls: { toolAccess: { directoryAllowlist: newList } } }),
+                  });
+                  if (putResp.ok) {
+                    setDirAdded(true);
+                    notify.success(`已添加 ${workPath} 到目录白名单`);
+                  } else {
+                    notify.error("添加目录白名单失败");
+                  }
+                } catch {
+                  notify.error("添加目录白名单失败");
+                }
+              }}
+            >
+              {dirAdded ? <Check className="size-3.5" /> : <FolderPlus className="size-3.5" />}
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {dirAdded ? "已添加到白名单" : "添加工作目录到白名单"}
+            </TooltipContent>
           </Tooltip>
           )}
 

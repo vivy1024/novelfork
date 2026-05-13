@@ -118,6 +118,8 @@ export function ConversationSurface({
   const [searchQuery, setSearchQuery] = useState("");
   const [codeCollapsed, setCodeCollapsed] = useState(false);
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
+  const [filesPanelOpen, setFilesPanelOpen] = useState(false);
+  const [filesPanelDismissed, setFilesPanelDismissed] = useState(false);
   const routerNavigate = useNavigate();
 
   const handleEditTitle = () => {
@@ -241,6 +243,37 @@ export function ConversationSurface({
     prevMessageCount.current = messages.length;
   }, [messages.length, localSending, messages]);
 
+  // Auto-show FileChangesPanel when write tools complete
+  const prevMsgLenForFiles = useRef(messages.length);
+  // Reset dismissed state when session changes
+  useEffect(() => {
+    setFilesPanelDismissed(false);
+    setFilesPanelOpen(false);
+  }, [sessionId]);
+  useEffect(() => {
+    if (messages.length <= prevMsgLenForFiles.current || filesPanelDismissed) {
+      prevMsgLenForFiles.current = messages.length;
+      return;
+    }
+    prevMsgLenForFiles.current = messages.length;
+    const WRITE_TOOLS = new Set([
+      "Write", "Edit", "candidate.create_chapter",
+      "questionnaire.submit_response", "narrative.propose_change",
+    ]);
+    // Check recent messages for completed write tool calls
+    const recentMsgs = messages.slice(-3);
+    for (const msg of recentMsgs) {
+      const toolCalls = (msg as unknown as { toolCalls?: Array<{ toolName: string; status?: string }> }).toolCalls;
+      if (!toolCalls?.length) continue;
+      for (const tc of toolCalls) {
+        if (WRITE_TOOLS.has(tc.toolName) && tc.status === "success") {
+          setFilesPanelOpen(true);
+          return;
+        }
+      }
+    }
+  }, [messages, filesPanelDismissed]);
+
   // 搜索过滤（对标 NarraFork messageSearchPlaceholder: "搜索已加载消息..."）
   const filteredMessages = searchQuery
     ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -327,10 +360,14 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>终端</TooltipContent>
           </Tooltip>
-          <Sheet>
+          <Sheet open={filesPanelOpen} onOpenChange={(open) => {
+            setFilesPanelOpen(open);
+            if (!open) setFilesPanelDismissed(true);
+          }}>
             <SheetTrigger
               className="inline-flex shrink-0 items-center justify-center rounded-lg text-sm font-medium transition-all outline-none select-none hover:bg-muted hover:text-foreground size-7"
               title="文件修改"
+              onClick={() => { setFilesPanelDismissed(false); }}
             >
               <FileCode className="size-4" />
             </SheetTrigger>
@@ -340,7 +377,7 @@ export function ConversationSurface({
                 <SheetDescription>本次会话中修改的文件列表</SheetDescription>
               </SheetHeader>
               <div className="flex-1 overflow-y-auto px-4">
-                <FileChangesPanel sessionId={sessionId} messages={messages} />
+                <FileChangesPanel sessionId={sessionId ?? ""} />
               </div>
             </SheetContent>
           </Sheet>
