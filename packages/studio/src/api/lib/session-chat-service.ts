@@ -94,6 +94,16 @@ async function maybeAutoCompact(
   state: SessionChatRuntimeState,
   sessionId: string,
 ): Promise<{ items: AgentTurnItem[]; compacted: boolean }> {
+  // Fix: 从用户配置读取压缩阈值，而非硬编码
+  let thresholdPercent = AUTOCOMPACT_THRESHOLD_PERCENT;
+  try {
+    const config = await loadUserConfig();
+    const configThreshold = config.runtimeControls?.contextCompressionThresholdPercent;
+    if (typeof configThreshold === "number" && configThreshold > 0) {
+      thresholdPercent = configThreshold;
+    }
+  } catch { /* config load failure is non-fatal */ }
+
   const compactMessages: CompactMessage[] = messages.map((m) => ({
     id: m.id,
     role: m.role as "system" | "user" | "assistant",
@@ -101,7 +111,7 @@ async function maybeAutoCompact(
     ...(m.toolCalls?.length ? { toolCalls: m.toolCalls.filter((tc) => tc.id).map((tc) => ({ id: tc.id!, toolName: tc.toolName })) } : {}),
   }));
 
-  if (!shouldTriggerCompaction(compactMessages, { maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW, thresholdPercent: AUTOCOMPACT_THRESHOLD_PERCENT })) {
+  if (!shouldTriggerCompaction(compactMessages, { maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW, thresholdPercent })) {
     return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
   }
 
@@ -109,7 +119,7 @@ async function maybeAutoCompact(
     const result = await autoCompact({
       messages: compactMessages,
       maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW,
-      thresholdPercent: AUTOCOMPACT_THRESHOLD_PERCENT,
+      thresholdPercent,
       keepRecentCount: AUTOCOMPACT_KEEP_RECENT,
       summarize: async (text) => {
         // 尝试用 summaryModel 调用 LLM 生成摘要
@@ -1463,6 +1473,21 @@ export async function handleSessionChatTransportMessage(
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
+    // Fix: firstTokenTimeout + silentToolCallThreshold — 从用户配置读取运行时控制
+    let combinedSignal: AbortSignal = abortController.signal;
+    let silentToolCallThreshold: number | undefined;
+    try {
+      const timeoutConfig = await loadUserConfig();
+      const timeoutSeconds = timeoutConfig.runtimeControls?.firstTokenTimeout ?? 0;
+      if (timeoutSeconds > 0) {
+        const timeoutSignal = AbortSignal.timeout(timeoutSeconds * 1000);
+        combinedSignal = AbortSignal.any([abortController.signal, timeoutSignal]);
+      }
+      const silentThreshold = timeoutConfig.runtimeControls?.silentToolCallThreshold;
+      if (typeof silentThreshold === "number" && silentThreshold > 0) {
+        silentToolCallThreshold = silentThreshold;
+      }
+    } catch { /* config load failure — use plain abort signal */ }
     const reasoningPolicy = await resolveReasoningPolicy(loaded.session.sessionConfig.providerId);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId,
@@ -1476,6 +1501,7 @@ export async function handleSessionChatTransportMessage(
       maxSteps,
       shouldContinueAfterToolResult,
       reasoningPolicy,
+      ...(silentToolCallThreshold ? { silentToolCallThreshold } : {}),
       onStreamChunk: (chunk: string) => {
         broadcastStreamChunk(sessionId, loaded.state, chunk);
       },
@@ -1488,7 +1514,7 @@ export async function handleSessionChatTransportMessage(
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
         }
       },
-      signal: abortController.signal,
+      signal: combinedSignal,
       generate: async (generateInput): Promise<AgentGenerateResult> => {
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,

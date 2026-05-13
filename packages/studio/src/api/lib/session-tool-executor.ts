@@ -237,6 +237,25 @@ export async function executeSessionTool(
     return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
   }
 
+  // Fix: dangerReflection — 即使 permissionMode=allow，对 destructive 工具也要求确认
+  if (definition.risk === "destructive" && input.confirmationDecision?.decision !== "approved") {
+    try {
+      const { loadUserConfig } = await import("./user-config-service.js");
+      const config = await loadUserConfig();
+      if (config.runtimeControls?.dangerReflection) {
+        const confirmation = createConfirmationRequest(input, definition, options);
+        const result: SessionToolExecutionResult = {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`,
+          data: { status: "pending-confirmation", reason: "danger-reflection" },
+          confirmation,
+        };
+        return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
+      }
+    } catch { /* config load failure — skip danger reflection */ }
+  }
+
   const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
   if (!handler) {
     return withDuration({
@@ -952,6 +971,21 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!plan) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "plan 内容为空。" };
         }
+        // Fix: 如果 autoApprovePlan 为 true，跳过确认直接切换模式
+        try {
+          const { loadUserConfig } = await import("./user-config-service.js");
+          const config = await loadUserConfig();
+          if (config.runtimeControls?.autoApprovePlan) {
+            const { updateSession } = await import("./session-service.js");
+            await updateSession(sessionId, { sessionMode: "chat" });
+            return {
+              ok: true,
+              renderer: "tool.plan-approval",
+              summary: "计划已自动批准，已退出计划模式。",
+              data: { status: "auto-approved", plan, sessionId },
+            };
+          }
+        } catch { /* config load failure — fall through to manual confirmation */ }
         // 不在此处切换 sessionMode，等 confirmation approve 后由 confirmSessionToolDecision 切换
         return {
           ok: true,

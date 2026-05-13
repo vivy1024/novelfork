@@ -70,6 +70,41 @@ function isDangerousCommand(command: string): boolean {
   return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
 }
 
+// --- Legacy encoding detection (Fix: legacyEncoding) ---
+
+/**
+ * 尝试 UTF-8 解码，如果出现 replacement character (U+FFFD) 则 fallback 到 GBK。
+ * Bun 的 TextDecoder 支持 "gbk" 编码。
+ */
+function decodeWithFallback(buffer: Buffer): string {
+  // 检测 BOM
+  if (buffer[0] === 0xFF && buffer[1] === 0xFE) {
+    // UTF-16 LE BOM
+    return new TextDecoder("utf-16le").decode(buffer.subarray(2));
+  }
+  if (buffer[0] === 0xFE && buffer[1] === 0xFF) {
+    // UTF-16 BE BOM
+    return new TextDecoder("utf-16be").decode(buffer.subarray(2));
+  }
+  if (buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF) {
+    // UTF-8 BOM
+    return new TextDecoder("utf-8").decode(buffer.subarray(3));
+  }
+
+  // 尝试 UTF-8
+  const utf8 = new TextDecoder("utf-8", { fatal: false }).decode(buffer);
+  if (!utf8.includes("\uFFFD")) {
+    return utf8;
+  }
+
+  // Fallback: GBK（中文网文最常见的非 UTF-8 编码）
+  try {
+    return new TextDecoder("gbk").decode(buffer);
+  } catch {
+    return utf8; // GBK 解码器不可用时返回 UTF-8 结果
+  }
+}
+
 // --- Path validation (对标 Claude Code CLI pathValidation.ts) ---
 
 function isPathWithinWorkDir(filePath: string, workDir: string): boolean {
@@ -124,12 +159,22 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
   // Windows: 使用 Git Bash（不依赖 WSL）
   const shellPath = resolveShellPath();
 
+  // Fix: refreshShellEnv — 如果配置启用，使用 login shell (-l) 以刷新环境变量
+  let shellArgs = ["-c", trackedCommand];
+  try {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+    if (config.runtimeControls?.refreshShellEnv) {
+      shellArgs = ["-l", "-c", trackedCommand];
+    }
+  } catch { /* config load failure — use default shell args */ }
+
   return new Promise((resolveResult) => {
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
 
     // 对标 Claude: spawn 而非 exec，detached 用于进程组管理
-    const child = spawn(shellPath, ["-c", trackedCommand], {
+    const child = spawn(shellPath, shellArgs, {
       cwd: workDir,
       env: {
         ...process.env,
@@ -232,7 +277,22 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
   }
 
   try {
-    const content = await readFile(resolved, "utf-8");
+    // Fix: legacyEncoding — 如果启用，尝试检测非 UTF-8 编码并用对应解码器
+    let content: string;
+    let legacyEncoding = false;
+    try {
+      const { loadUserConfig } = await import("./user-config-service.js");
+      const config = await loadUserConfig();
+      legacyEncoding = config.runtimeControls?.legacyEncoding === true;
+    } catch { /* config load failure — default to UTF-8 */ }
+
+    if (legacyEncoding) {
+      const rawBuffer = await readFile(resolved);
+      content = decodeWithFallback(rawBuffer);
+    } else {
+      content = await readFile(resolved, "utf-8");
+    }
+
     const lines = content.split("\n");
     const offset = input.offset ?? 0;
     const limit = input.limit ?? lines.length;
