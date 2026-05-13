@@ -6,6 +6,7 @@ import { Sun, Moon, Monitor, Type, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
+import { notify } from "@/lib/notify";
 
 function SwitchRow({ label, description, checked, onChange }: {
   label: string;
@@ -38,6 +39,9 @@ export function AppearancePanel() {
         setPreferences(merged);
         // Apply stored theme on load
         if (merged.theme) setTheme(merged.theme as Theme);
+        // Apply font settings to DOM on load
+        if (merged.fontSize) document.documentElement.style.fontSize = `${merged.fontSize}px`;
+        if (merged.fontFamily) document.documentElement.style.fontFamily = merged.fontFamily;
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -49,6 +53,14 @@ export function AppearancePanel() {
     setSaved(false);
     try {
       await putApi("/settings/user", { preferences: patch });
+      // Apply font settings to DOM immediately
+      if (patch.fontSize) {
+        document.documentElement.style.fontSize = `${patch.fontSize}px`;
+      }
+      if (patch.fontFamily) {
+        document.documentElement.style.fontFamily = patch.fontFamily;
+      }
+      notify.success("已保存");
       setSaved(true);
       setTimeout(() => setSaved(false), 1500);
     } finally {

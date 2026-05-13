@@ -1035,6 +1035,26 @@ function withSavedResource(resources: WorkbenchResourcesResult, nextNode: Workbe
   };
 }
 
+function deriveChaptersFromTree(tree: readonly WorkbenchResourceNode[]) {
+  const chapters: { id: string; number: number; title: string; status: "active" | "dormant" | "merged" | "abandoned" | "frozen" }[] = [];
+  const walk = (nodes: readonly WorkbenchResourceNode[]) => {
+    for (const node of nodes) {
+      if (node.kind === "chapter") {
+        const num = (node.metadata as { chapterNumber?: number })?.chapterNumber ?? chapters.length + 1;
+        chapters.push({ id: node.id, number: num, title: node.title ?? `第${num}章`, status: "active" });
+      }
+      if (node.children?.length) walk(node.children);
+    }
+  };
+  walk(tree);
+  return chapters.sort((a, b) => a.number - b.number);
+}
+
+function deriveChapterEdgesFromTree(tree: readonly WorkbenchResourceNode[]) {
+  const chapters = deriveChaptersFromTree(tree);
+  return chapters.slice(1).map((ch, i) => ({ id: `edge-${chapters[i]!.id}-${ch.id}`, source: chapters[i]!.id, target: ch.id, type: "dependency" as const }));
+}
+
 function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateToConversation }: { readonly bookId: string; readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void; readonly onNavigateToConversation: (sessionId: string) => void }) {
   const resourceClient = useMemo(() => createDefaultResourceClient(), []);
   const rawSessionClient = useMemo<SessionDomainClient>(() => createDefaultSessionClient(), []);
@@ -1174,6 +1194,8 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         repositoryPath={repositoryPath}
         nodes={resources.tree}
         selectedNode={selectedNode}
+        chapters={deriveChaptersFromTree(resources.tree)}
+        chapterEdges={deriveChapterEdgesFromTree(resources.tree)}
         onOpen={handleOpen}
         onDeselectNode={() => setSelectedNode(null)}
         onSave={handleSave}
