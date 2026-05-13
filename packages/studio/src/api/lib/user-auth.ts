@@ -117,7 +117,7 @@ function verifyJwt<T extends object>(token: string, secret: string): T | null {
   }
 }
 
-export function generateTokenPair(user: AuthUser, secret: string): TokenPair {
+export function generateTokenPair(user: AuthUser, secret: string, tokenVersion?: number): TokenPair {
   const accessPayload = {
     sub: user.id,
     email: user.email,
@@ -128,6 +128,7 @@ export function generateTokenPair(user: AuthUser, secret: string): TokenPair {
   const refreshPayload = {
     sub: user.id,
     type: "refresh",
+    tokenVersion: tokenVersion ?? 0,
   };
 
   return {
@@ -156,10 +157,10 @@ export function verifyAccessToken(token: string, secret: string): AuthUser | nul
   };
 }
 
-export function verifyRefreshToken(token: string, secret: string): { userId: string } | null {
-  const payload = verifyJwt<{ sub: string; type: string }>(token, secret);
+export function verifyRefreshToken(token: string, secret: string): { userId: string; tokenVersion: number } | null {
+  const payload = verifyJwt<{ sub: string; type: string; tokenVersion?: number }>(token, secret);
   if (!payload || payload.type !== "refresh") return null;
-  return { userId: payload.sub };
+  return { userId: payload.sub, tokenVersion: payload.tokenVersion ?? 0 };
 }
 
 export function verifyExternalJwt(token: string, secret: string): AuthUser | null {

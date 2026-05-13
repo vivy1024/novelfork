@@ -15,6 +15,7 @@ export interface StoredUser {
   username: string;
   passwordHash: string;
   role: "admin" | "user";
+  tokenVersion: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,11 +47,20 @@ function ensureTable(): void {
       username TEXT NOT NULL,
       password_hash TEXT NOT NULL,
       role TEXT NOT NULL DEFAULT 'user',
+      token_version INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
     CREATE INDEX IF NOT EXISTS idx_auth_users_email ON auth_users(email);
   `);
+
+  // Migration: add token_version column if missing (existing databases)
+  try {
+    db.sqlite.prepare("SELECT token_version FROM auth_users LIMIT 1").get();
+  } catch {
+    db.sqlite.exec("ALTER TABLE auth_users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0");
+  }
+
   migrated = true;
 }
 
@@ -61,6 +71,7 @@ function rowToStoredUser(row: Record<string, unknown>): StoredUser {
     username: row.username as string,
     passwordHash: row.password_hash as string,
     role: (row.role as "admin" | "user") ?? "user",
+    tokenVersion: (row.token_version as number) ?? 0,
     createdAt: row.created_at as string,
     updatedAt: row.updated_at as string,
   };
@@ -124,6 +135,7 @@ export async function createUser(input: CreateUserInput): Promise<StoredUser> {
     username: input.username.trim(),
     passwordHash,
     role,
+    tokenVersion: 0,
     createdAt: now,
     updatedAt: now,
   };
@@ -174,6 +186,17 @@ export async function updateUser(id: string, input: UpdateUserInput): Promise<St
   db.sqlite.prepare(`UPDATE auth_users SET ${updates.join(", ")} WHERE id = ?`).run(...values);
 
   return getUserById(id);
+}
+
+/**
+ * Increment token_version for a user, invalidating all existing refresh tokens.
+ */
+export function incrementTokenVersion(userId: string): void {
+  ensureTable();
+  const db = getSessionStorageDatabase();
+  db.sqlite.prepare(
+    "UPDATE auth_users SET token_version = token_version + 1, updated_at = ? WHERE id = ?",
+  ).run(new Date().toISOString(), userId);
 }
 
 export function listUsers(): AuthUser[] {
