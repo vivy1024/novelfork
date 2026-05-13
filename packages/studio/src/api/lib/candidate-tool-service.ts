@@ -189,15 +189,35 @@ function buildCandidatePrompt(input: CandidateGenerationInput): string {
   return lines.join("\n");
 }
 
+/** 从用户配置中读取写作设置，格式化为 system prompt 约束 */
+async function getWritingStyleConstraints(): Promise<string> {
+  try {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+    const w = config.writing;
+    if (!w) return "";
+    const constraints: string[] = [];
+    if (w.defaultTone && w.defaultTone !== "concise") constraints.push(`文风基调：${{ concise: "简洁", ornate: "华丽", colloquial: "口语化", literary: "文学性" }[w.defaultTone] ?? w.defaultTone}`);
+    if (w.sentenceLength && w.sentenceLength !== "medium") constraints.push(`句子长度偏好：${{ short: "短句为主", medium: "中等", long: "长句为主" }[w.sentenceLength] ?? w.sentenceLength}`);
+    if (w.dialogueRatio && w.dialogueRatio !== 40) constraints.push(`对话比例目标：${w.dialogueRatio}%`);
+    if (w.antiAiStrength && w.antiAiStrength > 50) constraints.push(`去AI味要求：高（避免模板化表达、过度修饰、空洞排比）`);
+    if (w.defaultPov && w.defaultPov !== "third-limited") constraints.push(`叙事视角：${{ "first": "第一人称", "third-limited": "第三人称有限", "third-omniscient": "第三人称全知", "second": "第二人称" }[w.defaultPov] ?? w.defaultPov}`);
+    return constraints.length > 0 ? `\n\n写作风格约束：\n${constraints.map(c => `- ${c}`).join("\n")}` : "";
+  } catch {
+    return "";
+  }
+}
+
 function createRuntimeGenerator(runtimeService: LlmRuntimeService): CandidateContentGenerator {
   return async ({ promptPreview, sessionConfig }) => {
     if (!sessionConfig?.providerId?.trim() || !sessionConfig.modelId?.trim()) {
       return { ok: false, reason: "当前会话未配置可用模型。" };
     }
+    const writingConstraints = await getWritingStyleConstraints();
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
-        { id: "candidate-create-system", role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。", timestamp: 0 },
+        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}`, timestamp: 0 },
         { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
       ],
     });

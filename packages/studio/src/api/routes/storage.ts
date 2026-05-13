@@ -49,7 +49,7 @@ import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
 import { registerPluginTools, registerPluginAgentPresets } from "../lib/session-tool-registry.js";
 import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "../lib/session-tool-registry-novel.js";
-import { createSession, listSessions } from "../lib/session-service.js";
+import { createSession, listSessions, deleteSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 
 interface ProjectWorktreeOwnership {
@@ -811,8 +811,15 @@ ${contextParts.join("\n")}
     const id = c.req.param("id");
     try {
       const result = await storageDestructiveService.deleteBook(id);
+      // 级联删除书籍关联的 Agent session
+      try {
+        const bookSessions = await listSessions({ projectId: id });
+        for (const session of bookSessions) {
+          await deleteSession(session.id);
+        }
+      } catch { /* session cleanup failure is non-fatal */ }
       broadcast("book:deleted", { bookId: id });
-      return c.json({ ok: result.ok, bookId: result.bookId });
+      return c.json({ ok: result.ok, bookId: id });
     } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
