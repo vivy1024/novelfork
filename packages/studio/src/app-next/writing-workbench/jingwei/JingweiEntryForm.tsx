@@ -7,9 +7,11 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Save, Trash2, Loader2, X } from "lucide-react";
 import { getCategorySchema, type CategoryFieldSchema, type CategoryVisibility } from "./category-schemas";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
+import { JingweiProgressions } from "./JingweiProgressions";
 
 interface JingweiEntryFormProps {
   entry: JingweiEntry;
+  bookId?: string;
   onSave: (entryId: string, payload: { title: string; fields: Record<string, unknown>; visibility: CategoryVisibility }) => Promise<boolean>;
   onDelete: (entryId: string) => Promise<boolean>;
   onClose: () => void;
@@ -21,7 +23,7 @@ const VISIBILITY_OPTIONS = [
   { value: "nested", label: "嵌套可见" },
 ];
 
-export function JingweiEntryForm({ entry, onSave, onDelete, onClose }: JingweiEntryFormProps) {
+export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: JingweiEntryFormProps) {
   const schema = getCategorySchema(entry.category);
   const fields = schema?.fields ?? [];
 
@@ -109,6 +111,11 @@ export function JingweiEntryForm({ entry, onSave, onDelete, onClose }: JingweiEn
             onChange={(val) => setField(field.key, val)}
           />
         ))}
+
+        {/* Progressions section */}
+        {bookId && (
+          <JingweiProgressions bookId={bookId} entryId={entry.id} category={entry.category} />
+        )}
       </div>
 
       {/* Footer actions */}
