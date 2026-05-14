@@ -23,6 +23,7 @@ CREATE INDEX IF NOT EXISTS "idx_jingwei_relations_book" ON "jingwei_relations"("
 -- Progressions table
 CREATE TABLE IF NOT EXISTS "jingwei_progressions" (
   "id" TEXT PRIMARY KEY,
+  "book_id" TEXT NOT NULL,
   "entry_id" TEXT NOT NULL,
   "field_key" TEXT NOT NULL,
   "old_value" TEXT,

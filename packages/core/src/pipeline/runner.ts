@@ -714,6 +714,19 @@ export class PipelineRunner {
         wordCount: draftOutput.wordCount,
       });
 
+      // Post-write hooks (non-blocking)
+      void (async () => {
+        try {
+          const { updateCausalChainUrgency, extractChapterEntities, updateCooccurrence, updateCharacterLifecycles } = await import("../jingwei/index.js");
+          await updateCausalChainUrgency(bookId, chapterNumber);
+          const entities = await extractChapterEntities(bookId, draftOutput.content);
+          if (entities.length >= 2) await updateCooccurrence(bookId, chapterNumber, entities);
+          await updateCharacterLifecycles(bookId, chapterNumber);
+        } catch (err) {
+          console.error("[post-write-hooks] Non-critical error:", err);
+        }
+      })();
+
       return {
         chapterNumber,
         title: draftOutput.title,
@@ -1238,6 +1251,18 @@ export class PipelineRunner {
     const writer = new WriterAgent(this.agentCtxFor("writer", bookId));
     this.logStage(stageLanguage, { zh: "撰写章节草稿", en: "writing chapter draft" });
 
+    // Pre-write: build chapter briefing for writer context
+    let writerExternalContext = writeInput.externalContext;
+    try {
+      const { buildChapterBriefing } = await import("../jingwei/context/chapter-briefing.js");
+      const briefing = await buildChapterBriefing(bookId, chapterNumber);
+      if (briefing) {
+        writerExternalContext = briefing + "\n\n" + (writerExternalContext ?? "");
+      }
+    } catch (err) {
+      this.config.logger?.warn(`[pre-write] Chapter briefing unavailable: ${err}`);
+    }
+
     // Emit write stage start
     pipelineEvents.emit({
       type: "stage:update",
@@ -1249,6 +1274,7 @@ export class PipelineRunner {
       bookDir,
       chapterNumber,
       ...writeInput,
+      ...(writerExternalContext ? { externalContext: writerExternalContext } : {}),
       lengthSpec,
       ...(wordCount ? { wordCountOverride: wordCount } : {}),
       ...(temperatureOverride ? { temperatureOverride } : {}),
@@ -1567,6 +1593,19 @@ export class PipelineRunner {
         this.config.logger?.warn(`Failed to persist audit log: ${err}`);
       }
     }
+
+    // Post-write hooks (non-blocking)
+    void (async () => {
+      try {
+        const { updateCausalChainUrgency, extractChapterEntities, updateCooccurrence, updateCharacterLifecycles } = await import("../jingwei/index.js");
+        await updateCausalChainUrgency(bookId, chapterNumber);
+        const entities = await extractChapterEntities(bookId, finalContent);
+        if (entities.length >= 2) await updateCooccurrence(bookId, chapterNumber, entities);
+        await updateCharacterLifecycles(bookId, chapterNumber);
+      } catch (err) {
+        console.error("[post-write-hooks] Non-critical error:", err);
+      }
+    })();
 
     return {
       chapterNumber,

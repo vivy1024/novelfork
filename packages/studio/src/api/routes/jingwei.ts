@@ -520,20 +520,6 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     const entryId = c.req.param("entryId");
     await ensureBook(storage, bookId);
-    // Ensure table exists (idempotent)
-    storage.sqlite.prepare(`
-      CREATE TABLE IF NOT EXISTS "jingwei_progressions" (
-        "id" TEXT PRIMARY KEY,
-        "book_id" TEXT NOT NULL,
-        "entry_id" TEXT NOT NULL,
-        "field_key" TEXT NOT NULL,
-        "old_value" TEXT,
-        "new_value" TEXT NOT NULL,
-        "chapter_number" INTEGER,
-        "description" TEXT,
-        "created_at" INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
-      )
-    `).run();
     const progressions = storage.sqlite.prepare(`
       SELECT * FROM "jingwei_progressions"
       WHERE "book_id" = ? AND "entry_id" = ?
@@ -555,20 +541,6 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const description = optionalNullableText(body.description);
     const id = crypto.randomUUID();
     const now = Date.now();
-    // Ensure table exists
-    storage.sqlite.prepare(`
-      CREATE TABLE IF NOT EXISTS "jingwei_progressions" (
-        "id" TEXT PRIMARY KEY,
-        "book_id" TEXT NOT NULL,
-        "entry_id" TEXT NOT NULL,
-        "field_key" TEXT NOT NULL,
-        "old_value" TEXT,
-        "new_value" TEXT NOT NULL,
-        "chapter_number" INTEGER,
-        "description" TEXT,
-        "created_at" INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
-      )
-    `).run();
     storage.sqlite.prepare(`
       INSERT INTO "jingwei_progressions" ("id", "book_id", "entry_id", "field_key", "old_value", "new_value", "chapter_number", "description", "created_at")
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)

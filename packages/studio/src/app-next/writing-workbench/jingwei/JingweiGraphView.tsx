@@ -124,7 +124,7 @@ export function JingweiGraphView({ bookId, entries, category }: JingweiGraphView
   }, [entries, filterCategory]);
 
   // Build nodes + edges
-  useMemo(() => {
+  useEffect(() => {
     const entryIds = new Set(filteredEntries.map((e) => e.id));
     const cols = Math.max(Math.ceil(Math.sqrt(filteredEntries.length)), 1);
 
