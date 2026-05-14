@@ -2,8 +2,10 @@ import { useState, useCallback, type ReactNode } from "react";
 
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { Sparkles, Pencil } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
+import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
 
 export type ResourceViewerKind =
@@ -516,6 +518,143 @@ function renderNarrativeLine(node: WorkbenchResourceNode) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// JingweiCardViewer — structured card rendering for jingwei-section/entry
+// ---------------------------------------------------------------------------
+
+const CATEGORY_COLOR_MAP: Record<string, string> = {
+  blue: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+  orange: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-300",
+  purple: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+  yellow: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+  green: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+  red: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
+  amber: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
+  rose: "bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300",
+  emerald: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300",
+  violet: "bg-violet-100 text-violet-800 dark:bg-violet-900/30 dark:text-violet-300",
+  sky: "bg-sky-100 text-sky-800 dark:bg-sky-900/30 dark:text-sky-300",
+  pink: "bg-pink-100 text-pink-800 dark:bg-pink-900/30 dark:text-pink-300",
+  indigo: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300",
+  cyan: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-300",
+  slate: "bg-slate-100 text-slate-800 dark:bg-slate-900/30 dark:text-slate-300",
+  stone: "bg-stone-100 text-stone-800 dark:bg-stone-900/30 dark:text-stone-300",
+};
+
+const VISIBILITY_LABELS: Record<string, string> = {
+  global: "全局",
+  tracked: "追踪",
+  nested: "嵌套",
+};
+
+function JingweiCardViewer({ node }: { node: WorkbenchResourceNode }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const meta = node.metadata ?? {};
+  const fieldsJson = meta.fields_json as Record<string, unknown> | undefined;
+  const categoryId = (meta.category as string) ?? (meta.categoryId as string) ?? "";
+  const visibility = (meta.visibility as string) ?? "";
+  const relatedEntries = (meta.relatedEntries as Array<{ id: string; title: string }>) ?? [];
+
+  const schema: CategorySchema | undefined = CATEGORY_SCHEMAS.find(s => s.id === categoryId);
+  const colorClass = schema ? (CATEGORY_COLOR_MAP[schema.color] ?? CATEGORY_COLOR_MAP.slate) : CATEGORY_COLOR_MAP.slate;
+
+  // If no structured fields, fall back to markdown/text rendering
+  if (!fieldsJson && !schema) {
+    const content = node.content ?? JSON.stringify(meta.section ?? meta.entry ?? meta, null, 2);
+    return (
+      <div className="p-4">
+        <div className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed">{content}</div>
+      </div>
+    );
+  }
+
+  // Render fields as key-value pairs
+  const fields = fieldsJson ?? {};
+  const fieldEntries = schema
+    ? schema.fields.map(f => ({ key: f.key, label: f.label, value: fields[f.key] })).filter(f => f.value != null && f.value !== "")
+    : Object.entries(fields).map(([key, value]) => ({ key, label: key, value }));
+
+  if (showRaw) {
+    return (
+      <div className="p-4">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-xs text-muted-foreground">原始数据</span>
+          <Button size="sm" variant="outline" onClick={() => setShowRaw(false)}>返回卡片</Button>
+        </div>
+        <pre className="text-xs bg-muted rounded-md p-3 overflow-auto max-h-96 whitespace-pre-wrap">
+          {JSON.stringify({ category: categoryId, visibility, fields: fieldsJson ?? {}, relatedEntries }, null, 2)}
+        </pre>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 space-y-3">
+      {/* Header: category badge + title + visibility */}
+      <div className="flex items-center gap-2 flex-wrap">
+        {schema && (
+          <Badge variant="outline" className={`text-[10px] ${colorClass}`}>
+            {schema.name}
+          </Badge>
+        )}
+        <h3 className="text-sm font-semibold text-foreground flex-1">{node.title}</h3>
+        {visibility && (
+          <Badge variant="secondary" className="text-[10px]">
+            {VISIBILITY_LABELS[visibility] ?? visibility}
+          </Badge>
+        )}
+        <Button size="sm" variant="ghost" className="h-6 text-[10px]" onClick={() => setShowRaw(true)}>
+          查看原始
+        </Button>
+      </div>
+
+      {/* Fields as labeled key-value pairs */}
+      {fieldEntries.length > 0 ? (
+        <div className="rounded-lg border border-border bg-card divide-y divide-border">
+          {fieldEntries.map((f) => (
+            <div key={f.key} className="flex gap-3 px-3 py-2">
+              <span className="text-xs text-muted-foreground shrink-0 w-20 pt-0.5">{f.label}</span>
+              <span className="text-sm text-foreground flex-1 whitespace-pre-wrap break-words">
+                {Array.isArray(f.value) ? (f.value as string[]).join("、") : String(f.value)}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground py-4 text-center">暂无结构化字段数据</div>
+      )}
+
+      {/* Related entries */}
+      {relatedEntries.length > 0 && (
+        <div className="space-y-1">
+          <span className="text-xs text-muted-foreground">关联条目</span>
+          <div className="flex flex-wrap gap-1">
+            {relatedEntries.map((entry) => (
+              <Badge key={entry.id} variant="outline" className="text-[10px]">{entry.title}</Badge>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Fallback: show content if available and no fields */}
+      {fieldEntries.length === 0 && node.content && (
+        <div className="text-sm text-foreground/80 whitespace-pre-wrap leading-relaxed rounded-lg border border-border bg-card p-3">
+          {node.content}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function renderJingweiCard(node: WorkbenchResourceNode) {
+  const label = node.kind === "jingwei-section" ? "经纬分区" : "经纬条目";
+  return (
+    <ViewerShell node={node} label={label}>
+      <JingweiCardViewer node={node} />
+    </ViewerShell>
+  );
+}
+
 function renderReadonlySummary(node: WorkbenchResourceNode) {
   if (node.kind === "narrative-line" || node.kind === "storyline") {
     return renderNarrativeLine(node);
@@ -572,8 +711,8 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
-  "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderReadonlySummary },
-  "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderReadonlySummary },
+  "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderJingweiCard },
+  "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderJingweiCard },
   "narrative-line": { kind: "narrative-line", label: "叙事线", render: renderReadonlySummary },
   "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },
   generic: { kind: "generic", label: "通用资源", render: renderGeneric },
