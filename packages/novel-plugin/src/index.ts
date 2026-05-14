@@ -1,4 +1,4 @@
-import type { PluginManifest, PluginAgentPreset } from "@vivy1024/novelfork-core";
+import type { PluginManifest, PluginAgentPreset, PluginToolDefinition } from "@vivy1024/novelfork-core";
 
 // Re-export handlers for use by studio and other consumers
 export { handleChapterRead, handleJingweiReadContext } from "./handlers/index.js";
@@ -36,6 +36,47 @@ export const NOVEL_TOOL_NAMES: readonly string[] = [
   "hooks.manage",
 ];
 
+/** Tool descriptions for manifest (brief summaries) */
+const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
+  "cockpit.get_snapshot": "获取驾驶舱快照（进度、伏笔、候选稿）",
+  "cockpit.list_open_hooks": "列出未回收伏笔",
+  "cockpit.list_recent_candidates": "列出最近候选稿",
+  "questionnaire.list_templates": "列出问卷模板",
+  "questionnaire.start": "启动问卷",
+  "questionnaire.suggest_answer": "AI 建议问卷答案",
+  "questionnaire.submit_response": "提交问卷回答",
+  "pgi.generate_questions": "PGI 生成追问",
+  "pgi.record_answers": "PGI 记录回答",
+  "pgi.format_answers_for_prompt": "PGI 格式化答案为 prompt",
+  "guided.enter": "进入引导式生成",
+  "guided.answer_question": "回答引导式问题",
+  "guided.exit": "退出引导式生成",
+  "candidate.create_chapter": "创建章节候选稿",
+  "narrative.read_line": "读取叙事线",
+  "narrative.propose_change": "提议叙事线变更",
+  "chapter.read": "读取章节内容",
+  "jingwei.read_context": "读取经纬上下文",
+  "health.read_summary": "读取健康度摘要",
+  "chapter.audit": "审计章节",
+  "rewrite.segment": "重写选段",
+  "outline.suggest_next": "建议下一步大纲",
+  "character.check_consistency": "检查角色一致性",
+  "hooks.manage": "管理伏笔",
+};
+
+/** Get tool description by name */
+function getToolDescription(name: string): string {
+  return NOVEL_TOOL_DESCRIPTIONS[name] ?? name;
+}
+
+/** Full tool definitions with scope annotations */
+export const NOVEL_TOOL_DEFINITIONS: readonly PluginToolDefinition[] = NOVEL_TOOL_NAMES.map(name => ({
+  name,
+  description: getToolDescription(name),
+  inputSchema: { type: "object" as const },
+  scope: "novel" as const,
+}));
+
 /**
  * 小说 Agent 角色预设
  */
@@ -47,12 +88,13 @@ export const NOVEL_AGENT_PRESET_LIST: PluginAgentPreset[] = [
 ];
 
 export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
+  id: "novelfork-novel",
   name: "novelfork-novel",
   displayName: "NovelFork 小说写作插件",
-  version: "0.2.0",
+  version: "0.5.2",
   description: "小说写作核心插件，提供章节管理、经纬、驾驶舱、PGI、引导式生成等工具",
   projectType: "novel",
-  tools: NOVEL_TOOL_NAMES,
+  tools: NOVEL_TOOL_DEFINITIONS,
   agentPresets: NOVEL_AGENT_PRESET_LIST,
   routes: [],
   systemPromptExtensions: [],

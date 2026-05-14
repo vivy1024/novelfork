@@ -10,7 +10,7 @@ import type { StartupOrchestratorSummary } from "../lib/startup-orchestrator.js"
 import type { Context } from "hono";
 
 export interface RouterContext {
-  /** StateManager instance (book/chapter/truth CRUD) */
+  /** StateManager instance (book/chapter/jingwei CRUD) */
   readonly state: StateManager;
 
   /** Project root directory */

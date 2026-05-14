@@ -14,7 +14,7 @@ export type JsonObjectSchema = {
   readonly additionalProperties?: boolean;
 };
 
-export type SessionToolScope = "universal" | "novel";
+export type SessionToolScope = "universal" | "novel" | "all";
 
 export type SessionToolDefinition = {
   readonly name: string;

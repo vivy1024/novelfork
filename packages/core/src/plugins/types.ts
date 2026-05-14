@@ -12,6 +12,8 @@ import type { PipelineStage, HookHandler } from "../hooks/types.js";
  * Plugin manifest - describes plugin metadata and capabilities
  */
 export interface PluginManifest {
+  /** Plugin unique identifier (kebab-case). Falls back to `name` if not provided. */
+  readonly id?: string;
   /** Plugin unique identifier (kebab-case) */
   readonly name: string;
   /** Display name */
@@ -24,9 +26,9 @@ export interface PluginManifest {
   readonly author?: string;
   /** Plugin homepage or repository URL */
   readonly homepage?: string;
-  /** Target project type (e.g. "novel", "health") — used for scope filtering */
+  /** Target project type (e.g. "novel", "general") — used for scope filtering */
   readonly projectType?: string;
-  /** Tools provided by this plugin (legacy: string names) */
+  /** Tools provided by this plugin (legacy: string names, or full PluginToolDefinition) */
   readonly tools?: ReadonlyArray<string> | ReadonlyArray<PluginToolDefinition>;
   /** Hooks provided by this plugin */
   readonly hooks?: ReadonlyArray<PipelineStage>;

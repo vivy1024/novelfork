@@ -673,7 +673,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
   // --- Context Assembly (for ContextPanel) ---
 
-  const TRUTH_LABEL_MAP: Record<string, string> = {
+  const JINGWEI_LABEL_MAP: Record<string, string> = {
     "story_bible.md": "故事经纬",
     "volume_outline.md": "卷大纲",
     "current_state.md": "当前状态",
@@ -718,7 +718,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const bookDir = state.bookDir(body.bookId);
       const storyDir = join(bookDir, "story");
 
-      const filenames = Object.keys(TRUTH_LABEL_MAP);
+      const filenames = Object.keys(JINGWEI_LABEL_MAP);
       const rawContents = await Promise.all(
         filenames.map((f) => loadJingweiFile(storyDir, f)),
       );
@@ -776,7 +776,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
         entries.push({
           source: filename,
-          label: TRUTH_LABEL_MAP[filename] ?? filename,
+          label: JINGWEI_LABEL_MAP[filename] ?? filename,
           content: filtered,
           tokens: estimateTokens(filtered),
           active: true,
