@@ -7,7 +7,7 @@ import { executeRuntimeTurn } from "./runtime-turn-service.js";
 import { createSession, getSessionById } from "./session-service.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
-import { buildAgentContext } from "./agent-context.js";
+import { buildAgentContext, buildProjectAwarenessContext } from "./agent-context.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
 
@@ -174,8 +174,13 @@ export async function executeHeadless(input: HeadlessExecInput): Promise<Headles
     } catch { /* context build failure is non-fatal */ }
   }
 
-  // 3. Build context with optional stdin
-  let context = bookContext;
+  // 3. Build context with project awareness + optional stdin
+  let projectAwareness = "";
+  try {
+    projectAwareness = await buildProjectAwarenessContext(process.cwd());
+  } catch { /* non-fatal */ }
+
+  let context = [projectAwareness, bookContext].filter(Boolean).join("\n\n");
   if (input.stdinContext) {
     const stdinBlock = `\n\n## 附加上下文（stdin）\n\n${input.stdinContext}`;
     context = context ? `${context}${stdinBlock}` : stdinBlock;

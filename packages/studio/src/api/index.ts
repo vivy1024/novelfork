@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { createEmbeddedStaticProvider } from "./static-provider.js";
 import { openStudioWindow } from "./desktop-window.js";
-import { resolveStartupPort, resolveStartupRoot } from "./startup-args.js";
+import { resolveStartupPort, resolveStartupRoot, parseNamedArg } from "./startup-args.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -20,6 +20,46 @@ const defaultProjectRoot = () => {
 
 const root = resolveStartupRoot(process.argv, process.env, defaultProjectRoot);
 const port = resolveStartupPort(process.argv, process.env);
+
+// --- Headless CLI mode ---
+if (process.argv.includes("--headless")) {
+  const prompt = parseNamedArg(process.argv, "--prompt")
+    ?? process.argv[process.argv.indexOf("--prompt") + 1]
+    ?? undefined;
+
+  if (!prompt) {
+    console.error("Usage: novelfork --headless --prompt \"your prompt here\"");
+    console.error("");
+    console.error("Options:");
+    console.error("  --prompt=<text>     The prompt to send to the agent");
+    console.error("  --model=<p:m>       Provider:model override (e.g. openai:gpt-4o)");
+    console.error("  --max-steps=<n>     Max tool execution steps (default: 30)");
+    console.error("  --format=<fmt>      Output format: text | json (default: text)");
+    console.error("  --root=<dir>        Project root directory");
+    process.exit(1);
+  }
+
+  const model = parseNamedArg(process.argv, "--model");
+  const maxStepsStr = parseNamedArg(process.argv, "--max-steps");
+  const format = parseNamedArg(process.argv, "--format") as "text" | "json" | undefined;
+
+  const { runHeadlessCLI } = await import("./lib/headless-cli.js");
+  const result = await runHeadlessCLI({
+    prompt,
+    workDir: root,
+    model,
+    maxSteps: maxStepsStr ? parseInt(maxStepsStr, 10) : undefined,
+    outputFormat: format ?? "text",
+  });
+
+  if (result.success) {
+    console.log(result.output);
+    process.exit(0);
+  } else {
+    console.error(result.error ?? "Unknown error");
+    process.exit(1);
+  }
+}
 
 const studioRoot = resolve(__dirname, "../..");
 const distDir = join(studioRoot, "dist");
