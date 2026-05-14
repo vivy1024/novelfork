@@ -1,4 +1,5 @@
 export * from "./AiTasteReport";
+export * from "./ComplianceViolationCard";
 export * from "./CandidateActionsBar";
 export * from "./CheckpointPanel";
 export * from "./CockpitOverview";
