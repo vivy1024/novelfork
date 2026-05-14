@@ -4,6 +4,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Sparkles, Pencil } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
+import { ChapterEditor } from "./ChapterEditor";
 
 export type ResourceViewerKind =
   | "chapter"
@@ -157,6 +158,47 @@ function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewer
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
       <TextBody node={node} label={label} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} bookId={options.bookId} />
+    </ViewerShell>
+  );
+}
+
+function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
+  const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
+  const bookId = options.bookId;
+
+  const handleInlineWrite = bookId
+    ? async (mode: "continue" | "expand" | "rewrite" | "variants", selectedText: string, start: number, end: number) => {
+        const API_MODE_MAP: Record<string, string> = { continue: "continuation", expand: "expansion", rewrite: "expansion", variants: "bridge" };
+        const apiMode = API_MODE_MAP[mode] ?? "continuation";
+        try {
+          const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: apiMode, selectedText, context: node.content ?? "", position: start }),
+          });
+          if (!res.ok) return;
+          const data = await res.json() as { result?: string; content?: string };
+          const generatedText = data.result ?? data.content;
+          if (generatedText && options.onContentChange) {
+            const content = node.content ?? "";
+            const newContent = mode === "continue"
+              ? content.slice(0, end) + generatedText + content.slice(end)
+              : content.slice(0, start) + generatedText + content.slice(end);
+            options.onContentChange(newContent);
+          }
+        } catch { /* non-fatal */ }
+      }
+    : undefined;
+
+  return (
+    <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
+      <ChapterEditor
+        content={node.content ?? ""}
+        readonly={readonly}
+        onContentChange={options.onContentChange}
+        onInlineWrite={handleInlineWrite}
+        placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
+      />
     </ViewerShell>
   );
 }
@@ -523,9 +565,9 @@ function renderCandidateText(node: WorkbenchResourceNode, options: ResourceViewe
 }
 
 export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDefinition> = {
-  chapter: { kind: "chapter", label: "章节", render: renderEditableText },
+  chapter: { kind: "chapter", label: "章节", render: renderChapterEditor },
   candidate: { kind: "candidate", label: "候选稿", render: renderCandidateText },
-  draft: { kind: "draft", label: "草稿", render: renderEditableText },
+  draft: { kind: "draft", label: "草稿", render: renderChapterEditor },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
   jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
   "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },

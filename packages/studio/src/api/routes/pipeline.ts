@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { RouterContext } from "./context.js";
 import { pipelineEvents } from "@vivy1024/novelfork-core";
 
@@ -53,6 +55,41 @@ function withPipelineRunPersistence(run: PipelineRun) {
   });
 }
 
+/** Resolve book directory — set when createPipelineRouter is called */
+let resolveBookDir: ((bookId: string) => string) | null = null;
+
+/** Persist a completed/failed run to disk so it survives restarts */
+async function persistRunToDisk(run: PipelineRun): Promise<void> {
+  if (!resolveBookDir) return;
+  try {
+    const bookDir = resolveBookDir(run.bookId);
+    const dir = join(bookDir, ".novelfork");
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, "last-pipeline-run.json"), JSON.stringify(run, null, 2), "utf-8");
+  } catch {
+    // Non-fatal — persistence is best-effort
+  }
+}
+
+/** Try to load a persisted run from disk */
+async function loadPersistedRun(runId: string): Promise<PipelineRun | null> {
+  if (!resolveBookDir) return null;
+  // We don't know which book the runId belongs to, so we can't look it up by runId alone.
+  // Instead, scan all runs in memory first (handled by caller).
+  // This function is called with a known bookId context from the route.
+  return null;
+}
+
+/** Try to load the last persisted run for a specific book */
+async function loadLastRunForBook(bookDir: string): Promise<PipelineRun | null> {
+  try {
+    const raw = await readFile(join(bookDir, ".novelfork", "last-pipeline-run.json"), "utf-8");
+    return JSON.parse(raw) as PipelineRun;
+  } catch {
+    return null;
+  }
+}
+
 // Listen to pipeline events from core
 pipelineEvents.on((event) => {
   if (event.type === "run:start") {
@@ -65,18 +102,50 @@ pipelineEvents.on((event) => {
 });
 
 export function createPipelineRouter(ctx: RouterContext): Hono {
+  // Store the book directory resolver for persistence
+  resolveBookDir = ctx.state.bookDir.bind(ctx.state);
   const app = new Hono();
 
   // Get pipeline run status
-  app.get("/:runId/status", (c) => {
+  app.get("/:runId/status", async (c) => {
     const runId = c.req.param("runId");
     const run = pipelineRuns.get(runId);
 
     if (!run) {
+      // Try to find persisted run by scanning all books
+      // The runId might match a persisted last-pipeline-run.json
+      // For now, return 404 — the /book/:bookId/last-run endpoint handles disk fallback
       return c.json({ error: "Pipeline run not found", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
     }
 
     return c.json(withPipelineRunPersistence(run));
+  });
+
+  // Get last pipeline run for a specific book (with disk fallback)
+  app.get("/book/:bookId/last-run", async (c) => {
+    const bookId = c.req.param("bookId");
+
+    // Check in-memory runs first
+    for (const run of pipelineRuns.values()) {
+      if (run.bookId === bookId) {
+        return c.json(withPipelineRunPersistence(run));
+      }
+    }
+
+    // Fall back to persisted file
+    if (resolveBookDir) {
+      try {
+        const bookDir = resolveBookDir(bookId);
+        const persisted = await loadLastRunForBook(bookDir);
+        if (persisted) {
+          return c.json(withPipelineRunPersistence(persisted));
+        }
+      } catch {
+        // Book dir doesn't exist or file unreadable
+      }
+    }
+
+    return c.json({ error: "No pipeline run found for this book", ...PROCESS_MEMORY_PIPELINE_STATE }, 404);
   });
 
   // Get all stages for a pipeline run
@@ -210,9 +279,13 @@ export function completePipelineRun(
   const run = pipelineRuns.get(runId);
   if (!run) return;
 
-  pipelineRuns.set(runId, {
+  const completedRun: PipelineRun = {
     ...run,
     status,
     endTime: Date.now(),
-  });
+  };
+  pipelineRuns.set(runId, completedRun);
+
+  // Persist to disk (fire-and-forget)
+  void persistRunToDisk(completedRun);
 }
