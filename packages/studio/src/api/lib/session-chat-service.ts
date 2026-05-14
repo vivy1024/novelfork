@@ -724,6 +724,10 @@ function buildToolResultCall(
   result: SessionToolExecutionResult,
 ): ToolCall {
   const status = buildToolResultStatus(result);
+  // Extract exitCode from result.data for Bash-style tools
+  const exitCode = result.data != null && typeof result.data === "object" && "exitCode" in result.data
+    ? (result.data as { exitCode?: number }).exitCode
+    : undefined;
   return {
     id: toolUse.id,
     toolName: toolUse.toolName,
@@ -733,6 +737,7 @@ function buildToolResultCall(
     output: typeof result.data === "string" ? result.data : undefined,
     duration: result.durationMs,
     result,
+    ...(exitCode !== undefined ? { exitCode } : {}),
     ...(result.renderer ? { renderer: result.renderer } : {}),
     ...(result.artifact ? { artifact: result.artifact } : {}),
     ...(result.confirmation ? { confirmation: result.confirmation } : {}),
