@@ -9,6 +9,10 @@ export type { ToolInputSchema } from "./tool-schemas.js";
 export { handleChapterRead, handleJingweiReadContext } from "./handlers/index.js";
 export type { ChapterReadInput, ChapterReadResult, JingweiReadContextInput, JingweiReadContextResult } from "./handlers/index.js";
 
+// Re-export handler registry (plugin declares which tools it owns)
+export { NOVEL_HANDLER_DECLARATIONS, isNovelPluginTool, getHandlerDeclaration } from "./handler-registry.js";
+export type { NovelHandlerDeclaration } from "./handler-registry.js";
+
 /**
  * 小说工具名列表 — 声明本插件提供的 24 个小说领域工具。
  * 完整定义（含 inputSchema）位于 tool-schemas.ts，本插件是唯一 source of truth。
