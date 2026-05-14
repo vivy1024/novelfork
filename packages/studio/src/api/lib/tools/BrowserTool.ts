@@ -42,6 +42,31 @@ function getSession(sessionId: string | undefined): BrowserSession | null {
   return session ?? null;
 }
 
+function isPrivateUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    return (
+      hostname === "localhost" ||
+      hostname.startsWith("127.") ||
+      hostname.startsWith("169.254.") ||
+      hostname.startsWith("10.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("172.16.") || hostname.startsWith("172.17.") ||
+      hostname.startsWith("172.18.") || hostname.startsWith("172.19.") ||
+      hostname.startsWith("172.20.") || hostname.startsWith("172.21.") ||
+      hostname.startsWith("172.22.") || hostname.startsWith("172.23.") ||
+      hostname.startsWith("172.24.") || hostname.startsWith("172.25.") ||
+      hostname.startsWith("172.26.") || hostname.startsWith("172.27.") ||
+      hostname.startsWith("172.28.") || hostname.startsWith("172.29.") ||
+      hostname.startsWith("172.30.") || hostname.startsWith("172.31.") ||
+      hostname === "[::1]" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal")
+    );
+  } catch { return true; }
+}
+
 export const BrowserTool: ToolDefinition = {
   name: "Browser",
   description: "控制浏览器执行操作（导航、点击、截图、提取文本等）",
@@ -118,6 +143,9 @@ export const BrowserTool: ToolDefinition = {
         if (sessions.size >= MAX_BROWSER_SESSIONS) {
           return { success: false, error: `最多同时运行 ${MAX_BROWSER_SESSIONS} 个浏览器会话，请先关闭不需要的会话` };
         }
+        if (url && isPrivateUrl(url)) {
+          return { success: false, error: "安全限制：不允许访问内部网络地址" };
+        }
         const browser = await playwright.chromium.launch({ headless: true });
         const page = await browser.newPage();
         if (url) {
@@ -146,6 +174,9 @@ export const BrowserTool: ToolDefinition = {
         }
         if (!url) {
           return { success: false, error: "navigate 操作需要 url 参数" };
+        }
+        if (isPrivateUrl(url)) {
+          return { success: false, error: "安全限制：不允许访问内部网络地址" };
         }
         await session.page.goto(url, { timeout });
         return {
