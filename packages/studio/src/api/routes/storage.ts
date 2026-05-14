@@ -1458,18 +1458,16 @@ ${contextParts.join("\n")}
         });
       }
       if (format === "epub") {
+        const { generateEpub } = await import("../lib/epub-generator.js");
         const chapters = contents.map((content, i) => {
-          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `Chapter ${i + 1}`;
-          const html = content.split("\n").filter((l) => !l.startsWith("#")).map((l) => l.trim() ? `<p>${l}</p>` : "").join("\n");
-          return { title, html };
+          const title = content.match(/^#\s+(.+)$/m)?.[1] ?? `第 ${i + 1} 章`;
+          return { title, content };
         });
-        const toc = chapters.map((ch, i) => `<li><a href="#ch${i}">${ch.title}</a></li>`).join("\n");
-        const body = chapters.map((ch, i) => `<h2 id="ch${i}">${ch.title}</h2>\n${ch.html}`).join("\n<hr/>\n");
-        const epub = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${book.title}</title><style>body{font-family:serif;max-width:40em;margin:auto;padding:2em;line-height:1.8}h2{margin-top:3em}</style></head><body><h1>${book.title}</h1><nav><ol>${toc}</ol></nav><hr/>${body}</body></html>`;
-        return new Response(epub, {
+        const epubBuf = generateEpub(chapters, { title: book.title, author: "未知作者", language: "zh" });
+        return new Response(epubBuf.buffer as ArrayBuffer, {
           headers: {
-            "Content-Type": "text/html; charset=utf-8",
-            "Content-Disposition": `attachment; filename="${id}.html"`,
+            "Content-Type": "application/epub+zip",
+            "Content-Disposition": `attachment; filename="${id}.epub"`,
           },
         });
       }

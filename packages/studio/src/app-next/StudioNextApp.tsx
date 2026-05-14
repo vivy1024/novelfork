@@ -730,7 +730,16 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   }, [refreshSnapshot, sessionClient, sessionId]);
 
   return (
-    <ConversationRoute
+    <>
+      {modelPoolEmpty && (
+        <div className="mx-4 my-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
+          <strong>⚠️ 未配置 AI 模型</strong>
+          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+            请前往 <a href="/next/settings" className="underline font-medium">设置 → 供应商</a> 配置至少一个 AI 模型（如 Claude、GPT），否则写作功能无法使用。
+          </p>
+        </div>
+      )}
+      <ConversationRoute
       sessionId={sessionId}
       title={runtime.state.session?.title ?? sessionId}
       sessionMode={runtime.state.session?.sessionMode}
@@ -828,6 +837,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         return toConversationMessages(result.data.messages);
       }}
     />
+    </>
   );
 }
 
