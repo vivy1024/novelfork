@@ -514,5 +514,69 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     return c.json({ ok: true, id: relationId });
   });
 
+  // --- Jingwei Overhaul: Progressions ---
+  app.get("/api/books/:bookId/jingwei/entries/:entryId/progressions", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    await ensureBook(storage, bookId);
+    // Ensure table exists (idempotent)
+    storage.sqlite.prepare(`
+      CREATE TABLE IF NOT EXISTS "jingwei_progressions" (
+        "id" TEXT PRIMARY KEY,
+        "book_id" TEXT NOT NULL,
+        "entry_id" TEXT NOT NULL,
+        "field_key" TEXT NOT NULL,
+        "old_value" TEXT,
+        "new_value" TEXT NOT NULL,
+        "chapter_number" INTEGER,
+        "description" TEXT,
+        "created_at" INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+      )
+    `).run();
+    const progressions = storage.sqlite.prepare(`
+      SELECT * FROM "jingwei_progressions"
+      WHERE "book_id" = ? AND "entry_id" = ?
+      ORDER BY "chapter_number" DESC, "created_at" DESC
+    `).all(bookId, entryId);
+    return c.json({ progressions });
+  });
+
+  app.post("/api/books/:bookId/jingwei/entries/:entryId/progressions", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    await ensureBook(storage, bookId);
+    const body = await readJson(c);
+    const fieldKey = requireText(body.fieldKey, "PROGRESSION_FIELD_KEY_REQUIRED", "fieldKey is required.");
+    const newValue = requireText(body.newValue, "PROGRESSION_NEW_VALUE_REQUIRED", "newValue is required.");
+    const oldValue = optionalNullableText(body.oldValue);
+    const chapterNumber = optionalNullableNumber(body.chapterNumber);
+    const description = optionalNullableText(body.description);
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    // Ensure table exists
+    storage.sqlite.prepare(`
+      CREATE TABLE IF NOT EXISTS "jingwei_progressions" (
+        "id" TEXT PRIMARY KEY,
+        "book_id" TEXT NOT NULL,
+        "entry_id" TEXT NOT NULL,
+        "field_key" TEXT NOT NULL,
+        "old_value" TEXT,
+        "new_value" TEXT NOT NULL,
+        "chapter_number" INTEGER,
+        "description" TEXT,
+        "created_at" INTEGER NOT NULL DEFAULT (unixepoch('now') * 1000)
+      )
+    `).run();
+    storage.sqlite.prepare(`
+      INSERT INTO "jingwei_progressions" ("id", "book_id", "entry_id", "field_key", "old_value", "new_value", "chapter_number", "description", "created_at")
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, bookId, entryId, fieldKey, oldValue, newValue, chapterNumber, description, now);
+    return c.json({
+      progression: { id, bookId, entryId, fieldKey, oldValue, newValue, chapterNumber, description, createdAt: now },
+    }, 201);
+  });
+
   return app;
 }
