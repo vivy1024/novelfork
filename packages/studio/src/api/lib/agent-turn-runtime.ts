@@ -11,7 +11,7 @@ import type {
 } from "../../shared/session-types.js";
 import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
-import type { RuntimeToolUse } from "./provider-adapters/index.js";
+import type { RuntimeToolUse, RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 
 export type AgentTurnItem =
@@ -26,6 +26,7 @@ export interface AgentGenerateInput {
   readonly permissionMode: SessionPermissionMode;
   readonly canvasContext?: CanvasContext;
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly signal?: AbortSignal;
 }
 
@@ -62,6 +63,7 @@ export interface AgentTurnRuntimeInput {
   readonly shouldContinueAfterToolResult?: (input: { readonly toolName: string; readonly result: SessionToolExecutionResult }) => boolean;
   readonly maxSteps?: number;
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly onEvent?: (event: AgentTurnEvent) => void;
   readonly reasoningPolicy?: ProviderReasoningPolicy;
   readonly signal?: AbortSignal;
@@ -150,6 +152,17 @@ function toolSignature(toolName: string, input: Record<string, unknown>): string
 
 const TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
 
+/** 截断过长的工具结果，保留头尾 + 省略提示 */
+const MAX_TOOL_RESULT_CHARS = 30000;
+const TRUNCATE_HEAD = 20000;
+const TRUNCATE_TAIL = 5000;
+
+function truncateToolResult(content: string): string {
+  if (content.length <= MAX_TOOL_RESULT_CHARS) return content;
+  const omitted = content.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
+  return `${content.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 (约 ${Math.round(omitted / 4)} tokens) ...]\n\n${content.slice(-TRUNCATE_TAIL)}`;
+}
+
 function toolResultContent(result: SessionToolExecutionResult): string {
   let content = result.summary ?? "";
   // 将 data 中的关键结果附加到 content（让模型能看到实际数据）
@@ -203,7 +216,7 @@ function toolResultContent(result: SessionToolExecutionResult): string {
       if (terms.running?.length) content += "\n\n运行中: " + terms.running.map(t => `${t.name}(${t.id})`).join(", ");
     }
   }
-  return content ? `${content}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}` : TOOL_RESULT_CONTINUATION_INSTRUCTION;
+  return content ? truncateToolResult(`${content}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}`) : TOOL_RESULT_CONTINUATION_INSTRUCTION;
 }
 
 function createDuplicateToolResult(firstResult: SessionToolExecutionResult): SessionToolExecutionResult {
@@ -263,6 +276,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       }
     : undefined;
 
+  const emitToolEvent = input.onToolEvent;
+
   for (;;) {
     if (input.signal?.aborted) {
       console.log(JSON.stringify({ component: "agent-turn-runtime", event: "aborted", sessionId: input.sessionId, executedToolSteps }));
@@ -278,6 +293,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       permissionMode: input.permissionMode,
       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
       ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
+      ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const generateDurationMs = Date.now() - generateStartedAt;
@@ -308,6 +324,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             permissionMode: input.permissionMode,
             ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
             ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
+            ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
             ...(input.signal ? { signal: input.signal } : {}),
           });
 

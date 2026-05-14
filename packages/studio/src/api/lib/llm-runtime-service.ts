@@ -10,6 +10,7 @@ import {
   type RuntimeAdapterId,
   type RuntimeChatMessage,
   type RuntimeToolUse,
+  type RuntimeToolStreamEvent,
 } from "./provider-adapters/index.js";
 import { getAdapterForProtocol } from "./provider-adapters/registry.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
@@ -44,6 +45,7 @@ export interface LlmRuntimeGenerateInput {
   readonly messages: readonly LlmRuntimeInputMessage[];
   readonly tools?: readonly SessionToolDefinition[];
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly onRetry?: (attempt: number, maxAttempts: number) => void;
   readonly signal?: AbortSignal;
 }
@@ -272,6 +274,7 @@ export class LlmRuntimeService {
           messages: toRuntimeMessages(input.messages),
           ...(requestedTools ? { tools: requestedTools } : {}),
           ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
+          ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
         });
 

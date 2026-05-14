@@ -1,9 +1,9 @@
-import { memo, useCallback, useMemo, useState } from "react";
+import React, { memo, useCallback, useMemo, useState } from "react";
 import { AnimatedMarkdown } from "flowtoken";
 import "flowtoken/dist/styles.css";
 import { Copy, Pencil, Trash2 } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
-import { ToolCallCard, type ConversationToolCall } from "./ToolCallCard";
+import { ToolCallCard, ToolCallGroup, type ConversationToolCall } from "./ToolCallCard";
 import {
   ContextMenu,
   ContextMenuTrigger,
@@ -153,12 +153,48 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
     return <MarkdownRenderer content={message.content} />;
   }, [message.content, message.isStreaming, message.toolCalls?.length]);
 
-  // Memoize tool call cards
-  const renderedToolCalls = useMemo(() => {
+  // Memoize tool call cards — with grouping for 3+ same-type tools
+  const renderedToolCalls = useMemo((): React.ReactNode => {
     if (!message.toolCalls?.length) return null;
-    return message.toolCalls.map((toolCall) => (
-      <ToolCallCard key={toolCall.id} toolCall={toolCall} />
-    ));
+    const toolCalls = message.toolCalls;
+
+    // Group consecutive same-name tools (only group if 3+ of same type)
+    const groups: { toolName: string; calls: ConversationToolCall[] }[] = [];
+    const toolNameCounts = new Map<string, number>();
+    for (const tc of toolCalls) {
+      toolNameCounts.set(tc.toolName, (toolNameCounts.get(tc.toolName) ?? 0) + 1);
+    }
+
+    let i = 0;
+    while (i < toolCalls.length) {
+      const tc = toolCalls[i];
+      if ((toolNameCounts.get(tc.toolName) ?? 0) >= 3) {
+        // Collect all consecutive same-name tools
+        const group: ConversationToolCall[] = [tc];
+        let j = i + 1;
+        while (j < toolCalls.length && toolCalls[j].toolName === tc.toolName) {
+          group.push(toolCalls[j]);
+          j++;
+        }
+        if (group.length >= 3) {
+          groups.push({ toolName: tc.toolName, calls: group });
+          i = j;
+          continue;
+        }
+      }
+      groups.push({ toolName: tc.toolName, calls: [tc] });
+      i++;
+    }
+
+    return (<>
+      {groups.flatMap((group, idx) =>
+        group.calls.length >= 3 ? (
+          [<ToolCallGroup key={`group-${idx}`} toolCalls={group.calls} toolName={group.toolName} />]
+        ) : (
+          group.calls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} />)
+        ),
+      )}
+    </>);
   }, [message.toolCalls]);
 
   const selectionClasses = isSelected
@@ -300,7 +336,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
           {renderedContent}
           {renderedToolCalls}
           {/* Token 用量（metadata.usage 存在时显示） */}
-          {message.metadata?.usage && (
+          {!!message.metadata?.usage && (
             <div className="mt-1 text-[10px] text-muted-foreground/60">
               {(message.metadata.usage as { input_tokens?: number }).input_tokens != null && `↑${((message.metadata.usage as { input_tokens: number }).input_tokens / 1000).toFixed(1)}k`}
               {(message.metadata.usage as { output_tokens?: number }).output_tokens != null && ` ↓${((message.metadata.usage as { output_tokens: number }).output_tokens / 1000).toFixed(1)}k`}

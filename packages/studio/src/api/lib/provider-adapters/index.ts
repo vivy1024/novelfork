@@ -75,11 +75,16 @@ export interface RuntimeToolUse {
   readonly input: Record<string, unknown>;
 }
 
+export type RuntimeToolStreamEvent =
+  | { type: "tool_started"; id: string; name: string }
+  | { type: "tool_input_chunk"; id: string; partialInput: string };
+
 export interface GenerateInput extends RuntimeProviderRef {
   readonly modelId: string;
   readonly messages: readonly RuntimeChatMessage[];
   readonly tools?: readonly RuntimeToolDefinition[];
   readonly onStreamChunk?: (chunk: string) => void;
+  readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly signal?: AbortSignal;
 }
 

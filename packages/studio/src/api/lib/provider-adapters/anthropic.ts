@@ -19,6 +19,7 @@ import type {
   RuntimeToolUse,
   GenerateUsage,
   RuntimeChatMessage,
+  RuntimeToolStreamEvent,
 } from "./index.js";
 import { failure, toProviderSafeToolName, toInternalToolName } from "./completions.js";
 import { resolveMessagesUrls, resolveModelsUrls, trimTrailingSlash } from "./url-resolver.js";
@@ -154,6 +155,7 @@ async function consumeAnthropicStream(
   body: ReadableStream<Uint8Array>,
   onStreamChunk: (chunk: string) => void,
   signal?: AbortSignal,
+  onToolEvent?: (event: RuntimeToolStreamEvent) => void,
 ): Promise<GenerateResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -167,6 +169,10 @@ async function consumeAnthropicStream(
   let currentToolId = "";
   let currentToolName = "";
   let currentToolInputJson = "";
+
+  // Throttle tool input chunk emissions: max once per 200ms or 100 chars since last emit
+  let lastToolInputEmitTime = 0;
+  let lastToolInputEmitLength = 0;
 
   try {
     for (;;) {
@@ -200,6 +206,9 @@ async function consumeAnthropicStream(
               currentToolId = typeof contentBlock.id === "string" ? contentBlock.id : `tool-call-${toolUses.length + 1}`;
               currentToolName = typeof contentBlock.name === "string" ? contentBlock.name : "";
               currentToolInputJson = "";
+              lastToolInputEmitTime = Date.now();
+              lastToolInputEmitLength = 0;
+              onToolEvent?.({ type: "tool_started", id: currentToolId, name: currentToolName });
             }
           } else if (parsed.type === "content_block_delta") {
             const delta = parsed.delta as Record<string, unknown> | undefined;
@@ -211,6 +220,16 @@ async function consumeAnthropicStream(
             } else if (delta && delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
               // Accumulate tool input JSON
               currentToolInputJson += delta.partial_json;
+              // Throttled emission of tool input chunks
+              if (onToolEvent) {
+                const now = Date.now();
+                const charsSinceLastEmit = currentToolInputJson.length - lastToolInputEmitLength;
+                if (now - lastToolInputEmitTime >= 200 || charsSinceLastEmit >= 100) {
+                  onToolEvent({ type: "tool_input_chunk", id: currentToolId, partialInput: currentToolInputJson });
+                  lastToolInputEmitTime = now;
+                  lastToolInputEmitLength = currentToolInputJson.length;
+                }
+              }
             }
           } else if (parsed.type === "content_block_stop") {
             // If we were accumulating a tool use, finalize it
@@ -435,7 +454,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
         }
 
         if (useStreaming && response.body) {
-          return await consumeAnthropicStream(response.body, input.onStreamChunk!, input.signal);
+          return await consumeAnthropicStream(response.body, input.onStreamChunk!, input.signal, input.onToolEvent);
         }
 
         const payload = await response.json() as Record<string, unknown>;

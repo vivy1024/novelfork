@@ -140,14 +140,24 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
   // 目录白名单按钮状态
   const [dirAdded, setDirAdded] = useState(false);
 
-  // 实时计时器
+  // 实时计时器 — 基于 turnActive 状态，不依赖后端 turnStartedAt
   const isWorking = narratorState === "working";
   const [elapsed, setElapsed] = useState(0);
+  const [turnStartTime, setTurnStartTime] = useState<number | null>(null);
+
   useEffect(() => {
-    if (!isWorking || !streamingStartedAt) { setElapsed(0); return; }
-    setElapsed(Date.now() - streamingStartedAt);
-    const interval = setInterval(() => setElapsed(Date.now() - streamingStartedAt), 1000);
-    return () => clearInterval(interval);
+    if (isWorking) {
+      // Turn 开始：记录本地开始时间（如果后端有 streamingStartedAt 就用后端的，否则用当前时间）
+      const startTime = streamingStartedAt ?? Date.now();
+      setTurnStartTime(startTime);
+      setElapsed(Date.now() - startTime);
+      const interval = setInterval(() => setElapsed(Date.now() - startTime), 1000);
+      return () => clearInterval(interval);
+    } else {
+      // Turn 结束：停止计时
+      setTurnStartTime(null);
+      setElapsed(0);
+    }
   }, [isWorking, streamingStartedAt]);
 
   // 圆点颜色：substatus 优先
@@ -198,7 +208,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
           ) : (
             <div className={`size-2 shrink-0 rounded-full ${dotColor}`} />
           )}
-          {isWorking && streamingStartedAt && elapsed > 0 ? (
+          {isWorking ? (
             <span className="text-xs font-medium text-blue-600 dark:text-blue-400">
               {substatus === "tool_calling" && status.toolName
                 ? `调用 ${status.toolName}... ${formatDuration(elapsed)}`
@@ -208,6 +218,10 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
                 ? `计划审核中 ${formatDuration(elapsed)}`
                 : substatus === "retrying"
                 ? `重试中 ${formatDuration(elapsed)}`
+                : substatus === "planning"
+                ? `计划中 ${formatDuration(elapsed)}`
+                : substatus === "reasoning"
+                ? `推理中 ${formatDuration(elapsed)}`
                 : `思考中 ${formatDuration(elapsed)}${streamingChars && elapsed > 1000 ? ` · ${Math.round(streamingChars / (elapsed / 1000))}字/秒` : ""}`}
             </span>
           ) : isWaiting ? (

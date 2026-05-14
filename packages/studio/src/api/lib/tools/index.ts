@@ -10,6 +10,9 @@ export { EditTool } from "./EditTool.js";
 export { GlobTool } from "./GlobTool.js";
 export { GrepTool } from "./GrepTool.js";
 export { BashTool } from "./BashTool.js";
+export { BrowserTool } from "./BrowserTool.js";
+export { WebSearchTool } from "./WebSearchTool.js";
+export { WebFetchTool } from "./WebFetchTool.js";
 
 import { EnterWorktreeTool } from "./EnterWorktreeTool.js";
 import { ExitWorktreeTool } from "./ExitWorktreeTool.js";
@@ -19,6 +22,9 @@ import { EditTool } from "./EditTool.js";
 import { GlobTool } from "./GlobTool.js";
 import { GrepTool } from "./GrepTool.js";
 import { BashTool } from "./BashTool.js";
+import { BrowserTool } from "./BrowserTool.js";
+import { WebSearchTool } from "./WebSearchTool.js";
+import { WebFetchTool } from "./WebFetchTool.js";
 
 /**
  * 所有可用工具列表
@@ -32,4 +38,7 @@ export const ALL_TOOLS = [
   GlobTool,
   GrepTool,
   BashTool,
+  BrowserTool,
+  WebSearchTool,
+  WebFetchTool,
 ];
