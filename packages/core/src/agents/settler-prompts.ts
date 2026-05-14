@@ -35,7 +35,7 @@ export function buildSettlerSystemPrompt(
     ? `【LANGUAGE OVERRIDE】ALL output (state card, hooks, summaries, subplots, emotional arcs, character matrix) MUST be in English. The === TAG === markers remain unchanged.\n\n`
     : "";
 
-  return `${langPrefix}你是状态追踪分析师。给定新章节正文和当前 truth 文件，你的任务是产出更新后的 truth 文件。
+  return `${langPrefix}你是状态追踪分析师。给定新章节正文和当前经纬文件，你的任务是产出更新后的经纬文件。
 
 ## 工作模式
 

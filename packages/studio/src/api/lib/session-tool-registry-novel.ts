@@ -1,7 +1,10 @@
 /**
- * 小说工具定义 — 从 session-tool-registry.ts 分离
- * 这些工具的 scope 均为 "novel"，仅在小说项目中启用。
- * Phase 3 Step 1: 物理分离，由 novel-plugin manifest 声明工具名列表。
+ * Novel-domain tool definitions.
+ *
+ * Architecture note: These definitions logically belong to packages/novel-plugin.
+ * They are registered here for now (渐进迁移 Step 3 of novel-plugin-and-tool-parity spec).
+ * The novel-plugin manifest declares tool names; full schemas remain here until
+ * the plugin loader supports schema registration.
  */
 import type {
   JsonObjectSchema,

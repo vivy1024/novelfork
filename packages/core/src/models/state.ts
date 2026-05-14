@@ -1,5 +1,5 @@
 /**
- * Canonical state files — the three sources of truth per book.
+ * Canonical state files — the three jingwei sources per book.
  * These are persisted as markdown files but parsed/validated here.
  */
 

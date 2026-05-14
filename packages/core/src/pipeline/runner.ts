@@ -1411,7 +1411,7 @@ export class PipelineRunner {
       readFile(join(storyDir, "particle_ledger.md"), "utf-8").catch(() => ""),
     ]);
     const validator = new StateValidatorAgent(this.agentCtxFor("state-validator", bookId));
-    const truthValidation = await validateChapterJingweiPersistence({
+    const jingweiValidation = await validateChapterJingweiPersistence({
       writer,
       validator,
       book,
@@ -1431,10 +1431,10 @@ export class PipelineRunner {
       logWarn: (message) => this.logWarn(pipelineLang, message),
       logger: this.config.logger,
     });
-    let chapterStatus: ChapterPipelineResult["status"] | null = truthValidation.chapterStatus;
-    let degradedIssues: ReadonlyArray<AuditIssue> = truthValidation.degradedIssues;
-    persistenceOutput = truthValidation.persistenceOutput;
-    auditResult = truthValidation.auditResult;
+    let chapterStatus: ChapterPipelineResult["status"] | null = jingweiValidation.chapterStatus;
+    let degradedIssues: ReadonlyArray<AuditIssue> = jingweiValidation.degradedIssues;
+    persistenceOutput = jingweiValidation.persistenceOutput;
+    auditResult = jingweiValidation.auditResult;
 
     // 4.2 Final paragraph shape check on persisted content (post-normalize, post-revise)
     {
@@ -1840,8 +1840,8 @@ export class PipelineRunner {
         passed: finalStatus !== "audit-failed",
         issues: [],
         summary: finalStatus === "audit-failed"
-          ? "chapter truth/state resynced from edited body, but chapter still needs audit fixes"
-          : "chapter truth/state resynced from edited body",
+          ? "chapter jingwei/state resynced from edited body, but chapter still needs audit fixes"
+          : "chapter jingwei/state resynced from edited body",
       },
       revised: false,
       status: finalStatus,

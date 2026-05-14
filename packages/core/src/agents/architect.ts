@@ -555,7 +555,7 @@ The volume_outline should naturally extend the existing narrative arc. Continue 
     const workingModeEn = isSeries
       ? `## Working Mode
 
-This is not a zero-to-one foundation pass. You must extract durable story truth from the imported chapters **and design a continuation path**. You need to:
+This is not a zero-to-one foundation pass. You must extract durable story jingwei from the imported chapters **and design a continuation path**. You need to:
 1. Extract worldbuilding, factions, characters, and systems from the source text -> generate story_bible
 2. Infer narrative structure and future arc direction -> generate volume_outline (review existing chapters + design a **new continuation direction**)
 3. Infer protagonist lock, prohibitions, and narrative constraints from character behavior -> generate book_rules
@@ -563,7 +563,7 @@ This is not a zero-to-one foundation pass. You must extract durable story truth 
 5. Extract all active hooks already planted in the text -> generate pending_hooks`
       : `## Working Mode
 
-This is not a zero-to-one foundation pass. You must extract durable story truth from the imported chapters **and preserve a clean continuation path**. You need to:
+This is not a zero-to-one foundation pass. You must extract durable story jingwei from the imported chapters **and preserve a clean continuation path**. You need to:
 1. Extract worldbuilding, factions, characters, and systems from the source text -> generate story_bible
 2. Infer narrative structure and near-future arc direction -> generate volume_outline (review existing chapters + continue naturally from where the imported chapters stop)
 3. Infer protagonist lock, prohibitions, and narrative constraints from character behavior -> generate book_rules

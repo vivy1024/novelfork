@@ -85,7 +85,7 @@ export function createAuthRouter(): Hono {
     // For now, require session to persist settings
     const session = await safeReadSession(c);
     if (!session) {
-      throw new ApiError(401, "UNAUTHORIZED", "Session required to save LLM settings. Use Sub2API login or OAuth.");
+      throw new ApiError(401, "UNAUTHORIZED", "Session required to save LLM settings. Use launch token authentication.");
     }
 
     // Update session with new LLM settings

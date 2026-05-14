@@ -121,6 +121,8 @@ export interface SessionConfig {
   reasoningEffort: SessionReasoningEffort;
   toolPolicy?: SessionToolPolicy;
   mode?: "normal" | "plan";
+  /** Project type for scope-based tool filtering (e.g. "novel", "general") */
+  projectType?: string;
 }
 
 export type NarratorSessionKind = "standalone" | "chapter";

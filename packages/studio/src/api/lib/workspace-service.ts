@@ -152,7 +152,7 @@ function inferFileRole(relPath: string, name: string): string | undefined {
   if (name === "book.json") return "book-config";
   if (name === "chapter-index.json") return "chapter-index";
   if (relPath.includes("/chapters/") && name.endsWith(".md")) return "chapter";
-  if (relPath.includes("/story/") && name.endsWith(".md")) return "truth";
+  if (relPath.includes("/story/") && name.endsWith(".md")) return "jingwei";
   if (name === "memory.db") return "memory-db";
   return undefined;
 }
@@ -281,7 +281,7 @@ export async function searchWorkspace(
   root: string,
   query: string,
   options?: {
-    readonly scope?: "all" | "chapters" | "truth" | "state";
+    readonly scope?: "all" | "chapters" | "truth" | "jingwei" | "state";
     readonly maxResults?: number;
   },
 ): Promise<readonly SearchResult[]> {
@@ -314,14 +314,14 @@ async function searchDir(
     if (entry.isDirectory()) {
       // Scope filtering at directory level
       if (scope === "chapters" && !relPath.includes("chapters") && !relPath.startsWith("books")) continue;
-      if (scope === "truth" && !relPath.includes("story") && !relPath.startsWith("books")) continue;
+      if ((scope === "truth" || scope === "jingwei") && !relPath.includes("story") && !relPath.startsWith("books")) continue;
 
       await searchDir(workspaceRoot, join(absDir, entry.name), relPath, lowerQuery, scope, results, maxResults);
     } else if (entry.isFile() && isSearchableFile(entry.name)) {
       // Scope filtering at file level
       const role = inferFileRole(relPath, entry.name);
       if (scope === "chapters" && role !== "chapter") continue;
-      if (scope === "truth" && role !== "truth") continue;
+      if ((scope === "truth" || scope === "jingwei") && role !== "jingwei") continue;
       if (scope === "state" && !relPath.includes("state")) continue;
 
       try {
