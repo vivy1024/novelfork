@@ -9,6 +9,15 @@ import type {
 import { ApiError } from "../errors.js";
 import { isSafeBookId } from "../safety.js";
 
+/** Extended entry fields from 0012_jingwei_overhaul migration */
+interface EntryWithOverhaulFields {
+  category?: string;
+  parentId?: string | null;
+  fieldsJson?: string;
+  sortOrder?: number;
+  lifecycle?: string;
+}
+
 export interface CreateJingweiRouterOptions {
   storage?: StorageDatabase;
 }
@@ -235,9 +244,18 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const sectionId = c.req.query("sectionId");
+    const category = c.req.query("category");
+    const parentId = c.req.query("parentId");
     const { createStoryJingweiEntryRepository } = await loadCore();
     const repo = createStoryJingweiEntryRepository(storage);
-    const entries = sectionId ? await repo.listBySection(bookId, sectionId) : await repo.listByBook(bookId);
+    let entries = sectionId ? await repo.listBySection(bookId, sectionId) : await repo.listByBook(bookId);
+    if (category) {
+      entries = entries.filter((e) => (e as EntryWithOverhaulFields).category === category);
+    }
+    if (parentId !== undefined) {
+      const targetParent = parentId === "" || parentId === "null" ? null : parentId;
+      entries = entries.filter((e) => (e as EntryWithOverhaulFields).parentId === targetParent);
+    }
     return c.json({ entries });
   });
 
@@ -268,7 +286,18 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    return c.json({ entry }, 201);
+    // Write overhaul fields directly via SQL if provided
+    const overhaulCategory = optionalText(body.category, "setting");
+    const overhaulParentId = optionalNullableText(body.parentId);
+    const overhaulFieldsJson = typeof body.fieldsJson === "object" ? JSON.stringify(body.fieldsJson) : "{}";
+    const overhaulAliasesJson = Array.isArray(body.aliasesJson) ? JSON.stringify(stringArray(body.aliasesJson)) : "[]";
+    const overhaulVisibilityRuleJson = typeof body.visibilityRuleJson === "object" ? JSON.stringify(body.visibilityRuleJson) : '{"type":"tracked"}';
+    storage.sqlite.prepare(`
+      UPDATE "story_jingwei_entry"
+      SET "category" = ?, "parent_id" = ?, "fields_json" = ?, "aliases_json" = ?, "visibility_rule_json" = ?
+      WHERE "id" = ?
+    `).run(overhaulCategory, overhaulParentId, overhaulFieldsJson, overhaulAliasesJson, overhaulVisibilityRuleJson, entry.id);
+    return c.json({ entry: { ...entry, category: overhaulCategory, parentId: overhaulParentId, fieldsJson: overhaulFieldsJson } }, 201);
   });
 
   app.put("/api/books/:bookId/jingwei/entries/:entryId", async (c) => {
@@ -358,6 +387,131 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       ...(tokenBudget === null ? {} : { tokenBudget }),
     });
     return c.json(context);
+  });
+
+  // --- Jingwei Overhaul: Move entry ---
+  app.patch("/api/books/:bookId/jingwei/entries/:entryId/move", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    await ensureBook(storage, bookId);
+    const body = await readJson(c);
+    const newParentId = body.parentId === null || body.parentId === "" ? null : optionalNullableText(body.parentId);
+    const result = storage.sqlite.prepare(`
+      UPDATE "story_jingwei_entry"
+      SET "parent_id" = ?, "updated_at" = ?
+      WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
+    `).run(newParentId, Date.now(), bookId, entryId);
+    if (result.changes === 0) {
+      throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${entryId}`);
+    }
+    return c.json({ ok: true, entryId, parentId: newParentId });
+  });
+
+  // --- Jingwei Overhaul: Tree endpoint ---
+  app.get("/api/books/:bookId/jingwei/tree", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const category = c.req.query("category");
+    const { createStoryJingweiEntryRepository } = await loadCore();
+    let entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
+    if (category) {
+      entries = entries.filter((e) => (e as EntryWithOverhaulFields).category === category);
+    }
+    // Fetch overhaul fields for tree building
+    const rows = storage.sqlite.prepare(`
+      SELECT "id", "parent_id", "category", "sort_order"
+      FROM "story_jingwei_entry"
+      WHERE "book_id" = ? AND "deleted_at" IS NULL
+    `).all(bookId) as Array<{ id: string; parent_id: string | null; category: string; sort_order: number }>;
+    const overhaulMap = new Map(rows.map((r) => [r.id, r]));
+    interface TreeNode {
+      id: string;
+      parentId: string | null;
+      category: string;
+      sortOrder: number;
+      entry: unknown;
+      children: TreeNode[];
+    }
+    const nodeMap = new Map<string, TreeNode>();
+    for (const entry of entries) {
+      const overhaul = overhaulMap.get(entry.id);
+      nodeMap.set(entry.id, {
+        id: entry.id,
+        parentId: overhaul?.parent_id ?? null,
+        category: overhaul?.category ?? "setting",
+        sortOrder: overhaul?.sort_order ?? 0,
+        entry,
+        children: [],
+      });
+    }
+    const roots: TreeNode[] = [];
+    for (const node of nodeMap.values()) {
+      if (node.parentId && nodeMap.has(node.parentId)) {
+        nodeMap.get(node.parentId)!.children.push(node);
+      } else {
+        roots.push(node);
+      }
+    }
+    roots.sort((a, b) => a.sortOrder - b.sortOrder);
+    for (const node of nodeMap.values()) {
+      node.children.sort((a, b) => a.sortOrder - b.sortOrder);
+    }
+    return c.json({ tree: roots });
+  });
+
+  // --- Jingwei Overhaul: Relations ---
+  app.get("/api/books/:bookId/jingwei/relations", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const entryId = c.req.query("entryId");
+    let relations: unknown[];
+    if (entryId) {
+      relations = storage.sqlite.prepare(`
+        SELECT * FROM "jingwei_relations"
+        WHERE "book_id" = ? AND ("source_entry_id" = ? OR "target_entry_id" = ?)
+      `).all(bookId, entryId, entryId);
+    } else {
+      relations = storage.sqlite.prepare(`
+        SELECT * FROM "jingwei_relations"
+        WHERE "book_id" = ?
+      `).all(bookId);
+    }
+    return c.json({ relations });
+  });
+
+  app.post("/api/books/:bookId/jingwei/relations", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+    const body = await readJson(c);
+    const sourceEntryId = requireText(body.sourceEntryId, "JINGWEI_SOURCE_ENTRY_REQUIRED", "sourceEntryId is required.");
+    const targetEntryId = requireText(body.targetEntryId, "JINGWEI_TARGET_ENTRY_REQUIRED", "targetEntryId is required.");
+    const relationType = requireText(body.relationType, "JINGWEI_RELATION_TYPE_REQUIRED", "relationType is required.");
+    const label = optionalNullableText(body.label);
+    const id = crypto.randomUUID();
+    const now = Date.now();
+    storage.sqlite.prepare(`
+      INSERT INTO "jingwei_relations" ("id", "book_id", "source_entry_id", "target_entry_id", "relation_type", "label", "metadata_json", "created_at")
+      VALUES (?, ?, ?, ?, ?, ?, '{}', ?)
+    `).run(id, bookId, sourceEntryId, targetEntryId, relationType, label, now);
+    return c.json({ relation: { id, bookId, sourceEntryId, targetEntryId, relationType, label, metadataJson: "{}", createdAt: now } }, 201);
+  });
+
+  app.delete("/api/books/:bookId/jingwei/relations/:relationId", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    const relationId = c.req.param("relationId");
+    await ensureBook(storage, bookId);
+    const result = storage.sqlite.prepare(`
+      DELETE FROM "jingwei_relations" WHERE "id" = ? AND "book_id" = ?
+    `).run(relationId, bookId);
+    if (result.changes === 0) {
+      throw new ApiError(404, "JINGWEI_RELATION_NOT_FOUND", `Relation not found: ${relationId}`);
+    }
+    return c.json({ ok: true, id: relationId });
   });
 
   return app;
