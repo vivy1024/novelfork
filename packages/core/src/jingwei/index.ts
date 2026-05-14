@@ -32,6 +32,13 @@ export { loadBuiltinQuestionnaireTemplates, seedQuestionnaireTemplates, type See
 export { submitQuestionnaireResponse, type SubmitQuestionnaireResponseInput, type SubmitQuestionnaireResponseResult } from "./questionnaires/submit-response.js";
 export { validateQuestionnaireTemplate } from "./questionnaires/template-validator.js";
 
+// Long-novel coherence
+export { buildRecursiveSummaryContext, saveVolumeSummary, getVolumeSummary, buildVolumeSummaryPrompt, type VolumeSummary } from "./context/recursive-summaries.js";
+export { buildChangeExtractionPrompt, applyChapterChanges, type ChapterChange } from "./context/auto-update.js";
+export { buildChapterBriefing } from "./context/chapter-briefing.js";
+export { updateCausalChainUrgency, createCausalChain, progressCausalChain, type CausalChain, type CausalChainStatus, type CausalChainUrgency } from "./context/causal-chains.js";
+export { updateCharacterLifecycles } from "./context/lifecycle-manager.js";
+
 // PGI
 export { generatePGIQuestions, formatPGIAnswersForPrompt, type GeneratePGIQuestionsInput, type GeneratePGIQuestionsResult, type PGIQuestion } from "./pgi/pgi-engine.js";
 
