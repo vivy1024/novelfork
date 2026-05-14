@@ -1439,6 +1439,27 @@ ${contextParts.join("\n")}
         ? mdFiles.filter((f) => approvedNums.has(parseInt(f.slice(0, 4), 10)))
         : mdFiles;
 
+      // Safety limit: reject exports with more than 500 chapters
+      if (filteredFiles.length > 500) {
+        return c.json({ error: `章节数量过多（${filteredFiles.length}），请分批导出（最多 500 章）` }, 400);
+      }
+
+      // For TXT format, stream sequentially instead of loading all into memory
+      if (format === "txt") {
+        const chunks: string[] = [];
+        for (const f of filteredFiles) {
+          chunks.push(await readFile(join(chaptersDir, f), "utf-8"));
+        }
+        const body = chunks.join("\n\n");
+        return new Response(body, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Disposition": `attachment; filename="${id}.txt"`,
+          },
+        });
+      }
+
+      // For other formats, read all content (still limited to 500 chapters above)
       const contents = await Promise.all(
         filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
       );
@@ -1480,7 +1501,7 @@ ${contextParts.join("\n")}
           },
         });
       }
-      // Default: txt
+      // Default: txt (fallback for unknown format param)
       const body = contents.join("\n\n");
       return new Response(body, {
         headers: {
@@ -1512,6 +1533,12 @@ ${contextParts.join("\n")}
       const filteredFiles = approvedOnly
         ? mdFiles.filter((f) => approvedNums.has(parseInt(f.slice(0, 4), 10)))
         : mdFiles;
+
+      // Safety limit: reject exports with more than 500 chapters
+      if (filteredFiles.length > 500) {
+        return c.json({ error: `章节数量过多（${filteredFiles.length}），请分批导出（最多 500 章）` }, 400);
+      }
+
       const contents = await Promise.all(
         filteredFiles.map((f) => readFile(join(chaptersDir, f), "utf-8")),
       );
