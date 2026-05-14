@@ -42,6 +42,14 @@ export { updateCharacterLifecycles } from "./context/lifecycle-manager.js";
 // PGI
 export { generatePGIQuestions, formatPGIAnswersForPrompt, type GeneratePGIQuestionsInput, type GeneratePGIQuestionsResult, type PGIQuestion } from "./pgi/pgi-engine.js";
 
+// Preset reflection
+export { buildPresetReflectionPrompt, parsePresetSuggestions, type PresetSuggestion } from "./context/preset-reflection.js";
+
+// Associative layer
+export { extractChapterEntities, updateCooccurrence, type CooccurrenceEdge } from "./associative/cooccurrence.js";
+export { propagateSpikes, type SpikeResult } from "./associative/spike-routing.js";
+export { buildDreamPrompt, parseDreamDiscoveries, type DreamDiscovery } from "./associative/dream-system.js";
+
 // Jingwei repositories (renamed from Bible)
 export { createBookRepository } from "./repositories/book-repo.js";
 export { createJingweiCharacterArcRepository, createBibleCharacterArcRepository } from "./repositories/character-arc-repo.js";
