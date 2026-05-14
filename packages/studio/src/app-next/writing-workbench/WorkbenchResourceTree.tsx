@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useRef, useState, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -213,8 +213,25 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onAction, onContextMenu
   );
 }
 
+/** Maximum items to render before showing "显示更多" */
+const RENDER_LIMIT = 100;
+
+/** Count all leaf (openable) nodes recursively */
+function countLeafNodes(nodes: readonly WorkbenchResourceNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    if (node.capabilities.open) count++;
+    if (node.children) count += countLeafNodes(node.children);
+  }
+  return count;
+}
+
 export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, onAction }: WorkbenchResourceTreeProps) {
   const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [showAll, setShowAll] = useState(false);
+
+  const totalCount = useMemo(() => countLeafNodes(nodes), [nodes]);
+  const shouldLimit = !showAll && totalCount > RENDER_LIMIT;
 
   const handleContextMenu = useCallback((e: React.MouseEvent, node: WorkbenchResourceNode) => {
     // Only show context menu for nodes that have editable/deletable capabilities
@@ -226,11 +243,37 @@ export function WorkbenchResourceTree({ nodes, selectedNodeId = null, onOpen, on
     onAction?.(action);
   }, [onAction]);
 
+  // When limiting, render nodes but track a counter to stop after RENDER_LIMIT openable items
+  let rendered = 0;
+  const limitedNodes: WorkbenchResourceNode[] = [];
+  if (shouldLimit) {
+    for (const node of nodes) {
+      if (rendered >= RENDER_LIMIT) break;
+      limitedNodes.push(node);
+      rendered += countLeafNodes([node]);
+    }
+  }
+
+  const displayNodes = shouldLimit ? limitedNodes : nodes;
+
   return (
     <nav aria-label="写作资源树" className="space-y-0.5 relative">
-      {nodes.map((node) => (
+      {displayNodes.map((node) => (
         <TreeNode key={node.id} node={node} depth={0} selectedNodeId={selectedNodeId} onOpen={onOpen} onAction={handleAction} onContextMenu={handleContextMenu} />
       ))}
+      {shouldLimit && (
+        <div className="px-2 py-2">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-full text-xs text-muted-foreground"
+            onClick={() => setShowAll(true)}
+          >
+            显示更多（共 {totalCount} 项，当前显示 {RENDER_LIMIT} 项）
+          </Button>
+        </div>
+      )}
       {contextMenu && onAction && (
         <ContextMenu state={contextMenu} onAction={handleAction} onClose={() => setContextMenu(null)} />
       )}
