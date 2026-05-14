@@ -1,6 +1,7 @@
 -- Migration: Bible v1 → Jingwei unified table
 -- Creates a placeholder section per book for migrated entries, then copies data.
 -- Idempotent: uses INSERT OR IGNORE throughout.
+-- Safe for fresh installs: each SELECT guards against missing bible tables via sqlite_master check.
 
 -- Step 1: Create a migration-placeholder section for each book that has bible data
 INSERT OR IGNORE INTO story_jingwei_section (id, book_id, key, name, description, icon, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, builtin_kind, source_template, created_at, updated_at, deleted_at)
@@ -22,7 +23,8 @@ SELECT DISTINCT
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000,
   NULL
-FROM bible_character WHERE deleted_at IS NULL
+FROM bible_character WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_character')
+AND deleted_at IS NULL
 UNION
 SELECT DISTINCT
   'migrated-section-' || book_id,
@@ -42,7 +44,8 @@ SELECT DISTINCT
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000,
   NULL
-FROM bible_event WHERE deleted_at IS NULL
+FROM bible_event WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_event')
+AND deleted_at IS NULL
 UNION
 SELECT DISTINCT
   'migrated-section-' || book_id,
@@ -62,7 +65,8 @@ SELECT DISTINCT
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000,
   NULL
-FROM bible_setting WHERE deleted_at IS NULL
+FROM bible_setting WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_setting')
+AND deleted_at IS NULL
 UNION
 SELECT DISTINCT
   'migrated-section-' || book_id,
@@ -82,7 +86,8 @@ SELECT DISTINCT
   strftime('%s', 'now') * 1000,
   strftime('%s', 'now') * 1000,
   NULL
-FROM bible_chapter_summary WHERE deleted_at IS NULL;
+FROM bible_chapter_summary WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_chapter_summary')
+AND deleted_at IS NULL;
 
 -- Step 2: Migrate bible_character → story_jingwei_entry (category='character')
 INSERT OR IGNORE INTO story_jingwei_entry (
@@ -119,7 +124,8 @@ SELECT
   created_at,
   updated_at,
   NULL
-FROM bible_character WHERE deleted_at IS NULL;
+FROM bible_character WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_character')
+AND deleted_at IS NULL;
 
 -- Step 3: Migrate bible_event → story_jingwei_entry (category='event')
 INSERT OR IGNORE INTO story_jingwei_entry (
@@ -157,7 +163,8 @@ SELECT
   created_at,
   updated_at,
   NULL
-FROM bible_event WHERE deleted_at IS NULL;
+FROM bible_event WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_event')
+AND deleted_at IS NULL;
 
 -- Step 4: Migrate bible_setting → story_jingwei_entry (category mapped from setting category)
 INSERT OR IGNORE INTO story_jingwei_entry (
@@ -201,7 +208,8 @@ SELECT
   created_at,
   updated_at,
   NULL
-FROM bible_setting WHERE deleted_at IS NULL;
+FROM bible_setting WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_setting')
+AND deleted_at IS NULL;
 
 -- Step 5: Migrate bible_chapter_summary → story_jingwei_entry (category='chapter-summary')
 INSERT OR IGNORE INTO story_jingwei_entry (
@@ -238,4 +246,5 @@ SELECT
   created_at,
   updated_at,
   NULL
-FROM bible_chapter_summary WHERE deleted_at IS NULL;
+FROM bible_chapter_summary WHERE EXISTS (SELECT 1 FROM sqlite_master WHERE type='table' AND name='bible_chapter_summary')
+AND deleted_at IS NULL;
