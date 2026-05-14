@@ -9,6 +9,46 @@ import { join } from "node:path";
 import type { BookDetail } from "../../shared/contracts.js";
 import { StateManager } from "@vivy1024/novelfork-core";
 
+// --- Project Awareness Context (auto-read key project files) ---
+
+const PROJECT_AWARENESS_FILES = [
+  { path: "CLAUDE.md", label: "项目指令", maxChars: 4000 },
+  { path: "AGENTS.md", label: "Agent 指令", maxChars: 2000 },
+  { path: ".kiro/steering/README.md", label: "Steering", maxChars: 2000 },
+] as const;
+
+/**
+ * Auto-discover project context files for the agent.
+ * Reads: CLAUDE.md, AGENTS.md, .kiro/steering/README.md
+ * Returns a context string to prepend to the system prompt.
+ */
+export async function buildProjectAwarenessContext(workDir: string): Promise<string> {
+  const sections: string[] = [];
+
+  const reads = PROJECT_AWARENESS_FILES.map(async ({ path, label, maxChars }) => {
+    const fullPath = join(workDir, path);
+    if (!existsSync(fullPath)) return null;
+    try {
+      let content = await readFile(fullPath, "utf-8");
+      if (content.length > maxChars) {
+        content = content.slice(0, maxChars) + "\n\n[... 已截断]";
+      }
+      return { label, content };
+    } catch {
+      return null;
+    }
+  });
+
+  const results = await Promise.all(reads);
+  for (const result of results) {
+    if (result) {
+      sections.push(`<${result.label}>\n${result.content}\n</${result.label}>`);
+    }
+  }
+
+  return sections.length > 0 ? sections.join("\n\n") : "";
+}
+
 function getProjectRoot(): string {
   return process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
 }
