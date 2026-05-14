@@ -13,20 +13,17 @@ interface BrowserSession {
 
 // 会话注册表
 const sessions = new Map<string, BrowserSession>();
+const MAX_BROWSER_SESSIONS = 5;
 
 // 自动清理：5 分钟空闲关闭
 const SESSION_TIMEOUT_MS = 5 * 60 * 1000;
 
-const cleanupInterval = setInterval(() => {
+const cleanupInterval = setInterval(async () => {
   const now = Date.now();
-  for (const [id, session] of sessions) {
+  for (const [id, session] of sessions.entries()) {
     if (now - session.lastAccess > SESSION_TIMEOUT_MS) {
-      try {
-        session.browser.close();
-      } catch {
-        // ignore
-      }
-      sessions.delete(id);
+      try { await session.browser.close(); } catch { /* ignore */ }
+      sessions.delete(id); // Always delete, even if close fails
     }
   }
 }, 60_000);
@@ -92,6 +89,11 @@ export const BrowserTool: ToolDefinition = {
     params: Record<string, unknown>,
     context: ToolContext
   ): Promise<ToolResult> => {
+    // 权限检查
+    if (!context.permissions.has("browser")) {
+      return { success: false, error: "Permission denied: browser tool requires 'browser' permission" };
+    }
+
     // 懒加载 playwright（可选依赖）
     let playwright: any;
     try {
@@ -113,6 +115,9 @@ export const BrowserTool: ToolDefinition = {
 
     switch (action) {
       case "launch": {
+        if (sessions.size >= MAX_BROWSER_SESSIONS) {
+          return { success: false, error: `最多同时运行 ${MAX_BROWSER_SESSIONS} 个浏览器会话，请先关闭不需要的会话` };
+        }
         const browser = await playwright.chromium.launch({ headless: true });
         const page = await browser.newPage();
         if (url) {

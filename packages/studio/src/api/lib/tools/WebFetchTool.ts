@@ -140,6 +140,7 @@ export const WebFetchTool: ToolDefinition = {
           Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
         },
         redirect: "follow",
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!response.ok) {
@@ -152,9 +153,12 @@ export const WebFetchTool: ToolDefinition = {
       contentType = response.headers.get("content-type");
       html = await response.text();
     } catch (err) {
+      if (err instanceof Error && err.name === "TimeoutError") {
+        return { success: false, error: `请求超时（30秒）: ${url}` };
+      }
       return {
         success: false,
-        error: `抓取失败: ${err instanceof Error ? err.message : String(err)}`,
+        error: `网络错误: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
 
