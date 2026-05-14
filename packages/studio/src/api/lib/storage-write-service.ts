@@ -228,8 +228,8 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
         sessionId: checkpointContext.sessionId,
         messageId: checkpointContext.messageId,
         toolUseId: checkpointContext.toolUseId,
-        reason: "truth-write",
-        resources: [{ kind: "truth", id: `truth:${file}`, path: `story/${file}` }],
+        reason: "jingwei-write",
+        resources: [{ kind: "jingwei", id: `jingwei:${file}`, path: `story/${file}` }],
       });
       if ("error" in checkpoint) return { error: checkpoint.error };
       await writeFile(join(storyDir, file), content, "utf-8");

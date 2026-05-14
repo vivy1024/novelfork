@@ -135,7 +135,7 @@ export function createWorkbenchRouter(root: string, token?: string): Hono {
     if (!q || q.trim().length === 0) {
       throw new ApiError(400, "MISSING_QUERY", "Query parameter 'q' is required");
     }
-    const scope = c.req.query("scope") as "all" | "chapters" | "truth" | "state" | undefined;
+    const scope = c.req.query("scope") as "all" | "chapters" | "truth" | "jingwei" | "state" | undefined;
     const maxResults = parseInt(c.req.query("limit") ?? "100", 10);
     const results = await searchWorkspace(root, q, {
       scope: scope ?? "all",

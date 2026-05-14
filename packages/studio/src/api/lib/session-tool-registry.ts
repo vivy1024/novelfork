@@ -504,7 +504,7 @@ const UNAVAILABLE_SERVICE_TOOLS = new Set([
   "health.read_summary",
 ]);
 
-export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string }): SessionToolDefinition[] {
+export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string } }): SessionToolDefinition[] {
   let tools = getSessionToolDefinitions()
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     // Do not expose service-backed tools until their services are wired into the session executor.
@@ -513,9 +513,9 @@ export function getEnabledSessionTools(permissionMode: SessionPermissionMode, ag
     .map(cloneDefinition);
 
   // 按 projectType 过滤 scope（向后兼容：不传或 "novel" 时返回所有工具）
-  const projectType = options?.projectType;
+  const projectType = options?.projectType ?? options?.sessionConfig?.projectType;
   if (projectType && projectType !== "novel") {
-    tools = tools.filter((tool) => tool.scope !== "novel");
+    tools = tools.filter((tool) => !tool.scope || tool.scope === "universal" || tool.scope === "all" || tool.scope === projectType);
   }
 
   // 按 Agent 角色过滤工具（合并内置 + 插件预设）
