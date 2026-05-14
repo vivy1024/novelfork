@@ -86,6 +86,43 @@
 | narrafork-feature-parity | Phase 6 |
 | platform-and-collaboration (多用户) | Phase 6.8 |
 
+## Phase 7：代码架构文档化（分析 + 对比 + 记录）
+
+**现状**: 项目代码量已达 7 万+ 行，开发者（包括自己）记不清各模块的职责、数据流、对标关系。需要系统性文档化。
+
+### 7.1 小说领域前端架构文档
+
+- [ ] 7.1.1 分析 `packages/studio/src/app-next/writing-workbench/` 全部组件
+- [ ] 7.1.2 绘制组件树 + 数据流图（哪个组件调哪个 API、状态怎么流转）
+- [ ] 7.1.3 记录每个面板的功能、入口、依赖关系
+- [ ] 7.1.4 输出 `docs/04-架构与设计/05-小说前端架构.md`
+
+### 7.2 小说领域后端架构文档
+
+- [ ] 7.2.1 分析 `packages/core/src/` 全部模块（pipeline/agents/jingwei/filter/compliance/presets/tools）
+- [ ] 7.2.2 分析 `packages/studio/src/api/routes/` 小说相关路由
+- [ ] 7.2.3 绘制数据流图（用户操作 → API → 服务 → 存储 → AI 调用）
+- [ ] 7.2.4 记录每个服务的职责、输入输出、依赖
+- [ ] 7.2.5 输出 `docs/04-架构与设计/06-小说后端架构.md`
+
+### 7.3 Agent 运行时架构文档（对标 Claude Code / Codex CLI / NarraFork）
+
+- [ ] 7.3.1 分析 NovelFork Agent Loop（agent-turn-runtime.ts + session-chat-service.ts + llm-runtime-service.ts）
+- [ ] 7.3.2 对比 Claude Code 源码（restored-cli-src/src/）：Tool.ts / QueryEngine.ts / main.tsx 的架构
+- [ ] 7.3.3 对比 Codex CLI（codex-rs/）：Rust agent loop / tool execution / sandbox
+- [ ] 7.3.4 对比 NarraFork（.narrafork-reference/）：WebSocket 事件 / 工具状态机 / 子代理
+- [ ] 7.3.5 绘制四者对比表（Agent Loop / 工具系统 / 上下文管理 / 流式渲染 / 权限 / 子代理）
+- [ ] 7.3.6 记录 NovelFork 的差异化设计决策和取舍
+- [ ] 7.3.7 输出 `docs/04-架构与设计/07-Agent运行时对比分析.md`
+
+### 7.4 经纬系统架构文档
+
+- [ ] 7.4.1 分析经纬数据模型（Bible 4 表 + jingwei_entries + relations + progressions + cooccurrence + causal_chains）
+- [ ] 7.4.2 分析上下文注入链路（buildBibleContext + buildChapterBriefing + buildRecursiveSummaryContext）
+- [ ] 7.4.3 分析联想层（extractChapterEntities + updateCooccurrence + propagateSpikes + dream）
+- [ ] 7.4.4 对比 NovelCrafter Codex / Sudowrite Story Bible / VCP Wave Memory
+- [ ] 7.4.5 输出 `docs/04-架构与设计/08-经纬系统架构.md`
+
 ---
 
 ## 优先级
@@ -97,6 +134,7 @@ Phase 3 (2-3 天) — 插件化收尾
 Phase 4 (1 天) — 预设合规检查
 Phase 5 (1 天) — 杂项验证
 Phase 6 (15-20 天) — 长期路线图
+Phase 7 (2-3 天) — 代码架构文档化
 ```
 
-Phase 1-5 总计约 6-8 天。Phase 6 是长期迭代。
+Phase 1-5 + 7 总计约 8-11 天。Phase 6 是长期迭代。
