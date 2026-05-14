@@ -8,6 +8,22 @@ import type {
 
 import { appendStreamChunk, mergeSessionMessages, normalizeSessionMessage } from "./message-transforms";
 
+export interface PendingPermissionRequest {
+  id: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  reason?: string;
+  riskLevel: string;
+}
+
+export interface PendingDangerReflection {
+  id: string;
+  toolName: string;
+  command: string;
+  analysis: string;
+  riskFactors: string[];
+}
+
 export interface AgentConversationRuntimeState {
   session: NarratorSessionRecord | null;
   messages: NarratorSessionChatMessage[];
@@ -19,6 +35,13 @@ export interface AgentConversationRuntimeState {
   resetRequired: boolean;
   /** Set to true when user sends a message, cleared on first server response */
   waitingForResponse: boolean;
+  /** 
+   * Turn 活跃标记：用户发消息时 true，后端推送 narratorState:"idle" 时 false。
+   * 中间不管发生什么都不变——解决状态栏闪烁问题。
+   */
+  turnActive: boolean;
+  pendingPermission: PendingPermissionRequest | null;
+  pendingReflection: PendingDangerReflection | null;
 }
 
 export type SessionServerEnvelope =
@@ -27,7 +50,10 @@ export type SessionServerEnvelope =
   | { type: "session:message"; sessionId: string; message: NarratorSessionChatMessage; cursor?: NarratorSessionChatCursor }
   | { type: "session:stream"; sessionId: string; content: string; timestamp?: number }
   | { type: "session:tool-stream"; sessionId: string; toolCallId: string; content: string }
+  | { type: "session:tool-input-chunk"; sessionId: string; toolCallId: string; partialInput: string }
   | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown }
+  | { type: "session:permission-request"; sessionId: string; request: { id: string; toolName: string; input: Record<string, unknown>; reason?: string; riskLevel: string } }
+  | { type: "session:danger-reflection"; sessionId: string; reflection: { id: string; toolName: string; command: string; analysis: string; riskFactors: string[] } }
   | { type: "client:message-sent" };
 
 export function createInitialAgentConversationRuntimeState(): AgentConversationRuntimeState {
@@ -41,6 +67,9 @@ export function createInitialAgentConversationRuntimeState(): AgentConversationR
     recovery: { state: "idle" },
     resetRequired: false,
     waitingForResponse: false,
+    turnActive: false,
+    pendingPermission: null,
+    pendingReflection: null,
   };
 }
 
@@ -55,7 +84,15 @@ export function reduceSessionEnvelope(
   switch (envelope.type) {
     case "session:snapshot": {
       const cursor = envelope.cursor ?? envelope.snapshot.cursor ?? null;
-      const messages = envelope.snapshot.messages.map(normalizeSessionMessage);
+      let messages = envelope.snapshot.messages.map(normalizeSessionMessage);
+      // 加载快照时，如果 session 已 idle，把残留的 running 工具标记为 success
+      const snapshotNarratorState = (envelope.snapshot.session as { narratorState?: string }).narratorState;
+      if (snapshotNarratorState !== "working") {
+        messages = messages.map((msg) => {
+          if (!msg.toolCalls?.some((tc) => tc.status === "running")) return msg;
+          return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.status === "running" ? { ...tc, status: "success" } : tc) };
+        });
+      }
       return {
         ...state,
         session: envelope.snapshot.session,
@@ -66,6 +103,7 @@ export function reduceSessionEnvelope(
         error: null,
         recovery: envelope.recovery ?? state.recovery,
         resetRequired: false,
+        turnActive: snapshotNarratorState === "working",
       };
     }
     case "session:state": {
@@ -80,6 +118,10 @@ export function reduceSessionEnvelope(
           return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.status === "running" ? { ...tc, status: sessionSubstatus === "interrupted" ? "error" : "success" } : tc) };
         });
       }
+      // Derive turnActive from server narratorState
+      const turnActive = sessionNarratorState === "working" ? true
+        : (sessionNarratorState === "idle" || sessionSubstatus === "interrupted") ? false
+        : state.turnActive;
       return {
         ...state,
         session: envelope.session,
@@ -87,6 +129,7 @@ export function reduceSessionEnvelope(
         cursor,
         lastSeq: lastSeqFrom(cursor, messages, state.lastSeq),
         recovery: envelope.recovery ?? state.recovery,
+        turnActive,
       };
     }
     case "session:message": {
@@ -104,7 +147,7 @@ export function reduceSessionEnvelope(
           if (!msg.toolCalls?.length) return msg;
           const match = msg.toolCalls.find((tc) => tc.id === resultToolId && tc.status === "running");
           if (!match) return msg;
-          return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.id === resultToolId ? { ...tc, status: incomingToolCalls[0].status, durationMs: incomingToolCalls[0].durationMs } : tc) };
+          return { ...msg, toolCalls: msg.toolCalls.map((tc) => tc.id === resultToolId ? { ...tc, status: incomingToolCalls[0].status, duration: incomingToolCalls[0].duration } : tc) };
         });
       }
 
@@ -144,7 +187,22 @@ export function reduceSessionEnvelope(
         // Append to the tool call's streaming output
         const updatedToolCalls = msg.toolCalls.map((tc) =>
           tc.id === envelope.toolCallId
-            ? { ...tc, _streamingOutput: ((tc as Record<string, unknown>)._streamingOutput as string ?? "") + envelope.content }
+            ? { ...tc, _streamingOutput: (tc._streamingOutput ?? "") + envelope.content }
+            : tc,
+        );
+        return { ...msg, toolCalls: updatedToolCalls };
+      });
+      return { ...state, messages: updatedMessages };
+    }
+    case "session:tool-input-chunk": {
+      // Update the matching tool call's input field with partial JSON as it streams in
+      const updatedMessages = state.messages.map((msg) => {
+        if (!msg.toolCalls?.length) return msg;
+        const matchingTool = msg.toolCalls.find((tc) => tc.id === envelope.toolCallId);
+        if (!matchingTool) return msg;
+        const updatedToolCalls = msg.toolCalls.map((tc) =>
+          tc.id === envelope.toolCallId
+            ? { ...tc, _streamingInput: envelope.partialInput }
             : tc,
         );
         return { ...msg, toolCalls: updatedToolCalls };
@@ -158,10 +216,21 @@ export function reduceSessionEnvelope(
         recovery: { state: "failed", reason: "websocket-error" },
         waitingForResponse: false,
       };
+    case "session:permission-request":
+      return {
+        ...state,
+        pendingPermission: envelope.request,
+      };
+    case "session:danger-reflection":
+      return {
+        ...state,
+        pendingReflection: envelope.reflection,
+      };
     case "client:message-sent":
       return {
         ...state,
         waitingForResponse: true,
+        turnActive: true,
       };
   }
 }

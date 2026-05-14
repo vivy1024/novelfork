@@ -4,6 +4,40 @@
 
 ---
 
+## v0.5.2 (2026-05-14)
+
+### 新功能
+- **Bash 实时流式输出**：命令执行时 stdout/stderr 逐 chunk 推送到前端，不再等待完成才显示
+- **工具 description 参数**：LLM 可描述命令意图，折叠态显示人类可读文字而非原始命令
+- **工具输入流式预览**：LLM 开始输出 tool_use 时前端立即显示 running 卡片（SSE tool_started + input_json_delta 解析）
+- **工具结果智能截断**：超过 30000 字符自动截断（保留头 20000 + 尾 5000 + 省略提示）
+- **工具卡片状态动画**：running 蓝色脉冲 / done 绿色闪光 / error 红色闪光 / pending 黄色边框
+- **工具卡片实时计时器**：运行中显示已用时间 + 超时限制 + 行数 + 字节数
+- **工具卡片自动展开**：运行中的 Bash 工具自动展开显示实时输出
+- **输出截断与展开**：超过 50 行显示"显示全部 (N 行)"按钮
+- **工具分组渲染**：3+ 个同类工具合并为分组卡片（如 `Grep ×3`）
+- **子代理嵌套渲染**：Agent 工具展开时递归渲染子调用链（蓝色缩进连接线）
+- **BrowserTool 后端**：Playwright 驱动，8 个 action（launch/navigate/click/fill/screenshot/get_text/evaluate/close），会话管理 + 5 分钟自动清理
+- **WebSearchTool 后端**：Serper API + DuckDuckGo HTML fallback
+- **WebFetchTool 后端**：readability/text/raw 三模式，SSRF 防护（私有 IP 黑名单）
+- **权限决策卡片**：PermissionRequestCard（4 色风险 badge + allow/deny 按钮）
+- **计划模式条**：PlanModeBar（蓝色主题 + 退出/批准按钮）
+- **危险反思卡片**：DangerReflectionCard（AI 安全分析 + 风险因子 + 确认/中止）
+
+### 改进
+- Windows shell 命令改用 `bash -lc`（Git Bash 兼容，不再用 `cmd /c`）
+- `ws-envelope-reducer` 新增 `session:tool-input-chunk` / `session:permission-request` / `session:danger-reflection` 事件
+- `SessionConfig` 新增 `mode?: "normal" | "plan"` 字段
+- `ToolCall` 接口新增 `_streamingOutput` / `_streamingInput` 字段（类型安全）
+- `provider-adapters/index.ts` 新增 `RuntimeToolStreamEvent` 类型
+- Anthropic SSE 解析新增 onToolEvent 回调（200ms 节流）
+
+### 修复
+- `ws-envelope-reducer` 中 `durationMs` → `duration`（匹配 ToolCall 接口）
+- `MessageItem` 中 `message.metadata?.usage` 类型错误修复（`unknown` → `!!` 断言）
+
+---
+
 ## v0.5.1 (2026-05-14)
 
 ### 新功能

@@ -48,7 +48,8 @@ function getBunRuntime(): BunRuntime["Bun"] | undefined {
 
 function shellCommandArgs(command: string): string[] {
   if (process.platform === "win32") {
-    return ["cmd", "/c", command];
+    // Use bash from PATH (Git Bash on Windows adds bash to PATH)
+    return ["bash", "-lc", command];
   }
   return ["sh", "-lc", command];
 }
@@ -78,6 +79,117 @@ async function wireStream(stream: ReadableStream<Uint8Array>, handler: (data: st
   if (finalChunk) {
     handler(finalChunk);
   }
+}
+
+export interface StreamingExecOptions {
+  readonly cwd?: string;
+  readonly env?: Readonly<Record<string, string>>;
+  readonly timeout?: number;
+  readonly onStdout?: (chunk: string) => void;
+  readonly onStderr?: (chunk: string) => void;
+}
+
+export async function execCommandStreaming(command: string, options: StreamingExecOptions = {}): Promise<ExecResult> {
+  const bun = getBunRuntime();
+  if (bun) {
+    const proc = bun.spawn({
+      cmd: shellCommandArgs(command),
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env },
+      stdout: "pipe",
+      stderr: "pipe",
+    });
+
+    let timedOut = false;
+    const timer = options.timeout && options.timeout > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          proc.kill();
+        }, options.timeout)
+      : null;
+
+    try {
+      let stdoutBuf = "";
+      let stderrBuf = "";
+
+      const stdoutPromise = wireStream(proc.stdout, (chunk) => {
+        stdoutBuf += chunk;
+        options.onStdout?.(chunk);
+      });
+
+      const stderrPromise = wireStream(proc.stderr, (chunk) => {
+        stderrBuf += chunk;
+        options.onStderr?.(chunk);
+      });
+
+      const [, , exitCode] = await Promise.all([
+        stdoutPromise,
+        stderrPromise,
+        proc.exited,
+      ]);
+
+      return {
+        stdout: stdoutBuf.trim(),
+        stderr: stderrBuf.trim(),
+        exitCode,
+        signal: timedOut ? "SIGTERM" : null,
+      };
+    } finally {
+      if (timer) {
+        clearTimeout(timer);
+      }
+    }
+  }
+
+  // Non-Bun fallback: use child_process.spawn with event handlers
+  const { spawn } = await import("node:child_process");
+  return await new Promise<ExecResult>((resolve, reject) => {
+    const args = shellCommandArgs(command);
+    const child = spawn(args[0]!, args.slice(1), {
+      cwd: options.cwd,
+      env: { ...process.env, ...options.env },
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdoutBuf = "";
+    let stderrBuf = "";
+    let timedOut = false;
+
+    const timer = options.timeout && options.timeout > 0
+      ? setTimeout(() => {
+          timedOut = true;
+          child.kill("SIGTERM");
+        }, options.timeout)
+      : null;
+
+    child.stdout?.setEncoding("utf-8");
+    child.stderr?.setEncoding("utf-8");
+
+    child.stdout?.on("data", (chunk: string) => {
+      stdoutBuf += chunk;
+      options.onStdout?.(chunk);
+    });
+
+    child.stderr?.on("data", (chunk: string) => {
+      stderrBuf += chunk;
+      options.onStderr?.(chunk);
+    });
+
+    child.on("error", (error) => {
+      if (timer) clearTimeout(timer);
+      reject(error);
+    });
+
+    child.on("close", (code, signal) => {
+      if (timer) clearTimeout(timer);
+      resolve({
+        stdout: stdoutBuf.trim(),
+        stderr: stderrBuf.trim(),
+        exitCode: code,
+        signal: timedOut ? "SIGTERM" : (signal ?? null),
+      });
+    });
+  });
 }
 
 export async function execCommand(command: string, options: ExecOptions = {}): Promise<ExecResult> {

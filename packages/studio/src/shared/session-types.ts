@@ -120,6 +120,7 @@ export interface SessionConfig {
   permissionMode: SessionPermissionMode;
   reasoningEffort: SessionReasoningEffort;
   toolPolicy?: SessionToolPolicy;
+  mode?: "normal" | "plan";
 }
 
 export type NarratorSessionKind = "standalone" | "chapter";
@@ -292,6 +293,10 @@ export interface ToolCall {
   exitCode?: number;
   startedAt?: number;
   finishedAt?: number;
+  /** @internal 流式输出缓冲（运行时，不持久化） */
+  _streamingOutput?: string;
+  /** @internal 流式输入预览（运行时，不持久化） */
+  _streamingInput?: string;
 }
 
 export interface ChatMessage {
