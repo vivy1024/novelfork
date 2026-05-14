@@ -186,6 +186,9 @@ export { executeRuntimeCommandInput, type RuntimeCommandCompactResult, type Runt
 export { NovelForkPlugin, PluginManager } from "./plugins/index.js";
 export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig, PluginToolDefinition, PluginAgentPreset, PluginRouteDefinition, PluginPromptExtension } from "./plugins/index.js";
 
+// Preset Compliance
+export { checkPresetCompliance, type ComplianceViolation, type ComplianceCheckResult } from "./presets/compliance-checker.js";
+
 // Presets
 export {
   registerPreset,

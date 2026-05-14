@@ -5,7 +5,7 @@ import {
   type StoredSessionMessageInput,
 } from "@vivy1024/novelfork-core";
 
-import type { NarratorSessionChatMessage } from "../../shared/session-types.js";
+import type { NarratorSessionChatMessage, ToolCall } from "../../shared/session-types.js";
 import { getSessionStorageDatabase } from "./session-storage.js";
 
 export const historyWriteQueues = new Map<string, Promise<void>>();
@@ -54,12 +54,29 @@ export function isSessionChatHistoryDeleted(sessionId: string): boolean {
   return deletedHistorySessions.has(sessionId);
 }
 
+/**
+ * Auto-upgrade old session messages that may have incomplete toolCalls fields.
+ * Ensures status, duration, and input are populated from available data.
+ */
+function normalizeLoadedMessage(msg: NarratorSessionChatMessage): NarratorSessionChatMessage {
+  if (!msg.toolCalls?.length) return msg;
+  return {
+    ...msg,
+    toolCalls: msg.toolCalls.map((tc: ToolCall) => ({
+      ...tc,
+      status: tc.status ?? (tc.output || tc.result ? "success" : undefined),
+      duration: tc.duration ?? undefined,
+      input: tc.input ?? undefined,
+    })),
+  };
+}
+
 export async function loadSessionChatHistory(sessionId: string): Promise<NarratorSessionChatMessage[]> {
   if (isSessionChatHistoryDeleted(sessionId)) {
     return [];
   }
 
-  return (await getMessageRepo().loadAll(sessionId)).map(toNarratorMessage);
+  return (await getMessageRepo().loadAll(sessionId)).map(toNarratorMessage).map(normalizeLoadedMessage);
 }
 
 export async function saveSessionChatHistory(sessionId: string, messages: NarratorSessionChatMessage[]): Promise<void> {
