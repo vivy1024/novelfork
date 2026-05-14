@@ -15,7 +15,7 @@ interface UseJingweiEntriesResult {
   loading: boolean;
   error: string | null;
   refresh: () => void;
-  createEntry: (title: string, fields?: Record<string, unknown>) => Promise<JingweiEntry | null>;
+  createEntry: (title: string, fields?: Record<string, unknown>, parentId?: string) => Promise<JingweiEntry | null>;
   updateEntry: (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "fields" | "visibility">>) => Promise<boolean>;
   deleteEntry: (entryId: string) => Promise<boolean>;
 }
@@ -48,12 +48,12 @@ export function useJingweiEntries(bookId: string, category: string): UseJingweiE
     void fetchEntries();
   }, [fetchEntries]);
 
-  const createEntry = useCallback(async (title: string, fields?: Record<string, unknown>): Promise<JingweiEntry | null> => {
+  const createEntry = useCallback(async (title: string, fields?: Record<string, unknown>, parentId?: string): Promise<JingweiEntry | null> => {
     try {
       const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, title, fields: fields ?? {} }),
+        body: JSON.stringify({ category, title, fields: fields ?? {}, parentId: parentId ?? null }),
       });
       if (!res.ok) throw new Error(`创建失败: ${res.status}`);
       const entry = await res.json();
