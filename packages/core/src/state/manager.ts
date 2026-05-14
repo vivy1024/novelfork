@@ -93,7 +93,11 @@ export class StateManager {
       if (code === "EEXIST") {
         const lockData = await readFile(lockPath, "utf-8").catch(() => "pid:unknown ts:unknown");
         const lockPid = this.extractLockPid(lockData);
-        if (lockPid !== undefined && !this.isProcessAlive(lockPid)) {
+        const lockTs = this.extractLockTimestamp(lockData);
+        // Stale lock detection: process dead OR lock older than 10 minutes
+        const isStale = (lockPid !== undefined && !this.isProcessAlive(lockPid))
+          || (lockTs !== undefined && Date.now() - lockTs > 10 * 60 * 1000);
+        if (isStale) {
           await unlink(lockPath).catch(() => undefined);
           return this.acquireBookLock(bookId);
         }
@@ -118,6 +122,13 @@ export class StateManager {
     if (!match) return undefined;
     const pid = Number.parseInt(match[1] ?? "", 10);
     return Number.isInteger(pid) && pid > 0 ? pid : undefined;
+  }
+
+  private extractLockTimestamp(lockData: string): number | undefined {
+    const match = lockData.match(/ts:(\d+)/);
+    if (!match) return undefined;
+    const ts = Number.parseInt(match[1] ?? "", 10);
+    return Number.isInteger(ts) && ts > 0 ? ts : undefined;
   }
 
   private isProcessAlive(pid: number): boolean {

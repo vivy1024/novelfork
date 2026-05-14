@@ -115,12 +115,13 @@ function TextBody({ node, label, onContentChange, onTabComplete, bookId }: { nod
         body: JSON.stringify({ mode: apiMode, selectedText: selection.text, context: node.content ?? "", position: selection.start }),
       });
       if (!res.ok) return;
-      const data = await res.json() as { result?: string };
-      if (data.result && onContentChange) {
+      const data = await res.json() as { result?: string; content?: string };
+      const generatedText = data.result ?? data.content;
+      if (generatedText && onContentChange) {
         const content = node.content ?? "";
         const newContent = mode === "continue"
-          ? content.slice(0, selection.end) + data.result + content.slice(selection.end)
-          : content.slice(0, selection.start) + data.result + content.slice(selection.end);
+          ? content.slice(0, selection.end) + generatedText + content.slice(selection.end)
+          : content.slice(0, selection.start) + generatedText + content.slice(selection.end);
         onContentChange(newContent);
       }
     } finally {

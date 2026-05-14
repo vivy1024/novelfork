@@ -467,10 +467,33 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     return c.json({ drift, bookId, base, current });
   });
 
+  // ---- POST /api/books/:bookId/candidates/create ----
+  app.post("/api/books/:bookId/candidates/create", async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJsonBody(c);
+    const chapterIntent = asString(body.chapterIntent);
+    if (!chapterIntent) {
+      return c.json({ error: "chapterIntent is required" }, 400);
+    }
+    const { createCandidateToolService } = await import("../lib/candidate-tool-service.js");
+    const { createLlmRuntimeService } = await import("../lib/llm-runtime-service.js");
+    const candidateService = createCandidateToolService({
+      root: ctx.root,
+      runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}),
+    });
+    const result = await candidateService.createChapter({
+      bookId,
+      chapterIntent,
+      chapterNumber: asNumber(body.chapterNumber),
+      title: asString(body.title),
+      pgiInstructions: asString(body.pgiInstructions),
+      guidedPlanId: asString(body.guidedPlanId),
+    });
+    return c.json(result);
+  });
+
   return app;
 }
-
-// ---- Helpers ----
 
 function buildPromptPreviewResponse<T extends Record<string, unknown>>(prompt: string, extra: T) {
   return {
