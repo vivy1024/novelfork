@@ -23,6 +23,8 @@ export interface ToolContext {
   userId: string;
   sessionId: string;
   permissions: Set<string>;
+  /** Real-time output callback — bridged to WebSocket session:tool-stream */
+  onOutput?: (chunk: string) => void;
 }
 
 export interface ToolResult {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, lazy, Suspense, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type CSSProperties } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,12 @@ export interface ConversationToolCall {
   timeoutMs?: number;
   /** 子代理调用数 */
   childCallCount?: number;
+  /** 子代理工具调用链（嵌套渲染） */
+  childCalls?: ConversationToolCall[];
+  /** 工具开始执行时间戳（Unix ms，用于实时计时） */
+  startedAt?: number;
+  /** @internal 流式输出缓冲（运行时） */
+  _streamingOutput?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -92,6 +98,89 @@ function formatDuration(ms: number): string {
   const minutes = Math.floor(ms / 60000);
   const seconds = Math.floor((ms % 60000) / 1000);
   return `${minutes}m${seconds.toString().padStart(2, "0")}s`;
+}
+
+// ---------------------------------------------------------------------------
+// TruncatedOutput — 超过 MAX_LINES 行时截断，显示"展开全部"按钮
+// ---------------------------------------------------------------------------
+
+const OUTPUT_MAX_LINES = 50;
+
+function TruncatedOutput({ content, className }: { content: string; className?: string }) {
+  const [showAll, setShowAll] = useState(false);
+  const lines = content.split("\n");
+  const isTruncated = lines.length > OUTPUT_MAX_LINES;
+  const displayContent = !showAll && isTruncated
+    ? lines.slice(0, OUTPUT_MAX_LINES).join("\n")
+    : content;
+
+  return (
+    <div className="relative">
+      <pre className={className}>
+        {displayContent}
+        {!showAll && isTruncated && (
+          <span className="text-muted-foreground/60">{"\n"}… ({lines.length - OUTPUT_MAX_LINES} 行已隐藏)</span>
+        )}
+      </pre>
+      {isTruncated && (
+        <button
+          type="button"
+          onClick={() => setShowAll(!showAll)}
+          className="mt-1 text-[10px] text-blue-500 hover:text-blue-400 cursor-pointer"
+        >
+          {showAll ? "收起" : `显示全部 (${lines.length} 行)`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ToolCallGroup — 同一消息中多个同类工具的分组渲染
+// ---------------------------------------------------------------------------
+
+export function ToolCallGroup({ toolCalls, toolName }: { toolCalls: ConversationToolCall[]; toolName: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const category = getToolCategory(toolName);
+  const colors = CATEGORY_COLORS[category];
+  const allDone = toolCalls.every((tc) => tc.status === "success" || tc.status === "error");
+  const errorCount = toolCalls.filter((tc) => tc.status === "error").length;
+  const totalDuration = toolCalls.reduce((sum, tc) => sum + (tc.durationMs ?? 0), 0);
+
+  return (
+    <div className={`my-1 rounded-lg border border-border overflow-hidden ${allDone ? (errorCount > 0 ? "tool-card-error" : "tool-card-done") : "tool-card-running"}`}>
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left cursor-pointer hover:bg-muted/30 transition-colors"
+      >
+        <ToolIconBadge category={category} />
+        <span className={`text-xs font-semibold font-mono shrink-0 ${colors.text}`}>
+          {toolName}
+        </span>
+        <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">×{toolCalls.length}</Badge>
+        <span className="flex-1" />
+        {allDone && (
+          <span className="flex items-center gap-1 shrink-0">
+            {errorCount > 0 ? <X className="size-3 text-red-500" /> : <Check className="size-3 text-green-600" />}
+            {totalDuration > 0 && (
+              <span className="text-[10px] text-muted-foreground">{formatDuration(totalDuration)}</span>
+            )}
+          </span>
+        )}
+        {expanded
+          ? <ChevronDown className="size-3 text-muted-foreground shrink-0" />
+          : <ChevronRight className="size-3 text-muted-foreground shrink-0" />}
+      </button>
+      {expanded && (
+        <div className="px-2 pb-2 space-y-1">
+          {toolCalls.map((tc) => (
+            <ToolCallCard key={tc.id} toolCall={tc} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -224,10 +313,24 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
     return () => clearTimeout(timer);
   }, [isRunning, isPending]);
 
+  // Auto-expand running Bash tools to show streaming output
+  useEffect(() => {
+    if (isRunning && category === "bash") {
+      setExpanded(true);
+    }
+  }, [isRunning, category]);
+
   const description = getDescription(toolCall, category);
 
+  // Status animation class (对标 NarraFork .tool-running-shimmer / .tool-done-shimmer)
+  const statusAnimClass = isRunning ? "tool-card-running"
+    : isPending ? "tool-card-pending"
+    : isError ? "tool-card-error"
+    : isSuccess ? "tool-card-done"
+    : "";
+
   return (
-    <div className="my-1 rounded-lg border border-border overflow-hidden">
+    <div className={`my-1 rounded-lg border border-border overflow-hidden ${statusAnimClass}`}>
       {/* Header — NarraFork 风格：带边框卡片，紧凑行 */}
       <button
         type="button"
@@ -339,13 +442,46 @@ function ToolCallExpanded({ toolCall, category }: { toolCall: ConversationToolCa
 }
 
 // ---------------------------------------------------------------------------
-// Bash 展开
+// Bash 展开 — 实时流式进度 + 自动滚动 + 行数统计
 // ---------------------------------------------------------------------------
+
+/** 实时计时器 hook：从 startedAt 开始每秒更新 */
+function useElapsedTimer(startedAt?: number, isRunning?: boolean): number {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!isRunning || !startedAt) {
+      setElapsed(0);
+      return;
+    }
+    const update = () => setElapsed(Date.now() - startedAt);
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [startedAt, isRunning]);
+  return elapsed;
+}
 
 function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const command = extractBashCommand(toolCall.input);
-  const streamingOutput = (toolCall as Record<string, unknown>)._streamingOutput as string | undefined;
+  const streamingOutput = toolCall._streamingOutput;
   const displayOutput = toolCall.output || streamingOutput;
+  const isRunning = toolCall.status === "running";
+  const outputRef = useRef<HTMLPreElement>(null);
+
+  // Real-time elapsed timer
+  const elapsedMs = useElapsedTimer(toolCall.startedAt, isRunning);
+
+  // Auto-scroll to bottom when streaming output updates
+  useEffect(() => {
+    if (isRunning && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [streamingOutput, isRunning]);
+
+  // Line count & byte count for streaming progress
+  const lineCount = displayOutput ? displayOutput.split("\n").length : 0;
+  const byteCount = displayOutput ? new Blob([displayOutput]).size : 0;
+
   return (
     <>
       {command && (
@@ -353,14 +489,36 @@ function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           <span className="text-gray-500 select-none">$ </span>{command}
         </pre>
       )}
+      {/* Streaming progress bar */}
+      {isRunning && (
+        <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
+          <Loader2 className="size-3 animate-spin text-blue-500" />
+          <span>{formatDuration(elapsedMs)}</span>
+          {toolCall.timeoutMs && (
+            <span className="text-muted-foreground/60">/ {formatDuration(toolCall.timeoutMs)}</span>
+          )}
+          {lineCount > 0 && <span>· {lineCount} 行</span>}
+          {byteCount > 1024 && <span>· {(byteCount / 1024).toFixed(1)} KB</span>}
+        </div>
+      )}
       {displayOutput && (
         <div className="space-y-1">
           <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
             {toolCall.output ? "输出" : "实时输出"}
           </span>
-          <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-[11px] font-mono">
-            {displayOutput}
-          </pre>
+          {isRunning ? (
+            <pre
+              ref={outputRef}
+              className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-[11px] font-mono"
+            >
+              {displayOutput}
+            </pre>
+          ) : (
+            <TruncatedOutput
+              content={displayOutput}
+              className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md bg-muted/50 px-3 py-2 text-[11px] font-mono"
+            />
+          )}
         </div>
       )}
     </>
@@ -611,12 +769,24 @@ function AgentExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           <span className="text-[11px] text-muted-foreground">{desc}</span>
         </div>
       )}
+      {/* 子代理工具调用链 — 嵌套渲染 */}
+      {toolCall.childCalls && toolCall.childCalls.length > 0 && (
+        <div className="ml-2 pl-2 border-l-2 border-blue-200 dark:border-blue-800 space-y-1">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            子调用 ({toolCall.childCalls.length})
+          </span>
+          {toolCall.childCalls.map((child) => (
+            <ToolCallCard key={child.id} toolCall={child} />
+          ))}
+        </div>
+      )}
       {toolCall.output && (
         <div className="space-y-1">
           <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">输出</span>
-          <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
-            {toolCall.output}
-          </pre>
+          <TruncatedOutput
+            content={toolCall.output}
+            className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono"
+          />
         </div>
       )}
     </>

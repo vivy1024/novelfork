@@ -48,6 +48,7 @@ import {
   serializeSessionRecoveryMetadata as serializeRecoveryMetadata,
 } from "./session-runtime/recovery.js";
 import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-service.js";
+import type { RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext, buildProjectExplorationContext } from "./agent-context.js";
 import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
@@ -925,12 +926,20 @@ async function appendModelContinuationAfterToolDecision(
       onStreamChunk: (chunk: string) => {
         broadcastStreamChunk(loaded.session.id, loaded.state, chunk);
       },
+      onToolEvent: (event: RuntimeToolStreamEvent) => {
+        if (event.type === "tool_input_chunk") {
+          const envelope = { type: "session:tool-input-chunk" as const, sessionId: loaded.session.id, toolCallId: event.id, partialInput: event.partialInput };
+          broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+        }
+        // tool_started is handled via onEvent tool_call broadcast
+      },
       generate: async (generateInput): Promise<AgentGenerateResult> => {
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,
           messages: generateInput.messages,
           tools: generateInput.tools,
           onStreamChunk: generateInput.onStreamChunk,
+          onToolEvent: generateInput.onToolEvent,
           onRetry: () => {
             const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const };
             broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
@@ -1586,6 +1595,12 @@ export async function handleSessionChatTransportMessage(
       onStreamChunk: (chunk: string) => {
         broadcastStreamChunk(sessionId, loaded.state, chunk);
       },
+      onToolEvent: (event: RuntimeToolStreamEvent) => {
+        if (event.type === "tool_input_chunk") {
+          const envelope = { type: "session:tool-input-chunk" as const, sessionId, toolCallId: event.id, partialInput: event.partialInput };
+          broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+        }
+      },
       onEvent: (event) => {
         if (event.type === "tool_call") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "tool_calling" as const, toolName: event.toolName, turnStartedAt: turnStartedAtIso };
@@ -1631,6 +1646,7 @@ export async function handleSessionChatTransportMessage(
           messages: generateInput.messages,
           tools: generateInput.tools,
           onStreamChunk: generateInput.onStreamChunk,
+          onToolEvent: generateInput.onToolEvent,
           onRetry: (_attempt, _max) => {
             const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const, turnStartedAt: turnStartedAtIso };
             broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));

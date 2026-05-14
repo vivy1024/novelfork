@@ -3,7 +3,7 @@
  * ⚠️ 安全警告：需要严格权限控制
  */
 
-import { execCommand } from "@vivy1024/novelfork-core/runtime/process-adapter";
+import { execCommandStreaming } from "@vivy1024/novelfork-core/runtime/process-adapter";
 import type { ToolDefinition, ToolContext, ToolResult } from "../tool-executor.js";
 
 export const BashTool: ToolDefinition = {
@@ -15,6 +15,12 @@ export const BashTool: ToolDefinition = {
       type: "string",
       required: true,
       description: "要执行的 shell 命令",
+    },
+    {
+      name: "description",
+      type: "string",
+      required: false,
+      description: "命令的人类可读描述（显示在折叠态）",
     },
     {
       name: "timeout",
@@ -57,9 +63,11 @@ export const BashTool: ToolDefinition = {
       }
     }
 
-    const result = await execCommand(command, {
+    const result = await execCommandStreaming(command, {
       cwd: context.workspaceRoot,
       timeout,
+      onStdout: context.onOutput,
+      onStderr: context.onOutput,
     });
 
     if (result.signal === "SIGTERM") {
@@ -89,6 +97,7 @@ export const BashTool: ToolDefinition = {
       },
       metadata: {
         command,
+        description: params.description as string | undefined,
         timeout,
       },
     };

@@ -735,7 +735,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       title={runtime.state.session?.title ?? sessionId}
       sessionMode={runtime.state.session?.sessionMode}
       initialAck={runtime.getResumeFromSeq()}
-      initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId)}
+      initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId, runtime.state.turnActive)}
       initialStatus={status}
       initialConfirmation={pendingConfirmation}
       initialRecoveryNotice={runtime.state.recovery}
@@ -855,15 +855,16 @@ function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): N
     }));
 }
 
-function toConversationMessages(messages: readonly NarratorSessionChatMessage[], streamingMessageId?: string | null): ConversationRouteMessage[] {
-  return messages.map((message) => ({
+function toConversationMessages(messages: readonly NarratorSessionChatMessage[], streamingMessageId?: string | null, isSessionWorking?: boolean): ConversationRouteMessage[] {
+  const lastAssistantIndex = messages.length - 1 - [...messages].reverse().findIndex((m) => m.role === "assistant");
+  return messages.map((message, index) => ({
     id: message.id,
     role: message.role,
     content: message.content,
-    isStreaming: message.id === streamingMessageId,
+    isStreaming: message.id === streamingMessageId || (!!isSessionWorking && message.role === "assistant" && index === lastAssistantIndex && index === messages.length - 1 && !message.toolCalls?.length),
     metadata: message.metadata,
-    toolCalls: message.toolCalls?.map((toolCall, index) => ({
-      id: toolCall.id ?? `${message.id}:tool:${index}`,
+    toolCalls: message.toolCalls?.map((toolCall, tcIndex) => ({
+      id: toolCall.id ?? `${message.id}:tool:${tcIndex}`,
       toolName: toolCall.toolName,
       status: toolCall.status,
       summary: toolCall.summary,
@@ -970,8 +971,9 @@ function toConversationStatus(
   const modelId = sessionConfig?.modelId || undefined;
   const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
   const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
-  // 状态判断完全信任后端广播的 narratorState，不再前端自己算
-  const isWorking = narratorState === "working";
+  // 状态判断以后端广播为主，但补充前端可观测的活跃信号防止闪烁
+  // turnActive 是唯一的真相来源：用户发消息时 true，后端推送 idle 时 false，中间不变
+  const isWorking = state.turnActive;
   const runtimeState = state.error ? "error" : isWorking || state.streamingMessageId || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
   const turnStartedAt = (state.session as { turnStartedAt?: string } | null)?.turnStartedAt;
   const lastTurnDurationMs = (state.session as { lastTurnDurationMs?: number } | null)?.lastTurnDurationMs;
