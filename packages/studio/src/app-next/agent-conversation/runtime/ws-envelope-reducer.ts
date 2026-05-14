@@ -180,16 +180,20 @@ export function reduceSessionEnvelope(
     }
     case "session:tool-stream": {
       // Append stdout chunk to the matching tool call message's output
+      const MAX_STREAMING_OUTPUT = 100 * 1024; // 100KB
       const updatedMessages = state.messages.map((msg) => {
         if (!msg.toolCalls?.length) return msg;
         const matchingTool = msg.toolCalls.find((tc) => tc.id === envelope.toolCallId);
         if (!matchingTool) return msg;
-        // Append to the tool call's streaming output
-        const updatedToolCalls = msg.toolCalls.map((tc) =>
-          tc.id === envelope.toolCallId
-            ? { ...tc, _streamingOutput: (tc._streamingOutput ?? "") + envelope.content }
-            : tc,
-        );
+        // Append to the tool call's streaming output with size cap
+        const updatedToolCalls = msg.toolCalls.map((tc) => {
+          if (tc.id !== envelope.toolCallId) return tc;
+          const currentOutput = (tc._streamingOutput ?? "") + envelope.content;
+          const cappedOutput = currentOutput.length > MAX_STREAMING_OUTPUT
+            ? "... (输出过长，仅显示最后部分) ...\n" + currentOutput.slice(-MAX_STREAMING_OUTPUT + 200)
+            : currentOutput;
+          return { ...tc, _streamingOutput: cappedOutput };
+        });
         return { ...msg, toolCalls: updatedToolCalls };
       });
       return { ...state, messages: updatedMessages };

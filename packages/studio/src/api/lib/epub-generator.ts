@@ -25,6 +25,10 @@ export function generateEpub(
   chapters: Array<{ title: string; content: string }>,
   metadata: { title: string; author: string; language?: string },
 ): Uint8Array {
+  if (!chapters || chapters.length === 0) {
+    throw new Error("至少需要一个章节才能生成 ePub");
+  }
+
   const lang = metadata.language || "zh";
   const bookId = `novelfork-${Date.now()}`;
   const encoder = new TextEncoder();
