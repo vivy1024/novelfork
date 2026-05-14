@@ -1002,6 +1002,17 @@ async function appendModelContinuationAfterToolDecision(
       }
 
       if (event.type === "tool_result") {
+        // 回写原始 tool_call 消息的 status
+        const completedStatus = buildToolResultStatus(event.result);
+        for (const msg of loaded.state.messages) {
+          if (msg.toolCalls?.some((tc) => tc.id === event.id && tc.status === "running")) {
+            msg.toolCalls = msg.toolCalls.map((tc) =>
+              tc.id === event.id ? { ...tc, status: completedStatus, duration: event.result.durationMs } : tc,
+            );
+            break;
+          }
+        }
+
         const toolUse = {
           id: event.id,
           toolName: event.toolName,
@@ -1621,6 +1632,18 @@ export async function handleSessionChatTransportMessage(
         } else if (event.type === "tool_result") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+
+          // 回写原始 tool_call 消息的 status（解决页面刷新后残留 running 的问题）
+          const completedStatus = buildToolResultStatus(event.result);
+          for (const msg of loaded.state.messages) {
+            if (msg.toolCalls?.some((tc) => tc.id === event.id && tc.status === "running")) {
+              msg.toolCalls = msg.toolCalls.map((tc) =>
+                tc.id === event.id ? { ...tc, status: completedStatus, duration: event.result.durationMs } : tc,
+              );
+              break;
+            }
+          }
+
           // 实时推送 tool_result 消息到前端（不等 turn 结束）
           const toolUse = { id: event.id, toolName: event.toolName, input: toolInputsById.get(event.id) ?? {} };
           const messageId = `${userMessage.id}-tool-result-${event.id}`;
