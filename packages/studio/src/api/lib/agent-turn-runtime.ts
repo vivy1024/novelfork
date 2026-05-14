@@ -258,7 +258,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
     return events;
   }
-  const maxSteps = Math.max(0, input.maxSteps ?? 6);
+  const maxSteps = Math.max(0, input.maxSteps ?? 30);
   let executedToolSteps = 0;
   let hasAttemptedOverflowRecovery = false;
   const recentToolCalls: string[] = [];

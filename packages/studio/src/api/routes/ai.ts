@@ -111,6 +111,14 @@ async function persistAuthorReviewFile(options: {
   };
 }
 
+interface WriteStatusEntry {
+  status: "idle" | "writing" | "completed" | "failed";
+  lastResult?: { chapterNumber?: number; title?: string; wordCount?: number; error?: string };
+  updatedAt: number;
+}
+
+const writeStatusMap = new Map<string, WriteStatusEntry>();
+
 export function createAIRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
@@ -132,19 +140,33 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
 
     broadcastStudioEvent("write:start", { bookId: id });
+    writeStatusMap.set(id, { status: "writing", updatedAt: Date.now() });
 
     const sessionLlm = await ctx.getSessionLlm(c);
     const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
     pipeline.writeNextChapter(id, body.wordCount).then(
       (result: any) => {
+        writeStatusMap.set(id, { status: "completed", lastResult: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }, updatedAt: Date.now() });
         broadcastStudioEvent("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
       },
       (e: any) => {
+        writeStatusMap.set(id, { status: "failed", lastResult: { error: e instanceof Error ? e.message : String(e) }, updatedAt: Date.now() });
         broadcastStudioEvent("write:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
       },
     );
 
     return c.json({ status: "writing", bookId: id });
+  });
+
+  // --- Write Status ---
+
+  app.get("/api/books/:id/write-status", (c) => {
+    const id = c.req.param("id");
+    const entry = writeStatusMap.get(id);
+    if (!entry) {
+      return c.json({ status: "idle" as const });
+    }
+    return c.json({ status: entry.status, lastResult: entry.lastResult, updatedAt: entry.updatedAt });
   });
 
   // --- Draft ---
