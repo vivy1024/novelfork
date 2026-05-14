@@ -152,6 +152,17 @@ function toolSignature(toolName: string, input: Record<string, unknown>): string
 
 const TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
 
+function getContextAwareInstruction(toolName: string, result: SessionToolExecutionResult): string {
+  const base = TOOL_RESULT_CONTINUATION_INSTRUCTION;
+  if (toolName === "Write" || toolName === "Edit") {
+    return `${base}\n\n提示：文件已修改。如果这是关键改动，考虑运行 typecheck 或相关测试验证正确性。`;
+  }
+  if (toolName === "Bash" && !result.ok) {
+    return `${base}\n\n提示：命令执行失败。请分析错误原因，不要盲目重试相同命令。`;
+  }
+  return base;
+}
+
 /** 截断过长的工具结果，保留头尾 + 省略提示 */
 const MAX_TOOL_RESULT_CHARS = 30000;
 const TRUNCATE_HEAD = 20000;
@@ -163,7 +174,8 @@ function truncateToolResult(content: string): string {
   return `${content.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 (约 ${Math.round(omitted / 4)} tokens) ...]\n\n${content.slice(-TRUNCATE_TAIL)}`;
 }
 
-function toolResultContent(result: SessionToolExecutionResult): string {
+function toolResultContent(result: SessionToolExecutionResult, toolName?: string): string {
+  const instruction = toolName ? getContextAwareInstruction(toolName, result) : TOOL_RESULT_CONTINUATION_INSTRUCTION;
   let content = result.summary ?? "";
   // 将 data 中的关键结果附加到 content（让模型能看到实际数据）
   if (result.data && typeof result.data === "object") {
@@ -216,7 +228,7 @@ function toolResultContent(result: SessionToolExecutionResult): string {
       if (terms.running?.length) content += "\n\n运行中: " + terms.running.map(t => `${t.name}(${t.id})`).join(", ");
     }
   }
-  return content ? truncateToolResult(`${content}\n\n${TOOL_RESULT_CONTINUATION_INSTRUCTION}`) : TOOL_RESULT_CONTINUATION_INSTRUCTION;
+  return content ? truncateToolResult(`${content}\n\n${instruction}`) : instruction;
 }
 
 function createDuplicateToolResult(firstResult: SessionToolExecutionResult): SessionToolExecutionResult {
@@ -391,7 +403,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 type: "tool_result",
                 toolCallId: toolUse.id,
                 name: toolUse.name,
-                content: toolResultContent(toolResult),
+                content: toolResultContent(toolResult, toolUse.name),
                 ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
                 metadata: { toolResult },
               });
@@ -553,7 +565,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult),
+          content: toolResultContent(toolResult, toolUse.name),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
@@ -654,7 +666,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult),
+          content: toolResultContent(toolResult, toolUse.name),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
