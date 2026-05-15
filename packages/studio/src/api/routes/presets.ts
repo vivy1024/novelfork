@@ -1,14 +1,16 @@
 import { Hono } from "hono";
 import {
+  getStorageDatabase,
+  createUserTemplateRepository,
+} from "@vivy1024/novelfork-core";
+import {
   listPresets,
   listBundles,
   getPreset,
   getBundle,
   getPresetsByGenre,
   listBeatTemplates,
-  getStorageDatabase,
-  createUserTemplateRepository,
-} from "@vivy1024/novelfork-core";
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./context.js";
 
 const REMOTE_TEMPLATES_URL =

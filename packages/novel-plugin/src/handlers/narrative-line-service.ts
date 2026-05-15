@@ -3,13 +3,15 @@ import { join } from "node:path";
 
 import type { ChapterMeta, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 import {
+  getStorageDatabase,
+} from "@vivy1024/novelfork-core";
+import {
   createBibleCharacterArcRepository,
   createBibleChapterSummaryRepository,
   createBibleConflictRepository,
   createBibleEventRepository,
   createBibleSettingRepository,
-  getStorageDatabase,
-} from "@vivy1024/novelfork-core";
+} from "../engine/jingwei/index.js";
 
 import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "@vivy1024/novelfork-studio/api/lib/resource-checkpoint-service";
 
@@ -264,7 +266,7 @@ export class NarrativeLineService {
     if (!storage) return fromFile;
     try {
       const rows = await createBibleChapterSummaryRepository(storage).listByBook(bookId);
-      const fromStorage = rows.map((row: Record<string, unknown>) => ({
+      const fromStorage = rows.map((row) => ({
         number: Number(row.chapterNumber),
         title: typeof row.title === "string" ? row.title : undefined,
         summary: typeof row.summary === "string" ? row.summary : "",

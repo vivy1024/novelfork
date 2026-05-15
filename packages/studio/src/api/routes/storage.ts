@@ -8,19 +8,21 @@ import { Hono } from "hono";
 import { readFile, readdir, access, stat, mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import {
+  computeAnalytics,
+  getStorageDatabase,
+  loadProjectConfig,
+  type BookConfig,
+} from "@vivy1024/novelfork-core";
+import {
   PipelineRunner,
   applyJingweiTemplate,
-  computeAnalytics,
   createBookRepository,
   createStoryJingweiSectionRepository,
   getPreset,
-  getStorageDatabase,
   registerBuiltinPresets,
-  loadProjectConfig,
-  type BookConfig,
   type JingweiTemplateSelection,
   type Preset,
-} from "@vivy1024/novelfork-core";
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import { ApiError, isMissingFileError } from "../errors.js";
 import {
   buildDefaultBookSessionTitle,
@@ -1161,7 +1163,7 @@ ${contextParts.join("\n")}
   // --- Genres ---
 
   app.get("/api/genres", async (c) => {
-    const { listAvailableGenres, readGenreProfile } = await import("@vivy1024/novelfork-core");
+    const { listAvailableGenres, readGenreProfile } = await import("@vivy1024/novelfork-novel-plugin/engine");
     const rawGenres = await listAvailableGenres(root);
     const genres = await Promise.all(
       rawGenres.map(async (g) => {
@@ -1179,7 +1181,7 @@ ${contextParts.join("\n")}
   app.get("/api/genres/:id", async (c) => {
     const genreId = c.req.param("id");
     try {
-      const { readGenreProfile } = await import("@vivy1024/novelfork-core");
+      const { readGenreProfile } = await import("@vivy1024/novelfork-novel-plugin/engine");
       const { profile, body } = await readGenreProfile(root, genreId);
       return c.json({ profile, body });
     } catch (e) {
@@ -1193,7 +1195,7 @@ ${contextParts.join("\n")}
       throw new ApiError(400, "INVALID_GENRE_ID", `Invalid genre ID: "${genreId}"`);
     }
     try {
-      const { getBuiltinGenresDir } = await import("@vivy1024/novelfork-core");
+      const { getBuiltinGenresDir } = await import("@vivy1024/novelfork-novel-plugin/engine");
       const { mkdir: mkdirFs, copyFile } = await import("node:fs/promises");
       const builtinDir = getBuiltinGenresDir();
       const projectGenresDir = join(root, "genres");
@@ -1602,7 +1604,7 @@ ${contextParts.join("\n")}
   app.get("/api/books/:id/detect/stats", async (c) => {
     const id = c.req.param("id");
     try {
-      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@vivy1024/novelfork-core");
+      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@vivy1024/novelfork-novel-plugin/engine");
       const bookDir = state.bookDir(id);
       const history = await loadDetectionHistory(bookDir);
       const insights = analyzeDetectionInsights(history);

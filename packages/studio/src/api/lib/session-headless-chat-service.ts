@@ -1,4 +1,4 @@
-import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
+import { getAgentSystemPrompt } from "@vivy1024/novelfork-novel-plugin/engine";
 import { executeRuntimeCommandInput, type RuntimeCommandEvent } from "@vivy1024/novelfork-core/registry/command-executor";
 
 import type { CanvasContext, SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";

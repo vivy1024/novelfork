@@ -1,14 +1,14 @@
 import { Hono } from "hono";
-import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { createKvRepository, getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
 export interface CreateFilterRouterOptions {
   storage?: StorageDatabase;
 }
 
-type CoreModule = typeof import("@vivy1024/novelfork-core");
+type EngineModule = typeof import("../engine/index.js");
 
-async function loadCore(): Promise<CoreModule> {
-  return import("@vivy1024/novelfork-core");
+async function loadEngine(): Promise<EngineModule> {
+  return import("../engine/index.js");
 }
 
 async function resolveStorage(options: CreateFilterRouterOptions): Promise<StorageDatabase> {
@@ -24,7 +24,7 @@ function parseDetails(raw: string): Record<string, unknown> {
   }
 }
 
-function serializeStoredReport(report: Awaited<ReturnType<ReturnType<CoreModule["createFilterReportRepository"]>["latestByChapter"]>>) {
+function serializeStoredReport(report: Awaited<ReturnType<ReturnType<EngineModule["createFilterReportRepository"]>["latestByChapter"]>>) {
   if (!report) return null;
   return {
     ...report,
@@ -45,7 +45,7 @@ export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hon
   app.post("/api/filter/scan", async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const text = typeof body.text === "string" ? body.text : "";
-    const core = await loadCore();
+    const core = await loadEngine();
     if (body.persist && typeof body.bookId === "string" && typeof body.chapterNumber === "number") {
       const storage = await resolveStorage(options);
       const report = await core.scanChapterAndStoreFilterReport(storage, {
@@ -61,7 +61,7 @@ export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hon
 
   app.get("/api/books/:bookId/filter/report", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const rows = await core.createFilterReportRepository(storage).listByBook(c.req.param("bookId"));
     const latestByChapter = new Map<number, ReturnType<typeof serializeStoredReport>>();
     for (const row of rows) {
@@ -82,23 +82,23 @@ export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hon
 
   app.get("/api/books/:bookId/filter/report/:chapter", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const report = await core.createFilterReportRepository(storage).latestByChapter(c.req.param("bookId"), Number(c.req.param("chapter")));
     return c.json({ report: serializeStoredReport(report) });
   });
 
   app.post("/api/filter/suggest-rewrite", async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const ruleIds = Array.isArray(body.ruleIds) ? body.ruleIds.map(String) : [];
     return c.json({ suggestions: core.suggestSevenTactics(ruleIds) });
   });
 
   app.put("/api/settings/zhuque", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const body = await c.req.json<Record<string, unknown>>();
-    await core.createKvRepository(storage).set("settings:zhuque", JSON.stringify({
+    await createKvRepository(storage).set("settings:zhuque", JSON.stringify({
       apiKey: typeof body.apiKey === "string" ? body.apiKey : "",
       endpoint: typeof body.endpoint === "string" ? body.endpoint : "",
       timeoutMs: typeof body.timeoutMs === "number" ? body.timeoutMs : 10_000,
@@ -109,7 +109,7 @@ export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hon
 
   app.post("/api/books/:bookId/filter/batch-rescan", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const summaries = await core.createBibleChapterSummaryRepository(storage).listByBook(c.req.param("bookId"));
     const reports = [];
     for (const summary of summaries) {

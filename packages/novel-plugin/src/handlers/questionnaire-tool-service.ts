@@ -1,7 +1,10 @@
 import {
+  getStorageDatabase,
+  type StorageDatabase,
+} from "@vivy1024/novelfork-core";
+import {
   createBookRepository,
   createQuestionnaireTemplateRepository,
-  getStorageDatabase,
   seedQuestionnaireTemplates,
   submitQuestionnaireResponse,
   suggestQuestionnaireAnswer,
@@ -9,8 +12,7 @@ import {
   type QuestionnaireQuestion,
   type QuestionnaireResponseRecord,
   type QuestionnaireTemplateRecord,
-  type StorageDatabase,
-} from "@vivy1024/novelfork-core";
+} from "../engine/jingwei/index.js";
 import type { SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 
 export type QuestionnaireSuggestionProviderInput = {

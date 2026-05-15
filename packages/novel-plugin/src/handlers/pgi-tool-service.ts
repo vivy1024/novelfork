@@ -1,10 +1,12 @@
 import {
-  formatPGIAnswersForPrompt,
-  generatePGIQuestions,
   getStorageDatabase,
-  type PGIQuestion,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
+import {
+  formatPGIAnswersForPrompt,
+  generatePGIQuestions,
+  type PGIQuestion,
+} from "../engine/jingwei/index.js";
 import type {
   PgiMetadata,
   PgiQuestionMetadata,

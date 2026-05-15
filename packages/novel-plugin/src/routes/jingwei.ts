@@ -1,10 +1,10 @@
 import { Hono, type Context } from "hono";
+import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 import type {
   JingweiFieldDefinition,
   JingweiTemplateSelection,
   JingweiVisibilityRule,
-  StorageDatabase,
-} from "@vivy1024/novelfork-core";
+} from "../engine/jingwei/types.js";
 
 import { ApiError } from "@vivy1024/novelfork-studio/api/errors";
 import { isSafeBookId } from "@vivy1024/novelfork-studio/api/safety";
@@ -22,20 +22,19 @@ export interface CreateJingweiRouterOptions {
   storage?: StorageDatabase;
 }
 
-type CoreModule = typeof import("@vivy1024/novelfork-core");
+type EngineModule = typeof import("../engine/index.js");
 
-async function loadCore(): Promise<CoreModule> {
-  return import("@vivy1024/novelfork-core");
+async function loadEngine(): Promise<EngineModule> {
+  return import("../engine/index.js");
 }
 
 async function resolveStorage(options: CreateJingweiRouterOptions): Promise<StorageDatabase> {
   if (options.storage) return options.storage;
-  const { getStorageDatabase } = await loadCore();
   return getStorageDatabase();
 }
 
 async function ensureBook(storage: StorageDatabase, bookId: string): Promise<void> {
-  const { createBookRepository } = await loadCore();
+  const { createBookRepository } = await loadEngine();
   const book = await createBookRepository(storage).getById(bookId);
   if (!book) {
     throw new ApiError(404, "BOOK_NOT_FOUND", `Book not found: ${bookId}`);
@@ -170,7 +169,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createStoryJingweiSectionRepository } = await loadCore();
+    const { createStoryJingweiSectionRepository } = await loadEngine();
     const sections = await createStoryJingweiSectionRepository(storage).listByBook(bookId);
     return c.json({ sections });
   });
@@ -181,7 +180,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     await ensureBook(storage, bookId);
     const body = await readJson(c);
     const timestamp = new Date();
-    const { createStoryJingweiSectionRepository } = await loadCore();
+    const { createStoryJingweiSectionRepository } = await loadEngine();
     const repo = createStoryJingweiSectionRepository(storage);
     const section = await repo.create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
@@ -209,7 +208,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const { createStoryJingweiSectionRepository } = await loadCore();
+    const { createStoryJingweiSectionRepository } = await loadEngine();
     const section = await createStoryJingweiSectionRepository(storage).update(bookId, c.req.param("sectionId"), {
       ...(typeof body.key === "string" ? { key: body.key } : {}),
       ...(typeof body.name === "string" ? { name: body.name.trim() } : {}),
@@ -233,7 +232,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createStoryJingweiSectionRepository } = await loadCore();
+    const { createStoryJingweiSectionRepository } = await loadEngine();
     const deleted = await createStoryJingweiSectionRepository(storage).softDelete(bookId, c.req.param("sectionId"));
     if (!deleted) throw new ApiError(404, "JINGWEI_SECTION_NOT_FOUND", `Jingwei section not found: ${c.req.param("sectionId")}`);
     return c.json({ ok: true, id: c.req.param("sectionId") });
@@ -246,7 +245,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const sectionId = c.req.query("sectionId");
     const category = c.req.query("category");
     const parentId = c.req.query("parentId");
-    const { createStoryJingweiEntryRepository } = await loadCore();
+    const { createStoryJingweiEntryRepository } = await loadEngine();
     const repo = createStoryJingweiEntryRepository(storage);
     let entries = sectionId ? await repo.listBySection(bookId, sectionId) : await repo.listByBook(bookId);
     if (category) {
@@ -266,7 +265,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const body = await readJson(c);
     const sectionId = requireText(body.sectionId, "JINGWEI_SECTION_ID_REQUIRED", "Jingwei sectionId is required.");
     const timestamp = new Date();
-    const { createStoryJingweiEntryRepository, createStoryJingweiSectionRepository } = await loadCore();
+    const { createStoryJingweiEntryRepository, createStoryJingweiSectionRepository } = await loadEngine();
     const section = await createStoryJingweiSectionRepository(storage).getById(bookId, sectionId);
     if (!section) throw new ApiError(404, "JINGWEI_SECTION_NOT_FOUND", `Jingwei section not found: ${sectionId}`);
     const entry = await createStoryJingweiEntryRepository(storage).create({
@@ -305,7 +304,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const { createStoryJingweiEntryRepository } = await loadCore();
+    const { createStoryJingweiEntryRepository } = await loadEngine();
     const entry = await createStoryJingweiEntryRepository(storage).update(bookId, c.req.param("entryId"), {
       ...(typeof body.sectionId === "string" ? { sectionId: body.sectionId } : {}),
       ...(typeof body.title === "string" ? { title: body.title.trim() } : {}),
@@ -328,7 +327,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createStoryJingweiEntryRepository } = await loadCore();
+    const { createStoryJingweiEntryRepository } = await loadEngine();
     const deleted = await createStoryJingweiEntryRepository(storage).softDelete(bookId, c.req.param("entryId"));
     if (!deleted) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
     return c.json({ ok: true, id: c.req.param("entryId") });
@@ -340,7 +339,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     await ensureBook(storage, bookId);
     const body = await readJson(c);
     const selection = normalizeTemplateSelection(body);
-    const { applyJingweiTemplate, createStoryJingweiSectionRepository } = await loadCore();
+    const { applyJingweiTemplate, createStoryJingweiSectionRepository } = await loadEngine();
     const repo = createStoryJingweiSectionRepository(storage);
     const existing = await repo.listByBook(bookId);
     const existingKeys = new Set(existing.map((section) => section.key));
@@ -377,7 +376,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const { buildJingweiContext } = await loadCore();
+    const { buildJingweiContext } = await loadEngine();
     const tokenBudget = optionalNullableNumber(body.tokenBudget);
     const context = await buildJingweiContext({
       storage,
@@ -414,7 +413,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const category = c.req.query("category");
-    const { createStoryJingweiEntryRepository } = await loadCore();
+    const { createStoryJingweiEntryRepository } = await loadEngine();
     let entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
     if (category) {
       entries = entries.filter((e) => (e as EntryWithOverhaulFields).category === category);
