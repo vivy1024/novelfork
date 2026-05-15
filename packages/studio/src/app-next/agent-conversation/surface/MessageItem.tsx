@@ -281,7 +281,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
               {timeStr && <span className="text-[10px] text-muted-foreground">{timeStr}</span>}
             </div>
             {/* Content */}
-            <div className="text-sm pl-7">
+            <div className="text-sm pl-7 whitespace-pre-wrap break-words">
               {message.content}
             </div>
             {/* Hover actions */}
