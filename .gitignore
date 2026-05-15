@@ -55,3 +55,4 @@ packages/studio/src/api/embedded-assets.generated.ts
 cockpit-tools/
 .narrafork-reference/
 .novelfork-worktrees/
+*.bun-build

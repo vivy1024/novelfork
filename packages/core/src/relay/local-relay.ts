@@ -10,14 +10,61 @@
 import { randomUUID } from "node:crypto";
 import { createLLMClient } from "../llm/provider.js";
 import type { LLMConfig } from "../models/project.js";
-import { PipelineRunner, type PipelineConfig } from "../pipeline/runner.js";
-import type { AuditResult } from "../agents/continuity.js";
-import type { DetectionResult } from "../agents/detector.js";
-import { detectAIContent } from "../agents/detector.js";
-import { analyzeStyle as analyzeStyleSync } from "../agents/style-analyzer.js";
+import type { AuditResult } from "../models/agent-types.js";
 import type { StyleProfile } from "../models/style-profile.js";
 import type { AIRelay, WriteSnapshot, RunResult } from "./relay.js";
 import type { LLMRelayConfig, RunHandle, RunState, RunStatus } from "./types.js";
+
+// Types from moved modules — using local interfaces to avoid circular deps
+interface PipelineConfig {
+  projectRoot: string;
+  [key: string]: unknown;
+}
+interface DetectionResult {
+  score: number;
+  [key: string]: unknown;
+}
+// Dynamic imports for moved module values
+let _PipelineRunner: any;
+async function getPipelineRunner() {
+  if (!_PipelineRunner) {
+    // Lazy-load from novel-plugin engine at runtime
+    try {
+      // @ts-expect-error — novel-plugin is loaded at runtime, not a compile-time dep of core
+      const mod = await import("@vivy1024/novelfork-novel-plugin/engine");
+      _PipelineRunner = mod.PipelineRunner;
+    } catch {
+      throw new Error("PipelineRunner not available — novel-plugin not installed");
+    }
+  }
+  return _PipelineRunner;
+}
+let _detectAIContent: any;
+async function getDetectAIContent() {
+  if (!_detectAIContent) {
+    try {
+      // @ts-expect-error — novel-plugin is loaded at runtime, not a compile-time dep of core
+      const mod = await import("@vivy1024/novelfork-novel-plugin/engine");
+      _detectAIContent = mod.detectAIContent;
+    } catch {
+      throw new Error("detectAIContent not available — novel-plugin not installed");
+    }
+  }
+  return _detectAIContent;
+}
+let _analyzeStyle: any;
+async function getAnalyzeStyle() {
+  if (!_analyzeStyle) {
+    try {
+      // @ts-expect-error — novel-plugin is loaded at runtime, not a compile-time dep of core
+      const mod = await import("@vivy1024/novelfork-novel-plugin/engine");
+      _analyzeStyle = mod.analyzeStyle;
+    } catch {
+      throw new Error("analyzeStyle not available — novel-plugin not installed");
+    }
+  }
+  return _analyzeStyle;
+}
 
 // ---------------------------------------------------------------------------
 // Internal run record
@@ -60,7 +107,7 @@ export class LocalAIRelay implements AIRelay {
     const runId = randomUUID();
     const record = this.createRun(runId);
 
-    const runner = this.buildRunner(llm, snapshot);
+    const runner = await this.buildRunner(llm, snapshot);
     this.executeAsync(record, async () => {
       const value = await runner.writeNextChapter(
         snapshot.bookId,
@@ -81,7 +128,7 @@ export class LocalAIRelay implements AIRelay {
     const runId = randomUUID();
     const record = this.createRun(runId);
 
-    const runner = this.buildRunner(llm, snapshot);
+    const runner = await this.buildRunner(llm, snapshot);
     this.executeAsync(record, async () => {
       const value = await runner.writeDraft(
         snapshot.bookId,
@@ -102,7 +149,7 @@ export class LocalAIRelay implements AIRelay {
     const runId = randomUUID();
     const record = this.createRun(runId);
 
-    const runner = this.buildRunner(llm, snapshot);
+    const runner = await this.buildRunner(llm, snapshot);
     this.executeAsync(record, async () => {
       const value = await runner.reviseDraft(snapshot.bookId, chapterNum);
       record.result = { kind: "revise", value };
@@ -120,7 +167,7 @@ export class LocalAIRelay implements AIRelay {
     chapterNum: number,
     llm: LLMRelayConfig,
   ): Promise<AuditResult> {
-    const runner = this.buildRunner(llm, snapshot);
+    const runner = await this.buildRunner(llm, snapshot);
     return runner.auditDraft(snapshot.bookId, chapterNum);
   }
 
@@ -130,7 +177,8 @@ export class LocalAIRelay implements AIRelay {
   ): Promise<DetectionResult> {
     // detectAIContent uses DetectionConfig from project config, not LLMRelayConfig.
     // The llm parameter is reserved for future provider-based detection.
-    return detectAIContent(
+    const detectFn = await getDetectAIContent();
+    return detectFn(
       { provider: "gptzero", apiUrl: "https://api.gptzero.me/v2/predict/text", apiKeyEnv: "GPTZERO_API_KEY", threshold: 0.5, enabled: false, autoRewrite: false, maxRetries: 3 },
       content,
     );
@@ -141,7 +189,8 @@ export class LocalAIRelay implements AIRelay {
     _llm: LLMRelayConfig,
   ): Promise<StyleProfile> {
     // analyzeStyle is a synchronous local computation — no LLM call needed.
-    return analyzeStyleSync(text);
+    const styleFn = await getAnalyzeStyle();
+    return styleFn(text);
   }
 
   // -----------------------------------------------------------------------
@@ -182,10 +231,10 @@ export class LocalAIRelay implements AIRelay {
     return record;
   }
 
-  private buildRunner(
+  private async buildRunner(
     llm: LLMRelayConfig,
     snapshot: WriteSnapshot,
-  ): PipelineRunner {
+  ): Promise<any> {
     const llmConfig: LLMConfig = {
       apiKey: llm.apiKey,
       baseUrl: llm.baseUrl,
@@ -215,7 +264,8 @@ export class LocalAIRelay implements AIRelay {
         : this.basePipelineConfig.modelOverrides,
     };
 
-    return new PipelineRunner(pipelineConfig);
+    const PipelineRunnerClass = await getPipelineRunner();
+    return new PipelineRunnerClass(pipelineConfig);
   }
 
   private executeAsync(

@@ -3,8 +3,19 @@
  * P2-0: 将 agent.ts 中的 18 个硬编码工具迁移到注册表模式
  */
 
-import type { PipelineRunner, PipelineConfig } from "../pipeline/runner.js";
 import type { StateManager } from "../state/manager.js";
+
+/** Pipeline runner interface — minimal shape needed by tool handlers */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface PipelineRunner {
+  readonly projectRoot: string;
+}
+
+/** Pipeline config interface — minimal shape needed by tool handlers */
+// eslint-disable-next-line @typescript-eslint/no-empty-interface
+export interface PipelineConfig {
+  readonly projectRoot: string;
+}
 
 export interface ToolParameter {
   name: string;
