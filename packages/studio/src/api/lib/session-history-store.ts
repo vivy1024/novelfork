@@ -55,20 +55,46 @@ export function isSessionChatHistoryDeleted(sessionId: string): boolean {
 }
 
 /**
- * Auto-upgrade old session messages that may have incomplete toolCalls fields.
- * Ensures status, duration, and input are populated from available data.
+ * Auto-upgrade old session messages that may lack fields newer code expects.
+ * Runs once at load time (not on every access) to fill in safe defaults:
+ * - Missing `toolCalls` → `[]`
+ * - Missing `metadata` → `{}`
+ * - Missing `role` → inferred from content/context
+ * - Missing `timestamp` → fallback based on message index (caller supplies)
+ * - Incomplete toolCall entries get status/duration/input normalized
  */
-function normalizeLoadedMessage(msg: NarratorSessionChatMessage): NarratorSessionChatMessage {
-  if (!msg.toolCalls?.length) return msg;
-  return {
+export function upgradeMessage(msg: NarratorSessionChatMessage, index: number): NarratorSessionChatMessage {
+  const upgraded: NarratorSessionChatMessage = {
     ...msg,
-    toolCalls: msg.toolCalls.map((tc: ToolCall) => ({
+    id: msg.id || `legacy-msg-${index}`,
+    role: msg.role || inferRole(msg.content),
+    content: msg.content ?? "",
+    timestamp: typeof msg.timestamp === "number" && msg.timestamp > 0
+      ? msg.timestamp
+      : index * 1000,
+    toolCalls: msg.toolCalls ?? [],
+    metadata: msg.metadata ?? {},
+  };
+
+  // Normalize individual toolCall entries
+  if (upgraded.toolCalls!.length > 0) {
+    upgraded.toolCalls = upgraded.toolCalls!.map((tc: ToolCall) => ({
       ...tc,
       status: tc.status ?? (tc.output || tc.result ? "success" : undefined),
       duration: tc.duration ?? undefined,
       input: tc.input ?? undefined,
-    })),
-  };
+    }));
+  }
+
+  return upgraded;
+}
+
+/** Infer role from content when the stored role field is missing/empty. */
+function inferRole(content: string | undefined): NarratorSessionChatMessage["role"] {
+  if (!content) return "user";
+  // Messages starting with tool-related prefixes are likely assistant
+  if (content.startsWith("请求调用工具") || content.startsWith("工具")) return "assistant";
+  return "user";
 }
 
 export async function loadSessionChatHistory(sessionId: string): Promise<NarratorSessionChatMessage[]> {
@@ -76,7 +102,7 @@ export async function loadSessionChatHistory(sessionId: string): Promise<Narrato
     return [];
   }
 
-  return (await getMessageRepo().loadAll(sessionId)).map(toNarratorMessage).map(normalizeLoadedMessage);
+  return (await getMessageRepo().loadAll(sessionId)).map(toNarratorMessage).map(upgradeMessage);
 }
 
 export async function saveSessionChatHistory(sessionId: string, messages: NarratorSessionChatMessage[]): Promise<void> {
