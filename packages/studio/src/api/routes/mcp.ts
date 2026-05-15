@@ -234,6 +234,26 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
     try {
       await client.connect();
       const tools = [...client.tools].map((tool) => ({ name: tool.name, description: tool.description }));
+
+      // Register MCP tools into session-tool-registry so they are available during chat
+      try {
+        const { registerPluginTools } = await import("../lib/session-tool-registry.js");
+        const MCP_TOOL_PREFIX = "mcp__";
+        const serverSlug = (entry.name ?? entry.id).replace(/[^a-zA-Z0-9]/g, "_");
+        const sessionTools = [...client.tools].map((tool) => ({
+          name: `${MCP_TOOL_PREFIX}${serverSlug}__${tool.name}`,
+          description: `[MCP: ${entry.name}] ${tool.description ?? tool.name}`,
+          inputSchema: tool.inputSchema ?? { type: "object" as const, properties: {}, required: [] as string[], additionalProperties: false },
+          risk: "read" as const,
+          renderer: "tool.mcp" as const,
+          enabledForModes: ["ask", "edit", "allow", "read", "plan"] as string[],
+          visibility: "author" as const,
+        }));
+        registerPluginTools(sessionTools);
+      } catch {
+        // Non-fatal: tools still work via API but won't appear in chat
+      }
+
       return c.json({ ok: true, status: client.state, tools });
     } catch (error) {
       managedServers.delete(id);
@@ -344,4 +364,45 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
   });
 
   return app;
+}
+
+/**
+ * Execute an MCP tool via the managed server connections.
+ * Parses mcp__<serverSlug>__<toolName> format and routes to the correct MCPClientImpl.
+ * Exported for use by session-tool-executor.
+ */
+export async function callMcpToolViaManaged(
+  fullToolName: string,
+  input: Record<string, unknown>,
+): Promise<{ content: string; isError: boolean }> {
+  const prefix = "mcp__";
+  if (!fullToolName.startsWith(prefix)) {
+    return { content: `Not an MCP tool: ${fullToolName}`, isError: true };
+  }
+
+  const withoutPrefix = fullToolName.slice(prefix.length);
+  const lastSep = withoutPrefix.lastIndexOf("__");
+  if (lastSep === -1) {
+    return { content: `Invalid MCP tool name format: ${fullToolName}`, isError: true };
+  }
+
+  const toolName = withoutPrefix.slice(lastSep + 2);
+
+  for (const [, managed] of managedServers) {
+    const hasTool = [...managed.client.tools].some((t) => t.name === toolName);
+    if (hasTool) {
+      try {
+        const result = await managed.client.callTool({ name: toolName, arguments: input });
+        if (typeof result === "object" && result !== null && "success" in result && !(result as any).success) {
+          return { content: JSON.stringify(result), isError: true };
+        }
+        const content = typeof result === "string" ? result : JSON.stringify(result);
+        return { content, isError: false };
+      } catch (error) {
+        return { content: `MCP tool error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
+      }
+    }
+  }
+
+  return { content: `No MCP server has tool: ${toolName}`, isError: true };
 }
