@@ -3,7 +3,7 @@ import { streamSSE } from "hono/streaming";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { RouterContext } from "./context.js";
-import { pipelineEvents } from "@vivy1024/novelfork-core";
+import { pipelineEvents } from "../engine/pipeline/pipeline-events.js";
 
 interface PipelineStage {
   readonly name: string;
@@ -236,6 +236,16 @@ export function createPipelineRun(
   bookId: string,
   bookTitle: string
 ): void {
+  // Cap at 100 entries — evict oldest completed/failed runs first
+  if (pipelineRuns.size >= 100) {
+    for (const [key, run] of pipelineRuns) {
+      if (run.status === "completed" || run.status === "failed") {
+        pipelineRuns.delete(key);
+        break;
+      }
+    }
+  }
+
   const run: PipelineRun = {
     runId,
     bookId,
@@ -288,4 +298,7 @@ export function completePipelineRun(
 
   // Persist to disk (fire-and-forget)
   void persistRunToDisk(completedRun);
+
+  // Evict from memory after 1 hour to prevent unbounded growth
+  setTimeout(() => pipelineRuns.delete(runId), 3600_000);
 }
