@@ -258,7 +258,7 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 ---
 
-## Skill 路由（GStack）
+## Skill 路由（GStack + Superpowers + 求是）
 
 ### 产品与规划
 
@@ -314,20 +314,32 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 ### Spec 任务执行流程
 
-**当前无 `kiro-spec-adapter` / `executing-plans` / `writing-plans` 等 spec 专用 skill。** Spec 任务执行改为以下流程：
+**三套 skills 协作**：Superpowers 管执行框架，GStack 管验证/发布/运维，求是管决策。
 
-1. **规划**：手动维护 `.kiro/specs/{feature}/tasks.md`，或用 `/office-hours` + `/plan-eng-review` 辅助设计
-2. **执行**：按 tasks.md 逐任务派 subagent 实现（遵循 GStack 执行流程段落的 subagent 纪律）
+1. **规划**：`/office-hours` 探索需求 → `writing-plans` 生成 tasks.md → `/plan-eng-review` 审查架构
+2. **执行**：`executing-plans` 或 `subagent-driven-development` 逐任务实现（Kiro spec 三件套驱动）
 3. **审查**：每个任务/Batch 完成后**必须**调用 `/review` 审查 diff，不得跳过
-4. **验证**：前端任务用 `/qa` 或 Browser 工具截图；后端任务用 typecheck + curl
-5. **发布**：全部完成后 `/ship` 创建 PR
+4. **验证**：`verification-before-completion` 铁律 + 前端用 `/qa`；后端用 typecheck + curl
+5. **发布**：`finishing-a-development-branch` → `/ship` 创建 PR
+
+**Spec 执行优先用 Superpowers skills**：
+- 有完整三件套（requirements + design + tasks）→ 调用 `executing-plans`
+- 任务独立可并行 → 调用 `subagent-driven-development`
+- 需要写 tasks.md → 调用 `writing-plans`
+- 需要适配 Kiro spec 格式 → 调用 `kiro-spec-adapter`
+
+**GStack 在执行过程中的角色**：
+- 每个 Batch 完成后 → `/review`（跨模型对抗审查）
+- 前端改动 → `/qa`（浏览器验证）
+- 声称完成前 → `verification-before-completion`（铁律）+ `/review`
+- 准备发版 → `/ship`
 
 **规划体系**：Kiro spec（`.kiro/specs/{feature}/requirements.md` + `design.md` + `tasks.md`）
 
 协作原则：
 1. 用户显式要求 > 本项目 steering > skills 建议 > 默认行为
 2. 新功能必须先过 `/office-hours`，不准直接开写
-3. 复杂任务采用 Kiro spec 工作流（手动维护 tasks.md）
+3. 复杂任务采用 Kiro spec 工作流（`executing-plans` 驱动）
 4. 简单运维不强制走完整流程
 5. **自然语言触发**：当用户的话匹配 skill 触发场景时，主动调用对应 skill，不需要用户说 `/命令`。例如用户说"这个 bug 怎么回事"→ 调用 `/investigate`；说"发版吧"→ 调用 `/ship`；说"看看质量"→ 调用 `/health`
 
