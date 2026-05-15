@@ -56,3 +56,6 @@ cockpit-tools/
 .narrafork-reference/
 .novelfork-worktrees/
 *.bun-build
+.kiro/
+.narrafork-reference/
+.narrafork/
