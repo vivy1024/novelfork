@@ -45,6 +45,8 @@ interface JingweiGraphViewProps {
   entries: JingweiEntry[];
   category: string;
   onNodeClick?: (entryId: string) => void;
+  /** 隐藏内部分类筛选工具栏（外部已有侧栏时使用） */
+  hideToolbar?: boolean;
 }
 
 // --- Relation type colors ---
@@ -104,7 +106,7 @@ function JingweiNode({ data }: { data: { label: string; category: string; previe
 const nodeTypes = { jingweiNode: JingweiNode };
 
 // --- Main Component ---
-export function JingweiGraphView({ bookId, entries, category, onNodeClick }: JingweiGraphViewProps) {
+export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideToolbar }: JingweiGraphViewProps) {
   const [relations, setRelations] = useState<JingweiRelation[]>([]);
   const [filterCategory, setFilterCategory] = useState<string>(category);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -230,7 +232,8 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick }: Jin
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
-      {/* Toolbar */}
+      {/* Toolbar (hidden when external sidebar provides category filtering) */}
+      {!hideToolbar && (
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border">
         <SimpleSelect
           value={filterCategory}
@@ -243,6 +246,7 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick }: Jin
           {filteredEntries.length} 节点 · {edges.length} 关系
         </span>
       </div>
+      )}
 
       {/* Graph */}
       <div className="flex-1">
