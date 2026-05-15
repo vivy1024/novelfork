@@ -1,3 +1,6 @@
+/**
+ * @deprecated 已被 CockpitWorkspace 替代。保留供回退参考，后续版本删除。
+ */
 import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine, ShieldAlert, Lightbulb } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useApi } from "@/hooks/use-api";
