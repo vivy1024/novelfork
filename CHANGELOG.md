@@ -4,37 +4,102 @@
 
 ---
 
-## v0.5.2 (2026-05-14)
+## v0.6.0 (2026-05-15)
 
-### 新功能
-- **Bash 实时流式输出**：命令执行时 stdout/stderr 逐 chunk 推送到前端，不再等待完成才显示
-- **工具 description 参数**：LLM 可描述命令意图，折叠态显示人类可读文字而非原始命令
-- **工具输入流式预览**：LLM 开始输出 tool_use 时前端立即显示 running 卡片（SSE tool_started + input_json_delta 解析）
-- **工具结果智能截断**：超过 30000 字符自动截断（保留头 20000 + 尾 5000 + 省略提示）
-- **工具卡片状态动画**：running 蓝色脉冲 / done 绿色闪光 / error 红色闪光 / pending 黄色边框
-- **工具卡片实时计时器**：运行中显示已用时间 + 超时限制 + 行数 + 字节数
-- **工具卡片自动展开**：运行中的 Bash 工具自动展开显示实时输出
-- **输出截断与展开**：超过 50 行显示"显示全部 (N 行)"按钮
-- **工具分组渲染**：3+ 个同类工具合并为分组卡片（如 `Grep ×3`）
-- **子代理嵌套渲染**：Agent 工具展开时递归渲染子调用链（蓝色缩进连接线）
-- **BrowserTool 后端**：Playwright 驱动，8 个 action（launch/navigate/click/fill/screenshot/get_text/evaluate/close），会话管理 + 5 分钟自动清理
-- **WebSearchTool 后端**：Serper API + DuckDuckGo HTML fallback
-- **WebFetchTool 后端**：readability/text/raw 三模式，SSRF 防护（私有 IP 黑名单）
-- **权限决策卡片**：PermissionRequestCard（4 色风险 badge + allow/deny 按钮）
-- **计划模式条**：PlanModeBar（蓝色主题 + 退出/批准按钮）
-- **危险反思卡片**：DangerReflectionCard（AI 安全分析 + 风险因子 + 确认/中止）
+### 🏗️ 插件架构真拆分（Breaking Change — 内部重构，用户无感）
 
-### 改进
-- Windows shell 命令改用 `bash -lc`（Git Bash 兼容，不再用 `cmd /c`）
-- `ws-envelope-reducer` 新增 `session:tool-input-chunk` / `session:permission-request` / `session:danger-reflection` 事件
-- `SessionConfig` 新增 `mode?: "normal" | "plan"` 字段
-- `ToolCall` 接口新增 `_streamingOutput` / `_streamingInput` 字段（类型安全）
-- `provider-adapters/index.ts` 新增 `RuntimeToolStreamEvent` 类型
-- Anthropic SSE 解析新增 onToolEvent 回调（200ms 节流）
+**核心变更**：小说写作功能从通用 Agent 工作台中彻底拆出，studio 成为纯通用平台。
 
-### 修复
-- `ws-envelope-reducer` 中 `durationMs` → `duration`（匹配 ToolCall 接口）
-- `MessageItem` 中 `message.metadata?.usage` 类型错误修复（`unknown` → `!!` 断言）
+- **PluginRegistry 机制**：`plugin-loader.ts` 实现插件注册/查询/按 projectType 过滤
+- **novel-plugin/engine/**：迁移 241 文件（pipeline/agents/jingwei/filter/presets/compliance/tools/bible）
+- **novel-plugin/routes/**：迁移 9 个小说路由（ai/jingwei/writing-modes/pipeline/filter/compliance/bible/writing-tools/context-manager）
+- **novel-plugin/handlers/**：迁移 10 个服务（cockpit/candidate/pgi/guided-generation/questionnaire/narrative-line/novel-init/novel-audit/tool-registry/writing-mode）
+- **novel-plugin/pages/**：迁移 53 个前端组件（writing-workbench 全部）
+- **fitness-plugin 骨架**：证明架构可扩展到第二领域
+- **core 瘦身**：不再包含任何小说领域代码，仅保留 storage/llm/state/hooks/mcp/runtime
+
+### 🧠 经纬系统重做（jingwei-ui-overhaul 5 Phase）
+
+- **Phase 1**：结构化世界观 CRUD UI（16 分类面板 + 条目列表 + 编辑表单）
+- **Phase 2**：层级树 + react-flow 关系图谱 + Progressions 时间演进
+- **Phase 3**：长篇连贯性机制（递归摘要/写后自动更新/写前 Briefing/因果链/生命周期降级）
+- **Phase 4**：智能预设反思（反思模型分析当前状态建议本章额外预设）
+- **Phase 5**：联想层（共现图谱/脉冲传播/做梦系统）
+- **经纬 UI 统一**：资源树"经纬资料"直接打开 JingweiPanel，移除重复的工具栏按钮
+
+### ✨ 新功能
+
+- **Post-Edit 自动验证**：Write/Edit 后自动执行 verificationCommand（tsconfig→`bunx tsc --noEmit`，Cargo→`cargo check`），失败时错误注入上下文供 Agent 自动修复
+- **验证命令自动检测**：根据项目文件（tsconfig.json/Cargo.toml/pyproject.toml/go.mod）推断验证命令
+- **智能预设完整闭环**：建书时流派→套装自动映射（22 种）+ 章节预设反思 + 驾驶舱"下一章建议"卡 + 写后合规检查
+- **危险反思可见反馈**：后端广播 `reflecting` substatus，前端显示"安全评估中..."
+- **重试状态显示**：429/502/503 重试时状态栏显示"重试中 (N/M)"
+- **自动批准计划通知**：autoApprovePlan 触发时对话中显示"✅ 计划已自动批准"
+- **弧线追踪切换 toast**：arcTrackingMode 变更后即时反馈
+- **写作预设快捷切换**：状态栏 PenLine 按钮，下拉切换当前书籍启用的预设
+- **终端面板入口**：状态栏 Terminal 按钮
+- **节拍表持久化**：completedBeats 存储到 localStorage（按 bookId 隔离）
+- **叙事线交互**：添加/删除节点按钮 + 内联表单
+- **Slash 命令实现**：`/tools` 列出工具、`/mcp` 列出 MCP 服务器、`/agents` 列出子代理类型
+- **设置 auto-save**：RuntimeControlPanel 改为 800ms debounce 自动保存 + toast
+- **旧消息自动升级**：加载旧 session 时自动补全缺失字段（toolCalls/metadata/role/timestamp/id）
+- **Bash 实时流式输出**：命令执行时 stdout/stderr 逐 chunk 推送
+- **工具输入流式预览**：LLM 开始输出 tool_use 时前端立即显示 running 卡片
+- **工具结果智能截断**：超过 30000 字符自动截断（头 20000 + 尾 5000）
+- **子代理嵌套渲染**：Agent 工具展开时递归渲染子调用链
+- **BrowserTool/WebSearchTool/WebFetchTool**：完整后端实现
+- **权限决策卡片 + 计划模式条 + 危险反思卡片**：新 UI 组件
+- **项目感知**：首次对话自动读取 package.json/tsconfig.json/.gitignore 建立上下文
+- **Headless CLI 模式**：非交互式 Agent 执行
+
+### 🔧 改进
+
+- **工具结果截断**：Grep 50 条 / Glob 200 条 / Read 500 行 / Bash 200 行上限
+- **错误恢复指引**：Agent system prompt 注入 `<error_recovery>` 规则（同一方法失败 2 次换方案）
+- **失败计数器**：连续失败 2 次警告、3 次要求停止
+- **累积信任**：session 级命令模式自动放行 + 目录信任传播
+- **并发写入保护**：同一书籍写作中返回 409
+- **内存泄漏修复**：pipelineRuns/writeStatusMap 1h TTL + 100 条上限
+- **Windows shell 兼容**：post-edit-verifier 使用 `{ shell: true }` 跨平台
+- **旧前端退役**：删除 142 个孤立旧前端文件
+- **Bible v1 数据迁移**：统一到 jingwei_entries 表
+- **架构文档**：小说前端/后端架构 + Agent 运行时对比分析 + 经纬系统架构
+
+### 🐛 修复
+
+- **运行时 import 断裂**：修复 PipelineRunner/pipelineEvents 等从 core 迁移后的 21 处断裂 import
+- **工具状态回写**：tool_result 时正确更新 tool_call 状态（不再卡在 running）
+- **工具结果对模型可见**：之前只发 summary，现在发完整 toolResultContent
+- **状态管理重设计**：前端信任后端状态，不再本地猜测
+- **migration 0014 guard**：全新安装时跳过不存在的表
+- **pipeline hooks 接通**：安全 + schema 验证
+- **经纬 UI 去重**：统一为 JingweiPanel 单入口
+
+### 📦 仓库结构变更
+
+```
+packages/core/         → 通用基础设施（不再有小说代码）
+packages/studio/       → 通用 Agent 工作台（不再有小说路由/服务/UI）
+packages/novel-plugin/ → 小说领域插件（engine/routes/handlers/pages，323 文件）
+packages/fitness-plugin/ → 健身领域插件骨架（证明可扩展性）
+```
+
+### 📋 Spec 完成情况
+
+| Spec | 状态 |
+|------|------|
+| plugin-architecture-split | ✅ 6 Batch / 60 任务全部完成 |
+| jingwei-ui-overhaul | ✅ 5 Phase 全部完成 |
+| coding-agent-quality | ✅ 全部完成 |
+| ui-visibility-gaps | ✅ 5 Phase 全部完成 |
+| ui-gap-fixes | ✅ 4 Phase 全部完成 |
+| smart-preset-system | ✅ 3 Phase 全部完成 |
+| remaining-closure | ✅ 可执行部分全部完成 |
+| novel-plugin-and-tool-parity | ✅ 全部完成 |
+| conversation-parity | ✅ 全部完成 |
+| agent-runtime-robustness | ✅ 6 Phase 全部完成 |
+| platform-and-collaboration | ✅ 全部完成 |
+| agent-tool-streaming | ✅ 全部完成 |
 
 ---
 
