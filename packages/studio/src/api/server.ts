@@ -114,6 +114,9 @@ import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
 import { authGuard } from "./middleware/auth-guard.js";
+import { pluginRegistry } from "./lib/plugin-loader.js";
+import { NOVEL_PLUGIN_MANIFEST, NOVEL_AGENT_PRESET_LIST } from "@vivy1024/novelfork-novel-plugin";
+import { handleChapterRead, handleJingweiReadContext } from "@vivy1024/novelfork-novel-plugin";
 
 // --- Studio event bus for SSE ---
 
@@ -155,6 +158,21 @@ function getNovelForkMode(): NovelForkMode {
 
 export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   registerBuiltinPresets();
+
+  // --- Plugin registration ---
+  pluginRegistry.register({
+    id: NOVEL_PLUGIN_MANIFEST.id,
+    name: NOVEL_PLUGIN_MANIFEST.displayName ?? NOVEL_PLUGIN_MANIFEST.name,
+    version: NOVEL_PLUGIN_MANIFEST.version,
+    projectType: NOVEL_PLUGIN_MANIFEST.projectType,
+    routes: [], // Routes will be migrated in Batch 3
+    tools: [
+      { toolName: "chapter.read", execute: async (input, ctx) => handleChapterRead(input as any, ctx as any) },
+      { toolName: "jingwei.read_context", execute: async (input, ctx) => handleJingweiReadContext(input as any, ctx as any) },
+    ],
+    pages: [], // Pages will be migrated in Batch 5
+    agentPresets: NOVEL_AGENT_PRESET_LIST,
+  });
 
   const app = new Hono();
   const state = new StateManager(root);

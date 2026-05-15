@@ -1,4 +1,5 @@
 import type { CockpitService } from "./cockpit-service.js";
+import { pluginRegistry } from "./plugin-loader.js";
 import {
   normalizeToolConfirmationRequest,
   type SessionToolDefinition,
@@ -924,6 +925,20 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
   // 先尝试小说领域 handler
   const novelHandler = getNovelServiceHandler(toolName, options);
   if (novelHandler) return novelHandler;
+
+  // 尝试通过 PluginRegistry 查找 handler（fallback 到插件注册的 handler）
+  const pluginHandler = pluginRegistry.getToolHandler(toolName);
+  if (pluginHandler) {
+    return async ({ input, definition }) => {
+      const result = await pluginHandler.execute(input, {
+        sessionId: options.sessionId ?? "",
+        bookId: typeof input.bookId === "string" ? input.bookId : undefined,
+        storage: undefined,
+        root: options.workDir ?? process.cwd(),
+      });
+      return { ok: true, renderer: definition.renderer, summary: `${toolName} 执行完成`, data: result };
+    };
+  }
 
   switch (toolName) {
     // --- Claude Code / Codex 级开发工具 ---
