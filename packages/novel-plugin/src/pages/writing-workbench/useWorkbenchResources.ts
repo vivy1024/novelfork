@@ -5,7 +5,7 @@ import {
   type ContractResourceCapabilities,
   type ContractResourceNode,
   type ResourceDomainClient,
-} from "../backend-contract/resource-tree-adapter";
+} from "@/app-next/backend-contract/resource-tree-adapter";
 
 export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result";
 

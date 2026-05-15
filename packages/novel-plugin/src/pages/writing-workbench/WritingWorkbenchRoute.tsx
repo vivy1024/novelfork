@@ -9,7 +9,7 @@ import { WritingToolsPanel } from "./WritingToolsPanel";
 import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
-import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "../chapter-graph";
+import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "@/app-next/chapter-graph";
 
 export interface WritingWorkbenchRouteProps {
   bookId?: string;

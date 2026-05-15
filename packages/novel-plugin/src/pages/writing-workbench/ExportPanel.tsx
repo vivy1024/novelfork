@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Loader2, Download, CheckCircle2 } from "lucide-react";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 
 type ExportFormat = "txt" | "docx" | "epub";
 

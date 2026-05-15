@@ -8,7 +8,7 @@ import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
 import { CockpitOverview } from "./CockpitOverview";
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
-import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "../../shared/agent-native-workspace";
+import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
 export interface WorkbenchCanvasContext extends CanvasContext {

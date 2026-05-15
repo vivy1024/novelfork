@@ -1,8 +1,8 @@
 import { renderHook } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { normalizeCapability } from "../backend-contract/capability-status";
-import type { ContractResourceNode } from "../backend-contract/resource-tree-adapter";
+import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
+import type { ContractResourceNode } from "@/app-next/backend-contract/resource-tree-adapter";
 import { buildWorkbenchResourceTree, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
 const current = (id: string) => normalizeCapability({ id, status: "current" });

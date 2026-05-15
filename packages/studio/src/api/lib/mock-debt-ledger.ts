@@ -156,7 +156,7 @@ export const MOCK_DEBT_ITEMS = [
     files: [
       "packages/studio/src/api/routes/writing-modes.ts",
       "packages/studio/src/components/writing-modes/*.tsx",
-      "packages/studio/src/app-next/writing-workbench/WorkbenchWritingActions.tsx",
+      "packages/novel-plugin/src/pages/writing-workbench/WorkbenchWritingActions.tsx",
     ],
     currentBehavior: "writing modes 生成端点仍可返回 mode: prompt-preview；真实生成结果可通过 Workspace 目标选择与确认流程调用安全 apply route 写入 candidate/draft，章节 insert/replace 会转为非破坏性候选稿；章节钩子插入会写入 pending_hooks.md。",
     userRisk: "critical",
@@ -304,7 +304,7 @@ export const MOCK_DEBT_ITEMS = [
     id: "workspace-outline-bible-placeholders",
     module: "Workspace outline and bible fallback placeholders",
     files: [
-      "packages/studio/src/app-next/writing-workbench/resource-viewers/index.tsx",
+      "packages/novel-plugin/src/pages/writing-workbench/resource-viewers/index.tsx",
     ],
     currentBehavior: "Workspace 大纲编辑器和经纬分类视图已接入真实 bookId/endpoint 时可读取和保存；缺少 bookId 或分类映射时显示 UnsupportedCapability，避免伪造保存或编辑成功。",
     userRisk: "medium",
