@@ -539,5 +539,5 @@ packages/fitness-plugin/ → 健身领域插件骨架（证明可扩展性）
 ## v0.0.0 (2026-04-19)
 
 ### 项目基础
-- Fork 自 InkOS，专注中文网文创作
+- 项目启动，早期参考 InkOS 架构，专注中文网文创作
 - monorepo 结构：core / studio / cli
