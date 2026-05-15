@@ -243,13 +243,13 @@ export function createMCPRouter(projectRoot: string, options: MCPRouterOptions =
         const sessionTools = [...client.tools].map((tool) => ({
           name: `${MCP_TOOL_PREFIX}${serverSlug}__${tool.name}`,
           description: `[MCP: ${entry.name}] ${tool.description ?? tool.name}`,
-          inputSchema: tool.inputSchema ?? { type: "object" as const, properties: {}, required: [] as string[], additionalProperties: false },
+          inputSchema: tool.inputSchema ?? { type: "object" as const, properties: {}, required: [] as readonly string[], additionalProperties: false },
           risk: "read" as const,
           renderer: "tool.mcp" as const,
-          enabledForModes: ["ask", "edit", "allow", "read", "plan"] as string[],
+          enabledForModes: ["ask", "edit", "allow", "read", "plan"] as const,
           visibility: "author" as const,
         }));
-        registerPluginTools(sessionTools);
+        registerPluginTools(sessionTools as unknown as Parameters<typeof registerPluginTools>[0]);
       } catch {
         // Non-fatal: tools still work via API but won't appear in chat
       }
