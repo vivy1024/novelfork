@@ -15,6 +15,8 @@
 | 规则 | 说明 |
 |------|------|
 | 版本号 | `v0.0.1` 起，语义化版本（主.次.修订） |
+| **即时发版** | 每完成一个用户可感知的功能/修复，立即 bump 版本并发 release。不积压多个功能到一个版本。参考 NarraFork 的节奏：每天 1-3 个版本 |
+| bump 规则 | 新功能 → minor（0.X.0）；bugfix/改进 → patch（0.0.X）；破坏性变更 → major |
 | 标记位置 | `CLAUDE.md` 标题、根/包级 `package.json`、`AGENTS.md`、`CHANGELOG.md`、Git tag、GitHub Release |
 | 版本变动 | 任何版本号变动必须同步更新 release 资料：`package.json`、`packages/*/package.json`、`CLAUDE.md`、`AGENTS.md`、`CHANGELOG.md` |
 | 任务验收 | 用户要求提交、验收完成或明确要求收尾时，视为授权执行：相关验证 → Git 提交 → `git push origin <branch>`；不得只停留在本地提交 |
@@ -22,7 +24,7 @@
 | 文档同步 | 代码、配置、流程、测试数量、构建命令、产物路径、发布状态任一变化，必须同步相关 README、`docs/`、包级 README、`CLAUDE.md`、`AGENTS.md`；文档更新本身也必须记录到 `CHANGELOG.md` Unreleased |
 | 发版时 | 将 Unreleased 内容移到新版本号下；运行 typecheck/test/compile/smoke；提交 release commit；打 `git tag vX.Y.Z`；推送提交与 tag；上传 GitHub Release 产物 |
 | 发布产物 | GitHub Release 是正式分发源；必须上传 `dist/novelfork-vX.Y.Z-windows-x64.exe` 与 SHA256；本地 dist 不等于已发布 |
-| 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目；禁止只打本地 tag 或只本地构建就宣称 release 完成 |
+| 禁止 | 禁止手动改版本号到未来版本；禁止虚构 changelog 条目；禁止只打本地 tag 或只本地构建就宣称 release 完成；禁止积压多个功能不发版 |
 
 ---
 
