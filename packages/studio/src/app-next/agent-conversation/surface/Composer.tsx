@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Send, Paperclip, ListPlus, Loader2, Square, RotateCcw } from "lucide-react";
+import { Send, Paperclip, ListPlus, Loader2, Square, RotateCcw, X } from "lucide-react";
 
 import {
   createDefaultSlashCommandRegistry,
@@ -109,6 +109,7 @@ export function Composer({
   const [value, setValue] = useState("");
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   const [aborting, setAborting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const registry = useMemo(() => slashCommandContext?.registry ?? createDefaultSlashCommandRegistry(), [slashCommandContext?.registry]);
@@ -130,6 +131,14 @@ export function Composer({
 
   const handleSend = useCallback(async () => {
     const content = value.trim();
+    if (!content && attachedFiles.length === 0) return;
+    // Upload attached files before sending
+    if (attachedFiles.length > 0 && onAttach) {
+      const dt = new DataTransfer();
+      for (const f of attachedFiles) dt.items.add(f);
+      onAttach(dt.files);
+      setAttachedFiles([]);
+    }
     if (!content) return;
     const slash = parseSlashCommandInput(content);
     if (slash.ok) {
@@ -166,7 +175,7 @@ export function Composer({
 
   function handlePaste(e: React.ClipboardEvent) {
     const items = e.clipboardData?.items;
-    if (!items || !onAttach) return;
+    if (!items) return;
     const imageFiles: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
@@ -177,10 +186,20 @@ export function Composer({
     }
     if (imageFiles.length > 0) {
       e.preventDefault();
-      const dt = new DataTransfer();
-      for (const f of imageFiles) dt.items.add(f);
-      onAttach(dt.files);
+      setAttachedFiles((prev) => [...prev, ...imageFiles]);
     }
+  }
+
+  function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = e.target.files;
+    if (files?.length) {
+      setAttachedFiles((prev) => [...prev, ...Array.from(files)]);
+    }
+    e.target.value = "";
+  }
+
+  function removeAttachment(index: number) {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -218,7 +237,29 @@ export function Composer({
       )}
 
       {/* Input row — NarraFork 模式：📎 + textarea + 单按钮 */}
-      <div className="flex items-end gap-2">
+      <div className="flex flex-col gap-2">
+        {/* Attachment preview */}
+        {attachedFiles.length > 0 && (
+          <div className="flex items-center gap-2 px-1 flex-wrap">
+            {attachedFiles.map((file, i) => (
+              <div key={`${file.name}-${i}`} className="relative group">
+                <img
+                  src={URL.createObjectURL(file)}
+                  alt={file.name}
+                  className="size-14 rounded-md border border-border object-cover"
+                />
+                <button
+                  onClick={() => removeAttachment(i)}
+                  className="absolute -top-1.5 -right-1.5 size-4 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  <X className="size-2.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="flex items-end gap-2">
         {/* Attachment button */}
         <Tooltip>
           <TooltipTrigger asChild>
@@ -232,8 +273,9 @@ export function Composer({
           ref={fileInputRef}
           type="file"
           multiple
+          accept="image/*"
           className="hidden"
-          onChange={(e) => { if (e.target.files?.length && onAttach) onAttach(e.target.files); e.target.value = ""; }}
+          onChange={handleFileInput}
         />
 
         {/* Textarea */}
@@ -300,6 +342,7 @@ export function Composer({
             <Send className="size-4" />
           </Button>
         )}
+      </div>
       </div>
     </footer>
     </TooltipProvider>
