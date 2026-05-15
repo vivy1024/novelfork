@@ -17,7 +17,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"list" | "graph">("list");
 
-  const { entries, loading, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
+  const { entries, loading, refresh, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
 
   const entryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -62,7 +62,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
     } catch { /* ignore */ }
   }
 
-  async function handleSave(entryId: string, payload: { title: string; fields: Record<string, unknown>; visibility: CategoryVisibility }) {
+  async function handleSave(entryId: string, payload: { title: string; fields: Record<string, unknown>; visibility: CategoryVisibility; aliases?: string[]; relatedEntryIds?: string[]; visibleAfterChapter?: number | null; visibleUntilChapter?: number | null }) {
     return updateEntry(entryId, payload);
   }
 
@@ -118,6 +118,8 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
                 selectedEntryId={selectedEntryId}
                 onSelectEntry={setSelectedEntryId}
                 onCreateEntry={(title) => handleCreateEntry(title)}
+                onRefresh={refresh}
+                bookId={bookId}
               />
             )}
 

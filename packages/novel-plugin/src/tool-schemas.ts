@@ -223,6 +223,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       categories: arraySchema("要读取的经纬栏目（可选，默认全部）。"),
+      chapterNumber: numberSchema("当前章节号（用于 visibleAfterChapter 过滤，可选）。"),
+      sceneText: stringSchema("当前场景文本（用于 tracked 条目匹配，可选）。"),
     },
     required: ["bookId"],
     additionalProperties: false,

@@ -249,6 +249,34 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
+  // --- 预设与节拍工具 (cockpit-redesign spec) ---
+  sessionTool({
+    name: "presets.get_rules",
+    description: "读取当前书籍启用的预设规则列表，返回每条预设的名称、分类和 promptInjection。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["presets.get_rules"]),
+    risk: "read",
+    renderer: "presets.rules",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "presets.check_compliance",
+    description: "对照启用的预设规则逐条检查章节内容，返回违规项列表。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["presets.check_compliance"]),
+    risk: "read",
+    renderer: "presets.compliance",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "beat.get_current",
+    description: "读取当前书籍的节拍模板与节拍列表，返回模板名、节拍序号、名称、情绪基调、字数建议。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["beat.get_current"]),
+    risk: "read",
+    renderer: "beat.current",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
 ] as const;
 
 /**

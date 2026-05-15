@@ -78,6 +78,8 @@ export interface ConversationSurfaceProps {
   sessionDetail?: SessionDetailData;
   /** 更新工作目录 */
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
+  /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
+  headerSlot?: ReactNode;
 }
 
 export function ConversationSurface({
@@ -113,6 +115,7 @@ export function ConversationSurface({
   onForkSession,
   sessionDetail,
   onUpdateWorkDir,
+  headerSlot,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -471,6 +474,9 @@ export function ConversationSurface({
           />
         </div>
       )}
+
+      {/* ── Header slot (tool config bar, quick actions, etc.) ── */}
+      {headerSlot}
 
       {/* ── Recovery notice — only show "failed" state, hide transient recovery states ── */}
       {recoveryNotice && recoveryNotice.state === "failed" && messages.length > 0 && (

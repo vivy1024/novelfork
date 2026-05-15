@@ -18,6 +18,7 @@ import {
   BackgroundVariant,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { Globe, Eye, Link } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
@@ -84,16 +85,25 @@ const LIFECYCLE_BORDER: Record<string, string> = {
   retired: "border-red-500/50",
 };
 
+// --- Visibility icon mapping ---
+const VISIBILITY_ICON: Record<string, React.ReactNode> = {
+  global: <Globe className="size-3 text-blue-500" />,
+  tracked: <Eye className="size-3 text-amber-500" />,
+  nested: <Link className="size-3 text-purple-500" />,
+};
+
 // --- Custom Node ---
-function JingweiNode({ data }: { data: { label: string; category: string; preview: string; lifecycle?: string } }) {
+function JingweiNode({ data }: { data: { label: string; category: string; preview: string; lifecycle?: string; visibility?: string; participatesInAi?: boolean } }) {
   const schema = getCategorySchema(data.category);
   const borderClass = LIFECYCLE_BORDER[data.lifecycle ?? "active"] ?? LIFECYCLE_BORDER.active;
+  const dimmed = data.participatesInAi === false;
   return (
-    <div className={`rounded-lg border ${borderClass} bg-card shadow-sm px-3 py-2 min-w-[120px] max-w-[180px]`}>
+    <div className={`rounded-lg border ${borderClass} bg-card shadow-sm px-3 py-2 min-w-[120px] max-w-[180px] ${dimmed ? "opacity-50" : ""}`}>
       <div className="flex items-center gap-1.5 mb-1">
         <Badge variant="secondary" className="text-[9px] px-1">
           {schema?.name ?? data.category}
         </Badge>
+        {data.visibility && VISIBILITY_ICON[data.visibility]}
       </div>
       <p className="text-xs font-medium truncate">{data.label}</p>
       {data.preview && (
@@ -152,6 +162,8 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideT
           category: (entry as { category?: string }).category ?? category,
           preview: typeof preview === "string" ? preview.slice(0, 40) : "",
           lifecycle,
+          visibility: entry.visibility,
+          participatesInAi: entry.participatesInAi,
         },
       };
     });
