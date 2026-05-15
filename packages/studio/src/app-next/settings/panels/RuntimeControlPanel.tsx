@@ -69,6 +69,8 @@ export function RuntimeControlPanel() {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [isDirty, setIsDirty] = useState(false);
+  // Track server-confirmed arcTrackingMode for change detection
+  const [serverArcMode, setServerArcMode] = useState<string | undefined>(undefined);
 
   function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults">) {
     setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
@@ -77,6 +79,7 @@ export function RuntimeControlPanel() {
       ...(data.modelDefaults ?? {}),
       subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
     });
+    setServerArcMode(data.runtimeControls?.arcTrackingMode ?? "rule");
     setIsDirty(false);
   }
 
@@ -119,12 +122,19 @@ export function RuntimeControlPanel() {
     setSaving(true);
     setSaved(false);
     setError(null);
+    const arcModeChanged = rc.arcTrackingMode !== serverArcMode;
     try {
       await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: rc, modelDefaults: md });
       await refetchUserConfig();
       setSaved(true);
       setIsDirty(false);
-      notify.success("运行时设置已保存");
+      // Specific notification for arcTrackingMode change
+      if (arcModeChanged) {
+        const label = ARC_TRACKING_OPTIONS.find((o) => o.value === rc.arcTrackingMode)?.label ?? rc.arcTrackingMode;
+        notify.success(`角色弧线追踪模式已切换为「${label}」`);
+      } else {
+        notify.success("运行时设置已保存");
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
