@@ -289,4 +289,30 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "action"],
     additionalProperties: false,
   },
+  "presets.get_rules": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "presets.check_compliance": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      content: stringSchema("要检查的章节内容文本。"),
+      chapterNumber: numberSchema("章节序号（可选，用于上下文）。"),
+    },
+    required: ["bookId", "content"],
+    additionalProperties: false,
+  },
+  "beat.get_current": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
 };

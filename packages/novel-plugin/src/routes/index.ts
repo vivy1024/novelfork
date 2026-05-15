@@ -13,4 +13,6 @@ export { createComplianceRouter } from "./compliance.js";
 export { createBibleRouter, type CreateBibleRouterOptions } from "./bible.js";
 export { createWritingToolsRouter } from "./writing-tools.js";
 export { createContextManagerRouter } from "./context-manager.js";
+export { createQualityTrendRouter } from "./quality-trend.js";
+export { createPresetHitsRouter } from "./preset-hits.js";
 export type { RouterContext } from "./context.js";

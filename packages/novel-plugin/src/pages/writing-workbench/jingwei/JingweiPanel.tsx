@@ -141,6 +141,10 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
             bookId={bookId}
             entries={entries}
             category={selectedCategory}
+            onNodeClick={(entryId) => {
+              setSelectedEntryId(entryId);
+              setViewMode("list");
+            }}
           />
         )}
       </div>
