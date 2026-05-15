@@ -267,7 +267,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
       <ContextMenu>
         <ContextMenuTrigger asChild>
           <div
-            className={`group relative mt-4 pt-4 border-t border-border/50 select-text ${selectionClasses}`}
+            className={`group relative mt-4 pt-4 select-text bg-blue-50 dark:bg-blue-950/20 rounded-lg p-3 border border-blue-200/50 dark:border-blue-800/30 ${selectionClasses}`}
             onMouseEnter={() => setHovered(true)}
             onMouseLeave={() => setHovered(false)}
             onClick={handleClick}
@@ -325,11 +325,11 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
     );
   }
 
-  // ── Assistant message — NarraFork 风格：无气泡，全宽渲染 ──
+  // ── Assistant message — NarraFork 风格：无气泡，全宽渲染，左侧绿色竖线 ──
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={`py-2 select-text ${selectionClasses} ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`} onClick={handleClick}>
+        <div className={`py-2 select-text border-l-2 border-green-500/50 pl-3 ${selectionClasses} ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`} onClick={handleClick}>
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
