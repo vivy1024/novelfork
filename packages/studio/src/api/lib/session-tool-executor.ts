@@ -80,6 +80,10 @@ export type SessionToolExecutorOptions = {
   readonly workDir?: string;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
+  /** 编辑后自动验证开关 */
+  readonly autoVerify?: boolean;
+  /** 验证命令 */
+  readonly verificationCommand?: string;
 };
 
 export type SessionToolExecutor = {
@@ -92,6 +96,29 @@ type ValidationIssue = {
 };
 
 const CONFIRMATION_OPTIONS = ["approve", "reject", "open-in-canvas"] as const;
+
+/** Run post-edit verification if autoVerify is enabled and a command is configured. */
+async function maybeRunVerification(options: SessionToolExecutorOptions): Promise<import("./post-edit-verifier.js").VerificationResult | null> {
+  // Read user config to get autoVerify/verificationCommand if not passed in options
+  let autoVerify = options.autoVerify;
+  let verificationCommand = options.verificationCommand;
+  if (autoVerify === undefined || verificationCommand === undefined) {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+    autoVerify = autoVerify ?? config.runtimeControls.autoVerify;
+    verificationCommand = verificationCommand ?? config.runtimeControls.verificationCommand;
+  }
+  if (!autoVerify) return null;
+  const workDir = options.workDir ?? process.cwd();
+  // Auto-detect command if not configured
+  if (!verificationCommand) {
+    const { detectVerificationCommand } = await import("./post-edit-verifier.js");
+    verificationCommand = detectVerificationCommand(workDir) ?? undefined;
+  }
+  if (!verificationCommand) return null;
+  const { runPostEditVerification } = await import("./post-edit-verifier.js");
+  return runPostEditVerification({ command: verificationCommand, workDir });
+}
 
 function createPolicyDeniedResult(
   input: SessionToolExecutionInput,
@@ -1037,6 +1064,11 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             toolName: "Write",
             toolCallId: `write-${Date.now()}`,
           });
+          // Post-edit auto verification
+          const verifyResult = await maybeRunVerification(options);
+          if (verifyResult && !verifyResult.passed) {
+            return { ...result, summary: (result.summary || "") + `\n\n⚠️ 验证失败 (${verifyResult.command}):\n${verifyResult.output}` };
+          }
         }
         return result;
       };
@@ -1064,6 +1096,11 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             toolName: "Edit",
             toolCallId: `edit-${Date.now()}`,
           });
+          // Post-edit auto verification
+          const verifyResult = await maybeRunVerification(options);
+          if (verifyResult && !verifyResult.passed) {
+            return { ...result, summary: (result.summary || "") + `\n\n⚠️ 验证失败 (${verifyResult.command}):\n${verifyResult.output}` };
+          }
         }
         return result;
       };

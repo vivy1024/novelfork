@@ -200,6 +200,8 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
       ? runtimeControls.retryRules.filter((r): r is RetryRule => r != null && typeof r === "object" && typeof r.id === "string")
       : defaults.retryRules,
     hooks: sanitizeHooks(runtimeControls?.hooks ?? defaults.hooks),
+    autoVerify: typeof runtimeControls?.autoVerify === "boolean" ? runtimeControls.autoVerify : defaults.autoVerify,
+    verificationCommand: typeof runtimeControls?.verificationCommand === "string" ? runtimeControls.verificationCommand.trim() : defaults.verificationCommand,
   };
 }
 
