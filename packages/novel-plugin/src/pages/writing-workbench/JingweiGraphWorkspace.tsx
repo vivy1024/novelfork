@@ -377,22 +377,29 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [allEntries, setAllEntries] = useState<JingweiEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [fetchError, setFetchError] = useState<string | null>(null);
 
   // 获取全部条目（不传 category 参数）
-  useEffect(() => {
-    async function fetchAll() {
-      setLoading(true);
-      try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`);
-        if (res.ok) {
-          const data = await res.json();
-          setAllEntries(Array.isArray(data.entries) ? data.entries : []);
-        }
-      } catch { /* ignore */ }
-      setLoading(false);
+  const fetchAll = useCallback(async () => {
+    setLoading(true);
+    setFetchError(null);
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`);
+      if (res.ok) {
+        const data = await res.json();
+        setAllEntries(Array.isArray(data.entries) ? data.entries : []);
+      } else {
+        setFetchError(`加载失败 (${res.status})`);
+      }
+    } catch {
+      setFetchError("网络错误，无法加载经纬数据");
     }
-    void fetchAll();
+    setLoading(false);
   }, [bookId]);
+
+  useEffect(() => {
+    void fetchAll();
+  }, [fetchAll]);
 
   // 按分类计数
   const entryCounts = useMemo(() => {
@@ -447,7 +454,23 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
 
       {/* 右侧主区域 */}
       <div className="flex flex-1 flex-col min-h-0">
+        {/* 错误提示 */}
+        {fetchError && (
+          <div className="flex h-full items-center justify-center">
+            <div className="text-center">
+              <AlertTriangle className="mx-auto size-8 text-destructive opacity-60 mb-2" />
+              <p className="text-sm text-muted-foreground">{fetchError}</p>
+              <button
+                onClick={() => void fetchAll()}
+                className="mt-2 text-xs text-primary hover:underline"
+              >
+                点击重试
+              </button>
+            </div>
+          </div>
+        )}
         {/* 视图内容 */}
+        {!fetchError && (
         <div className="flex-1 min-h-0">
           {viewMode === "graph" && (
             <JingweiGraphView
@@ -488,6 +511,7 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
             </div>
           )}
         </div>
+        )}
 
         {/* 底部视图切换 */}
         <div className="flex h-8 shrink-0 items-center gap-1 border-t border-border bg-muted/30 px-3">
