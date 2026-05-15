@@ -22,7 +22,8 @@ export async function runPostEditVerification(options: {
   const startTime = Date.now();
 
   return new Promise((resolve) => {
-    const proc = spawn("sh", ["-c", command], {
+    const proc = spawn(command, [], {
+      shell: true,
       cwd: workDir,
       timeout: timeoutMs,
       stdio: ["ignore", "pipe", "pipe"],
