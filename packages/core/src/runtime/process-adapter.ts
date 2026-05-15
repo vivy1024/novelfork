@@ -353,8 +353,8 @@ export async function spawnProcess(command: string, args: readonly string[], opt
       },
       writeStdin(data, callback) {
         try {
-          stdin.write(new TextEncoder().encode(data));
-          stdin.flush();
+          (stdin as unknown as { write(data: Uint8Array): void; flush(): void }).write(new TextEncoder().encode(data));
+          (stdin as unknown as { flush(): void }).flush();
           callback?.(null);
         } catch (error) {
           callback?.(error as Error);
