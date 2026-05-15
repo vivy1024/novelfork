@@ -11,7 +11,7 @@ import {
   type QuestionnaireTemplateRecord,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
-import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+import type { SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 
 export type QuestionnaireSuggestionProviderInput = {
   readonly providerId?: string;
@@ -152,7 +152,7 @@ export function createQuestionnaireToolService(options: QuestionnaireToolService
         question,
         existingAnswers,
         context: { bookId, templateId, ...(userContext ? { premise: userContext } : {}) },
-        provider: (providerInput) => options.suggestionProvider!({
+        provider: (providerInput: { question: QuestionnaireQuestion; existingAnswers: QuestionnaireAnswers; context: { bookId: string; templateId: string; premise?: string; genre?: string; userContext?: string } }) => options.suggestionProvider!({
           providerId,
           modelId,
           question: providerInput.question,

@@ -1,4 +1,4 @@
-import type { CockpitService } from "./cockpit-service.js";
+import type { CockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { pluginRegistry } from "./plugin-loader.js";
 import {
   normalizeToolConfirmationRequest,
@@ -8,11 +8,11 @@ import {
   type ToolConfirmationAudit,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
-import type { CandidateToolService } from "./candidate-tool-service.js";
-import type { GuidedGenerationToolService } from "./guided-generation-tool-service.js";
-import type { NarrativeLineService } from "./narrative-line-service.js";
-import type { PGIToolService } from "./pgi-tool-service.js";
-import type { QuestionnaireToolService } from "./questionnaire-tool-service.js";
+import type { CandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import type { GuidedGenerationToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import type { NarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import type { PGIToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import type { QuestionnaireToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
@@ -2087,19 +2087,19 @@ function applyPipelineCommand(cmd: string, lines: string[]): string[] {
 
 async function resolveQuestionnaireService(options: SessionToolExecutorOptions): Promise<QuestionnaireToolService> {
   if (options.questionnaireService) return options.questionnaireService;
-  const { createQuestionnaireToolService } = await import("./questionnaire-tool-service.js");
+  const { createQuestionnaireToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
   return createQuestionnaireToolService();
 }
 
 async function resolvePGIService(options: SessionToolExecutorOptions): Promise<PGIToolService> {
   if (options.pgiService) return options.pgiService;
-  const { createPGIToolService } = await import("./pgi-tool-service.js");
+  const { createPGIToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
   return createPGIToolService();
 }
 
 async function resolveGuidedService(options: SessionToolExecutorOptions): Promise<GuidedGenerationToolService> {
   if (options.guidedService) return options.guidedService;
-  const { createGuidedGenerationToolService } = await import("./guided-generation-tool-service.js");
+  const { createGuidedGenerationToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
   return createGuidedGenerationToolService();
 }
 

@@ -11,7 +11,7 @@ import {
   registerPluginAgentPresets,
   registerPluginTools,
 } from "./session-tool-registry.js";
-import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "./session-tool-registry-novel.js";
+import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 const EXPECTED_BUILTIN_TOOL_NAMES = [
   "Bash",

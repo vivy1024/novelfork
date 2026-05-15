@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 
 import { StateManager } from "@vivy1024/novelfork-core";
 import { ProviderRuntimeStore } from "./provider-runtime-store.js";
-import { createCockpitService } from "./cockpit-service.js";
+import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 async function createHarness() {
   const root = await mkdtemp(join(tmpdir(), "novelfork-cockpit-service-"));
