@@ -64,11 +64,9 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
   );
 }
 
-function TextBody({ node, label, onContentChange, onTabComplete, bookId }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string }) {
+function TextBody({ node, label, onContentChange, onTabComplete }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"] }) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
   const [completing, setCompleting] = useState(false);
-  const [selection, setSelection] = useState<{ text: string; start: number; end: number } | null>(null);
-  const [inlineWriting, setInlineWriting] = useState(false);
 
   const handleKeyDown = useCallback(async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Tab" || event.shiftKey || !onTabComplete || readonly || completing) return;
@@ -95,62 +93,11 @@ function TextBody({ node, label, onContentChange, onTabComplete, bookId }: { nod
     }
   }, [onTabComplete, readonly, completing, onContentChange]);
 
-  const handleSelect = useCallback((event: React.SyntheticEvent<HTMLTextAreaElement>) => {
-    const textarea = event.currentTarget;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    if (end > start) {
-      setSelection({ text: textarea.value.slice(start, end), start, end });
-    } else {
-      setSelection(null);
-    }
-  }, []);
-
-  const handleInlineWrite = useCallback(async (mode: "continue" | "expand" | "rewrite" | "variants") => {
-    if (!selection || !bookId) return;
-    setInlineWriting(true);
-    // Map frontend mode names to backend API mode names
-    const API_MODE_MAP: Record<string, string> = { continue: "continuation", expand: "expansion", rewrite: "expansion", variants: "bridge" };
-    const apiMode = API_MODE_MAP[mode] ?? "continuation";
-    try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: apiMode, selectedText: selection.text, context: node.content ?? "", position: selection.start }),
-      });
-      if (!res.ok) return;
-      const data = await res.json() as { result?: string; content?: string };
-      const generatedText = data.result ?? data.content;
-      if (generatedText && onContentChange) {
-        const content = node.content ?? "";
-        const newContent = mode === "continue"
-          ? content.slice(0, selection.end) + generatedText + content.slice(selection.end)
-          : content.slice(0, selection.start) + generatedText + content.slice(selection.end);
-        onContentChange(newContent);
-      }
-    } finally {
-      setInlineWriting(false);
-      setSelection(null);
-    }
-  }, [selection, bookId, node.content, onContentChange]);
-
   return (
     <div className="relative">
-      <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} onSelect={handleSelect} onBlur={() => setTimeout(() => setSelection(null), 200)} />
+      <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} />
       {completing && (
         <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground animate-pulse">续写中…</span>
-      )}
-      {inlineWriting && (
-        <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground animate-pulse">生成中…</span>
-      )}
-      {/* Selection floating toolbar */}
-      {selection && !readonly && bookId && (
-        <div className="absolute top-0 right-0 z-10 flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 shadow-md" data-testid="selection-toolbar">
-          <button type="button" className="rounded px-1.5 py-0.5 text-[10px] hover:bg-muted" onClick={() => void handleInlineWrite("continue")} disabled={inlineWriting}>续写</button>
-          <button type="button" className="rounded px-1.5 py-0.5 text-[10px] hover:bg-muted" onClick={() => void handleInlineWrite("expand")} disabled={inlineWriting}>扩写</button>
-          <button type="button" className="rounded px-1.5 py-0.5 text-[10px] hover:bg-muted" onClick={() => void handleInlineWrite("rewrite")} disabled={inlineWriting}>改写</button>
-          <button type="button" className="rounded px-1.5 py-0.5 text-[10px] hover:bg-muted" onClick={() => void handleInlineWrite("variants")} disabled={inlineWriting}>多版本</button>
-        </div>
       )}
     </div>
   );
@@ -160,38 +107,13 @@ function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewer
   const label = editableLabels[node.kind] ?? "资源正文";
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
-      <TextBody node={node} label={label} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} bookId={options.bookId} />
+      <TextBody node={node} label={label} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
     </ViewerShell>
   );
 }
 
 function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
-  const bookId = options.bookId;
-
-  const handleInlineWrite = bookId
-    ? async (mode: "continue" | "expand" | "rewrite" | "variants", selectedText: string, start: number, end: number) => {
-        const API_MODE_MAP: Record<string, string> = { continue: "continuation", expand: "expansion", rewrite: "expansion", variants: "bridge" };
-        const apiMode = API_MODE_MAP[mode] ?? "continuation";
-        try {
-          const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode: apiMode, selectedText, context: node.content ?? "", position: start }),
-          });
-          if (!res.ok) return;
-          const data = await res.json() as { result?: string; content?: string };
-          const generatedText = data.result ?? data.content;
-          if (generatedText && options.onContentChange) {
-            const content = node.content ?? "";
-            const newContent = mode === "continue"
-              ? content.slice(0, end) + generatedText + content.slice(end)
-              : content.slice(0, start) + generatedText + content.slice(end);
-            options.onContentChange(newContent);
-          }
-        } catch { /* non-fatal */ }
-      }
-    : undefined;
 
   return (
     <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
@@ -199,7 +121,6 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         content={node.content ?? ""}
         readonly={readonly}
         onContentChange={options.onContentChange}
-        onInlineWrite={handleInlineWrite}
         placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
       />
     </ViewerShell>
