@@ -31,10 +31,7 @@ export interface AlertPanelProps {
 // Mock overdue hooks (cockpit.list_open_hooks concept)
 // ---------------------------------------------------------------------------
 
-const MOCK_OVERDUE_HOOKS: AlertItem[] = [
-  { id: "hook-1", type: "hook", description: "伏笔「神秘玉佩」已超过 5 章未回收" },
-  { id: "hook-2", type: "hook", description: "伏笔「失踪的师兄」已超过 8 章未回收" },
-];
+// Mock data removed — alerts come only from real API data
 
 // ---------------------------------------------------------------------------
 // Icons per type
@@ -88,16 +85,12 @@ export function AlertPanel({ bookId }: AlertPanelProps) {
           });
         }
 
-        // Add mock overdue hooks
-        collected.push(...MOCK_OVERDUE_HOOKS);
-
         setAlerts(collected);
         setLoading(false);
       })
       .catch(() => {
         if (!cancelled) {
-          // Fallback: show only mock hooks
-          setAlerts(MOCK_OVERDUE_HOOKS);
+          setAlerts([]);
           setLoading(false);
         }
       });
