@@ -19,12 +19,15 @@
 
 | 任务类型 | 事实源 | 优先 skill | 验收重点 |
 |---|---|---|---|
-| 用户可见功能 | `project-profile.md` | `feature-closure-gate` | 浏览器截图 + 真实数据 |
-| Kiro spec | `.kiro/specs/<feature>/` | `kiro-spec-adapter` | requirements/design/tasks 一致 |
-| Agent / 写作管线 | `project-profile.md` Agent 管线 | `feature-closure-gate` | 候选稿/确认门/状态一致 |
-| Bug / 测试失败 | 相关代码和测试 | `systematic-debugging` | 根因、复现、最小修复 |
-| 文档 / 规则 | `project-profile.md` 文档纪律 | `using-project-steering` | 同步文档 + CHANGELOG |
-| Git / 发布 | `project-profile.md` 发布规则 | `verification-before-completion` | compile/smoke/tag/release |
+| 用户可见功能 | `project-profile.md` | `/qa` + 浏览器截图 | 真实数据 + 编译产物验证 |
+| Kiro spec 执行 | `.kiro/specs/<feature>/tasks.md` | subagent 逐任务 + `/review` | 逐项验证，不批量标完成 |
+| 新功能规划 | `.kiro/specs/<feature>/` | `/office-hours` → 手写 spec | requirements/design/tasks 一致 |
+| Agent / 写作管线 | `project-profile.md` Agent 管线 | `/plan-eng-review` | 候选稿/确认门/状态一致 |
+| Bug / 测试失败 | 相关代码和测试 | `/investigate` | 根因、复现、最小修复 |
+| 文档 / 规则 | `project-profile.md` 文档纪律 | `/document-release` | 同步文档 + CHANGELOG |
+| Git / 发布 | `project-profile.md` 发布规则 | `/ship` | compile/smoke/tag/release |
+| 前端视觉问题 | 浏览器截图 | `/design-review` 或 `/qa` | before/after 截图对比 |
+| 代码质量 | 相关代码 | `/health` | typecheck + lint + test 通过 |
 
 ## Steering 裁剪规则
 
