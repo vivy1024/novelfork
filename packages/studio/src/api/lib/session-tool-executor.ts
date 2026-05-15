@@ -965,7 +965,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       const result = await pluginHandler.execute(input, {
         sessionId: options.sessionId ?? "",
         bookId: typeof input.bookId === "string" ? input.bookId : undefined,
-        storage: undefined,
+        storage: null, // Storage not available in session executor context; plugin handlers must handle null gracefully
         root: options.workDir ?? process.cwd(),
       });
       return { ok: true, renderer: definition.renderer, summary: `${toolName} 执行完成`, data: result };

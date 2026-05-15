@@ -7,7 +7,6 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import {
-  PipelineRunner,
   createLLMClient,
   chatCompletion,
   fetchUrl,
@@ -20,6 +19,7 @@ import {
   filterMatrixByPOV,
   filterHooksByPOV,
 } from "@vivy1024/novelfork-core";
+import { PipelineRunner } from "../engine/pipeline/runner.js";
 import { join } from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import {
@@ -139,6 +139,12 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const id = c.req.param("id");
     const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
 
+    // Concurrent write guard
+    const existing = writeStatusMap.get(id);
+    if (existing?.status === "writing") {
+      return c.json({ error: "already-writing", message: "该书籍正在写作中，请等待完成" }, 409);
+    }
+
     broadcastStudioEvent("write:start", { bookId: id });
     writeStatusMap.set(id, { status: "writing", updatedAt: Date.now() });
 
@@ -148,10 +154,14 @@ export function createAIRouter(ctx: RouterContext): Hono {
       (result: any) => {
         writeStatusMap.set(id, { status: "completed", lastResult: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }, updatedAt: Date.now() });
         broadcastStudioEvent("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
+        // Evict from memory after 1 hour to prevent unbounded growth
+        setTimeout(() => writeStatusMap.delete(id), 3600_000);
       },
       (e: any) => {
         writeStatusMap.set(id, { status: "failed", lastResult: { error: e instanceof Error ? e.message : String(e) }, updatedAt: Date.now() });
         broadcastStudioEvent("write:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
+        // Evict from memory after 1 hour to prevent unbounded growth
+        setTimeout(() => writeStatusMap.delete(id), 3600_000);
       },
     );
 
