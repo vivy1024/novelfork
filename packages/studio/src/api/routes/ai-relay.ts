@@ -12,12 +12,14 @@ import { mkdir, writeFile, rm, readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  PipelineRunner,
   createLLMClient,
   createLogger,
-  type PipelineConfig,
   type LLMConfig,
 } from "@vivy1024/novelfork-core";
+import {
+  PipelineRunner,
+  type PipelineConfig,
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./context.js";
 
 interface SnapshotChapter {
@@ -255,7 +257,7 @@ export function createAIRelayRouter(_ctx: RouterContext): Hono {
     const { content } = await c.req.json<{ content: string }>();
     if (!content?.trim()) return c.json({ error: "content is required" }, 400);
     try {
-      const { analyzeAITells } = await import("@vivy1024/novelfork-core");
+      const { analyzeAITells } = await import("@vivy1024/novelfork-novel-plugin/engine");
       const result = analyzeAITells(content);
       return c.json(result);
     } catch (e) {
@@ -268,7 +270,7 @@ export function createAIRelayRouter(_ctx: RouterContext): Hono {
     const { text, sourceName } = await c.req.json<{ text: string; sourceName: string }>();
     if (!text?.trim()) return c.json({ error: "text is required" }, 400);
     try {
-      const { analyzeStyle } = await import("@vivy1024/novelfork-core");
+      const { analyzeStyle } = await import("@vivy1024/novelfork-novel-plugin/engine");
       const profile = analyzeStyle(text, sourceName ?? "unknown");
       return c.json(profile);
     } catch (e) {

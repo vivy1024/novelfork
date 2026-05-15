@@ -3,7 +3,8 @@
  * Keeps route files decoupled from global singletons.
  */
 
-import type { StateManager, PipelineConfig } from "@vivy1024/novelfork-core";
+import type { StateManager } from "@vivy1024/novelfork-core";
+import type { PipelineConfig } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RunStore } from "../lib/run-store.js";
 import type { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 import type { StartupOrchestratorSummary } from "../lib/startup-orchestrator.js";

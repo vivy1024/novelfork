@@ -4,7 +4,8 @@ import { join } from "node:path";
 
 import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import { createLlmRuntimeService, type LlmRuntimeService } from "@vivy1024/novelfork-studio/api/lib/llm-runtime-service";
-import { getPreset, buildPresetInjections, type Preset } from "@vivy1024/novelfork-core";
+import { getPreset, type Preset } from "../engine/presets/index.js";
+import { buildPresetInjections } from "../engine/agents/writer-prompts.js";
 import { buildPresetReflectionPrompt, parsePresetSuggestions } from "../engine/jingwei/context/preset-reflection.js";
 import { checkPresetCompliance, type ComplianceCheckResult } from "../engine/presets/compliance-checker.js";
 

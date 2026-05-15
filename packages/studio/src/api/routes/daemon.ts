@@ -8,7 +8,7 @@ import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
 
 interface DaemonRuntimeState {
-  schedulerInstance: import("@vivy1024/novelfork-core").Scheduler | null;
+  schedulerInstance: import("@vivy1024/novelfork-novel-plugin/engine").Scheduler | null;
   recentEvents: DaemonEvent[];
 }
 
@@ -118,7 +118,8 @@ export async function startDaemon(ctx: RouterContext): Promise<void> {
     throw new Error("Daemon already running");
   }
 
-  const { Scheduler, loadProjectConfig } = await import("@vivy1024/novelfork-core");
+  const { loadProjectConfig } = await import("@vivy1024/novelfork-core");
+  const { Scheduler } = await import("@vivy1024/novelfork-novel-plugin/engine");
   const currentConfig = await loadProjectConfig(ctx.root);
   const scheduler = new Scheduler({
     ...(await ctx.buildPipelineConfig()),

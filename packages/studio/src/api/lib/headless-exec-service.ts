@@ -6,7 +6,7 @@ import type { AgentGenerateResult } from "./agent-turn-runtime.js";
 import { executeRuntimeTurn } from "./runtime-turn-service.js";
 import { createSession, getSessionById } from "./session-service.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
-import { getAgentSystemPrompt } from "@vivy1024/novelfork-core";
+import { getAgentSystemPrompt } from "@vivy1024/novelfork-novel-plugin/engine";
 import { buildAgentContext, buildProjectAwarenessContext } from "./agent-context.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";

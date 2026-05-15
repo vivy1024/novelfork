@@ -78,6 +78,8 @@ export type SessionToolExecutorOptions = {
   readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
   /** 工作目录，用于 Bash/Read/Write/Edit 工具的路径边界 */
   readonly workDir?: string;
+  /** 当前 session ID，用于插件 handler 上下文 */
+  readonly sessionId?: string;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
   /** 编辑后自动验证开关 */
