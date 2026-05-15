@@ -62,7 +62,12 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
     if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") {
       // 取消选中，回到画布默认视图（经纬图谱工作区）
-      onDeselectNode?.();
+      if (onDeselectNode) {
+        onDeselectNode();
+      } else {
+        // fallback: 打开经纬面板 Dialog
+        setShowJingwei(true);
+      }
       return;
     }
     onOpen(node);

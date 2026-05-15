@@ -1,6 +1,3 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import { Hono } from "hono";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { RouterContext } from "./context.js";
