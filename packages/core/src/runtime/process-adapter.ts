@@ -335,7 +335,8 @@ export async function spawnProcess(command: string, args: readonly string[], opt
       for (const handler of errorHandlers) handler(error as Error);
     });
 
-    const writer = proc.stdin.getWriter();
+    // Bun.spawn stdin is a FileSink (not WritableStream), use write()/flush() directly
+    const stdin = proc.stdin;
 
     return {
       onStdout(handler) {
@@ -351,7 +352,13 @@ export async function spawnProcess(command: string, args: readonly string[], opt
         closeHandlers.add(handler);
       },
       writeStdin(data, callback) {
-        writer.write(new TextEncoder().encode(data)).then(() => callback?.(null)).catch((error) => callback?.(error as Error));
+        try {
+          stdin.write(new TextEncoder().encode(data));
+          stdin.flush();
+          callback?.(null);
+        } catch (error) {
+          callback?.(error as Error);
+        }
       },
       kill() {
         proc.kill();
