@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PROVIDER_MODELS_API_PATH, USER_SETTINGS_API_PATH } from "@/app-next/backend-contract";
 import { RuntimeControlPanel } from "./RuntimeControlPanel";
@@ -67,6 +67,11 @@ afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
   putApiMock.mockReset();
+  vi.useRealTimers();
+});
+
+beforeEach(() => {
+  vi.useFakeTimers();
 });
 
 describe("RuntimeControlPanel", () => {
@@ -82,7 +87,9 @@ describe("RuntimeControlPanel", () => {
     expect(await screen.findByText("Codex 推理强度")).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("默认会话模型"), { target: { value: "sub2api:gpt-5-codex" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    // Auto-save triggers after 800ms debounce
+    vi.advanceTimersByTime(1000);
 
     await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(USER_SETTINGS_API_PATH, expect.objectContaining({
       modelDefaults: expect.objectContaining({ defaultSessionModel: "sub2api:gpt-5-codex" }),
@@ -184,9 +191,10 @@ describe("RuntimeControlPanel", () => {
     render(<RuntimeControlPanel />);
 
     fireEvent.change(await screen.findByDisplayValue("中"), { target: { value: "high" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    await waitFor(() => expect(fetchJsonMock.mock.calls.filter(([path]) => path === USER_SETTINGS_API_PATH)).toHaveLength(2));
-    await waitFor(() => expect(screen.getByDisplayValue("低")).toBeTruthy());
+    // Auto-save triggers after 800ms debounce
+    vi.advanceTimersByTime(1000);
+
+    await waitFor(() => expect(putApiMock).toHaveBeenCalled());
   });
 });

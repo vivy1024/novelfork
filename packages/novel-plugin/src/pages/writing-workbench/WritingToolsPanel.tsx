@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -414,7 +414,7 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
 
         <TabsContent value="beats">
           <div className="pt-2">
-            <BeatTemplateList />
+            <BeatProgressSection bookId={bookId} />
           </div>
         </TabsContent>
 
@@ -425,5 +425,56 @@ export function WritingToolsPanel({ bookId, currentChapter, chapterContent, onRu
         </TabsContent>
       </Tabs>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// BeatProgressSection — wraps BeatTemplateList with localStorage persistence
+// ---------------------------------------------------------------------------
+
+function BeatProgressSection({ bookId }: { bookId: string }) {
+  const storageKey = `novelfork:beat-progress:${bookId}`;
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | undefined>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) return (JSON.parse(stored) as { templateId?: string }).templateId;
+    } catch { /* ignore */ }
+    return undefined;
+  });
+
+  const [completedBeats, setCompletedBeats] = useState<number[]>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) return (JSON.parse(stored) as { completedBeats?: number[] }).completedBeats ?? [];
+    } catch { /* ignore */ }
+    return [];
+  });
+
+  // Persist to localStorage on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify({ templateId: selectedTemplateId, completedBeats }));
+    } catch { /* ignore */ }
+  }, [storageKey, selectedTemplateId, completedBeats]);
+
+  const handleToggleBeat = useCallback((beatIndex: number, completed: boolean) => {
+    setCompletedBeats((prev) =>
+      completed ? [...prev, beatIndex] : prev.filter((i) => i !== beatIndex),
+    );
+  }, []);
+
+  const handleSelectTemplate = useCallback((templateId: string) => {
+    setSelectedTemplateId(templateId);
+    setCompletedBeats([]); // Reset progress when switching templates
+  }, []);
+
+  return (
+    <BeatTemplateList
+      selectedTemplateId={selectedTemplateId}
+      completedBeats={completedBeats}
+      onSelectTemplate={handleSelectTemplate}
+      onToggleBeat={handleToggleBeat}
+    />
   );
 }

@@ -122,6 +122,33 @@ export async function executeSlashCommandInput(input: string, context: SlashComm
     }
   } : undefined;
 
+  // /tools handler: fetch enabled tools from API
+  const listTools = async () => {
+    try {
+      const res = await fetch("/api/tools/list");
+      if (!res.ok) return [];
+      const data = await res.json() as { tools?: { name: string; description: string }[] };
+      return (data.tools ?? []).map((t) => ({ name: t.name, description: t.description }));
+    } catch { return []; }
+  };
+
+  // /mcp handler: fetch MCP server statuses from API
+  const listMcpServers = async () => {
+    try {
+      const res = await fetch("/api/mcp/registry");
+      if (!res.ok) return [];
+      const data = await res.json() as { servers?: { name: string; status: string; toolCount: number }[] };
+      return (data.servers ?? []).map((s) => ({ name: s.name, status: s.status, toolCount: s.toolCount }));
+    } catch { return []; }
+  };
+
+  // /agents handler: return available subagent types
+  const listAgents = () => [
+    { name: "explore", description: "探索子代理 — 只读代码搜索与文件浏览" },
+    { name: "plan", description: "规划子代理 — 任务分解与方案设计" },
+    { name: "general", description: "通用子代理 — 可读写的通用执行" },
+  ];
+
   const execution = await executeRuntimeCommandInput(input, {
     sessionId: context.status?.sessionId,
     registry: registry.commands,
@@ -129,6 +156,9 @@ export async function executeSlashCommandInput(input: string, context: SlashComm
     handlers: {
       ...(compactSession ? { compactSession: (instructions) => compactSession(instructions) } : {}),
       ...(executeNovelCommand ? { executeNovelCommand } : {}),
+      listTools,
+      listMcpServers,
+      listAgents,
     },
     // 对标 Claude Code CLI: 接入 command-enabled-registry 做运行时禁用检查
     ...(context.commandEnabledRegistry ? { isCommandEnabled: (id) => context.commandEnabledRegistry!.isEnabled(id) } : {}),

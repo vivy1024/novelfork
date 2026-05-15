@@ -3,7 +3,8 @@ import { useState, useCallback, type ReactNode } from "react";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Sparkles, Pencil } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Sparkles, Pencil, Plus, Trash2 } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
@@ -371,7 +372,7 @@ const SEVERITY_STYLES: Record<string, string> = {
   info: "border-blue-500/50 bg-blue-50 dark:bg-blue-950/20",
 };
 
-function NarrativeLineView({ node }: { node: WorkbenchResourceNode }) {
+function NarrativeLineView({ node, bookId }: { node: WorkbenchResourceNode; bookId?: string }) {
   const snapshot: NarrativeSnapshotData | null = node.metadata?.snapshot ?? null;
 
   // If we have plain string content but no structured snapshot, show as readable text
@@ -386,7 +387,7 @@ function NarrativeLineView({ node }: { node: WorkbenchResourceNode }) {
     } catch { /* not JSON, show as text */ }
 
     if (parsed) {
-      return <NarrativeLineStructuredView snapshot={parsed} />;
+      return <NarrativeLineStructuredView snapshot={parsed} bookId={bookId} />;
     }
 
     // Plain text content — show in a readable textarea
@@ -404,16 +405,96 @@ function NarrativeLineView({ node }: { node: WorkbenchResourceNode }) {
     );
   }
 
-  return <NarrativeLineStructuredView snapshot={snapshot} />;
+  return <NarrativeLineStructuredView snapshot={snapshot} bookId={bookId} />;
 }
 
-function NarrativeLineStructuredView({ snapshot }: { snapshot: NarrativeSnapshotData }) {
+function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: NarrativeSnapshotData; bookId?: string }) {
   const nodes = snapshot.nodes ?? [];
   const edges = snapshot.edges ?? [];
   const warnings = snapshot.warnings ?? [];
   const lines = snapshot.lines ?? [];
   const conflicts = snapshot.conflictThreads ?? [];
   const foreshadows = snapshot.foreshadowThreads ?? [];
+
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addTitle, setAddTitle] = useState("");
+  const [addType, setAddType] = useState("event");
+  const [addSummary, setAddSummary] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  const handleAddNode = async () => {
+    if (!bookId || !addTitle.trim()) return;
+    setSubmitting(true);
+    setStatusMsg(null);
+    try {
+      const proposeRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/propose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary: `添加节点：${addTitle}`,
+          nodes: [{ id: `node-${Date.now()}`, type: addType, title: addTitle, summary: addSummary || undefined }],
+          edges: [],
+          reason: "用户手动添加",
+        }),
+      });
+      if (!proposeRes.ok) { setStatusMsg("提交失败"); return; }
+      const { preview } = await proposeRes.json() as { preview: { id: string; summary: string; nodes: unknown[]; edges: unknown[]; warnings: unknown[] } };
+
+      const applyRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview, decision: "approved" }),
+      });
+      if (applyRes.ok) {
+        setStatusMsg("节点已添加");
+        setAddTitle("");
+        setAddSummary("");
+        setShowAddForm(false);
+      } else {
+        setStatusMsg("应用失败");
+      }
+    } catch {
+      setStatusMsg("网络错误");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleDeleteNode = async (nodeId: string, nodeTitle: string) => {
+    if (!bookId) return;
+    setSubmitting(true);
+    setStatusMsg(null);
+    try {
+      const proposeRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/propose`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          summary: `删除节点：${nodeTitle}`,
+          nodes: [{ id: nodeId, _delete: true }],
+          edges: [],
+          reason: "用户手动删除",
+        }),
+      });
+      if (!proposeRes.ok) { setStatusMsg("删除提交失败"); return; }
+      const { preview } = await proposeRes.json() as { preview: { id: string; summary: string; nodes: unknown[]; edges: unknown[]; warnings: unknown[] } };
+
+      const applyRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/apply`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ preview, decision: "approved" }),
+      });
+      if (applyRes.ok) {
+        setStatusMsg(`已删除「${nodeTitle}」`);
+      } else {
+        setStatusMsg("删除应用失败");
+      }
+    } catch {
+      setStatusMsg("网络错误");
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-4 p-4 overflow-y-auto max-h-[600px]">
@@ -478,11 +559,22 @@ function NarrativeLineStructuredView({ snapshot }: { snapshot: NarrativeSnapshot
           <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">节点 ({nodes.length})</h4>
           <div className="grid gap-1.5">
             {nodes.slice(0, 50).map((n) => (
-              <div key={n.id} className="rounded border border-border p-2 text-xs">
+              <div key={n.id} className="rounded border border-border p-2 text-xs group">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
                   <span className="font-medium">{n.title}</span>
-                  {n.chapterNumber != null && <span className="text-muted-foreground ml-auto">第{n.chapterNumber}章</span>}
+                  {n.chapterNumber != null && <span className="text-muted-foreground ml-auto mr-1">第{n.chapterNumber}章</span>}
+                  {bookId && (
+                    <button
+                      type="button"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive ml-auto"
+                      onClick={() => void handleDeleteNode(n.id, n.title)}
+                      disabled={submitting}
+                      title={`删除节点 ${n.title}`}
+                    >
+                      <Trash2 className="size-3" />
+                    </button>
+                  )}
                 </div>
                 {n.summary && <div className="text-muted-foreground mt-0.5 line-clamp-2">{n.summary}</div>}
               </div>
@@ -502,18 +594,70 @@ function NarrativeLineStructuredView({ snapshot }: { snapshot: NarrativeSnapshot
         </div>
       )}
 
+      {/* Add node form / action buttons */}
+      {bookId && !showAddForm && (
+        <div className="flex items-center gap-2">
+          <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => setShowAddForm(true)} disabled={submitting}>
+            <Plus className="size-3" />
+            添加节点
+          </Button>
+        </div>
+      )}
+
+      {bookId && showAddForm && (
+        <div className="rounded-lg border border-border p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <select
+              value={addType}
+              onChange={(e) => setAddType(e.target.value)}
+              className="text-xs rounded border border-border bg-background px-2 py-1"
+              aria-label="节点类型"
+            >
+              {Object.entries(NODE_TYPE_LABELS).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+            <Input
+              value={addTitle}
+              onChange={(e) => setAddTitle(e.target.value)}
+              placeholder="节点标题"
+              className="text-xs h-7 flex-1"
+            />
+          </div>
+          <Input
+            value={addSummary}
+            onChange={(e) => setAddSummary(e.target.value)}
+            placeholder="摘要（可选）"
+            className="text-xs h-7"
+          />
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => void handleAddNode()} disabled={submitting || !addTitle.trim()}>
+              {submitting ? "提交中…" : "确认添加"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setShowAddForm(false)} disabled={submitting}>
+              取消
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Status message */}
+      {statusMsg && (
+        <p className="text-xs text-emerald-600 dark:text-emerald-400">{statusMsg}</p>
+      )}
+
       {/* Agent hint */}
       <div className="rounded border border-dashed border-border p-2 text-center text-[10px] text-muted-foreground">
-        通过 Agent 对话编辑叙事线 · 叙事线由写作管线自动维护
+        叙事线由写作管线自动维护，也可手动添加节点
       </div>
     </div>
   );
 }
 
-function renderNarrativeLine(node: WorkbenchResourceNode) {
+function renderNarrativeLine(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
     <ViewerShell node={node} label="叙事线">
-      <NarrativeLineView node={node} />
+      <NarrativeLineView node={node} bookId={options.bookId} />
     </ViewerShell>
   );
 }
@@ -655,9 +799,9 @@ function renderJingweiCard(node: WorkbenchResourceNode) {
   );
 }
 
-function renderReadonlySummary(node: WorkbenchResourceNode) {
+function renderReadonlySummary(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   if (node.kind === "narrative-line" || node.kind === "storyline") {
-    return renderNarrativeLine(node);
+    return renderNarrativeLine(node, options);
   }
   const label = "经纬资料";
   const content = node.content ?? JSON.stringify(node.metadata?.snapshot ?? node.metadata?.section ?? node.metadata?.entry ?? node.metadata ?? {}, null, 2);
