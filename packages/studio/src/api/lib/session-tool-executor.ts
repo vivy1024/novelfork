@@ -928,9 +928,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
   if (toolName.startsWith("mcp__")) {
     return async ({ input, definition }) => {
       try {
-        const { getMcpRegistry } = await import("./mcp-registry.js");
-        const registry = getMcpRegistry();
-        const result = await registry.callTool(toolName, input as Record<string, unknown>);
+        const { callMcpToolViaManaged } = await import("../routes/mcp.js");
+        const result = await callMcpToolViaManaged(toolName, input as Record<string, unknown>);
         if (result.isError) {
           return {
             ok: false,
