@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Shuffle, PenLine, ChevronRight, ChevronLeft, Check } from "lucide-react";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
 // Types

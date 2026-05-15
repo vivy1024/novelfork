@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, CheckCircle2, AlertTriangle, XCircle, Copy, Check } from "lucide-react";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 
 interface DimensionResult {
   status: "pass" | "warn" | "fail" | "unknown";

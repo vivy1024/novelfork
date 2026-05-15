@@ -1,4 +1,4 @@
-import type { ContractResult, ResourceDomainClient } from "../backend-contract";
+import type { ContractResult, ResourceDomainClient } from "@/app-next/backend-contract";
 import { applyResourceDetailToNode, loadResourceDetailState, resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 

@@ -1,6 +1,6 @@
 import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine, ShieldAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { useApi } from "../../hooks/use-api";
+import { useApi } from "@/hooks/use-api";
 import { AiTasteScoreBadge } from "./AiTasteReport";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { NewBookGuide } from "./NewBookGuide";

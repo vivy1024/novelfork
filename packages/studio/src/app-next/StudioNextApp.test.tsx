@@ -34,8 +34,8 @@ vi.mock("./agent-conversation", async () => {
   };
 });
 
-vi.mock("./writing-workbench", async () => {
-  const actual = await vi.importActual<typeof import("./writing-workbench")>("./writing-workbench");
+vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench", async () => {
+  const actual = await vi.importActual<typeof import("@vivy1024/novelfork-novel-plugin/pages/writing-workbench")>("@vivy1024/novelfork-novel-plugin/pages/writing-workbench");
   return {
     ...actual,
     loadWorkbenchResourcesFromContract: loadWorkbenchResourcesFromContractMock,

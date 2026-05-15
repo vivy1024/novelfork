@@ -1,7 +1,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { normalizeCapability } from "../backend-contract/capability-status";
+import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
 import { WorkbenchWritingActions, buildDefaultWorkbenchWritingActions } from "./WorkbenchWritingActions";
 
 function ok<T>(data: T) {
