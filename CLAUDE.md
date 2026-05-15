@@ -225,9 +225,43 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 ### 废弃代码处理纪律
 - 废弃前端、废弃路由、历史 Provider 或旧兼容入口一旦阻塞编译/测试，优先删除、迁移为真实复用资产，或从构建路径中正式退役。
-- ❌ 禁止为了兼容废弃代码而新增 shim、空实现、假 provider、假 routes、noop adapter，或任何只为“让旧代码继续编译”的低质量兼容层。
+- ❌ 禁止为了兼容废弃代码而新增 shim、空实现、假 provider、假 routes、noop adapter，或任何只为"让旧代码继续编译"的低质量兼容层。
 - 旧代码备份以 Git 历史为准；不得把旧前端源码复制到主源码树内继续被扫描、编译或误判为当前事实。
 - 若旧模块仍有价值，必须按当前新工作台边界重构为真实组件/API/类型，而不是用兼容层续命。
+
+### ⚠️ 插件化边界（绝对禁令）
+
+**小说写作功能的代码必须且只能存在于 `packages/novel-plugin/` 中。**
+
+| 层 | 位置 | 允许的内容 |
+|---|------|-----------|
+| 引擎 | `novel-plugin/src/engine/` | pipeline、agents、jingwei、filter、presets、compliance、tools、bible |
+| 路由 | `novel-plugin/src/routes/` | 小说领域 API 路由（ai、jingwei、writing-modes、pipeline、filter、compliance、bible、writing-tools、context-manager） |
+| 服务 | `novel-plugin/src/handlers/` | cockpit、candidate、pgi、guided-generation、questionnaire、narrative-line、novel-init、novel-audit、writing-mode |
+| 前端 | `novel-plugin/src/pages/` | writing-workbench 全部组件 |
+| 声明 | `novel-plugin/src/index.ts` | manifest、工具定义、预设列表 |
+
+**以下操作严格禁止**：
+- ❌ 在 `packages/core/src/` 中新增小说领域代码（pipeline/agents/jingwei/filter/presets/compliance/tools/bible）
+- ❌ 在 `packages/studio/src/api/routes/` 中新增小说路由文件
+- ❌ 在 `packages/studio/src/api/lib/` 中新增小说服务文件
+- ❌ 在 `packages/studio/src/app-next/` 中新增小说 UI 组件
+- ❌ 在 `packages/core/` 或 `packages/studio/` 中直接 import novel-plugin 的内部模块（只能通过 package.json exports 的公开路径）
+
+**允许的跨包引用**：
+- `novel-plugin` → `@vivy1024/novelfork-core`（storage/llm/types/utils）✅
+- `studio` → `@vivy1024/novelfork-novel-plugin`（通过 exports 公开路径）✅
+- `studio` → `@vivy1024/novelfork-novel-plugin/routes` / `/handlers` / `/pages/writing-workbench` ✅
+- `core` → `novel-plugin` ❌ 禁止（单向依赖）
+
+**新增小说功能时**：
+1. 引擎逻辑 → `novel-plugin/src/engine/` 对应子目录
+2. API 路由 → `novel-plugin/src/routes/`
+3. 工具 handler → `novel-plugin/src/handlers/`
+4. 前端组件 → `novel-plugin/src/pages/writing-workbench/`
+5. 工具定义 → `novel-plugin/src/tool-schemas.ts` + `index.ts`
+
+**通用功能（非小说领域）**：仍然放在 `core/` 或 `studio/` 中。判断标准：如果拔掉 novel-plugin 后该功能仍然有意义，它就是通用功能。
 
 ---
 
