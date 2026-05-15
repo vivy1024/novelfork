@@ -4,15 +4,12 @@
 
 ---
 
-## 当前项目状态
+## 项目背景
 
-当前项目就是 **NovelFork**。
+**NovelFork** 是独立的中文网文 AI 辅助创作工作台。
 
-- 上游来源：`Narcooo/inkos`
-- 当前产品身份：**NovelFork**
-- 当前方向：回归 NarraFork 风格的本地单体应用路线
-
-因此提交和讨论时，请统一使用 **NovelFork** 口径，不再把当前项目写成 InkOS。
+- 早期参考了 InkOS 的 CLI 写作引擎架构，现已完全独立演进
+- 当前方向：Agent-native 本地 Web 工作台 + 插件化架构
 
 ---
 
