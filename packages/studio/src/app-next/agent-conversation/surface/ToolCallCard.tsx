@@ -567,7 +567,15 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
     return <WebSearchExpanded toolCall={toolCall} />;
   }
 
-  const canHighlight = language && syntaxStyle && toolCall.output;
+  // 尝试从 output 或 result 中获取内容
+  const outputContent = toolCall.output
+    ?? (typeof toolCall.result === "string" ? toolCall.result : null)
+    ?? (toolCall.result && typeof toolCall.result === "object" && "content" in (toolCall.result as Record<string, unknown>)
+      ? String((toolCall.result as Record<string, unknown>).content)
+      : null)
+    ?? (toolCall.result ? JSON.stringify(toolCall.result, null, 2) : null);
+
+  const canHighlight = language && syntaxStyle && outputContent;
 
   return (
     <>
@@ -576,11 +584,11 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           {filePath}
         </code>
       )}
-      {toolCall.output && (
+      {outputContent && (
         canHighlight ? (
           <Suspense fallback={
             <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
-              {toolCall.output}
+              {outputContent}
             </pre>
           }>
             <SyntaxHighlighter
@@ -590,14 +598,18 @@ function ReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
               showLineNumbers
               lineNumberStyle={{ minWidth: "2em", paddingRight: "0.75em", color: "rgba(128,128,128,0.5)", userSelect: "none" }}
             >
-              {toolCall.output}
+              {outputContent}
             </SyntaxHighlighter>
           </Suspense>
         ) : (
-          <pre className={`max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed ${langClass}`}>
-            {toolCall.output}
-          </pre>
+          <TruncatedOutput
+            content={outputContent}
+            className="max-h-72 overflow-auto rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono leading-relaxed whitespace-pre-wrap"
+          />
         )
+      )}
+      {!outputContent && toolCall.status === "success" && (
+        <span className="text-[10px] text-muted-foreground italic">（无输出内容）</span>
       )}
     </>
   );
@@ -612,6 +624,11 @@ function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const searchPath = extractGrepPath(toolCall.input);
   const isGlob = toolCall.toolName === "Glob" || toolCall.toolName === "Find";
 
+  // 尝试从 output 或 result 获取内容
+  const outputContent = toolCall.output
+    ?? (typeof toolCall.result === "string" ? toolCall.result : null)
+    ?? (toolCall.result && typeof toolCall.result === "object" ? JSON.stringify(toolCall.result, null, 2) : null);
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
@@ -625,11 +642,11 @@ function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           <span className="text-[10px] text-muted-foreground font-mono">in {searchPath}</span>
         )}
       </div>
-      {toolCall.output && (
+      {outputContent && (
         isGlob ? (
           /* Glob: 匹配路径列表，每行一个 */
           <div className="max-h-48 overflow-auto rounded-md bg-muted/40 px-3 py-2">
-            {toolCall.output.split("\n").filter(Boolean).map((line, i) => (
+            {outputContent.split("\n").filter(Boolean).map((line, i) => (
               <div key={i} className="text-[11px] font-mono text-muted-foreground py-px truncate" title={line}>
                 {line}
               </div>
@@ -638,7 +655,7 @@ function SearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         ) : (
           /* Grep: file:line:content 格式 */
           <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
-            {toolCall.output}
+            {outputContent}
           </pre>
         )
       )}
