@@ -32,8 +32,10 @@
 |------|------|------|
 | `.`（根） | NovelFork 主仓库 | `vivy1024/novelfork` |
 | `packages/cli/` | CLI 工具（novelfork 命令） | — |
-| `packages/studio/` | Web 工作台（React 19 + Hono + Vite） | — |
-| `packages/core/` | 核心写作引擎 + Agent 管线 | — |
+| `packages/studio/` | 通用 Agent 工作台（React 19 + Hono + Vite） | — |
+| `packages/core/` | 通用基础设施（storage/llm/state/hooks/mcp/runtime） | — |
+| `packages/novel-plugin/` | 小说领域插件（engine/routes/handlers/pages） | — |
+| `packages/fitness-plugin/` | 健身领域插件骨架（证明可扩展性） | — |
 
 
 ---
