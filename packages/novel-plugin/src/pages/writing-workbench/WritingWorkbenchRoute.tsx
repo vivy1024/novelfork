@@ -58,14 +58,15 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const hasGraphData = chapters && chapters.length > 0;
   const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
 
-  /** Intercept resource tree clicks: jingwei entry opens the panel dialog */
+  /** Intercept resource tree clicks: jingwei nodes deselect to show graph workspace */
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
     if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") {
-      setShowJingwei(true);
+      // 取消选中，回到画布默认视图（经纬图谱工作区）
+      onDeselectNode?.();
       return;
     }
     onOpen(node);
-  }, [onOpen]);
+  }, [onOpen, onDeselectNode]);
 
   const loadCheckpoints = useCallback(async () => {
     if (!bookId) return;
@@ -123,21 +124,10 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
                 章节图
               </Button>
             </div>
-            {/* 写作动作 + 新建章节（cockpitV2 时隐藏，已移至 Agent 对话面板） */}
-            {writingActions && !(typeof window !== "undefined" && localStorage.getItem("cockpitV2") === "true") && (
-              <section aria-label="写作动作" className="flex items-center gap-2">
-                {writingActions}
-              </section>
-            )}
+            {/* 新建章节保留 */}
             {onCreateChapter && (
               <Button size="xs" variant="outline" onClick={onCreateChapter}>
                 + 新建章节
-              </Button>
-            )}
-            {bookId && !(typeof window !== "undefined" && localStorage.getItem("cockpitV2") === "true") && (
-              <Button size="xs" variant={showToolsPanel ? "default" : "outline"} onClick={() => { setShowToolsPanel(!showToolsPanel); if (!showToolsPanel) setShowCheckpoints(false); }}>
-                <Wrench className="size-3 mr-1" />
-                写作工具
               </Button>
             )}
             {bookId && (

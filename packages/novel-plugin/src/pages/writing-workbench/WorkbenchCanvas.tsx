@@ -137,18 +137,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   }, [content, dirty, node, onCanvasContextChange]);
 
   if (!node) {
-    // Feature flag: cockpitV2 启用新驾驶舱
-    const useCockpitV2 = typeof window !== "undefined" && localStorage.getItem("cockpitV2") === "true";
-    if (useCockpitV2) {
-      return (
-        <div className="h-full min-h-0">
-          <CockpitWorkspace bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
-        </div>
-      );
-    }
     return (
-      <div className="h-full min-h-0 overflow-y-auto">
-        <CockpitOverview book={null} bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
+      <div className="h-full min-h-0">
+        <CockpitWorkspace bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
       </div>
     );
   }
