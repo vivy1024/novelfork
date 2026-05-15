@@ -478,6 +478,7 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
               entries={filteredEntries}
               category={selectedCategory}
               onNodeClick={handleSelectEntry}
+              hideToolbar
             />
           )}
           {viewMode === "arcs" && (
