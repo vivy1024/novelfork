@@ -125,7 +125,7 @@ export function Composer({
     const el = textareaRef.current;
     if (!el) return;
     el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+    el.style.height = `${Math.min(el.scrollHeight, 400)}px`;
   }, [value]);
 
   const handleSend = useCallback(async () => {
@@ -161,6 +161,25 @@ export function Composer({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       void handleSend();
+    }
+  }
+
+  function handlePaste(e: React.ClipboardEvent) {
+    const items = e.clipboardData?.items;
+    if (!items || !onAttach) return;
+    const imageFiles: File[] = [];
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(file);
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      const dt = new DataTransfer();
+      for (const f of imageFiles) dt.items.add(f);
+      onAttach(dt.files);
     }
   }
 
@@ -220,12 +239,13 @@ export function Composer({
         {/* Textarea */}
         <textarea
           ref={textareaRef}
-          className="min-h-[40px] max-h-[200px] flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          className="min-h-[40px] max-h-[400px] flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           aria-label="对话输入框"
           placeholder="发送消息... (Enter 发送, Shift+Enter 换行)"
           value={value}
           onChange={(e) => setValue(e.currentTarget.value)}
           onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
           rows={1}
         />
 
