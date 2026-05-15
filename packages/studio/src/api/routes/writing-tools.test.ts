@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
-import { createWritingToolsRouter } from "./writing-tools.js";
+import { createWritingToolsRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const coreMocks = vi.hoisted(() => {
   const kv = new Map<string, string>();

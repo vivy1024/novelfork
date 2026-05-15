@@ -29,11 +29,11 @@ import {
   type AuthorMaterialPersistenceInfo,
   type AuthorWebCaptureInput,
   type AuthorWebCaptureResult,
-} from "../../shared/author-materials.js";
+} from "@vivy1024/novelfork-studio/shared/author-materials";
 import {
   logObservedAiError,
   logObservedAiSuccess,
-} from "../lib/ai-request-observer.js";
+} from "@vivy1024/novelfork-studio/api/lib/ai-request-observer";
 import type { RouterContext } from "./context.js";
 
 type EventHandler = (event: string, data: unknown) => void;

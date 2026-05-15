@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createBookRepository, createStorageDatabase, runStorageMigrations, seedQuestionnaireTemplates, type StorageDatabase } from "@vivy1024/novelfork-core";
 
-import { createBibleRouter } from "./bible.js";
+import { createBibleRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
 

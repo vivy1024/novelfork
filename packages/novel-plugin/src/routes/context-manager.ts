@@ -4,8 +4,8 @@
 
 import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
-import { countTokens } from "../lib/token-counter.js";
-import { loadUserConfig } from "../lib/user-config-service.js";
+import { countTokens } from "@vivy1024/novelfork-studio/api/lib/token-counter";
+import { loadUserConfig } from "@vivy1024/novelfork-studio/api/lib/user-config-service";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
