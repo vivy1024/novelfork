@@ -7,9 +7,9 @@
 
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
-import type { AuditResult } from "../agents/continuity.js";
-import type { PlanChapterOutput } from "../agents/planner.js";
-import type { WriteChapterOutput } from "../agents/writer.js";
+import type { AuditResult } from "../models/agent-types.js";
+import type { PlanChapterOutput } from "../models/agent-types.js";
+import type { WriteChapterOutput } from "../models/agent-types.js";
 
 /**
  * Context passed to hook handlers at each lifecycle point.

@@ -8,11 +8,24 @@
  *   • Request/response: return the result directly.
  */
 
-import type { AuditResult } from "../agents/continuity.js";
-import type { DetectionResult } from "../agents/detector.js";
+import type { AuditResult } from "../models/agent-types.js";
 import type { StyleProfile } from "../models/style-profile.js";
-import type { DraftResult, ChapterPipelineResult, ReviseResult } from "../pipeline/runner.js";
 import type { LLMRelayConfig, RunHandle, RunState } from "./types.js";
+
+// Types from moved modules — local interfaces to avoid circular deps
+interface DetectionResult {
+  score: number;
+  [key: string]: unknown;
+}
+interface DraftResult {
+  [key: string]: unknown;
+}
+interface ChapterPipelineResult {
+  [key: string]: unknown;
+}
+interface ReviseResult {
+  [key: string]: unknown;
+}
 
 // ---------------------------------------------------------------------------
 // WriteSnapshot — the minimal, frozen slice of book state the relay needs

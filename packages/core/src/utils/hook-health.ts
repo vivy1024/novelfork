@@ -1,4 +1,4 @@
-import type { AuditIssue } from "../agents/continuity.js";
+import type { AuditIssue } from "../models/agent-types.js";
 import type { HookRecord, RuntimeStateDelta } from "../models/runtime-state.js";
 import { classifyHookDisposition, collectStaleHookDebt } from "./hook-governance.js";
 import { describeHookLifecycle, localizeHookPayoffTiming } from "./hook-lifecycle.js";

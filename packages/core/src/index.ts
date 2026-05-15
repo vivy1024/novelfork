@@ -9,9 +9,7 @@ export { type BookRules, type ParsedBookRules, BookRulesSchema, parseBookRules }
 export { type DetectionHistoryEntry, type DetectionStats } from "./models/detection.js";
 export { type StyleProfile } from "./models/style-profile.js";
 export { type LengthCountingMode, type LengthNormalizeMode, type LengthSpec, type LengthTelemetry, type LengthWarning, LengthCountingModeSchema, LengthNormalizeModeSchema, LengthSpecSchema, LengthTelemetrySchema, LengthWarningSchema } from "./models/length-governance.js";
-
-// Pipeline events
-export { pipelineEvents, type PipelineEvent, type PipelineEventHandler, type PipelineStageUpdate, type PipelineRunStart, type PipelineRunComplete } from "./pipeline/pipeline-events.js";
+export { type AuditResult, type AuditIssue, type PlanChapterOutput, type WriteChapterOutput, type PostWriteViolation, type ReviseMode } from "./models/agent-types.js";
 
 export {
   type RuntimeStateLanguage,
@@ -71,51 +69,16 @@ export {
   RuleStackSchema,
   ChapterTraceSchema,
 } from "./models/input-governance.js";
-export { PlannerAgent, type PlanChapterInput, type PlanChapterOutput } from "./agents/planner.js";
-export { ComposerAgent, type ComposeChapterInput, type ComposeChapterOutput } from "./agents/composer.js";
 
 // LLM
 export { createLLMClient, chatCompletion, chatWithTools, createStreamMonitor, PartialResponseError, type LLMClient, type LLMResponse, type LLMMessage, type ToolDefinition, type ToolCall, type AgentMessage, type ChatWithToolsResult, type StreamProgress, type OnStreamProgress } from "./llm/provider.js";
-
-// Agents
-export { BaseAgent, type AgentContext } from "./agents/base.js";
-export { ArchitectAgent, type ArchitectOutput } from "./agents/architect.js";
-export { WriterAgent, type WriteChapterInput, type WriteChapterOutput, type TokenUsage } from "./agents/writer.js";
-export { LengthNormalizerAgent, type NormalizeLengthInput, type NormalizeLengthOutput } from "./agents/length-normalizer.js";
-export { ContinuityAuditor, type AuditResult, type AuditIssue } from "./agents/continuity.js";
-export { ReviserAgent, DEFAULT_REVISE_MODE, type ReviseOutput, type ReviseMode } from "./agents/reviser.js";
-export { RadarAgent, type RadarResult, type RadarRecommendation } from "./agents/radar.js";
-export { FanqieRadarSource, QidianRadarSource, TextRadarSource, type RadarSource, type PlatformRankings, type RankingEntry } from "./agents/radar-source.js";
-export { readGenreProfile, readBookRules, listAvailableGenres, getBuiltinGenresDir } from "./agents/rules-reader.js";
-export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";
-export { analyzeAITells, type AITellResult, type AITellIssue } from "./agents/ai-tells.js";
-export { analyzeSensitiveWords, type SensitiveWordResult, type SensitiveWordMatch } from "./agents/sensitive-words.js";
-export { detectAIContent, type DetectionResult } from "./agents/detector.js";
-export { analyzeStyle } from "./agents/style-analyzer.js";
-export { analyzeDetectionInsights } from "./agents/detection-insights.js";
-export { validatePostWrite, detectParagraphLengthDrift, detectParagraphShapeWarnings, detectDuplicateTitle, type PostWriteViolation } from "./agents/post-write-validator.js";
-export { ChapterAnalyzerAgent, type AnalyzeChapterInput, type AnalyzeChapterOutput } from "./agents/chapter-analyzer.js";
-export { parseWriterOutput, parseCreativeOutput, type ParsedWriterOutput, type CreativeOutput } from "./agents/writer-parser.js";
-export { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./agents/settler-prompts.js";
-export { parseSettlementOutput, type SettlementOutput } from "./agents/settler-parser.js";
-export { parseSettlerDeltaOutput, type SettlerDeltaOutput } from "./agents/settler-delta-parser.js";
-export { FanficCanonImporter, type FanficCanonOutput } from "./agents/fanfic-canon-importer.js";
-export { getFanficDimensionConfig, FANFIC_DIMENSIONS, type FanficDimensionConfig } from "./agents/fanfic-dimensions.js";
-export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./agents/fanfic-prompt-sections.js";
 
 // Utils
 export { fetchUrl, searchWeb } from "./utils/web-search.js";
 export { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "./utils/context-filter.js";
 export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./utils/pov-filter.js";
-export { ConsolidatorAgent } from "./agents/consolidator.js";
-export { MemoryDB, type Fact, type StoredSummary, type StoredHook, type ChapterSnapshot, type WorldEntry, type WorldDimension } from "./state/memory-db.js";
-export { retrieveLorebook, extractTerms, formatLorebookForPrompt, type LorebookRetrievalInput, type LorebookRetrievalResult, type LorebookEntry } from "./state/lorebook-retriever.js";
-export { importMarkdownFile, importWorldbuildingDirectory, parseMarkdownSections, inferDimension, type ImportResult, type WorldImportSummary } from "./state/world-importer.js";
-export { analyzeBloat, type BloatEntry, type BloatReport, type BloatGuardianInput } from "./state/bloat-guardian.js";
 export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
 export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
-export { StateValidatorAgent } from "./agents/state-validator.js";
-export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateSnapshot, loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts, type RuntimeStateArtifacts, type NarrativeMemorySeed } from "./state/runtime-state-store.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
 export { countChapterLength, resolveLengthCountingMode, formatLengthCount, buildLengthSpec, isOutsideSoftRange, isOutsideHardRange, chooseNormalizeMode, type LengthLanguage } from "./utils/length-metrics.js";
 export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
@@ -132,39 +95,29 @@ export {
 export { arbitrateRuntimeStateDeltaHooks, type HookArbiterDecision } from "./utils/hook-arbiter.js";
 export { analyzeHookHealth } from "./utils/hook-health.js";
 export { analyzeChapterCadence, isHighTensionMood, type CadenceSummaryRow, type ChapterCadenceAnalysis, type SceneCadencePressure, type MoodCadencePressure, type TitleCadencePressure } from "./utils/chapter-cadence.js";
-
-// Pipeline
-export { PipelineRunner, type PipelineConfig, type ChapterPipelineResult, type DraftResult, type PlanChapterResult, type ComposeChapterResult, type ReviseResult, type JingweiFiles, type TruthFiles, type BookStatusInfo, type ImportChaptersInput, type ImportChaptersResult, type TokenUsageSummary } from "./pipeline/runner.js";
-export { Scheduler, type SchedulerConfig } from "./pipeline/scheduler.js";
-export { runAgentLoop, AGENT_TOOLS as AGENT_TOOLS, type AgentLoopOptions } from "./pipeline/agent.js";
-export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";
-export { runWritingPipeline, runAuditPipeline, type PipelineResult, type PipelineError } from "./pipeline/agent-pipeline.js";
-export { detectChapter, detectAndRewrite, loadDetectionHistory, type DetectChapterResult, type DetectAndRewriteResult } from "./pipeline/detection-runner.js";
-
-// Storage
-export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, createUserTemplateRepository, StorageError, books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, bibleConflicts, bibleWorldModels, biblePremises, bibleCharacterArcs, questionnaireTemplates, questionnaireResponses, coreShifts, filterReports, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, userTemplates, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput, type UserTemplateRecord, type CreateUserTemplateInput, type UpdateUserTemplateInput } from "./storage/index.js";
-
-// Filter
-export * from "./filter/index.js";
-
-// Compliance
-export * from "./compliance/index.js";
-
-// Writing Tools
-export * from "./tools/index.js";
-
-// Bible
-export * from "./bible/index.js";
-
-// Jingwei
-export * from "./jingwei/index.js";
+export { buildGovernedMemoryEvidenceBlocks } from "./utils/governed-context.js";
+export { buildGovernedHookWorkingSet, mergeTableMarkdownByKey, mergeCharacterMatrixMarkdown, buildGovernedCharacterMatrixWorkingSet } from "./utils/governed-working-set.js";
+export { retrieveMemorySelection, extractQueryTerms, parsePendingHooksMarkdown, renderHookSnapshot, renderSummarySnapshot, parseChapterSummariesMarkdown, parseCurrentStateFacts, buildPlannerHookAgenda, isFuturePlannedHook, isHookWithinChapterWindow, type MemorySelection, type VolumeSummarySelection } from "./utils/memory-retrieval.js";
+export { extractEntities, type Entity } from "./utils/ner-extractor.js";
+export { retrieveLorebookEntries, formatLorebookContext, type LorebookEntry as LorebookRagEntry, type RetrievalOptions } from "./utils/lorebook-rag.js";
+export { DEFAULT_HOOK_LOOKAHEAD_CHAPTERS, filterActiveHooks } from "./utils/hook-agenda.js";
+export { parseSpotFixPatches, applySpotFixPatches, type SpotFixPatch, type SpotFixPatchApplyResult } from "./utils/spot-fix-patches.js";
+export { analyzeLongSpanFatigue, buildEnglishVarianceBrief, type LongSpanFatigueIssue, type AnalyzeLongSpanFatigueInput, type EnglishVarianceBrief } from "./utils/long-span-fatigue.js";
 
 // State
+export { MemoryDB, type Fact, type StoredSummary, type StoredHook, type ChapterSnapshot, type WorldEntry, type WorldDimension } from "./state/memory-db.js";
+export { retrieveLorebook, extractTerms, formatLorebookForPrompt, type LorebookRetrievalInput, type LorebookRetrievalResult, type LorebookEntry } from "./state/lorebook-retriever.js";
+export { importMarkdownFile, importWorldbuildingDirectory, parseMarkdownSections, inferDimension, type ImportResult, type WorldImportSummary } from "./state/world-importer.js";
+export { analyzeBloat, type BloatEntry, type BloatReport, type BloatGuardianInput } from "./state/bloat-guardian.js";
+export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateSnapshot, loadNarrativeMemorySeed, loadSnapshotCurrentStateFacts, type RuntimeStateArtifacts, type NarrativeMemorySeed } from "./state/runtime-state-store.js";
 export { StateManager } from "./state/manager.js";
-export { bootstrapStructuredStateFromMarkdown } from "./state/state-bootstrap.js";
+export { bootstrapStructuredStateFromMarkdown, rewriteStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state/state-bootstrap.js";
 export { renderCurrentStateProjection, renderHooksProjection, renderChapterSummariesProjection } from "./state/state-projections.js";
 export { applyRuntimeStateDelta, type RuntimeStateSnapshot } from "./state/state-reducer.js";
 export { validateRuntimeState, type RuntimeStateValidationIssue } from "./state/state-validator.js";
+
+// Storage
+export { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations, runJsonImportMigrationIfNeeded, createKvRepository, createSessionMessageRepository, createSessionRepository, createUserTemplateRepository, StorageError, books, bibleCharacters, bibleEvents, bibleSettings, bibleChapterSummaries, bibleConflicts, bibleWorldModels, biblePremises, bibleCharacterArcs, questionnaireTemplates, questionnaireResponses, coreShifts, filterReports, sessions, sessionMessages, sessionMessageCursors, kvStore, drizzleMigrations, userTemplates, type CreateStorageDatabaseOptions, type StorageDatabase, type JsonImportMigrationResult, type RunJsonImportMigrationOptions, type RunStorageMigrationsOptions, type StorageMigrationResult, type CreateSessionMessageRepositoryOptions, type SessionMessageRepositoryAppendAttemptContext, type SessionMessageRepositoryAppendAttemptControl, type StoredSessionMessage, type StoredSessionMessageCursor, type StoredSessionMessageInput, type StoredSessionMessageRole, type CreateStoredSessionInput, type StoredSessionRecord, type UpdateStoredSessionInput, type UserTemplateRecord, type CreateUserTemplateInput, type UpdateUserTemplateInput } from "./storage/index.js";
 
 // Notify
 export { dispatchNotification, dispatchWebhookEvent, type NotifyMessage } from "./notify/dispatcher.js";
@@ -181,86 +134,8 @@ export type { MCPTransportType, MCPServerConfig, MCPTool, MCPToolCallRequest, MC
 export { ToolRegistry, globalToolRegistry, type ToolParameter, type ToolHandler, type GenericToolHandler, type RegisteredTool } from "./registry/tool-registry.js";
 export { RUNTIME_COMMAND_REGISTRY, formatRuntimeCommandHelp, getRuntimeCommandDefinition, listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandInputSchema, type RuntimeCommandPermissionImpact, type RuntimeCommandScope, type RuntimeCommandSource, type RuntimeCommandStatus } from "./registry/command-registry.js";
 export { executeRuntimeCommandInput, type RuntimeCommandCompactResult, type RuntimeCommandEvent, type RuntimeCommandExecution, type RuntimeCommandExecutionContext, type RuntimeCommandExecutionResult, type RuntimeCommandHandlerContext, type RuntimeCommandHandlers, type RuntimeCommandParsedInput, type RuntimeCommandPatch, type RuntimeCommandPermissionMode, type RuntimeCommandStatusContext } from "./registry/command-executor.js";
+export { BUILTIN_TOOLS } from "./registry/builtin-tools.js";
 
 // Plugins
 export { NovelForkPlugin, PluginManager } from "./plugins/index.js";
 export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig, PluginToolDefinition, PluginAgentPreset, PluginRouteDefinition, PluginPromptExtension } from "./plugins/index.js";
-
-// Preset Compliance
-export { checkPresetCompliance, type ComplianceViolation, type ComplianceCheckResult } from "./presets/compliance-checker.js";
-
-// Presets
-export {
-  registerPreset,
-  registerBeatTemplate,
-  registerAll,
-  getPreset,
-  listPresets,
-  getPresetsByGenre,
-  getBeatTemplate,
-  listBeatTemplates,
-  listSettingBases,
-  listLogicRisks,
-  listBundles,
-  getBundle,
-} from "./presets/index.js";
-export type {
-  Preset,
-  PresetCategory,
-  PresetConfig,
-  PresetBundle,
-  TemplateBundle,
-  TonePreset,
-  SettingBasePreset,
-  LogicRiskRule,
-  LogicRiskType,
-  PostWriteCheck,
-  Beat,
-  BeatTemplate,
-  GenrePresetBundle,
-} from "./presets/index.js";
-export { buildPresetInjections } from "./agents/writer-prompts.js";
-export { registerBuiltinPresets } from "./presets/builtin.js";
-
-// Inline Writing Modes
-export {
-  type InlineWriteMode,
-  type InlineWriteContext,
-  type InlineWriteInput,
-  type InlineWriteResult,
-  type ContinuationInput,
-  type ExpansionDirection,
-  type ExpansionInput,
-  type ExpansionResult,
-  type BridgePurpose,
-  type BridgeInput,
-  buildContinuationPrompt,
-  parseContinuationResult,
-  buildExpansionPrompt,
-  parseExpansionResult,
-  buildBridgePrompt,
-  parseBridgeResult,
-} from "./agents/inline-writer.js";
-export {
-  type DialogueCharacter,
-  type DialogueInput,
-  type DialogueLine,
-  type DialogueResult,
-  buildDialoguePrompt,
-  parseDialogueResult,
-} from "./agents/dialogue-generator.js";
-export {
-  type VariantInput,
-  type VariantResult,
-  buildVariantPrompts,
-  parseVariantResult,
-} from "./agents/variant-generator.js";
-export {
-  type OutlineNode as OutlineBranchNode,
-  type HookState,
-  type ChapterSummary as BranchChapterSummary,
-  type OutlineBranch,
-  type OutlineBranchChapter,
-  buildBranchPrompt,
-  parseBranchResult,
-} from "./agents/outline-brancher.js";
