@@ -12,7 +12,7 @@ import {
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createPGIToolService } from "./pgi-tool-service.js";
+import { createPGIToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
 
 const tempDirs: string[] = [];

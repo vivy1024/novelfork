@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
-import { createLlmRuntimeService, type LlmRuntimeService } from "./llm-runtime-service.js";
+import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
+import { createLlmRuntimeService, type LlmRuntimeService } from "@vivy1024/novelfork-studio/api/lib/llm-runtime-service";
 import { getPreset, buildPresetInjections, type Preset } from "@vivy1024/novelfork-core";
 
 export type CandidateGenerationInput = {
@@ -193,7 +193,7 @@ function buildCandidatePrompt(input: CandidateGenerationInput): string {
 /** 从用户配置中读取写作设置，格式化为 system prompt 约束 */
 async function getWritingStyleConstraints(): Promise<string> {
   try {
-    const { loadUserConfig } = await import("./user-config-service.js");
+    const { loadUserConfig } = await import("@vivy1024/novelfork-studio/api/lib/user-config-service");
     const config = await loadUserConfig();
     const w = config.writing;
     if (!w) return "";

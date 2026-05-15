@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { executeWritingModeTool, type WritingModeInput } from "./writing-mode-tool";
+import { executeWritingModeTool, type WritingModeInput } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 describe("writing mode tool", () => {
   it("executes continue mode and returns generated text", async () => {

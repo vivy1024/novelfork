@@ -37,10 +37,10 @@ import {
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
 import { createBooksReadService } from "../lib/books-service.js";
-import { createCandidateToolService } from "../lib/candidate-tool-service.js";
-import { createCockpitService } from "../lib/cockpit-service.js";
+import { createCandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createLlmRuntimeService } from "../lib/llm-runtime-service.js";
-import { createNarrativeLineService } from "../lib/narrative-line-service.js";
+import { createNarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
 import { createResourceRewindService } from "../lib/resource-rewind-service.js";
 import { createStorageDestructiveService } from "../lib/storage-destructive-service.js";
@@ -48,7 +48,7 @@ import { createStorageWriteService } from "../lib/storage-write-service.js";
 import { createStoryFileReadService } from "../lib/story-file-service.js";
 import { configureSessionToolExecutor, getSessionChatSnapshot } from "../lib/session-chat-service.js";
 import { registerPluginTools, registerPluginAgentPresets } from "../lib/session-tool-registry.js";
-import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "../lib/session-tool-registry-novel.js";
+import { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_AGENT_PRESETS } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSession, listSessions, deleteSession } from "../lib/session-service.js";
 import type { RouterContext } from "./context.js";
 

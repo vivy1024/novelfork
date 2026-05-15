@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createCandidateToolService } from "./candidate-tool-service.js";
+import { createCandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
 
 const tempDirs: string[] = [];

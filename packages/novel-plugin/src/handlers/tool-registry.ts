@@ -5,13 +5,13 @@
  * (the single source of truth). This file adds session-specific metadata (risk, renderer,
  * enabledForModes, visibility) that only the studio runtime needs.
  */
-import { NOVEL_TOOL_SCHEMAS } from "@vivy1024/novelfork-novel-plugin";
-import type { ToolInputSchema } from "@vivy1024/novelfork-novel-plugin";
+import { NOVEL_TOOL_SCHEMAS } from "../tool-schemas.js";
+import type { ToolInputSchema } from "../tool-schemas.js";
 import type {
   JsonObjectSchema,
   SessionToolDefinition,
-} from "../../shared/agent-native-workspace.js";
-import type { SessionPermissionMode } from "../../shared/session-types.js";
+} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
+import type { SessionPermissionMode } from "@vivy1024/novelfork-studio/shared/session-types";
 
 const ALL_SESSION_PERMISSION_MODES: readonly SessionPermissionMode[] = ["ask", "edit", "allow", "read", "plan"];
 const WRITE_SESSION_PERMISSION_MODES: readonly SessionPermissionMode[] = ["ask", "edit", "allow"];

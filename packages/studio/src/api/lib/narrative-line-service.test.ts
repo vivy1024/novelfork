@@ -15,7 +15,7 @@ import {
   runStorageMigrations,
 } from "@vivy1024/novelfork-core";
 
-import { createNarrativeLineService } from "./narrative-line-service.js";
+import { createNarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 const tempDirs: string[] = [];
 

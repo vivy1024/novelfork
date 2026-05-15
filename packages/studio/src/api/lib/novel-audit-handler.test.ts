@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { executeNovelAudit, type NovelAuditInput } from "./novel-audit-handler";
+import { executeNovelAudit, type NovelAuditInput } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 describe("/novel:audit handler", () => {
   it("runs continuity audit and returns findings", async () => {

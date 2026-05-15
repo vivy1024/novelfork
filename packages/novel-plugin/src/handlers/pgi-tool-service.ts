@@ -9,7 +9,7 @@ import type {
   PgiMetadata,
   PgiQuestionMetadata,
   SessionToolExecutionResult,
-} from "../../shared/agent-native-workspace.js";
+} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 
 type PGISkippedReason = Extract<PgiMetadata, { used: false }>["skippedReason"];
 
@@ -39,7 +39,7 @@ export function createPGIToolService(options: PGIToolServiceOptions = {}): PGITo
       const maxQuestions = clampMaxQuestions(optionalNumber(input.maxQuestions) ?? 5);
       const chapterIntent = optionalString(input.chapterIntent);
       const result = await generatePGIQuestions(storage, { bookId, chapter: chapterNumber });
-      const cards = result.questions.slice(0, maxQuestions).map((question) => toQuestionCard(question, result.heuristicsTriggered));
+      const cards = result.questions.slice(0, maxQuestions).map((question: PGIQuestion) => toQuestionCard(question, result.heuristicsTriggered));
 
       if (cards.length === 0) {
         const pgi: PgiMetadata = {
