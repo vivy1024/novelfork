@@ -84,6 +84,8 @@ export type SessionToolExecutorOptions = {
   readonly autoVerify?: boolean;
   /** 验证命令 */
   readonly verificationCommand?: string;
+  /** 子状态变更回调（用于广播 reflecting/retrying 等状态到前端） */
+  readonly onSubstatus?: (substatus: string) => void;
 };
 
 export type SessionToolExecutor = {
@@ -271,6 +273,9 @@ export async function executeSessionTool(
       const { loadUserConfig } = await import("./user-config-service.js");
       const config = await loadUserConfig();
       if (config.runtimeControls?.dangerReflection) {
+        // Broadcast "reflecting" substatus before LLM call
+        options.onSubstatus?.("reflecting");
+
         // Attempt LLM safety reflection
         let reflectionSummary = `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`;
 
@@ -1251,8 +1256,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             return {
               ok: true,
               renderer: "tool.plan-approval",
-              summary: "计划已自动批准，已退出计划模式。",
-              data: { status: "auto-approved", plan, sessionId },
+              summary: "✅ 计划已自动批准，已退出计划模式。",
+              data: { status: "auto-approved", plan, sessionId, systemNotification: "✅ 计划已自动批准" },
             };
           }
         } catch { /* config load failure — fall through to manual confirmation */ }

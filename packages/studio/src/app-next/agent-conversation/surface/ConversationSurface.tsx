@@ -559,6 +559,7 @@ export function ConversationSurface({
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
         onCompact={onCompactSession ? () => { void onCompactSession("压缩上下文到目标阈值"); } : undefined}
         onReset={onCompactSession ? () => { void onCompactSession("reset"); } : undefined}
+        onOpenTerminal={() => window.open("/next/settings?section=terminals", "_blank")}
       />
 
       {/* ── Composer ── */}
