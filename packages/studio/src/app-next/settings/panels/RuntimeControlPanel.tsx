@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { fetchJson, putApi } from "@/hooks/use-api";
 import { USER_SETTINGS_API_PATH, createLenientFetchJsonContractClient, createProviderClient } from "@/app-next/backend-contract";
@@ -68,9 +67,9 @@ export function RuntimeControlPanel() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [isDirty, setIsDirty] = useState(false);
-  // Track server-confirmed arcTrackingMode for change detection
-  const [serverArcMode, setServerArcMode] = useState<string | undefined>(undefined);
+  // Track whether initial load is done (to avoid auto-saving on mount)
+  const initialLoadDone = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function applyUserConfig(data: Pick<UserConfig, "runtimeControls" | "modelDefaults">) {
     setRc({ ...DEFAULT_RUNTIME_CONTROLS, ...(data.runtimeControls ?? {}) });
@@ -79,8 +78,6 @@ export function RuntimeControlPanel() {
       ...(data.modelDefaults ?? {}),
       subagentModelPool: data.modelDefaults?.subagentModelPool ?? DEFAULT_MODEL_DEFAULTS.subagentModelPool,
     });
-    setServerArcMode(data.runtimeControls?.arcTrackingMode ?? "rule");
-    setIsDirty(false);
   }
 
   async function refetchUserConfig() {
@@ -96,6 +93,8 @@ export function RuntimeControlPanel() {
     refetchUserConfig()
       .then(() => {
         setError(null);
+        // Mark initial load done after a tick to avoid triggering auto-save
+        setTimeout(() => { initialLoadDone.current = true; }, 100);
       })
       .catch((e) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
@@ -117,35 +116,34 @@ export function RuntimeControlPanel() {
     return () => { cancelled = true; };
   }, []);
 
-  // --- save ---
-  async function handleSave() {
+  // --- auto-save with debounce ---
+  const doSave = useCallback(async () => {
     setSaving(true);
     setSaved(false);
     setError(null);
-    const arcModeChanged = rc.arcTrackingMode !== serverArcMode;
     try {
       await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: rc, modelDefaults: md });
-      await refetchUserConfig();
       setSaved(true);
-      setIsDirty(false);
-      // Specific notification for arcTrackingMode change
-      if (arcModeChanged) {
-        const label = ARC_TRACKING_OPTIONS.find((o) => o.value === rc.arcTrackingMode)?.label ?? rc.arcTrackingMode;
-        notify.success(`角色弧线追踪模式已切换为「${label}」`);
-      } else {
-        notify.success("运行时设置已保存");
-      }
+      notify.success("已保存");
+      setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setSaving(false);
     }
-  }
+  }, [rc, md]);
+
+  // Trigger auto-save 800ms after any change
+  useEffect(() => {
+    if (!initialLoadDone.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => { void doSave(); }, 800);
+    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
+  }, [rc, md, doSave]);
 
   // --- shorthand updaters ---
-  const dirty = () => { setSaved(false); setIsDirty(true); };
-  const patchRc = (patch: Partial<RuntimeControlSettings>) => { dirty(); setRc((c) => ({ ...c, ...patch })); };
-  const patchMd = (patch: Partial<ModelDefaultSettings>) => { dirty(); setMd((c) => ({ ...c, ...patch })); };
+  const patchRc = (patch: Partial<RuntimeControlSettings>) => { setRc((c) => ({ ...c, ...patch })); };
+  const patchMd = (patch: Partial<ModelDefaultSettings>) => { setMd((c) => ({ ...c, ...patch })); };
   const hasModelOptions = modelOptions.length > 0;
 
   if (loading) {
@@ -305,15 +303,12 @@ export function RuntimeControlPanel() {
         </FieldRow>
       </Section>
 
-      {/* ---- 底部状态 + 保存 ---- */}
-      {(isDirty || saved || error) && (
-        <div className="sticky bottom-0 flex items-center justify-between border-t border-border bg-background pt-4 pb-2">
+      {/* ---- 底部状态 ---- */}
+      {(saving || saved || error) && (
+        <div className="sticky bottom-0 flex items-center justify-end border-t border-border bg-background pt-4 pb-2">
           <div className="text-sm">
-            {error ? <span className="text-destructive">保存失败：{error}</span> : saved ? <span className="text-emerald-600">✓ 已保存</span> : isDirty ? <span className="text-muted-foreground">有未保存的变更</span> : null}
+            {error ? <span className="text-destructive">保存失败：{error}</span> : saving ? <span className="text-muted-foreground">保存中…</span> : saved ? <span className="text-emerald-600">✓ 已保存</span> : null}
           </div>
-          <Button type="button" onClick={handleSave} disabled={loading || saving || !isDirty}>
-            {saving ? "保存中…" : "保存变更"}
-          </Button>
         </div>
       )}
     </div>

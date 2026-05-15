@@ -52,11 +52,11 @@ export interface RuntimeCommandHandlers {
   /** Novel command handler: 执行 /novel:* 命令的 workflow */
   readonly executeNovelCommand?: (handlerId: string, args: string, context: RuntimeCommandHandlerContext) => Promise<RuntimeCommandExecutionResult>;
   /** /tools handler: list enabled tools for the session */
-  readonly listTools?: () => readonly { name: string; description: string }[];
+  readonly listTools?: () => readonly { name: string; description: string }[] | Promise<readonly { name: string; description: string }[]>;
   /** /mcp handler: list connected MCP servers */
-  readonly listMcpServers?: () => readonly { name: string; status: string; toolCount: number }[];
+  readonly listMcpServers?: () => readonly { name: string; status: string; toolCount: number }[] | Promise<readonly { name: string; status: string; toolCount: number }[]>;
   /** /agents handler: list available subagent types */
-  readonly listAgents?: () => readonly { name: string; description: string }[];
+  readonly listAgents?: () => readonly { name: string; description: string }[] | Promise<readonly { name: string; description: string }[]>;
 }
 
 export interface RuntimeCommandExecutionContext {
@@ -202,23 +202,23 @@ async function runCommand(command: RuntimeCommandDefinition, parsed: RuntimeComm
       };
     }
     case "tools.list": {
-      const toolsList = context.handlers?.listTools?.() ?? [];
+      const toolsList = await (context.handlers?.listTools?.() ?? []);
       if (toolsList.length === 0) return { ok: true, kind: "status", message: "当前会话无可用工具。" };
       const formatted = toolsList.map((t) => `• ${t.name} — ${t.description}`).join("\n");
       return { ok: true, kind: "status", message: `当前会话工具（${toolsList.length}）：\n${formatted}` };
     }
     case "mcp.list": {
-      const servers = context.handlers?.listMcpServers?.() ?? [];
+      const servers = await (context.handlers?.listMcpServers?.() ?? []);
       if (servers.length === 0) return { ok: true, kind: "status", message: "无已连接的 MCP 服务器。" };
       const formatted = servers.map((s) => `• ${s.name} [${s.status}] — ${s.toolCount} 个工具`).join("\n");
       return { ok: true, kind: "status", message: `MCP 服务器（${servers.length}）：\n${formatted}` };
     }
     case "agents.list": {
-      const agents = context.handlers?.listAgents?.() ?? [
+      const agents = await (context.handlers?.listAgents?.() ?? [
         { name: "explore", description: "探索子代理 — 代码搜索与文件浏览" },
         { name: "plan", description: "规划子代理 — 任务分解与方案设计" },
         { name: "general", description: "通用子代理 — 通用对话与辅助" },
-      ];
+      ]);
       const formatted = agents.map((a) => `• ${a.name} — ${a.description}`).join("\n");
       return { ok: true, kind: "status", message: `可用子代理（${agents.length}）：\n${formatted}` };
     }
