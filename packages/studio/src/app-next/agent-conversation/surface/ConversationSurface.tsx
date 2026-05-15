@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image, Terminal } from "lucide-react";
 
@@ -275,9 +275,51 @@ export function ConversationSurface({
   }, [messages, filesPanelDismissed]);
 
   // 搜索过滤（对标 NarraFork messageSearchPlaceholder: "搜索已加载消息..."）
-  const filteredMessages = searchQuery
+  const searchFiltered = searchQuery
     ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
     : messages;
+
+  // ── 分页：初始只渲染最近 50 条，滚动到顶部时加载更多 ──
+  const PAGE_SIZE = 50;
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  // 当 sessionId 变化时重置可见数量
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [sessionId]);
+
+  // 新消息到来时，如果用户在底部附近，自动扩展可见范围
+  const prevMsgCountForPaging = useRef(searchFiltered.length);
+  useEffect(() => {
+    if (searchFiltered.length > prevMsgCountForPaging.current) {
+      // 新消息追加，扩展可见范围以包含新消息
+      setVisibleCount((prev) => Math.max(prev, searchFiltered.length - Math.max(0, searchFiltered.length - PAGE_SIZE - (prev - PAGE_SIZE))));
+    }
+    prevMsgCountForPaging.current = searchFiltered.length;
+  }, [searchFiltered.length]);
+
+  const filteredMessages = useMemo(() => {
+    if (searchQuery) return searchFiltered; // 搜索时显示所有匹配结果
+    if (searchFiltered.length <= visibleCount) return searchFiltered;
+    return searchFiltered.slice(-visibleCount);
+  }, [searchFiltered, visibleCount, searchQuery]);
+
+  // 是否还有更多本地消息可以展示（未搜索时）
+  const hasMoreLocalMessages = !searchQuery && searchFiltered.length > visibleCount;
+
+  // 加载更多：先展示本地缓存的历史消息，本地用完后调用 onLoadPreviousMessages
+  const handleLoadPreviousWrapped = useCallback(async (): Promise<ConversationSurfaceMessage[]> => {
+    if (hasMoreLocalMessages) {
+      setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, searchFiltered.length));
+      return [];
+    }
+    if (onLoadPreviousMessages) {
+      return await onLoadPreviousMessages();
+    }
+    return [];
+  }, [hasMoreLocalMessages, searchFiltered.length, onLoadPreviousMessages]);
+
+  const effectiveHasPrevious = hasMoreLocalMessages || hasPreviousMessages;
 
   return (
     <TooltipProvider>
@@ -452,7 +494,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} hasPrevious={hasPreviousMessages} onLoadPrevious={onLoadPreviousMessages} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} />
+            <MessageStream messages={filteredMessages} hasPrevious={effectiveHasPrevious} onLoadPrevious={handleLoadPreviousWrapped} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} />
             {/* Confirmation gate / User question gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
