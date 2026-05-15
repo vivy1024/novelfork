@@ -105,6 +105,28 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
     }
   });
 
+  app.put("/api/books/:id/beat-template", async (c) => {
+    const bookId = c.req.param("id");
+    const body = await c.req.json<{ beatTemplateId: string }>();
+
+    if (typeof body.beatTemplateId !== "string") {
+      return c.json({ error: "beatTemplateId must be a string" }, 400);
+    }
+
+    try {
+      const book = await state.loadBookConfig(bookId);
+      const updated = {
+        ...book,
+        beatTemplateId: body.beatTemplateId,
+        updatedAt: new Date().toISOString(),
+      };
+      await state.saveBookConfig(bookId, updated);
+      return c.json({ ok: true, beatTemplateId: updated.beatTemplateId });
+    } catch {
+      return c.json({ error: `Book "${bookId}" not found` }, 404);
+    }
+  });
+
   app.post("/api/books/:id/presets/:presetId/customize", async (c) => {
     const bookId = c.req.param("id");
     const presetId = c.req.param("presetId");

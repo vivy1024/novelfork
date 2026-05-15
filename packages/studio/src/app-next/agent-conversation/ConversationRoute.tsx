@@ -62,6 +62,8 @@ export interface ConversationRouteProps {
   onAttach?: (files: FileList) => void;
   /** 会话详情数据 */
   sessionDetail?: SessionDetailData;
+  /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
+  headerSlot?: ReactNode;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -109,6 +111,7 @@ export function ConversationRoute({
   isPinned,
   onAttach,
   sessionDetail,
+  headerSlot,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -179,6 +182,7 @@ export function ConversationRoute({
         onPin={onPin}
         isPinned={isPinned}
         sessionDetail={sessionDetail}
+        headerSlot={headerSlot}
       />
     </section>
   );

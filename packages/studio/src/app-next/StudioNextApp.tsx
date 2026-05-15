@@ -49,6 +49,8 @@ import {
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
   type WorkbenchWritingActionsSessionClient,
+  ToolConfigBar,
+  AgentQuickActions,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
@@ -729,6 +731,20 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     return result.data;
   }, [refreshSnapshot, sessionClient, sessionId]);
 
+  // Novel-specific header slot: ToolConfigBar + AgentQuickActions
+  const novelBookId = canvasContext?.activeResource?.bookId ?? runtime.state.session?.projectId ?? undefined;
+  const novelAgentRole = runtime.state.session?.agentId ?? "writer";
+  const novelHeaderSlot = novelBookId ? (
+    <>
+      <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "writer" | "auditor" | "hooks" | "chapter-hooks" | "outline" | "custom"} />
+      <AgentQuickActions
+        agentRole={novelAgentRole}
+        bookId={novelBookId}
+        onSendMessage={(msg) => runtime.sendMessage(msg)}
+      />
+    </>
+  ) : null;
+
   return (
     <>
       {modelPoolEmpty && (
@@ -745,6 +761,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       sessionMode={runtime.state.session?.sessionMode}
       initialAck={runtime.getResumeFromSeq()}
       initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId, runtime.state.turnActive)}
+      headerSlot={novelHeaderSlot}
       initialStatus={status}
       initialConfirmation={pendingConfirmation}
       initialRecoveryNotice={runtime.state.recovery}

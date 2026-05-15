@@ -1,6 +1,9 @@
 export * from "./types.js";
 export * from "./templates.js";
 
+// Auto-linker
+export { linkChapterToEntries, type LinkResult } from "./auto-linker.js";
+
 // Jingwei context
 export { buildJingweiContext, estimateJingweiTokens, type BuildJingweiContextOptions } from "./context/build-jingwei-context.js";
 export { createLegacyJingweiAdapter, createLegacyBibleJingweiAdapter } from "./context/section-adapter.js";

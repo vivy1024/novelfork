@@ -1,8 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { Loader2, Plus, ChevronDown, ChevronUp } from "lucide-react";
+import { Loader2, Plus, ChevronDown, ChevronUp, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ---------------------------------------------------------------------------
@@ -17,8 +17,11 @@ interface PresetItem {
   readonly enabled: boolean;
 }
 
-interface PresetsResponse {
-  readonly presets: readonly PresetItem[];
+interface AllPreset {
+  readonly id: string;
+  readonly name: string;
+  readonly category: string;
+  readonly promptInjection?: string;
 }
 
 export interface PresetPanelProps {
@@ -41,45 +44,51 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_ORDER = ["genre", "tone", "setting-base", "logic-risk", "anti-ai", "literary"];
 
 // ---------------------------------------------------------------------------
-// Mock data (fallback when API unavailable)
-// ---------------------------------------------------------------------------
-
-const MOCK_PRESETS: PresetItem[] = [
-  { id: "p1", name: "玄幻仙侠套装", category: "genre", promptInjection: "以东方玄幻世界观为基础，融合修仙体系与宗门势力，注重境界划分与功法描写，战斗场面宏大磅礴", enabled: true },
-  { id: "p2", name: "冷峻叙事", category: "tone", promptInjection: "文风偏冷峻克制，少用感叹号，多用短句，叙事节奏紧凑，情感表达含蓄内敛", enabled: true },
-  { id: "p3", name: "现代都市", category: "setting-base", promptInjection: "以当代中国都市为背景，涉及职场、商业、社交等现代生活场景", enabled: false },
-  { id: "p4", name: "因果逻辑检查", category: "logic-risk", promptInjection: "检查前后因果关系是否成立，角色动机是否合理，时间线是否一致", enabled: true },
-  { id: "p5", name: "去AI味过滤", category: "anti-ai", promptInjection: "避免使用'值得注意的是'、'总而言之'等AI常见表达，减少排比句和对仗句式", enabled: true },
-  { id: "p6", name: "白描手法", category: "literary", promptInjection: "以简洁朴素的文字直接描摹事物，不加修饰渲染，追求客观冷静的叙述效果", enabled: false },
-];
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 export function PresetPanel({ bookId }: PresetPanelProps) {
   const [presets, setPresets] = useState<PresetItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
 
+  // Fetch book's enabled presets + all available presets
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
+    setError(null);
 
-    fetch(`/api/books/${bookId}/presets`)
-      .then((res) => {
-        if (!res.ok) throw new Error("API unavailable");
-        return res.json() as Promise<PresetsResponse>;
+    Promise.all([
+      fetch(`/api/books/${bookId}/presets`).then((r) => {
+        if (!r.ok) throw new Error("无法加载书籍预设配置");
+        return r.json();
+      }),
+      fetch("/api/presets").then((r) => {
+        if (!r.ok) throw new Error("无法加载预设列表");
+        return r.json();
+      }),
+    ])
+      .then(([bookData, allData]) => {
+        if (cancelled) return;
+        const enabledIds: string[] = bookData.enabledPresetIds ?? [];
+        const allPresets: AllPreset[] = allData.presets ?? [];
+
+        const merged: PresetItem[] = allPresets.map((p) => ({
+          id: p.id,
+          name: p.name,
+          category: p.category,
+          promptInjection: p.promptInjection,
+          enabled: enabledIds.includes(p.id),
+        }));
+
+        setPresets(merged);
+        setLoading(false);
       })
-      .then((data) => {
+      .catch((err) => {
         if (!cancelled) {
-          setPresets(data.presets.map((p) => ({ ...p, enabled: true })));
-          setLoading(false);
-        }
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setPresets(MOCK_PRESETS);
+          setError(err instanceof Error ? err.message : "加载失败");
           setLoading(false);
         }
       });
@@ -87,14 +96,58 @@ export function PresetPanel({ bookId }: PresetPanelProps) {
     return () => { cancelled = true; };
   }, [bookId]);
 
+  // Save enabled presets to backend
+  const saveEnabledPresets = useCallback(
+    async (updatedPresets: PresetItem[]) => {
+      const enabledIds = updatedPresets.filter((p) => p.enabled).map((p) => p.id);
+      setSaving(true);
+      try {
+        const res = await fetch(`/api/books/${bookId}/presets`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ enabledPresetIds: enabledIds }),
+        });
+        if (!res.ok) {
+          console.error("Failed to save presets:", await res.text());
+        }
+      } catch (err) {
+        console.error("Failed to save presets:", err);
+      } finally {
+        setSaving(false);
+      }
+    },
+    [bookId],
+  );
+
   const handleToggle = (id: string, enabled: boolean) => {
-    setPresets((prev) => prev.map((p) => (p.id === id ? { ...p, enabled } : p)));
+    const updated = presets.map((p) => (p.id === id ? { ...p, enabled } : p));
+    setPresets(updated);
+    void saveEnabledPresets(updated);
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
         <Loader2 className="size-4 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-2">
+        <AlertCircle className="size-6 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">{error}</p>
+        <p className="text-xs text-muted-foreground">请确认已创建书籍并配置预设</p>
+      </div>
+    );
+  }
+
+  if (presets.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-8 gap-2">
+        <AlertCircle className="size-6 text-muted-foreground/50" />
+        <p className="text-sm text-muted-foreground">暂无可用预设</p>
       </div>
     );
   }
@@ -106,8 +159,19 @@ export function PresetPanel({ bookId }: PresetPanelProps) {
     return acc;
   }, {});
 
+  // Also include uncategorized
+  const categorized = new Set(CATEGORY_ORDER);
+  const uncategorized = presets.filter((p) => !categorized.has(p.category));
+  if (uncategorized.length > 0) grouped["other"] = uncategorized;
+
   return (
     <div className="space-y-3">
+      {saving && (
+        <div className="text-[10px] text-muted-foreground flex items-center gap-1">
+          <Loader2 className="size-3 animate-spin" /> 保存中...
+        </div>
+      )}
+
       {Object.entries(grouped).map(([category, items]) => (
         <div key={category} className="space-y-1.5">
           <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
@@ -157,9 +221,14 @@ export function PresetPanel({ bookId }: PresetPanelProps) {
         </div>
       ))}
 
-      <Button variant="outline" size="sm" className="w-full mt-2">
+      <Button
+        variant="outline"
+        size="sm"
+        className="w-full mt-2"
+        onClick={() => window.open("/api/market/templates", "_blank")}
+      >
         <Plus className="size-3.5 mr-1.5" />
-        添加套装
+        浏览模板市场
       </Button>
     </div>
   );

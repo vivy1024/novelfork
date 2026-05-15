@@ -8,6 +8,7 @@ import { useState, useCallback, useEffect, useMemo } from "react";
 import { Network, List, Clock, GitBranch, Swords, Loader2, User, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { JingweiCategorySidebar } from "./jingwei/JingweiCategorySidebar";
 import { JingweiGraphView } from "./jingwei/JingweiGraphView";
 import { JingweiEntryList } from "./jingwei/JingweiEntryList";
@@ -378,6 +379,7 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
   const [allEntries, setAllEntries] = useState<JingweiEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [visibilityFilter, setVisibilityFilter] = useState<string>("all");
 
   // 获取全部条目（不传 category 参数）
   const fetchAll = useCallback(async () => {
@@ -411,17 +413,23 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
     return counts;
   }, [allEntries]);
 
+  // 按可见性筛选
+  const visibilityFilteredEntries = useMemo(() => {
+    if (visibilityFilter === "all") return allEntries;
+    return allEntries.filter((e) => e.visibility === visibilityFilter);
+  }, [allEntries, visibilityFilter]);
+
   // 按当前选中分类过滤（图谱模式下传 "all" 显示全部）
   const filteredEntries = useMemo(() => {
     if (viewMode === "graph" || viewMode === "arcs" || viewMode === "conflicts") {
       // 图谱类视图显示全部条目，内部有二次筛选
-      return allEntries;
+      return visibilityFilteredEntries;
     }
     // 列表/时间线按分类过滤
-    return allEntries.filter(
+    return visibilityFilteredEntries.filter(
       (e) => (e as { category?: string }).category === selectedCategory
     );
-  }, [allEntries, selectedCategory, viewMode]);
+  }, [visibilityFilteredEntries, selectedCategory, viewMode]);
 
   const handleSelectEntry = useCallback((entryId: string) => {
     setSelectedEntryId(entryId);
@@ -495,6 +503,7 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
               selectedEntryId={selectedEntryId}
               onSelectEntry={handleSelectEntry}
               onCreateEntry={handleCreateEntry}
+              bookId={bookId}
             />
           )}
           {viewMode === "timeline" && selectedEntryId && (
@@ -531,8 +540,21 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
               {mode.label}
             </button>
           ))}
+          <div className="mx-1 h-4 w-px bg-border" />
+          <SimpleSelect
+            value={visibilityFilter}
+            onValueChange={setVisibilityFilter}
+            options={[
+              { value: "all", label: "全部" },
+              { value: "global", label: "🌐 全局" },
+              { value: "tracked", label: "👁 追踪" },
+              { value: "nested", label: "🔗 嵌套" },
+            ]}
+            className="h-6 text-xs"
+            aria-label="按可见性筛选"
+          />
           <span className="ml-auto text-[10px] text-muted-foreground tabular-nums">
-            {allEntries.length} 条目
+            {filteredEntries.length} 条目
           </span>
         </div>
       </div>

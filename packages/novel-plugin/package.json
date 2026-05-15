@@ -30,7 +30,8 @@
     "openai": "4.80.0",
     "tiptap-markdown": "0.8.10",
     "zod": "3.24.0",
-    "js-yaml": "4.1.1"
+    "js-yaml": "4.1.1",
+    "recharts": "3.8.0"
   },
   "peerDependencies": {
     "react": ">=18.0.0",

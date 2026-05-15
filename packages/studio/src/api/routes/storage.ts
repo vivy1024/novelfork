@@ -19,6 +19,7 @@ import {
   createBookRepository,
   createStoryJingweiSectionRepository,
   getPreset,
+  linkChapterToEntries,
   registerBuiltinPresets,
   type JingweiTemplateSelection,
   type Preset,
@@ -390,7 +391,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
   const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
   const narrativeService = createNarrativeLineService({ state, checkpoint: resourceCheckpointService });
-  configureSessionToolExecutor({ cockpitService, candidateService, narrativeService });
+  configureSessionToolExecutor({ cockpitService, candidateService, narrativeService, loadBookConfig: state.loadBookConfig.bind(state) });
 
   // 动态注册小说插件工具与 Agent 预设
   registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
@@ -902,6 +903,10 @@ ${contextParts.join("\n")}
     try {
       const result = await storageWriteService.updateChapterContent(id, num, content, { sessionId, messageId, toolUseId });
       if ("error" in result) return c.json({ error: result.error }, 404);
+
+      // 保存成功后异步触发自动链接扫描（不阻塞响应）
+      void linkChapterToEntries(id, num, content).catch(() => {});
+
       return c.json(result);
     } catch (e) {
       return c.json({ error: String(e) }, 500);

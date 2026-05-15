@@ -67,11 +67,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `agent-runtime-robustness` Phase 1-6 全部完成；`ui-visibility-gaps` Phase 1-5 全部完成 |
+| Specs | `agent-runtime-robustness` Phase 1-6 全部完成；`ui-visibility-gaps` Phase 1-5 全部完成；`cockpit-redesign` 差距修复完成 |
 | TypeScript | typecheck 通过 |
-| 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
+| 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强（含趋势图/工具handler/对话集成）、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
 | 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
-| 编译 | `dist/novelfork-v0.6.0-windows-x64.exe`；GitHub Release 已发布 |
+| 编译 | `dist/novelfork-v0.7.1-windows-x64.exe`；构建通过 |
 | 下一步 | 内测分发 + 反馈收集 |
 
 ---
