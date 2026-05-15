@@ -24,6 +24,16 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { selectedIds, isSelected, selectionCount, toggle, clear } = useMessageSelection(messageIds);
 
+  // 首次加载或切换对话时滚动到底部
+  useEffect(() => {
+    if (messages.length > 0) {
+      // 使用 requestAnimationFrame 确保 DOM 已渲染
+      requestAnimationFrame(() => {
+        listRef.current?.scrollToBottom("instant");
+      });
+    }
+  }, []); // 只在组件挂载时执行一次
+
   // 新消息到达时自动滚动到底部
   useEffect(() => {
     if (messages.length > prevLengthRef.current) {
