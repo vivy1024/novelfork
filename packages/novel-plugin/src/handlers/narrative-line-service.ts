@@ -11,7 +11,7 @@ import {
   getStorageDatabase,
 } from "@vivy1024/novelfork-core";
 
-import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "./resource-checkpoint-service.js";
+import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "@vivy1024/novelfork-studio/api/lib/resource-checkpoint-service";
 
 import type {
   ConflictThread,
@@ -24,7 +24,7 @@ import type {
   NarrativeWarning,
   PayoffLink,
   StoryBeat,
-} from "../../shared/agent-native-workspace.js";
+} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 
 export interface NarrativeLineCheckpointService {
   readonly createCheckpoint: (input: CreateResourceCheckpointInput) => Promise<ResourceCheckpointResult>;
@@ -264,11 +264,11 @@ export class NarrativeLineService {
     if (!storage) return fromFile;
     try {
       const rows = await createBibleChapterSummaryRepository(storage).listByBook(bookId);
-      const fromStorage = rows.map((row) => ({
+      const fromStorage = rows.map((row: Record<string, unknown>) => ({
         number: Number(row.chapterNumber),
         title: typeof row.title === "string" ? row.title : undefined,
         summary: typeof row.summary === "string" ? row.summary : "",
-      })).filter((summary) => Number.isFinite(summary.number) && summary.summary.trim().length > 0);
+      })).filter((summary: { number: number; summary: string }) => Number.isFinite(summary.number) && summary.summary.trim().length > 0);
       const merged = new Map<number, ChapterSummaryItem>();
       for (const summary of fromFile) merged.set(summary.number, summary);
       for (const summary of fromStorage) merged.set(summary.number, summary);

@@ -475,7 +475,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     if (!chapterIntent) {
       return c.json({ error: "chapterIntent is required" }, 400);
     }
-    const { createCandidateToolService } = await import("@vivy1024/novelfork-studio/api/lib/candidate-tool-service");
+    const { createCandidateToolService } = await import("../handlers/candidate-tool-service.js");
     const { createLlmRuntimeService } = await import("@vivy1024/novelfork-studio/api/lib/llm-runtime-service");
     const candidateService = createCandidateToolService({
       root: ctx.root,

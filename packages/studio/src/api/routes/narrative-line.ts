@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 
-import { createNarrativeLineService, type NarrativeLineCheckpointService } from "../lib/narrative-line-service.js";
+import { createNarrativeLineService, type NarrativeLineCheckpointService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
 
 export interface CreateNarrativeLineRouterOptions {

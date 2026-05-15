@@ -6,7 +6,7 @@ import type {
   GuidedQuestion,
   SessionToolExecutionResult,
   ToolConfirmationDecision,
-} from "../../shared/agent-native-workspace.js";
+} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 
 export type GuidedGenerationToolServiceOptions = {
   readonly now?: () => Date;

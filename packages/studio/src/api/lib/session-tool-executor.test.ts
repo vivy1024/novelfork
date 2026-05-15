@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
-import { createCockpitService } from "./cockpit-service.js";
+import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {

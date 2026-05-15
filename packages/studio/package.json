@@ -14,12 +14,14 @@
     "./api/lib/ai-gate": "./src/api/lib/ai-gate.ts",
     "./api/lib/provider-runtime-store": "./src/api/lib/provider-runtime-store.ts",
     "./api/lib/runtime-model-pool": "./src/api/lib/runtime-model-pool.ts",
-    "./api/lib/candidate-tool-service": "./src/api/lib/candidate-tool-service.ts",
     "./api/lib/llm-runtime-service": "./src/api/lib/llm-runtime-service.ts",
     "./api/errors": "./src/api/errors.ts",
     "./api/safety": "./src/api/safety.ts",
     "./api/routes/context": "./src/api/routes/context.ts",
-    "./shared/author-materials": "./src/shared/author-materials.ts"
+    "./shared/author-materials": "./src/shared/author-materials.ts",
+    "./shared/agent-native-workspace": "./src/shared/agent-native-workspace.ts",
+    "./shared/session-types": "./src/shared/session-types.ts",
+    "./api/lib/resource-checkpoint-service": "./src/api/lib/resource-checkpoint-service.ts"
   },
   "files": [
     "dist",

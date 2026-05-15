@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { GuidedGenerationPlan, SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createGuidedGenerationToolService } from "./guided-generation-tool-service.js";
+import { createGuidedGenerationToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
 
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {

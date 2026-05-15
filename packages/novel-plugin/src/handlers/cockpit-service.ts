@@ -3,8 +3,8 @@ import { join } from "node:path";
 
 import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
 
-import { buildRuntimeModelPool } from "./runtime-model-pool.js";
-import { ProviderRuntimeStore } from "./provider-runtime-store.js";
+import { buildRuntimeModelPool } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
+import { ProviderRuntimeStore } from "@vivy1024/novelfork-studio/api/lib/provider-runtime-store";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
 

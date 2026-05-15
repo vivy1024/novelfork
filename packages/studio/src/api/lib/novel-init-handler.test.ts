@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { existsSync } from "node:fs";
 
-import { executeNovelInit } from "./novel-init-handler";
+import { executeNovelInit } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 describe("/novel:init handler", () => {
   let workDir: string;
