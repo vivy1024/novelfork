@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BookOpen, GitBranch, Wrench, History, Home, Globe } from "lucide-react";
+import { BookOpen, GitBranch, Wrench, History, Home } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { WritingToolsPanel } from "./WritingToolsPanel";
@@ -57,6 +57,15 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const [showJingwei, setShowJingwei] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
   const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
+
+  /** Intercept resource tree clicks: jingwei entry opens the panel dialog */
+  const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
+    if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") {
+      setShowJingwei(true);
+      return;
+    }
+    onOpen(node);
+  }, [onOpen]);
 
   const loadCheckpoints = useCallback(async () => {
     if (!bookId) return;
@@ -137,12 +146,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
                 快照
               </Button>
             )}
-            {bookId && (
-              <Button size="xs" variant={showJingwei ? "default" : "outline"} onClick={() => setShowJingwei(!showJingwei)}>
-                <Globe className="size-3 mr-1" />
-                经纬
-              </Button>
-            )}
           </div>
         </div>
       </header>
@@ -156,7 +159,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
         <div className="flex flex-1 min-h-0">
           {/* 左侧资源树 */}
           <section aria-label="资源树" className="w-64 shrink-0 border-r border-border overflow-y-auto p-2">
-            <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={onOpen} onAction={async (action) => {
+            <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={handleResourceOpen} onAction={async (action) => {
               const nodeId = action.node?.id ?? "";
               if (action.type === "create") {
                 const title = prompt("新建条目标题：");

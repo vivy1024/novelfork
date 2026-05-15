@@ -4,7 +4,6 @@ import type {
   ChapterSummary,
   DraftResource,
   GeneratedChapterCandidate,
-  TextFileResource,
 } from "../../shared/contracts";
 import type { ContractResult } from "./contract-client";
 import { normalizeCapability, type BackendCapability } from "./capability-status";
@@ -54,8 +53,6 @@ type CandidateListResponse = { candidates: readonly GeneratedChapterCandidate[] 
 type DraftListResponse = { drafts: readonly DraftResource[] };
 type StoryFileListResponse = { files: readonly StoryListFile[] };
 type JingweiFileListResponse = { files: readonly StoryListFile[] };
-type JingweiSectionsResponse = { sections: readonly JingweiSectionRecord[] };
-type JingweiEntriesResponse = { entries: readonly JingweiEntryRecord[] };
 type NarrativeLineResponse = { snapshot: NarrativeLineSnapshot };
 
 interface StoryListFile {
@@ -64,23 +61,6 @@ interface StoryListFile {
   readonly size?: number;
   readonly preview?: string;
   readonly category?: string;
-}
-
-interface JingweiSectionRecord {
-  readonly id: string;
-  readonly key?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly enabled?: boolean;
-  readonly showInSidebar?: boolean;
-}
-
-interface JingweiEntryRecord {
-  readonly id: string;
-  readonly sectionId?: string;
-  readonly title?: string;
-  readonly contentMd?: string;
-  readonly updatedAt?: string;
 }
 
 const GROUP_CAPABILITY = { read: normalizeCapability({ id: "resource.group", status: "current" }) };
@@ -134,8 +114,7 @@ export async function loadResourceTreeFromContract(
   const drafts = await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
   const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "大纲与设定文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
   const jingweiFiles = await optional<JingweiFileListResponse>(errors, "jingwei-files.list", "经纬资料加载失败", () => resource.listJingweiFiles<JingweiFileListResponse>(bookId));
-  const jingweiSections = await optional<JingweiSectionsResponse>(errors, "jingwei.sections", "经纬分区加载失败", () => resource.listJingweiSections<JingweiSectionsResponse>(bookId));
-  const jingweiEntries = await optional<JingweiEntriesResponse>(errors, "jingwei.entries", "经纬条目加载失败", () => resource.listJingweiEntries<JingweiEntriesResponse>(bookId));
+
   const narrative = await optional<NarrativeLineResponse>(errors, "narrative-line.read", "叙事线加载失败", () => resource.getNarrativeLine<NarrativeLineResponse>(bookId));
 
   const book = bookResult.data.book;
@@ -167,7 +146,7 @@ export async function loadResourceTreeFromContract(
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
-        group("group:jingwei", "经纬资料", buildJingweiGroupedTree(book.id, jingweiFiles, jingweiSections, jingweiEntries)),
+        jingweiPanelEntryNode(),
         group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
         group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
@@ -192,54 +171,23 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
   };
 }
 
-function buildJingweiGroupedTree(
-  bookId: string,
-  jingweiFiles: JingweiFileListResponse | null | undefined,
-  jingweiSections: JingweiSectionsResponse | null | undefined,
-  jingweiEntries: JingweiEntriesResponse | null | undefined,
-): ContractResourceNode[] {
-  const JINGWEI_CATEGORIES = ["角色", "势力", "设定", "伏笔", "大纲", "状态", "规则"];
-  const files = jingweiFiles?.files.filter((f) => (f.size ?? 0) > 100) ?? [];
-
-  // Group files by category
-  const categorized = new Map<string, StoryListFile[]>();
-  const uncategorized: StoryListFile[] = [];
-  for (const file of files) {
-    const category = (file as { category?: string }).category;
-    if (category && JINGWEI_CATEGORIES.includes(category)) {
-      if (!categorized.has(category)) categorized.set(category, []);
-      categorized.get(category)!.push(file);
-    } else {
-      uncategorized.push(file);
-    }
-  }
-
-  const children: ContractResourceNode[] = [];
-
-  // Add category sub-groups
-  for (const category of JINGWEI_CATEGORIES) {
-    const categoryFiles = categorized.get(category) ?? [];
-    if (categoryFiles.length > 0) {
-      children.push(group(`group:jingwei:${category}`, category, categoryFiles.map((file) => toJingweiFileNode(bookId, file))));
-    }
-  }
-
-  // Add uncategorized files at root level
-  for (const file of uncategorized) {
-    children.push(toJingweiFileNode(bookId, file));
-  }
-
-  // Add structured sections and entries only if no file-based categories exist
-  if (children.length === 0) {
-    if (jingweiSections?.sections.length) {
-      children.push(...jingweiSections.sections.map(toJingweiSectionNode));
-    }
-    if (jingweiEntries?.entries.length) {
-      children.push(...jingweiEntries.entries.map(toJingweiEntryNode));
-    }
-  }
-
-  return children;
+/**
+ * Single clickable node that opens the JingweiPanel dialog.
+ * Replaces the old file-based "经纬资料" group with children.
+ */
+function jingweiPanelEntryNode(): ContractResourceNode {
+  return {
+    id: "jingwei-panel-entry",
+    kind: "jingwei",
+    title: "经纬资料",
+    capabilities: {
+      read: CURRENT_READ("jingwei.panel"),
+      edit: UNSUPPORTED("jingwei.panel.edit"),
+      delete: UNSUPPORTED("jingwei.panel.delete"),
+      apply: UNSUPPORTED("jingwei.panel.apply"),
+    },
+    metadata: { action: "open-jingwei-panel" },
+  };
 }
 
 function buildHooksGroup(jingweiFiles: JingweiFileListResponse | null | undefined): ContractResourceNode[] {
@@ -307,54 +255,6 @@ function toStoryFileNode(bookId: string, file: StoryListFile): ContractResourceN
       apply: UNSUPPORTED("story-files.apply"),
     },
     metadata: { bookId, fileName: file.name, size: file.size, source: "preview" },
-  };
-}
-
-function toJingweiFileNode(bookId: string, file: StoryListFile): ContractResourceNode {
-  return {
-    id: `jingwei-file:${file.name}`,
-    kind: "jingwei",
-    title: file.label ?? file.name,
-    path: `story/${file.name}`,
-    content: file.preview,
-    capabilities: {
-      read: CURRENT_READ("jingwei-files.detail"),
-      edit: CURRENT_EDIT("jingwei-files.save"),
-      delete: CURRENT_DELETE("jingwei-files.delete"),
-      apply: UNSUPPORTED("jingwei-files.apply"),
-    },
-    metadata: { bookId, fileName: file.name, size: file.size, source: "preview" },
-  };
-}
-
-function toJingweiSectionNode(section: JingweiSectionRecord): ContractResourceNode {
-  return {
-    id: `jingwei-section:${section.id}`,
-    kind: "jingwei-section",
-    title: section.name ?? section.title ?? section.key ?? section.id,
-    capabilities: {
-      read: CURRENT_READ("jingwei.sections"),
-      edit: CURRENT_EDIT("jingwei.sections.update"),
-      delete: CURRENT_DELETE("jingwei.sections.delete"),
-      apply: UNSUPPORTED("jingwei.sections.apply"),
-    },
-    metadata: { section },
-  };
-}
-
-function toJingweiEntryNode(entry: JingweiEntryRecord): ContractResourceNode {
-  return {
-    id: `jingwei-entry:${entry.id}`,
-    kind: "jingwei-entry",
-    title: entry.title ?? entry.id,
-    content: entry.contentMd,
-    capabilities: {
-      read: CURRENT_READ("jingwei.entries"),
-      edit: CURRENT_EDIT("jingwei.entries.update"),
-      delete: CURRENT_DELETE("jingwei.entries.delete"),
-      apply: UNSUPPORTED("jingwei.entries.apply"),
-    },
-    metadata: { entryId: entry.id, sectionId: entry.sectionId, updatedAt: entry.updatedAt },
   };
 }
 

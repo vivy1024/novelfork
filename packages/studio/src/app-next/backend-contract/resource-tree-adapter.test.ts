@@ -91,8 +91,6 @@ describe("resource tree contract adapter", () => {
       "/api/books/book%2F1/drafts",
       "/api/books/book%2F1/story-files",
       "/api/books/book%2F1/jingwei-files",
-      "/api/books/book%2F1/jingwei/sections",
-      "/api/books/book%2F1/jingwei/entries",
       "/api/books/book%2F1/narrative-line",
     ]);
     expect(flat.get("chapter:book/1:1")).toMatchObject({
@@ -117,8 +115,7 @@ describe("resource tree contract adapter", () => {
     });
     expect(flat.get("draft:draft/1")).toMatchObject({ capabilities: { edit: { status: "current" }, delete: { status: "current" } } });
     expect(flat.get("story-file:pending_hooks.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "unsupported" }, delete: { status: "current" } } });
-    expect(flat.get("jingwei-file:chapter_summaries.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "current" }, delete: { status: "current" } } });
-    expect(flat.get("jingwei-entry:char-1")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "current" }, delete: { status: "current" } } });
+    expect(flat.get("jingwei-panel-entry")).toMatchObject({ kind: "jingwei", title: "经纬资料", capabilities: { read: { status: "current" } }, metadata: { action: "open-jingwei-panel" } });
     expect(flat.get("narrative-line:book/1")).toMatchObject({ kind: "narrative-line", capabilities: { read: { status: "current" }, edit: { status: "unsupported" } } });
     expect(result.errors).toEqual([]);
   });
