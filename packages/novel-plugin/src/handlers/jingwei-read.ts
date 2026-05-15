@@ -1,68 +1,71 @@
-import { readdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { buildJingweiContext } from "../engine/jingwei/context/build-jingwei-context.js";
+import type { JingweiContextResult } from "../engine/jingwei/types.js";
 
 export interface JingweiReadContextInput {
   bookId: string;
-}
-
-export interface JingweiCategory {
-  name: string;
-  files: Array<{ name: string; content: string }>;
+  categories?: string[];
+  chapterNumber?: number;
+  sceneText?: string;
 }
 
 export interface JingweiReadContextResult {
   ok: boolean;
   summary: string;
-  data?: { bookId: string; categories: JingweiCategory[]; totalFiles: number };
+  data?: {
+    bookId: string;
+    items: JingweiContextResult["items"];
+    totalTokens: number;
+    droppedEntryIds: string[];
+    sectionStats: JingweiContextResult["sectionStats"];
+  };
   error?: string;
 }
 
-const CATEGORIES = ["角色", "势力", "设定", "伏笔", "大纲", "状态", "规则"];
-
 /**
- * 读取书籍的经纬（jingwei）上下文——包含角色、势力、设定等分类目录下的 .md 文件。
- * 每个文件内容截取前 2000 字符。
+ * 读取书籍的经纬上下文——使用 buildJingweiContext 按可见性规则过滤。
+ *
+ * - global 条目始终注入
+ * - tracked 条目仅在 sceneText 中匹配标题/别名时注入
+ * - nested 条目仅在被已注入条目关联时级联注入
+ * - visibleAfterChapter / visibleUntilChapter 控制时间窗口
+ * - token budget 控制总量（默认 8000）
  */
-export async function handleJingweiReadContext(input: JingweiReadContextInput, booksDir: string): Promise<JingweiReadContextResult> {
-  const { bookId } = input;
-  const jingweiDir = join(booksDir, bookId, "jingwei");
-  const categories: JingweiCategory[] = [];
+export async function handleJingweiReadContext(
+  input: JingweiReadContextInput,
+  _booksDir?: string,
+): Promise<JingweiReadContextResult> {
+  const { bookId, chapterNumber, sceneText } = input;
 
   try {
-    for (const cat of CATEGORIES) {
-      const catDir = join(jingweiDir, cat);
-      try {
-        const files = await readdir(catDir);
-        const mdFiles = files.filter(f => f.endsWith(".md"));
-        const entries = await Promise.all(mdFiles.map(async (f) => {
-          const content = await readFile(join(catDir, f), "utf-8").catch(() => "");
-          return { name: f, content: content.slice(0, 2000) };
-        }));
-        if (entries.length > 0) categories.push({ name: cat, files: entries });
-      } catch {
-        /* category dir may not exist */
-      }
-    }
+    const result = await buildJingweiContext({
+      bookId,
+      currentChapter: chapterNumber,
+      sceneText,
+      tokenBudget: 8000,
+    });
 
-    // Also try root-level jingwei files
-    try {
-      const rootFiles = await readdir(jingweiDir);
-      const rootMd = rootFiles.filter(f => f.endsWith(".md"));
-      const rootEntries = await Promise.all(rootMd.map(async (f) => {
-        const content = await readFile(join(jingweiDir, f), "utf-8").catch(() => "");
-        return { name: f, content: content.slice(0, 2000) };
-      }));
-      if (rootEntries.length > 0) categories.push({ name: "根目录", files: rootEntries });
-    } catch {
-      /* jingwei dir may not exist */
-    }
+    const itemCount = result.items.length;
+    const droppedCount = result.droppedEntryIds.length;
+    const summary = droppedCount > 0
+      ? `已读取 ${itemCount} 条经纬条目（${result.totalTokens} tokens），${droppedCount} 条因预算限制被省略。`
+      : `已读取 ${itemCount} 条经纬条目（${result.totalTokens} tokens）。`;
 
     return {
       ok: true,
-      summary: `已读取书籍 ${bookId} 的经纬上下文（${categories.length} 个分类）。`,
-      data: { bookId, categories, totalFiles: categories.reduce((sum, c) => sum + c.files.length, 0) },
+      summary,
+      data: {
+        bookId,
+        items: result.items,
+        totalTokens: result.totalTokens,
+        droppedEntryIds: result.droppedEntryIds,
+        sectionStats: result.sectionStats,
+      },
     };
   } catch (error) {
-    return { ok: false, error: "read-failed", summary: `读取经纬失败：${error instanceof Error ? error.message : String(error)}` };
+    return {
+      ok: false,
+      error: "read-failed",
+      summary: `读取经纬失败：${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 }

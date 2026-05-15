@@ -88,6 +88,8 @@ export type SessionToolExecutorOptions = {
   readonly verificationCommand?: string;
   /** 子状态变更回调（用于广播 reflecting/retrying 等状态到前端） */
   readonly onSubstatus?: (substatus: string) => void;
+  /** 加载书籍配置（用于获取 enabledPresetIds 等） */
+  readonly loadBookConfig?: (bookId: string) => Promise<{ enabledPresetIds?: string[]; beatTemplateId?: string; [key: string]: unknown }>;
 };
 
 export type SessionToolExecutor = {
@@ -554,10 +556,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
       return async ({ input, definition }) => {
         const { handleJingweiReadContext } = await import("@vivy1024/novelfork-novel-plugin");
         const bookId = String(input.bookId);
-        const workDir = options.workDir ?? process.cwd();
-        const { join } = await import("node:path");
-        const booksDir = join(workDir, "books");
-        const result = await handleJingweiReadContext({ bookId }, booksDir);
+        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
+        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
+        const result = await handleJingweiReadContext({ bookId, chapterNumber, sceneText });
         return { ...result, renderer: definition.renderer };
       };
     case "health.read_summary":
@@ -901,6 +902,135 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           }
           default:
             return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `\u4e0d\u652f\u6301\u7684 action: ${action}` };
+        }
+      };
+    // --- 预设与节拍工具 (cockpit-redesign spec) ---
+    case "presets.get_rules":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        try {
+          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
+
+          if (options.loadBookConfig) {
+            try {
+              const bookConfig = await options.loadBookConfig(bookId);
+              const enabledIds: string[] = bookConfig.enabledPresetIds ?? [];
+              enabledPresets = enabledIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
+            } catch {
+              enabledPresets = listPresets() as unknown as typeof enabledPresets;
+            }
+          } else {
+            enabledPresets = listPresets() as unknown as typeof enabledPresets;
+          }
+          const rules = enabledPresets.map((p) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            promptInjection: p.promptInjection ?? "",
+          }));
+          return { ok: true, renderer: definition.renderer, summary: `${rules.length} 条预设规则已加载。`, data: { bookId, rules } };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "presets-unavailable", summary: `预设加载失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "presets.check_compliance":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        const content = String(input.content ?? "");
+        if (!content) {
+          return { ok: false, renderer: definition.renderer, error: "missing-content", summary: "content 参数不能为空。" };
+        }
+        try {
+          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
+
+          if (options.loadBookConfig) {
+            try {
+              const bookConfig = await options.loadBookConfig(bookId);
+              const enabledIds: string[] = bookConfig.enabledPresetIds ?? [];
+              enabledPresets = enabledIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
+            } catch {
+              enabledPresets = listPresets() as unknown as typeof enabledPresets;
+            }
+          } else {
+            enabledPresets = listPresets() as unknown as typeof enabledPresets;
+          }
+          // Simple keyword-based compliance check
+          const violations: Array<{ presetName: string; rule: string; violation: string; severity: "warning" | "error" }> = [];
+          for (const preset of enabledPresets) {
+            if (!preset.promptInjection) continue;
+            // Check for anti-AI patterns
+            if (preset.category === "anti-ai") {
+              const aiPatterns = ["值得注意的是", "总而言之", "综上所述", "不言而喻", "毋庸置疑"];
+              for (const pattern of aiPatterns) {
+                if (content.includes(pattern)) {
+                  violations.push({
+                    presetName: preset.name,
+                    rule: `避免使用"${pattern}"`,
+                    violation: `文本中包含"${pattern}"`,
+                    severity: "warning",
+                  });
+                }
+              }
+            }
+          }
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: violations.length === 0 ? "所有预设规则检查通过。" : `发现 ${violations.length} 处违规。`,
+            data: { bookId, violations, checkedPresets: enabledPresets.length },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "check-failed", summary: `合规检查失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "beat.get_current":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        try {
+          const { listBeatTemplates, getBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+
+          // Try to get user's selected template from book config
+          let selectedTemplateId: string | undefined;
+          if (options.loadBookConfig) {
+            try {
+              const bookConfig = await options.loadBookConfig(bookId);
+              selectedTemplateId = bookConfig.beatTemplateId as string | undefined;
+            } catch { /* ignore */ }
+          }
+
+          const templates = listBeatTemplates();
+          const activeTemplate = selectedTemplateId
+            ? getBeatTemplate(selectedTemplateId) ?? templates[0]
+            : templates[0];
+
+          if (!activeTemplate) {
+            return { ok: true, renderer: definition.renderer, summary: "无可用节拍模板。", data: { bookId, template: null, currentBeat: null } };
+          }
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `当前节拍模板: ${activeTemplate.name}（${activeTemplate.beats.length} 个节拍）`,
+            data: {
+              bookId,
+              template: {
+                id: activeTemplate.id,
+                name: activeTemplate.name,
+                description: activeTemplate.description,
+                totalBeats: activeTemplate.beats.length,
+              },
+              beats: activeTemplate.beats.map((b, i) => ({
+                index: i,
+                name: b.name,
+                emotionalTone: b.emotionalTone,
+                wordRatio: b.wordRatio,
+                networkNovelTip: b.networkNovelTip ?? null,
+              })),
+            },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "beat-unavailable", summary: `节拍信息加载失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
     default:

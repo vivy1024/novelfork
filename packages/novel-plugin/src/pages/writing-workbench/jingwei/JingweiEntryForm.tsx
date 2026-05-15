@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, Trash2, Loader2, X } from "lucide-react";
+import { Save, Trash2, Loader2, X, Plus } from "lucide-react";
 import { getCategorySchema, type CategoryFieldSchema, type CategoryVisibility } from "./category-schemas";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
 import { JingweiProgressions } from "./JingweiProgressions";
@@ -12,7 +12,15 @@ import { JingweiProgressions } from "./JingweiProgressions";
 interface JingweiEntryFormProps {
   entry: JingweiEntry;
   bookId?: string;
-  onSave: (entryId: string, payload: { title: string; fields: Record<string, unknown>; visibility: CategoryVisibility }) => Promise<boolean>;
+  onSave: (entryId: string, payload: {
+    title: string;
+    fields: Record<string, unknown>;
+    visibility: CategoryVisibility;
+    aliases?: string[];
+    relatedEntryIds?: string[];
+    visibleAfterChapter?: number | null;
+    visibleUntilChapter?: number | null;
+  }) => Promise<boolean>;
   onDelete: (entryId: string) => Promise<boolean>;
   onClose: () => void;
 }
@@ -30,6 +38,10 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   const [title, setTitle] = useState(entry.title);
   const [formData, setFormData] = useState<Record<string, unknown>>(entry.fields ?? {});
   const [visibility, setVisibility] = useState<CategoryVisibility>(entry.visibility);
+  const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
+  const [aliasInput, setAliasInput] = useState("");
+  const [visibleAfterChapter, setVisibleAfterChapter] = useState<number | null>(entry.visibleAfterChapter ?? null);
+  const [visibleUntilChapter, setVisibleUntilChapter] = useState<number | null>(entry.visibleUntilChapter ?? null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -40,15 +52,22 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     setTitle(entry.title);
     setFormData(entry.fields ?? {});
     setVisibility(entry.visibility);
+    setAliases(entry.aliases ?? []);
+    setAliasInput("");
+    setVisibleAfterChapter(entry.visibleAfterChapter ?? null);
+    setVisibleUntilChapter(entry.visibleUntilChapter ?? null);
     setError(null);
     setConfirmDelete(false);
-  }, [entry.id, entry.title, entry.fields, entry.visibility]);
+  }, [entry.id, entry.title, entry.fields, entry.visibility, entry.aliases, entry.visibleAfterChapter, entry.visibleUntilChapter]);
 
   const dirty = useMemo(() => {
     if (title !== entry.title) return true;
     if (visibility !== entry.visibility) return true;
+    if (JSON.stringify(aliases) !== JSON.stringify(entry.aliases ?? [])) return true;
+    if (visibleAfterChapter !== (entry.visibleAfterChapter ?? null)) return true;
+    if (visibleUntilChapter !== (entry.visibleUntilChapter ?? null)) return true;
     return JSON.stringify(formData) !== JSON.stringify(entry.fields ?? {});
-  }, [title, formData, visibility, entry]);
+  }, [title, formData, visibility, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
 
   function setField(key: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -58,7 +77,14 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     if (saving) return;
     setSaving(true);
     setError(null);
-    const ok = await onSave(entry.id, { title: title.trim(), fields: formData, visibility });
+    const ok = await onSave(entry.id, {
+      title: title.trim(),
+      fields: formData,
+      visibility,
+      aliases,
+      visibleAfterChapter,
+      visibleUntilChapter,
+    });
     if (!ok) setError("保存失败");
     setSaving(false);
   }
@@ -100,6 +126,75 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
             className="w-full"
             aria-label="可见性"
           />
+        </div>
+
+        {/* Chapter visibility range */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">可见起始章节</label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="留空=始终"
+              value={visibleAfterChapter ?? ""}
+              onChange={(e) => setVisibleAfterChapter(e.target.value ? Number(e.target.value) : null)}
+              className="text-sm h-8"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">可见截止章节</label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="留空=永不过期"
+              value={visibleUntilChapter ?? ""}
+              onChange={(e) => setVisibleUntilChapter(e.target.value ? Number(e.target.value) : null)}
+              className="text-sm h-8"
+            />
+          </div>
+        </div>
+
+        {/* Aliases */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">别名（用于 AI 上下文匹配）</label>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {aliases.map((alias, i) => (
+              <Badge key={i} variant="secondary" className="text-[10px] gap-0.5 pr-1">
+                {alias}
+                <button
+                  type="button"
+                  onClick={() => setAliases(aliases.filter((_, j) => j !== i))}
+                  className="ml-0.5 hover:text-destructive"
+                >
+                  <X className="size-2.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            <Input
+              value={aliasInput}
+              onChange={(e) => setAliasInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && aliasInput.trim()) {
+                  e.preventDefault();
+                  setAliases([...aliases, aliasInput.trim()]);
+                  setAliasInput("");
+                }
+              }}
+              placeholder="输入别名后回车"
+              className="text-sm h-7 flex-1"
+            />
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={!aliasInput.trim()}
+              onClick={() => { setAliases([...aliases, aliasInput.trim()]); setAliasInput(""); }}
+            >
+              <Plus className="size-3" />
+            </Button>
+          </div>
         </div>
 
         {/* Dynamic fields */}

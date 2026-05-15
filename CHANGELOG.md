@@ -36,6 +36,28 @@
 - **ExpandablePanel 拖拽安全**：useEffect cleanup 防止事件监听器泄漏
 - **JingweiGraphWorkspace 错误处理**：fetch 失败显示"加载失败，点击重试"
 
+### 🐛 修复（cockpit-redesign 差距修复）
+
+- **StatusBar 面板映射**：节拍按钮正确指向 beat 面板（之前错误指向 quality）；alertCount 从真实 health API 数据计算
+- **PresetPanel 去 mock 数据**：删除硬编码假数据，从 `/api/books/:id/presets` + `/api/presets` 加载真实数据；toggle 通过 PUT 保存到后端
+- **BeatPanel 接通节拍模板**：从 `/api/presets/beats` 加载可用模板列表；选择后写入 localStorage + 同步到后端 bookConfig
+- **3 个工具 handler 实现**：`presets.get_rules` / `presets.check_compliance` / `beat.get_current` 从 schema-only 变为可执行
+- **对话面板集成**：ConversationSurface 新增 headerSlot，ToolConfigBar + AgentQuickActions 在有 bookId 时自动渲染
+- **QualityPanel 趋势图**：用 shadcn chart + recharts 实现 AI味趋势折线图 + 文风漂移曲线 + 质量评分趋势
+- **新增 beat-template API**：`PUT /api/books/:id/beat-template` 持久化用户选择的节拍模板
+- **loadBookConfig 注入**：工具 handler 通过 `options.loadBookConfig` 直接读取 book config，不再依赖 cockpitService 强转
+- **StatusBar 高亮修复**：章数改为纯展示不可点击；节拍实时更新（CustomEvent 通知）
+- **BeatPanel 切换修复**：选同一模板不重置进度；从 session projectId 获取 bookId
+
+### 🧠 上下文可见性系统（context-visibility-system spec Phase 1-5）
+
+- **jingwei.read_context 接入新系统**：替换旧文件系统全量读取，改为调用 `buildJingweiContext`（按 visibility + chapter + sceneText + tokenBudget 过滤）
+- **candidate.create_chapter 注入经纬**：生成章节时自动组装世界观上下文（global + tracked + nested，6000 token 预算）
+- **条目编辑表单增强**：新增别名（TagInput）、可见起始/截止章节、关联条目字段
+- **自动链接引擎**：`linkChapterToEntries` 扫描章节文本匹配条目标题/别名 + `POST/GET /api/books/:id/chapters/:ch/link(s)` API
+- **ToolConfigBar 接通后端**：toggle 变化同步到 session toolPolicy.deny，Agent 执行前检查
+- **图谱可见性标识**：节点显示 🌐global/👁tracked/🔗nested 图标，participatesInAi=false 半透明
+
 ### 📦 废弃
 
 - `CockpitOverview.tsx` — 标记 @deprecated，被 CockpitWorkspace 替代

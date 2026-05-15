@@ -129,9 +129,20 @@ export function ToolConfigBar({ bookId: _bookId, sessionId, agentRole = "writer"
     setEnabledTools(stored ?? new Set(ROLE_DEFAULTS[agentRole] ?? ROLE_DEFAULTS.writer));
   }, [sessionId, agentRole]);
 
-  // 持久化
+  // 持久化到 localStorage + 同步到后端 session toolPolicy
   useEffect(() => {
     saveConfig(sessionId, enabledTools);
+
+    // Sync to backend: disabled tools go into deny list
+    if (sessionId) {
+      const allOptionalIds = OPTIONAL_TOOLS.map((t) => t.id);
+      const deny = allOptionalIds.filter((id) => !enabledTools.has(id));
+      void fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionConfig: { toolPolicy: { deny } } }),
+      }).catch(() => { /* best-effort */ });
+    }
   }, [sessionId, enabledTools]);
 
   const handleToggle = useCallback((toolId: string) => {

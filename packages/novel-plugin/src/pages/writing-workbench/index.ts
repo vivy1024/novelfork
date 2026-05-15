@@ -16,3 +16,6 @@ export * from "./WritingToolsPanel";
 export * from "./WritingWorkbenchRoute";
 export * from "./resource-viewers";
 export * from "./useWorkbenchResources";
+export * from "./ToolConfigBar";
+export * from "./AgentQuickActions";
+export * from "./ConversationResourcePanel";

@@ -239,6 +239,23 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
     const writingConstraints = await getWritingStyleConstraints();
     let presetInjections = root ? await getEnabledPresetInjections(bookId, root) : "";
 
+    // --- Jingwei context injection ---
+    let jingweiSection = "";
+    try {
+      const { buildJingweiContext } = await import("../engine/jingwei/context/build-jingwei-context.js");
+      const jingweiResult = await buildJingweiContext({
+        bookId,
+        currentChapter: chapterNumber,
+        sceneText: promptPreview,
+        tokenBudget: 6000,
+      });
+      if (jingweiResult.items.length > 0) {
+        jingweiSection = "\n\n## 世界观与设定\n" + jingweiResult.items.map((item) => item.text).join("\n");
+      }
+    } catch {
+      // jingwei context unavailable — continue without it
+    }
+
     // --- Preset reflection: ask summary model for additional presets ---
     if (root) {
       const reflectionResult = await runPresetReflection(runtimeService, sessionConfig, bookId, root, chapterNumber, promptPreview);
@@ -250,7 +267,7 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
-        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}`, timestamp: 0 },
+        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}${jingweiSection}`, timestamp: 0 },
         { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
       ],
     });
