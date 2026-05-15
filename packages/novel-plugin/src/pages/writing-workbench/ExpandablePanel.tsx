@@ -3,7 +3,7 @@
  *
  * 从底部向上展开，支持关闭/最大化/拖拽调整高度。面板互斥。
  */
-import { useRef, useCallback } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PresetPanel } from "./panels/PresetPanel";
@@ -43,6 +43,18 @@ export function ExpandablePanel({
   onHeightChange,
 }: ExpandablePanelProps) {
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
+  const listenersRef = useRef<{ move: (ev: MouseEvent) => void; up: () => void } | null>(null);
+
+  // Cleanup drag listeners on unmount
+  useEffect(() => {
+    return () => {
+      if (listenersRef.current) {
+        document.removeEventListener("mousemove", listenersRef.current.move);
+        document.removeEventListener("mouseup", listenersRef.current.up);
+        listenersRef.current = null;
+      }
+    };
+  }, []);
 
   const handleDragStart = useCallback(
     (e: React.MouseEvent) => {
@@ -64,8 +76,11 @@ export function ExpandablePanel({
         dragRef.current = null;
         document.removeEventListener("mousemove", handleMove);
         document.removeEventListener("mouseup", handleUp);
+        listenersRef.current = null;
       };
 
+      // Store refs for cleanup on unmount
+      listenersRef.current = { move: handleMove, up: handleUp };
       document.addEventListener("mousemove", handleMove);
       document.addEventListener("mouseup", handleUp);
     },
