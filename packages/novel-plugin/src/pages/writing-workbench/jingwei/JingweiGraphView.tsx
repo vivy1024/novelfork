@@ -44,6 +44,7 @@ interface JingweiGraphViewProps {
   bookId: string;
   entries: JingweiEntry[];
   category: string;
+  onNodeClick?: (entryId: string) => void;
 }
 
 // --- Relation type colors ---
@@ -74,11 +75,19 @@ const CATEGORY_FILTER_OPTIONS = [
   ...CATEGORY_SCHEMAS.map((s) => ({ value: s.id, label: s.name })),
 ];
 
+// --- Lifecycle border colors ---
+const LIFECYCLE_BORDER: Record<string, string> = {
+  active: "border-green-500/50",
+  dormant: "border-gray-400/50",
+  retired: "border-red-500/50",
+};
+
 // --- Custom Node ---
-function JingweiNode({ data }: { data: { label: string; category: string; preview: string } }) {
+function JingweiNode({ data }: { data: { label: string; category: string; preview: string; lifecycle?: string } }) {
   const schema = getCategorySchema(data.category);
+  const borderClass = LIFECYCLE_BORDER[data.lifecycle ?? "active"] ?? LIFECYCLE_BORDER.active;
   return (
-    <div className="rounded-lg border border-border bg-card shadow-sm px-3 py-2 min-w-[120px] max-w-[180px]">
+    <div className={`rounded-lg border ${borderClass} bg-card shadow-sm px-3 py-2 min-w-[120px] max-w-[180px]`}>
       <div className="flex items-center gap-1.5 mb-1">
         <Badge variant="secondary" className="text-[9px] px-1">
           {schema?.name ?? data.category}
@@ -95,7 +104,7 @@ function JingweiNode({ data }: { data: { label: string; category: string; previe
 const nodeTypes = { jingweiNode: JingweiNode };
 
 // --- Main Component ---
-export function JingweiGraphView({ bookId, entries, category }: JingweiGraphViewProps) {
+export function JingweiGraphView({ bookId, entries, category, onNodeClick }: JingweiGraphViewProps) {
   const [relations, setRelations] = useState<JingweiRelation[]>([]);
   const [filterCategory, setFilterCategory] = useState<string>(category);
   const [nodes, setNodes] = useState<Node[]>([]);
@@ -131,6 +140,7 @@ export function JingweiGraphView({ bookId, entries, category }: JingweiGraphView
     const newNodes: Node[] = filteredEntries.map((entry, i) => {
       const fields = entry.fields ?? {};
       const preview = (fields.description ?? fields.summary ?? fields.personality ?? fields.effect ?? "") as string;
+      const lifecycle = ((fields.lifecycle ?? (entry as { lifecycle?: string }).lifecycle) ?? "active") as string;
       return {
         id: entry.id,
         type: "jingweiNode",
@@ -139,6 +149,7 @@ export function JingweiGraphView({ bookId, entries, category }: JingweiGraphView
           label: entry.title,
           category: (entry as { category?: string }).category ?? category,
           preview: typeof preview === "string" ? preview.slice(0, 40) : "",
+          lifecycle,
         },
       };
     });
@@ -243,6 +254,7 @@ export function JingweiGraphView({ bookId, entries, category }: JingweiGraphView
           onEdgesChange={onEdgesChange}
           onConnect={onConnect}
           onEdgeContextMenu={onEdgeContextMenu}
+          onNodeClick={(_event, node) => onNodeClick?.(node.id)}
           fitView
           minZoom={0.2}
           maxZoom={3}

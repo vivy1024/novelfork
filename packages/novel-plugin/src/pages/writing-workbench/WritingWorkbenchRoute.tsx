@@ -123,8 +123,8 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
                 章节图
               </Button>
             </div>
-            {/* 写作动作 + 新建章节 */}
-            {writingActions && (
+            {/* 写作动作 + 新建章节（cockpitV2 时隐藏，已移至 Agent 对话面板） */}
+            {writingActions && !(typeof window !== "undefined" && localStorage.getItem("cockpitV2") === "true") && (
               <section aria-label="写作动作" className="flex items-center gap-2">
                 {writingActions}
               </section>
@@ -134,7 +134,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
                 + 新建章节
               </Button>
             )}
-            {bookId && (
+            {bookId && !(typeof window !== "undefined" && localStorage.getItem("cockpitV2") === "true") && (
               <Button size="xs" variant={showToolsPanel ? "default" : "outline"} onClick={() => { setShowToolsPanel(!showToolsPanel); if (!showToolsPanel) setShowCheckpoints(false); }}>
                 <Wrench className="size-3 mr-1" />
                 写作工具
