@@ -5,6 +5,22 @@
   "type": "module",
   "main": "dist/api/index.js",
   "types": "dist/api/index.d.ts",
+  "exports": {
+    ".": "./dist/api/index.js",
+    "./api/lib/ai-request-observer": "./src/api/lib/ai-request-observer.ts",
+    "./api/lib/token-counter": "./src/api/lib/token-counter.ts",
+    "./api/lib/user-config-service": "./src/api/lib/user-config-service.ts",
+    "./api/lib/rhythm-analyzer": "./src/api/lib/rhythm-analyzer.ts",
+    "./api/lib/ai-gate": "./src/api/lib/ai-gate.ts",
+    "./api/lib/provider-runtime-store": "./src/api/lib/provider-runtime-store.ts",
+    "./api/lib/runtime-model-pool": "./src/api/lib/runtime-model-pool.ts",
+    "./api/lib/candidate-tool-service": "./src/api/lib/candidate-tool-service.ts",
+    "./api/lib/llm-runtime-service": "./src/api/lib/llm-runtime-service.ts",
+    "./api/errors": "./src/api/errors.ts",
+    "./api/safety": "./src/api/safety.ts",
+    "./api/routes/context": "./src/api/routes/context.ts",
+    "./shared/author-materials": "./src/shared/author-materials.ts"
+  },
   "files": [
     "dist",
     "!dist/**/*.test.*"

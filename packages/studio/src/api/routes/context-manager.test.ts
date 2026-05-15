@@ -16,7 +16,7 @@ vi.mock("../lib/user-config-service.js", () => ({
   })),
 }));
 
-import { createContextManagerRouter } from "./context-manager";
+import { createContextManagerRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 describe("createContextManagerRouter", () => {
   let root: string;

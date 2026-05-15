@@ -19,7 +19,7 @@ vi.mock("@vivy1024/novelfork-core", () => ({
   filterSummaries: vi.fn((value: string) => value),
 }));
 
-import { createAIRouter } from "./ai";
+import { createAIRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 function createRoute() {
   return createAIRouter({

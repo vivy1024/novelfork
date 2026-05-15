@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createComplianceRouter } from "./compliance.js";
+import { createComplianceRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
 

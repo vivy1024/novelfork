@@ -2,11 +2,9 @@ export { createRunsRouter } from "./runs.js";
 export { createAuthRouter } from "./auth.js";
 export { createStorageRouter } from "./storage.js";
 export { createSnapshotsRouter } from "./snapshots.js";
-export { createAIRouter } from "./ai.js";
 export { createAIRelayRouter } from "./ai-relay.js";
 export { createDaemonRouter } from "./daemon.js";
 export { createMCPRouter } from "./mcp.js";
-export { createPipelineRouter } from "./pipeline.js";
 export { createWorkbenchRouter } from "./workbench.js";
 export { createLorebookRouter } from "./lorebook.js";
 export { createSettingsRouter } from "./settings.js";
@@ -20,11 +18,7 @@ export { createWorktreeRouter } from "./worktree.js";
 export { createWorkspaceManagementRouter } from "./workspace-management.js";
 export { createRhythmRouter } from "./rhythm.js";
 export { createGoldenChaptersRouter } from "./golden-chapters.js";
-export { createContextManagerRouter } from "./context-manager.js";
 export { createAdminRouter, setupAdminWebSocket } from "./admin.js";
-export { createBibleRouter } from "./bible.js";
-export { createJingweiRouter } from "./jingwei.js";
-export { createFilterRouter } from "./filter.js";
 export { createRoutinesRouter } from "./routines.js";
 export { createChapterCandidatesRouter } from "./chapter-candidates.js";
 export { createNarrativeLineRouter } from "./narrative-line.js";
@@ -32,9 +26,6 @@ export { createSearchRouter } from "./search.js";
 export { default as sessionRouter } from "./session.js";
 export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
 export { createPresetsRouter } from "./presets.js";
-export { createComplianceRouter } from "./compliance.js";
-export { createWritingToolsRouter } from "./writing-tools.js";
-export { createWritingModesRouter } from "./writing-modes.js";
 export { createExecRouter } from "./exec.js";
 export { createTerminalsRouter } from "./terminals.js";
 export { createProxyRouter } from "./proxy.js";
@@ -48,3 +39,16 @@ export { createLearningRouter } from "./learning.js";
 export { createFileChangesRouter } from "./file-changes.js";
 export { createAuthUsersRouter } from "./auth-users.js";
 export type { RouterContext } from "./context.js";
+
+// Re-export novel-domain routes from novel-plugin
+export {
+  createAIRouter,
+  createJingweiRouter,
+  createWritingModesRouter,
+  createPipelineRouter,
+  createFilterRouter,
+  createComplianceRouter,
+  createBibleRouter,
+  createWritingToolsRouter,
+  createContextManagerRouter,
+} from "@vivy1024/novelfork-novel-plugin/routes";

@@ -18,12 +18,12 @@ import {
   type ProgressConfig,
   type StyleProfile,
 } from "@vivy1024/novelfork-core";
-import { analyzeRhythm as analyzeBookRhythm } from "../lib/rhythm-analyzer.js";
+import { analyzeRhythm as analyzeBookRhythm } from "@vivy1024/novelfork-studio/api/lib/rhythm-analyzer";
 
-import { requireModelForAiAction } from "../lib/ai-gate.js";
-import { buildStructuredErrorEnvelope } from "../errors.js";
-import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
-import { buildRuntimeProviderStatus } from "../lib/runtime-model-pool.js";
+import { requireModelForAiAction } from "@vivy1024/novelfork-studio/api/lib/ai-gate";
+import { buildStructuredErrorEnvelope } from "@vivy1024/novelfork-studio/api/errors";
+import { ProviderRuntimeStore } from "@vivy1024/novelfork-studio/api/lib/provider-runtime-store";
+import { buildRuntimeProviderStatus } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
 import type { RouterContext } from "./context.js";
 
 const PROGRESS_CONFIG_KEY = "writing-tools:progress-config";

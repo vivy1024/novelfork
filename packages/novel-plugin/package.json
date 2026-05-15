@@ -6,14 +6,17 @@
   "main": "src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./engine": "./src/engine/index.ts"
+    "./engine": "./src/engine/index.ts",
+    "./routes": "./src/routes/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vivy1024/novelfork-core": "workspace:*",
+    "@vivy1024/novelfork-studio": "workspace:*",
     "@anthropic-ai/sdk": "0.78.0",
+    "hono": "4.7.0",
     "openai": "4.80.0",
     "zod": "3.24.0",
     "js-yaml": "4.1.1"
