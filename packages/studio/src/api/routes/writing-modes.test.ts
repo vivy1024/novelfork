@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
-import { createWritingModesRouter } from "./writing-modes.js";
+import { createWritingModesRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const coreMocks = vi.hoisted(() => ({
   buildContinuationPrompt: vi.fn(() => "continuation-prompt"),

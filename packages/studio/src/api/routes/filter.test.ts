@@ -12,7 +12,7 @@ import {
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 
-import { createFilterRouter } from "./filter.js";
+import { createFilterRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
 

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 
-import { ApiError } from "../errors.js";
+import { ApiError } from "@vivy1024/novelfork-studio/api/errors";
 
 export interface CreateBibleRouterOptions {
   storage?: StorageDatabase;

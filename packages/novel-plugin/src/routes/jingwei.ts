@@ -6,8 +6,8 @@ import type {
   StorageDatabase,
 } from "@vivy1024/novelfork-core";
 
-import { ApiError } from "../errors.js";
-import { isSafeBookId } from "../safety.js";
+import { ApiError } from "@vivy1024/novelfork-studio/api/errors";
+import { isSafeBookId } from "@vivy1024/novelfork-studio/api/safety";
 
 /** Extended entry fields from 0012_jingwei_overhaul migration */
 interface EntryWithOverhaulFields {

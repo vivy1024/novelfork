@@ -9,7 +9,7 @@ import {
   createPipelineRouter,
   createPipelineRun,
   updatePipelineStage,
-} from "./pipeline";
+} from "@vivy1024/novelfork-novel-plugin/routes";
 import type { RouterContext } from "./context";
 
 function createTestContext(): RouterContext {
