@@ -97,6 +97,8 @@ export interface AgentRuntimeSettingsInput extends ModelSettingsInput {
       readonly dumpEnabled?: boolean;
     };
     readonly sendMode?: string;
+    readonly autoVerify?: boolean;
+    readonly verificationCommand?: string;
   };
   readonly proxy?: {
     readonly webFetch?: string;

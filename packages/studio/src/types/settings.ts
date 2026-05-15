@@ -144,6 +144,10 @@ export interface RuntimeControlSettings {
   retryRules: RetryRule[];
   /** 用户自定义 hooks（工具执行前后 / turn 结束时触发 shell 命令） */
   hooks: Hook[];
+  /** 编辑后自动验证：Write/Edit 成功后自动运行验证命令 */
+  autoVerify: boolean;
+  /** 验证命令（如 bunx tsc --noEmit），为空时自动检测 */
+  verificationCommand: string;
 }
 
 export interface RetryRule {
@@ -429,6 +433,8 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     silentToolCallThreshold: 25,
     retryRules: [],
     hooks: [],
+    autoVerify: false,
+    verificationCommand: "",
   },
   modelDefaults: {
     defaultSessionModel: "",
