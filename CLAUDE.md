@@ -289,7 +289,7 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 1. **规划**：手动维护 `.kiro/specs/{feature}/tasks.md`，或用 `/office-hours` + `/plan-eng-review` 辅助设计
 2. **执行**：按 tasks.md 逐任务派 subagent 实现（遵循 GStack 执行流程段落的 subagent 纪律）
-3. **审查**：每个任务完成后 `/review` 审查 diff
+3. **审查**：每个任务/Batch 完成后**必须**调用 `/review` 审查 diff，不得跳过
 4. **验证**：前端任务用 `/qa` 或 Browser 工具截图；后端任务用 typecheck + curl
 5. **发布**：全部完成后 `/ship` 创建 PR
 
