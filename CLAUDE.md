@@ -6,7 +6,7 @@
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
-**上游**: Fork 自 [InkOS](https://github.com/Narcooo/inkos)，专注中文网文创作场景
+**起源**: 早期参考 [InkOS](https://github.com/Narcooo/inkos) 架构，现已完全独立演进，功能与架构远超原项目
 
 ---
 
@@ -69,7 +69,7 @@
 | TypeScript | typecheck 通过 |
 | 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
 | 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
-| 编译 | `dist/novelfork-v0.4.0-windows-x64.exe`；GitHub Release 已发布 |
+| 编译 | `dist/novelfork-v0.6.0-windows-x64.exe`；GitHub Release 已发布 |
 | 下一步 | 内测分发 + 反馈收集 |
 
 ---
@@ -393,7 +393,7 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 - ❌ 虚构部署结果、环境变量、API 行为、配置
 - ❌ force push 到生产分支（用 `git revert`）
-- ❌ 引用上游 InkOS 已废弃的口径（以本项目代码为准）
+- ❌ 引用 InkOS 已废弃的口径（以本项目代码为准；InkOS 仅为早期参考，不再是上游）
 
 ---
 

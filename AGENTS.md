@@ -69,6 +69,6 @@ bun run docs:verify                          # 文档验证
 ## 禁止事项
 
 - 禁止虚构部署结果、环境变量、API 行为
-- 禁止引用上游 InkOS 已废弃口径
+- 禁止引用 InkOS 已废弃口径（InkOS 仅为早期参考，不再是上游）
 - 禁止把 planned/unsupported 能力写成 current
 - 禁止只用局部测试声明完整功能完成
