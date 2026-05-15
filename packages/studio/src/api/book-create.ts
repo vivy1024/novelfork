@@ -1,4 +1,5 @@
-import type { JingweiTemplateSelection, Platform } from "@vivy1024/novelfork-core";
+import type { Platform } from "@vivy1024/novelfork-core";
+import type { JingweiTemplateSelection } from "@vivy1024/novelfork-novel-plugin/engine";
 
 import type { NarratorSessionChatSnapshot, NarratorSessionRecord } from "../shared/session-types.js";
 

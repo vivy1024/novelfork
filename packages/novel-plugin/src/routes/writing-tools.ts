@@ -3,21 +3,23 @@ import { join } from "node:path";
 
 import { Hono } from "hono";
 import {
+  createKvRepository,
+  getStorageDatabase,
+  type StyleProfile,
+} from "@vivy1024/novelfork-core";
+import {
   analyzeDialogue,
   analyzeRhythm,
   analyzeSensitiveWords,
   buildConflictMap,
   buildPovDashboard,
-  createKvRepository,
   detectToneDrift,
   generateChapterHooks,
   getDailyProgress,
   getProgressTrend,
-  getStorageDatabase,
   type DialogueChapterType,
   type ProgressConfig,
-  type StyleProfile,
-} from "@vivy1024/novelfork-core";
+} from "../engine/index.js";
 import { analyzeRhythm as analyzeBookRhythm } from "@vivy1024/novelfork-studio/api/lib/rhythm-analyzer";
 
 import { requireModelForAiAction } from "@vivy1024/novelfork-studio/api/lib/ai-gate";
@@ -219,7 +221,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const storage = getStorageDatabase();
     const config = await loadProgressConfig(storage);
     const progress = await getDailyProgress(storage, config);
-    const { createBibleConflictRepository, createFilterReportRepository } = await import("@vivy1024/novelfork-core");
+    const { createBibleConflictRepository, createFilterReportRepository } = await import("../engine/index.js");
     const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
     const language = isRecord(book) && book.language === "en" ? "en" : "zh";
     const sensitiveWordCount = chapters.reduce((total, chapter) => total + countSensitiveHits(chapter.content, language), 0);
@@ -251,7 +253,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const storage = getStorageDatabase();
-    const { createBibleConflictRepository } = await import("@vivy1024/novelfork-core");
+    const { createBibleConflictRepository } = await import("../engine/index.js");
     const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
     return c.json({ conflicts: buildConflictMap(conflicts) });
   });
@@ -260,7 +262,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const storage = getStorageDatabase();
-    const { createBibleCharacterArcRepository } = await import("@vivy1024/novelfork-core");
+    const { createBibleCharacterArcRepository } = await import("../engine/index.js");
     const arcs = await createBibleCharacterArcRepository(storage).listByBook(bookId);
     return c.json({ arcs });
   });

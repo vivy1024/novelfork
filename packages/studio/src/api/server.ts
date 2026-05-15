@@ -6,16 +6,18 @@ import {
   createLogger,
   initializeStorageDatabase,
   loadProjectConfig,
-  pipelineEvents,
   runJsonImportMigrationIfNeeded,
   runStorageMigrations,
-  seedQuestionnaireTemplates,
-  type PipelineConfig,
   type ProjectConfig,
   type LogSink,
   type LogEntry,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
+import {
+  pipelineEvents,
+  seedQuestionnaireTemplates,
+  type PipelineConfig,
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRuntimeJsonLineSink } from "./lib/runtime-log-sink.js";
@@ -110,7 +112,7 @@ import {
   createFileChangesRouter,
   createAuthUsersRouter,
 } from "./routes/index.js";
-import { registerBuiltinPresets } from "@vivy1024/novelfork-core";
+import { registerBuiltinPresets } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
 import { authGuard } from "./middleware/auth-guard.js";
@@ -161,17 +163,17 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
   // --- Plugin registration ---
   pluginRegistry.register({
-    id: NOVEL_PLUGIN_MANIFEST.id,
+    id: NOVEL_PLUGIN_MANIFEST.id ?? NOVEL_PLUGIN_MANIFEST.name,
     name: NOVEL_PLUGIN_MANIFEST.displayName ?? NOVEL_PLUGIN_MANIFEST.name,
     version: NOVEL_PLUGIN_MANIFEST.version,
-    projectType: NOVEL_PLUGIN_MANIFEST.projectType,
+    projectType: NOVEL_PLUGIN_MANIFEST.projectType ?? "novel",
     routes: [], // Routes will be migrated in Batch 3
     tools: [
       { toolName: "chapter.read", execute: async (input, ctx) => handleChapterRead(input as any, ctx as any) },
       { toolName: "jingwei.read_context", execute: async (input, ctx) => handleJingweiReadContext(input as any, ctx as any) },
     ],
     pages: [], // Pages will be migrated in Batch 5
-    agentPresets: NOVEL_AGENT_PRESET_LIST,
+    agentPresets: NOVEL_AGENT_PRESET_LIST as unknown as Array<{ agentId: string; name: string; tools: string[] }>,
   });
 
   const app = new Hono();

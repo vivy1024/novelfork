@@ -4,6 +4,9 @@ import { join } from "node:path";
 
 import { Hono } from "hono";
 import {
+  chatCompletion,
+} from "@vivy1024/novelfork-core";
+import {
   buildContinuationPrompt,
   buildExpansionPrompt,
   buildBridgePrompt,
@@ -13,7 +16,6 @@ import {
   parseFile,
   mergeStyleProfiles,
   detectStyleDrift,
-  chatCompletion,
   type InlineWriteContext,
   type ContinuationInput,
   type ExpansionInput,
@@ -24,7 +26,7 @@ import {
   type DialogueCharacter,
   type VariantInput,
   type ImportStyleProfile,
-} from "@vivy1024/novelfork-core";
+} from "../engine/index.js";
 
 import type { RouterContext } from "./context.js";
 

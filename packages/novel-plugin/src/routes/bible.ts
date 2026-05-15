@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import type { StorageDatabase } from "@vivy1024/novelfork-core";
+import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
 import { ApiError } from "@vivy1024/novelfork-studio/api/errors";
 
@@ -9,15 +9,14 @@ export interface CreateBibleRouterOptions {
 
 type BibleEntityKind = "characters" | "events" | "settings" | "chapter-summaries";
 
-type CoreModule = typeof import("@vivy1024/novelfork-core");
+type EngineModule = typeof import("../engine/index.js");
 
-async function loadCore(): Promise<CoreModule> {
-  return import("@vivy1024/novelfork-core");
+async function loadEngine(): Promise<EngineModule> {
+  return import("../engine/index.js");
 }
 
 async function resolveStorage(options: CreateBibleRouterOptions): Promise<StorageDatabase> {
   if (options.storage) return options.storage;
-  const { getStorageDatabase } = await loadCore();
   return getStorageDatabase();
 }
 
@@ -52,7 +51,7 @@ function requireName(body: Record<string, unknown>): string {
   return body.name.trim();
 }
 
-function serializeCharacter(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleCharacterRepository"]>["create"]>>) {
+function serializeCharacter(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleCharacterRepository"]>["create"]>>) {
   return {
     ...row,
     aliases: safeJsonParse(row.aliasesJson, [] as string[]),
@@ -61,7 +60,7 @@ function serializeCharacter(row: Awaited<ReturnType<ReturnType<CoreModule["creat
   };
 }
 
-function serializeEvent(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleEventRepository"]>["create"]>>) {
+function serializeEvent(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleEventRepository"]>["create"]>>) {
   return {
     ...row,
     relatedCharacterIds: safeJsonParse(row.relatedCharacterIdsJson, [] as string[]),
@@ -69,7 +68,7 @@ function serializeEvent(row: Awaited<ReturnType<ReturnType<CoreModule["createBib
   };
 }
 
-function serializeSetting(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleSettingRepository"]>["create"]>>) {
+function serializeSetting(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleSettingRepository"]>["create"]>>) {
   return {
     ...row,
     nestedRefs: safeJsonParse(row.nestedRefsJson, [] as string[]),
@@ -77,7 +76,7 @@ function serializeSetting(row: Awaited<ReturnType<ReturnType<CoreModule["createB
   };
 }
 
-function serializeChapterSummary(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleChapterSummaryRepository"]>["create"]>>) {
+function serializeChapterSummary(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleChapterSummaryRepository"]>["create"]>>) {
   return {
     ...row,
     keyEvents: safeJsonParse(row.keyEventsJson, [] as string[]),
@@ -86,7 +85,7 @@ function serializeChapterSummary(row: Awaited<ReturnType<ReturnType<CoreModule["
   };
 }
 
-function serializeConflict(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleConflictRepository"]>["create"]>>, currentChapter?: number, stalledWarnings: Array<{ conflictId: string }> = []) {
+function serializeConflict(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleConflictRepository"]>["create"]>>, currentChapter?: number, stalledWarnings: Array<{ conflictId: string }> = []) {
   return {
     ...row,
     protagonistSide: safeJsonParse(row.protagonistSideJson, [] as string[]),
@@ -99,7 +98,7 @@ function serializeConflict(row: Awaited<ReturnType<ReturnType<CoreModule["create
   };
 }
 
-function serializeWorldModel(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleWorldModelRepository"]>["create"]>>) {
+function serializeWorldModel(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleWorldModelRepository"]>["create"]>>) {
   return {
     ...row,
     economy: safeJsonParse(row.economyJson, {} as Record<string, unknown>),
@@ -111,7 +110,7 @@ function serializeWorldModel(row: Awaited<ReturnType<ReturnType<CoreModule["crea
   };
 }
 
-function serializePremise(row: Awaited<ReturnType<ReturnType<CoreModule["createBiblePremiseRepository"]>["create"]>>) {
+function serializePremise(row: Awaited<ReturnType<ReturnType<EngineModule["createBiblePremiseRepository"]>["create"]>>) {
   return {
     ...row,
     theme: safeJsonParse(row.themeJson, [] as string[]),
@@ -119,7 +118,7 @@ function serializePremise(row: Awaited<ReturnType<ReturnType<CoreModule["createB
   };
 }
 
-function serializeCharacterArc(row: Awaited<ReturnType<ReturnType<CoreModule["createBibleCharacterArcRepository"]>["create"]>>) {
+function serializeCharacterArc(row: Awaited<ReturnType<ReturnType<EngineModule["createBibleCharacterArcRepository"]>["create"]>>) {
   return {
     ...row,
     keyTurningPoints: safeJsonParse(row.keyTurningPointsJson, [] as Array<Record<string, unknown>>),
@@ -127,7 +126,7 @@ function serializeCharacterArc(row: Awaited<ReturnType<ReturnType<CoreModule["cr
   };
 }
 
-function serializeQuestionnaireTemplate(row: Awaited<ReturnType<ReturnType<CoreModule["createQuestionnaireTemplateRepository"]>["getById"]>>) {
+function serializeQuestionnaireTemplate(row: Awaited<ReturnType<ReturnType<EngineModule["createQuestionnaireTemplateRepository"]>["getById"]>>) {
   if (!row) return null;
   return {
     ...row,
@@ -136,7 +135,7 @@ function serializeQuestionnaireTemplate(row: Awaited<ReturnType<ReturnType<CoreM
   };
 }
 
-function serializeQuestionnaireResponse(row: Awaited<ReturnType<ReturnType<CoreModule["createQuestionnaireResponseRepository"]>["getById"]>>) {
+function serializeQuestionnaireResponse(row: Awaited<ReturnType<ReturnType<EngineModule["createQuestionnaireResponseRepository"]>["getById"]>>) {
   if (!row) return null;
   return {
     ...row,
@@ -144,7 +143,7 @@ function serializeQuestionnaireResponse(row: Awaited<ReturnType<ReturnType<CoreM
   };
 }
 
-function serializeCoreShift(row: Awaited<ReturnType<ReturnType<CoreModule["createCoreShiftRepository"]>["getById"]>>) {
+function serializeCoreShift(row: Awaited<ReturnType<ReturnType<EngineModule["createCoreShiftRepository"]>["getById"]>>) {
   if (!row) return null;
   return {
     ...row,
@@ -156,12 +155,12 @@ function serializeCoreShift(row: Awaited<ReturnType<ReturnType<CoreModule["creat
 }
 
 async function ensureQuestionnaireSeeds(storage: StorageDatabase): Promise<void> {
-  const core = await loadCore();
+  const core = await loadEngine();
   await core.seedQuestionnaireTemplates(storage);
 }
 
 async function ensureBook(storage: StorageDatabase, bookId: string) {
-  const { createBookRepository } = await loadCore();
+  const { createBookRepository } = await loadEngine();
   const book = await createBookRepository(storage).getById(bookId);
   if (!book) {
     throw new ApiError(404, "BOOK_NOT_FOUND", `Book not found: ${bookId}`);
@@ -181,7 +180,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createBibleCharacterRepository } = await loadCore();
+    const { createBibleCharacterRepository } = await loadEngine();
     const characters = (await createBibleCharacterRepository(storage).listByBook(bookId)).map(serializeCharacter);
     return c.json({ characters });
   });
@@ -192,7 +191,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
     const timestamp = now();
-    const { createBibleCharacterRepository } = await loadCore();
+    const { createBibleCharacterRepository } = await loadEngine();
     const character = await createBibleCharacterRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -212,7 +211,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
 
   app.get("/api/books/:bookId/bible/characters/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const { createBibleCharacterRepository } = await loadCore();
+    const { createBibleCharacterRepository } = await loadEngine();
     const character = await createBibleCharacterRepository(storage).getById(c.req.param("bookId"), c.req.param("id"));
     if (!character) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Character not found: ${c.req.param("id")}`);
     return c.json({ character: serializeCharacter(character) });
@@ -221,7 +220,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
   app.put("/api/books/:bookId/bible/characters/:id", async (c) => {
     const storage = await resolveStorage(options);
     const body = await c.req.json<Record<string, unknown>>();
-    const { createBibleCharacterRepository } = await loadCore();
+    const { createBibleCharacterRepository } = await loadEngine();
     const character = await createBibleCharacterRepository(storage).update(c.req.param("bookId"), c.req.param("id"), {
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(Array.isArray(body.aliases) ? { aliasesJson: jsonStringify(body.aliases, []) } : {}),
@@ -239,7 +238,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
 
   app.delete("/api/books/:bookId/bible/characters/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const { createBibleCharacterRepository } = await loadCore();
+    const { createBibleCharacterRepository } = await loadEngine();
     const deleted = await createBibleCharacterRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
     deletedResponse("Character", c.req.param("id"), deleted);
     return c.json({ ok: true, id: c.req.param("id") });
@@ -261,7 +260,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>().catch((): Record<string, unknown> => ({}));
-    const { buildBibleContext } = await loadCore();
+    const { buildBibleContext } = await loadEngine();
     const context = await buildBibleContext({
       storage,
       bookId,
@@ -276,7 +275,7 @@ export function createBibleRouter(options: CreateBibleRouterOptions = {}): Hono 
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     const body = await c.req.json<Record<string, unknown>>();
-    const { createBookRepository } = await loadCore();
+    const { createBookRepository } = await loadEngine();
     const book = await createBookRepository(storage).update(bookId, {
       ...(body.jingweiMode === "static" || body.jingweiMode === "dynamic" ? { jingweiMode: body.jingweiMode } : {}),
       ...(typeof body.currentChapter === "number" ? { currentChapter: body.currentChapter } : {}),
@@ -294,7 +293,7 @@ function registerEventRoutes(app: Hono, options: CreateBibleRouterOptions): void
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createBibleEventRepository } = await loadCore();
+    const { createBibleEventRepository } = await loadEngine();
     return c.json({ events: (await createBibleEventRepository(storage).listByBook(bookId)).map(serializeEvent) });
   });
 
@@ -304,7 +303,7 @@ function registerEventRoutes(app: Hono, options: CreateBibleRouterOptions): void
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
     const timestamp = now();
-    const { createBibleEventRepository } = await loadCore();
+    const { createBibleEventRepository } = await loadEngine();
     const event = await createBibleEventRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -330,7 +329,7 @@ function registerSettingRoutes(app: Hono, options: CreateBibleRouterOptions): vo
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createBibleSettingRepository } = await loadCore();
+    const { createBibleSettingRepository } = await loadEngine();
     return c.json({ settings: (await createBibleSettingRepository(storage).listByBook(bookId)).map(serializeSetting) });
   });
 
@@ -340,7 +339,7 @@ function registerSettingRoutes(app: Hono, options: CreateBibleRouterOptions): vo
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
     const timestamp = now();
-    const { createBibleSettingRepository } = await loadCore();
+    const { createBibleSettingRepository } = await loadEngine();
     const setting = await createBibleSettingRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -363,7 +362,7 @@ function registerChapterSummaryRoutes(app: Hono, options: CreateBibleRouterOptio
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const { createBibleChapterSummaryRepository } = await loadCore();
+    const { createBibleChapterSummaryRepository } = await loadEngine();
     return c.json({ chapterSummaries: (await createBibleChapterSummaryRepository(storage).listByBook(bookId)).map(serializeChapterSummary) });
   });
 
@@ -376,7 +375,7 @@ function registerChapterSummaryRoutes(app: Hono, options: CreateBibleRouterOptio
       throw new ApiError(400, "BIBLE_CHAPTER_NUMBER_REQUIRED", "chapterNumber is required.");
     }
     const timestamp = now();
-    const { createBibleChapterSummaryRepository } = await loadCore();
+    const { createBibleChapterSummaryRepository } = await loadEngine();
     const chapterSummary = await createBibleChapterSummaryRepository(storage).upsert({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -403,7 +402,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const chapter = Number(c.req.query("chapter") ?? "0");
-    const core = await loadCore();
+    const core = await loadEngine();
     const conflicts = await core.createBibleConflictRepository(storage).getActiveConflictsAtChapter(bookId, Number.isFinite(chapter) ? chapter : 0);
     return c.json({ conflicts: conflicts.map((row) => serializeConflict(row)) });
   });
@@ -412,7 +411,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     const book = await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     const warnings = core.detectStalledConflicts(await core.createBibleConflictRepository(storage).listByBook(bookId), book.currentChapter);
     const conflicts = (await core.createBibleConflictRepository(storage).listByBook(bookId)).map((row) => serializeConflict(row, book.currentChapter, warnings));
     return c.json({ conflicts });
@@ -424,7 +423,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
     const timestamp = now();
-    const core = await loadCore();
+    const core = await loadEngine();
     const conflict = await core.createBibleConflictRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -449,7 +448,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
 
   app.get("/api/books/:bookId/bible/conflicts/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const conflict = await core.createBibleConflictRepository(storage).getById(c.req.param("bookId"), c.req.param("id"));
     if (!conflict) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Conflict not found: ${c.req.param("id")}`);
     return c.json({ conflict: serializeConflict(conflict) });
@@ -458,7 +457,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
   app.put("/api/books/:bookId/bible/conflicts/:id", async (c) => {
     const storage = await resolveStorage(options);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const conflict = await core.createBibleConflictRepository(storage).update(c.req.param("bookId"), c.req.param("id"), {
       ...(typeof body.name === "string" ? { name: body.name } : {}),
       ...(typeof body.type === "string" ? { type: body.type } : {}),
@@ -481,7 +480,7 @@ function registerConflictRoutes(app: Hono, options: CreateBibleRouterOptions): v
 
   app.delete("/api/books/:bookId/bible/conflicts/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const deleted = await core.createBibleConflictRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
     deletedResponse("Conflict", c.req.param("id"), deleted);
     return c.json({ ok: true, id: c.req.param("id") });
@@ -493,7 +492,7 @@ function registerWorldModelRoutes(app: Hono, options: CreateBibleRouterOptions):
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     const worldModel = await core.createBibleWorldModelRepository(storage).getByBook(bookId);
     return c.json({ worldModel: worldModel ? serializeWorldModel(worldModel) : null });
   });
@@ -503,7 +502,7 @@ function registerWorldModelRoutes(app: Hono, options: CreateBibleRouterOptions):
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const worldModel = await core.createBibleWorldModelRepository(storage).upsert({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -524,7 +523,7 @@ function registerPremiseRoutes(app: Hono, options: CreateBibleRouterOptions): vo
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     const premise = await core.createBiblePremiseRepository(storage).getByBook(bookId);
     return c.json({ premise: premise ? serializePremise(premise) : null });
   });
@@ -535,7 +534,7 @@ function registerPremiseRoutes(app: Hono, options: CreateBibleRouterOptions): vo
     await ensureBook(storage, bookId);
     const body = await c.req.json<Record<string, unknown>>();
     const timestamp = now();
-    const core = await loadCore();
+    const core = await loadEngine();
     const current = await core.createBiblePremiseRepository(storage).getByBook(bookId);
     const premise = await core.createBiblePremiseRepository(storage).upsert({
       id: typeof body.id === "string" ? body.id : current?.id ?? crypto.randomUUID(),
@@ -558,13 +557,13 @@ function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     return c.json({ characterArcs: (await core.createBibleCharacterArcRepository(storage).listByBook(bookId)).map(serializeCharacterArc) });
   });
 
   app.get("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const arc = await core.createBibleCharacterArcRepository(storage).getById(c.req.param("bookId"), c.req.param("id"));
     if (!arc) throw new ApiError(404, "BIBLE_ENTRY_NOT_FOUND", `Character arc not found: ${c.req.param("id")}`);
     return c.json({ characterArc: serializeCharacterArc(arc) });
@@ -579,7 +578,7 @@ function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions
       throw new ApiError(400, "BIBLE_CHARACTER_ID_REQUIRED", "characterId is required.");
     }
     const timestamp = now();
-    const core = await loadCore();
+    const core = await loadEngine();
     const arc = await core.createBibleCharacterArcRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -599,7 +598,7 @@ function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions
   app.put("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
     const storage = await resolveStorage(options);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const arc = await core.createBibleCharacterArcRepository(storage).update(c.req.param("bookId"), c.req.param("id"), {
       ...(typeof body.arcType === "string" ? { arcType: body.arcType } : {}),
       ...(typeof body.startingState === "string" ? { startingState: body.startingState } : {}),
@@ -615,7 +614,7 @@ function registerCharacterArcRoutes(app: Hono, options: CreateBibleRouterOptions
 
   app.delete("/api/books/:bookId/bible/character-arcs/:id", async (c) => {
     const storage = await resolveStorage(options);
-    const core = await loadCore();
+    const core = await loadEngine();
     const deleted = await core.createBibleCharacterArcRepository(storage).softDelete(c.req.param("bookId"), c.req.param("id"));
     deletedResponse("CharacterArc", c.req.param("id"), deleted);
     return c.json({ ok: true, id: c.req.param("id") });
@@ -628,7 +627,7 @@ function registerPGIRoutes(app: Hono, options: CreateBibleRouterOptions): void {
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const chapter = Number(c.req.param("chapter"));
-    const core = await loadCore();
+    const core = await loadEngine();
     const result = await core.generatePGIQuestions(storage, { bookId, chapter: Number.isFinite(chapter) ? chapter : 0 });
     return c.json(result);
   });
@@ -640,7 +639,7 @@ function registerCoreShiftRoutes(app: Hono, options: CreateBibleRouterOptions): 
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const status = c.req.query("status") as "proposed" | "accepted" | "rejected" | "applied" | undefined;
-    const core = await loadCore();
+    const core = await loadEngine();
     const coreShifts = await core.createCoreShiftRepository(storage).listByBook(bookId, status);
     return c.json({ coreShifts: coreShifts.map((row) => serializeCoreShift(row)) });
   });
@@ -653,7 +652,7 @@ function registerCoreShiftRoutes(app: Hono, options: CreateBibleRouterOptions): 
     if (typeof body.targetType !== "string" || typeof body.targetId !== "string") {
       throw new ApiError(400, "CORE_SHIFT_TARGET_REQUIRED", "targetType and targetId are required.");
     }
-    const core = await loadCore();
+    const core = await loadEngine();
     const shift = await core.proposeCoreShift(storage, {
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
@@ -671,7 +670,7 @@ function registerCoreShiftRoutes(app: Hono, options: CreateBibleRouterOptions): 
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     const shift = await core.acceptCoreShift(storage, bookId, c.req.param("id"));
     if (!shift) throw new ApiError(404, "CORE_SHIFT_NOT_FOUND", `CoreShift not found: ${c.req.param("id")}`);
     return c.json({ coreShift: serializeCoreShift(shift) });
@@ -681,7 +680,7 @@ function registerCoreShiftRoutes(app: Hono, options: CreateBibleRouterOptions): 
     const storage = await resolveStorage(options);
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
-    const core = await loadCore();
+    const core = await loadEngine();
     const shift = await core.rejectCoreShift(storage, bookId, c.req.param("id"));
     if (!shift) throw new ApiError(404, "CORE_SHIFT_NOT_FOUND", `CoreShift not found: ${c.req.param("id")}`);
     return c.json({ coreShift: serializeCoreShift(shift) });
@@ -692,7 +691,7 @@ function registerQuestionnaireRoutes(app: Hono, options: CreateBibleRouterOption
   app.get("/api/questionnaires", async (c) => {
     const storage = await resolveStorage(options);
     await ensureQuestionnaireSeeds(storage);
-    const core = await loadCore();
+    const core = await loadEngine();
     const tierRaw = c.req.query("tier");
     const tier = tierRaw === "1" || tierRaw === "2" || tierRaw === "3" ? Number(tierRaw) as 1 | 2 | 3 : undefined;
     const templates = await core.createQuestionnaireTemplateRepository(storage).list({
@@ -708,7 +707,7 @@ function registerQuestionnaireRoutes(app: Hono, options: CreateBibleRouterOption
     await ensureBook(storage, bookId);
     await ensureQuestionnaireSeeds(storage);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const result = await core.submitQuestionnaireResponse({
       storage,
       bookId,
@@ -727,7 +726,7 @@ function registerQuestionnaireRoutes(app: Hono, options: CreateBibleRouterOption
     await ensureBook(storage, bookId);
     await ensureQuestionnaireSeeds(storage);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     if (body.status === "submitted") {
       const result = await core.submitQuestionnaireResponse({
         storage,
@@ -756,7 +755,7 @@ function registerQuestionnaireRoutes(app: Hono, options: CreateBibleRouterOption
     await ensureBook(storage, bookId);
     await ensureQuestionnaireSeeds(storage);
     const body = await c.req.json<Record<string, unknown>>();
-    const core = await loadCore();
+    const core = await loadEngine();
     const template = await core.createQuestionnaireTemplateRepository(storage).getById(c.req.param("templateId"));
     if (!template) throw new ApiError(404, "QUESTIONNAIRE_TEMPLATE_NOT_FOUND", `Questionnaire template not found: ${c.req.param("templateId")}`);
     const questions = safeJsonParse(template.questionsJson, [] as Array<{ id: string }>);
@@ -796,14 +795,14 @@ function registerSimpleGetPutDelete(app: Hono, options: CreateBibleRouterOptions
 }
 
 async function getEntityById(storage: StorageDatabase, kind: BibleEntityKind, bookId: string, id: string) {
-  const core = await loadCore();
+  const core = await loadEngine();
   if (kind === "events") return core.createBibleEventRepository(storage).getById(bookId, id);
   if (kind === "settings") return core.createBibleSettingRepository(storage).getById(bookId, id);
   return core.createBibleChapterSummaryRepository(storage).getById(bookId, id);
 }
 
 async function updateEntity(storage: StorageDatabase, kind: BibleEntityKind, bookId: string, id: string, body: Record<string, unknown>) {
-  const core = await loadCore();
+  const core = await loadEngine();
   if (kind === "events") {
     return core.createBibleEventRepository(storage).update(bookId, id, {
       ...(typeof body.name === "string" ? { name: body.name } : {}),
@@ -840,7 +839,7 @@ async function updateEntity(storage: StorageDatabase, kind: BibleEntityKind, boo
 }
 
 async function softDeleteEntity(storage: StorageDatabase, kind: BibleEntityKind, bookId: string, id: string): Promise<boolean> {
-  const core = await loadCore();
+  const core = await loadEngine();
   if (kind === "events") return core.createBibleEventRepository(storage).softDelete(bookId, id);
   if (kind === "settings") return core.createBibleSettingRepository(storage).softDelete(bookId, id);
   return core.createBibleChapterSummaryRepository(storage).softDelete(bookId, id);
