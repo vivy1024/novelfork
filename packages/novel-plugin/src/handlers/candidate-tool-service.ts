@@ -5,6 +5,8 @@ import { join } from "node:path";
 import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import { createLlmRuntimeService, type LlmRuntimeService } from "@vivy1024/novelfork-studio/api/lib/llm-runtime-service";
 import { getPreset, buildPresetInjections, type Preset } from "@vivy1024/novelfork-core";
+import { buildPresetReflectionPrompt, parsePresetSuggestions } from "../engine/jingwei/context/preset-reflection.js";
+import { checkPresetCompliance, type ComplianceCheckResult } from "../engine/presets/compliance-checker.js";
 
 export type CandidateGenerationInput = {
   readonly bookId: string;
@@ -95,6 +97,9 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
         throw new Error("Candidate generator returned empty content.");
       }
 
+      // --- Post-write compliance check ---
+      const complianceResult = await runPostWriteComplianceCheck(content, bookId, options.root);
+
       const id = options.createCandidateId?.() ?? `candidate-${randomUUID()}`;
       const timestamp = (options.now?.() ?? new Date()).toISOString();
       const contentFileName = `${safeFileName(id)}.md`;
@@ -106,6 +111,7 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
         nonDestructive: true,
         createdBy: SOURCE,
         promptPreview,
+        ...(complianceResult ? { compliance: complianceResult } : {}),
       };
       const record: CandidateRecord = {
         id,
@@ -225,12 +231,21 @@ async function getEnabledPresetInjections(bookId: string, root: string): Promise
 }
 
 function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string): CandidateContentGenerator {
-  return async ({ bookId, promptPreview, sessionConfig }) => {
+  return async ({ bookId, chapterNumber, promptPreview, sessionConfig }) => {
     if (!sessionConfig?.providerId?.trim() || !sessionConfig.modelId?.trim()) {
       return { ok: false, reason: "当前会话未配置可用模型。" };
     }
     const writingConstraints = await getWritingStyleConstraints();
-    const presetInjections = root ? await getEnabledPresetInjections(bookId, root) : "";
+    let presetInjections = root ? await getEnabledPresetInjections(bookId, root) : "";
+
+    // --- Preset reflection: ask summary model for additional presets ---
+    if (root) {
+      const reflectionResult = await runPresetReflection(runtimeService, sessionConfig, bookId, root, chapterNumber, promptPreview);
+      if (reflectionResult) {
+        presetInjections = presetInjections + reflectionResult;
+      }
+    }
+
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
@@ -244,6 +259,93 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
     }
     return { ok: true, content: generated.content };
   };
+}
+
+/** Run preset reflection to suggest additional presets for this chapter */
+async function runPresetReflection(
+  runtimeService: LlmRuntimeService,
+  sessionConfig: SessionConfig,
+  bookId: string,
+  root: string,
+  chapterNumber?: number,
+  chapterIntent?: string,
+): Promise<string> {
+  try {
+    const bookJsonPath = join(root, "books", bookId, "book.json");
+    const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[] };
+    const enabledIds = raw.enabledPresetIds ?? [];
+    if (enabledIds.length === 0) return "";
+
+    const activePresets = enabledIds
+      .map((id) => getPreset(id))
+      .filter((p): p is Preset => Boolean(p))
+      .map((p) => ({ id: p.id, name: p.name, rules: p.promptInjection }));
+
+    // Build available presets list from registry (all presets not currently enabled)
+    const { listPresets } = await import("../engine/presets/index.js");
+    const allPresets = listPresets();
+    const availablePresets = allPresets
+      .filter((p) => !enabledIds.includes(p.id))
+      .map((p) => ({ id: p.id, name: p.name, description: p.description }));
+
+    if (availablePresets.length === 0) return "";
+
+    const contextSummary = `第 ${chapterNumber ?? "?"} 章\n意图：${chapterIntent ?? "未指定"}`;
+    const reflectionPrompt = buildPresetReflectionPrompt(contextSummary, activePresets, availablePresets);
+
+    const result = await runtimeService.generate({
+      sessionConfig: { ...sessionConfig, reasoningEffort: "low" },
+      messages: [
+        { id: "reflection-system", role: "system", content: "你是写作预设分析助手。分析章节上下文，建议是否需要额外启用预设。只输出 JSON。", timestamp: 0 },
+        { id: "reflection-user", role: "user", content: reflectionPrompt, timestamp: 1 },
+      ],
+    });
+
+    if (!result.success || result.type !== "message") return "";
+
+    const suggestions = parsePresetSuggestions(result.content);
+    const additionalPresets = suggestions
+      .filter((s) => s.action === "enable")
+      .map((s) => getPreset(s.presetId))
+      .filter((p): p is Preset => Boolean(p));
+
+    if (additionalPresets.length === 0) return "";
+    return "\n\n" + buildPresetInjections(additionalPresets);
+  } catch {
+    // Graceful fallback: if reflection fails, just use base presets
+    return "";
+  }
+}
+
+/** Run post-write compliance check against enabled presets */
+async function runPostWriteComplianceCheck(
+  content: string,
+  bookId: string,
+  root: string,
+): Promise<ComplianceCheckResult | null> {
+  try {
+    const bookJsonPath = join(root, "books", bookId, "book.json");
+    const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[] };
+    const enabledIds = raw.enabledPresetIds ?? [];
+    if (enabledIds.length === 0) return null;
+
+    const enabledPresets = enabledIds
+      .map((id) => getPreset(id))
+      .filter((p): p is Preset => Boolean(p))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        rules: p.promptInjection,
+        antiPatterns: p.postWriteChecks?.map((c: { name: string }) => c.name) ?? undefined,
+      }));
+
+    if (enabledPresets.length === 0) return null;
+
+    const result = checkPresetCompliance(content, enabledPresets);
+    return result.violations.length > 0 ? result : null;
+  } catch {
+    return null;
+  }
 }
 
 function normalizeGeneratedContent(value: CandidateGeneratedContent): { readonly ok: true; readonly content: string } | { readonly ok: false; readonly reason: string } {

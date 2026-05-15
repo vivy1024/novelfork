@@ -255,16 +255,45 @@ export function buildDefaultBookSessionTitle(title: string, language?: string): 
     : `新书《${normalizedTitle}》写作会话`;
 }
 
-function normalizeEnabledPresetIds(enabledPresetIds?: ReadonlyArray<string>): string[] {
-  if (!enabledPresetIds?.length) {
-    return [];
+/** Genre → default preset bundle mapping for auto-enable on book creation */
+const GENRE_TO_DEFAULT_PRESET: Record<string, string> = {
+  "玄幻": "xuanhuan-bloodline",
+  "仙侠": "classical-travel-xianxia",
+  "科幻": "near-future-hard-scifi",
+  "末日": "apocalypse-survival",
+  "穿越": "transmigration-knowledge",
+  "重生": "rebirth-revenge",
+  "系统流": "system-flow-growth",
+  "无限流": "infinite-flow-survival",
+  "悬疑": "supernatural-detective",
+  "武侠": "wuxia-jianghu",
+  "修仙": "cultivation-hardcore",
+  "克苏鲁": "cthulhu-investigator",
+  "赛博朋克": "cyberpunk-street",
+  "同人": "fanfiction-crossover",
+  "种田": "farming-development",
+  "游戏": "game-esports",
+  "历史": "historical-governance",
+  "军事": "military-tactics",
+  "官场": "politics-career",
+  "体育": "sports-competition",
+  "轻小说": "light-novel-campus",
+};
+
+function normalizeEnabledPresetIds(enabledPresetIds?: ReadonlyArray<string>, genre?: string): string[] {
+  const ids = enabledPresetIds?.length
+    ? [...enabledPresetIds.map((id) => id.trim()).filter(Boolean)]
+    : [];
+
+  // Auto-enable genre preset bundle if not already included
+  if (genre) {
+    const defaultPreset = GENRE_TO_DEFAULT_PRESET[genre];
+    if (defaultPreset && !ids.includes(defaultPreset)) {
+      ids.push(defaultPreset);
+    }
   }
 
-  return [...new Set(
-    enabledPresetIds
-      .map((id) => id.trim())
-      .filter(Boolean),
-  )];
+  return [...new Set(ids)];
 }
 
 export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {
@@ -283,8 +312,8 @@ export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): 
     status: "outlining",
     targetChapters: body.targetChapters ?? 200,
     chapterWordCount: body.chapterWordCount ?? 3000,
-    ...(normalizeEnabledPresetIds(body.enabledPresetIds).length
-      ? { enabledPresetIds: normalizeEnabledPresetIds(body.enabledPresetIds) }
+    ...(normalizeEnabledPresetIds(body.enabledPresetIds, body.genre).length
+      ? { enabledPresetIds: normalizeEnabledPresetIds(body.enabledPresetIds, body.genre) }
       : {}),
     ...(body.language === "en"
       ? { language: "en" as const }
