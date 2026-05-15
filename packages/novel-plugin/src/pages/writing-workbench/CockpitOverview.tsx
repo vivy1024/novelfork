@@ -1,4 +1,4 @@
-import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine, ShieldAlert } from "lucide-react";
+import { BookOpen, FileText, AlertTriangle, CheckCircle, Target, TrendingUp, Bookmark, PenLine, ShieldAlert, Lightbulb } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { useApi } from "@/hooks/use-api";
 import { AiTasteScoreBadge } from "./AiTasteReport";
@@ -207,6 +207,95 @@ function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }
   );
 }
 
+// ---------------------------------------------------------------------------
+// NextChapterSuggestionCard — 下一章建议
+// ---------------------------------------------------------------------------
+
+function inferChapterPosition(chapterNumber: number, targetChapters: number): string {
+  if (targetChapters <= 0) return "发展";
+  const ratio = chapterNumber / targetChapters;
+  if (ratio <= 0.1) return "铺垫";
+  if (ratio <= 0.6) return "发展";
+  if (ratio <= 0.85) return "高潮";
+  return "过渡";
+}
+
+function suggestEmotionalTone(position: string): string {
+  switch (position) {
+    case "铺垫": return "好奇/期待 — 建立世界观与角色认同";
+    case "发展": return "紧张/兴奋 — 推进冲突与成长";
+    case "高潮": return "激昂/震撼 — 核心矛盾爆发";
+    case "过渡": return "沉淀/回味 — 收束线索与情感落地";
+    default: return "平稳推进";
+  }
+}
+
+function extractActiveHooks(nodes: readonly WorkbenchResourceNode[]): string[] {
+  const bookNode = nodes.find((n) => n.kind === "book");
+  const jingweiGroup = bookNode?.children?.find((c) => c.id === "group:jingwei");
+  const entries = jingweiGroup?.children ?? [];
+  // Look for hooks-related entries
+  const hookEntry = entries.find((e) => e.title?.includes("伏笔") || e.title?.includes("hook"));
+  if (!hookEntry?.metadata?.content) return [];
+  const content = String(hookEntry.metadata.content);
+  // Extract bullet points as hooks
+  const lines = content.split("\n").filter((l) => l.trim().startsWith("-") || l.trim().startsWith("*"));
+  return lines.slice(0, 3).map((l) => l.replace(/^[\s\-*]+/, "").trim()).filter(Boolean);
+}
+
+function NextChapterSuggestionCard({
+  book,
+  nodes,
+  onOpenChapter,
+}: {
+  book: CockpitBookData;
+  nodes: readonly WorkbenchResourceNode[];
+  onOpenChapter?: (chapterNumber: number) => void;
+}) {
+  const nextChapter = book.nextChapter;
+  const position = inferChapterPosition(nextChapter, book.targetChapters);
+  const emotionalTone = suggestEmotionalTone(position);
+  const hooks = extractActiveHooks(nodes);
+
+  return (
+    <div className="rounded-lg border border-border p-3 space-y-2">
+      <h3 className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+        <Lightbulb className="size-3.5 text-amber-500" />
+        下一章建议 · 第 {nextChapter} 章
+      </h3>
+      <div className="space-y-1.5 text-xs">
+        <div className="flex items-center gap-2">
+          <span className="text-muted-foreground shrink-0">位置：</span>
+          <Badge variant="outline" className="text-[10px]">{position}</Badge>
+          <span className="text-muted-foreground">({Math.round((nextChapter / Math.max(book.targetChapters, 1)) * 100)}%)</span>
+        </div>
+        <div className="flex items-start gap-2">
+          <span className="text-muted-foreground shrink-0">情绪：</span>
+          <span>{emotionalTone}</span>
+        </div>
+        {hooks.length > 0 && (
+          <div className="flex items-start gap-2">
+            <span className="text-muted-foreground shrink-0">伏笔：</span>
+            <div className="space-y-0.5">
+              {hooks.map((hook, i) => (
+                <div key={i} className="text-[11px]">· {hook}</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+      {onOpenChapter && (
+        <button
+          onClick={() => onOpenChapter(nextChapter)}
+          className="mt-2 w-full rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+        >
+          开始写作
+        </button>
+      )}
+    </div>
+  );
+}
+
 
   const progress = progressPercent(book.chapterCount, book.targetChapters);
   const hasRisk = book.failedReview > 0 || book.pendingReview > 2;
@@ -266,6 +355,11 @@ function CandidateSummary({ nodes }: { nodes: readonly WorkbenchResourceNode[] }
           sub={hasRisk ? "建议尽快修复" : "状态良好"}
         />
       </div>
+
+      {/* 下一章建议 */}
+      {book.nextChapter > 0 && book.chapterCount < book.targetChapters && (
+        <NextChapterSuggestionCard book={book} nodes={nodes} onOpenChapter={onOpenChapter} />
+      )}
 
       {/* 日更进度 */}
       <DailyProgressCard />
