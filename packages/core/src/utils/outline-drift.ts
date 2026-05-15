@@ -9,7 +9,7 @@
  * Zero LLM cost — uses keyword overlap and structural matching.
  */
 
-import type { PostWriteViolation } from "../agents/post-write-validator.js";
+import type { PostWriteViolation } from "../models/agent-types.js";
 
 // --- Outline tree types ---
 

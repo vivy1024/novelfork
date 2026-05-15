@@ -3,12 +3,12 @@
  * 从 agent.ts 提取，保持原有逻辑不变
  */
 
-import type { PipelineRunner, PipelineConfig } from "../pipeline/runner.js";
+import type { PipelineRunner, PipelineConfig, RegisteredTool, ToolDefinition } from "./tool-registry.js";
 import type { StateManager } from "../state/manager.js";
 import type { Platform, Genre } from "../models/book.js";
-import type { RegisteredTool, ToolDefinition } from "./tool-registry.js";
-import type { ReviseMode } from "../agents/reviser.js";
-import { DEFAULT_REVISE_MODE } from "../agents/reviser.js";
+import type { ReviseMode } from "../models/agent-types.js";
+
+const DEFAULT_REVISE_MODE: ReviseMode = "spot-fix";
 
 // --- Helper functions (从 agent.ts 提取) ---
 
@@ -185,9 +185,13 @@ const TOOL_DEFINITIONS: ToolDefinition[] = [
 ];
 
 // --- Tool handlers (从 agent.ts executeAgentTool 提取) ---
+// Note: pipeline is typed as minimal PipelineRunner interface; actual methods
+// are provided by the novel-plugin's PipelineRunner class at runtime.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyPipeline = any;
 
 const planChapterHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.planChapter(
+  const result = await (pipeline as AnyPipeline).planChapter(
     args.bookId as string,
     args.guidance as string | undefined,
   );
@@ -195,7 +199,7 @@ const planChapterHandler: RegisteredTool["handler"] = async (pipeline, _state, _
 };
 
 const composeChapterHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.composeChapter(
+  const result = await (pipeline as AnyPipeline).composeChapter(
     args.bookId as string,
     args.guidance as string | undefined,
   );
@@ -208,7 +212,7 @@ const writeDraftHandler: RegisteredTool["handler"] = async (pipeline, state, _co
   if (writeGuardError) {
     return JSON.stringify({ error: writeGuardError });
   }
-  const result = await pipeline.writeDraft(
+  const result = await (pipeline as AnyPipeline).writeDraft(
     bookId,
     args.guidance as string | undefined,
   );
@@ -216,7 +220,7 @@ const writeDraftHandler: RegisteredTool["handler"] = async (pipeline, state, _co
 };
 
 const auditChapterHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.auditDraft(
+  const result = await (pipeline as AnyPipeline).auditDraft(
     args.bookId as string,
     args.chapterNumber as number | undefined,
   );
@@ -236,7 +240,7 @@ const reviseChapterHandler: RegisteredTool["handler"] = async (pipeline, state, 
       return JSON.stringify({ error: `第${chapterNum}章内容为空（0字）。revise_chapter 不能修订空章节。` });
     }
   }
-  const result = await pipeline.reviseDraft(
+  const result = await (pipeline as AnyPipeline).reviseDraft(
     bookId,
     chapterNum,
     (args.mode as ReviseMode) ?? DEFAULT_REVISE_MODE,
@@ -245,7 +249,7 @@ const reviseChapterHandler: RegisteredTool["handler"] = async (pipeline, state, 
 };
 
 const scanMarketHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, _args) => {
-  const result = await pipeline.runRadar();
+  const result = await (pipeline as AnyPipeline).runRadar();
   return JSON.stringify(result);
 };
 
@@ -272,20 +276,20 @@ const createBookHandler: RegisteredTool["handler"] = async (pipeline, _state, co
 
   const brief = args.brief as string | undefined;
   if (brief) {
-    const contextPipeline = new (await import("../pipeline/runner.js")).PipelineRunner({
+    const contextPipeline = new (pipeline.constructor as any)({
       ...config,
       externalContext: brief,
     });
     await contextPipeline.initBook(book);
   } else {
-    await pipeline.initBook(book);
+    await (pipeline as AnyPipeline).initBook(book);
   }
 
   return JSON.stringify({ bookId, title, status: "created" });
 };
 
 const getBookStatusHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.getBookStatus(args.bookId as string);
+  const result = await (pipeline as AnyPipeline).getBookStatus(args.bookId as string);
   return JSON.stringify(result);
 };
 
@@ -308,7 +312,7 @@ const updateCurrentFocusHandler: RegisteredTool["handler"] = async (_pipeline, s
 };
 
 const readJingweiFilesHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const result = await pipeline.readJingweiFiles(args.bookId as string);
+  const result = await (pipeline as AnyPipeline).readJingweiFiles(args.bookId as string);
   return JSON.stringify(result);
 };
 
@@ -317,7 +321,7 @@ const listBooksHandler: RegisteredTool["handler"] = async (pipeline, state, _con
   const books = await Promise.all(
     bookIds.map(async (id) => {
       try {
-        return await pipeline.getBookStatus(id);
+        return await (pipeline as AnyPipeline).getBookStatus(id);
       } catch {
         return { bookId: id, error: "failed to load" };
       }
@@ -335,7 +339,7 @@ const writeFullPipelineHandler: RegisteredTool["handler"] = async (pipeline, sta
   const count = (args.count as number) ?? 1;
   const results = [];
   for (let i = 0; i < count; i++) {
-    const result = await pipeline.writeNextChapter(bookId);
+    const result = await (pipeline as AnyPipeline).writeNextChapter(bookId);
     results.push(result);
   }
   return JSON.stringify(results);
@@ -348,7 +352,7 @@ const webFetchHandler: RegisteredTool["handler"] = async (_pipeline, _state, _co
 };
 
 const importStyleHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const guide = await pipeline.generateStyleGuide(
+  const guide = await (pipeline as AnyPipeline).generateStyleGuide(
     args.bookId as string,
     args.referenceText as string,
   );
@@ -361,7 +365,7 @@ const importStyleHandler: RegisteredTool["handler"] = async (pipeline, _state, _
 };
 
 const importCanonHandler: RegisteredTool["handler"] = async (pipeline, _state, _config, args) => {
-  const canon = await pipeline.importCanon(
+  const canon = await (pipeline as AnyPipeline).importCanon(
     args.targetBookId as string,
     args.parentBookId as string,
   );
@@ -385,7 +389,7 @@ const importChaptersHandler: RegisteredTool["handler"] = async (pipeline, _state
   if (chapters.length === 1) {
     return JSON.stringify({ error: "import_chapters 是整书重导工具，需要至少 2 个章节。如果只想补一章，请用 write_draft 续写或 revise_chapter 修订。" });
   }
-  const result = await pipeline.importChapters({
+  const result = await (pipeline as AnyPipeline).importChapters({
     bookId: args.bookId as string,
     chapters: [...chapters],
   });

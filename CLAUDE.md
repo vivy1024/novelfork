@@ -229,6 +229,33 @@ Implementer subagent 完成 → gstack-review 审查 → 标记完成
 
 ---
 
+## 跨会话记忆（必须遵守）
+
+记忆文件位于 `.narrafork/memory/`。
+
+**会话开始时**：
+1. 读取 `.narrafork/memory/context.md` 恢复上下文
+2. 简要告诉用户"上次你在做 X，还剩 Y，要继续吗？"
+
+**会话过程中**：
+- 重要决策 → 追加到 `.narrafork/memory/decisions.jsonl`
+- 踩坑/模式/下次能省时间的知识 → 追加到 `.narrafork/memory/learnings.jsonl`
+
+**会话结束前**（用户说"收工"/"保存"/"下次继续"或长会话即将结束时）：
+- 覆盖写 `.narrafork/memory/context.md`（当前任务、分支、决策、下一步、阻塞）
+
+**格式**：
+- `context.md`：Markdown，覆盖写
+- `learnings.jsonl`：每行一条 JSON `{"ts":"...","content":"...","tags":[...]}`，追加写
+- `decisions.jsonl`：每行一条 JSON `{"ts":"...","decision":"...","reason":"...","reversible":true/false}`，追加写
+
+**规则**：
+- 不要把琐碎的东西写进 learnings（"用户说了句话"不算）
+- learning 标准：下次遇到同样情况能少走弯路
+- decision 标准：影响架构/方向/技术选型的选择
+
+---
+
 ## Skill 路由（GStack）
 
 ### 产品与规划
