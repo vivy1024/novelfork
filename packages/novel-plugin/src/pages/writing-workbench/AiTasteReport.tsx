@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, CheckCircle, Info, Loader2, Sparkles, Wrench } from "lucide-react";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
 // Types (mirrors core FilterReport / RuleHit / SevenTacticSuggestion)

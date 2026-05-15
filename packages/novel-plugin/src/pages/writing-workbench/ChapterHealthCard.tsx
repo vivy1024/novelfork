@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Activity, BarChart3, MessageSquare, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 
 // --- Types matching API responses ---
 

@@ -19,7 +19,7 @@ import {
   Download,
 } from "lucide-react";
 import { AiTasteReport, type FilterReport } from "./AiTasteReport";
-import { postApi } from "../../hooks/use-api";
+import { postApi } from "@/hooks/use-api";
 import { ChapterHealthCard } from "./ChapterHealthCard";
 import { PresetsPanel } from "./PresetsPanel";
 import { BeatTemplateList } from "./BeatProgressBar";

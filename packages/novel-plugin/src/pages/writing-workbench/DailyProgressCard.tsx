@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useApi, putApi } from "../../hooks/use-api";
+import { useApi, putApi } from "@/hooks/use-api";
 import { Flame, Settings, Target } from "lucide-react";
 
 // ---------------------------------------------------------------------------

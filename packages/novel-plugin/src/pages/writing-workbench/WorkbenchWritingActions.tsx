@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import type { BackendCapability } from "../backend-contract/capability-status";
-import { listWritingActionDescriptors, type SessionDomainClient, type WritingActionDescriptor } from "../backend-contract/writing-action-adapter";
-import type { ContractResult } from "../backend-contract";
-import type { CreateNarratorSessionInput, NarratorSessionRecord } from "../../shared/session-types";
+import type { BackendCapability } from "@/app-next/backend-contract/capability-status";
+import { listWritingActionDescriptors, type SessionDomainClient, type WritingActionDescriptor } from "@/app-next/backend-contract/writing-action-adapter";
+import type { ContractResult } from "@/app-next/backend-contract";
+import type { CreateNarratorSessionInput, NarratorSessionRecord } from "@/shared/session-types";
 
 export interface WorkbenchWritingAction {
   id: string;

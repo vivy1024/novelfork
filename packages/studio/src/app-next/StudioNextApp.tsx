@@ -49,7 +49,7 @@ import {
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
   type WorkbenchWritingActionsSessionClient,
-} from "./writing-workbench";
+} from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute; // kept for API compat; ignored when router is active

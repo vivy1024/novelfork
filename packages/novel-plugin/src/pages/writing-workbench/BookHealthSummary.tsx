@@ -1,5 +1,5 @@
 import { Activity, AlertTriangle, Loader2 } from "lucide-react";
-import { useApi } from "../../hooks/use-api";
+import { useApi } from "@/hooks/use-api";
 
 // --- Types matching GET /api/books/:bookId/health response ---
 

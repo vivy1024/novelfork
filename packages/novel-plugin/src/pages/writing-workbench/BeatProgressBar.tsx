@@ -1,4 +1,4 @@
-import { useApi } from "../../hooks/use-api";
+import { useApi } from "@/hooks/use-api";
 import { useState } from "react";
 
 // ---------------------------------------------------------------------------
