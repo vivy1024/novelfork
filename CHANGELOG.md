@@ -4,6 +4,52 @@
 
 ---
 
+## v0.7.0 (2026-05-15)
+
+### 🏗️ 驾驶舱重构 — AI 写作质量控制台
+
+**核心变更**：驾驶舱从"信息堆砌长列表"重构为"经纬图谱为主 + 底部可展开面板"的 AI 写作质量控制台。
+
+- **经纬图谱工作区**：画布默认显示 react-flow 关系图谱，支持 5 种视图模式（关系图谱/角色弧线/矛盾地图/列表/时间线）
+- **节点 lifecycle 状态色**：active=绿、dormant=灰、retired=红，点击节点就地编辑
+- **底部状态条**：一行显示章数/节拍/质量/AI味/警告数，点击展开对应面板
+- **可展开面板系统**：预设配置/节拍进度/质量监控/警告，支持关闭/最大化/拖拽调整高度
+- **预设配置面板**：按分类分组展示启用预设，支持 toggle 启用/禁用 + promptInjection 预览
+- **节拍进度面板**：可视化进度条 + 当前节拍详情（情绪基调/字数分配/网文建议）
+- **质量监控面板**：AI味均值 + 审校通过率 + 章节质量表格
+- **警告面板**：审校未通过/逾期伏笔/文风漂移超阈值汇总
+
+### ✨ 新功能
+
+- **3 个新 Agent 工具**：`presets.get_rules`（获取预设规则）、`presets.check_compliance`（合规自检）、`beat.get_current`（获取当前节拍）
+- **对话工具配置栏**（ToolConfigBar）：对话顶部一行显示工具启用状态，锁定工具+可选工具 toggle
+- **Agent 快捷按钮组**（AgentQuickActions）：按角色显示对应操作按钮（写书/审校/伏笔/大纲/章末钩子）
+- **对话资源管理器**（ConversationResourcePanel）：右侧文件树 + 内容预览，Agent 操作文件时自动跟随显示
+- **质量趋势 API**：`GET /api/books/:bookId/quality-trend`，返回最近 N 章质量/AI味/漂移数据
+- **预设命中 API**：`GET /api/books/:bookId/chapters/:ch/preset-hits`（占位，待写作日志接入）
+
+### 🔧 改进
+
+- **顶部工具栏精简**：移除写作动作按钮和写作工具面板入口，仅保留新建章节/快照
+- **经纬节点行为更新**：点击经纬节点回到图谱工作区，不再打开 Dialog
+- **StatusBar 接通真实数据**：从 health API + localStorage 读取章数/AI味/节拍
+- **ExpandablePanel 拖拽安全**：useEffect cleanup 防止事件监听器泄漏
+- **JingweiGraphWorkspace 错误处理**：fetch 失败显示"加载失败，点击重试"
+
+### 📦 废弃
+
+- `CockpitOverview.tsx` — 标记 @deprecated，被 CockpitWorkspace 替代
+- `WritingToolsPanel` Dialog — 功能拆散到驾驶舱面板和 Agent 对话按钮
+- 顶部写作动作按钮 — 移至 Agent 对话面板
+
+### 🧹 仓库清理
+
+- Git 历史大文件清理：284MB → 53MB（删除 dist-sea/ + packages/desktop/ + embedded-assets.bak）
+- 移除 InkOS upstream remote，去除 fork 定位改为"早期参考"
+- 清理 InkOS v1.x tag，v0.6.0 GitHub Release 已发布
+
+---
+
 ## v0.6.0 (2026-05-15)
 
 ### 🏗️ 插件架构真拆分（Breaking Change — 内部重构，用户无感）
