@@ -962,10 +962,11 @@ async function appendModelContinuationAfterToolDecision(
           : undefined;
         const enrichedInput = { ...toolInput, onToolOutputStream };
         const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
-        if (sessionWorkDir) {
-          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(enrichedInput);
-        }
-        return sessionToolExecutor.execute(enrichedInput);
+        const onSubstatus = (substatus: string) => {
+          const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting" };
+          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+        };
+        return createSessionToolExecutor({ workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
@@ -1692,10 +1693,11 @@ export async function handleSessionChatTransportMessage(
           : undefined;
         const enrichedInput = { ...toolInput, onToolOutputStream };
         const sessionWorkDir = loaded.session.worktree?.trim() || undefined;
-        if (sessionWorkDir) {
-          return createSessionToolExecutor({ workDir: sessionWorkDir }).execute(enrichedInput);
-        }
-        return sessionToolExecutor.execute(enrichedInput);
+        const onSubstatus = (substatus: string) => {
+          const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting", turnStartedAt: turnStartedAtIso };
+          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+        };
+        return createSessionToolExecutor({ workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
