@@ -31,6 +31,7 @@ import {
   saveSessionChatHistory,
   updateSessionChatAckedSeq,
   updateSessionChatRecoveryJson,
+  upgradeMessage,
 } from "./session-history-store.js";
 import {
   normalizeSessionTransportPayload as normalizeMessageText,
@@ -478,7 +479,7 @@ async function loadSessionState(sessionId: string): Promise<{ session: NarratorS
 
   const persistedCursor = await getSessionChatCursor(sessionId);
   const persistedHistory = await loadSessionChatHistory(sessionId);
-  const sourceMessages = persistedHistory.length > 0 ? persistedHistory : session.recentMessages;
+  const sourceMessages = persistedHistory.length > 0 ? persistedHistory : (session.recentMessages ?? []).map(upgradeMessage);
   const normalizedRecentMessages = normalizeSessionMessages(sourceMessages, Math.max(session.messageCount, persistedCursor.lastSeq));
   const normalizedMessageCount = Math.max(session.messageCount, persistedCursor.lastSeq, getLastSeq(normalizedRecentMessages), normalizedRecentMessages.length);
   const state = getRuntimeState(
