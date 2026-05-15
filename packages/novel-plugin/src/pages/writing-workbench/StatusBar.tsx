@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect } from "react";
-import { BookOpen, Music, Activity, AlertTriangle } from "lucide-react";
+import { BookOpen, Music, Activity, Droplets, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -72,12 +72,14 @@ export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps)
   }, [bookId]);
 
   const chapterLabel = health ? `${health.chapterCount} 章` : "— 章";
-  const qualityLabel = health?.aiTasteAvg != null ? `质量 · AI味 ${health.aiTasteAvg.toFixed(0)}%` : "质量 —";
+  const qualityLabel = "质量 —";
+  const aiTasteLabel = health?.aiTasteAvg != null ? `AI味 ${health.aiTasteAvg.toFixed(0)}%` : "AI味 —";
 
   const segments: StatusSegment[] = [
     { panel: "quality", icon: <BookOpen className="size-3.5" />, label: chapterLabel },
     { panel: "beat", icon: <Music className="size-3.5" />, label: beatLabel },
     { panel: "quality", icon: <Activity className="size-3.5" />, label: qualityLabel },
+    { panel: "quality", icon: <Droplets className="size-3.5" />, label: aiTasteLabel },
     { panel: "alert", icon: <AlertTriangle className="size-3.5" />, label: "⚠ 0" },
   ];
 
