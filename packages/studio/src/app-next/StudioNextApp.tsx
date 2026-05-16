@@ -36,6 +36,7 @@ import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import { ToastContainer } from "../components/ui/toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
+import { notify } from "@/lib/notify";
 
 import {
   applyResourceDetailToNode,
@@ -530,6 +531,17 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     ackedSeqRef.current = resumeFromSeq;
   }, [resumeFromSeq, runtime]);
 
+  // 错误发生时触发 toast 通知
+  useEffect(() => {
+    if (runtime.state.error) {
+      notify.error(runtime.state.error.message, {
+        description: runtime.state.error.code ? `错误代码: ${runtime.state.error.code}` : undefined,
+        id: "session-error",
+        duration: 8000,
+      });
+    }
+  }, [runtime.state.error]);
+
   useEffect(() => {
     const worktree = runtime.state.session?.worktree?.trim();
     if (!worktree) {
@@ -858,6 +870,18 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       initialStatus={status}
       initialConfirmation={pendingConfirmation}
       initialRecoveryNotice={runtime.state.recovery}
+      initialError={runtime.state.error}
+      onRetryError={() => {
+        runtime.clearError();
+      }}
+      onDismissError={() => {
+        runtime.clearError();
+      }}
+      onAutoRetryError={(errorCode) => {
+        // TODO: Phase C 实现自动重试规则
+        runtime.clearError();
+        notify.info("已设置自动重试", { description: `后续 ${errorCode} 错误将自动重试` });
+      }}
       sendDisabledReason={missingSession ? "会话缺失或快照不可用，请返回会话列表或新建会话。" : modelPoolEmpty ? "模型池为空，请先到设置页启用模型" : undefined}
       settingsHref={missingSession ? "/next" : modelPoolEmpty ? "/next/settings" : undefined}
       footerActions={missingSession ? <MissingSessionActions /> : null}
