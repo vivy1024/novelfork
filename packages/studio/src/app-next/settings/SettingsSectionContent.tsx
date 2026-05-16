@@ -1,5 +1,6 @@
 import { RuntimeControlPanel } from "./panels/RuntimeControlPanel";
-import { useApi } from "../../hooks/use-api";
+import { useState, useEffect } from "react";
+import { useApi, fetchJson, putApi } from "../../hooks/use-api";
 import { ProfilePanel } from "./panels/ProfilePanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
@@ -16,6 +17,11 @@ import { AboutPanel } from "./panels/AboutPanel";
 import { InlineError } from "../components/feedback";
 import { Row } from "../components/shared";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
+import { SimpleSelect } from "@/components/ui/simple-select";
+import { Save, AlertTriangle } from "lucide-react";
+import type { ServerSettings } from "../../types/settings";
 import {
   deriveModelSettingsFacts,
   settingsFactDisplayValue,
@@ -141,35 +147,186 @@ function FactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
 /* ── Server ── */
 
 function ServerSection() {
-  const { data, loading, error } = useApi<Record<string, unknown>>("/settings/metrics");
+  const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi<Record<string, unknown>>("/settings/metrics");
+  const [server, setServer] = useState<ServerSettings>({
+    port: 4567,
+    host: "127.0.0.1",
+    defaultProjectDir: "",
+    browserOpenMode: "app",
+    tlsEnabled: false,
+    tlsCertPath: "",
+    tlsKeyPath: "",
+  });
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchJson<{ server?: ServerSettings }>("/settings/user")
+      .then((data) => {
+        if (data.server) setServer(data.server);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
+      .finally(() => setLoading(false));
+  }, []);
+
+  async function handleSave() {
+    setSaving(true);
+    setError(null);
+    try {
+      await putApi("/settings/user", { server });
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "保存失败");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h2 className="text-lg font-semibold mb-1 text-foreground">服务器与系统</h2>
         <p className="text-sm text-muted-foreground">运行时信息、系统依赖与服务器配置。</p>
       </div>
+
+      {/* 服务器配置表单 */}
       {loading && <p className="text-muted-foreground">加载中...</p>}
       {error && <InlineError message={error} />}
 
-      {data && (
+      {!loading && (
+        <div className="space-y-4 rounded-lg border border-border p-4">
+          <h3 className="text-sm font-semibold">服务器配置</h3>
+
+          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="size-3.5 shrink-0" />
+            <span>修改端口、监听地址或 TLS 设置后需要重启生效</span>
+          </div>
+
+          {/* 端口 */}
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">服务器端口</label>
+            <Input
+              type="number"
+              min={1}
+              max={65535}
+              value={server.port}
+              onChange={(e) => setServer((s) => ({ ...s, port: parseInt(e.target.value, 10) || 4567 }))}
+              className="w-32 text-sm font-mono"
+            />
+          </div>
+
+          {/* 监听地址 */}
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">监听地址</label>
+            <SimpleSelect
+              value={server.host}
+              onValueChange={(v) => setServer((s) => ({ ...s, host: v }))}
+              options={[
+                { value: "127.0.0.1", label: "127.0.0.1（仅本机）" },
+                { value: "0.0.0.0", label: "0.0.0.0（允许局域网）" },
+              ]}
+              className="w-56"
+            />
+          </div>
+
+          {/* 默认项目目录 */}
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">默认项目目录</label>
+            <Input
+              placeholder="留空则使用 exe 所在目录"
+              value={server.defaultProjectDir}
+              onChange={(e) => setServer((s) => ({ ...s, defaultProjectDir: e.target.value }))}
+              className="text-sm font-mono"
+            />
+          </div>
+
+          {/* 浏览器打开方式 */}
+          <div className="space-y-1">
+            <label className="text-sm text-muted-foreground">启动时打开浏览器</label>
+            <SimpleSelect
+              value={server.browserOpenMode}
+              onValueChange={(v) => setServer((s) => ({ ...s, browserOpenMode: v as ServerSettings["browserOpenMode"] }))}
+              options={[
+                { value: "app", label: "应用窗口（推荐）" },
+                { value: "browser", label: "浏览器标签页" },
+                { value: "none", label: "不打开" },
+              ]}
+              className="w-56"
+            />
+          </div>
+
+          {/* TLS */}
+          <div className="space-y-3 border-t border-border pt-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-medium">启用 TLS/HTTPS</span>
+                <p className="text-xs text-muted-foreground">启用后通过 HTTPS 访问工作台</p>
+              </div>
+              <Switch
+                checked={server.tlsEnabled}
+                onCheckedChange={(checked) => setServer((s) => ({ ...s, tlsEnabled: checked }))}
+              />
+            </div>
+            {server.tlsEnabled && (
+              <div className="space-y-2 pl-1">
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">证书路径</label>
+                  <Input
+                    placeholder="/path/to/cert.pem"
+                    value={server.tlsCertPath}
+                    onChange={(e) => setServer((s) => ({ ...s, tlsCertPath: e.target.value }))}
+                    className="text-xs font-mono"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs text-muted-foreground">密钥路径</label>
+                  <Input
+                    placeholder="/path/to/key.pem"
+                    value={server.tlsKeyPath}
+                    onChange={(e) => setServer((s) => ({ ...s, tlsKeyPath: e.target.value }))}
+                    className="text-xs font-mono"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 保存按钮 */}
+          <div className="pt-2">
+            <Button onClick={handleSave} disabled={saving} className="gap-1.5">
+              <Save className="size-3.5" />
+              {saving ? "保存中..." : saved ? "已保存" : "保存配置"}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 运行时信息（只读） */}
+      {metricsLoading && <p className="text-muted-foreground">加载中...</p>}
+      {metricsError && <InlineError message={metricsError} />}
+
+      {metricsData && (
         <>
           {/* 服务器信息 */}
           <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">服务器</h3>
-            {typeof data.bunVersion === "string" && <Row label="Bun 版本" value={data.bunVersion} />}
-            {typeof data.port === "number" && <Row label="服务器端口" value={String(data.port)} />}
-            {typeof data.host === "string" && <Row label="监听地址" value={data.host} />}
-            {typeof data.dbPath === "string" && <Row label="数据库路径" value={data.dbPath} />}
-            {typeof data.platform === "string" && <Row label="平台" value={data.platform} />}
-            {typeof data.uptime === "number" && <Row label="运行时间" value={formatUptime(data.uptime as number)} />}
+            <h3 className="text-sm font-semibold">运行时信息</h3>
+            {typeof metricsData.bunVersion === "string" && <Row label="Bun 版本" value={metricsData.bunVersion} />}
+            {typeof metricsData.port === "number" && <Row label="当前端口" value={String(metricsData.port)} />}
+            {typeof metricsData.host === "string" && <Row label="当前监听地址" value={metricsData.host} />}
+            {typeof metricsData.dbPath === "string" && <Row label="数据库路径" value={metricsData.dbPath} />}
+            {typeof metricsData.platform === "string" && <Row label="平台" value={metricsData.platform} />}
+            {typeof metricsData.uptime === "number" && <Row label="运行时间" value={formatUptime(metricsData.uptime as number)} />}
           </div>
 
           {/* 系统依赖 */}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <h3 className="text-sm font-semibold">系统依赖</h3>
-            <SystemDependencyRow name="git" description="版本控制（核心功能）" required version={typeof data.gitVersion === "string" ? data.gitVersion : undefined} />
-            <SystemDependencyRow name="rg" description="AI 工具快速代码搜索" version={typeof data.rgVersion === "string" ? data.rgVersion : undefined} />
-            <SystemDependencyRow name="node" description="Node.js 运行时" version={typeof data.nodeVersion === "string" ? data.nodeVersion : undefined} />
+            <SystemDependencyRow name="git" description="版本控制（核心功能）" required version={typeof metricsData.gitVersion === "string" ? metricsData.gitVersion : undefined} />
+            <SystemDependencyRow name="rg" description="AI 工具快速代码搜索" version={typeof metricsData.rgVersion === "string" ? metricsData.rgVersion : undefined} />
+            <SystemDependencyRow name="node" description="Node.js 运行时" version={typeof metricsData.nodeVersion === "string" ? metricsData.nodeVersion : undefined} />
           </div>
         </>
       )}
