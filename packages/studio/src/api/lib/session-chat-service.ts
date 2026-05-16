@@ -1323,6 +1323,25 @@ export async function replaceSessionChatState(
   return snapshot;
 }
 
+/** 向指定 session 的所有已连接 transport 广播 session:error 事件 */
+export async function broadcastSessionError(
+  sessionId: string,
+  error: string,
+  code?: string,
+): Promise<void> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) return;
+  const envelope = createSessionChatError(sessionId, error, { code });
+  const payload = serializeEnvelope(envelope);
+  for (const transport of loaded.state.transports.keys()) {
+    try {
+      transport.send(payload);
+    } catch {
+      loaded.state.transports.delete(transport);
+    }
+  }
+}
+
 export async function attachSessionChatTransport(
   sessionId: string,
   transport: SessionChatTransport,

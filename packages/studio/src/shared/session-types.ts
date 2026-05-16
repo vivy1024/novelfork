@@ -397,6 +397,20 @@ export interface NarratorSessionChatErrorEnvelope {
   runtime?: Partial<NarratorSessionRuntimeMetadata>;
 }
 
+/** 结构化运行时错误 — 前后端共享 */
+export interface RuntimeError {
+  /** 错误消息（用户可见） */
+  message: string;
+  /** 错误代码（机器可读） */
+  code: string;
+  /** 是否可重试 */
+  retryable: boolean;
+  /** 错误发生时间戳 */
+  timestamp: number;
+  /** 运行时元数据（provider/model 等） */
+  runtime?: Partial<NarratorSessionRuntimeMetadata>;
+}
+
 export interface NarratorSessionChatStreamEnvelope {
   type: "session:stream";
   sessionId: string;

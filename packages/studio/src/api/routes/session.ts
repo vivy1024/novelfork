@@ -12,6 +12,7 @@ import {
   getSessionChatSnapshot,
   getSessionToolState,
   replaceSessionChatState,
+  broadcastSessionError,
   type ConfirmSessionToolDecisionInput,
 } from "../lib/session-chat-service.js";
 import {
@@ -25,6 +26,7 @@ import {
   type SessionListSort,
 } from "../lib/session-service.js";
 import { compactSession, undoCompactSession, editCompactSummary } from "../lib/session-compact-service.js";
+import { getContextBreakdown } from "../lib/context-breakdown.js";
 import { executeHeadlessChat, encodeHeadlessChatEventsAsNdjson, type HeadlessChatInput } from "../lib/session-headless-chat-service.js";
 import { continueLatestSession, forkSession, restoreSessionForContinue } from "../lib/session-lifecycle-service.js";
 import { createSessionMemoryBoundaryService, type SessionMemoryCandidate } from "../lib/session-memory-boundary-service.js";
@@ -141,6 +143,14 @@ app.get("/:id/chat/history", async (c) => {
   return c.json(history);
 });
 
+// GET /api/sessions/:id/context-breakdown — 上下文注入详情
+app.get("/:id/context-breakdown", async (c) => {
+  const id = c.req.param("id");
+  const breakdown = await getContextBreakdown(id);
+  if (!breakdown) return c.json({ ok: false, error: "Session not found" }, 404);
+  return c.json({ ok: true, data: breakdown });
+});
+
 app.put("/:id/chat/state", async (c) => {
   const id = c.req.param("id");
   const body = await c.req.json<UpdateNarratorSessionChatStateInput>();
@@ -203,6 +213,10 @@ app.post("/:id/compact", async (c) => {
   const result = await compactSession({ sessionId: id, preserveRecentMessages: body.preserveRecentMessages, instructions: body.instructions });
   console.log(`[route] POST /${id}/compact result: ok=${result.ok}`);
   if (!result.ok) {
+    // 压缩失败时通过 WebSocket 广播 session:error 通知前端
+    if (result.code === "compact_failed") {
+      await broadcastSessionError(id, result.error, result.code);
+    }
     return c.json(result, result.status);
   }
   return c.json(result);

@@ -55,7 +55,8 @@ export type SessionServerEnvelope =
   | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown }
   | { type: "session:permission-request"; sessionId: string; request: { id: string; toolName: string; input: Record<string, unknown>; reason?: string; riskLevel: string } }
   | { type: "session:danger-reflection"; sessionId: string; reflection: { id: string; toolName: string; command: string; analysis: string; riskFactors: string[] } }
-  | { type: "client:message-sent" };
+  | { type: "client:message-sent" }
+  | { type: "client:clear-error" };
 
 export function createInitialAgentConversationRuntimeState(): AgentConversationRuntimeState {
   return {
@@ -238,6 +239,12 @@ export function reduceSessionEnvelope(
         ...state,
         waitingForResponse: true,
         turnActive: true,
+      };
+    case "client:clear-error":
+      return {
+        ...state,
+        error: null,
+        recovery: state.recovery.state === "failed" ? { state: "idle" } : state.recovery,
       };
   }
 }

@@ -260,10 +260,13 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
     return sendClientEnvelope(buildAbortEnvelope({ sessionId }));
   }, [sendClientEnvelope, sessionId]);
 
+  const clearError = useCallback(() => dispatch({ type: "client:clear-error" }), []);
+
   return useMemo(
     () => ({
       state,
       applyEnvelope,
+      clearError,
       getResumeFromSeq: () => getResumeFromSeq(state),
       buildMessageEnvelope: (input: BuildMessageEnvelopeInput) => buildMessageEnvelope(input),
       buildAckEnvelope,
@@ -272,6 +275,6 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
       ack,
       abort,
     }),
-    [abort, ack, applyEnvelope, sendMessage, state],
+    [abort, ack, applyEnvelope, clearError, sendMessage, state],
   );
 }

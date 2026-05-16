@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Terminal, Trash2 } from "lucide-react";
+import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Terminal, Trash2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -36,6 +36,7 @@ import {
 
 export interface NarratorStatusBarProps {
   status: ConversationStatus;
+  sessionId?: string;
   streamingStartedAt?: number | null;
   /** 当前 streaming 消息的总字符数（用于计算输出速率） */
   streamingChars?: number;
@@ -136,7 +137,7 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, onOpenTerminal, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, sessionId, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, onOpenTerminal, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
@@ -187,7 +188,13 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
 
   return (
     <TooltipProvider>
-      <div className="relative flex shrink-0 items-center justify-between border-t border-border/50 px-4 py-1.5 min-h-[36px]">
+      <div className={`relative flex shrink-0 items-center justify-between border-t px-4 py-1.5 min-h-[36px] ${
+        substatus === "error"
+          ? "border-red-200 bg-red-50/50 dark:border-red-800/50 dark:bg-red-950/20"
+          : substatus === "retrying" || isWaiting
+          ? "border-yellow-200 bg-yellow-50/50 dark:border-yellow-800/50 dark:bg-yellow-950/20"
+          : "border-border/50"
+      }`}>
         {/* Progress bar — 工作中/等待中时显示底部进度线 */}
         {(isWorking || isWaiting) && (
           <div className="absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
@@ -279,6 +286,7 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
             trimThreshold={status.contextUsage?.trimThreshold}
             onCompact={onCompact}
             onReset={onReset}
+            sessionId={sessionId}
           />
           {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
@@ -678,6 +686,7 @@ function ContextRingMenu({
   trimThreshold,
   onCompact,
   onReset,
+  sessionId,
 }: {
   used: number;
   max: number;
@@ -685,11 +694,28 @@ function ContextRingMenu({
   trimThreshold?: number;
   onCompact?: () => void;
   onReset?: () => void;
+  sessionId?: string;
 }) {
   const hasMax = max > 0;
   const percent = hasMax ? Math.min(100, (used / max) * 100) : 0;
   const trimPercent = hasMax && trimThreshold ? Math.round((trimThreshold / max) * 100) : 80;
   const compactPercent = hasMax && compactThreshold ? Math.round((compactThreshold / max) * 100) : 95;
+
+  const [breakdown, setBreakdown] = useState<{ parts: Array<{ label: string; tokens: number; preview: string }>; totalTokens: number } | null>(null);
+  const [loadingBreakdown, setLoadingBreakdown] = useState(false);
+
+  const handleViewBreakdown = async () => {
+    if (!sessionId) return;
+    setLoadingBreakdown(true);
+    try {
+      const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/context-breakdown`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) setBreakdown(data.data);
+      }
+    } catch { /* non-fatal */ }
+    setLoadingBreakdown(false);
+  };
 
   const handleReset = () => {
     if (window.confirm("确定要清空上下文吗？这将重置当前会话的所有上下文记忆。")) {
@@ -733,6 +759,10 @@ function ContextRingMenu({
         <DropdownMenuSeparator />
 
         {/* 操作按钮 */}
+        <DropdownMenuItem onClick={handleViewBreakdown} disabled={!sessionId || loadingBreakdown} className="gap-2">
+          <Info className="size-3" />
+          <span>{loadingBreakdown ? "加载中..." : "查看上下文详情"}</span>
+        </DropdownMenuItem>
         <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact} className="gap-2">
           <span className="text-xs">※</span>
           <span>立即压缩</span>
@@ -741,6 +771,26 @@ function ContextRingMenu({
           <span className="text-xs">◇</span>
           <span>清空上下文</span>
         </DropdownMenuItem>
+
+        {/* 上下文分解详情 */}
+        {breakdown && (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-3 py-2 space-y-1.5 max-h-[200px] overflow-y-auto">
+              <div className="text-[10px] font-medium text-muted-foreground mb-1">上下文分解</div>
+              {breakdown.parts.map((part, i) => (
+                <div key={i} className="flex items-center justify-between text-[11px]">
+                  <span className="text-muted-foreground truncate max-w-[140px]" title={part.preview}>{part.label}</span>
+                  <span className="font-mono text-[10px] ml-2 shrink-0">{part.tokens.toLocaleString()}</span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between text-[11px] font-medium border-t border-border pt-1 mt-1">
+                <span>合计</span>
+                <span className="font-mono text-[10px]">{breakdown.totalTokens.toLocaleString()}</span>
+              </div>
+            </div>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
