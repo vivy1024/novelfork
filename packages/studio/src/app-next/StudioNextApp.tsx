@@ -646,6 +646,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const [runtimeSettings, setRuntimeSettings] = useState<{
     runtimeConfig?: { relaxedPlanning?: boolean; yoloSkipReadonlyConfirmation?: boolean; smartOutputCheck?: boolean; translateThinking?: boolean };
     accessRules?: { allowDirs?: Array<{ path: string; permission: string }>; denyDirs?: Array<{ path: string }>; allowCommands?: string[]; denyCommands?: string[] };
+    subagentModels?: { explore?: string; plan?: string; general?: string };
   }>({});
   useEffect(() => {
     let active = true;
@@ -653,6 +654,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       if (!active || !data) return;
       const rc = data.runtimeControls ?? {};
       const ta = rc.toolAccess ?? {};
+      const md = data.modelDefaults ?? {};
       setRuntimeSettings({
         runtimeConfig: {
           relaxedPlanning: rc.relaxedPlanning ?? false,
@@ -665,6 +667,11 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
           denyDirs: (ta.directoryBlocklist ?? []).map((p: string) => ({ path: p })),
           allowCommands: ta.commandAllowlist ?? [],
           denyCommands: ta.commandBlocklist ?? [],
+        },
+        subagentModels: {
+          explore: md.exploreSubagentModel || undefined,
+          plan: md.planSubagentModel || undefined,
+          general: md.generalSubagentModel || undefined,
         },
       });
     }).catch(() => { /* use defaults */ });
@@ -707,6 +714,25 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       body: JSON.stringify({ sessionConfig: patch }),
     });
   }, [sessionId]);
+
+  // Callback: update subagent model defaults via PUT /api/settings
+  const handleUpdateSubagentModels = useCallback(async (patch: { explore?: string; plan?: string; general?: string }) => {
+    const modelDefaults: Record<string, string> = {};
+    if (patch.explore !== undefined) modelDefaults.exploreSubagentModel = patch.explore;
+    if (patch.plan !== undefined) modelDefaults.planSubagentModel = patch.plan;
+    if (patch.general !== undefined) modelDefaults.generalSubagentModel = patch.general;
+    const resp = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ modelDefaults }),
+    });
+    if (resp.ok) {
+      setRuntimeSettings((prev) => ({
+        ...prev,
+        subagentModels: { ...prev.subagentModels, ...patch },
+      }));
+    }
+  }, []);
 
   // Desktop notification: notify when narrator finishes while tab is hidden
   const { notifyIfHidden } = useDesktopNotification();
@@ -897,6 +923,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       }}
       onUpdateSessionConfigFromDetail={handleUpdateSessionConfigFromDetail}
       onUpdateAccessRules={handleUpdateAccessRules}
+      onUpdateSubagentModels={handleUpdateSubagentModels}
       onPin={async () => {
         const current = runtime.state.session?.pinned ?? false;
         const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { pinned: !current });

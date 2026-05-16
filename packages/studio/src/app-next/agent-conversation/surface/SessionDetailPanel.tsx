@@ -66,6 +66,12 @@ export interface SessionDetailData {
     smartOutputCheck?: boolean;
     translateThinking?: boolean;
   };
+  /** Subagent 模型配置（从 /api/settings 读取） */
+  subagentModels?: {
+    explore?: string;
+    plan?: string;
+    general?: string;
+  };
   /** 访问规则 */
   accessRules?: {
     allowDirs?: Array<{ path: string; permission: string }>;
@@ -100,6 +106,7 @@ export interface SessionDetailPanelProps {
   onUpdateDisabledTools?: (tools: string[]) => Promise<void> | void;
   onUpdateSessionConfig?: (patch: Record<string, unknown>) => Promise<void> | void;
   onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
 }
 
 // ---------------------------------------------------------------------------
@@ -269,6 +276,7 @@ export function SessionDetailPanel({
   onUpdateDisabledTools,
   onUpdateSessionConfig,
   onUpdateAccessRules,
+  onUpdateSubagentModels,
 }: SessionDetailPanelProps) {
   const [traits, setTraits] = useState(detail?.customTraits ?? "");
   const [traitsDirty, setTraitsDirty] = useState(false);
@@ -368,7 +376,9 @@ export function SessionDetailPanel({
 
         <DetailRow label="自动裁剪">{detail?.runtimeConfig?.smartOutputCheck ? "开启" : "关闭"}</DetailRow>
         <DetailRow label="计划模式">{detail?.sessionConfig?.mode === "plan" ? "开启" : "关闭"}</DetailRow>
-        <DetailRow label="后台状态">—</DetailRow>
+        <DetailRow label="后台状态">
+          {status.narratorState === "working" ? "运行中" : status.narratorState === "waiting" ? "等待中" : "空闲"}
+        </DetailRow>
         <DetailRow label="启用工具">
           {detail?.sessionConfig?.toolPolicy?.allow?.length
             ? detail.sessionConfig.toolPolicy.allow.join(", ")
@@ -411,12 +421,26 @@ export function SessionDetailPanel({
           为此会话覆盖全局 subagent 模型池，并可说明每个模型的用途。Review 与自定义 subagent 默认使用 General 池。
         </p>
         <div className="space-y-2">
-          {(["Explore", "Plan", "General"] as const).map((pool) => (
-            <div key={pool}>
-              <label className="text-[11px] font-medium">{pool}</label>
-              <Input placeholder="选择模型..." className="mt-1 text-xs" disabled />
-            </div>
-          ))}
+          {(["Explore", "Plan", "General"] as const).map((pool) => {
+            const key = pool.toLowerCase() as "explore" | "plan" | "general";
+            const currentValue = detail?.subagentModels?.[key] ?? "";
+            return (
+              <div key={pool}>
+                <label className="text-[11px] font-medium">{pool}</label>
+                <Input
+                  placeholder="providerId:modelId"
+                  className="mt-1 text-xs font-mono"
+                  defaultValue={currentValue}
+                  onBlur={(e) => {
+                    const val = e.target.value.trim();
+                    if (val !== currentValue) {
+                      onUpdateSubagentModels?.({ [key]: val });
+                    }
+                  }}
+                />
+              </div>
+            );
+          })}
         </div>
       </SectionCard>
 
