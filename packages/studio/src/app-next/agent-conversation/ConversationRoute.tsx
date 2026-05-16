@@ -59,6 +59,8 @@ export interface ConversationRouteProps {
   onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
   /** 更新访问规则 */
   onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  /** 更新 Subagent 模型 */
+  onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
   /** 固定会话 */
   onPin?: () => void;
   isPinned?: boolean;
@@ -113,6 +115,7 @@ export function ConversationRoute({
   onUpdateWorkDir,
   onUpdateSessionConfigFromDetail,
   onUpdateAccessRules,
+  onUpdateSubagentModels,
   onPin,
   isPinned,
   onAttach,
@@ -187,6 +190,7 @@ export function ConversationRoute({
         onUpdateWorkDir={onUpdateWorkDir}
         onUpdateSessionConfigFromDetail={onUpdateSessionConfigFromDetail}
         onUpdateAccessRules={onUpdateAccessRules}
+        onUpdateSubagentModels={onUpdateSubagentModels}
         onPin={onPin}
         isPinned={isPinned}
         sessionDetail={sessionDetail}
