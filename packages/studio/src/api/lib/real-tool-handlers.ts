@@ -429,6 +429,10 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     try {
       const stats = statSync(resolved);
       readFileState.set(resolved, { mtime: stats.mtimeMs, size: stats.size });
+      if (readFileState.size > 500) {
+        const firstKey = readFileState.keys().next().value;
+        if (firstKey) readFileState.delete(firstKey);
+      }
     } catch { /* non-critical */ }
 
     // Truncation: if no explicit offset/limit and file > 500 lines, truncate
@@ -505,6 +509,10 @@ export async function executeFileWriteTool(input: FileWriteToolInput): Promise<S
     try {
       const newStats = statSync(resolved);
       readFileState.set(resolved, { mtime: newStats.mtimeMs, size: newStats.size });
+      if (readFileState.size > 500) {
+        const firstKey = readFileState.keys().next().value;
+        if (firstKey) readFileState.delete(firstKey);
+      }
     } catch { /* non-critical */ }
 
     return {
@@ -571,9 +579,16 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
 
     const content = await readFile(resolved, "utf-8");
 
+    // Fix: Strip line number prefixes if agent copied from Read output
+    let effectiveOldText = input.oldText;
+    const lineNumPattern = /^\s*\d+\t/gm;
+    if (lineNumPattern.test(effectiveOldText)) {
+      effectiveOldText = effectiveOldText.replace(/^\s*\d+\t/gm, "");
+    }
+
     // Fix 1: replaceAll support + multi-match detection
     if (input.replaceAll) {
-      if (!content.includes(input.oldText)) {
+      if (!content.includes(input.oldText) && !content.includes(effectiveOldText)) {
         // Try quote-normalized matching for replaceAll
         const normalizedContent = normalizeQuotes(content);
         const normalizedOld = normalizeQuotes(input.oldText);
@@ -595,20 +610,22 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
           }
           newContent += content.slice(originalIdx);
           await writeFile(resolved, newContent, "utf-8");
-          try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
+          try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); if (readFileState.size > 500) { const firstKey = readFileState.keys().next().value; if (firstKey) readFileState.delete(firstKey); } } catch { /* non-critical */ }
           return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配，替换 ${replacements} 处）`, data: { path: input.path, replacements, normalizedMatch: true } };
         }
         return { ok: false, error: "old-text-not-found", summary: `old_string 在文件中未找到匹配`, data: { path: input.path, oldText: input.oldText.slice(0, 100) } };
       }
-      const newContent = content.split(input.oldText).join(input.newText);
-      const replacements = (content.split(input.oldText).length - 1);
+      const replaceTarget = content.includes(input.oldText) ? input.oldText : effectiveOldText;
+      const newContent = content.split(replaceTarget).join(input.newText);
+      const replacements = (content.split(replaceTarget).length - 1);
       await writeFile(resolved, newContent, "utf-8");
-      try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
+      try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); if (readFileState.size > 500) { const firstKey = readFileState.keys().next().value; if (firstKey) readFileState.delete(firstKey); } } catch { /* non-critical */ }
       return { ok: true, summary: `已编辑 ${input.path}（替换 ${replacements} 处）`, data: { path: input.path, replacements } };
     }
 
-    // Single replacement mode
-    if (!content.includes(input.oldText)) {
+    // Single replacement mode — try exact match first, then stripped line numbers
+    const oldText = content.includes(input.oldText) ? input.oldText : (content.includes(effectiveOldText) ? effectiveOldText : null);
+    if (!oldText) {
       // Fix 5: Try quote-normalized matching
       const normalizedContent = normalizeQuotes(content);
       const normalizedOld = normalizeQuotes(input.oldText);
@@ -619,7 +636,7 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
         const originalSlice = content.slice(pos, pos + normalizedOld.length);
         const newContent = content.slice(0, pos) + input.newText + content.slice(pos + originalSlice.length);
         await writeFile(resolved, newContent, "utf-8");
-        try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
+        try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); if (readFileState.size > 500) { const firstKey = readFileState.keys().next().value; if (firstKey) readFileState.delete(firstKey); } } catch { /* non-critical */ }
         return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配）`, data: { path: input.path, replacements: 1, normalizedMatch: true } };
       }
       return {
@@ -631,7 +648,7 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
     }
 
     // Count occurrences
-    const occurrences = content.split(input.oldText).length - 1;
+    const occurrences = content.split(oldText).length - 1;
     if (occurrences > 1) {
       return {
         ok: false,
@@ -641,11 +658,11 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
       };
     }
 
-    const newContent = content.replace(input.oldText, input.newText);
+    const newContent = content.replace(oldText, input.newText);
     await writeFile(resolved, newContent, "utf-8");
 
     // FR-1.3: Update state after successful edit
-    try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
+    try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); if (readFileState.size > 500) { const firstKey = readFileState.keys().next().value; if (firstKey) readFileState.delete(firstKey); } } catch { /* non-critical */ }
 
     return {
       ok: true,

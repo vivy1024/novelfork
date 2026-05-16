@@ -1179,9 +1179,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
           if (input.run_in_background === true) {
             const taskId = `bg-${Date.now()}`;
-            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream }).catch(error => ({
+              ok: false as const,
+              error: "background-task-failed",
+              summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
+            }));
             const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
-            taskPromise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = { ok: false, error: "bash-failed", summary: String(e) }; task.status = "failed"; });
+            taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
             backgroundTasks.set(taskId, task);
             return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
           }
@@ -1209,9 +1213,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
         if (input.run_in_background === true) {
           const taskId = `bg-${Date.now()}`;
-          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream }).catch(error => ({
+            ok: false as const,
+            error: "background-task-failed",
+            summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
+          }));
           const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
-          taskPromise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = { ok: false, error: "bash-failed", summary: String(e) }; task.status = "failed"; });
+          taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
           backgroundTasks.set(taskId, task);
           return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
         }

@@ -1039,7 +1039,7 @@ class AnthropicCompatibleAdapter implements RuntimeAdapter {
       ...(input.tools?.length ? { tools: this.toAnthropicTools(input.tools) } : {}),
     };
 
-    // Extract system message
+    // Extract system message — plain string for Anthropic-compatible (no cache_control)
     const systemMessage = input.messages.find((m) => m.role === "system");
     if (systemMessage && "content" in systemMessage && systemMessage.content.trim()) {
       body.system = systemMessage.content;
