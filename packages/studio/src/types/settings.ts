@@ -148,6 +148,8 @@ export interface RuntimeControlSettings {
   autoVerify: boolean;
   /** 验证命令（如 bunx tsc --noEmit），为空时自动检测 */
   verificationCommand: string;
+  /** 沙箱模式：none=无限制, basic=环境变量隔离, strict=容器隔离(fallback到basic) */
+  sandboxMode?: "none" | "basic" | "strict";
 }
 
 export interface RetryRule {
@@ -454,6 +456,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     hooks: [],
     autoVerify: false,
     verificationCommand: "",
+    sandboxMode: "none",
   },
   modelDefaults: {
     defaultSessionModel: "",

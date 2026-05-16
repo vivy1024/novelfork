@@ -5,7 +5,7 @@
  * All operations are bounded to the work directory and subject to dangerous pattern detection.
  */
 
-import { spawn } from "node:child_process";
+import { spawn, execSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { dirname, extname, join, resolve, relative } from "node:path";
@@ -78,6 +78,21 @@ const DANGEROUS_PATTERNS = [
 function isDangerousCommand(command: string): boolean {
   return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
 }
+
+// --- Process tree kill (Windows: taskkill /T, Unix: kill process group) ---
+
+function killProcessTree(pid: number): void {
+  if (process.platform === "win32") {
+    try {
+      execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
+    } catch { /* process might already be dead */ }
+  } else {
+    try { process.kill(-pid, "SIGKILL"); } catch {}
+  }
+}
+
+// --- Output truncation threshold ---
+const MAX_OUTPUT_CHARS = 30000;
 
 // --- Legacy encoding detection (Fix: legacyEncoding) ---
 
@@ -172,13 +187,24 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
 
   // Fix: refreshShellEnv — 如果配置启用，使用 login shell (-l) 以刷新环境变量
   let shellArgs = ["-c", trackedCommand];
+  let sandboxMode: "none" | "basic" | "strict" = "none";
   try {
     const { loadUserConfig } = await import("./user-config-service.js");
     const config = await loadUserConfig();
     if (config.runtimeControls?.refreshShellEnv) {
       shellArgs = ["-l", "-c", trackedCommand];
     }
+    sandboxMode = (config.runtimeControls?.sandboxMode as "none" | "basic" | "strict") ?? "none";
   } catch { /* config load failure — use default shell args */ }
+
+  // FR-5.1: Sandbox environment variables
+  const sandboxEnv: Record<string, string> = {};
+  if (sandboxMode !== "none") {
+    sandboxEnv.NOVELFORK_SANDBOX = "1";
+    sandboxEnv.NOVELFORK_WORKDIR = workDir;
+    // basic mode: restrict HOME to workDir to prevent access to user home sensitive files
+    sandboxEnv.HOME = workDir;
+  }
 
   return new Promise((resolveResult) => {
     const stdout: Buffer[] = [];
@@ -189,6 +215,7 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
       cwd: workDir,
       env: {
         ...process.env,
+        ...sandboxEnv,
         NOVELFORK: "1",
         GIT_EDITOR: "true",
       },
@@ -197,15 +224,28 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
       detached: process.platform !== "win32", // 对标 Claude: detached for process group kill
     });
 
+    // FR-5.2: Graceful shutdown — SIGTERM first, then SIGKILL after 5s
     const timeout = setTimeout(() => {
-      // 对标 Claude: tree-kill 整个进程组
+      const pid = child.pid;
+      if (!pid) { child.kill("SIGKILL"); return; }
+
+      // First attempt: SIGTERM for graceful shutdown
       try {
-        if (child.pid && process.platform !== "win32") {
-          process.kill(-child.pid, "SIGKILL"); // Kill process group
+        if (process.platform === "win32") {
+          // Windows: taskkill with /T kills process tree
+          killProcessTree(pid);
         } else {
-          child.kill("SIGKILL");
+          process.kill(-pid, "SIGTERM");
         }
-      } catch { child.kill("SIGKILL"); }
+      } catch { child.kill("SIGTERM"); }
+
+      // Second attempt after 5s: SIGKILL if still alive
+      setTimeout(() => {
+        try {
+          if (pid) killProcessTree(pid);
+          else child.kill("SIGKILL");
+        } catch { /* already dead */ }
+      }, 5000);
 
       resolveResult({
         ok: false,
@@ -257,6 +297,13 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
         if (cwdLine && cwdLine !== workDir) {
           newWorkDir = cwdLine;
         }
+      }
+
+      // FR-5.2: Large output truncation (char-based, before line-based)
+      if (stdoutStr.length > MAX_OUTPUT_CHARS) {
+        const head = stdoutStr.slice(0, 5000);
+        const tail = stdoutStr.slice(-5000);
+        stdoutStr = `${head}\n\n... [输出过长，已截断 ${stdoutStr.length - 10000} 字符] ...\n\n${tail}`;
       }
 
       if (exitCode !== 0) {
