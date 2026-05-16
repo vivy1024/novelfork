@@ -16,6 +16,32 @@ interface SettingsRouterOptions {
 export function createSettingsRouter(options: SettingsRouterOptions = {}) {
   const app = new Hono();
 
+  // 根路由别名 — 前端部分调用 /api/settings 而非 /api/settings/user
+  app.get("/", async (c) => {
+    try {
+      const config = await loadUserConfig();
+      return c.json(config);
+    } catch (error) {
+      console.error("Failed to load user config:", error);
+      return c.json({ error: "Failed to load user config" }, 500);
+    }
+  });
+
+  app.put("/", async (c) => {
+    try {
+      const partial = await c.req.json<UserConfigPatch>();
+      const updated = await updateUserConfig(partial);
+      if (partial.proxy) {
+        setGlobalProxyUrl(updated.proxy?.platforms?.ai || undefined);
+        setPerProviderProxy(updated.proxy?.providers ?? {});
+      }
+      return c.json(updated);
+    } catch (error) {
+      console.error("Failed to update user config:", error);
+      return c.json({ error: "Failed to update user config" }, 500);
+    }
+  });
+
   // 获取完整用户配置
   app.get("/user", async (c) => {
     try {
