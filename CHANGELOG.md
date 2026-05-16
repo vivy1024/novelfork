@@ -2,6 +2,24 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## Unreleased
+
+### ✨ 通用能力补全
+
+- **自定义重试规则**：用户在设置中定义的 retryRules 现在被 LLM runtime 真实消费（按 HTTP 状态码 + 内容关键词匹配）
+- **全局提示词注入**：套路系统中已启用的 globalPrompts 自动注入所有叙述者的 system prompt
+- **自定义子代理类型**：套路页定义的 SubAgent（systemPrompt + toolPermissions）在 Agent handler 中被查找和执行
+- **用户自定义斜杠命令**：套路 commands 注入 Composer 补全列表，`/命令名 参数` 展开 prompt 模板后发送
+- **更新检查**：`GET /api/settings/check-update` + 启动时非阻塞自动检查 + AboutPanel 手动检查 UI
+- **ServerSettings.autoCheckUpdate**：正式字段，默认 true
+
+### 📚 学习文档
+
+- 新增 6 篇学习文档（13-18）：运行时能力、子代理系统、工具搜索与技能、安全与沙箱、浏览器与终端、网络工具
+- 更新 04-narrator-conversation.md：新增 v0.9.x 工具表格
+- 更新 06-settings-and-routines.md：服务器配置、运行时控制、套路新功能
+- 更新 README.md 索引：扩展到 18 篇 + 新增"Agent 能力"场景导航
+
 ## v0.9.0 (2026-05-18)
 
 ### 🚀 Runtime 能力对标 Claude Code
