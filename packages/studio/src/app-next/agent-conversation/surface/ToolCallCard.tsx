@@ -29,6 +29,8 @@ export interface ConversationToolCall {
   startedAt?: number;
   /** @internal 流式输出缓冲（运行时） */
   _streamingOutput?: string;
+  /** @internal 流式输入缓冲（工具参数流入时） */
+  _streamingInput?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -678,6 +680,16 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const filePath = extractFilePath(toolCall.input);
   const editStrings = extractEditStrings(toolCall.input);
   const isWrite = toolCall.toolName === "Write" || toolCall.toolName === "create_file" || toolCall.toolName === "write_file";
+  const isRunning = toolCall.status === "running";
+  const streamingInput = toolCall._streamingInput;
+  const outputRef = useRef<HTMLPreElement>(null);
+
+  // Auto-scroll streaming input
+  useEffect(() => {
+    if (isRunning && outputRef.current) {
+      outputRef.current.scrollTop = outputRef.current.scrollHeight;
+    }
+  }, [streamingInput, isRunning]);
 
   // Extract write content from input
   const writeContent = useMemo(() => {
@@ -698,6 +710,18 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
     return lines;
   }, [editStrings]);
 
+  // Extract streaming content (file content being generated)
+  const streamingContent = useMemo(() => {
+    if (!isRunning || !streamingInput) return null;
+    // Try to extract "content" field from partial JSON input
+    const contentMatch = streamingInput.match(/"content"\s*:\s*"([\s\S]*)$/);
+    if (contentMatch) {
+      // Unescape JSON string (basic)
+      return contentMatch[1].replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+    }
+    return null;
+  }, [isRunning, streamingInput]);
+
   return (
     <>
       {filePath && (
@@ -705,8 +729,19 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
           {filePath}
         </code>
       )}
+
+      {/* Streaming: 实时显示正在生成的内容 */}
+      {isRunning && streamingContent && (
+        <div className="space-y-1">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider animate-pulse">生成中…</span>
+          <pre ref={outputRef} className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-[11px] font-mono">
+            {streamingContent}
+          </pre>
+        </div>
+      )}
+
       {/* Edit: diff 渲染 */}
-      {diffLines && (
+      {!isRunning && diffLines && (
         <div className="rounded-md border border-border overflow-hidden text-[11px] font-mono leading-relaxed">
           {diffLines.map((line, i) => (
             <div
@@ -725,7 +760,7 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         </div>
       )}
       {/* Write: 写入内容 */}
-      {!diffLines && writeContent && (
+      {!isRunning && !diffLines && writeContent && (
         <div className="space-y-1">
           <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">写入内容</span>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap rounded-md border border-border bg-background px-3 py-2 text-[11px] font-mono">
@@ -734,7 +769,7 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
         </div>
       )}
       {/* Fallback: output */}
-      {!diffLines && !writeContent && toolCall.output && (
+      {!isRunning && !diffLines && !writeContent && toolCall.output && (
         <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-muted/40 px-3 py-2 text-[11px] font-mono">
           {toolCall.output}
         </pre>
