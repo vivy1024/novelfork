@@ -2230,7 +2230,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!prompt && !description) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "prompt 或 description 不能为空。" };
         }
-        const subagentType = (typeof input.subagent_type === "string" ? input.subagent_type : "general") as "explore" | "plan" | "general";
+        const subagentType = (typeof input.subagent_type === "string" ? input.subagent_type : "general") as "fork" | "explore" | "plan" | "general";
         const runInBackground = input.run_in_background === true;
         const agentId = crypto.randomUUID().slice(0, 8);
 
@@ -2239,22 +2239,24 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const { getEnabledSessionTools } = await import("./session-tool-registry.js");
         const { createSession, getSessionById } = await import("./session-service.js");
         const { loadUserConfig } = await import("./user-config-service.js");
+        const { getSessionChatSnapshot } = await import("./session-chat-service.js");
 
-        // 创建子代理专用的 AbortController，链接到父级 signal
+        // 创建子代理专用的 AbortController
         const subAbortController = new AbortController();
         const subSignal = subAbortController.signal;
 
-        // 父级 abort 时自动 abort 子代理
-        if (parentSignal) {
+        // For foreground agents: parent abort converts to background (not kill).
+        // For background agents: parent abort propagates to kill the child.
+        if (parentSignal && runInBackground) {
           if (parentSignal.aborted) {
             subAbortController.abort(parentSignal.reason);
           } else {
             const propagateAbort = () => subAbortController.abort(parentSignal.reason);
             parentSignal.addEventListener("abort", propagateAbort, { once: true });
-            // 子代理完成后清理监听器
             subSignal.addEventListener("abort", () => parentSignal.removeEventListener("abort", propagateAbort), { once: true });
           }
         }
+        // For foreground: parentSignal abort is handled in the race below (convert to background)
 
         const executeSubagent = async (): Promise<string> => {
           // 检查是否已被中断
@@ -2264,6 +2266,94 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
 
           const parentSession = await getSessionById(sessionId);
 
+          // --- Fork mode: inherit parent context for prompt cache sharing ---
+          if (subagentType === "fork") {
+            const parentConfig = parentSession?.sessionConfig ?? sessionConfig;
+            const resolvedProviderId = parentConfig?.providerId ?? "openai";
+            const resolvedModelId = parentConfig?.modelId ?? "gpt-4o";
+            const subPermissionMode = parentSession?.sessionConfig.permissionMode ?? "edit" as const;
+
+            const subSession = await createSession({
+              title: description || `fork子代理: ${(prompt || description).slice(0, 30)}`,
+              agentId: "subagent",
+              sessionMode: "chat",
+              projectId: parentSession?.projectId,
+              worktree: parentSession?.worktree,
+              parentSessionId: sessionId,
+              sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
+            });
+
+            // Get parent messages for cache sharing — limit to last 20 to avoid excessive token usage
+            const parentSnapshot = await getSessionChatSnapshot(sessionId);
+            const parentMessages = parentSnapshot?.messages ?? [];
+            const recentParentMessages = parentMessages.slice(-20);
+
+            // Convert parent messages to AgentTurnItems
+            const parentTurnItems: import("./agent-turn-runtime.js").AgentTurnItem[] = recentParentMessages
+              .filter(m => m.role === "user" || m.role === "assistant")
+              .map(m => ({
+                type: "message" as const,
+                role: m.role as "user" | "assistant",
+                content: m.content,
+              }));
+
+            // Append fork directive as a user message
+            parentTurnItems.push({
+              type: "message" as const,
+              role: "user" as const,
+              content: `[Fork Task] ${prompt || description}\n\n请完成上述任务后返回结果。保持简洁。`,
+            });
+
+            // Use full tool set (same as parent) for cache consistency
+            const FORK_DISABLED = ["Agent", "ForkNarrator", "Send", "Await"];
+            const subTools = getEnabledSessionTools(
+              subPermissionMode,
+              "subagent",
+              { disabledTools: FORK_DISABLED },
+            );
+
+            // Use parent's system prompt style for cache hit
+            const workDir = parentSession?.worktree?.trim() || options.workDir || process.cwd();
+            const forkSystemPrompt = `你是一个执行委派任务的子代理。完成任务并简洁地报告结果。
+
+## Current Working Directory
+
+\`${workDir}\`
+
+All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their default working directory. Do NOT \`cd\` into it in Shell commands — it is redundant.`;
+
+            const turn = await executeRuntimeTurn({
+              sessionId: subSession.id,
+              sessionConfig: subSession.sessionConfig,
+              messages: parentTurnItems,
+              systemPrompt: forkSystemPrompt,
+              tools: subTools,
+              permissionMode: subPermissionMode,
+              maxSteps: 20,
+              signal: subSignal,
+              generate: async (generateInput) => {
+                const result = await generateSessionReply({
+                  sessionConfig: subSession.sessionConfig,
+                  messages: generateInput.messages,
+                  tools: generateInput.tools,
+                  onStreamChunk: generateInput.onStreamChunk,
+                  signal: generateInput.signal,
+                });
+                return result as any;
+              },
+              executeTool: async (toolInput) => {
+                const executor = createSessionToolExecutor({ workDir });
+                return executor.execute({ ...toolInput, signal: subSignal });
+              },
+            });
+
+            const assistantMessages = turn.agentEvents
+              .filter((e): e is Extract<typeof e, { type: "assistant_message" }> => e.type === "assistant_message")
+              .map(e => e.content);
+            return assistantMessages.join("\n\n") || "子代理未返回文本结果。";
+          }
+
+          // --- Non-fork modes: explore / plan / general ---
           // --- 根据 subagent_type 选择模型 ---
           const userConfig = await loadUserConfig();
           const md = userConfig.modelDefaults;
@@ -2388,7 +2478,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           };
         }
 
-        // --- Foreground 模式：带自动后台化超时 ---
+        // --- Foreground 模式：带自动后台化超时 + abort 转后台 ---
         const AUTO_BACKGROUND_MS = 120_000;
 
         try {
@@ -2397,26 +2487,37 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             setTimeout(() => resolve("timeout"), AUTO_BACKGROUND_MS)
           );
 
-          const raceResult = await Promise.race([turnPromise, timeoutPromise]);
+          // Parent abort converts foreground agent to background (not kill)
+          const abortPromise = parentSignal && !parentSignal.aborted
+            ? new Promise<"aborted">((resolve) => {
+                parentSignal.addEventListener("abort", () => resolve("aborted"), { once: true });
+              })
+            : new Promise<never>(() => {});
 
-          if (raceResult === "timeout") {
-            // 超时：自动转为后台任务
+          const raceResult = await Promise.race([turnPromise, timeoutPromise, abortPromise]);
+
+          if (raceResult === "aborted" || raceResult === "timeout") {
+            // Convert to background task — do NOT abort the child
             const task: BackgroundAgentTask = {
               id: agentId,
               promise: turnPromise,
               status: "running",
-              startedAt: Date.now() - AUTO_BACKGROUND_MS,
+              startedAt: raceResult === "timeout" ? Date.now() - AUTO_BACKGROUND_MS : Date.now(),
               subagentType,
               prompt: (prompt || description).slice(0, 100),
               abortController: subAbortController,
             };
             task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
             backgroundAgents.set(agentId, task);
+
+            const reason = raceResult === "timeout"
+              ? `子代理执行超过 ${AUTO_BACKGROUND_MS / 1000}s，已自动转为后台任务。`
+              : `父级中断，子代理已转为后台继续执行。`;
             return {
               ok: true,
               renderer: definition.renderer,
-              summary: `子代理执行超过 ${AUTO_BACKGROUND_MS / 1000}s，已自动转为后台任务。ID: ${agentId}。使用 Await 工具获取结果。`,
-              data: { agentId, subagentType, status: "auto-backgrounded" },
+              summary: `${reason} ID: ${agentId}。使用 Await 工具获取结果。`,
+              data: { agentId, subagentType, status: raceResult === "timeout" ? "auto-backgrounded" : "backgrounded" },
             };
           }
 
