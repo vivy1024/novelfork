@@ -31,17 +31,8 @@ cockpit-redesign spec 将 WritingToolsPanel 的功能拆散到驾驶舱面板和
 
 ## 功能需求
 
-### FR-1: 驾驶舱工具面板（直接执行）
-- 在 ExpandablePanel 中新增第 5 个面板类型：`"tools"`
-- StatusBar 添加"🔧"按钮打开工具面板
-- 工具面板内容：
-  - AI 味检测（直接调 `/api/filter/scan`，显示 AiTasteReport）
-  - 段落节奏（直接调 `/api/books/:id/chapters/:ch/rhythm`）
-  - 对话比例（直接调 `/api/books/:id/chapters/:ch/dialogue`）
-  - 全书健康（直接调 `/api/books/:id/health`）
-  - 矛盾地图（直接调 `/api/books/:id/conflicts/map`）
-- 需要选中章节的工具，在未选中时显示"请先选择章节"
-- 结果内联展示在面板中，不弹 Dialog
+### ~~FR-1: 驾驶舱工具面板（已删除）~~
+> 违反 cockpit-redesign spec 的拆分设计。写作工具已按 spec 拆散到 QualityPanel + Agent 按钮，不应重新聚合。
 
 ### FR-2: 选段写作面板（编辑器内嵌）
 - 用户在章节编辑器中选中文字后，浮现工具条：续写 | 扩写 | 去AI味 | 风格改写
@@ -104,7 +95,6 @@ cockpit-redesign spec 将 WritingToolsPanel 的功能拆散到驾驶舱面板和
 
 | 优先级 | 功能 | 理由 |
 |--------|------|------|
-| P0 | FR-1 驾驶舱工具面板 | 旧功能入口丢失，用户无法使用已有能力 |
 | P0 | FR-2 选段写作面板 | 核心写作功能，竞品对比表中声称已有 |
 | P1 | FR-3 EPUB 导出 | 调研标为🔴，用户强需求 |
 | P1 | FR-6 去 AI 味工作流 | 产品核心差异化，当前只有检测没有闭环 |
