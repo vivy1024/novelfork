@@ -642,6 +642,72 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     }
   }, [autoCompactEnabled, status.contextUsage, sessionClient, sessionId]);
 
+  // Fetch runtime settings for SessionDetailPanel (runtimeConfig + accessRules)
+  const [runtimeSettings, setRuntimeSettings] = useState<{
+    runtimeConfig?: { relaxedPlanning?: boolean; yoloSkipReadonlyConfirmation?: boolean; smartOutputCheck?: boolean; translateThinking?: boolean };
+    accessRules?: { allowDirs?: Array<{ path: string; permission: string }>; denyDirs?: Array<{ path: string }>; allowCommands?: string[]; denyCommands?: string[] };
+  }>({});
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/settings").then((res) => res.ok ? res.json() : null).then((data) => {
+      if (!active || !data) return;
+      const rc = data.runtimeControls ?? {};
+      const ta = rc.toolAccess ?? {};
+      setRuntimeSettings({
+        runtimeConfig: {
+          relaxedPlanning: rc.relaxedPlanning ?? false,
+          yoloSkipReadonlyConfirmation: rc.yoloSkipReadonlyConfirmation ?? false,
+          smartOutputCheck: rc.smartOutputCheck ?? false,
+          translateThinking: rc.translateThinking ?? false,
+        },
+        accessRules: {
+          allowDirs: (ta.directoryAllowlist ?? []).map((p: string) => ({ path: p, permission: "rw" })),
+          denyDirs: (ta.directoryBlocklist ?? []).map((p: string) => ({ path: p })),
+          allowCommands: ta.commandAllowlist ?? [],
+          denyCommands: ta.commandBlocklist ?? [],
+        },
+      });
+    }).catch(() => { /* use defaults */ });
+    return () => { active = false; };
+  }, []);
+
+  // Callback: update access rules via PUT /api/settings
+  const handleUpdateAccessRules = useCallback(async (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => {
+    const body: Record<string, unknown> = { runtimeControls: { toolAccess: {} } };
+    const toolAccess = (body.runtimeControls as Record<string, unknown>).toolAccess as Record<string, unknown>;
+    if (patch.directoryAllowlist !== undefined) toolAccess.directoryAllowlist = patch.directoryAllowlist;
+    if (patch.directoryBlocklist !== undefined) toolAccess.directoryBlocklist = patch.directoryBlocklist;
+    const resp = await fetch("/api/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (resp.ok) {
+      // Refresh settings
+      const data = await resp.json();
+      const rc = data.runtimeControls ?? {};
+      const ta = rc.toolAccess ?? {};
+      setRuntimeSettings((prev) => ({
+        ...prev,
+        accessRules: {
+          allowDirs: (ta.directoryAllowlist ?? []).map((p: string) => ({ path: p, permission: "rw" })),
+          denyDirs: (ta.directoryBlocklist ?? []).map((p: string) => ({ path: p })),
+          allowCommands: ta.commandAllowlist ?? prev.accessRules?.allowCommands ?? [],
+          denyCommands: ta.commandBlocklist ?? prev.accessRules?.denyCommands ?? [],
+        },
+      }));
+    }
+  }, []);
+
+  // Callback: update session config (for SessionDetailPanel tri-state controls)
+  const handleUpdateSessionConfigFromDetail = useCallback(async (patch: Record<string, unknown>) => {
+    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionConfig: patch }),
+    });
+  }, [sessionId]);
+
   // Desktop notification: notify when narrator finishes while tab is hidden
   const { notifyIfHidden } = useDesktopNotification();
   const prevNarratorStateRef = useRef<string | undefined>(undefined);
@@ -768,7 +834,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       sendDisabledReason={missingSession ? "会话缺失或快照不可用，请返回会话列表或新建会话。" : modelPoolEmpty ? "模型池为空，请先到设置页启用模型" : undefined}
       settingsHref={missingSession ? "/next" : modelPoolEmpty ? "/next/settings" : undefined}
       footerActions={missingSession ? <MissingSessionActions /> : null}
-      sessionDetail={buildSessionDetail(runtime.state.session, runtime.state.messages)}
+      sessionDetail={(() => { const base = buildSessionDetail(runtime.state.session, runtime.state.messages); return base ? { ...base, ...runtimeSettings } : undefined; })()}
       onSendMessage={runtime.sendMessage}
       onAbortSession={runtime.abort}
       onUpdateSessionConfig={updateSessionConfig}
@@ -829,6 +895,8 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         shellDataStore.upsertSession(result.data);
         await refreshSnapshot();
       }}
+      onUpdateSessionConfigFromDetail={handleUpdateSessionConfigFromDetail}
+      onUpdateAccessRules={handleUpdateAccessRules}
       onPin={async () => {
         const current = runtime.state.session?.pinned ?? false;
         const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { pinned: !current });
@@ -956,6 +1024,12 @@ function buildSessionDetail(session: NarratorSessionRecord | null | undefined, m
     chapterId: session.chapterId,
     parentSessionId: session.parentSessionId,
     inheritMode: session.forkMode ?? "fresh",
+    customTraits: (session as unknown as Record<string, unknown>).customTraits as string | undefined,
+    disabledTools: session.sessionConfig?.toolPolicy?.deny ?? [],
+    sessionConfig: {
+      mode: session.sessionConfig?.mode,
+      toolPolicy: session.sessionConfig?.toolPolicy,
+    },
     stats: {
       messageCount: session.messageCount,
       totalInput: session.cumulativeUsage?.totalInputTokens,

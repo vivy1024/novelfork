@@ -9,8 +9,10 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Terminal } from "lucide-react";
+import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Terminal, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import type { NarratorState, NarratorSubstatus, ConversationStatus, ConversationModelOption } from "./ConversationStatusBar";
 import type { SessionPermissionMode, SessionReasoningEffort } from "@/shared/session-types";
 import { notify } from "@/lib/notify";
@@ -137,9 +139,6 @@ function formatDuration(ms: number): string {
 export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, onOpenTerminal, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
-
-  // 目录白名单按钮状态
-  const [dirAdded, setDirAdded] = useState(false);
 
   // 实时计时器 — 基于 turnActive 状态，不依赖后端 turnStartedAt
   const isWorking = narratorState === "working";
@@ -330,47 +329,9 @@ export function NarratorStatusBar({ status, streamingStartedAt, streamingChars, 
           </Tooltip>
           )}
 
-          {/* Directory whitelist quick-add button */}
+          {/* Directory whitelist popover */}
           {status.workspace?.path && (
-          <Tooltip>
-            <TooltipTrigger
-              className={`rounded-md p-1.5 transition-colors ${dirAdded ? "text-green-500 cursor-default" : "text-muted-foreground hover:bg-muted"}`}
-              disabled={dirAdded}
-              onClick={async () => {
-                if (dirAdded) return;
-                try {
-                  const getResp = await fetch("/api/settings");
-                  const config = getResp.ok ? await getResp.json() : {};
-                  const currentList: string[] = config?.runtimeControls?.toolAccess?.directoryAllowlist ?? [];
-                  const workPath = status.workspace!.path!;
-                  if (currentList.includes(workPath)) {
-                    setDirAdded(true);
-                    notify.info(`${workPath} 已在目录白名单中`);
-                    return;
-                  }
-                  const newList = [...currentList, workPath];
-                  const putResp = await fetch("/api/settings", {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ runtimeControls: { toolAccess: { directoryAllowlist: newList } } }),
-                  });
-                  if (putResp.ok) {
-                    setDirAdded(true);
-                    notify.success(`已添加 ${workPath} 到目录白名单`);
-                  } else {
-                    notify.error("添加目录白名单失败");
-                  }
-                } catch {
-                  notify.error("添加目录白名单失败");
-                }
-              }}
-            >
-              {dirAdded ? <Check className="size-3.5" /> : <FolderPlus className="size-3.5" />}
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              {dirAdded ? "已添加到白名单" : "添加工作目录到白名单"}
-            </TooltipContent>
-          </Tooltip>
+          <DirectoryAllowlistPopover workPath={status.workspace.path} />
           )}
 
           {/* Permission mode dropdown — 显示完整文字 */}
@@ -583,6 +544,126 @@ function WritingPresetQuickSwitch({ bookId }: { bookId: string }) {
         ))}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DirectoryAllowlistPopover — 目录白名单管理弹出面板
+// ---------------------------------------------------------------------------
+
+function DirectoryAllowlistPopover({ workPath }: { workPath: string }) {
+  const [allowlist, setAllowlist] = useState<string[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [newDir, setNewDir] = useState("");
+
+  async function loadAllowlist() {
+    try {
+      const resp = await fetch("/api/settings");
+      const config = resp.ok ? await resp.json() : {};
+      setAllowlist(config?.runtimeControls?.toolAccess?.directoryAllowlist ?? []);
+      setLoaded(true);
+    } catch {
+      setLoaded(true);
+    }
+  }
+
+  async function saveAllowlist(nextList: string[]) {
+    try {
+      const resp = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ runtimeControls: { toolAccess: { directoryAllowlist: nextList } } }),
+      });
+      if (resp.ok) {
+        setAllowlist(nextList);
+        notify.success("目录白名单已更新");
+      } else {
+        notify.error("更新目录白名单失败");
+      }
+    } catch {
+      notify.error("更新目录白名单失败");
+    }
+  }
+
+  function handleAddWorkPath() {
+    if (allowlist.includes(workPath)) {
+      notify.info(`${workPath} 已在白名单中`);
+      return;
+    }
+    void saveAllowlist([...allowlist, workPath]);
+  }
+
+  function handleAddCustom() {
+    const dir = newDir.trim();
+    if (!dir) return;
+    if (allowlist.includes(dir)) {
+      notify.info(`${dir} 已在白名单中`);
+      return;
+    }
+    void saveAllowlist([...allowlist, dir]);
+    setNewDir("");
+  }
+
+  function handleRemove(path: string) {
+    void saveAllowlist(allowlist.filter((p) => p !== path));
+  }
+
+  const isWorkPathInList = allowlist.includes(workPath);
+
+  return (
+    <Popover onOpenChange={(open) => { if (open) void loadAllowlist(); }}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger
+            className={`rounded-md p-1.5 transition-colors ${isWorkPathInList && loaded ? "text-green-500" : "text-muted-foreground hover:bg-muted"}`}
+          >
+            {isWorkPathInList && loaded ? <Check className="size-3.5" /> : <FolderPlus className="size-3.5" />}
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side="top">目录白名单</TooltipContent>
+      </Tooltip>
+      <PopoverContent side="top" align="end" className="w-80 p-3 space-y-2">
+        <p className="text-xs font-medium">目录白名单</p>
+        {!loaded ? (
+          <p className="text-[10px] text-muted-foreground">加载中…</p>
+        ) : allowlist.length === 0 ? (
+          <p className="text-[10px] text-muted-foreground">暂无白名单目录</p>
+        ) : (
+          <ul className="space-y-1 max-h-[120px] overflow-y-auto">
+            {allowlist.map((dir) => (
+              <li key={dir} className="flex items-center justify-between gap-1 text-[11px]">
+                <code className="font-mono truncate flex-1">{dir}</code>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  className="h-5 w-5 p-0 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={() => handleRemove(dir)}
+                >
+                  <Trash2 className="size-3" />
+                </Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {loaded && !isWorkPathInList && (
+          <Button size="xs" className="w-full" onClick={handleAddWorkPath}>
+            添加当前目录 ({workPath.split(/[/\\]/).pop()})
+          </Button>
+        )}
+        <div className="flex gap-1">
+          <Input
+            placeholder="自定义目录路径..."
+            value={newDir}
+            onChange={(e) => setNewDir(e.target.value)}
+            className="text-xs h-6 font-mono"
+            onKeyDown={(e) => { if (e.key === "Enter") handleAddCustom(); }}
+          />
+          <Button size="xs" className="h-6 shrink-0" disabled={!newDir.trim()} onClick={handleAddCustom}>
+            添加
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
 
