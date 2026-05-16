@@ -425,10 +425,12 @@ export class AnthropicAdapter implements RuntimeAdapter {
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools) } : {}),
     };
 
-    // Extract system message
+    // Extract system message — use content block format with cache_control for prompt caching
     const systemMessage = input.messages.find((m) => m.role === "system");
     if (systemMessage && "content" in systemMessage && systemMessage.content.trim()) {
-      body.system = systemMessage.content;
+      body.system = [
+        { type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } },
+      ];
     }
 
     let lastError = "Anthropic messages request failed";
