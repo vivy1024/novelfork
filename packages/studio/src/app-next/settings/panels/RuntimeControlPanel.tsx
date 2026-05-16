@@ -193,16 +193,16 @@ export function RuntimeControlPanel() {
       </Section>
 
       {/* ---- 子代理模型 ---- */}
-      <Section title="子代理模型">
+      <Section title="子代理模型偏好" description="explore 和 plan 子代理的默认模型。留空则继承父叙述者的模型。">
         <FieldRow label="Explore 子代理模型">
           <SimpleSelect
             aria-label="Explore 子代理模型"
             className="w-full"
             value={md.exploreSubagentModel}
             disabled={!hasModelOptions}
-            onValueChange={(val) => patchMd({ exploreSubagentModel: val })}
-            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（Explore）` }))}
-            placeholder="请选择模型"
+            onValueChange={(val) => patchMd({ exploreSubagentModel: val === "__inherit__" ? "" : val })}
+            options={[{ value: "__inherit__", label: "（继承父级）" }, ...modelOptions.map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))]}
+            placeholder="（继承父级）"
           />
         </FieldRow>
         <FieldRow label="Plan 子代理模型">
@@ -211,9 +211,9 @@ export function RuntimeControlPanel() {
             className="w-full"
             value={md.planSubagentModel}
             disabled={!hasModelOptions}
-            onValueChange={(val) => patchMd({ planSubagentModel: val })}
-            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（Plan）` }))}
-            placeholder="请选择模型"
+            onValueChange={(val) => patchMd({ planSubagentModel: val === "__inherit__" ? "" : val })}
+            options={[{ value: "__inherit__", label: "（继承父级）" }, ...modelOptions.map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))]}
+            placeholder="（继承父级）"
           />
         </FieldRow>
         <FieldRow label="General 子代理模型">
@@ -222,9 +222,9 @@ export function RuntimeControlPanel() {
             className="w-full"
             value={md.generalSubagentModel}
             disabled={!hasModelOptions}
-            onValueChange={(val) => patchMd({ generalSubagentModel: val })}
-            options={modelOptions.map((model) => ({ value: model.modelId, label: `${runtimeModelLabel(model)}（General）` }))}
-            placeholder="请选择模型"
+            onValueChange={(val) => patchMd({ generalSubagentModel: val === "__inherit__" ? "" : val })}
+            options={[{ value: "__inherit__", label: "（继承父级）" }, ...modelOptions.map((model) => ({ value: model.modelId, label: runtimeModelLabel(model) }))]}
+            placeholder="（继承父级）"
           />
         </FieldRow>
         <FieldRow label="子代理模型池">
