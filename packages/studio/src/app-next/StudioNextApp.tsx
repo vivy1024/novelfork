@@ -831,10 +831,17 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   }, [runtime, sessionClient, sessionId, shellDataStore]);
 
   const compactSessionForCommand = useCallback(async (instructions?: string): Promise<SessionCompactCommandPayload> => {
-    const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
-    if (!result.ok || !result.data?.ok) throw new Error(contractErrorMessage(result, "上下文压缩失败"));
-    await refreshSnapshot();
-    return result.data;
+    console.log("[compactSessionForCommand] calling API, sessionId:", sessionId, "instructions:", instructions);
+    try {
+      const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
+      console.log("[compactSessionForCommand] API result:", result.ok, result);
+      if (!result.ok || !result.data?.ok) throw new Error(contractErrorMessage(result, "上下文压缩失败"));
+      await refreshSnapshot();
+      return result.data;
+    } catch (e) {
+      console.error("[compactSessionForCommand] error:", e);
+      throw e;
+    }
   }, [refreshSnapshot, sessionClient, sessionId]);
 
   // Novel-specific header slot: ToolConfigBar + AgentQuickActions

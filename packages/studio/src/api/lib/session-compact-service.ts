@@ -157,8 +157,11 @@ async function generateLlmSummary(
   if (!providerId || !modelId) return null;
 
   const prompt = buildCompactPrompt(compactedMessages, instructions);
+  console.log(`[compact] generating summary with ${providerId}:${modelId}, ${compactedMessages.length} messages`);
 
   try {
+    // 30 秒超时保护，防止 API 无响应时永远挂起
+    const timeoutSignal = AbortSignal.timeout(30_000);
     const result = await generateSessionReply({
       sessionConfig: {
         providerId,
@@ -180,9 +183,11 @@ async function generateLlmSummary(
           content: prompt,
         },
       ],
+      signal: timeoutSignal,
     });
 
     if (result.success && result.type === "message" && result.content.trim()) {
+      console.log(`[compact] summary generated, ${result.content.length} chars`);
       // 提取 <summary> 内容，去掉 <analysis>
       let summary = result.content.trim();
       summary = summary.replace(/<analysis>[\s\S]*?<\/analysis>/i, "").trim();
@@ -192,8 +197,9 @@ async function generateLlmSummary(
       }
       return summary;
     }
-  } catch {
-    // LLM failure → fallback to text concatenation
+    console.log(`[compact] LLM returned unexpected result: success=${result.success}`);
+  } catch (err) {
+    console.error(`[compact] LLM summary failed:`, err instanceof Error ? err.message : err);
   }
 
   return null;
