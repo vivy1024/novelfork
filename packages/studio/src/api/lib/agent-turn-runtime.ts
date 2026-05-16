@@ -452,6 +452,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                     }),
                     input.toolTimeoutMs ?? 60000,
                     toolUse.name,
+                    input.signal,
                   );
               const toolDurationMs = Date.now() - toolStartedAt;
               executedToolSteps += 1;
@@ -583,6 +584,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                   }),
                   input.toolTimeoutMs ?? 60000,
                   toolUse.name,
+                  input.signal,
                 );
           } catch (err) {
             console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
@@ -699,8 +701,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 }),
                 input.toolTimeoutMs ?? 60000,
                 toolUse.name,
-              );
-        } catch (err) {
+                input.signal,
+              );        } catch (err) {
           console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
           toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -780,21 +782,40 @@ function withToolTimeout(
   promise: Promise<SessionToolExecutionResult>,
   timeoutMs: number,
   toolName: string,
+  signal?: AbortSignal,
 ): Promise<SessionToolExecutionResult> {
   return new Promise((resolve) => {
+    let resolved = false;
+    const done = (result: SessionToolExecutionResult) => {
+      if (resolved) return;
+      resolved = true;
+      clearTimeout(timer);
+      signal?.removeEventListener("abort", onAbort);
+      resolve(result);
+    };
+
     const timer = setTimeout(() => {
-      resolve({
+      done({
         ok: false,
         error: "tool-timeout",
         summary: `工具 ${toolName} 执行超时（${Math.round(timeoutMs / 1000)}s）。`,
       });
     }, timeoutMs);
+
+    const onAbort = () => {
+      done({
+        ok: false,
+        error: "tool-aborted",
+        summary: `工具 ${toolName} 已被用户中断。`,
+      });
+    };
+    if (signal?.aborted) { done({ ok: false, error: "tool-aborted", summary: `工具 ${toolName} 已被用户中断。` }); return; }
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     promise.then((result) => {
-      clearTimeout(timer);
-      resolve(result);
+      done(result);
     }).catch((error) => {
-      clearTimeout(timer);
-      resolve({
+      done({
         ok: false,
         error: "tool-execution-error",
         summary: `工具 ${toolName} 执行异常：${error instanceof Error ? error.message : String(error)}`,
