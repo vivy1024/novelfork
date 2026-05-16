@@ -51,17 +51,6 @@ export function registerNovelPluginPages(): void {
   });
 
   registerWorkbenchPage({
-    id: "writing-tools",
-    label: "写作工具",
-    icon: "Wrench",
-    order: 20,
-    requiresBook: true,
-    component: lazy(() =>
-      import("./WritingToolsPanel").then((m) => ({ default: m.WritingToolsPanel as unknown as ComponentType<{ bookId: string }> })),
-    ),
-  });
-
-  registerWorkbenchPage({
     id: "checkpoints",
     label: "快照",
     icon: "History",

@@ -336,7 +336,7 @@ export async function spawnProcess(command: string, args: readonly string[], opt
     });
 
     // Bun.spawn stdin is a FileSink (not WritableStream), use write()/flush() directly
-    const stdin = proc.stdin;
+    const stdin = proc.stdin as unknown as { write(data: Uint8Array): number; flush(): void };
 
     return {
       onStdout(handler) {
@@ -353,8 +353,8 @@ export async function spawnProcess(command: string, args: readonly string[], opt
       },
       writeStdin(data, callback) {
         try {
-          (stdin as unknown as { write(data: Uint8Array): void; flush(): void }).write(new TextEncoder().encode(data));
-          (stdin as unknown as { flush(): void }).flush();
+          stdin.write(new TextEncoder().encode(data));
+          stdin.flush();
           callback?.(null);
         } catch (error) {
           callback?.(error as Error);
