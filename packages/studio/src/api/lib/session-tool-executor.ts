@@ -1260,7 +1260,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         // File changes tracking: capture original content before edit
         const { captureOriginalContent: captureOrigE, trackFileChange: trackE } = await import("./file-changes-tracker.js");
         const originalContentE = await captureOrigE(filePath, workDir);
-        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir, allowOutsideWorkDir: dirCheckE.allowed });
+        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir, allowOutsideWorkDir: dirCheckE.allowed, replaceAll: input.replaceAll === true });
         if (result.ok) {
           trackE(sessionId, {
             path: filePath,
@@ -1332,12 +1332,11 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `搜索路径 "${searchPath}" 超出工作目录边界。添加到目录白名单后可访问。` };
             }
           }
-          const args = ["--no-heading", "--color=never", "--max-columns", "500", "--no-ignore-vcs"];
+          const args = ["--no-heading", "--color=never", "--max-columns", "500", "--no-ignore-vcs", "--glob", "!.git"];
           if (outputMode === "files_with_matches") args.push("-l");
           else if (outputMode === "count") args.push("-c");
           if (fileGlob) args.push("--glob", fileGlob);
           args.push("--", pattern);
-          console.log(`[Grep-debug] cwd=${cwd} pattern=${pattern} args=${JSON.stringify(args)}`);
           let stdout = "";
           try {
             const result = await execFileAsync("rg", args, { cwd, maxBuffer: 20_000_000, timeout: 20000, windowsHide: true });
@@ -1359,7 +1358,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             if (!stdout && err.stdout) stdout = err.stdout;
           }
           const lines = stdout.trim().split("\n").filter(Boolean);
-          const GREP_MAX = 50;
+          const GREP_MAX = 250;
           const total = lines.length;
           const truncated = total > GREP_MAX ? lines.slice(0, GREP_MAX) : lines;
           const summary = total > GREP_MAX
