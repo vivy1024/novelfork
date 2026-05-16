@@ -2,7 +2,7 @@
 
 **版本**: v2.1.0
 **创建日期**: 2026-04-28
-**更新日期**: 2026-05-07
+**更新日期**: 2026-05-18
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -44,7 +44,8 @@
 | `storage-migration` | 7/7 | ✅ |
 | `old-frontend-decommission` | 5/9 | ⚠️ 旧代码未完全删除 |
 | `web-agent-runtime-v1` | 16/16 | ✅ |
-| **总计** | **~309** | — |
+| `general-capability-completion` | 36/36 | ✅ |
+| **总计** | **~345** | — |
 
 ---
 
@@ -216,6 +217,11 @@
 | **`novelfork exec` CLI** | partial | 保留旧 `/api/exec` 默认兼容，stream-json 模式已有底层证据；CodexCLI-class event taxonomy 与 `/novel:write-next` 同源执行仍需补端到端证据 |
 | **真实 Provider/Model 选择** | 强制 | 无虚拟模型、无自动 fallback；未配置返回 model-unavailable |
 | **Anthropic/Responses API adapter** | 未接入 | 预留转换接口，当前返回 unsupported |
+| **自定义重试规则** | 真实可用 | 用户在设置中定义的 retryRules（HTTP 状态码 + 内容关键词匹配）被 LLM runtime 真实消费，匹配的错误自动重试 |
+| **全局提示词注入** | 真实可用 | 套路系统中已启用的 globalPrompts 自动拼接到所有叙述者的 system prompt 中 |
+| **自定义子代理类型** | 真实可用 | 套路页定义的 SubAgent（systemPrompt + toolPermissions）在 Agent handler 中被查找和执行 |
+| **用户自定义斜杠命令** | 真实可用 | 套路 commands 注入 Composer 补全列表，`/命令名 参数` 展开 prompt 模板后发送给模型 |
+| **更新检查** | 真实可用 | `GET /api/settings/check-update` 调用 GitHub API 对比版本；启动时非阻塞自动检查；AboutPanel 有手动检查 UI |
 
 ## 14. 已知缺口
 
