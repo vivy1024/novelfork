@@ -293,7 +293,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
   };
 
   return (
-    <section className={cn("space-y-4", className)} aria-label="会话中心">
+    <section className={cn("space-y-4 overflow-x-hidden", className)} aria-label="会话中心">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">会话中心</h2>
@@ -377,7 +377,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
           const lastFailure = session.recovery?.lastFailure;
           const memoryStatus = memoryStatusBySessionId[session.id];
           return (
-            <article key={session.id} data-testid={`session-center-row-${session.id}`} className="rounded-lg border border-border bg-card p-3 shadow-sm">
+            <article key={session.id} data-testid={`session-center-row-${session.id}`} className="rounded-lg border border-border bg-card p-3 shadow-sm overflow-hidden">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex items-start gap-2 min-w-0">
                   {status === "archived" && (
@@ -401,8 +401,8 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                     <span>模式：{session.sessionMode === "plan" ? "计划模式" : "对话模式"}</span>
                     <span>消息：{session.messageCount}</span>
                   </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                    <span>工作目录：{session.worktree ?? "未绑定工作目录"}</span>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground overflow-hidden">
+                    <span className="truncate max-w-[300px]">工作目录：{session.worktree ?? "未绑定"}</span>
                     <span>创建：{formatSessionDate(session.createdAt)}</span>
                     <span>最后消息：{formatSessionDate(session.lastModified)}</span>
                   </div>
