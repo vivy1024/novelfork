@@ -110,24 +110,31 @@ function buildCompactPrompt(messages: readonly NarratorSessionChatMessage[], ins
     .map((m) => `[${m.role}] ${stripImages(m.content)}`)
     .join("\n\n");
 
-  return `请总结以下对话历史，生成一份简洁但完整的摘要。
+  let prompt = `Your task is to create a detailed summary of the conversation below.
 
-要求保留：
-1. 关键决策和结论
-2. 已完成的文件修改（文件名和修改内容概要）
-3. 未完成的任务和下一步计划
-4. 重要的上下文信息（项目结构、技术选型等）
-5. 用户的偏好和约束
+Before providing your final summary, wrap your analysis in <analysis> tags. In your analysis:
+1. Chronologically analyze each message, identifying user requests, decisions, file changes, errors, and feedback.
+2. Double-check for completeness.
 
-不需要保留：
-- 工具调用的详细输出
-- 重复的搜索结果
-- 中间推理过程
+Your summary should include:
+1. Primary Request and Intent: The user's explicit requests in detail
+2. Key Technical Concepts: Technologies, frameworks, patterns discussed
+3. Files and Code Sections: Files examined/modified/created with summaries
+4. Errors and Fixes: Errors encountered and solutions
+5. Problem Solving: Problems solved and ongoing work
+6. All User Messages: All non-tool-result user messages
+7. Pending Tasks: Explicitly requested pending tasks
+8. Current Work: What was being worked on immediately before this summary
+9. Optional Next Step: Next step in line with the user's most recent request
 
-${instructions ? `额外指令：${instructions}\n\n` : ""}对话历史：
-${textMessages}
+Output format:
+<analysis>[Your thought process]</analysis>
+<summary>[Structured summary following the 9 sections above]</summary>
 
-请用中文生成摘要：`;
+${instructions ? `Additional Instructions: ${instructions}\n\n` : ""}Conversation:
+${textMessages}`;
+
+  return prompt;
 }
 
 async function generateLlmSummary(
@@ -164,7 +171,7 @@ async function generateLlmSummary(
           type: "message" as const,
           id: "compact-system",
           role: "system" as const,
-          content: "你是一个对话摘要助手。请根据用户提供的对话历史生成结构化摘要。摘要应简洁、完整、保留关键信息。最多 2000 字。",
+          content: "You are a helpful AI assistant tasked with summarizing conversations. Respond with TEXT ONLY. Do NOT call any tools.",
         },
         {
           type: "message" as const,
@@ -176,7 +183,14 @@ async function generateLlmSummary(
     });
 
     if (result.success && result.type === "message" && result.content.trim()) {
-      return result.content.trim();
+      // 提取 <summary> 内容，去掉 <analysis>
+      let summary = result.content.trim();
+      summary = summary.replace(/<analysis>[\s\S]*?<\/analysis>/i, "").trim();
+      const summaryMatch = summary.match(/<summary>([\s\S]*?)<\/summary>/i);
+      if (summaryMatch?.[1]) {
+        summary = summaryMatch[1].trim();
+      }
+      return summary;
     }
   } catch {
     // LLM failure → fallback to text concatenation
