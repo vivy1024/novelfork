@@ -1916,10 +1916,72 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "search-failed", summary: `搜索失败：${msg}` };
         }
       };
-    // --- Browser: Playwright-based browser automation ---
+    // --- Browser: Playwright-based browser automation with system Chrome fallback ---
     case "Browser":
       return async ({ input, definition }) => {
         const action = typeof input.action === "string" ? input.action : "";
+
+        // --- Helper: find system Chrome/Edge executable ---
+        const findSystemBrowser = async (): Promise<string | null> => {
+          const { existsSync } = await import("node:fs");
+          const candidates = process.platform === "win32"
+            ? [
+                "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+                "C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe",
+                "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+                "C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe",
+              ]
+            : [
+                "/usr/bin/google-chrome",
+                "/usr/bin/chromium-browser",
+                "/usr/bin/chromium",
+                "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+              ];
+          for (const p of candidates) {
+            if (existsSync(p)) return p;
+          }
+          return null;
+        };
+
+        // --- Standalone screenshot using system Chrome (no Playwright needed) ---
+        if (action === "screenshot" && !input.session_id) {
+          const url = typeof input.url === "string" ? input.url : "about:blank";
+          const chromePath = await findSystemBrowser();
+          if (!chromePath) {
+            return { ok: false, renderer: definition.renderer, error: "browser-not-found", summary: "未找到系统 Chrome/Edge 浏览器，无法截图。" };
+          }
+          try {
+            const { execFile } = await import("node:child_process");
+            const { promisify } = await import("node:util");
+            const { join } = await import("node:path");
+            const { tmpdir } = await import("node:os");
+            const { readFileSync, unlinkSync } = await import("node:fs");
+            const execFileAsync = promisify(execFile);
+
+            const outputPath = join(tmpdir(), `novelfork-screenshot-${Date.now()}.png`);
+            const width = typeof input.width === "number" ? input.width : 1280;
+            const height = typeof input.height === "number" ? input.height : 900;
+
+            await execFileAsync(chromePath, [
+              "--headless=new", "--disable-gpu", "--no-sandbox",
+              `--screenshot=${outputPath}`, `--window-size=${width},${height}`,
+              url,
+            ], { timeout: 15000 });
+
+            const buffer = readFileSync(outputPath);
+            const base64 = buffer.toString("base64");
+            try { unlinkSync(outputPath); } catch { /* ignore cleanup errors */ }
+
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `已截图 ${url}（${Math.round(buffer.length / 1024)}KB）`,
+              data: { action: "screenshot", url, base64, mimeType: "image/png", sizeBytes: buffer.length },
+            };
+          } catch (error) {
+            return { ok: false, renderer: definition.renderer, error: "screenshot-failed", summary: `系统浏览器截图失败：${error instanceof Error ? error.message : String(error)}` };
+          }
+        }
 
         if (action === "launch") {
           const url = typeof input.url === "string" ? input.url : "";
@@ -1935,7 +1997,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
                 // @ts-ignore — dynamic import fallback
                 pw = await import("playwright");
               } catch {
-                return { ok: false, renderer: definition.renderer, error: "missing-dependency", summary: "需要安装 playwright-core 或 playwright 依赖。" };
+                // Fallback: no Playwright available, use system Chrome for basic screenshot-only mode
+                const chromePath = await findSystemBrowser();
+                if (!chromePath) {
+                  return { ok: false, renderer: definition.renderer, error: "missing-dependency", summary: "需要安装 playwright-core/playwright 或系统 Chrome/Edge。当前仅支持 screenshot action（无需 session）。" };
+                }
+                return { ok: false, renderer: definition.renderer, error: "no-playwright", summary: "Playwright 未安装，无法创建交互式浏览器会话。可直接使用 screenshot action（无需 session_id）进行截图。" };
               }
             }
             const headless = input.headless !== false;
