@@ -70,16 +70,12 @@ import { loadGlobalRoutines } from "./routines-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
-import { shouldTriggerCompaction, autoCompact, estimateTokenCount, type CompactMessage } from "./context-compaction.js";
+import { autoCompact, detectCompactionAction, selectThresholds, estimateTokenCount, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
 /** 对标 Claude: 默认模型上下文窗口 200k tokens */
 const DEFAULT_MODEL_CONTEXT_WINDOW = 200_000;
-/** 对标 Claude: autoCompact 阈值百分比 */
-const AUTOCOMPACT_THRESHOLD_PERCENT = 90;
-/** 对标 Claude: 压缩后保留最近消息数 */
-const AUTOCOMPACT_KEEP_RECENT = 10;
 
 async function resolveMaxTurnSteps(): Promise<number> {
   try {
@@ -92,23 +88,27 @@ async function resolveMaxTurnSteps(): Promise<number> {
 }
 
 /**
- * 对标 Claude Code CLI autoCompact: 在 agent turn 前检查 token 阈值，超过时自动压缩。
- * 返回压缩后的 turn items（如果触发了压缩）或原始 items。
+ * 对标 Claude Code + NarraFork: 双档阈值自动压缩。
+ * 根据模型上下文窗口大小选择标准/大窗口档位，先尝试裁剪，再尝试压缩。
  */
 async function maybeAutoCompact(
   messages: readonly NarratorSessionChatMessage[],
   state: SessionChatRuntimeState,
   sessionId: string,
 ): Promise<{ items: AgentTurnItem[]; compacted: boolean }> {
-  // Fix: 从用户配置读取压缩阈值，而非硬编码
-  let thresholdPercent = AUTOCOMPACT_THRESHOLD_PERCENT;
-  try {
-    const config = await loadUserConfig();
-    const configThreshold = config.runtimeControls?.contextCompressionThresholdPercent;
-    if (typeof configThreshold === "number" && configThreshold > 0) {
-      thresholdPercent = configThreshold;
-    }
-  } catch { /* config load failure is non-fatal */ }
+  const config = await loadUserConfig().catch(() => null);
+  const rc = config?.runtimeControls;
+
+  // 从用户配置读取双档阈值
+  const maxContextTokens = DEFAULT_MODEL_CONTEXT_WINDOW;
+  const thresholds = selectThresholds(maxContextTokens, {
+    contextCompressionThresholdPercent: rc?.contextCompressionThresholdPercent ?? 80,
+    contextTruncateTargetPercent: rc?.contextTruncateTargetPercent ?? 70,
+    largeWindowCompressionThresholdPercent: rc?.largeWindowCompressionThresholdPercent ?? 60,
+    largeWindowTruncateTargetPercent: rc?.largeWindowTruncateTargetPercent ?? 50,
+    compressionKeepTurns: rc?.compressionKeepTurns ?? 4,
+    maxTruncateRatio: rc?.maxTruncateRatio ?? 80,
+  });
 
   const compactMessages: CompactMessage[] = messages.map((m) => ({
     id: m.id,
@@ -117,42 +117,61 @@ async function maybeAutoCompact(
     ...(m.toolCalls?.length ? { toolCalls: m.toolCalls.filter((tc) => tc.id).map((tc) => ({ id: tc.id!, toolName: tc.toolName })) } : {}),
   }));
 
-  if (!shouldTriggerCompaction(compactMessages, { maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW, thresholdPercent })) {
+  const action = detectCompactionAction(compactMessages, maxContextTokens, thresholds);
+  if (action === "none") {
     return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
   }
 
   try {
     const result = await autoCompact({
       messages: compactMessages,
-      maxTokens: DEFAULT_MODEL_CONTEXT_WINDOW,
-      thresholdPercent,
-      keepRecentCount: AUTOCOMPACT_KEEP_RECENT,
-      summarize: async (text) => {
-        // 尝试用 summaryModel 调用 LLM 生成摘要
+      maxContextTokens,
+      thresholds,
+      summarize: async (olderMessages, customInstructions) => {
+        // 调用摘要模型：把完整旧消息作为 API messages 发送
         try {
-          const config = await loadUserConfig();
-          const summaryModel = config.modelDefaults?.summaryModel;
+          const summaryModel = config?.modelDefaults?.summaryModel;
           if (summaryModel) {
+            // 构建摘要请求：旧消息作为 context + 结构化 prompt 作为 user message
+            const contextMessages: AgentTurnItem[] = olderMessages.map(m => ({
+              type: "message" as const,
+              role: m.role === "tool_result" ? "assistant" as const : m.role as "system" | "user" | "assistant",
+              content: m.content,
+            }));
+
             const summaryResult = await generateSessionReply({
-              sessionConfig: { providerId: summaryModel.split(":")[0] ?? "", modelId: summaryModel.split(":")[1] ?? summaryModel, permissionMode: "read", reasoningEffort: "low" },
+              sessionConfig: {
+                providerId: summaryModel.split(":")[0] ?? "",
+                modelId: summaryModel.split(":").slice(1).join(":") || summaryModel,
+                permissionMode: "read",
+                reasoningEffort: "low",
+              },
               messages: [
-                { type: "message", role: "system", content: "你是一个对话摘要助手。请用简洁的中文总结以下对话历史的关键信息，保留重要的决策、工具调用结果和上下文。不超过 500 字。" },
-                { type: "message", role: "user", content: text.slice(0, 8000) },
+                { type: "message", role: "system", content: COMPACT_SYSTEM_PROMPT },
+                ...contextMessages,
+                { type: "message", role: "user", content: buildCompactPrompt(customInstructions) },
               ],
               tools: [],
             });
-            if (summaryResult.success && summaryResult.type === "message") return summaryResult.content;
+            if (summaryResult.success && summaryResult.type === "message") {
+              return summaryResult.content;
+            }
           }
         } catch {
-          // LLM 摘要失败，fallback 到截断
+          // LLM 摘要失败，fallback
         }
-        const truncated = text.length > 2000 ? text.slice(0, 2000) + "..." : text;
-        return `对话历史摘要（${messages.length} 条消息）：${truncated}`;
+
+        // Fallback: 文本拼接摘要（保留更多内容）
+        const text = olderMessages.map((m) => `[${m.role}] ${m.content}`).join("\n");
+        const maxChars = 4000;
+        if (text.length <= maxChars) return text;
+        // 保留头尾各一半
+        const half = Math.floor(maxChars / 2);
+        return `${text.slice(0, half)}\n\n[... 中间 ${olderMessages.length} 条消息已省略 ...]\n\n${text.slice(-half)}`;
       },
     });
 
-    if (result.compacted) {
-      // 将压缩后的 CompactMessage 转回 AgentTurnItem
+    if (result.compacted || result.truncated) {
       const compactedItems: AgentTurnItem[] = result.messages.map((m) => ({
         type: "message" as const,
         role: m.role === "tool_result" ? "system" as const : m.role as "system" | "user" | "assistant",
@@ -162,7 +181,7 @@ async function maybeAutoCompact(
       return { items: compactedItems, compacted: true };
     }
   } catch {
-    // Compaction failure is non-fatal, fall through to normal path
+    // Compaction failure is non-fatal
   }
 
   return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
