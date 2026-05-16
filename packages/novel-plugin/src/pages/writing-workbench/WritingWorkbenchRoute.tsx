@@ -2,10 +2,9 @@ import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { BookOpen, GitBranch, Wrench, History, Home } from "lucide-react";
+import { BookOpen, GitBranch, History, Home } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
-import { WritingToolsPanel } from "./WritingToolsPanel";
 import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
@@ -50,7 +49,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
-  const [showToolsPanel, setShowToolsPanel] = useState(false);
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
@@ -136,7 +134,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
               </Button>
             )}
             {bookId && (
-              <Button size="xs" variant={showCheckpoints ? "default" : "outline"} onClick={() => { setShowCheckpoints(!showCheckpoints); if (!showCheckpoints) setShowToolsPanel(false); }}>
+              <Button size="xs" variant={showCheckpoints ? "default" : "outline"} onClick={() => setShowCheckpoints(!showCheckpoints)}>
                 <History className="size-3 mr-1" />
                 快照
               </Button>
@@ -213,25 +211,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
           </div>
         </div>
       )}
-
-      {/* Writing Tools Dialog */}
-      <Dialog open={showToolsPanel} onOpenChange={setShowToolsPanel}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>写作工具</DialogTitle>
-          </DialogHeader>
-          {bookId && (
-            <WritingToolsPanel bookId={bookId} currentChapter={currentChapter} chapterContent={selectedNode?.content ?? ""} onRunTool={async (_toolId, endpoint, params, method) => {
-              const httpMethod = method ?? "POST";
-              const res = httpMethod === "GET"
-                ? await fetch(endpoint)
-                : await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(params) });
-              if (!res.ok) throw new Error(`工具执行失败：${res.status}`);
-              return res.json();
-            }} />
-          )}
-        </DialogContent>
-      </Dialog>
 
       {/* Jingwei Panel Dialog */}
       <Dialog open={showJingwei} onOpenChange={setShowJingwei}>
