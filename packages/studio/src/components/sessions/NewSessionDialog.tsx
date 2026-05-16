@@ -231,7 +231,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl p-0" showCloseButton>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0" showCloseButton>
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>新建会话</DialogTitle>
           <DialogDescription>
