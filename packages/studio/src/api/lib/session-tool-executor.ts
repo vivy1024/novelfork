@@ -609,7 +609,26 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         if (checks.includes("ai_taste")) {
           const AI_MARKERS = ["\u503c\u5f97\u6ce8\u610f\u7684\u662f", "\u9700\u8981\u6307\u51fa", "\u603b\u800c\u8a00\u4e4b", "\u4e0d\u7981", "\u7f13\u7f13", "\u5fae\u5fae", "\u6de1\u6de1", "\u5634\u89d2\u5fae\u626c", "\u773c\u4e2d\u95ea\u8fc7", "\u5fc3\u4e2d\u6697\u9053", "\u6df1\u5438\u4e00\u53e3\u6c14", "\u4e0d\u7531\u5f97"];
           const found = AI_MARKERS.filter(marker => content.includes(marker));
-          results.ai_taste = { markersFound: found, count: found.length, severity: found.length > 5 ? "high" : found.length > 2 ? "medium" : "low" };
+          // Find positions of each marker in content for highlighting
+          const highlights: Array<{ marker: string; line: number; column: number; context: string }> = [];
+          const contentLines = content.split("\n");
+          for (const marker of found) {
+            for (let lineIdx = 0; lineIdx < contentLines.length; lineIdx++) {
+              const col = contentLines[lineIdx].indexOf(marker);
+              if (col !== -1) {
+                const lineText = contentLines[lineIdx];
+                const contextStart = Math.max(0, col - 10);
+                const contextEnd = Math.min(lineText.length, col + marker.length + 10);
+                highlights.push({
+                  marker,
+                  line: lineIdx + 1,
+                  column: col,
+                  context: (contextStart > 0 ? "…" : "") + lineText.slice(contextStart, contextEnd) + (contextEnd < lineText.length ? "…" : ""),
+                });
+              }
+            }
+          }
+          results.ai_taste = { markersFound: found, count: found.length, severity: found.length > 5 ? "high" : found.length > 2 ? "medium" : "low", highlights };
         }
 
         if (checks.includes("hooks")) {
