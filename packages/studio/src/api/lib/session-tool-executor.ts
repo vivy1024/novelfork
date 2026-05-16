@@ -2093,12 +2093,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       };
     // --- Agent: 子代理执行 ---
     case "Agent":
-      return async ({ input, sessionId, definition }) => {
+      return async ({ input, sessionId, definition, sessionConfig }) => {
         const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
         const description = typeof input.description === "string" ? input.description : "";
         if (!prompt && !description) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "prompt 或 description 不能为空。" };
         }
+        const subagentType = (typeof input.subagent_type === "string" ? input.subagent_type : "general") as "explore" | "plan" | "general";
         const runInBackground = input.run_in_background === true;
         const agentId = crypto.randomUUID().slice(0, 8);
 
@@ -2106,34 +2107,90 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const { generateSessionReply } = await import("./llm-runtime-service.js");
         const { getEnabledSessionTools } = await import("./session-tool-registry.js");
         const { createSession, getSessionById } = await import("./session-service.js");
+        const { loadUserConfig } = await import("./user-config-service.js");
 
         const executeSubagent = async (): Promise<string> => {
           const parentSession = await getSessionById(sessionId);
+
+          // --- 根据 subagent_type 选择模型 ---
+          const userConfig = await loadUserConfig();
+          const md = userConfig.modelDefaults;
+          let modelRef: string | undefined;
+          if (subagentType === "explore" && md.exploreSubagentModel) modelRef = md.exploreSubagentModel;
+          else if (subagentType === "plan" && md.planSubagentModel) modelRef = md.planSubagentModel;
+          else if (subagentType === "general" && md.generalSubagentModel) modelRef = md.generalSubagentModel;
+
+          // 解析 providerId:modelId，fallback 到主会话模型
+          const parentConfig = parentSession?.sessionConfig ?? sessionConfig;
+          let resolvedProviderId = parentConfig?.providerId ?? "openai";
+          let resolvedModelId = parentConfig?.modelId ?? "gpt-4o";
+          if (modelRef) {
+            const [pId, ...mParts] = modelRef.split(":");
+            if (pId && mParts.length > 0) {
+              resolvedProviderId = pId;
+              resolvedModelId = mParts.join(":");
+            }
+          }
+
+          // --- 根据 subagent_type 确定权限模式 ---
+          const subPermissionMode = subagentType === "explore" ? "read" as const : (parentSession?.sessionConfig.permissionMode ?? "edit" as const);
+
           const subSession = await createSession({
-            title: description || `子代理: ${(prompt || description).slice(0, 30)}`,
+            title: description || `${subagentType}子代理: ${(prompt || description).slice(0, 30)}`,
             agentId: "subagent",
             sessionMode: "chat",
             projectId: parentSession?.projectId,
             worktree: parentSession?.worktree,
             parentSessionId: sessionId,
-            sessionConfig: { permissionMode: parentSession?.sessionConfig.permissionMode ?? "edit" },
+            sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
           });
 
-          // 子代理获得通用工具集（排除 Agent/ForkNarrator/Send/Await 避免无限递归）
+          // --- 根据 subagent_type 过滤工具集 ---
+          // explore: 只读工具；plan: 读写工具；general: 全部（排除递归工具）
+          const EXPLORE_DISABLED = ["Agent", "ForkNarrator", "Send", "Await", "Bash", "Write", "Edit", "Terminal", "Browser", "EnterWorktree", "ExitWorktree"];
+          const PLAN_DISABLED = ["Agent", "ForkNarrator", "Send", "Await", "Bash", "Terminal", "Browser", "EnterWorktree", "ExitWorktree"];
+          const GENERAL_DISABLED = ["Agent", "ForkNarrator", "Send", "Await"];
+
+          const disabledTools = subagentType === "explore" ? EXPLORE_DISABLED
+            : subagentType === "plan" ? PLAN_DISABLED
+            : GENERAL_DISABLED;
+
           const subTools = getEnabledSessionTools(
             subSession.sessionConfig.permissionMode,
             "subagent",
-            { disabledTools: ["Agent", "ForkNarrator", "Send", "Await"] },
+            { disabledTools },
           );
+
+          // --- 根据 subagent_type 构建 system prompt ---
+          const workDir = parentSession?.worktree?.trim() || options.workDir || process.cwd();
+          const typeLabel = subagentType === "explore" ? "探索" : subagentType === "plan" ? "规划" : "通用";
+          const subagentSystemPrompt = `你是一个执行委派任务的子代理。完成任务并简洁地报告结果。
+
+## Current Working Directory
+
+\`${workDir}\`
+
+All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their default working directory. Do NOT \`cd\` into it in Shell commands — it is redundant.${subagentType === "explore" ? `
+
+## 约束
+
+你是${typeLabel}子代理，只能读取和搜索，不能修改任何文件。` : subagentType === "plan" ? `
+
+## 约束
+
+你是${typeLabel}子代理，可以读写文件但不能执行 shell 命令。` : ""}`;
+
+          // --- 根据 subagent_type 确定 maxSteps ---
+          const maxSteps = subagentType === "explore" ? 10 : subagentType === "plan" ? 15 : 20;
 
           const turn = await executeRuntimeTurn({
             sessionId: subSession.id,
             sessionConfig: subSession.sessionConfig,
             messages: [{ type: "message" as const, role: "user" as const, content: prompt || description }],
-            systemPrompt: "你是一个子代理，负责完成分配给你的具体任务。你可以使用工具来读写文件、搜索代码、执行命令。完成后给出简洁的结果摘要。",
+            systemPrompt: subagentSystemPrompt,
             tools: subTools,
             permissionMode: subSession.sessionConfig.permissionMode,
-            maxSteps: 6,
+            maxSteps,
             generate: async (generateInput) => {
               const result = await generateSessionReply({
                 sessionConfig: subSession.sessionConfig,
@@ -2145,14 +2202,16 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               return result as any;
             },
             executeTool: async (toolInput) => {
-              const workDir = subSession.worktree?.trim() || options.workDir || process.cwd();
               const executor = createSessionToolExecutor({ workDir });
               return executor.execute(toolInput);
             },
           });
 
-          const assistantMessage = turn.agentEvents.find(e => e.type === "assistant_message");
-          return assistantMessage?.type === "assistant_message" ? assistantMessage.content : "子代理未返回文本结果。";
+          // 收集子代理所有文本输出
+          const assistantMessages = turn.agentEvents
+            .filter((e): e is Extract<typeof e, { type: "assistant_message" }> => e.type === "assistant_message")
+            .map(e => e.content);
+          return assistantMessages.join("\n\n") || "子代理未返回文本结果。";
         };
 
         if (runInBackground) {
@@ -2162,8 +2221,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `子代理已在后台启动（ID: ${agentId}）。使用 Await 工具等待结果。`,
-            data: { agentId, status: "running" },
+            summary: `${subagentType} 子代理已在后台启动（ID: ${agentId}）。使用 Await 工具等待结果。`,
+            data: { agentId, subagentType, status: "running" },
           };
         }
 
@@ -2173,7 +2232,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             ok: true,
             renderer: definition.renderer,
             summary: result,
-            data: { agentId, result },
+            data: { agentId, subagentType, result },
           };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "agent-failed", summary: `子代理执行失败：${error instanceof Error ? error.message : String(error)}` };
