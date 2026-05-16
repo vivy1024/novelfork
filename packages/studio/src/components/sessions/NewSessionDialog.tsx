@@ -231,7 +231,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto p-0" showCloseButton>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto overflow-x-hidden p-0" showCloseButton>
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>新建会话</DialogTitle>
           <DialogDescription>
@@ -409,7 +409,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                 placeholder={selectedPreset.id}
               />
             </div>
-            <div className="space-y-2">
+            <div className="space-y-2 sm:col-span-2">
               <Label htmlFor="new-session-worktree">工作目录</Label>
               <Input
                 id="new-session-worktree"
@@ -418,23 +418,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                 onChange={(event) => setWorktree(event.target.value)}
                 placeholder="例如 D:\\novels\\my-book"
               />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-session-binding">绑定对象</Label>
-              <SimpleSelect
-                aria-label="绑定对象"
-                onValueChange={(val) => {
-                  setBinding(val as "standalone" | "book" | "chapter");
-                  setBindingTouched(true);
-                }}
-                value={binding}
-                options={[
-                  { value: "standalone", label: "独立叙述者" },
-                  { value: "book", label: "绑定作品" },
-                  { value: "chapter", label: "绑定章节" },
-                ]}
-                className="w-full"
-              />
+              <p className="text-[10px] text-muted-foreground">书籍叙述者通过书籍页面自动创建，此处新建的是独立叙述者。</p>
             </div>
           </div>
         </div>
