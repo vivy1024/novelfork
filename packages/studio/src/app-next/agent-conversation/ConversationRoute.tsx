@@ -74,6 +74,12 @@ export interface ConversationRouteProps {
   availableTools?: Array<{ name: string; description?: string }>;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
+  /** 当前运行时错误 */
+  initialError?: { message: string; code?: string; retryable?: boolean } | null;
+  /** 错误操作回调 */
+  onRetryError?: () => void;
+  onDismissError?: () => void;
+  onAutoRetryError?: (errorCode: string) => void;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -127,6 +133,10 @@ export function ConversationRoute({
   modelOptions,
   availableTools,
   headerSlot,
+  initialError = null,
+  onRetryError,
+  onDismissError,
+  onAutoRetryError,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -203,6 +213,10 @@ export function ConversationRoute({
         modelOptions={modelOptions}
         availableTools={availableTools}
         headerSlot={headerSlot}
+        error={initialError}
+        onRetryError={onRetryError}
+        onDismissError={onDismissError}
+        onAutoRetryError={onAutoRetryError}
       />
     </section>
   );

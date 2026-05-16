@@ -92,6 +92,12 @@ export interface ConversationSurfaceProps {
   availableTools?: Array<{ name: string; description?: string }>;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
+  /** 当前运行时错误（来自 session:error 事件） */
+  error?: { message: string; code?: string; retryable?: boolean } | null;
+  /** 错误操作回调 */
+  onRetryError?: () => void;
+  onDismissError?: () => void;
+  onAutoRetryError?: (errorCode: string) => void;
 }
 
 export function ConversationSurface({
@@ -133,6 +139,10 @@ export function ConversationSurface({
   modelOptions,
   availableTools,
   headerSlot,
+  error = null,
+  onRetryError,
+  onDismissError,
+  onAutoRetryError,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -505,8 +515,56 @@ export function ConversationSurface({
       {/* ── Header slot (tool config bar, quick actions, etc.) ── */}
       {headerSlot}
 
-      {/* ── Recovery notice — only show "failed" state, hide transient recovery states ── */}
-      {recoveryNotice && recoveryNotice.state === "failed" && messages.length > 0 && (
+      {/* ── Error bubble — 对齐 NarraFork 错误透传 ── */}
+      {error && (
+        <div className="shrink-0 border-b border-red-200 bg-red-50 px-4 py-3 dark:border-red-800 dark:bg-red-950/30">
+          <div className="flex items-start gap-3">
+            <div className="flex-shrink-0 mt-0.5">
+              <svg className="h-4 w-4 text-red-500" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clipRule="evenodd" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                {error.message}
+              </p>
+              {error.code && (
+                <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
+                  错误代码: {error.code}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {onAutoRetryError && error.code && (
+                <button
+                  onClick={() => onAutoRetryError(error.code!)}
+                  className="text-xs px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:text-red-300 transition-colors"
+                >
+                  自动重试此类错误
+                </button>
+              )}
+              {onRetryError && (
+                <button
+                  onClick={onRetryError}
+                  className="text-xs px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:text-red-300 transition-colors"
+                >
+                  重试
+                </button>
+              )}
+              {onDismissError && (
+                <button
+                  onClick={onDismissError}
+                  className="text-xs px-2 py-1 rounded bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/50 dark:hover:bg-red-900 dark:text-red-300 transition-colors"
+                >
+                  忽略
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── Recovery notice (non-error) — 保留原有恢复状态提示 ── */}
+      {!error && recoveryNotice && recoveryNotice.state === "failed" && messages.length > 0 && (
         <div className="shrink-0 border-b border-border bg-yellow-50 px-4 py-2 text-xs text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-200">
           会话恢复失败 {recoveryNotice.reason && `— ${recoveryNotice.reason}`}
         </div>
@@ -627,6 +685,7 @@ export function ConversationSurface({
       {/* ── NarratorStatusBar (above Composer) ── */}
       <NarratorStatusBar
         status={status}
+        sessionId={sessionId}
         streamingStartedAt={effectiveStreamingStartedAt}
         streamingChars={streamingChars}
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
