@@ -27,6 +27,7 @@ export type CandidateGeneratedContent =
 export type CandidateContentGenerator = (input: CandidateGenerationInput & {
   readonly promptPreview: string;
   readonly sessionConfig?: SessionConfig;
+  readonly onStreamChunk?: (chunk: string) => void;
 }) => Promise<CandidateGeneratedContent>;
 
 export type CandidateToolServiceOptions = {
@@ -35,6 +36,7 @@ export type CandidateToolServiceOptions = {
   readonly createCandidateId?: () => string;
   readonly generateContent?: CandidateContentGenerator;
   readonly runtimeService?: LlmRuntimeService;
+  readonly onOutputStream?: (chunk: string) => void;
 };
 
 export type CandidateToolService = {
@@ -73,9 +75,14 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
       const guidedPlanId = optionalString(input.guidedPlanId);
       const promptPreview = buildCandidatePrompt({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan });
 
+      // Extract streaming callback from input (passed by session-tool-executor)
+      const onStreamChunk = typeof input._onStreamChunk === "function"
+        ? input._onStreamChunk as (chunk: string) => void
+        : options.onOutputStream;
+
       const sessionConfig = isSessionConfig(input.sessionConfig) ? input.sessionConfig : undefined;
-      const generator = options.generateContent ?? createRuntimeGenerator(options.runtimeService ?? createLlmRuntimeService(), options.root);
-      const generated = normalizeGeneratedContent(await generator({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan, promptPreview, sessionConfig }));
+      const generator = options.generateContent ?? createRuntimeGenerator(options.runtimeService ?? createLlmRuntimeService(), options.root, onStreamChunk);
+      const generated = normalizeGeneratedContent(await generator({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan, promptPreview, sessionConfig, onStreamChunk }));
       if (!generated.ok) {
         return {
           ok: false,
@@ -231,8 +238,8 @@ async function getEnabledPresetInjections(bookId: string, root: string): Promise
   }
 }
 
-function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string): CandidateContentGenerator {
-  return async ({ bookId, chapterNumber, promptPreview, sessionConfig }) => {
+function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string, defaultOnStream?: (chunk: string) => void): CandidateContentGenerator {
+  return async ({ bookId, chapterNumber, promptPreview, sessionConfig, onStreamChunk }) => {
     if (!sessionConfig?.providerId?.trim() || !sessionConfig.modelId?.trim()) {
       return { ok: false, reason: "当前会话未配置可用模型。" };
     }
@@ -264,12 +271,15 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
       }
     }
 
+    const streamCallback = onStreamChunk ?? defaultOnStream;
+
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
         { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}${jingweiSection}`, timestamp: 0 },
         { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
       ],
+      ...(streamCallback ? { onStreamChunk: streamCallback } : {}),
     });
     if (!generated.success || generated.type !== "message") {
       const reason = generated.success ? "模型未返回可写入候选区的正文。" : generated.error;
