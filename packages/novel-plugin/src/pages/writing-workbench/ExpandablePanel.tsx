@@ -10,8 +10,9 @@ import { PresetPanel } from "./panels/PresetPanel";
 import { BeatPanel } from "./panels/BeatPanel";
 import { QualityPanel } from "./panels/QualityPanel";
 import { AlertPanel } from "./panels/AlertPanel";
+import { TemplateMarketPanel } from "./TemplateMarketPanel";
 
-export type PanelType = "preset" | "beat" | "quality" | "alert" | null;
+export type PanelType = "preset" | "beat" | "quality" | "alert" | "template-market" | null;
 
 export interface ExpandablePanelProps {
   activePanel: NonNullable<PanelType>;
@@ -28,6 +29,7 @@ const PANEL_TITLES: Record<NonNullable<PanelType>, string> = {
   beat: "♪ 节拍进度",
   quality: "📊 质量监控",
   alert: "⚠ 警告",
+  "template-market": "🏪 模板市场",
 };
 
 const MIN_HEIGHT = 150;
@@ -113,13 +115,13 @@ export function ExpandablePanel({
 
       {/* 面板内容 */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        <PanelContent panel={activePanel} bookId={bookId} />
+        <PanelContent panel={activePanel} bookId={bookId} onClose={onClose} />
       </div>
     </div>
   );
 }
 
-function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId: string }) {
+function PanelContent({ panel, bookId, onClose }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void }) {
   switch (panel) {
     case "preset":
       return <PresetPanel bookId={bookId} />;
@@ -129,5 +131,7 @@ function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId
       return <QualityPanel bookId={bookId} />;
     case "alert":
       return <AlertPanel bookId={bookId} />;
+    case "template-market":
+      return <TemplateMarketPanel bookId={bookId} onClose={onClose ?? (() => {})} />;
   }
 }
