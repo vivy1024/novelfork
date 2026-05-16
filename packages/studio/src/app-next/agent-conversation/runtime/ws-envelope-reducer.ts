@@ -45,6 +45,7 @@ export interface AgentConversationRuntimeState {
 }
 
 export type SessionServerEnvelope =
+  | { type: "session:reset" }
   | { type: "session:snapshot"; snapshot: NarratorSessionChatSnapshot; cursor?: NarratorSessionChatCursor; recovery?: AgentConversationRuntimeState["recovery"] }
   | { type: "session:state"; session: NarratorSessionRecord; cursor?: NarratorSessionChatCursor; recovery?: AgentConversationRuntimeState["recovery"] }
   | { type: "session:message"; sessionId: string; message: NarratorSessionChatMessage; cursor?: NarratorSessionChatCursor }
@@ -82,6 +83,8 @@ export function reduceSessionEnvelope(
   envelope: SessionServerEnvelope,
 ): AgentConversationRuntimeState {
   switch (envelope.type) {
+    case "session:reset":
+      return createInitialAgentConversationRuntimeState();
     case "session:snapshot": {
       const cursor = envelope.cursor ?? envelope.snapshot.cursor ?? null;
       let messages = envelope.snapshot.messages.map(normalizeSessionMessage);
