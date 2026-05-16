@@ -1611,11 +1611,12 @@ export async function handleSessionChatTransportMessage(
   const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
   const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
 
-  // Filter to core tools unless session has explicit allow list
-  const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser", "WebSearch", "WebFetch", "EnterPlanMode", "ExitPlanMode", "TaskCreate", "AskUserQuestion", "Send", "Recall"]);
+  // Filter to core tools unless session has explicit allow list or is bound to a book
+  const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser", "WebSearch", "WebFetch", "EnterPlanMode", "ExitPlanMode", "TaskCreate", "AskUserQuestion", "Send", "Recall", "Skill"]);
   const policyAllow = loaded.session.sessionConfig.toolPolicy?.allow;
-  const filteredTools = policyAllow?.length
-    ? sessionTools
+  const hasBookBinding = Boolean(loaded.session.projectId);
+  const filteredTools = (policyAllow?.length || hasBookBinding)
+    ? sessionTools // Book-bound sessions get all tools (including novel tools)
     : sessionTools.filter(t => CORE_TOOL_NAMES.has(t.name));
 
   let canonicalEvents: readonly RuntimeEvent[] = [];
