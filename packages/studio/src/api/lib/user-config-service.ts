@@ -10,6 +10,7 @@ import type {
   ProxySettings,
   RetryRule,
   RuntimeControlSettings,
+  ServerSettings,
   ToolAccessSettings,
   RuntimeDebugSettings,
   RuntimeRecoverySettings,
@@ -337,6 +338,20 @@ function sanitizeWriting(writing?: Partial<WritingSettings> | null): WritingSett
   };
 }
 
+function sanitizeServer(server?: Partial<ServerSettings> | null): ServerSettings {
+  const defaults = DEFAULT_USER_CONFIG.server;
+  const browserOpenMode = server?.browserOpenMode;
+  return {
+    port: clampNumber(server?.port, defaults.port, 1, 65535),
+    host: server?.host === "0.0.0.0" ? "0.0.0.0" : defaults.host,
+    defaultProjectDir: typeof server?.defaultProjectDir === "string" ? server.defaultProjectDir.trim() : defaults.defaultProjectDir,
+    browserOpenMode: browserOpenMode === "none" || browserOpenMode === "browser" || browserOpenMode === "app" ? browserOpenMode : defaults.browserOpenMode,
+    tlsEnabled: typeof server?.tlsEnabled === "boolean" ? server.tlsEnabled : defaults.tlsEnabled,
+    tlsCertPath: typeof server?.tlsCertPath === "string" ? server.tlsCertPath.trim() : defaults.tlsCertPath,
+    tlsKeyPath: typeof server?.tlsKeyPath === "string" ? server.tlsKeyPath.trim() : defaults.tlsKeyPath,
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -369,6 +384,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       proxy: sanitizeProxy(config.proxy),
       workspace: sanitizeWorkspace(config.workspace),
       writing: sanitizeWriting(config.writing),
+      server: sanitizeServer(config.server),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -454,6 +470,10 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     writing: sanitizeWriting({
       ...current.writing,
       ...(partial.writing ?? {}),
+    }),
+    server: sanitizeServer({
+      ...current.server,
+      ...(partial.server ?? {}),
     }),
   };
   await saveUserConfig(updated);

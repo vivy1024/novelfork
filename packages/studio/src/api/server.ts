@@ -771,7 +771,7 @@ export async function initializeProviderProxy(): Promise<void> {
 export async function startStudioServer(
   root: string,
   port = 4567,
-  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider; readonly staticMode?: StartupStaticMode; readonly foregroundDiagnostics?: boolean },
+  options?: { readonly staticDir?: string; readonly staticProvider?: StaticProvider; readonly staticMode?: StartupStaticMode; readonly foregroundDiagnostics?: boolean; readonly hostname?: string },
 ): Promise<void> {
   // Auto-init project directory if novelfork.json doesn't exist (Zeabur / Docker deployment)
   const { existsSync: existsSyncInit } = await import("node:fs");
@@ -1016,7 +1016,7 @@ export async function startStudioServer(
   });
   console.log(`NovelFork Studio running on ${serverUrl}`);
 
-  const startedServer = await startHttpServer({ fetch: app.fetch, port });
+  const startedServer = await startHttpServer({ fetch: app.fetch, port, hostname: options?.hostname });
   if (startedServer) {
     setupAdminWebSocket(startedServer);
     setupSessionChatWebSocket(startedServer);
