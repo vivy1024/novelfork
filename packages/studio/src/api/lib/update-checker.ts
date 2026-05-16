@@ -3,6 +3,7 @@
  */
 
 import { loadUserConfig } from "./user-config-service.js";
+import { STUDIO_PACKAGE_VERSION } from "../../shared/release-manifest.js";
 
 export interface UpdateCheckResult {
   currentVersion: string;
@@ -13,12 +14,12 @@ export interface UpdateCheckResult {
 }
 
 const GITHUB_RELEASES_URL = "https://api.github.com/repos/vivy1024/novelfork/releases/latest";
-const CURRENT_VERSION = "0.9.1";
 
 /**
  * 检查是否有新版本可用
  */
 export async function checkForUpdate(): Promise<UpdateCheckResult> {
+  const currentVersion = STUDIO_PACKAGE_VERSION;
   try {
     // 读取代理配置
     const config = await loadUserConfig();
@@ -27,7 +28,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     const fetchOptions: RequestInit = {
       headers: {
         "Accept": "application/vnd.github.v3+json",
-        "User-Agent": `NovelFork-Studio/${CURRENT_VERSION}`,
+        "User-Agent": `NovelFork-Studio/${currentVersion}`,
       },
       signal: AbortSignal.timeout(10000),
     };
@@ -40,7 +41,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     const res = await fetch(GITHUB_RELEASES_URL, fetchOptions);
     if (!res.ok) {
       return {
-        currentVersion: CURRENT_VERSION,
+        currentVersion,
         latestVersion: null,
         updateAvailable: false,
         releaseUrl: null,
@@ -53,14 +54,14 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     const releaseUrl = data.html_url ?? null;
 
     return {
-      currentVersion: CURRENT_VERSION,
+      currentVersion,
       latestVersion,
-      updateAvailable: latestVersion !== null && latestVersion !== CURRENT_VERSION,
+      updateAvailable: latestVersion !== null && latestVersion !== currentVersion,
       releaseUrl,
     };
   } catch (error) {
     return {
-      currentVersion: CURRENT_VERSION,
+      currentVersion,
       latestVersion: null,
       updateAvailable: false,
       releaseUrl: null,

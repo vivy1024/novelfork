@@ -294,6 +294,8 @@ export interface ServerSettings {
   tlsCertPath: string;
   /** TLS 密钥路径 */
   tlsKeyPath: string;
+  /** 启动时自动检查更新（默认 true） */
+  autoCheckUpdate: boolean;
 }
 
 export interface ProxySettings {
@@ -523,5 +525,6 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     tlsEnabled: false,
     tlsCertPath: "",
     tlsKeyPath: "",
+    autoCheckUpdate: true,
   },
 };

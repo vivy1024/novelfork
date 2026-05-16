@@ -152,21 +152,15 @@ export function Composer({
           if (parsed.ok) {
             const userCmd = registry.commands.find(c => c.name === parsed.name && (c as { handler?: string }).handler === "user-command");
             if (userCmd) {
-              // 从 routines API 获取完整 prompt 模板
-              try {
-                const res = await fetch("/api/routines/global");
-                if (res.ok) {
-                  const data = await res.json() as { routines?: { commands?: { name: string; prompt: string; enabled: boolean }[] } };
-                  const fullCmd = data.routines?.commands?.find(c => c.name === parsed.name && c.enabled);
-                  if (fullCmd?.prompt) {
-                    const expanded = expandUserCommandPrompt(fullCmd.prompt, parsed.args);
-                    onSend(expanded);
-                    setValue("");
-                    setCommandStatus(null);
-                    return;
-                  }
-                }
-              } catch { /* fallback to raw send */ }
+              // 从已加载的 userCommands 中取 prompt 模板（避免重复 API 请求）
+              const fullCmd = slashCommandContext?.userCommands?.find(c => c.name === parsed.name && c.enabled);
+              if (fullCmd?.prompt) {
+                const expanded = expandUserCommandPrompt(fullCmd.prompt, parsed.args);
+                onSend(expanded);
+                setValue("");
+                setCommandStatus(null);
+                return;
+              }
             }
           }
           onSend(content);
