@@ -2230,7 +2230,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!prompt && !description) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "prompt 或 description 不能为空。" };
         }
-        const subagentType = (typeof input.subagent_type === "string" ? input.subagent_type : "general") as "fork" | "explore" | "plan" | "general";
+        const subagentType = typeof input.subagent_type === "string" ? input.subagent_type : "general";
         const runInBackground = input.run_in_background === true;
         const agentId = crypto.randomUUID().slice(0, 8);
 
@@ -2257,6 +2257,19 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           }
         }
         // For foreground: parentSignal abort is handled in the race below (convert to background)
+
+        // --- 查找自定义子代理类型（在 executeSubagent 之前验证） ---
+        const BUILTIN_SUBAGENT_TYPES = ["explore", "plan", "general", "fork"];
+        const isCustomType = !BUILTIN_SUBAGENT_TYPES.includes(subagentType);
+        let customSubagent: import("../../types/routines.js").SubAgent | undefined;
+        if (isCustomType) {
+          const { loadGlobalRoutines } = await import("./routines-service.js");
+          const routines = await loadGlobalRoutines();
+          customSubagent = routines.subAgents.find(sa => sa.id === subagentType || sa.name === subagentType);
+          if (!customSubagent || !customSubagent.enabled) {
+            return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未找到自定义子代理类型 "${subagentType}"。可用内置类型: explore, plan, general, fork` };
+          }
+        }
 
         const executeSubagent = async (): Promise<string> => {
           // 检查是否已被中断
@@ -2353,7 +2366,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             return assistantMessages.join("\n\n") || "子代理未返回文本结果。";
           }
 
-          // --- Non-fork modes: explore / plan / general ---
+          // --- Non-fork modes: explore / plan / general / custom ---
           // --- 根据 subagent_type 选择模型 ---
           const userConfig = await loadUserConfig();
           const md = userConfig.modelDefaults;
@@ -2388,14 +2401,23 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           });
 
           // --- 根据 subagent_type 过滤工具集 ---
-          // explore: 只读工具；plan: 读写工具；general: 全部（排除递归工具）
+          // explore: 只读工具；plan: 读写工具；general: 全部（排除递归工具）；custom: 按配置
           const EXPLORE_DISABLED = ["Agent", "ForkNarrator", "Send", "Await", "Bash", "Write", "Edit", "Terminal", "Browser", "EnterWorktree", "ExitWorktree"];
           const PLAN_DISABLED = ["Agent", "ForkNarrator", "Send", "Await", "Bash", "Terminal", "Browser", "EnterWorktree", "ExitWorktree"];
           const GENERAL_DISABLED = ["Agent", "ForkNarrator", "Send", "Await"];
 
-          const disabledTools = subagentType === "explore" ? EXPLORE_DISABLED
-            : subagentType === "plan" ? PLAN_DISABLED
-            : GENERAL_DISABLED;
+          let disabledTools: string[];
+          if (customSubagent) {
+            // 自定义子代理：从 toolPermissions 中提取 deny 列表，始终禁止递归
+            const denyFromPermissions = (customSubagent.toolPermissions ?? [])
+              .filter(p => p.permission === "deny")
+              .map(p => p.tool);
+            disabledTools = [...new Set(["Agent", "ForkNarrator", "Send", "Await", ...denyFromPermissions])];
+          } else {
+            disabledTools = subagentType === "explore" ? EXPLORE_DISABLED
+              : subagentType === "plan" ? PLAN_DISABLED
+              : GENERAL_DISABLED;
+          }
 
           const subTools = getEnabledSessionTools(
             subSession.sessionConfig.permissionMode,
@@ -2405,8 +2427,13 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
 
           // --- 根据 subagent_type 构建 system prompt ---
           const workDir = parentSession?.worktree?.trim() || options.workDir || process.cwd();
-          const typeLabel = subagentType === "explore" ? "探索" : subagentType === "plan" ? "规划" : "通用";
-          const subagentSystemPrompt = `你是一个执行委派任务的子代理。完成任务并简洁地报告结果。
+          let subagentSystemPrompt: string;
+          if (customSubagent) {
+            // 自定义子代理使用用户定义的 systemPrompt
+            subagentSystemPrompt = `${customSubagent.systemPrompt}\n\n## Current Working Directory\n\n\`${workDir}\`\n\nAll tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their default working directory. Do NOT \`cd\` into it in Shell commands — it is redundant.`;
+          } else {
+            const typeLabel = subagentType === "explore" ? "探索" : subagentType === "plan" ? "规划" : "通用";
+            subagentSystemPrompt = `你是一个执行委派任务的子代理。完成任务并简洁地报告结果。
 
 ## Current Working Directory
 
@@ -2421,6 +2448,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
 ## 约束
 
 你是${typeLabel}子代理，可以读写文件但不能执行 shell 命令。` : ""}`;
+          }
 
           // --- 根据 subagent_type 确定 maxSteps ---
           const maxSteps = subagentType === "explore" ? 10 : subagentType === "plan" ? 15 : 20;

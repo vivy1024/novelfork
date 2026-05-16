@@ -6,6 +6,7 @@ import {
   executeSlashCommandInput,
   getSlashCommandSuggestions,
   parseSlashCommandInput,
+  expandUserCommandPrompt,
   type SlashCommandExecutionContext,
   type SlashCommandExecutionResult,
 } from "../slash-command-registry";
@@ -146,6 +147,28 @@ export function Composer({
         const result = await executeSlashCommandInput(content, { ...slashCommandContext, registry });
         // 后端执行的命令（novel:* 等）：前端 registry 无 handler，发送到后端处理
         if (!result.ok && result.code === "unhandled_command") {
+          // 检查是否是用户自定义命令（handler 为 "user-command"）
+          const parsed = parseSlashCommandInput(content);
+          if (parsed.ok) {
+            const userCmd = registry.commands.find(c => c.name === parsed.name && (c as { handler?: string }).handler === "user-command");
+            if (userCmd) {
+              // 从 routines API 获取完整 prompt 模板
+              try {
+                const res = await fetch("/api/routines/global");
+                if (res.ok) {
+                  const data = await res.json() as { routines?: { commands?: { name: string; prompt: string; enabled: boolean }[] } };
+                  const fullCmd = data.routines?.commands?.find(c => c.name === parsed.name && c.enabled);
+                  if (fullCmd?.prompt) {
+                    const expanded = expandUserCommandPrompt(fullCmd.prompt, parsed.args);
+                    onSend(expanded);
+                    setValue("");
+                    setCommandStatus(null);
+                    return;
+                  }
+                }
+              } catch { /* fallback to raw send */ }
+            }
+          }
           onSend(content);
           setValue("");
           setCommandStatus(null);

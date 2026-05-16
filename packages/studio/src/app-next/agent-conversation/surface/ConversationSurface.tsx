@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
+import { createDefaultSlashCommandRegistry, mergeUserCommandsIntoRegistry, expandUserCommandPrompt, type UserCommand, type SlashCommandRegistry } from "../slash-command-registry";
 import { Composer } from "./Composer";
 import { ConfirmationGate, type ConversationConfirmation } from "./ConfirmationGate";
 import { UserQuestionGate } from "./UserQuestionGate";
@@ -140,7 +141,24 @@ export function ConversationSurface({
   const [filesPanelOpen, setFilesPanelOpen] = useState(false);
   const [filesPanelDismissed, setFilesPanelDismissed] = useState(false);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
+  const [userCommands, setUserCommands] = useState<UserCommand[]>([]);
   const routerNavigate = useNavigate();
+
+  // 加载用户自定义命令
+  useEffect(() => {
+    fetch("/api/routines/global")
+      .then(res => res.ok ? res.json() : null)
+      .then((data: { routines?: { commands?: UserCommand[] } } | null) => {
+        if (data?.routines?.commands) setUserCommands(data.routines.commands);
+      })
+      .catch(() => { /* non-fatal */ });
+  }, []);
+
+  // 合并内置命令和用户自定义命令
+  const slashRegistry: SlashCommandRegistry = useMemo(
+    () => mergeUserCommandsIntoRegistry(createDefaultSlashCommandRegistry(), userCommands),
+    [userCommands],
+  );
 
   const handleEditTitle = () => {
     const newTitle = prompt("编辑标题", title);
@@ -627,7 +645,7 @@ export function ConversationSurface({
         onRetry={handleRetry}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
-        slashCommandContext={{ status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
+        slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
         isRunning={isWorking}
         isInterrupted={isInterrupted}
         lastTurnFailed={lastTurnFailed}
