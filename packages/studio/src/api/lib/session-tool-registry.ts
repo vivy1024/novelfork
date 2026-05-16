@@ -250,13 +250,15 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Browser",
-    description: "控制浏览器进行多步交互：导航、点击、填写、截图、执行 JS、网络调试。",
+    description: "控制浏览器进行多步交互：导航、点击、填写、截图、执行 JS、网络调试。screenshot action 支持无 session 模式（直接使用系统 Chrome/Edge 截图，无需 Playwright）。",
     inputSchema: objectSchema({
       action: stringSchema("浏览器操作：launch | click | fill | screenshot | evaluate | navigate | scroll | dom | close 等。"),
-      url: stringSchema("URL（launch/navigate 时使用）。"),
-      session_id: stringSchema("浏览器会话 ID（launch 之外的操作需要）。"),
+      url: stringSchema("URL（launch/navigate/screenshot 时使用）。"),
+      session_id: stringSchema("浏览器会话 ID（launch/无session截图 之外的操作需要）。"),
       selector: stringSchema("CSS 选择器（元素操作时使用）。"),
       value: stringSchema("值（fill/evaluate 时使用）。"),
+      width: numberSchema("截图宽度（screenshot 无 session 模式，默认 1280）。"),
+      height: numberSchema("截图高度（screenshot 无 session 模式，默认 900）。"),
     }, ["action"]),
     risk: "destructive",
     renderer: "tool.browser",
@@ -316,12 +318,13 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 辅助工具 ---
   sessionTool({
     name: "Terminal",
-    description: "交互式终端管理（PTY）：创建、读取输出、写入输入、列出终端。",
+    description: "交互式终端管理（PTY）：创建、读取输出、写入输入、列出终端。使用系统 shell（Windows: cmd.exe, Unix: /bin/sh）。",
     inputSchema: objectSchema({
       action: stringSchema("终端操作：create | read | write | list。"),
       terminal_id: stringSchema("终端 ID（read/write 时需要）。"),
       input: stringSchema("要发送到终端的输入（write 时使用）。"),
       name: stringSchema("终端名称（create 时使用）。"),
+      cwd: stringSchema("工作目录（create 时使用，默认为 session workDir）。"),
     }, ["action"]),
     risk: "destructive",
     renderer: "tool.terminal",
