@@ -6,12 +6,21 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { dirname, extname, join, resolve, relative } from "node:path";
 import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+
+// --- Staleness check & dedup state (FR-1.3 / FR-1.4) ---
+
+/** Track file state from last Read — used for staleness check and dedup */
+const readFileState = new Map<string, { mtime: number; size: number }>();
+
+export function clearReadFileState(): void {
+  readFileState.clear();
+}
 
 // --- Shell path resolution (Windows: Git Bash, not WSL) ---
 
@@ -308,6 +317,22 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     };
   }
 
+  // FR-1.4: Dedup — if file was previously read and hasn't changed, return stub
+  const callerSpecifiedRange = input.offset !== undefined || input.limit !== undefined;
+  const previousState = readFileState.get(resolved);
+  if (!callerSpecifiedRange && previousState) {
+    try {
+      const currentStats = statSync(resolved);
+      if (currentStats.mtimeMs === previousState.mtime && currentStats.size === previousState.size) {
+        return {
+          ok: true,
+          summary: `文件未修改，内容与上次读取相同。`,
+          data: { path: input.path, stub: true, message: "[file_unchanged] 文件自上次读取后未修改。如需查看内容，请使用 offset/limit 参数强制读取。" },
+        };
+      }
+    } catch { /* file might have been deleted — proceed with normal read */ }
+  }
+
   // Fix 4: Binary file detection by extension
   const BINARY_EXTENSIONS = new Set([
     '.exe', '.dll', '.so', '.dylib', '.bin', '.obj', '.o', '.a', '.lib',
@@ -346,6 +371,12 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     const offset = input.offset ?? 0;
     const limit = input.limit ?? lines.length;
     const sliced = lines.slice(offset, offset + limit).join("\n");
+
+    // FR-1.3: Record state after successful read for staleness check
+    try {
+      const stats = statSync(resolved);
+      readFileState.set(resolved, { mtime: stats.mtimeMs, size: stats.size });
+    } catch { /* non-critical */ }
 
     // Truncation: if no explicit offset/limit and file > 500 lines, truncate
     const READ_MAX_LINES = 500;
@@ -396,8 +427,29 @@ export async function executeFileWriteTool(input: FileWriteToolInput): Promise<S
   }
 
   try {
+    // FR-1.3: Staleness check — verify file hasn't been modified externally since last Read
+    const previousWriteState = readFileState.get(resolved);
+    if (previousWriteState) {
+      try {
+        const currentStats = statSync(resolved);
+        if (currentStats.mtimeMs > previousWriteState.mtime) {
+          return {
+            ok: false,
+            error: "file-stale",
+            summary: `文件 "${input.path}" 自上次读取后已被外部修改（mtime 变化）。请重新 Read 后再编辑。`,
+          };
+        }
+      } catch { /* file might have been deleted — let the write proceed */ }
+    }
+
     await mkdir(dirname(resolved), { recursive: true });
     await writeFile(resolved, input.content, "utf-8");
+
+    // FR-1.3: Update state after successful write
+    try {
+      const newStats = statSync(resolved);
+      readFileState.set(resolved, { mtime: newStats.mtimeMs, size: newStats.size });
+    } catch { /* non-critical */ }
 
     return {
       ok: true,
@@ -446,6 +498,21 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
   }
 
   try {
+    // FR-1.3: Staleness check — verify file hasn't been modified externally since last Read
+    const previousEditState = readFileState.get(resolved);
+    if (previousEditState) {
+      try {
+        const currentStats = statSync(resolved);
+        if (currentStats.mtimeMs > previousEditState.mtime) {
+          return {
+            ok: false,
+            error: "file-stale",
+            summary: `文件 "${input.path}" 自上次读取后已被外部修改（mtime 变化）。请重新 Read 后再编辑。`,
+          };
+        }
+      } catch { /* file might have been deleted — let the edit proceed */ }
+    }
+
     const content = await readFile(resolved, "utf-8");
 
     // Fix 1: replaceAll support + multi-match detection
@@ -472,6 +539,7 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
           }
           newContent += content.slice(originalIdx);
           await writeFile(resolved, newContent, "utf-8");
+          try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
           return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配，替换 ${replacements} 处）`, data: { path: input.path, replacements, normalizedMatch: true } };
         }
         return { ok: false, error: "old-text-not-found", summary: `old_string 在文件中未找到匹配`, data: { path: input.path, oldText: input.oldText.slice(0, 100) } };
@@ -479,6 +547,7 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
       const newContent = content.split(input.oldText).join(input.newText);
       const replacements = (content.split(input.oldText).length - 1);
       await writeFile(resolved, newContent, "utf-8");
+      try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
       return { ok: true, summary: `已编辑 ${input.path}（替换 ${replacements} 处）`, data: { path: input.path, replacements } };
     }
 
@@ -494,6 +563,7 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
         const originalSlice = content.slice(pos, pos + normalizedOld.length);
         const newContent = content.slice(0, pos) + input.newText + content.slice(pos + originalSlice.length);
         await writeFile(resolved, newContent, "utf-8");
+        try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
         return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配）`, data: { path: input.path, replacements: 1, normalizedMatch: true } };
       }
       return {
@@ -517,6 +587,9 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
 
     const newContent = content.replace(input.oldText, input.newText);
     await writeFile(resolved, newContent, "utf-8");
+
+    // FR-1.3: Update state after successful edit
+    try { const s = statSync(resolved); readFileState.set(resolved, { mtime: s.mtimeMs, size: s.size }); } catch { /* non-critical */ }
 
     return {
       ok: true,
