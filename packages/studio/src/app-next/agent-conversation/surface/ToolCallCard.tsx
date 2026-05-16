@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type CSSProperties } from "react";
-import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText } from "lucide-react";
+import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -42,8 +42,9 @@ const WRITE_TOOLS = new Set(["Write", "Edit", "create_file", "edit_file", "write
 const BROWSER_TOOLS = new Set(["Browser"]);
 const AGENT_TOOLS = new Set(["Agent", "Task", "Send", "Await", "TeamStatus", "TaskCreate"]);
 const QUESTION_TOOLS = new Set(["AskUserQuestion", "UserQuestionGate"]);
+const NOVEL_AUDIT_TOOLS = new Set(["chapter.audit", "presets.check_compliance"]);
 
-type ToolCategory = "bash" | "read" | "search" | "write" | "browser" | "agent" | "question" | "other";
+type ToolCategory = "bash" | "read" | "search" | "write" | "browser" | "agent" | "question" | "novel-audit" | "other";
 
 function getToolCategory(toolName: string): ToolCategory {
   if (BASH_TOOLS.has(toolName)) return "bash";
@@ -53,6 +54,7 @@ function getToolCategory(toolName: string): ToolCategory {
   if (BROWSER_TOOLS.has(toolName)) return "browser";
   if (AGENT_TOOLS.has(toolName)) return "agent";
   if (QUESTION_TOOLS.has(toolName)) return "question";
+  if (NOVEL_AUDIT_TOOLS.has(toolName)) return "novel-audit";
   return "other";
 }
 
@@ -65,6 +67,7 @@ const CATEGORY_COLORS: Record<ToolCategory, { bg: string; text: string }> = {
   browser:  { bg: "bg-teal-500/15",   text: "text-teal-600 dark:text-teal-400" },
   agent:    { bg: "bg-blue-500/15",   text: "text-blue-600 dark:text-blue-400" },
   question: { bg: "bg-amber-500/15",  text: "text-amber-600 dark:text-amber-400" },
+  "novel-audit": { bg: "bg-rose-500/15", text: "text-rose-600 dark:text-rose-400" },
   other:    { bg: "bg-gray-500/15",   text: "text-gray-600 dark:text-gray-400" },
 };
 
@@ -81,6 +84,7 @@ function ToolIconBadge({ category }: { category: ToolCategory }) {
       case "browser": return <Globe className={iconClass} />;
       case "agent": return <Bot className={iconClass} />;
       case "question": return <HelpCircle className={iconClass} />;
+      case "novel-audit": return <ShieldAlert className={iconClass} />;
       default: return <FileText className={iconClass} />;
     }
   })();
@@ -426,6 +430,9 @@ function ToolCallExpanded({ toolCall, category }: { toolCall: ConversationToolCa
 
       {/* Agent — 描述 + 输出 */}
       {category === "agent" && <AgentExpanded toolCall={toolCall} />}
+
+      {/* Novel audit — AI味高亮 + 审计结果 */}
+      {category === "novel-audit" && <NovelAuditExpanded toolCall={toolCall} />}
 
       {/* 通用 fallback */}
       {category === "other" && <GenericExpanded toolCall={toolCall} />}
@@ -850,6 +857,139 @@ function WebSearchExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
 // ---------------------------------------------------------------------------
 // Generic 展开 (fallback)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Novel Audit 展开 — AI味标红 + 审计结果结构化展示
+// ---------------------------------------------------------------------------
+
+function NovelAuditExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
+  let parsed: Record<string, unknown> | null = null;
+  try {
+    if (toolCall.output) {
+      parsed = JSON.parse(toolCall.output);
+    }
+  } catch { /* not JSON */ }
+
+  if (!parsed) {
+    return <GenericExpanded toolCall={toolCall} />;
+  }
+
+  const data = (parsed as { data?: Record<string, unknown> }).data ?? parsed;
+  const results = (data as { results?: Record<string, unknown> }).results;
+  const violations = (data as { violations?: Array<{ presetName: string; rule: string; violation: string; severity: string }> }).violations;
+
+  // chapter.audit results
+  if (results) {
+    const aiTaste = results.ai_taste as { markersFound?: string[]; count?: number; severity?: string; highlights?: Array<{ marker: string; line: number; context: string }> } | undefined;
+    const rhythm = results.rhythm as { totalLines?: number; dialogueLines?: number; dialogueRatio?: number } | undefined;
+    const hooks = results.hooks as { dueHooks?: string[]; count?: number } | undefined;
+
+    return (
+      <div className="space-y-2">
+        {/* AI 味检测结果 — 标红高亮 */}
+        {aiTaste && (
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">AI 味检测</span>
+              <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+                aiTaste.severity === "high" ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" :
+                aiTaste.severity === "medium" ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" :
+                "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+              }`}>
+                {aiTaste.severity === "high" ? "高风险" : aiTaste.severity === "medium" ? "中风险" : "低风险"}
+                {aiTaste.count ? ` (${aiTaste.count} 处)` : ""}
+              </span>
+            </div>
+            {aiTaste.highlights && aiTaste.highlights.length > 0 && (
+              <div className="rounded-md bg-muted/40 px-3 py-2 space-y-1 max-h-48 overflow-y-auto">
+                {aiTaste.highlights.map((h, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px]">
+                    <span className="shrink-0 text-muted-foreground tabular-nums">L{h.line}</span>
+                    <span className="font-mono">
+                      {h.context.split(h.marker).map((part, j, arr) => (
+                        <span key={j}>
+                          {part}
+                          {j < arr.length - 1 && (
+                            <mark className="bg-red-200 text-red-800 dark:bg-red-900/50 dark:text-red-300 px-0.5 rounded">{h.marker}</mark>
+                          )}
+                        </span>
+                      ))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {(!aiTaste.highlights || aiTaste.highlights.length === 0) && aiTaste.markersFound && aiTaste.markersFound.length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {aiTaste.markersFound.map((m, i) => (
+                  <span key={i} className="inline-flex items-center rounded bg-red-100 dark:bg-red-900/30 px-1.5 py-0.5 text-[10px] text-red-700 dark:text-red-400">
+                    {m}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 节奏分析 */}
+        {rhythm && (
+          <div className="space-y-1">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">段落节奏</span>
+            <div className="flex items-center gap-3 text-[11px] text-muted-foreground">
+              <span>总行数: {rhythm.totalLines}</span>
+              <span>对话行: {rhythm.dialogueLines}</span>
+              <span>对话比: {rhythm.dialogueRatio}%</span>
+            </div>
+          </div>
+        )}
+
+        {/* 伏笔到期 */}
+        {hooks && hooks.count !== undefined && hooks.count > 0 && (
+          <div className="space-y-1">
+            <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">伏笔到期 ({hooks.count})</span>
+            <div className="rounded-md bg-muted/40 px-3 py-2 space-y-0.5">
+              {hooks.dueHooks?.map((h, i) => (
+                <div key={i} className="text-[11px] text-muted-foreground">• {h}</div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // presets.check_compliance results
+  if (violations) {
+    return (
+      <div className="space-y-1">
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">合规检查</span>
+          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${
+            violations.length > 0 ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" : "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+          }`}>
+            {violations.length > 0 ? `${violations.length} 处违规` : "全部通过"}
+          </span>
+        </div>
+        {violations.length > 0 && (
+          <div className="rounded-md bg-muted/40 px-3 py-2 space-y-1.5 max-h-48 overflow-y-auto">
+            {violations.map((v, i) => (
+              <div key={i} className="text-[11px] space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <span className={`size-1.5 rounded-full ${v.severity === "error" ? "bg-red-500" : "bg-yellow-500"}`} />
+                  <span className="font-medium">{v.presetName}</span>
+                  <span className="text-muted-foreground">— {v.rule}</span>
+                </div>
+                <div className="pl-3 text-muted-foreground">{v.violation}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return <GenericExpanded toolCall={toolCall} />;
+}
 
 function GenericExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   return (
