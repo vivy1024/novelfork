@@ -370,7 +370,13 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     const totalLines = lines.length;
     const offset = input.offset ?? 0;
     const limit = input.limit ?? lines.length;
-    const sliced = lines.slice(offset, offset + limit).join("\n");
+    const slicedLines = lines.slice(offset, offset + limit);
+
+    // Add line numbers (cat -n format)
+    const numberedContent = slicedLines.map((line, i) => {
+      const lineNum = offset + i + 1;
+      return `${String(lineNum).padStart(6, " ")}\t${line}`;
+    }).join("\n");
 
     // FR-1.3: Record state after successful read for staleness check
     try {
@@ -382,19 +388,22 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     const READ_MAX_LINES = 500;
     const callerSpecifiedRange = input.offset !== undefined || input.limit !== undefined;
     if (!callerSpecifiedRange && totalLines > READ_MAX_LINES) {
-      const truncatedContent = lines.slice(0, READ_MAX_LINES).join("\n");
+      const truncatedNumbered = lines.slice(0, READ_MAX_LINES).map((line, i) => {
+        const lineNum = i + 1;
+        return `${String(lineNum).padStart(6, " ")}\t${line}`;
+      }).join("\n");
       const truncationNote = `\n\n（文件共 ${totalLines} 行，已显示前 ${READ_MAX_LINES} 行。用 offset/limit 参数读取后续内容。）`;
       return {
         ok: true,
         summary: `已读取 ${input.path}（${totalLines} 行，截断至前 ${READ_MAX_LINES} 行）`,
-        data: { content: truncatedContent + truncationNote, totalLines, path: input.path, truncated: true },
+        data: { content: truncatedNumbered + truncationNote, totalLines, path: input.path, truncated: true },
       };
     }
 
     return {
       ok: true,
       summary: `已读取 ${input.path}（${totalLines} 行）`,
-      data: { content: sliced, totalLines, path: input.path },
+      data: { content: numberedContent, totalLines, path: input.path },
     };
   } catch (error) {
     return {
