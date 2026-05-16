@@ -301,17 +301,25 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     }
 
     const generateStartedAt = Date.now();
+    let firstChunkAt: number | undefined;
+    const ttftStreamChunk = emitStreamChunk
+      ? (chunk: string) => {
+          if (!firstChunkAt) firstChunkAt = Date.now();
+          emitStreamChunk(chunk);
+        }
+      : undefined;
     const reply = await input.generate({
       sessionConfig: input.sessionConfig,
       messages,
       tools: filteredTools.tools,
       permissionMode: input.permissionMode,
       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-      ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
+      ...(ttftStreamChunk ? { onStreamChunk: ttftStreamChunk } : {}),
       ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
     });
     const generateDurationMs = Date.now() - generateStartedAt;
+    const ttftMs = firstChunkAt ? firstChunkAt - generateStartedAt : undefined;
 
     // Log AI request for usage history
     logRequest({
@@ -320,6 +328,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       endpoint: "agent-turn",
       status: reply.success ? 200 : 500,
       duration: generateDurationMs,
+      ttftMs,
       userId: "system",
       requestKind: "agent-turn",
       narrator: input.sessionId,
@@ -334,6 +343,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             }
           : undefined,
       ),
+      // 缓存信息：从 provider usage 中提取
+      cache: reply.success && reply.metadata.usage?.cache_read_input_tokens
+        ? { status: "hit" as const, scope: "prompt" }
+        : reply.success && reply.metadata.usage?.cache_creation_input_tokens
+          ? { status: "miss" as const, scope: "prompt" }
+          : undefined,
       requestDomain: "ai",
       sessionId: input.sessionId,
       ...(reply.success ? {} : { aiStatus: "error", errorSummary: reply.error }),
