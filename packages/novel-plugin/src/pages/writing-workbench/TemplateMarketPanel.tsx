@@ -600,7 +600,7 @@ export function TemplateMarketPanel({ bookId, onClose }: TemplateMarketPanelProp
   }, []);
 
   return (
-    <div className="rounded-lg border border-border p-3 space-y-2" data-testid="template-market-panel">
+    <div className="h-full flex flex-col" data-testid="template-market-panel">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <Store className="size-3.5 text-primary" />
@@ -622,7 +622,7 @@ export function TemplateMarketPanel({ bookId, onClose }: TemplateMarketPanelProp
           </TabsTrigger>
         </TabsList>
 
-        <div className="mt-2">
+        <div className="flex-1 min-h-0 overflow-y-auto mt-2">
           <TabsContent value="builtin">
             <BuiltinTab bookId={bookId} />
           </TabsContent>

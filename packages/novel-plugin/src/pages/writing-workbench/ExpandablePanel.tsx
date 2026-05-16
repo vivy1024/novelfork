@@ -94,7 +94,7 @@ export function ExpandablePanel({
   return (
     <div
       data-panel-container
-      className="flex flex-col border-t border-border bg-background"
+      className="flex flex-col border-t border-border bg-background overflow-hidden"
       style={panelStyle}
     >
       {/* 拖拽条 + 标题栏 */}
