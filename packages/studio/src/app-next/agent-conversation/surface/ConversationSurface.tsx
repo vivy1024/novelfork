@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
+import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Image } from "lucide-react";
 
 import { GitPanel } from "./GitPanel";
 import { FileChangesPanel } from "./FileChangesPanel";
@@ -400,14 +400,6 @@ export function ConversationSurface({
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => onPin?.()} className={isPinned ? "text-primary" : ""}>
-                <Pin className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>{isPinned ? "取消固定" : "固定会话"}</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" onClick={() => onAttach && document.querySelector<HTMLInputElement>('input[type="file"]')?.click()}>
                 <Image className="size-4" />
               </Button>
@@ -465,6 +457,8 @@ export function ConversationSurface({
               </div>
             </SheetContent>
           </Sheet>
+          {/* 归档按钮 — 书籍叙述者不可归档 */}
+          {!status.binding?.projectId && (
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()}>
@@ -473,6 +467,7 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>归档</TooltipContent>
           </Tooltip>
+          )}
         </div>
       </header>
 
