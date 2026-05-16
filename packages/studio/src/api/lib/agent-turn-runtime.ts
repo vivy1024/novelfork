@@ -69,6 +69,8 @@ export interface AgentTurnRuntimeInput {
   readonly signal?: AbortSignal;
   /** Fix: silentToolCallThreshold — 连续无文本输出的工具调用次数阈值，超过后注入提示 */
   readonly silentToolCallThreshold?: number;
+  /** 工具执行超时（毫秒），默认 60000 */
+  readonly toolTimeoutMs?: number;
 }
 
 function buildSystemContent(systemPrompt: string, context?: string): string {
@@ -383,15 +385,19 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
               const duplicateResult = toolResultsBySignature.get(signature);
               const toolResult = duplicateResult
                 ? createDuplicateToolResult(duplicateResult)
-                : await input.executeTool({
-                  sessionId: input.sessionId,
-                  toolName: toolUse.name,
-                  toolCallId: toolUse.id,
-                  input: toolUse.input,
-                  permissionMode: input.permissionMode,
-                  sessionConfig: input.sessionConfig,
-                  ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-                });
+                : await withToolTimeout(
+                    input.executeTool({
+                      sessionId: input.sessionId,
+                      toolName: toolUse.name,
+                      toolCallId: toolUse.id,
+                      input: toolUse.input,
+                      permissionMode: input.permissionMode,
+                      sessionConfig: input.sessionConfig,
+                      ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+                    }),
+                    input.toolTimeoutMs ?? 60000,
+                    toolUse.name,
+                  );
               const toolDurationMs = Date.now() - toolStartedAt;
               executedToolSteps += 1;
               console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps }));
@@ -510,15 +516,19 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           try {
             toolResult = duplicateResult
               ? createDuplicateToolResult(duplicateResult)
-              : await input.executeTool({
-                sessionId: input.sessionId,
-                toolName: toolUse.name,
-                toolCallId: toolUse.id,
-                input: toolUse.input,
-                permissionMode: input.permissionMode,
-                sessionConfig: input.sessionConfig,
-                ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-              });
+              : await withToolTimeout(
+                  input.executeTool({
+                    sessionId: input.sessionId,
+                    toolName: toolUse.name,
+                    toolCallId: toolUse.id,
+                    input: toolUse.input,
+                    permissionMode: input.permissionMode,
+                    sessionConfig: input.sessionConfig,
+                    ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+                  }),
+                  input.toolTimeoutMs ?? 60000,
+                  toolUse.name,
+                );
           } catch (err) {
             console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
             toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
@@ -622,15 +632,19 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         try {
           toolResult = duplicateResult
             ? createDuplicateToolResult(duplicateResult)
-            : await input.executeTool({
-              sessionId: input.sessionId,
-              toolName: toolUse.name,
-              toolCallId: toolUse.id,
-              input: toolUse.input,
-              permissionMode: input.permissionMode,
-              sessionConfig: input.sessionConfig,
-              ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-            });
+            : await withToolTimeout(
+                input.executeTool({
+                  sessionId: input.sessionId,
+                  toolName: toolUse.name,
+                  toolCallId: toolUse.id,
+                  input: toolUse.input,
+                  permissionMode: input.permissionMode,
+                  sessionConfig: input.sessionConfig,
+                  ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
+                }),
+                input.toolTimeoutMs ?? 60000,
+                toolUse.name,
+              );
         } catch (err) {
           console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
           toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
@@ -705,4 +719,31 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       });
     }
   }
+}
+
+function withToolTimeout(
+  promise: Promise<SessionToolExecutionResult>,
+  timeoutMs: number,
+  toolName: string,
+): Promise<SessionToolExecutionResult> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => {
+      resolve({
+        ok: false,
+        error: "tool-timeout",
+        summary: `工具 ${toolName} 执行超时（${Math.round(timeoutMs / 1000)}s）。`,
+      });
+    }, timeoutMs);
+    promise.then((result) => {
+      clearTimeout(timer);
+      resolve(result);
+    }).catch((error) => {
+      clearTimeout(timer);
+      resolve({
+        ok: false,
+        error: "tool-execution-error",
+        summary: `工具 ${toolName} 执行异常：${error instanceof Error ? error.message : String(error)}`,
+      });
+    });
+  });
 }

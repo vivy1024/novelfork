@@ -1381,7 +1381,7 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
     }
   }
 
-  if (state.transports.size === 0 && state.messages.length === 0) {
+  if (state.transports.size === 0 && state.messages.length === 0 && !abortControllerBySessionId.has(sessionId)) {
     runtimeStateBySessionId.delete(sessionId);
   }
 }
