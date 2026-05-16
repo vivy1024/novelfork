@@ -93,6 +93,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
       command: stringSchema("要执行的 shell 命令。"),
       workDir: stringSchema("工作目录路径（可选，默认使用 session workDir）。"),
       timeoutMs: numberSchema("超时毫秒数（默认 30000）。"),
+      run_in_background: booleanSchema("是否在后台运行命令。为 true 时立即返回 task ID，使用 Await 工具获取结果。"),
     }, ["command"]),
     risk: "destructive",
     renderer: "tool.bash",
