@@ -81,7 +81,10 @@ function sessionModelLabel(session: NarratorSessionRecord): string {
   const providerId = session.sessionConfig.providerId.trim();
   const modelId = session.sessionConfig.modelId.trim();
   if (!providerId && !modelId) return "未配置模型";
-  if (!providerId) return modelId;
+  // 去掉 provider- 前缀的时间戳 ID，只显示 modelId
+  if (providerId.startsWith("provider-") && /^\d+$/.test(providerId.slice(9))) {
+    return modelId || providerId;
+  }
   if (!modelId) return providerId;
   return `${providerId}:${modelId}`;
 }
@@ -429,9 +432,9 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                       <Button type="button" size="sm" onClick={() => void updateSessionStatus(session, "active")}>恢复</Button>
                       <Button type="button" size="sm" variant="destructive" onClick={() => void deleteSession(session)}>删除</Button>
                     </>
-                  ) : (
+                  ) : !session.projectId ? (
                     <Button type="button" size="sm" variant="outline" onClick={() => void updateSessionStatus(session, "archived")}>归档</Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
             </article>
