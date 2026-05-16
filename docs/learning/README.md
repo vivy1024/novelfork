@@ -25,6 +25,16 @@ routes:
 | 06 | [设置与套路](./06-settings-and-routines.md) | 供应商配置、设置面板、套路系统、套路 Tab、继承机制 | `设置` `供应商` `套路` `MCP` |
 | 07 | [写作工具](./07-writing-tools.md) | 章末钩子、段落节奏、对话比例、全书健康、矛盾地图、角色弧线、文风检测 | `写作工具` `分析` `健康度` |
 | 08 | [Agent 写作管线](./08-agent-pipeline.md) | PipelineRunner 核心引擎、Agent 角色、工具链、多 Agent 编排、确认门与安全 | `Agent` `Pipeline` `管线` `编排` |
+| 09 | [Agent 设置](./09-agent-settings.md) | 模型默认值、子代理模型池、推理强度、运行时控制 | `Agent` `设置` `模型` `推理` |
+| 10 | [代理设置](./10-proxy-settings.md) | 供应商代理、WebFetch 代理、平台代理配置 | `代理` `网络` `代理服务器` |
+| 11 | [使用历史](./11-usage-history.md) | Token 用量追踪、费用统计、按供应商/模型分组 | `用量` `费用` `历史` |
+| 12 | [外观设置](./12-appearance.md) | 主题切换、OLED 模式、字体、终端外观 | `主题` `外观` `字体` |
+| 13 | [运行时能力](./13-runtime-capabilities.md) | CLAUDE.md 读取、LLM 压缩摘要、Staleness check、文件 Dedup | `运行时` `压缩` `规则` `安全` |
+| 14 | [子代理系统](./14-subagent-system.md) | 四种子代理类型、自定义代理、后台任务、Fork 模式 | `子代理` `后台` `Fork` `Await` |
+| 15 | [工具搜索与技能](./15-tool-search-and-skills.md) | ToolSearch、Skill 加载、工具过滤、权限控制、MCP | `工具` `技能` `MCP` `权限` |
+| 16 | [安全与沙箱](./16-security-and-sandbox.md) | 沙箱模式、目录白名单、命令白名单、权限模式 | `安全` `沙箱` `白名单` `权限` |
+| 17 | [浏览器与终端](./17-browser-and-terminal.md) | Browser 截图交互、Terminal 持久化进程 | `浏览器` `终端` `截图` `QA` |
+| 18 | [网络工具](./18-web-tools.md) | WebSearch、WebFetch 四种模式、代理配置 | `网络` `搜索` `抓取` `代理` |
 
 ---
 
@@ -49,6 +59,15 @@ routes:
 ### 我想配置系统
 
 1. [06-settings-and-routines](./06-settings-and-routines.md) — 供应商和套路配置
+2. [16-security-and-sandbox](./16-security-and-sandbox.md) — 安全与沙箱设置
+
+### 我想了解 Agent 能力
+
+1. [13-runtime-capabilities](./13-runtime-capabilities.md) — 运行时核心能力
+2. [14-subagent-system](./14-subagent-system.md) — 子代理系统
+3. [15-tool-search-and-skills](./15-tool-search-and-skills.md) — 工具与技能
+4. [17-browser-and-terminal](./17-browser-and-terminal.md) — 浏览器与终端
+5. [18-web-tools](./18-web-tools.md) — 网络工具
 
 ### 我想分析作品质量
 
