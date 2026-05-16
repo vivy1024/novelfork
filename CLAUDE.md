@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v0.9.0** | 2026-04-19 | 最后更新 2026-05-18 | 始终使用中文回复
+**v0.9.1** | 2026-04-19 | 最后更新 2026-05-18 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/README.md` + `.kiro/steering/project-profile.md` 为准。
 
@@ -60,6 +60,15 @@
 - **引导式生成**: PGI 生成前追问 + Guided Plan 计划批准 + UserQuestionGate
 - **Checkpoint/Rewind**: 资源快照与回滚（CheckpointPanel）
 - **题材支持**: 玄幻、仙侠、都市、科幻等
+- **CLAUDE.md 项目规则**: 自动读取全局/项目/.claude/rules/ 规则文件注入 agent 上下文
+- **LLM 智能压缩**: 调用摘要模型生成对话摘要（非文本拼接）
+- **Subagent 系统**: explore/plan/general/fork 四种子代理，支持后台执行和自动后台化
+- **Prompt Cache**: Anthropic API cache_control 启用，减少重复 token 费用
+- **工具搜索**: ToolSearch 动态发现非核心工具，减少全量注入
+- **文件安全**: Staleness check（防覆盖）+ Dedup（省 token）+ 二进制检测
+- **沙箱执行**: none/basic/strict 三级隔离
+- **Browser 截图**: 系统 Chrome/Edge headless 模式
+- **WebSearch/WebFetch**: 网络搜索和网页内容获取
 
 ---
 
@@ -67,11 +76,11 @@
 
 | 指标 | 值 |
 |------|----|
-| Specs | `agent-runtime-robustness` Phase 1-6 全部完成；`ui-visibility-gaps` Phase 1-5 全部完成；`cockpit-redesign` 差距修复完成 |
+| Specs | `runtime-capability-alignment` Phase 1-6 全部完成 |
 | TypeScript | typecheck 通过 |
-| 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强（含趋势图/工具handler/对话集成）、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
-| 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
-| 编译 | `dist/novelfork-v0.9.0-windows-x64.exe`；构建通过 |
+| 功能 | 全部 runtime 能力对标 Claude Code（CLAUDE.md 读取、LLM 压缩摘要、Subagent、后台任务、Prompt cache、ToolSearch、Skills、MCP、沙箱、Browser、Terminal） |
+| 工具 | Read/Write/Edit/Bash/Grep/Glob/Agent/Await/Terminal/Browser/ToolSearch/Skill/WebSearch/WebFetch/EnterPlanMode/ExitPlanMode/TaskCreate/AskUserQuestion/Send/Recall + 小说领域工具 |
+| 编译 | `dist/novelfork-v0.9.1-windows-x64.exe`；构建通过 |
 | 下一步 | 内测分发 + 反馈收集 |
 
 ---
