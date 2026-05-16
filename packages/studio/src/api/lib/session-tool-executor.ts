@@ -1816,7 +1816,34 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (!skillName) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "skill 名称不能为空。" };
         }
-        const args = typeof input.args === "string" ? input.args : "";
+        const args = typeof input.args === "string" ? input.args : undefined;
+
+        // v1: Try to load skill content from disk first
+        const workDir = options.workDir ?? process.cwd();
+        const { existsSync, readFileSync } = await import("node:fs");
+        const { join } = await import("node:path");
+
+        const skillPaths = [
+          join(workDir, ".claude", "skills", `${skillName}.md`),
+          join(workDir, ".novelfork", "skills", `${skillName}.md`),
+          join(workDir, ".kiro", "skills", `${skillName}.md`),
+        ];
+
+        for (const p of skillPaths) {
+          if (existsSync(p)) {
+            try {
+              const content = readFileSync(p, "utf-8");
+              return {
+                ok: true,
+                renderer: definition.renderer,
+                summary: `已加载 skill "${skillName}"。`,
+                data: { skillName, skillPath: p, content, args },
+              };
+            } catch { /* skip, try next */ }
+          }
+        }
+
+        // Fallback: route through runtime command executor (slash commands)
         try {
           const { executeRuntimeCommandInput } = await import("@vivy1024/novelfork-core");
           const commandInput = `/${skillName}${args ? " " + args : ""}`;
@@ -1831,8 +1858,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return {
             ok: false,
             renderer: definition.renderer,
-            error: "skill-execution-failed",
-            summary: `技能 "${skillName}" 执行失败：${error instanceof Error ? error.message : String(error)}`,
+            error: "skill-not-found",
+            summary: `Skill "${skillName}" 未找到。搜索路径：${skillPaths.join(", ")}`,
           };
         }
       };
