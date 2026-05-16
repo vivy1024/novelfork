@@ -3,6 +3,8 @@ import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot } from "..
 import { microCompact } from "./compact/micro-compact.js";
 import { getSessionChatSnapshot, replaceSessionChatState } from "./session-chat-service.js";
 import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
+import { generateSessionReply } from "./llm-runtime-service.js";
+import { loadUserConfig } from "./user-config-service.js";
 
 // Store last pre-compact snapshot for undo capability
 const preCompactSnapshots = new Map<string, NarratorSessionChatMessage[]>();
@@ -90,6 +92,99 @@ function buildSummary(compactedMessages: readonly NarratorSessionChatMessage[], 
   return `上下文压缩摘要：已压缩 ${compactedMessages.length} 条较早消息。${instructionLine}\n关键摘录：\n${excerpts || compactedPreview || "无"}`;
 }
 
+function parseSummaryModelRef(summaryModel: string): { providerId: string; modelId: string } | null {
+  if (!summaryModel) return null;
+  const colonIndex = summaryModel.indexOf(":");
+  if (colonIndex <= 0) return null;
+  const providerId = summaryModel.slice(0, colonIndex);
+  const modelId = summaryModel.slice(colonIndex + 1);
+  return providerId && modelId ? { providerId, modelId } : null;
+}
+
+function stripImages(content: string): string {
+  return content.replace(/\[image:[^\]]*\]/g, "[image]");
+}
+
+function buildCompactPrompt(messages: readonly NarratorSessionChatMessage[], instructions?: string): string {
+  const textMessages = messages
+    .map((m) => `[${m.role}] ${stripImages(m.content)}`)
+    .join("\n\n");
+
+  return `请总结以下对话历史，生成一份简洁但完整的摘要。
+
+要求保留：
+1. 关键决策和结论
+2. 已完成的文件修改（文件名和修改内容概要）
+3. 未完成的任务和下一步计划
+4. 重要的上下文信息（项目结构、技术选型等）
+5. 用户的偏好和约束
+
+不需要保留：
+- 工具调用的详细输出
+- 重复的搜索结果
+- 中间推理过程
+
+${instructions ? `额外指令：${instructions}\n\n` : ""}对话历史：
+${textMessages}
+
+请用中文生成摘要：`;
+}
+
+async function generateLlmSummary(
+  compactedMessages: readonly NarratorSessionChatMessage[],
+  sessionProviderId: string,
+  sessionModelId: string,
+  instructions?: string,
+): Promise<string | null> {
+  let summaryModelRef: { providerId: string; modelId: string } | null = null;
+  try {
+    const config = await loadUserConfig();
+    summaryModelRef = parseSummaryModelRef(config.modelDefaults.summaryModel);
+  } catch {
+    // config load failure → use session model
+  }
+
+  const providerId = summaryModelRef?.providerId ?? sessionProviderId;
+  const modelId = summaryModelRef?.modelId ?? sessionModelId;
+
+  if (!providerId || !modelId) return null;
+
+  const prompt = buildCompactPrompt(compactedMessages, instructions);
+
+  try {
+    const result = await generateSessionReply({
+      sessionConfig: {
+        providerId,
+        modelId,
+        permissionMode: "allow",
+        reasoningEffort: "low",
+      },
+      messages: [
+        {
+          type: "message" as const,
+          id: "compact-system",
+          role: "system" as const,
+          content: "你是一个对话摘要助手。请根据用户提供的对话历史生成结构化摘要。摘要应简洁、完整、保留关键信息。最多 2000 字。",
+        },
+        {
+          type: "message" as const,
+          id: "compact-user",
+          role: "user" as const,
+          content: prompt,
+        },
+      ],
+    });
+
+    if (result.success && result.type === "message" && result.content.trim()) {
+      return result.content.trim();
+    }
+  } catch {
+    // LLM failure → fallback to text concatenation
+  }
+
+  return null;
+}
+
 function buildSummaryMessage(input: {
   readonly sessionId: string;
   readonly summary: string;
@@ -151,7 +246,8 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
     providerId: snapshot.session.sessionConfig.providerId,
     modelId: snapshot.session.sessionConfig.modelId,
   };
-  const summary = buildSummary(compactedMessages, compactedItems, input.instructions);
+  const llmSummary = await generateLlmSummary(compactedMessages, model.providerId, model.modelId, input.instructions);
+  const summary = llmSummary ?? buildSummary(compactedMessages, compactedItems, input.instructions);
   const budget = {
     estimatedTokensBefore: estimateTokens(sourceMessages),
     estimatedTokensAfter: estimateTokens([buildSummaryMessage({ sessionId: input.sessionId, summary, compactedAt, compactedMessageCount: compactedMessages.length, sourceRange, preservedRange, model, budget: { estimatedTokensBefore: 1, estimatedTokensAfter: 1, maxRecentMessages: preserveRecentMessages, preservedMessages: preservedMessages.length }, runtimeTranscriptSummary, instructions: input.instructions }), ...preservedMessages]),
