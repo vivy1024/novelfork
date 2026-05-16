@@ -338,7 +338,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const saveProvider = async (selectedProtocol?: ProviderProtocol) => {
     const protocol = selectedProtocol ?? form.protocol;
     const compatibility = protocolToCompatibility(protocol);
-    const id = `provider-${Date.now()}`;
+    const id = form.prefix.trim() || form.name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/^-+|-+$/g, "") || `provider-${Date.now()}`;
     setBusy("create-provider");
     setError(null);
     try {
