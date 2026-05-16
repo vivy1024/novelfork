@@ -191,11 +191,11 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
         group.calls.length >= 3 ? (
           [<ToolCallGroup key={`group-${idx}`} toolCalls={group.calls} toolName={group.toolName} />]
         ) : (
-          group.calls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} />)
+          group.calls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} forceCollapsed={codeCollapsed} />)
         ),
       )}
     </>);
-  }, [message.toolCalls]);
+  }, [message.toolCalls, codeCollapsed]);
 
   const selectionClasses = isSelected
     ? "border-l-2 border-l-primary bg-primary/5"
@@ -334,7 +334,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
           {renderedContent}
-          {!codeCollapsed && renderedToolCalls}
+          {renderedToolCalls}
           {/* Token 用量（metadata.usage 存在时显示） */}
           {!!message.metadata?.usage && (
             <div className="mt-1 text-[10px] text-muted-foreground/60">
