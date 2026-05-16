@@ -1612,6 +1612,14 @@ export async function handleSessionChatTransportMessage(
 
   const messagesToPersist: NarratorSessionChatMessage[] = [userMessage];
   const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
+
+  // Filter to core tools unless session has explicit allow list
+  const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser"]);
+  const policyAllow = loaded.session.sessionConfig.toolPolicy?.allow;
+  const filteredTools = policyAllow?.length
+    ? sessionTools
+    : sessionTools.filter(t => CORE_TOOL_NAMES.has(t.name));
+
   let canonicalEvents: readonly RuntimeEvent[] = [];
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
@@ -1667,7 +1675,7 @@ export async function handleSessionChatTransportMessage(
       messages: compactedMessages,
       systemPrompt: fullSystemPrompt,
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, projectExplorationContext),
-      tools: sessionTools,
+      tools: filteredTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
       maxSteps,
