@@ -1614,7 +1614,7 @@ export async function handleSessionChatTransportMessage(
   const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
 
   // Filter to core tools unless session has explicit allow list
-  const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser"]);
+  const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser", "WebSearch", "WebFetch", "EnterPlanMode", "ExitPlanMode", "TaskCreate", "AskUserQuestion", "Send", "Recall"]);
   const policyAllow = loaded.session.sessionConfig.toolPolicy?.allow;
   const filteredTools = policyAllow?.length
     ? sessionTools
