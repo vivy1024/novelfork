@@ -2,6 +2,39 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v0.9.0 (2026-05-18)
+
+### 🚀 Runtime 能力对标 Claude Code
+
+**Phase 1 — 基础 Runtime**
+- **CLAUDE.md 读取**：Agent 自动读取项目规则（全局 + 项目 + .claude/rules/）
+- **LLM 压缩摘要**：调用摘要模型生成智能摘要（不再是文本拼接）
+- **Staleness check**：Write/Edit 前检查文件 mtime，防止覆盖外部修改
+- **文件 dedup**：重复读同一文件返回 stub，节省 token
+
+**Phase 2 — 多 Agent 与后台任务**
+- **Subagent 系统**：Agent 工具支持 explore/plan/general 三种子代理，使用对应模型配置
+- **后台 Bash**：`run_in_background` 参数 + Await 工具等待完成
+- **模型聚合路由**：priority/round-robin/random 三种策略
+
+**Phase 3 — 成本优化**
+- **Prompt cache**：Anthropic API system message 启用 cache_control
+- **ToolSearch**：动态工具发现，减少全量注入的 token 消耗
+- **行号格式**：Read 返回 cat -n 格式，方便 Edit 引用行号
+
+**Phase 4 — Skills 与 MCP**
+- **Skills**：从磁盘加载 .md skill 文件（.claude/skills/ → .novelfork/skills/ → .kiro/skills/）
+- **MCP**：确认已完整实现（stdio/SSE client + managed server + tool routing）
+
+**Phase 5 — 安全与隔离**
+- **沙箱模式**：none/basic/strict 三级（basic = 环境变量隔离）
+- **进程管理**：SIGTERM → 5s → SIGKILL 优雅超时 + Windows taskkill 进程树杀
+- **大输出截断**：>30K chars 保留头尾各 5K
+
+**Phase 6 — Browser 与终端**
+- **Browser 截图**：系统 Chrome/Edge headless 模式，无需 Puppeteer
+- **Terminal**：create/list/write/read 完整实现
+
 ## v0.8.7 (2026-05-18)
 
 ### 🔧 工具实现对齐 Claude Code
