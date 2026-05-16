@@ -1198,11 +1198,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
         const dirCheck = await checkDirectoryAccess(filePath, workDir);
+        console.log(`[Read-access-check] filePath=${filePath} workDir=${workDir} inWorkDir=${isPathWithinWorkDir(filePath, workDir)} dirCheck=${JSON.stringify(dirCheck)}`);
         if (dirCheck.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "路径在黑名单目录内。" };
         }
         if (!isPathWithinWorkDir(filePath, workDir) && !dirCheck.allowed) {
-          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。添加到目录白名单后可访问。` };
         }
         return executeFileReadTool({
           path: filePath,
