@@ -49,8 +49,18 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
     return c.json({ beats: listBeatTemplates() });
   });
 
+  app.get("/api/presets/user-templates", (c) => {
+    const bookId = c.req.query("bookId");
+    const storage = getStorageDatabase();
+    const repo = createUserTemplateRepository(storage);
+    const templates = repo.list(bookId || undefined);
+    return c.json({ templates });
+  });
+
+  // 注意：:presetId 参数路由必须在所有 /api/presets/xxx 具体路径之后注册
   app.get("/api/presets/:presetId", (c) => {
     const id = c.req.param("presetId");
+    if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     const preset = getPreset(id);
     if (!preset) {
       return c.json({ error: `Preset "${id}" not found` }, 404);
@@ -229,14 +239,6 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   // -------------------------------------------------------------------------
   // User Templates CRUD
   // -------------------------------------------------------------------------
-
-  app.get("/api/presets/user-templates", (c) => {
-    const bookId = c.req.query("bookId");
-    const storage = getStorageDatabase();
-    const repo = createUserTemplateRepository(storage);
-    const templates = repo.list(bookId || undefined);
-    return c.json({ templates });
-  });
 
   app.post("/api/presets/user-templates", async (c) => {
     const body = await c.req.json<{
