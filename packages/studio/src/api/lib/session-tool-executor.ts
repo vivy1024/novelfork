@@ -1283,7 +1283,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const searchPath = typeof input.path === "string" ? input.path : ".";
         try {
           const { glob } = await import("glob");
-          const cwd = searchPath === "." ? workDir : (await import("node:path")).resolve(workDir, searchPath);
+          const resolvedPath = (await import("node:path")).resolve(workDir, searchPath);
+          const cwd = searchPath === "." ? workDir : resolvedPath;
+          // Check directory access for non-workDir paths
+          if (cwd !== workDir && !isPathWithinWorkDir(cwd, workDir)) {
+            const dirCheck = await checkDirectoryAccess(cwd, workDir);
+            if (dirCheck.blocked) {
+              return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "搜索路径在黑名单目录内。" };
+            }
+            if (!dirCheck.allowed) {
+              return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `搜索路径 "${searchPath}" 超出工作目录边界。添加到目录白名单后可访问。` };
+            }
+          }
           const matches = await glob(pattern, { cwd, nodir: false });
           const GLOB_MAX = 200;
           const total = matches.length;
@@ -1307,7 +1318,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const { execFile } = await import("node:child_process");
           const { promisify } = await import("node:util");
           const execFileAsync = promisify(execFile);
-          const cwd = searchPath === "." ? workDir : (await import("node:path")).resolve(workDir, searchPath);
+          const resolvedSearchPath = (await import("node:path")).resolve(workDir, searchPath);
+          const cwd = searchPath === "." ? workDir : resolvedSearchPath;
+          // Check directory access for non-workDir paths
+          if (cwd !== workDir && !isPathWithinWorkDir(cwd, workDir)) {
+            const dirCheck = await checkDirectoryAccess(cwd, workDir);
+            if (dirCheck.blocked) {
+              return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "搜索路径在黑名单目录内。" };
+            }
+            if (!dirCheck.allowed) {
+              return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `搜索路径 "${searchPath}" 超出工作目录边界。添加到目录白名单后可访问。` };
+            }
+          }
           const args = ["--no-heading", "--color=never"];
           if (outputMode === "files_with_matches") args.push("-l");
           else if (outputMode === "count") args.push("-c");
