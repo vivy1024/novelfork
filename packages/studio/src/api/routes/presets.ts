@@ -10,6 +10,7 @@ import {
   getBundle,
   getPresetsByGenre,
   listBeatTemplates,
+  registerBuiltinPresets,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./context.js";
 
@@ -21,6 +22,9 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   const { state } = ctx;
 
   app.get("/api/presets", (c) => {
+    // 防御性重注册：确保 preset store 在当前模块实例中已初始化
+    if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+
     const category = c.req.query("category");
     const genre = c.req.query("genre");
 
@@ -36,10 +40,12 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   });
 
   app.get("/api/presets/bundles", (c) => {
+    if (listBundles().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     return c.json({ bundles: listBundles() });
   });
 
   app.get("/api/presets/beats", (c) => {
+    if (listBeatTemplates().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     return c.json({ beats: listBeatTemplates() });
   });
 
