@@ -165,6 +165,9 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   useEffect(() => {
     if (!sessionId) return undefined;
 
+    // Reset state immediately when sessionId changes to avoid showing stale data
+    dispatch({ type: "session:reset" });
+
     let cancelled = false;
     intentionalCloseRef.current = false;
     reconnectAttemptRef.current = 0;
