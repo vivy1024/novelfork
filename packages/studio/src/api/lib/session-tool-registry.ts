@@ -264,10 +264,11 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 子代理与并行 ---
   sessionTool({
     name: "Agent",
-    description: "启动隔离子代理执行专项任务。仅在任务需要隔离上下文或并行执行时使用。单个 Read/Grep/Glob 能解决的查找不要用子代理。类型：explore（只读调查）、plan（架构设计）、general（可写入）。",
+    description: "启动隔离子代理执行专项任务。仅在任务需要隔离上下文或并行执行时使用。单个 Read/Grep/Glob 能解决的查找不要用子代理。类型：explore（只读调查）、plan（读写规划）、general（全部工具）。子代理有独立消息历史，使用对应模型配置，完成后返回结果。",
     inputSchema: objectSchema({
       prompt: stringSchema("子代理要执行的任务描述。"),
-      subagent_type: stringSchema("子代理类型：explore | plan | general。"),
+      subagent_type: stringSchema("子代理类型：explore（只读）| plan（读写）| general（全部工具）。默认 general。"),
+      reasoning_effort: stringSchema("推理强度：low | medium | high。影响子代理的思考深度。"),
       run_in_background: booleanSchema("是否在后台运行。"),
       description: stringSchema("任务简短描述（3-5 词）。"),
     }, ["prompt"]),
