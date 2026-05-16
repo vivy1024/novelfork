@@ -957,7 +957,9 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
         try {
-          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          const { listPresets, getPreset, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          // 防御性重注册：确保 preset store 已初始化
+          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           if (options.loadBookConfig) {
@@ -990,7 +992,9 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           return { ok: false, renderer: definition.renderer, error: "missing-content", summary: "content 参数不能为空。" };
         }
         try {
-          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          const { listPresets, getPreset, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          // 防御性重注册：确保 preset store 已初始化
+          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           if (options.loadBookConfig) {
