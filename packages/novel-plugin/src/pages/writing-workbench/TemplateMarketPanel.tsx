@@ -622,7 +622,7 @@ export function TemplateMarketPanel({ bookId, onClose }: TemplateMarketPanelProp
           </TabsTrigger>
         </TabsList>
 
-        <div className="max-h-[340px] overflow-y-auto mt-2">
+        <div className="mt-2">
           <TabsContent value="builtin">
             <BuiltinTab bookId={bookId} />
           </TabsContent>

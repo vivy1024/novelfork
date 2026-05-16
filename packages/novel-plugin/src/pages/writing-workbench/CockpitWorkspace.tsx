@@ -20,7 +20,7 @@ export interface CockpitWorkspaceProps {
 
 export function CockpitWorkspace({ bookId, nodes, onGuideComplete, onSelectNode }: CockpitWorkspaceProps) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
-  const [panelHeight, setPanelHeight] = useState<number>(250);
+  const [panelHeight, setPanelHeight] = useState<number>(320);
   const [panelMaximized, setPanelMaximized] = useState(false);
 
   const handleStatusBarClick = useCallback((panel: NonNullable<PanelType>) => {
