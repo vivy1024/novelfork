@@ -78,6 +78,10 @@ export interface ConversationSurfaceProps {
   sessionDetail?: SessionDetailData;
   /** 更新工作目录 */
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
+  /** 更新会话配置（来自 SessionDetailPanel） */
+  onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
+  /** 更新访问规则 */
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
 }
@@ -115,6 +119,8 @@ export function ConversationSurface({
   onForkSession,
   sessionDetail,
   onUpdateWorkDir,
+  onUpdateSessionConfigFromDetail,
+  onUpdateAccessRules,
   headerSlot,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -447,6 +453,8 @@ export function ConversationSurface({
                     workDir: status.workspace?.path,
                   }}
                   onUpdateWorkDir={onUpdateWorkDir}
+                  onUpdateSessionConfig={onUpdateSessionConfigFromDetail}
+                  onUpdateAccessRules={onUpdateAccessRules}
                 />
               </div>
             </SheetContent>

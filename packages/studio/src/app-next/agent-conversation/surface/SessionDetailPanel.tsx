@@ -54,6 +54,18 @@ export interface SessionDetailData {
   customTraits?: string;
   /** 工具限制（禁用的工具名列表） */
   disabledTools?: string[];
+  /** 会话配置 */
+  sessionConfig?: {
+    mode?: "normal" | "plan";
+    toolPolicy?: { allow?: string[]; deny?: string[]; ask?: string[] };
+  };
+  /** 运行时控制（从 /api/settings 读取） */
+  runtimeConfig?: {
+    relaxedPlanning?: boolean;
+    yoloSkipReadonlyConfirmation?: boolean;
+    smartOutputCheck?: boolean;
+    translateThinking?: boolean;
+  };
   /** 访问规则 */
   accessRules?: {
     allowDirs?: Array<{ path: string; permission: string }>;
@@ -86,6 +98,8 @@ export interface SessionDetailPanelProps {
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
   onUpdateTraits?: (traits: string) => Promise<void> | void;
   onUpdateDisabledTools?: (tools: string[]) => Promise<void> | void;
+  onUpdateSessionConfig?: (patch: Record<string, unknown>) => Promise<void> | void;
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
 }
 
 // ---------------------------------------------------------------------------
@@ -253,9 +267,17 @@ export function SessionDetailPanel({
   onUpdateWorkDir,
   onUpdateTraits,
   onUpdateDisabledTools,
+  onUpdateSessionConfig,
+  onUpdateAccessRules,
 }: SessionDetailPanelProps) {
   const [traits, setTraits] = useState(detail?.customTraits ?? "");
   const [traitsDirty, setTraitsDirty] = useState(false);
+  const [disabledToolsText, setDisabledToolsText] = useState((detail?.disabledTools ?? []).join("\n"));
+  const [disabledToolsDirty, setDisabledToolsDirty] = useState(false);
+  const [autoApprovePlan, setAutoApprovePlan] = useState<"inherit" | "on" | "off">("inherit");
+  const [dangerReflection, setDangerReflection] = useState<"inherit" | "on" | "off">("inherit");
+  const [newAllowDir, setNewAllowDir] = useState("");
+  const [newDenyDir, setNewDenyDir] = useState("");
 
   const messageCount = detail?.stats?.messageCount ?? messages.length;
   const narratorState = status.narratorState ?? "idle";
@@ -324,20 +346,36 @@ export function SessionDetailPanel({
         <DetailRow label="模型">{status.modelLabel ?? status.modelId ?? "—"}</DetailRow>
         <DetailRow label="权限模式">{status.permissionMode ?? "—"}</DetailRow>
         <DetailRow label="思考强度">{status.reasoningEffort ?? "—"}</DetailRow>
-        <DetailRow label="快速模式">关闭</DetailRow>
-        <DetailRow label="宽松规划">开启</DetailRow>
+        <DetailRow label="快速模式">{detail?.runtimeConfig?.yoloSkipReadonlyConfirmation ? "开启" : "关闭"}</DetailRow>
+        <DetailRow label="宽松规划">{detail?.runtimeConfig?.relaxedPlanning ? "开启" : "关闭"}</DetailRow>
 
         <Separator className="my-2" />
 
-        <TriStateControl label="自动批准计划" value="inherit" effectiveValue="开启" />
-        <TriStateControl label="危险反思" value="inherit" effectiveValue="开启" />
+        <TriStateControl
+          label="自动批准计划"
+          value={autoApprovePlan}
+          effectiveValue={autoApprovePlan === "inherit" ? "继承全局" : autoApprovePlan === "on" ? "开启" : "关闭"}
+          onChange={(v) => { setAutoApprovePlan(v); onUpdateSessionConfig?.({ autoApprovePlan: v }); }}
+        />
+        <TriStateControl
+          label="危险反思"
+          value={dangerReflection}
+          effectiveValue={dangerReflection === "inherit" ? "继承全局" : dangerReflection === "on" ? "开启" : "关闭"}
+          onChange={(v) => { setDangerReflection(v); onUpdateSessionConfig?.({ dangerReflection: v }); }}
+        />
 
         <Separator className="my-2" />
 
-        <DetailRow label="自动裁剪">开启</DetailRow>
-        <DetailRow label="计划模式">关闭</DetailRow>
+        <DetailRow label="自动裁剪">{detail?.runtimeConfig?.smartOutputCheck ? "开启" : "关闭"}</DetailRow>
+        <DetailRow label="计划模式">{detail?.sessionConfig?.mode === "plan" ? "开启" : "关闭"}</DetailRow>
         <DetailRow label="后台状态">—</DetailRow>
-        <DetailRow label="启用工具">无</DetailRow>
+        <DetailRow label="启用工具">
+          {detail?.sessionConfig?.toolPolicy?.allow?.length
+            ? detail.sessionConfig.toolPolicy.allow.join(", ")
+            : detail?.sessionConfig?.toolPolicy?.deny?.length
+              ? `排除 ${detail.sessionConfig.toolPolicy.deny.length} 个`
+              : "全部"}
+        </DetailRow>
       </SectionCard>
 
       {/* ── 自定义 Traits ── */}
@@ -387,10 +425,32 @@ export function SessionDetailPanel({
         <p className="text-[10px] text-muted-foreground">
           被选中的工具不会提供给模型；即使模型尝试调用，也会在执行前被拒绝。
         </p>
-        <Input placeholder="选择要剔除的工具..." className="text-xs" disabled />
+        <Textarea
+          placeholder="每行一个工具名..."
+          value={disabledToolsText}
+          onChange={(e) => { setDisabledToolsText(e.target.value); setDisabledToolsDirty(true); }}
+          className="min-h-[60px] text-xs font-mono"
+        />
         <div className="flex gap-2">
-          <Button variant="outline" size="xs" disabled>清除 trait</Button>
-          <Button size="xs" disabled>保存</Button>
+          <Button
+            variant="outline"
+            size="xs"
+            disabled={!disabledToolsDirty}
+            onClick={() => { setDisabledToolsText((detail?.disabledTools ?? []).join("\n")); setDisabledToolsDirty(false); }}
+          >
+            重置
+          </Button>
+          <Button
+            size="xs"
+            disabled={!disabledToolsDirty}
+            onClick={() => {
+              const tools = disabledToolsText.split("\n").map(s => s.trim()).filter(Boolean);
+              onUpdateDisabledTools?.(tools);
+              setDisabledToolsDirty(false);
+            }}
+          >
+            保存
+          </Button>
         </div>
       </SectionCard>
 
@@ -437,13 +497,46 @@ export function SessionDetailPanel({
                 {detail.accessRules.allowDirs.map((dir) => (
                   <li key={dir.path} className="flex items-center justify-between text-[11px]">
                     <code className="font-mono truncate">{dir.path}</code>
-                    <Badge variant="outline" className="text-[9px] ml-2">{dir.permission}</Badge>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Badge variant="outline" className="text-[9px]">{dir.permission}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => {
+                          const remaining = (detail.accessRules?.allowDirs ?? []).filter(d => d.path !== dir.path).map(d => d.path);
+                          onUpdateAccessRules?.({ directoryAllowlist: remaining });
+                        }}
+                      >
+                        ×
+                      </Button>
+                    </div>
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="text-[10px] text-muted-foreground mt-0.5">无规则</p>
             )}
+            <div className="flex gap-1 mt-1">
+              <Input
+                placeholder="添加白名单目录..."
+                value={newAllowDir}
+                onChange={(e) => setNewAllowDir(e.target.value)}
+                className="text-xs h-6 font-mono"
+              />
+              <Button
+                size="xs"
+                className="h-6 shrink-0"
+                disabled={!newAllowDir.trim()}
+                onClick={() => {
+                  const current = (detail?.accessRules?.allowDirs ?? []).map(d => d.path);
+                  onUpdateAccessRules?.({ directoryAllowlist: [...current, newAllowDir.trim()] });
+                  setNewAllowDir("");
+                }}
+              >
+                添加
+              </Button>
+            </div>
           </div>
 
           <div>
@@ -453,12 +546,45 @@ export function SessionDetailPanel({
             {detail?.accessRules?.denyDirs?.length ? (
               <ul className="mt-1 space-y-0.5">
                 {detail.accessRules.denyDirs.map((dir) => (
-                  <li key={dir.path} className="text-[11px] font-mono truncate">{dir.path}</li>
+                  <li key={dir.path} className="flex items-center justify-between text-[11px]">
+                    <code className="font-mono truncate">{dir.path}</code>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => {
+                        const remaining = (detail.accessRules?.denyDirs ?? []).filter(d => d.path !== dir.path).map(d => d.path);
+                        onUpdateAccessRules?.({ directoryBlocklist: remaining });
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </li>
                 ))}
               </ul>
             ) : (
               <p className="text-[10px] text-muted-foreground mt-0.5">无规则</p>
             )}
+            <div className="flex gap-1 mt-1">
+              <Input
+                placeholder="添加黑名单目录..."
+                value={newDenyDir}
+                onChange={(e) => setNewDenyDir(e.target.value)}
+                className="text-xs h-6 font-mono"
+              />
+              <Button
+                size="xs"
+                className="h-6 shrink-0"
+                disabled={!newDenyDir.trim()}
+                onClick={() => {
+                  const current = (detail?.accessRules?.denyDirs ?? []).map(d => d.path);
+                  onUpdateAccessRules?.({ directoryBlocklist: [...current, newDenyDir.trim()] });
+                  setNewDenyDir("");
+                }}
+              >
+                添加
+              </Button>
+            </div>
           </div>
 
           <div>
