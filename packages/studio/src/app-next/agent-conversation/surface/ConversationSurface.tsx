@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image, Terminal } from "lucide-react";
+import { Search, ExternalLink, Pencil, Sparkles, FileCode, Info, Archive, ArrowLeft, CodeXml, Pin, Image } from "lucide-react";
 
 import { GitPanel } from "./GitPanel";
 import { FileChangesPanel } from "./FileChangesPanel";
@@ -21,6 +21,7 @@ import type { ConversationSessionConfigPatch, ConversationStatus } from "./Conve
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
 import { SessionDetailPanel, type SessionDetailData } from "./SessionDetailPanel";
+import { TerminalListPanel } from "./TerminalListPanel";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -81,9 +82,13 @@ export interface ConversationSurfaceProps {
   /** 更新会话配置（来自 SessionDetailPanel） */
   onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
   /** 更新访问规则 */
-  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[]; commandAllowlist?: string[]; commandBlocklist?: string[] }) => Promise<void> | void;
   /** 更新 Subagent 模型 */
   onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
+  /** 模型选项列表（供 SessionDetailPanel 子代理模型选择） */
+  modelOptions?: Array<{ value: string; label: string }>;
+  /** 可用工具列表（供 SessionDetailPanel 工具限制选择） */
+  availableTools?: Array<{ name: string; description?: string }>;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
 }
@@ -124,6 +129,8 @@ export function ConversationSurface({
   onUpdateSessionConfigFromDetail,
   onUpdateAccessRules,
   onUpdateSubagentModels,
+  modelOptions,
+  availableTools,
   headerSlot,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -132,6 +139,7 @@ export function ConversationSurface({
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [filesPanelOpen, setFilesPanelOpen] = useState(false);
   const [filesPanelDismissed, setFilesPanelDismissed] = useState(false);
+  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const routerNavigate = useNavigate();
 
   const handleEditTitle = () => {
@@ -406,14 +414,6 @@ export function ConversationSurface({
             </TooltipTrigger>
             <TooltipContent>图片附件</TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-sm" onClick={() => window.open("/next/settings?section=terminals", "_blank")} title="终端设置">
-                <Terminal className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>终端</TooltipContent>
-          </Tooltip>
           <Sheet open={filesPanelOpen} onOpenChange={(open) => {
             setFilesPanelOpen(open);
             if (!open) setFilesPanelDismissed(true);
@@ -459,6 +459,8 @@ export function ConversationSurface({
                   onUpdateSessionConfig={onUpdateSessionConfigFromDetail}
                   onUpdateAccessRules={onUpdateAccessRules}
                   onUpdateSubagentModels={onUpdateSubagentModels}
+                  modelOptions={modelOptions}
+                  availableTools={availableTools}
                 />
               </div>
             </SheetContent>
@@ -619,7 +621,7 @@ export function ConversationSurface({
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
         onCompact={onCompactSession ? () => { void onCompactSession("压缩上下文到目标阈值"); } : undefined}
         onReset={onCompactSession ? () => { void onCompactSession("reset"); } : undefined}
-        onOpenTerminal={() => window.open("/next/settings?section=terminals", "_blank")}
+        onOpenTerminal={() => setTerminalPanelOpen(true)}
       />
 
       {/* ── Composer ── */}
@@ -639,6 +641,20 @@ export function ConversationSurface({
       />
       </div>
     </section>
+
+    {/* ── Terminal Panel (right-side Sheet) ── */}
+    <Sheet open={terminalPanelOpen} onOpenChange={setTerminalPanelOpen}>
+      <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
+        <SheetHeader>
+          <SheetTitle>终端</SheetTitle>
+          <SheetDescription>Agent 创建和管理的终端进程</SheetDescription>
+        </SheetHeader>
+        <div className="px-4 pb-4">
+          <TerminalListPanel />
+        </div>
+      </SheetContent>
+    </Sheet>
+
     </TooltipProvider>
   );
 }

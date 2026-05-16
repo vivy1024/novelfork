@@ -329,11 +329,13 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-        <div className={`py-2 select-text border-l-2 border-green-500/50 pl-3 ${selectionClasses} ${codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}`} onClick={handleClick}>
+        <div className={`py-2 select-text border-l-2 border-green-500/50 pl-3 ${selectionClasses}`} onClick={handleClick}>
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
-          {renderedContent}
+          <div className={codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}>
+            {renderedContent}
+          </div>
           {renderedToolCalls}
           {/* Token 用量（metadata.usage 存在时显示） */}
           {!!message.metadata?.usage && (
