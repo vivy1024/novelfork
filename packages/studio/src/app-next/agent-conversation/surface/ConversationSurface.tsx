@@ -220,10 +220,10 @@ export function ConversationSurface({
   const handleEditRegenerate = (newContent: string) => {
     if (!editingMessage) return;
     setEditingMessage(null);
-    // Compact to before the edited message, then resend with new content
+    // Truncate to before the edited message, then resend with new content
     const msgIndex = messages.findIndex((m) => m.id === editingMessage.id);
-    if (msgIndex >= 0 && onCompactSession) {
-      void onCompactSession(`编辑重生成：丢弃消息 #${msgIndex} 及之后`).then(() => {
+    if (msgIndex >= 0 && onTruncateToMessage) {
+      void onTruncateToMessage(editingMessage.id).then(() => {
         onSend(newContent);
       });
     } else {
