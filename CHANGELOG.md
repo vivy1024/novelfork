@@ -2,6 +2,23 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v0.8.2 (2026-05-18)
+
+### 🐛 对话面板交互修复
+
+- **Subagent 模型限制**：从文本 Input 改为 Select 下拉选择框，从可用模型池中选取
+- **工具限制**：从 Textarea 手动输入改为 Checkbox 列表，勾选即禁用
+- **命令白名单/黑名单**：从只读改为支持增删（与目录白名单一致）
+- **终端按钮**：从跳转新页面改为右侧 Sheet 面板，显示终端列表（运行中/已退出）
+- **去重终端按钮**：移除头部工具栏中重复的终端图标，只保留底部状态栏的
+- **折叠代码块 bug 修复**：折叠只作用于 markdown 正文代码，不再误隐藏工具卡片展开后的输出内容
+
+### 🔧 数据打通
+
+- `modelOptions` / `availableTools` 从 StudioNextApp 传递到 SessionDetailPanel
+- `onUpdateAccessRules` 扩展支持 `commandAllowlist` / `commandBlocklist`
+- 新增 `GET /api/tools/list` 数据拉取，供工具限制 Checkbox 使用
+
 ## v0.8.1 (2026-05-18)
 
 ### 🐛 会话详情面板修复

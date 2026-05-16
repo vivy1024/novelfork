@@ -58,7 +58,7 @@ export interface ConversationRouteProps {
   /** 更新会话配置（来自 SessionDetailPanel） */
   onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
   /** 更新访问规则 */
-  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[]; commandAllowlist?: string[]; commandBlocklist?: string[] }) => Promise<void> | void;
   /** 更新 Subagent 模型 */
   onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
   /** 固定会话 */
@@ -68,6 +68,10 @@ export interface ConversationRouteProps {
   onAttach?: (files: FileList) => void;
   /** 会话详情数据 */
   sessionDetail?: SessionDetailData;
+  /** 模型选项列表（供 SessionDetailPanel 子代理模型选择） */
+  modelOptions?: Array<{ value: string; label: string }>;
+  /** 可用工具列表（供 SessionDetailPanel 工具限制选择） */
+  availableTools?: Array<{ name: string; description?: string }>;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
 }
@@ -120,6 +124,8 @@ export function ConversationRoute({
   isPinned,
   onAttach,
   sessionDetail,
+  modelOptions,
+  availableTools,
   headerSlot,
 }: ConversationRouteProps) {
   if (!sessionId) {
@@ -194,6 +200,8 @@ export function ConversationRoute({
         onPin={onPin}
         isPinned={isPinned}
         sessionDetail={sessionDetail}
+        modelOptions={modelOptions}
+        availableTools={availableTools}
         headerSlot={headerSlot}
       />
     </section>
