@@ -25,7 +25,8 @@ interface AllPreset {
 }
 
 export interface PresetPanelProps {
-  readonly bookId: string;
+  bookId: string;
+  onOpenMarket?: () => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -47,7 +48,7 @@ const CATEGORY_ORDER = ["genre", "tone", "setting-base", "logic-risk", "anti-ai"
 // Component
 // ---------------------------------------------------------------------------
 
-export function PresetPanel({ bookId }: PresetPanelProps) {
+export function PresetPanel({ bookId, onOpenMarket }: PresetPanelProps) {
   const [presets, setPresets] = useState<PresetItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -225,7 +226,7 @@ export function PresetPanel({ bookId }: PresetPanelProps) {
         variant="outline"
         size="sm"
         className="w-full mt-2"
-        onClick={() => window.open("/api/market/templates", "_blank")}
+        onClick={() => onOpenMarket?.()}
       >
         <Plus className="size-3.5 mr-1.5" />
         浏览模板市场

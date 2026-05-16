@@ -67,6 +67,7 @@ export function CockpitWorkspace({ bookId, nodes, onGuideComplete, onSelectNode 
           onClose={handlePanelClose}
           onMaximize={handlePanelMaximize}
           onHeightChange={setPanelHeight}
+          onSwitchPanel={setActivePanel}
         />
       )}
 

@@ -22,6 +22,7 @@ export interface ExpandablePanelProps {
   onClose: () => void;
   onMaximize: () => void;
   onHeightChange: (h: number) => void;
+  onSwitchPanel?: (panel: NonNullable<PanelType>) => void;
 }
 
 const PANEL_TITLES: Record<NonNullable<PanelType>, string> = {
@@ -43,6 +44,7 @@ export function ExpandablePanel({
   onClose,
   onMaximize,
   onHeightChange,
+  onSwitchPanel,
 }: ExpandablePanelProps) {
   const dragRef = useRef<{ startY: number; startH: number } | null>(null);
   const listenersRef = useRef<{ move: (ev: MouseEvent) => void; up: () => void } | null>(null);
@@ -115,16 +117,16 @@ export function ExpandablePanel({
 
       {/* 面板内容 */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        <PanelContent panel={activePanel} bookId={bookId} onClose={onClose} />
+        <PanelContent panel={activePanel} bookId={bookId} onClose={onClose} onSwitchPanel={onSwitchPanel} />
       </div>
     </div>
   );
 }
 
-function PanelContent({ panel, bookId, onClose }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void }) {
+function PanelContent({ panel, bookId, onClose, onSwitchPanel }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void; onSwitchPanel?: (p: NonNullable<PanelType>) => void }) {
   switch (panel) {
     case "preset":
-      return <PresetPanel bookId={bookId} />;
+      return <PresetPanel bookId={bookId} onOpenMarket={() => onSwitchPanel?.("template-market")} />;
     case "beat":
       return <BeatPanel bookId={bookId} />;
     case "quality":
