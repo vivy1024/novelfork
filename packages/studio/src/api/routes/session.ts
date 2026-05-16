@@ -198,8 +198,10 @@ app.post("/:id/restore", async (c) => {
 
 app.post("/:id/compact", async (c) => {
   const id = c.req.param("id");
+  console.log(`[route] POST /${id}/compact received`);
   const body: { preserveRecentMessages?: number; instructions?: string } = await c.req.json<{ preserveRecentMessages?: number; instructions?: string }>().catch(() => ({}));
   const result = await compactSession({ sessionId: id, preserveRecentMessages: body.preserveRecentMessages, instructions: body.instructions });
+  console.log(`[route] POST /${id}/compact result: ok=${result.ok}`);
   if (!result.ok) {
     return c.json(result, result.status);
   }

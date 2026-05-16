@@ -637,16 +637,24 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
 
 
   // Auto-compact: trigger when context usage exceeds threshold
+  // 注意：只在 session recovery 完成后触发，且不阻塞后续操作
   const autoCompactTriggeredRef = useRef(false);
+  const sessionRecoveredRef = useRef(false);
   useEffect(() => {
-    if (!autoCompactEnabled) return;
+    // 标记 session 已恢复（首次收到 messages 时）
+    if (runtime.state.messages.length > 0) sessionRecoveredRef.current = true;
+  }, [runtime.state.messages.length]);
+  useEffect(() => {
+    if (!autoCompactEnabled || !sessionRecoveredRef.current) return;
     const cu = status.contextUsage;
     if (!cu || !cu.maxTokens || !cu.compactThreshold) return;
 
     if (cu.usedTokens > cu.compactThreshold) {
       if (!autoCompactTriggeredRef.current) {
         autoCompactTriggeredRef.current = true;
-        void sessionClient.compactSession(sessionId, { instructions: "自动压缩：上下文使用超过阈值" });
+        sessionClient.compactSession(sessionId, { instructions: "自动压缩：上下文使用超过阈值" })
+          .then(() => { console.log("[auto-compact] completed"); })
+          .catch((e) => { console.error("[auto-compact] failed:", e); });
       }
     } else {
       // Reset when usage drops below threshold (after compact completes)
