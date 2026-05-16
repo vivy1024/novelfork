@@ -2654,16 +2654,18 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
     // --- ToolSearch: 动态工具搜索 ---
     case "ToolSearch":
       return async ({ input, definition }) => {
-        const query = String(input.query ?? "").toLowerCase();
-        if (!query.trim()) {
+        const query = String(input.query ?? "").toLowerCase().trim();
+        if (!query) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "query 不能为空。" };
         }
         const { listSessionToolDefinitions } = await import("./session-tool-registry.js");
         const allTools = listSessionToolDefinitions();
-        const matches = allTools.filter(t =>
-          t.name.toLowerCase().includes(query) ||
-          (t.description ?? "").toLowerCase().includes(query)
-        );
+        // 分词搜索：query 按空格拆分为多个关键词，任一关键词匹配 name 或 description 即命中
+        const keywords = query.split(/\s+/).filter(Boolean);
+        const matches = allTools.filter(t => {
+          const haystack = `${t.name.toLowerCase()} ${(t.description ?? "").toLowerCase()}`;
+          return keywords.some(kw => haystack.includes(kw));
+        });
         const results = matches.map(t => ({ name: t.name, description: t.description }));
         return {
           ok: true,
