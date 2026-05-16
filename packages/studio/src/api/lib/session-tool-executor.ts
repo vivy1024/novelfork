@@ -1049,9 +1049,17 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           }
 
           const templates = listBeatTemplates();
+          // 如果 templates 为空（registerBuiltinPresets 未执行或模块实例不同），尝试重新注册
+          if (templates.length === 0) {
+            try {
+              const { registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+              registerBuiltinPresets();
+            } catch { /* ignore */ }
+          }
+          const allTemplates = listBeatTemplates();
           const activeTemplate = selectedTemplateId
-            ? getBeatTemplate(selectedTemplateId) ?? templates[0]
-            : templates[0];
+            ? getBeatTemplate(selectedTemplateId) ?? allTemplates[0]
+            : allTemplates[0];
 
           if (!activeTemplate) {
             return { ok: true, renderer: definition.renderer, summary: "无可用节拍模板。", data: { bookId, template: null, currentBeat: null } };
