@@ -1337,7 +1337,21 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           else if (outputMode === "count") args.push("-c");
           if (fileGlob) args.push("--glob", fileGlob);
           args.push(pattern);
-          const { stdout } = await execFileAsync("rg", args, { cwd, maxBuffer: 1024 * 1024 }).catch(() => ({ stdout: "" }));
+          let stdout = "";
+          try {
+            const result = await execFileAsync("rg", args, { cwd, maxBuffer: 1024 * 1024, timeout: 30000 });
+            stdout = result.stdout;
+          } catch (execError: unknown) {
+            const err = execError as { code?: string; killed?: boolean; signal?: string; stderr?: string };
+            if (err.code === "ENOENT") {
+              return { ok: false, renderer: definition.renderer, error: "rg-not-found", summary: "ripgrep (rg) 未安装或不在 PATH 中。请安装 ripgrep。" };
+            }
+            if (err.killed || err.signal === "SIGTERM") {
+              return { ok: false, renderer: definition.renderer, error: "grep-timeout", summary: `Grep 搜索超时（30s）。目录可能过大或路径不存在：${cwd}` };
+            }
+            // rg exit code 1 = no matches (normal), other codes = real error
+            stdout = "";
+          }
           const lines = stdout.trim().split("\n").filter(Boolean);
           const GREP_MAX = 50;
           const total = lines.length;
