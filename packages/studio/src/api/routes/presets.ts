@@ -127,6 +127,72 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // Style Profile (文风仿写)
+  // -------------------------------------------------------------------------
+
+  app.post("/api/books/:id/style-profile", async (c) => {
+    const bookId = c.req.param("id");
+    const body = await c.req.json<{ content: string; name?: string }>();
+
+    if (typeof body.content !== "string" || !body.content.trim()) {
+      return c.json({ error: "content (范文文本) is required" }, 400);
+    }
+
+    // Extract style features from reference text
+    const text = body.content;
+    const sentences = text.split(/[。！？\n]+/).filter(s => s.trim().length > 0);
+    const sentenceLengths = sentences.map(s => s.trim().length);
+    const avgSentenceLength = sentenceLengths.length > 0 ? Math.round(sentenceLengths.reduce((a, b) => a + b, 0) / sentenceLengths.length) : 0;
+    const sentenceLengthVariance = sentenceLengths.length > 1
+      ? Math.round(sentenceLengths.reduce((sum, l) => sum + (l - avgSentenceLength) ** 2, 0) / sentenceLengths.length)
+      : 0;
+
+    // Dialogue ratio
+    const dialogueLines = text.split("\n").filter(l => l.includes("\u201c") || l.includes("\u201d") || l.includes("\u300c")).length;
+    const totalLines = text.split("\n").filter(l => l.trim()).length;
+    const dialogueRatio = totalLines > 0 ? Math.round(dialogueLines / totalLines * 100) : 0;
+
+    // Common patterns
+    const shortSentenceRatio = sentenceLengths.filter(l => l < 10).length / Math.max(sentenceLengths.length, 1);
+    const longSentenceRatio = sentenceLengths.filter(l => l > 30).length / Math.max(sentenceLengths.length, 1);
+
+    const profile = {
+      name: body.name ?? "范文风格",
+      extractedAt: new Date().toISOString(),
+      stats: {
+        totalChars: text.length,
+        sentenceCount: sentences.length,
+        avgSentenceLength,
+        sentenceLengthVariance,
+        dialogueRatio,
+        shortSentenceRatio: Math.round(shortSentenceRatio * 100),
+        longSentenceRatio: Math.round(longSentenceRatio * 100),
+      },
+      promptInjection: `文风约束（基于范文提取）：平均句长 ${avgSentenceLength} 字，句长方差 ${sentenceLengthVariance}，对话比例 ${dialogueRatio}%，短句占比 ${Math.round(shortSentenceRatio * 100)}%。请模仿此节奏和密度。`,
+    };
+
+    try {
+      const book = await state.loadBookConfig(bookId);
+      const updated = { ...book, styleProfile: profile, updatedAt: new Date().toISOString() };
+      await state.saveBookConfig(bookId, updated);
+      return c.json({ ok: true, profile });
+    } catch {
+      return c.json({ error: `Book "${bookId}" not found` }, 404);
+    }
+  });
+
+  app.get("/api/books/:id/style-profile", async (c) => {
+    const bookId = c.req.param("id");
+    try {
+      const book = await state.loadBookConfig(bookId);
+      const profile = (book as Record<string, unknown>).styleProfile ?? null;
+      return c.json({ profile });
+    } catch {
+      return c.json({ error: `Book "${bookId}" not found` }, 404);
+    }
+  });
+
   app.post("/api/books/:id/presets/:presetId/customize", async (c) => {
     const bookId = c.req.param("id");
     const presetId = c.req.param("presetId");

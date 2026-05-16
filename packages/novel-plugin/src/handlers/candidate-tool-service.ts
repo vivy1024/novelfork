@@ -263,6 +263,20 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
       // jingwei context unavailable — continue without it
     }
 
+    // --- Style profile injection (文风仿写) ---
+    let styleSection = "";
+    try {
+      const res = await fetch(`http://localhost:4567/api/books/${encodeURIComponent(bookId)}/style-profile`);
+      if (res.ok) {
+        const data = await res.json() as { profile?: { promptInjection?: string } };
+        if (data.profile?.promptInjection) {
+          styleSection = "\n\n" + data.profile.promptInjection;
+        }
+      }
+    } catch {
+      // style profile unavailable — continue without it
+    }
+
     // --- Preset reflection: ask summary model for additional presets ---
     if (root) {
       const reflectionResult = await runPresetReflection(runtimeService, sessionConfig, bookId, root, chapterNumber, promptPreview);
@@ -276,7 +290,7 @@ function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string
     const generated = await runtimeService.generate({
       sessionConfig,
       messages: [
-        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}${jingweiSection}`, timestamp: 0 },
+        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}${jingweiSection}${styleSection}`, timestamp: 0 },
         { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
       ],
       ...(streamCallback ? { onStreamChunk: streamCallback } : {}),

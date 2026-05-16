@@ -716,11 +716,24 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           if (!result.success) return { ok: false, renderer: definition.renderer, error: "llm-failed", summary: `LLM \u8c03\u7528\u5931\u8d25\uff1a${result.error}` };
 
           const rewrittenText = result.type === "message" ? result.content : "";
+
+          // For reduce_ai mode: auto-detect AI taste before/after and return comparison
+          let aiTasteComparison: { before: { count: number; markers: string[] }; after: { count: number; markers: string[] } } | undefined;
+          if (mode === "reduce_ai" && rewrittenText) {
+            const AI_MARKERS = ["\u503c\u5f97\u6ce8\u610f\u7684\u662f", "\u9700\u8981\u6307\u51fa", "\u603b\u800c\u8a00\u4e4b", "\u4e0d\u7981", "\u7f13\u7f13", "\u5fae\u5fae", "\u6de1\u6de1", "\u5634\u89d2\u5fae\u626c", "\u773c\u4e2d\u95ea\u8fc7", "\u5fc3\u4e2d\u6697\u9053", "\u6df1\u5438\u4e00\u53e3\u6c14", "\u4e0d\u7531\u5f97"];
+            const beforeMarkers = AI_MARKERS.filter(m => selectedText.includes(m));
+            const afterMarkers = AI_MARKERS.filter(m => rewrittenText.includes(m));
+            aiTasteComparison = {
+              before: { count: beforeMarkers.length, markers: beforeMarkers },
+              after: { count: afterMarkers.length, markers: afterMarkers },
+            };
+          }
+
           return {
             ok: true,
             renderer: "tool.rewrite-segment",
-            summary: `\u5df2${mode === "continue" ? "\u7eed\u5199" : mode === "expand" ? "\u6269\u5199" : mode === "reduce_ai" ? "\u53bbAI\u5473\u6539\u5199" : "\u98ce\u683c\u6539\u5199"}\u9009\u6bb5\uff08${selectedLines.length} \u884c\uff09`,
-            data: { mode, originalText: selectedText, rewrittenText, lineRange: { start: selection.start, end: selection.end } },
+            summary: `\u5df2${mode === "continue" ? "\u7eed\u5199" : mode === "expand" ? "\u6269\u5199" : mode === "reduce_ai" ? "\u53bbAI\u5473\u6539\u5199" : "\u98ce\u683c\u6539\u5199"}\u9009\u6bb5\uff08${selectedLines.length} \u884c\uff09${aiTasteComparison ? ` AI\u5473: ${aiTasteComparison.before.count}\u2192${aiTasteComparison.after.count}` : ""}`,
+            data: { mode, originalText: selectedText, rewrittenText, lineRange: { start: selection.start, end: selection.end }, ...(aiTasteComparison ? { aiTasteComparison } : {}) },
           };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "rewrite-failed", summary: `\u6539\u5199\u5931\u8d25\uff1a${error instanceof Error ? error.message : String(error)}` };
