@@ -351,7 +351,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                 创建时就决定本会话能否读资料、改正文、运行 Shell 或进入 Worktree；后续仍可在会话详情中调整。
               </p>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2">
               {SESSION_PERMISSION_MODE_OPTIONS.map((option) => {
                 const active = option.value === permissionMode;
                 return (
@@ -363,7 +363,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                       setPermissionMode(option.value);
                       setPermissionTouched(true);
                     }}
-                    className={`h-auto rounded-xl border px-3 py-3 text-left justify-start items-start ${
+                    className={`h-auto rounded-xl border px-3 py-2 text-left justify-start items-start ${
                       active
                         ? "border-primary bg-primary/5 shadow-sm"
                         : "border-border bg-card hover:border-primary/40 hover:bg-muted/40"
@@ -376,8 +376,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                           {option.shortLabel}
                         </span>
                       </div>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{option.description}</p>
-                      <p className="mt-1 text-[10px] leading-4 text-muted-foreground">适合：{option.bestFor}</p>
+                      <p className="mt-0.5 text-xs leading-4 text-muted-foreground">{option.description}</p>
                     </div>
                   </Button>
                 );
