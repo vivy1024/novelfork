@@ -298,8 +298,9 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
 // ToolCallCard — 对标 NarraFork 风格，使用 shadcn 组件
 // ---------------------------------------------------------------------------
 
-export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onOpenArtifact?: unknown }) {
+export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: ConversationToolCall; onOpenArtifact?: unknown; forceCollapsed?: boolean }) {
   const [expanded, setExpanded] = useState(false);
+  const effectiveExpanded = expanded && !forceCollapsed;
   const [longRunning, setLongRunning] = useState(false);
   const category = getToolCategory(toolCall.toolName);
   const colors = CATEGORY_COLORS[category];
@@ -395,13 +396,13 @@ export function ToolCallCard({ toolCall }: { toolCall: ConversationToolCall; onO
         </span>
 
         {/* 展开箭头 */}
-        {expanded
+        {effectiveExpanded
           ? <ChevronDown className="size-3 text-muted-foreground shrink-0" />
           : <ChevronRight className="size-3 text-muted-foreground shrink-0" />}
       </button>
 
       {/* 展开内容 */}
-      {expanded && (
+      {effectiveExpanded && (
         <ToolCallExpanded toolCall={toolCall} category={category} />
       )}
     </div>
