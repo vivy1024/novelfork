@@ -165,3 +165,47 @@ export async function executeSlashCommandInput(input: string, context: SlashComm
   });
   return { ...execution.result, runtimeEvents: execution.events } as SlashCommandExecutionResult;
 }
+
+/**
+ * 将套路系统中的用户自定义命令转换为 SlashCommandDefinition 并合并到 registry。
+ * 用户自定义命令执行时展开 prompt 模板作为普通消息发送。
+ */
+export interface UserCommand {
+  id: string;
+  name: string;
+  description: string;
+  prompt: string;
+  enabled: boolean;
+}
+
+export function mergeUserCommandsIntoRegistry(
+  baseRegistry: SlashCommandRegistry,
+  userCommands: UserCommand[],
+): SlashCommandRegistry {
+  const userDefs = userCommands
+    .filter(cmd => cmd.enabled && cmd.name.trim())
+    .map(cmd => ({
+      id: `/${cmd.name}`,
+      name: cmd.name,
+      aliases: [] as readonly string[],
+      title: cmd.name,
+      usage: `/${cmd.name} [参数]`,
+      description: cmd.description || `用户自定义命令: ${cmd.name}`,
+      scope: "session" as const,
+      inputSchema: { type: "object" as const },
+      permissionImpact: { mode: "none" as const, requiresConfirmation: false, description: "用户自定义命令" },
+      runtimeHandler: "user-command",
+      status: "current" as const,
+      source: "builtin" as const,
+      handler: "user-command",
+    } as SlashCommandDefinition & { handler: string }));
+  return { commands: [...baseRegistry.commands, ...userDefs] };
+}
+
+/**
+ * 展开用户自定义命令的 prompt 模板。
+ * 支持 {{input}} 占位符替换为用户输入的参数。
+ */
+export function expandUserCommandPrompt(prompt: string, args: string): string {
+  return prompt.replace(/\{\{input\}\}/g, args).replace(/\{\{args\}\}/g, args);
+}
