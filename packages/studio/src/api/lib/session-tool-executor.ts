@@ -1332,25 +1332,31 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `搜索路径 "${searchPath}" 超出工作目录边界。添加到目录白名单后可访问。` };
             }
           }
-          const args = ["--no-heading", "--color=never"];
+          const args = ["--no-heading", "--color=never", "--max-columns", "500", "--no-ignore-vcs"];
           if (outputMode === "files_with_matches") args.push("-l");
           else if (outputMode === "count") args.push("-c");
           if (fileGlob) args.push("--glob", fileGlob);
-          args.push(pattern);
+          args.push("--", pattern);
+          console.log(`[Grep-debug] cwd=${cwd} pattern=${pattern} args=${JSON.stringify(args)}`);
           let stdout = "";
           try {
-            const result = await execFileAsync("rg", args, { cwd, maxBuffer: 1024 * 1024, timeout: 30000 });
+            const result = await execFileAsync("rg", args, { cwd, maxBuffer: 20_000_000, timeout: 20000, windowsHide: true });
             stdout = result.stdout;
           } catch (execError: unknown) {
-            const err = execError as { code?: string; killed?: boolean; signal?: string; stderr?: string };
+            const err = execError as { code?: string; killed?: boolean; signal?: string; stderr?: string; stdout?: string };
             if (err.code === "ENOENT") {
               return { ok: false, renderer: definition.renderer, error: "rg-not-found", summary: "ripgrep (rg) 未安装或不在 PATH 中。请安装 ripgrep。" };
             }
             if (err.killed || err.signal === "SIGTERM") {
-              return { ok: false, renderer: definition.renderer, error: "grep-timeout", summary: `Grep 搜索超时（30s）。目录可能过大或路径不存在：${cwd}` };
+              // 超时但可能有部分结果
+              if (err.stdout?.trim()) {
+                stdout = err.stdout;
+              } else {
+                return { ok: false, renderer: definition.renderer, error: "grep-timeout", summary: `Grep 搜索超时（20s）。目录可能过大或路径不存在：${cwd}` };
+              }
             }
-            // rg exit code 1 = no matches (normal), other codes = real error
-            stdout = "";
+            // rg exit code 1 = no matches (normal), 2 = partial error
+            if (!stdout && err.stdout) stdout = err.stdout;
           }
           const lines = stdout.trim().split("\n").filter(Boolean);
           const GREP_MAX = 50;
