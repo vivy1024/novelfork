@@ -247,7 +247,8 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
     modelId: snapshot.session.sessionConfig.modelId,
   };
   const llmSummary = await generateLlmSummary(compactedMessages, model.providerId, model.modelId, input.instructions);
-  const summary = llmSummary ?? buildSummary(compactedMessages, compactedItems, input.instructions);
+  if (!llmSummary) return compactFailed();
+  const summary = llmSummary;
   const budget = {
     estimatedTokensBefore: estimateTokens(sourceMessages),
     estimatedTokensAfter: estimateTokens([buildSummaryMessage({ sessionId: input.sessionId, summary, compactedAt, compactedMessageCount: compactedMessages.length, sourceRange, preservedRange, model, budget: { estimatedTokensBefore: 1, estimatedTokensAfter: 1, maxRecentMessages: preserveRecentMessages, preservedMessages: preservedMessages.length }, runtimeTranscriptSummary, instructions: input.instructions }), ...preservedMessages]),
