@@ -488,7 +488,10 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
     case "guided.exit":
       return async ({ input, confirmationDecision }) => (await resolveGuidedService(options)).exit(input, confirmationDecision);
     case "candidate.create_chapter":
-      return async ({ input, sessionConfig }) => (await resolveCandidateService(options)).createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}) });
+      return async ({ input, sessionConfig, onToolOutputStream }) => {
+        const service = await resolveCandidateService(options);
+        return service.createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}), _onStreamChunk: onToolOutputStream });
+      };
     case "narrative.read_line":
       return async ({ input, definition }) => {
         const service = resolveNarrativeService(options);
