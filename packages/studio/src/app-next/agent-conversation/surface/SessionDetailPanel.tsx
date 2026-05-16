@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import type { ConversationStatus } from "./ConversationStatusBar";
 import type { ConversationSurfaceMessage } from "./MessageStream";
 
@@ -101,11 +102,13 @@ export interface SessionDetailPanelProps {
   status: ConversationStatus;
   messages: readonly ConversationSurfaceMessage[];
   detail?: SessionDetailData;
+  modelOptions?: Array<{ value: string; label: string }>;
+  availableTools?: Array<{ name: string; description?: string }>;
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
   onUpdateTraits?: (traits: string) => Promise<void> | void;
   onUpdateDisabledTools?: (tools: string[]) => Promise<void> | void;
   onUpdateSessionConfig?: (patch: Record<string, unknown>) => Promise<void> | void;
-  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[]; commandAllowlist?: string[]; commandBlocklist?: string[] }) => Promise<void> | void;
   onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
 }
 
@@ -271,6 +274,8 @@ export function SessionDetailPanel({
   status,
   messages,
   detail,
+  modelOptions,
+  availableTools,
   onUpdateWorkDir,
   onUpdateTraits,
   onUpdateDisabledTools,
@@ -280,12 +285,14 @@ export function SessionDetailPanel({
 }: SessionDetailPanelProps) {
   const [traits, setTraits] = useState(detail?.customTraits ?? "");
   const [traitsDirty, setTraitsDirty] = useState(false);
-  const [disabledToolsText, setDisabledToolsText] = useState((detail?.disabledTools ?? []).join("\n"));
+  const [disabledToolsSet, setDisabledToolsSet] = useState<Set<string>>(new Set(detail?.disabledTools ?? []));
   const [disabledToolsDirty, setDisabledToolsDirty] = useState(false);
   const [autoApprovePlan, setAutoApprovePlan] = useState<"inherit" | "on" | "off">("inherit");
   const [dangerReflection, setDangerReflection] = useState<"inherit" | "on" | "off">("inherit");
   const [newAllowDir, setNewAllowDir] = useState("");
   const [newDenyDir, setNewDenyDir] = useState("");
+  const [newAllowCmd, setNewAllowCmd] = useState("");
+  const [newDenyCmd, setNewDenyCmd] = useState("");
 
   const messageCount = detail?.stats?.messageCount ?? messages.length;
   const narratorState = status.narratorState ?? "idle";
@@ -424,19 +431,22 @@ export function SessionDetailPanel({
           {(["Explore", "Plan", "General"] as const).map((pool) => {
             const key = pool.toLowerCase() as "explore" | "plan" | "general";
             const currentValue = detail?.subagentModels?.[key] ?? "";
+            const selectOptions = [
+              { value: "", label: "清除" },
+              ...(modelOptions ?? []),
+            ];
             return (
               <div key={pool}>
                 <label className="text-[11px] font-medium">{pool}</label>
-                <Input
-                  placeholder="providerId:modelId"
-                  className="mt-1 text-xs font-mono"
-                  defaultValue={currentValue}
-                  onBlur={(e) => {
-                    const val = e.target.value.trim();
-                    if (val !== currentValue) {
-                      onUpdateSubagentModels?.({ [key]: val });
-                    }
+                <SimpleSelect
+                  value={currentValue}
+                  onValueChange={(val) => {
+                    onUpdateSubagentModels?.({ [key]: val });
                   }}
+                  options={selectOptions}
+                  placeholder="选择模型..."
+                  className="mt-1 text-xs font-mono"
+                  aria-label={`${pool} 模型选择`}
                 />
               </div>
             );
@@ -449,18 +459,46 @@ export function SessionDetailPanel({
         <p className="text-[10px] text-muted-foreground">
           被选中的工具不会提供给模型；即使模型尝试调用，也会在执行前被拒绝。
         </p>
-        <Textarea
-          placeholder="每行一个工具名..."
-          value={disabledToolsText}
-          onChange={(e) => { setDisabledToolsText(e.target.value); setDisabledToolsDirty(true); }}
-          className="min-h-[60px] text-xs font-mono"
-        />
+        <div className="max-h-[200px] overflow-y-auto border border-border rounded-md p-2 space-y-1">
+          {(availableTools ?? []).length > 0 ? (
+            availableTools!.map((tool) => {
+              const isDisabled = disabledToolsSet.has(tool.name);
+              return (
+                <label key={tool.name} className="flex items-start gap-2 py-0.5 cursor-pointer hover:bg-muted/50 rounded px-1">
+                  <input
+                    type="checkbox"
+                    checked={isDisabled}
+                    onChange={(e) => {
+                      const next = new Set(disabledToolsSet);
+                      if (e.target.checked) {
+                        next.add(tool.name);
+                      } else {
+                        next.delete(tool.name);
+                      }
+                      setDisabledToolsSet(next);
+                      setDisabledToolsDirty(true);
+                    }}
+                    className="mt-0.5 shrink-0"
+                  />
+                  <span className="text-xs">
+                    <span className="font-mono">{tool.name}</span>
+                    {tool.description && (
+                      <span className="text-muted-foreground ml-1">— {tool.description}</span>
+                    )}
+                  </span>
+                </label>
+              );
+            })
+          ) : (
+            <p className="text-[10px] text-muted-foreground">无可用工具列表</p>
+          )}
+        </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
             size="xs"
             disabled={!disabledToolsDirty}
-            onClick={() => { setDisabledToolsText((detail?.disabledTools ?? []).join("\n")); setDisabledToolsDirty(false); }}
+            onClick={() => { setDisabledToolsSet(new Set(detail?.disabledTools ?? [])); setDisabledToolsDirty(false); }}
           >
             重置
           </Button>
@@ -468,8 +506,7 @@ export function SessionDetailPanel({
             size="xs"
             disabled={!disabledToolsDirty}
             onClick={() => {
-              const tools = disabledToolsText.split("\n").map(s => s.trim()).filter(Boolean);
-              onUpdateDisabledTools?.(tools);
+              onUpdateDisabledTools?.([...disabledToolsSet]);
               setDisabledToolsDirty(false);
             }}
           >
@@ -618,12 +655,45 @@ export function SessionDetailPanel({
             {detail?.accessRules?.allowCommands?.length ? (
               <ul className="mt-1 space-y-0.5">
                 {detail.accessRules.allowCommands.map((cmd) => (
-                  <li key={cmd} className="text-[11px] font-mono">{cmd}</li>
+                  <li key={cmd} className="flex items-center justify-between text-[11px]">
+                    <code className="font-mono truncate">{cmd}</code>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => {
+                        const remaining = (detail.accessRules?.allowCommands ?? []).filter(c => c !== cmd);
+                        onUpdateAccessRules?.({ commandAllowlist: remaining });
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </li>
                 ))}
               </ul>
             ) : (
               <p className="text-[10px] text-muted-foreground mt-0.5">无规则</p>
             )}
+            <div className="flex gap-1 mt-1">
+              <Input
+                placeholder="添加命令白名单..."
+                value={newAllowCmd}
+                onChange={(e) => setNewAllowCmd(e.target.value)}
+                className="text-xs h-6 font-mono"
+              />
+              <Button
+                size="xs"
+                className="h-6 shrink-0"
+                disabled={!newAllowCmd.trim()}
+                onClick={() => {
+                  const current = detail?.accessRules?.allowCommands ?? [];
+                  onUpdateAccessRules?.({ commandAllowlist: [...current, newAllowCmd.trim()] });
+                  setNewAllowCmd("");
+                }}
+              >
+                添加
+              </Button>
+            </div>
           </div>
 
           <div>
@@ -633,12 +703,45 @@ export function SessionDetailPanel({
             {detail?.accessRules?.denyCommands?.length ? (
               <ul className="mt-1 space-y-0.5">
                 {detail.accessRules.denyCommands.map((cmd) => (
-                  <li key={cmd} className="text-[11px] font-mono">{cmd}</li>
+                  <li key={cmd} className="flex items-center justify-between text-[11px]">
+                    <code className="font-mono truncate">{cmd}</code>
+                    <Button
+                      variant="ghost"
+                      size="xs"
+                      className="h-4 w-4 p-0 text-muted-foreground hover:text-destructive shrink-0"
+                      onClick={() => {
+                        const remaining = (detail.accessRules?.denyCommands ?? []).filter(c => c !== cmd);
+                        onUpdateAccessRules?.({ commandBlocklist: remaining });
+                      }}
+                    >
+                      ×
+                    </Button>
+                  </li>
                 ))}
               </ul>
             ) : (
               <p className="text-[10px] text-muted-foreground mt-0.5">无规则</p>
             )}
+            <div className="flex gap-1 mt-1">
+              <Input
+                placeholder="添加命令黑名单..."
+                value={newDenyCmd}
+                onChange={(e) => setNewDenyCmd(e.target.value)}
+                className="text-xs h-6 font-mono"
+              />
+              <Button
+                size="xs"
+                className="h-6 shrink-0"
+                disabled={!newDenyCmd.trim()}
+                onClick={() => {
+                  const current = detail?.accessRules?.denyCommands ?? [];
+                  onUpdateAccessRules?.({ commandBlocklist: [...current, newDenyCmd.trim()] });
+                  setNewDenyCmd("");
+                }}
+              >
+                添加
+              </Button>
+            </div>
           </div>
         </div>
       </SectionCard>

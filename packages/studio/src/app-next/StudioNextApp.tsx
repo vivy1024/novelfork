@@ -504,6 +504,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const resourceClient = useMemo(() => createResourceClient(contractClient), [contractClient]);
   const sessionClient = useMemo(() => createSessionClient(contractClient), [contractClient]);
   const [modelOptions, setModelOptions] = useState<NonNullable<ConversationRouteStatus["modelOptions"]>>([]);
+  const [availableTools, setAvailableTools] = useState<Array<{ name: string; description?: string }>>([]);
   const [modelPoolLoading, setModelPoolLoading] = useState(true);
   const [modelPoolError, setModelPoolError] = useState<string | null>(null);
   const [pendingConfirmations, setPendingConfirmations] = useState<readonly ToolConfirmationRequest[]>([]);
@@ -582,6 +583,17 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       active = false;
     };
   }, [providerClient]);
+
+  // Fetch available tools for SessionDetailPanel checkbox list
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/tools/list").then((r) => r.ok ? r.json() : null).then((data) => {
+      if (!active || !data) return;
+      const tools = (data.tools ?? []) as Array<{ name: string; description?: string }>;
+      setAvailableTools(tools.map((t) => ({ name: t.name, description: t.description })));
+    }).catch(() => { /* ignore */ });
+    return () => { active = false; };
+  }, []);
 
   // Load user runtime config for context thresholds and auto-compact
   useEffect(() => {
@@ -679,11 +691,13 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   }, []);
 
   // Callback: update access rules via PUT /api/settings
-  const handleUpdateAccessRules = useCallback(async (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => {
+  const handleUpdateAccessRules = useCallback(async (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[]; commandAllowlist?: string[]; commandBlocklist?: string[] }) => {
     const body: Record<string, unknown> = { runtimeControls: { toolAccess: {} } };
     const toolAccess = (body.runtimeControls as Record<string, unknown>).toolAccess as Record<string, unknown>;
     if (patch.directoryAllowlist !== undefined) toolAccess.directoryAllowlist = patch.directoryAllowlist;
     if (patch.directoryBlocklist !== undefined) toolAccess.directoryBlocklist = patch.directoryBlocklist;
+    if (patch.commandAllowlist !== undefined) toolAccess.commandAllowlist = patch.commandAllowlist;
+    if (patch.commandBlocklist !== undefined) toolAccess.commandBlocklist = patch.commandBlocklist;
     const resp = await fetch("/api/settings", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
@@ -924,6 +938,8 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onUpdateSessionConfigFromDetail={handleUpdateSessionConfigFromDetail}
       onUpdateAccessRules={handleUpdateAccessRules}
       onUpdateSubagentModels={handleUpdateSubagentModels}
+      modelOptions={modelOptions.map((m) => ({ value: `${m.providerId}:${m.modelId}`, label: `${m.providerLabel ?? m.providerId}:${m.modelLabel ?? m.modelId}` }))}
+      availableTools={availableTools}
       onPin={async () => {
         const current = runtime.state.session?.pinned ?? false;
         const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { pinned: !current });
