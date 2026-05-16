@@ -333,10 +333,8 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
           {message.thinking?.map((block, i) => (
             <ThinkingBlock key={`thinking-${i}`} block={block} />
           ))}
-          <div className={codeCollapsed ? "[&_pre]:hidden [&_.code-block]:hidden" : ""}>
-            {renderedContent}
-          </div>
-          {renderedToolCalls}
+          {renderedContent}
+          {!codeCollapsed && renderedToolCalls}
           {/* Token 用量（metadata.usage 存在时显示） */}
           {!!message.metadata?.usage && (
             <div className="mt-1 text-[10px] text-muted-foreground/60">
