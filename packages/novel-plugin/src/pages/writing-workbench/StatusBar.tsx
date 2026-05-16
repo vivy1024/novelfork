@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Music, Activity, Droplets, AlertTriangle } from "lucide-react";
+import { BookOpen, Music, Activity, Droplets, AlertTriangle, Settings, Store } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -110,10 +110,12 @@ export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps)
   const alertLabel = health ? `⚠ ${health.alertCount ?? 0}` : "⚠ 0";
 
   const segments: StatusSegment[] = [
+    { id: "preset", panel: "preset", icon: <Settings className="size-3.5" />, label: "预设" },
     { id: "beat", panel: "beat", icon: <Music className="size-3.5" />, label: beatLabel },
     { id: "quality", panel: "quality", icon: <Activity className="size-3.5" />, label: qualityLabel },
     { id: "ai-taste", panel: "quality", icon: <Droplets className="size-3.5" />, label: aiTasteLabel },
     { id: "alert", panel: "alert", icon: <AlertTriangle className="size-3.5" />, label: alertLabel },
+    { id: "template-market", panel: "template-market", icon: <Store className="size-3.5" />, label: "模板" },
   ];
 
   return (
@@ -137,17 +139,6 @@ export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps)
           <span>{seg.label}</span>
         </button>
       ))}
-
-      {/* 预设快捷入口 */}
-      <button
-        onClick={() => onPanelClick("preset")}
-        className={cn(
-          "ml-auto flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors hover:bg-muted hover:text-foreground",
-          activePanel === "preset" && "bg-muted text-foreground font-medium"
-        )}
-      >
-        <span>⚙ 预设</span>
-      </button>
     </div>
   );
 }
