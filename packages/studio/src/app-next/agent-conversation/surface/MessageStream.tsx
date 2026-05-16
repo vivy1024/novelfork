@@ -85,11 +85,13 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   }, [selectedIds, onContextAction, clear]);
 
   const handleFork = useCallback(() => {
+    if (!onContextAction) return;
     const ids = Array.from(selectedIds);
-    console.log("[MessageStream] Fork requested for messages:", ids);
-    // TODO: Implement fork from selected messages
+    if (ids.length > 0) {
+      onContextAction(ids[0]!, "fork");
+    }
     clear();
-  }, [selectedIds, clear]);
+  }, [selectedIds, onContextAction, clear]);
 
   const renderItem = useCallback(
     (message: ConversationSurfaceMessage) => (

@@ -82,6 +82,8 @@ export interface ConversationSurfaceProps {
   onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
   /** 更新访问规则 */
   onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
+  /** 更新 Subagent 模型 */
+  onUpdateSubagentModels?: (patch: { explore?: string; plan?: string; general?: string }) => Promise<void> | void;
   /** 对话面板顶部插槽（工具配置栏、快捷按钮等） */
   headerSlot?: ReactNode;
 }
@@ -121,6 +123,7 @@ export function ConversationSurface({
   onUpdateWorkDir,
   onUpdateSessionConfigFromDetail,
   onUpdateAccessRules,
+  onUpdateSubagentModels,
   headerSlot,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
@@ -455,6 +458,7 @@ export function ConversationSurface({
                   onUpdateWorkDir={onUpdateWorkDir}
                   onUpdateSessionConfig={onUpdateSessionConfigFromDetail}
                   onUpdateAccessRules={onUpdateAccessRules}
+                  onUpdateSubagentModels={onUpdateSubagentModels}
                 />
               </div>
             </SheetContent>
