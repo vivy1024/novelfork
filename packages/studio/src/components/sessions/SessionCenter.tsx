@@ -51,7 +51,6 @@ const BINDING_FILTERS: ReadonlyArray<{ value: SessionCenterBindingFilter; label:
   { value: "all", label: "全部" },
   { value: "standalone", label: "独立会话" },
   { value: "book", label: "书籍绑定" },
-  { value: "chapter", label: "章节绑定" },
 ];
 
 const STATUS_FILTERS: ReadonlyArray<{ value: NarratorSessionStatus; label: string }> = [
@@ -72,7 +71,6 @@ function formatSessionDate(value: string): string {
 }
 
 function sessionBindingLabel(session: NarratorSessionRecord): string {
-  if (session.chapterId) return "章节绑定";
   if (session.projectId) return "书籍绑定";
   return "独立会话";
 }
@@ -297,7 +295,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">会话中心</h2>
-          <p className="text-sm text-muted-foreground">管理独立、书籍绑定和章节绑定的长期 Agent 会话；归档不会删除历史。</p>
+          <p className="text-sm text-muted-foreground">管理独立和书籍绑定的长期 Agent 会话；归档不会删除历史。</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" size="sm" variant="outline" onClick={() => setNewSessionOpen(true)} disabled={lifecycleBusy}>
@@ -409,7 +407,6 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                   <div className="flex flex-wrap gap-2 text-xs">
                     <Badge variant={pendingCount > 0 ? "destructive" : "outline"}>未处理确认 {pendingCount}</Badge>
                     {session.projectId ? <Badge variant="outline">书籍 {session.projectId}</Badge> : null}
-                    {session.chapterId ? <Badge variant="outline">章节 {session.chapterId}</Badge> : null}
                   </div>
                   {lastFailure ? (
                     <p className="text-xs text-destructive">最近失败：{lastFailure.reason} · {lastFailure.message}</p>
