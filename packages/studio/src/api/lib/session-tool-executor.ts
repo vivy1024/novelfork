@@ -60,6 +60,15 @@ interface BackgroundAgentTask {
 }
 const backgroundAgents = new Map<string, BackgroundAgentTask>();
 
+interface BackgroundBashTask {
+  id: string;
+  command: string;
+  promise: Promise<SessionToolExecutionResult>;
+  result?: SessionToolExecutionResult;
+  status: "running" | "completed" | "failed";
+}
+const backgroundTasks = new Map<string, BackgroundBashTask>();
+
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
 };
@@ -1168,6 +1177,14 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         // If explicitly allowed by allowlist, skip further permission checks
         if (listCheck.allowed) {
           const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
+          if (input.run_in_background === true) {
+            const taskId = `bg-${Date.now()}`;
+            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+            const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
+            taskPromise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = { ok: false, error: "bash-failed", summary: String(e) }; task.status = "failed"; });
+            backgroundTasks.set(taskId, task);
+            return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
+          }
           return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
         }
 
@@ -1190,6 +1207,14 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           };
         }
         const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
+        if (input.run_in_background === true) {
+          const taskId = `bg-${Date.now()}`;
+          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+          const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
+          taskPromise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = { ok: false, error: "bash-failed", summary: String(e) }; task.status = "failed"; });
+          backgroundTasks.set(taskId, task);
+          return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
+        }
         return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
       };
     case "Read":
@@ -2243,6 +2268,32 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
       return async ({ input, definition }) => {
         const id = typeof input.id === "string" ? input.id : "";
         if (!id) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 不能为空。" };
+        const awaitType = typeof input.type === "string" ? input.type : "agent";
+
+        // Handle bash background tasks
+        if (awaitType === "bash") {
+          const bashTask = backgroundTasks.get(id);
+          if (!bashTask) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台 Bash 任务 ${id} 不存在。` };
+          if (bashTask.status === "completed" || bashTask.status === "failed") {
+            const result = bashTask.result;
+            return { ok: bashTask.status === "completed", renderer: definition.renderer, summary: result?.summary ?? "无结果", data: { id, status: bashTask.status, result } };
+          }
+          const timeout = typeof input.timeout === "number" ? input.timeout : 30000;
+          try {
+            const result = await Promise.race([
+              bashTask.promise,
+              new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout)),
+            ]);
+            return { ok: result.ok !== false, renderer: definition.renderer, summary: result.summary ?? "完成", data: { id, status: "completed", result } };
+          } catch (error) {
+            if (error instanceof Error && error.message === "timeout") {
+              return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${id} 仍在运行中（超时 ${timeout}ms）。`, data: { id, status: "running" } };
+            }
+            return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
+          }
+        }
+
+        // Handle agent background tasks
         const task = backgroundAgents.get(id);
         if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台任务 ${id} 不存在。` };
         if (task.status === "completed" || task.status === "failed") {
