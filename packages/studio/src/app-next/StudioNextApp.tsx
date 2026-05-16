@@ -636,31 +636,10 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   }, [runtime.state.lastSeq, runtime.state.session, sessionClient, sessionId]);
 
 
-  // Auto-compact: trigger when context usage exceeds threshold
-  // 注意：只在 session recovery 完成后触发，且不阻塞后续操作
-  const autoCompactTriggeredRef = useRef(false);
-  const sessionRecoveredRef = useRef(false);
-  useEffect(() => {
-    // 标记 session 已恢复（首次收到 messages 时）
-    if (runtime.state.messages.length > 0) sessionRecoveredRef.current = true;
-  }, [runtime.state.messages.length]);
-  useEffect(() => {
-    if (!autoCompactEnabled || !sessionRecoveredRef.current) return;
-    const cu = status.contextUsage;
-    if (!cu || !cu.maxTokens || !cu.compactThreshold) return;
-
-    if (cu.usedTokens > cu.compactThreshold) {
-      if (!autoCompactTriggeredRef.current) {
-        autoCompactTriggeredRef.current = true;
-        sessionClient.compactSession(sessionId, { instructions: "自动压缩：上下文使用超过阈值" })
-          .then(() => { console.log("[auto-compact] completed"); })
-          .catch((e) => { console.error("[auto-compact] failed:", e); });
-      }
-    } else {
-      // Reset when usage drops below threshold (after compact completes)
-      autoCompactTriggeredRef.current = false;
-    }
-  }, [autoCompactEnabled, status.contextUsage, sessionClient, sessionId]);
+  // Auto-compact 已在后端 maybeAutoCompact（agent turn 前）处理，
+  // 前端不再通过 useEffect 发 HTTP 请求触发自动压缩。
+  // 这避免了：1) React 重渲染导致重复触发 2) HTTP 请求阻塞后续操作
+  // 手动压缩仍通过 Context Ring 按钮 → compactSessionForCommand → POST /compact 触发。
 
   // Fetch runtime settings for SessionDetailPanel (runtimeConfig + accessRules)
   const [runtimeSettings, setRuntimeSettings] = useState<{
@@ -839,17 +818,10 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   }, [runtime, sessionClient, sessionId, shellDataStore]);
 
   const compactSessionForCommand = useCallback(async (instructions?: string): Promise<SessionCompactCommandPayload> => {
-    console.log("[compactSessionForCommand] calling API, sessionId:", sessionId, "instructions:", instructions);
-    try {
-      const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
-      console.log("[compactSessionForCommand] API result:", result.ok, result);
-      if (!result.ok || !result.data?.ok) throw new Error(contractErrorMessage(result, "上下文压缩失败"));
-      await refreshSnapshot();
-      return result.data;
-    } catch (e) {
-      console.error("[compactSessionForCommand] error:", e);
-      throw e;
-    }
+    const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
+    if (!result.ok || !result.data?.ok) throw new Error(contractErrorMessage(result, "上下文压缩失败"));
+    await refreshSnapshot();
+    return result.data;
   }, [refreshSnapshot, sessionClient, sessionId]);
 
   // Novel-specific header slot: ToolConfigBar + AgentQuickActions

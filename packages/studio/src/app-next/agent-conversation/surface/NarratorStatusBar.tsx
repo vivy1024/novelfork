@@ -733,7 +733,7 @@ function ContextRingMenu({
         <DropdownMenuSeparator />
 
         {/* 操作按钮 */}
-        <DropdownMenuItem onClick={() => { console.log("[ContextRing] compact clicked, onCompact:", typeof onCompact); onCompact?.(); }} disabled={!onCompact} className="gap-2">
+        <DropdownMenuItem onClick={() => onCompact?.()} disabled={!onCompact} className="gap-2">
           <span className="text-xs">※</span>
           <span>立即压缩</span>
         </DropdownMenuItem>
