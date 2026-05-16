@@ -443,7 +443,7 @@ function ModelList({
           <DialogHeader>
             <DialogTitle>测试模型</DialogTitle>
             <DialogDescription>
-              模型：<code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{provider.id}:{testingModel?.id}</code>
+              模型：<code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{provider.prefix || provider.name}:{testingModel?.id}</code>
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
