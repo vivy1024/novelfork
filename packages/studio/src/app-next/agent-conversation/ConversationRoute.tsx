@@ -55,6 +55,10 @@ export interface ConversationRouteProps {
   onForkSession?: (title?: string) => void;
   /** 更新工作目录 */
   onUpdateWorkDir?: (path: string) => Promise<void> | void;
+  /** 更新会话配置（来自 SessionDetailPanel） */
+  onUpdateSessionConfigFromDetail?: (patch: Record<string, unknown>) => Promise<void> | void;
+  /** 更新访问规则 */
+  onUpdateAccessRules?: (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[] }) => Promise<void> | void;
   /** 固定会话 */
   onPin?: () => void;
   isPinned?: boolean;
@@ -107,6 +111,8 @@ export function ConversationRoute({
   onArchive,
   onForkSession,
   onUpdateWorkDir,
+  onUpdateSessionConfigFromDetail,
+  onUpdateAccessRules,
   onPin,
   isPinned,
   onAttach,
@@ -179,6 +185,8 @@ export function ConversationRoute({
         onArchive={onArchive}
         onForkSession={onForkSession}
         onUpdateWorkDir={onUpdateWorkDir}
+        onUpdateSessionConfigFromDetail={onUpdateSessionConfigFromDetail}
+        onUpdateAccessRules={onUpdateAccessRules}
         onPin={onPin}
         isPinned={isPinned}
         sessionDetail={sessionDetail}
