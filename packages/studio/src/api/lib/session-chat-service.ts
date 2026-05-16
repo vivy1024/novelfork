@@ -1,4 +1,7 @@
 import type { Server as NodeHttpServer } from "node:http";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 import { WebSocketServer, type RawData, type WebSocket as NodeWebSocket } from "ws";
 
@@ -1453,9 +1456,70 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
   });
 }
 
+const PROJECT_RULES_TOKEN_BUDGET = 20000;
+const CHARS_PER_TOKEN = 4;
+const MAX_RULES_CHARS = PROJECT_RULES_TOKEN_BUDGET * CHARS_PER_TOKEN;
+
+function safeReadFile(filePath: string): string | null {
+  try {
+    if (!existsSync(filePath)) return null;
+    const content = readFileSync(filePath, "utf-8").trim();
+    return content || null;
+  } catch {
+    return null;
+  }
+}
+
+function loadProjectRules(workDir: string): string {
+  const sections: string[] = [];
+  let totalChars = 0;
+
+  // 1. User-level global rules: ~/.novelfork/CLAUDE.md
+  const globalRulesPath = join(homedir(), ".novelfork", "CLAUDE.md");
+  const globalContent = safeReadFile(globalRulesPath);
+  if (globalContent) {
+    sections.push(`## 全局规则\n\n${globalContent}`);
+    totalChars += globalContent.length;
+  }
+
+  // 2. Project-level rules: {workDir}/CLAUDE.md
+  const projectRulesPath = join(workDir, "CLAUDE.md");
+  const projectContent = safeReadFile(projectRulesPath);
+  if (projectContent) {
+    sections.push(`## 项目规则\n\n${projectContent}`);
+    totalChars += projectContent.length;
+  }
+
+  // 3. Directory rules: {workDir}/.claude/rules/*.md
+  const rulesDir = join(workDir, ".claude", "rules");
+  if (existsSync(rulesDir)) {
+    try {
+      const files = readdirSync(rulesDir).filter(f => f.endsWith(".md")).sort();
+      for (const file of files) {
+        if (totalChars >= MAX_RULES_CHARS) break;
+        const content = safeReadFile(join(rulesDir, file));
+        if (content) {
+          sections.push(`### ${file}\n\n${content}`);
+          totalChars += content.length;
+        }
+      }
+    } catch { /* directory read failure — skip */ }
+  }
+
+  if (sections.length === 0) return "";
+
+  let combined = sections.join("\n\n");
+  if (combined.length > MAX_RULES_CHARS) {
+    combined = combined.slice(0, MAX_RULES_CHARS) + "\n\n[... 项目规则已截断，超出 20K token 预算]";
+  }
+
+  return combined;
+}
+
 function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext, workDir?: string, projectExplorationContext?: string): string {
   const parts = [
     workDir ? `## 当前工作目录\n\n${workDir}\n\n所有文件操作（Read/Write/Edit/Glob/Grep）的根目录。` : "",
+    workDir ? loadProjectRules(workDir) : "",
     projectExplorationContext?.trim() ?? "",
     bookContext.trim(),
     canvasContext ? formatCanvasContextForPrompt(canvasContext) : "",
