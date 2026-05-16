@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v0.8.2** | 2026-04-19 | 最后更新 2026-05-18 | 始终使用中文回复
+**v0.8.3** | 2026-04-19 | 最后更新 2026-05-18 | 始终使用中文回复
 
 你是 Claude Code。配置以本文件 + `.kiro/steering/README.md` + `.kiro/steering/project-profile.md` 为准。
 
@@ -71,7 +71,7 @@
 | TypeScript | typecheck 通过 |
 | 功能 | 新书引导向导、写作预设面板、AI 味检测、章节健康度、选段写作+变体、日更进度+节拍表、平台合规+导出、角色弧线+文风漂移+模板市场、引导式生成（PGI+Guided Plan）、Agent 编排可见链、写作工具面板、驾驶舱增强（含趋势图/工具handler/对话集成）、Checkpoint/Rewind、学习中心、Onboarding 全部已接入新前端 |
 | 文档 | 用户指南/产品流程/架构设计已重写；学习中心 9 篇；根 README 已重写 |
-| 编译 | `dist/novelfork-v0.8.2-windows-x64.exe`；构建通过 |
+| 编译 | `dist/novelfork-v0.8.3-windows-x64.exe`；构建通过 |
 | 下一步 | 内测分发 + 反馈收集 |
 
 ---
