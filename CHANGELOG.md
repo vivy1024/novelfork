@@ -2,9 +2,61 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v0.8.0 (2026-05-16)
+
+### 🧠 上下文可见性系统（context-visibility-system）
+
+- **三种可见性模型**：global（始终注入）/ tracked（场景文本匹配时注入）/ nested（被关联条目引用时级联注入）
+- **时间线纪律**：visibleAfterChapter / visibleUntilChapter 控制章节窗口
+- **自动链接引擎**：章节保存时扫描文本中的条目标题/别名，自动关联
+- **上下文组装服务**：buildJingweiContext 按 visibility + chapter + sceneText + tokenBudget 过滤
+- **jingwei.read_context 接入新系统**：替换旧文件系统全量读取
+- **candidate.create_chapter 注入经纬**：生成章节时自动组装世界观上下文
+- **条目编辑表单增强**：新增别名、可见起始/截止章节、关联条目字段
+- **ToolConfigBar 接通后端**：toggle 同步到 session toolPolicy.deny
+- **图谱可见性标识**：节点显示 🌐/👁/🔗 图标 + 筛选下拉
+- **批量设置可见性**：多选条目统一设置 visibility
+
+### ✨ Artifact Surfacing（产物实时浮现）
+
+- **candidate.create_chapter 流式输出**：LLM 生成通过 session:tool-stream 实时推送，ToolCallCard 逐行渲染
+- **Write/Edit 工具流式输入**：Agent 生成文件内容时通过 session:tool-input-chunk 实时显示
+- **AI味检测标红高亮**：NovelAuditExpanded 组件，marker 用 `<mark>` 标红 + severity badge
+- **审计工具专用渲染器**：novel-audit 分类（玫红色主题）+ 结构化展示
+
+### 🔧 驾驶舱差距修复
+
+- **StatusBar**：面板映射修复 + alertCount 真实计算 + 节拍实时更新
+- **PresetPanel**：去 mock 数据 + toggle 保存后端
+- **BeatPanel**：接通节拍模板选择/保存 + 选同一模板不重置进度
+- **QualityPanel**：shadcn chart + recharts 趋势图（AI味/文风漂移/质量评分）+ 节奏多样性/人设一致性/伏笔回收率
+- **3 个工具 handler**：presets.get_rules / presets.check_compliance / beat.get_current
+- **对话面板集成**：ToolConfigBar + AgentQuickActions（从 session projectId 获取 bookId）
+
+### 🆕 写作能力增强
+
+- **去 AI 味闭环**：rewrite.segment mode=reduce_ai 改写后自动重新检测 + 前后对比
+- **文风仿写**：POST /api/books/:id/style-profile 上传范文→提取风格→candidate 生成时自动注入
+- **编辑器功能清理**：删除 BubbleMenu 内嵌选段写作，统一走 Agent 对话
+
+### 📦 清理
+
+- 删除 WritingToolsPanel.tsx 及所有引用
+- 修复 PR#1 引入的类型错误（process-adapter Bun FileSink + mcp registerPluginTools）
+
 ---
 
-## v0.7.0 (2026-05-15)
+## v0.7.1 (2026-05-15)
+
+### 对话体验修复
+
+- 图片粘贴/选择后显示缩略图预览
+- 用户/AI 消息视觉隔离
+- 分页加载性能优化
+- 工具卡片从 result 字段读取内容
+- 打开对话时自动滚动到底部
+
+---
 
 ### 🏗️ 驾驶舱重构 — AI 写作质量控制台
 
