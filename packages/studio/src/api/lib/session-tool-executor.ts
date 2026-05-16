@@ -57,6 +57,10 @@ interface BackgroundAgentTask {
   promise: Promise<string>;
   result?: string;
   status: "running" | "completed" | "failed";
+  startedAt: number;
+  subagentType: string;
+  prompt: string;
+  abortController?: AbortController;
 }
 const backgroundAgents = new Map<string, BackgroundAgentTask>();
 
@@ -2220,7 +2224,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       };
     // --- Agent: 子代理执行 ---
     case "Agent":
-      return async ({ input, sessionId, definition, sessionConfig }) => {
+      return async ({ input, sessionId, definition, sessionConfig, signal: parentSignal }) => {
         const prompt = typeof input.prompt === "string" ? input.prompt.trim() : "";
         const description = typeof input.description === "string" ? input.description : "";
         if (!prompt && !description) {
@@ -2236,7 +2240,28 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const { createSession, getSessionById } = await import("./session-service.js");
         const { loadUserConfig } = await import("./user-config-service.js");
 
+        // 创建子代理专用的 AbortController，链接到父级 signal
+        const subAbortController = new AbortController();
+        const subSignal = subAbortController.signal;
+
+        // 父级 abort 时自动 abort 子代理
+        if (parentSignal) {
+          if (parentSignal.aborted) {
+            subAbortController.abort(parentSignal.reason);
+          } else {
+            const propagateAbort = () => subAbortController.abort(parentSignal.reason);
+            parentSignal.addEventListener("abort", propagateAbort, { once: true });
+            // 子代理完成后清理监听器
+            subSignal.addEventListener("abort", () => parentSignal.removeEventListener("abort", propagateAbort), { once: true });
+          }
+        }
+
         const executeSubagent = async (): Promise<string> => {
+          // 检查是否已被中断
+          if (subSignal.aborted) {
+            throw new Error("子代理已被中断。");
+          }
+
           const parentSession = await getSessionById(sessionId);
 
           // --- 根据 subagent_type 选择模型 ---
@@ -2318,6 +2343,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             tools: subTools,
             permissionMode: subSession.sessionConfig.permissionMode,
             maxSteps,
+            signal: subSignal,
             generate: async (generateInput) => {
               const result = await generateSessionReply({
                 sessionConfig: subSession.sessionConfig,
@@ -2330,7 +2356,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             },
             executeTool: async (toolInput) => {
               const executor = createSessionToolExecutor({ workDir });
-              return executor.execute(toolInput);
+              return executor.execute({ ...toolInput, signal: subSignal });
             },
           });
 
@@ -2341,8 +2367,17 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           return assistantMessages.join("\n\n") || "子代理未返回文本结果。";
         };
 
+        // --- Background 模式：立即返回 ---
         if (runInBackground) {
-          const task: BackgroundAgentTask = { id: agentId, promise: executeSubagent(), status: "running" };
+          const task: BackgroundAgentTask = {
+            id: agentId,
+            promise: executeSubagent(),
+            status: "running",
+            startedAt: Date.now(),
+            subagentType,
+            prompt: (prompt || description).slice(0, 100),
+            abortController: subAbortController,
+          };
           task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
           backgroundAgents.set(agentId, task);
           return {
@@ -2353,15 +2388,49 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           };
         }
 
+        // --- Foreground 模式：带自动后台化超时 ---
+        const AUTO_BACKGROUND_MS = 120_000;
+
         try {
-          const result = await executeSubagent();
+          const turnPromise = executeSubagent();
+          const timeoutPromise = new Promise<"timeout">((resolve) =>
+            setTimeout(() => resolve("timeout"), AUTO_BACKGROUND_MS)
+          );
+
+          const raceResult = await Promise.race([turnPromise, timeoutPromise]);
+
+          if (raceResult === "timeout") {
+            // 超时：自动转为后台任务
+            const task: BackgroundAgentTask = {
+              id: agentId,
+              promise: turnPromise,
+              status: "running",
+              startedAt: Date.now() - AUTO_BACKGROUND_MS,
+              subagentType,
+              prompt: (prompt || description).slice(0, 100),
+              abortController: subAbortController,
+            };
+            task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
+            backgroundAgents.set(agentId, task);
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `子代理执行超过 ${AUTO_BACKGROUND_MS / 1000}s，已自动转为后台任务。ID: ${agentId}。使用 Await 工具获取结果。`,
+              data: { agentId, subagentType, status: "auto-backgrounded" },
+            };
+          }
+
+          // 在超时前完成
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: result,
-            data: { agentId, subagentType, result },
+            summary: raceResult,
+            data: { agentId, subagentType, result: raceResult },
           };
         } catch (error) {
+          if (subSignal.aborted) {
+            return { ok: false, renderer: definition.renderer, error: "agent-aborted", summary: "子代理已被中断。" };
+          }
           return { ok: false, renderer: definition.renderer, error: "agent-failed", summary: `子代理执行失败：${error instanceof Error ? error.message : String(error)}` };
         }
       };
@@ -2398,19 +2467,42 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
         // Handle agent background tasks
         const task = backgroundAgents.get(id);
         if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台任务 ${id} 不存在。` };
+
+        // 已完成或已失败：直接返回
         if (task.status === "completed" || task.status === "failed") {
-          return { ok: task.status === "completed", renderer: definition.renderer, summary: task.result ?? "无结果", data: { id, status: task.status, result: task.result } };
+          const elapsed = Date.now() - task.startedAt;
+          return {
+            ok: task.status === "completed",
+            renderer: definition.renderer,
+            summary: task.result ?? "无结果",
+            data: { id, status: task.status, result: task.result, subagentType: task.subagentType, elapsedMs: elapsed },
+          };
         }
+
+        // 仍在运行：等待指定超时
         const timeout = typeof input.timeout === "number" ? input.timeout : 30000;
+        const elapsed = Date.now() - task.startedAt;
+
         try {
           const result = await Promise.race([
             task.promise,
             new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout)),
           ]);
-          return { ok: true, renderer: definition.renderer, summary: String(result), data: { id, status: "completed", result } };
+          const totalElapsed = Date.now() - task.startedAt;
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: String(result),
+            data: { id, status: "completed", result, subagentType: task.subagentType, elapsedMs: totalElapsed },
+          };
         } catch (error) {
           if (error instanceof Error && error.message === "timeout") {
-            return { ok: true, renderer: definition.renderer, summary: `任务 ${id} 仍在运行中（超时 ${timeout}ms）。`, data: { id, status: "running" } };
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `子代理 ${id}（${task.subagentType}）仍在运行中（已运行 ${Math.round(elapsed / 1000)}s，等待超时 ${timeout}ms）。`,
+              data: { id, status: "running", subagentType: task.subagentType, elapsedMs: elapsed, prompt: task.prompt },
+            };
           }
           return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
         }
