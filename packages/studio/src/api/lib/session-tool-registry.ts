@@ -395,6 +395,16 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
   }),
   sessionTool({
+    name: "ToolSearch",
+    description: "搜索可用工具。当你需要使用非核心工具时，先用此工具搜索。返回匹配工具的名称和描述。",
+    inputSchema: objectSchema({
+      query: stringSchema("搜索关键词"),
+    }, ["query"]),
+    risk: "read",
+    renderer: "tool.toolSearch",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
     name: "GetGoals",
     description: "获取当前会话的目标列表，包括活跃/待处理/已暂停目标。",
     inputSchema: objectSchema({}),
@@ -432,6 +442,11 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
 function getSessionToolDefinitions(): readonly SessionToolDefinition[] {
   if (pluginToolDefinitions.length === 0) return BUILTIN_TOOL_DEFINITIONS;
   return [...pluginToolDefinitions, ...BUILTIN_TOOL_DEFINITIONS];
+}
+
+/** 获取合并后的完整工具定义列表（用于 ToolSearch） */
+export function listSessionToolDefinitions(): readonly SessionToolDefinition[] {
+  return getSessionToolDefinitions();
 }
 
 /** 向后兼容：合并后的工具名列表 */

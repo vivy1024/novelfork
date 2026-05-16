@@ -2328,6 +2328,27 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           data: { id, message, status: task.status },
         };
       };
+    // --- ToolSearch: 动态工具搜索 ---
+    case "ToolSearch":
+      return async ({ input, definition }) => {
+        const query = String(input.query ?? "").toLowerCase();
+        if (!query.trim()) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "query 不能为空。" };
+        }
+        const { listSessionToolDefinitions } = await import("./session-tool-registry.js");
+        const allTools = listSessionToolDefinitions();
+        const matches = allTools.filter(t =>
+          t.name.toLowerCase().includes(query) ||
+          (t.description ?? "").toLowerCase().includes(query)
+        );
+        const results = matches.map(t => ({ name: t.name, description: t.description }));
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `找到 ${results.length} 个匹配工具。`,
+          data: { query, results },
+        };
+      };
     default:
       return undefined;
   }
