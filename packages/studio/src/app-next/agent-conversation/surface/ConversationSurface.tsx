@@ -632,8 +632,8 @@ export function ConversationSurface({
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
         onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
-        onCompact={onCompactSession ? () => { console.log("[ConvSurface] onCompact fired, calling onCompactSession"); onCompactSession("压缩上下文到目标阈值").then(() => console.log("[ConvSurface] compact resolved")).catch((e) => { console.error("[ConvSurface] compact error:", e); alert(`压缩失败: ${e instanceof Error ? e.message : "未知错误"}`); }); } : undefined}
-        onReset={onCompactSession ? () => { onCompactSession("reset").catch((e) => { alert(`重置失败: ${e instanceof Error ? e.message : "未知错误"}`); }); } : undefined}
+        onCompact={onCompactSession ? () => { onCompactSession("压缩上下文到目标阈值").catch((e) => { alert(`压缩失败: ${e instanceof Error ? e.message : "未知错误"}`); }); } : undefined}
+        onReset={onCompactSession ? () => { if (window.confirm("确定要清空上下文吗？")) onCompactSession("reset").catch((e) => { alert(`重置失败: ${e instanceof Error ? e.message : "未知错误"}`); }); } : undefined}
         onOpenTerminal={() => setTerminalPanelOpen(true)}
       />
 
