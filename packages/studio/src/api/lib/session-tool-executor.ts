@@ -1208,6 +1208,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         return executeFileReadTool({
           path: filePath,
           workDir,
+          allowOutsideWorkDir: dirCheck.allowed,
           ...(typeof input.offset === "number" ? { offset: input.offset } : {}),
           ...(typeof input.limit === "number" ? { limit: input.limit } : {}),
         });
@@ -1222,12 +1223,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckW.reason ?? "路径在黑名单目录内。" };
         }
         if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckW.allowed) {
-          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。添加到目录白名单后可访问。` };
         }
         // File changes tracking: capture original content before write
         const { captureOriginalContent, trackFileChange } = await import("./file-changes-tracker.js");
         const originalContent = await captureOriginalContent(filePath, workDir);
-        const result = await executeFileWriteTool({ path: filePath, content: String(input.content), workDir });
+        const result = await executeFileWriteTool({ path: filePath, content: String(input.content), workDir, allowOutsideWorkDir: dirCheckW.allowed });
         if (result.ok) {
           trackFileChange(sessionId, {
             path: filePath,
@@ -1254,12 +1255,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckE.reason ?? "路径在黑名单目录内。" };
         }
         if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckE.allowed) {
-          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。` };
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。添加到目录白名单后可访问。` };
         }
         // File changes tracking: capture original content before edit
         const { captureOriginalContent: captureOrigE, trackFileChange: trackE } = await import("./file-changes-tracker.js");
         const originalContentE = await captureOrigE(filePath, workDir);
-        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir });
+        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir, allowOutsideWorkDir: dirCheckE.allowed });
         if (result.ok) {
           trackE(sessionId, {
             path: filePath,

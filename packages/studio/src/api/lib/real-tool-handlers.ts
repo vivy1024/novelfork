@@ -113,9 +113,9 @@ function isPathWithinWorkDir(filePath: string, workDir: string): boolean {
   return !relativePath.startsWith("..") && !resolve(workDir, relativePath).includes("..");
 }
 
-function resolveToolPath(filePath: string, workDir: string): string | null {
+function resolveToolPath(filePath: string, workDir: string, allowOutside = false): string | null {
   const absolutePath = resolve(workDir, filePath);
-  if (!isPathWithinWorkDir(filePath, workDir)) return null;
+  if (!allowOutside && !isPathWithinWorkDir(filePath, workDir)) return null;
   return absolutePath;
 }
 
@@ -293,10 +293,12 @@ export interface FileReadToolInput {
   readonly workDir: string;
   readonly offset?: number;
   readonly limit?: number;
+  /** 已通过目录白名单检查，跳过 workDir 边界限制 */
+  readonly allowOutsideWorkDir?: boolean;
 }
 
 export async function executeFileReadTool(input: FileReadToolInput): Promise<SessionToolExecutionResult> {
-  const resolved = resolveToolPath(input.path, input.workDir);
+  const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
       ok: false,
@@ -363,10 +365,11 @@ export interface FileWriteToolInput {
   readonly path: string;
   readonly content: string;
   readonly workDir: string;
+  readonly allowOutsideWorkDir?: boolean;
 }
 
 export async function executeFileWriteTool(input: FileWriteToolInput): Promise<SessionToolExecutionResult> {
-  const resolved = resolveToolPath(input.path, input.workDir);
+  const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
       ok: false,
@@ -402,10 +405,11 @@ export interface FileEditToolInput {
   readonly oldText: string;
   readonly newText: string;
   readonly workDir: string;
+  readonly allowOutsideWorkDir?: boolean;
 }
 
 export async function executeFileEditTool(input: FileEditToolInput): Promise<SessionToolExecutionResult> {
-  const resolved = resolveToolPath(input.path, input.workDir);
+  const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
       ok: false,
