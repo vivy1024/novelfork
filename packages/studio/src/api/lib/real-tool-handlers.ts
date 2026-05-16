@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
-import { dirname, join, resolve, relative } from "node:path";
+import { dirname, extname, join, resolve, relative } from "node:path";
 import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
@@ -308,6 +308,22 @@ export async function executeFileReadTool(input: FileReadToolInput): Promise<Ses
     };
   }
 
+  // Fix 4: Binary file detection by extension
+  const BINARY_EXTENSIONS = new Set([
+    '.exe', '.dll', '.so', '.dylib', '.bin', '.obj', '.o', '.a', '.lib',
+    '.zip', '.tar', '.gz', '.bz2', '.7z', '.rar', '.xz',
+    '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
+    '.mp3', '.mp4', '.avi', '.mov', '.mkv', '.flac', '.wav',
+    '.woff', '.woff2', '.ttf', '.otf', '.eot',
+    '.pyc', '.pyo', '.class', '.wasm',
+    '.db', '.sqlite', '.sqlite3',
+  ]);
+
+  const ext = extname(resolved).toLowerCase();
+  if (BINARY_EXTENSIONS.has(ext)) {
+    return { ok: false, error: "binary-file", summary: `文件 "${input.path}" 是二进制文件（${ext}），无法作为文本读取。` };
+  }
+
   try {
     // Fix: legacyEncoding — 如果启用，尝试检测非 UTF-8 编码并用对应解码器
     let content: string;
@@ -406,6 +422,16 @@ export interface FileEditToolInput {
   readonly newText: string;
   readonly workDir: string;
   readonly allowOutsideWorkDir?: boolean;
+  readonly replaceAll?: boolean;
+}
+
+// --- Quote normalization helper (Fix 5: Chinese document smart quotes) ---
+
+function normalizeQuotes(text: string): string {
+  return text
+    .replace(/[\u2018\u2019\u201A\u201B]/g, "'")  // ' ' ‚ ‛ → '
+    .replace(/[\u201C\u201D\u201E\u201F]/g, '"')  // " " „ ‟ → "
+    .replace(/[\u2013\u2014]/g, '-');              // – — → -
 }
 
 export async function executeFileEditTool(input: FileEditToolInput): Promise<SessionToolExecutionResult> {
@@ -422,12 +448,70 @@ export async function executeFileEditTool(input: FileEditToolInput): Promise<Ses
   try {
     const content = await readFile(resolved, "utf-8");
 
+    // Fix 1: replaceAll support + multi-match detection
+    if (input.replaceAll) {
+      if (!content.includes(input.oldText)) {
+        // Try quote-normalized matching for replaceAll
+        const normalizedContent = normalizeQuotes(content);
+        const normalizedOld = normalizeQuotes(input.oldText);
+        if (normalizedContent.includes(normalizedOld)) {
+          // Find all positions in normalized content and replace corresponding spans in original
+          let newContent = "";
+          let normalizedIdx = 0;
+          let originalIdx = 0;
+          let replacements = 0;
+          while (true) {
+            const pos = normalizedContent.indexOf(normalizedOld, normalizedIdx);
+            if (pos === -1) break;
+            // Advance original by the same character count
+            newContent += content.slice(originalIdx, originalIdx + (pos - normalizedIdx));
+            newContent += input.newText;
+            originalIdx += (pos - normalizedIdx) + input.oldText.length;
+            normalizedIdx = pos + normalizedOld.length;
+            replacements++;
+          }
+          newContent += content.slice(originalIdx);
+          await writeFile(resolved, newContent, "utf-8");
+          return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配，替换 ${replacements} 处）`, data: { path: input.path, replacements, normalizedMatch: true } };
+        }
+        return { ok: false, error: "old-text-not-found", summary: `old_string 在文件中未找到匹配`, data: { path: input.path, oldText: input.oldText.slice(0, 100) } };
+      }
+      const newContent = content.split(input.oldText).join(input.newText);
+      const replacements = (content.split(input.oldText).length - 1);
+      await writeFile(resolved, newContent, "utf-8");
+      return { ok: true, summary: `已编辑 ${input.path}（替换 ${replacements} 处）`, data: { path: input.path, replacements } };
+    }
+
+    // Single replacement mode
     if (!content.includes(input.oldText)) {
+      // Fix 5: Try quote-normalized matching
+      const normalizedContent = normalizeQuotes(content);
+      const normalizedOld = normalizeQuotes(input.oldText);
+      if (normalizedContent.includes(normalizedOld)) {
+        const pos = normalizedContent.indexOf(normalizedOld);
+        // The position in normalized content corresponds to the same position in original content
+        // (normalizeQuotes only does 1-to-1 char replacements, so positions are preserved)
+        const originalSlice = content.slice(pos, pos + normalizedOld.length);
+        const newContent = content.slice(0, pos) + input.newText + content.slice(pos + originalSlice.length);
+        await writeFile(resolved, newContent, "utf-8");
+        return { ok: true, summary: `已编辑 ${input.path}（引号规范化匹配）`, data: { path: input.path, replacements: 1, normalizedMatch: true } };
+      }
       return {
         ok: false,
         error: "old-text-not-found",
-        summary: `在 ${input.path} 中未找到要替换的文本。`,
+        summary: `old_string 在文件中未找到匹配`,
         data: { path: input.path, oldText: input.oldText.slice(0, 100) },
+      };
+    }
+
+    // Count occurrences
+    const occurrences = content.split(input.oldText).length - 1;
+    if (occurrences > 1) {
+      return {
+        ok: false,
+        error: "multiple-matches",
+        summary: `old_string 在文件中有 ${occurrences} 处匹配，请提供更多上下文使其唯一，或使用 replace_all: true`,
+        data: { path: input.path, matchCount: occurrences, oldText: input.oldText.slice(0, 100) },
       };
     }
 
