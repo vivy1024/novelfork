@@ -83,11 +83,13 @@ export interface RuntimeDebugSettings {
 export interface RuntimeControlSettings {
   defaultPermissionMode: SessionPermissionMode;
   defaultReasoningEffort: SessionReasoningEffort;
+  /** 标准窗口（≤600k）：上下文占用达到此值时触发压缩 */
   contextCompressionThresholdPercent: number;
+  /** 标准窗口（≤600k）：上下文占用达到此值时开始渐进式裁剪 */
   contextTruncateTargetPercent: number;
-  /** 大窗口（>600k）裁剪起始 % */
+  /** 大窗口（>600k）：上下文占用达到此值时触发压缩 */
   largeWindowCompressionThresholdPercent: number;
-  /** 大窗口（>600k）压缩起始 % */
+  /** 大窗口（>600k）：上下文占用达到此值时开始渐进式裁剪 */
   largeWindowTruncateTargetPercent: number;
   /** 自动压缩后保留的最近对话轮数 */
   compressionKeepTurns: number;
@@ -401,9 +403,9 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   runtimeControls: {
     defaultPermissionMode: DEFAULT_SESSION_CONFIG.permissionMode,
     defaultReasoningEffort: DEFAULT_SESSION_CONFIG.reasoningEffort,
-    contextCompressionThresholdPercent: 80,
-    contextTruncateTargetPercent: 70,
-    compressionKeepTurns: 4,
+    contextCompressionThresholdPercent: 99,
+    contextTruncateTargetPercent: 95,
+    compressionKeepTurns: 2,
     maxTruncateRatio: 80,
     recovery: {
       resumeOnStartup: true,
@@ -444,8 +446,8 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     dumpOnlyErrors: false,
     sendMode: "enter",
     codexSandboxMode: normalizeCodexSandboxMode(undefined).mode,
-    largeWindowCompressionThresholdPercent: 60,
-    largeWindowTruncateTargetPercent: 50,
+    largeWindowCompressionThresholdPercent: 99,
+    largeWindowTruncateTargetPercent: 95,
     arcTrackingMode: "rule",
     legacyEncoding: false,
     refreshShellEnv: false,
