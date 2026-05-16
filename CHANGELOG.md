@@ -2,6 +2,22 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v0.8.1 (2026-05-18)
+
+### 🐛 会话详情面板修复
+
+- **SessionDetailPanel 去硬编码**：快速模式/宽松规划/自动裁剪/计划模式/启用工具/后台状态 全部从真实 sessionConfig + runtimeSettings 读取
+- **TriStateControl 接通后端**：自动批准计划/危险反思 onChange → PUT /api/sessions/:id
+- **工具限制可编辑**：从 toolPolicy.deny 读取，支持 Textarea 编辑保存
+- **Subagent 模型限制**：从 /api/settings modelDefaults 读取 explore/plan/general 模型，支持编辑回写
+- **访问规则增删**：从 /api/settings toolAccess 读取 directoryAllowlist/directoryBlocklist，支持添加/删除目录
+- **NarratorStatusBar 路径规则 Popover**：FolderPlus 按钮改为弹出面板，显示白名单列表 + 添加当前目录 + 自定义添加 + 删除
+- **MessageStream fork 接通**：选中消息 fork 从 console.log TODO 改为调用 onContextAction("fork")
+
+### 🔧 后端修复
+
+- **Settings 路由根路径别名**：添加 GET/PUT `/api/settings` 根路由，解决前端调用 404 问题
+
 ## v0.8.0 (2026-05-16)
 
 ### 🧠 上下文可见性系统（context-visibility-system）
