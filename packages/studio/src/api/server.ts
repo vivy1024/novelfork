@@ -1034,4 +1034,19 @@ export async function startStudioServer(
     );
     // setupMonitorWebSocket(startedServer, ctx);
   }
+
+  // --- 启动时自动检查更新（非阻塞） ---
+  try {
+    const startupConfig = await loadUserConfig();
+    // 默认启用自动检查（除非用户显式关闭）
+    if (startupConfig.server && (startupConfig.server as unknown as Record<string, unknown>).autoCheckUpdate !== false) {
+      const { checkForUpdate } = await import("./lib/update-checker.js");
+      checkForUpdate().then(result => {
+        if (result.updateAvailable && result.latestVersion) {
+          console.log(`[update] 有新版本可用: v${result.latestVersion} (当前: v${result.currentVersion})`);
+          console.log(`[update] 下载地址: ${result.releaseUrl ?? "https://github.com/vivy1024/novelfork/releases/latest"}`);
+        }
+      }).catch(() => { /* 更新检查失败不影响启动 */ });
+    }
+  } catch { /* config load failure — skip update check */ }
 }
