@@ -476,7 +476,13 @@ export function getAllSessionToolDefinitions(): SessionToolDefinition[] {
 }
 
 export function getSessionToolDefinition(name: string): SessionToolDefinition | undefined {
-  const definition = getSessionToolDefinitions().find((tool) => tool.name === name);
+  const definitions = getSessionToolDefinitions();
+  // 精确匹配
+  let definition = definitions.find((tool) => tool.name === name);
+  // Fallback: 模型可能返回 provider-safe 格式（点号→下划线），反向查找
+  if (!definition && name.includes("_")) {
+    definition = definitions.find((tool) => tool.name.replace(/[^a-zA-Z0-9_-]/g, "_") === name);
+  }
   return definition ? cloneDefinition(definition) : undefined;
 }
 
