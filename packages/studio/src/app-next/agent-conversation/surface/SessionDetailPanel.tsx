@@ -432,16 +432,16 @@ export function SessionDetailPanel({
             const key = pool.toLowerCase() as "explore" | "plan" | "general";
             const currentValue = detail?.subagentModels?.[key] ?? "";
             const selectOptions = [
-              { value: "", label: "清除" },
+              { value: "__clear__", label: "— 清除 —" },
               ...(modelOptions ?? []),
             ];
             return (
               <div key={pool}>
                 <label className="text-[11px] font-medium">{pool}</label>
                 <SimpleSelect
-                  value={currentValue}
+                  value={currentValue || undefined as unknown as string}
                   onValueChange={(val) => {
-                    onUpdateSubagentModels?.({ [key]: val });
+                    onUpdateSubagentModels?.({ [key]: val === "__clear__" ? "" : val });
                   }}
                   options={selectOptions}
                   placeholder="选择模型..."

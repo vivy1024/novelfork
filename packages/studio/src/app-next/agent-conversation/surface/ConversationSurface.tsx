@@ -396,7 +396,7 @@ export function ConversationSurface({
                 <CodeXml className="size-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent>{codeCollapsed ? "展开代码块" : "折叠代码块"}</TooltipContent>
+            <TooltipContent>{codeCollapsed ? "展开工具卡片" : "折叠工具卡片"}</TooltipContent>
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
