@@ -385,10 +385,10 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Skill",
-    description: "调用已注册的技能（slash command 行为），执行专项能力。",
+    description: "调用一个已注册的 skill。Skills 提供专门的领域知识和工作流。优先从磁盘加载 skill 文件（.claude/skills/、.novelfork/skills/、.kiro/skills/），未找到时回退到 slash command 路由。",
     inputSchema: objectSchema({
-      skill: stringSchema("技能名称。"),
-      args: stringSchema("技能参数。"),
+      skill: stringSchema("Skill 名称"),
+      args: stringSchema("传递给 skill 的参数（可选）"),
     }, ["skill"]),
     risk: "read",
     renderer: "tool.skill",
