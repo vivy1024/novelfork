@@ -349,6 +349,7 @@ function sanitizeServer(server?: Partial<ServerSettings> | null): ServerSettings
     tlsEnabled: typeof server?.tlsEnabled === "boolean" ? server.tlsEnabled : defaults.tlsEnabled,
     tlsCertPath: typeof server?.tlsCertPath === "string" ? server.tlsCertPath.trim() : defaults.tlsCertPath,
     tlsKeyPath: typeof server?.tlsKeyPath === "string" ? server.tlsKeyPath.trim() : defaults.tlsKeyPath,
+    autoCheckUpdate: typeof server?.autoCheckUpdate === "boolean" ? server.autoCheckUpdate : defaults.autoCheckUpdate,
   };
 }
 
