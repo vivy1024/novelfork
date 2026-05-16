@@ -240,7 +240,9 @@ export function checkPathAgainstDirectoryLists(
   // Blocklist takes priority
   for (const dir of blocklist) {
     const normalizedDir = resolve(dir).toLowerCase().replace(/\\/g, "/");
-    if (normalizedPath.startsWith(normalizedDir)) {
+    // Ensure trailing slash for prefix comparison to avoid partial matches
+    const dirPrefix = normalizedDir.endsWith("/") ? normalizedDir : normalizedDir + "/";
+    if (normalizedPath === normalizedDir || normalizedPath.startsWith(dirPrefix)) {
       return { allowed: false, blocked: true, reason: `路径在黑名单目录内: ${dir}` };
     }
   }
@@ -249,7 +251,8 @@ export function checkPathAgainstDirectoryLists(
   if (allowlist.length > 0) {
     const isAllowed = allowlist.some(dir => {
       const normalizedDir = resolve(dir).toLowerCase().replace(/\\/g, "/");
-      return normalizedPath.startsWith(normalizedDir);
+      const dirPrefix = normalizedDir.endsWith("/") ? normalizedDir : normalizedDir + "/";
+      return normalizedPath === normalizedDir || normalizedPath.startsWith(dirPrefix);
     });
     if (isAllowed) {
       return { allowed: true, blocked: false };
