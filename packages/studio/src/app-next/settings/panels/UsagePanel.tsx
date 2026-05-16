@@ -1,8 +1,7 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useApi, fetchJson } from "../../../hooks/use-api";
 import { InlineError } from "../../components/feedback";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Filter, X } from "lucide-react";
@@ -183,6 +182,23 @@ export function UsagePanel() {
   const applyFilters = () => { setPage(1); setFiltersApplied(true); };
   const resetFilters = () => { setFilterProvider(""); setFilterModel(""); setFilterStatus("all"); setFiltersApplied(false); setPage(1); };
 
+  // Computed cache totals from summary entries
+  const totalCacheRead = useMemo(() => summaryData?.entries.reduce((sum, e) => sum + (e.cacheReadTokens ?? 0), 0) ?? 0, [summaryData]);
+  const totalCacheWrite = useMemo(() => summaryData?.entries.reduce((sum, e) => sum + (e.cacheCreationTokens ?? 0), 0) ?? 0, [summaryData]);
+
+  // Dropdown options extracted from loaded request data
+  const providerOptions = useMemo(() => {
+    if (!requests?.items) return [];
+    const unique = [...new Set(requests.items.map(r => r.provider).filter(Boolean))];
+    return [{ value: "__all__", label: "全部提供商" }, ...unique.map(p => ({ value: p!, label: p!.startsWith("provider-") ? (requests.items.find(r => r.provider === p)?.model ?? p!) : p! }))];
+  }, [requests]);
+
+  const modelOptions = useMemo(() => {
+    if (!requests?.items) return [];
+    const unique = [...new Set(requests.items.map(r => r.model).filter(Boolean))];
+    return [{ value: "__all__", label: "全部模型" }, ...unique.map(m => ({ value: m!, label: m! }))];
+  }, [requests]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -203,10 +219,14 @@ export function UsagePanel() {
         <>
           {/* 统计卡片 */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <StatCard label="请求数" value={formatTokenCount(summaryData.totalSessions)} detail={`精确值：${summaryData.totalSessions.toLocaleString()}`} />
+            <StatCard label="请求数" value={formatTokenCount(requests?.total ?? summaryData.totalTurns)} detail={`精确值：${(requests?.total ?? summaryData.totalTurns).toLocaleString()}`} />
             <StatCard label="总 Tokens" value={formatTokenCount(summaryData.totalInputTokens + summaryData.totalOutputTokens)} detail={`输入 ${formatTokenCount(summaryData.totalInputTokens)} · 输出 ${formatTokenCount(summaryData.totalOutputTokens)}`} />
-            <StatCard label="总轮次" value={summaryData.totalTurns.toLocaleString()} />
-            <StatCard label="会话数" value={summaryData.totalSessions.toLocaleString()} />
+            <StatCard label="平均 TTFT" value={requests?.summary.averageTtftMs != null ? formatDuration(requests.summary.averageTtftMs) : "—"} detail="首 Token 响应时间" />
+            <StatCard label="平均耗时" value={requests?.summary.averageDuration != null ? formatDuration(requests.summary.averageDuration) : "—"} detail="请求平均耗时" />
+            <StatCard label="总成本" value={requests?.summary.totalCostUsd != null ? `$${requests.summary.totalCostUsd.toFixed(2)}` : "—"} detail="累计 API 费用" />
+            <StatCard label="推理 Tokens" value={formatTokenCount(summaryData.totalOutputTokens)} detail="输出 Token 总量" />
+            <StatCard label="缓存读取" value={formatTokenCount(totalCacheRead)} detail="命中缓存 Tokens" />
+            <StatCard label="缓存写入" value={formatTokenCount(totalCacheWrite)} detail="写入缓存 Tokens" />
           </div>
 
           {/* 趋势图 */}
@@ -231,17 +251,17 @@ export function UsagePanel() {
           {/* 筛选器 */}
           <div className="rounded-lg border border-border p-3 space-y-3">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              <Input
-                placeholder="按提供商筛选"
-                value={filterProvider}
-                onChange={(e) => setFilterProvider(e.target.value)}
-                className="text-xs"
+              <SimpleSelect
+                value={filterProvider || "__all__"}
+                onValueChange={(v) => setFilterProvider(v === "__all__" ? "" : v)}
+                options={providerOptions.length > 0 ? providerOptions : [{ value: "__all__", label: "全部提供商" }]}
+                aria-label="提供商"
               />
-              <Input
-                placeholder="按模型筛选"
-                value={filterModel}
-                onChange={(e) => setFilterModel(e.target.value)}
-                className="text-xs"
+              <SimpleSelect
+                value={filterModel || "__all__"}
+                onValueChange={(v) => setFilterModel(v === "__all__" ? "" : v)}
+                options={modelOptions.length > 0 ? modelOptions : [{ value: "__all__", label: "全部模型" }]}
+                aria-label="模型"
               />
               <SimpleSelect
                 value={filterStatus}
@@ -285,13 +305,15 @@ export function UsagePanel() {
                       </tr>
                     </thead>
                     <tbody>
-                      {requests.items.map((item) => (
+                      {requests.items.map((item) => {
+                        const displayProvider = item.provider?.match(/^provider-\d+$/) ? (item.model ?? "—") : (item.provider ?? "—");
+                        return (
                         <tr key={item.id} className={`border-b border-border last:border-0 ${item.error ? "bg-destructive/5" : "hover:bg-muted/30"}`}>
                           <td className="px-3 py-2 text-muted-foreground whitespace-nowrap">
                             {new Date(item.timestamp).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                             {item.narrator && <div className="text-[10px] text-muted-foreground/60">{item.narrator}</div>}
                           </td>
-                          <td className="px-3 py-2 font-mono">{item.provider ?? "—"}</td>
+                          <td className="px-3 py-2 font-mono">{displayProvider}</td>
                           <td className="px-3 py-2 font-mono truncate max-w-[150px]">{item.model ?? "—"}</td>
                           <td className="px-3 py-2 text-right font-mono">{item.tokens != null ? formatTokenCount(item.tokens) : "—"}</td>
                           <td className="px-3 py-2 text-right font-mono">{item.ttftMs != null ? formatDuration(item.ttftMs) : "—"}</td>
@@ -304,7 +326,8 @@ export function UsagePanel() {
                             )}
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
