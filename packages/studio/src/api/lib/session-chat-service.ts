@@ -66,6 +66,7 @@ import { attachRuntimeTranscriptToMessages } from "./runtime-transcript.js";
 import { ProviderRuntimeStore } from "./provider-runtime-store.js";
 import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
+import { loadGlobalRoutines } from "./routines-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
@@ -919,11 +920,12 @@ async function appendModelContinuationAfterToolDecision(
     const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, loaded.session.id);
+    const continuationRoutinePrompts = await loadRoutineGlobalPrompts();
     const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
-      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`,
+      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${continuationRoutinePrompts}`,
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
@@ -1468,6 +1470,22 @@ function safeReadFile(filePath: string): string | null {
   }
 }
 
+/**
+ * 从套路系统加载已启用的全局提示词，拼接为 system prompt 附加段。
+ * 非阻塞：加载失败时返回空字符串。
+ */
+async function loadRoutineGlobalPrompts(): Promise<string> {
+  try {
+    const routines = await loadGlobalRoutines();
+    const enabled = routines.globalPrompts.filter(p => p.enabled && p.content.trim());
+    if (enabled.length === 0) return "";
+    const parts = enabled.map(p => p.content.trim());
+    return "\n\n" + parts.join("\n\n");
+  } catch {
+    return "";
+  }
+}
+
 function loadProjectRules(workDir: string): string {
   const sections: string[] = [];
   let totalChars = 0;
@@ -1648,7 +1666,8 @@ export async function handleSessionChatTransportMessage(
       projectExplorationContext = await buildProjectExplorationContext(workDir);
     } catch { /* project exploration failure is non-fatal */ }
 
-    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}`;
+    const routinePrompts = await loadRoutineGlobalPrompts();
+    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${routinePrompts}`;
     const maxSteps = await resolveMaxTurnSteps();
     const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);

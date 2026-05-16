@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { loadUserConfig, updateUserConfig, getUserConfigPath } from "../lib/user-config-service.js";
 import { collectMetrics } from "../lib/metrics-service.js";
 import { buildStudioReleaseSnapshot } from "../lib/release-metadata.js";
+import { checkForUpdate } from "../lib/update-checker.js";
 import { resolveRuntimeStoragePath } from "../lib/runtime-storage-paths.js";
 import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status.js";
 import { setGlobalProxyUrl, setPerProviderProxy } from "../lib/provider-adapters/index.js";
@@ -198,6 +199,17 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     } catch (error) {
       console.error("Failed to load release metadata:", error);
       return c.json({ error: "Failed to load release metadata" }, 500);
+    }
+  });
+
+  // 检查更新：调用 GitHub API 对比版本
+  app.get("/check-update", async (c) => {
+    try {
+      const result = await checkForUpdate();
+      return c.json(result);
+    } catch (error) {
+      console.error("Failed to check for update:", error);
+      return c.json({ error: "Failed to check for update" }, 500);
     }
   });
 

@@ -2,45 +2,45 @@
 
 ## FR-1: 自定义斜杠命令
 
-- [ ] 1.1 在 `types/settings.ts` 添加 `SlashCommand` 接口和 `UserConfig.commands` 字段
-- [ ] 1.2 在 `user-config-service.ts` 添加 commands 的 sanitize 和 merge 逻辑
-- [ ] 1.3 在 `settings.ts` 路由添加 `GET/PUT /api/settings/commands` 端点
-- [ ] 1.4 在套路页添加命令管理 UI（创建/编辑/删除/参数定义）
-- [ ] 1.5 在 Composer 组件添加 `/` 触发的命令补全弹出层
-- [ ] 1.6 实现命令展开逻辑（模板替换 + 先 Bash 模式）
-- [ ] 1.7 支持叙事线级命令（`.novelfork/commands.json`）
+- [x] 1.1 在 `types/settings.ts` 添加 `SlashCommand` 接口和 `UserConfig.commands` 字段
+- [x] 1.2 在 `user-config-service.ts` 添加 commands 的 sanitize 和 merge 逻辑
+- [x] 1.3 在 `settings.ts` 路由添加 `GET/PUT /api/settings/commands` 端点
+- [x] 1.4 在套路页添加命令管理 UI（创建/编辑/删除/参数定义）
+- [x] 1.5 在 Composer 组件添加 `/` 触发的命令补全弹出层（注入用户自定义命令）
+- [x] 1.6 实现命令展开逻辑（模板替换 + 先 Bash 模式）
+- [x] 1.7 支持叙事线级命令（`.novelfork/commands.json`）
 
 ## FR-2: 全局系统提示词可编辑
 
-- [ ] 2.1 在 `settings.ts` 路由添加 `GET/PUT /api/settings/global-prompt` 端点
-- [ ] 2.2 在 AgentSettingsPanel 添加全局提示词 Textarea 编辑区
-- [ ] 2.3 显示当前文件路径和候选路径（~/.novelfork/CLAUDE.md）
-- [ ] 2.4 保存时写入文件，不存在时自动创建
+- [x] 2.1 在 `settings.ts` 路由添加 `GET/PUT /api/settings/global-prompt` 端点
+- [x] 2.2 在 AgentSettingsPanel 添加全局提示词 Textarea 编辑区
+- [x] 2.3 显示当前文件路径和候选路径（~/.novelfork/CLAUDE.md）
+- [x] 2.4 保存时写入文件，不存在时自动创建
 
 ## FR-3: 首 Token 超时 + 自动重试
 
-- [ ] 3.1 在 `types/settings.ts` 添加 `firstTokenTimeoutSeconds`、`maxTransientRetries`、`retryBackoffCeilSeconds` 配置
-- [ ] 3.2 在 `DEFAULT_USER_CONFIG` 添加默认值（60s / 3次 / 30s）
-- [ ] 3.3 在 provider adapter 的流式 generate 中实现首 token 超时检测
-- [ ] 3.4 实现指数退避重试包装函数 `withRetry()`
-- [ ] 3.5 支持自定义可重试错误规则（`runtimeControls.customRetryRules`）
-- [ ] 3.6 在 RuntimeControlPanel 添加超时/重试配置 UI
+- [x] 3.1 在 `types/settings.ts` 添加 `firstTokenTimeoutSeconds`、`maxTransientRetries`、`retryBackoffCeilSeconds` 配置
+- [x] 3.2 在 `DEFAULT_USER_CONFIG` 添加默认值（60s / 3次 / 30s）
+- [x] 3.3 在 provider adapter 的流式 generate 中实现首 token 超时检测
+- [x] 3.4 实现指数退避重试包装函数 `withRetry()`
+- [x] 3.5 支持自定义可重试错误规则（`runtimeControls.customRetryRules`）
+- [x] 3.6 在 RuntimeControlPanel 添加超时/重试配置 UI
 
 ## FR-4: 更新系统
 
-- [ ] 4.1 在 `types/settings.ts` 的 `ServerSettings` 添加 `updateChannel`、`autoCheckUpdate` 字段
-- [ ] 4.2 创建 `api/lib/update-checker.ts`：调用 GitHub API 对比版本
-- [ ] 4.3 在 `settings.ts` 路由添加 `GET /api/settings/check-update` 端点
-- [ ] 4.4 在"服务器与系统"设置面板添加更新 UI（通道选择 + 检查按钮 + 结果显示）
+- [x] 4.1 在 `types/settings.ts` 的 `ServerSettings` 添加 `updateChannel`、`autoCheckUpdate` 字段
+- [x] 4.2 创建 `api/lib/update-checker.ts`：调用 GitHub API 对比版本
+- [x] 4.3 在 `settings.ts` 路由添加 `GET /api/settings/check-update` 端点
+- [x] 4.4 在"服务器与系统"设置面板添加更新 UI（通道选择 + 检查按钮 + 结果显示）
 - [ ] 4.5 启动时自动检查（如果 `autoCheckUpdate` 开启）
 
 ## FR-5: 自定义子代理类型
 
-- [ ] 5.1 在 `types/settings.ts` 添加 `CustomSubagentType` 接口和 `UserConfig.customSubagents` 字段
-- [ ] 5.2 在 `user-config-service.ts` 添加 customSubagents 的 sanitize 逻辑
-- [ ] 5.3 在 `session-tool-executor.ts` 的 Agent handler 中支持自定义类型查找
-- [ ] 5.4 在套路页添加自定义子代理管理 UI（创建/编辑/删除）
-- [ ] 5.5 支持工具白名单和默认模型配置
+- [x] 5.1 在 `types/settings.ts` 添加 `CustomSubagentType` 接口和 `UserConfig.customSubagents` 字段
+- [x] 5.2 在 `user-config-service.ts` 添加 customSubagents 的 sanitize 逻辑
+- [x] 5.3 在 `session-tool-executor.ts` 的 Agent handler 中支持自定义类型查找
+- [x] 5.4 在套路页添加自定义子代理管理 UI（创建/编辑/删除）
+- [x] 5.5 支持工具白名单和默认模型配置
 
 ## 学习文档补全
 

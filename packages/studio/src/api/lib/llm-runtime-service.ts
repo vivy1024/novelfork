@@ -1,6 +1,6 @@
 import type { SessionToolDefinition } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, SessionConfig } from "../../shared/session-types.js";
-import type { RuntimeRecoverySettings } from "../../types/settings.js";
+import type { RetryRule, RuntimeRecoverySettings } from "../../types/settings.js";
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
 import { getAggregation, isAggregationId, resolveAggregation } from "./model-aggregation-service.js";
 import {
@@ -144,10 +144,31 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
 
 // --- Smart Retry Helpers ---
 
-function isRetriableError(code: RuntimeAdapterFailureCode, errorMessage: string): boolean {
+function isRetriableError(code: RuntimeAdapterFailureCode, errorMessage: string, customRules?: RetryRule[]): boolean {
   if (code !== "upstream-error" && code !== "network-error") return false;
+  // Built-in retriable patterns
   const retriableStatuses = ["429", "502", "503", "rate_limit", "rate limit", "overloaded"];
-  return retriableStatuses.some(s => errorMessage.toLowerCase().includes(s.toLowerCase()));
+  if (retriableStatuses.some(s => errorMessage.toLowerCase().includes(s.toLowerCase()))) {
+    return true;
+  }
+  // User-defined custom retry rules
+  if (customRules?.length) {
+    const lowerMsg = errorMessage.toLowerCase();
+    for (const rule of customRules) {
+      if (!rule.enabled) continue;
+      const matchesStatus = rule.httpStatus ? errorMessage.includes(rule.httpStatus) : false;
+      const matchesKeyword = rule.contentKeyword ? lowerMsg.includes(rule.contentKeyword.toLowerCase()) : false;
+      // Rule matches if at least one criterion is specified and all specified criteria match
+      if (rule.httpStatus && rule.contentKeyword) {
+        if (matchesStatus && matchesKeyword) return true;
+      } else if (rule.httpStatus) {
+        if (matchesStatus) return true;
+      } else if (rule.contentKeyword) {
+        if (matchesKeyword) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function calculateRetryDelay(attempt: number, settings: RuntimeRecoverySettings): number {
@@ -238,6 +259,7 @@ export class LlmRuntimeService {
     // Load retry settings from user config
     const userConfig = await loadUserConfig();
     const retrySettings = userConfig.runtimeControls.recovery;
+    const customRetryRules = userConfig.runtimeControls.retryRules;
 
     for (let attempt = 0; attempt < Math.min(candidates.length, MAX_FALLBACK_ATTEMPTS); attempt++) {
       const candidate = candidates[attempt];
@@ -288,7 +310,7 @@ export class LlmRuntimeService {
 
         if (!result.success) {
           // Check if this is a retriable transient error
-          if (isRetriableError(result.code, result.error) && retryAttempt < retrySettings.maxRetryAttempts) {
+          if (isRetriableError(result.code, result.error, customRetryRules) && retryAttempt < retrySettings.maxRetryAttempts) {
             const delayMs = calculateRetryDelay(retryAttempt, retrySettings);
             console.log(JSON.stringify({
               component: "llm-runtime",
