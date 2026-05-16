@@ -54,6 +54,8 @@ export interface SlashCommandExecutionContext {
   readonly bookId?: string;
   /** 对标 Claude Code CLI: 运行时命令启用/禁用注册表 */
   readonly commandEnabledRegistry?: CommandEnabledRegistryLike;
+  /** 用户自定义命令（含 prompt 模板），避免展开时重复请求 API */
+  readonly userCommands?: readonly UserCommand[];
 }
 
 function commandNameFromId(id: string): SlashCommandName {

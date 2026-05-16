@@ -1039,7 +1039,7 @@ export async function startStudioServer(
   try {
     const startupConfig = await loadUserConfig();
     // 默认启用自动检查（除非用户显式关闭）
-    if (startupConfig.server && (startupConfig.server as unknown as Record<string, unknown>).autoCheckUpdate !== false) {
+    if (startupConfig.server?.autoCheckUpdate !== false) {
       const { checkForUpdate } = await import("./lib/update-checker.js");
       checkForUpdate().then(result => {
         if (result.updateAvailable && result.latestVersion) {

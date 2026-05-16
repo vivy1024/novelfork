@@ -645,7 +645,7 @@ export function ConversationSurface({
         onRetry={handleRetry}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
-        slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId }}
+        slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId, userCommands }}
         isRunning={isWorking}
         isInterrupted={isInterrupted}
         lastTurnFailed={lastTurnFailed}
