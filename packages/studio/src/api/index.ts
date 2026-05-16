@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { createEmbeddedStaticProvider } from "./static-provider.js";
 import { openStudioWindow } from "./desktop-window.js";
 import { resolveStartupPort, resolveStartupRoot, parseNamedArg } from "./startup-args.js";
+import { loadUserConfig } from "./lib/user-config-service.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,8 +19,24 @@ const defaultProjectRoot = () => {
   return process.cwd();
 };
 
-const root = resolveStartupRoot(process.argv, process.env, defaultProjectRoot);
-const port = resolveStartupPort(process.argv, process.env);
+// Load user config for server settings (port, host, browser mode, default project dir)
+let userServerConfig: { port?: number; host?: string; defaultProjectDir?: string; browserOpenMode?: string } = {};
+try {
+  const uc = await loadUserConfig();
+  userServerConfig = uc.server ?? {};
+} catch { /* use defaults if config can't be loaded yet */ }
+
+const cliRoot = resolveStartupRoot(process.argv, process.env, defaultProjectRoot);
+// If user configured a default project dir and no CLI/env override was given, use it
+const hasExplicitRoot = parseNamedArg(process.argv, "--root") !== undefined
+  || process.argv.slice(2).some((arg) => !arg.startsWith("-"))
+  || Boolean(process.env.NOVELFORK_PROJECT_ROOT);
+const root = hasExplicitRoot ? cliRoot : (userServerConfig.defaultProjectDir || cliRoot);
+
+// Port: CLI/env takes precedence over user config
+const cliPort = resolveStartupPort(process.argv, process.env);
+const hasExplicitPort = parseNamedArg(process.argv, "--port") !== undefined || Boolean(process.env.NOVELFORK_STUDIO_PORT);
+const port = hasExplicitPort ? cliPort : (userServerConfig.port ?? cliPort);
 
 // --- Headless CLI mode ---
 if (process.argv.includes("--headless")) {
@@ -82,14 +99,26 @@ if (!hasFrontendAssets) {
   }
 }
 
+const serverHost = hasExplicitPort ? undefined : (userServerConfig.host ?? undefined);
 const serverUrl = `http://localhost:${port}`;
 
 startStudioServer(root, port, {
   staticDir: hasFrontendAssets ? distDir : undefined,
   staticProvider,
   staticMode: hasFrontendAssets ? "filesystem" : (staticProvider ? "embedded" : "missing"),
+  hostname: serverHost,
 })
   .then(() => {
+    // Respect user's browserOpenMode setting
+    const browserMode = userServerConfig.browserOpenMode ?? "app";
+    if (browserMode === "none") {
+      console.log("Browser open disabled by user config");
+      return;
+    }
+    // Set env vars that desktop-window.ts reads to control behavior
+    if (browserMode === "browser") {
+      process.env.NOVELFORK_WINDOW_MODE = "browser";
+    }
     const launchPlan = openStudioWindow(serverUrl);
     if (launchPlan.kind === "app") {
       console.log(`NovelFork app window opened via ${launchPlan.command}`);

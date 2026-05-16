@@ -277,6 +277,23 @@ export interface WritingSettings {
   customSensitiveWords: string;
 }
 
+export interface ServerSettings {
+  /** 服务器端口 */
+  port: number;
+  /** 监听地址 (127.0.0.1 = 仅本机, 0.0.0.0 = 公网) */
+  host: string;
+  /** 默认项目目录 */
+  defaultProjectDir: string;
+  /** 启动时打开浏览器方式 */
+  browserOpenMode: "none" | "browser" | "app";
+  /** 启用 TLS/HTTPS */
+  tlsEnabled: boolean;
+  /** TLS 证书路径 */
+  tlsCertPath: string;
+  /** TLS 密钥路径 */
+  tlsKeyPath: string;
+}
+
 export interface ProxySettings {
   /** 每个供应商的代理配置，key 是 providerId */
   providers: Record<string, string>;
@@ -325,6 +342,7 @@ export interface UserConfig {
   proxy: ProxySettings;
   workspace: WorkspaceSettings;
   writing: WritingSettings;
+  server: ServerSettings;
   /** 外部 API 调用 Token（如羽书 bot 调用时需要携带） */
   apiToken: string;
   /** 用户认证配置 */
@@ -344,6 +362,7 @@ export interface UserConfigPatch {
   proxy?: Partial<ProxySettings>;
   workspace?: Partial<WorkspaceSettings>;
   writing?: Partial<WritingSettings>;
+  server?: Partial<ServerSettings>;
   apiToken?: string;
   auth?: Partial<AuthSettings>;
   mcpServers?: McpServerEntry[];
@@ -493,4 +512,13 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   },
   apiToken: "",
   mcpServers: [],
+  server: {
+    port: 4567,
+    host: "127.0.0.1",
+    defaultProjectDir: "",
+    browserOpenMode: "app",
+    tlsEnabled: false,
+    tlsCertPath: "",
+    tlsKeyPath: "",
+  },
 };
