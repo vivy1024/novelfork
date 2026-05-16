@@ -464,6 +464,8 @@ export type SessionToolExecutionInput = {
   readonly confirmationDecision?: ToolConfirmationDecision;
   /** 实时流式输出回调（Bash 工具 stdout/stderr 流） */
   readonly onToolOutputStream?: (chunk: string) => void;
+  /** Abort signal — 父级中断时传播到子代理/长时间运行的工具 */
+  readonly signal?: AbortSignal;
 };
 
 export type SessionToolExecutionResult = AgentNativeToolMetadata & {
