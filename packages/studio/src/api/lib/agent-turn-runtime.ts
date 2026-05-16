@@ -13,6 +13,7 @@ import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
 import type { RuntimeToolUse, RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
+import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
@@ -312,6 +313,32 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
     const generateDurationMs = Date.now() - generateStartedAt;
 
+    // Log AI request for usage history
+    logRequest({
+      timestamp: new Date().toISOString(),
+      method: "AI",
+      endpoint: "agent-turn",
+      status: reply.success ? 200 : 500,
+      duration: generateDurationMs,
+      userId: "system",
+      requestKind: "agent-turn",
+      narrator: input.sessionId,
+      provider: reply.success ? reply.metadata.providerId : reply.metadata?.providerId,
+      model: reply.success ? reply.metadata.modelId : reply.metadata?.modelId,
+      tokens: normalizeTokenUsage(
+        reply.success && reply.metadata.usage
+          ? {
+              input: reply.metadata.usage.input_tokens,
+              output: reply.metadata.usage.output_tokens,
+              total: (reply.metadata.usage.input_tokens ?? 0) + (reply.metadata.usage.output_tokens ?? 0),
+            }
+          : undefined,
+      ),
+      requestDomain: "ai",
+      sessionId: input.sessionId,
+      ...(reply.success ? {} : { aiStatus: "error", errorSummary: reply.error }),
+    });
+
     if (!reply.success) {
       console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, durationMs: generateDurationMs }));
 
@@ -331,6 +358,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           console.log(JSON.stringify({ component: "agent-turn-runtime", event: "context-overflow-retry", sessionId: input.sessionId, messageCount: messages.length }));
 
           // Retry generate with truncated messages
+          const retryStartedAt = Date.now();
           const retryReply = await input.generate({
             sessionConfig: input.sessionConfig,
             messages,
@@ -340,6 +368,33 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
             ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
             ...(input.signal ? { signal: input.signal } : {}),
+          });
+          const retryDurationMs = Date.now() - retryStartedAt;
+
+          // Log retry AI request for usage history
+          logRequest({
+            timestamp: new Date().toISOString(),
+            method: "AI",
+            endpoint: "agent-turn",
+            status: retryReply.success ? 200 : 500,
+            duration: retryDurationMs,
+            userId: "system",
+            requestKind: "agent-turn-retry",
+            narrator: input.sessionId,
+            provider: retryReply.success ? retryReply.metadata.providerId : retryReply.metadata?.providerId,
+            model: retryReply.success ? retryReply.metadata.modelId : retryReply.metadata?.modelId,
+            tokens: normalizeTokenUsage(
+              retryReply.success && retryReply.metadata.usage
+                ? {
+                    input: retryReply.metadata.usage.input_tokens,
+                    output: retryReply.metadata.usage.output_tokens,
+                    total: (retryReply.metadata.usage.input_tokens ?? 0) + (retryReply.metadata.usage.output_tokens ?? 0),
+                  }
+                : undefined,
+            ),
+            requestDomain: "ai",
+            sessionId: input.sessionId,
+            ...(retryReply.success ? {} : { aiStatus: "error", errorSummary: retryReply.error }),
           });
 
           if (retryReply.success) {
