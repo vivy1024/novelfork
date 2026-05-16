@@ -76,15 +76,9 @@ function sessionBindingLabel(session: NarratorSessionRecord): string {
 }
 
 function sessionModelLabel(session: NarratorSessionRecord): string {
-  const providerId = session.sessionConfig.providerId.trim();
   const modelId = session.sessionConfig.modelId.trim();
-  if (!providerId && !modelId) return "未配置模型";
-  // 去掉 provider- 前缀的时间戳 ID，只显示 modelId
-  if (providerId.startsWith("provider-") && /^\d+$/.test(providerId.slice(9))) {
-    return modelId || providerId;
-  }
-  if (!modelId) return providerId;
-  return `${providerId}:${modelId}`;
+  if (!modelId) return "未配置模型";
+  return modelId;
 }
 
 function sessionStatusLabel(status: NarratorSessionStatus): string {
