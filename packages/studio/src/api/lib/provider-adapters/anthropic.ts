@@ -406,7 +406,6 @@ export class AnthropicAdapter implements RuntimeAdapter {
   }
 
   async generate(input: GenerateInput): Promise<GenerateResult> {
-    console.log(`[anthropic.generate] hasOnStreamChunk=${typeof input.onStreamChunk}, model=${input.modelId}, baseUrl=${input.baseUrl}`);
     if (!input.apiKey?.trim()) {
       return failure("auth-missing", `API key missing for provider ${input.providerId}`);
     }
