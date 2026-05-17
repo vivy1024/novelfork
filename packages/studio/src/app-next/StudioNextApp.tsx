@@ -44,12 +44,10 @@ import {
   resourceNeedsDetailHydration,
   saveResourceAndHydrate,
   loadWorkbenchResourcesFromContract,
-  WorkbenchWritingActions,
   WritingWorkbenchRoute,
   type WorkbenchCanvasContext,
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
-  type WorkbenchWritingActionsSessionClient,
   ToolConfigBar,
   AgentQuickActions,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
@@ -429,7 +427,10 @@ type SessionToolStatePayload = {
 };
 
 type SessionDomainClient = ReturnType<typeof createSessionClient>;
-type WorkbenchSessionClient = WorkbenchWritingActionsSessionClient;
+type WorkbenchSessionClient = {
+  readonly listActiveSessions: (options?: { projectId?: string }) => Promise<{ ok: true; data: any[] } | { ok: false; error: string }>;
+  readonly createSession: (payload: any) => Promise<any>;
+};
 
 type SessionToolConfirmationPayload = {
   readonly ok?: boolean;
@@ -1374,7 +1375,6 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
         onGuideComplete={reloadResources}
-        writingActions={<WorkbenchWritingActions bookId={bookId} bookTitle={resources.tree.find(n => n.kind === "book")?.title} sessions={sessionClient} blockedReason={localCanvasContext?.dirty ? "当前画布有未保存内容，请先保存或放弃后再启动写作动作。" : undefined} onNavigateToConversation={(sessionId) => { onNavigateToConversation(sessionId); }} />}
       />
     </>
   );
