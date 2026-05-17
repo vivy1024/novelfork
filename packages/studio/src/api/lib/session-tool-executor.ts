@@ -2438,7 +2438,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               title: description || `fork子代理: ${(prompt || description).slice(0, 30)}`,
               agentId: "subagent",
               sessionMode: "chat",
-              projectId: parentSession?.projectId,
+              // 子代理不继承 projectId，避免出现在书籍叙述者列表中
               worktree: parentSession?.worktree,
               parentSessionId: sessionId,
               sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
@@ -2542,7 +2542,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             title: description || `${subagentType}子代理: ${(prompt || description).slice(0, 30)}`,
             agentId: "subagent",
             sessionMode: "chat",
-            projectId: parentSession?.projectId,
+            // 子代理不继承 projectId，避免出现在书籍叙述者列表中
             worktree: parentSession?.worktree,
             parentSessionId: sessionId,
             sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
