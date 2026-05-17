@@ -154,6 +154,15 @@ export async function loadResourceDetailState(
   }
 
   if (node.kind === "jingwei-entry" || node.kind === "jingwei-section" || node.kind === "narrative-line" || node.kind === "storyline" || node.kind === "bible-entry" || node.kind === "tool-result") {
+    // 经纬文件节点：尝试通过 API 加载完整内容
+    const fileName = metadataString(node, "fileName");
+    if (fileName && node.kind === "jingwei-entry") {
+      const bookId = fallbackBookId;
+      const result = await resource.getJingweiFile<{ file: string; content: string | null }>(bookId, fileName);
+      if (result.ok && result.data?.content) {
+        return ready(node, result.data.content, "detail", { detailSource: "detail" });
+      }
+    }
     return ready(node, contentFromSnapshot(node), "detail", { detailSource: "detail" });
   }
 
