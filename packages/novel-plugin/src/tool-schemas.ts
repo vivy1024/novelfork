@@ -296,6 +296,39 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "enabledPresetIds"],
     additionalProperties: false,
   },
+  "presets.create_custom": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID（绑定到特定书籍，不传则为全局预设）。"),
+      name: stringSchema("预设名称（如「禁止修为暴涨」「对话必须带方言」）。"),
+      category: stringSchema("分类：anti-ai / literary / logic-risk / tone / setting-base / custom。"),
+      promptInjection: stringSchema("注入到写作 prompt 中的规则文本。这是预设的核心内容。"),
+      description: stringSchema("预设的简短描述（可选）。"),
+    },
+    required: ["name", "category", "promptInjection"],
+    additionalProperties: false,
+  },
+  "beat.create_custom": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID（绑定到特定书籍，不传则为全局模板）。"),
+      name: stringSchema("模板名称（如「凡人修仙四阶段」「日常渐变结构」）。"),
+      description: stringSchema("模板描述。"),
+      beats: arraySchema("节拍列表，每个节拍包含 name、emotionalTone、wordRatio、purpose 字段。", {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "节拍名称" },
+          emotionalTone: { type: "string", description: "情绪基调" },
+          wordRatio: { type: "number", description: "字数占比（0-1之间，所有节拍加起来应为1）" },
+          purpose: { type: "string", description: "节拍目的" },
+          networkNovelTip: { type: "string", description: "网文写作提示（可选）" },
+        },
+        required: ["name", "emotionalTone", "wordRatio", "purpose"],
+      }),
+    },
+    required: ["name", "description", "beats"],
+    additionalProperties: false,
+  },
   "jingwei.upsert_entry": {
     type: "object",
     properties: {

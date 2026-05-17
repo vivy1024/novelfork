@@ -4,6 +4,8 @@ import {
   StateManager,
   createLLMClient,
   createLogger,
+  getStorageDatabase,
+  createUserTemplateRepository,
   initializeStorageDatabase,
   loadProjectConfig,
   runJsonImportMigrationIfNeeded,
@@ -112,7 +114,7 @@ import {
   createFileChangesRouter,
   createAuthUsersRouter,
 } from "./routes/index.js";
-import { registerBuiltinPresets } from "@vivy1024/novelfork-novel-plugin/engine";
+import { registerBuiltinPresets, registerPreset, registerBeatTemplate } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./routes/index.js";
 import type { Context } from "hono";
 import { authGuard } from "./middleware/auth-guard.js";
@@ -160,6 +162,23 @@ function getNovelForkMode(): NovelForkMode {
 
 export function createStudioServer(initialConfig: ProjectConfig, root: string) {
   registerBuiltinPresets();
+
+  // 加载用户自定义预设和节拍模板（从 user_template 表）
+  try {
+    const db = getStorageDatabase();
+    const repo = createUserTemplateRepository(db);
+    const templates = repo.list();
+    for (const t of templates) {
+      try {
+        const bundle = JSON.parse(t.bundleJson);
+        if (bundle.type === "preset" && bundle.promptInjection) {
+          registerPreset({ id: t.id, name: t.name, category: bundle.category ?? "custom", promptInjection: bundle.promptInjection, description: t.description ?? "" });
+        } else if (bundle.type === "beat-template" && Array.isArray(bundle.beats)) {
+          registerBeatTemplate({ id: t.id, name: bundle.name ?? t.name, description: bundle.description ?? "", beats: bundle.beats });
+        }
+      } catch { /* skip malformed entries */ }
+    }
+  } catch { /* DB not ready yet — custom presets will be loaded on first tool call */ }
 
   // --- Plugin registration ---
   pluginRegistry.register({
