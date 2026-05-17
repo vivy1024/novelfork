@@ -36,10 +36,10 @@ export interface ArtifactPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOL_NAMES = new Set(["Write", "Edit"]);
+const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.upsert_entry", "jingwei_upsert_entry"]);
 
 /** 从部分 JSON 字符串中尽力解析 file_path 和 content */
-function parsePartialWriteInput(partialJson: string): { filePath: string; content: string } | null {
+function parsePartialWriteInput(partialJson: string, toolName: string): { filePath: string; content: string } | null {
   // 尝试完整 JSON 解析
   try {
     const parsed = JSON.parse(partialJson);
@@ -50,8 +50,35 @@ function parsePartialWriteInput(partialJson: string): { filePath: string; conten
     if (parsed.file_path && typeof parsed.new_string === "string") {
       return { filePath: parsed.file_path, content: parsed.new_string };
     }
+    // jingwei.upsert_entry 格式
+    if (parsed.title && typeof parsed.contentMd === "string") {
+      const category = parsed.category ?? "unknown";
+      return { filePath: `jingwei/${category}/${parsed.title}.md`, content: parsed.contentMd };
+    }
   } catch {
     // 部分 JSON — 用正则提取
+  }
+
+  // jingwei.upsert_entry 的部分 JSON 解析
+  if (toolName.includes("jingwei") || toolName.includes("upsert")) {
+    const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]+)"/);
+    const categoryMatch = partialJson.match(/"category"\s*:\s*"([^"]+)"/);
+    const contentMdMatch = partialJson.match(/"contentMd"\s*:\s*"([\s\S]*)$/);
+    const title = titleMatch?.[1] ?? "";
+    const category = categoryMatch?.[1] ?? "unknown";
+    const filePath = title ? `jingwei/${category}/${title}.md` : "";
+
+    if (contentMdMatch) {
+      let raw = contentMdMatch[1].replace(/["\s}]*$/, "");
+      try {
+        return { filePath, content: JSON.parse(`"${raw}"`) };
+      } catch {
+        return { filePath, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+      }
+    }
+    if (filePath) {
+      return { filePath, content: "" };
+    }
   }
 
   // 正则提取 file_path
@@ -127,7 +154,7 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
 
         // 优先从 _streamingInput 解析（流式阶段）
         if (isStreaming && tc._streamingInput) {
-          const parsed = parsePartialWriteInput(tc._streamingInput);
+          const parsed = parsePartialWriteInput(tc._streamingInput, tc.toolName);
           if (parsed && parsed.filePath) {
             files.push({
               toolCallId: tc.id,
@@ -144,11 +171,15 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
         if (tc.input && typeof tc.input === "object") {
           const input = tc.input as Record<string, unknown>;
           const filePath = (input.file_path as string) ?? "";
-          const content = (input.content as string) ?? (input.new_string as string) ?? "";
-          if (filePath) {
+          const content = (input.content as string) ?? (input.new_string as string) ?? (input.contentMd as string) ?? "";
+          // jingwei.upsert_entry 格式
+          const jingweiPath = !filePath && input.title
+            ? `jingwei/${input.category ?? "unknown"}/${input.title}.md`
+            : filePath;
+          if (jingweiPath) {
             files.push({
               toolCallId: tc.id,
-              filePath,
+              filePath: jingweiPath,
               content,
               streaming: isStreaming,
               toolName: tc.toolName,

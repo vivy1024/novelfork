@@ -477,13 +477,22 @@ function toConversationConfirmation(
 }
 
 function extractQuestionsFromConfirmation(confirmation: ToolConfirmationRequest): ConversationConfirmation["questions"] & readonly unknown[] {
+  // 优先从顶层 questions 字段读取（AskUserQuestion 直接传递），其次从 diff.questions
+  const raw = (confirmation as any).questions;
   const diff = confirmation.diff as Record<string, unknown> | undefined;
-  if (!diff || !Array.isArray(diff.questions)) return [];
-  return (diff.questions as readonly Record<string, unknown>[]).map((q, i) => ({
+  const source: readonly Record<string, unknown>[] | undefined =
+    Array.isArray(raw) ? raw :
+    (diff && Array.isArray(diff.questions)) ? diff.questions as readonly Record<string, unknown>[] :
+    undefined;
+  if (!source || source.length === 0) return [];
+  return source.map((q, i) => ({
     id: String(q.id ?? `q-${i}`),
     prompt: String(q.prompt ?? q.question ?? ""),
     type: (q.type as "text" | "single" | "multi" | "ranged-number" | "ai-suggest") ?? "text",
-    ...(Array.isArray(q.options) ? { options: q.options.map(String) } : {}),
+    ...(Array.isArray(q.options) ? { options: (q.options as unknown[]).map((o: unknown) =>
+      typeof o === "string" ? { label: o } : (o && typeof o === "object" ? { label: String((o as any).label ?? o), ...((o as any).description ? { description: String((o as any).description) } : {}) } : { label: String(o) })
+    ) } : {}),
+    ...(typeof q.header === "string" ? { header: q.header } : {}),
     ...(typeof q.reason === "string" ? { reason: q.reason } : {}),
     ...(typeof q.required === "boolean" ? { required: q.required } : {}),
     ...(typeof q.aiSuggestion === "string" ? { aiSuggestion: q.aiSuggestion } : {}),

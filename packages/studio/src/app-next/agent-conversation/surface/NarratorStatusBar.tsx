@@ -718,7 +718,7 @@ function ContextRingMenu({
   };
 
   const handleReset = () => {
-    if (window.confirm("确定要清空上下文吗？这将重置当前会话的所有上下文记忆。")) {
+    if (window.confirm("确定要清空上下文吗？Agent 将忘记之前的对话，但聊天记录仍保留可查看。")) {
       onReset?.();
     }
   };

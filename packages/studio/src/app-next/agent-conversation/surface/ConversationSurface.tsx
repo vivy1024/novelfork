@@ -693,15 +693,17 @@ export function ConversationSurface({
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
         onCompact={onCompactSession ? () => { onCompactSession("压缩上下文到目标阈值").catch((e) => { alert(`压缩失败: ${e instanceof Error ? e.message : String(e)}`); }); } : undefined}
         onReset={() => {
-          if (!window.confirm("确定要清空上下文吗？这将删除当前会话的所有消息历史。")) return;
-          fetch(`/api/sessions/${encodeURIComponent(sessionId ?? "")}/chat/state`, {
-            method: "PUT",
+          if (!window.confirm("确定要清空上下文吗？Agent 将忘记之前的对话内容，但聊天记录仍然保留可查看。")) return;
+          fetch(`/api/sessions/${encodeURIComponent(sessionId ?? "")}/compact`, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: [] }),
+            body: JSON.stringify({ reason: "用户手动清空上下文", preserveRecentMessages: 1 }),
           }).then(res => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res.json();
+          }).then(() => {
             window.location.reload();
-          }).catch(e => { alert(`清空失败: ${e instanceof Error ? e.message : String(e)}`); });
+          }).catch(e => { alert(`清空上下文失败: ${e instanceof Error ? e.message : String(e)}`); });
         }}
         onOpenTerminal={() => setTerminalPanelOpen(true)}
       />

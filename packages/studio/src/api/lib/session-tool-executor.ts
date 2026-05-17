@@ -615,10 +615,11 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
               "chapter-summary": "章节摘要",
             };
             const name = CATEGORY_NAMES[category] ?? category;
+            const sectionNow = Date.now();
             storage.sqlite.prepare(`
               INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, created_at, updated_at)
-              VALUES (?, ?, ?, ?, '', 0, 1, 1, 1, 'tracked', '[]', datetime('now'), datetime('now'))
-            `).run(sectionId, bookId, category, name);
+              VALUES (?, ?, ?, ?, '', 0, 1, 1, 1, 'tracked', '[]', ?, ?)
+            `).run(sectionId, bookId, category, name, sectionNow, sectionNow);
           }
 
           // 查找已有条目（按 title 匹配）
@@ -628,16 +629,18 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
 
           const visibilityJson = JSON.stringify({ type: visibility });
           const aliasesJson = JSON.stringify(aliases);
-          const now = new Date().toISOString();
+          const tagsJson = JSON.stringify(tags);
+          const relatedEntryIdsJson = JSON.stringify(relatedEntryIds);
+          const now = Date.now();
 
           if (existingRows.length > 0) {
             // 更新已有条目
             const entryId = existingRows[0]!.id;
             storage.sqlite.prepare(`
               UPDATE story_jingwei_entry
-              SET content_md = ?, tags = ?, aliases = ?, related_entry_ids = ?, visibility_rule = ?, updated_at = ?, aliases_json = ?, visibility_rule_json = ?
+              SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, updated_at = ?
               WHERE id = ?
-            `).run(contentMd, JSON.stringify(tags), JSON.stringify(aliases), JSON.stringify(relatedEntryIds), visibilityJson, now, aliasesJson, visibilityJson, entryId);
+            `).run(contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, entryId);
             return {
               ok: true,
               renderer: definition.renderer,
@@ -648,9 +651,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             // 创建新条目
             const entryId = crypto.randomUUID();
             storage.sqlite.prepare(`
-              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags, aliases, custom_fields, related_chapter_numbers, related_entry_ids, visibility_rule, participates_in_ai, token_budget, created_at, updated_at, category, aliases_json, visibility_rule_json)
-              VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?, ?, ?, ?)
-            `).run(entryId, bookId, sectionId, title, contentMd, JSON.stringify(tags), JSON.stringify(aliases), JSON.stringify(relatedEntryIds), visibilityJson, now, now, category, aliasesJson, visibilityJson);
+              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?)
+            `).run(entryId, bookId, sectionId, title, contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, now);
             return {
               ok: true,
               renderer: definition.renderer,
@@ -1553,12 +1556,15 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (rawQuestions.length === 0) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "questions 数组为空。" };
         }
-        // 转换为 ConversationConfirmationQuestion 格式
+        // 转换为 ConversationConfirmationQuestion 格式（保留 label+description 结构）
         const questions = rawQuestions.map((q: any, idx: number) => ({
           id: q.id ?? `q-${idx}`,
           prompt: typeof q.question === "string" ? q.question : (typeof q.prompt === "string" ? q.prompt : `问题 ${idx + 1}`),
           type: q.multiSelect ? "multi" as const : (Array.isArray(q.options) && q.options.length > 0 ? "single" as const : "text" as const),
-          options: Array.isArray(q.options) ? q.options.map((o: any) => typeof o === "string" ? o : (o?.label ?? String(o))) : undefined,
+          options: Array.isArray(q.options) ? q.options.map((o: any) =>
+            typeof o === "string" ? { label: o } : { label: o?.label ?? String(o), ...(o?.description ? { description: o.description } : {}) }
+          ) : undefined,
+          header: typeof q.header === "string" ? q.header : undefined,
           required: true,
         }));
         const confirmationId = crypto.randomUUID();

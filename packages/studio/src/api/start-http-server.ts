@@ -135,7 +135,19 @@ export async function startHttpServer(options: {
             if (route && route.upgrade(request, server)) {
               return undefined;
             }
-            return options.fetch(request);
+            try {
+              const result = options.fetch(request);
+              if (result instanceof Promise) {
+                return result.catch((err) => {
+                  console.error("[fetch-error]", pathname, err?.message ?? err);
+                  return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500, headers: { "Content-Type": "application/json" } });
+                });
+              }
+              return result;
+            } catch (err: any) {
+              console.error("[fetch-error-sync]", pathname, err?.message ?? err);
+              return new Response(JSON.stringify({ error: "Internal Server Error" }), { status: 500, headers: { "Content-Type": "application/json" } });
+            }
           },
           websocket: {
             open(socket) {

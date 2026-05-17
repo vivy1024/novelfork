@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,8 @@ import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActi
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
+import { StatusBar } from "./StatusBar";
+import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -138,11 +140,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
   if (!node) {
     if (bookId) {
-      return (
-        <div className="h-full min-h-0">
-          <JingweiPanel bookId={bookId} />
-        </div>
-      );
+      return <DefaultCockpitView bookId={bookId} />;
     }
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -259,6 +257,62 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
           } : undefined} />
         )}
       </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DefaultCockpitView — JingweiPanel + 底部 StatusBar + 可展开面板
+// ---------------------------------------------------------------------------
+
+function DefaultCockpitView({ bookId }: { bookId: string }) {
+  const [activePanel, setActivePanel] = useState<PanelType>(null);
+  const [panelHeight, setPanelHeight] = useState<number>(320);
+  const [panelMaximized, setPanelMaximized] = useState(false);
+
+  const handleStatusBarClick = useCallback((panel: NonNullable<PanelType>) => {
+    setActivePanel((prev) => (prev === panel ? null : panel));
+    setPanelMaximized(false);
+  }, []);
+
+  const handlePanelClose = useCallback(() => {
+    setActivePanel(null);
+    setPanelMaximized(false);
+  }, []);
+
+  const handlePanelMaximize = useCallback(() => {
+    setPanelMaximized((prev) => !prev);
+  }, []);
+
+  return (
+    <div className="flex h-full flex-col min-h-0">
+      {/* 主区域：JingweiPanel */}
+      {!panelMaximized && (
+        <div className="flex-1 min-h-0">
+          <JingweiPanel bookId={bookId} />
+        </div>
+      )}
+
+      {/* 可展开面板 */}
+      {activePanel && (
+        <ExpandablePanel
+          activePanel={activePanel}
+          height={panelMaximized ? undefined : panelHeight}
+          maximized={panelMaximized}
+          bookId={bookId}
+          onClose={handlePanelClose}
+          onMaximize={handlePanelMaximize}
+          onHeightChange={setPanelHeight}
+          onSwitchPanel={setActivePanel}
+        />
+      )}
+
+      {/* 底部状态条 */}
+      <StatusBar
+        bookId={bookId}
+        activePanel={activePanel}
+        onPanelClick={handleStatusBarClick}
+      />
     </div>
   );
 }
