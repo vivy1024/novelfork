@@ -87,7 +87,7 @@ export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps)
             setHealth({
               chapterCount: typeof data.chapterCount === "number" ? data.chapterCount
                 : typeof data.health?.totalChapters?.value === "number" ? data.health.totalChapters.value : 0,
-              totalChapters: typeof data.totalChapters === "number" ? data.totalChapters : 200,
+              totalChapters: typeof data.totalChapters === "number" ? data.totalChapters : 0,
               aiTasteAvg: typeof data.aiTasteAvg === "number" ? data.aiTasteAvg
                 : typeof data.health?.aiTasteMean?.value === "number" ? data.health.aiTasteMean.value : null,
               alertCount,
