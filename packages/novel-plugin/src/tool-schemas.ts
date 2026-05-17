@@ -278,6 +278,24 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "beat.set_template": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      templateId: stringSchema("节拍模板 ID（如 opening-hooks、three-act、save-the-cat、heros-journey、chapter-ending-hooks）。"),
+    },
+    required: ["bookId", "templateId"],
+    additionalProperties: false,
+  },
+  "presets.set_rules": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      enabledPresetIds: arraySchema("要启用的预设 ID 列表。传空数组表示清空所有预设。", { type: "string" }),
+    },
+    required: ["bookId", "enabledPresetIds"],
+    additionalProperties: false,
+  },
   "jingwei.upsert_entry": {
     type: "object",
     properties: {
