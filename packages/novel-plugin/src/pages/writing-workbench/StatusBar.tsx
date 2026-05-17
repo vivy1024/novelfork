@@ -37,10 +37,9 @@ function useBeatProgress(bookId: string): string {
         const raw = localStorage.getItem(`novelfork-beat-${bookId}`);
         if (raw) {
           const data = JSON.parse(raw);
-          const currentBeatIndex = typeof data.currentBeatIndex === "number" ? data.currentBeatIndex + 1 : 0;
           const total = Array.isArray(data.beats) ? data.beats.length : 0;
-          if (total > 0) {
-            setLabel(`节拍 ${currentBeatIndex}/${total}`);
+          if (total > 0 && data.templateName) {
+            setLabel(`${data.templateName}`);
             return;
           }
         }
