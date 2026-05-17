@@ -9,7 +9,6 @@ import type { RouterContext } from "./context.js";
 interface OnboardingStatusTasks extends OnboardingTaskSettings {
   readonly modelConfigured: boolean;
   readonly hasAnyBook: boolean;
-  readonly hasAnyChapter: boolean;
 }
 
 interface OnboardingStatus {
@@ -22,8 +21,7 @@ interface OnboardingStatus {
 const PERSISTED_TASK_KEYS: ReadonlyArray<keyof OnboardingTaskSettings> = [
   "hasOpenedJingwei",
   "hasTriedAiWriting",
-  "hasTriedAiTasteScan",
-  "hasReadWorkbenchIntro",
+  "hasMetNarrator",
 ];
 
 function booleanPatch<T extends string>(source: unknown, keys: ReadonlyArray<T>): Partial<Record<T, boolean>> {
@@ -41,19 +39,6 @@ function booleanPatch<T extends string>(source: unknown, keys: ReadonlyArray<T>)
   return patch;
 }
 
-async function hasAnyChapter(ctx: RouterContext, bookIds: ReadonlyArray<string>): Promise<boolean> {
-  for (const bookId of bookIds) {
-    const [chapterCount, chapterIndex] = await Promise.all([
-      ctx.state.getPersistedChapterCount(bookId),
-      ctx.state.loadChapterIndex(bookId),
-    ]);
-    if (chapterCount > 0 || chapterIndex.length > 0) {
-      return true;
-    }
-  }
-  return false;
-}
-
 async function buildOnboardingStatus(ctx: RouterContext): Promise<OnboardingStatus> {
   const [config, bookIds] = await Promise.all([
     loadUserConfig(),
@@ -61,7 +46,6 @@ async function buildOnboardingStatus(ctx: RouterContext): Promise<OnboardingStat
   ]);
   const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
   const provider = await buildRuntimeProviderStatus(providerStore, config.modelDefaults.defaultSessionModel || undefined);
-  const chapterExists = await hasAnyChapter(ctx, bookIds);
 
   return {
     dismissedFirstRun: config.onboarding.dismissedFirstRun,
@@ -71,10 +55,8 @@ async function buildOnboardingStatus(ctx: RouterContext): Promise<OnboardingStat
       modelConfigured: provider.hasUsableModel,
       hasAnyBook: bookIds.length > 0,
       hasOpenedJingwei: config.onboarding.tasks.hasOpenedJingwei,
-      hasAnyChapter: chapterExists,
       hasTriedAiWriting: config.onboarding.tasks.hasTriedAiWriting,
-      hasTriedAiTasteScan: config.onboarding.tasks.hasTriedAiTasteScan,
-      hasReadWorkbenchIntro: config.onboarding.tasks.hasReadWorkbenchIntro,
+      hasMetNarrator: config.onboarding.tasks.hasMetNarrator,
     },
   };
 }

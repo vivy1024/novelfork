@@ -1167,16 +1167,28 @@ export async function confirmSessionToolDecision(
     decidedAt: new Date().toISOString(),
     sessionId,
   };
-  const rawToolResult = normalizedDecision === "approved"
-    ? await sessionToolExecutor.execute({
+
+  let rawToolResult: SessionToolExecutionResult;
+  if (normalizedDecision !== "approved") {
+    rawToolResult = createRejectedToolResult(toolName, match.confirmation, decision);
+  } else if (toolName === "AskUserQuestion" && input.answers) {
+    // AskUserQuestion 特殊处理：直接返回用户的 answers 作为工具结果，不重新执行工具
+    rawToolResult = {
+      ok: true,
+      renderer: "tool.ask-user-question",
+      summary: `用户已回答 ${Object.keys(input.answers).length} 个问题。`,
+      data: { status: "answered", answers: input.answers },
+    };
+  } else {
+    rawToolResult = await sessionToolExecutor.execute({
       sessionId,
       toolName,
       input: match.confirmation.input,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       sessionConfig: loaded.session.sessionConfig,
       confirmationDecision: decision,
-    })
-    : createRejectedToolResult(toolName, match.confirmation, decision);
+    });
+  }
   const toolResult = normalizeToolResultConfirmation(withSessionConfirmationAudit(rawToolResult, match.confirmation, decision), {
     sessionId,
     messageId: match.message.id,

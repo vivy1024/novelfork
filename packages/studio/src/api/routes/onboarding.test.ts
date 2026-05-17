@@ -62,10 +62,8 @@ describe("onboarding status route", () => {
           modelConfigured: false,
           hasAnyBook: false,
           hasOpenedJingwei: false,
-          hasAnyChapter: false,
           hasTriedAiWriting: false,
-          hasTriedAiTasteScan: false,
-          hasReadWorkbenchIntro: false,
+          hasMetNarrator: false,
         },
       },
     });
@@ -82,7 +80,7 @@ describe("onboarding status route", () => {
         dismissedGettingStarted: true,
         tasks: {
           hasOpenedJingwei: true,
-          hasReadWorkbenchIntro: true,
+          hasMetNarrator: true,
         },
       }),
     });
@@ -94,7 +92,7 @@ describe("onboarding status route", () => {
         dismissedGettingStarted: true,
         tasks: {
           hasOpenedJingwei: true,
-          hasReadWorkbenchIntro: true,
+          hasMetNarrator: true,
         },
       },
     });
@@ -109,13 +107,13 @@ describe("onboarding status route", () => {
         dismissedGettingStarted: true,
         tasks: {
           hasOpenedJingwei: true,
-          hasReadWorkbenchIntro: true,
+          hasMetNarrator: true,
         },
       },
     });
   });
 
-  it("derives model, book, and chapter task state from the runtime provider store", async () => {
+  it("derives model and book task state from the runtime provider store", async () => {
     const [{ ProviderRuntimeStore }] = await Promise.all([
       import("../lib/provider-runtime-store"),
     ]);
@@ -134,9 +132,8 @@ describe("onboarding status route", () => {
     });
 
     const bookDir = join(root, "books", "first-book");
-    await mkdir(join(bookDir, "chapters"), { recursive: true });
+    await mkdir(bookDir, { recursive: true });
     await writeFile(join(bookDir, "book.json"), JSON.stringify({ id: "first-book", title: "第一本书" }), "utf-8");
-    await writeFile(join(bookDir, "chapters", "index.json"), JSON.stringify([{ number: 1, title: "第一章" }]), "utf-8");
 
     const app = await createRoute({ providerStore });
     const response = await app.request("http://localhost/status");
@@ -152,7 +149,6 @@ describe("onboarding status route", () => {
         tasks: {
           modelConfigured: true,
           hasAnyBook: true,
-          hasAnyChapter: true,
         },
       },
     });
