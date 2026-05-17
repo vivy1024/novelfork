@@ -53,24 +53,19 @@ function ensureKatexCss() {
 }
 
 interface CodeBlockProps {
-  inline?: boolean;
   className?: string;
   children?: ReactNode;
-  node?: { position?: unknown; tagName?: string; properties?: Record<string, unknown>; parent?: { tagName?: string } };
 }
 
-function CodeBlock({ inline, className, children, node, ...rest }: CodeBlockProps) {
+/** 代码块组件 — 只在 pre 内部使用 */
+function FencedCodeBlock({ className, children }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1] : "";
   const code = String(children).replace(/\n$/, "");
 
-  // react-markdown v9+ 不再传 inline prop，通过检查是否有 language class 或内容是否多行来判断
-  const isInline = inline ?? (!className && !code.includes("\n"));
-
   useEffect(() => {
-    if (isInline) return;
     let cancelled = false;
     highlightCode(code, lang)
       .then((html) => {
@@ -80,17 +75,13 @@ function CodeBlock({ inline, className, children, node, ...rest }: CodeBlockProp
         if (!cancelled) setHighlightedHtml(null);
       });
     return () => { cancelled = true; };
-  }, [code, lang, isInline]);
+  }, [code, lang]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
-
-  if (isInline) {
-    return <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono">{children}</code>;
-  }
 
   return (
     <div className="code-block group/code relative my-2 rounded overflow-hidden">
@@ -115,6 +106,11 @@ function CodeBlock({ inline, className, children, node, ...rest }: CodeBlockProp
   );
 }
 
+/** 行内代码 — 灰色背景小字 */
+function InlineCode({ children }: { children?: ReactNode }) {
+  return <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono">{children}</code>;
+}
+
 interface MarkdownRendererProps {
   content: string;
 }
@@ -130,7 +126,16 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          code: CodeBlock,
+          // pre 包裹的是代码块 → 用 FencedCodeBlock 渲染（语法高亮 + 复制按钮）
+          pre: ({ children }) => {
+            const codeChild = children as React.ReactElement<{ className?: string; children?: ReactNode }>;
+            if (codeChild?.props) {
+              return <FencedCodeBlock className={codeChild.props.className}>{codeChild.props.children}</FencedCodeBlock>;
+            }
+            return <pre>{children}</pre>;
+          },
+          // 行内 code → 不渲染代码样式，直接作为普通文本
+          code: ({ children }) => <span className="font-medium">{children}</span>,
           p: ({ children }) => <p className="mb-3 leading-relaxed">{children}</p>,
           ul: ({ children }) => <ul className="mb-3 ml-4 list-disc space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="mb-3 ml-4 list-decimal space-y-1">{children}</ol>,
