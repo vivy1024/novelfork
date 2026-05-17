@@ -76,6 +76,16 @@ export function createGuidedGenerationToolService(options: GuidedGenerationToolS
           summary: `引导式生成：${state.goal}`,
           options: ["approve", "reject"] as const,
           diff: { questions: state.questions, goal: state.goal, contextSources: state.contextSources },
+          // 将引导式问题映射到 confirmation.questions，让 UserQuestionGate 渲染输入框
+          questions: state.questions.map((q) => ({
+            id: q.id,
+            prompt: q.prompt,
+            type: q.type ?? "text",
+            ...(q.options ? { options: q.options } : {}),
+            reason: q.reason,
+            required: q.required ?? true,
+            ...(q.aiSuggestion ? { aiSuggestion: q.aiSuggestion } : {}),
+          })),
         },
         guided: {
           stateId: state.id,
