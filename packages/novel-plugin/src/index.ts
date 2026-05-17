@@ -23,18 +23,15 @@ export const NOVEL_TOOL_NAMES: readonly string[] = [
   "cockpit.list_recent_candidates",
   "questionnaire.list_templates",
   "questionnaire.start",
-  "questionnaire.suggest_answer",
   "questionnaire.submit_response",
   "pgi.generate_questions",
   "pgi.record_answers",
-  "pgi.format_answers_for_prompt",
   "guided.enter",
   "guided.answer_question",
   "guided.exit",
   "candidate.create_chapter",
   "narrative.read_line",
   "narrative.propose_change",
-  "chapter.read",
   "jingwei.read_context",
   "health.read_summary",
   "chapter.audit",
@@ -42,6 +39,9 @@ export const NOVEL_TOOL_NAMES: readonly string[] = [
   "outline.suggest_next",
   "character.check_consistency",
   "hooks.manage",
+  "presets.get_rules",
+  "presets.check_compliance",
+  "beat.get_current",
 ];
 
 /** Tool descriptions for manifest (brief summaries) */
