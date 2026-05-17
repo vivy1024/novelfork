@@ -1308,6 +1308,83 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
+    case "presets.create_custom":
+      return async ({ input, definition }) => {
+        const bookId = input.bookId ? String(input.bookId) : undefined;
+        const name = String(input.name);
+        const category = String(input.category || "custom");
+        const promptInjection = String(input.promptInjection);
+        const description = input.description ? String(input.description) : undefined;
+        try {
+          const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+          const db = getStorageDatabase();
+          const repo = createUserTemplateRepository(db);
+          const id = `custom-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const bundleJson = JSON.stringify({
+            type: "preset",
+            category,
+            promptInjection,
+          });
+          const record = repo.create({ id, bookId: bookId ?? null, name, genre: null, description: description ?? null, bundleJson });
+
+          // 同时注册到内存 preset store 以便立即可用
+          const { registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          registerPreset({ id, name, category: category as any, promptInjection, description: description ?? "" });
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已创建自定义预设「${name}」（ID: ${id}）。使用 presets.set_rules 将其加入启用列表即可生效。`,
+            data: { id, name, category, bookId: bookId ?? null },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "preset-create-failed", summary: `创建自定义预设失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "beat.create_custom":
+      return async ({ input, definition }) => {
+        const bookId = input.bookId ? String(input.bookId) : undefined;
+        const name = String(input.name);
+        const description = String(input.description || "");
+        const beats = Array.isArray(input.beats) ? input.beats : [];
+        if (beats.length === 0) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "beats 列表不能为空。" };
+        }
+        try {
+          const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+          const db = getStorageDatabase();
+          const repo = createUserTemplateRepository(db);
+          const id = `custom-beat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          const normalizedBeats = beats.map((b: any, i: number) => ({
+            index: i + 1,
+            name: String(b.name),
+            emotionalTone: String(b.emotionalTone),
+            wordRatio: Number(b.wordRatio) || (1 / beats.length),
+            purpose: String(b.purpose || ""),
+            networkNovelTip: b.networkNovelTip ? String(b.networkNovelTip) : undefined,
+          }));
+          const bundleJson = JSON.stringify({
+            type: "beat-template",
+            name,
+            description,
+            beats: normalizedBeats,
+          });
+          repo.create({ id, bookId: bookId ?? null, name, genre: null, description, bundleJson });
+
+          // 注册到内存 beat store 以便立即可用
+          const { registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          registerBeatTemplate({ id, name, description, beats: normalizedBeats });
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已创建自定义节拍模板「${name}」（${normalizedBeats.length} 个节拍，ID: ${id}）。使用 beat.set_template 设置为当前书籍的节拍模板。`,
+            data: { id, name, beatCount: normalizedBeats.length, bookId: bookId ?? null },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "beat-create-failed", summary: `创建自定义节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     default:
       return undefined;
   }
