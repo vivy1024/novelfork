@@ -56,17 +56,21 @@ interface CodeBlockProps {
   inline?: boolean;
   className?: string;
   children?: ReactNode;
+  node?: { position?: unknown; tagName?: string; properties?: Record<string, unknown>; parent?: { tagName?: string } };
 }
 
-function CodeBlock({ inline, className, children }: CodeBlockProps) {
+function CodeBlock({ inline, className, children, node, ...rest }: CodeBlockProps) {
   const [copied, setCopied] = useState(false);
   const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
   const match = /language-(\w+)/.exec(className || "");
   const lang = match ? match[1] : "";
   const code = String(children).replace(/\n$/, "");
 
+  // react-markdown v9+ 不再传 inline prop，通过检查是否有 language class 或内容是否多行来判断
+  const isInline = inline ?? (!className && !code.includes("\n"));
+
   useEffect(() => {
-    if (inline) return;
+    if (isInline) return;
     let cancelled = false;
     highlightCode(code, lang)
       .then((html) => {
@@ -76,7 +80,7 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
         if (!cancelled) setHighlightedHtml(null);
       });
     return () => { cancelled = true; };
-  }, [code, lang, inline]);
+  }, [code, lang, isInline]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(code);
@@ -84,7 +88,7 @@ function CodeBlock({ inline, className, children }: CodeBlockProps) {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  if (inline) {
+  if (isInline) {
     return <code className="px-1 py-0.5 rounded bg-muted text-xs font-mono">{children}</code>;
   }
 
