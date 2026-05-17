@@ -123,13 +123,12 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
 
         {/* Content (Markdown) — 主要编辑区，有内容时始终显示 */}
         {contentMd && (
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">内容（Markdown）</label>
+          <div className="flex-1 min-h-0 flex flex-col">
+            <label className="text-xs text-muted-foreground mb-1 block shrink-0">内容（Markdown）</label>
             <Textarea
               value={contentMd}
               onChange={(e) => setContentMd(e.target.value)}
-              rows={12}
-              className="text-sm font-mono leading-relaxed"
+              className="text-sm font-mono leading-relaxed flex-1 min-h-[200px] resize-y"
               placeholder="Markdown 格式的经纬内容..."
             />
           </div>
@@ -216,8 +215,8 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
           </div>
         </div>
 
-        {/* Dynamic fields */}
-        {fields.map((field) => (
+        {/* Dynamic fields — contentMd 有内容时隐藏（md 导入的条目不需要结构化字段） */}
+        {!contentMd && fields.map((field) => (
           <FieldRenderer
             key={field.key}
             field={field}
