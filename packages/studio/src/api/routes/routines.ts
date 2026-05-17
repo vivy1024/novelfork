@@ -3,6 +3,9 @@
  */
 
 import { Hono } from "hono";
+import { readdir, readFile, stat } from "node:fs/promises";
+import { join } from "node:path";
+import { existsSync } from "node:fs";
 import {
   loadGlobalRoutines,
   saveGlobalRoutines,
@@ -127,6 +130,50 @@ export function createRoutinesRouter() {
     } catch (error) {
       console.error("Failed to reset routines:", error);
       return c.json({ error: "Failed to reset routines" }, 500);
+    }
+  });
+
+  /**
+   * GET /api/routines/disk-skills
+   * 扫描磁盘上的 skill 文件（.novelfork/skills/、.claude/skills/、.kiro/skills/）
+   */
+  app.get("/disk-skills", async (c) => {
+    try {
+      const workDir = process.cwd();
+      const skillDirs = [
+        { path: join(workDir, ".novelfork", "skills"), scope: "project" as const },
+        { path: join(workDir, ".claude", "skills"), scope: "project" as const },
+        { path: join(workDir, ".kiro", "skills"), scope: "project" as const },
+      ];
+
+      const skills: Array<{ name: string; path: string; scope: string; size: number; preview: string }> = [];
+
+      for (const { path: dir, scope } of skillDirs) {
+        if (!existsSync(dir)) continue;
+        try {
+          const files = await readdir(dir);
+          for (const file of files) {
+            if (!file.endsWith(".md")) continue;
+            const fullPath = join(dir, file);
+            const fileStat = await stat(fullPath);
+            const content = await readFile(fullPath, "utf-8");
+            const name = file.replace(/\.md$/, "");
+            // 提取第一行作为标题（去掉 # 前缀）
+            const firstLine = content.split("\n").find(l => l.trim())?.replace(/^#+\s*/, "").trim() ?? name;
+            skills.push({
+              name,
+              path: fullPath,
+              scope,
+              size: fileStat.size,
+              preview: firstLine,
+            });
+          }
+        } catch { /* directory read failure — skip */ }
+      }
+
+      return c.json({ ok: true, skills });
+    } catch (error) {
+      return c.json({ ok: false, error: "Failed to scan disk skills" }, 500);
     }
   });
 
