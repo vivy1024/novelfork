@@ -42,6 +42,7 @@ export const NOVEL_TOOL_NAMES: readonly string[] = [
   "presets.get_rules",
   "presets.check_compliance",
   "beat.get_current",
+  "jingwei.upsert_entry",
 ];
 
 /** Tool descriptions for manifest (brief summaries) */

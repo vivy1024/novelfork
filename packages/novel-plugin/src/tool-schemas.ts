@@ -317,4 +317,19 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "jingwei.upsert_entry": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      category: stringSchema("经纬类别：character/event/setting/foreshadowing/conflict/world-model/premise/arc/faction/location/item/skill/timeline/relationship/core-memory/custom。"),
+      title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
+      contentMd: stringSchema("条目内容（Markdown 格式）。"),
+      aliases: arraySchema("别名列表（用于 tracked 可见性匹配）。"),
+      tags: arraySchema("标签列表。"),
+      visibility: stringSchema("可见性规则：global（始终注入）/ tracked（匹配时注入）/ nested（被关联时注入）。默认 tracked。"),
+      relatedEntryIds: arraySchema("关联条目 ID 列表。"),
+    },
+    required: ["bookId", "category", "title", "contentMd"],
+    additionalProperties: false,
+  },
 };
