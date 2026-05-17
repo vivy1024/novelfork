@@ -1075,7 +1075,9 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           if (!bookConfig) {
             try {
               const { StateManager } = await import("@vivy1024/novelfork-core");
-              const state = new StateManager(process.env.NOVELFORK_PROJECT_ROOT || process.cwd());
+              const { dirname } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || (process.execPath?.endsWith(".exe") ? dirname(process.execPath) : process.cwd());
+              const state = new StateManager(root);
               const raw = await state.loadBookConfig(bookId);
               bookConfig = raw as unknown as { enabledPresetIds?: string[]; beatTemplateId?: string };
             } catch { /* ignore */ }
@@ -1166,11 +1168,14 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             } catch { /* ignore */ }
           }
           if (!selectedTemplateId) {
+            // Direct file read fallback — more reliable than StateManager in compiled exe
             try {
-              const { StateManager } = await import("@vivy1024/novelfork-core");
-              const state = new StateManager(process.env.NOVELFORK_PROJECT_ROOT || process.cwd());
-              const bookConfig = await state.loadBookConfig(bookId) as { beatTemplateId?: string };
-              selectedTemplateId = bookConfig.beatTemplateId;
+              const { readFile } = await import("node:fs/promises");
+              const { join, dirname } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || (process.execPath?.endsWith(".exe") ? dirname(process.execPath) : process.cwd());
+              const bookJsonPath = join(root, "books", bookId, "book.json");
+              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { beatTemplateId?: string };
+              selectedTemplateId = raw.beatTemplateId;
             } catch { /* ignore */ }
           }
 
@@ -1184,7 +1189,7 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           }
           const allTemplates = listBeatTemplates();
           const activeTemplate = selectedTemplateId
-            ? getBeatTemplate(selectedTemplateId) ?? allTemplates[0]
+            ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId) ?? allTemplates[0]
             : allTemplates[0];
 
           if (!activeTemplate) {
