@@ -42,6 +42,8 @@ export function resourceNeedsDetailHydration(node: WorkbenchResourceNode): boole
   if (metadataString(node, "detailSource") === "detail") return false;
   if (node.kind === "chapter") return isPreviewSource(node) || !node.content;
   if (node.kind === "story" || node.kind === "jingwei") return isPreviewSource(node);
+  // 经纬文件节点：没有 content 时需要从 API 加载
+  if (node.kind === "jingwei-entry" && !node.content && metadataString(node, "fileName")) return true;
   return false;
 }
 
