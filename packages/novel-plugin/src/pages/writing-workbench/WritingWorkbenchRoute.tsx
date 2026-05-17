@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { BookOpen, GitBranch, History, Home } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
-import { JingweiPanel } from "./jingwei/JingweiPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "@/app-next/chapter-graph";
 
@@ -52,7 +50,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const [showCheckpoints, setShowCheckpoints] = useState(false);
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
-  const [showJingwei, setShowJingwei] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
   const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
 
@@ -209,20 +206,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
           </div>
         </div>
       )}
-
-      {/* Jingwei Panel Dialog */}
-      <Dialog open={showJingwei} onOpenChange={setShowJingwei}>
-        <DialogContent className="max-w-4xl h-[70vh] p-0 overflow-hidden">
-          <DialogHeader className="px-4 pt-3 pb-0">
-            <DialogTitle>经纬资料管理</DialogTitle>
-          </DialogHeader>
-          {bookId && (
-            <div className="flex-1 min-h-0 h-full">
-              <JingweiPanel bookId={bookId} />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
