@@ -121,7 +121,7 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
         {/* Content */}
         <div className="flex-1 space-y-4 overflow-y-auto px-1.5 py-3">
           {/* Books section */}
-          <section className="space-y-1" aria-label="叙事线（书籍）">
+          <section className="space-y-1" aria-label="叙事线（书籍）" data-tour-id="sidebar-books">
             {!collapsed && (
               <button
                 type="button"
@@ -191,7 +191,7 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
           </section>
 
           {/* Narrators section */}
-          <section className="space-y-1" aria-label="叙述者">
+          <section className="space-y-1" aria-label="叙述者" data-tour-id="sidebar-narrators">
             {!collapsed && (
               <div className="flex items-center justify-between px-2">
                 <h2 className="flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
@@ -265,6 +265,7 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
                 aria-current={isActive ? "page" : undefined}
                 className="w-full justify-start gap-2 aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
                 onClick={() => onNavigate(item.route)}
+                data-tour-id={item.route.kind === "learn" ? "sidebar-learn" : undefined}
               >
                 <Icon className="h-4 w-4" />
                 {item.label}

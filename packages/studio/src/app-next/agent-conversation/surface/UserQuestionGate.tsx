@@ -19,6 +19,8 @@ function getOptionDescription(option: string | ConversationConfirmationQuestionO
   return typeof option === "string" ? undefined : option.description;
 }
 
+const OTHER_LABEL = "其他";
+
 function QuestionGroup({ question, value, customText, onSelect, onCustomTextChange }: {
   question: ConversationConfirmationQuestion;
   value: unknown;
@@ -56,8 +58,16 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
     );
   }
 
-  // single / multi
-  const isMulti = question.type === "multi";
+  // 默认多选：有选项的问题都支持多选（用户可以选多个）
+  const isMulti = question.type !== "text" && question.type !== "ranged-number" && question.type !== "ai-suggest";
+
+  // 检测选项中是否已经包含"其他"
+  const hasOtherInOptions = options.some((o) => getOptionLabel(o) === OTHER_LABEL);
+
+  // 判断是否选了"其他"
+  const isOtherSelected = isMulti
+    ? (Array.isArray(value) ? value.includes(OTHER_LABEL) : false)
+    : value === OTHER_LABEL;
 
   return (
     <div className="space-y-2">
@@ -133,16 +143,74 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
             </label>
           );
         })}
+
+        {/* "其他" 选项 — 仅在选项中没有"其他"时额外添加 */}
+        {!hasOtherInOptions && (
+          <label
+            className={`flex items-start gap-3 cursor-pointer rounded-lg px-3 py-2.5 transition-colors ${
+              isOtherSelected
+                ? "bg-blue-100 dark:bg-blue-900/40"
+                : "hover:bg-blue-50 dark:hover:bg-blue-950/30"
+            }`}
+          >
+            <div className="mt-0.5 shrink-0">
+              {isMulti ? (
+                <div className={`size-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                  isOtherSelected
+                    ? "border-blue-500 bg-blue-500"
+                    : "border-gray-300 dark:border-gray-600"
+                }`}>
+                  {isOtherSelected && (
+                    <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
+                      <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
+                </div>
+              ) : (
+                <div className={`size-4 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  isOtherSelected
+                    ? "border-blue-500"
+                    : "border-gray-300 dark:border-gray-600"
+                }`}>
+                  {isOtherSelected && (
+                    <div className="size-2 rounded-full bg-blue-500" />
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="text-sm font-medium text-foreground">{OTHER_LABEL}</span>
+            </div>
+            <input
+              type={isMulti ? "checkbox" : "radio"}
+              name={question.id}
+              value={OTHER_LABEL}
+              checked={isOtherSelected}
+              onChange={() => {
+                if (isMulti) {
+                  const current = Array.isArray(value) ? value : [];
+                  onSelect(isOtherSelected ? current.filter((v) => v !== OTHER_LABEL) : [...current, OTHER_LABEL]);
+                } else {
+                  onSelect(OTHER_LABEL);
+                }
+              }}
+              className="sr-only"
+            />
+          </label>
+        )}
       </div>
 
-      {/* Custom text input */}
-      <input
-        type="text"
-        value={customText}
-        onChange={(e) => onCustomTextChange(e.target.value)}
-        placeholder="请输入自定义回答..."
-        className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-blue-800 dark:bg-slate-900"
-      />
+      {/* Custom text input — 仅在选了"其他"时显示 */}
+      {isOtherSelected && (
+        <input
+          type="text"
+          value={customText}
+          onChange={(e) => onCustomTextChange(e.target.value)}
+          placeholder="请输入自定义回答..."
+          autoFocus
+          className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-blue-800 dark:bg-slate-900"
+        />
+      )}
     </div>
   );
 }
@@ -160,16 +228,41 @@ export function UserQuestionGate({ confirmation, onSubmitAnswers, onSkip }: User
   });
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
 
-  const requiredUnanswered = questions.filter((q) => q.required && !answers[q.id] && !customTexts[q.id]);
-  const canSubmit = requiredUnanswered.length === 0 && !confirmation.busy;
+  // canSubmit: 每个 required 问题必须有答案（选了选项 或 有自定义文本）
+  const canSubmit = !confirmation.busy && questions.every((q) => {
+    if (!q.required) return true;
+    const answer = answers[q.id];
+    const custom = customTexts[q.id]?.trim();
+    // 如果选了"其他"，必须有自定义文本
+    if (answer === OTHER_LABEL) return !!custom;
+    if (Array.isArray(answer) && answer.includes(OTHER_LABEL)) return !!custom;
+    // 有选择就行
+    if (answer !== undefined && answer !== null && answer !== "") {
+      if (Array.isArray(answer)) return answer.length > 0;
+      return true;
+    }
+    // 没选但有自定义文本也行
+    return !!custom;
+  });
 
   function handleSubmit() {
     if (!canSubmit) return;
-    // 合并：如果有自定义文本且没有选择选项，用自定义文本作为答案
-    const merged: Record<string, unknown> = { ...answers };
-    for (const [qId, text] of Object.entries(customTexts)) {
-      if (text.trim()) {
-        merged[qId] = text.trim();
+    // 构建最终答案
+    const merged: Record<string, unknown> = {};
+    for (const q of questions) {
+      const answer = answers[q.id];
+      const custom = customTexts[q.id]?.trim();
+
+      if (answer === OTHER_LABEL && custom) {
+        // 单选"其他" → 用自定义文本
+        merged[q.id] = custom;
+      } else if (Array.isArray(answer) && answer.includes(OTHER_LABEL) && custom) {
+        // 多选包含"其他" → 替换"其他"为自定义文本
+        merged[q.id] = answer.map((v) => v === OTHER_LABEL ? custom : v);
+      } else if (answer !== undefined && answer !== null && answer !== "") {
+        merged[q.id] = answer;
+      } else if (custom) {
+        merged[q.id] = custom;
       }
     }
     onSubmitAnswers(confirmation.id, merged);

@@ -223,8 +223,7 @@ export interface ModelDefaultSettings {
 export interface OnboardingTaskSettings {
   hasOpenedJingwei: boolean;
   hasTriedAiWriting: boolean;
-  hasTriedAiTasteScan: boolean;
-  hasReadWorkbenchIntro: boolean;
+  hasMetNarrator: boolean;
 }
 
 export interface OnboardingSettings {
@@ -484,8 +483,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     tasks: {
       hasOpenedJingwei: false,
       hasTriedAiWriting: false,
-      hasTriedAiTasteScan: false,
-      hasReadWorkbenchIntro: false,
+      hasMetNarrator: false,
     },
   },
   shortcuts: {},

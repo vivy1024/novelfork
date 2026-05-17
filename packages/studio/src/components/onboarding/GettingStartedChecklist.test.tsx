@@ -14,11 +14,9 @@ function status(overrides: Partial<GettingStartedStatus> = {}): GettingStartedSt
     tasks: {
       modelConfigured: false,
       hasAnyBook: false,
+      hasMetNarrator: false,
       hasOpenedJingwei: false,
-      hasAnyChapter: false,
       hasTriedAiWriting: false,
-      hasTriedAiTasteScan: false,
-      hasReadWorkbenchIntro: false,
     },
     ...overrides,
   };
@@ -31,11 +29,9 @@ describe("GettingStartedChecklist", () => {
         status={status()}
         onConfigureModel={() => {}}
         onCreateBook={() => {}}
+        onMeetNarrator={() => {}}
         onOpenJingwei={() => {}}
-        onCreateChapter={() => {}}
         onTryAiWriting={() => {}}
-        onTryAiTasteScan={() => {}}
-        onOpenWorkbenchIntro={() => {}}
         onDismiss={() => {}}
       />,
     );
@@ -44,11 +40,9 @@ describe("GettingStartedChecklist", () => {
     expect(items.map((item) => within(item).getByTestId("task-title").textContent)).toEqual([
       "配置 AI 模型",
       "创建第一本书",
-      "认识故事经纬",
-      "创建第一章 / 导入正文",
-      "试用 AI 写作与评点",
-      "试用 AI 味检测",
-      "了解工作台模式",
+      "进入书籍工作台",
+      "了解经纬系统",
+      "试用 AI 写作",
     ]);
     expect(screen.getByText("未配置模型，不影响本地写作")).toBeTruthy();
   });
@@ -61,20 +55,16 @@ describe("GettingStartedChecklist", () => {
           tasks: {
             modelConfigured: true,
             hasAnyBook: true,
+            hasMetNarrator: false,
             hasOpenedJingwei: false,
-            hasAnyChapter: false,
             hasTriedAiWriting: false,
-            hasTriedAiTasteScan: false,
-            hasReadWorkbenchIntro: false,
           },
         })}
         onConfigureModel={() => {}}
         onCreateBook={() => {}}
+        onMeetNarrator={() => {}}
         onOpenJingwei={() => {}}
-        onCreateChapter={() => {}}
         onTryAiWriting={() => {}}
-        onTryAiTasteScan={() => {}}
-        onOpenWorkbenchIntro={() => {}}
         onDismiss={() => {}}
       />,
     );
@@ -83,28 +73,48 @@ describe("GettingStartedChecklist", () => {
     expect(screen.getAllByText("已完成").length).toBeGreaterThanOrEqual(2);
   });
 
+  it("shows progress count", () => {
+    render(
+      <GettingStartedChecklist
+        status={status({
+          tasks: {
+            modelConfigured: true,
+            hasAnyBook: true,
+            hasMetNarrator: true,
+            hasOpenedJingwei: false,
+            hasTriedAiWriting: false,
+          },
+        })}
+        onConfigureModel={() => {}}
+        onCreateBook={() => {}}
+        onMeetNarrator={() => {}}
+        onOpenJingwei={() => {}}
+        onTryAiWriting={() => {}}
+        onDismiss={() => {}}
+      />,
+    );
+
+    expect(screen.getByText(/完成 3\/5 步/)).toBeTruthy();
+  });
+
   it("delegates AI writing attempts to the parent gate even when no model is configured", () => {
-    const onConfigureModel = vi.fn();
     const onTryAiWriting = vi.fn();
 
     render(
       <GettingStartedChecklist
         status={status()}
-        onConfigureModel={onConfigureModel}
+        onConfigureModel={() => {}}
         onCreateBook={() => {}}
+        onMeetNarrator={() => {}}
         onOpenJingwei={() => {}}
-        onCreateChapter={() => {}}
         onTryAiWriting={onTryAiWriting}
-        onTryAiTasteScan={() => {}}
-        onOpenWorkbenchIntro={() => {}}
         onDismiss={() => {}}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: /试用 AI 写作与评点/ }));
+    fireEvent.click(screen.getByRole("button", { name: /试用 AI 写作/ }));
 
     expect(onTryAiWriting).toHaveBeenCalledTimes(1);
-    expect(onConfigureModel).not.toHaveBeenCalled();
   });
 
   it("can be dismissed without affecting the rest of the dashboard", () => {
@@ -115,11 +125,9 @@ describe("GettingStartedChecklist", () => {
         status={status()}
         onConfigureModel={() => {}}
         onCreateBook={() => {}}
+        onMeetNarrator={() => {}}
         onOpenJingwei={() => {}}
-        onCreateChapter={() => {}}
         onTryAiWriting={() => {}}
-        onTryAiTasteScan={() => {}}
-        onOpenWorkbenchIntro={() => {}}
         onDismiss={onDismiss}
       />,
     );

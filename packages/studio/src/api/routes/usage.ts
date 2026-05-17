@@ -1,7 +1,13 @@
 import { Hono } from "hono";
 import { listSessions } from "../lib/session-service.js";
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
-import { getRequestLogs, summarizeRequests } from "../lib/request-observability.js";
+import {
+  deleteRequestLog,
+  queryRequestLogs,
+  queryRequestSummary,
+  queryRequestTrend,
+  summarizeRequests,
+} from "../lib/request-observability.js";
 import type { RequestLog } from "../lib/request-observability.js";
 
 interface UsageEntry {
@@ -79,16 +85,20 @@ export function createUsageRouter() {
       return totalB - totalA;
     });
 
+    // Also include request-level summary from SQLite
+    const requestSummary = queryRequestSummary();
+
     return c.json({
       entries,
       totalInputTokens,
       totalOutputTokens,
       totalTurns,
       totalSessions: sessions.length,
+      requestSummary,
     });
   });
 
-  // ── 请求明细（分页+筛选） ──
+  // ── 请求明细（分页+筛选，SQLite 持久化） ──
   app.get("/requests", (c) => {
     const page = Math.max(1, Number(c.req.query("page")) || 1);
     const pageSize = Math.min(100, Math.max(10, Number(c.req.query("pageSize")) || 30));
@@ -96,110 +106,46 @@ export function createUsageRouter() {
     const model = c.req.query("model")?.trim() || undefined;
     const from = c.req.query("from") || undefined;
     const to = c.req.query("to") || undefined;
-    const status = c.req.query("status") || undefined; // "success" | "error" | undefined
+    const status = (c.req.query("status") || undefined) as "success" | "error" | undefined;
 
-    let logs = getRequestLogs();
+    const result = queryRequestLogs({ provider, model, from, to, status, page, pageSize });
 
-    // 筛选
-    if (provider) logs = logs.filter((l) => l.provider?.toLowerCase().includes(provider.toLowerCase()));
-    if (model) logs = logs.filter((l) => l.model?.toLowerCase().includes(model.toLowerCase()));
-    if (from) {
-      const fromTs = new Date(from).getTime();
-      logs = logs.filter((l) => new Date(l.timestamp).getTime() >= fromTs);
-    }
-    if (to) {
-      const toTs = new Date(to).getTime();
-      logs = logs.filter((l) => new Date(l.timestamp).getTime() <= toTs);
-    }
-    if (status === "error") logs = logs.filter((l) => l.status >= 400);
-    if (status === "success") logs = logs.filter((l) => l.status >= 200 && l.status < 400);
-
-    // 按时间倒序
-    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-
-    const total = logs.length;
-    const offset = (page - 1) * pageSize;
-    const items = logs.slice(offset, offset + pageSize);
-
-    // 汇总统计
-    const summary = summarizeRequests(logs);
+    // Compute summary for the filtered set
+    const summary = summarizeRequests(result.items);
 
     return c.json({
-      items: items.map(formatRequestItem),
-      total,
-      page,
-      pageSize,
-      totalPages: Math.ceil(total / pageSize),
+      items: result.items.map(formatRequestItem),
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize,
+      totalPages: result.totalPages,
       summary,
     });
   });
 
-  // ── 使用趋势（时间粒度聚合） ──
+  // ── 使用趋势（时间粒度聚合，SQLite） ──
   app.get("/trend", (c) => {
     const granularity = (c.req.query("granularity") || "day") as "hour" | "day" | "month";
     const metric = (c.req.query("metric") || "tokens") as "tokens" | "requests" | "cost" | "errors";
     const from = c.req.query("from") || undefined;
     const to = c.req.query("to") || undefined;
 
-    let logs = getRequestLogs();
-
-    if (from) {
-      const fromTs = new Date(from).getTime();
-      logs = logs.filter((l) => new Date(l.timestamp).getTime() >= fromTs);
-    }
-    if (to) {
-      const toTs = new Date(to).getTime();
-      logs = logs.filter((l) => new Date(l.timestamp).getTime() <= toTs);
-    }
-
-    // 按时间桶聚合
-    const buckets = new Map<string, number>();
-
-    for (const log of logs) {
-      const key = toBucketKey(new Date(log.timestamp), granularity);
-      const current = buckets.get(key) ?? 0;
-
-      switch (metric) {
-        case "tokens":
-          buckets.set(key, current + (log.tokens?.total ?? (log.tokens?.input ?? 0) + (log.tokens?.output ?? 0)));
-          break;
-        case "requests":
-          buckets.set(key, current + 1);
-          break;
-        case "cost":
-          buckets.set(key, current + (log.costUsd ?? 0));
-          break;
-        case "errors":
-          buckets.set(key, current + (log.status >= 400 ? 1 : 0));
-          break;
-      }
-    }
-
-    // 排序并返回
-    const points = Array.from(buckets.entries())
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([time, value]) => ({ time, value }));
+    const points = queryRequestTrend({ granularity, metric, from, to });
 
     return c.json({ granularity, metric, points });
+  });
+
+  // ── 删除单条请求记录 ──
+  app.delete("/requests/:id", (c) => {
+    const id = c.req.param("id");
+    const deleted = deleteRequestLog(id);
+    return c.json({ deleted });
   });
 
   return app;
 }
 
 // ── Helpers ──
-
-function toBucketKey(date: Date, granularity: "hour" | "day" | "month"): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  const h = String(date.getHours()).padStart(2, "0");
-
-  switch (granularity) {
-    case "hour": return `${y}-${m}-${d}T${h}:00`;
-    case "day": return `${y}-${m}-${d}`;
-    case "month": return `${y}-${m}`;
-  }
-}
 
 function formatRequestItem(log: RequestLog) {
   return {
@@ -218,4 +164,3 @@ function formatRequestItem(log: RequestLog) {
     error: log.status >= 400 ? (log.errorSummary ?? "Error") : null,
   };
 }
-
