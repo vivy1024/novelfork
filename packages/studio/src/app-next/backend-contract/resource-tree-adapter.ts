@@ -146,7 +146,7 @@ export async function loadResourceTreeFromContract(
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
-        jingweiPanelEntryNode(),
+        jingweiPanelEntryNode(jingweiFiles),
         group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
         group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
@@ -172,10 +172,24 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
 }
 
 /**
- * Single clickable node that opens the JingweiPanel dialog.
- * Replaces the old file-based "经纬资料" group with children.
+ * 经纬资料组 — 包含经纬文件列表作为子节点，用户可直接点击查看内容。
  */
-function jingweiPanelEntryNode(): ContractResourceNode {
+function jingweiPanelEntryNode(jingweiFiles: JingweiFileListResponse | null | undefined): ContractResourceNode {
+  const children: ContractResourceNode[] = (jingweiFiles?.files ?? [])
+    .filter((f) => f.name !== "pending_hooks.md" && f.size > 10) // 排除伏笔文件（单独展示）和空文件
+    .map((f) => ({
+      id: `jingwei-file:${f.name}`,
+      kind: "jingwei-entry" as const,
+      title: f.label || f.name.replace(/\.md$/, ""),
+      capabilities: {
+        read: CURRENT_READ("jingwei-files.read"),
+        edit: CURRENT_EDIT("jingwei-files.write"),
+        delete: UNSUPPORTED("jingwei-files.delete"),
+        apply: UNSUPPORTED("jingwei-files.apply"),
+      },
+      metadata: { fileName: f.name, category: f.category, preview: f.preview },
+    }));
+
   return {
     id: "jingwei-panel-entry",
     kind: "jingwei",
@@ -187,6 +201,7 @@ function jingweiPanelEntryNode(): ContractResourceNode {
       apply: UNSUPPORTED("jingwei.panel.apply"),
     },
     metadata: { action: "open-jingwei-panel" },
+    children: children.length > 0 ? children : undefined,
   };
 }
 
