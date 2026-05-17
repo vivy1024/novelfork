@@ -1,11 +1,13 @@
 /**
- * 学习中心 API — 提供文档列表、搜索和内容获取
+ * 学习中心 API — 动态扫描 docs/learning/ 目录，提供文档列表、搜索和内容获取
  * 同时作为 AI Agent 的内部检索工具
  */
 
 import { Hono } from "hono";
-import { readFile } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { readFile, readdir } from "node:fs/promises";
+import { join, dirname } from "node:path";
+import { existsSync } from "node:fs";
+import { resolveRuntimeStoragePath } from "../lib/runtime-storage-paths.js";
 
 export interface LearningDoc {
   id: string;
@@ -24,32 +26,102 @@ interface LearningDocMeta {
   category: string;
 }
 
-// ── 文档元数据（分类+标签） ──
+// ── 分类规则（根据文件名前缀） ──
 
-const DOC_CATALOG: LearningDocMeta[] = [
-  { id: "00-overview", title: "一页理解 NovelFork", summary: "核心心智模型、三栏布局、推荐使用流程", tags: ["入门", "概览", "工作流"], category: "从这里开始" },
-  { id: "01-book-management", title: "作品与章节管理", summary: "创建作品、资源树、章节 CRUD、驾驶舱、导入导出", tags: ["作品", "章节", "管理", "导入导出"], category: "从这里开始" },
-  { id: "02-ai-writing", title: "AI 写作功能", summary: "写作模式、AI 动作、选区变换、候选稿流程", tags: ["AI", "写作", "候选稿", "模式"], category: "AI 写作" },
-  { id: "03-guided-generation", title: "引导式生成", summary: "PGI 追问、Guided Plan、问卷引导", tags: ["PGI", "引导", "生成", "计划"], category: "AI 写作" },
-  { id: "04-narrator-conversation", title: "叙述者对话", summary: "会话界面、模型切换、权限、Slash 命令、确认门", tags: ["对话", "叙述者", "会话", "权限"], category: "AI 写作" },
-  { id: "08-agent-pipeline", title: "Agent 写作管线", summary: "PipelineRunner、Agent 角色、工具链、编排", tags: ["Agent", "管线", "编排", "工具链"], category: "AI 写作" },
-  { id: "05-story-jingwei", title: "故事经纬", summary: "分区/条目、可见性规则、模板、AI 上下文参与", tags: ["经纬", "设定", "世界观", "模板"], category: "工具与分析" },
-  { id: "07-writing-tools", title: "写作工具", summary: "钩子、节奏、对话比例、健康、矛盾、弧线、文风", tags: ["工具", "分析", "检测", "健康度"], category: "工具与分析" },
-  { id: "06-settings-and-routines", title: "设置与套路", summary: "供应商配置、套路系统、继承机制", tags: ["设置", "套路", "配置", "供应商"], category: "设置与配置" },
-  { id: "09-agent-settings", title: "AI 代理配置", summary: "权限模式、上下文窗口管理、重试策略、白黑名单、调试选项", tags: ["AI代理", "权限", "上下文", "重试", "白名单", "调试"], category: "设置与配置" },
-  { id: "10-proxy-settings", title: "代理管理与网络配置", summary: "HTTP/SOCKS 代理配置、按供应商独立代理、Sub2API 网关集成", tags: ["代理", "网络", "proxy", "Sub2API"], category: "设置与配置" },
-  { id: "11-usage-history", title: "使用历史与成本监控", summary: "请求趋势图、筛选器、请求明细表、Token 用量分析、成本追踪", tags: ["使用历史", "Token", "成本", "趋势", "监控"], category: "设置与配置" },
-  { id: "12-appearance", title: "外观与个性化", summary: "主题模式、OLED纯黑、终端配置、字体、动画、语言设置", tags: ["外观", "主题", "OLED", "终端", "字体"], category: "设置与配置" },
-];
+const CATEGORIES = ["从这里开始", "AI 写作", "工具与分析", "设置与配置", "高级功能"] as const;
 
-const CATEGORIES = ["从这里开始", "AI 写作", "工具与分析", "设置与配置"];
+function classifyByPrefix(id: string): string {
+  const num = parseInt(id.split("-")[0], 10);
+  if (isNaN(num)) return "高级功能";
+  if (num <= 1) return "从这里开始";
+  if (num <= 4 || num === 8) return "AI 写作";
+  if (num === 5 || num === 7) return "工具与分析";
+  if (num === 6 || (num >= 9 && num <= 12)) return "设置与配置";
+  if (num >= 13) return "高级功能";
+  return "高级功能";
+}
 
-// ── 文件加载 ──
+// ── Frontmatter 解析 ──
+
+function parseFrontmatter(content: string): { title: string; summary: string; tags: string[] } {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return { title: "", summary: "", tags: [] };
+  const yaml = match[1];
+  const title = yaml.match(/title:\s*(.+)/)?.[1]?.trim() ?? "";
+  const summary = yaml.match(/summary:\s*(.+)/)?.[1]?.trim() ?? "";
+  const tagsMatch = yaml.match(/tags:\s*\[([^\]]*)\]/);
+  const tags = tagsMatch ? tagsMatch[1].split(",").map(t => t.trim().replace(/['"]/g, "")) : [];
+  return { title, summary, tags };
+}
+
+// ── 文件路径解析（exe → ~/.novelfork → cwd） ──
 
 function getLearningDocsDir(): string {
-  // 从项目根目录的 docs/learning/ 加载
-  return resolve(process.cwd(), "docs", "learning");
+  // 1. exe 模式：execPath 同级 docs/learning/
+  const exeDir = join(dirname(process.execPath), "docs", "learning");
+  if (existsSync(exeDir)) return exeDir;
+
+  // 2. 用户目录：~/.novelfork/docs/learning/
+  const userDir = resolveRuntimeStoragePath("docs", "learning");
+  if (existsSync(userDir)) return userDir;
+
+  // 3. 开发模式：cwd/docs/learning/
+  return join(process.cwd(), "docs", "learning");
 }
+
+// ── 动态扫描文档目录 ──
+
+let cachedCatalog: LearningDocMeta[] | null = null;
+let catalogLoadedAt = 0;
+const CACHE_TTL = 60_000; // 1 分钟缓存
+
+async function loadCatalog(): Promise<LearningDocMeta[]> {
+  const now = Date.now();
+  if (cachedCatalog && now - catalogLoadedAt < CACHE_TTL) {
+    return cachedCatalog;
+  }
+
+  const docsDir = getLearningDocsDir();
+  const catalog: LearningDocMeta[] = [];
+
+  try {
+    const files = await readdir(docsDir);
+    const mdFiles = files.filter(f => f.endsWith(".md") && f !== "README.md").sort();
+
+    for (const file of mdFiles) {
+      const id = file.replace(/\.md$/, "");
+      const filePath = join(docsDir, file);
+      try {
+        const content = await readFile(filePath, "utf-8");
+        const { title, summary, tags } = parseFrontmatter(content);
+        catalog.push({
+          id,
+          title: title || id,
+          summary: summary || "",
+          tags,
+          category: classifyByPrefix(id),
+        });
+      } catch {
+        // 单个文件读取失败，跳过
+        catalog.push({
+          id,
+          title: id,
+          summary: "",
+          tags: [],
+          category: classifyByPrefix(id),
+        });
+      }
+    }
+  } catch {
+    // 目录不存在或不可读，返回空
+  }
+
+  cachedCatalog = catalog;
+  catalogLoadedAt = now;
+  return catalog;
+}
+
+// ── 文件加载 ──
 
 async function loadDocContent(docId: string): Promise<string | null> {
   try {
@@ -62,13 +134,13 @@ async function loadDocContent(docId: string): Promise<string | null> {
 
 // ── 搜索逻辑 ──
 
-function searchDocs(query: string): LearningDocMeta[] {
+async function searchDocs(query: string): Promise<LearningDocMeta[]> {
+  const catalog = await loadCatalog();
   const q = query.toLowerCase().trim();
-  if (!q) return DOC_CATALOG;
+  if (!q) return catalog;
 
-  return DOC_CATALOG.filter((doc) => {
+  return catalog.filter((doc) => {
     const haystack = [doc.title, doc.summary, ...doc.tags, doc.category].join(" ").toLowerCase();
-    // 支持多词搜索（AND 逻辑）
     const terms = q.split(/\s+/);
     return terms.every((term) => haystack.includes(term));
   });
@@ -80,18 +152,19 @@ export function createLearningRouter() {
   const app = new Hono();
 
   // GET /learn/docs — 列出所有文档（按分类分组）
-  app.get("/docs", (c) => {
+  app.get("/docs", async (c) => {
+    const catalog = await loadCatalog();
     const grouped = CATEGORIES.map((category) => ({
       category,
-      docs: DOC_CATALOG.filter((d) => d.category === category).map(({ id, title, summary, tags }) => ({ id, title, summary, tags })),
-    }));
-    return c.json({ categories: grouped, total: DOC_CATALOG.length });
+      docs: catalog.filter((d) => d.category === category).map(({ id, title, summary, tags }) => ({ id, title, summary, tags })),
+    })).filter(g => g.docs.length > 0);
+    return c.json({ categories: grouped, total: catalog.length });
   });
 
   // GET /learn/search?q=xxx — 搜索文档
-  app.get("/search", (c) => {
+  app.get("/search", async (c) => {
     const query = c.req.query("q") || "";
-    const results = searchDocs(query);
+    const results = await searchDocs(query);
     return c.json({
       query,
       results: results.map(({ id, title, summary, tags, category }) => ({ id, title, summary, tags, category })),
@@ -102,7 +175,8 @@ export function createLearningRouter() {
   // GET /learn/doc/:id — 获取单篇文档内容
   app.get("/doc/:id", async (c) => {
     const docId = c.req.param("id");
-    const meta = DOC_CATALOG.find((d) => d.id === docId);
+    const catalog = await loadCatalog();
+    const meta = catalog.find((d) => d.id === docId);
     if (!meta) {
       return c.json({ error: "文档不存在" }, 404);
     }
@@ -120,7 +194,7 @@ export function createLearningRouter() {
 // ── Agent 内部检索接口（供 AI Agent 调用） ──
 
 export async function agentSearchLearning(query: string): Promise<Array<{ id: string; title: string; summary: string; relevance: string }>> {
-  const results = searchDocs(query);
+  const results = await searchDocs(query);
   return results.slice(0, 5).map((doc) => ({
     id: doc.id,
     title: doc.title,
@@ -130,7 +204,8 @@ export async function agentSearchLearning(query: string): Promise<Array<{ id: st
 }
 
 export async function agentGetLearningDoc(docId: string): Promise<{ title: string; content: string } | null> {
-  const meta = DOC_CATALOG.find((d) => d.id === docId);
+  const catalog = await loadCatalog();
+  const meta = catalog.find((d) => d.id === docId);
   if (!meta) return null;
   const content = await loadDocContent(docId);
   return {
