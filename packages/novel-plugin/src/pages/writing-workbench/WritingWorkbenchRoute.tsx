@@ -56,18 +56,18 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const hasGraphData = chapters && chapters.length > 0;
   const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
 
-  /** Intercept resource tree clicks: jingwei nodes deselect to show graph workspace */
+  /** Intercept resource tree clicks: jingwei panel entry deselects to show graph workspace, but jingwei file entries open normally */
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
-    if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") {
-      // 取消选中，回到画布默认视图（经纬图谱工作区）
+    if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section") {
+      // 经纬面板入口 / section → 回到画布默认视图
       if (onDeselectNode) {
         onDeselectNode();
       } else {
-        // fallback: 打开经纬面板 Dialog
         setShowJingwei(true);
       }
       return;
     }
+    // jingwei-entry（经纬文件）和其他节点正常打开
     onOpen(node);
   }, [onOpen, onDeselectNode]);
 
