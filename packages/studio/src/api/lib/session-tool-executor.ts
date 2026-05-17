@@ -1574,6 +1574,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             summary: `Agent 提问：${questions[0]?.prompt ?? "请回答以下问题"}`,
             risk: "confirmed-write" as const,
             options: CONFIRMATION_OPTIONS,
+            questions,
           },
         };
       };
