@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BidirectionalList, { type BidirectionalListRef } from "broad-infinite-list/react";
+import { ArrowDown } from "lucide-react";
 import type { ToolResultArtifact } from "../../tool-results";
 import { MessageItem, type ConversationSurfaceMessage, type MessageContextAction } from "./MessageItem";
 import { useMessageSelection } from "./useMessageSelection";
@@ -17,40 +18,87 @@ export interface MessageStreamProps {
   codeCollapsed?: boolean;
 }
 
+/** 判断是否在底部附近（距底部 < threshold px） */
+function isNearBottom(ref: BidirectionalListRef<unknown> | null, threshold = 80): boolean {
+  if (!ref) return true;
+  try {
+    return ref.getBottomDistance() < threshold;
+  } catch {
+    return true;
+  }
+}
+
 export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
+  /** 用户是否手动向上滚动（打断了自动下滑） */
+  const [userScrolledUp, setUserScrolledUp] = useState(false);
+  /** 是否正在执行程序化滚动（避免误判为用户操作） */
+  const programmaticScrollRef = useRef(false);
 
   const messageIds = useMemo(() => messages.map((m) => m.id), [messages]);
   const { selectedIds, isSelected, selectionCount, toggle, clear } = useMessageSelection(messageIds);
+
+  // 监听滚动事件，检测用户是否手动向上滚动
+  useEffect(() => {
+    const scrollEl = listRef.current?.scrollViewRef?.current;
+    if (!scrollEl) return;
+
+    function handleScroll() {
+      if (programmaticScrollRef.current) return;
+      const nearBottom = isNearBottom(listRef.current);
+      if (nearBottom) {
+        setUserScrolledUp(false);
+      } else {
+        setUserScrolledUp(true);
+      }
+    }
+
+    scrollEl.addEventListener("scroll", handleScroll, { passive: true });
+    return () => scrollEl.removeEventListener("scroll", handleScroll);
+  }, [messages.length]); // 重新绑定当消息列表变化时
+
+  /** 程序化滚动到底部（不触发 userScrolledUp） */
+  function scrollToBottomProgrammatic(behavior: ScrollBehavior = "instant") {
+    programmaticScrollRef.current = true;
+    listRef.current?.scrollToBottom(behavior);
+    // 短暂延迟后恢复，避免 scroll 事件误判
+    setTimeout(() => { programmaticScrollRef.current = false; }, 100);
+  }
 
   // 首次加载或切换对话时滚动到底部
   useEffect(() => {
     if (messages.length > 0) {
       requestAnimationFrame(() => {
-        listRef.current?.scrollToBottom("instant");
+        scrollToBottomProgrammatic("instant");
       });
     }
   }, []); // 只在组件挂载时执行一次
 
-  // 新消息到达时自动滚动到底部
+  // 新消息到达时自动滚动到底部（除非用户打断）
   useEffect(() => {
-    if (messages.length > prevLengthRef.current) {
-      listRef.current?.scrollToBottom("smooth");
+    if (messages.length > prevLengthRef.current && !userScrolledUp) {
+      scrollToBottomProgrammatic("smooth");
     }
     prevLengthRef.current = messages.length;
-  }, [messages.length]);
+  }, [messages.length, userScrolledUp]);
 
-  // 流式内容更新时持续滚动到底部（最后一条消息正在 streaming 或内容变化）
+  // 流式内容更新时持续滚动到底部（除非用户打断）
   const lastMessage = messages[messages.length - 1];
   const lastMessageContent = lastMessage?.content ?? "";
   const lastMessageStreaming = lastMessage?.isStreaming ?? false;
   const lastToolCallCount = lastMessage?.toolCalls?.length ?? 0;
   useEffect(() => {
-    if (lastMessageStreaming || lastToolCallCount > 0) {
-      listRef.current?.scrollToBottom("instant");
+    if (!userScrolledUp && (lastMessageStreaming || lastToolCallCount > 0)) {
+      scrollToBottomProgrammatic("instant");
     }
-  }, [lastMessageContent, lastMessageStreaming, lastToolCallCount]);
+  }, [lastMessageContent, lastMessageStreaming, lastToolCallCount, userScrolledUp]);
+
+  /** 用户点击"滚动到底部"按钮 */
+  function handleScrollToBottomClick() {
+    setUserScrolledUp(false);
+    scrollToBottomProgrammatic("smooth");
+  }
 
   const handleLoadMore = useCallback(
     async (direction: "up" | "down") => {
@@ -139,6 +187,19 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
           </div>
         }
       />
+
+      {/* 滚动到底部按钮 */}
+      {userScrolledUp && (
+        <button
+          onClick={handleScrollToBottomClick}
+          className="absolute bottom-4 right-4 z-10 flex items-center gap-1.5 rounded-full bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-lg hover:bg-primary/90 transition-all animate-in fade-in slide-in-from-bottom-2 duration-200"
+          title="滚动到底部"
+        >
+          <ArrowDown className="size-3.5" />
+          最新消息
+        </button>
+      )}
+
       <SelectionActionBar
         count={selectionCount}
         onCopy={handleCopy}
