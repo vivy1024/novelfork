@@ -168,7 +168,8 @@ interface BuildContextResult {
 export function buildBookContextBlock(input: ContextInput): BuildContextResult {
   const lines: string[] = [];
 
-  // 基本信息
+  // 基本信息 — bookId 必须明确告知 agent，避免从路径推断
+  lines.push(`- bookId：${input.book.id}`);
   lines.push(`- 作品：${input.book.title}`);
   if (input.book.genre) lines.push(`- 题材：${input.book.genre}`);
   if (input.book.platform) lines.push(`- 平台：${input.book.platform}`);
