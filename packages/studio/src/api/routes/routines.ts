@@ -140,10 +140,14 @@ export function createRoutinesRouter() {
   app.get("/disk-skills", async (c) => {
     try {
       const workDir = process.cwd();
+      const { homedir } = await import("node:os");
       const skillDirs = [
+        // 项目级
         { path: join(workDir, ".novelfork", "skills"), scope: "project" as const },
         { path: join(workDir, ".claude", "skills"), scope: "project" as const },
         { path: join(workDir, ".kiro", "skills"), scope: "project" as const },
+        // 全局级
+        { path: join(homedir(), ".novelfork", "skills"), scope: "global" as const },
       ];
 
       const skills: Array<{ name: string; path: string; scope: string; size: number; preview: string }> = [];

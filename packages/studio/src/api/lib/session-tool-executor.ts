@@ -1842,15 +1842,19 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         const args = typeof input.args === "string" ? input.args : undefined;
 
-        // v1: Try to load skill content from disk first
+        // v2: Try to load skill content from disk — project level first, then global
         const workDir = options.workDir ?? process.cwd();
         const { existsSync, readFileSync } = await import("node:fs");
         const { join } = await import("node:path");
+        const { homedir } = await import("node:os");
 
         const skillPaths = [
-          join(workDir, ".claude", "skills", `${skillName}.md`),
+          // 项目级（优先）
           join(workDir, ".novelfork", "skills", `${skillName}.md`),
+          join(workDir, ".claude", "skills", `${skillName}.md`),
           join(workDir, ".kiro", "skills", `${skillName}.md`),
+          // 全局级（兜底）
+          join(homedir(), ".novelfork", "skills", `${skillName}.md`),
         ];
 
         for (const p of skillPaths) {
