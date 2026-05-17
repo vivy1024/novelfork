@@ -820,6 +820,15 @@ ${contextParts.join("\n")}
         }
       })();
 
+      // 自动将 md 文件导入 SQLite 经纬条目（确保 JingweiPanel 和 Agent 工具能读到数据）
+      try {
+        const importRes = await fetch(`http://localhost:${c.req.raw.url ? new URL(c.req.raw.url).port || "4567" : "4567"}/api/books/${encodeURIComponent(id)}/jingwei/import-from-files`, { method: "POST" });
+        const importData = await importRes.json() as { imported?: number; updated?: number };
+        console.log(JSON.stringify({ component: "guided-setup", event: "jingwei-import", bookId: id, imported: importData.imported, updated: importData.updated }));
+      } catch (importErr) {
+        console.log(JSON.stringify({ component: "guided-setup", event: "jingwei-import-failed", bookId: id, error: importErr instanceof Error ? importErr.message : String(importErr) }));
+      }
+
       return c.json({ ok: true, bookId: id });
     } catch (e) {
       if (isMissingFileError(e)) {
