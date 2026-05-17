@@ -126,13 +126,15 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={[rehypeKatex]}
         components={{
-          // pre 包裹的是代码块 → 用 FencedCodeBlock 渲染（语法高亮 + 复制按钮）
+          // pre 包裹的是三反引号代码块 → 浅色边框 + 保留换行，不用深色代码块
           pre: ({ children }) => {
-            const codeChild = children as React.ReactElement<{ className?: string; children?: ReactNode }>;
-            if (codeChild?.props) {
-              return <FencedCodeBlock className={codeChild.props.className}>{codeChild.props.children}</FencedCodeBlock>;
-            }
-            return <pre>{children}</pre>;
+            const codeChild = children as React.ReactElement<{ children?: ReactNode }>;
+            const text = codeChild?.props?.children ?? children;
+            return (
+              <div className="my-2 border-l-3 border-border pl-3 py-1 text-sm whitespace-pre-wrap text-muted-foreground">
+                {text}
+              </div>
+            );
           },
           // 行内 code → 不渲染代码样式，直接作为普通文本
           code: ({ children }) => <span className="font-medium">{children}</span>,
