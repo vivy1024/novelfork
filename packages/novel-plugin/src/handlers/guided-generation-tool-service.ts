@@ -44,14 +44,22 @@ export function createGuidedGenerationToolService(options: GuidedGenerationToolS
   return {
     enter: async (input) => {
       const timestamp = nowIso();
+      const goal = stringInput(input.goal, "goal");
+      let questions = questionsInput(input.questions);
+
+      // 如果 Agent 没有提供问题，自动生成默认引导问题
+      if (questions.length === 0) {
+        questions = buildDefaultGuidedQuestions(goal);
+      }
+
       const state: GuidedGenerationState = save({
         id: optionalString(input.stateId) ?? createStateId(),
         sessionId: stringInput(input.sessionId, "sessionId"),
         bookId: stringInput(input.bookId, "bookId"),
         status: "awaiting-user",
-        goal: stringInput(input.goal, "goal"),
+        goal,
         contextSources: contextSourcesInput(input.contextSources),
-        questions: questionsInput(input.questions),
+        questions,
         answers: recordInput(input.answers),
         artifacts: [],
         createdAt: timestamp,
@@ -320,6 +328,35 @@ function isGuidedQuestionType(value: unknown): value is GuidedQuestion["type"] {
 
 function isGuidedQuestionSource(value: unknown): value is GuidedQuestion["source"] {
   return value === "questionnaire" || value === "pgi" || value === "agent";
+}
+
+/** Agent 未提供问题时，根据 goal 自动生成默认引导问题 */
+function buildDefaultGuidedQuestions(goal: string): GuidedQuestion[] {
+  const isOutline = /大纲|规划|卷|outline/i.test(goal);
+  const isChapter = /章节|写作|生成|candidate/i.test(goal);
+
+  if (isOutline) {
+    return [
+      { id: "q-direction", prompt: "这一卷的核心方向是什么？主角要达成什么目标？", type: "text", required: true, reason: "确认写作方向", source: "agent" },
+      { id: "q-tone", prompt: "整体基调偏向哪种？", type: "single", options: ["热血爽文", "轻松日常", "沉重压抑", "悬疑烧脑", "温馨治愈"], required: true, reason: "确认情绪基调", source: "agent" },
+      { id: "q-chapters", prompt: "预计这一卷多少章？", type: "single", options: ["5-8章（短卷）", "10-15章（标准卷）", "20+章（长卷）"], required: false, reason: "确认篇幅", source: "agent" },
+      { id: "q-hooks", prompt: "有没有特别想在这一卷埋设或回收的伏笔？", type: "text", required: false, reason: "伏笔规划", source: "agent" },
+    ];
+  }
+
+  if (isChapter) {
+    return [
+      { id: "q-focus", prompt: "这一章的核心事件是什么？", type: "text", required: true, reason: "确认章节焦点", source: "agent" },
+      { id: "q-pov", prompt: "这一章的视角人物是谁？", type: "text", required: false, reason: "确认 POV", source: "agent" },
+      { id: "q-emotion", prompt: "这一章结束时读者应该有什么感受？", type: "single", options: ["期待下一章", "震惊/反转", "感动/温暖", "紧张/压迫", "爽快/解气"], required: false, reason: "确认情绪落点", source: "agent" },
+    ];
+  }
+
+  // 通用默认问题
+  return [
+    { id: "q-goal-confirm", prompt: `你的目标是"${goal}"，有什么具体要求或偏好吗？`, type: "text", required: true, reason: "确认用户意图", source: "agent" },
+    { id: "q-constraints", prompt: "有什么约束或禁忌需要注意吗？", type: "text", required: false, reason: "确认约束条件", source: "agent" },
+  ];
 }
 
 function isMutationOperation(value: unknown): value is "create" | "update" | "delete" | "link" {
