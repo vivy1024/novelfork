@@ -247,7 +247,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const parentId = c.req.query("parentId");
 
     // 直接 SQL 查询，包含 overhaul 字段（category, parent_id, fields_json）
-    let sql = `SELECT e.*, e.category, e.parent_id as parentId, e.fields_json as fieldsJson FROM story_jingwei_entry e WHERE e.book_id = ? AND e.deleted_at IS NULL`;
+    let sql = `SELECT e.*, e.category, e.parent_id as parentId, e.fields_json as fieldsJson, e.content_md as contentMd FROM story_jingwei_entry e WHERE e.book_id = ? AND e.deleted_at IS NULL`;
     const params: unknown[] = [bookId];
 
     if (sectionId) {
