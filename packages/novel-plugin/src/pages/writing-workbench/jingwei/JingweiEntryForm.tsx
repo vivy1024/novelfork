@@ -121,10 +121,10 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
           <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
         </div>
 
-        {/* Content (Markdown) — 主要编辑区 */}
-        {(contentMd || !fields.length) && (
+        {/* Content (Markdown) — 主要编辑区，有内容时始终显示 */}
+        {contentMd && (
           <div>
-            <label className="text-xs text-muted-foreground mb-1 block">内容</label>
+            <label className="text-xs text-muted-foreground mb-1 block">内容（Markdown）</label>
             <Textarea
               value={contentMd}
               onChange={(e) => setContentMd(e.target.value)}
