@@ -180,7 +180,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
   app.get("/metrics", async (c) => {
     try {
       // 从环境变量或默认路径获取项目根目录
-      const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+      const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
       const metrics = await collectMetrics(projectRoot);
       return c.json(metrics);
     } catch (error) {
@@ -192,7 +192,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
   // 获取版本 / 更新 / changelog 信息
   app.get("/release", async (c) => {
     try {
-      const projectRoot = options.root ?? process.env.NOVELFORK_PROJECT_ROOT ?? process.cwd();
+      const projectRoot = options.root ?? process.env.NOVELFORK_PROJECT_ROOT ?? resolveRuntimeStoragePath();
       const snapshotBuilder = options.buildReleaseSnapshot ?? buildStudioReleaseSnapshot;
       const release = await snapshotBuilder(projectRoot);
       return c.json(release);

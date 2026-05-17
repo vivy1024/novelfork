@@ -8,6 +8,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookDetail } from "../../shared/contracts.js";
 import { StateManager } from "@vivy1024/novelfork-core";
+import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
 // --- Project Awareness Context (auto-read key project files) ---
 
@@ -50,7 +51,7 @@ export async function buildProjectAwarenessContext(workDir: string): Promise<str
 }
 
 function getProjectRoot(): string {
-  return process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+  return process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
 }
 
 // --- Phase 4.2: Project Rules File Support ---

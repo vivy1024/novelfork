@@ -1075,8 +1075,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           if (!bookConfig) {
             try {
               const { StateManager } = await import("@vivy1024/novelfork-core");
-              const { dirname } = await import("node:path");
-              const root = process.env.NOVELFORK_PROJECT_ROOT || (process.execPath?.endsWith(".exe") ? dirname(process.execPath) : process.cwd());
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
               const state = new StateManager(root);
               const raw = await state.loadBookConfig(bookId);
               bookConfig = raw as unknown as { enabledPresetIds?: string[]; beatTemplateId?: string };
@@ -1168,11 +1168,12 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             } catch { /* ignore */ }
           }
           if (!selectedTemplateId) {
-            // Direct file read fallback — more reliable than StateManager in compiled exe
+            // Direct file read fallback
             try {
               const { readFile } = await import("node:fs/promises");
-              const { join, dirname } = await import("node:path");
-              const root = process.env.NOVELFORK_PROJECT_ROOT || (process.execPath?.endsWith(".exe") ? dirname(process.execPath) : process.cwd());
+              const { join } = await import("node:path");
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
               const bookJsonPath = join(root, "books", bookId, "book.json");
               const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { beatTemplateId?: string };
               selectedTemplateId = raw.beatTemplateId;
