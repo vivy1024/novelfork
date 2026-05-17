@@ -68,7 +68,11 @@ async function main() {
     throw new Error(`Compile failed with exit code ${compile.exitCode}`);
   }
 
-  await copyFile(latestOutput, versionedOutput);
+  try {
+    await copyFile(latestOutput, versionedOutput);
+  } catch (err) {
+    console.warn(`[Warn] Could not copy versioned output (file may be in use): ${err instanceof Error ? err.message : err}`);
+  }
 
   // Copy .novelfork/skills/ to dist/ so exe can find them at runtime
   const skillsSrc = join(REPO_ROOT, ".novelfork", "skills");
@@ -82,6 +86,20 @@ async function main() {
       }
     }
     console.log(`[Done] Skills copied: ${files.filter(f => f.endsWith(".md")).length} files → ${skillsDest}`);
+  }
+
+  // Copy docs/learning/ to dist/ so LearningGuide tool can find them at runtime
+  const learningSrc = join(REPO_ROOT, "docs", "learning");
+  const learningDest = join(RELEASE_DIST, "docs", "learning");
+  if (existsSync(learningSrc)) {
+    await mkdir(learningDest, { recursive: true });
+    const files = await readdir(learningSrc);
+    for (const file of files) {
+      if (file.endsWith(".md")) {
+        await copyFile(join(learningSrc, file), join(learningDest, file));
+      }
+    }
+    console.log(`[Done] Learning docs copied: ${files.filter(f => f.endsWith(".md")).length} files → ${learningDest}`);
   }
 
   console.log(`[Done] Latest release output: ${latestOutput}`);

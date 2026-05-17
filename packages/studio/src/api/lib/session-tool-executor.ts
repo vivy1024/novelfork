@@ -1988,8 +1988,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const mode = typeof input.mode === "string" ? input.mode : "list";
         const { readdir, readFile } = await import("node:fs/promises");
         const { join } = await import("node:path");
+        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+        const { dirname } = await import("node:path");
 
-        const learningDir = join(options.workDir ?? process.cwd(), "docs", "learning");
+        // 学习中心文档位置：优先 exe 旁边的 docs/learning/，其次 ~/.novelfork/docs/learning/
+        let learningDir: string;
+        const { existsSync } = await import("node:fs");
+        const exeDocsDir = process.execPath?.endsWith(".exe") ? join(dirname(process.execPath), "docs", "learning") : "";
+        if (exeDocsDir && existsSync(exeDocsDir)) {
+          learningDir = exeDocsDir;
+        } else {
+          learningDir = join(resolveRuntimeStoragePath(), "docs", "learning");
+        }
 
         if (mode === "list") {
           try {
