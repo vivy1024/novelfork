@@ -525,27 +525,36 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
 
     // 文件名 → category 映射
     const FILE_CATEGORY_MAP: Record<string, string> = {
-      "story_bible.md": "premise",
-      "volume_outline.md": "premise",
+      "story_bible.md": "worldview",
+      "volume_outline.md": "outline",
       "character_matrix.md": "character",
-      "current_state.md": "setting",
-      "setting_guide.md": "setting",
-      "book_rules.md": "setting",
+      "current_state.md": "special",
+      "setting_guide.md": "worldview",
+      "book_rules.md": "special",
       "pending_hooks.md": "foreshadowing",
-      "emotional_arcs.md": "arc",
-      "subplot_board.md": "event",
-      "style_guide.md": "setting",
+      "emotional_arcs.md": "plot",
+      "subplot_board.md": "plot",
+      "style_guide.md": "special",
     };
 
-    // category → section key 映射（确保 section 存在）
+    // category → section key 映射（确保 section 存在，key 必须匹配 category-schemas.ts 的 id）
     const CATEGORY_SECTION_MAP: Record<string, { key: string; name: string }> = {
-      premise: { key: "premise", name: "前提与大纲" },
-      character: { key: "people", name: "人物" },
-      setting: { key: "settings", name: "设定" },
-      foreshadowing: { key: "foreshadowing", name: "伏笔" },
-      arc: { key: "events", name: "事件与弧线" },
-      event: { key: "events", name: "事件与弧线" },
-      custom: { key: "settings", name: "设定" },
+      character: { key: "character", name: "角色管理" },
+      event: { key: "event", name: "事件记录" },
+      worldview: { key: "worldview", name: "世界观设定" },
+      "power-system": { key: "power-system", name: "力量体系" },
+      geography: { key: "geography", name: "地理地图" },
+      faction: { key: "faction", name: "势力阵营" },
+      item: { key: "item", name: "物品列表" },
+      skill: { key: "skill", name: "功法体系" },
+      currency: { key: "currency", name: "货币体系" },
+      special: { key: "special", name: "特殊设定" },
+      outline: { key: "outline", name: "大纲设定" },
+      relationship: { key: "relationship", name: "人物关系" },
+      foreshadowing: { key: "foreshadowing", name: "伏笔管理" },
+      plot: { key: "plot", name: "情节脉络" },
+      timeline: { key: "timeline", name: "时间线" },
+      "chapter-summary": { key: "chapter-summary", name: "章节摘要" },
     };
 
     // 读取 storyDir 下的 md 文件
