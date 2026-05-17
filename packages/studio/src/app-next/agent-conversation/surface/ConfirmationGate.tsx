@@ -26,11 +26,18 @@ export interface ConversationConfirmationOperation {
   label: string;
 }
 
+export interface ConversationConfirmationQuestionOption {
+  label: string;
+  description?: string;
+}
+
 export interface ConversationConfirmationQuestion {
   id: string;
   prompt: string;
   type: "text" | "single" | "multi" | "ranged-number" | "ai-suggest";
-  options?: readonly string[];
+  options?: readonly (string | ConversationConfirmationQuestionOption)[];
+  /** NarraFork 格式：短标签（如"节奏"、"视角"） */
+  header?: string;
   reason?: string;
   required?: boolean;
   aiSuggestion?: string;

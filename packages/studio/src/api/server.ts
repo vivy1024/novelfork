@@ -206,6 +206,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
       const response = buildApiErrorResponse(error);
       return c.json(response.body, response.status);
     }
+    console.error("[onError]", error?.message ?? error, error?.stack?.split("\n").slice(0, 5).join("\n"));
     return c.json(
       { error: { code: "INTERNAL_ERROR", message: "Unexpected server error." } },
       500,

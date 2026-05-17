@@ -27,7 +27,6 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   // 首次加载或切换对话时滚动到底部
   useEffect(() => {
     if (messages.length > 0) {
-      // 使用 requestAnimationFrame 确保 DOM 已渲染
       requestAnimationFrame(() => {
         listRef.current?.scrollToBottom("instant");
       });
@@ -37,14 +36,21 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   // 新消息到达时自动滚动到底部
   useEffect(() => {
     if (messages.length > prevLengthRef.current) {
-      // 只在新消息追加到末尾时滚动（不是加载历史消息）
-      const isAppend = messages.length > 0 && prevLengthRef.current > 0;
-      if (isAppend) {
-        listRef.current?.scrollToBottom("smooth");
-      }
+      listRef.current?.scrollToBottom("smooth");
     }
     prevLengthRef.current = messages.length;
   }, [messages.length]);
+
+  // 流式内容更新时持续滚动到底部（最后一条消息正在 streaming 或内容变化）
+  const lastMessage = messages[messages.length - 1];
+  const lastMessageContent = lastMessage?.content ?? "";
+  const lastMessageStreaming = lastMessage?.isStreaming ?? false;
+  const lastToolCallCount = lastMessage?.toolCalls?.length ?? 0;
+  useEffect(() => {
+    if (lastMessageStreaming || lastToolCallCount > 0) {
+      listRef.current?.scrollToBottom("instant");
+    }
+  }, [lastMessageContent, lastMessageStreaming, lastToolCallCount]);
 
   const handleLoadMore = useCallback(
     async (direction: "up" | "down") => {
