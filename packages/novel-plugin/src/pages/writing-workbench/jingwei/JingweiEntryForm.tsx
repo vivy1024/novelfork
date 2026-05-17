@@ -114,25 +114,31 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
       </div>
 
       {/* Form body */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      {contentMd ? (
+        /* Markdown 模式：标题 + 全屏编辑器 */
+        <div className="flex-1 flex flex-col min-h-0 p-3 gap-2">
+          <div className="shrink-0">
+            <label className="text-xs text-muted-foreground mb-1 block">标题</label>
+            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
+          </div>
+          <div className="flex-1 flex flex-col min-h-0">
+            <label className="text-xs text-muted-foreground mb-1 block shrink-0">内容（Markdown）</label>
+            <Textarea
+              value={contentMd}
+              onChange={(e) => setContentMd(e.target.value)}
+              className="text-sm font-mono leading-relaxed flex-1 min-h-0 resize-none"
+              placeholder="Markdown 格式的经纬内容..."
+            />
+          </div>
+        </div>
+      ) : (
+        /* 结构化模式：完整表单 */
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
         {/* Title */}
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">标题</label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
         </div>
-
-        {/* Content (Markdown) — 主要编辑区，有内容时始终显示 */}
-        {contentMd && (
-          <div className="flex-1 min-h-0 flex flex-col">
-            <label className="text-xs text-muted-foreground mb-1 block shrink-0">内容（Markdown）</label>
-            <Textarea
-              value={contentMd}
-              onChange={(e) => setContentMd(e.target.value)}
-              className="text-sm font-mono leading-relaxed flex-1 min-h-[200px] resize-y"
-              placeholder="Markdown 格式的经纬内容..."
-            />
-          </div>
-        )}
 
         {/* Visibility */}
         <div>
@@ -230,6 +236,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
           <JingweiProgressions bookId={bookId} entryId={entry.id} category={entry.category} />
         )}
       </div>
+      )}
 
       {/* Footer actions */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-t border-border">
