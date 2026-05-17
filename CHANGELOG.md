@@ -4,6 +4,35 @@
 
 ## Unreleased
 
+## v0.9.3 (2026-05-18)
+
+### ✨ 经纬系统与写作体验
+
+- **jingwei.upsert_entry SQL 修复**：列名对齐实际表结构（tags_json/aliases_json/related_entry_ids_json/visibility_rule_json），时间戳改为 Unix ms
+- **Agent 强制使用 jingwei 工具**：system prompt 明确禁止用 Write 写经纬内容，确保数据进入 SQLite 供后续章节上下文注入
+- **UserQuestionGate UI 重写**：对标 NarraFork 样式（radio/checkbox + label/description + 自定义输入 + 帮我回答/跳过按钮）
+- **对话自动滚动**：流式输出和工具调用时自动滚动到底部
+- **ArtifactPanel 扩展**：支持 jingwei.upsert_entry 工具的实时内容展示（文件名 + 流式 Markdown）
+- **驾驶舱 StatusBar 恢复**：资源树默认视图底部重新显示预设/节拍/质量/警告操作条
+- **清空上下文改为 compact**：不再删除聊天记录，改为压缩上下文（保留最后 1 条消息），用户仍可查看历史
+- **fetch error catch**：Bun HTTP server 加 try-catch 防止吞掉未捕获异常
+- **onError 日志**：Hono 全局错误处理加 console.error 打印实际错误
+
+### 🐛 修复（v0.9.2 后累计 54 commits）
+
+- 压缩系统重写对标 Claude Code 结构化摘要 + NarraFork 双档阈值
+- 经纬系统统一为 SQLite 单一数据源 + jingwei.upsert_entry 工具
+- JingweiPanel 全屏作为画布默认视图 + contentMd 编辑器
+- PGI + AskUserQuestion 配合（删除 guided 三工具）
+- 生成式浮现面板（ArtifactPanel）
+- Context Ring 显示当前窗口占用而非累计
+- 清空上下文 404 修复
+- PGI chapterNumber 可选 + FileChangesPanel 路径修复
+- 全面代码清理（674 行删除）
+- 驾驶舱预设/模板面板修复
+- ToolSearch 分词搜索 + 工具名下划线格式 fallback
+- Skills 编译自动复制 + 套路页磁盘技能展示
+
 ### ✨ 错误透传与上下文可视化
 
 - **全局错误透传**：session:error 事件完整透传到前端，显示红色错误气泡（含重试/忽略/自动重试按钮）
