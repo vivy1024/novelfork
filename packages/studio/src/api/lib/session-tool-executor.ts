@@ -1221,6 +1221,93 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           return { ok: false, renderer: definition.renderer, error: "beat-unavailable", summary: `节拍信息加载失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
+    case "beat.set_template":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        const templateId = String(input.templateId);
+        try {
+          const { getBeatTemplate, listBeatTemplates, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          if (listBeatTemplates().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+
+          const template = getBeatTemplate(templateId) ?? listBeatTemplates().find((t) => t.id === templateId);
+          if (!template) {
+            const available = listBeatTemplates().map((t) => `${t.id}（${t.name}）`).join("、");
+            return { ok: false, renderer: definition.renderer, error: "invalid-template", summary: `模板 "${templateId}" 不存在。可用模板：${available}` };
+          }
+
+          // 写入 book.json
+          if (options.loadBookConfig) {
+            const bookConfig = await options.loadBookConfig(bookId);
+            const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+            const { writeFile } = await import("node:fs/promises");
+            const { join } = await import("node:path");
+            const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+            const bookJsonPath = join(root, "books", bookId, "book.json");
+            const updated = { ...bookConfig, beatTemplateId: templateId, updatedAt: new Date().toISOString() };
+            await writeFile(bookJsonPath, JSON.stringify(updated, null, 2), "utf-8");
+          } else {
+            const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+            const { readFile, writeFile } = await import("node:fs/promises");
+            const { join } = await import("node:path");
+            const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+            const bookJsonPath = join(root, "books", bookId, "book.json");
+            const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+            raw.beatTemplateId = templateId;
+            raw.updatedAt = new Date().toISOString();
+            await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+          }
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已将节拍模板设置为「${template.name}」（${template.beats.length} 个节拍）。`,
+            data: { bookId, templateId, templateName: template.name, beatCount: template.beats.length },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "beat-set-failed", summary: `设置节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "presets.set_rules":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        const enabledPresetIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
+        try {
+          // 验证预设 ID 是否有效
+          const { getPreset, listPresets, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+
+          const validIds: string[] = [];
+          const invalidIds: string[] = [];
+          for (const id of enabledPresetIds) {
+            if (getPreset(id)) validIds.push(id);
+            else invalidIds.push(id);
+          }
+
+          // 写入 book.json
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { readFile, writeFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const bookJsonPath = join(root, "books", bookId, "book.json");
+          const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+          raw.enabledPresetIds = validIds;
+          raw.updatedAt = new Date().toISOString();
+          await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+
+          const summary = validIds.length > 0
+            ? `已启用 ${validIds.length} 条预设规则。${invalidIds.length > 0 ? `（${invalidIds.length} 个无效 ID 已忽略：${invalidIds.join("、")}）` : ""}`
+            : "已清空所有预设规则。";
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary,
+            data: { bookId, enabledPresetIds: validIds, invalidIds },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     default:
       return undefined;
   }
