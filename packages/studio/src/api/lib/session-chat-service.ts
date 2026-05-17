@@ -246,9 +246,11 @@ export type ConfirmSessionToolDecisionResult =
   }
   | { readonly ok: false; readonly status: 400 | 404; readonly error: string };
 
+let sessionToolExecutorOptions: SessionToolExecutorOptions = {};
 let sessionToolExecutor = createSessionToolExecutor();
 
 export function configureSessionToolExecutor(options: SessionToolExecutorOptions): void {
+  sessionToolExecutorOptions = options;
   sessionToolExecutor = createSessionToolExecutor(options);
 }
 
@@ -993,7 +995,7 @@ async function appendModelContinuationAfterToolDecision(
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting" };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
         };
-        return createSessionToolExecutor({ workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
+        return createSessionToolExecutor({ ...sessionToolExecutorOptions, workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
@@ -1830,7 +1832,7 @@ export async function handleSessionChatTransportMessage(
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting", turnStartedAt: turnStartedAtIso };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
         };
-        return createSessionToolExecutor({ workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
+        return createSessionToolExecutor({ ...sessionToolExecutorOptions, workDir: sessionWorkDir, onSubstatus }).execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;

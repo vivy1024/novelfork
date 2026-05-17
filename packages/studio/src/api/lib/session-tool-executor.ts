@@ -1083,12 +1083,9 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
 
           if (bookConfig?.enabledPresetIds && bookConfig.enabledPresetIds.length > 0) {
             enabledPresets = bookConfig.enabledPresetIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
-          } else if (bookConfig?.enabledPresetIds && bookConfig.enabledPresetIds.length === 0) {
-            // 用户明确选择了 0 个预设
-            enabledPresets = [];
           } else {
-            // enabledPresetIds 不存在（旧数据/未配置）→ 全量 fallback
-            enabledPresets = listPresets() as unknown as typeof enabledPresets;
+            // 未配置或空数组 → 不加载任何预设（用户需主动选择）
+            enabledPresets = [];
           }
           const rules = enabledPresets.map((p) => ({
             id: p.id,
@@ -1120,10 +1117,10 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
               const enabledIds: string[] = bookConfig.enabledPresetIds ?? [];
               enabledPresets = enabledIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
             } catch {
-              enabledPresets = listPresets() as unknown as typeof enabledPresets;
+              enabledPresets = [];
             }
           } else {
-            enabledPresets = listPresets() as unknown as typeof enabledPresets;
+            enabledPresets = [];
           }
           // Simple keyword-based compliance check
           const violations: Array<{ presetName: string; rule: string; violation: string; severity: "warning" | "error" }> = [];
