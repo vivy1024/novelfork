@@ -1055,15 +1055,27 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
+          // 从 book config 读取用户选择的预设
+          let bookConfig: { enabledPresetIds?: string[]; beatTemplateId?: string } | null = null;
           if (options.loadBookConfig) {
+            try { bookConfig = await options.loadBookConfig(bookId); } catch { /* ignore */ }
+          }
+          if (!bookConfig) {
             try {
-              const bookConfig = await options.loadBookConfig(bookId);
-              const enabledIds: string[] = bookConfig.enabledPresetIds ?? [];
-              enabledPresets = enabledIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
-            } catch {
-              enabledPresets = listPresets() as unknown as typeof enabledPresets;
-            }
+              const { StateManager } = await import("@vivy1024/novelfork-core");
+              const state = new StateManager(process.env.NOVELFORK_PROJECT_ROOT || process.cwd());
+              const raw = await state.loadBookConfig(bookId);
+              bookConfig = raw as unknown as { enabledPresetIds?: string[]; beatTemplateId?: string };
+            } catch { /* ignore */ }
+          }
+
+          if (bookConfig?.enabledPresetIds && bookConfig.enabledPresetIds.length > 0) {
+            enabledPresets = bookConfig.enabledPresetIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
+          } else if (bookConfig?.enabledPresetIds && bookConfig.enabledPresetIds.length === 0) {
+            // 用户明确选择了 0 个预设
+            enabledPresets = [];
           } else {
+            // enabledPresetIds 不存在（旧数据/未配置）→ 全量 fallback
             enabledPresets = listPresets() as unknown as typeof enabledPresets;
           }
           const rules = enabledPresets.map((p) => ({
@@ -1142,6 +1154,14 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             try {
               const bookConfig = await options.loadBookConfig(bookId);
               selectedTemplateId = bookConfig.beatTemplateId as string | undefined;
+            } catch { /* ignore */ }
+          }
+          if (!selectedTemplateId) {
+            try {
+              const { StateManager } = await import("@vivy1024/novelfork-core");
+              const state = new StateManager(process.env.NOVELFORK_PROJECT_ROOT || process.cwd());
+              const bookConfig = await state.loadBookConfig(bookId) as { beatTemplateId?: string };
+              selectedTemplateId = bookConfig.beatTemplateId;
             } catch { /* ignore */ }
           }
 
