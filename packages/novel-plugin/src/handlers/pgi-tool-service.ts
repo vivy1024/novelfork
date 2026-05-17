@@ -70,7 +70,7 @@ export function createPGIToolService(options: PGIToolServiceOptions = {}): PGITo
       return {
         ok: true,
         renderer: "pgi.questions",
-        summary: `已生成 ${cards.length} 个生成前追问。`,
+        summary: `已生成 ${cards.length} 个生成前追问。请将 askUserQuestionInput 传给 AskUserQuestion 工具展示给用户。`,
         data: {
           status: "available",
           bookId,
@@ -78,15 +78,14 @@ export function createPGIToolService(options: PGIToolServiceOptions = {}): PGITo
           ...(chapterIntent ? { chapterIntent } : {}),
           questions: cards,
           heuristicsTriggered: result.heuristicsTriggered,
-        },
-        confirmation: {
-          id: `pgi:${bookId}:${chapterNumber}:${Date.now()}`,
-          toolName: "pgi.generate_questions",
-          target: `book:${bookId}:chapter:${chapterNumber}`,
-          risk: "confirmed-write" as const,
-          summary: `请回答以下 ${cards.length} 个生成前追问，帮助 AI 更好地理解你的创作意图。`,
-          options: ["approve", "reject"] as const,
-          diff: { questions: cards },
+          // Agent 可直接将此字段传给 AskUserQuestion 工具
+          askUserQuestionInput: cards.map(card => ({
+            id: card.id,
+            question: card.prompt,
+            options: card.options ?? [],
+            multiSelect: false,
+            header: card.reason?.slice(0, 12) ?? "PGI",
+          })),
         },
       };
     },

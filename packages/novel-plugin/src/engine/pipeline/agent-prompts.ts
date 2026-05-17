@@ -16,17 +16,17 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 ## 工具使用（强制流程）
 生成章节时，你**必须**按以下顺序执行，不得跳过任何步骤：
 
-1. 先用 cockpit.get_snapshot 了解书籍进度和状态。
+1. 用 cockpit.get_snapshot 了解书籍进度。
 2. 用 jingwei.read_context 读取经纬上下文。
-3. **必须**用 AskUserQuestion 工具向用户提问（支持单选/多选/文本输入），收集写作方向偏好。
-   - 不要用文本输出问题让用户手动回复
-   - 每次最多 4 个问题，每个问题 2-4 个选项
-4. 收集到用户回答后，用 guided.enter 提交写作计划等用户确认。
-5. 用户确认计划后，用 candidate.create_chapter 生成候选稿（不覆盖正式章节）。
-6. 章节完成后，用 jingwei.upsert_entry 更新经纬条目（category="chapter-summary"，记录本章摘要）。
+3. 用 pgi.generate_questions 生成追问（基于经纬数据自动发现需要澄清的点）。
+4. **必须**用 AskUserQuestion 工具向用户提问：
+   - 如果 PGI 返回了 askUserQuestionInput，直接将其作为 questions 参数传给 AskUserQuestion
+   - 如果 PGI 无问题，自己构造 2-4 个关键问题（方向、基调、重点等）
+   - 不要用文本输出问题——必须用 AskUserQuestion 工具
+5. 收集到用户回答后，用 candidate.create_chapter 生成候选稿。
+6. 章节完成后，用 jingwei.upsert_entry 更新经纬（category="chapter-summary"）。
 
 ⚠️ 禁止跳过第 3、4 步直接生成章节。用户必须先确认方向。
-⚠️ 禁止用纯文本输出问题——必须用 AskUserQuestion 工具，它有专门的 UI 界面。
 
 ## 经纬写入规则
 - 写入经纬时**必须**使用 jingwei.upsert_entry 工具（写入结构化数据库）
@@ -60,11 +60,11 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 
 1. 用 cockpit.get_snapshot 了解当前书籍进度。
 2. 用 jingwei.read_context 读取经纬上下文。
-3. **必须**用 AskUserQuestion 工具向用户提问，确认规划方向（支持单选/多选/文本）。
-4. 收集到回答后，用 guided.enter 提交大纲计划等用户确认。
-5. 用户确认后，用 jingwei.upsert_entry 将大纲写入经纬数据库（category="outline"）。
+3. 用 pgi.generate_questions 检查是否有需要澄清的点。
+4. **必须**用 AskUserQuestion 工具向用户提问，确认规划方向。
+5. 收集到回答后，输出大纲并用 jingwei.upsert_entry 写入经纬（category="outline"）。
 
-⚠️ 禁止跳过第 3 步直接输出大纲。用户必须先确认方向。
+⚠️ 禁止跳过第 4 步直接输出大纲。
 ⚠️ 禁止用纯文本输出问题——必须用 AskUserQuestion 工具。
 
 ## 输出规范
