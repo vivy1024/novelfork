@@ -1,56 +1,57 @@
 ---
 title: 引导式生成
-summary: AI 先追问再规划再写，确保输出符合你的意图
-tags: [PGI, Guided Plan, 追问, 生成]
+summary: PGI 追问机制、Guided Plan 计划批准、完整生成流程
+tags: [PGI, 引导式生成, 问卷, 计划批准]
 routes:
-  - /next/workbench/:bookId
+  - /next/narrators/:id
 ---
 
 # 引导式生成
 
-> AI 先追问再规划再写，确保输出符合你的意图。
+> AI 先追问意图，再生成计划让你批准，最后动笔。
 
 ## 核心概念
 
-**PGI（Pre-Generation Interview）** — 写新章前 AI 自动生成 2-5 个追问，覆盖冲突升级、伏笔回收、情绪基调、节奏控制四个维度。用户可逐题回答、跳过、或自定义补充。
+**PGI（Pre-Generation Interview）**：生成前追问。AI 在动笔前先问 2-5 个问题，明确你对这章/段的期望——情绪基调、关键事件、字数要求等。
 
-**Guided Plan** — AI 基于你的回答生成结构化写作计划。用户必须批准计划后才会生成候选稿；拒绝计划后 AI 不得执行任何写入。
+**Guided Plan**：AI 根据 PGI 回答生成章节计划（场景列表、节奏安排、伏笔处理），你审阅后批准才开始写作。
 
-**UserQuestionGate** — PGI 的前端渲染组件，嵌入叙述者对话流中。支持 text / single / multi / ranged-number / ai-suggest 五种问题类型。
+**UserQuestionGate**：AI 在执行过程中遇到不确定的决策时，弹出选择题让你决定方向。
+
+完整流程：
+
+```
+用户请求 → PGI 追问 → 用户回答 → Guided Plan → 用户批准 → 生成候选稿
+```
 
 ## 推荐使用流程
 
-1. 在驾驶舱点击"生成下一章"
-2. 叙述者发起 PGI 追问 → UserQuestionGate 渲染问题卡片
-3. 回答问题（或跳过）→ 提交
-4. AI 生成 Guided Plan → GuidedPlanCard 展示
-5. 批准计划 → AI 生成候选稿 → 出现在画布中
-6. 审阅候选稿 → 接受或拒绝
-
-Agent 工具链：`cockpit.get_snapshot` → `pgi.generate_questions` → `guided.enter` → `guided.exit` → `candidate.create_chapter`
+1. 在叙述者对话中发起写作请求（如"写下一章"）
+2. AI 自动触发 PGI，回答追问（越具体越好）
+3. AI 生成 Guided Plan，审阅场景安排和节奏
+4. 批准计划 → AI 开始生成候选稿
+5. 不满意计划 → 拒绝并说明修改方向，AI 重新规划
 
 ## 最佳实践
 
-- 回答越详细，生成质量越高。至少回答核心冲突和情绪基调两题。
-- 善用 ai-suggest 类型：AI 建议是合理起点，在此基础上修改更高效。
-- Guided Plan 是最后把关机会，发现步骤不对立即拒绝重来。
+- PGI 回答越具体，生成质量越高。"这章要写主角被背叛后的愤怒，3000字，以独白结尾"比"写下一章"好得多
+- 不确定时可以跳过 PGI（AI 会用 `skippedReason=no-questions` 继续），但质量会下降
+- Guided Plan 是你最后的方向把关机会，认真审阅
 
 ## 常见坑
 
-- **PGI 问题太多** — 经纬设定不足导致 AI 不确定性高。补充经纬条目可减少追问数量。
-- **Guided Plan 太笼统** — PGI 回答太简短。多给细节，尤其是冲突走向和角色动机。
-- **跳过后生成质量差** — 跳过等于让 AI 自行决定所有参数。至少回答必答题。
-- **拒绝计划后死循环** — AI 无法理解你的意图。用自然语言在对话中直接补充说明。
+- **PGI 问题太多** → AI 判断信息不足时会多问，在经纬中补充设定可减少追问
+- **Plan 被拒绝后 AI 仍然写了** → 不应发生，`guided.exit` 被拒绝后禁止执行 `candidate.create_chapter`
+- **跳过 PGI 后质量差** → 正常现象，PGI 是质量保障的关键环节
 
 ## Agent 查阅提示
 
-- PGI 问题由 `pgi.generate_questions` 工具生成，入参需要当前驾驶舱快照
-- Guided Plan 审批状态通过 `guided.enter` / `guided.exit` 管理
-- 用户拒绝计划后，必须重新走 PGI 或由用户手动补充指令，不得绕过审批直接写入
-- 候选稿通过 `candidate.create_chapter` 创建，不是直接写入正式章节
+- PGI 工具链：`pgi.generate_questions` → `pgi.record_answers` → `pgi.format_answers_for_prompt`
+- Guided Plan 工具链：`guided.enter` → `guided.answer_question` → `guided.exit`
+- `guided.exit` 必须等用户批准；拒绝后禁止执行 `candidate.create_chapter`
+- PGI 无问题时设置 `skippedReason=no-questions` 并继续后续流程
+- UserQuestionGate 通过 `AskUserQuestion` 工具触发，前端渲染为选择卡片
 
 ## 可跳转功能入口
 
-| 功能 | 路径 |
-|------|------|
-| 写作工作台 | `/next/workbench/:bookId` |
+- 叙述者对话: PGI 追问和 Guided Plan 审批在对话中完成。 (/next/narrators/:id)
