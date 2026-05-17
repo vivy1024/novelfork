@@ -146,7 +146,7 @@ export async function loadResourceTreeFromContract(
         ]),
         group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
-        jingweiPanelEntryNode(jingweiFiles),
+        jingweiPanelEntryNode(),
         group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
         group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
@@ -172,36 +172,20 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
 }
 
 /**
- * 经纬资料组 — 包含经纬文件列表作为子节点，用户可直接点击查看内容。
+ * 经纬资料入口节点 — 点击打开 JingweiPanel。
  */
-function jingweiPanelEntryNode(jingweiFiles: JingweiFileListResponse | null | undefined): ContractResourceNode {
-  const children: ContractResourceNode[] = (jingweiFiles?.files ?? [])
-    .filter((f) => f.name !== "pending_hooks.md" && f.size > 10) // 排除伏笔文件（单独展示）和空文件
-    .map((f) => ({
-      id: `jingwei-file:${f.name}`,
-      kind: "jingwei-entry" as const,
-      title: f.label || f.name.replace(/\.md$/, ""),
-      capabilities: {
-        read: CURRENT_READ("jingwei-files.read"),
-        edit: CURRENT_EDIT("jingwei-files.write"),
-        delete: UNSUPPORTED("jingwei-files.delete"),
-        apply: UNSUPPORTED("jingwei-files.apply"),
-      },
-      metadata: { fileName: f.name, category: f.category, preview: f.preview },
-    }));
-
+function jingweiPanelEntryNode(): ContractResourceNode {
   return {
     id: "jingwei-panel-entry",
-    kind: "group",
+    kind: "jingwei",
     title: "经纬资料",
     capabilities: {
-      read: UNSUPPORTED("jingwei.panel"),
+      read: CURRENT_READ("jingwei.panel"),
       edit: UNSUPPORTED("jingwei.panel.edit"),
       delete: UNSUPPORTED("jingwei.panel.delete"),
       apply: UNSUPPORTED("jingwei.panel.apply"),
     },
     metadata: { action: "open-jingwei-panel" },
-    children: children.length > 0 ? children : undefined,
   };
 }
 

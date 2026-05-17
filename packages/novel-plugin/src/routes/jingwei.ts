@@ -513,6 +513,163 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     return c.json({ ok: true, id: relationId });
   });
 
+  // --- 从 storyDir md 文件导入经纬条目 ---
+  app.post("/api/books/:bookId/jingwei/import-from-files", async (c) => {
+    const storage = await resolveStorage(options);
+    const bookId = c.req.param("bookId");
+    await ensureBook(storage, bookId);
+
+    const { createStoryJingweiSectionRepository, createStoryJingweiEntryRepository } = await loadEngine();
+    const sectionRepo = createStoryJingweiSectionRepository(storage);
+    const entryRepo = createStoryJingweiEntryRepository(storage);
+
+    // 文件名 → category 映射
+    const FILE_CATEGORY_MAP: Record<string, string> = {
+      "story_bible.md": "premise",
+      "volume_outline.md": "premise",
+      "character_matrix.md": "character",
+      "current_state.md": "setting",
+      "setting_guide.md": "setting",
+      "book_rules.md": "setting",
+      "pending_hooks.md": "foreshadowing",
+      "emotional_arcs.md": "arc",
+      "subplot_board.md": "event",
+      "style_guide.md": "setting",
+    };
+
+    // category → section key 映射（确保 section 存在）
+    const CATEGORY_SECTION_MAP: Record<string, { key: string; name: string }> = {
+      premise: { key: "premise", name: "前提与大纲" },
+      character: { key: "people", name: "人物" },
+      setting: { key: "settings", name: "设定" },
+      foreshadowing: { key: "foreshadowing", name: "伏笔" },
+      arc: { key: "events", name: "事件与弧线" },
+      event: { key: "events", name: "事件与弧线" },
+      custom: { key: "settings", name: "设定" },
+    };
+
+    // 读取 storyDir 下的 md 文件
+    const { readdir, readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { existsSync } = await import("node:fs");
+
+    const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+    const storyDir = join(projectRoot, "books", bookId, "story");
+
+    if (!existsSync(storyDir)) {
+      return c.json({ ok: true, imported: 0, updated: 0, skipped: 0, message: "story 目录不存在" });
+    }
+
+    const allFiles = await readdir(storyDir);
+    const mdFiles = allFiles.filter((f) => f.endsWith(".md"));
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    // 确保需要的 section 存在
+    const existingSections = await sectionRepo.listByBook(bookId);
+    const sectionKeyMap = new Map(existingSections.map((s) => [s.key, s.id]));
+
+    async function ensureSection(category: string): Promise<string> {
+      const mapping = CATEGORY_SECTION_MAP[category] ?? CATEGORY_SECTION_MAP.custom;
+      if (sectionKeyMap.has(mapping.key)) return sectionKeyMap.get(mapping.key)!;
+      const newSection = await sectionRepo.create({
+        id: crypto.randomUUID(),
+        bookId,
+        key: mapping.key,
+        name: mapping.name,
+        description: "",
+        icon: null,
+        order: existingSections.length + sectionKeyMap.size,
+        enabled: true,
+        showInSidebar: true,
+        participatesInAi: true,
+        defaultVisibility: "global",
+        fieldsJson: [],
+        builtinKind: null,
+        sourceTemplate: "import",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+      sectionKeyMap.set(mapping.key, newSection.id);
+      return newSection.id;
+    }
+
+    // 获取已有条目用于去重
+    const existingEntries = await entryRepo.listByBook(bookId);
+    const existingTitleCategorySet = new Set(
+      existingEntries.map((e) => {
+        // 从 SQL 获取 category
+        const row = storage.sqlite.prepare(
+          `SELECT "category" FROM "story_jingwei_entry" WHERE "id" = ?`
+        ).get(e.id) as { category: string } | undefined;
+        return `${e.title}::${row?.category ?? "setting"}`;
+      })
+    );
+
+    const timestamp = new Date();
+
+    for (const fileName of mdFiles) {
+      const content = await readFile(join(storyDir, fileName), "utf-8");
+      // 跳过内容为空或只有标题的文件
+      if (content.trim().length < 20) {
+        skipped++;
+        continue;
+      }
+
+      const category = FILE_CATEGORY_MAP[fileName] ?? "custom";
+      const title = fileName.replace(/\.md$/, "").replace(/_/g, " ");
+      const sectionId = await ensureSection(category);
+      const dedupeKey = `${title}::${category}`;
+
+      if (existingTitleCategorySet.has(dedupeKey)) {
+        // 更新已有条目
+        const existing = existingEntries.find((e) => {
+          const row = storage.sqlite.prepare(
+            `SELECT "category" FROM "story_jingwei_entry" WHERE "id" = ?`
+          ).get(e.id) as { category: string } | undefined;
+          return e.title === title && (row?.category ?? "setting") === category;
+        });
+        if (existing) {
+          await entryRepo.update(bookId, existing.id, {
+            contentMd: content,
+            updatedAt: timestamp,
+          });
+          updated++;
+        }
+      } else {
+        // 创建新条目
+        const entryId = crypto.randomUUID();
+        await entryRepo.create({
+          id: entryId,
+          bookId,
+          sectionId,
+          title,
+          contentMd: content,
+          tags: [],
+          aliases: [],
+          customFields: {},
+          relatedChapterNumbers: [],
+          relatedEntryIds: [],
+          visibilityRule: { type: "global" },
+          participatesInAi: true,
+          tokenBudget: null,
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+        // 写入 category
+        storage.sqlite.prepare(`
+          UPDATE "story_jingwei_entry" SET "category" = ? WHERE "id" = ?
+        `).run(category, entryId);
+        imported++;
+        existingTitleCategorySet.add(dedupeKey);
+      }
+    }
+
+    return c.json({ ok: true, imported, updated, skipped });
+  });
+
   // --- Jingwei Overhaul: Progressions ---
   app.get("/api/books/:bookId/jingwei/entries/:entryId/progressions", async (c) => {
     const storage = await resolveStorage(options);

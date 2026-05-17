@@ -58,8 +58,8 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
 
   /** Intercept resource tree clicks: jingwei panel entry deselects to show graph workspace, but jingwei file entries open normally */
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
-    if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section") {
-      // 经纬面板入口 / section → 回到画布默认视图
+    if (node.id === "jingwei-panel-entry" || node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") {
+      // 经纬面板入口 / section / entry → 打开经纬面板
       if (onDeselectNode) {
         onDeselectNode();
       } else {
@@ -67,7 +67,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
       }
       return;
     }
-    // jingwei-entry（经纬文件）和其他节点正常打开
+    // 其他节点正常打开
     onOpen(node);
   }, [onOpen, onDeselectNode]);
 
