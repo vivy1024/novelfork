@@ -137,44 +137,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
-  "guided.enter": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("当前书籍 ID。"),
-      sessionId: stringSchema("当前会话 ID。"),
-      goal: stringSchema("引导式生成目标。"),
-      target: stringSchema("计划目标类型，例如 chapter-candidate、jingwei-update 或 audit。"),
-      stateId: stringSchema("可选的引导式生成状态 ID，用于恢复测试或外部状态接入。"),
-      questions: arraySchema("初始结构化问题列表。"),
-      contextSources: arraySchema("已读取的上下文来源。"),
-      answers: { type: "object", description: "已有引导式问题回答。" },
-    },
-    required: ["bookId", "sessionId", "goal"],
-    additionalProperties: false,
-  },
-  "guided.answer_question": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("当前书籍 ID。"),
-      sessionId: stringSchema("当前会话 ID。"),
-      guidedStateId: stringSchema("引导式生成状态 ID。"),
-      answers: { type: "object", description: "按问题 ID 记录的回答。" },
-      skippedQuestionIds: arraySchema("被用户跳过的问题 ID。"),
-    },
-    required: ["bookId", "sessionId", "guidedStateId"],
-    additionalProperties: false,
-  },
-  "guided.exit": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("当前书籍 ID。"),
-      sessionId: stringSchema("当前会话 ID。"),
-      guidedStateId: stringSchema("引导式生成状态 ID。"),
-      plan: { type: "object", description: "可供用户审查的 GuidedGenerationPlan。" },
-    },
-    required: ["bookId", "sessionId", "guidedStateId", "plan"],
-    additionalProperties: false,
-  },
   "candidate.create_chapter": {
     type: "object",
     properties: {
@@ -183,7 +145,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("目标章节序号。"),
       title: stringSchema("候选章节标题。"),
       pgiInstructions: stringSchema("由 PGI 格式化得到的本章作者指示。"),
-      guidedPlanId: stringSchema("关联的 GuidedGenerationPlan ID。"),
     },
     required: ["bookId", "chapterIntent"],
     additionalProperties: false,

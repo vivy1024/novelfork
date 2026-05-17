@@ -796,9 +796,6 @@ export type { ConversationSurfaceMessage };
 // ---------------------------------------------------------------------------
 
 const USER_QUESTION_TOOL_NAMES = new Set([
-  "pgi.generate_questions",
-  "guided.enter",
-  "guided.answer_question",
   "AskUserQuestion",
 ]);
 
