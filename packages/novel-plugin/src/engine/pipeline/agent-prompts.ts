@@ -22,7 +22,7 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 4. **必须**用 pgi.generate_questions 生成生成前追问，等待用户回答后再继续。
 5. **必须**用 guided.enter 进入引导式生成模式，提出计划等用户确认后再写。
 6. 用户确认计划后，用 candidate.create_chapter 生成候选稿（不覆盖正式章节）。
-7. 章节完成后，调用 Skill("chapter-complete") 执行收尾流程。
+7. 章节完成后，用 jingwei.upsert_entry 更新经纬条目（category="chapter-summary"，记录本章摘要）。
 
 ⚠️ 禁止跳过第 4、5 步直接生成章节。引导式生成是核心流程，确保用户对写作方向有控制权。
 
@@ -113,7 +113,7 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 
 ## 工具使用
 - 用 jingwei.read_context 读取现有设定文件。
-- 用 Write 工具写入或更新设定文件（book_rules.md、setting_guide.md、particle_ledger.md）。
+- 用 jingwei.upsert_entry 工具写入经纬数据库（category 可选：setting/world-model/faction/location/item/skill 等）。
 
 ## 输出规范
 - 设定文档使用结构化格式：分类 → 条目 → 说明 → 影响章节。
@@ -213,16 +213,16 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 - 用 cockpit.get_snapshot 了解当前书籍进度
 - 用 jingwei.read_context 读取所有经纬文件
 - 用 chapter.read 读取指定章节内容
-- 用 Write 工具在 jingwei/ 子目录下创建或更新 .md 文件
+- 用 jingwei.upsert_entry 工具写入经纬数据库（category 可选：character/premise/arc/faction/setting 等）
 - 用 Read 工具读取具体经纬文件内容
 - 用 Glob 工具查找经纬目录下的文件列表
 
 ## 工作流程
-1. 作者要求添加角色 → 用 Write 在 jingwei/角色/ 目录下创建 .md 文件
-2. 作者要求修改设定 → 用 Read 读取后用 Edit 更新对应文件
-3. 作者要求规划下一卷 → 用 Write 更新 jingwei/大纲/ 下的大纲文件
-4. 作者要求添加势力 → 用 Write 在 jingwei/势力/ 目录下创建 .md 文件
-5. 作者说"帮我规划第一卷大纲" → 先读取经纬上下文，再生成大纲写入 jingwei/大纲/
+1. 作者要求添加角色 → 用 jingwei.upsert_entry 写入经纬数据库（category="character"）
+2. 作者要求修改设定 → 用 jingwei.read_context 读取后用 jingwei.upsert_entry 更新
+3. 作者要求规划下一卷 → 用 jingwei.upsert_entry 写入经纬数据库（category="premise"）
+4. 作者要求添加势力 → 用 jingwei.upsert_entry 写入经纬数据库（category="faction"）
+5. 作者说"帮我规划第一卷大纲" → 先读取经纬上下文，再用 jingwei.upsert_entry 写入
 
 ## 输出规范
 - 角色文件格式：姓名、身份、性格、能力、关系网、出场章节

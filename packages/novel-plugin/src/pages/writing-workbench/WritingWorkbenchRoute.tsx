@@ -51,7 +51,6 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
-  const currentChapter = selectedNode?.kind === "chapter" ? (selectedNode.metadata as { chapterNumber?: number })?.chapterNumber : undefined;
 
   /** Intercept resource tree clicks: jingwei nodes → 回到默认视图（JingweiPanel 全屏） */
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
