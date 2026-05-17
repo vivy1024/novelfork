@@ -321,7 +321,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      category: stringSchema("经纬类别：character/event/setting/foreshadowing/conflict/world-model/premise/arc/faction/location/item/skill/timeline/relationship/core-memory/custom。"),
+      category: stringSchema("经纬类别：character/event/worldview/power-system/geography/faction/item/skill/currency/special/outline/relationship/foreshadowing/plot/timeline/chapter-summary。"),
       title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
       contentMd: stringSchema("条目内容（Markdown 格式）。"),
       aliases: arraySchema("别名列表（用于 tracked 可见性匹配）。"),

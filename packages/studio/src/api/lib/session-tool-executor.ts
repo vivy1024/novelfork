@@ -607,10 +607,12 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             // 自动创建 section
             sectionId = crypto.randomUUID();
             const CATEGORY_NAMES: Record<string, string> = {
-              character: "角色", event: "事件", setting: "设定", foreshadowing: "伏笔",
-              conflict: "矛盾", "world-model": "世界模型", premise: "前提", arc: "角色弧线",
-              faction: "势力", location: "地点", item: "物品", skill: "功法",
-              timeline: "时间线", relationship: "关系", "core-memory": "核心记忆", custom: "自定义",
+              character: "角色管理", event: "事件记录", worldview: "世界观设定",
+              "power-system": "力量体系", geography: "地理地图", faction: "势力阵营",
+              item: "物品列表", skill: "功法体系", currency: "货币体系",
+              special: "特殊设定", outline: "大纲设定", relationship: "人物关系",
+              foreshadowing: "伏笔管理", plot: "情节脉络", timeline: "时间线",
+              "chapter-summary": "章节摘要",
             };
             const name = CATEGORY_NAMES[category] ?? category;
             storage.sqlite.prepare(`
