@@ -593,7 +593,7 @@ export function ConversationSurface({
                   <UserQuestionGate
                     confirmation={pendingConfirmation}
                     onSubmitAnswers={(id, answers) => onApproveConfirmation(id, answers)}
-                    onSkip={onRejectConfirmation}
+                    onSkip={(id) => onApproveConfirmation(id, {})}
                   />
                 ) : (
                   <ConfirmationGate confirmation={pendingConfirmation} onApprove={onApproveConfirmation} onReject={onRejectConfirmation} onAlwaysAllow={onAlwaysAllowConfirmation ?? ((id, pattern) => {
