@@ -1,40 +1,56 @@
 ---
 title: 网络工具
-summary: 了解如何使用 WebSearch 搜索互联网和 WebFetch 获取网页内容
-tags: [网络, 搜索, 网页获取, 代理]
+summary: WebSearch 搜索引擎、WebFetch 四种模式网页抓取
+tags: [网络, 搜索, 抓取, WebSearch, WebFetch]
+routes:
+  - /next/narrators/:id
 ---
 
 # 网络工具
 
-NovelFork 提供两个网络工具，让 Agent 能够访问互联网获取最新信息，辅助你的创作和研究工作。
+> WebSearch 搜索引擎、WebFetch 四种模式网页抓取。
 
-## WebSearch
+## 核心概念
 
-搜索互联网获取最新信息。适合快速查找事实、文档、技术资料等。
+**WebSearch**：Agent 可搜索互联网获取最新信息。用于查找写作参考资料、验证事实、获取灵感。
 
-**使用场景**：
-- 查找某个历史事件的细节用于小说背景
-- 搜索写作技巧和行业动态
-- 获取最新的 API 文档或技术方案
+**WebFetch**：从指定 URL 获取网页内容。四种模式：
 
-## WebFetch
+| 模式 | 说明 | 适用场景 |
+|------|------|---------|
+| readability | 提取文章正文 | 博客、新闻、文档 |
+| screenshot | 截图 | 需要看页面布局 |
+| dom | 提取 HTML 结构 | 表格、列表等结构化数据 |
+| smart | AI 摘要 | 长页面只需关键信息 |
 
-获取指定 URL 的网页内容。当你已经知道目标页面地址时，直接抓取页面内容进行分析。
+## 推荐使用流程
 
-### 四种模式
+1. 需要参考资料时，告诉叙述者"帮我搜索 XX 相关资料"
+2. Agent 自动调用 WebSearch 获取搜索结果
+3. Agent 用 WebFetch 抓取相关页面的详细内容
+4. 将有用信息整合到经纬或写作上下文中
 
-- **readability**：提取文章正文，去除导航栏、广告等干扰元素。最适合阅读博客、新闻、文档。
-- **screenshot**：截取页面截图为图片。适合查看页面布局和视觉效果。
-- **dom**：获取清理后的 HTML 结构。适合提取表格、列表等结构化数据。
-- **smart**：AI 智能摘要模式。对长页面自动提取关键信息，适合快速了解页面要点。
+## 最佳实践
 
-### 使用场景
+- 搜索写作参考时明确关键词，如"修仙小说 金丹期 突破描写"
+- WebFetch 优先用 readability 模式，最干净
+- 长页面用 smart 模式让 AI 提取关键信息，省 token
 
-- 获取参考小说的章节结构分析
-- 抓取竞品产品的功能介绍
-- 提取 API 文档中的接口说明
-- 查看网页设计作为 UI 参考
+## 常见坑
 
-## 代理配置
+- **搜索无结果** → 关键词太宽泛或网络不通，缩小搜索范围
+- **WebFetch 返回空** → 目标网站需要 JavaScript 渲染，尝试 screenshot 模式
+- **抓取被拒绝** → 目标网站有反爬机制，配置代理或换源
 
-如果你的网络环境需要代理才能访问外部网站，可以在设置中为 WebFetch 配置 HTTP/SOCKS 代理地址，确保网络请求能正常到达目标服务器。
+## Agent 查阅提示
+
+- WebSearch 返回搜索结果列表（标题 + URL + 摘要）
+- WebFetch 的 readability/dom/smart 模式不需要浏览器，直接 HTTP 请求
+- WebFetch 的 screenshot 模式需要 Chrome/Edge（同 Browser 工具）
+- 两个工具都受代理设置影响（WebFetch 代理配置）
+- smart 模式可传 `purpose` 参数指导 AI 提取方向
+- 输出有长度限制（默认 20000 字符），可通过 `max_length` 调整
+
+## 可跳转功能入口
+
+- 叙述者对话: 网络工具在对话中由 Agent 调用。 (/next/narrators/:id)
