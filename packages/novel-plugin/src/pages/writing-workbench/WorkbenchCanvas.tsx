@@ -9,6 +9,7 @@ import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActi
 import { CockpitOverview } from "./CockpitOverview";
 import { CockpitWorkspace } from "./CockpitWorkspace";
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
+import { JingweiPanel } from "./jingwei/JingweiPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -137,6 +138,14 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   }, [content, dirty, node, onCanvasContextChange]);
 
   if (!node) {
+    // 默认视图：经纬面板（全屏，替代旧的 CockpitWorkspace 图谱视图）
+    if (bookId) {
+      return (
+        <div className="h-full min-h-0">
+          <JingweiPanel bookId={bookId} />
+        </div>
+      );
+    }
     return (
       <div className="h-full min-h-0">
         <CockpitWorkspace bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
