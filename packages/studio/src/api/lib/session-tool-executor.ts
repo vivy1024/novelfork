@@ -581,7 +581,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
       return async ({ input, definition }) => {
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
         const storage = getStorageDatabase();
-        const bookId = String(input.bookId);
+        let bookId = String(input.bookId);
         const category = String(input.category || "setting");
         const title = String(input.title || "").trim();
         const contentMd = String(input.contentMd || "");
@@ -592,6 +592,18 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
 
         if (!title) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "title 不能为空。" };
+        }
+
+        // 验证 bookId 存在于 book 表中；如果不存在，尝试模糊匹配
+        const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
+        if (!bookExists) {
+          // 尝试模糊匹配：bookId 可能是目录名（如 "文字修仙docs这个世界修仙讲科学"），实际 book id 是其子串
+          const fuzzyMatch = storage.sqlite.prepare(`SELECT id FROM book WHERE ? LIKE '%' || id || '%' OR id LIKE '%' || ? || '%' ORDER BY length(id) DESC LIMIT 1`).get(bookId, bookId) as { id: string } | undefined;
+          if (fuzzyMatch) {
+            bookId = fuzzyMatch.id;
+          } else {
+            return { ok: false, renderer: definition.renderer, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。请确认正确的书籍 ID。可用的书籍：${(storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{id:string}>).map(r => r.id).join(", ")}` };
+          }
         }
 
         try {
