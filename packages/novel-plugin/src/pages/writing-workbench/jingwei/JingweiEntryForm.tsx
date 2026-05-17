@@ -14,6 +14,7 @@ interface JingweiEntryFormProps {
   bookId?: string;
   onSave: (entryId: string, payload: {
     title: string;
+    contentMd?: string;
     fields: Record<string, unknown>;
     visibility: CategoryVisibility;
     aliases?: string[];
@@ -36,6 +37,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   const fields = schema?.fields ?? [];
 
   const [title, setTitle] = useState(entry.title);
+  const [contentMd, setContentMd] = useState(entry.contentMd ?? "");
   const [formData, setFormData] = useState<Record<string, unknown>>(entry.fields ?? {});
   const [visibility, setVisibility] = useState<CategoryVisibility>(entry.visibility);
   const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
@@ -50,6 +52,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   // Reset form when entry changes
   useEffect(() => {
     setTitle(entry.title);
+    setContentMd(entry.contentMd ?? "");
     setFormData(entry.fields ?? {});
     setVisibility(entry.visibility);
     setAliases(entry.aliases ?? []);
@@ -58,16 +61,17 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     setVisibleUntilChapter(entry.visibleUntilChapter ?? null);
     setError(null);
     setConfirmDelete(false);
-  }, [entry.id, entry.title, entry.fields, entry.visibility, entry.aliases, entry.visibleAfterChapter, entry.visibleUntilChapter]);
+  }, [entry.id, entry.title, entry.contentMd, entry.fields, entry.visibility, entry.aliases, entry.visibleAfterChapter, entry.visibleUntilChapter]);
 
   const dirty = useMemo(() => {
     if (title !== entry.title) return true;
+    if (contentMd !== (entry.contentMd ?? "")) return true;
     if (visibility !== entry.visibility) return true;
     if (JSON.stringify(aliases) !== JSON.stringify(entry.aliases ?? [])) return true;
     if (visibleAfterChapter !== (entry.visibleAfterChapter ?? null)) return true;
     if (visibleUntilChapter !== (entry.visibleUntilChapter ?? null)) return true;
     return JSON.stringify(formData) !== JSON.stringify(entry.fields ?? {});
-  }, [title, formData, visibility, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
+  }, [title, contentMd, formData, visibility, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
 
   function setField(key: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -79,6 +83,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     setError(null);
     const ok = await onSave(entry.id, {
       title: title.trim(),
+      contentMd,
       fields: formData,
       visibility,
       aliases,
@@ -115,6 +120,20 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
           <label className="text-xs text-muted-foreground mb-1 block">标题</label>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
         </div>
+
+        {/* Content (Markdown) — 主要编辑区 */}
+        {(contentMd || !fields.length) && (
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">内容</label>
+            <Textarea
+              value={contentMd}
+              onChange={(e) => setContentMd(e.target.value)}
+              rows={12}
+              className="text-sm font-mono leading-relaxed"
+              placeholder="Markdown 格式的经纬内容..."
+            />
+          </div>
+        )}
 
         {/* Visibility */}
         <div>

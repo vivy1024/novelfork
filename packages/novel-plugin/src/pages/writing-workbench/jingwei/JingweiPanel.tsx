@@ -62,7 +62,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
     } catch { /* ignore */ }
   }
 
-  async function handleSave(entryId: string, payload: { title: string; fields: Record<string, unknown>; visibility: CategoryVisibility; aliases?: string[]; relatedEntryIds?: string[]; visibleAfterChapter?: number | null; visibleUntilChapter?: number | null }) {
+  async function handleSave(entryId: string, payload: { title: string; contentMd?: string; fields: Record<string, unknown>; visibility: CategoryVisibility; aliases?: string[]; relatedEntryIds?: string[]; visibleAfterChapter?: number | null; visibleUntilChapter?: number | null }) {
     return updateEntry(entryId, payload);
   }
 
