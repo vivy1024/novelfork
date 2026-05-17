@@ -245,16 +245,31 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const sectionId = c.req.query("sectionId");
     const category = c.req.query("category");
     const parentId = c.req.query("parentId");
-    const { createStoryJingweiEntryRepository } = await loadEngine();
-    const repo = createStoryJingweiEntryRepository(storage);
-    let entries = sectionId ? await repo.listBySection(bookId, sectionId) : await repo.listByBook(bookId);
+
+    // 直接 SQL 查询，包含 overhaul 字段（category, parent_id, fields_json）
+    let sql = `SELECT e.*, e.category, e.parent_id as parentId, e.fields_json as fieldsJson FROM story_jingwei_entry e WHERE e.book_id = ? AND e.deleted_at IS NULL`;
+    const params: unknown[] = [bookId];
+
+    if (sectionId) {
+      sql += ` AND e.section_id = ?`;
+      params.push(sectionId);
+    }
     if (category) {
-      entries = entries.filter((e) => (e as EntryWithOverhaulFields).category === category);
+      sql += ` AND e.category = ?`;
+      params.push(category);
     }
     if (parentId !== undefined) {
       const targetParent = parentId === "" || parentId === "null" ? null : parentId;
-      entries = entries.filter((e) => (e as EntryWithOverhaulFields).parentId === targetParent);
+      if (targetParent === null) {
+        sql += ` AND (e.parent_id IS NULL OR e.parent_id = '')`;
+      } else {
+        sql += ` AND e.parent_id = ?`;
+        params.push(targetParent);
+      }
     }
+
+    sql += ` ORDER BY e.sort_order ASC, e.updated_at DESC`;
+    const entries = storage.sqlite.prepare(sql).all(...params);
     return c.json({ entries });
   });
 
