@@ -1,6 +1,5 @@
-import { useState, useEffect } from "react";
-import { BookOpen, ChevronRight, Search } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState, useEffect, useCallback, useRef } from "react";
+import { BookOpen, Search, ChevronDown, ChevronRight, Sparkles, Settings, Wrench, Rocket, GraduationCap } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { fetchJson } from "@/hooks/use-api";
 
@@ -27,62 +26,35 @@ interface DocContent {
   content: string;
 }
 
-// ── Fallback catalog (used when API unavailable) ──
+// ── Category Icons ──
 
-const FALLBACK_CATEGORIES: CategoryGroup[] = [
-  {
-    category: "从这里开始",
-    docs: [
-      { id: "00-overview", title: "一页理解 NovelFork", summary: "核心心智模型、三栏布局、推荐使用流程", tags: ["入门", "概览"] },
-      { id: "01-book-management", title: "作品与章节管理", summary: "创建作品、资源树、章节 CRUD、驾驶舱、导入导出", tags: ["作品", "章节"] },
-    ],
-  },
-  {
-    category: "AI 写作",
-    docs: [
-      { id: "02-ai-writing", title: "AI 写作功能", summary: "写作模式、AI 动作、选区变换、候选稿流程", tags: ["AI", "写作"] },
-      { id: "03-guided-generation", title: "引导式生成", summary: "PGI 追问、Guided Plan、问卷引导", tags: ["PGI", "引导"] },
-      { id: "04-narrator-conversation", title: "叙述者对话", summary: "会话界面、模型切换、权限、Slash 命令", tags: ["对话", "叙述者"] },
-      { id: "08-agent-pipeline", title: "Agent 写作管线", summary: "PipelineRunner、Agent 角色、工具链、编排", tags: ["Agent", "管线"] },
-    ],
-  },
-  {
-    category: "工具与分析",
-    docs: [
-      { id: "05-story-jingwei", title: "故事经纬", summary: "分区/条目、可见性规则、模板、AI 上下文参与", tags: ["经纬", "设定"] },
-      { id: "07-writing-tools", title: "写作工具", summary: "钩子、节奏、对话比例、健康、矛盾、弧线、文风", tags: ["工具", "分析"] },
-    ],
-  },
-  {
-    category: "设置与配置",
-    docs: [
-      { id: "06-settings-and-routines", title: "设置与套路", summary: "供应商配置、套路系统、继承机制", tags: ["设置", "套路"] },
-      { id: "09-agent-settings", title: "AI 代理配置", summary: "权限模式、上下文窗口管理、重试策略、白黑名单", tags: ["AI代理", "权限"] },
-      { id: "10-proxy-settings", title: "代理管理与网络配置", summary: "HTTP/SOCKS 代理配置、按供应商独立代理", tags: ["代理", "网络"] },
-      { id: "11-usage-history", title: "使用历史与成本监控", summary: "请求趋势图、筛选器、Token 用量分析", tags: ["使用历史", "Token"] },
-      { id: "12-appearance", title: "外观与个性化", summary: "主题模式、OLED纯黑、终端配置、字体", tags: ["外观", "主题"] },
-    ],
-  },
-];
+const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+  "从这里开始": <Rocket className="size-3.5" />,
+  "AI 写作": <Sparkles className="size-3.5" />,
+  "工具与分析": <Wrench className="size-3.5" />,
+  "设置与配置": <Settings className="size-3.5" />,
+  "高级功能": <GraduationCap className="size-3.5" />,
+};
 
 // ── Main Component ──
 
 export function LearnPage() {
-  const [categories, setCategories] = useState<CategoryGroup[]>(FALLBACK_CATEGORIES);
+  const [categories, setCategories] = useState<CategoryGroup[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
   const [docContent, setDocContent] = useState<DocContent | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<LearningDocEntry[] | null>(null);
-  const [loading, setLoading] = useState(false);
   const [docLoading, setDocLoading] = useState(false);
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Load catalog from API (enhance with server data if available)
+  // Load catalog from API
   useEffect(() => {
     fetchJson<{ categories: CategoryGroup[] }>("/learn/docs")
       .then((data) => {
         if (data.categories?.length) setCategories(data.categories);
       })
-      .catch(() => { /* keep fallback */ });
+      .catch(() => {});
   }, []);
 
   // Load doc content when selected
@@ -91,112 +63,122 @@ export function LearnPage() {
     setDocLoading(true);
     fetchJson<DocContent>(`/learn/doc/${selectedDocId}`)
       .then(setDocContent)
-      .catch(() => {
-        // Fallback: build content from catalog metadata
-        const allDocs = categories.flatMap((g) => g.docs);
-        const meta = allDocs.find((d) => d.id === selectedDocId);
-        if (meta) {
-          setDocContent({
-            id: meta.id,
-            title: meta.title,
-            summary: meta.summary,
-            tags: meta.tags,
-            category: categories.find((g) => g.docs.some((d) => d.id === meta.id))?.category ?? "",
-            content: `# ${meta.title}\n\n${meta.summary}\n\n> 完整文档位于 docs/learning/${meta.id}.md`,
-          });
-        } else {
-          setDocContent(null);
-        }
-      })
+      .catch(() => setDocContent(null))
       .finally(() => setDocLoading(false));
-  }, [selectedDocId, categories]);
+  }, [selectedDocId]);
 
-  // Search
+  // Search with debounce
   useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
     if (!searchQuery.trim()) { setSearchResults(null); return; }
-    const timer = setTimeout(() => {
+    searchTimerRef.current = setTimeout(() => {
       fetchJson<{ results: LearningDocEntry[] }>(`/learn/search?q=${encodeURIComponent(searchQuery)}`)
         .then((data) => setSearchResults(data.results))
         .catch(() => setSearchResults([]));
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchQuery]);
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-full text-sm text-muted-foreground">加载学习中心...</div>;
-  }
+  const toggleCategory = useCallback((cat: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  }, []);
 
   return (
-    <div className="flex flex-1 h-full w-full min-h-0 overflow-hidden">
-      {/* 左侧文档树 */}
-      <aside className="w-64 shrink-0 border-r border-border overflow-y-auto p-3 space-y-4">
-        <div className="flex items-center gap-2 mb-3">
-          <BookOpen className="size-4 text-primary" />
-          <span className="text-sm font-semibold">学习中心</span>
+    <div className="flex flex-1 h-full w-full min-h-0 overflow-hidden bg-background">
+      {/* 左侧文档列表 */}
+      <aside className="w-[400px] shrink-0 border-r border-border overflow-y-auto bg-muted/30">
+        {/* 头部 */}
+        <div className="sticky top-0 z-10 bg-muted/30 backdrop-blur-sm border-b border-border/50 p-4 space-y-3">
+          <div className="flex items-center gap-2">
+            <BookOpen className="size-4 text-primary" />
+            <span className="text-sm font-semibold">学习中心</span>
+            <span className="text-[10px] text-muted-foreground ml-auto">
+              {categories.reduce((sum, g) => sum + g.docs.length, 0)} 篇文档
+            </span>
+          </div>
+          <div className="relative">
+            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+            <Input
+              placeholder="搜索文档..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-8 text-xs h-8"
+            />
+          </div>
         </div>
 
-        {/* 搜索 */}
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
-          <Input
-            placeholder="搜索文档..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-7 text-xs h-7"
-          />
+        {/* 列表内容 */}
+        <div className="p-3 space-y-1">
+          {searchResults !== null ? (
+            /* 搜索结果 */
+            <div className="space-y-1">
+              <p className="text-[10px] text-muted-foreground px-2 py-1">
+                搜索结果 ({searchResults.length})
+              </p>
+              {searchResults.map((doc) => (
+                <DocCard
+                  key={doc.id}
+                  doc={doc}
+                  active={selectedDocId === doc.id}
+                  onClick={() => setSelectedDocId(doc.id)}
+                />
+              ))}
+              {searchResults.length === 0 && (
+                <p className="text-xs text-muted-foreground px-2 py-8 text-center">没有匹配的文档</p>
+              )}
+            </div>
+          ) : (
+            /* 分类列表 */
+            <div className="space-y-2">
+              {categories.map((group) => {
+                const collapsed = collapsedCategories.has(group.category);
+                return (
+                  <div key={group.category}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(group.category)}
+                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
+                    >
+                      {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
+                      {CATEGORY_ICONS[group.category]}
+                      <span>{group.category}</span>
+                      <span className="ml-auto text-[10px] opacity-60">{group.docs.length}</span>
+                    </button>
+                    {!collapsed && (
+                      <div className="mt-1 space-y-0.5 ml-2">
+                        {group.docs.map((doc) => (
+                          <DocCard
+                            key={doc.id}
+                            doc={doc}
+                            active={selectedDocId === doc.id}
+                            onClick={() => setSelectedDocId(doc.id)}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
-
-        {/* 搜索结果 */}
-        {searchResults !== null ? (
-          <div className="space-y-1">
-            <p className="text-[10px] text-muted-foreground px-2">搜索结果 ({searchResults.length})</p>
-            {searchResults.map((doc) => (
-              <DocTreeItem
-                key={doc.id}
-                doc={doc}
-                active={selectedDocId === doc.id}
-                onClick={() => setSelectedDocId(doc.id)}
-              />
-            ))}
-            {searchResults.length === 0 && (
-              <p className="text-xs text-muted-foreground px-2 py-4 text-center">没有匹配的文档</p>
-            )}
-          </div>
-        ) : (
-          /* 分类文档树 */
-          <div className="space-y-3">
-            {categories.map((group) => (
-              <div key={group.category}>
-                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1">
-                  {group.category}
-                  <span className="ml-1 text-muted-foreground/60">{group.docs.length}</span>
-                </p>
-                <div className="space-y-0.5 ml-2 pl-2 border-l border-dashed border-border">
-                  {group.docs.map((doc) => (
-                    <DocTreeItem
-                      key={doc.id}
-                      doc={doc}
-                      active={selectedDocId === doc.id}
-                      onClick={() => setSelectedDocId(doc.id)}
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
       </aside>
 
       {/* 右侧内容区 */}
-      <main className="flex-1 overflow-y-auto p-6">
+      <main className="flex-1 overflow-y-auto">
         {!selectedDocId ? (
           <WelcomeView categories={categories} onSelect={setSelectedDocId} />
         ) : docLoading ? (
           <div className="flex items-center justify-center h-full text-sm text-muted-foreground">加载文档...</div>
         ) : docContent ? (
-          <DocContentView doc={docContent} onBack={() => setSelectedDocId(null)} />
+          <DocContentView doc={docContent} />
         ) : (
-          <div className="text-sm text-muted-foreground">文档加载失败</div>
+          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">文档加载失败</div>
         )}
       </main>
     </div>
@@ -205,34 +187,54 @@ export function LearnPage() {
 
 // ── Sub Components ──
 
-function DocTreeItem({ doc, active, onClick }: { doc: LearningDocEntry; active: boolean; onClick: () => void }) {
+function DocCard({ doc, active, onClick }: { doc: LearningDocEntry; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`w-full text-left px-2 py-1.5 rounded-md text-xs transition-colors ${
+      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
         active
-          ? "bg-primary/10 text-primary border-l-2 border-primary -ml-[2px]"
-          : "text-foreground hover:bg-muted"
+          ? "border-l-2 border-primary bg-primary/5"
+          : "hover:bg-muted/50"
       }`}
     >
-      <span className="line-clamp-1">{doc.title}</span>
+      <div className="text-xs font-medium text-foreground line-clamp-1">{doc.title}</div>
+      {doc.summary && (
+        <div className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{doc.summary}</div>
+      )}
+      {doc.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mt-1.5">
+          {doc.tags.slice(0, 4).map((tag) => (
+            <span key={tag} className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+              {tag}
+            </span>
+          ))}
+          {doc.tags.length > 4 && (
+            <span className="text-[10px] text-muted-foreground">+{doc.tags.length - 4}</span>
+          )}
+        </div>
+      )}
     </button>
   );
 }
 
 function WelcomeView({ categories, onSelect }: { categories: CategoryGroup[]; onSelect: (id: string) => void }) {
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-xl font-semibold mb-2">学习中心</h1>
-        <p className="text-sm text-muted-foreground">了解 NovelFork 的功能和最佳实践。选择左侧文档开始阅读。</p>
+    <div className="p-8 max-w-3xl mx-auto space-y-8">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold">学习中心</h1>
+        <p className="text-sm text-muted-foreground">
+          了解 NovelFork 的功能和最佳实践。从左侧选择文档开始阅读，或点击下方分类快速浏览。
+        </p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {categories.map((group) => (
-          <div key={group.category} className="rounded-lg border border-border p-4 space-y-2">
-            <h3 className="text-sm font-semibold">{group.category}</h3>
+          <div key={group.category} className="rounded-lg border border-border p-4 space-y-3 hover:border-primary/30 transition-colors">
+            <div className="flex items-center gap-2">
+              {CATEGORY_ICONS[group.category]}
+              <h3 className="text-sm font-semibold">{group.category}</h3>
+            </div>
             <div className="space-y-1">
               {group.docs.map((doc) => (
                 <button
@@ -241,8 +243,8 @@ function WelcomeView({ categories, onSelect }: { categories: CategoryGroup[]; on
                   onClick={() => onSelect(doc.id)}
                   className="w-full flex items-center justify-between text-left px-2 py-1.5 rounded hover:bg-muted text-xs group"
                 >
-                  <span className="text-foreground">{doc.title}</span>
-                  <ChevronRight className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <span className="text-foreground line-clamp-1">{doc.title}</span>
+                  <ChevronRight className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 </button>
               ))}
             </div>
@@ -253,27 +255,19 @@ function WelcomeView({ categories, onSelect }: { categories: CategoryGroup[]; on
   );
 }
 
-function DocContentView({ doc, onBack }: { doc: DocContent; onBack: () => void }) {
+function DocContentView({ doc }: { doc: DocContent }) {
   return (
-    <div className="max-w-3xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="xs" onClick={onBack}>← 返回</Button>
-        <span className="text-[10px] rounded bg-muted px-1.5 py-0.5 text-muted-foreground">{doc.category}</span>
-      </div>
-
-      {/* Title */}
-      <div>
-        <h1 className="text-xl font-semibold mb-2">{doc.title}</h1>
-        <p className="text-sm text-muted-foreground">{doc.summary}</p>
-      </div>
-
+    <div className="p-8 max-w-3xl mx-auto space-y-6">
       {/* Tags */}
-      <div className="flex flex-wrap gap-1">
-        {doc.tags.map((tag) => (
-          <span key={tag} className="text-[10px] rounded-md border border-border px-2 py-0.5">{tag}</span>
-        ))}
-      </div>
+      {doc.tags.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {doc.tags.map((tag) => (
+            <span key={tag} className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Content */}
       <article className="prose prose-sm dark:prose-invert max-w-none">
@@ -283,8 +277,9 @@ function DocContentView({ doc, onBack }: { doc: DocContent; onBack: () => void }
   );
 }
 
+// ── Markdown Renderer ──
+
 function MarkdownContent({ content }: { content: string }) {
-  // 简单的 Markdown 渲染（标题、段落、列表、代码块）
   const lines = content.split("\n");
   const elements: React.ReactNode[] = [];
   let i = 0;
@@ -294,6 +289,7 @@ function MarkdownContent({ content }: { content: string }) {
 
     // 代码块
     if (line.startsWith("```")) {
+      const lang = line.slice(3).trim();
       const codeLines: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
@@ -309,6 +305,17 @@ function MarkdownContent({ content }: { content: string }) {
       continue;
     }
 
+    // 表格（| 开头的行）
+    if (line.trimStart().startsWith("|")) {
+      const tableLines: string[] = [];
+      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
+        tableLines.push(lines[i]);
+        i++;
+      }
+      elements.push(<MarkdownTable key={`table-${i}`} lines={tableLines} />);
+      continue;
+    }
+
     // 标题
     if (line.startsWith("# ")) {
       elements.push(<h1 key={`h1-${i}`} className="text-2xl font-bold mt-6 mb-3">{line.slice(2)}</h1>);
@@ -316,18 +323,29 @@ function MarkdownContent({ content }: { content: string }) {
       elements.push(<h2 key={`h2-${i}`} className="text-lg font-semibold mt-5 mb-2">{line.slice(3)}</h2>);
     } else if (line.startsWith("### ")) {
       elements.push(<h3 key={`h3-${i}`} className="text-base font-semibold mt-4 mb-2">{line.slice(4)}</h3>);
+    } else if (line.startsWith("#### ")) {
+      elements.push(<h4 key={`h4-${i}`} className="text-sm font-semibold mt-3 mb-1">{line.slice(5)}</h4>);
     }
     // 列表
-    else if (line.startsWith("- ") || line.startsWith("* ")) {
-      elements.push(<li key={`li-${i}`} className="text-sm text-foreground ml-4 list-disc">{line.slice(2)}</li>);
+    else if (line.match(/^[-*]\s/)) {
+      elements.push(<li key={`li-${i}`} className="text-sm text-foreground ml-4 list-disc">{renderInline(line.slice(2))}</li>);
+    }
+    // 有序列表
+    else if (line.match(/^\d+\.\s/)) {
+      const text = line.replace(/^\d+\.\s/, "");
+      elements.push(<li key={`oli-${i}`} className="text-sm text-foreground ml-4 list-decimal">{renderInline(text)}</li>);
     }
     // 引用
     else if (line.startsWith("> ")) {
       elements.push(
-        <blockquote key={`bq-${i}`} className="border-l-2 border-primary/30 pl-3 text-sm text-muted-foreground italic">
-          {line.slice(2)}
+        <blockquote key={`bq-${i}`} className="border-l-2 border-primary/30 pl-3 text-sm text-muted-foreground italic my-2">
+          {renderInline(line.slice(2))}
         </blockquote>
       );
+    }
+    // 分隔线
+    else if (line.match(/^---+$/)) {
+      elements.push(<hr key={`hr-${i}`} className="my-4 border-border" />);
     }
     // 空行
     else if (line.trim() === "") {
@@ -335,11 +353,89 @@ function MarkdownContent({ content }: { content: string }) {
     }
     // 普通段落
     else {
-      elements.push(<p key={`p-${i}`} className="text-sm text-foreground leading-relaxed">{line}</p>);
+      elements.push(<p key={`p-${i}`} className="text-sm text-foreground leading-relaxed my-1">{renderInline(line)}</p>);
     }
 
     i++;
   }
 
   return <>{elements}</>;
+}
+
+// ── Inline formatting ──
+
+function renderInline(text: string): React.ReactNode {
+  // 简单处理 **bold**、`code`、*italic*
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+
+  while (remaining.length > 0) {
+    // Bold
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    // Code
+    const codeMatch = remaining.match(/`([^`]+)`/);
+
+    type MatchEntry = { index: number; length: number; node: React.ReactNode };
+    const candidates: MatchEntry[] = [];
+
+    if (boldMatch && boldMatch.index !== undefined) {
+      candidates.push({ index: boldMatch.index, length: boldMatch[0].length, node: <strong key={`b-${key++}`}>{boldMatch[1]}</strong> });
+    }
+    if (codeMatch && codeMatch.index !== undefined) {
+      candidates.push({ index: codeMatch.index, length: codeMatch[0].length, node: <code key={`c-${key++}`} className="text-[11px] bg-muted px-1 py-0.5 rounded">{codeMatch[1]}</code> });
+    }
+
+    const firstMatch = candidates.sort((a, b) => a.index - b.index)[0] ?? null;
+
+    if (firstMatch) {
+      if (firstMatch.index > 0) {
+        parts.push(remaining.slice(0, firstMatch.index));
+      }
+      parts.push(firstMatch.node);
+      remaining = remaining.slice(firstMatch.index + firstMatch.length);
+    } else {
+      parts.push(remaining);
+      break;
+    }
+  }
+
+  return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : <>{parts}</>;
+}
+
+// ── Table renderer ──
+
+function MarkdownTable({ lines }: { lines: string[] }) {
+  if (lines.length < 2) return null;
+
+  const parseRow = (line: string) =>
+    line.split("|").slice(1, -1).map(cell => cell.trim());
+
+  const headers = parseRow(lines[0]);
+  // Skip separator line (line[1] is usually |---|---|)
+  const startIdx = lines[1]?.match(/^[\s|:-]+$/) ? 2 : 1;
+  const rows = lines.slice(startIdx).map(parseRow);
+
+  return (
+    <div className="overflow-x-auto my-3">
+      <table className="w-full text-xs border-collapse">
+        <thead>
+          <tr className="border-b border-border">
+            {headers.map((h, i) => (
+              <th key={i} className="text-left px-3 py-2 font-semibold text-foreground">{h}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, ri) => (
+            <tr key={ri} className="border-b border-border/50 hover:bg-muted/30">
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-3 py-1.5 text-muted-foreground">{renderInline(cell)}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
