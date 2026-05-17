@@ -8,8 +8,9 @@
  * 注意：不要把 exe 输出到 packages/studio/dist。
  * 该目录由 Vite/tsc 管理，前端构建会清理它；exe 放进去会在 Windows 上导致 EPERM。
  */
-import { copyFile, mkdir, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readFile, readdir, cp } from "node:fs/promises";
+import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 
 const ROOT = join(import.meta.dirname, "..");
 const REPO_ROOT = join(ROOT, "..", "..");
@@ -68,6 +69,20 @@ async function main() {
   }
 
   await copyFile(latestOutput, versionedOutput);
+
+  // Copy .novelfork/skills/ to dist/ so exe can find them at runtime
+  const skillsSrc = join(REPO_ROOT, ".novelfork", "skills");
+  const skillsDest = join(RELEASE_DIST, ".novelfork", "skills");
+  if (existsSync(skillsSrc)) {
+    await mkdir(skillsDest, { recursive: true });
+    const files = await readdir(skillsSrc);
+    for (const file of files) {
+      if (file.endsWith(".md")) {
+        await copyFile(join(skillsSrc, file), join(skillsDest, file));
+      }
+    }
+    console.log(`[Done] Skills copied: ${files.filter(f => f.endsWith(".md")).length} files → ${skillsDest}`);
+  }
 
   console.log(`[Done] Latest release output: ${latestOutput}`);
   console.log(`[Done] Versioned release output: ${versionedOutput}`);
