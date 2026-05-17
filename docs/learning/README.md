@@ -35,6 +35,8 @@ routes:
 | 16 | [安全与沙箱](./16-security-and-sandbox.md) | 三级沙箱、白名单、权限模式 | `安全` `沙箱` |
 | 17 | [浏览器与终端](./17-browser-and-terminal.md) | Browser 截图、Terminal 持久化进程 | `浏览器` `终端` |
 | 18 | [网络工具](./18-web-tools.md) | WebSearch、WebFetch 四种模式 | `网络` `搜索` |
+| 19 | [预设规则与节拍模板](./19-presets-and-beats.md) | 53 条内置预设 + 自定义 + 节拍模板 + Agent 工具 | `预设` `节拍` `自定义` |
+| 20 | [书籍叙述者分工](./20-book-narrators.md) | 五个专职叙述者的职责和快捷操作 | `叙述者` `角色` `分工` |
 
 ---
 
