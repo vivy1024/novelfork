@@ -577,17 +577,11 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const { join, dirname } = await import("node:path");
     const { existsSync } = await import("node:fs");
 
-    // 确定 projectRoot：优先环境变量，其次 exe 所在目录，最后 cwd
+    // 确定 projectRoot：优先环境变量，其次 ~/.novelfork/
     let projectRoot = process.env.NOVELFORK_PROJECT_ROOT || "";
     if (!projectRoot) {
-      const exeDir = dirname(process.execPath);
-      if (existsSync(join(exeDir, "books"))) {
-        projectRoot = exeDir;
-      } else if (existsSync(join(process.cwd(), "dist", "books"))) {
-        projectRoot = join(process.cwd(), "dist");
-      } else {
-        projectRoot = process.cwd();
-      }
+      const { homedir } = await import("node:os");
+      projectRoot = join(homedir(), ".novelfork");
     }
     const storyDir = join(projectRoot, "books", bookId, "story");
 

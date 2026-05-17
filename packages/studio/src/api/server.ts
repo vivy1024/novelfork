@@ -706,7 +706,7 @@ async function buildProviderDiagnosticEntries(config: ProjectConfig, providerSto
 
 async function collectStartupDiagnostics(root: string, config: ProjectConfig, providerStore: ProviderRuntimeStore): Promise<StartupDiagnostic[]> {
   const diagnostics: StartupDiagnostic[] = [];
-  const markerPath = join(root, ".novelfork", "running.pid");
+  const markerPath = join(root, "running.pid");
 
   diagnostics.push(await prepareUncleanShutdownMarker(markerPath));
   registerRunningMarkerCleanup(markerPath);
