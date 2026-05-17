@@ -277,6 +277,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
+  sessionTool({
+    name: "jingwei.upsert_entry",
+    description: "创建或更新经纬条目。按 title 匹配：标题相同则更新内容，不存在则创建。类别不存在时自动创建。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.upsert_entry"]),
+    risk: "confirmed-write",
+    renderer: "jingwei.upsert",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
 ] as const;
 
 /**
