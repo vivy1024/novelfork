@@ -3,7 +3,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Plus, Trash2, Edit2, Save, X, Globe, Folder } from "lucide-react";
+import { Plus, Trash2, Edit2, Save, X, Globe, Folder, HardDrive } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -234,6 +234,9 @@ export function SkillsTab({
         )}
       </div>
 
+      {/* 磁盘 Skills 展示 */}
+      <DiskSkillsSection />
+
       <ConfirmDialog
         open={Boolean(deleteTarget)}
         title="删除技能"
@@ -244,6 +247,66 @@ export function SkillsTab({
         onConfirm={handleDelete}
         onCancel={() => setDeleteTarget(null)}
       />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DiskSkillsSection — 展示磁盘上的 .md skill 文件
+// ---------------------------------------------------------------------------
+
+interface DiskSkill {
+  name: string;
+  path: string;
+  scope: string;
+  size: number;
+  preview: string;
+}
+
+function DiskSkillsSection() {
+  const [diskSkills, setDiskSkills] = useState<DiskSkill[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch("/api/routines/disk-skills")
+      .then(res => res.ok ? res.json() : null)
+      .then((data: { ok?: boolean; skills?: DiskSkill[] } | null) => {
+        if (data?.ok && data.skills) setDiskSkills(data.skills);
+      })
+      .catch(() => { /* non-fatal */ })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (!loading && diskSkills.length === 0) return null;
+
+  return (
+    <div className="mt-6 border-t pt-4">
+      <div className="flex items-center gap-2 mb-3">
+        <HardDrive size={14} className="text-muted-foreground" />
+        <span className="text-sm font-medium">磁盘技能文件</span>
+        <span className="text-xs text-muted-foreground">（Agent 可通过 Skill 工具调用）</span>
+      </div>
+      {loading ? (
+        <p className="text-xs text-muted-foreground">扫描中...</p>
+      ) : (
+        <div className="space-y-1.5">
+          {diskSkills.map((skill) => (
+            <div key={skill.path} className="flex items-center gap-3 rounded-md border px-3 py-2 bg-muted/20">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <code className="text-xs font-mono font-medium text-primary">{skill.name}</code>
+                  <span className="text-[10px] text-muted-foreground">{skill.size} bytes</span>
+                </div>
+                <p className="text-xs text-muted-foreground truncate mt-0.5">{skill.preview}</p>
+              </div>
+              <code className="text-[10px] text-muted-foreground shrink-0 max-w-[200px] truncate" title={skill.path}>
+                {skill.path.replace(/\\/g, "/").split("/").slice(-3).join("/")}
+              </code>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
