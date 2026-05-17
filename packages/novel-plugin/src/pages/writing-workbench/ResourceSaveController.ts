@@ -150,6 +150,8 @@ export async function saveResourceAndHydrate(
   if (node.kind === "chapter") return saveChapterAndHydrate(resource, bookId, node, content);
   if (node.kind === "draft") return saveDraftAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei") return saveJingweiAndHydrate(resource, bookId, node, content);
+  // 经纬文件节点（有 fileName）走文件保存，经纬条目节点（有 entryId）走条目保存
+  if (node.kind === "jingwei-entry" && metadataString(node, "fileName")) return saveJingweiAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei-entry") return saveJingweiEntryAndHydrate(resource, bookId, node, content);
 
   throw new Error(`${node.title} 暂不支持从工作台保存`);
