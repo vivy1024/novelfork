@@ -33,7 +33,7 @@ export function FileChangesPanel({ sessionId, className = "" }: FileChangesPanel
 
   const fetchChanges = useCallback(async () => {
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/file-changes`);
+      const res = await fetch(`/api/file-changes/${encodeURIComponent(sessionId)}`);
       if (res.ok) {
         const data = await res.json();
         setChanges(data.changes ?? []);
@@ -51,7 +51,7 @@ export function FileChangesPanel({ sessionId, className = "" }: FileChangesPanel
   const handleRevert = useCallback(async (path: string) => {
     setReverting(path);
     try {
-      const res = await fetch(`/api/sessions/${sessionId}/file-changes/revert`, {
+      const res = await fetch(`/api/file-changes/${encodeURIComponent(sessionId)}/revert`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ path }),
