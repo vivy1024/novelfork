@@ -1759,7 +1759,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const questions = rawQuestions.map((q: any, idx: number) => ({
           id: q.id ?? `q-${idx}`,
           prompt: typeof q.question === "string" ? q.question : (typeof q.prompt === "string" ? q.prompt : `问题 ${idx + 1}`),
-          type: q.multiSelect ? "multi" as const : (Array.isArray(q.options) && q.options.length > 0 ? "single" as const : "text" as const),
+          type: Array.isArray(q.options) && q.options.length > 0 ? (q.multiSelect === false ? "single" as const : "multi" as const) : "text" as const,
           options: Array.isArray(q.options) ? q.options.map((o: any) =>
             typeof o === "string" ? { label: o } : { label: o?.label ?? String(o), ...(o?.description ? { description: o.description } : {}) }
           ) : undefined,
@@ -1991,6 +1991,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
         const { dirname } = await import("node:path");
 
+        // 解析 YAML frontmatter
+        function parseLearningFrontmatter(content: string): { title: string; summary: string; tags: string[] } {
+          const match = content.match(/^---\n([\s\S]*?)\n---/);
+          if (!match) return { title: "", summary: "", tags: [] };
+          const yaml = match[1];
+          const title = yaml.match(/title:\s*(.+)/)?.[1]?.trim() ?? "";
+          const summary = yaml.match(/summary:\s*(.+)/)?.[1]?.trim() ?? "";
+          const tagsMatch = yaml.match(/tags:\s*\[([^\]]*)\]/);
+          const tags = tagsMatch ? tagsMatch[1].split(",").map(t => t.trim().replace(/['"]/g, "")) : [];
+          return { title, summary, tags };
+        }
+
         // 学习中心文档位置：优先 exe 旁边的 docs/learning/，其次 ~/.novelfork/docs/learning/
         let learningDir: string;
         const { existsSync } = await import("node:fs");
@@ -2004,7 +2016,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (mode === "list") {
           try {
             const files = await readdir(learningDir);
-            const docs = files.filter(f => f.endsWith(".md")).map(f => ({ id: f.replace(".md", ""), title: f.replace(".md", "").replace(/-/g, " ") }));
+            const docs: Array<{ id: string; title: string; summary: string; tags: string[] }> = [];
+            for (const file of files.filter(f => f.endsWith(".md") && f !== "README.md")) {
+              const content = await readFile(join(learningDir, file), "utf-8");
+              const meta = parseLearningFrontmatter(content);
+              docs.push({ id: file.replace(".md", ""), title: meta.title, summary: meta.summary, tags: meta.tags });
+            }
             return { ok: true, renderer: definition.renderer, summary: `学习中心有 ${docs.length} 篇文档。`, data: { docs } };
           } catch {
             return { ok: true, renderer: definition.renderer, summary: "学习中心目录不存在或为空。", data: { docs: [] } };
@@ -2016,14 +2033,24 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           if (!query) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "search 模式需要 query。" };
           try {
             const files = await readdir(learningDir);
-            const results: Array<{ id: string; title: string; snippet: string }> = [];
-            for (const file of files.filter(f => f.endsWith(".md"))) {
+            const results: Array<{ id: string; title: string; summary: string; tags: string[] }> = [];
+            const queryTerms = query.split(/\s+/).filter(Boolean);
+            for (const file of files.filter(f => f.endsWith(".md") && f !== "README.md")) {
               const content = await readFile(join(learningDir, file), "utf-8");
-              if (content.toLowerCase().includes(query)) {
-                const idx = content.toLowerCase().indexOf(query);
-                results.push({ id: file.replace(".md", ""), title: file.replace(".md", ""), snippet: content.slice(Math.max(0, idx - 50), idx + 150) });
+              const meta = parseLearningFrontmatter(content);
+              // 匹配 title + summary + tags + 正文
+              const searchable = `${meta.title} ${meta.summary} ${meta.tags.join(" ")} ${content}`.toLowerCase();
+              const matches = queryTerms.filter(term => searchable.includes(term));
+              if (matches.length > 0) {
+                results.push({ id: file.replace(".md", ""), title: meta.title, summary: meta.summary, tags: meta.tags });
               }
             }
+            // 按匹配度排序（匹配更多 term 的排前面）
+            results.sort((a, b) => {
+              const scoreA = queryTerms.filter(t => `${a.title} ${a.summary} ${a.tags.join(" ")}`.toLowerCase().includes(t)).length;
+              const scoreB = queryTerms.filter(t => `${b.title} ${b.summary} ${b.tags.join(" ")}`.toLowerCase().includes(t)).length;
+              return scoreB - scoreA;
+            });
             return { ok: true, renderer: definition.renderer, summary: `搜索到 ${results.length} 篇相关文档。`, data: { results } };
           } catch {
             return { ok: true, renderer: definition.renderer, summary: "搜索失败，学习中心目录不可用。", data: { results: [] } };
