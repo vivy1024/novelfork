@@ -1,44 +1,50 @@
 ---
 title: 工具搜索与技能
-summary: ToolSearch 动态发现、Skill 技能调用、工具权限与 MCP 扩展
-tags: [工具, 技能, ToolSearch, MCP, 权限]
+summary: ToolSearch 动态发现工具、Skill 加载、MCP 扩展
+tags: [工具, 技能, MCP, ToolSearch, Skill]
+routes:
+  - /next/routines
 ---
 
 # 工具搜索与技能
 
-> 按需加载工具，避免全量注入浪费 token；通过技能获得专业化能力。
+> ToolSearch 动态发现工具、Skill 加载、MCP 扩展。
 
-## ToolSearch 动态发现
+## 核心概念
 
-系统不会一次性加载所有工具。核心工具（读写文件、搜索等）始终可用，非核心工具通过 ToolSearch 按需发现。当 Agent 需要特定能力时，自动搜索匹配的工具并加载，减少上下文占用。
+**ToolSearch**：Agent 不需要一次性加载所有工具。当需要非核心工具时，通过 ToolSearch 动态发现并加载，减少全量注入的 token 消耗。
 
-## Skill 技能系统
+**Skill**：可复用的能力模块。Agent 通过 Skill 工具加载特定技能（如写作模板应用、合规检查流程），技能包含预定义的工具链和提示词。
 
-技能是封装好的专业化工作流，通过 `/命令名` 调用：
+**MCP（Model Context Protocol）**：连接外部 MCP Server 为 Agent 注入额外工具。支持 stdio 本地进程和 HTTP 远程服务两种模式。
 
-- `/qa` — 前端质量检查，自动截图验证
-- `/review` — 代码审查，跨模型对抗检查
-- `/ship` — 发版流程，创建 PR 并推送
-- `/investigate` — Bug 排查，自动定位根因
+## 推荐使用流程
 
-技能比单个工具更强大，它组合多个工具完成完整流程。
+1. 核心工具（Read/Write/Edit/Bash 等）始终可用，无需配置
+2. 小说专属工具通过 novel-plugin 自动注册
+3. 需要外部能力时，在套路 MCP tab 中添加 MCP Server
+4. Agent 在执行中自动通过 ToolSearch 发现需要的工具
 
-## 工具过滤
+## 最佳实践
 
-不同叙述者类型获得不同工具集：
-- 写作叙述者：获得写作工具、风格检测、合规检查
-- 规划叙述者：获得搜索、分析工具，无写入权限
-- 通用叙述者：获得完整工具集
+- 不需要手动管理工具列表，系统自动按需加载
+- MCP 工具按需启用，不用的关掉减少噪音
+- 自定义 Skill 适合封装重复性工作流
 
-## 工具权限
+## 常见坑
 
-每个工具有三级权限控制：
-- **allow** — 直接执行，无需确认
-- **ask** — 执行前询问用户确认
-- **deny** — 禁止使用
+- **Agent 说找不到某工具** → 工具可能未在当前套路中启用，检查套路工具 Tab
+- **MCP 工具调用失败** → MCP Server 未启动或连接断开
+- **ToolSearch 返回空** → 搜索关键词不匹配，尝试不同描述
 
-在设置中可按叙述者调整权限级别。
+## Agent 查阅提示
 
-## MCP 工具
+- ToolSearch 基于工具描述的语义匹配，返回最相关的工具列表
+- Skill 加载后注入当前会话的工具集和系统提示
+- MCP 工具与内置工具共享权限模式和确认门机制
+- 工具权限在套路中配置：allowlist / blocklist 模式
+- MCP Server 配置在套路的 MCP tab 中，支持环境变量注入
 
-通过 MCP（Model Context Protocol）协议接入外部工具服务器。配置 MCP 服务器地址后，其提供的工具自动出现在可用列表中，实现能力无限扩展。
+## 可跳转功能入口
+
+- 套路管理: MCP Server 和工具权限配置。 (/next/routines)

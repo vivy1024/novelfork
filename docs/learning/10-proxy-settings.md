@@ -1,52 +1,54 @@
 ---
 title: 代理设置
-summary: 配置 HTTP/SOCKS5 代理让 AI API 请求正常到达目标服务
-tags: [代理, 网络, proxy]
+summary: 网络代理配置，解决 API 访问受限问题
+tags: [代理, 网络, 代理服务器, proxy]
 routes:
   - /next/settings
 ---
 
 # 代理设置
 
-> 配置 HTTP/SOCKS5 代理让 AI API 请求正常到达目标服务
+> 网络代理配置，解决 API 访问受限问题。
 
 ## 核心概念
 
-代理用于 AI API 请求的网络出口。当本地网络无法直连 OpenAI、Anthropic 等海外 API 时，通过代理转发请求。
+**供应商代理**：为 AI API 请求配置 HTTP/SOCKS5 代理。当直连 API 端点受限时使用。
 
-支持的代理协议：
-- HTTP：`http://127.0.0.1:7890`
-- SOCKS5：`socks5://127.0.0.1:1080`
-- 带认证：`http://user:pass@proxy.com:8080`
+**WebFetch 代理**：为网页抓取工具配置代理。当目标网站有地域限制时使用。
 
-代理仅影响 AI API 请求。如果通过 Sub2API 网关调用，代理配置的是网关的出口，而非替代网关。
+**平台代理**：全局代理设置，影响所有出站请求。
+
+代理配置支持：
+- HTTP 代理：`http://host:port`
+- SOCKS5 代理：`socks5://host:port`
+- 认证代理：`http://user:pass@host:port`
 
 ## 推荐使用流程
 
-1. 打开「设置 → 代理」tab
-2. 输入代理地址（HTTP 或 SOCKS5 格式）
-3. 点击「测试」验证连通性
-4. 保存配置
+1. 设置 → 代理 → 填写代理地址
+2. 选择代理作用范围（供应商 / WebFetch / 全局）
+3. 点击"测试连接"验证代理可用性
+4. 保存后立即生效，无需重启
 
 ## 最佳实践
 
-- 国内 API（DeepSeek、智谱）不需要代理，留空即可
-- 海外 API（OpenAI、Anthropic、Google）配置代理
-- 使用 Sub2API 网关时，Base URL 指向网关地址，代理配置网关的出口
-- 定期用测试功能验证代理可用性
+- 只为需要代理的供应商配置，不必全局开启
+- SOCKS5 代理性能优于 HTTP 代理
+- 代理不稳定时配置多个备用地址
 
 ## 常见坑
 
-- 代理地址写错协议头（写成 `https://` 而非 `http://`）→ 连接失败
-- 代理软件未启动但配置了地址 → 所有 AI 请求超时
-- 混淆代理和 Base URL → Sub2API 网关地址应填在供应商 Base URL，不是代理字段
+- **配置代理后仍然超时** → 代理服务器本身不可用，先用测试连接验证
+- **部分供应商走代理部分不走** → 检查是否配置了供应商级别的代理覆盖
+- **WebFetch 抓取失败** → 目标网站可能屏蔽了代理 IP
 
 ## Agent 查阅提示
 
-- AI 请求超时时建议用户检查代理配置
-- 部分供应商正常部分超时 → 可能需要按供应商区分代理策略
-- 代理配置存储在 user-config 中，不入 Git 仓库
+- 代理配置存储在 settings store 的 proxy 字段
+- 供应商级代理优先于全局代理
+- LLMClient 在发起请求时读取代理配置，通过 `https-proxy-agent` 实现
+- WebFetch 工具独立读取 WebFetch 代理配置
 
 ## 可跳转功能入口
 
-- 设置 → 代理 tab：`/next/settings`
+- 代理设置: 网络代理配置面板。 (/next/settings)
