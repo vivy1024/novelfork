@@ -3,7 +3,7 @@
  * 根据 bookId 聚合当前作品的关键状态信息，注入到 Agent 的 system prompt 中。
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookDetail } from "../../shared/contracts.js";
@@ -326,32 +326,25 @@ export async function buildAgentContext(params: {
     }
     extraBlocks.push(jwLines.join("\n"));
   } else {
-    // Fallback: 从 storyDir 读取核心经纬文件
+    // 从 SQLite 经纬条目读取
     try {
-      const projectRoot = getProjectRoot();
-      const storyDir = join(projectRoot, "books", params.bookId, "story");
-      const coreFiles = ["story_bible.md", "current_state.md", "volume_outline.md"];
-      const jwLines: string[] = ["", "### 经纬核心设定（来自文件）"];
-      let totalChars = 0;
-      const MAX_CONTEXT_CHARS = 4000;
-      for (const fileName of coreFiles) {
-        if (totalChars >= MAX_CONTEXT_CHARS) break;
-        const filePath = join(storyDir, fileName);
-        if (existsSync(filePath)) {
-          const raw = readFileSync(filePath, "utf-8").trim();
-          if (raw.length > 20) {
-            const truncated = raw.length > (MAX_CONTEXT_CHARS - totalChars)
-              ? raw.slice(0, MAX_CONTEXT_CHARS - totalChars) + "\n...(已截断)"
-              : raw;
-            jwLines.push(`\n#### ${fileName.replace(/\.md$/, "").replace(/_/g, " ")}\n${truncated}`);
-            totalChars += truncated.length;
-          }
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const storage = getStorageDatabase();
+      const entries = storage.sqlite.prepare(
+        `SELECT title, content_md, category FROM story_jingwei_entry WHERE book_id = ? AND participates_in_ai = 1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 10`
+      ).all(params.bookId) as Array<{ title: string; content_md: string; category: string }>;
+      if (entries.length > 0) {
+        const jwLines: string[] = ["", "### 经纬核心设定"];
+        let totalChars = 0;
+        for (const entry of entries) {
+          if (totalChars >= 4000) break;
+          const preview = entry.content_md.length > 400 ? entry.content_md.slice(0, 400) + "..." : entry.content_md;
+          jwLines.push(`\n#### ${entry.title}（${entry.category}）\n${preview}`);
+          totalChars += preview.length;
         }
-      }
-      if (jwLines.length > 1) {
         extraBlocks.push(jwLines.join("\n"));
       }
-    } catch { /* storyDir read failure is non-fatal */ }
+    } catch { /* SQLite read failure is non-fatal */ }
   }
 
   return extraBlocks.length > 0 ? `${baseContext}\n${extraBlocks.join("\n")}` : baseContext;
