@@ -577,6 +577,94 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleJingweiReadContext({ bookId, chapterNumber, sceneText });
         return { ...result, renderer: definition.renderer };
       };
+    case "jingwei.upsert_entry":
+      return async ({ input, definition }) => {
+        const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+        const storage = getStorageDatabase();
+        const bookId = String(input.bookId);
+        const category = String(input.category || "setting");
+        const title = String(input.title || "").trim();
+        const contentMd = String(input.contentMd || "");
+        const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
+        const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
+        const visibility = String(input.visibility || "tracked");
+        const relatedEntryIds = Array.isArray(input.relatedEntryIds) ? input.relatedEntryIds.filter((id): id is string => typeof id === "string") : [];
+
+        if (!title) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "title 不能为空。" };
+        }
+
+        try {
+          // 确保 section 存在（按 category 查找或创建）
+          const sectionRows = storage.sqlite.prepare(
+            `SELECT id FROM story_jingwei_section WHERE book_id = ? AND key = ?`
+          ).all(bookId, category) as Array<{ id: string }>;
+
+          let sectionId: string;
+          if (sectionRows.length > 0) {
+            sectionId = sectionRows[0]!.id;
+          } else {
+            // 自动创建 section
+            sectionId = crypto.randomUUID();
+            const CATEGORY_NAMES: Record<string, string> = {
+              character: "角色", event: "事件", setting: "设定", foreshadowing: "伏笔",
+              conflict: "矛盾", "world-model": "世界模型", premise: "前提", arc: "角色弧线",
+              faction: "势力", location: "地点", item: "物品", skill: "功法",
+              timeline: "时间线", relationship: "关系", "core-memory": "核心记忆", custom: "自定义",
+            };
+            const name = CATEGORY_NAMES[category] ?? category;
+            storage.sqlite.prepare(`
+              INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, created_at, updated_at)
+              VALUES (?, ?, ?, ?, '', 0, 1, 1, 1, 'tracked', '[]', datetime('now'), datetime('now'))
+            `).run(sectionId, bookId, category, name);
+          }
+
+          // 查找已有条目（按 title 匹配）
+          const existingRows = storage.sqlite.prepare(
+            `SELECT id FROM story_jingwei_entry WHERE book_id = ? AND section_id = ? AND title = ?`
+          ).all(bookId, sectionId, title) as Array<{ id: string }>;
+
+          const visibilityJson = JSON.stringify({ type: visibility });
+          const aliasesJson = JSON.stringify(aliases);
+          const now = new Date().toISOString();
+
+          if (existingRows.length > 0) {
+            // 更新已有条目
+            const entryId = existingRows[0]!.id;
+            storage.sqlite.prepare(`
+              UPDATE story_jingwei_entry
+              SET content_md = ?, tags = ?, aliases = ?, related_entry_ids = ?, visibility_rule = ?, updated_at = ?, aliases_json = ?, visibility_rule_json = ?
+              WHERE id = ?
+            `).run(contentMd, JSON.stringify(tags), JSON.stringify(aliases), JSON.stringify(relatedEntryIds), visibilityJson, now, aliasesJson, visibilityJson, entryId);
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `已更新经纬条目「${title}」（${category}）。`,
+              data: { action: "updated", entryId, bookId, category, title },
+            };
+          } else {
+            // 创建新条目
+            const entryId = crypto.randomUUID();
+            storage.sqlite.prepare(`
+              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags, aliases, custom_fields, related_chapter_numbers, related_entry_ids, visibility_rule, participates_in_ai, token_budget, created_at, updated_at, category, aliases_json, visibility_rule_json)
+              VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?, ?, ?, ?)
+            `).run(entryId, bookId, sectionId, title, contentMd, JSON.stringify(tags), JSON.stringify(aliases), JSON.stringify(relatedEntryIds), visibilityJson, now, now, category, aliasesJson, visibilityJson);
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `已创建经纬条目「${title}」（${category}）。`,
+              data: { action: "created", entryId, bookId, category, title },
+            };
+          }
+        } catch (error) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "upsert-failed",
+            summary: `经纬写入失败：${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
+      };
     case "health.read_summary":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);

@@ -27,9 +27,11 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 ⚠️ 禁止跳过第 4、5 步直接生成章节。引导式生成是核心流程，确保用户对写作方向有控制权。
 
 ## 经纬写入规则
-- 需要写入经纬时，调用 Skill("jingwei-write") 获取写入规范
-- **绝对禁止**在 worktree 根目录下创建 jingwei/ 等自定义目录
-- 所有经纬文件必须写入 storyDir 路径下
+- 写入经纬时**必须**使用 jingwei.upsert_entry 工具（写入结构化数据库）
+- **绝对禁止**用 Write 工具写入 md 文件到任何路径
+- category 可选值：character/event/setting/foreshadowing/conflict/world-model/premise/arc/faction/location/item/skill/timeline/relationship/core-memory
+- 每个独立概念一个条目（如每个角色一个条目、每个设定一个条目）
+- contentMd 用 Markdown 格式，包含该条目的完整描述
 
 ## 输出规范
 - 直接输出正文内容，不要复述提示词。
@@ -57,7 +59,7 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 1. 用 cockpit.get_snapshot 了解当前书籍进度（返回值中 storyDir 是经纬文件路径）。
 2. 用 Read 工具读取 storyDir 下的经纬文件（story_bible.md、volume_outline.md 等）。
 3. **必须**用 guided.enter 进入引导式生成模式，提出计划等用户确认后再执行。
-4. 用户确认后，调用 Skill("jingwei-write") 获取写入规范，将大纲写入 storyDir/volume_outline.md。
+4. 用户确认后，用 jingwei.upsert_entry 工具将大纲写入经纬数据库（category="premise" 或 "setting"）。
 
 ⚠️ 禁止跳过引导式生成直接输出大纲。用户必须先确认方向。
 ⚠️ 禁止在 worktree 根目录下创建 jingwei/ 等自定义目录，必须写入 storyDir。
