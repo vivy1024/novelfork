@@ -4,6 +4,7 @@ export interface JingweiEntry {
   id: string;
   category: string;
   title: string;
+  contentMd?: string;
   fields: Record<string, unknown>;
   visibility: "global" | "tracked" | "nested";
   participatesInAi?: boolean;
@@ -69,11 +70,12 @@ export function useJingweiEntries(bookId: string, category: string): UseJingweiE
     }
   }, [bookId, category, fetchEntries]);
 
-  const updateEntry = useCallback(async (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "fields" | "visibility" | "aliases" | "relatedEntryIds" | "visibleAfterChapter" | "visibleUntilChapter">>): Promise<boolean> => {
+  const updateEntry = useCallback(async (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "contentMd" | "fields" | "visibility" | "aliases" | "relatedEntryIds" | "visibleAfterChapter" | "visibleUntilChapter">>): Promise<boolean> => {
     try {
       // Transform frontend fields to backend format
       const body: Record<string, unknown> = {};
       if (payload.title !== undefined) body.title = payload.title;
+      if (payload.contentMd !== undefined) body.contentMd = payload.contentMd;
       if (payload.fields !== undefined) body.customFields = payload.fields;
       if (payload.aliases !== undefined) body.aliases = payload.aliases;
       if (payload.relatedEntryIds !== undefined) body.relatedEntryIds = payload.relatedEntryIds;
