@@ -14,36 +14,9 @@ export { NOVEL_HANDLER_DECLARATIONS, isNovelPluginTool, getHandlerDeclaration } 
 export type { NovelHandlerDeclaration } from "./handler-registry.js";
 
 /**
- * 小说工具名列表 — 声明本插件提供的 24 个小说领域工具。
- * 完整定义（含 inputSchema）位于 tool-schemas.ts，本插件是唯一 source of truth。
+ * 小说工具名列表 — 从 NOVEL_TOOL_SCHEMAS 动态生成，确保与 schema 定义同步。
  */
-export const NOVEL_TOOL_NAMES: readonly string[] = [
-  "cockpit.get_snapshot",
-  "cockpit.list_open_hooks",
-  "cockpit.list_recent_candidates",
-  "questionnaire.list_templates",
-  "questionnaire.start",
-  "questionnaire.submit_response",
-  "pgi.generate_questions",
-  "pgi.record_answers",
-  "guided.enter",
-  "guided.answer_question",
-  "guided.exit",
-  "candidate.create_chapter",
-  "narrative.read_line",
-  "narrative.propose_change",
-  "jingwei.read_context",
-  "health.read_summary",
-  "chapter.audit",
-  "rewrite.segment",
-  "outline.suggest_next",
-  "character.check_consistency",
-  "hooks.manage",
-  "presets.get_rules",
-  "presets.check_compliance",
-  "beat.get_current",
-  "jingwei.upsert_entry",
-];
+export const NOVEL_TOOL_NAMES: readonly string[] = Object.keys(NOVEL_TOOL_SCHEMAS);
 
 /** Tool descriptions for manifest (brief summaries) */
 const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
@@ -52,18 +25,15 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "cockpit.list_recent_candidates": "列出最近候选稿",
   "questionnaire.list_templates": "列出问卷模板",
   "questionnaire.start": "启动问卷",
-  "questionnaire.suggest_answer": "AI 建议问卷答案",
   "questionnaire.submit_response": "提交问卷回答",
   "pgi.generate_questions": "PGI 生成追问",
   "pgi.record_answers": "PGI 记录回答",
-  "pgi.format_answers_for_prompt": "PGI 格式化答案为 prompt",
   "guided.enter": "进入引导式生成",
   "guided.answer_question": "回答引导式问题",
   "guided.exit": "退出引导式生成",
   "candidate.create_chapter": "创建章节候选稿",
   "narrative.read_line": "读取叙事线",
   "narrative.propose_change": "提议叙事线变更",
-  "chapter.read": "读取章节内容",
   "jingwei.read_context": "读取经纬上下文",
   "health.read_summary": "读取健康度摘要",
   "chapter.audit": "审计章节",

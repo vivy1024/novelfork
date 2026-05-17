@@ -6,8 +6,7 @@ import { Save, FileText, AlertCircle, Loader2 } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
-import { CockpitOverview } from "./CockpitOverview";
-import { CockpitWorkspace } from "./CockpitWorkspace";
+
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
@@ -138,7 +137,6 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   }, [content, dirty, node, onCanvasContextChange]);
 
   if (!node) {
-    // 默认视图：经纬面板（全屏，替代旧的 CockpitWorkspace 图谱视图）
     if (bookId) {
       return (
         <div className="h-full min-h-0">
@@ -147,8 +145,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
       );
     }
     return (
-      <div className="h-full min-h-0">
-        <CockpitWorkspace bookId={bookId} nodes={nodes} onGuideComplete={onGuideComplete} />
+      <div className="flex h-full items-center justify-center text-muted-foreground">
+        <p>请先选择或创建一本作品</p>
       </div>
     );
   }
