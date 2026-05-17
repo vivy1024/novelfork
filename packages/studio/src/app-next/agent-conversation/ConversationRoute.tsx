@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, useState, useEffect, type ReactNode } from "react";
 
 import type { CanvasContext } from "../../shared/agent-native-workspace";
 import type { ToolResultArtifact } from "../tool-results";
@@ -14,6 +14,7 @@ import {
   type ConversationSurfaceMessage,
   type SessionDetailData,
 } from "./surface";
+import { ArtifactPanel, useArtifactFiles } from "./surface/ArtifactPanel";
 
 export type ConversationRouteMessage = ConversationSurfaceMessage;
 export type ConversationRouteStatus = ConversationStatus;
@@ -174,6 +175,22 @@ export function ConversationRoute({
     onClientEnvelope(buildAbortEnvelope({ sessionId }));
   };
 
+  // ── Artifact Panel 状态 ──
+  const artifactFiles = useArtifactFiles(initialMessages);
+  const [artifactDismissed, setArtifactDismissed] = useState(false);
+  const prevArtifactCount = useMemo(() => ({ current: 0 }), []);
+
+  // 新的 Write/Edit 工具开始时自动重新打开面板
+  useEffect(() => {
+    const hasStreaming = artifactFiles.some(f => f.streaming);
+    if (hasStreaming && artifactFiles.length > prevArtifactCount.current) {
+      setArtifactDismissed(false);
+    }
+    prevArtifactCount.current = artifactFiles.length;
+  }, [artifactFiles, prevArtifactCount]);
+
+  const showArtifactPanel = artifactFiles.length > 0 && !artifactDismissed;
+
   return (
     <section data-testid="conversation-route" className="flex h-full w-full min-h-0 min-w-0 flex-1" data-session-id={sessionId}>
       <ConversationSurface
@@ -218,6 +235,12 @@ export function ConversationRoute({
         onDismissError={onDismissError}
         onAutoRetryError={onAutoRetryError}
       />
+      {showArtifactPanel && (
+        <ArtifactPanel
+          messages={initialMessages}
+          onClose={() => setArtifactDismissed(true)}
+        />
+      )}
     </section>
   );
 }
