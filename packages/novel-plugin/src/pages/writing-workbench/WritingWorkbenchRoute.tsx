@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BookOpen, GitBranch, History, Home } from "lucide-react";
@@ -18,7 +18,6 @@ export interface WritingWorkbenchRouteProps {
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
-  writingActions?: ReactNode;
   /** 引导完成后刷新资源树 */
   onGuideComplete?: () => void;
   /** 候选稿操作回调 */
@@ -43,7 +42,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onDeselectNode, onSave, onCanvasContextChange, onCreateChapter, writingActions, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onDeselectNode, onSave, onCanvasContextChange, onCreateChapter, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
