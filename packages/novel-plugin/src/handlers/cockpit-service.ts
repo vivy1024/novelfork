@@ -100,6 +100,8 @@ export interface CockpitSnapshot {
   readonly status: CockpitDataStatus;
   readonly book: CockpitBookSummary | null;
   readonly generatedAt: string;
+  /** 经纬文件绝对路径（Agent 用 Read/Write 操作经纬时使用此路径） */
+  readonly storyDir: string;
   readonly progress: CockpitProgressSummary;
   readonly currentFocus: CockpitCurrentFocusSummary;
   readonly recentChapterSummaries: CockpitListResult<CockpitChapterSummaryItem>;
@@ -151,6 +153,7 @@ export class CockpitService {
         status: "missing",
         book: null,
         generatedAt,
+        storyDir: join(this.state.bookDir(input.bookId), "story"),
         progress: missingProgress(),
         currentFocus: { status: "missing", content: null, reason: `Book ${input.bookId} not found` },
         recentChapterSummaries: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
@@ -181,6 +184,7 @@ export class CockpitService {
         status: book.status,
       },
       generatedAt,
+      storyDir: join(this.state.bookDir(input.bookId), "story"),
       progress,
       currentFocus,
       recentChapterSummaries,
