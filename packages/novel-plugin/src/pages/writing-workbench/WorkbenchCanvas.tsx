@@ -220,7 +220,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
       {/* Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {needsHydration ? null : (node.kind === "jingwei-entry" || node.kind === "bible-entry") && jingweiActions ? (
+        {needsHydration ? null : (node.kind === "jingwei-entry" || node.kind === "bible-entry") && jingweiActions && !node.metadata?.fileName ? (
           <JingweiEntryEditor
             entry={{
               id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
