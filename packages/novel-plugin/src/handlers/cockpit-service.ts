@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
 
 import { buildRuntimeModelPool } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
@@ -49,7 +46,7 @@ export interface CockpitHookItem {
   readonly sourceChapter: number;
   readonly status: "open" | "payoff-due" | "expired-risk" | "resolved" | "frozen";
   readonly sourceFile: string;
-  readonly sourceKind: "pending-hooks";
+  readonly sourceKind: "pending-hooks" | "jingwei";
 }
 
 export interface CockpitCandidateItem {
@@ -146,6 +143,7 @@ export class CockpitService {
   }
 
   async getSnapshot(input: { readonly bookId: string; readonly includeModelStatus?: boolean }): Promise<CockpitSnapshot> {
+    const { join } = await import("node:path");
     const book = await this.loadBook(input.bookId);
     const generatedAt = this.now().toISOString();
     if (!book) {
@@ -166,9 +164,9 @@ export class CockpitService {
 
     const [chapters, currentFocus, recentChapterSummaries, openHooks, recentCandidates] = await Promise.all([
       this.state.loadChapterIndex(input.bookId),
-      this.readCurrentFocus(input.bookId),
-      this.readChapterSummaries(input.bookId),
-      this.listOpenHooks(input),
+      this.readCurrentFocusFromJingwei(input.bookId),
+      this.readChapterSummariesFromJingwei(input.bookId),
+      this.listOpenHooksFromJingwei(input),
       this.listRecentCandidates(input),
     ]);
     const progress = buildProgress(book, chapters);
@@ -196,20 +194,7 @@ export class CockpitService {
   }
 
   async listOpenHooks(input: { readonly bookId: string; readonly limit?: number }): Promise<CockpitListResult<CockpitHookItem>> {
-    const book = await this.loadBook(input.bookId);
-    if (!book) {
-      return { status: "missing", items: [], reason: `Book ${input.bookId} not found` };
-    }
-    const raw = await this.readStoryFile(input.bookId, "pending_hooks.md");
-    if (!raw?.trim()) {
-      return { status: "empty", items: [], reason: "pending_hooks.md 不存在或没有未回收伏笔。" };
-    }
-
-    const currentChapter = Math.max(0, ...(await this.state.loadChapterIndex(input.bookId)).map((chapter) => chapter.number));
-    const items = parseOpenHooks(raw, currentChapter).slice(0, normalizeLimit(input.limit));
-    return items.length > 0
-      ? { status: "available", items }
-      : { status: "empty", items: [], reason: "pending_hooks.md 不存在或没有未回收伏笔。" };
+    return this.listOpenHooksFromJingwei(input);
   }
 
   async listRecentCandidates(input: { readonly bookId: string; readonly limit?: number }): Promise<CockpitListResult<CockpitCandidateItem>> {
@@ -230,6 +215,118 @@ export class CockpitService {
       : { status: "empty", items: [], reason: "暂无候选稿。" };
   }
 
+  // ── SQLite Jingwei 数据源 ──
+
+  private getStorage() {
+    const { getStorageDatabase } = require("@vivy1024/novelfork-core") as { getStorageDatabase: () => import("@vivy1024/novelfork-core").StorageDatabase };
+    return getStorageDatabase();
+  }
+
+  private async readCurrentFocusFromJingwei(bookId: string): Promise<CockpitCurrentFocusSummary> {
+    try {
+      const storage = this.getStorage();
+      // 查找 category='focus' 或 category='current-focus' 的最新条目
+      const row = storage.sqlite.prepare(`
+        SELECT title, content_md FROM story_jingwei_entry
+        WHERE book_id = ? AND category IN ('focus', 'current-focus', 'outline') AND deleted_at IS NULL
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(bookId) as { title: string; content_md: string } | undefined;
+
+      if (row?.content_md?.trim()) {
+        return { status: "available", content: row.content_md, sourceFile: "jingwei:focus" };
+      }
+
+      // fallback: 查找最新的大纲/规划条目
+      const outlineRow = storage.sqlite.prepare(`
+        SELECT title, content_md FROM story_jingwei_entry
+        WHERE book_id = ? AND category IN ('outline', 'plot', 'worldview') AND deleted_at IS NULL
+        ORDER BY updated_at DESC LIMIT 1
+      `).get(bookId) as { title: string; content_md: string } | undefined;
+
+      if (outlineRow?.content_md?.trim()) {
+        return { status: "available", content: `【${outlineRow.title}】\n${outlineRow.content_md}`, sourceFile: "jingwei:outline" };
+      }
+
+      return { status: "empty", content: null, reason: "经纬中暂无焦点/大纲数据。" };
+    } catch {
+      return { status: "missing", content: null, reason: "无法读取经纬数据库。" };
+    }
+  }
+
+  private async readChapterSummariesFromJingwei(bookId: string): Promise<CockpitListResult<CockpitChapterSummaryItem>> {
+    try {
+      const storage = this.getStorage();
+      const rows = storage.sqlite.prepare(`
+        SELECT title, content_md, fields_json, related_chapter_numbers_json
+        FROM story_jingwei_entry
+        WHERE book_id = ? AND category = 'chapter-summary' AND deleted_at IS NULL
+        ORDER BY sort_order DESC, updated_at DESC
+        LIMIT 10
+      `).all(bookId) as Array<{ title: string; content_md: string; fields_json: string; related_chapter_numbers_json: string }>;
+
+      if (rows.length === 0) {
+        return { status: "empty", items: [], reason: "经纬中暂无章节摘要。" };
+      }
+
+      const items: CockpitChapterSummaryItem[] = rows.map((row) => {
+        const chapters = safeParseJson<number[]>(row.related_chapter_numbers_json, []);
+        const fields = safeParseJson<{ chapterNumber?: number }>(row.fields_json, {});
+        const chapterNum = fields.chapterNumber ?? chapters[0] ?? 0;
+        return {
+          number: chapterNum,
+          summary: row.content_md || row.title,
+          sourceFile: "jingwei:chapter-summary",
+        };
+      }).sort((a, b) => b.number - a.number).slice(0, 5);
+
+      return { status: "available", items };
+    } catch {
+      return { status: "empty", items: [], reason: "无法读取经纬章节摘要。" };
+    }
+  }
+
+  private async listOpenHooksFromJingwei(input: { readonly bookId: string; readonly limit?: number }): Promise<CockpitListResult<CockpitHookItem>> {
+    try {
+      const storage = this.getStorage();
+      const currentChapter = Math.max(0, ...(await this.state.loadChapterIndex(input.bookId)).map((ch) => ch.number));
+
+      // 查找 category='foreshadowing' 且 lifecycle='active' 的条目
+      const rows = storage.sqlite.prepare(`
+        SELECT id, title, content_md, fields_json, related_chapter_numbers_json, sort_order
+        FROM story_jingwei_entry
+        WHERE book_id = ? AND category IN ('foreshadowing', 'hook', 'pending-hook') AND lifecycle = 'active' AND deleted_at IS NULL
+        ORDER BY sort_order ASC, updated_at DESC
+        LIMIT ?
+      `).all(input.bookId, normalizeLimit(input.limit)) as Array<{
+        id: string; title: string; content_md: string; fields_json: string;
+        related_chapter_numbers_json: string; sort_order: number;
+      }>;
+
+      if (rows.length === 0) {
+        return { status: "empty", items: [], reason: "经纬中暂无未回收伏笔。" };
+      }
+
+      const items: CockpitHookItem[] = rows.map((row) => {
+        const chapters = safeParseJson<number[]>(row.related_chapter_numbers_json, []);
+        const sourceChapter = chapters[0] ?? row.sort_order ?? 0;
+        return {
+          id: row.id,
+          text: row.title + (row.content_md ? `：${row.content_md.slice(0, 100)}` : ""),
+          sourceChapter,
+          status: computeHookRisk(sourceChapter, currentChapter),
+          sourceFile: "jingwei:foreshadowing",
+          sourceKind: "jingwei" as const,
+        };
+      });
+
+      return { status: "available", items };
+    } catch {
+      return { status: "empty", items: [], reason: "无法读取经纬伏笔数据。" };
+    }
+  }
+
+  // ── Private helpers ──
+
   private async loadBook(bookId: string): Promise<BookConfig | null> {
     try {
       return await this.state.loadBookConfig(bookId);
@@ -238,35 +335,10 @@ export class CockpitService {
     }
   }
 
-  private async readStoryFile(bookId: string, fileName: string): Promise<string | null> {
-    try {
-      return await readFile(join(this.state.bookDir(bookId), "story", fileName), "utf-8");
-    } catch {
-      return null;
-    }
-  }
-
-  private async readCurrentFocus(bookId: string): Promise<CockpitCurrentFocusSummary> {
-    const content = await this.readStoryFile(bookId, "current_focus.md");
-    if (!content?.trim()) {
-      return { status: "missing", content: null, sourceFile: "current_focus.md", reason: "current_focus.md 不存在或为空。" };
-    }
-    return { status: "available", content, sourceFile: "current_focus.md" };
-  }
-
-  private async readChapterSummaries(bookId: string): Promise<CockpitListResult<CockpitChapterSummaryItem>> {
-    const content = await this.readStoryFile(bookId, "chapter_summaries.md");
-    if (!content?.trim()) {
-      return { status: "empty", items: [], reason: "chapter_summaries.md 不存在或没有章节摘要。" };
-    }
-    const items = parseChapterSummaries(content).slice(-5);
-    return items.length > 0
-      ? { status: "available", items }
-      : { status: "empty", items: [], reason: "chapter_summaries.md 不存在或没有章节摘要。" };
-  }
-
   private async loadCandidateRecords(bookId: string): Promise<CandidateRecord[]> {
     try {
+      const { readFile } = await import("node:fs/promises");
+      const { join } = await import("node:path");
       const raw = await readFile(join(this.state.bookDir(bookId), "generated-candidates", "index.json"), "utf-8");
       const parsed = JSON.parse(raw) as unknown;
       return Array.isArray(parsed) ? parsed.filter(isCandidateRecord) : [];
@@ -326,33 +398,6 @@ function normalizeLimit(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 10;
 }
 
-function parseChapterSummaries(content: string): CockpitChapterSummaryItem[] {
-  return content.split(/\r?\n/).flatMap((line) => {
-    const match = line.trim().match(/^-\s*第\s*(\d+)\s*章[：:](.+)$/);
-    if (!match) return [];
-    return [{ number: Number.parseInt(match[1]!, 10), summary: match[2]!.trim(), sourceFile: "chapter_summaries.md" }];
-  });
-}
-
-function parseOpenHooks(content: string, currentChapter: number): CockpitHookItem[] {
-  return content.split(/\r?\n/).flatMap((line, index) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("- [ ]")) return [];
-    const text = trimmed.replace(/^- \[ \]\s*/, "").trim();
-    if (!text) return [];
-    const chapterMatch = text.match(/第\s*(\d+)\s*章/);
-    const sourceChapter = chapterMatch ? Number.parseInt(chapterMatch[1]!, 10) : 0;
-    return [{
-      id: `pending-hook-${index + 1}`,
-      text,
-      sourceChapter,
-      status: computeHookRisk(sourceChapter, currentChapter),
-      sourceFile: "pending_hooks.md",
-      sourceKind: "pending-hooks" as const,
-    }];
-  });
-}
-
 function computeHookRisk(sourceChapter: number, currentChapter: number, threshold = 15): CockpitHookItem["status"] {
   if (sourceChapter <= 0) return "open";
   const gap = currentChapter - sourceChapter;
@@ -385,7 +430,7 @@ function buildRiskCards(chapters: readonly ChapterMeta[], hooks: readonly Cockpi
         title: "伏笔长期未回收",
         detail: hook.text,
         chapterNumber: hook.sourceChapter || undefined,
-        navigateTo: "story:pending_hooks.md",
+        navigateTo: "jingwei:foreshadowing",
         level: "warning",
       });
     }
@@ -417,4 +462,13 @@ function toCandidateItem(bookId: string, candidate: CandidateRecord): CockpitCan
       openInCanvas: true,
     },
   };
+}
+
+function safeParseJson<T>(value: string | null | undefined, fallback: T): T {
+  if (!value) return fallback;
+  try {
+    return JSON.parse(value) as T;
+  } catch {
+    return fallback;
+  }
 }

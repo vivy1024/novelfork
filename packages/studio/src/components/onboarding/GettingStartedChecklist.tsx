@@ -8,16 +8,13 @@ export interface GettingStartedStatus {
     readonly hasUsableModel: boolean;
     readonly defaultProvider?: string;
     readonly defaultModel?: string;
-    readonly lastConnectionError?: string;
   };
   readonly tasks: {
     readonly modelConfigured: boolean;
     readonly hasAnyBook: boolean;
+    readonly hasMetNarrator: boolean;
     readonly hasOpenedJingwei: boolean;
-    readonly hasAnyChapter: boolean;
     readonly hasTriedAiWriting: boolean;
-    readonly hasTriedAiTasteScan: boolean;
-    readonly hasReadWorkbenchIntro: boolean;
   };
 }
 
@@ -25,11 +22,9 @@ interface GettingStartedChecklistProps {
   readonly status: GettingStartedStatus;
   readonly onConfigureModel: () => void;
   readonly onCreateBook: () => void;
+  readonly onMeetNarrator: () => void;
   readonly onOpenJingwei: () => void;
-  readonly onCreateChapter: () => void;
   readonly onTryAiWriting: () => void;
-  readonly onTryAiTasteScan: () => void;
-  readonly onOpenWorkbenchIntro: () => void;
   readonly onDismiss: () => void;
 }
 
@@ -87,11 +82,9 @@ export function GettingStartedChecklist({
   status,
   onConfigureModel,
   onCreateBook,
+  onMeetNarrator,
   onOpenJingwei,
-  onCreateChapter,
   onTryAiWriting,
-  onTryAiTasteScan,
-  onOpenWorkbenchIntro,
   onDismiss,
 }: GettingStartedChecklistProps) {
   if (status.dismissedGettingStarted) {
@@ -105,7 +98,7 @@ export function GettingStartedChecklist({
   const tasks: TaskItem[] = [
     {
       title: "配置 AI 模型",
-      description: "连接 provider、API Key 和默认模型。",
+      description: "连接 AI 供应商、填入 API Key，开启全部 AI 写作能力。",
       completed: status.tasks.modelConfigured,
       recommended: true,
       actionLabel: status.tasks.modelConfigured ? "查看配置" : "配置模型",
@@ -114,47 +107,35 @@ export function GettingStartedChecklist({
     },
     {
       title: "创建第一本书",
-      description: "先创建本地书籍，之后再逐步接入 AI 初始化。",
+      description: "创建作品后进入工作台，AI 叙述者会引导你完成题材和设定。",
       completed: status.tasks.hasAnyBook,
       actionLabel: status.tasks.hasAnyBook ? "继续管理" : "创建书籍",
       onClick: onCreateBook,
     },
     {
-      title: "认识故事经纬",
-      description: "了解本书长期记忆与结构脉络。",
+      title: "进入书籍工作台",
+      description: "创建书后点击进入工作台，书籍叙述者会自动引导你完成题材、设定和大纲。",
+      completed: status.tasks.hasMetNarrator,
+      actionLabel: status.tasks.hasMetNarrator ? "继续写作" : "进入工作台",
+      onClick: onMeetNarrator,
+    },
+    {
+      title: "了解经纬系统",
+      description: "经纬是本书的长期记忆：人物、世界观、大纲、设定都在这里管理。",
       completed: status.tasks.hasOpenedJingwei,
       actionLabel: "打开经纬",
       onClick: onOpenJingwei,
     },
     {
-      title: "创建第一章 / 导入正文",
-      description: "写入或导入正文，让工作台开始围绕文本运转。",
-      completed: status.tasks.hasAnyChapter,
-      actionLabel: "开始章节",
-      onClick: onCreateChapter,
-    },
-    {
-      title: "试用 AI 写作与评点",
-      description: "模型配置完成后再试用续写、改写和评点。",
+      title: "试用 AI 写作",
+      description: "让叙述者帮你续写、改写或评点，体验 AI 辅助创作。",
       completed: status.tasks.hasTriedAiWriting,
-      actionLabel: status.provider.hasUsableModel ? "试用 AI 写作" : "先配置模型",
+      actionLabel: status.provider.hasUsableModel ? "试用写作" : "先配置模型",
       onClick: onTryAiWriting,
     },
-    {
-      title: "试用 AI 味检测",
-      description: "检测当前文本的 AI 痕迹，基础检测可先本地体验。",
-      completed: status.tasks.hasTriedAiTasteScan,
-      actionLabel: "打开检测",
-      onClick: onTryAiTasteScan,
-    },
-    {
-      title: "了解工作台模式",
-      description: "查看高级 Agent、工具调用和更高 token 消耗的边界。",
-      completed: status.tasks.hasReadWorkbenchIntro,
-      actionLabel: "了解模式",
-      onClick: onOpenWorkbenchIntro,
-    },
   ];
+
+  const completedCount = tasks.filter((t) => t.completed).length;
 
   return (
     <Card className="border-primary/20 bg-primary/[0.03]">
@@ -163,7 +144,9 @@ export function GettingStartedChecklist({
           <div>
             <CardTitle>开始使用 NovelFork</CardTitle>
             <CardDescription>
-              按推荐顺序完成首用任务。模型配置排第一，但未配置也可以继续本地写作。
+              {completedCount === tasks.length
+                ? "全部完成！你已经掌握了基本用法。"
+                : `完成 ${completedCount}/${tasks.length} 步，按推荐顺序逐步上手。`}
             </CardDescription>
           </div>
           <Button type="button" variant="ghost" size="sm" onClick={onDismiss}>

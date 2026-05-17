@@ -33,6 +33,10 @@ import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
+import { GettingStartedChecklist, type GettingStartedStatus } from "../components/onboarding/GettingStartedChecklist";
+import { GuidedTour } from "../components/onboarding/GuidedTour";
+import { HOME_TOUR_STEPS } from "../components/onboarding/tour-steps";
+import { useApi } from "../hooks/use-api";
 import { ToastContainer } from "../components/ui/toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
@@ -173,6 +177,10 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const recentBooks = books.slice(0, 3);
   const standaloneSessions = sessions.filter((s) => !s.projectId);
   const recentSessions = standaloneSessions.slice(0, 3);
+
+  // Onboarding checklist state
+  const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>("/onboarding/status");
+  const onboardingStatus = onboardingData?.status ?? null;
   const summary = providerSummaryRecord(providerSummary);
   const runtimeStatus = providerRuntimeStatus(providerStatus);
   const providerList = Array.isArray(summary?.providers) ? (summary.providers as readonly unknown[]) : null;
@@ -265,6 +273,36 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <HomeStatCard label="模型健康" value={runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"} />
         <HomeStatCard label="当前提供方" value={activeProviderName ?? "未配置"} />
       </div>
+
+      {onboardingStatus && !onboardingStatus.dismissedGettingStarted && (
+        <GettingStartedChecklist
+          status={onboardingStatus}
+          onConfigureModel={() => onNavigate({ kind: "settings" })}
+          onCreateBook={() => setCreateBookOpen(true)}
+          onMeetNarrator={() => {
+            const firstBook = books[0];
+            if (firstBook) onNavigate({ kind: "book", bookId: firstBook.id });
+            else setCreateBookOpen(true);
+          }}
+          onOpenJingwei={() => {
+            const firstBook = books[0];
+            if (firstBook) onNavigate({ kind: "book", bookId: firstBook.id });
+            else setCreateBookOpen(true);
+          }}
+          onTryAiWriting={() => {
+            const firstBook = books[0];
+            if (firstBook) onNavigate({ kind: "book", bookId: firstBook.id });
+            else onNavigate({ kind: "settings" });
+          }}
+          onDismiss={() => {
+            void fetch("/api/onboarding/status", {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ dismissedGettingStarted: true }),
+            }).then(() => refetchOnboarding());
+          }}
+        />
+      )}
 
       <Dialog open={createBookOpen} onOpenChange={setCreateBookOpen}>
         <DialogContent className="max-w-lg">
@@ -1456,7 +1494,16 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   const dismissFirstRun = useCallback(() => {
     try { localStorage.setItem("novelfork:first-run-dismissed", "1"); } catch { /* ignore */ }
     setShowFirstRun(false);
+    setTourActive(true);
   }, []);
+
+  // Guided tour state: activates after first-run dialog is dismissed
+  const [tourActive, setTourActive] = useState(() => {
+    try {
+      return localStorage.getItem("novelfork:first-run-dismissed") === "1"
+        && !localStorage.getItem("novelfork:tour-home-completed");
+    } catch { return false; }
+  });
 
   const navigate = useCallback((route: ShellRoute) => {
     void routerNavigate({ to: toShellPath(route) });
@@ -1491,8 +1538,14 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         onOpenChange={setShowFirstRun}
         onConfigureModel={() => { dismissFirstRun(); navigate({ kind: "settings" }); }}
         onCreateBook={() => { dismissFirstRun(); navigate({ kind: "home" }); }}
-        onOpenWorkbenchIntro={() => { dismissFirstRun(); navigate({ kind: "routines" }); }}
+        onOpenLearnCenter={() => { dismissFirstRun(); navigate({ kind: "learn" }); }}
         onDismiss={dismissFirstRun}
+      />
+      <GuidedTour
+        steps={HOME_TOUR_STEPS}
+        storageKey="novelfork:tour-home-completed"
+        active={tourActive && !shouldShowFirstRun}
+        onComplete={() => setTourActive(false)}
       />
       <ToastContainer />
     </AgentShell>

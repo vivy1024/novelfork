@@ -11,23 +11,23 @@ describe("FirstRunDialog", () => {
         onOpenChange={() => {}}
         onConfigureModel={() => {}}
         onCreateBook={() => {}}
-        onOpenWorkbenchIntro={() => {}}
+        onOpenLearnCenter={() => {}}
         onDismiss={() => {}}
       />,
     );
 
     expect(screen.getByRole("heading", { name: "欢迎使用 NovelFork" })).toBeTruthy();
     expect(screen.getByText(/建议先配置 AI 模型/)).toBeTruthy();
-    expect(screen.getByText(/未配置模型也可以先创建本地书籍/)).toBeTruthy();
+    expect(screen.getByText(/未配置也可以先创建书籍/)).toBeTruthy();
     expect(screen.getByRole("button", { name: /配置 AI 模型/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /创建第一本书/ })).toBeTruthy();
-    expect(screen.getByRole("button", { name: /了解工作台模式/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /打开学习中心/ })).toBeTruthy();
   });
 
   it("dispatches entry actions while preserving a closeable first-run dialog", () => {
     const onConfigureModel = vi.fn();
     const onCreateBook = vi.fn();
-    const onOpenWorkbenchIntro = vi.fn();
+    const onOpenLearnCenter = vi.fn();
 
     render(
       <FirstRunDialog
@@ -35,18 +35,18 @@ describe("FirstRunDialog", () => {
         onOpenChange={() => {}}
         onConfigureModel={onConfigureModel}
         onCreateBook={onCreateBook}
-        onOpenWorkbenchIntro={onOpenWorkbenchIntro}
+        onOpenLearnCenter={onOpenLearnCenter}
         onDismiss={() => {}}
       />,
     );
 
     fireEvent.click(screen.getByRole("button", { name: /配置 AI 模型/ }));
     fireEvent.click(screen.getByRole("button", { name: /创建第一本书/ }));
-    fireEvent.click(screen.getByRole("button", { name: /了解工作台模式/ }));
+    fireEvent.click(screen.getByRole("button", { name: /打开学习中心/ }));
 
     expect(onConfigureModel).toHaveBeenCalledTimes(1);
     expect(onCreateBook).toHaveBeenCalledTimes(1);
-    expect(onOpenWorkbenchIntro).toHaveBeenCalledTimes(1);
+    expect(onOpenLearnCenter).toHaveBeenCalledTimes(1);
   });
 
   it("persists dismissal when the user skips or closes the welcome dialog", () => {
@@ -59,7 +59,7 @@ describe("FirstRunDialog", () => {
         onOpenChange={onOpenChange}
         onConfigureModel={() => {}}
         onCreateBook={() => {}}
-        onOpenWorkbenchIntro={() => {}}
+        onOpenLearnCenter={() => {}}
         onDismiss={onDismiss}
       />,
     );

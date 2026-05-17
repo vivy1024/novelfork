@@ -275,8 +275,7 @@ function sanitizeOnboarding(onboarding?: Partial<OnboardingSettings> | null): On
     tasks: {
       hasOpenedJingwei: typeof onboarding?.tasks?.hasOpenedJingwei === "boolean" ? onboarding.tasks.hasOpenedJingwei : defaults.tasks.hasOpenedJingwei,
       hasTriedAiWriting: typeof onboarding?.tasks?.hasTriedAiWriting === "boolean" ? onboarding.tasks.hasTriedAiWriting : defaults.tasks.hasTriedAiWriting,
-      hasTriedAiTasteScan: typeof onboarding?.tasks?.hasTriedAiTasteScan === "boolean" ? onboarding.tasks.hasTriedAiTasteScan : defaults.tasks.hasTriedAiTasteScan,
-      hasReadWorkbenchIntro: typeof onboarding?.tasks?.hasReadWorkbenchIntro === "boolean" ? onboarding.tasks.hasReadWorkbenchIntro : defaults.tasks.hasReadWorkbenchIntro,
+      hasMetNarrator: typeof onboarding?.tasks?.hasMetNarrator === "boolean" ? onboarding.tasks.hasMetNarrator : defaults.tasks.hasMetNarrator,
     },
   };
 }

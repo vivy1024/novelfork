@@ -580,15 +580,34 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
     case "jingwei.upsert_entry":
       return async ({ input, definition }) => {
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+
+        function inferCategory(raw: string, entryTitle: string, content: string): string {
+          // 如果 agent 明确传了非 setting 的 category，尊重它
+          if (raw && raw !== "setting") return raw;
+          const text = (entryTitle + " " + content.slice(0, 500)).toLowerCase();
+          if (/伏笔|foreshadow|hook|悬念/.test(text)) return "foreshadowing";
+          if (/大纲|卷.*章|outline|volume|节拍|beat/.test(text)) return "outline";
+          if (/主角|配角|角色|人物|character|弧光/.test(text)) return "character";
+          if (/世界观|worldview|力量体系|修炼体系|境界/.test(text)) return "worldview";
+          if (/地图|地理|geography|部洲/.test(text)) return "geography";
+          if (/前提|premise|核心矛盾|主题/.test(text)) return "worldview";
+          if (/情节|plot|subplot|事件/.test(text)) return "plot";
+          if (/时间线|timeline/.test(text)) return "timeline";
+          if (/势力|faction|阵营|组织/.test(text)) return "faction";
+          return raw || "setting";
+        }
         const storage = getStorageDatabase();
         let bookId = String(input.bookId);
-        const category = String(input.category || "setting");
+        const rawCategory = String(input.category || "").trim();
         const title = String(input.title || "").trim();
         const contentMd = String(input.contentMd || "");
         const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
         const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
         const visibility = String(input.visibility || "tracked");
         const relatedEntryIds = Array.isArray(input.relatedEntryIds) ? input.relatedEntryIds.filter((id): id is string => typeof id === "string") : [];
+
+        // 智能分类：如果 agent 没传 category 或传了 setting，根据 title/content 关键词推断
+        const category = inferCategory(rawCategory, title, contentMd);
 
         if (!title) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "title 不能为空。" };
@@ -634,10 +653,10 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             `).run(sectionId, bookId, category, name, sectionNow, sectionNow);
           }
 
-          // 查找已有条目（按 title 匹配）
+          // 查找已有条目（按 book_id + title 匹配，不限 section，避免 category 变化导致重复创建）
           const existingRows = storage.sqlite.prepare(
-            `SELECT id FROM story_jingwei_entry WHERE book_id = ? AND section_id = ? AND title = ?`
-          ).all(bookId, sectionId, title) as Array<{ id: string }>;
+            `SELECT id, section_id FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
+          ).all(bookId, title) as Array<{ id: string; section_id: string }>;
 
           const visibilityJson = JSON.stringify({ type: visibility });
           const aliasesJson = JSON.stringify(aliases);
@@ -646,13 +665,13 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           const now = Date.now();
 
           if (existingRows.length > 0) {
-            // 更新已有条目
+            // 更新已有条目（同时更新 section_id 以反映 category 变化）
             const entryId = existingRows[0]!.id;
             storage.sqlite.prepare(`
               UPDATE story_jingwei_entry
-              SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, updated_at = ?
+              SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, updated_at = ?
               WHERE id = ?
-            `).run(contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, entryId);
+            `).run(contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, now, entryId);
             return {
               ok: true,
               renderer: definition.renderer,
