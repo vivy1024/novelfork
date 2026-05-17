@@ -263,6 +263,12 @@ export const TOOL_USE_GUIDELINES = `
 - Edit 的 old_string 必须在文件中唯一匹配，提供足够上下文
 - 写入前先 Read 确认当前内容，不要凭记忆编辑
 
+经纬数据（绝对规则）：
+- 创建或更新经纬条目（角色、设定、大纲、世界观等）必须使用 jingwei.upsert_entry 工具
+- 禁止用 Write/Edit 写 .md 文件来存储经纬内容
+- 原因：只有通过 jingwei.upsert_entry 写入 SQLite 的数据才会被自动注入到后续写作的 Agent 上下文中。用 Write 写的 .md 文件不会被 Agent 在写章节时看到，等于白写
+- jingwei.upsert_entry 参数：bookId（书籍ID）、category（分类）、title（标题，用于匹配更新）、contentMd（Markdown 内容）
+
 输出规范：
 - 工具调用间的文字保持最短
 - 先做事再解释，不要在工具调用前写长段分析
