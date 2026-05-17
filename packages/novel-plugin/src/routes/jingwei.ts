@@ -550,10 +550,21 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
 
     // 读取 storyDir 下的 md 文件
     const { readdir, readFile } = await import("node:fs/promises");
-    const { join } = await import("node:path");
+    const { join, dirname } = await import("node:path");
     const { existsSync } = await import("node:fs");
 
-    const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || process.cwd();
+    // 确定 projectRoot：优先环境变量，其次 exe 所在目录，最后 cwd
+    let projectRoot = process.env.NOVELFORK_PROJECT_ROOT || "";
+    if (!projectRoot) {
+      const exeDir = dirname(process.execPath);
+      if (existsSync(join(exeDir, "books"))) {
+        projectRoot = exeDir;
+      } else if (existsSync(join(process.cwd(), "dist", "books"))) {
+        projectRoot = join(process.cwd(), "dist");
+      } else {
+        projectRoot = process.cwd();
+      }
+    }
     const storyDir = join(projectRoot, "books", bookId, "story");
 
     if (!existsSync(storyDir)) {
