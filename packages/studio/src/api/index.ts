@@ -6,18 +6,13 @@ import { createEmbeddedStaticProvider } from "./static-provider.js";
 import { openStudioWindow } from "./desktop-window.js";
 import { resolveStartupPort, resolveStartupRoot, parseNamedArg } from "./startup-args.js";
 import { loadUserConfig } from "./lib/user-config-service.js";
+import { resolveRuntimeStoragePath } from "./lib/runtime-storage-paths.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// 编译后的 exe 使用 exe 所在目录作为默认项目根（而非 process.cwd()）
-// 这解决了从 Edge 下载临时目录双击运行时 cwd 不正确的问题
-const defaultProjectRoot = () => {
-  // Bun 编译后 process.execPath 是 exe 路径
-  if (process.execPath && process.execPath.endsWith(".exe")) {
-    return dirname(process.execPath);
-  }
-  return process.cwd();
-};
+// 所有书籍/项目数据统一存放在用户主目录 ~/.novelfork/
+// 不再依赖 exe 所在目录或 process.cwd()
+const defaultProjectRoot = () => resolveRuntimeStoragePath();
 
 // Load user config for server settings (port, host, browser mode, default project dir)
 let userServerConfig: { port?: number; host?: string; defaultProjectDir?: string; browserOpenMode?: string } = {};
@@ -25,6 +20,10 @@ try {
   const uc = await loadUserConfig();
   userServerConfig = uc.server ?? {};
 } catch { /* use defaults if config can't be loaded yet */ }
+
+// 首次启动迁移：将 exe 目录的书籍数据移动到 ~/.novelfork/
+import { migrateStorageIfNeeded } from "./lib/storage-migration.js";
+migrateStorageIfNeeded();
 
 const cliRoot = resolveStartupRoot(process.argv, process.env, defaultProjectRoot);
 // If user configured a default project dir and no CLI/env override was given, use it
