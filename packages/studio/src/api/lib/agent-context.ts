@@ -3,7 +3,7 @@
  * 根据 bookId 聚合当前作品的关键状态信息，注入到 Agent 的 system prompt 中。
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { BookDetail } from "../../shared/contracts.js";
@@ -314,7 +314,7 @@ export async function buildAgentContext(params: {
     extraBlocks.push(nlLines.join("\n"));
   }
 
-  // 经纬注入
+  // 经纬注入 — 优先用传入的 sections，否则自动从 storyDir md 文件读取
   if (params.jingwei?.sections?.length) {
     const jwLines: string[] = ["", "### 经纬核心设定"];
     for (const section of params.jingwei.sections.slice(0, 5)) {
@@ -325,6 +325,33 @@ export async function buildAgentContext(params: {
       }
     }
     extraBlocks.push(jwLines.join("\n"));
+  } else {
+    // Fallback: 从 storyDir 读取核心经纬文件
+    try {
+      const projectRoot = getProjectRoot();
+      const storyDir = join(projectRoot, "books", params.bookId, "story");
+      const coreFiles = ["story_bible.md", "current_state.md", "volume_outline.md"];
+      const jwLines: string[] = ["", "### 经纬核心设定（来自文件）"];
+      let totalChars = 0;
+      const MAX_CONTEXT_CHARS = 4000;
+      for (const fileName of coreFiles) {
+        if (totalChars >= MAX_CONTEXT_CHARS) break;
+        const filePath = join(storyDir, fileName);
+        if (existsSync(filePath)) {
+          const raw = readFileSync(filePath, "utf-8").trim();
+          if (raw.length > 20) {
+            const truncated = raw.length > (MAX_CONTEXT_CHARS - totalChars)
+              ? raw.slice(0, MAX_CONTEXT_CHARS - totalChars) + "\n...(已截断)"
+              : raw;
+            jwLines.push(`\n#### ${fileName.replace(/\.md$/, "").replace(/_/g, " ")}\n${truncated}`);
+            totalChars += truncated.length;
+          }
+        }
+      }
+      if (jwLines.length > 1) {
+        extraBlocks.push(jwLines.join("\n"));
+      }
+    } catch { /* storyDir read failure is non-fatal */ }
   }
 
   return extraBlocks.length > 0 ? `${baseContext}\n${extraBlocks.join("\n")}` : baseContext;
