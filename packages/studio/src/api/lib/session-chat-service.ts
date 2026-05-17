@@ -284,6 +284,10 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
   cumulative.totalCacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
   cumulative.totalCacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
   cumulative.turnCount += 1;
+  // 记录最后一次请求的 input tokens（代表当前上下文窗口占用）
+  if (usage.input_tokens != null) {
+    cumulative.lastInputTokens = usage.input_tokens;
+  }
 }
 const abortControllerBySessionId = new Map<string, AbortController>();
 

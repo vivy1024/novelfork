@@ -229,6 +229,8 @@ export interface SessionCumulativeUsage {
   totalCacheCreationInputTokens: number;
   totalCacheReadInputTokens: number;
   turnCount: number;
+  /** 最后一次请求的 input tokens（代表当前上下文窗口占用） */
+  lastInputTokens?: number;
 }
 
 export interface NarratorSessionRuntimeMetadata {

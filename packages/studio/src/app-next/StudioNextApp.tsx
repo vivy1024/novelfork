@@ -1138,7 +1138,13 @@ function toConversationStatus(
   // Context usage estimation — always provide contextUsage so ContextRing is always visible
   const cumulativeUsage = state.session?.cumulativeUsage;
   const maxTokens = selectedModel?.contextWindow;
-  const usedTokens = cumulativeUsage ? cumulativeUsage.totalInputTokens + cumulativeUsage.totalOutputTokens : 0;
+  // 使用 lastInputTokens（最后一次请求的实际输入 token）作为当前上下文占用
+  // 这代表"下一次请求大约会用多少 token"，压缩后会真实下降
+  // fallback: 如果没有 lastInputTokens（首次对话前），用消息文本估算
+  const usedTokens = cumulativeUsage?.lastInputTokens
+    ?? (state.messages.length > 0
+      ? Math.ceil(state.messages.reduce((sum, m) => sum + (m.content?.length ?? 0), 0) / 2)
+      : 0);
   const contextUsage = {
     usedTokens,
     maxTokens: maxTokens && maxTokens > 0 ? maxTokens : 0,
