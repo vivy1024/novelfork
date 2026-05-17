@@ -192,10 +192,10 @@ function jingweiPanelEntryNode(jingweiFiles: JingweiFileListResponse | null | un
 
   return {
     id: "jingwei-panel-entry",
-    kind: "jingwei",
+    kind: "group",
     title: "经纬资料",
     capabilities: {
-      read: CURRENT_READ("jingwei.panel"),
+      read: UNSUPPORTED("jingwei.panel"),
       edit: UNSUPPORTED("jingwei.panel.edit"),
       delete: UNSUPPORTED("jingwei.panel.delete"),
       apply: UNSUPPORTED("jingwei.panel.apply"),
