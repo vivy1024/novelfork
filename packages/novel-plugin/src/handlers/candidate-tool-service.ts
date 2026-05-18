@@ -2,11 +2,8 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
-import type { CanvasArtifact, SessionConfig, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
-import { createLlmRuntimeService, type LlmRuntimeService } from "@vivy1024/novelfork-studio/api/lib/llm-runtime-service";
+import type { CanvasArtifact, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import { getPreset, type Preset } from "../engine/presets/index.js";
-import { buildPresetInjections } from "../engine/agents/writer-prompts.js";
-import { buildPresetReflectionPrompt, parsePresetSuggestions } from "../engine/jingwei/context/preset-reflection.js";
 import { checkPresetCompliance, type ComplianceCheckResult } from "../engine/presets/compliance-checker.js";
 
 export type CandidateGenerationInput = {
@@ -19,24 +16,10 @@ export type CandidateGenerationInput = {
   readonly guidedPlan?: unknown;
 };
 
-export type CandidateGeneratedContent =
-  | string
-  | { readonly ok: true; readonly content: string }
-  | { readonly ok: false; readonly reason: string };
-
-export type CandidateContentGenerator = (input: CandidateGenerationInput & {
-  readonly promptPreview: string;
-  readonly sessionConfig?: SessionConfig;
-  readonly onStreamChunk?: (chunk: string) => void;
-}) => Promise<CandidateGeneratedContent>;
-
 export type CandidateToolServiceOptions = {
   readonly root: string;
   readonly now?: () => Date;
   readonly createCandidateId?: () => string;
-  readonly generateContent?: CandidateContentGenerator;
-  readonly runtimeService?: LlmRuntimeService;
-  readonly onOutputStream?: (chunk: string) => void;
 };
 
 export type CandidateToolService = {
@@ -73,36 +56,17 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
       const title = optionalString(input.title) ?? (chapterNumber ? `第 ${chapterNumber} 章候选稿` : "章节候选稿");
       const pgiInstructions = optionalString(input.pgiInstructions);
       const guidedPlanId = optionalString(input.guidedPlanId);
+      const content = stringInput(input.content, "content");
       const promptPreview = buildCandidatePrompt({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan });
 
-      // Extract streaming callback from input (passed by session-tool-executor)
-      const onStreamChunk = typeof input._onStreamChunk === "function"
-        ? input._onStreamChunk as (chunk: string) => void
-        : options.onOutputStream;
-
-      const sessionConfig = isSessionConfig(input.sessionConfig) ? input.sessionConfig : undefined;
-      const generator = options.generateContent ?? createRuntimeGenerator(options.runtimeService ?? createLlmRuntimeService(), options.root, onStreamChunk);
-      const generated = normalizeGeneratedContent(await generator({ bookId, chapterIntent, chapterNumber, title, pgiInstructions, guidedPlanId, guidedPlan: input.guidedPlan, promptPreview, sessionConfig, onStreamChunk }));
-      if (!generated.ok) {
+      if (!content.trim()) {
         return {
           ok: false,
           renderer: "candidate.created",
-          error: "unsupported-model",
-          summary: "候选稿生成需要配置支持模型。",
-          data: {
-            status: "unsupported",
-            bookId,
-            chapterNumber,
-            title,
-            promptPreview,
-            reason: generated.reason,
-          },
+          error: "empty-content",
+          summary: "候选稿内容为空。请由 Agent 先生成章节正文，再调用 candidate.create_chapter 保存。",
+          data: { status: "empty-content", bookId, chapterNumber, title, promptPreview },
         };
-      }
-
-      const content = generated.content;
-      if (!content.trim()) {
-        throw new Error("Candidate generator returned empty content.");
       }
 
       // --- Post-write compliance check ---
@@ -204,160 +168,6 @@ function buildCandidatePrompt(input: CandidateGenerationInput): string {
   return lines.join("\n");
 }
 
-/** 从用户配置中读取写作设置，格式化为 system prompt 约束 */
-async function getWritingStyleConstraints(): Promise<string> {
-  try {
-    const { loadUserConfig } = await import("@vivy1024/novelfork-studio/api/lib/user-config-service");
-    const config = await loadUserConfig();
-    const w = config.writing;
-    if (!w) return "";
-    const constraints: string[] = [];
-    if (w.defaultTone && w.defaultTone !== "concise") constraints.push(`文风基调：${{ concise: "简洁", ornate: "华丽", colloquial: "口语化", literary: "文学性" }[w.defaultTone] ?? w.defaultTone}`);
-    if (w.sentenceLength && w.sentenceLength !== "medium") constraints.push(`句子长度偏好：${{ short: "短句为主", medium: "中等", long: "长句为主" }[w.sentenceLength] ?? w.sentenceLength}`);
-    if (w.dialogueRatio && w.dialogueRatio !== 40) constraints.push(`对话比例目标：${w.dialogueRatio}%`);
-    if (w.antiAiStrength && w.antiAiStrength > 50) constraints.push(`去AI味要求：高（避免模板化表达、过度修饰、空洞排比）`);
-    if (w.defaultPov && w.defaultPov !== "third-limited") constraints.push(`叙事视角：${{ "first": "第一人称", "third-limited": "第三人称有限", "third-omniscient": "第三人称全知", "second": "第二人称" }[w.defaultPov] ?? w.defaultPov}`);
-    return constraints.length > 0 ? `\n\n写作风格约束：\n${constraints.map(c => `- ${c}`).join("\n")}` : "";
-  } catch {
-    return "";
-  }
-}
-
-/** 从书籍配置中读取已启用预设，返回格式化的 prompt 注入文本 */
-async function getEnabledPresetInjections(bookId: string, root: string): Promise<string> {
-  try {
-    const bookJsonPath = join(root, "books", bookId, "book.json");
-    const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[] };
-    const ids = raw.enabledPresetIds;
-    if (!ids || ids.length === 0) return "";
-    const presets: Preset[] = ids.map((id) => getPreset(id)).filter((p): p is Preset => Boolean(p));
-    if (presets.length === 0) return "";
-    return "\n\n" + buildPresetInjections(presets);
-  } catch {
-    return "";
-  }
-}
-
-function createRuntimeGenerator(runtimeService: LlmRuntimeService, root?: string, defaultOnStream?: (chunk: string) => void): CandidateContentGenerator {
-  return async ({ bookId, chapterNumber, promptPreview, sessionConfig, onStreamChunk }) => {
-    if (!sessionConfig?.providerId?.trim() || !sessionConfig.modelId?.trim()) {
-      return { ok: false, reason: "当前会话未配置可用模型。" };
-    }
-    const writingConstraints = await getWritingStyleConstraints();
-    let presetInjections = root ? await getEnabledPresetInjections(bookId, root) : "";
-
-    // --- Jingwei context injection ---
-    let jingweiSection = "";
-    try {
-      const { buildJingweiContext } = await import("../engine/jingwei/context/build-jingwei-context.js");
-      const jingweiResult = await buildJingweiContext({
-        bookId,
-        currentChapter: chapterNumber,
-        sceneText: promptPreview,
-        tokenBudget: 6000,
-      });
-      if (jingweiResult.items.length > 0) {
-        jingweiSection = "\n\n## 世界观与设定\n" + jingweiResult.items.map((item) => item.text).join("\n");
-      }
-    } catch {
-      // jingwei context unavailable — continue without it
-    }
-
-    // --- Style profile injection (文风仿写) ---
-    let styleSection = "";
-    try {
-      const res = await fetch(`http://localhost:4567/api/books/${encodeURIComponent(bookId)}/style-profile`);
-      if (res.ok) {
-        const data = await res.json() as { profile?: { promptInjection?: string } };
-        if (data.profile?.promptInjection) {
-          styleSection = "\n\n" + data.profile.promptInjection;
-        }
-      }
-    } catch {
-      // style profile unavailable — continue without it
-    }
-
-    // --- Preset reflection: ask summary model for additional presets ---
-    if (root) {
-      const reflectionResult = await runPresetReflection(runtimeService, sessionConfig, bookId, root, chapterNumber, promptPreview);
-      if (reflectionResult) {
-        presetInjections = presetInjections + reflectionResult;
-      }
-    }
-
-    const streamCallback = onStreamChunk ?? defaultOnStream;
-
-    const generated = await runtimeService.generate({
-      sessionConfig,
-      messages: [
-        { id: "candidate-create-system", role: "system", content: `你是 NovelFork 的小说创作执行模型。请只输出可直接进入候选区的章节正文，不要复述提示词。${writingConstraints}${presetInjections}${jingweiSection}${styleSection}`, timestamp: 0 },
-        { id: "candidate-create-user", role: "user", content: promptPreview, timestamp: 1 },
-      ],
-      ...(streamCallback ? { onStreamChunk: streamCallback } : {}),
-    });
-    if (!generated.success || generated.type !== "message") {
-      const reason = generated.success ? "模型未返回可写入候选区的正文。" : generated.error;
-      return { ok: false, reason };
-    }
-    return { ok: true, content: generated.content };
-  };
-}
-
-/** Run preset reflection to suggest additional presets for this chapter */
-async function runPresetReflection(
-  runtimeService: LlmRuntimeService,
-  sessionConfig: SessionConfig,
-  bookId: string,
-  root: string,
-  chapterNumber?: number,
-  chapterIntent?: string,
-): Promise<string> {
-  try {
-    const bookJsonPath = join(root, "books", bookId, "book.json");
-    const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[] };
-    const enabledIds = raw.enabledPresetIds ?? [];
-    if (enabledIds.length === 0) return "";
-
-    const activePresets = enabledIds
-      .map((id) => getPreset(id))
-      .filter((p): p is Preset => Boolean(p))
-      .map((p) => ({ id: p.id, name: p.name, rules: p.promptInjection }));
-
-    // Build available presets list from registry (all presets not currently enabled)
-    const { listPresets } = await import("../engine/presets/index.js");
-    const allPresets = listPresets();
-    const availablePresets = allPresets
-      .filter((p) => !enabledIds.includes(p.id))
-      .map((p) => ({ id: p.id, name: p.name, description: p.description }));
-
-    if (availablePresets.length === 0) return "";
-
-    const contextSummary = `第 ${chapterNumber ?? "?"} 章\n意图：${chapterIntent ?? "未指定"}`;
-    const reflectionPrompt = buildPresetReflectionPrompt(contextSummary, activePresets, availablePresets);
-
-    const result = await runtimeService.generate({
-      sessionConfig: { ...sessionConfig, reasoningEffort: "low" },
-      messages: [
-        { id: "reflection-system", role: "system", content: "你是写作预设分析助手。分析章节上下文，建议是否需要额外启用预设。只输出 JSON。", timestamp: 0 },
-        { id: "reflection-user", role: "user", content: reflectionPrompt, timestamp: 1 },
-      ],
-    });
-
-    if (!result.success || result.type !== "message") return "";
-
-    const suggestions = parsePresetSuggestions(result.content);
-    const additionalPresets = suggestions
-      .filter((s) => s.action === "enable")
-      .map((s) => getPreset(s.presetId))
-      .filter((p): p is Preset => Boolean(p));
-
-    if (additionalPresets.length === 0) return "";
-    return "\n\n" + buildPresetInjections(additionalPresets);
-  } catch {
-    // Graceful fallback: if reflection fails, just use base presets
-    return "";
-  }
-}
 
 /** Run post-write compliance check against enabled presets */
 async function runPostWriteComplianceCheck(
@@ -390,18 +200,6 @@ async function runPostWriteComplianceCheck(
   }
 }
 
-function normalizeGeneratedContent(value: CandidateGeneratedContent): { readonly ok: true; readonly content: string } | { readonly ok: false; readonly reason: string } {
-  if (typeof value === "string") return { ok: true, content: value };
-  return value;
-}
-
-function isSessionConfig(value: unknown): value is SessionConfig {
-  return typeof value === "object" && value !== null
-    && typeof (value as { providerId?: unknown }).providerId === "string"
-    && typeof (value as { modelId?: unknown }).modelId === "string"
-    && typeof (value as { permissionMode?: unknown }).permissionMode === "string"
-    && typeof (value as { reasoningEffort?: unknown }).reasoningEffort === "string";
-}
 
 function stringInput(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {

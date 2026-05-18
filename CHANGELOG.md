@@ -4,6 +4,41 @@
 
 ## Unreleased
 
+### ♻️ 架构改进
+
+- **candidate.create_chapter 改为纯保存工具**：删除工具内部二次模型调用，正文由外层 Agent 直接生成后通过 `content` 参数传入保存。消除写章超时根因，同时复用生成式浮现机制。
+- **ArtifactPanel 支持候选稿浮现**：`candidate.create_chapter` 加入 WRITE_TOOL_NAMES，正文生成时右侧面板实时浮现内容。
+- **Writer prompt 更新**：明确要求 Agent 先生成正文再调工具保存，禁止依赖工具代写。
+
+## v1.0.3 (2026-05-18)
+
+### 🐛 写章流程修复
+
+- **AskUserQuestion 回答传递**：修复写章流程中 PGI/用户回答无法继续传递到候选生成的问题。
+- **候选生成断点修复**：写章流程在问答后可以继续进入候选稿生成，不再卡在等待状态。
+- **工具超时提升**：`candidate.create_chapter` 工具超时提升到 180s，降低长章节生成中断概率。
+
+## v1.0.2 (2026-05-18)
+
+### 🐛 模型兼容修复
+
+- **小米模型工具调用兼容**：修复小米兼容接口对 `tool_call_id` 格式的要求，避免工具续跑时返回 `Param Incorrect`。
+
+## v1.0.1 (2026-05-18)
+
+### 🐛 首次启动修复
+
+- **内嵌 migration SQL**：编译产物内置数据库迁移，修复新用户首次启动时 `no such table` 崩溃。
+
+## v1.0.0 (2026-05-18)
+
+### 🚀 首个正式独立版本
+
+- **仓库独立化**：GitHub 仓库脱离 InkOS fork，NovelFork 以独立项目继续演进。
+- **发布资料对齐**：根/包级 package、README、docs 与 release 资料同步到 v1.0.0。
+- **Runtime 能力收口**：Claude Code 对标能力完成并发布，包含项目规则读取、LLM 压缩摘要、Subagent、后台任务、Prompt cache、ToolSearch、Skills、MCP、沙箱、Browser、Terminal、Headless CLI 与 stream-json。
+- **小说工作台可用性收口**：多 Agent 写作管线、故事经纬、PGI/UserQuestionGate、候选稿、工具面板与编译产物进入正式分发口径。
+
 ## v0.9.3 (2026-05-18)
 
 ### ✨ 经纬系统与写作体验

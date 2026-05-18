@@ -2,7 +2,7 @@
 
 > AI 辅助中文网文创作工作台 — 本地优先、Agent 驱动、引导式生成
 
-**v1.0.0** | TypeScript + Bun + React 19 + Hono + SQLite + AI Agents
+**v1.0.3** | TypeScript + Bun + React 19 + Hono + SQLite + AI Agents
 
 [![Release](https://img.shields.io/github/v/release/vivy1024/novelfork)](https://github.com/vivy1024/novelfork/releases/latest)
 
@@ -25,7 +25,7 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。完全本地
 
 ### 方式一：下载 exe（推荐）
 
-从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/latest) 下载 `novelfork-v1.0.0-windows-x64.exe`，双击运行。
+从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/latest) 下载 `novelfork-v1.0.3-windows-x64.exe`，双击运行。
 
 ### 方式二：从源码构建
 
@@ -38,7 +38,7 @@ bun install
 pnpm --dir packages/studio dev    # Vite 前端 http://localhost:4567
 
 # 编译单文件 exe
-pnpm --dir packages/studio compile   # → dist/novelfork-v1.0.0-windows-x64.exe
+pnpm --dir packages/studio compile   # → dist/novelfork-v1.0.3-windows-x64.exe
 ```
 
 首次打开会显示欢迎引导，建议先配置 AI 供应商（设置 → AI 供应商）。新建书籍后自动进入引导向导。

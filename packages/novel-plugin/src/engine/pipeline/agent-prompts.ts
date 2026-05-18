@@ -23,7 +23,7 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
    - 如果 PGI 返回了 askUserQuestionInput，直接将其作为 questions 参数传给 AskUserQuestion
    - 如果 PGI 无问题，自己构造 2-4 个关键问题（方向、基调、重点等）
    - 不要用文本输出问题——必须用 AskUserQuestion 工具
-5. 收集到用户回答后，用 candidate.create_chapter 生成候选稿。
+5. 收集到用户回答后，先由你自己直接生成完整章节正文，再调用 candidate.create_chapter 保存候选稿。candidate.create_chapter 只负责保存 content，不会代写正文。
 6. 章节完成后，用 jingwei.upsert_entry 更新经纬（category="chapter-summary"）。
 
 ⚠️ 禁止跳过第 3、4 步直接生成章节。用户必须先确认方向。
@@ -36,8 +36,9 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 - contentMd 用 Markdown 格式，包含该条目的完整描述
 
 ## 输出规范
-- 直接输出正文内容，不要复述提示词。
-- 章节标题格式为 "# 第N章 标题"。
+- 你必须先在外层 Agent 回复中生成完整正文内容，再把同一份正文放入 candidate.create_chapter 的 content 字段保存。
+- candidate.create_chapter 是纯保存工具，不会帮你生成正文；content 为空会失败。
+- 正文标题格式为 "# 第N章 标题"。
 - 段落之间保持合理的空行和节奏变化。
 - 重要场景用场景分界线 "---" 分隔。
 

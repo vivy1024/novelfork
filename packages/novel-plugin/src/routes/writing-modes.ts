@@ -478,10 +478,8 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       return c.json({ error: "chapterIntent is required" }, 400);
     }
     const { createCandidateToolService } = await import("../handlers/candidate-tool-service.js");
-    const { createLlmRuntimeService } = await import("@vivy1024/novelfork-studio/api/lib/llm-runtime-service");
     const candidateService = createCandidateToolService({
       root: ctx.root,
-      runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}),
     });
     const result = await candidateService.createChapter({
       bookId,
@@ -490,6 +488,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
       title: asString(body.title),
       pgiInstructions: asString(body.pgiInstructions),
       guidedPlanId: asString(body.guidedPlanId),
+      content: asString(body.content),
     });
     return c.json(result);
   });
