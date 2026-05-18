@@ -58,8 +58,8 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
     );
   }
 
-  // 默认多选：有选项的问题都支持多选（用户可以选多个）
-  const isMulti = question.type !== "text" && question.type !== "ranged-number" && question.type !== "ai-suggest";
+  // 默认多选：走到这里的都是有选项的问题（text/ranged-number/ai-suggest 已在上面 return）
+  const isMulti = true;
 
   // 检测选项中是否已经包含"其他"
   const hasOtherInOptions = options.some((o) => getOptionLabel(o) === OTHER_LABEL);
