@@ -1,8 +1,8 @@
 # Studio API总览
 
-**版本**: v1.0.2
+**版本**: v1.0.3
 **创建日期**: 2026-04-28
-**更新日期**: 2026-05-06
+**更新日期**: 2026-05-18
 **状态**: ✅ 当前有效
 **文档类型**: current
 
@@ -94,7 +94,7 @@ core pipeline events 会桥接到 Studio SSE：
 | `/api/books/...` | `createStorageRouter` 等 | 书籍、章节、truth files、导出、日志、doctor 等 | current / 部分 deprecated |
 | `/api/books/:id/checkpoints/:checkpointId/rewind/*` | `createStorageRouter` | 资源 Rewind 预览/应用；preview 返回 diff/hash/risk，apply 必须走确认门并写入 safety checkpoint 与 audit | current |
 | `/api/books/:id/candidates` | `createChapterCandidatesRouter` | 生成章节 / 草稿候选处理 | current |
-| `/api/books/:bookId/jingwei/*` | `createJingweiRouter` | 故事经纬栏目、条目、模板应用、上下文预览 | current / 部分 UI 待接 |
+| `/api/books/:bookId/jingwei/*` | `createJingweiRouter` | 故事经纬栏目、条目、模板应用、上下文预览 | current |
 | `/api/questionnaires` 与 `/api/books/:bookId/questionnaires/*` | `createBibleRouter` | 问卷模板、回答保存、AI 建议 | current |
 | `/api/books/:bookId/chapters/:chapter/pre-generation-questions` | `createBibleRouter` | 生成前追问 | current |
 | `/api/books/:bookId/core-shifts*` | `createBibleRouter` | 核心设定变更提出、接受、拒绝、查询 | current |
@@ -124,6 +124,7 @@ core pipeline events 会桥接到 Studio SSE：
 | `/api/writing-modes` | `createWritingModesRouter` | 写作模式和提示词预览 | transparent：应用写入仍需安全路径 |
 | `/api/search` | `createSearchRouter` | 搜索系统 | current |
 | `/api/sessions` | `sessionRouter` | 会话管理、快照/history、continue latest、fork、restore、compact、memory 边界状态/审计写入、session tool policy allow/deny/ask 状态与确认、headless stream-json 会话入口；headless result envelope 含 duration/stop_reason/usage/cost unknown/permission_denials | current |
+| `/api/usage` | usage router | 请求日志与用量统计（基于 request_log 表） | current |
 | `/api/monitor` | `createMonitorRouter` | 监控可视化 | transparent：无事实源时 unsupported |
 
 ## WebSocket 路由
