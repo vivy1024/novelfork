@@ -363,8 +363,9 @@ export class LlmRuntimeService {
 
     // All candidates exhausted
     if (lastFailure) {
-      // Append proxy hint for network errors
-      if (!lastFailure.success && (lastFailure.code === "network-error" || lastFailure.code === "upstream-error")) {
+      // Append proxy hint only for real network errors. Upstream errors are usually
+      // provider-side parameter/model issues, and proxy hints are misleading there.
+      if (!lastFailure.success && lastFailure.code === "network-error") {
         return { ...lastFailure, error: `${lastFailure.error}。如果使用了代理，请检查设置 → 代理管理中的配置是否正确。` };
       }
       return lastFailure;
