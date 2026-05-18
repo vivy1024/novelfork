@@ -812,13 +812,14 @@ function withToolTimeout(
       resolve(result);
     };
 
+    const effectiveTimeoutMs = toolName === "candidate.create_chapter" ? Math.max(timeoutMs, 180000) : timeoutMs;
     const timer = setTimeout(() => {
       done({
         ok: false,
         error: "tool-timeout",
-        summary: `工具 ${toolName} 执行超时（${Math.round(timeoutMs / 1000)}s）。`,
+        summary: `工具 ${toolName} 执行超时（${Math.round(effectiveTimeoutMs / 1000)}s）。`,
       });
-    }, timeoutMs);
+    }, effectiveTimeoutMs);
 
     const onAbort = () => {
       done({

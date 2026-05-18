@@ -187,10 +187,15 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   // --- 用户交互工具 ---
   sessionTool({
     name: "AskUserQuestion",
-    description: "向用户提出结构化问题（单选/多选），等待回答后继续。用于需要用户决策的场景，不要用于可以自行判断的情况。",
+    description: "向用户提出结构化问题（单选/多选），等待回答后继续。优先使用 questions 数组；也兼容 question/options 简写。用于需要用户决策的场景。",
     inputSchema: objectSchema({
       questions: arraySchema("问题数组，每个含 question、options、multiSelect 字段。"),
-    }, ["questions"]),
+      question: stringSchema("单个问题文本（简写格式）。"),
+      prompt: stringSchema("单个问题文本（兼容字段）。"),
+      header: stringSchema("问题短标题。"),
+      options: arraySchema("单个问题的选项数组。"),
+      multiSelect: booleanSchema("是否允许多选。"),
+    }),
     risk: "read",
     renderer: "tool.askUserQuestion",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,

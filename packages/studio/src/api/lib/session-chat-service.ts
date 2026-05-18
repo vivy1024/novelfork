@@ -1177,7 +1177,15 @@ export async function confirmSessionToolDecision(
       ok: true,
       renderer: "tool.ask-user-question",
       summary: `用户已回答 ${Object.keys(input.answers).length} 个问题。`,
-      data: { status: "answered", answers: input.answers },
+      data: {
+        status: "answered",
+        answers: input.answers,
+        // 给后续 PGI 工具一个明确字段，避免模型把回答结果漏传或误判为空。
+        pgiAnswers: input.answers,
+        instructions: Object.entries(input.answers)
+          .map(([question, answer]) => `- ${question}: ${Array.isArray(answer) ? answer.join("、") : String(answer)}`)
+          .join("\n"),
+      },
     };
   } else {
     rawToolResult = await sessionToolExecutor.execute({

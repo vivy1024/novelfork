@@ -140,7 +140,12 @@ export function createPGIToolService(options: PGIToolServiceOptions = {}): PGITo
     },
     formatAnswersForPrompt: async (input) => {
       const bookId = stringInput(input.bookId, "bookId");
-      const answers = answersRecordInput(input.answers);
+      const answers = answersRecordInput(
+        input.answers
+        ?? input.pgiAnswers
+        ?? (isRecord(input.data) ? (input.data.answers ?? input.data.pgiAnswers) : undefined)
+        ?? (isRecord(input.result) && isRecord(input.result.data) ? (input.result.data.answers ?? input.result.data.pgiAnswers) : undefined),
+      );
       const instructions = formatPGIAnswersForPrompt(answers);
       return {
         ok: true,
