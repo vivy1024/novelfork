@@ -1770,9 +1770,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
     // --- Implemented Phase 2 tools ---
     case "AskUserQuestion":
       return async ({ input, definition }) => {
-        const rawQuestions = Array.isArray(input.questions) ? input.questions : [];
+        const rawQuestions = Array.isArray(input.questions)
+          ? input.questions
+          : (typeof input.question === "string" || typeof input.prompt === "string")
+            ? [{
+                question: typeof input.question === "string" ? input.question : input.prompt,
+                ...(typeof input.header === "string" ? { header: input.header } : {}),
+                ...(Array.isArray(input.options) ? { options: input.options } : {}),
+                ...(typeof input.multiSelect === "boolean" ? { multiSelect: input.multiSelect } : {}),
+              }]
+            : [];
         if (rawQuestions.length === 0) {
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "questions 数组为空。" };
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "AskUserQuestion 需要 questions 数组，或 question/options 简写格式。" };
         }
         // 转换为 ConversationConfirmationQuestion 格式（保留 label+description 结构）
         const questions = rawQuestions.map((q: any, idx: number) => ({
