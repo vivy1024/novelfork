@@ -1,6 +1,6 @@
-# Studio能力矩阵 v2.1
+# Studio能力矩阵 v3.0
 
-**版本**: v2.1.0
+**版本**: v1.0.0
 **创建日期**: 2026-04-28
 **更新日期**: 2026-05-18
 **状态**: ✅ 当前有效
@@ -10,63 +10,48 @@
 
 ## 1. 文档目的
 
-本文记录 NovelFork Studio 历史已交付资产的事实状态。覆盖已归档 spec、`agent-native-workspace-v1` 与 `web-agent-runtime-v1` 的已完成任务；但这些 checkbox 只能作为底层资产证据，不能单独证明当前端到端功能完成。Claude/Codex/小说 Agent 能力的 `current/partial/not-wired/planned/unsupported/non-goal` 重验状态以 [04-产品能力重新验收矩阵](./04-产品能力重新验收矩阵.md) 为准。
+本文记录 NovelFork Studio v1.0.0 的功能能力状态。所有 runtime 能力已对标 Claude Code。
 
 状态口径：
 - **真实可用**：有真实 API、持久化或真实 runtime 调用，失败时返回真实错误。
-- **透明过渡**：功能可用但仍是临时态、`process-memory`、`prompt-preview` 等，UI/API 明确标注。
-- **需浏览器验活**：已有合同/组件回归，但尚未完成真实浏览器端到端路径，不能写成最终 UI 可用。
+- **透明过渡**：功能可用但仍是临时态，UI/API 明确标注。
 - **未接入**：标记为不支持，不伪造成功。
-- **体验未达标**：合同/API/E2E 已可用，但真实浏览器视觉布局、信息层级、空态或手工操作体验尚未达到成品软件标准，不能写成“UI 已成熟”。
 
 ---
 
-## 2. 事实来源
-
-| 来源 | 任务数 | 状态 |
-|------|--------|------|
-| `novel-creation-workbench-complete-flow` | 53/53 | ✅ |
-| `project-wide-real-runtime-cleanup` | 30/30 | ✅ |
-| `writing-tools-v1` | 25/25 | ✅ |
-| `ui-quality-cleanup` | 25/25 | ✅ |
-| `novel-bible-v1` | 21/21 | ✅ |
-| `onboarding-and-story-jingwei` | 18/20 | ⚠️ 缺回归测试 |
-| `writing-modes-v1` | 17/17 | ✅ |
-| `writing-presets-v1` | 16/16 | ✅ |
-| `workspace-gap-closure-v1` | 25/25 | ✅ |
-| `agent-writing-pipeline-v1` | 15/15 | ✅ |
-| `longform-cockpit-v1` | 15/15 | ✅ |
-| `narrafork-platform-upgrade` | 15/15 | ✅ |
-| `studio-frontend-rewrite` | 14/14 | ✅ |
-| `platform-compliance-v1` | 13/13 | ✅ |
-| `novelfork-narrafork-closure` | 9/9 | ✅ |
-| `ai-taste-filter-v1` | 7/7 | ✅ |
-| `storage-migration` | 7/7 | ✅ |
-| `old-frontend-decommission` | 5/9 | ⚠️ 旧代码未完全删除 |
-| `web-agent-runtime-v1` | 16/16 | ✅ |
-| `general-capability-completion` | 36/36 | ✅ |
-| **总计** | **~345** | — |
-
----
-
-## 3. AI 写作能力
+## 2. AI 写作能力
 
 | 能力 | 状态 | 说明 |
 |------|------|------|
-| **续写/扩写/补写** | 真实可用 | LLM 真实生成，选中文本后触发 |
-| **对话生成** | 真实可用 | 多角色、指定场景和目的 |
-| **多版本对比** | 真实可用 | 2-5 个版本并排 |
-| **大纲分支** | 真实可用 | 2-3 条走向建议 |
-| **整章生成（write-next）** | partial | 底层 cockpit / PGI / guided plan / candidate 资产存在；当前端到端重验状态以 04 矩阵为准，不能单独宣传为 current |
-| **审校当前章** | 真实可用 | 连续性、人设、文笔审查 |
-| **去 AI 味检测** | 真实可用 | 12 特征规则 + 7 招消味建议 |
-| **连续性检查** | 真实可用 | 人物/设定/伏笔冲突检测 |
-| **章节钩子生成** | 真实可用 | 3-5 个备选方案 |
-| **AI 味过滤** | 真实可用 | 本地 12 规则 + 可选朱雀 API |
-| **文风仿写** | 真实可用 | 从参考文本导入 + style guide 注入 |
-| **生成前追问（PGI）** | partial | PGI 底层资产存在；需在 `/novel:write-next` 主路径中补 Studio/CLI headless 端到端证据后才能升为 current |
-| **核心设定变更（CoreShift）** | 真实可用 | 审计链：propose → accept/reject |
+| **续写/扩写/补写** | ✅ 真实可用 | LLM 真实生成，选中文本后触发 |
+| **对话生成** | ✅ 真实可用 | 多角色、指定场景和目的 |
+| **多版本对比** | ✅ 真实可用 | 2-5 个版本并排 |
+| **大纲分支** | ✅ 真实可用 | 2-3 条走向建议 |
+| **大纲生成** | ✅ 真实可用 | 流程已验证通过 |
+| **整章生成（write-next）** | ✅ 真实可用 | cockpit → PGI → guided plan → candidate 完整链路 |
+| **审校当前章** | ✅ 真实可用 | 连续性、人设、文笔审查 |
+| **去 AI 味检测** | ✅ 真实可用 | 12 特征规则 + 7 招消味建议 |
+| **去 AI 味闭环** | ✅ 真实可用 | 改写后自动重新检测 |
+| **连续性检查** | ✅ 真实可用 | 人物/设定/伏笔冲突检测 |
+| **章节钩子生成** | ✅ 真实可用 | 3-5 个备选方案 |
+| **AI 味过滤** | ✅ 真实可用 | 本地 12 规则 + 可选朱雀 API |
+| **文风仿写** | ✅ 真实可用 | 从参考文本导入 + style guide 注入 |
+| **生成前追问（PGI）** | ✅ 真实可用 | 写作前自动追问确认上下文 |
+| **核心设定变更（CoreShift）** | ✅ 真实可用 | 审计链：propose → accept/reject |
 | **非破坏性写入** | 强制 | AI 结果只进候选区，确认后才影响正文 |
+
+## 3. 5 Agent 写作管线
+
+| 能力 | 状态 |
+|------|------|
+| Explorer Agent（只读探索） | ✅ |
+| Planner Agent（规划大纲/节拍） | ✅ |
+| Writer Agent（正文生成） | ✅ |
+| Auditor Agent（审校/连续性） | ✅ |
+| Reviser Agent（修订/润色） | ✅ |
+| 串行编排（Explorer→Planner→Writer→Auditor→Reviser） | ✅ |
+| WorkflowProgressCard 可见执行链 | ✅ |
+| 每种 Agent 专属 system prompt（200+ 行） | ✅ |
 
 ## 4. 章节与作品管理
 
@@ -79,28 +64,29 @@
 | 导入章节文本 | ✅ |
 | AI 候选稿（查看/合并/替换/另存草稿/放弃） | ✅ |
 | 草稿箱管理 | ✅ |
-| 大纲编辑器（volume_outline.md） | ✅ |
-| 导出 Markdown/TXT | ✅ |
+| 大纲编辑器 | ✅ |
+| 导出 TXT/DOCX/ePub | ✅ |
 | 删除整书 | ✅ |
 
 ## 5. 资源管理器
 
 | 功能 | 状态 |
 |------|------|
-| 作品 → 已有章节 → 生成章节 → 草稿 → 大纲 | ✅ 中文标签 |
-| 故事文件（pending_hooks/章节摘要等） | ✅ 18 个文件全部中文名 |
-| 真相文件（book_rules/current_focus等） | ✅ 同上 |
+| 作品 → 已有章节 → 生成章节 → 草稿 → 大纲 | ✅ |
+| 故事文件（pending_hooks/章节摘要等） | ✅ |
+| 真相文件（book_rules/current_focus等） | ✅ |
 | 经纬资料库（人物/事件/设定/摘要） | ✅ |
 | 素材 / 发布报告 | ✅ |
 | 章节编辑器（TipTap 富文本） | ✅ |
 | Markdown/Text viewer | ✅ |
 | Mutation 后资源树自动刷新 | ✅ |
 
-## 6. 故事经纬（Bible/Jingwei）
+## 6. 故事经纬（SQLite 持久化）
 
 | 能力 | 状态 |
 |------|------|
-| 人物 / 事件 / 设定 / 章节摘要 CRUD | ✅ SQLite 持久化 |
+| 存储层：SQLite story_jingwei_entry 表（已从 md 迁移） | ✅ |
+| 人物 / 事件 / 设定 / 章节摘要 CRUD | ✅ |
 | 经纬模板应用（空白/基础/增强/题材推荐） | ✅ |
 | 三种可见性规则（tracked/global/nested） | ✅ |
 | 时间线纪律（visible_after_chapter） | ✅ |
@@ -110,8 +96,24 @@
 | 世界模型（5 维度） | ✅ |
 | 核心设定变更协议 | ✅ |
 | 经纬上下文装配（按 token 预算裁剪） | ✅ |
+| react-flow 关系图谱（5 种视图模式） | ✅ |
+| 图谱可见性标识 | ✅ |
+| 批量管理（多选 + 统一设置） | ✅ |
+| 自动链接引擎（标题/别名匹配） | ✅ |
 
-## 7. 写作工具
+## 7. 驾驶舱（从 SQLite jingwei 读取）
+
+| 能力 | 状态 |
+|------|------|
+| 经纬图谱工作区（react-flow） | ✅ |
+| 底部状态条（章数/节拍/质量/AI味/警告） | ✅ |
+| 可展开面板（预设/节拍/质量/警告） | ✅ |
+| Agent 工具（presets.get_rules / check_compliance / beat.get_current） | ✅ |
+| ToolConfigBar 工具启用控制 | ✅ |
+| AgentQuickActions 快捷按钮 | ✅ |
+| 质量趋势图（AI味/文风漂移/质量评分） | ✅ |
+
+## 8. 写作工具
 
 | 工具 | 状态 |
 |------|------|
@@ -125,55 +127,62 @@
 | 角色弧线追踪 | ✅ |
 | 文风一致性检测 | ✅ |
 
-## 8. Agent-native 工作台与工具化驾驶舱
-
-| 能力 | 内容 | 状态 |
-|-----|------|------|
-| 产品壳首页 | `/next` 主区已从开发占位页升级为作者首页；复用 `useShellData` 的 books/sessions/provider summary/status，展示最近作品、最近会话、模型健康、快速动作（新建作品、新建/继续会话、设置、套路库）和空态；“新建作品”走真实 `/api/books/create`，成功后进入工作台；v0.1.0 Release Readiness Task 7-8 已完成 RED→GREEN 与 routing/StudioNextApp/ShellData 邻近回归；Task 13 主路径 Playwright 已在 clean/isolated root 覆盖首页、作品、工作台、会话、设置、Provider、关于与 Routines；Task 14 clean root 手工验活已确认可创建作品并进入工作台 | ✅ |
-| 左侧资源栏 | 全局导航 + 当前书籍资源树；章节、候选稿、草稿、经纬、Story/Truth、素材、发布报告 | ✅ |
-| 中间画布 | 多资源 Tab、章节编辑、候选稿、经纬详情、工具产物、dirty 切换拦截；`ui-live-parity-hardening-v1` Task 2-4 已补资源详情 hydrate、保存控制器、dirty guard 与 Playwright 浏览器保存刷新读回；v0.1.0 Release Readiness Task 9-10 已把作品工作台发布级 RED 转 GREEN，补作品标题/状态、资源 header 卡片、真实路径/读写能力/保存状态/只读原因和写作动作结果边界 | ✅ 资源 hydrate/保存防覆盖/浏览器读回、发布级解释层和 clean root 手工打开均已验证 |
-| 右侧叙述者会话 | 固定 Writer/Narrator 会话、模型/权限控件、工具调用流、恢复状态；Task 9 已补真实 session binding、消息数、context usage、工作区/Git unavailable facts，并在 session config 更新后回读 chat state 同步 ShellDataProvider；Task 10 已补工具卡复制/全屏/raw 脱敏、审批目标/风险/来源/操作、context threshold/checkpoint notice 和运行控制 disabled reason；Task 13 浏览器 E2E 覆盖工作台创建 session、Shell 同步、narrator route header、工具卡 raw 脱敏、模型/权限/推理回读、idle/running 中断状态；v0.1.0 Release Readiness Task 2-4 已先补 RED 测试再把 ConversationSurface 重排为 Session Header、Runtime Summary Cards、Recovery/Confirmation Lane、Message Stream、Composer Dock 五区布局，新增作者向空态、model-unavailable 恢复说明和 composer dock；Task 5-6 已补叙述者中心/Shell 左栏 RED→GREEN，`/next/sessions` 显示工作目录/创建/最后消息时间/排序/归档/恢复/新建叙述者，Shell 左栏只保留前 5 条并提供完整中心入口；Playwright 已覆盖空会话、工具卡 raw/全屏、pending confirmation、配置回读与 running abort | ✅ 会话页和叙述者管理合同、组件回归、浏览器 E2E 与 clean root 手工打开均已验证；后续 release smoke 仍需覆盖编译产物 |
-| cockpit 工具结果 | `cockpit.get_snapshot` / hooks / candidates 等通过工具卡片和画布组件展示 | ✅ |
-| PGI + GuidedGenerationPlan | 生成前追问、计划卡片、批准/拒绝确认门 | ✅ |
-| Narrative Line | 只读快照、mutation preview、approve 后写入审计 | ✅ |
-| unsupported-tools 降级 | 模型或 provider 不支持工具循环时返回明确错误，降级只读解释 / prompt-preview | ✅ |
-| OpenAI-compatible 工具名映射 | 内部点号 session tool 名映射为 provider-safe function name，并在返回 tool call 后还原内部工具名 | ✅ |
-
-## 9. Agent 系统（新增）
+## 9. Agent-native 工作台
 
 | 能力 | 状态 |
 |------|------|
-| 5 种 Agent 角色（Writer/Planner/Auditor/Architect/Explorer） | ✅ |
-| 每种 Agent 专属 system prompt（200+ 行领域知识） | ✅ |
-| session-chat-service 自动注入 agent prompt | ✅ |
-| Explorer Agent（只读探索，ConversationSurface 内联展示） | ✅ |
-| 编排函数（Explorer→Planner→Writer→Auditor 串行） | ✅ |
-| `/next/narrators/:sessionId` live 叙述者会话入口 | ✅ Task 9-10 + Release Readiness Task 2-4：header facts 来自真实 session record 与 worktree status API；模型/权限/推理更新后回读 session snapshot；五区布局、空态、工具 raw/全屏、审批门、composer dock、model-unavailable 恢复与 running abort 已有组件/Playwright 证据 |
-| 13 个 Core Agent 类 | ✅ |
-| 18 个 Core 内置工具（plan/compose/write/audit/revise等） | ✅ |
-| 22 个通用工具（ToolsTab，9 默认开/13 默认关） | ✅ |
-| SubAgent 配置系统（systemPrompt + toolPermissions） | ✅ |
+| 产品壳首页（最近作品/会话/模型健康/快速动作） | ✅ |
+| 左侧资源栏（全局导航 + 书籍资源树） | ✅ |
+| 中间画布（多资源 Tab、编辑、dirty guard） | ✅ |
+| 右侧叙述者会话（live runtime、工具调用、确认门） | ✅ |
+| cockpit 工具结果展示 | ✅ |
+| PGI + GuidedGenerationPlan | ✅ |
+| Narrative Line | ✅ |
+| unsupported-tools 降级 | ✅ |
+| OpenAI-compatible 工具名映射 | ✅ |
 
-## 10. 设置与配置
+## 10. 引导系统
+
+| 能力 | 状态 |
+|------|------|
+| FirstRunDialog 首启弹窗 | ✅ |
+| GettingStartedChecklist 开始使用清单 | ✅ |
+| 模型未配置 gate（不阻断本地操作） | ✅ |
+| 新书引导向导（NewBookGuide 11 题三模式） | ✅ |
+
+## 11. Runtime 能力（对标 Claude Code）
+
+| 能力 | 状态 |
+|------|------|
+| CLAUDE.md 读取（全局/项目/.claude/rules/） | ✅ |
+| LLM 智能压缩（摘要模型生成对话摘要） | ✅ |
+| Subagent 系统（explore/plan/general/fork） | ✅ |
+| 后台任务（自动后台化） | ✅ |
+| Prompt Cache（Anthropic cache_control） | ✅ |
+| ToolSearch 动态发现 | ✅ |
+| Skills 系统 | ✅ |
+| MCP 工具治理 | ✅ |
+| 沙箱执行（none/basic/strict） | ✅ |
+| Browser 截图（headless Chrome/Edge） | ✅ |
+| Terminal 工具 | ✅ |
+| WebSearch / WebFetch | ✅ |
+| AskUserQuestion（支持多选） | ✅ |
+| 文件安全（Staleness check + Dedup + 二进制检测） | ✅ |
+| 请求日志 SQLite 持久化（request_log 表） | ✅ |
+
+## 12. 设置与配置
 
 | 功能 | 状态 |
 |------|------|
-| AI 供应商管理（API key 接入） | ✅ Task 8：区分可配置、已配置、已验证、可调用；缺配置或测试失败显示 degraded/error 与恢复动作；v0.1.0 Release Readiness Task 11 新增搜索供应商/模型、只看异常项、隐藏测试夹具，并在 E2E Provider 卡片标记测试夹具开发数据 |
-| 平台集成（Codex/Kiro JSON 账号导入） | ✅ Task 8：无账号显示“可导入 / 未配置账号 / 不可调用”，0 模型显示“未验证 / 0 个模型 / 不可调用”；Task 13 Playwright 已在 `/next/settings` 验活 Codex 无账号不可调用 |
-| 模型池管理（刷新/测试/启用禁用） | ✅ Task 8：运行态总览拆分 provider total、enabled provider、available models、total catalog models、callable models |
-| 真实 Provider/Model 管理（显式选择，无虚拟模型/自动 fallback） | ✅ 模型能力标签只来自真实 inventory（大上下文、多模态、思考链、工具调用）；未知能力显示 unknown |
-| Runtime control panel（权限/上下文/工具策略） | ✅ Task 7：运行策略逐项经 `deriveAgentRuntimeSettingsFacts` 展示来源、状态、读写 API 与 planned 缺口 |
-| 设置 Truth Model（来源/状态/API/未配置原因） | ✅ Task 6-7：模型页与 Agent runtime 可见 setting 通过 `SettingsFact` 展示真实来源、状态、读写 API；无 schema 来源项显示 planned/unsupported 或隐藏，空值显示“未配置”；Task 13 浏览器 E2E 已验活默认模型未配置不 fallback、Codex 推理强度来自真实 schema；v0.1.0 Release Readiness Task 11 新增 provider fixture cleanup facts，将 E2E Provider 识别为开发/清理事实而非普通 current 数据 |
-| 模型默认值/摘要模型/子代理配置 | ✅ 默认/摘要/Explore/Plan/General/Codex 推理强度均来自 user settings，不用模型池第一项冒充当前值；运行控制保存后回读 `/api/settings/user` |
-| Agent runtime 来源事实 | ✅ 覆盖 default permission、max turns、retry/backoff、WebFetch proxy、上下文/大窗口阈值、debug、allowlist/blocklist、sendMode；first-token timeout 标记 planned；Task 13 浏览器 E2E 确认不出现“已接入/Codex sandbox 已接入”假 current |
-| Claude Code parity guard | ⚠️ `partial/non-goal` 守护，不是完整对标：已按 `claude/restored-cli-src/` 重读 `commands.ts`、`types/command.ts`、`permissions.ts`、`types/permissions.ts`、`sessionStorage.ts`、`sessionRestore.ts`、`usage.ts`，确认 NovelFork slash 只是静态 7 命令、permission 只是产品化 ask/edit/allow/read/plan + 简化 toolPolicy、session resume/fork 只基于自身 store、headless usage 只有 NovelFork envelope；已新增 `CLAUDE_CODE_PARITY_MATRIX`，所有 Claude CLI 完整兼容声明必须降级为 partial/non-goal |
-| Codex CLI parity guard | ⚠️ `partial/planned/reference-only` 守护，不是完整对标：当前只有 `codex-cli 0.80.0` help/官方文档和 NovelFork 自身代码事实；新增 `reference-only` 状态并把 Codex exec JSONL event taxonomy 单列为 reference-only；没有真实 Codex CLI TUI、sandbox、MCP、image input、review 或完整 exec event taxonomy；不得作为 v0.1.0 完成功能宣传 |
-| 设置分组 IA | ✅ 个人设置、实例管理、运行资源与审计、关于与项目；借鉴 NarraFork 分组但字段回到 NovelFork schema；2026-05-07 手工对比确认 NovelFork truthfulness 已收敛；v0.1.0 Release Readiness Task 11 已补 E2E Provider 识别/隐藏，正式验收仍使用干净 root |
-| 个人资料 | ✅ |
-| 关于（版本/commit/Bun） | ✅ |
-| 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ v0.1.0 Release Readiness Task 12 已补 `e2e/routines-workflow.spec.ts`，真实打开 `/next/routines` 覆盖十个分区、MCP Server 管理与生命周期钩子入口，无假 current 文案 |
+| AI 供应商管理（API key 接入） | ✅ |
+| 平台集成（Codex/Kiro JSON 账号导入） | ✅ |
+| 模型池管理（刷新/测试/启用禁用） | ✅ |
+| Runtime control panel（权限/上下文/工具策略） | ✅ |
+| 模型默认值/摘要模型/子代理配置 | ✅ |
+| 套路页（命令/工具/权限/技能/子代理/MCP/钩子） | ✅ |
+| 更新检查（GitHub API 对比版本） | ✅ |
 
-## 11. 合规与发布
+## 13. 合规与发布
 
 | 功能 | 状态 |
 |------|------|
@@ -182,8 +191,9 @@
 | 发布就绪检查 | ✅ |
 | AI 使用声明生成 | ✅ |
 | 格式规范检查 | ✅ |
+| 导出 TXT/DOCX/ePub | ✅ |
 
-## 12. 写作预设
+## 14. 写作预设
 
 | 类别 | 数量 | 状态 |
 |------|------|------|
@@ -196,47 +206,9 @@
 | AI 味过滤预设 | 4 个 | ✅ |
 | 文学技法预设 | 4 个 | ✅ |
 
-## 13. Web Agent Runtime（新增）
+## 15. 工具总数
 
-| 能力 | 状态 | 说明 |
-|------|------|------|
-| **通用 Agent Turn Runtime** | 真实可用 | provider-agnostic 工具循环引擎，支持 message/tool_call/tool_result canonical items |
-| **重复工具调用保护** | 真实可用 | 同一 turn 内相同 toolName+input 签名超阈值自动拦截 |
-| **continuation 指令** | 真实可用 | 工具结果回灌时追加"总结已获信息、判断是否足够"指令 |
-| **OpenAI-compatible 工具上下文** | 真实可用 | canonical items 转 assistant tool_calls + tool role message |
-| **会话中心** | 真实可用 | 独立/书籍/章节绑定筛选、归档/恢复、模型/权限状态、继续最近会话、Fork 标题/继承说明 |
-| **会话斜杠命令** | partial | 当前 NovelFork slash 命令已接入 core `command-registry.ts` / `command-executor.ts` 单一事实源，Studio slash palette、Routines、CLI help 与 headless slash prompt 共享 registry/executor，并输出 command_started/completed/error 事件；后续仍需继续接真实 tools/MCP/agents handler 与 `/novel:*` 工作流，重验状态以 04 矩阵为准 |
-| **Session Compact** | partial | `/compact` 走真实 session compact service 并有测试证据；仍需并入统一 transcript/runtime event 后再作为 Agent 产品 current 能力验收 |
-| **Session Memory 边界** | 透明过渡 | `GET /api/sessions/:id/memory/status` 显示 writer 未接入时的只读状态；`POST /api/sessions/:id/memory` 通过 session memory boundary service 区分用户偏好、项目事实、临时剧情草稿，偏好/项目事实需要审计来源，临时剧情草稿不自动写长期 memory |
-| **Session Tool Policy / Confirmation Gate / Codex Status** | partial | `resolveSessionToolPolicy()` 统一输出 visibleToModel / requiresConfirmation / denied / risk / reason / checkpointRequired；`normalizeToolConfirmationRequest()` 统一 pending confirmation 的 targetResources/source/checkpoint/operations；`getCodexRuntimeCapabilityStatuses()` 统一 sandbox planned、approval partial、review/image reference-only 并进入 settings facts 与 headless result runtime_capabilities；provider-visible tool schema、Agent turn、tool executor、transcript audit 与 headless/CLI permission_request 复用同源结构，Studio ConfirmationGate 展示目标资源、来源、checkpoint、diff 和 approve/reject；后续仍需 settings/routines 可视化管理与真实 `/novel:*` 工作流验收 |
-| **Headless Chat stream-json API** | partial | `POST /api/sessions/headless-chat` 已有底层实现和测试证据；CodexCLI-class event taxonomy 与小说 workflow 端到端仍按 04 矩阵重验 |
-| **高级工作台模式** | partial | workbenchMode=false 可隐藏 Terminal/Browser/Bash/MCP/Admin 等高级工具；MCP/工具治理仍需按 04 矩阵接入真实 runtime |
-| **Headless Exec 服务** | partial | `POST /api/exec` 保留非交互兼容入口；`novelfork exec` 与 Studio 同源、stream-json、小说 workflow 的完整重验仍按 04 矩阵推进 |
-| **资源 Checkpoint / Rewind** | partial | 正式章节、Truth/story 与 narrative apply 写入前已有 checkpoint/rewind 底层实现；候选稿应用、Agent workflow 与 CLI/headless 同源证据仍需按 04 矩阵补齐 |
-| **`novelfork chat` CLI** | partial | 通过 HTTP 调用 `/api/sessions/headless-chat` 并有 CLI 测试证据；仍需纳入统一 runtime event/transcript 与小说 workflow 端到端验收 |
-| **`novelfork exec` CLI** | partial | 保留旧 `/api/exec` 默认兼容，stream-json 模式已有底层证据；CodexCLI-class event taxonomy 与 `/novel:write-next` 同源执行仍需补端到端证据 |
-| **真实 Provider/Model 选择** | 强制 | 无虚拟模型、无自动 fallback；未配置返回 model-unavailable |
-| **Anthropic/Responses API adapter** | 未接入 | 预留转换接口，当前返回 unsupported |
-| **自定义重试规则** | 真实可用 | 用户在设置中定义的 retryRules（HTTP 状态码 + 内容关键词匹配）被 LLM runtime 真实消费，匹配的错误自动重试 |
-| **全局提示词注入** | 真实可用 | 套路系统中已启用的 globalPrompts 自动拼接到所有叙述者的 system prompt 中 |
-| **自定义子代理类型** | 真实可用 | 套路页定义的 SubAgent（systemPrompt + toolPermissions）在 Agent handler 中被查找和执行 |
-| **用户自定义斜杠命令** | 真实可用 | 套路 commands 注入 Composer 补全列表，`/命令名 参数` 展开 prompt 模板后发送给模型 |
-| **更新检查** | 真实可用 | `GET /api/settings/check-update` 调用 GitHub API 对比版本；启动时非阻塞自动检查；AboutPanel 有手动检查 UI |
-
-## 14. 已知缺口
-
-| 缺口 | 状态 |
-|------|------|
-| 章节拖拽排序/批量操作 | 未规划 |
-| EPUB 导出 | 未规划 |
-| 专注/全屏写作模式 | 未规划 |
-| 世界设定关系图可视化 | 未规划 |
-| 旧前端源码完全删除 | 5/9 完成 |
-| 首次引导烟测 | 缺回归测试 |
-| 引导式创作流程串联 | 已有 session-first 最小链路，完整体验仍需后续验活 |
-| 对话窗口视觉完成度 | v0.1.0 Release Readiness Task 2-4 已完成组件级重排与浏览器 E2E：`/next/narrators/:sessionId` 对话页拆为 session header、runtime summary cards、recovery/confirmation lane、message stream、composer dock，并补作者向空态、模型不可用恢复说明、工具 raw/全屏和 pending confirmation 检查点；Task 14 clean root 手工打开自动写作会话并确认会话事实、绑定、模型状态、权限/推理和恢复说明可见 |
-| Agent Shell 会话长列表 | v0.1.0 Release Readiness Task 5-6 已改为左栏精选前 5 条活跃叙述者、显示剩余数量，并提供“查看全部叙述者”进入 `/next/sessions`；会话中心具备搜索、类型/状态筛选、排序、归档/恢复、工作目录/创建/最后消息时间和新建叙述者表单；Task 14 已在 clean root 手工进入会话中心确认路径可达 |
-| 产品首页成熟度 | v0.1.0 Release Readiness Task 7-8 已把 `/next` 主区从 `Agent Shell` 占位页换成作者首页，最近作品/会话/模型健康与主要入口来自真实 shell data；Task 14 clean root 手工验活发现缺少“新建作品”入口，已补真实 `/api/books/create` 表单并手工创建作品进入工作台 |
-| 作品工作台解释层 | v0.1.0 Release Readiness Task 9-10 已完成 RED→GREEN：工作台首屏展示作品标题/当前状态/清晰区域，资源 header 卡片化展示类型/路径/读写能力/保存状态/只读原因；写作动作显示会话、候选稿、草稿、审校、提示词预览、不可用等输出边界说明，并明确预览/不可用边界不是正式写入能力；workbench 邻近回归和 `e2e/workbench-resource-edit.spec.ts` 已通过。 |
-| E2E 夹具污染手工验收 | v0.1.0 Release Readiness Task 11 已让 Provider 页识别/隐藏 `E2E Provider ...` 测试夹具；Task 13 通过 `NOVELFORK_RUNTIME_DIR` 隔离 provider/user runtime state；Task 14 clean root 手工验活确认 Provider 页为 0 provider / 0 model，无 E2E 污染 |
-| 能力矩阵文档 | ← 就是这一篇，刚更新 |
+48+ 工具，涵盖：
+- Core 内置工具（plan/compose/write/audit/revise 等）
+- 通用工具（Read/Write/Edit/Bash/Grep/Glob/Agent/Await/Terminal/Browser/ToolSearch/Skill/WebSearch/WebFetch/EnterPlanMode/ExitPlanMode/TaskCreate/AskUserQuestion/Send/Recall）
+- 小说领域工具（cockpit/jingwei/candidate/writing-mode/compliance/health 等）

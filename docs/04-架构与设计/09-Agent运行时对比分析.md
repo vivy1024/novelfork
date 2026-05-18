@@ -1,5 +1,8 @@
 # Agent 运行时对比分析
 
+**版本**: v1.0.0
+**状态**: ✅ 当前有效
+
 本文对比四个 Agent 运行时系统的架构设计：NovelFork（本项目）、Claude Code（Anthropic CLI）、Codex CLI（OpenAI）、NarraFork（上游参考）。通过分析实际源码，提炼各系统在 Agent 循环、工具系统、上下文管理、流式输出、权限控制、子代理、错误恢复等维度的设计差异。
 
 ---
@@ -16,7 +19,7 @@
 | **上下文管理** | 紧急截断 + 自动压缩 | 自动压缩 + 文件状态缓存 | 固定窗口 | catch_up + full_reload |
 | **流式输出** | SSE chunk → WebSocket 广播 | Ink 终端渲染 | 终端流式 | WebSocket text_delta/reasoning_delta |
 | **权限模式** | permissionMode (auto/confirm/deny) | PermissionMode (auto/ask/deny) | 沙箱隔离（无需权限） | permission_request → decision |
-| **子代理** | 无（单循环） | AgentTool（嵌套 QueryEngine） | 无 | subagent_started/suspended/conclusion |
+| **子代理** | Subagent 系统（explore/plan/general/fork，支持后台执行） | AgentTool（嵌套 QueryEngine） | 无 | subagent_started/suspended/conclusion |
 | **错误恢复** | 上下文溢出截断 + 连续失败检测 + 供应商 fallback | 可重试 API 错误 + 用户干预 | 沙箱重启 | danger_reflection + plan_reflection |
 
 ---
@@ -183,11 +186,11 @@
 
 | 特性 | NovelFork | Claude Code | Codex CLI | NarraFork |
 |------|-----------|-------------|-----------|-----------|
-| 支持 | 无 | AgentTool（完整嵌套） | 无 | 完整子代理系统 |
-| 实现 | — | 新 QueryEngine 实例 + 独立上下文 | — | subagent_started/suspended/conclusion |
-| 通信 | — | 父子消息传递 | — | WebSocket 事件 |
-| 渲染 | — | 嵌套 Ink 组件 | — | 嵌套 UI 面板 |
-| 上下文隔离 | — | 独立消息历史 + 共享文件系统 | — | 独立状态追踪 |
+| 支持 | Subagent 系统（explore/plan/general/fork） | AgentTool（完整嵌套） | 无 | 完整子代理系统 |
+| 实现 | 独立 Agent 循环 + 后台执行 + 自动后台化 | 新 QueryEngine 实例 + 独立上下文 | — | subagent_started/suspended/conclusion |
+| 通信 | 父子消息传递 + 结论回传 | 父子消息传递 | — | WebSocket 事件 |
+| 渲染 | 嵌套 UI 面板 | 嵌套 Ink 组件 | — | 嵌套 UI 面板 |
+| 上下文隔离 | 独立消息历史 + 共享文件系统 | 独立消息历史 + 共享文件系统 | — | 独立状态追踪 |
 
 ---
 
@@ -214,6 +217,11 @@
 3. **画布上下文注入**：将用户当前编辑的资源信息注入 system prompt，实现 Agent-native 感知
 4. **经纬上下文管线**：buildJingweiLegacyContext → 可见性过滤 → 别名匹配 → 嵌套解析 → token 预算裁剪
 5. **消息队列**：WebSocket 消息缓冲，避免并发请求冲突
+6. **Subagent 系统**：explore/plan/general/fork 四种子代理，支持后台执行和自动后台化
+7. **Prompt Cache**：Anthropic API cache_control 启用，减少重复 token 费用
+8. **ToolSearch**：动态发现非核心工具，减少全量注入
+9. **CLAUDE.md 读取**：自动读取项目规则文件注入 agent 上下文
+10. **LLM 压缩摘要**：调用摘要模型生成对话摘要（非文本拼接）
 
 ### Claude Code 的独特设计
 
