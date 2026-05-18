@@ -19,8 +19,6 @@ export type {
 
 export { createCandidateToolService } from "./candidate-tool-service.js";
 export type {
-  CandidateContentGenerator,
-  CandidateGeneratedContent,
   CandidateGenerationInput,
   CandidateToolService,
   CandidateToolServiceOptions,

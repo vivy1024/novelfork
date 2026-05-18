@@ -36,7 +36,7 @@ export interface ArtifactPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.upsert_entry", "jingwei_upsert_entry"]);
+const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.upsert_entry", "jingwei_upsert_entry", "candidate.create_chapter", "candidate_create_chapter"]);
 
 /** 从部分 JSON 字符串中尽力解析 file_path 和 content */
 function parsePartialWriteInput(partialJson: string, toolName: string): { filePath: string; content: string } | null {
@@ -55,8 +55,30 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
       const category = parsed.category ?? "unknown";
       return { filePath: `jingwei/${category}/${parsed.title}.md`, content: parsed.contentMd };
     }
+    // candidate.create_chapter 格式
+    if (typeof parsed.content === "string" && (parsed.title || parsed.chapterNumber || toolName.includes("candidate"))) {
+      const title = parsed.title ?? (parsed.chapterNumber ? `第${parsed.chapterNumber}章候选稿` : "章节候选稿");
+      return { filePath: `candidates/${title}.md`, content: parsed.content };
+    }
   } catch {
     // 部分 JSON — 用正则提取
+  }
+
+  // candidate.create_chapter 的部分 JSON 解析
+  if (toolName.includes("candidate")) {
+    const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]+)"/);
+    const chapterMatch = partialJson.match(/"chapterNumber"\s*:\s*(\d+)/);
+    const contentMatch = partialJson.match(/"content"\s*:\s*"([\s\S]*)$/);
+    const title = titleMatch?.[1] ?? (chapterMatch?.[1] ? `第${chapterMatch[1]}章候选稿` : "章节候选稿");
+    if (contentMatch) {
+      let raw = contentMatch[1].replace(/["\s}]*$/, "");
+      try {
+        return { filePath: `candidates/${title}.md`, content: JSON.parse(`"${raw}"`) };
+      } catch {
+        return { filePath: `candidates/${title}.md`, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+      }
+    }
+    return { filePath: `candidates/${title}.md`, content: "" };
   }
 
   // jingwei.upsert_entry 的部分 JSON 解析
@@ -172,14 +194,15 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
           const input = tc.input as Record<string, unknown>;
           const filePath = (input.file_path as string) ?? "";
           const content = (input.content as string) ?? (input.new_string as string) ?? (input.contentMd as string) ?? "";
-          // jingwei.upsert_entry 格式
-          const jingweiPath = !filePath && input.title
-            ? `jingwei/${input.category ?? "unknown"}/${input.title}.md`
-            : filePath;
-          if (jingweiPath) {
+          const derivedPath = filePath
+            || (tc.toolName.includes("candidate") && (input.title || input.chapterNumber)
+              ? `candidates/${input.title ?? `第${input.chapterNumber}章候选稿`}.md`
+              : "")
+            || (input.title ? `jingwei/${input.category ?? "unknown"}/${input.title}.md` : "");
+          if (derivedPath) {
             files.push({
               toolCallId: tc.id,
-              filePath: jingweiPath,
+              filePath: derivedPath,
               content,
               streaming: isStreaming,
               toolName: tc.toolName,

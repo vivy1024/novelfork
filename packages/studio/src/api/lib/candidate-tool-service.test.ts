@@ -34,6 +34,7 @@ function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolE
       title: "第二章候选",
       pgiInstructions: "【本章作者指示（PGI）】\n- conflict-escalate:conflict-1：保持 escalating",
       guidedPlanId: "guided-state-1",
+      content: "# 第二章候选\n\n候选正文。",
     },
     ...overrides,
   };
@@ -51,7 +52,6 @@ describe("candidate.create_chapter session tool", () => {
         root,
         now: () => new Date("2026-05-03T06:00:00.000Z"),
         createCandidateId: () => "candidate-1",
-        generateContent: async ({ chapterIntent, pgiInstructions }) => `${chapterIntent}\n\n${pgiInstructions}\n\n候选正文。`,
       }),
     });
 
@@ -91,23 +91,27 @@ describe("candidate.create_chapter session tool", () => {
       .resolves.toBe("# 第二章\n\n正式正文不能被覆盖。");
   });
 
-  it("falls back to prompt preview when no real generation provider is configured", async () => {
+  it("requires content because generation happens in the outer Agent", async () => {
     const root = await createBookRoot();
     const executor = createSessionToolExecutor({
       candidateService: createCandidateToolService({ root, now: () => new Date("2026-05-03T06:00:00.000Z"), createCandidateId: () => "candidate-1" }),
     });
 
-    const result = await executor.execute(input());
+    const withoutContent = input({
+      input: {
+        bookId: "book-1",
+        chapterIntent: "写第二章候选稿，推进灵田争夺。",
+        chapterNumber: 2,
+        title: "第二章候选",
+      },
+    });
+    const result = await executor.execute(withoutContent);
 
     expect(result).toMatchObject({
       ok: false,
       renderer: "candidate.created",
-      error: "unsupported-model",
-      summary: "候选稿生成需要配置支持模型。",
-      data: {
-        status: "unsupported",
-        promptPreview: expect.stringContaining("写第二章候选稿"),
-      },
+      error: "invalid-tool-input",
+      summary: expect.stringContaining("缺少必填字段 content"),
     });
     await expect(readFile(join(root, "books", "book-1", "generated-candidates", "index.json"), "utf-8")).rejects.toThrow();
   });
