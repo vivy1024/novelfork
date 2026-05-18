@@ -77,6 +77,12 @@ export function toProviderSafeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/gu, "_");
 }
 
+export function toProviderSafeToolCallId(id: string | undefined, index = 0): string {
+  const raw = typeof id === "string" && id.trim().length > 0 ? id.trim() : `call_${index + 1}`;
+  const safe = raw.replace(/[^a-zA-Z0-9_-]/gu, "_");
+  return safe.startsWith("call_") ? safe : `call_${safe}`;
+}
+
 export function toInternalToolName(name: string, tools: readonly RuntimeToolDefinition[]): string {
   return tools.find((tool) => toProviderSafeToolName(tool.name) === name)?.name ?? name;
 }
@@ -100,7 +106,7 @@ export function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array
     if (message.role === "tool") {
       return {
         role: "tool",
-        tool_call_id: message.toolCallId,
+        tool_call_id: toProviderSafeToolCallId(message.toolCallId),
         content: message.content,
       };
     }
@@ -109,8 +115,8 @@ export function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array
       const msg: Record<string, unknown> = {
         role: "assistant",
         content: message.content,
-        tool_calls: message.toolCalls.map((toolCall) => ({
-          id: toolCall.id,
+        tool_calls: message.toolCalls.map((toolCall, index) => ({
+          id: toProviderSafeToolCallId(toolCall.id, index),
           type: "function",
           function: {
             name: toProviderSafeToolName(toolCall.name),
@@ -171,7 +177,7 @@ export function readOpenAiToolUses(payload: unknown, tools: readonly RuntimeTool
     }
 
     return [{
-      id: typeof toolCall.id === "string" && toolCall.id.trim().length > 0 ? toolCall.id : `tool-call-${index + 1}`,
+      id: toProviderSafeToolCallId(typeof toolCall.id === "string" ? toolCall.id : undefined, index),
       name: toInternalToolName(providerName, tools),
       input: parseToolArguments(toolCall.function.arguments),
     }];
@@ -225,7 +231,7 @@ export function finalizeOpenAiStreamToolCalls(
       if (acc.arguments) input = JSON.parse(acc.arguments) as Record<string, unknown>;
     } catch { /* malformed arguments */ }
     result.push({
-      id: acc.id || `tool-call-${index + 1}`,
+      id: toProviderSafeToolCallId(acc.id, index),
       name: toInternalToolName(acc.name, tools ?? []),
       input,
     });
