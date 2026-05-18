@@ -603,7 +603,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const contentMd = String(input.contentMd || "");
         const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
         const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
-        const visibility = String(input.visibility || "tracked");
+        const visibility = String(input.visibility || "global");
         const relatedEntryIds = Array.isArray(input.relatedEntryIds) ? input.relatedEntryIds.filter((id): id is string => typeof id === "string") : [];
 
         // 智能分类：如果 agent 没传 category 或传了 setting，根据 title/content 关键词推断
