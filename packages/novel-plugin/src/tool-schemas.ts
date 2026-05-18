@@ -145,8 +145,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("目标章节序号。"),
       title: stringSchema("候选章节标题。"),
       pgiInstructions: stringSchema("由 PGI 格式化得到的本章作者指示。"),
+      content: stringSchema("完整章节候选稿正文。正文必须由 Agent 先生成，再传入本工具保存。"),
     },
-    required: ["bookId", "chapterIntent"],
+    required: ["bookId", "chapterIntent", "content"],
     additionalProperties: false,
   },
   "narrative.read_line": {

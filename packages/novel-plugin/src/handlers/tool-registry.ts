@@ -123,7 +123,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "candidate.create_chapter",
-    description: "根据章节意图、PGI 指示和引导式计划生成下一章候选稿，不覆盖正式章节正文。",
+    description: "保存章节候选稿。正文必须由 Agent 先生成并放入 content 字段；本工具只保存候选稿，不覆盖正式章节正文，不会代写正文。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["candidate.create_chapter"]),
     risk: "draft-write",
     renderer: "candidate.created",

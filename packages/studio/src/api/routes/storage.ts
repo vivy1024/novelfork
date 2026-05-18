@@ -42,7 +42,6 @@ import {
 import { createBooksReadService } from "../lib/books-service.js";
 import { createCandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
-import { createLlmRuntimeService } from "../lib/llm-runtime-service.js";
 import { createNarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
 import { createResourceRewindService } from "../lib/resource-rewind-service.js";
@@ -389,7 +388,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     deleteBookRecord: (bookId) => getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(bookId),
   });
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
-  const candidateService = createCandidateToolService({ root, runtimeService: createLlmRuntimeService(ctx.providerStore ? { store: ctx.providerStore } : {}) });
+  const candidateService = createCandidateToolService({ root });
   const narrativeService = createNarrativeLineService({ state, checkpoint: resourceCheckpointService });
   configureSessionToolExecutor({ cockpitService, candidateService, narrativeService, loadBookConfig: state.loadBookConfig.bind(state) });
 
