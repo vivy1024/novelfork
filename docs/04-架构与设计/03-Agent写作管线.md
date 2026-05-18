@@ -9,7 +9,7 @@
 
 ## PipelineRunner
 
-核心写作引擎，位于 `packages/core/src/pipeline/runner.ts`。
+核心写作引擎，位于 `packages/novel-plugin/src/engine/pipeline/runner.ts`。
 
 ### 主要方法
 

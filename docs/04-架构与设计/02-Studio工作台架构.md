@@ -30,7 +30,7 @@
 
 ## 路由系统
 
-路由定义在 `src/app-next/shell/shell-route.ts`：
+路由基于 TanStack Router，定义在 `src/app-next/shell/shell-route.ts`：
 
 ```typescript
 export type ShellRoute =

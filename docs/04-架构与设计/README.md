@@ -25,6 +25,10 @@
 | [04-存储与数据流.md](./04-存储与数据流.md) | current | ✅ 当前有效 | SQLite schema、文件系统布局、数据流转 |
 | [05-技术栈选型.md](./05-技术栈选型.md) | current | ✅ 当前有效 | 技术选型决策记录 |
 | [06-长篇驾驶舱设计.md](./06-长篇驾驶舱设计.md) | current | ✅ 当前有效 | CockpitOverview、驾驶舱 API、数据模型、工具结果卡片 |
+| [07-小说前端架构.md](./07-小说前端架构.md) | current | ✅ 当前有效 | 写作工作台组件树、数据流、面板清单、状态管理 |
+| [08-小说后端架构.md](./08-小说后端架构.md) | current | ✅ 当前有效 | novel-plugin 模块地图、API 路由清单、服务层、数据库表 |
+| [09-Agent运行时对比分析.md](./09-Agent运行时对比分析.md) | current | ✅ 当前有效 | NovelFork/Claude Code/Codex CLI/NarraFork 对比 |
+| [10-经纬系统架构.md](./10-经纬系统架构.md) | current | ✅ 当前有效 | 经纬数据模型、上下文注入管线、可见性规则、关联层 |
 
 ## 维护规则
 
