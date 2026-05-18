@@ -41,7 +41,7 @@ export async function handleJingweiReadContext(
       bookId,
       currentChapter: chapterNumber,
       sceneText,
-      tokenBudget: 8000,
+      tokenBudget: 32000,
     });
 
     if (result.items.length > 0) {
