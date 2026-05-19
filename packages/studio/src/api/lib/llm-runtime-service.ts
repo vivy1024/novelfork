@@ -317,28 +317,11 @@ export class LlmRuntimeService {
         }
 
         const runtimeMessages = toRuntimeMessages(input.messages);
-        // Strip reasoning from historical messages to prevent cross-model thinking errors.
-        // Intra-turn reasoning passback is handled by agent-turn-runtime before messages reach here.
-        // Only keep reasoning for the last assistant message (current turn's tool loop).
-        let lastAssistantIdx = -1;
-        for (let i = runtimeMessages.length - 1; i >= 0; i--) {
-          if (runtimeMessages[i]!.role === "assistant" && (runtimeMessages[i] as { reasoning_content?: string }).reasoning_content) {
-            lastAssistantIdx = i;
-            break;
-          }
-        }
-        const cleanedMessages = runtimeMessages.map((msg, idx) => {
-          if (msg.role === "tool" || idx === lastAssistantIdx) return msg;
-          if (!(msg as { reasoning_content?: string }).reasoning_content && !(msg as { reasoning_signature?: string }).reasoning_signature) return msg;
-          const { reasoning_content, reasoning_signature, ...rest } = msg as RuntimeChatMessage & { reasoning_content?: string; reasoning_signature?: string };
-          if (!rest.content?.trim() && !(rest as { toolCalls?: unknown[] }).toolCalls?.length) return null;
-          return rest as RuntimeChatMessage;
-        }).filter((msg): msg is RuntimeChatMessage => msg !== null);
 
         const result = await adapter.generate({
           ...providerRef(provider),
           modelId: candidate.rawModelId,
-          messages: cleanedMessages,
+          messages: runtimeMessages,
           ...(requestedTools ? { tools: requestedTools } : {}),
           ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
           ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
