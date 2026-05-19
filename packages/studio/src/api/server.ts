@@ -1060,13 +1060,18 @@ export async function startStudioServer(
   // --- 启动时自动检查更新（非阻塞） ---
   try {
     const startupConfig = await loadUserConfig();
-    // 默认启用自动检查（除非用户显式关闭）
-    if (startupConfig.server?.autoCheckUpdate !== false) {
+    // 兼容旧配置 server.autoCheckUpdate + 新配置 update.autoCheck
+    const autoCheck = startupConfig.update?.autoCheck ?? startupConfig.server?.autoCheckUpdate !== false;
+    if (autoCheck) {
       const { checkForUpdate } = await import("./lib/update-checker.js");
       checkForUpdate().then(result => {
         if (result.updateAvailable && result.latestVersion) {
           console.log(`[update] 有新版本可用: v${result.latestVersion} (当前: v${result.currentVersion})`);
-          console.log(`[update] 下载地址: ${result.releaseUrl ?? "https://github.com/vivy1024/novelfork/releases/latest"}`);
+          if (result.downloadUrl) {
+            console.log(`[update] 可通过设置页面下载安装，或访问: ${result.releaseUrl ?? "https://github.com/vivy1024/novelfork/releases/latest"}`);
+          } else {
+            console.log(`[update] 下载地址: ${result.releaseUrl ?? "https://github.com/vivy1024/novelfork/releases/latest"}`);
+          }
         }
       }).catch(() => { /* 更新检查失败不影响启动 */ });
     }
