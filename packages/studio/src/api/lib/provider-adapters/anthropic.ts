@@ -22,6 +22,7 @@ import type {
   RuntimeToolStreamEvent,
 } from "./index.js";
 import { failure, toProviderSafeToolName, toInternalToolName } from "./completions.js";
+import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, type ModelTransformContext } from "./model-transforms.js";
 import { resolveMessagesUrls, resolveModelsUrls, trimTrailingSlash } from "./url-resolver.js";
 
 // ─── Exported Helpers (for ClaudeCodeAdapter reuse) ──────────────────────────
