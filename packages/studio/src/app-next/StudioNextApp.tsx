@@ -1216,6 +1216,7 @@ function toConversationStatus(
     modelLabel: selectedModel?.modelLabel ?? modelId,
     permissionMode: sessionConfig?.permissionMode,
     reasoningEffort: sessionConfig?.reasoningEffort,
+    serviceTier: sessionConfig?.serviceTier,
     apiMode: selectedModel?.protocol === "codex" ? "codex" : selectedModel?.protocol === "responses" ? "responses" : undefined,
     usage: usageFromSessionState(state.session, state.messages),
     contextUsage,

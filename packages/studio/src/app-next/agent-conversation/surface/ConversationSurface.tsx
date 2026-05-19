@@ -694,6 +694,8 @@ export function ConversationSurface({
         onUpdateModel={(providerId, modelId) => { void onUpdateSessionConfig?.({ providerId, modelId }); }}
         onUpdateReasoningEffort={(effort) => { void onUpdateSessionConfig?.({ reasoningEffort: effort }); }}
         onUpdatePermissionMode={(mode) => { void onUpdateSessionConfig?.({ permissionMode: mode }); }}
+        fastMode={status.serviceTier === "priority"}
+        onToggleFastMode={() => { void onUpdateSessionConfig?.({ serviceTier: status.serviceTier === "priority" ? "default" : "priority" }); }}
         onCompact={onCompactSession ? () => { onCompactSession("压缩上下文到目标阈值").catch((e) => { alert(`压缩失败: ${e instanceof Error ? e.message : String(e)}`); }); } : undefined}
         onReset={() => {
           if (!window.confirm("确定要清空上下文吗？Agent 将忘记之前的对话内容，但聊天记录仍然保留可查看。")) return;
