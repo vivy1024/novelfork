@@ -33,8 +33,8 @@ export interface LlmRuntimeMetadata {
 }
 
 export type LlmRuntimeGenerateResult =
-  | { readonly success: true; readonly type: "message"; readonly content: string; readonly metadata: LlmRuntimeMetadata }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly metadata: LlmRuntimeMetadata }
+  | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: LlmRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: LlmRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode; readonly error: string; readonly metadata?: Partial<LlmRuntimeMetadata> };
 
 export type LlmRuntimeInputMessage = NarratorSessionChatMessage | AgentTurnItem;
@@ -302,6 +302,15 @@ export class LlmRuntimeService {
 
         const runtimeMessages = toRuntimeMessages(input.messages);
 
+        // Debug: check reasoning presence before sending to adapter
+        const reasoningMsgs = runtimeMessages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content);
+        if (reasoningMsgs.length > 0 || runtimeMessages.some(m => m.role === "assistant" && (m as { toolCalls?: unknown[] }).toolCalls?.length)) {
+          console.log(`[llm-runtime] ${runtimeMessages.length} msgs, ${reasoningMsgs.length} with reasoning, input.messages=${input.messages.length}`);
+          // Log the raw input messages to see if reasoning_content is present
+          const rawReasoning = input.messages.filter(m => "reasoning_content" in m && (m as { reasoning_content?: string }).reasoning_content);
+          console.log(`[llm-runtime] raw input reasoning: ${rawReasoning.length}`);
+        }
+
         const result = await adapter.generate({
           ...providerRef(provider),
           modelId: candidate.rawModelId,
@@ -364,14 +373,14 @@ export class LlmRuntimeService {
         }
 
         if (result.type === "tool_use") {
-          return { success: true, type: "tool_use", toolUses: result.toolUses, metadata };
+          return { success: true, type: "tool_use", toolUses: result.toolUses, ...(result.reasoningContent ? { reasoningContent: result.reasoningContent, reasoningSignature: result.reasoningSignature } : {}), metadata };
         }
 
         if (!result.content.trim()) {
           return { success: false, code: "empty-response", error: "LLM runtime returned an empty response", metadata };
         }
 
-        return { success: true, type: "message", content: result.content, metadata };
+        return { success: true, type: "message", content: result.content, ...(result.reasoningContent ? { reasoningContent: result.reasoningContent, reasoningSignature: result.reasoningSignature } : {}), metadata };
       }
     }
 
