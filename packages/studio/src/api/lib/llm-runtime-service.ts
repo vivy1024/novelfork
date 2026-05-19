@@ -4,8 +4,6 @@ import type { RetryRule, RuntimeRecoverySettings } from "../../types/settings.js
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
 import { getAggregation, isAggregationId, resolveAggregation } from "./model-aggregation-service.js";
 import {
-  createProviderAdapterRegistry,
-  type ProviderAdapterRegistry,
   type RuntimeAdapterFailureCode,
   type RuntimeAdapterId,
   type RuntimeChatMessage,
@@ -53,24 +51,14 @@ export interface LlmRuntimeGenerateInput {
 
 export interface LlmRuntimeServiceOptions {
   readonly store?: ProviderRuntimeStore;
-  readonly adapters?: ProviderAdapterRegistry;
 }
 
 function globalModelId(providerId: string, modelId: string): string {
   return providerId ? `${providerId}:${modelId}` : modelId;
 }
 
-function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId {
-  // Legacy routing — kept for backward compatibility
-  if (provider.id === "codex") return "codex-platform";
-  if (provider.id === "kiro") return "kiro-platform";
-  if (provider.compatibility === "anthropic-compatible") return "anthropic-compatible";
-  return "openai-compatible";
-}
-
-/** 获取 provider 对应的 adapter（优先使用 protocol 路由） */
-function getAdapter(provider: RuntimeProviderRecord, _legacyAdapters?: ProviderAdapterRegistry) {
-  // Always use protocol-based routing for correct adapter selection
+/** 获取 provider 对应的 adapter（protocol 路由） */
+function getAdapter(provider: RuntimeProviderRecord) {
   const protocol = inferProtocol(provider);
   return getAdapterForProtocol(protocol);
 }
@@ -218,11 +206,9 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<void> {
 
 export class LlmRuntimeService {
   private readonly store: ProviderRuntimeStore;
-  private readonly adapters: ProviderAdapterRegistry;
 
   constructor(options: LlmRuntimeServiceOptions = {}) {
     this.store = options.store ?? new ProviderRuntimeStore();
-    this.adapters = options.adapters ?? createProviderAdapterRegistry();
   }
 
   async generate(input: LlmRuntimeGenerateInput): Promise<LlmRuntimeGenerateResult> {
@@ -298,7 +284,7 @@ export class LlmRuntimeService {
         continue;
       }
 
-      const adapter = getAdapter(provider, this.adapters);
+      const adapter = getAdapter(provider);
 
       // Retry loop with exponential backoff for transient errors
       let retryAttempt = 0;
