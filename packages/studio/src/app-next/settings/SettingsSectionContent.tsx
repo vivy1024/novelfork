@@ -20,8 +20,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, AlertTriangle } from "lucide-react";
-import type { ServerSettings } from "../../types/settings";
+import { Save, AlertTriangle, RefreshCw, Loader2, CheckCircle, AlertCircle, ShieldAlert } from "lucide-react";
+import type { ServerSettings, UpdateSettings } from "../../types/settings";
 import {
   deriveModelSettingsFacts,
   settingsFactDisplayValue,
@@ -146,6 +146,16 @@ function FactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
 
 /* ── Server ── */
 
+type UpdateCheckPhase = "idle" | "checking" | "up-to-date" | "available" | "error";
+
+interface UpdateCheckResult {
+  currentVersion: string;
+  latestVersion: string | null;
+  updateAvailable: boolean;
+  releaseUrl: string | null;
+  error?: string;
+}
+
 function ServerSection() {
   const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi<Record<string, unknown>>("/settings/metrics");
   const [server, setServer] = useState<ServerSettings>({
@@ -156,16 +166,31 @@ function ServerSection() {
     tlsEnabled: false,
     tlsCertPath: "",
     tlsKeyPath: "",
+    autoCheckUpdate: true,
+  });
+  const [update, setUpdate] = useState<UpdateSettings>({
+    serverUrl: "https://novelfork-update.vivy1024.cc",
+    channel: "stable",
+    autoCheck: true,
+    autoDownload: false,
+    lastCheckAt: null,
+    skippedVersion: null,
   });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Update check state
+  const [updatePhase, setUpdatePhase] = useState<UpdateCheckPhase>("idle");
+  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
   useEffect(() => {
-    fetchJson<{ server?: ServerSettings }>("/settings/user")
+    fetchJson<{ server?: ServerSettings; update?: UpdateSettings }>("/settings/user")
       .then((data) => {
         if (data.server) setServer(data.server);
+        if (data.update) setUpdate(data.update);
       })
       .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
       .finally(() => setLoading(false));
@@ -175,13 +200,33 @@ function ServerSection() {
     setSaving(true);
     setError(null);
     try {
-      await putApi("/settings/user", { server });
+      await putApi("/settings/user", { server, update });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleCheckUpdate() {
+    setUpdatePhase("checking");
+    setUpdateError(null);
+    try {
+      const result = await fetchJson<UpdateCheckResult>("/settings/check-update");
+      setUpdateInfo(result);
+      if (result.error) {
+        setUpdatePhase("error");
+        setUpdateError(result.error);
+      } else if (result.updateAvailable) {
+        setUpdatePhase("available");
+      } else {
+        setUpdatePhase("up-to-date");
+      }
+    } catch (err) {
+      setUpdatePhase("error");
+      setUpdateError(err instanceof Error ? err.message : "检查更新失败");
     }
   }
 
@@ -271,7 +316,7 @@ function ServerSection() {
               />
             </div>
             {server.tlsEnabled && (
-              <div className="space-y-2 pl-1">
+              <div className="space-y-3 pl-1">
                 <div className="space-y-1">
                   <label className="text-xs text-muted-foreground">证书路径</label>
                   <Input
@@ -290,8 +335,105 @@ function ServerSection() {
                     className="text-xs font-mono"
                   />
                 </div>
+                <Button variant="outline" size="sm" className="gap-1.5">
+                  <ShieldAlert className="size-3.5" />
+                  生成自签名证书
+                </Button>
+                <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
+                  <AlertTriangle className="size-3.5 shrink-0" />
+                  <span>自签名证书会导致浏览器显示安全警告。首次访问时需手动信任此证书。</span>
+                </div>
               </div>
             )}
+          </div>
+
+          {/* 更新 */}
+          <div className="space-y-3 border-t border-border pt-3">
+            <h3 className="text-sm font-semibold">更新</h3>
+
+            {/* 更新服务器地址 */}
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">更新服务器地址</label>
+              <Input
+                placeholder="更新服务器的 URL（例如 https://updates.example.com）"
+                value={update.serverUrl}
+                onChange={(e) => setUpdate((u) => ({ ...u, serverUrl: e.target.value }))}
+                className="text-sm font-mono"
+              />
+            </div>
+
+            {/* 更新通道 */}
+            <div className="space-y-1">
+              <label className="text-sm text-muted-foreground">更新通道</label>
+              <div className="inline-flex rounded-md border border-border overflow-hidden">
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${update.channel === "stable" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => setUpdate((u) => ({ ...u, channel: "stable" }))}
+                >
+                  稳定版
+                </button>
+                <button
+                  type="button"
+                  className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors ${update.channel === "beta" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                  onClick={() => setUpdate((u) => ({ ...u, channel: "beta" }))}
+                >
+                  测试版
+                </button>
+              </div>
+            </div>
+
+            {/* 自动下载更新 */}
+            <div className="flex items-center justify-between">
+              <div>
+                <span className="text-sm font-medium">自动下载更新</span>
+                <p className="text-xs text-muted-foreground">有可用更新时自动下载</p>
+              </div>
+              <Switch
+                checked={update.autoDownload}
+                onCheckedChange={(checked) => setUpdate((u) => ({ ...u, autoDownload: checked }))}
+              />
+            </div>
+
+            {/* 检查更新 */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleCheckUpdate}
+                disabled={updatePhase === "checking"}
+                className="gap-1.5"
+              >
+                {updatePhase === "checking" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
+                检查更新
+              </Button>
+
+              {updatePhase === "up-to-date" && (
+                <span className="flex items-center gap-1 text-xs text-green-600">
+                  <CheckCircle className="size-3.5" />
+                  已是最新版本
+                </span>
+              )}
+
+              {updatePhase === "available" && updateInfo && (
+                <span className="flex items-center gap-1 text-xs text-orange-600">
+                  <AlertCircle className="size-3.5" />
+                  新版本可用：v{updateInfo.latestVersion}
+                  {updateInfo.releaseUrl && (
+                    <a href={updateInfo.releaseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline ml-1">
+                      查看详情
+                    </a>
+                  )}
+                </span>
+              )}
+
+              {updatePhase === "error" && updateError && (
+                <span className="flex items-center gap-1 text-xs text-red-600">
+                  <AlertCircle className="size-3.5" />
+                  {updateError}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* 保存按钮 */}
@@ -324,6 +466,9 @@ function ServerSection() {
           {/* 系统依赖 */}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <h3 className="text-sm font-semibold">系统依赖</h3>
+            {typeof metricsData.packageManager === "string" && (
+              <p className="text-xs text-muted-foreground mb-2">检测到的包管理器：<span className="font-mono text-foreground">{metricsData.packageManager}</span></p>
+            )}
             <SystemDependencyRow name="git" description="版本控制（核心功能）" required version={typeof metricsData.gitVersion === "string" ? metricsData.gitVersion : undefined} />
             <SystemDependencyRow name="rg" description="AI 工具快速代码搜索" version={typeof metricsData.rgVersion === "string" ? metricsData.rgVersion : undefined} />
             <SystemDependencyRow name="node" description="Node.js 运行时" version={typeof metricsData.nodeVersion === "string" ? metricsData.nodeVersion : undefined} />
