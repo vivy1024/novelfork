@@ -537,6 +537,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
     // Insert assistant message with reasoning_content before tool calls
     // Controlled by reasoningPolicy: strip (never), passback-on-tool-loop (default, tool loops only), always-passback (always)
+    // NOTE: DeepSeek requires reasoning_content to be on the same assistant message as tool_calls.
+    // We push it as a standalone message here; toOpenAiMessages will merge it with the following tool_calls.
     const policy = input.reasoningPolicy ?? "passback-on-tool-loop";
     if (reply.reasoningContent && policy !== "strip") {
       messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent });
