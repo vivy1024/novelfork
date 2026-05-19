@@ -253,6 +253,9 @@ export function ConversationSurface({
     if (msgIndex >= 0 && onTruncateToMessage) {
       void onTruncateToMessage(editingMessage.id).then(() => {
         onSend(newContent);
+      }).catch(() => {
+        // Truncate failed — still send the message as fallback
+        onSend(newContent);
       });
     } else {
       // Fallback: just send as new message

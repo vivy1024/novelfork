@@ -4,6 +4,17 @@
 
 ## Unreleased
 
+## v1.0.5 (2026-05-19)
+
+### ✨ UI 改进
+
+- **UserQuestionGate 工具卡片化**：引导式生成问答表单改为可折叠工具卡片样式，header 显示问题数和进度，body 带 `max-h-[60vh]` 滚动和 sticky 操作栏，不再撑破屏幕。
+
+### 🐛 修复
+
+- **编辑重发消息容错**：右键消息"编辑并重新生成"时，如果 truncate API 失败，fallback 为直接发送新消息，不再静默吞掉。
+- **统一资源节点 detailSource 标记**：从统一资源 API 加载的章节/候选稿/草稿标记为 `detailSource: "detail"`，避免走旧 chapters API 导致 "Chapter not found" 错误。
+
 ## v1.0.4 (2026-05-19)
 
 ### ✨ 统一资源版本系统
