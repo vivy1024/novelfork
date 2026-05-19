@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+## v1.0.6 (2026-05-19)
+
+### ✨ 多模型适配器 + Codex Fast Mode
+
+- **DeepSeek 工具名编码**：`cockpit.get_snapshot` 等带 `.` 的工具名自动编码为 `cockpit__2e__get_snapshot`，响应中解码回来，修复 DeepSeek API 400 错误。
+- **DeepSeek thinking signature 传回**：Anthropic 兼容端点的 thinking block signature 正确保存并传回，修复工具循环中断。
+- **DeepSeek 模型别名**：`deepseek-chat`/`deepseek-reasoner` 等废弃名称自动映射到 `deepseek-v4-flash`。
+- **Codex Fast Mode**：底部状态栏 Fast Mode 按钮正确接线，切换 `service_tier: "priority"` 发送到 API。
+- **Codex 推理强度**：L/M/H 选择正确传递到 `reasoning_effort` 参数（之前硬编码 "medium"）。
+- **Per-provider 参数转换**：GLM（strip cache_control）、MiMo/MiniMax（strip reasoning_effort/stream_options）、Qwen（enable_thinking for Qwen3）自动应用。
+- **Provider 自动检测**：从 model/providerId/baseUrl 识别 deepseek/glm/kimi/minimax/qwen/mimo，按需应用转换。
+- **AskUserQuestion 重复调用修复**：Agent prompt 明确禁止收到回答后再次调用。
+
 ## v1.0.5 (2026-05-19)
 
 ### ✨ UI 改进
