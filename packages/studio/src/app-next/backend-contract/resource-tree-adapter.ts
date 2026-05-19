@@ -221,6 +221,8 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
     parentId: resource.parentId ?? undefined,
     updatedAt: new Date(resource.updatedAt).toISOString(),
     createdAt: new Date(resource.createdAt).toISOString(),
+    // Mark as fully loaded so resourceNeedsDetailHydration returns false
+    detailSource: "detail",
   };
   return {
     id,
