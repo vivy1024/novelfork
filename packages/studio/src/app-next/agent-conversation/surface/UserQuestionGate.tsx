@@ -288,7 +288,7 @@ export function UserQuestionGate({ confirmation, onSubmitAnswers, onSkip }: User
   }
 
   return (
-    <aside data-testid="user-question-gate" className="rounded-xl border border-blue-200 bg-gradient-to-b from-blue-50/90 to-blue-50/50 p-5 dark:border-blue-800 dark:bg-gradient-to-b dark:from-blue-950/40 dark:to-blue-950/20 space-y-5">
+    <aside data-testid="user-question-gate" className="rounded-xl border border-blue-200 bg-gradient-to-b from-blue-50/90 to-blue-50/50 p-5 dark:border-blue-800 dark:bg-gradient-to-b dark:from-blue-950/40 dark:to-blue-950/20 space-y-5 max-h-[70vh] overflow-y-auto">
       {/* Questions */}
       {questions.map((question) => (
         <div key={question.id} className="space-y-2.5">
