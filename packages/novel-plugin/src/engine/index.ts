@@ -125,3 +125,6 @@ export * from "./tools/index.js";
 
 // ─── Bible (backward compat) ─────────────────────────────────────────────────
 export * from "./bible/index.js";
+
+// ─── Writing Resource ─────────────────────────────────────────────────────
+export * from "./writing-resource/index.js";

@@ -4,7 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Save, Trash2, Loader2 } from "lucide-react";
+
+export type JingweiPriorityTier = "auto" | "core" | "relevant" | "reference";
 
 export interface JingweiEntryData {
   id: string;
@@ -12,31 +15,33 @@ export interface JingweiEntryData {
   contentMd: string;
   sectionId?: string;
   updatedAt?: string;
+  priorityTier?: JingweiPriorityTier;
 }
 
 export interface JingweiEntryEditorProps {
   entry: JingweiEntryData;
   sectionLabel?: string;
-  onSave: (entryId: string, payload: { title: string; contentMd: string }) => Promise<void>;
+  onSave: (entryId: string, payload: { title: string; contentMd: string; priorityTier?: JingweiPriorityTier }) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
 }
 
 export function JingweiEntryEditor({ entry, sectionLabel, onSave, onDelete }: JingweiEntryEditorProps) {
   const [title, setTitle] = useState(entry.title);
   const [content, setContent] = useState(entry.contentMd);
+  const [priorityTier, setPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const dirty = title !== entry.title || content !== entry.contentMd;
+  const dirty = title !== entry.title || content !== entry.contentMd || priorityTier !== (entry.priorityTier ?? "auto");
 
   async function handleSave() {
     if (!dirty || saving) return;
     setSaving(true);
     setError(null);
     try {
-      await onSave(entry.id, { title: title.trim(), contentMd: content });
+      await onSave(entry.id, { title: title.trim(), contentMd: content, priorityTier });
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存失败");
     } finally {
@@ -93,6 +98,23 @@ export function JingweiEntryEditor({ entry, sectionLabel, onSave, onDelete }: Ji
             placeholder="在此编辑经纬资料内容..."
             className="text-sm font-mono"
           />
+        </div>
+
+        {/* 优先级层级 */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
+          <Select value={priorityTier} onValueChange={(value) => setPriorityTier(value as JingweiPriorityTier)}>
+            <SelectTrigger className="w-48 h-8 text-xs">
+              <SelectValue placeholder="选择优先级" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="auto">自动（按规则推断）</SelectItem>
+              <SelectItem value="core">核心（始终注入）</SelectItem>
+              <SelectItem value="relevant">相关（按匹配注入）</SelectItem>
+              <SelectItem value="reference">参考（仅 full 模式）</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="mt-1 text-[10px] text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
         </div>
 
         {/* 操作栏 */}
