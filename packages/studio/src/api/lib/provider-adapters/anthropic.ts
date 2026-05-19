@@ -453,9 +453,9 @@ export class AnthropicAdapter implements RuntimeAdapter {
     // Debug: log reasoning presence in messages sent to API
     const anthropicMsgs = body.messages as Array<Record<string, unknown>>;
     const thinkingCount = anthropicMsgs.filter(m => Array.isArray(m.content) && (m.content as Array<Record<string, unknown>>).some(b => b.type === "thinking")).length;
-    if (thinkingCount > 0) {
-      console.log(`[anthropic.generate] ${anthropicMsgs.length} messages, ${thinkingCount} with thinking blocks`);
-    }
+    const toolUseCount = anthropicMsgs.filter(m => Array.isArray(m.content) && (m.content as Array<Record<string, unknown>>).some(b => b.type === "tool_use")).length;
+    const inputWithReasoning = input.messages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content).length;
+    console.log(`[anthropic.generate] ${anthropicMsgs.length} msgs, thinking=${thinkingCount}, tool_use=${toolUseCount}, inputReasoning=${inputWithReasoning}/${input.messages.length}`);
 
     // Extract system message — use content block format with cache_control for prompt caching
     const systemMessage = input.messages.find((m) => m.role === "system");
