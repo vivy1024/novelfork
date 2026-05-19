@@ -1,4 +1,5 @@
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
+import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, type ModelTransformContext } from "./model-transforms.js";
 
 export type RuntimeAdapterId = "openai-compatible" | "anthropic-compatible" | "codex-platform" | "kiro-platform";
 export type RuntimeAdapterFailureCode = "unsupported" | "auth-missing" | "config-missing" | "upstream-error" | "network-error";
@@ -227,13 +228,33 @@ function toProviderSafeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/gu, "_");
 }
 
-function toInternalToolName(name: string, tools: readonly RuntimeToolDefinition[]): string {
-  return tools.find((tool) => toProviderSafeToolName(tool.name) === name)?.name ?? name;
+/** DeepSeek-aware tool name encoding — reversible via __hex__ sequences */
+function encodeToolNameForProvider(name: string, ctx?: ModelTransformContext): string {
+  if (ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek") {
+    return needsDeepSeekToolNameEncoding(name) ? encodeDeepSeekToolName(name) : name;
+  }
+  return toProviderSafeToolName(name);
 }
 
-function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<string, unknown>> {
+/** DeepSeek-aware tool name decoding */
+function decodeToolNameFromProvider(encoded: string, tools: readonly RuntimeToolDefinition[], ctx?: ModelTransformContext): string {
+  if (ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek") {
+    const decoded = decodeDeepSeekToolName(encoded);
+    return tools.find(t => t.name === decoded)?.name ?? decoded;
+  }
+  return tools.find((tool) => toProviderSafeToolName(tool.name) === encoded)?.name ?? encoded;
+}
+
+function toInternalToolName(name: string, tools: readonly RuntimeToolDefinition[]): string {
+  // Try DeepSeek decode first, then fallback to standard lookup
+  const decodedDs = decodeDeepSeekToolName(name);
+  const found = tools.find(t => t.name === decodedDs || toProviderSafeToolName(t.name) === name);
+  return found?.name ?? name;
+}
+
+function toOpenAiTools(tools: readonly RuntimeToolDefinition[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
   return tools.map((tool) => {
-    const safeName = toProviderSafeToolName(tool.name);
+    const safeName = encodeToolNameForProvider(tool.name, ctx);
     return {
       type: "function",
       function: {
@@ -245,7 +266,7 @@ function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<st
   });
 }
 
-function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record<string, unknown>> {
+function toOpenAiMessages(messages: readonly RuntimeChatMessage[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
   return messages.map((message) => {
     if (message.role === "tool") {
       return {
@@ -263,7 +284,7 @@ function toOpenAiMessages(messages: readonly RuntimeChatMessage[]): Array<Record
           id: toolCall.id,
           type: "function",
           function: {
-            name: toProviderSafeToolName(toolCall.name),
+            name: encodeToolNameForProvider(toolCall.name, ctx),
             arguments: JSON.stringify(toolCall.input),
           },
         })),
@@ -671,13 +692,19 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
-    const body = {
-      model: input.modelId,
-      messages: toOpenAiMessages(messages),
+    const ctx: ModelTransformContext = { modelId: input.modelId, providerId: input.providerId, baseUrl: input.baseUrl };
+    const effectiveModelId = resolveModelId(ctx);
+    const body: Record<string, unknown> = {
+      model: effectiveModelId,
+      messages: toOpenAiMessages(messages, ctx),
       stream: true,
       stream_options: { include_usage: true },
-      ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
+      ...(hasTools ? { tools: toOpenAiTools(tools!, ctx), tool_choice: "auto" } : {}),
     };
+    // Strip sampling params for reasoner models
+    if (!shouldStripSamplingParams(ctx)) {
+      // keep defaults
+    }
 
     const urls = openAiUrls(input, "/chat/completions");
     let lastError = "OpenAI-compatible streaming request failed";
@@ -865,12 +892,14 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
+    const ctx: ModelTransformContext = { modelId: input.modelId, providerId: input.providerId, baseUrl: input.baseUrl };
+    const effectiveModelId = resolveModelId(ctx);
     const body = {
-      model: input.modelId,
-      messages: toOpenAiMessages(messages),
+      model: effectiveModelId,
+      messages: toOpenAiMessages(messages, ctx),
       stream: false,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
-      ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
+      ...(hasTools ? { tools: toOpenAiTools(tools!, ctx), tool_choice: "auto" } : {}),
     };
     const result = await requestOpenAiJson(input, "/chat/completions", {
       method: "POST",
