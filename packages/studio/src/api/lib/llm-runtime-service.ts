@@ -109,8 +109,9 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
         // (required by Claude API: one assistant message can have multiple tool_use blocks)
         const lastMsg = result[result.length - 1];
         if (lastMsg && lastMsg.role === "assistant" && lastMsg.toolCalls && lastMsg.toolCalls.length > 0) {
-          // Replace last message with expanded toolCalls array
-          result[result.length - 1] = { ...lastMsg, toolCalls: [...lastMsg.toolCalls, { id: message.id, name: message.name, input: message.input }] };
+          // Replace last message with expanded toolCalls array; also attach pending reasoning if present
+          const mergedReasoning = pendingReasoning ?? lastMsg.reasoning_content;
+          result[result.length - 1] = { ...lastMsg, toolCalls: [...lastMsg.toolCalls, { id: message.id, name: message.name, input: message.input }], ...(mergedReasoning ? { reasoning_content: mergedReasoning } : {}) };
         } else {
           result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}) });
         }

@@ -698,6 +698,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
             const errorPayload = await parseJsonResponse(response);
             errorMessage = readOpenAiError(errorPayload, errorMessage);
           } catch { /* use default error message */ }
+          console.error(`[adapter.streaming] upstream error: ${errorMessage} (url=${url})`);
           if (canRetry && (response.status === 404 || response.status === 405)) {
             lastError = errorMessage;
             continue;
