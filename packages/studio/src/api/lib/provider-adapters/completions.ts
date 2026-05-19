@@ -22,6 +22,7 @@ import type {
   RuntimeChatMessage,
 } from "./index.js";
 import { resolveCompletionsUrls, resolveModelsUrls } from "./url-resolver.js";
+import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, type ModelTransformContext } from "./model-transforms.js";
 
 // ─── Helper Functions ────────────────────────────────────────────────────────
 
@@ -75,6 +76,39 @@ export function safeJsonParse(str: string): Record<string, unknown> {
 
 export function toProviderSafeToolName(name: string): string {
   return name.replace(/[^a-zA-Z0-9_-]/gu, "_");
+}
+
+/**
+ * Encode tool name with DeepSeek-specific reversible encoding.
+ * Uses __hex__ sequences so we can decode back to the original name.
+ */
+export function toDeepSeekSafeToolName(name: string): string {
+  if (!needsDeepSeekToolNameEncoding(name)) return name;
+  return encodeDeepSeekToolName(name);
+}
+
+/**
+ * Select the appropriate tool name encoder based on provider.
+ */
+export function getToolNameEncoder(ctx: ModelTransformContext): (name: string) => string {
+  const provider = detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl);
+  if (provider === "deepseek") return toDeepSeekSafeToolName;
+  return toProviderSafeToolName;
+}
+
+/**
+ * Select the appropriate tool name decoder based on provider.
+ */
+export function getToolNameDecoder(ctx: ModelTransformContext, tools: readonly RuntimeToolDefinition[]): (name: string) => string {
+  const provider = detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl);
+  if (provider === "deepseek") {
+    return (encoded: string) => {
+      const decoded = decodeDeepSeekToolName(encoded);
+      // Verify decoded name exists in tool list
+      return tools.find(t => t.name === decoded)?.name ?? decoded;
+    };
+  }
+  return (name: string) => tools.find((tool) => toProviderSafeToolName(tool.name) === name)?.name ?? name;
 }
 
 export function toProviderSafeToolCallId(id: string | undefined, index = 0): string {
