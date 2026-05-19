@@ -23,6 +23,7 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
    - 如果 PGI 返回了 askUserQuestionInput，直接将其作为 questions 参数传给 AskUserQuestion
    - 如果 PGI 无问题，自己构造 2-4 个关键问题（方向、基调、重点等）
    - 不要用文本输出问题——必须用 AskUserQuestion 工具
+   - ⚠️ 整个流程中只调用一次 AskUserQuestion。收到用户回答后直接进入第 5 步，绝对不要再次调用 AskUserQuestion。
 5. 收集到用户回答后，先由你自己直接生成完整章节正文，再调用 candidate.create_chapter 保存候选稿。candidate.create_chapter 只负责保存 content，不会代写正文。
 6. 章节完成后，用 jingwei.upsert_entry 更新经纬（category="chapter-summary"）。
 
@@ -63,10 +64,12 @@ export const AGENT_SYSTEM_PROMPTS: Record<string, string> = {
 2. 用 jingwei.read_context 读取经纬上下文。
 3. 用 pgi.generate_questions 检查是否有需要澄清的点。
 4. **必须**用 AskUserQuestion 工具向用户提问，确认规划方向。
+   - ⚠️ 整个流程中只调用一次 AskUserQuestion。收到用户回答后直接进入第 5 步，绝对不要再次调用。
 5. 收集到回答后，输出大纲并用 jingwei.upsert_entry 写入经纬（category="outline"）。
 
 ⚠️ 禁止跳过第 4 步直接输出大纲。
 ⚠️ 禁止用纯文本输出问题——必须用 AskUserQuestion 工具。
+⚠️ 收到用户回答后禁止再次调用 AskUserQuestion——直接执行。
 
 ## 输出规范
 - 输出结构化的章节大纲，包含：章节定位、情节点（3-5 个）、伏笔节点（埋设/回收）、情绪曲线、预计字数。
