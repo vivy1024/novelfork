@@ -32,6 +32,13 @@ const VISIBILITY_OPTIONS = [
   { value: "nested", label: "嵌套可见" },
 ];
 
+const PRIORITY_TIER_OPTIONS = [
+  { value: "auto", label: "自动（按规则推断）" },
+  { value: "core", label: "核心（始终注入）" },
+  { value: "relevant", label: "相关（按匹配注入）" },
+  { value: "reference", label: "参考（仅 full 模式）" },
+];
+
 export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: JingweiEntryFormProps) {
   const schema = getCategorySchema(entry.category);
   const fields = schema?.fields ?? [];
@@ -40,6 +47,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   const [contentMd, setContentMd] = useState(entry.contentMd ?? "");
   const [formData, setFormData] = useState<Record<string, unknown>>(entry.fields ?? {});
   const [visibility, setVisibility] = useState<CategoryVisibility>(entry.visibility);
+  const [priorityTier, setPriorityTier] = useState<"auto" | "core" | "relevant" | "reference">(entry.priorityTier ?? "auto");
   const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
   const [aliasInput, setAliasInput] = useState("");
   const [visibleAfterChapter, setVisibleAfterChapter] = useState<number | null>(entry.visibleAfterChapter ?? null);
@@ -55,6 +63,7 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     setContentMd(entry.contentMd ?? "");
     setFormData(entry.fields ?? {});
     setVisibility(entry.visibility);
+    setPriorityTier(entry.priorityTier ?? "auto");
     setAliases(entry.aliases ?? []);
     setAliasInput("");
     setVisibleAfterChapter(entry.visibleAfterChapter ?? null);
@@ -67,11 +76,12 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     if (title !== entry.title) return true;
     if (contentMd !== (entry.contentMd ?? "")) return true;
     if (visibility !== entry.visibility) return true;
+    if (priorityTier !== (entry.priorityTier ?? "auto")) return true;
     if (JSON.stringify(aliases) !== JSON.stringify(entry.aliases ?? [])) return true;
     if (visibleAfterChapter !== (entry.visibleAfterChapter ?? null)) return true;
     if (visibleUntilChapter !== (entry.visibleUntilChapter ?? null)) return true;
     return JSON.stringify(formData) !== JSON.stringify(entry.fields ?? {});
-  }, [title, contentMd, formData, visibility, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
+  }, [title, contentMd, formData, visibility, priorityTier, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
 
   function setField(key: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -115,11 +125,23 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
 
       {/* Form body */}
       {contentMd ? (
-        /* Markdown 模式：标题 + 全屏编辑器 */
+        /* Markdown 模式：标题 + 优先级 + 全屏编辑器 */
         <div className="flex-1 flex flex-col min-h-0 p-3 gap-2">
-          <div className="shrink-0">
-            <label className="text-xs text-muted-foreground mb-1 block">标题</label>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
+          <div className="shrink-0 flex items-center gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">标题</label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
+            </div>
+            <div className="w-48 shrink-0">
+              <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
+              <SimpleSelect
+                value={priorityTier}
+                onValueChange={(v) => setPriorityTier(v as "auto" | "core" | "relevant" | "reference")}
+                options={PRIORITY_TIER_OPTIONS}
+                className="w-full"
+                aria-label="上下文优先级"
+              />
+            </div>
           </div>
           <div className="flex-1 flex flex-col min-h-0">
             <label className="text-xs text-muted-foreground mb-1 block shrink-0">内容（Markdown）</label>
@@ -150,6 +172,19 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
             className="w-full"
             aria-label="可见性"
           />
+        </div>
+
+        {/* Priority Tier */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
+          <SimpleSelect
+            value={priorityTier}
+            onValueChange={(v) => setPriorityTier(v as "auto" | "core" | "relevant" | "reference")}
+            options={PRIORITY_TIER_OPTIONS}
+            className="w-full"
+            aria-label="上下文优先级"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">核心=始终注入 Agent；参考=仅 full 模式</p>
         </div>
 
         {/* Chapter visibility range */}

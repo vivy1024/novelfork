@@ -6,6 +6,7 @@ export interface JingweiReadContextInput {
   categories?: string[];
   chapterNumber?: number;
   sceneText?: string;
+  mode?: "auto" | "core" | "relevant" | "full";
 }
 
 export interface JingweiReadContextResult {
@@ -35,13 +36,15 @@ export async function handleJingweiReadContext(
   _booksDir?: string,
 ): Promise<JingweiReadContextResult> {
   const { bookId, chapterNumber, sceneText } = input;
+  const mode = input.mode === "core" || input.mode === "relevant" || input.mode === "full" ? input.mode : "auto";
 
   try {
     const result = await buildJingweiContext({
       bookId,
       currentChapter: chapterNumber,
       sceneText,
-      tokenBudget: 32000,
+      mode,
+      tokenBudget: mode === "full" ? 32000 : undefined,
     });
 
     if (result.items.length > 0) {

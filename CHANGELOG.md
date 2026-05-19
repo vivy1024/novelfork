@@ -4,11 +4,31 @@
 
 ## Unreleased
 
-### ♻️ 架构改进
+## v1.0.4 (2026-05-19)
 
-- **candidate.create_chapter 改为纯保存工具**：删除工具内部二次模型调用，正文由外层 Agent 直接生成后通过 `content` 参数传入保存。消除写章超时根因，同时复用生成式浮现机制。
-- **ArtifactPanel 支持候选稿浮现**：`candidate.create_chapter` 加入 WRITE_TOOL_NAMES，正文生成时右侧面板实时浮现内容。
-- **Writer prompt 更新**：明确要求 Agent 先生成正文再调工具保存，禁止依赖工具代写。
+### ✨ 统一资源版本系统
+
+- **writing_resource 统一表**：章节/候选稿/草稿统一为 SQLite 单表，支持完整状态机（draft→candidate→accepted/rejected/archived）和版本链（parent_id）。
+- **统一资源 REST API**：`/api/books/:bookId/resources` 7 端点（list/get/create/update/transition/delete/history），替代分散的文件操作。
+- **候选稿操作栏**：接受（替换/合并/另存草稿）、拒绝、归档、删除，操作后资源树自动刷新。
+- **草稿操作栏**：提交候选稿、直接采纳（指定目标章节号）、删除。
+- **章节操作栏**：编辑为草稿（复制完整内容）、生成变体（创建候选稿副本）、查看版本历史。
+- **版本历史面板**：显示 parent 链，每个版本显示标题/版本号/状态/时间。
+- **资源树分组**：章节/候选稿/草稿/已归档/大纲与设定/经纬资料/伏笔/叙事线，优先从统一资源 API 加载。
+
+### ✨ 经纬上下文分层
+
+- **JingweiContextPolicy**：core/relevant/reference 三层策略，按 priority_tier 字段 + 自动规则分层。
+- **buildJingweiContext mode 参数**：auto（core+relevant ~12000 tokens）/ core / relevant / full 四种模式。
+- **jingwei.read_context 工具**：schema 增加 mode 字段，默认 auto 模式控制 token 消耗。
+- **经纬条目优先级 UI**：编辑表单增加"上下文优先级"下拉（自动/核心/相关/参考）。
+
+### 🐛 修复
+
+- **TipTap 初始化 dirty 误报**：章节/草稿打开后不再错误显示"未保存"，修复 TipTap markdown normalize 触发的假 dirty 状态。
+- **编辑为草稿/生成变体内容丢失**：改为先从 API 获取完整资源内容再创建，不依赖可能未 hydrate 的 resourceMap 闭包。
+- **后端允许空 content 创建草稿**：`parseCreateInput` 不再对空字符串 content 抛异常。
+- **旧路由兼容层**：`chapter-candidates.ts` 内部转发到统一资源 API，标记 deprecated。
 
 ## v1.0.3 (2026-05-18)
 

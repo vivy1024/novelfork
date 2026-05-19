@@ -2,6 +2,7 @@ import { createBookRepository } from "../repositories/book-repo.js";
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { createStoryJingweiEntryRepository } from "../repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "../repositories/section-repo.js";
+import { resolveJingweiContextLayer, shouldIncludeLayer } from "./context-policy.js";
 import type {
   BuildJingweiContextInput,
   JingweiContextItem,
@@ -218,21 +219,34 @@ export async function buildJingweiContext(input: BuildJingweiContextOptions): Pr
   const entries = (await createStoryJingweiEntryRepository(storage).listForAi(input.bookId, sections.map((section) => section.id)))
     .filter((entry) => isVisibleAtChapter(entry, currentChapter));
 
-  const globals = entries.filter((entry) => entry.visibilityRule.type === "global");
+  const mode = input.mode ?? "auto";
+  const layerVisible = (entry: StoryJingweiEntryRecord): boolean => {
+    const section = sectionById.get(entry.sectionId);
+    const layer = resolveJingweiContextLayer(entry, section);
+    return shouldIncludeLayer(mode, layer);
+  };
+  const globals = entries.filter((entry) => entry.visibilityRule.type === "global" && layerVisible(entry));
   const tracked = input.sceneText
-    ? entries.filter((entry) => entry.visibilityRule.type === "tracked" && matchesTracked(entry, input.sceneText ?? ""))
+    ? entries.filter((entry) => entry.visibilityRule.type === "tracked" && matchesTracked(entry, input.sceneText ?? "") && layerVisible(entry))
     : [];
-  const nested = resolveNestedEntries([...globals, ...tracked], entries, input.maxNestedDepth ?? 3);
+  const includedBaseIds = new Set([...globals, ...tracked].map((entry) => entry.id));
+  const references = mode === "full"
+    ? entries.filter((entry) => entry.visibilityRule.type !== "nested" && !includedBaseIds.has(entry.id) && layerVisible(entry))
+    : [];
+
+  const nested = resolveNestedEntries([...globals, ...tracked, ...references], entries, input.maxNestedDepth ?? 3);
   const internalItems = [
     ...globals.map((entry) => [entry, "global"] as const),
     ...tracked.map((entry) => [entry, "tracked"] as const),
+    ...references.map((entry) => [entry, "tracked"] as const),
     ...nested.map((entry) => [entry, "nested"] as const),
   ].map(([entry, source]) => {
     const section = sectionById.get(entry.sectionId);
     return section ? toContextItem(entry, section, source) : null;
   }).filter((item): item is InternalJingweiContextItem => item !== null);
 
-  const budgeted = applyTokenBudget(internalItems, input.tokenBudget ?? 8000);
+  const defaultBudget = mode === "full" ? 20000 : mode === "core" ? 4000 : mode === "relevant" ? 8000 : 15000;
+  const budgeted = applyTokenBudget(internalItems, input.tokenBudget ?? defaultBudget);
   const sortedItems = sortByPriority(budgeted.items);
 
   return {

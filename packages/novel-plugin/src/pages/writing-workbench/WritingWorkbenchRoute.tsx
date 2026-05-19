@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BookOpen, GitBranch, History, Home } from "lucide-react";
-import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
+import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type DraftActionHandlers, type ChapterActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
@@ -22,6 +22,10 @@ export interface WritingWorkbenchRouteProps {
   onGuideComplete?: () => void;
   /** 候选稿操作回调 */
   candidateActions?: CandidateActionHandlers;
+  /** 草稿操作回调 */
+  draftActions?: DraftActionHandlers;
+  /** 章节操作回调 */
+  chapterActions?: ChapterActionHandlers;
   /** 经纬资料操作回调 */
   jingweiActions?: JingweiActionHandlers;
   /** 章节图数据（用于图视图） */
@@ -42,7 +46,7 @@ function routeStatusLabel(nodes: readonly WorkbenchResourceNode[], selectedNode:
   return "当前状态：资源已加载";
 }
 
-export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onDeselectNode, onSave, onCanvasContextChange, onCreateChapter, onGuideComplete, candidateActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
+export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedNode, onOpen, onDeselectNode, onSave, onCanvasContextChange, onCreateChapter, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, chapters, chapterEdges, onChapterSelect }: WritingWorkbenchRouteProps) {
   const bookTitle = deriveBookTitle(bookId, nodes);
   const statusLabel = routeStatusLabel(nodes, selectedNode);
   const [viewMode, setViewMode] = useState<"tree" | "graph">("tree");
@@ -181,7 +185,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
           {/* 右侧编辑区 */}
           <div className="flex flex-1 min-w-0 flex-col">
             <section aria-label="当前资源画布" className="min-h-0 flex-1">
-              <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} onGuideComplete={onGuideComplete} candidateActions={candidateActions} jingweiActions={jingweiActions} />
+              <WorkbenchCanvas node={selectedNode} nodes={nodes} bookId={bookId} onSave={onSave} onCanvasContextChange={onCanvasContextChange} onGuideComplete={onGuideComplete} candidateActions={candidateActions} draftActions={draftActions} chapterActions={chapterActions} jingweiActions={jingweiActions} />
             </section>
             {showCheckpoints && bookId && (
               <section aria-label="快照与回滚" className="flex-1 min-h-0 border-t border-border overflow-y-auto p-3">

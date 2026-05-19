@@ -20,6 +20,7 @@ interface StoryJingweiEntryRow {
   visibility_rule_json: string;
   participates_in_ai: number;
   token_budget: number | null;
+  priority_tier?: "core" | "relevant" | "reference" | "auto";
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
@@ -28,7 +29,7 @@ interface StoryJingweiEntryRow {
 const selectColumns = `
   "id", "book_id", "section_id", "title", "content_md", "tags_json", "aliases_json",
   "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
-  "participates_in_ai", "token_budget", "created_at", "updated_at", "deleted_at"
+  "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", "created_at", "updated_at", "deleted_at"
 `;
 
 function parseJson<T>(value: string, fallback: T): T {
@@ -58,6 +59,7 @@ function toEntry(row: StoryJingweiEntryRow): StoryJingweiEntryRecord {
     visibilityRule: parseJson<JingweiVisibilityRule>(row.visibility_rule_json, { type: "tracked" }),
     participatesInAi: Boolean(row.participates_in_ai),
     tokenBudget: row.token_budget,
+    priorityTier: row.priority_tier ?? "auto",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: row.deleted_at === null ? null : new Date(row.deleted_at),
@@ -71,8 +73,8 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         INSERT INTO "story_jingwei_entry" (
           "id", "book_id", "section_id", "title", "content_md", "tags_json", "aliases_json",
           "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
-          "participates_in_ai", "token_budget", "created_at", "updated_at", "deleted_at"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          "participates_in_ai", "token_budget", "priority_tier", "created_at", "updated_at", "deleted_at"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `).run(
         input.id,
         input.bookId,
@@ -87,6 +89,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         serializeJson(input.visibilityRule),
         input.participatesInAi ? 1 : 0,
         input.tokenBudget,
+        input.priorityTier ?? "auto",
         input.createdAt.getTime(),
         input.updatedAt.getTime(),
       );
@@ -144,7 +147,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         UPDATE "story_jingwei_entry"
         SET "section_id" = ?, "title" = ?, "content_md" = ?, "tags_json" = ?, "aliases_json" = ?,
           "custom_fields_json" = ?, "related_chapter_numbers_json" = ?, "related_entry_ids_json" = ?,
-          "visibility_rule_json" = ?, "participates_in_ai" = ?, "token_budget" = ?, "updated_at" = ?
+          "visibility_rule_json" = ?, "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(
         updates.sectionId ?? current.sectionId,
@@ -158,6 +161,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         serializeJson(updates.visibilityRule ?? current.visibilityRule),
         (updates.participatesInAi ?? current.participatesInAi) ? 1 : 0,
         updates.tokenBudget ?? current.tokenBudget,
+        updates.priorityTier ?? current.priorityTier,
         (updates.updatedAt ?? current.updatedAt).getTime(),
         bookId,
         id,
