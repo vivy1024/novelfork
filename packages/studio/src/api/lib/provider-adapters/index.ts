@@ -1,5 +1,5 @@
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
-import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, type ModelTransformContext } from "./model-transforms.js";
+import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, applyProviderBodyTransforms, type ModelTransformContext } from "./model-transforms.js";
 
 export type RuntimeAdapterId = "openai-compatible" | "anthropic-compatible" | "codex-platform" | "kiro-platform";
 export type RuntimeAdapterFailureCode = "unsupported" | "auth-missing" | "config-missing" | "upstream-error" | "network-error";
@@ -705,10 +705,8 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       stream_options: { include_usage: true },
       ...(hasTools ? { tools: toOpenAiTools(tools!, ctx), tool_choice: "auto" } : {}),
     };
-    // Strip sampling params for reasoner models
-    if (!shouldStripSamplingParams(ctx)) {
-      // keep defaults
-    }
+    // Apply provider-specific body transforms (strip unsupported params, etc.)
+    const finalBody = applyProviderBodyTransforms(body, ctx);
 
     const urls = openAiUrls(input, "/chat/completions");
     let lastError = "OpenAI-compatible streaming request failed";
@@ -719,7 +717,7 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
         const response = await proxyFetch(url, {
           method: "POST",
           headers: openAiHeaders(input.apiKey!),
-          body: JSON.stringify(body),
+          body: JSON.stringify(finalBody),
           signal,
         }, input.providerId);
 
@@ -905,10 +903,11 @@ class OpenAiCompatibleAdapter implements RuntimeAdapter {
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(hasTools ? { tools: toOpenAiTools(tools!, ctx), tool_choice: "auto" } : {}),
     };
+    const finalBody = applyProviderBodyTransforms(body, ctx);
     const result = await requestOpenAiJson(input, "/chat/completions", {
       method: "POST",
       headers: openAiHeaders(input.apiKey!),
-      body: JSON.stringify(body),
+      body: JSON.stringify(finalBody),
       ...(signal ? { signal } : {}),
     });
     if (!result.success) return result;
