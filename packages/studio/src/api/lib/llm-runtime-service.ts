@@ -305,6 +305,7 @@ export class LlmRuntimeService {
           ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
           ...(input.sessionConfig.reasoningEffort ? { reasoningEffort: input.sessionConfig.reasoningEffort } : {}),
+          ...(input.sessionConfig.serviceTier ? { serviceTier: input.sessionConfig.serviceTier } : {}),
         });
 
         const metadata: LlmRuntimeMetadata = {

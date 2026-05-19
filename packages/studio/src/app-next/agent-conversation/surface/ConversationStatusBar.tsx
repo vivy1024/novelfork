@@ -108,6 +108,7 @@ export interface ConversationStatus {
   providerCompatibility?: "openai-compatible" | "anthropic-compatible";
   permissionMode?: SessionPermissionMode;
   reasoningEffort?: SessionReasoningEffort;
+  serviceTier?: "default" | "priority";
   usage?: ConversationUsage;
   contextUsage?: ConversationContextUsage;
   plannedRuntimePanels?: readonly string[];
@@ -129,6 +130,7 @@ export interface ConversationSessionConfigPatch {
   modelId?: string;
   permissionMode?: SessionPermissionMode;
   reasoningEffort?: SessionReasoningEffort;
+  serviceTier?: "default" | "priority";
 }
 
 export interface ConversationStatusBarProps {
