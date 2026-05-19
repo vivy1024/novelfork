@@ -280,6 +280,21 @@ export interface WritingSettings {
   customSensitiveWords: string;
 }
 
+export interface UpdateSettings {
+  /** 更新服务器 URL */
+  serverUrl: string;
+  /** 更新通道 */
+  channel: "stable" | "beta";
+  /** 启动时自动检查更新 */
+  autoCheck: boolean;
+  /** 发现新版本后自动下载 */
+  autoDownload: boolean;
+  /** 上次检查时间 (ISO string) */
+  lastCheckAt: string | null;
+  /** 上次跳过的版本（用户选择"跳过此版本"） */
+  skippedVersion: string | null;
+}
+
 export interface ServerSettings {
   /** 服务器端口 */
   port: number;
@@ -295,7 +310,7 @@ export interface ServerSettings {
   tlsCertPath: string;
   /** TLS 密钥路径 */
   tlsKeyPath: string;
-  /** 启动时自动检查更新（默认 true） */
+  /** 启动时自动检查更新（默认 true）— 已迁移到 update.autoCheck，保留兼容 */
   autoCheckUpdate: boolean;
 }
 
@@ -348,6 +363,8 @@ export interface UserConfig {
   workspace: WorkspaceSettings;
   writing: WritingSettings;
   server: ServerSettings;
+  /** 自动更新配置 */
+  update: UpdateSettings;
   /** 外部 API 调用 Token（如羽书 bot 调用时需要携带） */
   apiToken: string;
   /** 用户认证配置 */
@@ -368,6 +385,7 @@ export interface UserConfigPatch {
   workspace?: Partial<WorkspaceSettings>;
   writing?: Partial<WritingSettings>;
   server?: Partial<ServerSettings>;
+  update?: Partial<UpdateSettings>;
   apiToken?: string;
   auth?: Partial<AuthSettings>;
   mcpServers?: McpServerEntry[];
@@ -517,6 +535,14 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   },
   apiToken: "",
   mcpServers: [],
+  update: {
+    serverUrl: "https://novelfork.vivy1024.cc",
+    channel: "stable",
+    autoCheck: true,
+    autoDownload: false,
+    lastCheckAt: null,
+    skippedVersion: null,
+  },
   server: {
     port: 4567,
     host: "127.0.0.1",
