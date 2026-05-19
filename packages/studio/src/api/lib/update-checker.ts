@@ -125,7 +125,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
   try {
     const config = await loadUserConfig();
     const proxyUrl = config.proxy?.webFetch || "";
-    const serverUrl = config.update?.serverUrl || "https://novelfork.vivy1024.cc";
+    const serverUrl = config.update?.serverUrl || "https://novelfork-update.vivy1024.cc";
     const channel = config.update?.channel || "stable";
 
     // 检查是否跳过此版本
