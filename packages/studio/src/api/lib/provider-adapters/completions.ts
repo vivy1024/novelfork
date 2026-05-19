@@ -118,7 +118,10 @@ export function toProviderSafeToolCallId(id: string | undefined, index = 0): str
 }
 
 export function toInternalToolName(name: string, tools: readonly RuntimeToolDefinition[]): string {
-  return tools.find((tool) => toProviderSafeToolName(tool.name) === name)?.name ?? name;
+  // Try DeepSeek decode first (reversible __hex__ encoding)
+  const decoded = decodeDeepSeekToolName(name);
+  const found = tools.find(t => t.name === decoded || toProviderSafeToolName(t.name) === name);
+  return found?.name ?? name;
 }
 
 export function toOpenAiTools(tools: readonly RuntimeToolDefinition[]): Array<Record<string, unknown>> {

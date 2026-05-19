@@ -37,8 +37,14 @@ export function buildAnthropicHeaders(apiKey: string): Record<string, string> {
   };
 }
 
-export function toAnthropicMessages(messages: readonly RuntimeChatMessage[]): Array<Record<string, unknown>> {
+export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
   const result: Array<Record<string, unknown>> = [];
+  const encodeName = (name: string) => {
+    if (ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek") {
+      return needsDeepSeekToolNameEncoding(name) ? encodeDeepSeekToolName(name) : name;
+    }
+    return toProviderSafeToolName(name);
+  };
 
   for (const message of messages) {
     if (message.role === "system") continue; // system is handled separately
@@ -68,7 +74,7 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[]): Ar
         content.push({
           type: "tool_use",
           id: toolCall.id,
-          name: toProviderSafeToolName(toolCall.name),
+          name: encodeName(toolCall.name),
           input: toolCall.input,
         });
       }
@@ -92,9 +98,15 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[]): Ar
   return result;
 }
 
-export function toAnthropicTools(tools: readonly RuntimeToolDefinition[]): Array<Record<string, unknown>> {
+export function toAnthropicTools(tools: readonly RuntimeToolDefinition[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
+  const encodeName = (name: string) => {
+    if (ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek") {
+      return needsDeepSeekToolNameEncoding(name) ? encodeDeepSeekToolName(name) : name;
+    }
+    return toProviderSafeToolName(name);
+  };
   return tools.map((tool) => ({
-    name: toProviderSafeToolName(tool.name),
+    name: encodeName(tool.name),
     description: tool.description,
     input_schema: tool.inputSchema,
   }));
@@ -426,13 +438,15 @@ export class AnthropicAdapter implements RuntimeAdapter {
 
     const useStreaming = Boolean(input.onStreamChunk);
     const urls = resolveMessagesUrls(input.baseUrl!);
+    const ctx: ModelTransformContext = { modelId: input.modelId, providerId: input.providerId, baseUrl: input.baseUrl };
+    const effectiveModelId = resolveModelId(ctx);
 
     const body: Record<string, unknown> = {
-      model: input.modelId,
-      messages: toAnthropicMessages(input.messages),
+      model: effectiveModelId,
+      messages: toAnthropicMessages(input.messages, ctx),
       max_tokens: 8192,
       ...(useStreaming ? { stream: true } : {}),
-      ...(input.tools?.length ? { tools: toAnthropicTools(input.tools) } : {}),
+      ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
     };
 
     // Extract system message — use content block format with cache_control for prompt caching
