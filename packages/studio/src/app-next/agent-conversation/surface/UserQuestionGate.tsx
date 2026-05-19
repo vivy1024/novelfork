@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { HelpCircle, Send, SkipForward, Sparkles } from "lucide-react";
+import { ChevronDown, ChevronRight, HelpCircle, Send, SkipForward, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import type { ConversationConfirmation, ConversationConfirmationQuestion, ConversationConfirmationQuestionOption } from "./ConfirmationGate";
 
 export interface UserQuestionGateProps {
@@ -38,7 +39,7 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
           onChange={(e) => onSelect(e.target.value)}
           rows={3}
           placeholder={question.aiSuggestion ?? "输入你的回答..."}
-          className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-blue-800 dark:bg-slate-900"
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
       </div>
     );
@@ -52,155 +53,129 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
           value={typeof value === "number" ? value : ""}
           onChange={(e) => onSelect(e.target.value ? Number(e.target.value) : undefined)}
           placeholder="输入数字"
-          className="max-w-32 rounded-md border border-blue-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-blue-800 dark:bg-slate-900"
+          className="max-w-32 rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
       </div>
     );
   }
 
-  // 默认多选：走到这里的都是有选项的问题（text/ranged-number/ai-suggest 已在上面 return）
+  // 默认多选
   const isMulti = true;
-
-  // 检测选项中是否已经包含"其他"
   const hasOtherInOptions = options.some((o) => getOptionLabel(o) === OTHER_LABEL);
-
-  // 判断是否选了"其他"
   const isOtherSelected = isMulti
     ? (Array.isArray(value) ? value.includes(OTHER_LABEL) : false)
     : value === OTHER_LABEL;
 
   return (
-    <div className="space-y-2">
-      {/* Options */}
-      <div className="space-y-1.5">
-        {options.map((option) => {
-          const label = getOptionLabel(option);
-          const description = getOptionDescription(option);
-          const isSelected = isMulti
-            ? (Array.isArray(value) ? value.includes(label) : false)
-            : value === label;
+    <div className="space-y-1.5">
+      {options.map((option) => {
+        const label = getOptionLabel(option);
+        const description = getOptionDescription(option);
+        const isSelected = isMulti
+          ? (Array.isArray(value) ? value.includes(label) : false)
+          : value === label;
 
-          return (
-            <label
-              key={label}
-              className={`flex items-start gap-3 cursor-pointer rounded-lg px-3 py-2.5 transition-colors ${
-                isSelected
-                  ? "bg-blue-100 dark:bg-blue-900/40"
-                  : "hover:bg-blue-50 dark:hover:bg-blue-950/30"
-              }`}
-            >
-              {/* Radio / Checkbox */}
-              <div className="mt-0.5 shrink-0">
-                {isMulti ? (
-                  <div className={`size-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                    isSelected
-                      ? "border-blue-500 bg-blue-500"
-                      : "border-gray-300 dark:border-gray-600"
-                  }`}>
-                    {isSelected && (
-                      <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
-                        <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    )}
-                  </div>
-                ) : (
-                  <div className={`size-4 rounded-full border-2 flex items-center justify-center transition-colors ${
-                    isSelected
-                      ? "border-blue-500"
-                      : "border-gray-300 dark:border-gray-600"
-                  }`}>
-                    {isSelected && (
-                      <div className="size-2 rounded-full bg-blue-500" />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Label + Description */}
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-medium text-foreground">{label}</span>
-                {description && (
-                  <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
-                )}
-              </div>
-
-              {/* Hidden native input for accessibility */}
-              <input
-                type={isMulti ? "checkbox" : "radio"}
-                name={question.id}
-                value={label}
-                checked={isSelected}
-                onChange={() => {
-                  if (isMulti) {
-                    const current = Array.isArray(value) ? value : [];
-                    onSelect(isSelected ? current.filter((v) => v !== label) : [...current, label]);
-                  } else {
-                    onSelect(label);
-                  }
-                }}
-                className="sr-only"
-              />
-            </label>
-          );
-        })}
-
-        {/* "其他" 选项 — 仅在选项中没有"其他"时额外添加 */}
-        {!hasOtherInOptions && (
+        return (
           <label
-            className={`flex items-start gap-3 cursor-pointer rounded-lg px-3 py-2.5 transition-colors ${
-              isOtherSelected
-                ? "bg-blue-100 dark:bg-blue-900/40"
-                : "hover:bg-blue-50 dark:hover:bg-blue-950/30"
+            key={label}
+            className={`flex items-start gap-2.5 cursor-pointer rounded-md px-2.5 py-2 transition-colors ${
+              isSelected
+                ? "bg-blue-50 dark:bg-blue-900/30"
+                : "hover:bg-muted/50"
             }`}
           >
             <div className="mt-0.5 shrink-0">
               {isMulti ? (
-                <div className={`size-4 rounded-sm border-2 flex items-center justify-center transition-colors ${
-                  isOtherSelected
+                <div className={`size-3.5 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                  isSelected
                     ? "border-blue-500 bg-blue-500"
-                    : "border-gray-300 dark:border-gray-600"
+                    : "border-muted-foreground/40"
                 }`}>
-                  {isOtherSelected && (
-                    <svg className="size-3 text-white" viewBox="0 0 12 12" fill="none">
+                  {isSelected && (
+                    <svg className="size-2.5 text-white" viewBox="0 0 12 12" fill="none">
                       <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   )}
                 </div>
               ) : (
-                <div className={`size-4 rounded-full border-2 flex items-center justify-center transition-colors ${
-                  isOtherSelected
-                    ? "border-blue-500"
-                    : "border-gray-300 dark:border-gray-600"
+                <div className={`size-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                  isSelected ? "border-blue-500" : "border-muted-foreground/40"
                 }`}>
-                  {isOtherSelected && (
-                    <div className="size-2 rounded-full bg-blue-500" />
-                  )}
+                  {isSelected && <div className="size-1.5 rounded-full bg-blue-500" />}
                 </div>
               )}
             </div>
             <div className="flex-1 min-w-0">
-              <span className="text-sm font-medium text-foreground">{OTHER_LABEL}</span>
+              <span className="text-xs font-medium text-foreground">{label}</span>
+              {description && <p className="text-[11px] text-muted-foreground mt-0.5">{description}</p>}
             </div>
             <input
               type={isMulti ? "checkbox" : "radio"}
               name={question.id}
-              value={OTHER_LABEL}
-              checked={isOtherSelected}
+              value={label}
+              checked={isSelected}
               onChange={() => {
                 if (isMulti) {
                   const current = Array.isArray(value) ? value : [];
-                  onSelect(isOtherSelected ? current.filter((v) => v !== OTHER_LABEL) : [...current, OTHER_LABEL]);
+                  onSelect(isSelected ? current.filter((v) => v !== label) : [...current, label]);
                 } else {
-                  onSelect(OTHER_LABEL);
+                  onSelect(label);
                 }
               }}
               className="sr-only"
             />
           </label>
-        )}
-      </div>
+        );
+      })}
 
-      {/* Custom text input — 仅在选了"其他"时显示 */}
+      {/* "其他" 选项 */}
+      {!hasOtherInOptions && (
+        <label
+          className={`flex items-start gap-2.5 cursor-pointer rounded-md px-2.5 py-2 transition-colors ${
+            isOtherSelected ? "bg-blue-50 dark:bg-blue-900/30" : "hover:bg-muted/50"
+          }`}
+        >
+          <div className="mt-0.5 shrink-0">
+            {isMulti ? (
+              <div className={`size-3.5 rounded-sm border-2 flex items-center justify-center transition-colors ${
+                isOtherSelected ? "border-blue-500 bg-blue-500" : "border-muted-foreground/40"
+              }`}>
+                {isOtherSelected && (
+                  <svg className="size-2.5 text-white" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 6l3 3 5-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </div>
+            ) : (
+              <div className={`size-3.5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                isOtherSelected ? "border-blue-500" : "border-muted-foreground/40"
+              }`}>
+                {isOtherSelected && <div className="size-1.5 rounded-full bg-blue-500" />}
+              </div>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-medium text-foreground">{OTHER_LABEL}</span>
+          </div>
+          <input
+            type={isMulti ? "checkbox" : "radio"}
+            name={question.id}
+            value={OTHER_LABEL}
+            checked={isOtherSelected}
+            onChange={() => {
+              if (isMulti) {
+                const current = Array.isArray(value) ? value : [];
+                onSelect(isOtherSelected ? current.filter((v) => v !== OTHER_LABEL) : [...current, OTHER_LABEL]);
+              } else {
+                onSelect(OTHER_LABEL);
+              }
+            }}
+            className="sr-only"
+          />
+        </label>
+      )}
+
+      {/* Custom text input */}
       {isOtherSelected && (
         <input
           type="text"
@@ -208,7 +183,7 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
           onChange={(e) => onCustomTextChange(e.target.value)}
           placeholder="请输入自定义回答..."
           autoFocus
-          className="w-full rounded-md border border-blue-200 bg-white px-3 py-2 text-sm placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-blue-400 dark:border-blue-800 dark:bg-slate-900"
+          className="w-full rounded-md border border-border bg-background px-2.5 py-1.5 text-xs placeholder:text-muted-foreground/60 focus:outline-none focus:ring-2 focus:ring-blue-400"
         />
       )}
     </div>
@@ -217,6 +192,7 @@ function QuestionGroup({ question, value, customText, onSelect, onCustomTextChan
 
 export function UserQuestionGate({ confirmation, onSubmitAnswers, onSkip }: UserQuestionGateProps) {
   const questions = confirmation.questions ?? [];
+  const [expanded, setExpanded] = useState(true);
   const [answers, setAnswers] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {};
     for (const q of questions) {
@@ -228,36 +204,28 @@ export function UserQuestionGate({ confirmation, onSubmitAnswers, onSkip }: User
   });
   const [customTexts, setCustomTexts] = useState<Record<string, string>>({});
 
-  // canSubmit: 每个 required 问题必须有答案（选了选项 或 有自定义文本）
   const canSubmit = !confirmation.busy && questions.every((q) => {
     if (!q.required) return true;
     const answer = answers[q.id];
     const custom = customTexts[q.id]?.trim();
-    // 如果选了"其他"，必须有自定义文本
     if (answer === OTHER_LABEL) return !!custom;
     if (Array.isArray(answer) && answer.includes(OTHER_LABEL)) return !!custom;
-    // 有选择就行
     if (answer !== undefined && answer !== null && answer !== "") {
       if (Array.isArray(answer)) return answer.length > 0;
       return true;
     }
-    // 没选但有自定义文本也行
     return !!custom;
   });
 
   function handleSubmit() {
     if (!canSubmit) return;
-    // 构建最终答案
     const merged: Record<string, unknown> = {};
     for (const q of questions) {
       const answer = answers[q.id];
       const custom = customTexts[q.id]?.trim();
-
       if (answer === OTHER_LABEL && custom) {
-        // 单选"其他" → 用自定义文本
         merged[q.id] = custom;
       } else if (Array.isArray(answer) && answer.includes(OTHER_LABEL) && custom) {
-        // 多选包含"其他" → 替换"其他"为自定义文本
         merged[q.id] = answer.map((v) => v === OTHER_LABEL ? custom : v);
       } else if (answer !== undefined && answer !== null && answer !== "") {
         merged[q.id] = answer;
@@ -269,87 +237,121 @@ export function UserQuestionGate({ confirmation, onSubmitAnswers, onSkip }: User
   }
 
   function handleAutoAnswer() {
-    // "帮我回答" = 跳过但标记为 auto
     onSubmitAnswers(confirmation.id, { __auto: true });
   }
 
   if (questions.length === 0) {
     return (
-      <aside data-testid="user-question-gate" className="rounded-xl border border-blue-200 bg-blue-50/80 p-4 dark:border-blue-800 dark:bg-blue-950/30">
-        <div className="flex items-center gap-3">
-          <HelpCircle className="size-5 text-blue-500" />
-          <p className="text-sm text-muted-foreground">暂无需要回答的问题。</p>
-          <Button size="sm" variant="outline" onClick={() => onSkip(confirmation.id)}>
-            继续
-          </Button>
+      <aside data-testid="user-question-gate" className="my-1 rounded-lg border border-border overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-1.5">
+          <HelpCircle className="size-4 text-purple-500 shrink-0" />
+          <span className="text-xs font-semibold font-mono text-purple-600 dark:text-purple-400">AskUserQuestion</span>
+          <span className="text-xs text-muted-foreground">暂无问题</span>
+          <span className="flex-1" />
+          <Button size="sm" variant="outline" onClick={() => onSkip(confirmation.id)}>继续</Button>
         </div>
       </aside>
     );
   }
 
+  // 统计已回答数
+  const answeredCount = questions.filter((q) => {
+    const a = answers[q.id];
+    if (a === undefined || a === null || a === "") return false;
+    if (Array.isArray(a)) return a.length > 0;
+    return true;
+  }).length;
+
   return (
-    <aside data-testid="user-question-gate" className="rounded-xl border border-blue-200 bg-gradient-to-b from-blue-50/90 to-blue-50/50 p-5 dark:border-blue-800 dark:bg-gradient-to-b dark:from-blue-950/40 dark:to-blue-950/20 space-y-5 max-h-[70vh] overflow-y-auto">
-      {/* Questions */}
-      {questions.map((question) => (
-        <div key={question.id} className="space-y-2.5">
-          {/* Header + Question */}
-          <div className="space-y-1">
-            {question.header && (
-              <span className="inline-block text-[11px] font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-2 py-0.5 rounded-full">
-                {question.header}
-              </span>
-            )}
-            <p className="text-sm font-semibold text-foreground">{question.prompt}</p>
-            {question.reason && (
-              <p className="text-xs text-muted-foreground">{question.reason}</p>
-            )}
+    <aside data-testid="user-question-gate" className="my-1 rounded-lg border border-blue-200 dark:border-blue-800 overflow-hidden tool-card-running">
+      {/* Card Header — 工具卡片风格 */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left cursor-pointer hover:bg-muted/30 transition-colors"
+      >
+        <span className="inline-flex items-center justify-center size-5 rounded-full bg-purple-100 dark:bg-purple-900/40 shrink-0">
+          <HelpCircle className="size-3 text-purple-600 dark:text-purple-400" />
+        </span>
+        <span className="text-xs font-semibold font-mono text-purple-600 dark:text-purple-400 shrink-0">
+          AskUserQuestion
+        </span>
+        <span className="text-xs text-muted-foreground truncate">
+          {questions.length} 个问题待回答
+        </span>
+        {answeredCount > 0 && (
+          <Badge variant="secondary" className="h-4 px-1.5 text-[10px]">{answeredCount}/{questions.length}</Badge>
+        )}
+        <span className="flex-1" />
+        {expanded
+          ? <ChevronDown className="size-3 text-muted-foreground shrink-0" />
+          : <ChevronRight className="size-3 text-muted-foreground shrink-0" />}
+      </button>
+
+      {/* Card Body — 问题表单 */}
+      {expanded && (
+        <div className="border-t border-blue-100 dark:border-blue-900/50 max-h-[60vh] overflow-y-auto">
+          <div className="p-3 space-y-4">
+            {questions.map((question) => (
+              <div key={question.id} className="space-y-1.5">
+                <div className="space-y-0.5">
+                  {question.header && (
+                    <span className="inline-block text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-100 dark:bg-blue-900/50 px-1.5 py-0.5 rounded-full">
+                      {question.header}
+                    </span>
+                  )}
+                  <p className="text-xs font-semibold text-foreground">{question.prompt}</p>
+                  {question.reason && (
+                    <p className="text-[11px] text-muted-foreground">{question.reason}</p>
+                  )}
+                </div>
+                <QuestionGroup
+                  question={question}
+                  value={answers[question.id]}
+                  customText={customTexts[question.id] ?? ""}
+                  onSelect={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))}
+                  onCustomTextChange={(text) => setCustomTexts((prev) => ({ ...prev, [question.id]: text }))}
+                />
+              </div>
+            ))}
           </div>
 
-          {/* Input area */}
-          <QuestionGroup
-            question={question}
-            value={answers[question.id]}
-            customText={customTexts[question.id] ?? ""}
-            onSelect={(value) => setAnswers((prev) => ({ ...prev, [question.id]: value }))}
-            onCustomTextChange={(text) => setCustomTexts((prev) => ({ ...prev, [question.id]: text }))}
-          />
+          {/* Action buttons — 固定在底部 */}
+          <div className="sticky bottom-0 flex items-center gap-2 border-t border-blue-100 dark:border-blue-900/50 bg-background/95 backdrop-blur-sm px-3 py-2">
+            <Button
+              size="sm"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+              className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white h-7 text-xs"
+            >
+              <Send className="size-3" />
+              提交
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={confirmation.busy}
+              onClick={handleAutoAnswer}
+              className="inline-flex items-center gap-1.5 h-7 text-xs"
+            >
+              <Sparkles className="size-3" />
+              帮我回答
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={confirmation.busy}
+              onClick={() => onSkip(confirmation.id)}
+              className="inline-flex items-center gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 h-7 text-xs"
+            >
+              <SkipForward className="size-3" />
+              跳过
+            </Button>
+            {confirmation.busy && <span className="text-[10px] text-muted-foreground ml-1">处理中...</span>}
+            {confirmation.error && <span className="text-[10px] text-destructive ml-1">{confirmation.error}</span>}
+          </div>
         </div>
-      ))}
-
-      {/* Action buttons */}
-      <div className="flex items-center gap-2 pt-1">
-        <Button
-          size="sm"
-          disabled={!canSubmit}
-          onClick={handleSubmit}
-          className="inline-flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <Send className="size-3.5" />
-          提交
-        </Button>
-        <Button
-          variant="secondary"
-          size="sm"
-          disabled={confirmation.busy}
-          onClick={handleAutoAnswer}
-          className="inline-flex items-center gap-1.5"
-        >
-          <Sparkles className="size-3.5" />
-          帮我回答
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={confirmation.busy}
-          onClick={() => onSkip(confirmation.id)}
-          className="inline-flex items-center gap-1.5 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-        >
-          <SkipForward className="size-3.5" />
-          跳过
-        </Button>
-        {confirmation.busy && <span className="text-[10px] text-muted-foreground ml-2">处理中...</span>}
-        {confirmation.error && <span className="text-xs text-destructive ml-2">{confirmation.error}</span>}
-      </div>
+      )}
     </aside>
   );
 }
