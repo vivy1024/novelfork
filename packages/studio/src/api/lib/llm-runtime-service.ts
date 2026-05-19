@@ -304,6 +304,7 @@ export class LlmRuntimeService {
           ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
           ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
+          ...(input.sessionConfig.reasoningEffort ? { reasoningEffort: input.sessionConfig.reasoningEffort } : {}),
         });
 
         const metadata: LlmRuntimeMetadata = {

@@ -172,11 +172,14 @@ export class CodexAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
+    const reasoningEffort = ("reasoningEffort" in input && input.reasoningEffort) ? input.reasoningEffort : "medium";
+    const serviceTier = ("serviceTier" in input && input.serviceTier) ? input.serviceTier : undefined;
     const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toOpenAiMessages(messages),
       stream: false,
-      reasoning_effort: "medium",
+      reasoning_effort: reasoningEffort,
+      ...(serviceTier ? { service_tier: serviceTier } : {}),
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
     };
@@ -229,12 +232,15 @@ export class CodexAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
+    const reasoningEffort = input.reasoningEffort ?? "medium";
+    const serviceTier = input.serviceTier;
     const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toOpenAiMessages(messages),
       stream: true,
       stream_options: { include_usage: true },
-      reasoning_effort: "medium",
+      reasoning_effort: reasoningEffort,
+      ...(serviceTier ? { service_tier: serviceTier } : {}),
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
     };
 
