@@ -69,10 +69,8 @@ function adapterIdForProvider(provider: RuntimeProviderRecord): RuntimeAdapterId
 }
 
 /** 获取 provider 对应的 adapter（优先使用 protocol 路由） */
-function getAdapter(provider: RuntimeProviderRecord, legacyAdapters?: ProviderAdapterRegistry) {
-  if (legacyAdapters) {
-    return legacyAdapters.get(adapterIdForProvider(provider));
-  }
+function getAdapter(provider: RuntimeProviderRecord, _legacyAdapters?: ProviderAdapterRegistry) {
+  // Always use protocol-based routing for correct adapter selection
   const protocol = inferProtocol(provider);
   return getAdapterForProtocol(protocol);
 }
