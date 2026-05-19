@@ -87,6 +87,10 @@ export interface GenerateInput extends RuntimeProviderRef {
   readonly onStreamChunk?: (chunk: string) => void;
   readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly signal?: AbortSignal;
+  /** Reasoning effort level (low/medium/high) — passed to models that support it */
+  readonly reasoningEffort?: string;
+  /** Service tier (e.g. "default", "priority" for fast mode) */
+  readonly serviceTier?: string;
 }
 
 export type RuntimeAdapterFailure = {
