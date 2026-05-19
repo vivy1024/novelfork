@@ -58,7 +58,7 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[]): Ar
       const content: Array<Record<string, unknown>> = [];
       // Pass back thinking block if present (Claude extended thinking + tools)
       if (message.reasoning_content) {
-        content.push({ type: "thinking", thinking: message.reasoning_content, signature: "" });
+        content.push({ type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" });
       }
       if (message.content.trim()) {
         content.push({ type: "text", text: message.content });
@@ -78,7 +78,7 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[]): Ar
     // Plain assistant message — may have thinking content
     if (message.role === "assistant" && message.reasoning_content) {
       const content: Array<Record<string, unknown>> = [
-        { type: "thinking", thinking: message.reasoning_content, signature: "" },
+        { type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" },
         ...(message.content.trim() ? [{ type: "text", text: message.content }] : []),
       ];
       result.push({ role: "assistant", content });
@@ -127,12 +127,14 @@ function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readon
   const toolUses: RuntimeToolUse[] = [];
   let textContent = "";
   let thinkingContent = "";
+  let thinkingSignature = "";
 
   for (const block of content) {
     if (block.type === "text" && typeof block.text === "string") {
       textContent += block.text;
     } else if (block.type === "thinking" && typeof block.thinking === "string") {
       thinkingContent += block.thinking;
+      if (typeof block.signature === "string" && block.signature) thinkingSignature = block.signature;
     } else if (block.type === "tool_use") {
       const providerName = typeof block.name === "string" ? block.name : "";
       const internalName = tools ? toInternalToolName(providerName, tools) : providerName;
@@ -145,10 +147,10 @@ function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readon
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
   }
 
-  return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+  return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
 }
 
 async function consumeAnthropicStream(
@@ -162,6 +164,7 @@ async function consumeAnthropicStream(
   let buffer = "";
   let fullContent = "";
   let thinkingContent = "";
+  let thinkingSignature = "";
   let usage: GenerateUsage | undefined;
 
   // Tool use accumulation
@@ -179,9 +182,9 @@ async function consumeAnthropicStream(
       if (signal?.aborted) {
         reader.cancel().catch(() => {});
         if (toolUses.length > 0) {
-          return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+          return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
         }
-        return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+        return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
       }
 
       const { done, value } = await reader.read();
@@ -209,6 +212,11 @@ async function consumeAnthropicStream(
               lastToolInputEmitTime = Date.now();
               lastToolInputEmitLength = 0;
               onToolEvent?.({ type: "tool_started", id: currentToolId, name: currentToolName });
+            } else if (contentBlock && contentBlock.type === "thinking") {
+              // DeepSeek/Claude may include signature in content_block_start
+              if (typeof contentBlock.signature === "string" && contentBlock.signature) {
+                thinkingSignature = contentBlock.signature;
+              }
             }
           } else if (parsed.type === "content_block_delta") {
             const delta = parsed.delta as Record<string, unknown> | undefined;
@@ -217,6 +225,8 @@ async function consumeAnthropicStream(
               onStreamChunk(delta.text);
             } else if (delta && delta.type === "thinking_delta" && typeof delta.thinking === "string") {
               thinkingContent += delta.thinking;
+            } else if (delta && delta.type === "signature_delta" && typeof delta.signature === "string") {
+              thinkingSignature += delta.signature;
             } else if (delta && delta.type === "input_json_delta" && typeof delta.partial_json === "string") {
               // Accumulate tool input JSON
               currentToolInputJson += delta.partial_json;
@@ -271,9 +281,9 @@ async function consumeAnthropicStream(
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
   }
-  return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent } : {}), ...(usage ? { usage } : {}) };
+  return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
 }
 
 async function readAnthropicError(response: Response): Promise<string> {

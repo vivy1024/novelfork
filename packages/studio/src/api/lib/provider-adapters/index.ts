@@ -56,7 +56,7 @@ export interface RuntimeProviderRef {
 }
 
 export type RuntimeChatMessage =
-  | { readonly role: "system" | "user" | "assistant"; readonly content: string; readonly toolCalls?: readonly RuntimeToolUse[]; readonly reasoning_content?: string }
+  | { readonly role: "system" | "user" | "assistant"; readonly content: string; readonly toolCalls?: readonly RuntimeToolUse[]; readonly reasoning_content?: string; readonly reasoning_signature?: string }
   | { readonly role: "tool"; readonly toolCallId: string; readonly name?: string; readonly content: string };
 
 export interface TestModelInput extends RuntimeProviderRef {
@@ -105,8 +105,8 @@ export interface GenerateUsage {
 }
 
 export type GenerateResult =
-  | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly usage?: GenerateUsage }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly usage?: GenerateUsage }
+  | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly usage?: GenerateUsage }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly usage?: GenerateUsage }
   | RuntimeAdapterFailure;
 
 export interface RuntimeAdapter {

@@ -16,7 +16,7 @@ import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 
 export type AgentTurnItem =
-  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
+  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
   | { readonly type: "tool_call"; readonly id: string; readonly name: string; readonly input: Record<string, unknown> }
   | { readonly type: "tool_result"; readonly toolCallId: string; readonly name: string; readonly content: string; readonly data?: unknown; readonly metadata?: Record<string, unknown> };
 
@@ -32,8 +32,8 @@ export interface AgentGenerateInput {
 }
 
 export type AgentGenerateResult =
-  | { readonly success: true; readonly type?: "message"; readonly content: string; readonly reasoningContent?: string; readonly metadata: NarratorSessionRuntimeMetadata }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly metadata: NarratorSessionRuntimeMetadata }
+  | { readonly success: true; readonly type?: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: NarratorSessionRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: NarratorSessionRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode | string; readonly error: string; readonly metadata?: Partial<NarratorSessionRuntimeMetadata> };
 
 export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionConfig"> & {
@@ -541,7 +541,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     // We push it as a standalone message here; toOpenAiMessages will merge it with the following tool_calls.
     const policy = input.reasoningPolicy ?? "passback-on-tool-loop";
     if (reply.reasoningContent && policy !== "strip") {
-      messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent });
+      messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent, reasoning_signature: reply.reasoningSignature });
     }
 
     // Determine if all tools in this batch are read-only (parallelizable)

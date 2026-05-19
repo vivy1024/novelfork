@@ -89,19 +89,22 @@ function providerRef(provider: RuntimeProviderRecord) {
 function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): RuntimeChatMessage[] {
   const result: RuntimeChatMessage[] = [];
   let pendingReasoning: string | undefined;
+  let pendingSignature: string | undefined;
 
   for (const message of messages) {
     if ("type" in message) {
       if (message.type === "message") {
         const reasoningContent = "reasoning_content" in message && typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
+        const reasoningSignature = "reasoning_signature" in message && typeof message.reasoning_signature === "string" ? message.reasoning_signature : undefined;
         // If this is an empty assistant message with only reasoning_content,
         // hold it as pending — it will be merged into the next tool_call message
         if (message.role === "assistant" && message.content.trim().length === 0 && reasoningContent) {
           pendingReasoning = reasoningContent;
+          pendingSignature = reasoningSignature;
           continue;
         }
         if (message.content.trim().length === 0 && !reasoningContent) continue;
-        result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}) });
+        result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}), ...(reasoningSignature ? { reasoning_signature: reasoningSignature } : {}) });
         continue;
       }
       if (message.type === "tool_call") {
@@ -111,11 +114,13 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
         if (lastMsg && lastMsg.role === "assistant" && lastMsg.toolCalls && lastMsg.toolCalls.length > 0) {
           // Replace last message with expanded toolCalls array; also attach pending reasoning if present
           const mergedReasoning = pendingReasoning ?? lastMsg.reasoning_content;
-          result[result.length - 1] = { ...lastMsg, toolCalls: [...lastMsg.toolCalls, { id: message.id, name: message.name, input: message.input }], ...(mergedReasoning ? { reasoning_content: mergedReasoning } : {}) };
+          const mergedSignature = pendingSignature ?? lastMsg.reasoning_signature;
+          result[result.length - 1] = { ...lastMsg, toolCalls: [...lastMsg.toolCalls, { id: message.id, name: message.name, input: message.input }], ...(mergedReasoning ? { reasoning_content: mergedReasoning } : {}), ...(mergedSignature ? { reasoning_signature: mergedSignature } : {}) };
         } else {
-          result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}) });
+          result.push({ role: "assistant", content: "", toolCalls: [{ id: message.id, name: message.name, input: message.input }], ...(pendingReasoning ? { reasoning_content: pendingReasoning } : {}), ...(pendingSignature ? { reasoning_signature: pendingSignature } : {}) });
         }
         pendingReasoning = undefined;
+        pendingSignature = undefined;
         continue;
       }
       if (message.type === "tool_result") {
@@ -137,7 +142,7 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
 
   // If there's leftover pending reasoning (no tool_call followed), emit it
   if (pendingReasoning) {
-    result.push({ role: "assistant", content: "", reasoning_content: pendingReasoning });
+    result.push({ role: "assistant", content: "", reasoning_content: pendingReasoning, ...(pendingSignature ? { reasoning_signature: pendingSignature } : {}) });
   }
 
   return result;
