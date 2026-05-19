@@ -99,6 +99,7 @@ import {
   createComplianceRouter,
   createWritingToolsRouter,
   createWritingModesRouter,
+  createWritingResourceRouter,
   createExecRouter,
   createProxyRouter,
   createAggregationsRouter,
@@ -355,7 +356,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Storage routes (books CRUD, chapters, truth, genres, config, export, logs, doctor)
     app.route("", createStorageRouter(ctx));
 
-    // Generated chapter / draft candidates — explicit accept flow, no automatic chapter overwrite.
+    // Unified writing resources + legacy generated chapter / draft candidates.
+    app.route("", createWritingResourceRouter());
     app.route("", createChapterCandidatesRouter(root));
 
     // Snapshots routes (chapter version control)

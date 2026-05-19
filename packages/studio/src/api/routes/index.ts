@@ -51,4 +51,5 @@ export {
   createBibleRouter,
   createWritingToolsRouter,
   createContextManagerRouter,
+  createWritingResourceRouter,
 } from "@vivy1024/novelfork-novel-plugin/routes";

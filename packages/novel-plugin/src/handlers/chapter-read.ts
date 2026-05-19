@@ -1,6 +1,8 @@
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { createWritingResourceRepository } from "../engine/writing-resource/repository.js";
 
 export interface ChapterReadInput {
   bookId: string;
@@ -20,6 +22,20 @@ export interface ChapterReadResult {
  */
 export async function handleChapterRead(input: ChapterReadInput, booksDir: string): Promise<ChapterReadResult> {
   const { bookId, chapterNumber } = input;
+  try {
+    const repository = createWritingResourceRepository(getStorageDatabase());
+    const resource = repository.findAcceptedChapter(bookId, chapterNumber);
+    if (resource) {
+      return {
+        ok: true,
+        summary: `已读取第 ${chapterNumber} 章（${resource.wordCount} 字）。`,
+        data: { bookId, chapterNumber, fileName: `${resource.id}.md`, content: resource.content, wordCount: resource.wordCount },
+      };
+    }
+  } catch {
+    // Fall back to legacy file storage below.
+  }
+
   const chaptersDir = join(booksDir, bookId, "chapters");
 
   let chapterFile: string | undefined;

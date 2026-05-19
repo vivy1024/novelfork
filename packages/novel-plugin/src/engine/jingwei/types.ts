@@ -71,6 +71,8 @@ export interface StoryJingweiSectionRecord {
 export type CreateStoryJingweiSectionInput = Omit<StoryJingweiSectionRecord, "deletedAt">;
 export type UpdateStoryJingweiSectionInput = Partial<Omit<CreateStoryJingweiSectionInput, "id" | "bookId" | "createdAt">>;
 
+export type JingweiPriorityTier = "core" | "relevant" | "reference" | "auto";
+
 export interface StoryJingweiEntryRecord {
   id: string;
   bookId: string;
@@ -85,6 +87,7 @@ export interface StoryJingweiEntryRecord {
   visibilityRule: JingweiVisibilityRule;
   participatesInAi: boolean;
   tokenBudget: number | null;
+  priorityTier?: JingweiPriorityTier;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -100,6 +103,7 @@ export interface BuildJingweiContextInput {
   currentChapter?: number;
   sceneText?: string;
   tokenBudget?: number;
+  mode?: "auto" | "core" | "relevant" | "full";
 }
 
 export interface JingweiContextItem {

@@ -6,6 +6,9 @@ import { Save, FileText, AlertCircle, Loader2 } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
+import { DraftActionsBar, type DraftAcceptMode } from "./DraftActionsBar";
+import { ChapterActionsBar } from "./ChapterActionsBar";
+import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHistoryPanel";
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
@@ -98,6 +101,18 @@ export interface CandidateActionHandlers {
   onDelete: (candidateId: string) => Promise<void>;
 }
 
+export interface DraftActionHandlers {
+  onSubmitCandidate: (draftId: string) => Promise<void>;
+  onAccept: (draftId: string, chapterNumber: number, mode: DraftAcceptMode) => Promise<void>;
+  onDelete: (draftId: string) => Promise<void>;
+}
+
+export interface ChapterActionHandlers {
+  onCreateDraft: (resourceId: string) => Promise<void>;
+  onCreateVariant: (resourceId: string) => Promise<void>;
+  onGetHistory: (resourceId: string) => Promise<ResourceHistoryEntry[]>;
+}
+
 export interface JingweiActionHandlers {
   onSave: (entryId: string, payload: { title: string; contentMd: string }) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
@@ -111,19 +126,26 @@ export interface WorkbenchCanvasProps {
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onGuideComplete?: () => void;
   candidateActions?: CandidateActionHandlers;
+  draftActions?: DraftActionHandlers;
+  chapterActions?: ChapterActionHandlers;
   jingweiActions?: JingweiActionHandlers;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, jingweiActions }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
 
   useEffect(() => {
     setContent(node?.content ?? "");
     setDirty(false);
     setSaveError(null);
+    setHistoryEntries(null);
+    setHistoryError(null);
   }, [node]);
 
   useEffect(() => {
@@ -223,6 +245,58 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         </div>
       )}
 
+      {/* Draft actions bar */}
+      {node.kind === "draft" && draftActions && (
+        <div className="shrink-0 border-b border-border px-4 py-2">
+          <DraftActionsBar
+            draftId={String(node.metadata?.draftId ?? node.id.replace("draft:", ""))}
+            chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+            wordCount={typeof node.metadata?.wordCount === "number" ? node.metadata.wordCount : undefined}
+            updatedAt={typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined}
+            onSubmitCandidate={draftActions.onSubmitCandidate}
+            onAccept={draftActions.onAccept}
+            onDelete={draftActions.onDelete}
+          />
+        </div>
+      )}
+
+      {/* Chapter actions bar */}
+      {node.kind === "chapter" && chapterActions && (
+        <div className="shrink-0 border-b border-border px-4 py-2">
+          <ChapterActionsBar
+            resourceId={String(node.metadata?.resourceId ?? node.id.replace("chapter:", ""))}
+            chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+            version={typeof node.metadata?.version === "number" ? node.metadata.version : undefined}
+            wordCount={typeof node.metadata?.wordCount === "number" ? node.metadata.wordCount : undefined}
+            onCreateDraft={chapterActions.onCreateDraft}
+            onCreateVariant={chapterActions.onCreateVariant}
+            onToggleHistory={async (resourceId) => {
+              if (historyEntries) { setHistoryEntries(null); return; }
+              setHistoryLoading(true);
+              setHistoryError(null);
+              try {
+                const entries = await chapterActions.onGetHistory(resourceId);
+                setHistoryEntries(entries);
+              } catch (cause) {
+                setHistoryError(cause instanceof Error ? cause.message : "加载历史失败");
+              } finally {
+                setHistoryLoading(false);
+              }
+            }}
+          />
+        </div>
+      )}
+
+      {/* Version history panel */}
+      {(historyEntries || historyLoading || historyError) && (
+        <ResourceHistoryPanel
+          entries={historyEntries ?? []}
+          loading={historyLoading}
+          error={historyError}
+          onClose={() => { setHistoryEntries(null); setHistoryError(null); }}
+        />
+      )}
+
       {/* Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         {needsHydration ? null : (node.kind === "jingwei-entry" || node.kind === "bible-entry") && jingweiActions && !node.metadata?.fileName ? (
@@ -240,7 +314,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         ) : (
           <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {
             setContent(nextContent);
-            setDirty(true);
+            // Only mark dirty if content actually differs from the original node content
+            // (TipTap may normalize markdown on init, triggering onContentChange with equivalent content)
+            setDirty(nextContent !== (node.content ?? ""));
             setSaveError(null);
           }} onTabComplete={bookId && (node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") ? async (currentContent, cursorPosition) => {
             const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);

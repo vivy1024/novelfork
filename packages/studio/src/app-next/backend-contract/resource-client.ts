@@ -66,6 +66,18 @@ export function createResourceClient(contract: ContractClient) {
       contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "archive"), {}, { capability: { id: "candidates.archive", status: "current" } }),
     deleteCandidate: <T = unknown>(bookId: string, candidateId: string) =>
       contract.delete<T>(buildBookApiPath(bookId, "candidates", candidateId), { capability: { id: "candidates.delete", status: "current" } }),
+    listWritingResources: <T = unknown>(bookId: string) =>
+      contract.get<T>(buildBookApiPath(bookId, "resources"), { capability: { id: "writing-resources.list", status: "current" } }),
+    createWritingResource: <T = unknown>(bookId: string, payload: unknown) =>
+      contract.post<T>(buildBookApiPath(bookId, "resources"), payload, { capability: { id: "writing-resources.create", status: "current" } }),
+    transitionWritingResource: <T = unknown>(bookId: string, resourceId: string, payload: unknown) =>
+      contract.post<T>(buildBookApiPath(bookId, "resources", resourceId, "transition"), payload, { capability: { id: "writing-resources.transition", status: "current" } }),
+    deleteWritingResource: <T = unknown>(bookId: string, resourceId: string) =>
+      contract.delete<T>(buildBookApiPath(bookId, "resources", resourceId), { capability: { id: "writing-resources.delete", status: "current" } }),
+    getWritingResourceHistory: <T = unknown>(bookId: string, resourceId: string) =>
+      contract.get<T>(buildBookApiPath(bookId, "resources", resourceId, "history"), { capability: { id: "writing-resources.history", status: "current" } }),
+    getWritingResourceDetail: <T = unknown>(bookId: string, resourceId: string) =>
+      contract.get<T>(buildBookApiPath(bookId, "resources", resourceId), { capability: { id: "writing-resources.detail", status: "current" } }),
     listDrafts: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "drafts"), { capability: { id: "drafts.list", status: "current" } }),
     getDraft: <T = unknown>(bookId: string, draftId: string) =>

@@ -234,7 +234,7 @@ function renderJingweiFile(node: WorkbenchResourceNode, options: ResourceViewerR
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   return (
     <ViewerShell node={node} label="Story 文本文件">
-      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} bookId={options.bookId} />
+      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
     </ViewerShell>
   );
 }

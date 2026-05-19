@@ -7,6 +7,7 @@ export interface JingweiEntry {
   contentMd?: string;
   fields: Record<string, unknown>;
   visibility: "global" | "tracked" | "nested";
+  priorityTier?: "auto" | "core" | "relevant" | "reference";
   participatesInAi?: boolean;
   aliases?: string[];
   relatedEntryIds?: string[];

@@ -16,4 +16,5 @@ export { createContextManagerRouter } from "./context-manager.js";
 export { createQualityTrendRouter } from "./quality-trend.js";
 export { createPresetHitsRouter } from "./preset-hits.js";
 export { createChapterLinksRouter } from "./chapter-links.js";
+export { createWritingResourceRouter } from "./writing-resource.js";
 export type { RouterContext } from "./context.js";

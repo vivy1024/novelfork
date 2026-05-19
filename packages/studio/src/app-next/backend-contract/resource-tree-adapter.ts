@@ -51,6 +51,27 @@ export interface ContractResourceTreeLoadResult {
 
 type CandidateListResponse = { candidates: readonly GeneratedChapterCandidate[] };
 type DraftListResponse = { drafts: readonly DraftResource[] };
+type WritingResourceType = "chapter" | "candidate" | "draft";
+type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
+interface WritingResource {
+  readonly id: string;
+  readonly bookId: string;
+  readonly type: WritingResourceType;
+  readonly status: WritingResourceStatus;
+  readonly title: string;
+  readonly content: string;
+  readonly chapterNumber: number | null;
+  readonly wordCount: number;
+  readonly parentId: string | null;
+  readonly version: number;
+  readonly source: string | null;
+  readonly metadata: Record<string, unknown>;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+  readonly acceptedAt: number | null;
+  readonly deletedAt: number | null;
+}
+type WritingResourceListResponse = { resources: readonly WritingResource[] };
 type StoryFileListResponse = { files: readonly StoryListFile[] };
 type JingweiFileListResponse = { files: readonly StoryListFile[] };
 type NarrativeLineResponse = { snapshot: NarrativeLineSnapshot };
@@ -110,8 +131,9 @@ export async function loadResourceTreeFromContract(
     };
   }
 
-  const candidates = await optional<CandidateListResponse>(errors, "candidates.list", "候选稿加载失败", () => resource.listCandidates<CandidateListResponse>(bookId));
-  const drafts = await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
+  const writingResources = await optional<WritingResourceListResponse>(errors, "writing-resources.list", "写作资源加载失败", () => resource.listWritingResources<WritingResourceListResponse>(bookId));
+  const candidates = writingResources ? null : await optional<CandidateListResponse>(errors, "candidates.list", "候选稿加载失败", () => resource.listCandidates<CandidateListResponse>(bookId));
+  const drafts = writingResources ? null : await optional<DraftListResponse>(errors, "drafts.list", "草稿加载失败", () => resource.listDrafts<DraftListResponse>(bookId));
   const storyFiles = await optional<StoryFileListResponse>(errors, "story-files.list", "大纲与设定文件加载失败", () => resource.listStoryFiles<StoryFileListResponse>(bookId));
   const jingweiFiles = await optional<JingweiFileListResponse>(errors, "jingwei-files.list", "经纬资料加载失败", () => resource.listJingweiFiles<JingweiFileListResponse>(bookId));
 
@@ -126,6 +148,13 @@ export async function loadResourceTreeFromContract(
   const INTERNAL_FILES = new Set(["jingwei_sections.json", "jingwei_entries.json", "style_profile.json", ".write.lock"]);
   const nonJingweiStoryFiles = storyFiles?.files.filter((f) => !jingweiFileNames.has(f.name) && !INTERNAL_FILES.has(f.name)) ?? [];
 
+  const resourceGroups = writingResources ? buildWritingResourceGroups(writingResources.resources) : {
+    chapters: bookResult.data.chapters.map((chapter) => toChapterNode(book.id, chapter)),
+    candidates: candidates?.candidates.map(toCandidateNode) ?? [],
+    drafts: drafts?.drafts.map(toDraftNode) ?? [],
+    archived: [],
+  };
+
   const tree: ContractResourceNode[] = [
     {
       id: `book:${book.id}`,
@@ -139,21 +168,73 @@ export async function loadResourceTreeFromContract(
       },
       metadata: { book, nextChapter: bookResult.data.nextChapter },
       children: [
-        group("group:chapters", "章节", bookResult.data.chapters.map((chapter) => toChapterNode(book.id, chapter))),
+        group("group:chapters", "章节", resourceGroups.chapters),
         group("group:candidates", "候选稿", [
-          ...(candidates?.candidates.map(toCandidateNode) ?? []),
+          ...resourceGroups.candidates,
           ...errors.filter((node) => node.id === "unsupported:candidates.list"),
         ]),
-        group("group:drafts", "草稿", drafts?.drafts.map(toDraftNode) ?? []),
+        group("group:drafts", "草稿", resourceGroups.drafts),
+        group("group:archived", "已归档", resourceGroups.archived),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         jingweiPanelEntryNode(),
         group("group:hooks", "伏笔", buildHooksGroup(jingweiFiles)),
-        group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && bookResult.data.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
+        group("group:narrative-line", "叙事线", narrative?.snapshot.nodes.length && resourceGroups.chapters.length > 0 ? [toNarrativeLineNode(book.id, narrative.snapshot)] : []),
       ],
     },
   ];
 
   return { ok: true, tree, errors };
+}
+
+function buildWritingResourceGroups(resources: readonly WritingResource[]): { chapters: ContractResourceNode[]; candidates: ContractResourceNode[]; drafts: ContractResourceNode[]; archived: ContractResourceNode[] } {
+  const active = resources.filter((resource) => resource.deletedAt === null);
+  return {
+    chapters: active.filter((resource) => resource.type === "chapter" && resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode),
+    candidates: active.filter((resource) => resource.type === "candidate" && resource.status === "candidate").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
+    drafts: active.filter((resource) => resource.type === "draft" && resource.status === "draft").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
+    archived: active.filter((resource) => resource.status === "archived" || resource.status === "rejected").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
+  };
+}
+
+function compareResourceChapter(a: WritingResource, b: WritingResource): number {
+  return (a.chapterNumber ?? 999999) - (b.chapterNumber ?? 999999) || a.updatedAt - b.updatedAt;
+}
+
+function compareResourceUpdatedDesc(a: WritingResource, b: WritingResource): number {
+  return b.updatedAt - a.updatedAt;
+}
+
+function toWritingResourceNode(resource: WritingResource): ContractResourceNode {
+  const kind = resource.type;
+  const id = `${kind}:${resource.id}`;
+  const metadata = {
+    ...resource.metadata,
+    bookId: resource.bookId,
+    resourceId: resource.id,
+    candidateId: resource.type === "candidate" ? resource.id : undefined,
+    draftId: resource.type === "draft" ? resource.id : undefined,
+    chapterNumber: resource.chapterNumber ?? undefined,
+    status: resource.status,
+    source: resource.source ?? undefined,
+    wordCount: resource.wordCount,
+    version: resource.version,
+    parentId: resource.parentId ?? undefined,
+    updatedAt: new Date(resource.updatedAt).toISOString(),
+    createdAt: new Date(resource.createdAt).toISOString(),
+  };
+  return {
+    id,
+    kind,
+    title: resource.title || (resource.chapterNumber ? `第 ${resource.chapterNumber} 章` : "未命名资源"),
+    content: resource.content,
+    capabilities: {
+      read: CURRENT_READ("writing-resources.read"),
+      edit: resource.status === "draft" || resource.type === "chapter" ? CURRENT_EDIT("writing-resources.update") : UNSUPPORTED("writing-resources.edit"),
+      delete: resource.status === "accepted" ? UNSUPPORTED("writing-resources.delete") : CURRENT_DELETE("writing-resources.delete"),
+      apply: resource.status === "candidate" || resource.status === "draft" ? CURRENT_APPLY("writing-resources.transition") : CURRENT_APPLY("writing-resources.variant"),
+    },
+    metadata,
+  };
 }
 
 function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourceNode {
