@@ -35,6 +35,7 @@ export interface SystemMetrics {
   gitVersion?: string;
   rgVersion?: string;
   dbPath?: string;
+  packageManager?: string;
 }
 
 let lastCpuUsage: { idle: number; total: number } | null = null;
@@ -96,6 +97,24 @@ export async function collectMetrics(projectRoot: string): Promise<SystemMetrics
   let rgVersion: string | undefined;
   try { rgVersion = execSync("rg --version", { encoding: "utf-8", timeout: 3000 }).split("\n")[0]?.trim(); } catch { /* */ }
 
+  let packageManager: string | undefined;
+  try {
+    execSync("winget --version", { encoding: "utf-8", timeout: 3000, stdio: "pipe" });
+    packageManager = "winget";
+  } catch {
+    try {
+      execSync("scoop --version", { encoding: "utf-8", timeout: 3000, stdio: "pipe" });
+      packageManager = "scoop";
+    } catch {
+      try {
+        execSync("choco --version", { encoding: "utf-8", timeout: 3000, stdio: "pipe" });
+        packageManager = "choco";
+      } catch {
+        packageManager = undefined;
+      }
+    }
+  }
+
   const uptime = Math.floor((Date.now() - startedAt) / 1000);
 
   return {
@@ -119,5 +138,6 @@ export async function collectMetrics(projectRoot: string): Promise<SystemMetrics
     uptime,
     gitVersion,
     rgVersion,
+    packageManager,
   };
 }
