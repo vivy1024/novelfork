@@ -536,7 +536,7 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
   apiToken: "",
   mcpServers: [],
   update: {
-    serverUrl: "https://novelfork.vivy1024.cc",
+    serverUrl: "https://novelfork-update.vivy1024.cc",
     channel: "stable",
     autoCheck: true,
     autoDownload: false,
