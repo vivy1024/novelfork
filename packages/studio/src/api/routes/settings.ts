@@ -3,6 +3,7 @@ import { loadUserConfig, updateUserConfig, getUserConfigPath } from "../lib/user
 import { collectMetrics } from "../lib/metrics-service.js";
 import { buildStudioReleaseSnapshot } from "../lib/release-metadata.js";
 import { checkForUpdate } from "../lib/update-checker.js";
+import { downloadUpdate, installUpdate, getPendingUpdatePath, cleanupUpdateDir, type DownloadProgress } from "../lib/update-downloader.js";
 import { resolveRuntimeStoragePath } from "../lib/runtime-storage-paths.js";
 import { getCodexRuntimeCapabilityStatuses } from "../../shared/codex-runtime-status.js";
 import { setGlobalProxyUrl, setPerProviderProxy } from "../lib/provider-adapters/index.js";
@@ -13,6 +14,9 @@ interface SettingsRouterOptions {
   readonly root?: string;
   readonly buildReleaseSnapshot?: (root: string) => Promise<StudioReleaseSnapshot>;
 }
+
+// 下载进度状态（内存中，供轮询使用）
+let currentDownloadProgress: DownloadProgress | null = null;
 
 export function createSettingsRouter(options: SettingsRouterOptions = {}) {
   const app = new Hono();
@@ -202,7 +206,7 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     }
   });
 
-  // 检查更新：调用 GitHub API 对比版本
+  // 检查更新：查询自建更新服务器（fallback GitHub API）
   app.get("/check-update", async (c) => {
     try {
       const result = await checkForUpdate();
@@ -210,6 +214,88 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     } catch (error) {
       console.error("Failed to check for update:", error);
       return c.json({ error: "Failed to check for update" }, 500);
+    }
+  });
+
+  // 下载更新：触发后台下载，通过 SSE 推送进度
+  app.post("/download-update", async (c) => {
+    try {
+      const { downloadUrl, sha256, downloadSize } = await c.req.json<{
+        downloadUrl: string;
+        sha256: string | null;
+        downloadSize: number;
+      }>();
+
+      if (!downloadUrl) {
+        return c.json({ error: "downloadUrl is required" }, 400);
+      }
+
+      // 同步下载（前端通过轮询 /update-progress 获取进度）
+      const destPath = await downloadUpdate(
+        downloadUrl,
+        sha256,
+        downloadSize || 0,
+        (progress) => {
+          // 存储进度到内存（供轮询使用）
+          currentDownloadProgress = progress;
+        },
+      );
+
+      currentDownloadProgress = {
+        phase: "ready",
+        bytesDownloaded: downloadSize || 0,
+        totalBytes: downloadSize || 0,
+        percent: 100,
+      };
+
+      return c.json({ success: true, path: destPath });
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : "Download failed";
+      currentDownloadProgress = {
+        phase: "error",
+        bytesDownloaded: 0,
+        totalBytes: 0,
+        percent: 0,
+        error: errMsg,
+      };
+      console.error("Failed to download update:", error);
+      return c.json({ error: errMsg }, 500);
+    }
+  });
+
+  // 获取下载进度
+  app.get("/update-progress", (c) => {
+    return c.json(currentDownloadProgress ?? { phase: "idle", bytesDownloaded: 0, totalBytes: 0, percent: 0 });
+  });
+
+  // 安装更新：执行替换并重启
+  app.post("/install-update", (c) => {
+    try {
+      const pendingPath = getPendingUpdatePath();
+      if (!pendingPath) {
+        return c.json({ error: "No pending update found" }, 404);
+      }
+
+      // 异步执行安装（会退出进程）
+      setTimeout(() => installUpdate(pendingPath), 500);
+
+      return c.json({ success: true, message: "Installing update, application will restart..." });
+    } catch (error) {
+      console.error("Failed to install update:", error);
+      return c.json({ error: "Install failed" }, 500);
+    }
+  });
+
+  // 跳过版本
+  app.post("/skip-version", async (c) => {
+    try {
+      const { version } = await c.req.json<{ version: string }>();
+      await updateUserConfig({ update: { skippedVersion: version } });
+      cleanupUpdateDir();
+      return c.json({ success: true });
+    } catch (error) {
+      console.error("Failed to skip version:", error);
+      return c.json({ error: "Failed to skip version" }, 500);
     }
   });
 

@@ -14,6 +14,7 @@ import type {
   ToolAccessSettings,
   RuntimeDebugSettings,
   RuntimeRecoverySettings,
+  UpdateSettings,
   UserConfig,
   UserConfigPatch,
   WorkspaceSettings,
@@ -352,6 +353,19 @@ function sanitizeServer(server?: Partial<ServerSettings> | null): ServerSettings
   };
 }
 
+function sanitizeUpdate(update?: Partial<UpdateSettings> | null): UpdateSettings {
+  const defaults = DEFAULT_USER_CONFIG.update;
+  const channel = update?.channel;
+  return {
+    serverUrl: typeof update?.serverUrl === "string" && update.serverUrl.trim() ? update.serverUrl.trim() : defaults.serverUrl,
+    channel: channel === "stable" || channel === "beta" ? channel : defaults.channel,
+    autoCheck: typeof update?.autoCheck === "boolean" ? update.autoCheck : defaults.autoCheck,
+    autoDownload: typeof update?.autoDownload === "boolean" ? update.autoDownload : defaults.autoDownload,
+    lastCheckAt: typeof update?.lastCheckAt === "string" ? update.lastCheckAt : defaults.lastCheckAt,
+    skippedVersion: typeof update?.skippedVersion === "string" ? update.skippedVersion : defaults.skippedVersion,
+  };
+}
+
 /**
  * 加载用户配置
  */
@@ -385,6 +399,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       workspace: sanitizeWorkspace(config.workspace),
       writing: sanitizeWriting(config.writing),
       server: sanitizeServer(config.server),
+      update: sanitizeUpdate((config as unknown as Record<string, unknown>).update as Partial<UpdateSettings> | null),
     };
   } catch (error) {
     console.error("Failed to load user config, using default:", error);
@@ -474,6 +489,10 @@ export async function updateUserConfig(partial: UserConfigPatch): Promise<UserCo
     server: sanitizeServer({
       ...current.server,
       ...(partial.server ?? {}),
+    }),
+    update: sanitizeUpdate({
+      ...current.update,
+      ...(partial.update ?? {}),
     }),
   };
   await saveUserConfig(updated);
