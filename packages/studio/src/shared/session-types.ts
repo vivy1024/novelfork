@@ -119,6 +119,7 @@ export interface SessionConfig {
   modelId: string;
   permissionMode: SessionPermissionMode;
   reasoningEffort: SessionReasoningEffort;
+  serviceTier?: "default" | "priority";
   toolPolicy?: SessionToolPolicy;
   mode?: "normal" | "plan";
   /** Project type for scope-based tool filtering (e.g. "novel", "general") */
