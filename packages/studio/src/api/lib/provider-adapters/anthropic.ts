@@ -171,6 +171,7 @@ async function consumeAnthropicStream(
   onStreamChunk: (chunk: string) => void,
   signal?: AbortSignal,
   onToolEvent?: (event: RuntimeToolStreamEvent) => void,
+  tools?: readonly RuntimeToolDefinition[],
 ): Promise<GenerateResult> {
   const reader = body.getReader();
   const decoder = new TextDecoder();
@@ -263,7 +264,7 @@ async function consumeAnthropicStream(
                   input = JSON.parse(currentToolInputJson) as Record<string, unknown>;
                 }
               } catch { /* malformed tool input */ }
-              toolUses.push({ id: currentToolId, name: currentToolName, input });
+              toolUses.push({ id: currentToolId, name: tools ? toInternalToolName(currentToolName, tools) : currentToolName, input });
               currentToolId = "";
               currentToolName = "";
               currentToolInputJson = "";
@@ -487,7 +488,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
         }
 
         if (useStreaming && response.body) {
-          return await consumeAnthropicStream(response.body, input.onStreamChunk!, input.signal, input.onToolEvent);
+          return await consumeAnthropicStream(response.body, input.onStreamChunk!, input.signal, input.onToolEvent, input.tools);
         }
 
         const payload = await response.json() as Record<string, unknown>;
