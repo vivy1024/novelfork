@@ -13,6 +13,7 @@ import {
   type RuntimeToolStreamEvent,
 } from "./provider-adapters/index.js";
 import { getAdapterForProtocol } from "./provider-adapters/registry.js";
+import { detectModelProvider } from "./provider-adapters/model-transforms.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
 import { inferProtocol } from "../../shared/provider-catalog.js";
@@ -146,6 +147,25 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
   }
 
   return result;
+}
+
+/**
+ * Strip reasoning_content/reasoning_signature from all messages.
+ * Used when the target model doesn't support thinking or when switching
+ * between incompatible thinking-mode providers (DeepSeek ↔ Claude ↔ Codex).
+ *
+ * This prevents "thinking must be passed back" errors when conversation
+ * history contains thinking from a different provider.
+ */
+function stripReasoningFromMessages(messages: RuntimeChatMessage[]): RuntimeChatMessage[] {
+  return messages.map((msg) => {
+    if (msg.role === "tool") return msg;
+    if (!msg.reasoning_content && !msg.reasoning_signature) return msg;
+    const { reasoning_content, reasoning_signature, ...rest } = msg;
+    // If the message was only reasoning (empty content, no toolCalls), skip it entirely
+    if (!rest.content?.trim() && !rest.toolCalls?.length) return null;
+    return rest as RuntimeChatMessage;
+  }).filter((msg): msg is RuntimeChatMessage => msg !== null);
 }
 
 // --- Smart Retry Helpers ---
@@ -296,10 +316,29 @@ export class LlmRuntimeService {
           };
         }
 
+        const runtimeMessages = toRuntimeMessages(input.messages);
+        // Strip reasoning from historical messages to prevent cross-model thinking errors.
+        // Intra-turn reasoning passback is handled by agent-turn-runtime before messages reach here.
+        // Only keep reasoning for the last assistant message (current turn's tool loop).
+        let lastAssistantIdx = -1;
+        for (let i = runtimeMessages.length - 1; i >= 0; i--) {
+          if (runtimeMessages[i]!.role === "assistant" && (runtimeMessages[i] as { reasoning_content?: string }).reasoning_content) {
+            lastAssistantIdx = i;
+            break;
+          }
+        }
+        const cleanedMessages = runtimeMessages.map((msg, idx) => {
+          if (msg.role === "tool" || idx === lastAssistantIdx) return msg;
+          if (!(msg as { reasoning_content?: string }).reasoning_content && !(msg as { reasoning_signature?: string }).reasoning_signature) return msg;
+          const { reasoning_content, reasoning_signature, ...rest } = msg as RuntimeChatMessage & { reasoning_content?: string; reasoning_signature?: string };
+          if (!rest.content?.trim() && !(rest as { toolCalls?: unknown[] }).toolCalls?.length) return null;
+          return rest as RuntimeChatMessage;
+        }).filter((msg): msg is RuntimeChatMessage => msg !== null);
+
         const result = await adapter.generate({
           ...providerRef(provider),
           modelId: candidate.rawModelId,
-          messages: toRuntimeMessages(input.messages),
+          messages: cleanedMessages,
           ...(requestedTools ? { tools: requestedTools } : {}),
           ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
           ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
