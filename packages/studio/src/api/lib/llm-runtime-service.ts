@@ -373,7 +373,10 @@ export class LlmRuntimeService {
         }
 
         if (result.type === "tool_use") {
-          return { success: true, type: "tool_use", toolUses: result.toolUses, ...(result.reasoningContent ? { reasoningContent: result.reasoningContent, reasoningSignature: result.reasoningSignature } : {}), metadata };
+          const rc = (result as { reasoningContent?: string }).reasoningContent;
+          const rs = (result as { reasoningSignature?: string }).reasoningSignature;
+          console.log(`[llm-runtime] tool_use result: reasoningContent=${rc ? rc.length + ' chars' : 'NONE'}, signature=${rs ? rs.length + ' chars' : 'NONE'}`);
+          return { success: true, type: "tool_use", toolUses: result.toolUses, ...(rc ? { reasoningContent: rc, reasoningSignature: rs } : {}), metadata };
         }
 
         if (!result.content.trim()) {

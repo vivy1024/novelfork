@@ -139,6 +139,10 @@ export function parseSessionServerEnvelope(payload: string | ArrayBuffer | Uint8
       return parsed as unknown as NarratorSessionChatServerEnvelope;
     case "session:stream":
       return parsed as unknown as NarratorSessionChatStreamEnvelope;
+    case "session:tool-stream":
+      return parsed as unknown as NarratorSessionChatServerEnvelope;
+    case "session:tool-input-chunk":
+      return parsed as unknown as NarratorSessionChatServerEnvelope;
     case "session:error":
       return parsed as unknown as NarratorSessionChatErrorEnvelope;
     default:
