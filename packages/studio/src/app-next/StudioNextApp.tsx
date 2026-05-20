@@ -896,7 +896,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       <AgentQuickActions
         agentRole={novelAgentRole}
         bookId={novelBookId}
-        onSendMessage={(msg) => runtime.sendMessage(msg)}
+        onSendMessage={(msg, attachments) => runtime.sendMessage(msg, attachments)}
       />
     </>
   ) : null;
