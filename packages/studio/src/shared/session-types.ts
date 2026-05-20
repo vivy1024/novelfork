@@ -427,10 +427,18 @@ export interface NarratorSessionChatToolStreamEnvelope {
   content: string;
 }
 
+export interface NarratorSessionChatToolInputChunkEnvelope {
+  type: "session:tool-input-chunk";
+  sessionId: string;
+  toolCallId: string;
+  partialInput: string;
+}
+
 export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatSnapshotEnvelope
   | NarratorSessionChatStateEnvelope
   | NarratorSessionChatMessageEnvelope
   | NarratorSessionChatErrorEnvelope
   | NarratorSessionChatStreamEnvelope
-  | NarratorSessionChatToolStreamEnvelope;
+  | NarratorSessionChatToolStreamEnvelope
+  | NarratorSessionChatToolInputChunkEnvelope;

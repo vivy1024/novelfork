@@ -22,10 +22,97 @@ import type {
   RuntimeToolStreamEvent,
 } from "./index.js";
 import { failure, toProviderSafeToolName, toInternalToolName } from "./completions.js";
-import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, type ModelTransformContext } from "./model-transforms.js";
+import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, applyProviderBodyTransforms, stripCacheControlFromBody, type ModelTransformContext } from "./model-transforms.js";
 import { resolveMessagesUrls, resolveModelsUrls, trimTrailingSlash } from "./url-resolver.js";
 
 // ─── Exported Helpers (for ClaudeCodeAdapter reuse) ──────────────────────────
+
+/**
+ * Sanitize Anthropic message array: ensure every assistant message with tool_use
+ * has ALL matching tool_results in the immediately following user message.
+ * DeepSeek requires tool_results to be in a single user message right after the assistant.
+ */
+function sanitizeToolUseResults(messages: Array<Record<string, unknown>>): Array<Record<string, unknown>> {
+  // First pass: merge consecutive user messages that contain tool_results into one
+  // This handles the case where parallel tool executions produce separate user messages
+  const merged: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < messages.length; i++) {
+    const msg = messages[i];
+    // Check if this is a user message with tool_results that should be merged with the previous
+    if (msg.role === "user" && Array.isArray(msg.content)
+      && (msg.content as Array<Record<string, unknown>>).every(b => b.type === "tool_result")
+      && merged.length > 0) {
+      const prev = merged[merged.length - 1];
+      // Merge into previous user message if it also has tool_results
+      if (prev.role === "user" && Array.isArray(prev.content)
+        && (prev.content as Array<Record<string, unknown>>).some(b => b.type === "tool_result")) {
+        merged[merged.length - 1] = {
+          ...prev,
+          content: [...(prev.content as Array<Record<string, unknown>>), ...(msg.content as Array<Record<string, unknown>>)],
+        };
+        continue;
+      }
+    }
+    merged.push(msg);
+  }
+
+  // Second pass: find orphaned tool_use IDs and inject synthetic tool_results
+  const allToolUseIds = new Set<string>();
+  const allToolResultIds = new Set<string>();
+  const toolUseToIdx = new Map<string, number>();
+
+  for (let i = 0; i < merged.length; i++) {
+    const msg = merged[i];
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content as Array<Record<string, unknown>>) {
+      if (block.type === "tool_use" && typeof block.id === "string") {
+        allToolUseIds.add(block.id);
+        toolUseToIdx.set(block.id, i);
+      }
+      if (block.type === "tool_result" && typeof block.tool_use_id === "string") {
+        allToolResultIds.add(block.tool_use_id);
+      }
+    }
+  }
+
+  const orphanedIds = [...allToolUseIds].filter(id => !allToolResultIds.has(id));
+  if (orphanedIds.length === 0) return merged;
+
+  // Group orphans by assistant message index
+  const orphansByIdx = new Map<number, string[]>();
+  for (const id of orphanedIds) {
+    const idx = toolUseToIdx.get(id)!;
+    if (!orphansByIdx.has(idx)) orphansByIdx.set(idx, []);
+    orphansByIdx.get(idx)!.push(id);
+  }
+
+  // Insert synthetic tool_results
+  const result: Array<Record<string, unknown>> = [];
+  for (let i = 0; i < merged.length; i++) {
+    result.push(merged[i]);
+    const orphans = orphansByIdx.get(i);
+    if (orphans && orphans.length > 0) {
+      const nextMsg = merged[i + 1];
+      if (nextMsg && nextMsg.role === "user" && Array.isArray(nextMsg.content)) {
+        // Inject into next user message
+        merged[i + 1] = {
+          ...nextMsg,
+          content: [
+            ...(nextMsg.content as Array<Record<string, unknown>>),
+            ...orphans.map(id => ({ type: "tool_result", tool_use_id: id, content: "[工具执行被中断]" })),
+          ],
+        };
+      } else {
+        // Insert new user message
+        result.push({
+          role: "user",
+          content: orphans.map(id => ({ type: "tool_result", tool_use_id: id, content: "[工具执行被中断]" })),
+        });
+      }
+    }
+  }
+  return result;
+}
 
 const ANTHROPIC_VERSION = "2023-06-01";
 
@@ -39,6 +126,7 @@ export function buildAnthropicHeaders(apiKey: string): Record<string, string> {
 
 export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
   const result: Array<Record<string, unknown>> = [];
+  const isDeepSeek = ctx ? detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek" : false;
   const encodeName = (name: string) => {
     if (ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek") {
       return needsDeepSeekToolNameEncoding(name) ? encodeDeepSeekToolName(name) : name;
@@ -65,7 +153,12 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx
       const content: Array<Record<string, unknown>> = [];
       // Pass back thinking block if present (Claude extended thinking + tools)
       if (message.reasoning_content) {
-        content.push({ type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" });
+        // DeepSeek doesn't support signature field in thinking blocks
+        if (isDeepSeek) {
+          content.push({ type: "thinking", thinking: message.reasoning_content });
+        } else {
+          content.push({ type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" });
+        }
       }
       if (message.content.trim()) {
         content.push({ type: "text", text: message.content });
@@ -84,8 +177,11 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx
 
     // Plain assistant message — may have thinking content
     if (message.role === "assistant" && message.reasoning_content) {
+      const thinkingBlock: Record<string, unknown> = isDeepSeek
+        ? { type: "thinking", thinking: message.reasoning_content }
+        : { type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" };
       const content: Array<Record<string, unknown>> = [
-        { type: "thinking", thinking: message.reasoning_content, signature: message.reasoning_signature ?? "" },
+        thinkingBlock,
         ...(message.content.trim() ? [{ type: "text", text: message.content }] : []),
       ];
       result.push({ role: "assistant", content });
@@ -95,7 +191,7 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx
     result.push({ role: message.role, content: message.content });
   }
 
-  return result;
+  return sanitizeToolUseResults(result);
 }
 
 export function toAnthropicTools(tools: readonly RuntimeToolDefinition[], ctx?: ModelTransformContext): Array<Record<string, unknown>> {
@@ -465,6 +561,69 @@ export class AnthropicAdapter implements RuntimeAdapter {
       ];
     }
 
+    // DeepSeek/Claude thinking support: if messages contain thinking blocks or model supports thinking,
+    // we must include the thinking parameter in the request body. Without it, the API rejects
+    // requests that contain thinking blocks in the message history (e.g. during tool-use continuation).
+    const providerHint = detectModelProvider(input.modelId, input.providerId, input.baseUrl);
+    const hasThinkingInHistory = thinkingCount > 0;
+
+    if (providerHint === "deepseek") {
+      // DeepSeek requires that EVERY assistant message with tool_use must have a thinking block
+      // when thinking mode is enabled. Since we can't guarantee this (e.g. after context compaction
+      // or failed turns), we explicitly disable thinking mode to avoid 400 errors.
+      body.thinking = { type: "disabled" };
+      // DeepSeek doesn't support cache_control
+      stripCacheControlFromBody(body);
+      // Strip any thinking blocks from messages since thinking is disabled
+      let msgs = body.messages as Array<Record<string, unknown>>;
+      msgs = msgs.map(msg => {
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg;
+        const filtered = (msg.content as Array<Record<string, unknown>>).filter(b => b.type !== "thinking");
+        if (filtered.length === 0) return null;
+        return { ...msg, content: filtered };
+      }).filter(Boolean) as Array<Record<string, unknown>>;
+
+      // Re-sanitize after stripping: ensure every assistant with tool_use has matching tool_results
+      body.messages = sanitizeToolUseResults(msgs);
+      // Debug: log final message structure for DeepSeek
+      const finalMsgs = body.messages as Array<Record<string, unknown>>;
+      for (let i = 0; i < finalMsgs.length; i++) {
+        const m = finalMsgs[i];
+        if (m.role === "assistant" && Array.isArray(m.content)) {
+          const blocks = (m.content as Array<Record<string, unknown>>);
+          const tuIds = blocks.filter(b => b.type === "tool_use").map(b => (b as {id?:string}).id ?? "?");
+          console.log(`[deepseek.sanitize] msg[${i}] assistant tool_use_ids=[${tuIds.join(",")}]`);
+        } else if (m.role === "user" && Array.isArray(m.content)) {
+          const blocks = (m.content as Array<Record<string, unknown>>);
+          const trIds = blocks.filter(b => b.type === "tool_result").map(b => (b as {tool_use_id?:string}).tool_use_id ?? "?");
+          if (trIds.length > 0) console.log(`[deepseek.sanitize] msg[${i}] user tool_result_ids=[${trIds.join(",")}]`);
+        }
+      }
+    } else if (hasThinkingInHistory) {
+      // Claude: enable thinking and keep blocks as-is
+      body.thinking = { type: "enabled", budget_tokens: 4096 };
+    }
+
+    // Debug: log the thinking blocks being sent back to API
+    if (thinkingCount > 0) {
+      for (const msg of anthropicMsgs) {
+        if (!Array.isArray(msg.content)) continue;
+        for (const block of (msg.content as Array<Record<string, unknown>>)) {
+          if (block.type === "thinking") {
+            console.log(`[anthropic.generate] thinking block: thinking=${typeof block.thinking === "string" ? (block.thinking as string).length + " chars" : "MISSING"}, signature=${typeof block.signature === "string" ? (block.signature as string).length + " chars" : "MISSING"}`);
+          }
+        }
+      }
+    }
+
+    // Apply provider-specific body transforms (GLM, Kimi, etc.)
+    const transformedBody = applyProviderBodyTransforms(body, ctx);
+    // Copy transforms back (applyProviderBodyTransforms returns a new object for some providers)
+    if (transformedBody !== body) {
+      Object.keys(body).forEach(k => delete body[k]);
+      Object.assign(body, transformedBody);
+    }
+
     let lastError = "Anthropic messages request failed";
 
     for (const [index, url] of urls.entries()) {
@@ -479,6 +638,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
 
         if (!response.ok) {
           const errorText = await readAnthropicError(response);
+          console.log(`[anthropic.generate] API error ${response.status}: ${errorText}, providerHint=${providerHint}, hasThinking=${hasThinkingInHistory}, bodyHasThinking=${!!body.thinking}`);
           if (canRetry && (response.status === 404 || response.status === 405)) {
             lastError = errorText;
             continue;

@@ -541,7 +541,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     // We push it as a standalone message here; toOpenAiMessages will merge it with the following tool_calls.
     const policy = input.reasoningPolicy ?? "passback-on-tool-loop";
     if (reply.reasoningContent && policy !== "strip") {
+      console.log(`[agent-turn] pushing reasoning: ${reply.reasoningContent.length} chars, signature=${reply.reasoningSignature?.length ?? 0} chars`);
       messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent, reasoning_signature: reply.reasoningSignature });
+    } else if (reply.type === "tool_use") {
+      console.log(`[agent-turn] tool_use reply but NO reasoningContent (policy=${policy}, hasRC=${!!reply.reasoningContent})`);
     }
 
     // Determine if all tools in this batch are read-only (parallelizable)
