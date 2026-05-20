@@ -219,7 +219,7 @@ export function applyProviderBodyTransforms(body: Record<string, unknown>, ctx: 
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function stripCacheControlFromBody(body: Record<string, unknown>): void {
+export function stripCacheControlFromBody(body: Record<string, unknown>): void {
   if (Array.isArray(body.system)) {
     body.system = (body.system as Array<Record<string, unknown>>).map(block => {
       if (block.cache_control) {

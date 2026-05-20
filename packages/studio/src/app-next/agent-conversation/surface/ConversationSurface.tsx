@@ -252,7 +252,7 @@ export function ConversationSurface({
     const msgIndex = messages.findIndex((m) => m.id === editingMessage.id);
     if (msgIndex >= 0 && onTruncateToMessage) {
       void onTruncateToMessage(editingMessage.id).then(() => {
-        onSend(newContent);
+        setTimeout(() => onSend(newContent), 100);
       }).catch(() => {
         // Truncate failed — still send the message as fallback
         onSend(newContent);
