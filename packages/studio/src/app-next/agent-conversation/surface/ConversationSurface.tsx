@@ -53,7 +53,7 @@ export interface ConversationSurfaceProps {
   onRejectConfirmation: (id: string) => void;
   /** Called when user clicks "始终允许此类" — approves + adds pattern to session toolPolicy */
   onAlwaysAllowConfirmation?: (id: string, pattern: string) => void;
-  onSend: (content: string) => void;
+  onSend: (content: string, attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>) => void;
   onAbort?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onCompactSession?: SlashCommandExecutionContext["compactSession"];
@@ -715,7 +715,7 @@ export function ConversationSurface({
 
       {/* ── Composer ── */}
       <Composer
-        onSend={(content) => { setLocalSending(true); onSend(content); }}
+        onSend={(content, attachments) => { setLocalSending(true); onSend(content, attachments); }}
         onAbort={onAbort}
         onContinue={() => { setLocalSending(true); onSend(""); }}
         onRetry={handleRetry}

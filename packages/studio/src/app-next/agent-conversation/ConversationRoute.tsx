@@ -37,7 +37,7 @@ export interface ConversationRouteProps {
   footerActions?: ReactNode;
   createMessageId?: () => string;
   onClientEnvelope?: (envelope: ConversationRouteClientEnvelope) => void;
-  onSendMessage?: (content: string) => void;
+  onSendMessage?: (content: string, attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>) => void;
   onAbortSession?: () => void;
   onUpdateSessionConfig?: (patch: ConversationSessionConfigPatch) => Promise<void> | void;
   onCompactSession?: (instructions?: string) => Promise<SlashCommandCompactResult>;
@@ -148,9 +148,9 @@ export function ConversationRoute({
     );
   }
 
-  const handleSend = (content: string) => {
+  const handleSend = (content: string, attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>) => {
     if (onSendMessage) {
-      onSendMessage(content);
+      onSendMessage(content, attachments);
       return;
     }
 
@@ -162,6 +162,7 @@ export function ConversationRoute({
         sessionMode,
         ack: initialAck,
         canvasContext,
+        attachments,
       }),
     );
   };
