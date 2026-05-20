@@ -8,6 +8,7 @@ export interface BuildMessageEnvelopeInput {
   sessionMode?: NarratorSessionChatMessageClientEnvelope["sessionMode"];
   ack?: number;
   canvasContext?: CanvasContext;
+  attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>;
 }
 
 export function buildMessageEnvelope(input: BuildMessageEnvelopeInput) {
@@ -19,6 +20,7 @@ export function buildMessageEnvelope(input: BuildMessageEnvelopeInput) {
     sessionMode: input.sessionMode,
     ack: input.ack,
     canvasContext: input.canvasContext,
+    attachments: input.attachments,
   };
 }
 

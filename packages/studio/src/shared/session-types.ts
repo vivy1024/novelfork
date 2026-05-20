@@ -215,6 +215,13 @@ export const DEFAULT_SESSION_CONFIG: SessionConfig = {
   reasoningEffort: "medium",
 };
 
+export interface MessageImageAttachment {
+  type: "image";
+  mimeType: string;
+  filePath: string;   // server-side path (persisted)
+  fileName?: string;
+}
+
 export type NarratorSessionChatRole = "user" | "assistant" | "system";
 
 export interface TokenUsage {
@@ -252,6 +259,7 @@ export interface NarratorSessionChatMessage {
   toolCalls?: ToolCall[];
   runtime?: NarratorSessionRuntimeMetadata;
   metadata?: AgentNativeMessageMetadata & Record<string, unknown>;
+  attachments?: MessageImageAttachment[];
 }
 
 export type ToolCallStatus = "pending" | "running" | "success" | "error";
@@ -346,6 +354,7 @@ export interface NarratorSessionChatMessageClientEnvelope {
   sessionMode?: NarratorSessionMode;
   ack?: number;
   canvasContext?: CanvasContext;
+  attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>;
 }
 
 export interface NarratorSessionChatAckClientEnvelope {

@@ -5,6 +5,7 @@
  * 供 anthropic-compatible 和 claude-code 复用。
  */
 
+import { readFileSync } from "node:fs";
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
 import type {
   RuntimeProviderRef,
@@ -185,6 +186,27 @@ export function toAnthropicMessages(messages: readonly RuntimeChatMessage[], ctx
         ...(message.content.trim() ? [{ type: "text", text: message.content }] : []),
       ];
       result.push({ role: "assistant", content });
+      continue;
+    }
+
+    // User message with image attachments — use content blocks
+    if (message.role === "user" && message.attachments?.length) {
+      const contentBlocks: Array<Record<string, unknown>> = [];
+      if (message.content.trim()) {
+        contentBlocks.push({ type: "text", text: message.content });
+      }
+      for (const att of message.attachments) {
+        try {
+          const fileData = readFileSync(att.filePath);
+          contentBlocks.push({
+            type: "image",
+            source: { type: "base64", media_type: att.mimeType, data: fileData.toString("base64") },
+          });
+        } catch { /* skip unreadable images */ }
+      }
+      if (contentBlocks.length > 0) {
+        result.push({ role: "user", content: contentBlocks });
+      }
       continue;
     }
 

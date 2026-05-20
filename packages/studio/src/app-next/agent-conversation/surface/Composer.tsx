@@ -89,7 +89,7 @@ function HoldAbortButton({ onAbort, aborting }: { onAbort: () => void; aborting:
 }
 
 export interface ComposerProps {
-  onSend: (content: string) => void;
+  onSend: (content: string, attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>) => void;
   onAbort: () => void;
   onContinue?: () => void;
   onRetry?: () => void;
@@ -143,22 +143,35 @@ export function Composer({
   const handleSend = useCallback(async () => {
     const content = value.trim();
     if (!content && attachedFiles.length === 0) return;
-    // Upload attached files before sending
-    if (attachedFiles.length > 0 && onAttach) {
-      const dt = new DataTransfer();
-      for (const f of attachedFiles) dt.items.add(f);
-      onAttach(dt.files);
+
+    // Convert attached files to base64
+    let imageAttachments: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }> | undefined;
+    if (attachedFiles.length > 0) {
+      imageAttachments = await Promise.all(
+        attachedFiles.map(
+          (file) =>
+            new Promise<{ type: "image"; mimeType: string; data: string; fileName?: string }>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const base64 = (reader.result as string).split(",")[1] || "";
+                resolve({ type: "image", mimeType: file.type || "image/png", data: base64, fileName: file.name });
+              };
+              reader.readAsDataURL(file);
+            }),
+        ),
+      );
       setAttachedFiles([]);
     }
-    if (!content) return;
-    const slash = parseSlashCommandInput(content);
+
+    const effectiveContent = content || "[图片]";
+    const slash = parseSlashCommandInput(effectiveContent);
     if (slash.ok) {
       try {
-        const result = await executeSlashCommandInput(content, { ...slashCommandContext, registry });
+        const result = await executeSlashCommandInput(effectiveContent, { ...slashCommandContext, registry });
         // 后端执行的命令（novel:* 等）：前端 registry 无 handler，发送到后端处理
         if (!result.ok && result.code === "unhandled_command") {
           // 检查是否是用户自定义命令（handler 为 "user-command"）
-          const parsed = parseSlashCommandInput(content);
+          const parsed = parseSlashCommandInput(effectiveContent);
           if (parsed.ok) {
             const userCmd = registry.commands.find(c => c.name === parsed.name && (c as { handler?: string }).handler === "user-command");
             if (userCmd) {
@@ -166,14 +179,14 @@ export function Composer({
               const fullCmd = slashCommandContext?.userCommands?.find(c => c.name === parsed.name && c.enabled);
               if (fullCmd?.prompt) {
                 const expanded = expandUserCommandPrompt(fullCmd.prompt, parsed.args);
-                onSend(expanded);
+                onSend(expanded, imageAttachments);
                 setValue("");
                 setCommandStatus(null);
                 return;
               }
             }
           }
-          onSend(content);
+          onSend(effectiveContent, imageAttachments);
           setValue("");
           setCommandStatus(null);
           return;
@@ -188,10 +201,10 @@ export function Composer({
       }
       return;
     }
-    onSend(content);
+    onSend(effectiveContent, imageAttachments);
     setValue("");
     setCommandStatus(null);
-  }, [value, onSend, onSlashCommandResult, slashCommandContext, registry]);
+  }, [value, attachedFiles, onSend, onSlashCommandResult, slashCommandContext, registry]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
     if (e.key === "Enter" && !e.shiftKey) {
