@@ -613,7 +613,7 @@ export function ConversationSurface({
       {/* ── Edit & Regenerate dialog ── */}
       {editingMessage && (
         <div className="shrink-0 border-t border-border bg-muted/30 px-4 py-3">
-          <div className="flex items-start gap-2">
+          <div className="flex items-start gap-2" data-edit-container>
             <textarea
               className="flex-1 rounded-md border border-border bg-background px-3 py-2 text-sm min-h-[60px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
               defaultValue={editingMessage.content}
@@ -627,7 +627,7 @@ export function ConversationSurface({
               ref={(el) => el?.select()}
             />
             <div className="flex flex-col gap-1">
-              <Button size="sm" onClick={(e) => { const textarea = (e.target as HTMLElement).closest('.flex')?.querySelector('textarea'); if (textarea) handleEditRegenerate(textarea.value); }}>
+              <Button size="sm" onClick={(e) => { const textarea = (e.target as HTMLElement).closest('[data-edit-container]')?.querySelector('textarea'); if (textarea) handleEditRegenerate(textarea.value); }}>
                 重新生成
               </Button>
               <Button size="sm" variant="ghost" onClick={() => setEditingMessage(null)}>
