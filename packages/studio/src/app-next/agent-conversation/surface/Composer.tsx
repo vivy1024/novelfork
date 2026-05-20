@@ -20,31 +20,41 @@ function HoldAbortButton({ onAbort, aborting }: { onAbort: () => void; aborting:
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef(0);
+  const firedRef = useRef(false);
 
-  const startHold = () => {
-    setHolding(true);
-    startTimeRef.current = Date.now();
-    timerRef.current = setInterval(() => {
-      const elapsed = Date.now() - startTimeRef.current;
-      const pct = Math.min(elapsed / 1000, 1);
-      setProgress(pct);
-      if (pct >= 1) {
-        cancelHold();
-        onAbort();
-      }
-    }, 50);
-  };
-
-  const cancelHold = () => {
-    setHolding(false);
-    setProgress(0);
+  const cleanup = () => {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
   };
 
-  useEffect(() => () => { if (timerRef.current) clearInterval(timerRef.current); }, []);
+  const startHold = () => {
+    firedRef.current = false;
+    setHolding(true);
+    startTimeRef.current = Date.now();
+    timerRef.current = setInterval(() => {
+      const elapsed = Date.now() - startTimeRef.current;
+      const pct = Math.min(elapsed / 800, 1); // 800ms hold time
+      setProgress(pct);
+      if (pct >= 1 && !firedRef.current) {
+        firedRef.current = true;
+        cleanup();
+        setHolding(false);
+        setProgress(0);
+        onAbort();
+      }
+    }, 30);
+  };
+
+  const cancelHold = () => {
+    if (firedRef.current) return; // Already fired, don't reset
+    setHolding(false);
+    setProgress(0);
+    cleanup();
+  };
+
+  useEffect(() => () => cleanup(), []);
 
   if (aborting) {
     return (
