@@ -235,7 +235,7 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   }, []);
 
   const sendMessage = useCallback(
-    (content: string) => {
+    (content: string, attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>) => {
       if (!sessionId) return null;
       dispatch({ type: "client:message-sent" });
       return sendClientEnvelope(buildMessageEnvelope({
@@ -245,6 +245,7 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
         sessionMode,
         ack: getResumeFromSeq(state),
         canvasContext,
+        attachments,
       }));
     },
     [canvasContext, createMessageId, sendClientEnvelope, sessionId, sessionMode, state],

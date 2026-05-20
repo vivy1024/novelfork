@@ -16,7 +16,7 @@ import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 
 export type AgentTurnItem =
-  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown> }
+  | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
   | { readonly type: "tool_call"; readonly id: string; readonly name: string; readonly input: Record<string, unknown> }
   | { readonly type: "tool_result"; readonly toolCallId: string; readonly name: string; readonly content: string; readonly data?: unknown; readonly metadata?: Record<string, unknown> };
 

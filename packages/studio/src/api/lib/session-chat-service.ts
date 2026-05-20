@@ -1,5 +1,5 @@
 import type { Server as NodeHttpServer } from "node:http";
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, writeFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { homedir } from "node:os";
 
@@ -13,6 +13,7 @@ import type {
 
 import { normalizeToolConfirmationRequest, type CanvasContext, type OpenResourceTab, type SessionToolDefinition, type SessionToolExecutionResult, type ToolConfirmationAudit, type ToolConfirmationDecision, type ToolConfirmationRequest, type WorkspaceResourceRef } from "../../shared/agent-native-workspace.js";
 import type {
+  MessageImageAttachment,
   NarratorSessionChatErrorEnvelope,
   NarratorSessionChatHistory,
   NarratorSessionChatMessage,
@@ -624,6 +625,36 @@ function createSessionChatError(
     error,
     ...details,
   };
+}
+
+// ─── Image Attachment Persistence ─────────────────────────────────────────────
+
+const UPLOADS_DIR = join(homedir(), ".novelfork", "uploads");
+
+function ensureUploadsDir(): void {
+  if (!existsSync(UPLOADS_DIR)) {
+    mkdirSync(UPLOADS_DIR, { recursive: true });
+  }
+}
+
+function saveAttachmentsToDisk(
+  attachments: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>,
+): MessageImageAttachment[] {
+  ensureUploadsDir();
+  const result: MessageImageAttachment[] = [];
+  for (const att of attachments) {
+    if (att.type !== "image" || !att.data) continue;
+    const ext = att.mimeType.split("/")[1]?.replace("jpeg", "jpg") || "png";
+    const fileName = att.fileName || `image-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+    const filePath = join(UPLOADS_DIR, `${Date.now()}-${Math.random().toString(36).slice(2, 8)}-${fileName}`);
+    try {
+      writeFileSync(filePath, new Uint8Array(Buffer.from(att.data, "base64")));
+      result.push({ type: "image", mimeType: att.mimeType, filePath, fileName });
+    } catch (e) {
+      console.error("Failed to save attachment:", e);
+    }
+  }
+  return result;
 }
 
 function appendMessageToState(
@@ -1516,6 +1547,7 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
       role: message.role,
       content: message.content,
       ...(message.metadata ? { metadata: message.metadata } : {}),
+      ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     }];
   });
 }
@@ -1659,6 +1691,10 @@ export async function handleSessionChatTransportMessage(
     console.log(JSON.stringify({ component: "session-chat", event: "continue", sessionId }));
   }
 
+  // ─── Parse and persist image attachments ────────────────────────────────────
+  const rawAttachments = Array.isArray((payload as any).attachments) ? (payload as any).attachments as Array<{ type: "image"; mimeType: string; data: string; fileName?: string }> : undefined;
+  const persistedAttachments = rawAttachments?.length ? saveAttachmentsToDisk(rawAttachments) : undefined;
+
   const messageId = ("messageId" in payload ? payload.messageId?.trim() : "") || `session-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // ─── Buffered Message Queue: check if session is busy ───────────────────────
@@ -1687,6 +1723,7 @@ export async function handleSessionChatTransportMessage(
     content: effectiveContent,
     timestamp,
     ...(canvasContext ? { metadata: { canvasContext } } : {}),
+    ...(persistedAttachments?.length ? { attachments: persistedAttachments } : {}),
   });
   broadcastMessageEnvelope(sessionId, loaded.state, userMessage);
 

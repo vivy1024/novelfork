@@ -83,6 +83,7 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
       if (message.type === "message") {
         const reasoningContent = "reasoning_content" in message && typeof message.reasoning_content === "string" ? message.reasoning_content : undefined;
         const reasoningSignature = "reasoning_signature" in message && typeof message.reasoning_signature === "string" ? message.reasoning_signature : undefined;
+        const attachments = "attachments" in message && Array.isArray(message.attachments) ? message.attachments : undefined;
         // If this is an empty assistant message with only reasoning_content,
         // hold it as pending — it will be merged into the next tool_call message
         if (message.role === "assistant" && message.content.trim().length === 0 && reasoningContent) {
@@ -90,8 +91,8 @@ function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): Runtime
           pendingSignature = reasoningSignature;
           continue;
         }
-        if (message.content.trim().length === 0 && !reasoningContent) continue;
-        result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}), ...(reasoningSignature ? { reasoning_signature: reasoningSignature } : {}) });
+        if (message.content.trim().length === 0 && !reasoningContent && !attachments?.length) continue;
+        result.push({ role: message.role, content: message.content, ...(reasoningContent ? { reasoning_content: reasoningContent } : {}), ...(reasoningSignature ? { reasoning_signature: reasoningSignature } : {}), ...(attachments?.length ? { attachments } : {}) });
         continue;
       }
       if (message.type === "tool_call") {
