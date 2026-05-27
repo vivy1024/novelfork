@@ -6,8 +6,25 @@ export { NOVEL_TOOL_SCHEMAS } from "./tool-schemas.js";
 export type { ToolInputSchema } from "./tool-schemas.js";
 
 // Re-export handlers for use by studio and other consumers
-export { handleChapterRead, handleJingweiReadContext } from "./handlers/index.js";
-export type { ChapterReadInput, ChapterReadResult, JingweiReadContextInput, JingweiReadContextResult } from "./handlers/index.js";
+export {
+  handleChapterRead,
+  handleJingweiReadBrief,
+  handleJingweiReadCategory,
+  handleJingweiSearch,
+  handleJingweiReadContext,
+} from "./handlers/index.js";
+export type {
+  ChapterReadInput,
+  ChapterReadResult,
+  JingweiReadBriefInput,
+  JingweiReadBriefResponse,
+  JingweiReadCategoryInput,
+  JingweiReadCategoryResponse,
+  JingweiSearchInput,
+  JingweiSearchResponse,
+  JingweiReadContextInput,
+  JingweiReadContextResult,
+} from "./handlers/index.js";
 
 // Re-export handler registry (plugin declares which tools it owns)
 export { NOVEL_HANDLER_DECLARATIONS, isNovelPluginTool, getHandlerDeclaration } from "./handler-registry.js";
@@ -34,7 +51,10 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "candidate.create_chapter": "创建章节候选稿",
   "narrative.read_line": "读取叙事线",
   "narrative.propose_change": "提议叙事线变更",
-  "jingwei.read_context": "读取经纬上下文",
+  "jingwei.read_brief": "读取经纬核心包和分类目录",
+  "jingwei.read_category": "按分类分页读取经纬条目",
+  "jingwei.search": "搜索经纬条目",
+  "jingwei.read_context": "读取经纬上下文（兼容入口）",
   "health.read_summary": "读取健康度摘要",
   "chapter.audit": "审计章节",
   "rewrite.segment": "重写选段",

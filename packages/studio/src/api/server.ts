@@ -28,7 +28,7 @@ import { ApiError, buildApiErrorResponse } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider, type StaticProviderDescription } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
-import { setupSessionChatWebSocket } from "./lib/session-chat-service.js";
+import { setupSessionChatWebSocket, recoverInterruptedSessions } from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
 import { ProviderRuntimeStore } from "./lib/provider-runtime-store.js";
 import { setGlobalProxyUrl, setPerProviderProxy } from "./lib/provider-adapters/index.js";
@@ -121,7 +121,13 @@ import type { Context } from "hono";
 import { authGuard } from "./middleware/auth-guard.js";
 import { pluginRegistry } from "./lib/plugin-loader.js";
 import { NOVEL_PLUGIN_MANIFEST, NOVEL_AGENT_PRESET_LIST } from "@vivy1024/novelfork-novel-plugin";
-import { handleChapterRead, handleJingweiReadContext } from "@vivy1024/novelfork-novel-plugin";
+import {
+  handleChapterRead,
+  handleJingweiReadBrief,
+  handleJingweiReadCategory,
+  handleJingweiSearch,
+  handleJingweiReadContext,
+} from "@vivy1024/novelfork-novel-plugin";
 
 // --- Studio event bus for SSE ---
 
@@ -190,6 +196,9 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     routes: [], // Routes will be migrated in Batch 3
     tools: [
       { toolName: "chapter.read", execute: async (input, ctx) => handleChapterRead(input as any, ctx as any) },
+      { toolName: "jingwei.read_brief", execute: async (input, ctx) => handleJingweiReadBrief(input as any, ctx as any) },
+      { toolName: "jingwei.read_category", execute: async (input, ctx) => handleJingweiReadCategory(input as any, ctx as any) },
+      { toolName: "jingwei.search", execute: async (input, ctx) => handleJingweiSearch(input as any, ctx as any) },
       { toolName: "jingwei.read_context", execute: async (input, ctx) => handleJingweiReadContext(input as any, ctx as any) },
     ],
     pages: [], // Pages will be migrated in Batch 5
@@ -1056,6 +1065,9 @@ export async function startStudioServer(
     );
     // setupMonitorWebSocket(startedServer, ctx);
   }
+
+  // --- 启动时恢复被中断的会话（非阻塞） ---
+  void recoverInterruptedSessions();
 
   // --- 启动时自动检查更新（非阻塞） ---
   try {
