@@ -21,6 +21,7 @@ import type {
   NarratorSessionChatServerEnvelope,
   NarratorSessionChatSnapshot,
   NarratorSessionChatStateEnvelope,
+  NarratorSessionCompactProgressEnvelope,
   NarratorSessionRecord,
   NarratorSessionRecoveryEnvelope,
   NarratorSessionRecoveryMetadata,
@@ -72,10 +73,17 @@ import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact } from "./compact/micro-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
 import { autoCompact, detectCompactionAction, selectThresholds, estimateTokenCount, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
+import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkpoint.js";
+import { ProviderHealthManager, classifyError } from "./provider-health-manager.js";
+import { createContextBudgetManager } from "./context-budget-manager.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
 /** 对标 Claude: 默认模型上下文窗口 200k tokens */
+
+// --- Shared runtime managers (singleton per process) ---
+const providerHealth = new ProviderHealthManager();
+const contextBudget = createContextBudgetManager();
 const DEFAULT_MODEL_CONTEXT_WINDOW = 200_000;
 
 async function resolveMaxTurnSteps(): Promise<number> {
@@ -100,8 +108,22 @@ async function maybeAutoCompact(
   const config = await loadUserConfig().catch(() => null);
   const rc = config?.runtimeControls;
 
-  // 从用户配置读取双档阈值
-  const maxContextTokens = DEFAULT_MODEL_CONTEXT_WINDOW;
+  // 从 session 的 provider/model 配置读取实际上下文窗口大小
+  let maxContextTokens = DEFAULT_MODEL_CONTEXT_WINDOW;
+  try {
+    const session = await getSessionById(sessionId);
+    if (session?.sessionConfig?.providerId) {
+      const provider = await providerRuntimeStore.getProvider(session.sessionConfig.providerId);
+      if (provider?.models?.length) {
+        const modelId = session.sessionConfig.modelId;
+        const model = provider.models.find((m) => m.id === modelId) ?? provider.models[0];
+        if (model?.contextWindow && model.contextWindow > 0) {
+          maxContextTokens = model.contextWindow;
+        }
+      }
+    }
+  } catch { /* fallback to default */ }
+
   const thresholds = selectThresholds(maxContextTokens, {
     contextCompressionThresholdPercent: rc?.contextCompressionThresholdPercent ?? 80,
     contextTruncateTargetPercent: rc?.contextTruncateTargetPercent ?? 70,
@@ -111,7 +133,24 @@ async function maybeAutoCompact(
     maxTruncateRatio: rc?.maxTruncateRatio ?? 80,
   });
 
-  const compactMessages: CompactMessage[] = messages.map((m) => ({
+  // Resolve summary model context window for cascade compact
+  let summaryModelContextWindow: number | undefined;
+  const summaryModelRef = config?.modelDefaults?.summaryModel;
+  if (summaryModelRef) {
+    try {
+      const smProviderId = summaryModelRef.split(":")[0] ?? "";
+      const smModelId = summaryModelRef.split(":").slice(1).join(":") || summaryModelRef;
+      const smProvider = await providerRuntimeStore.getProvider(smProviderId);
+      const smModel = smProvider?.models?.find((m) => m.id === smModelId);
+      if (smModel?.contextWindow && smModel.contextWindow > 0) {
+        summaryModelContextWindow = smModel.contextWindow;
+      }
+    } catch { /* fallback: no cascade */ }
+  }
+
+  const compactMessages: CompactMessage[] = messages
+    .filter((m) => !(m.metadata as any)?.collapsed)
+    .map((m) => ({
     id: m.id,
     role: m.role as "system" | "user" | "assistant",
     content: m.content,
@@ -124,10 +163,33 @@ async function maybeAutoCompact(
   }
 
   try {
+    await broadcastCompactProgress(sessionId, "cascade", 10, "开始级联压缩…");
     const result = await autoCompact({
       messages: compactMessages,
       maxContextTokens,
       thresholds,
+      summaryModelContextWindow,
+      generateSummary: summaryModelRef ? async (prompt: string) => {
+        const smProviderId = summaryModelRef.split(":")[0] ?? "";
+        const smModelId = summaryModelRef.split(":").slice(1).join(":") || summaryModelRef;
+        const summaryResult = await generateSessionReply({
+          sessionConfig: {
+            providerId: smProviderId,
+            modelId: smModelId,
+            permissionMode: "read",
+            reasoningEffort: "low",
+          },
+          messages: [
+            { type: "message", role: "system", content: COMPACT_SYSTEM_PROMPT },
+            { type: "message", role: "user", content: prompt },
+          ],
+          tools: [],
+        });
+        if (summaryResult.success && summaryResult.type === "message") {
+          return summaryResult.content;
+        }
+        throw new Error("Summary model returned non-message result");
+      } : undefined,
       summarize: async (olderMessages, customInstructions) => {
         // 调用摘要模型：把完整旧消息作为 API messages 发送
         try {
@@ -170,9 +232,13 @@ async function maybeAutoCompact(
         const half = Math.floor(maxChars / 2);
         return `${text.slice(0, half)}\n\n[... 中间 ${olderMessages.length} 条消息已省略 ...]\n\n${text.slice(-half)}`;
       },
+      onProgress: (progress) => {
+        broadcastCompactProgress(sessionId, "cascade", progress);
+      },
     });
 
     if (result.compacted || result.truncated) {
+      await broadcastCompactProgress(sessionId, "cascade", 100, "级联压缩完成");
       const compactedItems: AgentTurnItem[] = result.messages.map((m) => ({
         type: "message" as const,
         role: m.role === "tool_result" ? "system" as const : m.role as "system" | "user" | "assistant",
@@ -253,6 +319,57 @@ let sessionToolExecutor = createSessionToolExecutor();
 export function configureSessionToolExecutor(options: SessionToolExecutorOptions): void {
   sessionToolExecutorOptions = options;
   sessionToolExecutor = createSessionToolExecutor(options);
+}
+
+/**
+ * Startup recovery: mark sessions with unfinished checkpoints as interrupted.
+ * Called once at server startup. Does NOT auto-resume turns — just marks sessions
+ * so the frontend can show a "Continue" button.
+ */
+export async function recoverInterruptedSessions(): Promise<void> {
+  try {
+    const checkpoints = getUnfinishedCheckpoints();
+    if (checkpoints.length === 0) return;
+
+    const sessionIds = [...new Set(checkpoints.map(cp => cp.sessionId))];
+    console.log(JSON.stringify({
+      component: "session.startup-recovery",
+      msg: `Found ${checkpoints.length} unfinished checkpoint(s) across ${sessionIds.length} session(s)`,
+      sessionIds,
+    }));
+
+    for (const sessionId of sessionIds) {
+      try {
+        await updateSession(sessionId, {
+          recovery: {
+            lastSeq: 0,
+            lastAckedSeq: 0,
+            availableFromSeq: 0,
+            pendingMessageCount: 0,
+            pendingToolCallCount: 0,
+            lastFailure: {
+              reason: "interrupted",
+              message: "服务器重启，上一轮任务被中断。可点击「继续」恢复执行。",
+              at: new Date().toISOString(),
+            },
+            updatedAt: new Date().toISOString(),
+          },
+        });
+      } catch {
+        console.log(JSON.stringify({
+          component: "session.startup-recovery",
+          msg: `Failed to mark session as interrupted`,
+          sessionId,
+        }));
+      }
+    }
+  } catch (error) {
+    console.log(JSON.stringify({
+      component: "session.startup-recovery",
+      msg: "Startup recovery failed",
+      error: error instanceof Error ? error.message : "unknown",
+    }));
+  }
 }
 
 interface SessionChatTransportState {
@@ -967,7 +1084,10 @@ async function appendModelContinuationAfterToolDecision(
     let bookContext = "";
     if (projectId) {
       try {
-        bookContext = await buildAgentContext({ bookId: projectId });
+        // 从最近用户消息提取 sceneText 用于 tracked 条目匹配
+        const recentUserMsg = [...loaded.state.messages].reverse().find(m => m.role === "user");
+        const sceneText = recentUserMsg?.content ?? "";
+        bookContext = await buildAgentContext({ bookId: projectId, sceneText });
       } catch { /* context build failure is non-fatal */ }
     }
     const continuationWorkDir = loaded.session.worktree?.trim() || process.cwd();
@@ -1013,6 +1133,15 @@ async function appendModelContinuationAfterToolDecision(
           },
           signal: generateInput.signal,
         });
+        // Record provider health
+        const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
+        const modelId = (result as any).metadata?.modelId ?? generateInput.sessionConfig.modelId ?? "unknown";
+        if ((result as any).success) {
+          providerHealth.recordSuccess(providerId, modelId);
+        } else {
+          const errorCode = classifyError((result as any).error);
+          providerHealth.recordFailure(providerId, modelId, errorCode);
+        }
         return result as AgentGenerateResult;
       },
       executeTool: (toolInput) => {
@@ -1401,6 +1530,69 @@ export async function broadcastSessionError(
   }
 }
 
+/** 向指定 session 的所有已连接 transport 广播 compact 进度事件 */
+export async function broadcastCompactProgress(
+  sessionId: string,
+  stage: "cascade" | "segment",
+  progress: number,
+  message?: string,
+): Promise<void> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) return;
+  const envelope: NarratorSessionCompactProgressEnvelope = {
+    type: "session:compact-progress",
+    sessionId,
+    stage,
+    progress,
+    ...(message ? { message } : {}),
+  };
+  const payload = serializeEnvelope(envelope);
+  for (const transport of loaded.state.transports.keys()) {
+    try {
+      transport.send(payload);
+    } catch {
+      loaded.state.transports.delete(transport);
+    }
+  }
+}
+
+// ─── Safety Pause / Decision mechanism ──────────────────────────────────────
+
+const pendingSafetyDecisions = new Map<string, { resolve: (decision: "approve" | "reject") => void }>();
+
+/** Broadcast a safety-pause event and wait for the user's decision */
+export function broadcastSafetyPause(sessionId: string, toolName: string, toolInput: Record<string, unknown>, reason: string): Promise<"approve" | "reject"> {
+  return new Promise((resolve) => {
+    pendingSafetyDecisions.set(sessionId, { resolve });
+
+    const loaded = runtimeStateBySessionId.get(sessionId);
+    if (!loaded) {
+      pendingSafetyDecisions.delete(sessionId);
+      resolve("reject");
+      return;
+    }
+
+    const envelope = { type: "session:safety-pause" as const, sessionId, toolName, toolInput, reason };
+    const payload = serializeEnvelope(envelope as any);
+    for (const transport of loaded.transports.keys()) {
+      try {
+        transport.send(payload);
+      } catch {
+        loaded.transports.delete(transport);
+      }
+    }
+  });
+}
+
+/** Resolve a pending safety decision (called when client sends session:safety-decision) */
+export function resolveSafetyDecision(sessionId: string, decision: "approve" | "reject"): void {
+  const pending = pendingSafetyDecisions.get(sessionId);
+  if (pending) {
+    pendingSafetyDecisions.delete(sessionId);
+    pending.resolve(decision);
+  }
+}
+
 export async function attachSessionChatTransport(
   sessionId: string,
   transport: SessionChatTransport,
@@ -1414,6 +1606,13 @@ export async function attachSessionChatTransport(
   }
 
   const session = buildServerFirstSession(loaded.session, loaded.state);
+
+  // If a turn is currently running (abortController exists), reflect working state
+  const isWorking = abortControllerBySessionId.has(sessionId) || sessionBusy.has(sessionId);
+  const sessionWithState = isWorking
+    ? { ...session, narratorState: "working" as const, substatus: "thinking" as const }
+    : session;
+
   const hasExplicitResume = options.resumeFromSeq !== undefined;
   const requestedResumeSeq = hasExplicitResume ? sanitizeSeq(options.resumeFromSeq) : loaded.state.persistedAckedSeq;
   const cursor = createCursor(loaded.state);
@@ -1427,7 +1626,7 @@ export async function attachSessionChatTransport(
     sendEnvelope(transport, {
       type: "session:snapshot",
       snapshot: {
-        session,
+        session: sessionWithState,
         messages: [...loaded.state.messages],
         cursor: createCursor(loaded.state, ackedSeq),
       },
@@ -1453,7 +1652,7 @@ export async function attachSessionChatTransport(
   sendEnvelope(
     transport,
     createSessionChatStateEnvelope(
-      session,
+      sessionWithState,
       loaded.state,
       ackedSeq,
       resumeOutOfRange ? { state: "resetting", reason: "history-gap" } : undefined,
@@ -1510,6 +1709,10 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
   });
 
   return messages.flatMap((message, messageIndex): AgentTurnItem[] => {
+    // Skip collapsed messages (segment compact keeps them for undo but hides from LLM)
+    if ((message.metadata as any)?.collapsed) {
+      return [];
+    }
     if (message.role !== "system" && message.role !== "user" && message.role !== "assistant") {
       return [];
     }
@@ -1687,6 +1890,34 @@ export async function handleSessionChatTransportMessage(
     return;
   }
 
+  if (payload.type === "session:continue") {
+    // Clear the interrupted checkpoint and feed a continuation message into normal flow
+    clearSessionCheckpoints(sessionId);
+    // Clear the interrupted recovery state
+    const currentRecovery = loaded.session.recovery;
+    if (currentRecovery?.lastFailure?.reason === "interrupted") {
+      void updateSession(sessionId, {
+        recovery: { ...currentRecovery, lastFailure: undefined, updatedAt: new Date().toISOString() },
+      });
+    }
+    console.log(JSON.stringify({ component: "session-chat", event: "session:continue", sessionId }));
+    // Re-enter as a normal message with continuation instruction
+    const continuePayload = JSON.stringify({
+      type: "session:message",
+      content: "请继续执行之前被中断的任务。",
+      messageId: `continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    });
+    await handleSessionChatTransportMessage(sessionId, transport, continuePayload);
+    return;
+  }
+
+  if (payload.type === "session:safety-decision") {
+    const decision = (payload as { decision?: "approve" | "reject" }).decision ?? "reject";
+    resolveSafetyDecision(sessionId, decision);
+    console.log(JSON.stringify({ component: "session-chat", event: "session:safety-decision", sessionId, decision }));
+    return;
+  }
+
   const content = ("content" in payload ? payload.content : "").trim();
   const effectiveContent = content || "继续";
   if (!content) {
@@ -1757,9 +1988,50 @@ export async function handleSessionChatTransportMessage(
     const projectId = (loaded.session as { projectId?: string }).projectId;
     let bookContext = "";
     if (projectId) {
+      // Resolve model context window from provider config for dynamic token budget
+      let modelContextWindow: number | undefined;
       try {
-        bookContext = await buildAgentContext({ bookId: projectId });
+        const provider = await providerRuntimeStore.getProvider(loaded.session.sessionConfig.providerId);
+        if (provider?.models?.length) {
+          const model = provider.models.find((m) => m.id === loaded.session.sessionConfig.modelId) ?? provider.models[0];
+          if (model?.contextWindow && model.contextWindow > 0) modelContextWindow = model.contextWindow;
+        }
+      } catch { /* fallback */ }
+
+      try {
+        bookContext = await buildAgentContext({ bookId: projectId, sceneText: effectiveContent, modelContextWindow });
       } catch { /* context build failure is non-fatal */ }
+
+      // P2: 预设 prompt 注入 + 节拍模板注入
+      try {
+        const { buildPresetInjections, getPreset, getBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+        const { readFile: readFileAsync } = await import("node:fs/promises");
+        const { join: joinPath } = await import("node:path");
+        const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+        const bookJsonPath = joinPath(root, "books", projectId, "book.json");
+        const bookConfig = JSON.parse(await readFileAsync(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[]; beatTemplateId?: string };
+
+        // 预设注入
+        if (bookConfig.enabledPresetIds?.length) {
+          const enabledPresets = bookConfig.enabledPresetIds.map((id: string) => getPreset(id)).filter(Boolean);
+          if (enabledPresets.length > 0) {
+            const presetBlock = buildPresetInjections(enabledPresets as any);
+            if (presetBlock.trim()) {
+              bookContext += `\n\n### 启用的写作预设\n${presetBlock}`;
+            }
+          }
+        }
+
+        // 节拍模板注入
+        if (bookConfig.beatTemplateId) {
+          const beatTemplate = getBeatTemplate(bookConfig.beatTemplateId);
+          if (beatTemplate) {
+            const beatNames = beatTemplate.beats.map((b: { name: string }) => b.name).join(" → ");
+            bookContext += `\n\n### 当前节拍模板：${beatTemplate.name}\n节拍序列：${beatNames}`;
+          }
+        }
+      } catch { /* preset/beat injection failure is non-fatal */ }
     }
 
     // Phase 4: 项目探索上下文（规则文件 + package.json）
@@ -1876,6 +2148,15 @@ export async function handleSessionChatTransportMessage(
           },
           signal: generateInput.signal,
         });
+        // Record provider health
+        const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
+        const modelId = (result as any).metadata?.modelId ?? generateInput.sessionConfig.modelId ?? "unknown";
+        if ((result as any).success) {
+          providerHealth.recordSuccess(providerId, modelId);
+        } else {
+          const errorCode = classifyError((result as any).error);
+          providerHealth.recordFailure(providerId, modelId, errorCode);
+        }
         return result as AgentGenerateResult;
       },
       executeTool: (toolInput) => {
@@ -2173,10 +2454,11 @@ function buildGoalsPromptSection(goals?: Array<{ id: string; objective: string; 
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
 
 ## Agent-native 写下一章链路
-当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.get_snapshot → pgi.generate_questions → guided.enter/guided.exit → candidate.create_chapter。
-- PGI 无问题时也要明确说明 skippedReason=no-questions，并继续形成 GuidedGenerationPlan。
-- guided.exit 必须等待用户批准；拒绝后不得执行 candidate.create_chapter。
-- 批准后才允许调用 candidate.create_chapter，结果只进入候选稿并通过 artifact 在中间画布打开。
+当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.get_snapshot → pgi.generate_questions → AskUserQuestion → pipeline.generate_chapter。
+- PGI 无问题时也要明确说明 skippedReason=no-questions，并继续形成本章作者指示。
+- 必须等待用户通过 AskUserQuestion 确认方向；用户拒绝或要求修改时不得调用 pipeline.generate_chapter。
+- 批准后才允许调用 pipeline.generate_chapter，结果只进入候选稿并通过 artifact 在中间画布打开。
+- candidate.create_chapter 仅用于保存已有正文为候选稿，不是写下一章主链路；不得用它替代 pipeline.generate_chapter 生成完整章节。
 - 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。`;
 
 const SESSION_CHAT_WS_PATH = "/api/sessions/:id/chat";
