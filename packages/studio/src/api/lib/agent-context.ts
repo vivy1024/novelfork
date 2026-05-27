@@ -229,10 +229,17 @@ export function buildBookContextBlock(input: ContextInput): BuildContextResult {
 /**
  * 从 Studio API 响应构建 Agent 上下文。
  * 当只传入 bookId 时，自动从存储加载书籍数据。
+ *
+ * P0: 使用完整的 buildJingweiContext（global/tracked/nested + 时间轴 + 优先级 + token 预算）
+ * P1: 注入 Chapter Briefing + 递归摘要
  */
 export async function buildAgentContext(params: {
   bookId: string;
   book?: BookDetail;
+  /** 最近用户消息内容，用于 tracked 条目的关键词匹配 */
+  sceneText?: string;
+  /** 模型上下文窗口大小（tokens），用于动态调整 token 预算 */
+  modelContextWindow?: number;
   chapterSummaries?: Array<{ number: number; summary?: string }>;
   pendingHooks?: string;
   currentFocus?: string | null;
@@ -243,7 +250,7 @@ export async function buildAgentContext(params: {
     warnings?: Array<{ message: string; severity?: string }>;
     openForeshadowing?: Array<{ id: string; description: string }>;
   };
-  /** 经纬核心设定 */
+  /** 经纬核心设定（传入时跳过自动加载） */
   jingwei?: {
     sections?: Array<{ name: string; entries: Array<{ key: string; value: string }> }>;
   };
@@ -316,8 +323,10 @@ export async function buildAgentContext(params: {
     extraBlocks.push(nlLines.join("\n"));
   }
 
-  // 经纬注入 — 优先用传入的 sections，否则自动从 storyDir md 文件读取
+  // --- P0: 完整经纬注入（替代粗暴 SQL） ---
+  // 使用 buildJingweiBrief：核心包 + 分类目录（默认 4000 tokens）
   if (params.jingwei?.sections?.length) {
+    // 如果外部传入了 jingwei sections，直接使用（兼容旧调用方式）
     const jwLines: string[] = ["", "### 经纬核心设定"];
     for (const section of params.jingwei.sections.slice(0, 5)) {
       jwLines.push(`- **${section.name}**`);
@@ -328,25 +337,67 @@ export async function buildAgentContext(params: {
     }
     extraBlocks.push(jwLines.join("\n"));
   } else {
-    // 从 SQLite 经纬条目读取
+    // 自动从 SQLite 加载：使用核心包 + 目录协议（替代旧全量注入）
     try {
-      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      const storage = getStorageDatabase();
-      const entries = storage.sqlite.prepare(
-        `SELECT title, content_md, category FROM story_jingwei_entry WHERE book_id = ? AND participates_in_ai = 1 AND deleted_at IS NULL ORDER BY updated_at DESC LIMIT 10`
-      ).all(params.bookId) as Array<{ title: string; content_md: string; category: string }>;
-      if (entries.length > 0) {
-        const jwLines: string[] = ["", "### 经纬核心设定"];
-        let totalChars = 0;
-        for (const entry of entries) {
-          if (totalChars >= 4000) break;
-          const preview = entry.content_md.length > 400 ? entry.content_md.slice(0, 400) + "..." : entry.content_md;
-          jwLines.push(`\n#### ${entry.title}（${entry.category}）\n${preview}`);
-          totalChars += preview.length;
+      const { buildJingweiBrief, buildChapterBriefing, buildRecursiveSummaryContext } =
+        await import("@vivy1024/novelfork-novel-plugin/engine");
+
+      const currentChapter = book.chapterCount ?? 1;
+
+      // 经纬核心包（默认 4000 tokens，大窗口可适当放大但不超 8000）
+      const modelWindow = params.modelContextWindow ?? 200_000;
+      const jingweiBudget = modelWindow >= 500_000 ? 8_000 : 4_000;
+
+      const briefResult = await buildJingweiBrief({
+        bookId: params.bookId,
+        chapterNumber: currentChapter,
+        sceneText: params.sceneText,
+        tokenBudget: jingweiBudget,
+      });
+
+      if (briefResult.coreBrief.length > 0) {
+        const jwLines: string[] = ["", "### 经纬核心包"];
+        for (const item of briefResult.coreBrief) {
+          jwLines.push(`【${item.sectionName}】${item.title}：${item.summaryMd}`);
+        }
+
+        // 附加分类目录摘要，让模型知道可以补读
+        if (briefResult.index.categories.length > 0) {
+          jwLines.push("");
+          jwLines.push("### 经纬分类目录（可按需调用 jingwei.read_category 读取细节）");
+          for (const cat of briefResult.index.categories.slice(0, 10)) {
+            jwLines.push(`- ${cat.title}：${cat.count} 条（约 ${cat.estimatedTokens} tokens）`);
+          }
+        }
+
+        if (briefResult.droppedEntryIds.length > 0) {
+          jwLines.push(`\n（因预算限制，${briefResult.droppedEntryIds.length} 条低优先级条目未注入核心包。如需详细信息，调用 jingwei.read_category 或 jingwei.search）`);
         }
         extraBlocks.push(jwLines.join("\n"));
       }
-    } catch { /* SQLite read failure is non-fatal */ }
+
+      // P1: Chapter Briefing（活跃角色/伏笔/硬约束）
+      try {
+        const briefing = await buildChapterBriefing(params.bookId, currentChapter);
+        if (briefing?.trim()) {
+          extraBlocks.push(`\n${briefing}`);
+        }
+      } catch { /* non-fatal */ }
+
+      // P1: 递归摘要（卷摘要 + 近 5 章摘要）
+      try {
+        const summaryContext = await buildRecursiveSummaryContext(params.bookId, currentChapter);
+        if (summaryContext?.trim()) {
+          extraBlocks.push(`\n### 章节摘要\n${summaryContext}`);
+        }
+      } catch { /* non-fatal */ }
+
+      // 大窗口模式不再注入前一章全文（防止 token 膨胀）
+      // 模型如需前一章内容，应通过 chapter.read 工具按需读取
+
+    } catch {
+      // buildJingweiBrief 不可用时的 fallback：保持基本信息
+    }
   }
 
   return extraBlocks.length > 0 ? `${baseContext}\n${extraBlocks.join("\n")}` : baseContext;
