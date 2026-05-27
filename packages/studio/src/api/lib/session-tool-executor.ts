@@ -17,6 +17,7 @@ import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir, checkCommandAgainstLists, checkPathAgainstDirectoryLists } from "./permission-pipeline.js";
+import { getYoloDecision, performSafetyReflection } from "./yolo-mode.js";
 
 // --- Browser page interface (extracted from playwright Page) ---
 interface BrowserPageLike {
@@ -268,86 +269,168 @@ export async function executeSessionTool(
     }, startedAt, options);
   }
 
-  if (policyResolution.reason === "policy-ask" && input.confirmationDecision?.decision !== "approved") {
-    return withDuration(createPolicyAskResult(input, definition, policyResolution, options), startedAt, options);
-  }
+  // --- YOLO mode integration: check if we can auto-approve before asking user ---
+  const needsConfirmation = (policyResolution.reason === "policy-ask" || policyResolution.requiresConfirmation || definition.risk === "destructive")
+    && input.confirmationDecision?.decision !== "approved";
 
-  if (policyResolution.requiresConfirmation && input.confirmationDecision?.decision !== "approved") {
-    const confirmation = createConfirmationRequest(input, definition, options);
-    const result: SessionToolExecutionResult = {
-      ok: true,
-      renderer: definition.renderer,
-      summary: `工具 ${definition.name} 需要确认后执行。`,
-      data: { status: "pending-confirmation", policyResolution },
-      confirmation,
-    };
-    return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
-  }
+  if (needsConfirmation) {
+    const yoloDecision = getYoloDecision({
+      toolName: definition.name,
+      toolInput: input.input,
+      yoloEnabled: input.sessionConfig?.yoloMode ?? false,
+      safetyReflectionEnabled: input.sessionConfig?.safetyReflection ?? true,
+    });
 
-  // Fix: dangerReflection — 即使 permissionMode=allow，对 destructive 工具也要求确认
-  if (definition.risk === "destructive" && input.confirmationDecision?.decision !== "approved") {
-    try {
-      const { loadUserConfig } = await import("./user-config-service.js");
-      const config = await loadUserConfig();
-      if (config.runtimeControls?.dangerReflection) {
-        // Broadcast "reflecting" substatus before LLM call
+    switch (yoloDecision.action) {
+      case "auto-approve":
+        // YOLO auto-approve: skip confirmation, fall through to execution
+        break;
+
+      case "reflect": {
+        // Safety reflection: use conversation model to judge dangerous operation
         options.onSubstatus?.("reflecting");
+        try {
+          const { getSessionChatSnapshot } = await import("./session-chat-service.js");
+          const { generateSessionReply } = await import("./llm-runtime-service.js");
+          const snapshot = await getSessionChatSnapshot(input.sessionId);
+          const conversationHistory = snapshot?.messages ?? [];
 
-        // Attempt LLM safety reflection
-        let reflectionSummary = `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`;
-
-        const summaryModel = config.modelDefaults?.summaryModel;
-        if (summaryModel) {
-          const colonIndex = summaryModel.indexOf(":");
-          const providerId = colonIndex > 0 ? summaryModel.slice(0, colonIndex) : "";
-          const modelId = colonIndex > 0 ? summaryModel.slice(colonIndex + 1) : summaryModel;
-          if (providerId && modelId) {
-            try {
-              const { generateSessionReply } = await import("./llm-runtime-service.js");
-              const reflectionResult = await Promise.race([
-                generateSessionReply({
-                  sessionConfig: {
-                    providerId,
-                    modelId,
-                    permissionMode: "read",
-                    reasoningEffort: "low",
-                  },
-                  messages: [
-                    {
-                      type: "message" as const,
-                      id: "sys-reflection",
-                      role: "system" as const,
-                      content: "你是安全评估助手。用 1-3 句中文简要评估以下工具操作的安全性：它会做什么、可能出什么问题、是否可逆。",
-                    },
-                    {
-                      type: "message" as const,
-                      id: "usr-reflection",
-                      role: "user" as const,
-                      content: `工具: ${definition.name}\n描述: ${definition.description}\n输入参数: ${JSON.stringify(input.input).slice(0, 500)}`,
-                    },
-                  ],
-                  tools: [],
-                }),
-                new Promise<{ success: false }>((resolve) => setTimeout(() => resolve({ success: false }), 8000)),
-              ]);
-              if (reflectionResult.success && "type" in reflectionResult && reflectionResult.type === "message" && "content" in reflectionResult && (reflectionResult.content as string)?.trim()) {
-                reflectionSummary = `⚠️ 安全评估：${(reflectionResult.content as string).trim()}`;
+          const reflectionResult = await performSafetyReflection({
+            toolName: definition.name,
+            toolInput: input.input,
+            conversationHistory,
+            generateFn: async (messages, genOptions) => {
+              const sessionConfig = input.sessionConfig ?? { providerId: "openai", modelId: "gpt-4o", permissionMode: "read", reasoningEffort: "low" };
+              const result = await generateSessionReply({
+                sessionConfig: { ...sessionConfig, permissionMode: "read", reasoningEffort: "low" },
+                messages: messages.map((m, i) => ({ type: "message" as const, id: `reflect-${i}`, role: m.role as "user" | "assistant" | "system", content: m.content })),
+                tools: [],
+                signal: genOptions.signal,
+              });
+              if (result.success && "content" in result && typeof result.content === "string") {
+                return result.content;
               }
-            } catch { /* LLM reflection failure — use default summary */ }
+              throw new Error("Safety reflection generation failed");
+            },
+            timeoutMs: input.sessionConfig?.safetyReflectionTimeoutMs ?? 15_000,
+          });
+
+          if (reflectionResult.decision === "approve") {
+            // Reflection approved: skip confirmation, fall through to execution
+            break;
           }
+
+          // Reflection rejected: broadcast safety pause and await user decision
+          const { broadcastSafetyPause } = await import("./session-chat-service.js");
+          const userDecision = await broadcastSafetyPause(input.sessionId, definition.name, input.input, reflectionResult.reason ?? "安全反思拒绝");
+          if (userDecision === "approve") {
+            // User overrode the reflection rejection: fall through to execution
+            break;
+          }
+          // User confirmed rejection
+          const result: SessionToolExecutionResult = {
+            ok: false,
+            renderer: definition.renderer,
+            error: "safety-rejected",
+            summary: `⚠️ 安全反思拒绝：${reflectionResult.reason}（用户已确认拒绝）`,
+            data: { status: "rejected", reason: "yolo-safety-reflection-rejected", policyResolution },
+          };
+          return withDuration(result, startedAt, options);
+        } catch {
+          // Reflection failed: fall back to asking user
+          const confirmation = createConfirmationRequest(input, definition, options);
+          const result: SessionToolExecutionResult = {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `⚠️ 安全反思失败，需要用户确认。`,
+            data: { status: "pending-confirmation", reason: "yolo-safety-reflection-error", policyResolution },
+            confirmation,
+          };
+          return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
+        }
+      }
+
+      case "ask-user": {
+        // Non-YOLO or reflection disabled: use original confirmation flow
+        if (policyResolution.reason === "policy-ask") {
+          return withDuration(createPolicyAskResult(input, definition, policyResolution, options), startedAt, options);
         }
 
+        // For destructive tools, attempt legacy dangerReflection if configured
+        if (definition.risk === "destructive") {
+          try {
+            const { loadUserConfig } = await import("./user-config-service.js");
+            const config = await loadUserConfig();
+            if (config.runtimeControls?.dangerReflection) {
+              options.onSubstatus?.("reflecting");
+              let reflectionSummary = `⚠️ 危险反思：工具 ${definition.name} 为高风险操作，需要确认后执行。`;
+
+              const summaryModel = config.modelDefaults?.summaryModel;
+              if (summaryModel) {
+                const colonIndex = summaryModel.indexOf(":");
+                const providerId = colonIndex > 0 ? summaryModel.slice(0, colonIndex) : "";
+                const modelId = colonIndex > 0 ? summaryModel.slice(colonIndex + 1) : summaryModel;
+                if (providerId && modelId) {
+                  try {
+                    const { generateSessionReply } = await import("./llm-runtime-service.js");
+                    const reflectionResult = await Promise.race([
+                      generateSessionReply({
+                        sessionConfig: {
+                          providerId,
+                          modelId,
+                          permissionMode: "read",
+                          reasoningEffort: "low",
+                        },
+                        messages: [
+                          {
+                            type: "message" as const,
+                            id: "sys-reflection",
+                            role: "system" as const,
+                            content: "你是安全评估助手。用 1-3 句中文简要评估以下工具操作的安全性：它会做什么、可能出什么问题、是否可逆。",
+                          },
+                          {
+                            type: "message" as const,
+                            id: "usr-reflection",
+                            role: "user" as const,
+                            content: `工具: ${definition.name}\n描述: ${definition.description}\n输入参数: ${JSON.stringify(input.input).slice(0, 500)}`,
+                          },
+                        ],
+                        tools: [],
+                      }),
+                      new Promise<{ success: false }>((resolve) => setTimeout(() => resolve({ success: false }), 8000)),
+                    ]);
+                    if (reflectionResult.success && "type" in reflectionResult && reflectionResult.type === "message" && "content" in reflectionResult && (reflectionResult.content as string)?.trim()) {
+                      reflectionSummary = `⚠️ 安全评估：${(reflectionResult.content as string).trim()}`;
+                    }
+                  } catch { /* LLM reflection failure — use default summary */ }
+                }
+              }
+
+              const confirmation = createConfirmationRequest(input, definition, options);
+              const result: SessionToolExecutionResult = {
+                ok: true,
+                renderer: definition.renderer,
+                summary: reflectionSummary,
+                data: { status: "pending-confirmation", reason: "danger-reflection" },
+                confirmation,
+              };
+              return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
+            }
+          } catch { /* config load failure — skip danger reflection */ }
+        }
+
+        // Default ask-user: send confirmation request
         const confirmation = createConfirmationRequest(input, definition, options);
         const result: SessionToolExecutionResult = {
           ok: true,
           renderer: definition.renderer,
-          summary: reflectionSummary,
-          data: { status: "pending-confirmation", reason: "danger-reflection" },
+          summary: `工具 ${definition.name} 需要确认后执行。`,
+          data: { status: "pending-confirmation", policyResolution },
           confirmation,
         };
         return withDuration(withConfirmationAudit(result, input, definition, confirmation), startedAt, options);
       }
-    } catch { /* config load failure — skip danger reflection */ }
+    }
   }
 
   const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
@@ -568,13 +651,51 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleChapterRead({ bookId, chapterNumber }, booksDir);
         return { ...result, renderer: definition.renderer };
       };
+    case "jingwei.read_brief":
+      return async ({ input, definition }) => {
+        const { handleJingweiReadBrief } = await import("@vivy1024/novelfork-novel-plugin");
+        const bookId = String(input.bookId);
+        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
+        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
+        const chapterIntent = typeof input.chapterIntent === "string" ? input.chapterIntent : undefined;
+        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
+        const result = await handleJingweiReadBrief({ bookId, chapterNumber, sceneText, chapterIntent, tokenBudget });
+        return { ...result, renderer: definition.renderer };
+      };
+    case "jingwei.read_category":
+      return async ({ input, definition }) => {
+        const { handleJingweiReadCategory } = await import("@vivy1024/novelfork-novel-plugin");
+        const bookId = String(input.bookId);
+        const category = String(input.category);
+        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
+        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
+        const page = typeof input.page === "number" ? input.page : undefined;
+        const limit = typeof input.limit === "number" ? input.limit : undefined;
+        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
+        const detailLevel = input.detailLevel === "normal" || input.detailLevel === "full" ? input.detailLevel : "summary";
+        const result = await handleJingweiReadCategory({ bookId, category, chapterNumber, sceneText, page, limit, tokenBudget, detailLevel });
+        return { ...result, renderer: definition.renderer };
+      };
+    case "jingwei.search":
+      return async ({ input, definition }) => {
+        const { handleJingweiSearch } = await import("@vivy1024/novelfork-novel-plugin");
+        const bookId = String(input.bookId);
+        const query = String(input.query);
+        const categories = Array.isArray(input.categories) ? input.categories.filter((category): category is string => typeof category === "string") : undefined;
+        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
+        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
+        const limit = typeof input.limit === "number" ? input.limit : undefined;
+        const result = await handleJingweiSearch({ bookId, query, categories, chapterNumber, tokenBudget, limit });
+        return { ...result, renderer: definition.renderer };
+      };
     case "jingwei.read_context":
       return async ({ input, definition }) => {
         const { handleJingweiReadContext } = await import("@vivy1024/novelfork-novel-plugin");
         const bookId = String(input.bookId);
         const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
         const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
-        const result = await handleJingweiReadContext({ bookId, chapterNumber, sceneText });
+        const chapterIntent = typeof input.chapterIntent === "string" ? input.chapterIntent : undefined;
+        const result = await handleJingweiReadContext({ bookId, chapterNumber, sceneText, chapterIntent });
         return { ...result, renderer: definition.renderer };
       };
     case "jingwei.upsert_entry":
@@ -604,6 +725,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
         const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
         const visibility = String(input.visibility || "global");
+        const summaryMd = typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0
+          ? input.summaryMd.trim()
+          : contentMd.trim().replace(/\s+/g, " ").slice(0, 240);
         const relatedEntryIds = Array.isArray(input.relatedEntryIds) ? input.relatedEntryIds.filter((id): id is string => typeof id === "string") : [];
 
         // 智能分类：如果 agent 没传 category 或传了 setting，根据 title/content 关键词推断
@@ -669,9 +793,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             const entryId = existingRows[0]!.id;
             storage.sqlite.prepare(`
               UPDATE story_jingwei_entry
-              SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, updated_at = ?
+              SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, updated_at = ?
               WHERE id = ?
-            `).run(contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, now, entryId);
+            `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, now, entryId);
             return {
               ok: true,
               renderer: definition.renderer,
@@ -682,9 +806,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             // 创建新条目
             const entryId = crypto.randomUUID();
             storage.sqlite.prepare(`
-              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?)
-            `).run(entryId, bookId, sectionId, title, contentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, now);
+              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?)
+            `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, now);
             return {
               ok: true,
               renderer: definition.renderer,
@@ -1081,9 +1205,26 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
         try {
-          const { listPresets, getPreset, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          // 防御性重注册：确保 preset store 已初始化
-          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+          const { listPresets, getPreset, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+
+          // 确保 preset store 已初始化（启动时注册可能因 DB 未就绪而跳过）
+          if (listPresets().length === 0) {
+            try { registerBuiltinPresets(); } catch { /* ignore */ }
+            // 恢复自定义预设
+            try {
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              const repo = createUserTemplateRepository(db);
+              for (const t of repo.list()) {
+                try {
+                  const bundle = JSON.parse(t.bundleJson);
+                  if (bundle.type === "preset" && bundle.promptInjection) {
+                    registerPreset({ id: t.id, name: t.name, category: bundle.category ?? "custom", promptInjection: bundle.promptInjection, description: t.description ?? "" });
+                  }
+                } catch { /* skip */ }
+              }
+            } catch { /* ignore */ }
+          }
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           // 从 book config 读取用户选择的预设
@@ -1127,9 +1268,18 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           return { ok: false, renderer: definition.renderer, error: "missing-content", summary: "content 参数不能为空。" };
         }
         try {
-          const { listPresets, getPreset, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          // 防御性重注册：确保 preset store 已初始化
-          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+          const { listPresets, getPreset, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          // 确保 preset store 已初始化
+          if (listPresets().length === 0) {
+            try { registerBuiltinPresets(); } catch { /* ignore */ }
+            try {
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              for (const t of createUserTemplateRepository(db).list()) {
+                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch { /* skip */ }
+              }
+            } catch { /* ignore */ }
+          }
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           if (options.loadBookConfig) {
@@ -1200,20 +1350,27 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           }
 
           const templates = listBeatTemplates();
-          // 如果 templates 为空（registerBuiltinPresets 未执行或模块实例不同），尝试重新注册
+          // 如果 templates 为空，尝试重新注册（内置 + 自定义）
           if (templates.length === 0) {
             try {
-              const { registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+              const { registerBuiltinPresets, registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
               registerBuiltinPresets();
+              // 恢复自定义节拍模板
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              for (const t of createUserTemplateRepository(db).list()) {
+                try { const b = JSON.parse(t.bundleJson); if (b.type === "beat-template" && Array.isArray(b.beats)) registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats }); } catch { /* skip */ }
+              }
             } catch { /* ignore */ }
           }
           const allTemplates = listBeatTemplates();
           const activeTemplate = selectedTemplateId
-            ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId) ?? allTemplates[0]
-            : allTemplates[0];
+            ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId)
+            : undefined;
 
           if (!activeTemplate) {
-            return { ok: true, renderer: definition.renderer, summary: "无可用节拍模板。", data: { bookId, template: null, currentBeat: null } };
+            const availableList = allTemplates.map((t) => `${t.id}（${t.name}）`).join("、");
+            return { ok: true, renderer: definition.renderer, summary: `当前未选择节拍模板。可用模板：${availableList || "无"}`, data: { bookId, template: null, beats: [], available: allTemplates.map((t) => ({ id: t.id, name: t.name, beatCount: t.beats.length })) } };
           }
           return {
             ok: true,
@@ -1245,8 +1402,17 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         const bookId = String(input.bookId);
         const templateId = String(input.templateId);
         try {
-          const { getBeatTemplate, listBeatTemplates, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          if (listBeatTemplates().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+          const { getBeatTemplate, listBeatTemplates, registerBuiltinPresets, registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          if (listBeatTemplates().length === 0) {
+            try {
+              registerBuiltinPresets();
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              for (const t of createUserTemplateRepository(db).list()) {
+                try { const b = JSON.parse(t.bundleJson); if (b.type === "beat-template" && Array.isArray(b.beats)) registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats }); } catch { /* skip */ }
+              }
+            } catch { /* ignore */ }
+          }
 
           const template = getBeatTemplate(templateId) ?? listBeatTemplates().find((t) => t.id === templateId);
           if (!template) {
@@ -1292,8 +1458,17 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         const enabledPresetIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
         try {
           // 验证预设 ID 是否有效
-          const { getPreset, listPresets, registerBuiltinPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
+          const { getPreset, listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          if (listPresets().length === 0) {
+            try { registerBuiltinPresets(); } catch { /* ignore */ }
+            try {
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              for (const t of createUserTemplateRepository(db).list()) {
+                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch { /* skip */ }
+              }
+            } catch { /* ignore */ }
+          }
 
           const validIds: string[] = [];
           const invalidIds: string[] = [];
@@ -1402,6 +1577,80 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "beat-create-failed", summary: `创建自定义节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "pipeline.generate_chapter":
+      return async ({ input, definition, sessionConfig, onToolOutputStream }) => {
+        const bookId = String(input.bookId);
+        const chapterIntent = String(input.chapterIntent);
+        const userDirectives = input.userDirectives ? String(input.userDirectives) : undefined;
+        const wordCount = typeof input.wordCount === "number" ? input.wordCount : undefined;
+        const autoRevise = input.autoRevise !== false;
+
+        try {
+          // Resolve LLM client from the active session provider/model first.
+          const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { createLLMClient } = await import("@vivy1024/novelfork-core");
+          const { executePipelineGenerate } = await import("@vivy1024/novelfork-novel-plugin/handlers");
+
+          const providerStore = new ProviderRuntimeStore();
+          const providers = await providerStore.listProviders();
+          const sessionProvider = sessionConfig?.providerId
+            ? await providerStore.getProvider(sessionConfig.providerId)
+            : undefined;
+          const activeProvider = sessionProvider?.config?.apiKey
+            ? sessionProvider
+            : providers.find((p) => p.enabled !== false && p.config?.apiKey);
+          if (!activeProvider) {
+            return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先到管理中心配置 API Key。" };
+          }
+
+          const activeModel = activeProvider.models.find((model) => model.id === sessionConfig?.modelId && model.enabled !== false)
+            ?? activeProvider.models.find((model) => model.enabled !== false)
+            ?? activeProvider.models[0];
+          const llmConfig = {
+            provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
+            baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
+            apiKey: activeProvider.config?.apiKey ?? "",
+            model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
+            temperature: 0.7,
+            maxTokens: activeModel?.maxOutputTokens ?? 8192,
+            thinkingBudget: 0,
+            apiFormat: "chat" as const,
+            stream: true,
+          };
+          const client = createLLMClient(llmConfig);
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+
+          const result = await executePipelineGenerate(
+            { bookId, chapterIntent, userDirectives, wordCount, autoRevise },
+            { root, client, model: llmConfig.model, onStream: onToolOutputStream, logger: undefined },
+          );
+
+          if (!result.ok) {
+            return { ok: false, renderer: definition.renderer, error: result.code, summary: result.error };
+          }
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过（" + result.auditResult.issues.length + " 个问题）"}${result.revised ? "，已自动修订" : ""}。`,
+            data: {
+              chapterNumber: result.chapterNumber,
+              title: result.title,
+              wordCount: result.wordCount,
+              auditPassed: result.auditResult.passed,
+              auditIssues: result.auditResult.issues,
+              auditSummary: result.auditResult.summary,
+              revised: result.revised,
+              jingweiDelta: result.jingweiDelta,
+              candidateId: result.candidateId,
+            },
+            artifact: result.artifact,
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "pipeline-failed", summary: `写作管线执行失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
     default:

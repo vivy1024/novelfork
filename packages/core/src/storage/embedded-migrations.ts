@@ -774,4 +774,56 @@ CREATE INDEX IF NOT EXISTS "idx_request_log_timestamp" ON "request_log" ("timest
 CREATE INDEX IF NOT EXISTS "idx_request_log_provider_model" ON "request_log" ("provider", "model");
 CREATE INDEX IF NOT EXISTS "idx_request_log_status" ON "request_log" ("status");
 ` },
+  { name: "0016_writing_resource.sql", sql: `-- Migration: Unified writing resource table
+-- Replaces file-based chapters/candidates/drafts with a single SQLite table.
+
+CREATE TABLE IF NOT EXISTS "writing_resource" (
+  "id" TEXT PRIMARY KEY,
+  "book_id" TEXT NOT NULL,
+  "type" TEXT NOT NULL CHECK ("type" IN ('chapter', 'candidate', 'draft')),
+  "status" TEXT NOT NULL CHECK ("status" IN ('draft', 'candidate', 'accepted', 'rejected', 'archived')),
+  "title" TEXT NOT NULL,
+  "content" TEXT NOT NULL DEFAULT '',
+  "chapter_number" INTEGER,
+  "word_count" INTEGER NOT NULL DEFAULT 0,
+  "parent_id" TEXT REFERENCES "writing_resource"("id"),
+  "version" INTEGER NOT NULL DEFAULT 1,
+  "source" TEXT,
+  "metadata_json" TEXT,
+  "created_at" INTEGER NOT NULL,
+  "updated_at" INTEGER NOT NULL,
+  "accepted_at" INTEGER,
+  "deleted_at" INTEGER
+);
+
+CREATE INDEX IF NOT EXISTS "idx_wr_book_type" ON "writing_resource" ("book_id", "type", "deleted_at");
+CREATE INDEX IF NOT EXISTS "idx_wr_book_chapter" ON "writing_resource" ("book_id", "chapter_number")
+  WHERE "type" = 'chapter' AND "status" = 'accepted' AND "deleted_at" IS NULL;
+CREATE INDEX IF NOT EXISTS "idx_wr_parent" ON "writing_resource" ("parent_id") WHERE "parent_id" IS NOT NULL;
+CREATE INDEX IF NOT EXISTS "idx_wr_status" ON "writing_resource" ("book_id", "status", "deleted_at");
+` },
+  { name: "0017_jingwei_priority_tier.sql", sql: `-- Migration: Add priority_tier to story_jingwei_entry for context layering
+ALTER TABLE "story_jingwei_entry" ADD COLUMN "priority_tier" TEXT DEFAULT 'auto';
+` },
+  { name: "0018_agent_runtime_hardening.sql", sql: `-- Migration: Agent runtime hardening
+-- Adds turn checkpoint table for interrupt recovery and collapsed flag for segment compaction.
+
+CREATE TABLE IF NOT EXISTS "turn_checkpoints" (
+  "id" TEXT PRIMARY KEY,
+  "session_id" TEXT NOT NULL,
+  "turn_id" TEXT NOT NULL,
+  "step" INTEGER NOT NULL DEFAULT 0,
+  "completed_tool_results_json" TEXT NOT NULL DEFAULT '[]',
+  "last_assistant_content" TEXT,
+  "created_at" INTEGER NOT NULL,
+  UNIQUE("session_id", "turn_id")
+);
+
+CREATE INDEX IF NOT EXISTS "idx_turn_checkpoints_session" ON "turn_checkpoints"("session_id");
+
+ALTER TABLE "session_message" ADD COLUMN "collapsed" INTEGER NOT NULL DEFAULT 0;
+` },
+  { name: "0019_jingwei_summary_md.sql", sql: `-- Migration: Add summary_md to story_jingwei_entry for indexed Jingwei reading
+ALTER TABLE "story_jingwei_entry" ADD COLUMN "summary_md" TEXT;
+` },
 ];

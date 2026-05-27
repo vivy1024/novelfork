@@ -28,7 +28,7 @@ function sessionTool(
 }
 
 /**
- * 24 个小说领域工具定义 — session-level metadata wrapping novel-plugin schemas
+ * 小说领域工具定义 — session-level metadata wrapping novel-plugin schemas
  */
 export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
@@ -122,8 +122,35 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "guided.enter",
+    description: "进入引导式生成模式，生成待用户回答/确认的问题卡，不直接写入正式内容。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["guided.enter"]),
+    risk: "read",
+    renderer: "guided.questions",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "guided.answer_question",
+    description: "记录引导式生成问题回答或跳过项，更新引导状态但不写入正式正文。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["guided.answer_question"]),
+    risk: "draft-write",
+    renderer: "guided.questions",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "guided.exit",
+    description: "提交引导式生成计划；需要确认后进入执行阶段。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["guided.exit"]),
+    risk: "confirmed-write",
+    renderer: "guided.plan",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "candidate.create_chapter",
-    description: "保存章节候选稿。正文必须由 Agent 先生成并放入 content 字段；本工具只保存候选稿，不覆盖正式章节正文，不会代写正文。",
+    description: "仅保存已有章节正文为候选稿。不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章必须优先调用 pipeline.generate_chapter。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["candidate.create_chapter"]),
     risk: "draft-write",
     renderer: "candidate.created",
@@ -159,8 +186,35 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "jingwei.read_brief",
+    description: "读取小型经纬核心包和分类目录，作为写作/审计任务的默认第一步。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read_brief"]),
+    risk: "read",
+    renderer: "jingwei.brief",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "jingwei.read_category",
+    description: "按分类、分页和预算读取经纬条目细节，避免一次性全量注入。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read_category"]),
+    risk: "read",
+    renderer: "jingwei.category",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "jingwei.search",
+    description: "按关键词、别名、标签和正文搜索经纬条目，用于缺信息时精准补读。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.search"]),
+    risk: "read",
+    renderer: "jingwei.search",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "jingwei.read_context",
-    description: "读取书籍的故事经纬上下文，包括前提、世界模型、人物弧光和核心矛盾。",
+    description: "兼容读取书籍故事经纬上下文；新流程请优先使用 jingwei.read_brief + jingwei.read_category，full 不再代表无界全量读取。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read_context"]),
     risk: "read",
     renderer: "jingwei.context",
@@ -287,6 +341,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "pipeline.generate_chapter",
+    description: "完整写作管线：规划→上下文组装→正文生成→审计→修订→经纬同步→保存候选稿。写下一章时应优先调用本工具；非整章任务（写一段、改一句）请直接输出。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.generate_chapter"]),
+    risk: "draft-write",
+    renderer: "pipeline.chapter-result",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "jingwei.upsert_entry",
     description: "创建或更新经纬条目。按 title 匹配：标题相同则更新内容，不存在则创建。类别不存在时自动创建。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.upsert_entry"]),
@@ -303,12 +366,28 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
 export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name);
 
 /**
- * 小说 Agent 角色预设 — writer/hooks/chapter-hooks/outline
+ * 小说 Agent 角色预设 — 与 AGENT_SYSTEM_PROMPTS 保持一致
  */
 export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
   writer: {
     enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"],
     disable: ["Terminal", "Browser", "ForkNarrator", "Recall", "ShareFile"],
+  },
+  planner: {
+    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+  auditor: {
+    enable: ["Read", "Grep", "Glob"],
+    disable: ["Write", "Edit", "Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+  architect: {
+    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
+    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  },
+  explorer: {
+    enable: ["Read", "Grep", "Glob", "Recall"],
+    disable: ["Write", "Edit", "Bash", "Terminal", "Browser", "ForkNarrator", "ShareFile"],
   },
   hooks: {
     enable: ["Read", "Write", "Grep", "Glob"],

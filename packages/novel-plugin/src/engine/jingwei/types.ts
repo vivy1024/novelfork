@@ -79,6 +79,7 @@ export interface StoryJingweiEntryRecord {
   sectionId: string;
   title: string;
   contentMd: string;
+  summaryMd?: string | null;
   tags: string[];
   aliases: string[];
   customFields: Record<string, unknown>;
@@ -124,6 +125,100 @@ export interface JingweiContextResult {
   totalTokens: number;
   droppedEntryIds: string[];
   sectionStats: Array<{ sectionId: string; sectionName: string; count: number }>;
+}
+
+export type JingweiReadCategory =
+  | "premise"
+  | "world-model"
+  | "characters"
+  | "relationships"
+  | "factions"
+  | "locations"
+  | "power-system"
+  | "timeline"
+  | "chapter-summaries"
+  | "foreshadowing"
+  | "conflicts"
+  | "props"
+  | "rules"
+  | "reference"
+  | "unclassified";
+
+export type JingweiDetailLevel = "summary" | "normal" | "full";
+
+export interface JingweiReadableItem {
+  id: string;
+  entryId: string;
+  sectionId: string;
+  sectionKey: string;
+  sectionName: string;
+  category: JingweiReadCategory;
+  title: string;
+  summaryMd: string;
+  contentMd: string;
+  source: JingweiContextSource;
+  priority: number;
+  estimatedTokens: number;
+  updatedAtMs: number;
+  tags: string[];
+  aliases: string[];
+  visibilityRule: JingweiVisibilityRule;
+  priorityTier: JingweiPriorityTier;
+  score?: number;
+  matchReason?: string;
+}
+
+export interface JingweiBriefIndexCategory {
+  category: JingweiReadCategory;
+  title: string;
+  count: number;
+  estimatedTokens: number;
+  coreCount: number;
+  relevantCount: number;
+  referenceCount: number;
+  updatedAt: string | null;
+  recommendedWhen: string;
+}
+
+export interface JingweiBriefIndex {
+  categories: JingweiBriefIndexCategory[];
+}
+
+export interface JingweiReadBriefResult {
+  ok: true;
+  bookId: string;
+  coreBrief: JingweiReadableItem[];
+  index: JingweiBriefIndex;
+  recommendedReads: Array<{ category: JingweiReadCategory; reason: string }>;
+  estimatedTokens: number;
+  droppedEntryIds: string[];
+  omittedSummary?: string;
+}
+
+export interface JingweiReadCategoryResult {
+  ok: true;
+  bookId: string;
+  category: JingweiReadCategory;
+  items: JingweiReadableItem[];
+  page: number;
+  limit: number;
+  totalAvailable: number;
+  returnedCount: number;
+  hasMore: boolean;
+  nextPage?: number;
+  estimatedTokens: number;
+  droppedEntryIds: string[];
+}
+
+export interface JingweiSearchResult {
+  ok: true;
+  bookId: string;
+  query: string;
+  items: JingweiReadableItem[];
+  totalAvailable: number;
+  returnedCount: number;
+  estimatedTokens: number;
+  droppedEntryIds: string[];
 }
 
 // --- Legacy Bible types (renamed to Jingwei*) ---

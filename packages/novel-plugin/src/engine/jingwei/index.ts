@@ -6,6 +6,10 @@ export { linkChapterToEntries, type LinkResult } from "./auto-linker.js";
 
 // Jingwei context
 export { buildJingweiContext, estimateJingweiTokens, type BuildJingweiContextOptions } from "./context/build-jingwei-context.js";
+export { buildJingweiBrief, type BuildJingweiBriefInput } from "./read-model/build-jingwei-brief.js";
+export { readJingweiCategory, type ReadJingweiCategoryInput } from "./read-model/read-jingwei-category.js";
+export { searchJingwei, type SearchJingweiInput } from "./read-model/search-jingwei.js";
+export { buildJingweiIndexFromItems } from "./read-model/build-jingwei-index.js";
 export { createLegacyJingweiAdapter, createLegacyBibleJingweiAdapter } from "./context/section-adapter.js";
 
 // Jingwei repositories
