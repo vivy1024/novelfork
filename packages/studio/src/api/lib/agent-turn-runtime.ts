@@ -17,6 +17,7 @@ import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } from "./turn-checkpoint.js";
 import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
+import { truncateToolOutput as budgetTruncateToolOutput } from "./context-budget-manager.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -171,15 +172,21 @@ function getContextAwareInstruction(toolName: string, result: SessionToolExecuti
   return base;
 }
 
-/** 截断过长的工具结果，保留头尾 + 省略提示 */
+/** 截断过长的工具结果：先按 token 预算截断，再按字符上限保底 */
 const MAX_TOOL_RESULT_CHARS = 30000;
 const TRUNCATE_HEAD = 20000;
 const TRUNCATE_TAIL = 5000;
+const TOOL_OUTPUT_TOKEN_BUDGET = 2000;
 
 function truncateToolResult(content: string): string {
-  if (content.length <= MAX_TOOL_RESULT_CHARS) return content;
-  const omitted = content.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
-  return `${content.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 (约 ${Math.round(omitted / 4)} tokens) ...]\n\n${content.slice(-TRUNCATE_TAIL)}`;
+  // Phase 1: token-based truncation (from ContextBudgetManager)
+  const { text: tokenTruncated, truncated: wasTruncated } = budgetTruncateToolOutput(content, TOOL_OUTPUT_TOKEN_BUDGET);
+  const effective = wasTruncated ? tokenTruncated : content;
+
+  // Phase 2: character-based safety net
+  if (effective.length <= MAX_TOOL_RESULT_CHARS) return effective;
+  const omitted = effective.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
+  return `${effective.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 (约 ${Math.round(omitted / 4)} tokens) ...]\n\n${effective.slice(-TRUNCATE_TAIL)}`;
 }
 
 function toolResultContent(result: SessionToolExecutionResult, toolName?: string): string {
