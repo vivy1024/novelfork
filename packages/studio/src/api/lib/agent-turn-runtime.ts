@@ -14,6 +14,9 @@ import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
 import type { RuntimeToolUse, RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 import { logRequest, normalizeTokenUsage } from "./request-observability.js";
+import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } from "./turn-checkpoint.js";
+import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
+import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -97,11 +100,13 @@ function buildInitialMessages(input: AgentTurnRuntimeInput): AgentTurnItem[] {
 }
 
 function buildFailureEvent(reply: Extract<AgentGenerateResult, { success: false }>): AgentTurnEvent {
+  const errorCode = classifyError(reply.error);
+  const userMessage = getErrorUserMessage(errorCode);
   return {
     type: "turn_failed",
     reason: reply.code,
-    message: reply.error,
-    ...(reply.metadata ? { data: { metadata: reply.metadata } } : {}),
+    message: userMessage || reply.error,
+    ...(reply.metadata ? { data: { metadata: reply.metadata, errorCode, originalError: reply.error } } : { data: { errorCode, originalError: reply.error } }),
   };
 }
 
@@ -278,11 +283,21 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let hasAttemptedOverflowRecovery = false;
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
-  // Error recovery: track consecutive failures per tool name
-  const consecutiveFailures = new Map<string, number>();
+
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
   const silentThreshold = input.silentToolCallThreshold ?? -1; // -1 = disabled
+
+  // --- Turn health monitor & checkpoint state ---
+  const turnId = `${input.sessionId}:${Date.now()}`;
+  const systemHints: string[] = [];
+  const completedToolRecords: ToolExecutionRecord[] = [];
+  const turnHealthMonitor = new TurnHealthMonitor({
+    loopDetectionThreshold: input.sessionConfig?.loopDetectionThreshold ?? 0.8,
+    tokenConsumptionWarnRatio: input.sessionConfig?.tokenConsumptionWarnRatio ?? 0.5,
+    contextWindowTokens: 200_000,
+    maxConsecutiveFailures: input.sessionConfig?.maxConsecutiveFailures ?? 5,
+  });
 
   const emitStreamChunk = input.onStreamChunk
     ? (chunk: string) => {
@@ -355,7 +370,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
 
     if (!reply.success) {
-      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, durationMs: generateDurationMs }));
+      const errorCode = classifyError(reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
+      const userMessage = getErrorUserMessage(errorCode);
+      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, errorCode, userMessage, durationMs: generateDurationMs }));
 
       // Attempt context overflow recovery (max 1 retry)
       if (!hasAttemptedOverflowRecovery && isContextOverflowError(reply.code, reply.error)) {
@@ -514,6 +531,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     const usage = reply.metadata?.usage;
     console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-ok", sessionId: input.sessionId, type: reply.type ?? "message", durationMs: generateDurationMs, ...(usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } : {}) }));
 
+    // Feed token usage to health monitor
+    if (usage) {
+      turnHealthMonitor.addTokenUsage((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0));
+    }
+
     if (reply.type !== "tool_use") {
       const content = reply.content.trim();
       if (!content) {
@@ -524,6 +546,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       emit(
         { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },
       );
+      // Clear checkpoint on successful completion
+      if (input.sessionConfig?.turnCheckpointEnabled !== false) {
+        clearTurnCheckpoint(input.sessionId, turnId);
+      }
       emit(
         { type: "turn_completed" },
       );
@@ -630,19 +656,6 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           toolResultsBySignature.set(signature, toolResult);
         }
 
-        // Error recovery: track consecutive failures
-        if (!toolResult.ok) {
-          const count = (consecutiveFailures.get(toolUse.name) ?? 0) + 1;
-          consecutiveFailures.set(toolUse.name, count);
-          if (count >= 3) {
-            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n❌ 该工具已连续失败 ${count} 次，请停下来向用户说明情况。` };
-          } else if (count >= 2) {
-            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n⚠️ 该工具已连续失败 ${count} 次，请考虑换一种方法。` };
-          }
-        } else {
-          consecutiveFailures.delete(toolUse.name);
-        }
-
         emit({
           type: "tool_result",
           id: toolUse.id,
@@ -680,6 +693,44 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         }
 
         consecutiveSilentToolCalls += 1;
+
+        // --- Health monitor check ---
+        const parallelHealthResult = turnHealthMonitor.checkHealth({
+          name: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: toolResult.summary ?? JSON.stringify(toolResult.data ?? ""),
+          success: toolResult.ok,
+          timestamp: Date.now(),
+        });
+
+        if (parallelHealthResult.action === "stop") {
+          emit({ type: "turn_failed", reason: "health-check", message: parallelHealthResult.message ?? "健康检查终止", data: { reason: parallelHealthResult.reason } });
+          return events;
+        }
+
+        if (parallelHealthResult.action === "warn" && parallelHealthResult.message) {
+          systemHints.push(parallelHealthResult.message);
+        }
+
+        // --- Checkpoint save (fire-and-forget) ---
+        const parallelCheckpointRecord: ToolExecutionRecord = {
+          toolUseId: toolUse.id,
+          toolName: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: (toolResult.summary ?? JSON.stringify(toolResult.data ?? "")).slice(0, 10000),
+          status: toolResult.ok ? "success" : "error",
+        };
+        completedToolRecords.push(parallelCheckpointRecord);
+        if (input.sessionConfig?.turnCheckpointEnabled !== false) {
+          saveTurnCheckpoint({
+            sessionId: input.sessionId,
+            turnId,
+            step: executedToolSteps,
+            completedToolResults: completedToolRecords,
+            lastAssistantContent: undefined,
+            createdAt: Date.now(),
+          });
+        }
       }
     } else {
       // --- Sequential execution path (existing behavior) ---
@@ -736,19 +787,6 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           toolResultsBySignature.set(signature, toolResult);
         }
 
-        // Error recovery: track consecutive failures
-        if (!toolResult.ok) {
-          const count = (consecutiveFailures.get(toolUse.name) ?? 0) + 1;
-          consecutiveFailures.set(toolUse.name, count);
-          if (count >= 3) {
-            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n❌ 该工具已连续失败 ${count} 次，请停下来向用户说明情况。` };
-          } else if (count >= 2) {
-            toolResult = { ...toolResult, summary: `${toolResult.summary ?? ""}\n\n⚠️ 该工具已连续失败 ${count} 次，请考虑换一种方法。` };
-          }
-        } else {
-          consecutiveFailures.delete(toolUse.name);
-        }
-
         emit({
           type: "tool_result",
           id: toolUse.id,
@@ -787,6 +825,44 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
         // Fix: silentToolCallThreshold — 递增连续无文本输出计数
         consecutiveSilentToolCalls += 1;
+
+        // --- Health monitor check ---
+        const seqHealthResult = turnHealthMonitor.checkHealth({
+          name: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: toolResult.summary ?? JSON.stringify(toolResult.data ?? ""),
+          success: toolResult.ok,
+          timestamp: Date.now(),
+        });
+
+        if (seqHealthResult.action === "stop") {
+          emit({ type: "turn_failed", reason: "health-check", message: seqHealthResult.message ?? "健康检查终止", data: { reason: seqHealthResult.reason } });
+          return events;
+        }
+
+        if (seqHealthResult.action === "warn" && seqHealthResult.message) {
+          systemHints.push(seqHealthResult.message);
+        }
+
+        // --- Checkpoint save (fire-and-forget) ---
+        const seqCheckpointRecord: ToolExecutionRecord = {
+          toolUseId: toolUse.id,
+          toolName: toolUse.name,
+          input: toolUse.input as Record<string, unknown>,
+          output: (toolResult.summary ?? JSON.stringify(toolResult.data ?? "")).slice(0, 10000),
+          status: toolResult.ok ? "success" : "error",
+        };
+        completedToolRecords.push(seqCheckpointRecord);
+        if (input.sessionConfig?.turnCheckpointEnabled !== false) {
+          saveTurnCheckpoint({
+            sessionId: input.sessionId,
+            turnId,
+            step: executedToolSteps,
+            completedToolResults: completedToolRecords,
+            lastAssistantContent: undefined,
+            createdAt: Date.now(),
+          });
+        }
       }
     }
 
@@ -797,6 +873,13 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         role: "system",
         content: `注意：你已经连续执行了 ${consecutiveSilentToolCalls} 次工具调用而没有向用户输出任何文字。请在下一步中向用户汇报当前进展或结果。`,
       });
+    }
+
+    // --- Inject health monitor warnings as system hints for next generate ---
+    if (systemHints.length > 0) {
+      const hintContent = systemHints.join("\n");
+      messages.push({ type: "message", role: "system", content: `[运行时提示] ${hintContent}` });
+      systemHints.length = 0;
     }
   }
 }
