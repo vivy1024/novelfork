@@ -12,6 +12,7 @@ interface StoryJingweiEntryRow {
   section_id: string;
   title: string;
   content_md: string;
+  summary_md?: string | null;
   tags_json: string;
   aliases_json: string;
   custom_fields_json: string;
@@ -27,7 +28,7 @@ interface StoryJingweiEntryRow {
 }
 
 const selectColumns = `
-  "id", "book_id", "section_id", "title", "content_md", "tags_json", "aliases_json",
+  "id", "book_id", "section_id", "title", "content_md", "summary_md", "tags_json", "aliases_json",
   "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
   "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", "created_at", "updated_at", "deleted_at"
 `;
@@ -51,6 +52,7 @@ function toEntry(row: StoryJingweiEntryRow): StoryJingweiEntryRecord {
     sectionId: row.section_id,
     title: row.title,
     contentMd: row.content_md,
+    summaryMd: row.summary_md ?? null,
     tags: parseJson<string[]>(row.tags_json, []),
     aliases: parseJson<string[]>(row.aliases_json, []),
     customFields: parseJson<Record<string, unknown>>(row.custom_fields_json, {}),
@@ -71,16 +73,17 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
     async create(input: CreateStoryJingweiEntryInput): Promise<StoryJingweiEntryRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "story_jingwei_entry" (
-          "id", "book_id", "section_id", "title", "content_md", "tags_json", "aliases_json",
+          "id", "book_id", "section_id", "title", "content_md", "summary_md", "tags_json", "aliases_json",
           "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
           "participates_in_ai", "token_budget", "priority_tier", "created_at", "updated_at", "deleted_at"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `).run(
         input.id,
         input.bookId,
         input.sectionId,
         input.title,
         input.contentMd,
+        input.summaryMd ?? null,
         serializeJson(input.tags),
         serializeJson(input.aliases),
         serializeJson(input.customFields),
@@ -145,7 +148,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
 
       storage.sqlite.prepare(`
         UPDATE "story_jingwei_entry"
-        SET "section_id" = ?, "title" = ?, "content_md" = ?, "tags_json" = ?, "aliases_json" = ?,
+        SET "section_id" = ?, "title" = ?, "content_md" = ?, "summary_md" = ?, "tags_json" = ?, "aliases_json" = ?,
           "custom_fields_json" = ?, "related_chapter_numbers_json" = ?, "related_entry_ids_json" = ?,
           "visibility_rule_json" = ?, "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -153,6 +156,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         updates.sectionId ?? current.sectionId,
         updates.title ?? current.title,
         updates.contentMd ?? current.contentMd,
+        updates.summaryMd ?? current.summaryMd ?? null,
         serializeJson(updates.tags ?? current.tags),
         serializeJson(updates.aliases ?? current.aliases),
         serializeJson(updates.customFields ?? current.customFields),

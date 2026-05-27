@@ -48,6 +48,9 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
 
   // Direct handlers (already implemented in novel-plugin)
   { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
+  { toolName: "jingwei.read_brief", serviceKey: "direct", method: "handleJingweiReadBrief" },
+  { toolName: "jingwei.read_category", serviceKey: "direct", method: "handleJingweiReadCategory" },
+  { toolName: "jingwei.search", serviceKey: "direct", method: "handleJingweiSearch" },
   { toolName: "jingwei.read_context", serviceKey: "direct", method: "handleJingweiReadContext" },
 
   // Health/audit tools

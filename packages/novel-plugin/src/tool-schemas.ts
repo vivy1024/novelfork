@@ -1,5 +1,5 @@
 /**
- * Novel tool inputSchema definitions — the single source of truth for all 24 novel tool schemas.
+ * Novel tool inputSchema definitions — the single source of truth for novel tool schemas.
  *
  * These schemas define the JSON Schema for each tool's input parameters.
  * Studio's session-tool-registry-novel.ts imports from here instead of defining inline.
@@ -29,7 +29,7 @@ function arraySchema(description: string, items: Record<string, unknown> = { typ
 }
 
 /**
- * 24 个小说领域工具的 inputSchema 定义
+ * 小说领域工具的 inputSchema 定义
  */
 export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "cockpit.get_snapshot": {
@@ -137,15 +137,50 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "guided.enter": {
+    type: "object",
+    properties: {
+      sessionId: stringSchema("当前会话 ID。"),
+      bookId: stringSchema("当前书籍 ID。"),
+      goal: stringSchema("引导式生成要达成的目标。"),
+      stateId: stringSchema("可选的引导状态 ID。"),
+      questions: arraySchema("要向用户确认的引导问题列表。"),
+      answers: { type: "object", description: "已有问题回答。" },
+      contextSources: arraySchema("支撑本次引导的上下文来源列表。"),
+    },
+    required: ["sessionId", "bookId", "goal"],
+    additionalProperties: false,
+  },
+  "guided.answer_question": {
+    type: "object",
+    properties: {
+      guidedStateId: stringSchema("引导式生成状态 ID。"),
+      answers: { type: "object", description: "本轮提交的问题回答。" },
+      skippedQuestionIds: arraySchema("本轮跳过的问题 ID 列表。", { type: "string" }),
+    },
+    required: ["guidedStateId"],
+    additionalProperties: false,
+  },
+  "guided.exit": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("当前书籍 ID，用于确认审计和目标资源定位。"),
+      sessionId: stringSchema("当前会话 ID，用于确认审计。"),
+      guidedStateId: stringSchema("引导式生成状态 ID。"),
+      plan: { type: "object", description: "用户确认后的引导式生成计划。" },
+    },
+    required: ["guidedStateId", "plan"],
+    additionalProperties: false,
+  },
   "candidate.create_chapter": {
     type: "object",
     properties: {
       bookId: stringSchema("当前书籍 ID。"),
-      chapterIntent: stringSchema("候选章节写作意图。"),
+      chapterIntent: stringSchema("候选章节写作意图。注意：本工具只保存已有正文；完整写下一章请使用 pipeline.generate_chapter。"),
       chapterNumber: numberSchema("目标章节序号。"),
       title: stringSchema("候选章节标题。"),
       pgiInstructions: stringSchema("由 PGI 格式化得到的本章作者指示。"),
-      content: stringSchema("完整章节候选稿正文。正文必须由 Agent 先生成，再传入本工具保存。"),
+      content: stringSchema("已有的完整章节候选稿正文。本工具不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章请调用 pipeline.generate_chapter。"),
     },
     required: ["bookId", "chapterIntent", "content"],
     additionalProperties: false,
@@ -180,14 +215,54 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
-  "jingwei.read_context": {
+  "jingwei.read_brief": {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      categories: arraySchema("要读取的经纬栏目（可选，默认全部）。"),
+      chapterNumber: numberSchema("当前章节号（用于章节可见性过滤，可选）。"),
+      sceneText: stringSchema("当前场景文本（用于 tracked 条目匹配与推荐读取，可选）。"),
+      chapterIntent: stringSchema("本章写作意图或当前任务目标（用于优先挑选核心包内容，可选）。"),
+      tokenBudget: numberSchema("核心包 token 预算，默认 4000。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "jingwei.read_category": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      category: stringSchema("要读取的经纬分类，如 characters、world-model、foreshadowing、chapter-summaries。"),
+      chapterNumber: numberSchema("当前章节号（用于章节可见性过滤，可选）。"),
+      sceneText: stringSchema("当前场景文本（用于相关性排序，可选）。"),
+      page: numberSchema("分页页码，默认 1。"),
+      limit: numberSchema("每页最多条目数，默认 20。"),
+      tokenBudget: numberSchema("本次分类读取 token 预算。"),
+      detailLevel: stringSchema("详情等级：summary | normal | full，默认 summary。"),
+    },
+    required: ["bookId", "category"],
+    additionalProperties: false,
+  },
+  "jingwei.search": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      query: stringSchema("搜索关键词，可为角色名、别名、标签、地点或设定关键词。"),
+      categories: arraySchema("限制搜索的经纬分类列表（可选）。", { type: "string" }),
+      chapterNumber: numberSchema("当前章节号（用于章节可见性过滤，可选）。"),
+      tokenBudget: numberSchema("搜索结果 token 预算。"),
+      limit: numberSchema("最多返回条目数，默认 20。"),
+    },
+    required: ["bookId", "query"],
+    additionalProperties: false,
+  },
+  "jingwei.read_context": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。兼容工具：默认返回核心包 + 目录摘要；新流程请优先使用 jingwei.read_brief。"),
+      categories: arraySchema("要读取的经纬分类（可选）。新流程请改用 jingwei.read_category。"),
       chapterNumber: numberSchema("当前章节号（用于 visibleAfterChapter 过滤，可选）。"),
       sceneText: stringSchema("当前场景文本（用于 tracked 条目匹配，可选）。"),
-      mode: stringSchema("上下文模式：auto/core/relevant/full。默认 auto。"),
+      mode: stringSchema("上下文模式：auto/core/relevant/full。注意 full 不再表示无界全量读取，会返回目录与分页建议。"),
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -331,6 +406,18 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["name", "description", "beats"],
     additionalProperties: false,
   },
+  "pipeline.generate_chapter": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("当前书籍 ID。"),
+      chapterIntent: stringSchema("章节写作意图/方向描述。基于 cockpit 快照、用户回答和 PGI 结果组装。"),
+      userDirectives: stringSchema("用户对 PGI 问题的回答，格式化后的本章作者指示。PGI 无问题时应包含 skippedReason=no-questions。"),
+      wordCount: numberSchema("目标字数。不传则使用书籍默认配置。"),
+      autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
+    },
+    required: ["bookId", "chapterIntent"],
+    additionalProperties: false,
+  },
   "jingwei.upsert_entry": {
     type: "object",
     properties: {
@@ -338,6 +425,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       category: stringSchema("经纬类别：character/event/worldview/power-system/geography/faction/item/skill/currency/special/outline/relationship/foreshadowing/plot/timeline/chapter-summary。"),
       title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
       contentMd: stringSchema("条目内容（Markdown 格式）。"),
+      summaryMd: stringSchema("条目短摘要（可选；用于经纬核心包和分类目录化读取，未提供时自动截断生成）。"),
       aliases: arraySchema("别名列表（用于 tracked 可见性匹配）。"),
       tags: arraySchema("标签列表。"),
       visibility: stringSchema("可见性规则：global（始终注入）/ tracked（匹配时注入）/ nested（被关联时注入）。默认 tracked。"),

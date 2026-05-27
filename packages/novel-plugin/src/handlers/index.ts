@@ -1,5 +1,18 @@
 export { handleChapterRead, type ChapterReadInput, type ChapterReadResult } from "./chapter-read.js";
-export { handleJingweiReadContext, type JingweiReadContextInput, type JingweiReadContextResult } from "./jingwei-read.js";
+export {
+  handleJingweiReadBrief,
+  handleJingweiReadCategory,
+  handleJingweiSearch,
+  handleJingweiReadContext,
+  type JingweiReadBriefInput,
+  type JingweiReadBriefResponse,
+  type JingweiReadCategoryInput,
+  type JingweiReadCategoryResponse,
+  type JingweiSearchInput,
+  type JingweiSearchResponse,
+  type JingweiReadContextInput,
+  type JingweiReadContextResult,
+} from "./jingwei-read.js";
 
 export { createCockpitService, CockpitService } from "./cockpit-service.js";
 export type {
@@ -55,3 +68,14 @@ export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS }
 
 export { executeWritingModeTool } from "./writing-mode-tool.js";
 export type { WritingMode, WritingModeInput, WritingModeResult } from "./writing-mode-tool.js";
+
+export { executePipelineGenerate } from "./pipeline-generate-service.js";
+export type {
+  PipelineGenerateInput,
+  PipelineGenerateOutput,
+  PipelineGenerateError,
+  PipelineGenerateResult,
+  PipelineGenerateOptions,
+  JingweiDelta,
+  JingweiDeltaEntry,
+} from "./pipeline-generate-service.js";

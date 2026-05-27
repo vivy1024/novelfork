@@ -359,6 +359,7 @@ export const storyJingweiEntries = sqliteTable(
       .references(() => storyJingweiSections.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
     contentMd: text("content_md").notNull().default(""),
+    summaryMd: text("summary_md"),
     tagsJson: text("tags_json").notNull().default("[]"),
     aliasesJson: text("aliases_json").notNull().default("[]"),
     customFieldsJson: text("custom_fields_json").notNull().default("{}"),
