@@ -79,3 +79,13 @@ export type {
   JingweiDelta,
   JingweiDeltaEntry,
 } from "./pipeline-generate-service.js";
+
+export { handleSceneSpec } from "./scene-spec-handler.js";
+export type {
+  SceneSpec,
+  SceneSpecScene,
+  SceneSpecInput,
+  SceneSpecResult,
+  SceneSpecSuccess,
+  SceneSpecFailure,
+} from "./scene-spec-handler.js";

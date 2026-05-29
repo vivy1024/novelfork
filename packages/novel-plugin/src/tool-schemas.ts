@@ -32,6 +32,14 @@ function arraySchema(description: string, items: Record<string, unknown> = { typ
  * 小说领域工具的 inputSchema 定义
  */
 export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
+  "cockpit.snapshot": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("要读取快照的书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
   "cockpit.get_snapshot": {
     type: "object",
     properties: {
@@ -432,6 +440,18 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       relatedEntryIds: arraySchema("关联条目 ID 列表。"),
     },
     required: ["bookId", "category", "title", "contentMd"],
+    additionalProperties: false,
+  },
+  "scene.spec": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("目标章节序号。"),
+      userDirectives: stringSchema("用户对本章的写作指示/方向描述。"),
+      cockpitSnapshot: { type: "object", description: "驾驶舱快照（可选，用于提取进度、伏笔、风险等上下文）。" },
+      jingweiBrief: { type: "object", description: "经纬核心包摘要（可选，用于提取角色、地点、世界观等设定）。" },
+    },
+    required: ["bookId", "chapterNumber", "userDirectives"],
     additionalProperties: false,
   },
 };
