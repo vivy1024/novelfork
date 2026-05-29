@@ -425,6 +425,18 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["name", "description", "beats"],
     additionalProperties: false,
   },
+  "pipeline.write": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      sceneSpec: { type: "object", description: "由 scene.spec 工具生成的结构化写作蓝图。必须包含 scenes 数组，每个 scene 有 characters/location/conflict/outcome。" },
+      jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
+      previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
+      autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
+    },
+    required: ["bookId", "sceneSpec"],
+    additionalProperties: false,
+  },
   "pipeline.generate_chapter": {
     type: "object",
     properties: {

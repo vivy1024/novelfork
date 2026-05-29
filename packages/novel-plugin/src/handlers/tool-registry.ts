@@ -360,6 +360,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "pipeline.write",
+    description: "精简写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→AuditRevise 两步生成章节候选稿。前置条件：必须先调用 scene.spec 获得有效蓝图。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
+    risk: "draft-write",
+    renderer: "pipeline.chapter-result",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "pipeline.generate_chapter",
     description: "完整写作管线：规划→上下文组装→正文生成→审计→修订→经纬同步→保存候选稿。写下一章时应优先调用本工具；非整章任务（写一段、改一句）请直接输出。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.generate_chapter"]),

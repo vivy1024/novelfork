@@ -53,6 +53,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "jingwei.read_category", serviceKey: "direct", method: "handleJingweiReadCategory" },
   { toolName: "jingwei.search", serviceKey: "direct", method: "handleJingweiSearch" },
   { toolName: "jingwei.read_context", serviceKey: "direct", method: "handleJingweiReadContext" },
+  { toolName: "pipeline.write", serviceKey: "direct", method: "handlePipelineWrite" },
   { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
   { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
 
