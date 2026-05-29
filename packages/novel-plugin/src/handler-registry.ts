@@ -30,6 +30,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "questionnaire.submit_response", serviceKey: "questionnaire", method: "submitResponse" },
 
   // PGI tools
+  { toolName: "pgi.ask", serviceKey: "direct", method: "handlePgiAsk" },
   { toolName: "pgi.generate_questions", serviceKey: "pgi", method: "generateQuestions" },
   { toolName: "pgi.record_answers", serviceKey: "pgi", method: "recordAnswers" },
   { toolName: "pgi.format_answers_for_prompt", serviceKey: "pgi", method: "formatAnswersForPrompt" },
@@ -52,6 +53,8 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "jingwei.read_category", serviceKey: "direct", method: "handleJingweiReadCategory" },
   { toolName: "jingwei.search", serviceKey: "direct", method: "handleJingweiSearch" },
   { toolName: "jingwei.read_context", serviceKey: "direct", method: "handleJingweiReadContext" },
+  { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
+  { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
 
   // Health/audit tools
   { toolName: "health.read_summary", serviceKey: "health" },
