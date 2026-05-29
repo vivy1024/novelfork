@@ -651,6 +651,39 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleChapterRead({ bookId, chapterNumber }, booksDir);
         return { ...result, renderer: definition.renderer };
       };
+    case "cockpit.snapshot":
+      return async ({ input, definition }) => {
+        if (!options.cockpitService) {
+          return { ok: false, renderer: definition.renderer, error: "service-unavailable", summary: "cockpit.snapshot 需要 cockpitService 配置。" };
+        }
+        const bookId = String(input.bookId);
+        const snapshot = await options.cockpitService.getSnapshot({ bookId });
+        return { ok: true, renderer: definition.renderer, summary: `书籍 ${bookId} 全景快照（进度/伏笔/候选稿/健康度）。`, data: snapshot };
+      };
+    case "jingwei.read":
+      return async ({ input, definition }) => {
+        const { handleJingweiRead } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleJingweiRead(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "jingwei.write":
+      return async ({ input, definition }) => {
+        const { handleJingweiWrite } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleJingweiWrite(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "pgi.ask":
+      return async ({ input, definition }) => {
+        const { handlePgiAsk } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handlePgiAsk(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "scene.spec":
+      return async ({ input, definition }) => {
+        const { handleSceneSpec } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleSceneSpec(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
     case "jingwei.read_brief":
       return async ({ input, definition }) => {
         const { handleJingweiReadBrief } = await import("@vivy1024/novelfork-novel-plugin");
