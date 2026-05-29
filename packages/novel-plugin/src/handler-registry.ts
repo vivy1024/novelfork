@@ -57,13 +57,29 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
   { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
 
-  // Health/audit tools
-  { toolName: "health.read_summary", serviceKey: "health" },
-  { toolName: "chapter.audit", serviceKey: "audit" },
-  { toolName: "rewrite.segment", serviceKey: "rewrite" },
-  { toolName: "outline.suggest_next", serviceKey: "outline" },
-  { toolName: "character.check_consistency", serviceKey: "character" },
-  { toolName: "hooks.manage", serviceKey: "hooks" },
+  // Health/audit tools (implemented in session-tool-executor inline)
+  { toolName: "health.read_summary", serviceKey: "cockpit", method: "getSnapshot" },
+  { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },
+  { toolName: "rewrite.segment", serviceKey: "inline", method: "rewriteSegment" },
+  { toolName: "outline.suggest_next", serviceKey: "inline", method: "suggestNext" },
+  { toolName: "character.check_consistency", serviceKey: "inline", method: "checkConsistency" },
+  { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
+
+  // Presets/Beat tools (implemented in session-tool-executor inline)
+  { toolName: "presets.get_rules", serviceKey: "inline", method: "getPresetRules" },
+  { toolName: "presets.check_compliance", serviceKey: "inline", method: "checkCompliance" },
+  { toolName: "presets.set_rules", serviceKey: "inline", method: "setPresetRules" },
+  { toolName: "presets.create_custom", serviceKey: "inline", method: "createCustomPreset" },
+  { toolName: "beat.get_current", serviceKey: "inline", method: "getBeatCurrent" },
+  { toolName: "beat.set_template", serviceKey: "inline", method: "setBeatTemplate" },
+  { toolName: "beat.create_custom", serviceKey: "inline", method: "createCustomBeat" },
+
+  // Pipeline tools
+  { toolName: "pipeline.generate_chapter", serviceKey: "inline", method: "generateChapter" },
+
+  // v2 merged tools
+  { toolName: "cockpit.snapshot", serviceKey: "cockpit", method: "getSnapshot" },
+  { toolName: "jingwei.upsert_entry", serviceKey: "inline", method: "upsertEntry" },
 
   // Scene spec (direct handler)
   { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },
