@@ -910,11 +910,52 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
         try {
           const snapshot = await options.cockpitService.getSnapshot({ bookId, includeModelStatus: false });
+
+          // 补充健康度指标
+          const health: Record<string, unknown> = { bookId };
+
+          // 进度健康
+          const progress = snapshot.progress as { chapterCount?: number; targetChapters?: number } | undefined;
+          if (progress) {
+            health.progressPercent = progress.targetChapters ? Math.round((progress.chapterCount ?? 0) / progress.targetChapters * 100) : null;
+            health.chaptersWritten = progress.chapterCount ?? 0;
+            health.targetChapters = progress.targetChapters ?? null;
+          }
+
+          // 伏笔健康
+          const hooksResult = snapshot.openHooks as unknown as { items?: ReadonlyArray<{ chapterPlanted?: number }> } | undefined;
+          const hooks = hooksResult?.items ?? [];
+          health.openHooksCount = hooks.length;
+          health.overdueHooks = hooks.filter((h) => h.chapterPlanted && (progress?.chapterCount ?? 0) - h.chapterPlanted > 30).length;
+
+          // 候选稿积压
+          const candidatesResult = snapshot.recentCandidates as unknown as { items?: ReadonlyArray<unknown> } | undefined;
+          const candidates = candidatesResult?.items ?? [];
+          health.pendingCandidates = candidates.length;
+
+          // 经纬覆盖度
+          try {
+            const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+            const storage = getStorageDatabase();
+            const entryCount = (storage.sqlite.prepare(`SELECT COUNT(*) as c FROM story_jingwei_entry WHERE book_id = ? AND deleted_at IS NULL`).get(bookId) as { c: number })?.c ?? 0;
+            const sectionCount = (storage.sqlite.prepare(`SELECT COUNT(*) as c FROM story_jingwei_section WHERE book_id = ? AND deleted_at IS NULL AND enabled = 1`).get(bookId) as { c: number })?.c ?? 0;
+            health.jingweiEntries = entryCount;
+            health.jingweiSections = sectionCount;
+            health.jingweiCoverage = entryCount > 10 ? "good" : entryCount > 3 ? "basic" : "sparse";
+          } catch { /* non-fatal */ }
+
+          // 综合评分
+          const scores: number[] = [];
+          if (health.progressPercent !== null && typeof health.progressPercent === "number") scores.push(Math.min(10, health.progressPercent / 10));
+          if (health.overdueHooks === 0) scores.push(10); else if ((health.overdueHooks as number) <= 2) scores.push(7); else scores.push(4);
+          if (health.jingweiCoverage === "good") scores.push(10); else if (health.jingweiCoverage === "basic") scores.push(6); else scores.push(3);
+          health.overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 : null;
+
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `已读取书籍 ${bookId} 的健康度摘要。`,
-            data: { bookId, snapshot, status: "partial", note: "健康度评分需要更多数据源接入。" },
+            summary: `书籍 ${bookId} 健康度：${health.overallScore ?? "N/A"}/10（进度 ${health.progressPercent ?? "?"}%，${health.openHooksCount ?? 0} 个活跃伏笔，经纬 ${health.jingweiCoverage ?? "unknown"}）。`,
+            data: health,
           };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取健康度失败：${error instanceof Error ? error.message : String(error)}` };
@@ -1375,16 +1416,54 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           for (const preset of enabledPresets) {
             if (!preset.promptInjection) continue;
             // Check for anti-AI patterns
-            if (preset.category === "anti-ai") {
-              const aiPatterns = ["值得注意的是", "总而言之", "综上所述", "不言而喻", "毋庸置疑"];
+            if (preset.category === "anti-ai" || preset.category === "style") {
+              const aiPatterns = ["值得注意的是", "总而言之", "综上所述", "不言而喻", "毋庸置疑", "众所周知", "显而易见", "不可否认", "事实上", "换言之"];
               for (const pattern of aiPatterns) {
                 if (content.includes(pattern)) {
-                  violations.push({
-                    presetName: preset.name,
-                    rule: `避免使用"${pattern}"`,
-                    violation: `文本中包含"${pattern}"`,
-                    severity: "warning",
-                  });
+                  violations.push({ presetName: preset.name, rule: `避免使用"${pattern}"`, violation: `文本中包含"${pattern}"`, severity: "warning" });
+                }
+              }
+            }
+            // Literary quality checks
+            if (preset.category === "literary" || preset.category === "quality") {
+              // 句长方差检测
+              const sentences = content.split(/[。！？]/).filter((s) => s.trim().length > 0);
+              if (sentences.length >= 5) {
+                const lengths = sentences.map((s) => s.trim().length);
+                const avg = lengths.reduce((a, b) => a + b, 0) / lengths.length;
+                const variance = lengths.reduce((a, b) => a + (b - avg) ** 2, 0) / lengths.length;
+                if (variance < 50) {
+                  violations.push({ presetName: preset.name, rule: "句长应有变化", violation: `句长方差过低（${Math.round(variance)}），节奏单调`, severity: "warning" });
+                }
+              }
+              // 段落均匀检测
+              const paragraphs = content.split(/\n\n+/).filter((p) => p.trim().length > 0);
+              if (paragraphs.length >= 3) {
+                const pLengths = paragraphs.map((p) => p.length);
+                const pAvg = pLengths.reduce((a, b) => a + b, 0) / pLengths.length;
+                const allSimilar = pLengths.every((l) => Math.abs(l - pAvg) < pAvg * 0.2);
+                if (allSimilar) {
+                  violations.push({ presetName: preset.name, rule: "段落长度应有变化", violation: "所有段落长度过于均匀，缺乏节奏感", severity: "warning" });
+                }
+              }
+            }
+            // Logic/continuity checks
+            if (preset.category === "logic" || preset.category === "continuity") {
+              // 时间词矛盾检测
+              if (/早上|清晨|黎明/.test(content) && /夜晚|深夜|月光/.test(content) && content.length < 2000) {
+                violations.push({ presetName: preset.name, rule: "时间线一致性", violation: "短文本中同时出现早晨和夜晚描写，可能存在时间矛盾", severity: "warning" });
+              }
+            }
+            // Tone/style checks
+            if (preset.category === "tone") {
+              // 从 promptInjection 中提取禁用词
+              const forbiddenMatch = preset.promptInjection.match(/禁止[：:]\s*(.+)/);
+              if (forbiddenMatch) {
+                const forbiddenWords = forbiddenMatch[1]!.split(/[,，、]/).map((w) => w.trim()).filter(Boolean);
+                for (const word of forbiddenWords) {
+                  if (word.length >= 2 && content.includes(word)) {
+                    violations.push({ presetName: preset.name, rule: `禁止使用"${word}"`, violation: `文本中包含禁用词"${word}"`, severity: "error" });
+                  }
                 }
               }
             }
