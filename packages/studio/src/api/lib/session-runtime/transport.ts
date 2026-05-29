@@ -72,6 +72,20 @@ export function parseSessionClientMessage(text: string): NarratorSessionChatClie
         sessionId: (parsed as { sessionId?: string }).sessionId,
       };
     }
+    if (parsed?.type === "session:continue") {
+      return {
+        type: "session:continue",
+        sessionId: (parsed as { sessionId?: string }).sessionId,
+      };
+    }
+    if (parsed?.type === "session:safety-decision") {
+      const decision = (parsed as { decision?: string }).decision;
+      return {
+        type: "session:safety-decision",
+        sessionId: (parsed as { sessionId?: string }).sessionId,
+        decision: decision === "approve" || decision === "reject" ? decision : "reject",
+      };
+    }
     if (parsed && typeof (parsed as { content?: unknown }).content === "string") {
       return {
         ...(parsed as Record<string, unknown>),

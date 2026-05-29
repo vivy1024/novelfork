@@ -124,6 +124,25 @@ export interface SessionConfig {
   mode?: "normal" | "plan";
   /** Project type for scope-based tool filtering (e.g. "novel", "general") */
   projectType?: string;
+  // --- Agent Runtime Hardening ---
+  /** YOLO mode: auto-approve safe and write-level tools without confirmation */
+  yoloMode?: boolean;
+  /** Safety reflection: use current model to judge dangerous ops in YOLO mode */
+  safetyReflection?: boolean;
+  /** Safety reflection timeout in ms (default 15000) */
+  safetyReflectionTimeoutMs?: number;
+  /** Enable cascade compaction for long conversations */
+  cascadeCompactEnabled?: boolean;
+  /** Enable turn checkpoint for interrupt recovery */
+  turnCheckpointEnabled?: boolean;
+  /** Auto-recover interrupted turns on server startup */
+  autoRecoverOnStartup?: boolean;
+  /** Loop detection similarity threshold (0-1, default 0.8) */
+  loopDetectionThreshold?: number;
+  /** Token consumption warning ratio (0-1, default 0.5) */
+  tokenConsumptionWarnRatio?: number;
+  /** Max consecutive tool failures before force-stopping turn (default 5) */
+  maxConsecutiveFailures?: number;
 }
 
 export type NarratorSessionKind = "standalone" | "chapter";
@@ -368,10 +387,24 @@ export interface NarratorSessionChatAbortClientEnvelope {
   sessionId?: string;
 }
 
+export interface NarratorSessionChatContinueClientEnvelope {
+  type: "session:continue";
+  sessionId?: string;
+}
+
+/** Client → Server: user's decision on a safety-paused operation */
+export interface NarratorSessionSafetyDecisionClientEnvelope {
+  type: "session:safety-decision";
+  sessionId?: string;
+  decision: "approve" | "reject";
+}
+
 export type NarratorSessionChatClientMessage =
   | NarratorSessionChatMessageClientEnvelope
   | NarratorSessionChatAckClientEnvelope
-  | NarratorSessionChatAbortClientEnvelope;
+  | NarratorSessionChatAbortClientEnvelope
+  | NarratorSessionChatContinueClientEnvelope
+  | NarratorSessionSafetyDecisionClientEnvelope;
 
 export type NarratorSessionRecoveryState = "idle" | "recovering" | "reconnecting" | "replaying" | "resetting" | "failed";
 export type NarratorSessionRecoveryReason = "initial-hydration" | "reconnect" | "replay" | "history-gap" | "server-reset" | "snapshot-load-failed" | "history-load-failed" | "websocket-error";
@@ -443,6 +476,23 @@ export interface NarratorSessionChatToolInputChunkEnvelope {
   partialInput: string;
 }
 
+/** Server → Client: safety reflection rejected a dangerous operation */
+export interface NarratorSessionSafetyPauseEnvelope {
+  type: "session:safety-pause";
+  sessionId: string;
+  toolName: string;
+  toolInput: Record<string, unknown>;
+  reason: string;
+}
+
+export interface NarratorSessionCompactProgressEnvelope {
+  type: "session:compact-progress";
+  sessionId: string;
+  stage: "cascade" | "segment";
+  progress: number; // 0-100
+  message?: string;
+}
+
 export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatSnapshotEnvelope
   | NarratorSessionChatStateEnvelope
@@ -450,4 +500,6 @@ export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatErrorEnvelope
   | NarratorSessionChatStreamEnvelope
   | NarratorSessionChatToolStreamEnvelope
-  | NarratorSessionChatToolInputChunkEnvelope;
+  | NarratorSessionChatToolInputChunkEnvelope
+  | NarratorSessionSafetyPauseEnvelope
+  | NarratorSessionCompactProgressEnvelope;

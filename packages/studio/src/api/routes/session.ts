@@ -13,6 +13,7 @@ import {
   getSessionToolState,
   replaceSessionChatState,
   broadcastSessionError,
+  broadcastCompactProgress,
   type ConfirmSessionToolDecisionInput,
 } from "../lib/session-chat-service.js";
 import {
@@ -26,10 +27,13 @@ import {
   type SessionListSort,
 } from "../lib/session-service.js";
 import { compactSession, undoCompactSession, editCompactSummary } from "../lib/session-compact-service.js";
+import { segmentCompact } from "../lib/compact/segment-compact.js";
 import { getContextBreakdown } from "../lib/context-breakdown.js";
 import { executeHeadlessChat, encodeHeadlessChatEventsAsNdjson, type HeadlessChatInput } from "../lib/session-headless-chat-service.js";
 import { continueLatestSession, forkSession, restoreSessionForContinue } from "../lib/session-lifecycle-service.js";
 import { createSessionMemoryBoundaryService, type SessionMemoryCandidate } from "../lib/session-memory-boundary-service.js";
+import { generateSessionReply } from "../lib/llm-runtime-service.js";
+import { loadUserConfig } from "../lib/user-config-service.js";
 
 const app = new Hono();
 const memoryBoundaryService = createSessionMemoryBoundaryService();
@@ -242,6 +246,173 @@ app.post("/:id/compact/edit-summary", async (c) => {
     return c.json(result, 404);
   }
   return c.json(result);
+});
+
+// ─── Segment Compact ────────────────────────────────────────────────────────
+
+app.post("/:id/compact-segment", async (c) => {
+  const id = c.req.param("id");
+  const body: { beforeSeq?: number } = await c.req.json<{ beforeSeq?: number }>().catch(() => ({}));
+
+  if (typeof body.beforeSeq !== "number" || body.beforeSeq <= 0) {
+    return c.json({ error: "beforeSeq must be a positive number" }, 400);
+  }
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  const messages = snapshot.messages.map((m) => ({
+    role: m.role,
+    content: m.content,
+    seq: m.seq ?? 0,
+    id: m.id,
+  }));
+
+  // Resolve summary model
+  let providerId = snapshot.session.sessionConfig.providerId;
+  let modelId = snapshot.session.sessionConfig.modelId;
+  try {
+    const config = await loadUserConfig();
+    if (config.modelDefaults.summaryModel) {
+      const colonIdx = config.modelDefaults.summaryModel.indexOf(":");
+      if (colonIdx > 0) {
+        providerId = config.modelDefaults.summaryModel.slice(0, colonIdx);
+        modelId = config.modelDefaults.summaryModel.slice(colonIdx + 1);
+      }
+    }
+  } catch { /* use session model */ }
+
+  await broadcastCompactProgress(id, "segment", 10, "开始段落压缩…");
+
+  try {
+    const result = await segmentCompact({
+      messages,
+      beforeSeq: body.beforeSeq,
+      generateSummary: async (prompt: string, signal?: AbortSignal) => {
+        await broadcastCompactProgress(id, "segment", 30, "正在生成摘要…");
+        const llmResult = await generateSessionReply({
+          sessionConfig: {
+            providerId,
+            modelId,
+            permissionMode: "allow",
+            reasoningEffort: "low",
+          },
+          messages: [
+            { type: "message", id: "segment-compact-system", role: "system", content: "You are a helpful AI assistant. Respond with TEXT ONLY. Do NOT call any tools." },
+            { type: "message", id: "segment-compact-user", role: "user", content: prompt },
+          ],
+          signal,
+        });
+        if (llmResult.success && llmResult.type === "message" && llmResult.content.trim()) {
+          return llmResult.content.trim();
+        }
+        throw new Error("LLM failed to generate summary");
+      },
+    });
+
+    await broadcastCompactProgress(id, "segment", 70, "正在更新消息…");
+
+    // Mark collapsed messages with metadata flag (keep them in storage for undo)
+    const collapsedSet = new Set(result.collapsedMessageIds);
+    const summaryMessageId = `segment-summary-${crypto.randomUUID()}`;
+    const summaryMessage = {
+      id: summaryMessageId,
+      role: "system" as const,
+      content: result.summaryContent,
+      timestamp: Date.now(),
+      metadata: {
+        kind: "segment-compact-summary",
+        collapsedMessageIds: result.collapsedMessageIds,
+        collapsedCount: result.collapsedCount,
+        tokensSaved: result.tokensSaved,
+      },
+    };
+
+    // Build new message list: mark collapsed messages, insert summary before them
+    const newMessages = snapshot.messages.map((m) => {
+      if (collapsedSet.has(m.id)) {
+        return { ...m, metadata: { ...m.metadata, collapsed: true } };
+      }
+      return m;
+    });
+    // Insert summary message before the first collapsed message
+    const firstCollapsedIdx = newMessages.findIndex((m) => collapsedSet.has(m.id));
+    if (firstCollapsedIdx >= 0) {
+      newMessages.splice(firstCollapsedIdx, 0, summaryMessage as any);
+    } else {
+      newMessages.unshift(summaryMessage as any);
+    }
+    const updated = await replaceSessionChatState(id, newMessages);
+    if (!updated) {
+      return c.json({ error: "Failed to update session state" }, 500);
+    }
+
+    // Build undo token: JSON-encoded info for restoration
+    const undoToken = Buffer.from(JSON.stringify({
+      sessionId: id,
+      collapsedMessageIds: result.collapsedMessageIds,
+      summaryMessageId,
+    })).toString("base64url");
+
+    await broadcastCompactProgress(id, "segment", 100, "段落压缩完成");
+
+    return c.json({
+      summaryContent: result.summaryContent,
+      collapsedCount: result.collapsedCount,
+      tokensSaved: result.tokensSaved,
+      undoToken,
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Segment compact failed";
+    await broadcastSessionError(id, message, "segment_compact_failed");
+    return c.json({ error: message }, 500);
+  }
+});
+
+app.post("/:id/compact-segment/undo", async (c) => {
+  const id = c.req.param("id");
+  const body: { undoToken?: string } = await c.req.json<{ undoToken?: string }>().catch(() => ({}));
+
+  if (!body.undoToken) {
+    return c.json({ error: "undoToken is required" }, 400);
+  }
+
+  let undoData: { sessionId: string; collapsedMessageIds: string[]; summaryMessageId: string };
+  try {
+    undoData = JSON.parse(Buffer.from(body.undoToken, "base64url").toString("utf-8"));
+  } catch {
+    return c.json({ error: "Invalid undoToken" }, 400);
+  }
+
+  if (undoData.sessionId !== id) {
+    return c.json({ error: "undoToken does not match this session" }, 400);
+  }
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  // Remove the summary message and clear collapsed flag from original messages
+  const collapsedSet = new Set(undoData.collapsedMessageIds);
+  const restoredMessages = snapshot.messages
+    .filter((m) => m.id !== undoData.summaryMessageId)
+    .map((m) => {
+      if (collapsedSet.has(m.id) && m.metadata?.collapsed) {
+        const { collapsed, ...restMetadata } = m.metadata;
+        return { ...m, metadata: Object.keys(restMetadata).length > 0 ? restMetadata : undefined };
+      }
+      return m;
+    });
+
+  const updated = await replaceSessionChatState(id, restoredMessages);
+  if (!updated) {
+    return c.json({ error: "Failed to restore session state" }, 500);
+  }
+
+  return c.json({ restoredCount: undoData.collapsedMessageIds.length });
 });
 
 app.post("/:id/truncate", async (c) => {

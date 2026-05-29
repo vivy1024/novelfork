@@ -11,6 +11,6 @@ describe("CLI command registry help", () => {
     expect(help).toContain("/help");
     expect(help).toContain("/tools");
     expect(help).toContain("/novel:write-next");
-    expect(help).toContain("planned");
+    expect(help).toContain("partial");
   });
 });

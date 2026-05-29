@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Bot, PenTool, Search, ShieldAlert, Sparkles } from "lucide-react";
+import { Anchor, Bot, Lightbulb, Network, PenTool, Search, ShieldAlert, Sparkles } from "lucide-react";
 
 import { fetchJson } from "@/hooks/use-api";
 import {
@@ -102,6 +102,33 @@ export const SESSION_PRESETS = [
     icon: Search,
     defaultSessionMode: "chat",
     defaultPermissionMode: "read",
+  },
+  {
+    id: "hooks",
+    title: "Hooks",
+    label: "伏笔 Hooks",
+    description: "管理伏笔埋设、强化与回收建议。",
+    icon: Lightbulb,
+    defaultSessionMode: "chat",
+    defaultPermissionMode: "ask",
+  },
+  {
+    id: "chapter-hooks",
+    title: "Chapter Hooks",
+    label: "章末钩子 Chapter Hooks",
+    description: "为章节结尾设计悬念钩子方案。",
+    icon: Anchor,
+    defaultSessionMode: "chat",
+    defaultPermissionMode: "ask",
+  },
+  {
+    id: "outline",
+    title: "Outline",
+    label: "大纲 Outline",
+    description: "维护大纲、角色、势力和经纬设定。",
+    icon: Network,
+    defaultSessionMode: "chat",
+    defaultPermissionMode: "edit",
   },
 ] as const;
 

@@ -19,7 +19,7 @@ export interface MessageStreamProps {
 }
 
 /** 判断是否在底部附近（距底部 < threshold px） */
-function isNearBottom(ref: BidirectionalListRef<unknown> | null, threshold = 80): boolean {
+function isNearBottom(ref: BidirectionalListRef<ConversationSurfaceMessage> | null, threshold = 80): boolean {
   if (!ref) return true;
   try {
     return ref.getBottomDistance() < threshold;

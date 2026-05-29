@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { listSessions } from "../lib/session-service.js";
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import {
   deleteRequestLog,
   queryRequestLogs,
@@ -110,11 +111,28 @@ export function createUsageRouter() {
 
     const result = queryRequestLogs({ provider, model, from, to, status, page, pageSize });
 
+    // Build session title map for narrator resolution
+    const sessionTitleMap = new Map<string, string>();
+    const narratorIds = [...new Set(result.items.map(i => i.narrator).filter(Boolean))] as string[];
+    if (narratorIds.length > 0) {
+      try {
+        const storage = getStorageDatabase();
+        for (const sid of narratorIds) {
+          try {
+            const row = storage.sqlite.prepare(
+              `SELECT json_extract(metadata_json, '$.title') as title FROM session WHERE id = ?`
+            ).get(sid) as { title: string | null } | undefined;
+            if (row?.title) sessionTitleMap.set(sid, row.title);
+          } catch { /* skip */ }
+        }
+      } catch { /* non-critical */ }
+    }
+
     // Compute summary for the filtered set
     const summary = summarizeRequests(result.items);
 
     return c.json({
-      items: result.items.map(formatRequestItem),
+      items: result.items.map((item) => formatRequestItem(item, sessionTitleMap)),
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
@@ -147,11 +165,12 @@ export function createUsageRouter() {
 
 // ── Helpers ──
 
-function formatRequestItem(log: RequestLog) {
+function formatRequestItem(log: RequestLog, sessionTitleMap?: Map<string, string>) {
+  const narratorTitle = log.narrator && sessionTitleMap?.get(log.narrator);
   return {
     id: log.id,
     timestamp: log.timestamp,
-    narrator: log.narrator ?? null,
+    narrator: narratorTitle ?? log.narrator ?? null,
     provider: log.provider ?? null,
     model: log.model ?? null,
     status: log.status,

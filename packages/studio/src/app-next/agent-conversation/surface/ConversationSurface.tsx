@@ -23,6 +23,8 @@ import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream"
 import { NarratorStatusBar } from "./NarratorStatusBar";
 import { SessionDetailPanel, type SessionDetailData } from "./SessionDetailPanel";
 import { TerminalListPanel } from "./TerminalListPanel";
+import { SafetyPauseCard } from "./SafetyPauseCard";
+import { CompactProgressIndicator } from "./CompactProgressIndicator";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -43,6 +45,10 @@ export interface ConversationSurfaceProps {
   messages: readonly ConversationSurfaceMessage[];
   pendingConfirmation?: ConversationConfirmation | null;
   recoveryNotice?: ConversationRecoveryNotice | null;
+  /** 安全暂停事件 */
+  pendingSafetyPause?: { id: string; toolName: string; input: Record<string, unknown>; reason: string } | null;
+  /** 压缩进度（0-100），null 表示未在压缩 */
+  compactProgress?: number | null;
   sendDisabledReason?: string;
   settingsHref?: string;
   footerActions?: ReactNode;
@@ -98,6 +104,10 @@ export interface ConversationSurfaceProps {
   onRetryError?: () => void;
   onDismissError?: () => void;
   onAutoRetryError?: (errorCode: string) => void;
+  /** 中断后继续：发送 session:continue WebSocket 事件 */
+  onContinueSession?: () => void;
+  /** 安全暂停决策回调 */
+  onSafetyPauseDecision?: (id: string, decision: "approve" | "reject") => void;
 }
 
 export function ConversationSurface({
@@ -107,6 +117,8 @@ export function ConversationSurface({
   messages,
   pendingConfirmation = null,
   recoveryNotice = null,
+  pendingSafetyPause = null,
+  compactProgress = null,
   sendDisabledReason,
   settingsHref,
   footerActions = null,
@@ -143,6 +155,8 @@ export function ConversationSurface({
   onRetryError,
   onDismissError,
   onAutoRetryError,
+  onContinueSession,
+  onSafetyPauseDecision,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -200,9 +214,31 @@ export function ConversationSurface({
   const handleMessageContextAction = (messageId: string, action: string) => {
     const msgIndex = messages.findIndex((m) => m.id === messageId);
 
-    if (action === "compact-before" && onCompactSession) {
+    if (action === "compact-before" && sessionId) {
       if (msgIndex > 0) {
-        void onCompactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
+        const msg = messages[msgIndex];
+        const beforeSeq = (msg as unknown as { seq?: number }).seq;
+        if (beforeSeq != null) {
+          // Call compact-segment API with beforeSeq
+          void (async () => {
+            try {
+              const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/compact-segment`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ beforeSeq }),
+              });
+              if (!res.ok) {
+                const errData = await res.json().catch(() => ({}));
+                console.error("compact-segment failed:", errData);
+              }
+              // On success the WebSocket will push updated messages
+            } catch (err) {
+              console.error("compact-segment error:", err);
+            }
+          })();
+        } else if (onCompactSession) {
+          void onCompactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
+        }
       }
     }
 
@@ -251,7 +287,7 @@ export function ConversationSurface({
     // Truncate to before the edited message, then resend with new content
     const msgIndex = messages.findIndex((m) => m.id === editingMessage.id);
     if (msgIndex >= 0 && onTruncateToMessage) {
-      void onTruncateToMessage(editingMessage.id).then(() => {
+      void Promise.resolve(onTruncateToMessage(editingMessage.id)).then(() => {
         setTimeout(() => onSend(newContent), 100);
       }).catch(() => {
         // Truncate failed — still send the message as fallback
@@ -606,6 +642,21 @@ export function ConversationSurface({
                 )}
               </div>
             )}
+            {/* Safety pause card */}
+            {pendingSafetyPause && onSafetyPauseDecision && (
+              <div className="my-3">
+                <SafetyPauseCard
+                  pause={pendingSafetyPause}
+                  onDecision={onSafetyPauseDecision}
+                />
+              </div>
+            )}
+            {/* Compact progress indicator */}
+            {compactProgress != null && (
+              <div className="my-3">
+                <CompactProgressIndicator progress={compactProgress} />
+              </div>
+            )}
           </>
         )}
       </div>
@@ -717,7 +768,7 @@ export function ConversationSurface({
       <Composer
         onSend={(content, attachments) => { setLocalSending(true); onSend(content, attachments); }}
         onAbort={onAbort}
-        onContinue={() => { setLocalSending(true); onSend(""); }}
+        onContinue={() => { setLocalSending(true); if (onContinueSession) { onContinueSession(); } else { onSend(""); } }}
         onRetry={handleRetry}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}

@@ -7,7 +7,10 @@ import { Lock, Wrench } from "lucide-react";
 
 export type AgentRole =
   | "writer"
+  | "planner"
   | "auditor"
+  | "architect"
+  | "explorer"
   | "hooks"
   | "chapter-hooks"
   | "outline"
@@ -55,10 +58,24 @@ const ROLE_DEFAULTS: Record<AgentRole, string[]> = {
     "beat.get_current",
     "cockpit.list_open_hooks",
   ],
+  planner: [
+    "narrative.read_line",
+    "beat.get_current",
+    "cockpit.list_open_hooks",
+  ],
   auditor: [
     "character.check_consistency",
     "narrative.read_line",
     "presets.check_compliance",
+  ],
+  architect: [
+    "narrative.read_line",
+    "presets.get_rules",
+  ],
+  explorer: [
+    "narrative.read_line",
+    "cockpit.list_open_hooks",
+    "character.check_consistency",
   ],
   hooks: [
     "cockpit.list_open_hooks",

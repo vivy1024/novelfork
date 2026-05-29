@@ -13,9 +13,14 @@
  * - NarraFork: 双档阈值（标准/大窗口）+ 渐进式裁剪 + compressionKeepTurns
  */
 
+import { cascadeCompact } from "./compact/cascade-compact.js";
+
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
+
+/** 当消息 tokens 超过摘要模型窗口的此比例时，使用 cascade compact */
+const CASCADE_COMPACT_THRESHOLD = 0.8;
 
 export const POST_COMPACT_MAX_FILES_TO_RESTORE = 5;
 export const POST_COMPACT_TOKEN_BUDGET = 50_000;
@@ -58,6 +63,14 @@ export interface CompactInput {
   readonly readFile?: (path: string) => Promise<string | null>;
   /** 用户自定义压缩指令 */
   readonly customInstructions?: string;
+  /** 摘要模型的上下文窗口大小（tokens），用于判断是否需要 cascade compact */
+  readonly summaryModelContextWindow?: number;
+  /** 调用摘要模型的原始函数（cascade compact 需要） */
+  readonly generateSummary?: (prompt: string) => Promise<string>;
+  /** Abort signal for cancellation */
+  readonly signal?: AbortSignal;
+  /** Progress callback for cascade compact (0-100) */
+  readonly onProgress?: (progress: number) => void;
 }
 
 export interface CompactResult {
@@ -297,7 +310,7 @@ export function formatCompactSummary(raw: string): string {
  * 3. compress：调用摘要模型生成结构化摘要 + 恢复文件上下文
  */
 export async function autoCompact(input: CompactInput): Promise<CompactResult> {
-  const { messages, maxContextTokens, thresholds, summarize, recentFilePaths, readFile, customInstructions } = input;
+  const { messages, maxContextTokens, thresholds, summarize, recentFilePaths, readFile, customInstructions, summaryModelContextWindow, generateSummary, signal, onProgress } = input;
 
   const action = detectCompactionAction(messages, maxContextTokens, thresholds);
 
@@ -337,6 +350,41 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
 
   if (olderMessages.length === 0) {
     return { compacted: false, truncated: false, messages: [...messages], compactedMessageCount: 0, keptMessageCount: messages.length };
+  }
+
+  // --- Cascade compact delegation ---
+  // If older messages exceed 80% of the summary model's context window,
+  // a single summarize call won't fit. Delegate to cascade compact.
+  if (summaryModelContextWindow && generateSummary) {
+    const olderTokens = totalTokens(olderMessages);
+    if (olderTokens > summaryModelContextWindow * CASCADE_COMPACT_THRESHOLD) {
+      const cascadeResult = await cascadeCompact({
+        messages: olderMessages.map((m) => ({ role: m.role, content: m.content })),
+        summaryModelContextWindow,
+        generateSummary,
+        signal,
+        onProgress,
+      });
+
+      const cascadeSummaryMsg: CompactMessage = {
+        id: `compact-cascade-summary-${Date.now()}`,
+        role: "system",
+        content: cascadeResult.compressedMessages[0]?.content ?? "[对话摘要]\n\n(cascade compact 未生成摘要)",
+      };
+
+      const compactedMessages: CompactMessage[] = [cascadeSummaryMsg, ...recentMessages];
+
+      return {
+        compacted: true,
+        truncated: false,
+        messages: compactedMessages,
+        compactedMessageCount: olderMessages.length,
+        keptMessageCount: recentMessages.length,
+        summaryTokens: estimateTokenCount(cascadeSummaryMsg.content),
+        preCompactTokens,
+        postCompactTokens: totalTokens(compactedMessages),
+      };
+    }
   }
 
   // 调用摘要模型：传入完整旧消息列表（不是截断文本）

@@ -70,11 +70,21 @@ export interface PipelineConfig {
 |---|---|---|
 | Planner | `PlannerAgent` | 根据大纲和当前状态规划下一章的目标、冲突、伏笔 |
 | Composer | `ComposerAgent` | 组装写作上下文包（规则栈+上下文源+章节意图） |
-| Writer | `WriterAgent` | 根据上下文包生成章节正文 |
+| Writer | `WriterAgent` | 根据上下文包生成章节正文（双阶段：creative + settle） |
 | Architect | `ArchitectAgent` | 生成作品整体架构（卷/幕/节奏） |
-| Auditor | `ContinuityAuditor` | 连续性审计（17+ 维度检查） |
-| Reviser | `ReviserAgent` | 根据审计结果修订章节 |
+| FoundationReviewer | `FoundationReviewerAgent` | 审查架构可行性（多维度评分） |
+| Auditor | `ContinuityAuditor` | 连续性审计（37 维度检查） |
+| Reviser | `ReviserAgent` | 根据审计结果修订（5 种模式） |
+| StateValidator | `StateValidatorAgent` | 经纬一致性校验（diff + LLM 验证） |
+| LengthNormalizer | `LengthNormalizerAgent` | 字数规范化（compress/expand） |
+| ChapterAnalyzer | `ChapterAnalyzerAgent` | 章节分析（导入时逐章提取经纬） |
 | Explorer | `RadarAgent` | 市场雷达，分析平台排行数据 |
+| InlineWriter | `inline-writer.ts` | 选区变换写作（续写/扩写/桥接） |
+| DialogueGenerator | `dialogue-generator.ts` | 多角色对话生成 |
+| VariantGenerator | `variant-generator.ts` | 多版本改写 |
+| OutlineBrancher | `outline-brancher.ts` | 大纲分支生成 |
+| StyleAnalyzer | `style-analyzer.ts` | 文风统计分析（纯文本，无 LLM） |
+| Detector | `detector.ts` | AI 味检测（外部 API 调用） |
 
 ## 工具链流程（Session-native 写作）
 
@@ -97,8 +107,50 @@ candidate.create_chapter
     │
     ▼
 candidate.accept / candidate.reject
-    │  接受→写入正式章节 / 拒绝→重新生成
+    │  接受→写入正式章节（+ 经纬自动同步） / 拒绝→重新生成
 ```
+
+## 统一写作管线工具（pipeline.generate_chapter）
+
+v1.0.7 新增的核心工具，将 Pipeline Agent 能力封装为对话模式可调用的 session tool：
+
+```
+pipeline.generate_chapter
+    │  输入：bookId + chapterIntent + userDirectives
+    │
+    ├─ 1. Planner — 规则引擎提取 intent/goal/conflicts
+    ├─ 2. Composer — 组装完整上下文包（lorebook RAG + 规则栈）
+    ├─ 3. Writer — 双阶段生成（creative + settle）
+    ├─ 4. Auditor — 37 维度审计
+    ├─ 5. Reviser — 自动修订 critical issues（可选）
+    ├─ 6. StateValidator — 经纬一致性校验
+    │
+    └─→ 输出：候选稿 + 审计报告 + 经纬变更 delta（jingweiDelta）
+```
+
+与 `candidate.create_chapter` 的区别：
+- `candidate.create_chapter`：纯存储工具，接收已生成的正文保存为候选稿
+- `pipeline.generate_chapter`：完整管线，内部调用 Pipeline Agent class 生成+审计+修订
+
+候选稿 accept 后，如果 metadata 中包含 `jingweiDelta`，经纬条目会自动更新（无需 LLM 手动调用 `jingwei.upsert_entry`）。
+
+## 对话模式经纬上下文注入
+
+对话模式通过 `buildAgentContext()` 自动注入经纬上下文：
+
+```
+session-chat-service
+    │
+    ├─ buildAgentContext({ bookId, sceneText })
+    │     ├─ buildJingweiContext() — global/tracked/nested + 时间轴 + 优先级 + token 预算
+    │     ├─ buildChapterBriefing() — 活跃角色/伏笔/硬约束
+    │     ├─ buildRecursiveSummaryContext() — 卷摘要 + 近 5 章摘要
+    │     └─ 大窗口模式（≥500K）：前一章全文 + full 模式注入
+    │
+    └─ 预设/节拍注入（enabledPresetIds + beatTemplateId）
+```
+
+这与 Pipeline 模式（通过 `buildBibleContext` + `pipeline-bridge.ts`）是两条独立路径。
 
 ## 确认门（ConfirmationGate）
 

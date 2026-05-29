@@ -286,6 +286,8 @@ export function reduceSessionServerEnvelope(
         error: { message: envelope.error, code: envelope.code, runtime: envelope.runtime },
         recovery: { state: "failed", reason: "websocket-error" },
       };
+    default:
+      return state;
   }
 }
 

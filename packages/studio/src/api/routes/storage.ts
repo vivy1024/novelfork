@@ -465,14 +465,17 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         await persistStudioProjectInitRecord(bookDir, preparedProjectBootstrap.projectInitRecord);
       }
 
-      // Create 5 fixed Agent sessions bound to this book
+      // Create fixed Agent sessions bound to this book
       // 先检查是否已有该 bookId 的 sessions（防止重复创建导致重复 agent 会话）
       const BOOK_AGENTS = [
-        { agentId: "writer", title: `📝 写书 — ${body.title}`, sessionMode: "chat" as const },
-        { agentId: "hooks", title: `🎣 伏笔 — ${body.title}`, sessionMode: "chat" as const },
-        { agentId: "chapter-hooks", title: `🪝 章末钩子 — ${body.title}`, sessionMode: "chat" as const },
-        { agentId: "auditor", title: `🔍 审校 — ${body.title}`, sessionMode: "chat" as const },
-        { agentId: "outline", title: `📋 大纲与经纬 — ${body.title}`, sessionMode: "chat" as const },
+        { agentId: "writer", title: `📝 写书 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "edit" as const },
+        { agentId: "planner", title: `🧭 规划 — ${body.title}`, sessionMode: "plan" as const, permissionMode: "plan" as const },
+        { agentId: "auditor", title: `🔍 审校 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "read" as const },
+        { agentId: "architect", title: `🏗️ 设定 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "explorer", title: `🔎 探索 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "read" as const },
+        { agentId: "hooks", title: `🎣 伏笔 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "chapter-hooks", title: `🪝 章末钩子 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "outline", title: `📋 大纲与经纬 — ${body.title}`, sessionMode: "chat" as const, permissionMode: "edit" as const },
       ];
 
       // Resolve the actual working directory for Agent sessions
@@ -499,7 +502,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
                 sessionMode: agent.sessionMode,
                 projectId: bookId,
                 worktree: sessionWorktree,
-                sessionConfig: { permissionMode: "edit" },
+                sessionConfig: { permissionMode: agent.permissionMode },
               }),
             ),
           )

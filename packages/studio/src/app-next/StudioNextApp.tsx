@@ -473,6 +473,14 @@ type WorkbenchSessionClient = {
   readonly createSession: (payload: any) => Promise<any>;
 };
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function summaryLength(value: unknown): number {
+  return isRecord(value) && typeof value.summary === "string" ? value.summary.length : 0;
+}
+
 type SessionToolConfirmationPayload = {
   readonly ok?: boolean;
   readonly snapshot?: NarratorSessionChatSnapshot;
@@ -896,7 +904,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       <AgentQuickActions
         agentRole={novelAgentRole}
         bookId={novelBookId}
-        onSendMessage={(msg, attachments) => runtime.sendMessage(msg, attachments)}
+        onSendMessage={(msg: string) => { void runtime.sendMessage(msg); }}
       />
     </>
   ) : null;
@@ -1188,22 +1196,24 @@ function toConversationStatus(
 
   // Context usage estimation — always provide contextUsage so ContextRing is always visible
   const maxTokens = selectedModel?.contextWindow;
-  // Fixed estimation based on message content — independent of API-reported usage.
-  // This ensures consistent display regardless of provider, model switching, or cache behavior.
-  // Ratio: ~1.5 chars per token for mixed CJK/English (conservative estimate).
-  const usedTokens = state.messages.length > 0
-    ? Math.ceil(state.messages.reduce((sum, m) => {
-        let chars = m.content?.length ?? 0;
-        if (m.toolCalls) {
-          for (const tc of m.toolCalls) {
-            chars += tc.summary?.length ?? 0;
-            chars += tc.result?.summary?.length ?? 0;
-            chars += JSON.stringify(tc.input ?? {}).length;
+  // Prefer API-reported lastInputTokens (precise) over local character-based estimation.
+  // lastInputTokens represents the actual context window usage from the last LLM request.
+  const apiReportedTokens = (state.session as { cumulativeUsage?: { lastInputTokens?: number } } | null)?.cumulativeUsage?.lastInputTokens;
+  const usedTokens = apiReportedTokens && apiReportedTokens > 0
+    ? apiReportedTokens
+    : state.messages.length > 0
+      ? Math.ceil(state.messages.reduce((sum, m) => {
+          let chars = m.content?.length ?? 0;
+          if (m.toolCalls) {
+            for (const tc of m.toolCalls) {
+              chars += tc.summary?.length ?? 0;
+              chars += summaryLength(tc.result);
+              chars += JSON.stringify(tc.input ?? {}).length;
+            }
           }
-        }
-        return sum + chars;
-      }, 0) / 1.5)
-    : 0;
+          return sum + chars;
+        }, 0) / 1.5)
+      : 0;
   const contextUsage = {
     usedTokens,
     maxTokens: maxTokens && maxTokens > 0 ? maxTokens : 0,
@@ -1284,7 +1294,11 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
   const rawSessionClient = useMemo<SessionDomainClient>(() => createDefaultSessionClient(), []);
   const shellDataStore = useShellDataStore();
   const sessionClient = useMemo<WorkbenchSessionClient>(() => ({
-    listActiveSessions: rawSessionClient.listActiveSessions,
+    listActiveSessions: async (options) => {
+      const result = await rawSessionClient.listActiveSessions<any[]>({ ...options, status: "active" });
+      if (result.ok) return { ok: true, data: Array.isArray(result.data) ? result.data : [] };
+      return { ok: false, error: contractErrorMessage(result, "会话列表加载失败") };
+    },
     createSession: async (payload) => {
       const result = await rawSessionClient.createSession(payload);
       if (result.ok) {
