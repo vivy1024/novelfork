@@ -111,6 +111,17 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "templateId", "answers"],
     additionalProperties: false,
   },
+  "pgi.ask": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("当前书籍 ID。"),
+      chapterNumber: numberSchema("目标章节序号（可选）。"),
+      chapterIntent: stringSchema("本章写作意图或用户请求（可选）。"),
+      maxQuestions: numberSchema("最多生成的问题数量（可选）。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
   "pgi.generate_questions": {
     type: "object",
     properties: {
@@ -442,6 +453,23 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "category", "title", "contentMd"],
     additionalProperties: false,
   },
+  "jingwei.write": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
+      contentMd: stringSchema("条目内容（Markdown 格式）。"),
+      summaryMd: stringSchema("条目短摘要（可选；未提供时自动截断生成）。"),
+      category: stringSchema("经纬类别。"),
+      layer: stringSchema("数据层：canon（不可变真相）| dynamic（每章可更新）| reference（按需查阅）。默认 dynamic。"),
+      aliases: arraySchema("别名列表。"),
+      tags: arraySchema("标签列表。"),
+      visibility: stringSchema("可见性规则：global | tracked | nested。默认 tracked。"),
+      relatedEntryIds: arraySchema("关联条目 ID 列表。"),
+    },
+    required: ["bookId", "title", "contentMd"],
+    additionalProperties: false,
+  },
   "scene.spec": {
     type: "object",
     properties: {
@@ -452,6 +480,24 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       jingweiBrief: { type: "object", description: "经纬核心包摘要（可选，用于提取角色、地点、世界观等设定）。" },
     },
     required: ["bookId", "chapterNumber", "userDirectives"],
+    additionalProperties: false,
+  },
+  "jingwei.read": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      scope: stringSchema("读取范围：brief（默认，核心包+目录）| category（分类读取）| search（搜索）。"),
+      category: stringSchema("scope=category 时必填，要读取的经纬分类。"),
+      query: stringSchema("scope=search 时必填，搜索关键词。"),
+      chapterNumber: numberSchema("当前章节号（可选）。"),
+      sceneText: stringSchema("当前场景文本（可选，用于相关性排序）。"),
+      chapterIntent: stringSchema("本章写作意图（可选，用于核心包优先选择）。"),
+      tokenBudget: numberSchema("token 预算（可选）。"),
+      detailLevel: stringSchema("详情等级：summary | normal | full，默认 summary。"),
+      page: numberSchema("分页页码（scope=category 时可用）。"),
+      limit: numberSchema("每页条目数（scope=category/search 时可用）。"),
+    },
+    required: ["bookId"],
     additionalProperties: false,
   },
 };

@@ -1,0 +1,212 @@
+/**
+ * jingwei.write handler — 经纬写入工具，支持 layer 分层与 canon 写入保护。
+ *
+ * layer 语义：
+ * - canon: 不可变真相，只能追加内容，不能修改已有部分
+ * - dynamic: 每章可更新（默认）
+ * - reference: 按需查阅的参考资料
+ */
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import type { JingweiLayer } from "../engine/jingwei/types.js";
+
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+export interface JingweiWriteInput {
+  bookId: string;
+  title: string;
+  contentMd: string;
+  summaryMd?: string;
+  category?: string;
+  layer?: JingweiLayer;
+  aliases?: string[];
+  tags?: string[];
+  visibility?: string;
+  relatedEntryIds?: string[];
+}
+
+export interface JingweiWriteSuccess {
+  ok: true;
+  summary: string;
+  data: {
+    action: "created" | "updated";
+    entryId: string;
+    bookId: string;
+    category: string;
+    title: string;
+    layer: JingweiLayer;
+  };
+}
+
+export interface JingweiWriteFailure {
+  ok: false;
+  error: string;
+  summary: string;
+}
+
+export type JingweiWriteResult = JingweiWriteSuccess | JingweiWriteFailure;
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const CATEGORY_NAMES: Record<string, string> = {
+  character: "角色管理",
+  event: "事件记录",
+  worldview: "世界观设定",
+  "power-system": "力量体系",
+  geography: "地理地图",
+  faction: "势力阵营",
+  item: "物品列表",
+  skill: "功法体系",
+  currency: "货币体系",
+  special: "特殊设定",
+  outline: "大纲设定",
+  relationship: "人物关系",
+  foreshadowing: "伏笔管理",
+  plot: "情节脉络",
+  timeline: "时间线",
+  "chapter-summary": "章节摘要",
+  setting: "通用设定",
+};
+
+function inferCategory(raw: string, entryTitle: string, content: string): string {
+  if (raw && raw !== "setting") return raw;
+  const text = (entryTitle + " " + content.slice(0, 500)).toLowerCase();
+  if (/伏笔|foreshadow|hook|悬念/.test(text)) return "foreshadowing";
+  if (/大纲|卷.*章|outline|volume|节拍|beat/.test(text)) return "outline";
+  if (/主角|配角|角色|人物|character|弧光/.test(text)) return "character";
+  if (/世界观|worldview|力量体系|修炼体系|境界/.test(text)) return "worldview";
+  if (/地图|地理|geography|部洲/.test(text)) return "geography";
+  if (/前提|premise|核心矛盾|主题/.test(text)) return "worldview";
+  if (/情节|plot|subplot|事件/.test(text)) return "plot";
+  if (/时间线|timeline/.test(text)) return "timeline";
+  if (/势力|faction|阵营|组织/.test(text)) return "faction";
+  return raw || "setting";
+}
+
+function generateSummary(contentMd: string): string {
+  return contentMd.trim().replace(/\s+/g, " ").slice(0, 240);
+}
+
+// ─── Handler ─────────────────────────────────────────────────────────────────
+
+export async function handleJingweiWrite(input: JingweiWriteInput): Promise<JingweiWriteResult> {
+  const storage = getStorageDatabase();
+
+  // Parse & validate input
+  let bookId = String(input.bookId);
+  const title = String(input.title || "").trim();
+  const contentMd = String(input.contentMd || "");
+  const rawCategory = String(input.category || "").trim();
+  const layer: JingweiLayer = (input.layer === "canon" || input.layer === "dynamic" || input.layer === "reference")
+    ? input.layer
+    : "dynamic";
+  const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
+  const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
+  const visibility = String(input.visibility || "tracked");
+  const summaryMd = typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0
+    ? input.summaryMd.trim()
+    : generateSummary(contentMd);
+  const relatedEntryIds = Array.isArray(input.relatedEntryIds)
+    ? input.relatedEntryIds.filter((id): id is string => typeof id === "string")
+    : [];
+
+  const category = inferCategory(rawCategory, title, contentMd);
+
+  if (!title) {
+    return { ok: false, error: "invalid-input", summary: "title 不能为空。" };
+  }
+
+  // Validate bookId
+  const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
+  if (!bookExists) {
+    const fuzzyMatch = storage.sqlite.prepare(
+      `SELECT id FROM book WHERE ? LIKE '%' || id || '%' OR id LIKE '%' || ? || '%' ORDER BY length(id) DESC LIMIT 1`
+    ).get(bookId, bookId) as { id: string } | undefined;
+    if (fuzzyMatch) {
+      bookId = fuzzyMatch.id;
+    } else {
+      const available = (storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{ id: string }>).map(r => r.id).join(", ");
+      return { ok: false, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。可用的书籍：${available}` };
+    }
+  }
+
+  try {
+    // Ensure section exists
+    const sectionRows = storage.sqlite.prepare(
+      `SELECT id FROM story_jingwei_section WHERE book_id = ? AND key = ?`
+    ).all(bookId, category) as Array<{ id: string }>;
+
+    let sectionId: string;
+    if (sectionRows.length > 0) {
+      sectionId = sectionRows[0]!.id;
+    } else {
+      sectionId = crypto.randomUUID();
+      const name = CATEGORY_NAMES[category] ?? category;
+      const sectionNow = Date.now();
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, created_at, updated_at)
+        VALUES (?, ?, ?, ?, '', 0, 1, 1, 1, 'tracked', '[]', ?, ?)
+      `).run(sectionId, bookId, category, name, sectionNow, sectionNow);
+    }
+
+    // Find existing entry by title
+    const existingRows = storage.sqlite.prepare(
+      `SELECT id, section_id, content_md, layer FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
+    ).all(bookId, title) as Array<{ id: string; section_id: string; content_md: string; layer: string | null }>;
+
+    const visibilityJson = JSON.stringify({ type: visibility });
+    const aliasesJson = JSON.stringify(aliases);
+    const tagsJson = JSON.stringify(tags);
+    const relatedEntryIdsJson = JSON.stringify(relatedEntryIds);
+    const now = Date.now();
+
+    if (existingRows.length > 0) {
+      const existing = existingRows[0]!;
+      const existingLayer = (existing.layer as JingweiLayer) || "dynamic";
+
+      // Canon write protection: existing canon entries can only be appended to
+      if (existingLayer === "canon") {
+        const oldContent = existing.content_md;
+        if (!contentMd.startsWith(oldContent)) {
+          return {
+            ok: false,
+            error: "canon-immutable",
+            summary: "Canon 条目只能追加内容，不能修改已有部分。",
+          };
+        }
+      }
+
+      // Update existing entry
+      const entryId = existing.id;
+      storage.sqlite.prepare(`
+        UPDATE story_jingwei_entry
+        SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, updated_at = ?
+        WHERE id = ?
+      `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, now, entryId);
+
+      return {
+        ok: true,
+        summary: `已更新经纬条目「${title}」（${category}，layer=${layer}）。`,
+        data: { action: "updated", entryId, bookId, category, title, layer },
+      };
+    } else {
+      // Create new entry
+      const entryId = crypto.randomUUID();
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?, ?)
+      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, layer, now, now);
+
+      return {
+        ok: true,
+        summary: `已创建经纬条目「${title}」（${category}，layer=${layer}）。`,
+        data: { action: "created", entryId, bookId, category, title, layer },
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      error: "write-failed",
+      summary: `经纬写入失败：${error instanceof Error ? error.message : String(error)}`,
+    };
+  }
+}
