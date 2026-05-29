@@ -84,6 +84,15 @@ export type {
   JingweiDeltaEntry,
 } from "./pipeline-generate-service.js";
 
+export { executePipelineWrite } from "./pipeline-write-service.js";
+export type {
+  PipelineWriteInput,
+  PipelineWriteOutput,
+  PipelineWriteError,
+  PipelineWriteResult,
+  PipelineWriteOptions,
+} from "./pipeline-write-service.js";
+
 export { handleSceneSpec } from "./scene-spec-handler.js";
 export type {
   SceneSpec,
