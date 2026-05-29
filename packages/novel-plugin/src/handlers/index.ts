@@ -93,6 +93,13 @@ export type {
   PipelineWriteOptions,
 } from "./pipeline-write-service.js";
 
+export { handleChapterAuditV2 } from "./chapter-audit-v2.js";
+export type {
+  AuditV2Input,
+  AuditV2Result,
+  AuditV2Violation,
+} from "./chapter-audit-v2.js";
+
 export { handleSceneSpec } from "./scene-spec-handler.js";
 export type {
   SceneSpec,
