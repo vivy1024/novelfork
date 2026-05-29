@@ -22,6 +22,7 @@ interface StoryJingweiEntryRow {
   participates_in_ai: number;
   token_budget: number | null;
   priority_tier?: "core" | "relevant" | "reference" | "auto";
+  layer?: "canon" | "dynamic" | "reference";
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
@@ -30,7 +31,7 @@ interface StoryJingweiEntryRow {
 const selectColumns = `
   "id", "book_id", "section_id", "title", "content_md", "summary_md", "tags_json", "aliases_json",
   "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
-  "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", "created_at", "updated_at", "deleted_at"
+  "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", COALESCE("layer", 'dynamic') AS "layer", "created_at", "updated_at", "deleted_at"
 `;
 
 function parseJson<T>(value: string, fallback: T): T {
@@ -62,6 +63,7 @@ function toEntry(row: StoryJingweiEntryRow): StoryJingweiEntryRecord {
     participatesInAi: Boolean(row.participates_in_ai),
     tokenBudget: row.token_budget,
     priorityTier: row.priority_tier ?? "auto",
+    layer: (row.layer as "canon" | "dynamic" | "reference") ?? "dynamic",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: row.deleted_at === null ? null : new Date(row.deleted_at),
