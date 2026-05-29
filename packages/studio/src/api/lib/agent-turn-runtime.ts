@@ -102,12 +102,14 @@ function buildInitialMessages(input: AgentTurnRuntimeInput): AgentTurnItem[] {
 
 function buildFailureEvent(reply: Extract<AgentGenerateResult, { success: false }>): AgentTurnEvent {
   const errorCode = classifyError(reply.code || reply.error);
-  const userMessage = getErrorUserMessage(errorCode);
+  const classifiedMessage = getErrorUserMessage(errorCode);
+  // 透传原始错误信息，分类信息作为补充
+  const message = reply.error || classifiedMessage;
   return {
     type: "turn_failed",
     reason: reply.code,
-    message: userMessage || reply.error,
-    ...(reply.metadata ? { data: { metadata: reply.metadata, errorCode, originalError: reply.error } } : { data: { errorCode, originalError: reply.error } }),
+    message,
+    data: { errorCode, classifiedMessage, originalError: reply.error, ...(reply.metadata ? { metadata: reply.metadata } : {}) },
   };
 }
 
@@ -388,7 +390,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     if (!reply.success) {
       const errorCode = classifyError(reply.code || reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
       const userMessage = getErrorUserMessage(errorCode);
-      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, errorCode, userMessage, durationMs: generateDurationMs }));
+      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, error: reply.error, errorCode, userMessage, durationMs: generateDurationMs }));
 
       // Attempt context overflow recovery (max 1 retry)
       if (!hasAttemptedOverflowRecovery && isContextOverflowError(reply.code, reply.error)) {
