@@ -73,6 +73,8 @@ export type UpdateStoryJingweiSectionInput = Partial<Omit<CreateStoryJingweiSect
 
 export type JingweiPriorityTier = "core" | "relevant" | "reference" | "auto";
 
+export type JingweiLayer = "canon" | "dynamic" | "reference";
+
 export interface StoryJingweiEntryRecord {
   id: string;
   bookId: string;
@@ -89,6 +91,7 @@ export interface StoryJingweiEntryRecord {
   participatesInAi: boolean;
   tokenBudget: number | null;
   priorityTier?: JingweiPriorityTier;
+  layer?: JingweiLayer;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

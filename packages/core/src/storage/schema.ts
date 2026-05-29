@@ -368,6 +368,7 @@ export const storyJingweiEntries = sqliteTable(
     visibilityRuleJson: text("visibility_rule_json").notNull().default('{"type":"tracked"}'),
     participatesInAi: integer("participates_in_ai", { mode: "boolean" }).notNull().default(true),
     tokenBudget: integer("token_budget"),
+    layer: text("layer", { enum: ["canon", "dynamic", "reference"] }).notNull().default("dynamic"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
