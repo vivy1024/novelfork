@@ -60,6 +60,9 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "outline.suggest_next", serviceKey: "outline" },
   { toolName: "character.check_consistency", serviceKey: "character" },
   { toolName: "hooks.manage", serviceKey: "hooks" },
+
+  // Scene spec (direct handler)
+  { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },
 ];
 
 /**

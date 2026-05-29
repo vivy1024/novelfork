@@ -32,6 +32,16 @@ function sessionTool(
  */
 export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
+    name: "cockpit.snapshot",
+    description:
+      "一次性读取当前书籍的驾驶舱全景快照，合并了 cockpit.get_snapshot、cockpit.list_open_hooks、cockpit.list_recent_candidates 的输出。返回 progress/hooks/candidates/health/recentChapters。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
+    risk: "read",
+    renderer: "cockpit.snapshot",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "cockpit.get_snapshot",
     description: "读取当前书籍的驾驶舱快照，包括进度、当前焦点、风险、伏笔、候选稿与模型状态。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.get_snapshot"]),
@@ -356,6 +366,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     risk: "confirmed-write",
     renderer: "jingwei.upsert",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "scene.spec",
+    description: "生成结构化写作蓝图（Scene Spec）。包含角色、地点、冲突、情绪、结果等约束，是调用 pipeline.write 的硬前置条件。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
+    risk: "read",
+    renderer: "scene.spec",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
 ] as const;
