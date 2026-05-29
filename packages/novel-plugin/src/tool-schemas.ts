@@ -299,7 +299,12 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
-      checks: arraySchema("要执行的检查项（可选，默认全部）。可选值: continuity, rhythm, ai_taste, hooks, character", { type: "string" }),
+      content: stringSchema("章节正文（可选，不传则自动读取已保存章节）。"),
+      sceneSpec: { type: "object", description: "Scene Spec 蓝图（可选，用于检查约束满足度）。" },
+      canonEntries: arraySchema("Canon 层条目列表（可选，用于 H2 canon violation 检查）。"),
+      povCharacter: stringSchema("当前 POV 角色名（可选，用于 H7 POV violation 检查）。"),
+      wordTarget: numberSchema("目标字数（可选，用于 S1 字数范围检查）。"),
+      checks: arraySchema("要执行的检查项（可选，默认全部）。可选值: continuity, rhythm, ai_taste, hooks, character, canon, pov", { type: "string" }),
     },
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
