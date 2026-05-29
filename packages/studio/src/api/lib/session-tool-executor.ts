@@ -684,6 +684,56 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleSceneSpec(input as any);
         return { ...result, renderer: definition.renderer };
       };
+    case "scene.spec":
+      return async ({ input, definition }) => {
+        const { handleSceneSpec } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleSceneSpec(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "pipeline.write":
+      return async ({ input, definition }) => {
+        const { executePipelineWrite } = await import("@vivy1024/novelfork-novel-plugin/handlers");
+        const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
+        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+        const { createLLMClient } = await import("@vivy1024/novelfork-core");
+
+        const providerStore = new ProviderRuntimeStore();
+        const providers = await providerStore.listProviders();
+        const activeProvider = providers.find((p) => p.enabled !== false && p.config?.apiKey);
+        if (!activeProvider) {
+          return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先配置 API Key。" };
+        }
+        const activeModel = activeProvider.models.find((m) => m.enabled !== false) ?? activeProvider.models[0];
+        const llmConfig = {
+          provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
+          baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
+          apiKey: activeProvider.config?.apiKey ?? "",
+          model: activeModel?.id ?? "gpt-4",
+          temperature: 0.7,
+          maxTokens: activeModel?.maxOutputTokens ?? 8192,
+          thinkingBudget: 0,
+          apiFormat: "chat" as const,
+          stream: true,
+        };
+        const client = createLLMClient(llmConfig);
+        const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+
+        const result = await executePipelineWrite(
+          { bookId: String(input.bookId), sceneSpec: input.sceneSpec as any, jingweiContext: input.jingweiContext as string | undefined, previousChapterTail: input.previousChapterTail as string | undefined, autoRevise: input.autoRevise !== false },
+          { root, client, model: llmConfig.model, logger: undefined },
+        );
+
+        if (!result.ok) {
+          return { ok: false, renderer: definition.renderer, error: result.code, summary: result.error };
+        }
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过"}${result.revised ? "，已自动修订" : ""}。`,
+          data: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount, auditPassed: result.auditResult.passed, revised: result.revised, candidateId: result.candidateId },
+          artifact: result.artifact,
+        };
+      };
     case "jingwei.read_brief":
       return async ({ input, definition }) => {
         const { handleJingweiReadBrief } = await import("@vivy1024/novelfork-novel-plugin");
