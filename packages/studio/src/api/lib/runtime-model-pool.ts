@@ -87,9 +87,9 @@ export async function buildRuntimeModelPool(store: ProviderRuntimeStore): Promis
         lastTestStatus: model.lastTestStatus,
         protocol: provider.protocol,
         capabilities: {
-          functionCalling: model.supportsFunctionCalling === true,
+          functionCalling: model.supportsFunctionCalling !== false,
           vision: model.supportsVision === true,
-          streaming: model.supportsStreaming === true,
+          streaming: model.supportsStreaming !== false,
         },
       }));
   });
