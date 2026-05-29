@@ -12,6 +12,10 @@ export {
   handleJingweiReadCategory,
   handleJingweiSearch,
   handleJingweiReadContext,
+  handleJingweiRead,
+  handleJingweiWrite,
+  handlePgiAsk,
+  handleSceneSpec,
 } from "./handlers/index.js";
 export type {
   ChapterReadInput,
@@ -24,6 +28,21 @@ export type {
   JingweiSearchResponse,
   JingweiReadContextInput,
   JingweiReadContextResult,
+  JingweiReadInput,
+  JingweiReadResult,
+  JingweiWriteInput,
+  JingweiWriteResult,
+  JingweiWriteSuccess,
+  JingweiWriteFailure,
+  PgiAskInput,
+  PgiAskResult,
+  PgiAskSuccess,
+  PgiAskFailure,
+  PgiAskQuestionItem,
+  AskUserQuestionInputItem,
+  SceneSpecInput,
+  SceneSpecResult,
+  SceneSpec,
 } from "./handlers/index.js";
 
 // Re-export handler registry (plugin declares which tools it owns)
@@ -55,6 +74,8 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "jingwei.read_category": "按分类分页读取经纬条目",
   "jingwei.search": "搜索经纬条目",
   "jingwei.read_context": "读取经纬上下文（兼容入口）",
+  "jingwei.read": "统一经纬读取（brief/category/search）",
+  "jingwei.write": "经纬写入（支持 layer 分层与 canon 保护）",
   "health.read_summary": "读取健康度摘要",
   "chapter.audit": "审计章节",
   "rewrite.segment": "重写选段",
