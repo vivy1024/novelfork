@@ -16,6 +16,9 @@ import {
   Anchor,
   Network,
   RefreshCw,
+  Bot,
+  Search,
+  Compass,
 } from "lucide-react";
 
 export interface AgentQuickActionsProps {
@@ -37,9 +40,21 @@ const ROLE_ACTIONS: Record<string, QuickAction[]> = {
     { icon: <Scissors className="size-3.5" />, label: "选段写作", message: "请对选中段落进行扩写" },
     { icon: <Layers className="size-3.5" />, label: "多版本", message: "请生成当前段落的多个改写版本" },
   ],
+  planner: [
+    { icon: <Compass className="size-3.5" />, label: "规划下一章", message: "请规划下一章的目标、节奏和情节点" },
+    { icon: <Network className="size-3.5" />, label: "规划下一卷", message: "请规划下一卷大纲" },
+  ],
   auditor: [
     { icon: <Shield className="size-3.5" />, label: "连续性审校", message: "请对最新章节进行连续性审校" },
     { icon: <Droplets className="size-3.5" />, label: "AI味检测", message: "请检测最新章节的 AI 味" },
+  ],
+  architect: [
+    { icon: <Bot className="size-3.5" />, label: "世界观", message: "请检查并补全当前作品的世界观设定" },
+    { icon: <Network className="size-3.5" />, label: "势力结构", message: "请设计或梳理当前作品的势力结构" },
+  ],
+  explorer: [
+    { icon: <Search className="size-3.5" />, label: "探索状态", message: "请只读分析当前作品状态、伏笔、角色变化和下一步风险" },
+    { icon: <Lightbulb className="size-3.5" />, label: "方向建议", message: "请基于当前上下文给出下一章的几个可能方向" },
   ],
   hooks: [
     { icon: <Lightbulb className="size-3.5" />, label: "伏笔建议", message: "请分析当前可以埋设或回收的伏笔" },

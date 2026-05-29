@@ -1051,7 +1051,7 @@ describe("session-chat-service", () => {
         }),
         expect.objectContaining({
           role: "system",
-          content: expect.stringContaining("cockpit.get_snapshot → pgi.generate_questions → guided.enter/guided.exit → candidate.create_chapter"),
+          content: expect.stringContaining("cockpit.get_snapshot → pgi.generate_questions → AskUserQuestion → pipeline.generate_chapter"),
         }),
         expect.objectContaining({
           role: "system",

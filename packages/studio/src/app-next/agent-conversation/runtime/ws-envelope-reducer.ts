@@ -24,6 +24,13 @@ export interface PendingDangerReflection {
   riskFactors: string[];
 }
 
+export interface PendingSafetyPause {
+  id: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  reason: string;
+}
+
 export interface AgentConversationRuntimeState {
   session: NarratorSessionRecord | null;
   messages: NarratorSessionChatMessage[];
@@ -42,6 +49,9 @@ export interface AgentConversationRuntimeState {
   turnActive: boolean;
   pendingPermission: PendingPermissionRequest | null;
   pendingReflection: PendingDangerReflection | null;
+  pendingSafetyPause: PendingSafetyPause | null;
+  /** Compact progress percentage (0-100), null when not compacting */
+  compactProgress: number | null;
 }
 
 export type SessionServerEnvelope =
@@ -55,6 +65,8 @@ export type SessionServerEnvelope =
   | { type: "session:error"; sessionId?: string; error: string; code?: string; runtime?: unknown }
   | { type: "session:permission-request"; sessionId: string; request: { id: string; toolName: string; input: Record<string, unknown>; reason?: string; riskLevel: string } }
   | { type: "session:danger-reflection"; sessionId: string; reflection: { id: string; toolName: string; command: string; analysis: string; riskFactors: string[] } }
+  | { type: "session:safety-pause"; sessionId: string; pause: { id: string; toolName: string; input: Record<string, unknown>; reason: string } }
+  | { type: "session:compact-progress"; sessionId: string; progress: number }
   | { type: "client:message-sent" }
   | { type: "client:clear-error" };
 
@@ -72,6 +84,8 @@ export function createInitialAgentConversationRuntimeState(): AgentConversationR
     turnActive: false,
     pendingPermission: null,
     pendingReflection: null,
+    pendingSafetyPause: null,
+    compactProgress: null,
   };
 }
 
@@ -233,6 +247,16 @@ export function reduceSessionEnvelope(
       return {
         ...state,
         pendingReflection: envelope.reflection,
+      };
+    case "session:safety-pause":
+      return {
+        ...state,
+        pendingSafetyPause: envelope.pause,
+      };
+    case "session:compact-progress":
+      return {
+        ...state,
+        compactProgress: envelope.progress >= 100 ? null : envelope.progress,
       };
     case "client:message-sent":
       return {

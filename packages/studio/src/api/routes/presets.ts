@@ -10,7 +10,6 @@ import {
   getBundle,
   getPresetsByGenre,
   listBeatTemplates,
-  registerBuiltinPresets,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./context.js";
 
@@ -22,9 +21,6 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   const { state } = ctx;
 
   app.get("/api/presets", (c) => {
-    // 防御性重注册：确保 preset store 在当前模块实例中已初始化
-    if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
-
     const category = c.req.query("category");
     const genre = c.req.query("genre");
 
@@ -40,12 +36,10 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   });
 
   app.get("/api/presets/bundles", (c) => {
-    if (listBundles().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     return c.json({ bundles: listBundles() });
   });
 
   app.get("/api/presets/beats", (c) => {
-    if (listBeatTemplates().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     return c.json({ beats: listBeatTemplates() });
   });
 
@@ -60,7 +54,6 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   // 注意：:presetId 参数路由必须在所有 /api/presets/xxx 具体路径之后注册
   app.get("/api/presets/:presetId", (c) => {
     const id = c.req.param("presetId");
-    if (listPresets().length === 0) { try { registerBuiltinPresets(); } catch { /* ignore */ } }
     const preset = getPreset(id);
     if (!preset) {
       return c.json({ error: `Preset "${id}" not found` }, 404);

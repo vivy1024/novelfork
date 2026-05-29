@@ -1,0 +1,1586 @@
+{"timestamp":"2026-05-25T06:03:29.612Z","level":"info","component":"config.load","msg":"Project config loaded","ok":true,"mode":"standalone","projectRoot":"C:\\Users\\17655\\.novelfork"}
+NovelFork mode: standalone
+{"timestamp":"2026-05-25T06:03:29.646Z","level":"info","component":"search.fts5","msg":"FTS5 search index ready","ok":true,"databasePath":"C:\\Users\\17655\\.novelfork\\novelfork-search.db"}
+{"timestamp":"2026-05-25T06:03:29.646Z","level":"info","component":"storage.sqlite","msg":"SQLite storage ready","ok":true,"databasePath":"C:\\Users\\17655\\.novelfork\\novelfork.db","appliedMigrations":["0018_agent_runtime_hardening.sql"],"jsonImport":{"status":"skipped","reason":"sessions-exist","importedSessions":0,"importedMessages":0,"skippedSessions":0}}
+[plugin-registry] registered plugin: NovelFork 小说写作插件 (novelfork-novel) v0.5.2
+[proxy] AI proxy configured: http://127.0.0.1:7890
+{"timestamp":"2026-05-25T06:03:29.659Z","level":"info","component":"static.provider","msg":"Static provider ready","ok":true,"source":"embedded","assetCount":284}
+{"timestamp":"2026-05-25T06:03:30.606Z","level":"info","component":"server.listen","msg":"NovelFork Studio running","ok":true,"url":"http://localhost:4567","isProd":true,"isCompiledBinary":true,"runtime":"bun","metaUrl":"file:///B:/%7EBUN/root/novelfork.exe","exePath":"D:\\DESKTOP\\novelfork\\dist\\novelfork-v1.0.7-windows-x64.exe","projectRoot":"C:\\Users\\17655\\.novelfork","assetSource":"embedded","assetCount":284}
+NovelFork Studio running on http://localhost:4567
+{"timestamp":"2026-05-25T06:03:30.609Z","level":"info","component":"websocket.register","msg":"WebSocket route registered","ok":true,"route":"/api/admin/resources/ws"}
+{"timestamp":"2026-05-25T06:03:30.610Z","level":"info","component":"websocket.register","msg":"WebSocket route registered","ok":true,"route":"/api/sessions/:id/chat"}
+[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat
+NovelFork app window opened via C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe
+[update] Update server unreachable, falling back to GitHub: warn: Update server returned 530
+      at checkFromUpdateServer (B:/~BUN/root/novelfork.exe:74628:11)
+      at async checkForUpdate (B:/~BUN/root/novelfork.exe:74685:43)
+
+{"component":"session.recovery","ok":true,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","route":"/api/sessions/:id/chat","requestedResumeSeq":411,"ackedSeq":411,"lastSeq":411,"pendingMessageCount":0,"recoveryState":"idle"}
+[llm-runtime] 373 msgs, 0 with reasoning, input.messages=411
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 334 msgs, thinking=0, tool_use=140, inputReasoning=0/373
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9012,"inputTokens":14358,"outputTokens":27}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":12,"duplicate":false,"step":1}
+[llm-runtime] 375 msgs, 0 with reasoning, input.messages=413
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 336 msgs, thinking=0, tool_use=141, inputReasoning=0/375
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":5402,"inputTokens":14433,"outputTokens":23}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":2}
+[llm-runtime] 377 msgs, 0 with reasoning, input.messages=415
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 338 msgs, thinking=0, tool_use=142, inputReasoning=0/377
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7489,"inputTokens":14616,"outputTokens":117}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":7,"duplicate":false,"step":5}
+[llm-runtime] 381 msgs, 0 with reasoning, input.messages=421
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 340 msgs, thinking=0, tool_use=143, inputReasoning=0/381
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9832,"inputTokens":15260,"outputTokens":46}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":6}
+[llm-runtime] 383 msgs, 0 with reasoning, input.messages=423
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 342 msgs, thinking=0, tool_use=144, inputReasoning=0/383
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9067,"inputTokens":15508,"outputTokens":45}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":7}
+[llm-runtime] 385 msgs, 0 with reasoning, input.messages=425
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 344 msgs, thinking=0, tool_use=145, inputReasoning=0/385
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":11904,"inputTokens":15742,"outputTokens":215}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":8}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":9}
+[llm-runtime] 388 msgs, 0 with reasoning, input.messages=429
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 346 msgs, thinking=0, tool_use=146, inputReasoning=0/388
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":23940,"inputTokens":15864,"outputTokens":480}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":13,"duplicate":false,"step":10}
+[llm-runtime] 390 msgs, 0 with reasoning, input.messages=431
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 348 msgs, thinking=0, tool_use=147, inputReasoning=0/390
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":28815,"inputTokens":15940,"outputTokens":685}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":11}
+[llm-runtime] 392 msgs, 0 with reasoning, input.messages=433
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 350 msgs, thinking=0, tool_use=148, inputReasoning=0/392
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"empty-response","durationMs":371551}
+{"component":"session-chat","event":"continue","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+[llm-runtime] 394 msgs, 0 with reasoning, input.messages=435
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=602 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":26292,"inputTokens":95240,"outputTokens":522}
+[agent-turn] pushing reasoning: 602 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":6,"duplicate":false,"step":1}
+[llm-runtime] 396 msgs, 1 with reasoning, input.messages=438
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=872 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":32942,"inputTokens":95822,"outputTokens":583}
+[agent-turn] pushing reasoning: 872 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":2}
+[llm-runtime] 398 msgs, 2 with reasoning, input.messages=441
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=615 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":25387,"inputTokens":96465,"outputTokens":530}
+[agent-turn] pushing reasoning: 615 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":3}
+[llm-runtime] 400 msgs, 3 with reasoning, input.messages=444
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1223 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":48571,"inputTokens":97055,"outputTokens":712}
+[agent-turn] pushing reasoning: 1223 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":5,"duplicate":false,"step":4}
+[llm-runtime] 402 msgs, 4 with reasoning, input.messages=447
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=384 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":28238,"inputTokens":97826,"outputTokens":489}
+[agent-turn] pushing reasoning: 384 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":5}
+[llm-runtime] 404 msgs, 5 with reasoning, input.messages=450
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=344 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":29519,"inputTokens":98375,"outputTokens":472}
+[agent-turn] pushing reasoning: 344 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":6,"duplicate":false,"step":6}
+[llm-runtime] 406 msgs, 6 with reasoning, input.messages=453
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=379 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":30324,"inputTokens":98908,"outputTokens":585}
+[agent-turn] pushing reasoning: 379 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":5,"duplicate":false,"step":7}
+[llm-runtime] 408 msgs, 7 with reasoning, input.messages=456
+[llm-runtime] raw input reasoning: 7
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=379 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":19305,"inputTokens":99553,"outputTokens":479}
+[agent-turn] pushing reasoning: 379 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":8}
+[llm-runtime] 410 msgs, 8 with reasoning, input.messages=459
+[llm-runtime] raw input reasoning: 8
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=362 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":19848,"inputTokens":100092,"outputTokens":495}
+[agent-turn] pushing reasoning: 362 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":9}
+[llm-runtime] 412 msgs, 9 with reasoning, input.messages=462
+[llm-runtime] raw input reasoning: 9
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=415 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13977,"inputTokens":100648,"outputTokens":307}
+[agent-turn] pushing reasoning: 415 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":6,"duplicate":false,"step":10}
+[llm-runtime] 414 msgs, 10 with reasoning, input.messages=465
+[llm-runtime] raw input reasoning: 10
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=145 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":24555,"inputTokens":101031,"outputTokens":894}
+[agent-turn] pushing reasoning: 145 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":11}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":12}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":13}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":14}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":731,"duplicate":false,"step":15}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":481,"duplicate":false,"step":16}
+[llm-runtime] 426 msgs, 11 with reasoning, input.messages=478
+[llm-runtime] raw input reasoning: 11
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=158 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":22245,"inputTokens":102493,"outputTokens":242}
+[agent-turn] pushing reasoning: 158 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.set_rules","ok":true,"durationMs":4,"duplicate":false,"step":17}
+[llm-runtime] 428 msgs, 12 with reasoning, input.messages=481
+[llm-runtime] raw input reasoning: 12
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=863 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":39076,"inputTokens":102787,"outputTokens":1030}
+[agent-turn] pushing reasoning: 863 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":18}
+[llm-runtime] 430 msgs, 13 with reasoning, input.messages=484
+[llm-runtime] raw input reasoning: 13
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=778 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10560,"inputTokens":103872,"outputTokens":319}
+[agent-turn] pushing reasoning: 778 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.read_context","ok":true,"durationMs":4,"duplicate":false,"step":19}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":4,"duplicate":false,"step":20}
+[llm-runtime] 434 msgs, 14 with reasoning, input.messages=489
+[llm-runtime] raw input reasoning: 14
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":29458,"inputTokens":104307,"outputTokens":1321}
+[llm-runtime] 436 msgs, 0 with reasoning, input.messages=477
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=135 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":55605,"inputTokens":108128,"outputTokens":72}
+[agent-turn] pushing reasoning: 135 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":12,"duplicate":false,"step":1}
+[llm-runtime] 438 msgs, 1 with reasoning, input.messages=480
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=768 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":27030,"inputTokens":109926,"outputTokens":639}
+[agent-turn] pushing reasoning: 768 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":9,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":9,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":7,"duplicate":false,"step":4}
+[llm-runtime] 442 msgs, 2 with reasoning, input.messages=487
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=662 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":67784,"inputTokens":116211,"outputTokens":464}
+[agent-turn] pushing reasoning: 662 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":5}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":6}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":7}
+[llm-runtime] 446 msgs, 3 with reasoning, input.messages=494
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":29819,"inputTokens":123779,"outputTokens":1183}
+[llm-runtime] 448 msgs, 0 with reasoning, input.messages=493
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=271 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":26144,"inputTokens":110683,"outputTokens":303}
+[agent-turn] pushing reasoning: 271 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":5,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":5,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":5,"duplicate":false,"step":3}
+[llm-runtime] 452 msgs, 1 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=88 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7292,"inputTokens":111388,"outputTokens":211}
+[agent-turn] pushing reasoning: 88 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":4,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":5}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":6}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":7}
+[llm-runtime] 457 msgs, 2 with reasoning, input.messages=509
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=607 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13228,"inputTokens":112152,"outputTokens":487}
+[agent-turn] pushing reasoning: 607 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":8}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":9}
+[llm-runtime] 460 msgs, 3 with reasoning, input.messages=514
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=682 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":23028,"inputTokens":120518,"outputTokens":519}
+[agent-turn] pushing reasoning: 682 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":10}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":11}
+[llm-runtime] 463 msgs, 4 with reasoning, input.messages=519
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=508 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13349,"inputTokens":129323,"outputTokens":419}
+[agent-turn] pushing reasoning: 508 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":12}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":13}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":14}
+[llm-runtime] 467 msgs, 5 with reasoning, input.messages=526
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=746 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13953,"inputTokens":135986,"outputTokens":463}
+[agent-turn] pushing reasoning: 746 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":15}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":16}
+[llm-runtime] 470 msgs, 6 with reasoning, input.messages=531
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1164 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":28733,"inputTokens":143813,"outputTokens":557}
+[agent-turn] pushing reasoning: 1164 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":17}
+[llm-runtime] 472 msgs, 7 with reasoning, input.messages=534
+[llm-runtime] raw input reasoning: 7
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=192 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6608,"inputTokens":149981,"outputTokens":118}
+[agent-turn] pushing reasoning: 192 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":3,"duplicate":false,"step":18}
+[llm-runtime] 474 msgs, 8 with reasoning, input.messages=537
+[llm-runtime] raw input reasoning: 8
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=189 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7126,"inputTokens":157192,"outputTokens":117}
+[agent-turn] pushing reasoning: 189 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":19}
+[llm-runtime] 476 msgs, 9 with reasoning, input.messages=540
+[llm-runtime] raw input reasoning: 9
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=269 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":16046,"inputTokens":165508,"outputTokens":143}
+[agent-turn] pushing reasoning: 269 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":3,"duplicate":false,"step":20}
+[llm-runtime] 478 msgs, 10 with reasoning, input.messages=543
+[llm-runtime] raw input reasoning: 10
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=212 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9403,"inputTokens":171551,"outputTokens":133}
+[agent-turn] pushing reasoning: 212 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":3,"duplicate":false,"step":21}
+[llm-runtime] 480 msgs, 11 with reasoning, input.messages=546
+[llm-runtime] raw input reasoning: 11
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=213 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7470,"inputTokens":179133,"outputTokens":135}
+[agent-turn] pushing reasoning: 213 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":3,"duplicate":false,"step":22}
+[llm-runtime] 482 msgs, 12 with reasoning, input.messages=549
+[llm-runtime] raw input reasoning: 12
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=978 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":41388,"inputTokens":183440,"outputTokens":1149}
+[agent-turn] pushing reasoning: 978 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":23}
+[llm-runtime] 484 msgs, 13 with reasoning, input.messages=552
+[llm-runtime] raw input reasoning: 13
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=978 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":24155,"inputTokens":184618,"outputTokens":1053}
+[agent-turn] pushing reasoning: 978 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":24}
+[llm-runtime] 486 msgs, 14 with reasoning, input.messages=555
+[llm-runtime] raw input reasoning: 14
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=978 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":31541,"inputTokens":185730,"outputTokens":901}
+[agent-turn] pushing reasoning: 978 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":25}
+[llm-runtime] 489 msgs, 15 with reasoning, input.messages=559
+[llm-runtime] raw input reasoning: 15
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":23828,"inputTokens":186730,"outputTokens":968}
+[llm-runtime] 454 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":39985,"inputTokens":116420,"outputTokens":1410}
+[llm-runtime] 455 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=796 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":25446,"inputTokens":116969,"outputTokens":1018}
+[agent-turn] pushing reasoning: 796 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":11,"duplicate":false,"step":1}
+[llm-runtime] 457 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=406 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":21480,"inputTokens":118045,"outputTokens":728}
+[agent-turn] pushing reasoning: 406 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":2}
+[llm-runtime] 459 msgs, 2 with reasoning, input.messages=507
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=548 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12992,"inputTokens":118832,"outputTokens":691}
+[agent-turn] pushing reasoning: 548 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":3}
+[llm-runtime] 461 msgs, 3 with reasoning, input.messages=510
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=548 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13616,"inputTokens":119582,"outputTokens":704}
+[agent-turn] pushing reasoning: 548 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":4}
+[llm-runtime] 463 msgs, 4 with reasoning, input.messages=513
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=337 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12650,"inputTokens":120344,"outputTokens":618}
+[agent-turn] pushing reasoning: 337 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":5}
+[llm-runtime] 465 msgs, 5 with reasoning, input.messages=516
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=273 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12066,"inputTokens":121021,"outputTokens":514}
+[agent-turn] pushing reasoning: 273 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":6}
+[llm-runtime] 467 msgs, 6 with reasoning, input.messages=519
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=204 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":11898,"inputTokens":121594,"outputTokens":574}
+[agent-turn] pushing reasoning: 204 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":7}
+[llm-runtime] 469 msgs, 7 with reasoning, input.messages=522
+[llm-runtime] raw input reasoning: 7
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=904 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":5951,"inputTokens":122226,"outputTokens":292}
+[agent-turn] pushing reasoning: 904 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.read_context","ok":true,"durationMs":12,"duplicate":false,"step":8}
+[llm-runtime] 471 msgs, 8 with reasoning, input.messages=525
+[llm-runtime] raw input reasoning: 8
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1537 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8262,"inputTokens":122580,"outputTokens":420}
+[agent-turn] pushing reasoning: 1537 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":7,"duplicate":false,"step":9}
+[llm-runtime] 473 msgs, 9 with reasoning, input.messages=528
+[llm-runtime] raw input reasoning: 9
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":21372,"inputTokens":123051,"outputTokens":917}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":94}
+{"component":"session.recovery","ok":true,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","route":"/api/sessions/:id/chat","requestedResumeSeq":567,"ackedSeq":567,"lastSeq":567,"pendingMessageCount":0,"recoveryState":"idle"}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":68599,"inputTokens":109974,"outputTokens":3500}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":2598}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":8755}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":61942}
+{"component":"session.recovery","ok":true,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","route":"/api/sessions/:id/chat","requestedResumeSeq":569,"ackedSeq":569,"lastSeq":569,"pendingMessageCount":0,"recoveryState":"idle"}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":89156,"inputTokens":113386,"outputTokens":4302}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":20023}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":20036}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":20037}
+{"component":"session-chat","event":"continue","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":1841}
+[llm-runtime] 455 msgs, 0 with reasoning, input.messages=498
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":135269,"inputTokens":113379,"outputTokens":5864}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=451 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13931,"inputTokens":119177,"outputTokens":355}
+[agent-turn] pushing reasoning: 451 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":4,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":13,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":13,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":12,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":12,"duplicate":false,"step":4}
+[llm-runtime] 462 msgs, 1 with reasoning, input.messages=509
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9027,"inputTokens":139219,"outputTokens":215}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":4,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":10,"duplicate":false,"step":5}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":8,"duplicate":false,"step":6}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":9,"duplicate":false,"step":7}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":9,"duplicate":false,"step":8}
+[llm-runtime] 467 msgs, 1 with reasoning, input.messages=517
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":118526,"inputTokens":157638,"outputTokens":5700}
+[llm-runtime] 453 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":1867}
+[llm-runtime] 452 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":75355,"inputTokens":121906,"outputTokens":3889}
+[llm-runtime] 453 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":1831}
+[llm-runtime] 452 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":22267,"inputTokens":125817,"outputTokens":345}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":1}
+[llm-runtime] 454 msgs, 0 with reasoning, input.messages=502
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7778,"inputTokens":126127,"outputTokens":216}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":2}
+[llm-runtime] 456 msgs, 0 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":44071,"inputTokens":126412,"outputTokens":2269}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":5,"duplicate":false,"step":3}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=506
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12175,"inputTokens":128755,"outputTokens":359}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":17,"duplicate":false,"step":4}
+[llm-runtime] 460 msgs, 0 with reasoning, input.messages=508
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9217,"inputTokens":129208,"outputTokens":26}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":3,"duplicate":false,"step":5}
+[llm-runtime] 462 msgs, 0 with reasoning, input.messages=510
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":16525,"inputTokens":129290,"outputTokens":719}
+[llm-runtime] 454 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=503 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8622,"inputTokens":126911,"outputTokens":179}
+[agent-turn] pushing reasoning: 503 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Grep","ok":false,"durationMs":20113,"duplicate":false,"step":1}
+[llm-runtime] 456 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10008,"inputTokens":127094,"outputTokens":220}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":4,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":5}
+[llm-runtime] 461 msgs, 1 with reasoning, input.messages=512
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":145869,"inputTokens":147438,"outputTokens":7269}
+[llm-runtime] 451 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":11887}
+[llm-runtime] 450 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=430 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":18300,"inputTokens":127741,"outputTokens":94}
+[agent-turn] pushing reasoning: 430 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":14,"duplicate":false,"step":1}
+[llm-runtime] 452 msgs, 1 with reasoning, input.messages=503
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":20001,"inputTokens":128805,"outputTokens":198}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":4,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":13,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":12,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":13,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":13,"duplicate":false,"step":5}
+[llm-runtime] 457 msgs, 1 with reasoning, input.messages=511
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6814,"inputTokens":140903,"outputTokens":15}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"EnterPlanMode","ok":true,"durationMs":241,"duplicate":false,"step":6}
+[llm-runtime] 459 msgs, 1 with reasoning, input.messages=513
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":25035,"inputTokens":140984,"outputTokens":1090}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"ExitPlanMode","ok":true,"durationMs":211,"duplicate":false,"step":7}
+[llm-runtime] 461 msgs, 1 with reasoning, input.messages=515
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":41789,"inputTokens":142133,"outputTokens":1965}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":8,"duplicate":false,"step":8}
+[llm-runtime] 463 msgs, 1 with reasoning, input.messages=517
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":25208,"inputTokens":144172,"outputTokens":1130}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":9}
+[llm-runtime] 465 msgs, 1 with reasoning, input.messages=519
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":27734,"inputTokens":145370,"outputTokens":1242}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":7,"duplicate":false,"step":10}
+[llm-runtime] 467 msgs, 1 with reasoning, input.messages=521
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6558,"inputTokens":146682,"outputTokens":56}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":6,"duplicate":false,"step":11}
+[llm-runtime] 469 msgs, 1 with reasoning, input.messages=523
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":29122,"inputTokens":147507,"outputTokens":1346}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":35,"duplicate":false,"step":12}
+[llm-runtime] 471 msgs, 1 with reasoning, input.messages=525
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":32816,"inputTokens":148961,"outputTokens":1511}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":10,"duplicate":false,"step":13}
+[llm-runtime] 473 msgs, 1 with reasoning, input.messages=527
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":1802}
+{"component":"session-chat","event":"continue","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+[llm-runtime] 448 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":6864}
+[llm-runtime] 447 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":29956,"inputTokens":133108,"outputTokens":1241}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":7,"duplicate":false,"step":1}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=502
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":35364,"inputTokens":134453,"outputTokens":1040}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":9,"duplicate":false,"step":2}
+[llm-runtime] 451 msgs, 0 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":23960,"inputTokens":135592,"outputTokens":970}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":10,"duplicate":false,"step":3}
+[llm-runtime] 453 msgs, 0 with reasoning, input.messages=506
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7327,"inputTokens":136664,"outputTokens":43}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":4}
+[llm-runtime] 455 msgs, 0 with reasoning, input.messages=508
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":15132,"inputTokens":136761,"outputTokens":493}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":11,"duplicate":false,"step":5}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=510
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":39340,"inputTokens":137353,"outputTokens":1705}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":7,"duplicate":false,"step":6}
+[llm-runtime] 459 msgs, 0 with reasoning, input.messages=512
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":14739,"inputTokens":139155,"outputTokens":361}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":4,"duplicate":false,"step":7}
+[llm-runtime] 461 msgs, 0 with reasoning, input.messages=514
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":23718,"inputTokens":139611,"outputTokens":277}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":3,"duplicate":false,"step":8}
+[llm-runtime] 463 msgs, 0 with reasoning, input.messages=516
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7198,"inputTokens":139980,"outputTokens":26}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":3,"duplicate":false,"step":9}
+[llm-runtime] 465 msgs, 0 with reasoning, input.messages=518
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":28686,"inputTokens":140062,"outputTokens":1320}
+[llm-runtime] 450 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":2480}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":6527}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":3406}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":3830}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":2260}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":5149}
+[llm-runtime] 449 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=147 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":18141,"inputTokens":143570,"outputTokens":62}
+[agent-turn] pushing reasoning: 147 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":4,"duplicate":false,"step":1}
+[llm-runtime] 451 msgs, 1 with reasoning, input.messages=503
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1634 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":14417,"inputTokens":143683,"outputTokens":698}
+[agent-turn] pushing reasoning: 1634 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":8,"duplicate":false,"step":2}
+[llm-runtime] 453 msgs, 2 with reasoning, input.messages=506
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1184 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":14277,"inputTokens":144395,"outputTokens":371}
+[agent-turn] pushing reasoning: 1184 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":5,"duplicate":false,"step":3}
+[llm-runtime] 455 msgs, 3 with reasoning, input.messages=509
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1257 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":19591,"inputTokens":144862,"outputTokens":610}
+[agent-turn] pushing reasoning: 1257 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":4,"duplicate":false,"step":4}
+[llm-runtime] 457 msgs, 4 with reasoning, input.messages=512
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=841 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9623,"inputTokens":145462,"outputTokens":486}
+[agent-turn] pushing reasoning: 841 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":3,"duplicate":false,"step":5}
+[llm-runtime] 459 msgs, 5 with reasoning, input.messages=515
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=814 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8881,"inputTokens":146040,"outputTokens":336}
+[agent-turn] pushing reasoning: 814 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":4,"duplicate":false,"step":6}
+[llm-runtime] 461 msgs, 6 with reasoning, input.messages=518
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=795 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6836,"inputTokens":146470,"outputTokens":394}
+[agent-turn] pushing reasoning: 795 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":7}
+[llm-runtime] 463 msgs, 7 with reasoning, input.messages=521
+[llm-runtime] raw input reasoning: 7
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=793 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9217,"inputTokens":146958,"outputTokens":480}
+[agent-turn] pushing reasoning: 793 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":6,"duplicate":false,"step":8}
+[llm-runtime] 465 msgs, 8 with reasoning, input.messages=524
+[llm-runtime] raw input reasoning: 8
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=791 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10676,"inputTokens":147532,"outputTokens":557}
+[agent-turn] pushing reasoning: 791 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":4,"duplicate":false,"step":9}
+[llm-runtime] 467 msgs, 9 with reasoning, input.messages=527
+[llm-runtime] raw input reasoning: 9
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=784 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8730,"inputTokens":148185,"outputTokens":561}
+[agent-turn] pushing reasoning: 784 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":2,"duplicate":false,"step":10}
+[llm-runtime] 469 msgs, 10 with reasoning, input.messages=530
+[llm-runtime] raw input reasoning: 10
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=918 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8732,"inputTokens":148844,"outputTokens":459}
+[agent-turn] pushing reasoning: 918 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.set_rules","ok":true,"durationMs":7,"duplicate":false,"step":11}
+[llm-runtime] 471 msgs, 11 with reasoning, input.messages=533
+[llm-runtime] raw input reasoning: 11
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":16500,"inputTokens":149355,"outputTokens":904}
+[llm-runtime] 456 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1107 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":19451,"inputTokens":147993,"outputTokens":277}
+[agent-turn] pushing reasoning: 1107 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":3,"duplicate":false,"step":1}
+[llm-runtime] 458 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":18628,"inputTokens":148302,"outputTokens":928}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=72 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":16343,"inputTokens":148416,"outputTokens":67}
+[agent-turn] pushing reasoning: 72 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":16,"duplicate":false,"step":1}
+[llm-runtime] 459 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=78 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":5848,"inputTokens":148533,"outputTokens":155}
+[agent-turn] pushing reasoning: 78 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":4}
+[llm-runtime] 463 msgs, 2 with reasoning, input.messages=511
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=116 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10760,"inputTokens":148824,"outputTokens":100}
+[agent-turn] pushing reasoning: 116 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":false,"durationMs":7,"duplicate":false,"step":5}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":false,"durationMs":7,"duplicate":false,"step":6}
+[llm-runtime] 466 msgs, 3 with reasoning, input.messages=516
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=115 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":4152,"inputTokens":149070,"outputTokens":158}
+[agent-turn] pushing reasoning: 115 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":7}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":8,"duplicate":false,"step":8}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":7,"duplicate":false,"step":9}
+[llm-runtime] 470 msgs, 4 with reasoning, input.messages=523
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=115 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13523,"inputTokens":149364,"outputTokens":155}
+[agent-turn] pushing reasoning: 115 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":14,"duplicate":false,"step":10}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":13,"duplicate":false,"step":11}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":13,"duplicate":false,"step":12}
+[llm-runtime] 474 msgs, 5 with reasoning, input.messages=530
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=144 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6884,"inputTokens":149703,"outputTokens":75}
+[agent-turn] pushing reasoning: 144 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":5,"duplicate":false,"step":13}
+[llm-runtime] 476 msgs, 6 with reasoning, input.messages=533
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":5860,"inputTokens":149893,"outputTokens":88}
+[llm-runtime] 436 msgs, 0 with reasoning, input.messages=474
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=297 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":24143,"inputTokens":145959,"outputTokens":147}
+[agent-turn] pushing reasoning: 297 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":4,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":4,"duplicate":false,"step":2}
+[llm-runtime] 439 msgs, 1 with reasoning, input.messages=479
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=886 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":11553,"inputTokens":146199,"outputTokens":334}
+[agent-turn] pushing reasoning: 886 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":24,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":7,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":6,"duplicate":false,"step":5}
+[llm-runtime] 443 msgs, 2 with reasoning, input.messages=486
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=865 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10782,"inputTokens":146669,"outputTokens":285}
+[agent-turn] pushing reasoning: 865 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":7,"duplicate":false,"step":6}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":7,"duplicate":false,"step":7}
+[llm-runtime] 446 msgs, 3 with reasoning, input.messages=491
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"session-chat","event":"abort","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":7088}
+[llm-runtime] 436 msgs, 0 with reasoning, input.messages=474
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=207 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9404,"inputTokens":145967,"outputTokens":119}
+[agent-turn] pushing reasoning: 207 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":367,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":366,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":367,"duplicate":false,"step":3}
+[llm-runtime] 440 msgs, 1 with reasoning, input.messages=481
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=173 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7912,"inputTokens":146222,"outputTokens":144}
+[agent-turn] pushing reasoning: 173 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":false,"durationMs":6,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":false,"durationMs":6,"duplicate":false,"step":5}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":false,"durationMs":6,"duplicate":false,"step":6}
+[llm-runtime] 444 msgs, 2 with reasoning, input.messages=488
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=193 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":6085,"inputTokens":146591,"outputTokens":113}
+[agent-turn] pushing reasoning: 193 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":138,"duplicate":false,"step":7}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":139,"duplicate":false,"step":8}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":138,"duplicate":false,"step":9}
+[llm-runtime] 448 msgs, 3 with reasoning, input.messages=495
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=173 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12911,"inputTokens":146840,"outputTokens":82}
+[agent-turn] pushing reasoning: 173 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":10,"duplicate":false,"step":10}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":10,"duplicate":false,"step":11}
+[llm-runtime] 451 msgs, 4 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=211 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7010,"inputTokens":147015,"outputTokens":143}
+[agent-turn] pushing reasoning: 211 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":7,"duplicate":false,"step":12}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":4,"duplicate":false,"step":13}
+[llm-runtime] 454 msgs, 5 with reasoning, input.messages=505
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1102 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10255,"inputTokens":148493,"outputTokens":268}
+[agent-turn] pushing reasoning: 1102 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":22,"duplicate":false,"step":14}
+[llm-runtime] 456 msgs, 6 with reasoning, input.messages=508
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":23015,"inputTokens":151238,"outputTokens":1610}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":16411}
+[llm-runtime] 456 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":2527}
+[llm-runtime] 456 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"upstream-error","durationMs":2534}
+[llm-runtime] 456 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=590 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":84909,"inputTokens":148754,"outputTokens":4997}
+[agent-turn] pushing reasoning: 590 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Write","ok":true,"durationMs":14,"duplicate":false,"step":1}
+[llm-runtime] 458 msgs, 1 with reasoning, input.messages=503
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":32014,"inputTokens":153845,"outputTokens":383}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":54739,"inputTokens":160193,"outputTokens":1724}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=165 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":22371,"inputTokens":161445,"outputTokens":88}
+[agent-turn] pushing reasoning: 165 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":335,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":333,"duplicate":false,"step":2}
+[llm-runtime] 461 msgs, 1 with reasoning, input.messages=506
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=131 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":28623,"inputTokens":161675,"outputTokens":92}
+[agent-turn] pushing reasoning: 131 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":32,"duplicate":false,"step":3}
+[llm-runtime] 463 msgs, 2 with reasoning, input.messages=509
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=432 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8396,"inputTokens":166898,"outputTokens":161}
+[agent-turn] pushing reasoning: 432 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":21,"duplicate":false,"step":4}
+[llm-runtime] 465 msgs, 3 with reasoning, input.messages=512
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1707 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":14174,"inputTokens":170620,"outputTokens":427}
+[agent-turn] pushing reasoning: 1707 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":24,"duplicate":false,"step":5}
+[llm-runtime] 467 msgs, 4 with reasoning, input.messages=515
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"session-chat","event":"message-queued","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","queueLength":1}
+[llm-runtime] tool_use result: reasoningContent=1479 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":18190,"inputTokens":177129,"outputTokens":383}
+[agent-turn] pushing reasoning: 1479 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":22,"duplicate":false,"step":6}
+[llm-runtime] 469 msgs, 5 with reasoning, input.messages=518
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+{"component":"session-chat","event":"abort","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":4505}
+[llm-runtime] 461 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=71 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":27201,"inputTokens":162167,"outputTokens":77}
+[agent-turn] pushing reasoning: 71 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":false,"durationMs":4,"duplicate":false,"step":1}
+[llm-runtime] 463 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=56 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":20252,"inputTokens":162323,"outputTokens":62}
+[agent-turn] pushing reasoning: 56 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Glob","ok":true,"durationMs":7,"duplicate":false,"step":2}
+[llm-runtime] 465 msgs, 2 with reasoning, input.messages=507
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=711 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":15546,"inputTokens":163315,"outputTokens":357}
+[agent-turn] pushing reasoning: 711 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":3,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":11,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":11,"duplicate":false,"step":4}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":11,"duplicate":false,"step":5}
+[llm-runtime] 469 msgs, 3 with reasoning, input.messages=514
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=278 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12191,"inputTokens":171079,"outputTokens":182}
+[agent-turn] pushing reasoning: 278 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":6}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":5,"duplicate":false,"step":7}
+[llm-runtime] 472 msgs, 4 with reasoning, input.messages=519
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=1645 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":27253,"inputTokens":176590,"outputTokens":521}
+[agent-turn] pushing reasoning: 1645 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"parallel-tool-execution","count":2,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":8}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":4,"duplicate":false,"step":9}
+[llm-runtime] 475 msgs, 5 with reasoning, input.messages=524
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":39566,"inputTokens":183660,"outputTokens":2040}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":47578,"inputTokens":160453,"outputTokens":1122}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":240424,"inputTokens":160530,"outputTokens":11983}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"session.recovery","ok":true,"sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","route":"/api/sessions/:id/chat","requestedResumeSeq":764,"ackedSeq":764,"lastSeq":764,"pendingMessageCount":0,"recoveryState":"idle"}
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":57571,"inputTokens":171139,"outputTokens":1686}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":78165,"inputTokens":172010,"outputTokens":2668}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"session-chat","event":"abort","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18"}
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","code":"network-error","durationMs":11574}
+[llm-runtime] 457 msgs, 0 with reasoning, input.messages=500
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":67164,"inputTokens":173561,"outputTokens":2354}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=713 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":29175,"inputTokens":174866,"outputTokens":459}
+[agent-turn] pushing reasoning: 713 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.create_custom","ok":true,"durationMs":3,"duplicate":false,"step":1}
+[llm-runtime] 460 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=133 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":12617,"inputTokens":175424,"outputTokens":324}
+[agent-turn] pushing reasoning: 133 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.set_rules","ok":true,"durationMs":5,"duplicate":false,"step":2}
+[llm-runtime] 462 msgs, 2 with reasoning, input.messages=507
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=135 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10955,"inputTokens":175801,"outputTokens":90}
+[agent-turn] pushing reasoning: 135 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":10,"duplicate":false,"step":3}
+[llm-runtime] 464 msgs, 3 with reasoning, input.messages=510
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=102 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":26297,"inputTokens":176751,"outputTokens":308}
+[agent-turn] pushing reasoning: 102 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Edit","ok":true,"durationMs":10,"duplicate":false,"step":4}
+[llm-runtime] 466 msgs, 4 with reasoning, input.messages=513
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=150 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":10342,"inputTokens":177145,"outputTokens":668}
+[agent-turn] pushing reasoning: 150 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Edit","ok":true,"durationMs":7,"duplicate":false,"step":5}
+[llm-runtime] 468 msgs, 5 with reasoning, input.messages=516
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=124 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":13391,"inputTokens":177899,"outputTokens":755}
+[agent-turn] pushing reasoning: 124 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":6}
+[llm-runtime] 470 msgs, 6 with reasoning, input.messages=519
+[llm-runtime] raw input reasoning: 6
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=196 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":14072,"inputTokens":178715,"outputTokens":632}
+[agent-turn] pushing reasoning: 196 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":4,"duplicate":false,"step":7}
+[llm-runtime] 472 msgs, 7 with reasoning, input.messages=522
+[llm-runtime] raw input reasoning: 7
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=186 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":8735,"inputTokens":179413,"outputTokens":397}
+[agent-turn] pushing reasoning: 186 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Edit","ok":true,"durationMs":5,"duplicate":false,"step":8}
+[llm-runtime] 474 msgs, 8 with reasoning, input.messages=525
+[llm-runtime] raw input reasoning: 8
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=185 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":9393,"inputTokens":179896,"outputTokens":70}
+[agent-turn] pushing reasoning: 185 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":2,"duplicate":false,"step":9}
+[llm-runtime] 476 msgs, 9 with reasoning, input.messages=528
+[llm-runtime] raw input reasoning: 9
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":7128,"inputTokens":180018,"outputTokens":342}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=446 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":24712,"inputTokens":176800,"outputTokens":158}
+[agent-turn] pushing reasoning: 446 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"Read","ok":true,"durationMs":24,"duplicate":false,"step":1}
+[llm-runtime] 460 msgs, 1 with reasoning, input.messages=504
+[llm-runtime] raw input reasoning: 1
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=576 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":34704,"inputTokens":177743,"outputTokens":1880}
+[agent-turn] pushing reasoning: 576 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":6,"duplicate":false,"step":2}
+[llm-runtime] 462 msgs, 2 with reasoning, input.messages=507
+[llm-runtime] raw input reasoning: 2
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=128 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":32003,"inputTokens":179686,"outputTokens":1869}
+[agent-turn] pushing reasoning: 128 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":3,"duplicate":false,"step":3}
+[llm-runtime] 464 msgs, 3 with reasoning, input.messages=510
+[llm-runtime] raw input reasoning: 3
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=94 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":31242,"inputTokens":181621,"outputTokens":1908}
+[agent-turn] pushing reasoning: 94 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"jingwei.upsert_entry","ok":true,"durationMs":6,"duplicate":false,"step":4}
+[llm-runtime] 466 msgs, 4 with reasoning, input.messages=513
+[llm-runtime] raw input reasoning: 4
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+[llm-runtime] tool_use result: reasoningContent=154 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"tool_use","durationMs":7917,"inputTokens":183593,"outputTokens":66}
+[agent-turn] pushing reasoning: 154 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","toolName":"presets.get_rules","ok":true,"durationMs":2,"duplicate":false,"step":5}
+[llm-runtime] 468 msgs, 5 with reasoning, input.messages=516
+[llm-runtime] raw input reasoning: 5
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":14729,"inputTokens":183711,"outputTokens":664}
+[llm-runtime] 458 msgs, 0 with reasoning, input.messages=501
+[llm-runtime] raw input reasoning: 0
+[completions.generate] useStreaming=true, model=mimo-v2.5-pro
+[streaming] Connected to https://token-plan-cn.xiaomimimo.com/v1/chat/completions, status=200, content-type=text/event-stream
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"27d2d29d-b721-430b-b1d9-83acc2e74c18","type":"message","durationMs":23454,"inputTokens":184613,"outputTokens":446}
+{"component":"session.recovery","ok":true,"sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","route":"/api/sessions/:id/chat","requestedResumeSeq":20,"ackedSeq":20,"lastSeq":20,"pendingMessageCount":0,"recoveryState":"idle"}
+[llm-runtime] 21 msgs, 0 with reasoning, input.messages=21
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 20 msgs, thinking=0, tool_use=7, inputReasoning=0/21
+[deepseek.sanitize] msg[1] assistant tool_use_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[2] user tool_result_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[3] assistant tool_use_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[4] user tool_result_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[5] assistant tool_use_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[6] user tool_result_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[7] assistant tool_use_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[8] user tool_result_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[10] assistant tool_use_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[11] user tool_result_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[12] assistant tool_use_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[13] user tool_result_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[16] assistant tool_use_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[deepseek.sanitize] msg[17] user tool_result_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":6591,"inputTokens":33842,"outputTokens":163}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":5,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"presets.get_rules","ok":true,"durationMs":2,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"chapter.read","ok":true,"durationMs":159,"duplicate":false,"step":3}
+[llm-runtime] 27 msgs, 0 with reasoning, input.messages=27
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 26 msgs, thinking=0, tool_use=10, inputReasoning=0/27
+[deepseek.sanitize] msg[1] assistant tool_use_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[2] user tool_result_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[3] assistant tool_use_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[4] user tool_result_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[5] assistant tool_use_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[6] user tool_result_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[7] assistant tool_use_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[8] user tool_result_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[10] assistant tool_use_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[11] user tool_result_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[12] assistant tool_use_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[13] user tool_result_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[16] assistant tool_use_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[deepseek.sanitize] msg[17] user tool_result_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[deepseek.sanitize] msg[20] assistant tool_use_ids=[call_00_dE8ROzPgt9LkiXMb2DLX3694]
+[deepseek.sanitize] msg[21] user tool_result_ids=[call_00_dE8ROzPgt9LkiXMb2DLX3694]
+[deepseek.sanitize] msg[22] assistant tool_use_ids=[call_01_WlP5HmOOT8xB4d6VaTHl7461]
+[deepseek.sanitize] msg[23] user tool_result_ids=[call_01_WlP5HmOOT8xB4d6VaTHl7461]
+[deepseek.sanitize] msg[24] assistant tool_use_ids=[call_02_SNMvR3na7f6UBG48kqZZ0666]
+[deepseek.sanitize] msg[25] user tool_result_ids=[call_02_SNMvR3na7f6UBG48kqZZ0666]
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":40245,"inputTokens":1787,"outputTokens":1412}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"AskUserQuestion","ok":true,"durationMs":4,"duplicate":false,"step":4}
+[llm-runtime] 29 msgs, 0 with reasoning, input.messages=29
+[llm-runtime] raw input reasoning: 0
+[anthropic.generate] 28 msgs, thinking=0, tool_use=11, inputReasoning=0/29
+[deepseek.sanitize] msg[1] assistant tool_use_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[2] user tool_result_ids=[tooluse_yirNXFKJGlfzycJGN6kSeA]
+[deepseek.sanitize] msg[3] assistant tool_use_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[4] user tool_result_ids=[tooluse_kuvD6kMzLoSdVgJjrzh7ze]
+[deepseek.sanitize] msg[5] assistant tool_use_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[6] user tool_result_ids=[tooluse_ObKsRn79vwKzmYpPRKOrhC]
+[deepseek.sanitize] msg[7] assistant tool_use_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[8] user tool_result_ids=[tooluse_0Y2HoKil2KuVRdQtz26cte]
+[deepseek.sanitize] msg[10] assistant tool_use_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[11] user tool_result_ids=[tooluse_8EZ3ZELEiv5ynKrUwMHKIu]
+[deepseek.sanitize] msg[12] assistant tool_use_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[13] user tool_result_ids=[tooluse_6QkIpUQofGzijYfor7Wkz7]
+[deepseek.sanitize] msg[16] assistant tool_use_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[deepseek.sanitize] msg[17] user tool_result_ids=[call_00_IGnXmKztAmMy03mEVgqd9934]
+[deepseek.sanitize] msg[20] assistant tool_use_ids=[call_00_dE8ROzPgt9LkiXMb2DLX3694]
+[deepseek.sanitize] msg[21] user tool_result_ids=[call_00_dE8ROzPgt9LkiXMb2DLX3694]
+[deepseek.sanitize] msg[22] assistant tool_use_ids=[call_01_WlP5HmOOT8xB4d6VaTHl7461]
+[deepseek.sanitize] msg[23] user tool_result_ids=[call_01_WlP5HmOOT8xB4d6VaTHl7461]
+[deepseek.sanitize] msg[24] assistant tool_use_ids=[call_02_SNMvR3na7f6UBG48kqZZ0666]
+[deepseek.sanitize] msg[25] user tool_result_ids=[call_02_SNMvR3na7f6UBG48kqZZ0666]
+[deepseek.sanitize] msg[26] assistant tool_use_ids=[call_00_o7at7Izo8n22AikPpNtr6494]
+[deepseek.sanitize] msg[27] user tool_result_ids=[call_00_o7at7Izo8n22AikPpNtr6494]
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"message","durationMs":25992,"inputTokens":690,"outputTokens":930}
+[llm-runtime] 31 msgs, 0 with reasoning, input.messages=31
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":5647,"inputTokens":37392,"outputTokens":180}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":3,"duplicate":false,"step":1}
+[llm-runtime] 33 msgs, 0 with reasoning, input.messages=33
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=407 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":18835,"inputTokens":37495,"outputTokens":269}
+[agent-turn] pushing reasoning: 407 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"presets.get_rules","ok":true,"durationMs":5,"duplicate":false,"step":2}
+[llm-runtime] 35 msgs, 1 with reasoning, input.messages=36
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"message","durationMs":17391,"inputTokens":37577,"outputTokens":800}
+[llm-runtime] 37 msgs, 0 with reasoning, input.messages=37
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":6323,"inputTokens":38388,"outputTokens":228}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":6,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":3,"duplicate":false,"step":2}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":183,"duplicate":false,"step":3}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":110,"duplicate":false,"step":4}
+[llm-runtime] 45 msgs, 0 with reasoning, input.messages=45
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"message","durationMs":36503,"inputTokens":38861,"outputTokens":1901}
+[llm-runtime] 47 msgs, 0 with reasoning, input.messages=47
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":16314,"inputTokens":40770,"outputTokens":740}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"pipeline.generate_chapter","ok":false,"durationMs":215,"duplicate":false,"step":1}
+[llm-runtime] 49 msgs, 0 with reasoning, input.messages=49
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"upstream-error","durationMs":20034}
+{"component":"session-chat","event":"continue","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb"}
+[llm-runtime] 51 msgs, 0 with reasoning, input.messages=51
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"network-error","durationMs":190374}
+[llm-runtime] 47 msgs, 0 with reasoning, input.messages=47
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"upstream-error","durationMs":20044}
+[llm-runtime] 47 msgs, 0 with reasoning, input.messages=47
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"network-error","durationMs":104040}
+[llm-runtime] 47 msgs, 0 with reasoning, input.messages=47
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":7067,"inputTokens":40773,"outputTokens":229}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":9,"duplicate":false,"step":1}
+[llm-runtime] 49 msgs, 0 with reasoning, input.messages=49
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=424 chars, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":5837,"inputTokens":40881,"outputTokens":184}
+[agent-turn] pushing reasoning: 424 chars, signature=0 chars
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"pgi.generate_questions","ok":true,"durationMs":9,"duplicate":false,"step":2}
+[llm-runtime] 51 msgs, 1 with reasoning, input.messages=52
+[llm-runtime] raw input reasoning: 1
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"upstream-error","durationMs":20073}
+[llm-runtime] 47 msgs, 0 with reasoning, input.messages=47
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":7690,"inputTokens":40773,"outputTokens":280}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"jingwei.read_context","ok":true,"durationMs":5,"duplicate":false,"step":1}
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"chapter.read","ok":true,"durationMs":4,"duplicate":false,"step":2}
+[llm-runtime] 51 msgs, 0 with reasoning, input.messages=51
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":5236,"inputTokens":42773,"outputTokens":143}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"pgi.generate_questions","ok":true,"durationMs":2,"duplicate":false,"step":3}
+[llm-runtime] 53 msgs, 0 with reasoning, input.messages=53
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":8738,"inputTokens":42975,"outputTokens":341}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"AskUserQuestion","ok":true,"durationMs":11,"duplicate":false,"step":4}
+[llm-runtime] 55 msgs, 0 with reasoning, input.messages=55
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+[codex.streaming] Connected to http://localhost:61234/v1/chat/completions, status=200
+[llm-runtime] tool_use result: reasoningContent=NONE, signature=NONE
+{"component":"agent-turn-runtime","event":"generate-ok","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","type":"tool_use","durationMs":7959,"inputTokens":41567,"outputTokens":224}
+[agent-turn] tool_use reply but NO reasoningContent (policy=passback-on-tool-loop, hasRC=false)
+{"component":"agent-turn-runtime","event":"tool-executed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","toolName":"pgi.format_answers_for_prompt","ok":true,"durationMs":3,"duplicate":false,"step":1}
+[llm-runtime] 57 msgs, 0 with reasoning, input.messages=57
+[llm-runtime] raw input reasoning: 0
+[codex.generate] useStreaming=true, model=gpt-5.5
+{"component":"agent-turn-runtime","event":"generate-failed","sessionId":"d59c2fd8-5df1-4844-a62a-fdab149119fb","code":"upstream-error","durationMs":20030}

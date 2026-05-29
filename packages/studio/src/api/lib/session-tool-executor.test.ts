@@ -4,7 +4,8 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
-import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { clearPluginRegistrations, registerPluginTools } from "./session-tool-registry.js";
+import { createCockpitService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
 
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
@@ -21,6 +22,14 @@ function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolE
 }
 
 describe("session tool executor", () => {
+  beforeEach(() => {
+    registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+  });
+
+  afterEach(() => {
+    clearPluginRegistrations();
+  });
+
   it("returns an invalid-tool result for unknown tools without executing handlers", async () => {
     const fallbackHandler = vi.fn();
     const executor = createSessionToolExecutor({ handlers: { "cockpit.get_snapshot": fallbackHandler } });
@@ -60,7 +69,7 @@ describe("session tool executor", () => {
       await expect(executor.execute(input({
         toolName: "candidate.create_chapter",
         permissionMode,
-        input: { bookId: "book-1", chapterIntent: "写下一章" },
+        input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
       }))).resolves.toMatchObject({
         ok: false,
         error: "permission-denied",
@@ -187,7 +196,7 @@ describe("session tool executor", () => {
     const result = await executor.execute(input({
       toolName: "candidate.create_chapter",
       permissionMode: "edit",
-      input: { bookId: "book-1", chapterIntent: "写下一章", title: "第二章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", title: "第二章", content: "这是已有章节正文。" },
     }));
 
     expect(result).toMatchObject({
@@ -209,7 +218,7 @@ describe("session tool executor", () => {
     const result = await executor.execute(input({
       toolName: "candidate.create_chapter",
       permissionMode: "edit",
-      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
       canvasContext: {
         activeTabId: "chapter:book-1:2",
         activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
@@ -245,7 +254,7 @@ describe("session tool executor", () => {
         reasoningEffort: "medium",
         toolPolicy: { deny: ["candidate.create_chapter"] },
       },
-      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
     }));
 
     expect(result).toMatchObject({
@@ -276,7 +285,7 @@ describe("session tool executor", () => {
         reasoningEffort: "medium",
         toolPolicy: { ask: ["candidate.create_chapter"] },
       },
-      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
     }));
 
     expect(result).toMatchObject({
@@ -316,14 +325,14 @@ describe("session tool executor", () => {
       toolName: "candidate.create_chapter",
       permissionMode: "ask",
       sessionConfig,
-      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
     }))).resolves.toMatchObject({ ok: true, data: { candidateId: "candidate-1" } });
 
     const dirtyResult = await executor.execute(input({
       toolName: "candidate.create_chapter",
       permissionMode: "ask",
       sessionConfig,
-      input: { bookId: "book-1", chapterIntent: "写下一章" },
+      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
       canvasContext: { activeTabId: "chapter:book-1:2", activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1" }, dirty: true },
     }));
 

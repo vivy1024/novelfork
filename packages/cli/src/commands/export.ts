@@ -11,7 +11,8 @@ export const exportCommand = new Command("export")
   .option("--output <path>", "Output file path")
   .option("--approved-only", "Only export approved chapters")
   .option("--json", "Output JSON metadata")
-  .action(async (bookIdArg: string | undefined, opts) => {
+  .action(async (bookIdArg: string | undefined, opts, command: Command) => {
+    const jsonOutput = Boolean(opts.json || command.parent?.opts()?.json);
     try {
       const root = findProjectRoot();
       const bookId = await resolveBookId(bookIdArg, root);
@@ -31,7 +32,7 @@ export const exportCommand = new Command("export")
       }
 
       if (opts.format === "epub") {
-        await exportEpub(book, chapters, chaptersDir, bookId, root, opts);
+        await exportEpub(book, chapters, chaptersDir, bookId, root, { ...opts, json: jsonOutput });
         return;
       }
 
@@ -62,7 +63,7 @@ export const exportCommand = new Command("export")
       await mkdir(dirname(outputPath), { recursive: true });
       await writeFile(outputPath, parts.join("\n"), "utf-8");
 
-      if (opts.json) {
+      if (jsonOutput) {
         log(JSON.stringify({
           bookId,
           chaptersExported: chapters.length,
@@ -75,7 +76,7 @@ export const exportCommand = new Command("export")
         log(`Output: ${outputPath}`);
       }
     } catch (e) {
-      if (opts.json) {
+      if (jsonOutput) {
         log(JSON.stringify({ error: String(e) }));
       } else {
         logError(`Failed to export: ${e}`);

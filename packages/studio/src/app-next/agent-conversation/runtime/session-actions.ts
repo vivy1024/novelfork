@@ -38,3 +38,18 @@ export function buildAbortEnvelope(input: { sessionId: string }) {
     sessionId: input.sessionId,
   };
 }
+
+export function buildContinueEnvelope(input: { sessionId: string }) {
+  return {
+    type: "session:continue" as const,
+    sessionId: input.sessionId,
+  };
+}
+
+export function buildSafetyDecisionEnvelope(input: { sessionId: string; decision: "approve" | "reject" }) {
+  return {
+    type: "session:safety-decision" as const,
+    sessionId: input.sessionId,
+    decision: input.decision,
+  };
+}

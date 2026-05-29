@@ -37,10 +37,11 @@ const DEFAULT_MODEL_DEFAULTS = DEFAULT_USER_CONFIG.modelDefaults;
 // Tiny layout primitives
 // ---------------------------------------------------------------------------
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
     <div className="border-t border-border pt-4">
-      <h3 className="mb-3 text-sm font-semibold">{title}</h3>
+      <h3 className="mb-1 text-sm font-semibold">{title}</h3>
+      {description ? <p className="mb-3 text-xs text-muted-foreground">{description}</p> : null}
       <div className="space-y-3">{children}</div>
     </div>
   );

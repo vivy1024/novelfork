@@ -204,6 +204,11 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     hooks: sanitizeHooks(runtimeControls?.hooks ?? defaults.hooks),
     autoVerify: typeof runtimeControls?.autoVerify === "boolean" ? runtimeControls.autoVerify : defaults.autoVerify,
     verificationCommand: typeof runtimeControls?.verificationCommand === "string" ? runtimeControls.verificationCommand.trim() : defaults.verificationCommand,
+    yoloMode: typeof runtimeControls?.yoloMode === "boolean" ? runtimeControls.yoloMode : defaults.yoloMode,
+    safetyReflection: typeof runtimeControls?.safetyReflection === "boolean" ? runtimeControls.safetyReflection : defaults.safetyReflection,
+    loopDetectionThreshold: clampNumber(runtimeControls?.loopDetectionThreshold, defaults.loopDetectionThreshold, 0, 100),
+    tokenConsumptionWarnRatio: clampNumber(runtimeControls?.tokenConsumptionWarnRatio, defaults.tokenConsumptionWarnRatio, 0, 100),
+    maxConsecutiveFailures: clampNumber(runtimeControls?.maxConsecutiveFailures, defaults.maxConsecutiveFailures, 1, 20),
   };
 }
 

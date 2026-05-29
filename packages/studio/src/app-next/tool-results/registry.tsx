@@ -6,13 +6,14 @@ import { GenericToolResultRenderer } from "./GenericToolResultCard";
 import { GuidedPlanCard } from "./GuidedPlanCard";
 import { NarrativeLineCard } from "./NarrativeLineCard";
 import { PgiCard } from "./PgiCard";
+import { PipelineChapterResultCard } from "./PipelineChapterResultCard";
 import { QuestionnaireCard } from "./QuestionnaireCard";
 import { WorkflowProgressRenderer } from "./WorkflowProgressCard";
 import type { ToolResultRenderer, ToolResultRendererContext } from "./types";
 
 const customRenderers = new Map<string, ToolResultRenderer>();
 
-export const RESERVED_TOOL_RESULT_RENDERERS = ["cockpit", "questionnaire", "pgi", "guided", "candidate", "narrative", "workflow"] as const;
+export const RESERVED_TOOL_RESULT_RENDERERS = ["cockpit", "questionnaire", "pgi", "guided", "candidate", "narrative", "workflow", "pipeline"] as const;
 
 const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number], ToolResultRenderer> = {
   cockpit: CockpitSnapshotCard,
@@ -22,6 +23,7 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   candidate: CandidateCreatedCard,
   narrative: NarrativeLineCard,
   workflow: WorkflowProgressRenderer,
+  pipeline: PipelineChapterResultCard,
 };
 
 const TOOL_PREFIX_TO_RENDERER: Record<string, (typeof RESERVED_TOOL_RESULT_RENDERERS)[number]> = {
@@ -32,6 +34,7 @@ const TOOL_PREFIX_TO_RENDERER: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   candidate: "candidate",
   narrative: "narrative",
   workflow: "workflow",
+  pipeline: "pipeline",
 };
 
 function rendererFromValue(value: unknown): string | null {

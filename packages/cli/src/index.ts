@@ -7,30 +7,11 @@ import { Command } from "commander";
 import { formatRuntimeCommandHelp } from "@vivy1024/novelfork-core/registry/command-registry";
 import { initCommand } from "./commands/init.js";
 import { configCommand } from "./commands/config.js";
-import { bookCommand } from "./commands/book.js";
-import { writeCommand } from "./commands/write.js";
-import { reviewCommand } from "./commands/review.js";
-import { statusCommand } from "./commands/status.js";
-import { radarCommand } from "./commands/radar.js";
-import { upCommand, downCommand } from "./commands/daemon.js";
 import { doctorCommand } from "./commands/doctor.js";
 import { exportCommand } from "./commands/export.js";
-import { draftCommand } from "./commands/draft.js";
-import { auditCommand } from "./commands/audit.js";
-import { reviseCommand } from "./commands/revise.js";
-import { agentCommand } from "./commands/agent.js";
-import { planCommand } from "./commands/plan.js";
-import { composeCommand } from "./commands/compose.js";
-import { genreCommand } from "./commands/genre.js";
 import { updateCommand } from "./commands/update.js";
-import { detectCommand } from "./commands/detect.js";
-import { styleCommand } from "./commands/style.js";
 import { analyticsCommand } from "./commands/analytics.js";
-import { evalCommand } from "./commands/eval.js";
-import { importCommand } from "./commands/import.js";
-import { fanficCommand } from "./commands/fanfic.js";
 import { studioCommand } from "./commands/studio.js";
-import { consolidateCommand } from "./commands/consolidate.js";
 import { execCommand } from "./commands/exec.js";
 import { chatCommand } from "./commands/chat.js";
 import { runHeadlessChatCommand, type HeadlessChatCommonOptions } from "./commands/headless-chat-common.js";
@@ -50,6 +31,17 @@ function attachRuntimeCommandHelp(program: Command): void {
     const baseHelp = originalHelpInformation(contextOptions);
     return `${baseHelp}\nAgent runtime commands:\n${formatRuntimeCommandHelp()}\n`;
   }) as Command["helpInformation"];
+}
+
+function disabledLegacyCommand(name: string, description: string): Command {
+  return new Command(name)
+    .description(`${description}（旧 CLI 管线已停用，请使用 novelfork studio 或 novelfork chat）`)
+    .argument("[args...]", "ignored legacy arguments")
+    .allowUnknownOption(true)
+    .action(() => {
+      logError(`命令 novelfork ${name} 依赖旧 core 管线，当前版本已停用。请使用 novelfork studio 或 novelfork chat。`);
+      process.exitCode = 1;
+    });
 }
 
 async function readStdinContext(): Promise<string | undefined> {
@@ -107,31 +99,31 @@ export function createProgram(): Command {
 
   program.addCommand(initCommand);
   program.addCommand(configCommand);
-  program.addCommand(bookCommand);
-  program.addCommand(writeCommand);
-  program.addCommand(reviewCommand);
-  program.addCommand(statusCommand);
-  program.addCommand(radarCommand);
-  program.addCommand(upCommand);
-  program.addCommand(downCommand);
+  program.addCommand(disabledLegacyCommand("book", "书籍管理"));
+  program.addCommand(disabledLegacyCommand("write", "旧写作管线"));
+  program.addCommand(disabledLegacyCommand("review", "旧章节审稿"));
+  program.addCommand(disabledLegacyCommand("status", "旧项目状态"));
+  program.addCommand(disabledLegacyCommand("radar", "旧雷达分析"));
+  program.addCommand(disabledLegacyCommand("up", "旧守护进程启动"));
+  program.addCommand(disabledLegacyCommand("down", "旧守护进程停止"));
   program.addCommand(doctorCommand);
   program.addCommand(exportCommand);
-  program.addCommand(draftCommand);
-  program.addCommand(auditCommand);
-  program.addCommand(reviseCommand);
-  program.addCommand(agentCommand);
-  program.addCommand(planCommand);
-  program.addCommand(composeCommand);
-  program.addCommand(genreCommand);
+  program.addCommand(disabledLegacyCommand("draft", "旧草稿生成"));
+  program.addCommand(disabledLegacyCommand("audit", "旧审计管线"));
+  program.addCommand(disabledLegacyCommand("revise", "旧修订管线"));
+  program.addCommand(disabledLegacyCommand("agent", "旧 Agent 循环"));
+  program.addCommand(disabledLegacyCommand("plan", "旧规划管线"));
+  program.addCommand(disabledLegacyCommand("compose", "旧组合写作"));
+  program.addCommand(disabledLegacyCommand("genre", "旧类型资料"));
   program.addCommand(updateCommand);
-  program.addCommand(detectCommand);
-  program.addCommand(styleCommand);
+  program.addCommand(disabledLegacyCommand("detect", "旧检测管线"));
+  program.addCommand(disabledLegacyCommand("style", "旧风格分析"));
   program.addCommand(analyticsCommand);
-  program.addCommand(evalCommand);
-  program.addCommand(importCommand);
-  program.addCommand(fanficCommand);
+  program.addCommand(disabledLegacyCommand("eval", "旧质量评估"));
+  program.addCommand(disabledLegacyCommand("import", "旧导入管线"));
+  program.addCommand(disabledLegacyCommand("fanfic", "旧同人管线"));
   program.addCommand(studioCommand);
-  program.addCommand(consolidateCommand);
+  program.addCommand(disabledLegacyCommand("consolidate", "旧资料整合"));
   program.addCommand(execCommand);
   program.addCommand(chatCommand);
 

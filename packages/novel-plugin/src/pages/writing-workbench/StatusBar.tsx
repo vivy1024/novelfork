@@ -32,32 +32,46 @@ function useBeatProgress(bookId: string): string {
   const [label, setLabel] = useState("节拍 —");
 
   useEffect(() => {
-    function readBeatState() {
+    let cancelled = false;
+
+    // Load from backend API (single source of truth)
+    async function loadBeatFromApi() {
       try {
-        const raw = localStorage.getItem(`novelfork-beat-${bookId}`);
-        if (raw) {
-          const data = JSON.parse(raw);
-          const total = Array.isArray(data.beats) ? data.beats.length : 0;
-          if (total > 0 && data.templateName) {
-            setLabel(`${data.templateName}`);
-            return;
+        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.beatTemplateId && !cancelled) {
+            // Get template name from beats API
+            const beatsRes = await fetch("/api/presets/beats");
+            if (beatsRes.ok) {
+              const beatsData = await beatsRes.json();
+              const template = (beatsData.beats ?? []).find((t: { id: string }) => t.id === data.beatTemplateId);
+              if (template && !cancelled) {
+                setLabel(template.name);
+                return;
+              }
+            }
           }
         }
       } catch { /* ignore */ }
-      setLabel("节拍 —");
+      if (!cancelled) setLabel("节拍 —");
     }
 
-    readBeatState();
+    void loadBeatFromApi();
 
-    // Listen for localStorage changes from BeatPanel (same tab via custom event)
-    const handleBeatUpdate = () => readBeatState();
+    // Listen for beat updates from BeatPanel (same tab via custom event)
+    const handleBeatUpdate = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.templateName) {
+        setLabel(detail.templateName);
+      } else {
+        void loadBeatFromApi();
+      }
+    };
     window.addEventListener("novelfork-beat-updated", handleBeatUpdate);
-    // Also listen for cross-tab storage events
-    window.addEventListener("storage", (e) => {
-      if (e.key === `novelfork-beat-${bookId}`) readBeatState();
-    });
 
     return () => {
+      cancelled = true;
       window.removeEventListener("novelfork-beat-updated", handleBeatUpdate);
     };
   }, [bookId]);

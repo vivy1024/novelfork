@@ -152,6 +152,16 @@ export interface RuntimeControlSettings {
   verificationCommand: string;
   /** 沙箱模式：none=无限制, basic=环境变量隔离, strict=容器隔离(fallback到basic) */
   sandboxMode?: "none" | "basic" | "strict";
+  /** YOLO 模式：全部允许模式下跳过所有确认 */
+  yoloMode: boolean;
+  /** 安全反思：YOLO 模式下仍对高风险操作进行反思（仅 yoloMode=true 时生效） */
+  safetyReflection: boolean;
+  /** 循环检测灵敏度（0-100，百分比） */
+  loopDetectionThreshold: number;
+  /** Token 消耗警告阈值（0-100，百分比） */
+  tokenConsumptionWarnRatio: number;
+  /** 最大连续失败次数（1-20） */
+  maxConsecutiveFailures: number;
 }
 
 export interface RetryRule {
@@ -478,6 +488,11 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     autoVerify: false,
     verificationCommand: "",
     sandboxMode: "none",
+    yoloMode: false,
+    safetyReflection: true,
+    loopDetectionThreshold: 60,
+    tokenConsumptionWarnRatio: 80,
+    maxConsecutiveFailures: 5,
   },
   modelDefaults: {
     defaultSessionModel: "",
