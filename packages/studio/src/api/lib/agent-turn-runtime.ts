@@ -101,7 +101,7 @@ function buildInitialMessages(input: AgentTurnRuntimeInput): AgentTurnItem[] {
 }
 
 function buildFailureEvent(reply: Extract<AgentGenerateResult, { success: false }>): AgentTurnEvent {
-  const errorCode = classifyError(reply.error);
+  const errorCode = classifyError(reply.code || reply.error);
   const userMessage = getErrorUserMessage(errorCode);
   return {
     type: "turn_failed",
@@ -386,7 +386,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
 
     if (!reply.success) {
-      const errorCode = classifyError(reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
+      const errorCode = classifyError(reply.code || reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
       const userMessage = getErrorUserMessage(errorCode);
       console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, errorCode, userMessage, durationMs: generateDurationMs }));
 

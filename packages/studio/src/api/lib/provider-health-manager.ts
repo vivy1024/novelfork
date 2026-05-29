@@ -91,6 +91,12 @@ const DEFAULT_HEALTH_CONFIG: ProviderHealthConfig = {
 export function classifyError(error: unknown, timing?: GenerateTimingMetrics): GenerateErrorCode {
   const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
 
+  // 直接匹配已知的 error code（来自 LLM runtime 的 reply.code）
+  if (/^network.?error$/i.test(message) || message === "network-error") return "network-error";
+  if (/^upstream.?error$/i.test(message) || message === "upstream-error") return "upstream-error";
+  if (/^empty.?response$/i.test(message) || message === "empty-response") return "empty-response";
+  if (/model.?unavailable|all.?providers.?failed|no.?provider/i.test(message)) return "network-error";
+
   if (timing) {
     if (!timing.connectedAtMs && timing.totalDurationMs && timing.totalDurationMs >= DEFAULT_TIMEOUT_CONFIG.connectTimeoutMs) {
       return "connect-timeout";
@@ -120,7 +126,7 @@ export function getErrorUserMessage(code: GenerateErrorCode): string {
     case "ttft-timeout": return "模型长时间未开始生成，可能上游过载。";
     case "stream-idle-timeout": return "模型生成中途中断，流无响应。";
     case "total-timeout": return "生成超时（超过 5 分钟），请重试或切换模型。";
-    case "network-error": return "网络连接失败，请检查代理或本地服务状态。";
+    case "network-error": return "网络连接失败或模型不可用，请检查代理、API 配置或本地服务状态。";
     case "upstream-error": return "上游服务异常，模型提供商可能临时不可用。";
     case "empty-response": return "模型返回空响应，可能上下文过大或服务异常。";
     case "auth-error": return "认证失败，请检查 API Key 配置。";
