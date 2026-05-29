@@ -53,8 +53,6 @@ import { runChapterReviewCycle } from "./chapter-review-cycle.js";
 import { validateChapterJingweiPersistence } from "./chapter-jingwei-validation.js";
 import { loadPersistedPlan, relativeToBookDir } from "./persisted-governed-plan.js";
 import { pipelineEvents } from "./pipeline-events.js";
-import { buildBibleContext } from "../jingwei/context/build-bible-context.js";
-import { mergeBibleContextWithExternalContext } from "../jingwei/context/pipeline-bridge.js";
 
 const SEQUENCE_LEVEL_CATEGORIES = new Set([
   "Pacing Monotony", "节奏单调",
@@ -3108,11 +3106,20 @@ ${matrix}`,
 
   private async withBibleContext(bookId: string, chapterNumber: number, externalContext?: string): Promise<string | undefined> {
     try {
-      const context = await buildBibleContext({
+      // 统一使用 buildJingweiContext（story_jingwei_entry 表），替代 legacy buildBibleContext
+      const { buildJingweiContext } = await import("../jingwei/context/build-jingwei-context.js");
+      const result = await buildJingweiContext({
         bookId,
         currentChapter: chapterNumber,
+        mode: "auto",
+        tokenBudget: 15000,
       });
-      return mergeBibleContextWithExternalContext(context, externalContext);
+      if (result.items.length === 0) return externalContext;
+      const jingweiBlock = result.items.map((item) => item.text).join("\n");
+      const formatted = `# Novel Bible Context\n\nmode: auto\ntotalTokens: ${result.totalTokens}\ndroppedIds: ${result.droppedEntryIds.length ? result.droppedEntryIds.join(", ") : "none"}\n\n${jingweiBlock}`;
+      const userContext = externalContext?.trim() ?? "";
+      if (!userContext) return formatted;
+      return `${formatted}\n\n---\n\n${userContext}`;
     } catch (error) {
       this.config.logger?.warn(
         `Novel Bible context unavailable for book ${bookId} chapter ${chapterNumber}: ${error instanceof Error ? error.message : String(error)}`,

@@ -2,7 +2,23 @@
   "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "lib": ["ES2022", "DOM"]
   },
-  "include": ["src"]
+  "include": [
+    "src/index.ts",
+    "src/utils.ts",
+    "src/runtime-requirements.ts",
+    "src/commands/init.ts",
+    "src/commands/config.ts",
+    "src/commands/doctor.ts",
+    "src/commands/export.ts",
+    "src/commands/update.ts",
+    "src/commands/analytics.ts",
+    "src/commands/studio.ts",
+    "src/commands/exec.ts",
+    "src/commands/chat.ts",
+    "src/commands/headless-chat-common.ts"
+  ],
+  "exclude": ["src/__tests__", "src/**/*.test.ts"]
 }

@@ -1,10 +1,10 @@
-import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type CSSProperties } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ComponentType, type CSSProperties } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText, ShieldAlert } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 
 // Lazy-load syntax highlighter to avoid blocking initial render
-const SyntaxHighlighter = lazy(() => import("react-syntax-highlighter"));
+const SyntaxHighlighter = lazy(() => import("react-syntax-highlighter").then((mod) => ({ default: mod.default as unknown as ComponentType<any> })));
 const syntaxStylePromise = import("react-syntax-highlighter/dist/esm/styles/hljs").then((mod) => mod.vs2015);
 
 

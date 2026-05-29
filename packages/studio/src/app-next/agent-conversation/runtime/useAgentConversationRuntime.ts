@@ -10,7 +10,7 @@ import {
 } from "../../backend-contract";
 import type { CanvasContext } from "../../../shared/agent-native-workspace";
 import type { NarratorSessionChatSnapshot } from "../../../shared/session-types";
-import { buildAbortEnvelope, buildAckEnvelope, buildMessageEnvelope, type BuildMessageEnvelopeInput } from "./session-actions";
+import { buildAbortEnvelope, buildAckEnvelope, buildMessageEnvelope, buildContinueEnvelope, buildSafetyDecisionEnvelope, type BuildMessageEnvelopeInput } from "./session-actions";
 import {
   createInitialAgentConversationRuntimeState,
   getResumeFromSeq,
@@ -222,7 +222,7 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
     };
   }, [baseUrl, connectWebSocket, flushPendingClientEnvelopes, sessionId]);
 
-  const sendClientEnvelope = useCallback((envelope: ReturnType<typeof buildMessageEnvelope> | ReturnType<typeof buildAckEnvelope> | ReturnType<typeof buildAbortEnvelope>) => {
+  const sendClientEnvelope = useCallback((envelope: ReturnType<typeof buildMessageEnvelope> | ReturnType<typeof buildAckEnvelope> | ReturnType<typeof buildAbortEnvelope> | ReturnType<typeof buildContinueEnvelope> | ReturnType<typeof buildSafetyDecisionEnvelope>) => {
     const payload = serializeSessionClientEnvelope(envelope);
     const socket = socketRef.current;
     if (!socket) return envelope;
@@ -261,6 +261,16 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
     return sendClientEnvelope(buildAbortEnvelope({ sessionId }));
   }, [sendClientEnvelope, sessionId]);
 
+  const continueSession = useCallback(() => {
+    if (!sessionId) return null;
+    return sendClientEnvelope(buildContinueEnvelope({ sessionId }));
+  }, [sendClientEnvelope, sessionId]);
+
+  const sendSafetyDecision = useCallback((decision: "approve" | "reject") => {
+    if (!sessionId) return null;
+    return sendClientEnvelope(buildSafetyDecisionEnvelope({ sessionId, decision }));
+  }, [sendClientEnvelope, sessionId]);
+
   const clearError = useCallback(() => dispatch({ type: "client:clear-error" }), []);
 
   return useMemo(
@@ -272,10 +282,14 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
       buildMessageEnvelope: (input: BuildMessageEnvelopeInput) => buildMessageEnvelope(input),
       buildAckEnvelope,
       buildAbortEnvelope,
+      buildContinueEnvelope,
+      buildSafetyDecisionEnvelope,
       sendMessage,
       ack,
       abort,
+      continueSession,
+      sendSafetyDecision,
     }),
-    [abort, ack, applyEnvelope, clearError, sendMessage, state],
+    [abort, ack, applyEnvelope, clearError, continueSession, sendMessage, sendSafetyDecision, state],
   );
 }

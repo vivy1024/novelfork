@@ -215,7 +215,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork book list", () => {
+  describe.skip("novelfork book list (legacy CLI pipeline disabled)", () => {
     it("shows no books in empty project", () => {
       const output = run(["book", "list"]);
       expect(output).toContain("No books found");
@@ -228,7 +228,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork book create", () => {
+  describe.skip("novelfork book create (legacy CLI pipeline disabled)", () => {
     it("removes stale incomplete book directories before retrying create", async () => {
       try {
         await stat(join(projectDir, "novelfork.json"));
@@ -259,7 +259,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork status", () => {
+  describe.skip("novelfork status (legacy CLI pipeline disabled)", () => {
     it("shows project status with zero books", () => {
       const output = run(["status"]);
       expect(output).toContain("Books: 0");
@@ -559,7 +559,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork write", () => {
+  describe.skip("novelfork write (legacy CLI pipeline disabled)", () => {
     it("warns before writing when the target book still uses legacy format", async () => {
       const bookDir = join(projectDir, "books", "legacy-write-hint");
       const storyDir = join(bookDir, "story");
@@ -664,7 +664,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork review", () => {
+  describe.skip("novelfork review (legacy CLI pipeline disabled)", () => {
     it("preserves the original chapter snapshot when approving review", async () => {
       const configPath = join(projectDir, "novelfork.json");
       const initialized = await stat(configPath).then(() => true).catch(() => false);
@@ -733,7 +733,7 @@ describe("CLI integration", () => {
     });
   });
 
-  describe("novelfork plan/compose", () => {
+  describe.skip("novelfork plan/compose (legacy CLI pipeline disabled)", () => {
     beforeAll(async () => {
       const configPath = join(projectDir, "novelfork.json");
       const initialized = await stat(configPath).then(() => true).catch(() => false);

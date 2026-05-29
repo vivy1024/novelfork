@@ -1,10 +1,12 @@
 import { accessSync } from "node:fs";
 import { readFile, stat, access } from "node:fs/promises";
 import { join, resolve, dirname } from "node:path";
-import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type PipelineConfig, type LogSink } from "@vivy1024/novelfork-core";
+import { createLLMClient, StateManager, createLogger, createStderrSink, createJsonLineSink, loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, type ProjectConfig, type LogSink } from "@vivy1024/novelfork-core";
 import { formatSqliteMemorySupportWarning } from "./runtime-requirements.js";
 
 export { GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH };
+
+type PipelineConfig = Record<string, unknown>;
 
 let sqliteMemorySupportWarned = false;
 

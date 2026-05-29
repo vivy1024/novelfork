@@ -142,7 +142,50 @@ function acceptResource(
     acceptedAt: timestamp,
   });
   if (!updated) throw new Error(`Writing resource not found: ${resource.id}`);
+
+  // Auto-apply jingwei delta if present (from pipeline.generate_chapter)
+  const jingweiDelta = (resource.metadata as Record<string, unknown> | undefined)?.jingweiDelta;
+  if (jingweiDelta && typeof jingweiDelta === "object") {
+    void applyJingweiDeltaOnAccept(resource.bookId, jingweiDelta as JingweiDeltaForAccept).catch(() => {
+      // Non-fatal: jingwei sync failure should not block accept
+    });
+  }
+
   return updated;
+}
+
+interface JingweiDeltaForAccept {
+  readonly created?: ReadonlyArray<{ title: string; category: string; contentMd: string }>;
+  readonly updated?: ReadonlyArray<{ title: string; category: string; contentMd: string }>;
+}
+
+async function applyJingweiDeltaOnAccept(bookId: string, delta: JingweiDeltaForAccept): Promise<void> {
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const storage = getStorageDatabase();
+
+  const entries = [...(delta.created ?? []), ...(delta.updated ?? [])];
+  if (entries.length === 0) return;
+
+  // Use raw SQL for simplicity — upsert by title within book
+  for (const entry of entries) {
+    if (!entry.title?.trim() || !entry.contentMd?.trim()) continue;
+
+    const existing = storage.sqlite.prepare(
+      `SELECT id FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL LIMIT 1`
+    ).get(bookId, entry.title) as { id: string } | undefined;
+
+    if (existing) {
+      storage.sqlite.prepare(
+        `UPDATE story_jingwei_entry SET content_md = ?, category = ?, updated_at = ? WHERE id = ?`
+      ).run(entry.contentMd, entry.category, new Date().toISOString(), existing.id);
+    } else {
+      const id = `jw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      storage.sqlite.prepare(
+        `INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, category, participates_in_ai, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, 1, 0, ?, ?)`
+      ).run(id, bookId, "auto", entry.title, entry.contentMd, entry.category, new Date().toISOString(), new Date().toISOString());
+    }
+  }
 }
 
 export function assertWritingResourceType(value: string): WritingResourceType {

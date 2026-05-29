@@ -33,28 +33,6 @@ export interface BeatPanelProps {
 }
 
 // ---------------------------------------------------------------------------
-// localStorage helpers
-// ---------------------------------------------------------------------------
-
-function getStorageKey(bookId: string): string {
-  return `novelfork-beat-${bookId}`;
-}
-
-function loadBeatStore(bookId: string): BeatStoreData | null {
-  try {
-    const raw = localStorage.getItem(getStorageKey(bookId));
-    if (raw) return JSON.parse(raw) as BeatStoreData;
-  } catch { /* ignore */ }
-  return null;
-}
-
-function saveBeatStore(bookId: string, data: BeatStoreData): void {
-  localStorage.setItem(getStorageKey(bookId), JSON.stringify(data));
-  // Notify StatusBar to re-read beat progress
-  window.dispatchEvent(new CustomEvent("novelfork-beat-updated"));
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -64,43 +42,68 @@ export function BeatPanel({ bookId }: BeatPanelProps) {
   const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Load saved beat state + available templates
+  // Load beat state from backend API (single source of truth)
   useEffect(() => {
-    const saved = loadBeatStore(bookId);
-    setData(saved);
+    let cancelled = false;
 
-    fetch("/api/presets/beats")
-      .then((r) => {
-        if (!r.ok) throw new Error("API error");
-        return r.json();
-      })
-      .then((res) => {
-        setTemplates(res.beats ?? []);
-        setLoading(false);
-      })
-      .catch(() => {
-        setLoading(false);
-      });
+    async function loadData() {
+      try {
+        // 1. Load available templates
+        const beatsRes = await fetch("/api/presets/beats");
+        if (beatsRes.ok) {
+          const beatsData = await beatsRes.json();
+          if (!cancelled) setTemplates(beatsData.beats ?? []);
+        }
+
+        // 2. Load book's selected beat template from backend
+        const bookRes = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
+        if (bookRes.ok) {
+          const bookData = await bookRes.json();
+          const beatTemplateId = bookData.beatTemplateId;
+          if (beatTemplateId && !cancelled) {
+            // Find the template in the loaded list
+            const beatsData = await (await fetch("/api/presets/beats")).json();
+            const allTemplates: BeatTemplate[] = beatsData.beats ?? [];
+            const selected = allTemplates.find((t) => t.id === beatTemplateId);
+            if (selected) {
+              setData({
+                templateId: selected.id,
+                templateName: selected.name,
+                beats: selected.beats.map((b, i) => ({ ...b, index: i })),
+              });
+            }
+          }
+        }
+      } catch { /* ignore load errors */ }
+      if (!cancelled) setLoading(false);
+    }
+
+    void loadData();
+    return () => { cancelled = true; };
   }, [bookId]);
 
-  // Select a template
+  // Select a template — persist to backend API
   const selectTemplate = useCallback(
-    (template: BeatTemplate) => {
+    async (template: BeatTemplate) => {
       const newData: BeatStoreData = {
         templateId: template.id,
         templateName: template.name,
         beats: template.beats.map((b, i) => ({ ...b, index: i })),
       };
       setData(newData);
-      saveBeatStore(bookId, newData);
       setShowPicker(false);
 
-      // Sync to backend so beat.get_current tool can read it
-      void fetch(`/api/books/${bookId}/beat-template`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ beatTemplateId: template.id }),
-      }).catch(() => { /* best-effort sync */ });
+      // Persist to backend (single source of truth)
+      try {
+        await fetch(`/api/books/${encodeURIComponent(bookId)}/beat-template`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ beatTemplateId: template.id }),
+        });
+      } catch { /* best-effort */ }
+
+      // Notify other components (StatusBar etc.)
+      window.dispatchEvent(new CustomEvent("novelfork-beat-updated", { detail: { bookId, templateName: template.name } }));
     },
     [bookId],
   );
@@ -136,7 +139,7 @@ export function BeatPanel({ bookId }: BeatPanelProps) {
             {templates.map((t) => (
               <button
                 key={t.id}
-                onClick={() => selectTemplate(t)}
+                onClick={() => void selectTemplate(t)}
                 className={cn(
                   "w-full text-left rounded-md border border-border p-2.5 hover:bg-muted/50 transition-colors",
                   data?.templateId === t.id && "border-primary bg-primary/5",
@@ -153,7 +156,7 @@ export function BeatPanel({ bookId }: BeatPanelProps) {
     );
   }
 
-  // Selected template — reference display only (no progress tracking)
+  // Selected template — reference display only
   return (
     <div className="space-y-3">
       {/* Header: template name + switch */}

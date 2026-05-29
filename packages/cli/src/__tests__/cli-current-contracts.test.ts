@@ -24,4 +24,14 @@ describe("CLI current wording contracts", () => {
     expect(source).toContain("ok: major >= 22");
     expect(source).not.toContain('name: "Node.js >= 20"');
   });
+
+  it("keeps legacy CLI commands disabled instead of importing removed core pipeline exports", async () => {
+    const source = await readFile(join(process.cwd(), "src", "index.ts"), "utf-8");
+
+    expect(source).toContain("disabledLegacyCommand(\"book\"");
+    expect(source).toContain(".argument(\"[args...]\"");
+    expect(source).toContain("旧 CLI 管线已停用");
+    expect(source).not.toContain("./commands/book.js");
+    expect(source).not.toContain("./commands/write.js");
+  });
 });

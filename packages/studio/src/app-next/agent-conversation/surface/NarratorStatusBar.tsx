@@ -478,7 +478,7 @@ function WritingPresetQuickSwitch({ bookId }: { bookId: string }) {
     try {
       const [presetsResp, bookResp] = await Promise.all([
         fetch("/api/presets").then((r) => r.ok ? r.json() : { presets: [] }),
-        fetch(`/api/books/${bookId}`).then((r) => r.ok ? r.json() : {}),
+        fetch(`/api/books/${bookId}`).then((r) => r.ok ? r.json() as Promise<{ enabledPresetIds?: string[] }> : Promise.resolve({} as { enabledPresetIds?: string[] })),
       ]);
       setPresets((presetsResp.presets ?? []).slice(0, 20));
       setEnabledIds(bookResp.enabledPresetIds ?? []);

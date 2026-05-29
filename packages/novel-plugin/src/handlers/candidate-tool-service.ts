@@ -187,6 +187,9 @@ async function runPostWriteComplianceCheck(
 
 function stringInput(value: unknown, field: string): string {
   if (typeof value !== "string" || value.trim().length === 0) {
+    if (field === "content") {
+      throw new Error("candidate.create_chapter 只保存已有正文，content 不能为空；完整写下一章请调用 pipeline.generate_chapter。");
+    }
     throw new Error(`candidate.create_chapter input must include a non-empty ${field}.`);
   }
   return value.trim();

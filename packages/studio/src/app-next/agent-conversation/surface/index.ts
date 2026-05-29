@@ -1,3 +1,4 @@
+export * from "./CompactProgressIndicator";
 export * from "./Composer";
 export * from "./ConfirmationGate";
 export * from "./ConversationStatusBar";
@@ -8,6 +9,7 @@ export * from "./MessageStream";
 export * from "./NarratorStatusBar";
 export * from "./PermissionRequestCard";
 export * from "./PlanModeBar";
+export * from "./SafetyPauseCard";
 export * from "./SessionDetailPanel";
 export * from "./ToolCallCard";
 export * from "./UserQuestionGate";

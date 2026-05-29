@@ -61,6 +61,11 @@ const TOOL_READ: RuntimeCommandPermissionImpact = {
   description: "读取工具、MCP 或子代理 registry，不直接执行工具。",
 };
 
+const NOVEL_WRITE: RuntimeCommandPermissionImpact = {
+  mode: "novel-write",
+  requiresConfirmation: true,
+  description: "生成或修改小说章节候选，需要写入确认链路保护。",
+};
 
 export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
   {
@@ -192,6 +197,21 @@ export const RUNTIME_COMMAND_REGISTRY: readonly RuntimeCommandDefinition[] = [
     runtimeHandler: "session.fork",
     status: "partial",
     source: "claude-adapter",
+  },
+  {
+    id: "/novel:write-next",
+    aliases: ["/write-next"],
+    title: "写下一章",
+    usage: "/novel:write-next [instructions]",
+    description: "按小说写作主链路生成下一章候选：pipeline.generate_chapter 为正式生成路径，candidate.create_chapter 仅保存已有正文。",
+    scope: "novel",
+    inputSchema: TEXT_ARGS,
+    permissionImpact: NOVEL_WRITE,
+    runtimeHandler: "workflow.recipe.write-next",
+    status: "partial",
+    source: "novel-agent-pack",
+    toolDependencies: ["pipeline.generate_chapter", "candidate.create_chapter", "guided.enter", "guided.exit"],
+    gaps: "Studio workflow recipe 已登记；CLI 仅展示 canonical runtime command，不直接执行旧写作管线。",
   },
 ] as const;
 

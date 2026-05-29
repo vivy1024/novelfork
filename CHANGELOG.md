@@ -4,6 +4,45 @@
 
 ## Unreleased
 
+## v1.1.0 (2026-05-29)
+
+### 🏗️ 约束驱动写作系统 v2
+
+- **工具精简**：从 37 个小说工具精简到 10 个核心工具（cockpit.snapshot, jingwei.read, jingwei.write, pgi.ask, scene.spec, pipeline.write, chapter.read, chapter.audit, rewrite.segment, hooks.manage）。旧工具保留但默认隐藏。
+- **管线精简**：写作管线从 5 次 LLM 调用降到 2 次（Writer + AuditRevise）。新增 `pipeline.write` 接受结构化 Scene Spec。
+- **Scene Spec**：新增 `scene.spec` 工具，生成结构化写作蓝图（角色/地点/冲突/情绪/结果），是写章节的硬前置条件（H4）。支持 LLM 智能规划 + fallback。
+- **硬约束体系**：H1 Token 天花板、H2 Canon 不可变、H3 候选区边界、H4 Scene Spec 完整性、H5 用户确认门、H6 经纬工具写入、H7 POV 检测。
+- **Agent prompts PEV 流程**：所有 Agent 角色切换到 7 步约束流程。
+
+### 📚 经纬系统大修
+
+- **核心包 + 目录化读取**：默认 4000 tokens 核心包 + 14 个标准分类目录，模型按需分页读取，不再全量注入。
+- **Canon/Dynamic/Reference 三层分离**：Canon 条目不可变（只能追加），Dynamic 每章更新，Reference 按需查阅。
+- **统一读取入口**：`jingwei.read(scope=brief/category/search)` 替代 4 个旧工具。
+- **删除能力**：`jingwei.write(action=delete)` 支持删除条目（Canon 不可删）。
+- **分类导入**：自动分类 + 摘要生成 + 导入报告。
+- **summary_md 字段**：摘要/详情分离，模型默认读摘要。
+
+### ⚡ Runtime 稳定性
+
+- **ContextBudgetManager**：session 级 token 预算管理，工具输出按类型动态截断（经纬 6000 tokens，其余 2000）。
+- **ProviderHealthManager**：per-provider 健康追踪、连续失败熔断、9 种错误分类、用户可读错误提示。
+- **buildAgentContext 瘦身**：从最高 80k tokens 降到 8-12k（核心包 + briefing + 摘要）。移除前一章全文自动注入。
+- **错误分类集成**：generate 失败时返回具体错误类型和用户可读描述。
+
+### 🔧 工具增强
+
+- **presets.check_compliance**：扩展到 4 个维度（AI 味、文学质量、逻辑连续性、风格禁忌）。
+- **health.read_summary**：综合健康评分（进度/伏笔/经纬覆盖度），不再只返回原始 snapshot。
+- **工具可见性分层**：写作 session 默认只暴露 ~18 个工具（10 核心 + 8 通用），schema token 消耗从 ~20k 降到 ~6k。
+
+### 🔒 安全修复
+
+- Canon layer 降级攻击防护（禁止修改 canon 条目的 layer）。
+- Canon 检查 normalize 一致性修复（之前形同虚设）。
+- 移除 fuzzy bookId 匹配（防止写入错误书籍）。
+- 无效 action 值显式报错（不再静默 upsert）。
+
 ## v1.0.6 (2026-05-19)
 
 ### ✨ 多模型适配器 + Codex Fast Mode
