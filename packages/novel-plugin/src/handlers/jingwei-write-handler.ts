@@ -142,6 +142,11 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     return { ok: false, error: "invalid-input", summary: "创建条目时 contentMd 不能为空。" };
   }
 
+  // Validate action value
+  if (input.action && !["create", "update", "delete"].includes(input.action)) {
+    return { ok: false, error: "invalid-action", summary: `无效的 action 值「${input.action}」。可选值：create | update | delete。` };
+  }
+
   const rawCategory = String(input.category || "").trim();
   const layer: JingweiLayer = (input.layer === "canon" || input.layer === "dynamic" || input.layer === "reference")
     ? input.layer
@@ -198,8 +203,17 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
       // Canon write protection: existing canon entries can only be appended to
       if (existingLayer === "canon") {
+        // Critical fix: Canon 条目的 layer 不能被降级（防止先降级再删除的绕过攻击）
+        if (layer !== "canon") {
+          return {
+            ok: false,
+            error: "canon-immutable",
+            summary: "Canon 条目的 layer 不能被修改。如需废弃，请联系管理员。",
+          };
+        }
         const oldContent = existing.content_md;
-        if (!contentMd.startsWith(oldContent)) {
+        // 防止空 content_md 的 canon 条目被绕过（startsWith("") 总是 true）
+        if (oldContent && oldContent.length > 0 && !contentMd.startsWith(oldContent)) {
           return {
             ok: false,
             error: "canon-immutable",
