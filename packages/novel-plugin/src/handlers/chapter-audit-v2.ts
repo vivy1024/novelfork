@@ -67,9 +67,9 @@ function normalizeForSearch(text: string): string {
 function checkCanonViolations(content: string, canonEntries: AuditV2Input["canonEntries"]): AuditV2Violation[] {
   if (!canonEntries || canonEntries.length === 0) return [];
   const violations: AuditV2Violation[] = [];
+  const normalizedContent = normalizeForSearch(content);
 
   for (const entry of canonEntries) {
-    // 提取 canon 中的关键事实（以"不"/"禁止"/"必须"/"只能"开头的句子）
     const facts = entry.contentMd.split(/[。！？\n]/).filter((s) => /^(不|禁止|必须|只能|绝对|永远)/.test(s.trim()));
     for (const fact of facts) {
       const trimmed = fact.trim();
@@ -80,18 +80,16 @@ function checkCanonViolations(content: string, canonEntries: AuditV2Input["canon
         if (forbidden.length < 2) continue;
 
         const normalizedForbidden = normalizeForSearch(forbidden);
-        const contentLower = content.toLowerCase();
-        const idx = contentLower.indexOf(normalizedForbidden);
+        // 使用统一的 normalizedContent（已去空格）进行搜索
+        const idx = normalizedContent.indexOf(normalizedForbidden);
         if (idx === -1) continue;
 
-        // 上下文窗口检查：关键词周围 30 字符内是否有否定词（避免"回忆起禁止飞行的规则"误报）
-        const windowStart = Math.max(0, idx - 30);
-        const windowEnd = Math.min(content.length, idx + normalizedForbidden.length + 30);
-        const window = content.slice(windowStart, windowEnd).toLowerCase();
-        const negationInWindow = /禁止|不能|不可|不允许|不得|回忆|想起|提到|说过|规则|规定|法则/.test(window.slice(0, idx - windowStart));
+        // 上下文窗口检查：关键词周围 40 字符内是否有否定/引用词
+        const windowStart = Math.max(0, idx - 40);
+        const window = normalizedContent.slice(windowStart, idx);
+        const negationInWindow = /禁止|不能|不可|不允许|不得|回忆|想起|提到|说过|规则|规定|法则|曾经/.test(window);
 
         if (negationInWindow) {
-          // 上下文中有否定/引用词，降级为疑似违反
           violations.push({
             ruleId: "H2",
             severity: "soft",
