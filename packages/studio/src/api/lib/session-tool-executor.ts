@@ -684,12 +684,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleSceneSpec(input as any);
         return { ...result, renderer: definition.renderer };
       };
-    case "scene.spec":
-      return async ({ input, definition }) => {
-        const { handleSceneSpec } = await import("@vivy1024/novelfork-novel-plugin");
-        const result = await handleSceneSpec(input as any);
-        return { ...result, renderer: definition.renderer };
-      };
     case "pipeline.write":
       return async ({ input, definition }) => {
         const { executePipelineWrite } = await import("@vivy1024/novelfork-novel-plugin/handlers");

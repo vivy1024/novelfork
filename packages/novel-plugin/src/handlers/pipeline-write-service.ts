@@ -20,6 +20,7 @@ import { createWritingResourceService } from "../engine/writing-resource/service
 import { randomUUID } from "node:crypto";
 import type { CanvasArtifact } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import type { SceneSpec } from "./scene-spec-handler.js";
+import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 
 export interface PipelineWriteInput {
   readonly bookId: string;
@@ -131,7 +132,19 @@ export async function executePipelineWrite(
 
     logger?.info(`[pipeline.write] Writer done: "${writeOutput.title}" ${writeOutput.wordCount} words`);
 
-    // 3. AuditRevise — audit + auto-fix in one step
+    // 2.5. Pre-audit: zero-cost hard constraint check (H2 canon + H7 POV + soft constraints)
+    const preAudit = handleChapterAuditV2({
+      bookId,
+      chapterNumber,
+      content: writeOutput.content,
+      sceneSpec,
+      wordTarget: sceneSpec.wordTarget ?? book.chapterWordCount,
+    });
+    if (!preAudit.passed && preAudit.hardViolations.length > 0) {
+      logger?.warn(`[pipeline.write] Pre-audit hard violations: ${preAudit.hardViolations.map((v) => v.ruleId).join(", ")}`);
+    }
+
+    // 3. AuditRevise — LLM-based audit + auto-fix
     const auditorCtx = buildAgentCtx(options, "auditor", bookId);
     const auditor = new ContinuityAuditor(auditorCtx);
     let auditResult = await auditor.auditChapter(
