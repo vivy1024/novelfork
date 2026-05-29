@@ -535,13 +535,47 @@ const UNAVAILABLE_SERVICE_TOOLS = new Set([
   "health.read_summary",
 ]);
 
-export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string } }): SessionToolDefinition[] {
+/**
+ * v1 工具已被 v2 替代，默认不暴露给模型。
+ * 用户可通过 showDeprecated=true 或设置中"显示全部工具"恢复。
+ */
+const DEPRECATED_V1_TOOLS = new Set([
+  // 被 jingwei.read(scope=brief/category/search) 替代
+  "jingwei.read_brief",
+  "jingwei.read_category",
+  "jingwei.search",
+  "jingwei.read_context",
+  // 被 jingwei.write 替代
+  "jingwei.upsert_entry",
+  // 被 pgi.ask 替代
+  "pgi.generate_questions",
+  "pgi.record_answers",
+  "pgi.format_answers_for_prompt",
+  // 被 pipeline.write 替代
+  "pipeline.generate_chapter",
+  // 被 cockpit.snapshot 替代（已在 UNAVAILABLE 中，双重保险）
+  "cockpit.get_snapshot",
+  "cockpit.list_open_hooks",
+  "cockpit.list_recent_candidates",
+  // 写作时不需要的配置工具
+  "questionnaire.list_templates",
+  "questionnaire.start",
+  "questionnaire.suggest_answer",
+  "questionnaire.submit_response",
+]);
+
+export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {
   let tools = getSessionToolDefinitions()
     .filter((tool) => tool.enabledForModes.includes(permissionMode))
     // Do not expose service-backed tools until their services are wired into the session executor.
     // Exposing them causes the model to repeatedly call tools that can only return configuration errors.
     .filter((tool) => !UNAVAILABLE_SERVICE_TOOLS.has(tool.name))
     .map(cloneDefinition);
+
+  // v2 工具可见性分层：默认隐藏被 v2 替代的旧工具
+  if (!options?.showDeprecated) {
+    tools = tools.filter((tool) => !DEPRECATED_V1_TOOLS.has(tool.name));
+  }
 
   // 按 projectType 过滤 scope（向后兼容：不传或 "novel" 时返回所有工具）
   const projectType = options?.projectType ?? options?.sessionConfig?.projectType;
