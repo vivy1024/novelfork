@@ -177,10 +177,19 @@ const MAX_TOOL_RESULT_CHARS = 30000;
 const TRUNCATE_HEAD = 20000;
 const TRUNCATE_TAIL = 5000;
 const TOOL_OUTPUT_TOKEN_BUDGET = 2000;
+const JINGWEI_TOOL_TOKEN_BUDGET = 6000;
 
-function truncateToolResult(content: string): string {
+function getToolTokenBudget(toolName?: string): number {
+  if (toolName && (toolName.startsWith("jingwei.") || toolName === "cockpit.snapshot")) {
+    return JINGWEI_TOOL_TOKEN_BUDGET;
+  }
+  return TOOL_OUTPUT_TOKEN_BUDGET;
+}
+
+function truncateToolResult(content: string, toolName?: string): string {
+  const tokenBudget = getToolTokenBudget(toolName);
   // Phase 1: token-based truncation (from ContextBudgetManager)
-  const { text: tokenTruncated, truncated: wasTruncated } = budgetTruncateToolOutput(content, TOOL_OUTPUT_TOKEN_BUDGET);
+  const { text: tokenTruncated, truncated: wasTruncated } = budgetTruncateToolOutput(content, tokenBudget);
   const effective = wasTruncated ? tokenTruncated : content;
 
   // Phase 2: character-based safety net
@@ -243,7 +252,7 @@ function toolResultContent(result: SessionToolExecutionResult, toolName?: string
       if (terms.running?.length) content += "\n\n运行中: " + terms.running.map(t => `${t.name}(${t.id})`).join(", ");
     }
   }
-  return content ? truncateToolResult(`${content}\n\n${instruction}`) : instruction;
+  return content ? truncateToolResult(`${content}\n\n${instruction}`, toolName) : instruction;
 }
 
 function createDuplicateToolResult(firstResult: SessionToolExecutionResult): SessionToolExecutionResult {

@@ -67,13 +67,14 @@ export async function readJingweiCategory(input: ReadJingweiCategoryInput): Prom
   const detailLevel = input.detailLevel ?? "summary";
   const sceneText = input.sceneText ?? "";
 
+  const entryById = new Map(entries.map((entry) => [entry.id, entry]));
   const allItems = entries.map((entry) => {
     const section = sectionById.get(entry.sectionId);
     if (!section) return null;
     return toJingweiReadableItem(entry, section, visibilitySource(entry), detailLevel);
   }).filter((item): item is NonNullable<typeof item> => item !== null)
     .filter((item) => item.category === category)
-    .sort((a, b) => matchBoost(entries.find((entry) => entry.id === b.entryId)!, sceneText) - matchBoost(entries.find((entry) => entry.id === a.entryId)!, sceneText) || b.priority - a.priority || b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title));
+    .sort((a, b) => matchBoost(entryById.get(b.entryId)!, sceneText) - matchBoost(entryById.get(a.entryId)!, sceneText) || b.priority - a.priority || b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title));
 
   const budgeted = input.tokenBudget ? applyTokenBudget(allItems, input.tokenBudget) : { items: allItems, estimatedTokens: allItems.reduce((sum, item) => sum + item.estimatedTokens, 0), droppedEntryIds: [] };
   const paged = paginateItems(budgeted.items, input.page, input.limit);
