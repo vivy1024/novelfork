@@ -115,18 +115,11 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     return { ok: false, error: "invalid-input", summary: "title 不能为空。" };
   }
 
-  // Validate bookId
+  // Validate bookId — strict match only, no fuzzy matching (security)
   const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
   if (!bookExists) {
-    const fuzzyMatch = storage.sqlite.prepare(
-      `SELECT id FROM book WHERE ? LIKE '%' || id || '%' OR id LIKE '%' || ? || '%' ORDER BY length(id) DESC LIMIT 1`
-    ).get(bookId, bookId) as { id: string } | undefined;
-    if (fuzzyMatch) {
-      bookId = fuzzyMatch.id;
-    } else {
-      const available = (storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{ id: string }>).map(r => r.id).join(", ");
-      return { ok: false, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。可用的书籍：${available}` };
-    }
+    const available = (storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{ id: string }>).map(r => r.id).join(", ");
+    return { ok: false, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。可用的书籍：${available}` };
   }
 
   try {

@@ -67,20 +67,39 @@ function normalizeForSearch(text: string): string {
 function checkCanonViolations(content: string, canonEntries: AuditV2Input["canonEntries"]): AuditV2Violation[] {
   if (!canonEntries || canonEntries.length === 0) return [];
   const violations: AuditV2Violation[] = [];
-  const normalizedContent = normalizeForSearch(content);
 
   for (const entry of canonEntries) {
-    // 提取 canon 中的关键事实（简单启发式：以"不"/"禁止"/"必须"/"只能"开头的句子）
+    // 提取 canon 中的关键事实（以"不"/"禁止"/"必须"/"只能"开头的句子）
     const facts = entry.contentMd.split(/[。！？\n]/).filter((s) => /^(不|禁止|必须|只能|绝对|永远)/.test(s.trim()));
     for (const fact of facts) {
       const trimmed = fact.trim();
       if (trimmed.length < 4) continue;
 
-      // 检查是否有明显违反（简单的否定检测）
       if (trimmed.startsWith("不") || trimmed.startsWith("禁止") || trimmed.startsWith("不能") || trimmed.startsWith("不可")) {
-        // 提取被禁止的行为关键词
         const forbidden = trimmed.replace(/^(不得|不准|不能|不可以|不允许|不可|禁止|不)/, "").trim().slice(0, 20);
-        if (forbidden.length >= 2 && normalizedContent.includes(normalizeForSearch(forbidden))) {
+        if (forbidden.length < 2) continue;
+
+        const normalizedForbidden = normalizeForSearch(forbidden);
+        const contentLower = content.toLowerCase();
+        const idx = contentLower.indexOf(normalizedForbidden);
+        if (idx === -1) continue;
+
+        // 上下文窗口检查：关键词周围 30 字符内是否有否定词（避免"回忆起禁止飞行的规则"误报）
+        const windowStart = Math.max(0, idx - 30);
+        const windowEnd = Math.min(content.length, idx + normalizedForbidden.length + 30);
+        const window = content.slice(windowStart, windowEnd).toLowerCase();
+        const negationInWindow = /禁止|不能|不可|不允许|不得|回忆|想起|提到|说过|规则|规定|法则/.test(window.slice(0, idx - windowStart));
+
+        if (negationInWindow) {
+          // 上下文中有否定/引用词，降级为疑似违反
+          violations.push({
+            ruleId: "H2",
+            severity: "soft",
+            location: `Canon「${entry.title}」→ 疑似`,
+            description: `疑似违反 Canon 规则：「${trimmed}」（上下文含否定/引用词，可能是角色讨论规则而非实际违反）`,
+            suggestion: `请人工确认正文是否真的违反了「${entry.title}」中的规则。`,
+          });
+        } else {
           violations.push({
             ruleId: "H2",
             severity: "hard",
