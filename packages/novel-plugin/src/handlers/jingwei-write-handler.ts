@@ -13,8 +13,9 @@ import type { JingweiLayer } from "../engine/jingwei/types.js";
 
 export interface JingweiWriteInput {
   bookId: string;
+  action?: "create" | "update" | "delete";
   title: string;
-  contentMd: string;
+  contentMd?: string;
   summaryMd?: string;
   category?: string;
   layer?: JingweiLayer;
@@ -22,18 +23,19 @@ export interface JingweiWriteInput {
   tags?: string[];
   visibility?: string;
   relatedEntryIds?: string[];
+  entryId?: string;
 }
 
 export interface JingweiWriteSuccess {
   ok: true;
   summary: string;
   data: {
-    action: "created" | "updated";
+    action: "created" | "updated" | "deleted";
     entryId: string;
     bookId: string;
-    category: string;
-    title: string;
-    layer: JingweiLayer;
+    category?: string;
+    title?: string;
+    layer?: JingweiLayer;
   };
 }
 
@@ -94,7 +96,52 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   // Parse & validate input
   let bookId = String(input.bookId);
   const title = String(input.title || "").trim();
+  const action = input.action === "delete" ? "delete" : input.action === "create" ? "create" : input.action === "update" ? "update" : undefined;
+
+  if (!title && !input.entryId) {
+    return { ok: false, error: "invalid-input", summary: "title 或 entryId 不能都为空。" };
+  }
+
+  // Validate bookId — strict match only
+  const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
+  if (!bookExists) {
+    const available = (storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{ id: string }>).map(r => r.id).join(", ");
+    return { ok: false, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。可用的书籍：${available}` };
+  }
+
+  // ─── DELETE action ───
+  if (action === "delete") {
+    try {
+      // Find entry by ID or title
+      const entryId = input.entryId ? String(input.entryId) : undefined;
+      let targetId: string | undefined;
+
+      if (entryId) {
+        const row = storage.sqlite.prepare(`SELECT id, layer FROM story_jingwei_entry WHERE book_id = ? AND id = ? AND deleted_at IS NULL`).get(bookId, entryId) as { id: string; layer?: string } | undefined;
+        if (!row) return { ok: false, error: "entry-not-found", summary: `条目 ID "${entryId}" 不存在。` };
+        if (row.layer === "canon") return { ok: false, error: "canon-immutable", summary: "Canon 条目不能删除。如需废弃，请将其 layer 改为 reference。" };
+        targetId = row.id;
+      } else {
+        const row = storage.sqlite.prepare(`SELECT id, layer FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`).get(bookId, title) as { id: string; layer?: string } | undefined;
+        if (!row) return { ok: false, error: "entry-not-found", summary: `条目「${title}」不存在。` };
+        if (row.layer === "canon") return { ok: false, error: "canon-immutable", summary: `Canon 条目「${title}」不能删除。如需废弃，请将其 layer 改为 reference。` };
+        targetId = row.id;
+      }
+
+      const now = Date.now();
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET deleted_at = ?, updated_at = ? WHERE id = ?`).run(now, now, targetId);
+      return { ok: true, summary: `已删除经纬条目「${title || targetId}」。`, data: { action: "deleted", entryId: targetId, bookId } };
+    } catch (error) {
+      return { ok: false, error: "delete-failed", summary: `删除失败：${error instanceof Error ? error.message : String(error)}` };
+    }
+  }
+
+  // ─── CREATE / UPDATE action ───
   const contentMd = String(input.contentMd || "");
+  if (!contentMd && action === "create") {
+    return { ok: false, error: "invalid-input", summary: "创建条目时 contentMd 不能为空。" };
+  }
+
   const rawCategory = String(input.category || "").trim();
   const layer: JingweiLayer = (input.layer === "canon" || input.layer === "dynamic" || input.layer === "reference")
     ? input.layer
@@ -113,13 +160,6 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
   if (!title) {
     return { ok: false, error: "invalid-input", summary: "title 不能为空。" };
-  }
-
-  // Validate bookId — strict match only, no fuzzy matching (security)
-  const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
-  if (!bookExists) {
-    const available = (storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{ id: string }>).map(r => r.id).join(", ");
-    return { ok: false, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。可用的书籍：${available}` };
   }
 
   try {

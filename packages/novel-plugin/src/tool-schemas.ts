@@ -345,8 +345,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      action: stringSchema("操作类型：plant | payoff | check_due | list。"),
-      hookId: stringSchema("伏笔 ID（payoff 时需要）。"),
+      action: stringSchema("操作类型：plant | payoff | check_due | list | delete。"),
+      hookId: stringSchema("伏笔 ID（payoff/delete 时需要）。"),
       chapterNumber: numberSchema("章节号（plant/check_due 时使用）。"),
       description: stringSchema("伏笔描述（plant 时需要）。"),
     },
@@ -474,8 +474,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("操作类型：create（创建）| update（更新）| delete（删除）。默认根据标题自动判断创建或更新。"),
       title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
-      contentMd: stringSchema("条目内容（Markdown 格式）。"),
+      contentMd: stringSchema("条目内容（Markdown 格式）。delete 时不需要。"),
       summaryMd: stringSchema("条目短摘要（可选；未提供时自动截断生成）。"),
       category: stringSchema("经纬类别。"),
       layer: stringSchema("数据层：canon（不可变真相）| dynamic（每章可更新）| reference（按需查阅）。默认 dynamic。"),
@@ -483,8 +484,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       tags: arraySchema("标签列表。"),
       visibility: stringSchema("可见性规则：global | tracked | nested。默认 tracked。"),
       relatedEntryIds: arraySchema("关联条目 ID 列表。"),
+      entryId: stringSchema("条目 ID（delete 时可用，按 ID 精确删除）。"),
     },
-    required: ["bookId", "title", "contentMd"],
+    required: ["bookId", "title"],
     additionalProperties: false,
   },
   "scene.spec": {
