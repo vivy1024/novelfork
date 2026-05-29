@@ -388,7 +388,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.write",
-    description: "经纬写入工具。支持 layer 分层：canon（不可变真相，只能追加）、dynamic（每章可更新）、reference（参考资料）。替代旧的 jingwei.upsert_entry。",
+    description: "经纬写入/删除工具。action=create/update 创建或更新条目；action=delete 删除条目（Canon 条目不可删除）。支持 layer 分层：canon（不可变）、dynamic（默认）、reference。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
