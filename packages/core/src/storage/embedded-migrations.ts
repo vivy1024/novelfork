@@ -826,4 +826,7 @@ ALTER TABLE "session_message" ADD COLUMN "collapsed" INTEGER NOT NULL DEFAULT 0;
   { name: "0019_jingwei_summary_md.sql", sql: `-- Migration: Add summary_md to story_jingwei_entry for indexed Jingwei reading
 ALTER TABLE "story_jingwei_entry" ADD COLUMN "summary_md" TEXT;
 ` },
+  { name: "0020_jingwei_layer.sql", sql: `-- Migration: Add layer field to story_jingwei_entry for Canon/Dynamic/Reference separation
+ALTER TABLE "story_jingwei_entry" ADD COLUMN "layer" TEXT NOT NULL DEFAULT 'dynamic';
+` },
 ];
