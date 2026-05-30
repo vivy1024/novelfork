@@ -424,24 +424,29 @@ app.post("/:id/truncate", async (c) => {
     return c.json({ error: "Session not found" }, 404);
   }
 
-  let cutIndex = -1;
+  let cutSeq = -1;
   if (body.messageId) {
-    cutIndex = snapshot.messages.findIndex((m) => m.id === body.messageId);
+    const msg = snapshot.messages.find((m) => m.id === body.messageId);
+    cutSeq = msg?.seq ?? -1;
   } else if (typeof body.seq === "number") {
-    cutIndex = snapshot.messages.findIndex((m) => (m.seq ?? 0) >= body.seq!);
+    cutSeq = body.seq;
   }
 
-  if (cutIndex < 0) {
+  if (cutSeq < 0) {
     return c.json({ error: "Message not found" }, 404);
   }
 
-  // Keep messages before the specified one (exclusive)
-  const kept = snapshot.messages.slice(0, cutIndex);
-  const result = await replaceSessionChatState(id, kept);
-  if (!result) {
-    return c.json({ error: "Failed to truncate" }, 500);
+  // Mark-based truncation: set contextCutoffSeq instead of deleting messages.
+  // Messages are preserved in history for viewing but excluded from model context.
+  const session = await getSessionById(id);
+  if (!session) {
+    return c.json({ error: "Session not found" }, 404);
   }
-  return c.json({ ok: true, remainingMessages: kept.length });
+
+  const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: cutSeq };
+  await updateSession(id, { sessionConfig: updatedConfig });
+
+  return c.json({ ok: true, contextCutoffSeq: cutSeq, totalMessages: snapshot.messages.length });
 });
 
 app.delete("/:id/messages/:messageId", async (c) => {
