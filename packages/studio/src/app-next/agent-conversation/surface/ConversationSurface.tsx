@@ -750,10 +750,10 @@ export function ConversationSurface({
         onCompact={onCompactSession ? () => { onCompactSession("压缩上下文到目标阈值").catch((e) => { alert(`压缩失败: ${e instanceof Error ? e.message : String(e)}`); }); } : undefined}
         onReset={() => {
           if (!window.confirm("确定要清空上下文吗？Agent 将忘记之前的对话内容，但聊天记录仍然保留可查看。")) return;
-          fetch(`/api/sessions/${encodeURIComponent(sessionId ?? "")}/chat/state`, {
-            method: "PUT",
+          fetch(`/api/sessions/${encodeURIComponent(sessionId ?? "")}/truncate`, {
+            method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages: [] }),
+            body: JSON.stringify({ seq: 999999999 }),
           }).then(res => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();
