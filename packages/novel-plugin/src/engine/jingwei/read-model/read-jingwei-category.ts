@@ -9,7 +9,7 @@ import type {
   JingweiReadCategoryResult,
   StoryJingweiEntryRecord,
 } from "../types.js";
-import { isJingweiReadCategory } from "./category-map.js";
+import { isJingweiReadCategory, resolveCategory, JINGWEI_READ_CATEGORIES } from "./category-map.js";
 import { toJingweiReadableItem } from "./entry-summary.js";
 import { applyTokenBudget, paginateItems } from "./token-budget.js";
 
@@ -50,9 +50,9 @@ function matchBoost(entry: StoryJingweiEntryRecord, sceneText: string): number {
 }
 
 export async function readJingweiCategory(input: ReadJingweiCategoryInput): Promise<JingweiReadCategoryResult> {
-  const category = input.category;
-  if (!isJingweiReadCategory(category)) {
-    throw new Error(`Invalid Jingwei category: ${category}`);
+  const category = isJingweiReadCategory(input.category) ? resolveCategory(input.category as string) : null;
+  if (!category) {
+    throw new Error(`Invalid Jingwei category: ${input.category}. Valid categories: ${JINGWEI_READ_CATEGORIES.join(", ")}. Aliases like "arc", "outline", "worldview" are also accepted.`);
   }
 
   const storage = input.storage ?? getStorageDatabase();
