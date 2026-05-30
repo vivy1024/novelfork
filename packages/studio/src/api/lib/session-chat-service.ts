@@ -1097,7 +1097,12 @@ async function appendModelContinuationAfterToolDecision(
     } catch { /* non-fatal */ }
     const canvasContext = latestCanvasContextFromMessages(loaded.state.messages);
     const maxSteps = await resolveMaxTurnSteps();
-    const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, loaded.session.id);
+    // Apply context cutoff: exclude messages at or before the cutoff seq from model context
+    const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;
+    const contextMessages = contextCutoffSeq > 0
+      ? loaded.state.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
+      : loaded.state.messages;
+    const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, loaded.session.id);
     const continuationRoutinePrompts = await loadRoutineGlobalPrompts();
     const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
@@ -2044,7 +2049,12 @@ export async function handleSessionChatTransportMessage(
     const routinePrompts = await loadRoutineGlobalPrompts();
     const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${routinePrompts}`;
     const maxSteps = await resolveMaxTurnSteps();
-    const { items: compactedMessages } = await maybeAutoCompact(loaded.state.messages, loaded.state, sessionId);
+    // Apply context cutoff: exclude messages at or before the cutoff seq from model context
+    const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;
+    const contextMessages = contextCutoffSeq > 0
+      ? loaded.state.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
+      : loaded.state.messages;
+    const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
     // Fix: firstTokenTimeout + silentToolCallThreshold — 从用户配置读取运行时控制
     let combinedSignal: AbortSignal = abortController.signal;

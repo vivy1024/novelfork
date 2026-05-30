@@ -143,6 +143,8 @@ export interface SessionConfig {
   tokenConsumptionWarnRatio?: number;
   /** Max consecutive tool failures before force-stopping turn (default 5) */
   maxConsecutiveFailures?: number;
+  /** Context cutoff: messages with seq <= this value are excluded from model context but preserved in history for viewing */
+  contextCutoffSeq?: number;
 }
 
 export type NarratorSessionKind = "standalone" | "chapter";
