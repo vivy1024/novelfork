@@ -57,7 +57,6 @@ export const JINGWEI_CATEGORY_RECOMMENDED_WHEN: Record<JingweiReadCategory, stri
 const CATEGORY_ALIASES: Record<string, JingweiReadCategory> = {
   premise: "premise",
   logline: "premise",
-  hook: "premise",
   "world-model": "world-model",
   world: "world-model",
   setting: "world-model",
@@ -67,6 +66,8 @@ const CATEGORY_ALIASES: Record<string, JingweiReadCategory> = {
   character: "characters",
   characters: "characters",
   role: "characters",
+  arc: "characters",
+  "character-arc": "characters",
   relationship: "relationships",
   relationships: "relationships",
   faction: "factions",
@@ -90,6 +91,8 @@ const CATEGORY_ALIASES: Record<string, JingweiReadCategory> = {
   foreshadowing: "foreshadowing",
   hookline: "foreshadowing",
   clue: "foreshadowing",
+  "pending-hook": "foreshadowing",
+  hook: "foreshadowing",
   conflict: "conflicts",
   conflicts: "conflicts",
   prop: "props",
@@ -100,6 +103,12 @@ const CATEGORY_ALIASES: Record<string, JingweiReadCategory> = {
   rules: "rules",
   taboo: "rules",
   style: "rules",
+  outline: "reference",
+  plot: "reference",
+  worldview: "world-model",
+  "core-memory": "premise",
+  "current-focus": "reference",
+  focus: "reference",
   reference: "reference",
   misc: "reference",
   unclassified: "unclassified",
@@ -116,7 +125,18 @@ function lookupCategory(value: unknown): JingweiReadCategory | undefined {
 }
 
 export function isJingweiReadCategory(value: unknown): value is JingweiReadCategory {
-  return typeof value === "string" && JINGWEI_READ_CATEGORIES.includes(value as JingweiReadCategory);
+  if (typeof value !== "string") return false;
+  // Accept both canonical category names and aliases
+  return JINGWEI_READ_CATEGORIES.includes(value as JingweiReadCategory) || Boolean(CATEGORY_ALIASES[value.trim().toLowerCase()]);
+}
+
+/**
+ * Resolve a category input (may be alias) to canonical JingweiReadCategory.
+ * Returns the canonical category or "reference" as fallback.
+ */
+export function resolveCategory(value: string): JingweiReadCategory {
+  if (JINGWEI_READ_CATEGORIES.includes(value as JingweiReadCategory)) return value as JingweiReadCategory;
+  return CATEGORY_ALIASES[value.trim().toLowerCase()] ?? "reference";
 }
 
 export function resolveJingweiReadCategory(
