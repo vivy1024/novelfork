@@ -2072,12 +2072,24 @@ export async function handleSessionChatTransportMessage(
       }
     } catch { /* config load failure — use plain abort signal */ }
     const reasoningPolicy = await resolveReasoningPolicy(loaded.session.sessionConfig.providerId);
+
+    // Record context breakdown at send time (for accurate Context Ring display)
+    const runtimeContext = createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, projectExplorationContext);
+    const estimateChars = (s: string | undefined) => Math.ceil((s?.length ?? 0) * 0.6);
+    const messagesChars = compactedMessages.reduce((sum, m) => sum + ("content" in m && typeof m.content === "string" ? m.content.length : 0), 0);
+    loaded.state.cumulativeUsage.lastContextBreakdown = [
+      { label: "系统提示词", tokens: estimateChars(fullSystemPrompt) },
+      { label: "作品上下文", tokens: estimateChars(runtimeContext) },
+      { label: `工具定义 (${filteredTools.length} 个)`, tokens: filteredTools.length * 380 },
+      { label: `消息历史 (${compactedMessages.length} 条)`, tokens: Math.ceil(messagesChars * 0.6) },
+    ];
+
     const runtimeTurn = await executeRuntimeTurn({
       sessionId,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: fullSystemPrompt,
-      context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, projectExplorationContext),
+      context: runtimeContext,
       tools: filteredTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),

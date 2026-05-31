@@ -28,6 +28,36 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   const session = await getSessionById(sessionId);
   if (!session) return null;
 
+  // 优先使用上次请求时记录的真实分解（和 lastInputTokens 对应同一次请求）
+  const lastBreakdown = (session as { cumulativeUsage?: { lastContextBreakdown?: Array<{ label: string; tokens: number }>; lastInputTokens?: number } }).cumulativeUsage?.lastContextBreakdown;
+  const lastApiInputTokens = (session as { cumulativeUsage?: { lastInputTokens?: number } }).cumulativeUsage?.lastInputTokens;
+
+  if (lastBreakdown && lastBreakdown.length > 0) {
+    const estimatedTotal = lastBreakdown.reduce((sum, p) => sum + p.tokens, 0);
+    // 如果有 API 精确值，按比例校准各部分
+    const scaleFactor = lastApiInputTokens && lastApiInputTokens > 0 && estimatedTotal > 0
+      ? lastApiInputTokens / estimatedTotal
+      : 1;
+
+    const parts: ContextBreakdownPart[] = lastBreakdown.map(p => ({
+      label: p.label,
+      tokens: Math.round(p.tokens * scaleFactor),
+      preview: "",
+    }));
+
+    if (scaleFactor !== 1) {
+      parts.push({ label: "格式化/协议开销", tokens: Math.max(0, (lastApiInputTokens ?? estimatedTotal) - parts.reduce((s, p) => s + p.tokens, 0)), preview: "JSON 结构、role 标签等" });
+    }
+
+    return {
+      totalTokens: lastApiInputTokens ?? estimatedTotal,
+      maxTokens: 1000000,
+      lastApiInputTokens,
+      parts,
+    };
+  }
+
+  // Fallback: 静态估算（首次请求前或无历史数据时）
   const snapshot = await getSessionChatSnapshot(sessionId);
   const parts: ContextBreakdownPart[] = [];
 
@@ -136,7 +166,7 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
     : 200000;
 
   // 获取上次 API 实际报告的 input tokens
-  const lastApiInputTokens = (session as { cumulativeUsage?: { lastInputTokens?: number } }).cumulativeUsage?.lastInputTokens;
+  const fallbackApiTokens = (session as { cumulativeUsage?: { lastInputTokens?: number } }).cumulativeUsage?.lastInputTokens;
 
-  return { totalTokens, maxTokens: 1000000, lastApiInputTokens: lastApiInputTokens ?? undefined, parts };
+  return { totalTokens, maxTokens: 1000000, lastApiInputTokens: fallbackApiTokens ?? undefined, parts };
 }
