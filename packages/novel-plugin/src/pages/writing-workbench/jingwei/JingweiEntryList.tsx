@@ -39,8 +39,7 @@ export function JingweiEntryList({ category, entries, loading, selectedEntryId, 
   }, [entries, search]);
 
   function handleCreate() {
-    const title = prompt("新建条目标题：");
-    if (title?.trim()) onCreateEntry(title.trim());
+    onCreateEntry("新条目");
   }
 
   function toggleMultiSelect() {
