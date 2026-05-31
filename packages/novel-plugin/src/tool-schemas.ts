@@ -485,6 +485,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       visibility: stringSchema("可见性规则：global | tracked | nested。默认 tracked。"),
       relatedEntryIds: arraySchema("关联条目 ID 列表。"),
       entryId: stringSchema("条目 ID（delete 时可用，按 ID 精确删除）。"),
+      fields: { type: "object", description: "结构化元数据字段（可选，如 { locationType: '城市', grade: '灵品' }）。" },
     },
     required: ["bookId", "title"],
     additionalProperties: false,

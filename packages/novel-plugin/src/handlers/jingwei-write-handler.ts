@@ -24,6 +24,7 @@ export interface JingweiWriteInput {
   visibility?: string;
   relatedEntryIds?: string[];
   entryId?: string;
+  fields?: Record<string, unknown>;
 }
 
 export interface JingweiWriteSuccess {
@@ -195,6 +196,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     const aliasesJson = JSON.stringify(aliases);
     const tagsJson = JSON.stringify(tags);
     const relatedEntryIdsJson = JSON.stringify(relatedEntryIds);
+    const fieldsJson = input.fields && typeof input.fields === "object"
+      ? JSON.stringify(input.fields)
+      : "{}";
     const now = Date.now();
 
     if (existingRows.length > 0) {
@@ -226,9 +230,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       const entryId = existing.id;
       storage.sqlite.prepare(`
         UPDATE story_jingwei_entry
-        SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, updated_at = ?
+        SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, custom_fields_json = ?, updated_at = ?
         WHERE id = ?
-      `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, now, entryId);
+      `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, fieldsJson, now, entryId);
 
       return {
         ok: true,
@@ -240,8 +244,8 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       const entryId = crypto.randomUUID();
       storage.sqlite.prepare(`
         INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?, ?)
-      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, layer, now, now);
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?)
+      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, now, now);
 
       return {
         ok: true,
