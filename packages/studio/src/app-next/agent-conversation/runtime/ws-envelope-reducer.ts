@@ -151,10 +151,31 @@ export function reduceSessionEnvelope(
       };
     }
     case "session:message": {
-      // Remove streaming message before merging (it's replaced by the final message)
-      const baseMessages = state.streamingMessageId
-        ? state.messages.filter((m) => m.id !== state.streamingMessageId)
-        : state.messages;
+      // When the incoming message is a tool_call (has toolCalls) and there's a streaming
+      // message with content, the streaming text is NOT included in the tool_call message.
+      // We must "solidify" the streaming message (keep it as a real message) instead of
+      // discarding it, otherwise the model's text between tool calls gets lost.
+      const incomingIsToolCall = envelope.message.toolCalls?.length && envelope.message.toolCalls.length > 0;
+      const streamingMsg = state.streamingMessageId
+        ? state.messages.find((m) => m.id === state.streamingMessageId)
+        : null;
+      const shouldKeepStreaming = incomingIsToolCall && streamingMsg && streamingMsg.content.trim().length > 0;
+
+      let baseMessages: NarratorSessionChatMessage[];
+      if (shouldKeepStreaming) {
+        // Solidify: replace the stream: id with a stable id so it persists
+        const solidId = `solidified-${Date.now()}`;
+        baseMessages = state.messages.map((m) =>
+          m.id === state.streamingMessageId
+            ? { ...m, id: solidId, seq: (m.seq ?? 0) }
+            : m,
+        );
+      } else if (state.streamingMessageId) {
+        // Normal case: remove streaming message (it's replaced by the final message)
+        baseMessages = state.messages.filter((m) => m.id !== state.streamingMessageId);
+      } else {
+        baseMessages = [...state.messages];
+      }
 
       // If this is a tool_result message, update the corresponding tool_call's status
       let updatedBase = baseMessages;
