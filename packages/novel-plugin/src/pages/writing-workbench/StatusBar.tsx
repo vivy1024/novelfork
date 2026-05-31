@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Music, Activity, Droplets, AlertTriangle, Settings, Store } from "lucide-react";
+import { BookOpen, Music, Activity, Droplets, AlertTriangle, Settings, Store, Cog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -12,6 +12,7 @@ export interface StatusBarProps {
   bookId: string;
   activePanel: PanelType;
   onPanelClick: (panel: NonNullable<PanelType>) => void;
+  onSettingsClick?: () => void;
 }
 
 interface StatusSegment {
@@ -79,7 +80,7 @@ function useBeatProgress(bookId: string): string {
   return label;
 }
 
-export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps) {
+export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }: StatusBarProps) {
   const [health, setHealth] = useState<HealthData | null>(null);
   const beatLabel = useBeatProgress(bookId);
 
@@ -152,6 +153,18 @@ export function StatusBar({ bookId, activePanel, onPanelClick }: StatusBarProps)
           <span>{seg.label}</span>
         </button>
       ))}
+
+      {/* 设置按钮 — 右侧固定 */}
+      <div className="ml-auto">
+        <button
+          onClick={onSettingsClick}
+          className="flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors hover:bg-muted hover:text-foreground"
+          title="书籍设置"
+        >
+          <Cog className="size-3.5" />
+          <span>设置</span>
+        </button>
+      </div>
     </div>
   );
 }

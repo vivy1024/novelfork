@@ -35,9 +35,9 @@ interface ToolItem {
 
 /** 所有角色都锁定的基础工具 */
 const LOCKED_TOOLS: ToolItem[] = [
-  { id: "jingwei.read_context", label: "经纬", locked: true },
+  { id: "jingwei.read", label: "经纬", locked: true },
   { id: "chapter.read", label: "章节", locked: true },
-  { id: "cockpit.get_snapshot", label: "快照", locked: true },
+  { id: "cockpit.snapshot", label: "快照", locked: true },
 ];
 
 /** 可选工具池 */
@@ -53,48 +53,15 @@ const OPTIONAL_TOOLS: ToolItem[] = [
 
 /** 各角色默认启用的可选工具 ID */
 const ROLE_DEFAULTS: Record<AgentRole, string[]> = {
-  writer: [
-    "presets.get_rules",
-    "beat.get_current",
-    "cockpit.list_open_hooks",
-  ],
-  planner: [
-    "narrative.read_line",
-    "beat.get_current",
-    "cockpit.list_open_hooks",
-  ],
-  auditor: [
-    "character.check_consistency",
-    "narrative.read_line",
-    "presets.check_compliance",
-  ],
-  architect: [
-    "narrative.read_line",
-    "presets.get_rules",
-  ],
-  explorer: [
-    "narrative.read_line",
-    "cockpit.list_open_hooks",
-    "character.check_consistency",
-  ],
-  hooks: [
-    "cockpit.list_open_hooks",
-    "hooks.manage",
-  ],
-  "chapter-hooks": [
-    "cockpit.list_open_hooks",
-    "hooks.manage",
-    "beat.get_current",
-  ],
-  outline: [
-    "narrative.read_line",
-    "beat.get_current",
-  ],
-  custom: [
-    "presets.get_rules",
-    "beat.get_current",
-    "cockpit.list_open_hooks",
-  ],
+  writer: ["presets.get_rules", "beat.get_current", "cockpit.list_open_hooks", "presets.check_compliance"],
+  planner: ["beat.get_current", "cockpit.list_open_hooks", "narrative.read_line"],
+  auditor: ["presets.check_compliance", "character.check_consistency", "cockpit.list_open_hooks"],
+  architect: ["character.check_consistency", "narrative.read_line"],
+  explorer: ["cockpit.list_open_hooks", "character.check_consistency", "narrative.read_line"],
+  hooks: ["cockpit.list_open_hooks", "hooks.manage"],
+  "chapter-hooks": ["cockpit.list_open_hooks", "hooks.manage", "beat.get_current"],
+  outline: ["narrative.read_line", "beat.get_current", "cockpit.list_open_hooks"],
+  custom: ["presets.get_rules", "beat.get_current", "cockpit.list_open_hooks"],
 };
 
 // ---------------------------------------------------------------------------

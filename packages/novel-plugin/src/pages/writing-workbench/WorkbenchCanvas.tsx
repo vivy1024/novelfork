@@ -14,6 +14,7 @@ import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import { StatusBar } from "./StatusBar";
 import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
+import { BookSettingsPanel } from "./panels/BookSettingsPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -345,10 +346,12 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [panelHeight, setPanelHeight] = useState<number>(320);
   const [panelMaximized, setPanelMaximized] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   const handleStatusBarClick = useCallback((panel: NonNullable<PanelType>) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
     setPanelMaximized(false);
+    setShowSettings(false);
   }, []);
 
   const handlePanelClose = useCallback(() => {
@@ -359,6 +362,33 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
   const handlePanelMaximize = useCallback(() => {
     setPanelMaximized((prev) => !prev);
   }, []);
+
+  const handleSettingsClick = useCallback(() => {
+    setShowSettings(true);
+    setActivePanel(null);
+    setPanelMaximized(false);
+  }, []);
+
+  const handleSettingsBack = useCallback(() => {
+    setShowSettings(false);
+  }, []);
+
+  // Settings page replaces the entire cockpit view
+  if (showSettings) {
+    return (
+      <div className="flex h-full flex-col min-h-0">
+        <div className="flex-1 min-h-0 overflow-y-auto">
+          <BookSettingsPanel bookId={bookId} onBack={handleSettingsBack} />
+        </div>
+        <StatusBar
+          bookId={bookId}
+          activePanel={activePanel}
+          onPanelClick={handleStatusBarClick}
+          onSettingsClick={handleSettingsBack}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col min-h-0">
@@ -388,6 +418,7 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
         bookId={bookId}
         activePanel={activePanel}
         onPanelClick={handleStatusBarClick}
+        onSettingsClick={handleSettingsClick}
       />
     </div>
   );
