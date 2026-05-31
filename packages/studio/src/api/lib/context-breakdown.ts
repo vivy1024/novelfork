@@ -7,6 +7,7 @@ import { existsSync, readFileSync } from "fs";
 import { estimateTokensFromText } from "./ai-request-observer.js";
 import { getSessionById } from "./session-service.js";
 import { getSessionChatSnapshot } from "./session-chat-service.js";
+import { getEnabledSessionTools } from "./session-tool-registry.js";
 
 export interface ContextBreakdownPart {
   label: string;
@@ -18,6 +19,8 @@ export interface ContextBreakdownPart {
 export interface ContextBreakdown {
   totalTokens: number;
   maxTokens: number;
+  /** 上次 API 实际报告的 input tokens（精确值） */
+  lastApiInputTokens?: number;
   parts: ContextBreakdownPart[];
 }
 
@@ -28,13 +31,12 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   const snapshot = await getSessionChatSnapshot(sessionId);
   const parts: ContextBreakdownPart[] = [];
 
-  // 1. 系统提示词（估算基础 system prompt）
-  // AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS 是内部常量，这里用固定估算
-  const systemPromptEstimate = 350;
+  // 1. 系统提示词（agent prompt + TOOL_USE_GUIDELINES + write-next instructions）
+  const systemPromptEstimate = 2000;
   parts.push({
     label: "系统提示词",
     tokens: systemPromptEstimate,
-    preview: "Agent-native 写作链路指令 + 基础系统提示",
+    preview: "Agent 角色提示词 + 工具使用指南 + 写作链路指令",
   });
 
   // 2. 项目规则（CLAUDE.md 等）
@@ -55,30 +57,35 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
     });
   }
 
-  // 3. 工具定义（从 session 配置推算）
-  // 每个工具定义大约 300-400 tokens
-  const toolEstimatePerTool = 350;
-  // 基础工具集约 20 个
-  const toolCount = 20;
-  const toolsTokens = toolCount * toolEstimatePerTool;
+  // 3. 工具定义（动态计算实际注册的工具数量和 schema 大小）
+  const tools = getEnabledSessionTools(session.sessionConfig.permissionMode, session.agentId, {
+    disabledTools: session.sessionConfig.toolPolicy?.deny,
+  });
+  // 每个工具的 schema JSON 大约 300-500 tokens，取实际工具数
+  const toolCount = tools.length;
+  const toolsTokens = Math.round(toolCount * 380);
   parts.push({
-    label: `工具定义 (~${toolCount} 个)`,
+    label: `工具定义 (${toolCount} 个)`,
     tokens: toolsTokens,
-    preview: `${toolCount} 个工具已注册（Read/Write/Edit/Bash/Grep/Glob 等）`,
+    preview: tools.slice(0, 5).map(t => t.name).join(", ") + (toolCount > 5 ? ` 等 ${toolCount} 个` : ""),
   });
 
-  // 4. 消息历史
+  // 4. 消息历史（应用 contextCutoffSeq 过滤）
+  const contextCutoffSeq = session.sessionConfig.contextCutoffSeq ?? 0;
   if (snapshot) {
-    const messagesContent = snapshot.messages
+    const contextMessages = contextCutoffSeq > 0
+      ? snapshot.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
+      : snapshot.messages;
+    const messagesContent = contextMessages
       .map(m => typeof m.content === "string" ? m.content : "")
       .join("");
     const messagesTokens = estimateTokensFromText(messagesContent);
     parts.push({
-      label: `消息历史 (${snapshot.messages.length} 条)`,
+      label: `消息历史 (${contextMessages.length} 条)`,
       tokens: messagesTokens,
-      preview: snapshot.messages.length > 0
-        ? `最近: ${(snapshot.messages[snapshot.messages.length - 1]?.content ?? "").slice(0, 100)}`
-        : "无消息",
+      preview: contextMessages.length > 0
+        ? `最近: ${(contextMessages[contextMessages.length - 1]?.content ?? "").slice(0, 100)}`
+        : contextCutoffSeq > 0 ? "已清空上下文（历史消息保留可查看）" : "无消息",
     });
   } else {
     parts.push({
@@ -115,8 +122,21 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
     });
   }
 
-  const totalTokens = parts.reduce((sum, p) => sum + p.tokens, 0);
-  const maxTokens = 200000;
+  // 7. 格式化开销（JSON 结构、role 标签、分隔符等）
+  const formatOverhead = 800;
+  parts.push({
+    label: "格式化开销",
+    tokens: formatOverhead,
+    preview: "消息 JSON 结构、role 标签、工具调用格式等",
+  });
 
-  return { totalTokens, maxTokens, parts };
+  const totalTokens = parts.reduce((sum, p) => sum + p.tokens, 0);
+  const maxTokens = session.sessionConfig.modelId
+    ? (tools as Array<{ contextWindow?: number }>)[0]?.contextWindow ?? 200000
+    : 200000;
+
+  // 获取上次 API 实际报告的 input tokens
+  const lastApiInputTokens = (session as { cumulativeUsage?: { lastInputTokens?: number } }).cumulativeUsage?.lastInputTokens;
+
+  return { totalTokens, maxTokens: 1000000, lastApiInputTokens: lastApiInputTokens ?? undefined, parts };
 }
