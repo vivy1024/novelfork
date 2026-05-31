@@ -61,16 +61,26 @@ async function ensureConfigDir(dir: string): Promise<void> {
 }
 
 /**
- * 加载全局配置
+ * 加载全局配置（带 2 秒内存缓存，避免同一 turn 内重复读文件）
  */
+let _routinesCache: { data: Routines; expiry: number } | null = null;
+const CACHE_TTL_MS = 2000;
+
 export async function loadGlobalRoutines(): Promise<Routines> {
+  if (_routinesCache && Date.now() < _routinesCache.expiry) {
+    return _routinesCache.data;
+  }
   try {
     await ensureConfigDir(GLOBAL_CONFIG_DIR);
     const content = await fs.readFile(GLOBAL_ROUTINES_FILE, "utf-8");
-    return normalizeRoutines(JSON.parse(content) as Partial<Routines>);
+    const result = normalizeRoutines(JSON.parse(content) as Partial<Routines>);
+    _routinesCache = { data: result, expiry: Date.now() + CACHE_TTL_MS };
+    return result;
   } catch {
     // 文件不存在或解析失败，返回默认配置
-    return cloneDefaultRoutines();
+    const result = cloneDefaultRoutines();
+    _routinesCache = { data: result, expiry: Date.now() + CACHE_TTL_MS };
+    return result;
   }
 }
 
@@ -80,6 +90,7 @@ export async function loadGlobalRoutines(): Promise<Routines> {
 export async function saveGlobalRoutines(routines: Routines): Promise<void> {
   await ensureConfigDir(GLOBAL_CONFIG_DIR);
   await fs.writeFile(GLOBAL_ROUTINES_FILE, JSON.stringify(normalizeRoutines(routines), null, 2), "utf-8");
+  _routinesCache = null; // Invalidate cache on save
 }
 
 /**

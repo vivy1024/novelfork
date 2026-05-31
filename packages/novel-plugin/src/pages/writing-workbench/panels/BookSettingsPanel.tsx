@@ -289,10 +289,13 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
 
   const handlePresetToggle = useCallback(
     async (id: string, enabled: boolean) => {
-      const updated = presets.map((p) => (p.id === id ? { ...p, enabled } : p));
-      setPresets(updated);
+      let enabledIds: string[] = [];
+      setPresets((prev) => {
+        const updated = prev.map((p) => (p.id === id ? { ...p, enabled } : p));
+        enabledIds = updated.filter((p) => p.enabled).map((p) => p.id);
+        return updated;
+      });
 
-      const enabledIds = updated.filter((p) => p.enabled).map((p) => p.id);
       try {
         const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/presets`, {
           method: "PUT",

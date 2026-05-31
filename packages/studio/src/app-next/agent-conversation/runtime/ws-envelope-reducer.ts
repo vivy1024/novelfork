@@ -163,8 +163,8 @@ export function reduceSessionEnvelope(
 
       let baseMessages: NarratorSessionChatMessage[];
       if (shouldKeepStreaming) {
-        // Solidify: replace the stream: id with a stable id so it persists
-        const solidId = `solidified-${Date.now()}`;
+        // Solidify: replace the stream: id with a stable unique id so it persists
+        const solidId = `solidified-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
         baseMessages = state.messages.map((m) =>
           m.id === state.streamingMessageId
             ? { ...m, id: solidId, seq: (m.seq ?? 0) }
