@@ -1783,9 +1783,33 @@ function safeReadFile(filePath: string): string | null {
 async function loadRoutineGlobalPrompts(): Promise<string> {
   try {
     const routines = await loadGlobalRoutines();
-    const enabled = routines.globalPrompts.filter(p => p.enabled && p.content.trim());
-    if (enabled.length === 0) return "";
-    const parts = enabled.map(p => p.content.trim());
+    const parts: string[] = [];
+
+    // System prompts (highest priority — injected first)
+    const enabledSystem = routines.systemPrompts.filter(p => p.enabled && p.content.trim());
+    for (const p of enabledSystem) {
+      parts.push(p.content.trim());
+    }
+
+    // Global skills (writing presets / instructions)
+    const enabledSkills = routines.globalSkills.filter(s => s.enabled && s.instructions.trim());
+    for (const s of enabledSkills) {
+      parts.push(`[技能: ${s.name}]\n${s.instructions.trim()}`);
+    }
+
+    // Project skills
+    const enabledProjectSkills = routines.projectSkills.filter(s => s.enabled && s.instructions.trim());
+    for (const s of enabledProjectSkills) {
+      parts.push(`[项目技能: ${s.name}]\n${s.instructions.trim()}`);
+    }
+
+    // Global prompts (general-purpose prompt assets)
+    const enabledPrompts = routines.globalPrompts.filter(p => p.enabled && p.content.trim());
+    for (const p of enabledPrompts) {
+      parts.push(p.content.trim());
+    }
+
+    if (parts.length === 0) return "";
     return "\n\n" + parts.join("\n\n");
   } catch {
     return "";
