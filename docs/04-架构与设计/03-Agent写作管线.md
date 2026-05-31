@@ -1,11 +1,52 @@
 # Agent 写作管线
 
-**版本**: v1.0.0
+**版本**: v1.1.0
 **创建日期**: 2026-05-10
+**更新日期**: 2026-05-29
 **状态**: ✅ 当前有效
 **文档类型**: current
 
 ---
+
+## v2 约束驱动管线（推荐）
+
+v1.1.0 引入精简管线，从 5 次 LLM 调用降到 2 次：
+
+```
+用户: "写下一章"
+  │
+  ├─ cockpit.snapshot        → 进度/伏笔/候选稿
+  ├─ jingwei.read(brief)     → 经纬核心包 4000 tokens + 分类目录
+  ├─ pgi.ask                 → 追问 + 用户确认方向
+  │
+  ▼ [Gate: H5 用户已确认]
+  │
+  ├─ scene.spec              → 结构化写作蓝图 (LLM call #1 或占位推断)
+  │   输出: { chapter, title, wordTarget, scenes[], constraints[] }
+  │   H4 校验: 每个 scene 必须有 characters/location/conflict/outcome
+  │
+  ▼ [Gate: H4 spec 完整]
+  │
+  ├─ jingwei.read(category)  → 按蓝图补读相关经纬
+  ├─ pipeline.write          → Writer 生成正文 (LLM call #2)
+  │                          → AuditRevise 审计+修订 (LLM call #3, 条件触发)
+  │   H2 检查: Canon violation
+  │   H7 检查: POV violation
+  │   S1-S5: 软约束（字数/AI味/角色出场/节奏）
+  │
+  ▼ [Gate: H3 只进候选区]
+  │
+  └─ 候选稿保存 → 用户审核 → 合并到正式章节
+```
+
+核心文件：
+- `packages/novel-plugin/src/handlers/pipeline-write-service.ts` — v2 管线入口
+- `packages/novel-plugin/src/handlers/scene-spec-handler.ts` — Scene Spec 生成
+- `packages/novel-plugin/src/handlers/chapter-audit-v2.ts` — 硬约束审计
+
+## v1 完整管线（保留兼容）
+
+以下是 v1 管线文档，通过 `pipeline.generate_chapter` 工具调用。
 
 ## PipelineRunner
 
