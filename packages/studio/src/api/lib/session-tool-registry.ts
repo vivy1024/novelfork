@@ -562,6 +562,20 @@ const DEPRECATED_V1_TOOLS = new Set([
   "questionnaire.start",
   "questionnaire.suggest_answer",
   "questionnaire.submit_response",
+  // 被 pgi.ask + scene.spec 流程替代的引导式生成
+  "guided.enter",
+  "guided.answer_question",
+  "guided.exit",
+  // 被 chapter.audit v2 包含的独立检查
+  "character.check_consistency",
+  // 被 cockpit.snapshot 包含的健康度
+  "health.read_summary",
+  // 写作时不需要的预设/节拍配置工具（通过 UI 配置）
+  "presets.set_rules",
+  "presets.create_custom",
+  "presets.check_compliance",
+  "beat.set_template",
+  "beat.create_custom",
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {
