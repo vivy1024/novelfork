@@ -1575,6 +1575,17 @@ export function StudioNextApp(_props: StudioNextAppProps) {
   const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
   const routerNavigate = useNavigate();
 
+  // Apply appearance preferences on app startup (font size, font family, OLED black)
+  useEffect(() => {
+    fetch("/settings/user").then(r => r.ok ? r.json() : null).then((data: { preferences?: { fontSize?: number; fontFamily?: string; oledBlack?: boolean } } | null) => {
+      if (!data?.preferences) return;
+      const { fontSize, fontFamily, oledBlack } = data.preferences;
+      if (fontSize) document.documentElement.style.fontSize = `${fontSize}px`;
+      if (fontFamily) document.documentElement.style.fontFamily = fontFamily;
+      if (oledBlack) document.documentElement.classList.add("oled-black");
+    }).catch(() => { /* non-fatal */ });
+  }, []);
+
   // 首次运行检测：没有 localStorage 标记 且 没有已有数据时才显示
   const [showFirstRun, setShowFirstRun] = useState(() => {
     try { return !localStorage.getItem("novelfork:first-run-dismissed"); } catch { return false; }

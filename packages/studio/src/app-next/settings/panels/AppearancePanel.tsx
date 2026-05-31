@@ -42,6 +42,8 @@ export function AppearancePanel() {
         // Apply font settings to DOM on load
         if (merged.fontSize) document.documentElement.style.fontSize = `${merged.fontSize}px`;
         if (merged.fontFamily) document.documentElement.style.fontFamily = merged.fontFamily;
+        // Apply OLED black mode
+        document.documentElement.classList.toggle("oled-black", !!merged.oledBlack);
         setLoading(false);
       })
       .catch(() => setLoading(false));
@@ -59,6 +61,9 @@ export function AppearancePanel() {
       }
       if (patch.fontFamily) {
         document.documentElement.style.fontFamily = patch.fontFamily;
+      }
+      if (typeof patch.oledBlack === "boolean") {
+        document.documentElement.classList.toggle("oled-black", patch.oledBlack);
       }
       notify.success("已保存");
       setSaved(true);
