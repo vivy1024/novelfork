@@ -8,8 +8,8 @@
  * 注意：不要把 exe 输出到 packages/studio/dist。
  * 该目录由 Vite/tsc 管理，前端构建会清理它；exe 放进去会在 Windows 上导致 EPERM。
  */
-import { copyFile, mkdir, readFile, readdir, cp } from "node:fs/promises";
-import { join, resolve } from "node:path";
+import { copyFile, mkdir, readFile, readdir, rename, unlink } from "node:fs/promises";
+import { join } from "node:path";
 import { existsSync } from "node:fs";
 
 const ROOT = join(import.meta.dirname, "..");
@@ -40,6 +40,33 @@ function platformLabel(): string {
   return process.platform;
 }
 
+/**
+ * On Windows, a running .exe cannot be overwritten (EPERM), but it CAN be renamed.
+ * If the target exe exists and is locked, rename it to .old so the compile can proceed.
+ * The .old file will be cleaned up on next compile or can be deleted after the process exits.
+ */
+async function evictLockedExe(targetPath: string): Promise<void> {
+  if (!existsSync(targetPath)) return;
+  const oldPath = `${targetPath}.old`;
+  // Clean up any previous .old file
+  if (existsSync(oldPath)) {
+    try { await unlink(oldPath); } catch { /* still locked from a previous run, ignore */ }
+  }
+  // Try renaming the current exe out of the way.
+  // On Windows, rename succeeds even if the exe is running.
+  // If the file is NOT locked, we rename it away and the compile will create a fresh one.
+  // This is safe because bun compile creates a new file at the target path.
+  try {
+    await rename(targetPath, oldPath);
+    console.log(`[Info] Moved existing exe to ${oldPath}`);
+  } catch (renameErr) {
+    // If rename fails too, the file might be truly inaccessible
+    console.error(`[Error] Cannot move existing exe: ${renameErr instanceof Error ? renameErr.message : renameErr}`);
+    console.error(`[Error] Please close the running novelfork.exe and try again.`);
+    process.exit(1);
+  }
+}
+
 async function main() {
   const version = await readVersion();
   const executableName = process.platform === "win32" ? "novelfork.exe" : "novelfork";
@@ -58,6 +85,13 @@ async function main() {
   const entry = join(ROOT, "dist", "api", "index.js");
   const latestOutput = join(RELEASE_DIST, executableName);
   const versionedOutput = join(RELEASE_DIST, versionedName);
+
+  // On Windows, evict a locked exe by renaming it before compile
+  if (process.platform === "win32") {
+    await evictLockedExe(latestOutput);
+    await evictLockedExe(versionedOutput);
+  }
+
   const compile = Bun.spawn(["bun", "build", "--compile", "--target=bun", entry, "--outfile", latestOutput], {
     cwd: ROOT,
     stdout: "inherit",
