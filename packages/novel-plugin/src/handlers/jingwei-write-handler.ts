@@ -25,6 +25,7 @@ export interface JingweiWriteInput {
   relatedEntryIds?: string[];
   entryId?: string;
   fields?: Record<string, unknown>;
+  mode?: "overwrite" | "append";
 }
 
 export interface JingweiWriteSuccess {
@@ -226,13 +227,22 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         }
       }
 
+      // Append mode: concatenate new content to existing content
+      let finalContentMd = contentMd;
+      if (input.mode === "append" && existing.content_md && existing.content_md.trim().length > 0 && contentMd) {
+        finalContentMd = existing.content_md + "\n\n" + contentMd;
+      }
+      const finalSummaryMd = input.mode === "append" && finalContentMd !== contentMd
+        ? (typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0 ? input.summaryMd.trim() : generateSummary(finalContentMd))
+        : summaryMd;
+
       // Update existing entry
       const entryId = existing.id;
       storage.sqlite.prepare(`
         UPDATE story_jingwei_entry
         SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, custom_fields_json = ?, updated_at = ?
         WHERE id = ?
-      `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, fieldsJson, now, entryId);
+      `).run(finalContentMd, finalSummaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, fieldsJson, now, entryId);
 
       return {
         ok: true,

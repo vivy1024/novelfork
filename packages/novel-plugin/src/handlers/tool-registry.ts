@@ -205,6 +205,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "chapter.list",
+    description: "列出书籍的所有章节（序号、标题、字数、状态）。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.list"]),
+    risk: "read",
+    renderer: "chapter.list",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "jingwei.read_brief",
     description: "读取小型经纬核心包和分类目录，作为写作/审计任务的默认第一步。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read_brief"]),
@@ -348,6 +357,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     risk: "confirmed-write",
     renderer: "presets.rules",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "presets.list_available",
+    description: "列出所有可用预设（内置+自定义），可按分类筛选，传入 bookId 时标注哪些已启用。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["presets.list_available"]),
+    risk: "read",
+    renderer: "presets.list",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({

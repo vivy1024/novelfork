@@ -234,6 +234,14 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
+  "chapter.list": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
   "jingwei.read_brief": {
     type: "object",
     properties: {
@@ -410,6 +418,15 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["name", "category", "promptInjection"],
     additionalProperties: false,
   },
+  "presets.list_available": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID（可选，传入时标注哪些已启用）。"),
+      category: stringSchema("按分类筛选（可选）：genre / tone / setting-base / logic-risk / anti-ai / literary / bundle / custom。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
   "beat.create_custom": {
     type: "object",
     properties: {
@@ -487,6 +504,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       relatedEntryIds: arraySchema("关联条目 ID 列表。"),
       entryId: stringSchema("条目 ID（delete 时可用，按 ID 精确删除）。"),
       fields: { type: "object", description: "结构化元数据字段（可选，如 { locationType: '城市', grade: '灵品' }）。" },
+      mode: stringSchema("写入模式：overwrite（覆盖，默认）、append（追加到已有内容末尾）。"),
     },
     required: ["bookId", "title"],
     additionalProperties: false,
