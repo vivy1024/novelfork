@@ -1071,6 +1071,10 @@ function toConversationMessages(messages: readonly NarratorSessionChatMessage[],
     content: message.content,
     isStreaming: message.id === streamingMessageId || (!!isSessionWorking && message.role === "assistant" && index === lastAssistantIndex && index === messages.length - 1 && !message.toolCalls?.length),
     metadata: message.metadata,
+    // Map reasoning_content (string from backend) → thinking (ConversationThinkingBlock[])
+    thinking: message.reasoning_content
+      ? [{ content: message.reasoning_content }]
+      : undefined,
     toolCalls: message.toolCalls?.map((toolCall, tcIndex) => ({
       id: toolCall.id ?? `${message.id}:tool:${tcIndex}`,
       toolName: toolCall.toolName,
