@@ -157,8 +157,8 @@ function stripReasoningFromMessages(messages: RuntimeChatMessage[]): RuntimeChat
 
 // --- Smart Retry Helpers ---
 
-function isRetriableError(code: RuntimeAdapterFailureCode, errorMessage: string, customRules?: RetryRule[]): boolean {
-  if (code !== "upstream-error" && code !== "network-error") return false;
+function isRetriableError(code: RuntimeAdapterFailureCode | string, errorMessage: string, customRules?: RetryRule[]): boolean {
+  if (code !== "upstream-error" && code !== "network-error" && code !== "empty-response") return false;
   // Built-in retriable patterns
   const retriableStatuses = ["429", "502", "503", "rate_limit", "rate limit", "overloaded"];
   if (retriableStatuses.some(s => errorMessage.toLowerCase().includes(s.toLowerCase()))) {
