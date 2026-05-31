@@ -1809,45 +1809,8 @@ async function loadRoutineGlobalPrompts(): Promise<string> {
       parts.push(p.content.trim());
     }
 
-    // Writing preferences from user settings
-    const writingSection = await buildWritingPreferencesSection();
-    if (writingSection) parts.push(writingSection);
-
     if (parts.length === 0) return "";
     return "\n\n" + parts.join("\n\n");
-  } catch {
-    return "";
-  }
-}
-
-const TONE_LABELS: Record<string, string> = { concise: "简洁", ornate: "华丽", colloquial: "口语化", literary: "文学性" };
-const SENTENCE_LABELS: Record<string, string> = { short: "短句为主", medium: "中等", long: "长句为主" };
-const POV_LABELS: Record<string, string> = { "first": "第一人称", "third-limited": "第三人称有限视角", "third-omniscient": "第三人称全知视角", "second": "第二人称" };
-
-async function buildWritingPreferencesSection(): Promise<string> {
-  try {
-    const config = await loadUserConfig();
-    const w = config.writing;
-    const lines: string[] = [];
-
-    // Always include key writing preferences that affect output quality
-    lines.push(`- 文风偏好：${TONE_LABELS[w.defaultTone] ?? w.defaultTone}`);
-    if (w.antiAiStrength >= 50) lines.push(`- 去AI味强度：${w.antiAiStrength}%（注意避免AI感的表达）`);
-    if (w.sentenceLength !== "medium") lines.push(`- 句长偏好：${SENTENCE_LABELS[w.sentenceLength] ?? w.sentenceLength}`);
-    if (w.dialogueRatio !== 40) lines.push(`- 对话比例目标：约${w.dialogueRatio}%`);
-    lines.push(`- 默认视角：${POV_LABELS[w.defaultPov] ?? w.defaultPov}`);
-    if (w.chapterMinWords > 0 && w.chapterMaxWords > 0) {
-      lines.push(`- 章节字数范围：${w.chapterMinWords}-${w.chapterMaxWords}字`);
-    }
-    if (w.beatDensity !== "standard") lines.push(`- 节拍密度：${w.beatDensity === "compact" ? "紧凑" : "舒缓"}`);
-    if (w.targetPlatforms?.length && !(w.targetPlatforms.length === 1 && w.targetPlatforms[0] === "自由")) {
-      lines.push(`- 目标平台：${w.targetPlatforms.join("、")}`);
-    }
-    if (w.contentRating && w.contentRating !== "all-ages") lines.push(`- 内容分级：${w.contentRating === "teen" ? "青少年" : "成人"}`);
-    if (w.customSensitiveWords?.trim()) lines.push(`- 敏感词规避：${w.customSensitiveWords.trim()}`);
-
-    if (lines.length === 0) return "";
-    return `[用户写作偏好]\n${lines.join("\n")}`;
   } catch {
     return "";
   }

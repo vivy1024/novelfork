@@ -528,9 +528,7 @@ const BUILTIN_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[
 
 const UNAVAILABLE_SERVICE_TOOLS = new Set([
   "cockpit.get_snapshot",
-  "cockpit.list_open_hooks",
   "cockpit.list_recent_candidates",
-  "narrative.read_line",
   "narrative.propose_change",
   "health.read_summary",
 ]);
@@ -555,7 +553,6 @@ const DEPRECATED_V1_TOOLS = new Set([
   "pipeline.generate_chapter",
   // 被 cockpit.snapshot 替代（已在 UNAVAILABLE 中，双重保险）
   "cockpit.get_snapshot",
-  "cockpit.list_open_hooks",
   "cockpit.list_recent_candidates",
   // 写作时不需要的配置工具
   "questionnaire.list_templates",
@@ -566,14 +563,11 @@ const DEPRECATED_V1_TOOLS = new Set([
   "guided.enter",
   "guided.answer_question",
   "guided.exit",
-  // 被 chapter.audit v2 包含的独立检查
-  "character.check_consistency",
   // 被 cockpit.snapshot 包含的健康度
   "health.read_summary",
   // 写作时不需要的预设/节拍配置工具（通过 UI 配置）
   "presets.set_rules",
   "presets.create_custom",
-  "presets.check_compliance",
   "beat.set_template",
   "beat.create_custom",
 ]);
