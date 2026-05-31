@@ -275,6 +275,16 @@ export const TOOL_USE_GUIDELINES = `
 - 原因：只有通过 jingwei.write 写入 SQLite 的数据才会被自动注入到后续写作的 Agent 上下文中。用 Write 写的 .md 文件不会被 Agent 在写章节时看到，等于白写
 - jingwei.write 参数：bookId（书籍ID）、category（分类）、title（标题，用于匹配更新）、contentMd（Markdown 内容）、layer（层级，默认 dynamic）
 
+预设系统（写作规则注入）：
+- 预设 ≠ 经纬。预设是注入到写作 system prompt 中的规则约束（文风、逻辑风险、去AI味等），经纬是世界观设定数据。
+- 用 presets.get_rules 查看当前书籍已启用的预设列表
+- 用 presets.set_rules 启用/禁用预设（传入 enabledPresetIds 数组）
+- 用 presets.create_custom 创建自定义预设（如「禁止修为暴涨」「对话必须带方言」）
+- 用 beat.get_current 查看当前节拍模板，用 beat.set_template 切换节拍模板
+- 当用户要求设置写作规则/风格约束/逻辑限制时，优先使用预设工具而非 jingwei.write
+- 经纬用于存储：角色、地点、势力、物品、技能、大纲、世界观等设定数据
+- 预设用于存储：文风规则、逻辑约束、去AI味规则、节拍模板等写作指令
+
 输出规范：
 - 工具调用间的文字保持最短
 - 先做事再解释，不要在工具调用前写长段分析
