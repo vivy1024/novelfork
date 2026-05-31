@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Music, Activity, Droplets, AlertTriangle, Settings, Store, Cog } from "lucide-react";
+import { BookOpen, Activity, Droplets, AlertTriangle, Cog } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -29,60 +29,8 @@ interface HealthData {
   alertCount: number;
 }
 
-function useBeatProgress(bookId: string): string {
-  const [label, setLabel] = useState("节拍 —");
-
-  useEffect(() => {
-    let cancelled = false;
-
-    // Load from backend API (single source of truth)
-    async function loadBeatFromApi() {
-      try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.beatTemplateId && !cancelled) {
-            // Get template name from beats API
-            const beatsRes = await fetch("/api/presets/beats");
-            if (beatsRes.ok) {
-              const beatsData = await beatsRes.json();
-              const template = (beatsData.beats ?? []).find((t: { id: string }) => t.id === data.beatTemplateId);
-              if (template && !cancelled) {
-                setLabel(template.name);
-                return;
-              }
-            }
-          }
-        }
-      } catch { /* ignore */ }
-      if (!cancelled) setLabel("节拍 —");
-    }
-
-    void loadBeatFromApi();
-
-    // Listen for beat updates from BeatPanel (same tab via custom event)
-    const handleBeatUpdate = (e: Event) => {
-      const detail = (e as CustomEvent).detail;
-      if (detail?.templateName) {
-        setLabel(detail.templateName);
-      } else {
-        void loadBeatFromApi();
-      }
-    };
-    window.addEventListener("novelfork-beat-updated", handleBeatUpdate);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("novelfork-beat-updated", handleBeatUpdate);
-    };
-  }, [bookId]);
-
-  return label;
-}
-
 export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }: StatusBarProps) {
   const [health, setHealth] = useState<HealthData | null>(null);
-  const beatLabel = useBeatProgress(bookId);
 
   useEffect(() => {
     let cancelled = false;
@@ -124,12 +72,9 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
   const alertLabel = health ? `⚠ ${health.alertCount ?? 0}` : "⚠ 0";
 
   const segments: StatusSegment[] = [
-    { id: "preset", panel: "preset", icon: <Settings className="size-3.5" />, label: "预设" },
-    { id: "beat", panel: "beat", icon: <Music className="size-3.5" />, label: beatLabel },
     { id: "quality", panel: "quality", icon: <Activity className="size-3.5" />, label: qualityLabel },
     { id: "ai-taste", panel: "quality", icon: <Droplets className="size-3.5" />, label: aiTasteLabel },
     { id: "alert", panel: "alert", icon: <AlertTriangle className="size-3.5" />, label: alertLabel },
-    { id: "template-market", panel: "template-market", icon: <Store className="size-3.5" />, label: "模板" },
   ];
 
   return (

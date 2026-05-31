@@ -6,13 +6,10 @@
 import { useRef, useCallback, useEffect } from "react";
 import { X, Maximize2, Minimize2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { PresetPanel } from "./panels/PresetPanel";
-import { BeatPanel } from "./panels/BeatPanel";
 import { QualityPanel } from "./panels/QualityPanel";
 import { AlertPanel } from "./panels/AlertPanel";
-import { TemplateMarketPanel } from "./TemplateMarketPanel";
 
-export type PanelType = "preset" | "beat" | "quality" | "alert" | "template-market" | null;
+export type PanelType = "quality" | "alert" | null;
 
 export interface ExpandablePanelProps {
   activePanel: NonNullable<PanelType>;
@@ -26,11 +23,8 @@ export interface ExpandablePanelProps {
 }
 
 const PANEL_TITLES: Record<NonNullable<PanelType>, string> = {
-  preset: "⚙ 预设配置",
-  beat: "♪ 节拍进度",
   quality: "📊 质量监控",
   alert: "⚠ 警告",
-  "template-market": "🏪 模板市场",
 };
 
 const MIN_HEIGHT = 150;
@@ -123,17 +117,11 @@ export function ExpandablePanel({
   );
 }
 
-function PanelContent({ panel, bookId, onClose, onSwitchPanel }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void; onSwitchPanel?: (p: NonNullable<PanelType>) => void }) {
+function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void; onSwitchPanel?: (p: NonNullable<PanelType>) => void }) {
   switch (panel) {
-    case "preset":
-      return <PresetPanel bookId={bookId} onOpenMarket={() => onSwitchPanel?.("template-market")} />;
-    case "beat":
-      return <BeatPanel bookId={bookId} />;
     case "quality":
       return <QualityPanel bookId={bookId} />;
     case "alert":
       return <AlertPanel bookId={bookId} />;
-    case "template-market":
-      return <TemplateMarketPanel bookId={bookId} onClose={onClose ?? (() => {})} />;
   }
 }

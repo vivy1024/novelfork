@@ -1,10 +1,8 @@
 import { useState, useMemo } from "react";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { JingweiCategorySidebar } from "./JingweiCategorySidebar";
 import { JingweiEntryList } from "./JingweiEntryList";
 import { JingweiEntryTree } from "./JingweiEntryTree";
 import { JingweiEntryForm } from "./JingweiEntryForm";
-import { JingweiGraphView } from "./JingweiGraphView";
 import { useJingweiEntries } from "./hooks/useJingweiEntries";
 import { CATEGORY_SCHEMAS, type CategoryVisibility } from "./category-schemas";
 
@@ -15,7 +13,6 @@ interface JingweiPanelProps {
 export function JingweiPanel({ bookId }: JingweiPanelProps) {
   const [selectedCategory, setSelectedCategory] = useState("character");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<"list" | "graph">("list");
 
   const { entries, loading, refresh, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
 
@@ -83,71 +80,46 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
         entryCounts={entryCounts}
       />
 
-      {/* Main content area with tabs */}
-      <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        {/* Tab switcher */}
-        <div className="shrink-0 border-b border-border px-3 py-1.5">
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "list" | "graph")}>
-            <TabsList className="h-7">
-              <TabsTrigger value="list" className="text-xs px-3 py-1">列表</TabsTrigger>
-              <TabsTrigger value="graph" className="text-xs px-3 py-1">图谱</TabsTrigger>
-            </TabsList>
-          </Tabs>
-        </div>
-
-        {/* Content */}
-        {viewMode === "list" ? (
-          <div className="flex-1 flex min-h-0">
-            {/* Entry list or tree */}
-            {hasHierarchy ? (
-              <JingweiEntryTree
-                category={selectedCategory}
-                entries={entries}
-                loading={loading}
-                selectedEntryId={selectedEntryId}
-                onSelectEntry={setSelectedEntryId}
-                onCreateEntry={handleCreateEntry}
-                onMoveEntry={handleMoveEntry}
-                bookId={bookId}
-              />
-            ) : (
-              <JingweiEntryList
-                category={selectedCategory}
-                entries={entries}
-                loading={loading}
-                selectedEntryId={selectedEntryId}
-                onSelectEntry={setSelectedEntryId}
-                onCreateEntry={(title) => handleCreateEntry(title)}
-                onRefresh={refresh}
-                bookId={bookId}
-              />
-            )}
-
-            {/* Right: Entry form */}
-            {selectedEntry ? (
-              <JingweiEntryForm
-                entry={selectedEntry}
-                bookId={bookId}
-                onSave={handleSave}
-                onDelete={handleDelete}
-                onClose={() => setSelectedEntryId(null)}
-              />
-            ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <p className="text-xs">选择左侧条目进行编辑</p>
-              </div>
-            )}
-          </div>
-        ) : (
-          <JingweiGraphView
-            bookId={bookId}
-            entries={entries}
+      {/* Main content area */}
+      <div className="flex-1 flex min-h-0 min-w-0">
+        {/* Entry list or tree */}
+        {hasHierarchy ? (
+          <JingweiEntryTree
             category={selectedCategory}
-            onNodeClick={(entryId) => {
-              setSelectedEntryId(entryId);
-              setViewMode("list");
-            }}
+            entries={entries}
+            loading={loading}
+            selectedEntryId={selectedEntryId}
+            onSelectEntry={setSelectedEntryId}
+            onCreateEntry={handleCreateEntry}
+            onMoveEntry={handleMoveEntry}
+            bookId={bookId}
           />
+        ) : (
+          <JingweiEntryList
+            category={selectedCategory}
+            entries={entries}
+            loading={loading}
+            selectedEntryId={selectedEntryId}
+            onSelectEntry={setSelectedEntryId}
+            onCreateEntry={(title) => handleCreateEntry(title)}
+            onRefresh={refresh}
+            bookId={bookId}
+          />
+        )}
+
+        {/* Right: Entry form */}
+        {selectedEntry ? (
+          <JingweiEntryForm
+            entry={selectedEntry}
+            bookId={bookId}
+            onSave={handleSave}
+            onDelete={handleDelete}
+            onClose={() => setSelectedEntryId(null)}
+          />
+        ) : (
+          <div className="flex-1 flex items-center justify-center text-muted-foreground">
+            <p className="text-xs">选择左侧条目进行编辑</p>
+          </div>
         )}
       </div>
     </div>
