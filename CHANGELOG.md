@@ -4,6 +4,35 @@
 
 ## Unreleased
 
+## v1.1.1 (2026-05-31)
+
+### 🔧 修复与改进
+
+- **Thinking 展示**：修复 AI 推理/思考内容不显示的问题（reasoning_content → thinking 映射）
+- **Streaming 保留**：修复工具调用时模型文本被丢弃的问题（solidify streaming message）
+- **编译 EPERM**：Windows 上编译时自动重命名运行中的 exe，无需手动关闭
+- **套路系统生效**：systemPrompts、globalSkills、projectSkills、hooks、disabledCommands 全部接入运行时
+- **预设注入**：写作管线现在正确注入 book.enabledPresetIds 中的预设到 system prompt
+- **Agent 预设指引**：Agent prompt 中明确区分预设（写作规则）和经纬（世界观数据）
+
+### 📖 书籍设置页面（新）
+
+- 驾驶舱底部新增"设置"入口，打开全屏书籍设置页面
+- 整合基本信息（书名/流派/平台/语言）、写作参数（目标章数/每章字数/弧线追踪/敏感词）、预设配置、节拍模板
+- 删除全局写作设置页面（14 项配置不应该是全局的）
+- 角色弧线追踪模式从全局设置移到书籍级别
+
+### 🛠️ 工具系统
+
+- 恢复 4 个被错误废弃的工具：cockpit.list_open_hooks、presets.check_compliance、character.check_consistency、narrative.read_line
+- ToolConfigBar 所有工具改为可选（移除锁定概念），按角色提供合理默认配置
+- 底部 StatusBar 精简为监控类（质量/AI味/警告）+ 设置入口
+
+### 🗺️ 经纬面板
+
+- 移除全局图谱 tab，改为按分类显示（仅有 relation 字段的分类显示"关系图谱"按钮）
+- 外观设置：OLED 黑色模式生效，启动时加载外观偏好
+
 ## v1.1.0 (2026-05-29)
 
 ### 🏗️ 约束驱动写作系统 v2
