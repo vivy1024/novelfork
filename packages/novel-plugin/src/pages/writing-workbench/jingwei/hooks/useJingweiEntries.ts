@@ -60,7 +60,7 @@ export function useJingweiEntries(bookId: string, category: string): UseJingweiE
       const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, title, fields: fields ?? {}, parentId: parentId ?? null }),
+        body: JSON.stringify({ category, title, contentMd: "", fields: fields ?? {}, parentId: parentId ?? null }),
       });
       if (!res.ok) throw new Error(`创建失败: ${res.status}`);
       const entry = await res.json();
