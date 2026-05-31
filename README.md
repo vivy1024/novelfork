@@ -1,8 +1,8 @@
 # NovelFork
 
-> AI 辅助中文网文创作工作台 — 本地优先、Agent 驱动、引导式生成
+> AI 辅助中文网文创作工作台 — 本地优先、约束驱动、Agent 协作
 
-**v1.0.3** | TypeScript + Bun + React 19 + Hono + SQLite + AI Agents
+**v1.1.0** | TypeScript + Bun + React 19 + Hono + SQLite + AI Agents
 
 [![Release](https://img.shields.io/github/v/release/vivy1024/novelfork)](https://github.com/vivy1024/novelfork/releases/latest)
 
@@ -12,12 +12,13 @@
 
 NovelFork 是一个专注中文网文创作的本地 AI 工作台。完全本地运行，数据不出本机。
 
-- 5 个专属 Agent 协作写作（写书/伏笔/章末钩子/审校/大纲与经纬）
-- 引导式生成：PGI 追问 → Guided Plan 确认 → UserQuestionGate → 候选稿
-- 经纬系统（SQLite 持久化）管理角色、势力、设定、伏笔、大纲
-- AI 味检测、连续性审计、文风漂移检测、章节健康度
-- 导出 TXT/Word/ePub 发布到起点/番茄等平台
-- 首次运行引导（FirstRunDialog + GettingStartedChecklist + GuidedTour）
+核心特性：
+- **约束驱动写作**：Scene Spec 结构化蓝图 → Writer → AuditRevise，硬约束保证不出错
+- **经纬三层分离**：Canon（不可变真相）/ Dynamic（每章更新）/ Reference（按需查阅）
+- **核心包 + 按需读取**：模型默认只读 4000 tokens 核心包，按分类分页补读细节
+- **10 个核心工具**：从 48 个精简到 10 个，模型认知负担降低 60%
+- **Provider 健康管理**：熔断、错误分类、自动降级、用户可读错误提示
+- **Token 预算硬约束**：上下文不会膨胀到 180k tokens，工具输出自动截断
 
 ---
 
@@ -25,7 +26,7 @@ NovelFork 是一个专注中文网文创作的本地 AI 工作台。完全本地
 
 ### 方式一：下载 exe（推荐）
 
-从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/latest) 下载 `novelfork-v1.0.3-windows-x64.exe`，双击运行。
+从 [GitHub Release](https://github.com/vivy1024/novelfork/releases/latest) 下载 `novelfork-v1.1.0-windows-x64.exe`，双击运行。
 
 ### 方式二：从源码构建
 
@@ -35,73 +36,98 @@ cd novelfork
 bun install
 
 # 开发模式
-pnpm --dir packages/studio dev    # Vite 前端 http://localhost:4567
+bun run dev
 
 # 编译单文件 exe
-pnpm --dir packages/studio compile   # → dist/novelfork-v1.0.3-windows-x64.exe
+cd packages/studio && bun run compile
 ```
 
-首次打开会显示欢迎引导，建议先配置 AI 供应商（设置 → AI 供应商）。新建书籍后自动进入引导向导。
+首次打开配置 AI 供应商（设置 → AI 供应商 → 填入 API Key）。支持 Anthropic / DeepSeek / 任何 OpenAI 兼容 API。
 
 ---
 
-## 功能概览
-
-### 写作工作台
+## 架构
 
 ```
-┌──────────────┬──────────────────────────┬────────────────┐
-│ 左侧边栏       │ 中间画布                  │ 右侧叙述者会话    │
-│ 书籍 + Agent   │ 编辑器 / 驾驶舱 / 经纬     │ 对话 / 工具链     │
-│ 独立叙述者      │ 资源树（按类别分组）        │ 模型 / 权限       │
-└──────────────┴──────────────────────────┴────────────────┘
+┌─────────────────────────────────────────────────────────────┐
+│  NovelFork Studio（Web 工作台）                               │
+│  React 19 + Hono + Vite + SQLite                            │
+├─────────────────────────────────────────────────────────────┤
+│  Agent Runtime（通用 Coding Agent 底座）                      │
+│  • Session 管理 + 消息持久化 + 断线恢复                       │
+│  • Agent Turn Loop（generate → tool_use → execute → continue）│
+│  • Context Budget Manager（token 预算硬约束）                 │
+│  • Provider Health Manager（熔断 + 错误分类 + fallback）      │
+│  • Tool Executor（权限检查 + YOLO mode + 安全反思）           │
+│  • Compaction（阈值检测 → 截断/LLM 压缩）                    │
+├─────────────────────────────────────────────────────────────┤
+│  Novel Plugin（小说领域插件）                                  │
+│  • 经纬系统（Canon/Dynamic/Reference 三层）                   │
+│  • 写作管线（SceneSpec → Writer → AuditRevise）              │
+│  • PGI 追问 + Scene Spec 结构化蓝图                          │
+│  • 审计（Canon check + POV check + AI 味 + 节奏）            │
+│  • 预设/节拍/伏笔/叙事线/驾驶舱/健康度                       │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-### 5 Agent 写作管线
+---
 
-| Agent | 职责 |
-|-------|------|
-| 📝 写书 | 引导式生成下一章（PGI 追问 → 计划确认 → 候选稿） |
-| 🎣 伏笔 | 伏笔管理、建议回收时机、埋设新伏笔 |
-| 🪝 章末钩子 | 生成 3-5 个章末悬念方案 |
-| 🔍 审校 | 连续性审计、矛盾检测、人设一致性 |
-| 📋 大纲与经纬 | 生成大纲、维护经纬、添加角色/设定/势力 |
+## 核心工具（v2）
 
-### 48+ Agent 工具
-
-文件操作（Bash/Read/Write/Edit/Glob/Grep）· Worktree 管理 · 用户交互（AskUserQuestion 多选+"其他"选项/PlanMode/TaskCreate）· 网络（WebSearch/WebFetch/Browser）· 子代理（Agent/Await/Send/ForkNarrator）· 终端 · 对话历史搜索 · 管道模式 · 学习中心 · 技能 · 目标管理 · 驾驶舱 · 问卷 · PGI · 引导式生成 · 候选稿 · 叙事线 · 章节/经纬/健康度读取
-
-### 引导式生成
-
-写新章前，AI 会：
-1. 生成 2-5 个追问（"主角这章的情绪基调？""玉佩伏笔要回收吗？"）
-2. 用户回答后生成写作计划
-3. 用户批准计划后才生成候选稿（UserQuestionGate 把关）
-4. 候选稿进入候选区，用户确认后才合并到正式章节
-
-### 经纬系统
-
-SQLite 持久化存储（`story_jingwei_entry` / `story_jingwei_section` 表），驾驶舱从 SQLite 直接读取。
-
-| 类别 | 内容 |
+| 工具 | 功能 |
 |------|------|
-| 角色 | 人物设定 |
-| 势力 | 组织/门派 |
-| 设定 | 世界观/体系 |
-| 伏笔 | 待回收线索 |
-| 大纲 | 卷/章大纲 |
-| 状态 | 当前进度 |
-| 规则 | 写作规则 |
+| `cockpit.snapshot` | 进度/伏笔/候选稿/健康度全景 |
+| `jingwei.read` | 经纬读取（scope=brief/category/search） |
+| `jingwei.write` | 经纬写入（Canon 不可变保护 + 删除） |
+| `pgi.ask` | PGI 追问（生成问题 + AskUserQuestion 格式） |
+| `scene.spec` | 结构化写作蓝图（H4 硬约束校验） |
+| `pipeline.write` | 精简写作管线（2 次 LLM 调用） |
+| `chapter.read` | 读章节正文 |
+| `chapter.audit` | 审计（Canon + POV + 软约束） |
+| `rewrite.segment` | 选段改写（续写/扩写/去AI味/风格改写） |
+| `hooks.manage` | 伏笔生命周期（埋设/回收/删除） |
 
-`jingwei.upsert_entry` 支持 `inferCategory` 智能分类。
+---
 
-### 写作工具
+## 写作流程（PEV）
 
-AI 味检测（12 规则）· 章节健康度 · 段落节奏 · 对话比例 · 文风漂移 · 角色弧线 · 平台合规（5 平台）· 导出（TXT/Word/ePub）· 写作预设（26 流派）· 日更进度 · 节拍表 · 模板市场 · Checkpoint/Rewind
+```
+1. cockpit.snapshot     → 了解当前进度
+2. jingwei.read(brief)  → 读取经纬核心包 + 分类目录
+3. pgi.ask              → 生成追问，用户确认方向
+4. scene.spec           → 生成结构化写作蓝图
+5. jingwei.read(category) → 按蓝图补读相关经纬
+6. pipeline.write       → Writer 生成 + AuditRevise 审修
+7. 候选稿保存           → 用户审核后合并到正式章节
+```
 
-### 请求日志
+---
 
-SQLite 持久化（`request_log` 表），记录所有 AI 请求的模型、token 用量、耗时、状态。
+## 硬约束体系
+
+| ID | 约束 | 违反后果 |
+|----|------|---------|
+| H1 | Token ≤ 模型窗口 × 80% | 拒绝构造，触发 compact |
+| H2 | Canon 不可变 | 审计阻断 |
+| H3 | AI 生成只进候选区 | 权限拦截 |
+| H4 | 没有 Scene Spec 不能写章节 | pipeline 拒绝 |
+| H5 | 写章节前必须用户确认 | PGI 门禁 |
+| H6 | 经纬写入只走工具 | permission deny |
+| H7 | 角色不能知道视角外信息 | POV 检测 |
+
+---
+
+## 经纬系统
+
+三层数据分离：
+
+| 层 | 内容 | 行为 |
+|----|------|------|
+| Canon | 故事基线/世界规则/写作约束 | 只能追加，不能修改 |
+| Dynamic | 角色状态/伏笔/矛盾/章节摘要 | 每章可更新 |
+| Reference | 角色档案/地点/势力/能力体系 | 按需查阅 |
+
+14 个标准分类：premise / world-model / characters / relationships / factions / locations / power-system / timeline / chapter-summaries / foreshadowing / conflicts / props / rules / reference
 
 ---
 
@@ -110,31 +136,16 @@ SQLite 持久化（`request_log` 表），记录所有 AI 请求的模型、toke
 ```
 novelfork/
 ├── packages/
-│   ├── core/             # 通用基础设施（storage/llm/state/hooks/mcp/runtime）
+│   ├── core/             # 通用基础设施（storage/llm/state/mcp）
 │   ├── studio/           # Web 工作台（React 19 + Hono + Vite）
-│   ├── cli/              # CLI 工具（novelfork 命令）
-│   ├── novel-plugin/     # 小说领域插件（engine/routes/handlers/pages）
-│   └── fitness-plugin/   # 健身领域插件骨架（证明可扩展性）
+│   ├── cli/              # CLI 工具
+│   └── novel-plugin/     # 小说领域插件（engine/routes/handlers/pages）
 ├── docs/
-│   ├── learning/         # 学习中心（20 篇功能教学）
-│   ├── 02-用户指南/
-│   ├── 03-产品与流程/
-│   ├── 04-架构与设计/
-│   └── 06-API与数据契约/
-└── .kiro/specs/          # 开发规格
+│   ├── learning/         # 学习中心（22 篇）
+│   ├── 04-架构与设计/    # 系统架构、Agent 管线、经纬系统
+│   └── 05-开发者指南/    # 存储层、经纬开发指引
+└── dist/                 # 编译产物
 ```
-
----
-
-## 文档
-
-| 入口 | 说明 |
-|------|------|
-| [docs/learning/](docs/learning/) | **学习中心**（20 篇，推荐新用户从这里开始） |
-| [docs/02-用户指南/](docs/02-用户指南/) | 安装、小说管理、AI 写作、对话、设置 |
-| [docs/03-产品与流程/](docs/03-产品与流程/) | 创作流程、资源管理器、候选稿、经纬 |
-| [docs/04-架构与设计/](docs/04-架构与设计/) | 系统架构、工作台、Agent 管线、驾驶舱 |
-| [docs/06-API与数据契约/](docs/06-API与数据契约/) | API 总览、数据表 |
 
 ---
 
@@ -142,18 +153,15 @@ novelfork/
 
 ```bash
 # 类型检查
-pnpm --dir packages/studio typecheck
+pnpm -r typecheck
 
-# 开发模式
-pnpm --dir packages/studio dev
+# 测试
+pnpm --dir packages/cli test
+pnpm --dir packages/studio exec vitest run
 
-# 编译单文件
-pnpm --dir packages/studio compile
+# 编译
+cd packages/studio && bun run compile
 ```
-
-### 依赖前提
-
-所有 AI 功能需要配置 AI 供应商（设置 → AI 供应商 → 填入 API Key）。支持 OpenAI / Anthropic / DeepSeek / 任何 OpenAI 兼容 API。未配置时仍可创建作品、编辑章节、整理经纬。
 
 ---
 
