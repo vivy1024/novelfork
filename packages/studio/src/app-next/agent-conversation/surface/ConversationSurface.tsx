@@ -166,14 +166,16 @@ export function ConversationSurface({
   const [filesPanelDismissed, setFilesPanelDismissed] = useState(false);
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [userCommands, setUserCommands] = useState<UserCommand[]>([]);
+  const [disabledCommands, setDisabledCommands] = useState<string[]>([]);
   const routerNavigate = useNavigate();
 
-  // 加载用户自定义命令
+  // 加载用户自定义命令和禁用命令列表
   useEffect(() => {
     fetch("/api/routines/global")
       .then(res => res.ok ? res.json() : null)
-      .then((data: { routines?: { commands?: UserCommand[] } } | null) => {
+      .then((data: { routines?: { commands?: UserCommand[]; disabledCommands?: string[] } } | null) => {
         if (data?.routines?.commands) setUserCommands(data.routines.commands);
+        if (data?.routines?.disabledCommands) setDisabledCommands(data.routines.disabledCommands);
       })
       .catch(() => { /* non-fatal */ });
   }, []);
@@ -772,7 +774,7 @@ export function ConversationSurface({
         onRetry={handleRetry}
         onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
-        slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId, userCommands }}
+        slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId, userCommands, commandEnabledRegistry: { isEnabled: (id: string) => !disabledCommands.includes(id) } }}
         isRunning={isWorking}
         isInterrupted={isInterrupted}
         lastTurnFailed={lastTurnFailed}
