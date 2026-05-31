@@ -3,6 +3,7 @@
  */
 import { spawn } from "node:child_process";
 import type { Hook } from "../../types/settings.js";
+import type { RoutineHook } from "../../types/routines.js";
 
 export interface HookContext {
   toolName: string;
@@ -80,4 +81,30 @@ export function getMatchingHooks(
     if (hook.toolName && hook.toolName !== toolName) return false;
     return true;
   });
+}
+
+/**
+ * 将 RoutineHook（套路系统）转换为 Hook（运行时系统）格式。
+ * 仅转换 kind=shell 且 enabled 的钩子。
+ * event 映射：PreToolUse / PostToolUse / TurnComplete（不区分大小写匹配）。
+ */
+const ROUTINE_EVENT_MAP: Record<string, Hook["event"]> = {
+  pretooluse: "PreToolUse",
+  posttooluse: "PostToolUse",
+  turncomplete: "TurnComplete",
+};
+
+export function convertRoutineHooks(routineHooks: RoutineHook[]): Hook[] {
+  const result: Hook[] = [];
+  for (const rh of routineHooks) {
+    if (!rh.enabled || rh.kind !== "shell") continue;
+    const event = ROUTINE_EVENT_MAP[rh.event.toLowerCase()];
+    if (!event) continue;
+    result.push({
+      event,
+      command: rh.target,
+      timeout: 10000,
+    });
+  }
+  return result;
 }

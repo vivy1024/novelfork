@@ -2415,9 +2415,10 @@ export async function handleSessionChatTransportMessage(
   // --- TurnComplete hooks (fire-and-forget) ---
   void (async () => {
     try {
-      const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+      const { executeHook, getMatchingHooks, convertRoutineHooks } = await import("./hook-executor.js");
       const config = await loadUserConfig();
-      const hooks = config.runtimeControls?.hooks ?? [];
+      const routines = await loadGlobalRoutines();
+      const hooks = [...(config.runtimeControls?.hooks ?? []), ...convertRoutineHooks(routines.hooks)];
       const turnHooks = getMatchingHooks(hooks, "TurnComplete", "");
       if (turnHooks.length === 0) return;
       const workDir = loaded.session.worktree?.trim() || process.cwd();

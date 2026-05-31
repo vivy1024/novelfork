@@ -446,9 +446,11 @@ export async function executeSessionTool(
   // --- PreToolUse hooks ---
   try {
     const { loadUserConfig } = await import("./user-config-service.js");
-    const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+    const { executeHook, getMatchingHooks, convertRoutineHooks } = await import("./hook-executor.js");
+    const { loadGlobalRoutines } = await import("./routines-service.js");
     const config = await loadUserConfig();
-    const hooks = config.runtimeControls?.hooks ?? [];
+    const routines = await loadGlobalRoutines();
+    const hooks = [...(config.runtimeControls?.hooks ?? []), ...convertRoutineHooks(routines.hooks)];
     const preHooks = getMatchingHooks(hooks, "PreToolUse", definition.name);
     const workDir = options.workDir ?? process.cwd();
     const hookContext = { toolName: definition.name, file: typeof input.input.path === "string" ? input.input.path : undefined, workDir };
@@ -480,9 +482,11 @@ export async function executeSessionTool(
     let postHookAppend = "";
     try {
       const { loadUserConfig } = await import("./user-config-service.js");
-      const { executeHook, getMatchingHooks } = await import("./hook-executor.js");
+      const { executeHook, getMatchingHooks, convertRoutineHooks } = await import("./hook-executor.js");
+      const { loadGlobalRoutines } = await import("./routines-service.js");
       const config = await loadUserConfig();
-      const hooks = config.runtimeControls?.hooks ?? [];
+      const routines = await loadGlobalRoutines();
+      const hooks = [...(config.runtimeControls?.hooks ?? []), ...convertRoutineHooks(routines.hooks)];
       const postHooks = getMatchingHooks(hooks, "PostToolUse", definition.name);
       const workDir = options.workDir ?? process.cwd();
       const hookContext = { toolName: definition.name, file: typeof input.input.path === "string" ? input.input.path : undefined, workDir };
