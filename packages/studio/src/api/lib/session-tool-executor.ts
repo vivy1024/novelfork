@@ -1615,7 +1615,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
     case "presets.set_rules":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
-        const enabledPresetIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
+        const inputIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
+        const mode = String(input.mode || "set"); // set | add | remove
         try {
           // 验证预设 ID 是否有效
           const { getPreset, listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
@@ -1630,33 +1631,49 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             } catch { /* ignore */ }
           }
 
-          const validIds: string[] = [];
-          const invalidIds: string[] = [];
-          for (const id of enabledPresetIds) {
-            if (getPreset(id)) validIds.push(id);
-            else invalidIds.push(id);
-          }
-
-          // 写入 book.json
+          // 读取当前 book.json
           const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
           const { readFile, writeFile } = await import("node:fs/promises");
           const { join } = await import("node:path");
           const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
           const bookJsonPath = join(root, "books", bookId, "book.json");
           const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+          const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+
+          // 根据 mode 计算最终列表
+          let finalIds: string[];
+          if (mode === "add") {
+            finalIds = [...new Set([...currentIds, ...inputIds])];
+          } else if (mode === "remove") {
+            const removeSet = new Set(inputIds);
+            finalIds = currentIds.filter(id => !removeSet.has(id));
+          } else {
+            // mode === "set" (default): 覆盖
+            finalIds = inputIds;
+          }
+
+          // 验证 ID 有效性
+          const validIds: string[] = [];
+          const invalidIds: string[] = [];
+          for (const id of finalIds) {
+            if (getPreset(id)) validIds.push(id);
+            else invalidIds.push(id);
+          }
+
           raw.enabledPresetIds = validIds;
           raw.updatedAt = new Date().toISOString();
           await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
 
+          const modeLabel = mode === "add" ? "追加" : mode === "remove" ? "移除" : "设置";
           const summary = validIds.length > 0
-            ? `已启用 ${validIds.length} 条预设规则。${invalidIds.length > 0 ? `（${invalidIds.length} 个无效 ID 已忽略：${invalidIds.join("、")}）` : ""}`
+            ? `已${modeLabel}预设规则，当前共 ${validIds.length} 条启用。${invalidIds.length > 0 ? `（${invalidIds.length} 个无效 ID 已忽略：${invalidIds.join("、")}）` : ""}`
             : "已清空所有预设规则。";
 
           return {
             ok: true,
             renderer: definition.renderer,
             summary,
-            data: { bookId, enabledPresetIds: validIds, invalidIds },
+            data: { bookId, mode, enabledPresetIds: validIds, invalidIds },
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
@@ -1685,11 +1702,32 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           const { registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
           registerPreset({ id, name, category: category as any, promptInjection, description: description ?? "" });
 
+          // 自动启用：如果指定了 bookId，将新预设加入该书籍的启用列表
+          let autoEnabled = false;
+          if (bookId) {
+            try {
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const { readFile, writeFile } = await import("node:fs/promises");
+              const { join } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+              const bookJsonPath = join(root, "books", bookId, "book.json");
+              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+              const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+              if (!currentIds.includes(id)) {
+                raw.enabledPresetIds = [...currentIds, id];
+                raw.updatedAt = new Date().toISOString();
+                await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+                autoEnabled = true;
+              }
+            } catch { /* auto-enable failure is non-fatal */ }
+          }
+
+          const enableNote = autoEnabled ? "已自动启用。" : bookId ? "自动启用失败，请手动调用 presets.set_rules(mode='add') 启用。" : "全局预设，需在书籍中手动启用。";
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `已创建自定义预设「${name}」（ID: ${id}）。使用 presets.set_rules 将其加入启用列表即可生效。`,
-            data: { id, name, category, bookId: bookId ?? null },
+            summary: `已创建自定义预设「${name}」（ID: ${id}）。${enableNote}`,
+            data: { id, name, category, bookId: bookId ?? null, autoEnabled },
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "preset-create-failed", summary: `创建自定义预设失败: ${err instanceof Error ? err.message : String(err)}` };
