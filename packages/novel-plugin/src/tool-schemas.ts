@@ -392,7 +392,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      enabledPresetIds: arraySchema("要启用的预设 ID 列表。传空数组表示清空所有预设。", { type: "string" }),
+      mode: stringSchema("操作模式：set（覆盖全部，默认）、add（追加）、remove（移除）。"),
+      enabledPresetIds: arraySchema("预设 ID 列表。set 模式=完整列表；add 模式=要追加的 ID；remove 模式=要移除的 ID。", { type: "string" }),
     },
     required: ["bookId", "enabledPresetIds"],
     additionalProperties: false,
