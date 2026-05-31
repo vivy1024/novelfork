@@ -117,7 +117,7 @@ export function ExpandablePanel({
   );
 }
 
-function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId: string; onClose?: () => void; onSwitchPanel?: (p: NonNullable<PanelType>) => void }) {
+function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId: string }) {
   switch (panel) {
     case "quality":
       return <QualityPanel bookId={bookId} />;
