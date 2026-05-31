@@ -28,6 +28,7 @@ import {
   mergeTableMarkdownByKey,
 } from "@vivy1024/novelfork-core";
 import { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "@vivy1024/novelfork-core";
+import { getPreset, type Preset } from "../presets/index.js";
 import { parseCreativeOutput } from "./writer-parser.js";
 import { buildRuntimeStateArtifacts, saveRuntimeStateSnapshot, type RuntimeStateArtifacts } from "@vivy1024/novelfork-core";
 import type { RuntimeStateSnapshot } from "@vivy1024/novelfork-core";
@@ -180,12 +181,22 @@ export class WriterAgent extends BaseAgent {
         }
       : undefined;
 
+    // Resolve enabled presets from book config
+    const enabledPresets: Preset[] = [];
+    if (book.enabledPresetIds?.length) {
+      for (const id of book.enabledPresetIds) {
+        const preset = getPreset(id);
+        if (preset) enabledPresets.push(preset);
+      }
+    }
+
     // ── Phase 1: Creative writing (temperature 0.7) ──
     const creativeSystemPrompt = buildWriterSystemPrompt(
       book, genreProfile, bookRules, bookRulesBody, genreBody, styleGuide, styleFingerprint,
       chapterNumber, "creative", fanficContext, resolvedLanguage,
       input.chapterIntent ? "governed" : "legacy",
       resolvedLengthSpec,
+      enabledPresets,
     );
 
     const creativeUserPrompt = input.chapterIntent && input.contextPackage && input.ruleStack
