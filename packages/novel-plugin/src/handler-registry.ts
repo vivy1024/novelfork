@@ -49,6 +49,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
 
   // Direct handlers (already implemented in novel-plugin)
   { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
+  { toolName: "chapter.list", serviceKey: "inline", method: "listChapters" },
   { toolName: "jingwei.read_brief", serviceKey: "direct", method: "handleJingweiReadBrief" },
   { toolName: "jingwei.read_category", serviceKey: "direct", method: "handleJingweiReadCategory" },
   { toolName: "jingwei.search", serviceKey: "direct", method: "handleJingweiSearch" },
@@ -70,6 +71,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "presets.check_compliance", serviceKey: "inline", method: "checkCompliance" },
   { toolName: "presets.set_rules", serviceKey: "inline", method: "setPresetRules" },
   { toolName: "presets.create_custom", serviceKey: "inline", method: "createCustomPreset" },
+  { toolName: "presets.list_available", serviceKey: "inline", method: "listAvailablePresets" },
   { toolName: "beat.get_current", serviceKey: "inline", method: "getBeatCurrent" },
   { toolName: "beat.set_template", serviceKey: "inline", method: "setBeatTemplate" },
   { toolName: "beat.create_custom", serviceKey: "inline", method: "createCustomBeat" },

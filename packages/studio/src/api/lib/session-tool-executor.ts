@@ -655,6 +655,31 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleChapterRead({ bookId, chapterNumber }, booksDir);
         return { ...result, renderer: definition.renderer };
       };
+    case "chapter.list":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        try {
+          const { StateManager } = await import("@vivy1024/novelfork-core");
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const state = new StateManager(root);
+          const chapters = await state.loadChapterIndex(bookId);
+          const items = chapters.map((ch: any) => ({
+            number: ch.number,
+            title: ch.title ?? `第${ch.number}章`,
+            wordCount: ch.wordCount ?? 0,
+            status: ch.status ?? "draft",
+          }));
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `共 ${items.length} 章。`,
+            data: { bookId, chapters: items },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "chapter-list-failed", summary: `列出章节失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     case "cockpit.snapshot":
       return async ({ input, definition }) => {
         if (!options.cockpitService) {
@@ -1318,6 +1343,17 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
               : openHooks;
             return { ok: true, renderer: definition.renderer, summary: `${dueHooks.length} \u4e2a\u4f0f\u7b14\u5230\u671f\u3002`, data: { action: "check_due", chapterNumber, dueHooks: dueHooks.map((l: string) => l.replace(/^- \[ \]\s*/, "").trim()) } };
           }
+          case "delete": {
+            const hookId = String(input.hookId ?? "");
+            const idx = hookId.startsWith("hook-") ? parseInt(hookId.slice(5), 10) : -1;
+            const hookLines = lines.filter((l: string) => l.startsWith("- ["));
+            if (idx < 0 || idx >= hookLines.length) return { ok: false, renderer: definition.renderer, error: "hook-not-found", summary: `伏笔 ${hookId} 不存在。` };
+            const targetLine = hookLines[idx]!;
+            const newLines = lines.filter((l: string) => l !== targetLine);
+            const newContent = newLines.join("\n");
+            await writeFile(hooksPath, newContent, "utf-8");
+            return { ok: true, renderer: definition.renderer, summary: `已删除伏笔：${targetLine.replace(/^- \[[ x]\]\s*/, "").trim()}`, data: { action: "delete", hookId } };
+          }
           default:
             return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `\u4e0d\u652f\u6301\u7684 action: ${action}` };
         }
@@ -1677,6 +1713,59 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "presets.list_available":
+      return async ({ input, definition }) => {
+        try {
+          const { listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          if (listPresets().length === 0) {
+            try { registerBuiltinPresets(); } catch {}
+            try {
+              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+              const db = getStorageDatabase();
+              for (const t of createUserTemplateRepository(db).list()) {
+                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch {}
+              }
+            } catch {}
+          }
+
+          let allPresets = listPresets();
+          const category = input.category ? String(input.category) : undefined;
+          if (category) {
+            allPresets = allPresets.filter((p: any) => p.category === category);
+          }
+
+          // 标注已启用状态
+          let enabledIds: string[] = [];
+          const bookId = input.bookId ? String(input.bookId) : undefined;
+          if (bookId) {
+            try {
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const { readFile } = await import("node:fs/promises");
+              const { join } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+              const raw = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8"));
+              enabledIds = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+            } catch {}
+          }
+
+          const items = allPresets.map((p: any) => ({
+            id: p.id,
+            name: p.name,
+            category: p.category,
+            description: p.description ?? "",
+            enabled: enabledIds.includes(p.id),
+          }));
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `共 ${items.length} 个可用预设${category ? `（分类: ${category}）` : ""}，其中 ${items.filter((i: any) => i.enabled).length} 个已启用。`,
+            data: { presets: items, bookId },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "presets-list-failed", summary: `列出预设失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
     case "presets.create_custom":
