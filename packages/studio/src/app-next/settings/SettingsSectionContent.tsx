@@ -11,7 +11,6 @@ import { UsagePanel } from "./panels/UsagePanel";
 import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
 import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
 import { AgentRuntimeHardeningPanel } from "./panels/AgentRuntimeHardeningPanel";
-import { WritingSettingsPanel } from "./panels/WritingSettingsPanel";
 import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
 import { ProxySettingsPanel } from "./panels/ProxySettingsPanel";
 import { AboutPanel } from "./panels/AboutPanel";
@@ -46,8 +45,7 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <AgentSettingsPanel />;
     case "agent-hardening":
       return <AgentRuntimeHardeningPanel />;
-    case "writing":
-      return <WritingSettingsPanel />;
+
     case "notifications":
       return <NotificationSettingsPanel />;
     case "appearance":

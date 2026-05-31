@@ -34,6 +34,8 @@ export const BookConfigSchema = z.object({
   fanficMode: FanficModeSchema.optional(),
   enabledPresetIds: z.array(z.string()).optional(),
   customPresetOverrides: z.record(z.string(), z.unknown()).optional(),
+  arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
+  customSensitiveWords: z.string().optional(),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;
