@@ -444,7 +444,15 @@ app.post("/:id/truncate", async (c) => {
   }
 
   const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: cutSeq };
-  await updateSession(id, { sessionConfig: updatedConfig });
+  // Reset context usage so Context Ring shows 0 after clear
+  await updateSession(id, {
+    sessionConfig: updatedConfig,
+    cumulativeUsage: {
+      ...(session.cumulativeUsage ?? { totalInputTokens: 0, totalOutputTokens: 0, totalCacheCreationInputTokens: 0, totalCacheReadInputTokens: 0, turnCount: 0 }),
+      lastInputTokens: 0,
+      lastContextBreakdown: undefined,
+    },
+  });
 
   return c.json({ ok: true, contextCutoffSeq: cutSeq, totalMessages: snapshot.messages.length });
 });
