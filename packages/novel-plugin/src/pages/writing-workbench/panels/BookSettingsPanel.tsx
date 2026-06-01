@@ -91,7 +91,7 @@ const CATEGORY_ORDER = ["genre", "tone", "setting-base", "logic-risk", "anti-ai"
 // Hook: useDebounce
 // ---------------------------------------------------------------------------
 
-function useDebounce<T extends (...args: unknown[]) => unknown>(fn: T, delay: number): T {
+function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: number): T {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fnRef = useRef(fn);
   fnRef.current = fn;

@@ -223,14 +223,8 @@ describe("domain contract clients", () => {
     const writing = createWritingActionClient(createContractClient({ fetch: fetchMock }));
 
     const applied = await writing.applyWritingMode("book/1", { target: "candidate", generatedContent: "候选正文" });
-    const next = await writing.startWriteNext<{ status: string; resourceId: string | null; gate: null }>("book/1", { chapterNumber: 2 });
-    const draft = await writing.startDraft<Record<string, unknown>>("book/1", { prompt: "写草稿" });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books/book%2F1/writing-modes/apply", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/books/book%2F1/write-next", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/books/book%2F1/draft", expect.objectContaining({ method: "POST" }));
     expect(applied.capability.id).toBe("writing-modes.apply");
-    expect(next.ok && next.data).toEqual({ status: "queued", resourceId: null, gate: null });
-    expect(draft.ok && draft.data).not.toHaveProperty("content");
   });
 });

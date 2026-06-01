@@ -106,8 +106,6 @@ export async function executeSlashCommandInput(input: string, context: SlashComm
 
   const executeNovelCommand = bookId ? async (handlerId: string, _args: string) => {
     const NOVEL_API_MAP: Record<string, string> = {
-      "novel.writeNext": `/api/books/${encodeURIComponent(bookId)}/write-next`,
-      "novel.draft": `/api/books/${encodeURIComponent(bookId)}/draft`,
       "novel.audit": `/api/books/${encodeURIComponent(bookId)}/audit`,
       "novel.detect": `/api/books/${encodeURIComponent(bookId)}/filter/scan-all`,
       "novel.hooks": `/api/books/${encodeURIComponent(bookId)}/hooks/generate`,
