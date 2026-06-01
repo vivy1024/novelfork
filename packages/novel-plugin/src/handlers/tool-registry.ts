@@ -296,6 +296,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "pipeline.import_chapters",
+    description: "整书导入工具。从 .txt/.md 文件中按章节标题分割并导入所有章节到指定书籍。自动生成文风统计。文件路径需为服务器本地路径。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.import_chapters"]),
+    risk: "draft-write",
+    renderer: "pipeline.import_chapters",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "outline.suggest_next",
     description: "基于大纲、最近章节和待兑现伏笔，推荐下一章的 2-3 个写作方向。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["outline.suggest_next"]),
