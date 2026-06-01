@@ -1335,6 +1335,113 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           return { ok: false, renderer: definition.renderer, error: "revise-failed", summary: `修订失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
+    case "pipeline.import_chapters":
+      return async ({ input, definition, onToolOutputStream }) => {
+        const bookId = String(input.bookId);
+        const filePath = String(input.filePath);
+        const maxChapters = typeof input.maxChapters === "number" ? input.maxChapters : 500;
+
+        try {
+          const { readFile, writeFile, mkdir } = await import("node:fs/promises");
+          const { join, resolve } = await import("node:path");
+          const { existsSync } = await import("node:fs");
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { splitChapters } = await import("@vivy1024/novelfork-core");
+
+          // Validate file exists
+          const resolvedPath = resolve(filePath);
+          if (!existsSync(resolvedPath)) {
+            return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在: ${filePath}` };
+          }
+
+          // Read file
+          const text = await readFile(resolvedPath, "utf-8");
+          if (text.length < 1000) {
+            return { ok: false, renderer: definition.renderer, error: "text-too-short", summary: "文件内容过短（至少需要 1000 字）。" };
+          }
+
+          // Split chapters
+          const splitPattern = typeof input.splitPattern === "string" ? input.splitPattern : undefined;
+          const chapters = splitChapters(text, splitPattern).slice(0, maxChapters);
+
+          if (chapters.length === 0) {
+            return { ok: false, renderer: definition.renderer, error: "no-chapters", summary: "未能识别出章节。请检查文件格式或提供 splitPattern。" };
+          }
+
+          // Prepare book directory
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const bookDir = join(root, "books", bookId);
+          const chaptersDir = join(bookDir, "chapters");
+          const storyDir = join(bookDir, "story");
+          await mkdir(chaptersDir, { recursive: true });
+          await mkdir(storyDir, { recursive: true });
+
+          // Write chapter files
+          let totalWords = 0;
+          for (let i = 0; i < chapters.length; i++) {
+            const ch = chapters[i]!;
+            const num = String(i + 1).padStart(4, "0");
+            const safeTitle = (ch.title || `第${i + 1}章`).replace(/[<>:"/\\|?*]/g, "_").slice(0, 50);
+            const fileName = `${num}_${safeTitle}.md`;
+            const content = `# ${ch.title || `第${i + 1}章`}\n\n${ch.content}`;
+            await writeFile(join(chaptersDir, fileName), content, "utf-8");
+            totalWords += ch.content.length;
+          }
+
+          // Update chapter index via StateManager
+          const { StateManager } = await import("@vivy1024/novelfork-core");
+          const state = new StateManager(root);
+          const now = new Date().toISOString();
+          const chapterIndex = chapters.map((ch, i) => ({
+            number: i + 1,
+            title: ch.title || `第${i + 1}章`,
+            wordCount: ch.content.length,
+            status: "imported" as const,
+            createdAt: now,
+            updatedAt: now,
+            auditIssues: [] as string[],
+            lengthWarnings: [] as string[],
+          }));
+          await state.saveChapterIndex(bookId, chapterIndex);
+
+          // Generate style guide from imported text (first 50000 chars)
+          try {
+            const { analyzeStyle } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            const sampleText = text.slice(0, 50000);
+            const profile = analyzeStyle(sampleText);
+            await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
+
+            // Simple style guide without LLM (to avoid long wait)
+            const guide = `# 文风指南（自动生成）\n\n基于导入文本前 50000 字统计分析。\n\n- 平均句长: ${profile.avgSentenceLength} 字\n- 段落平均长度: ${profile.avgParagraphLength} 字\n- 词汇多样性(TTR): ${profile.vocabularyDiversity}\n- 修辞特征: ${profile.rhetoricalFeatures.join("、") || "无显著特征"}\n\n> 如需更详细的定性分析，请使用 style.import 工具传入参考文本。`;
+            await writeFile(join(storyDir, "style_guide.md"), guide, "utf-8");
+          } catch { /* style analysis failure is non-fatal */ }
+
+          // Notify via stream
+          if (onToolOutputStream) {
+            onToolOutputStream(`导入完成：${chapters.length} 章，共 ${totalWords} 字。\n`);
+            onToolOutputStream(`章节文件已保存到 ${chaptersDir}\n`);
+            onToolOutputStream(`\n提示：导入后建议让 Agent 执行以下操作：\n`);
+            onToolOutputStream(`1. 读取前几章内容，建立经纬（角色/设定/世界观）\n`);
+            onToolOutputStream(`2. 生成卷大纲摘要\n`);
+            onToolOutputStream(`3. 使用 style.import 提取详细文风\n`);
+          }
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `已导入 ${chapters.length} 章（共 ${totalWords} 字）到书籍「${bookId}」。文风统计已生成。建议接下来建立经纬和大纲。`,
+            data: {
+              bookId,
+              importedChapters: chapters.length,
+              totalWords,
+              nextChapter: chapters.length + 1,
+              chaptersDir,
+            },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "import-failed", summary: `导入失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     case "rewrite.segment":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId ?? "");
