@@ -1,7 +1,9 @@
 /**
  * AI routes — mounted in all modes (standalone + relay).
- * ~16 endpoints: write-next, draft, audit, revise, rewrite, detect, style,
- * radar, agent, imports, fanfic operations, studio SSE.
+ * Endpoints: write-next, draft, audit, revise, rewrite, resync, detect, style,
+ * import/chapters, transform, outline, complete, context-assembly, web-capture, studio SSE.
+ *
+ * Removed (no frontend callers): import/canon, fanfic/init, fanfic/refresh, radar/scan.
  */
 
 import { Hono } from "hono";
@@ -24,7 +26,6 @@ import { join } from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import {
   AUTHOR_REVIEW_FILES,
-  buildRadarReviewMarkdown,
   buildWebCaptureReviewMarkdown,
   type AuthorMaterialPersistenceInfo,
   type AuthorWebCaptureInput,
@@ -40,22 +41,6 @@ type EventHandler = (event: string, data: unknown) => void;
 
 function toErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function isMissingLlmConfigError(error: unknown): boolean {
-  const message = toErrorMessage(error);
-  return /NOVELFORK_LLM_API_KEY/i.test(message)
-    || /API key.*not set/i.test(message)
-    || /missing.*api[_ -]?key/i.test(message)
-    || /no\s+api[_ -]?key/i.test(message);
-}
-
-function structuredLlmConfigError() {
-  return {
-    code: "LLM_CONFIG_MISSING",
-    message: "模型配置未完成，请先到管理中心配置 API Key 或选择可用网关。",
-    hint: "打开管理中心 → 供应商，检查 API Key、Base URL 与模型配置。",
-  };
 }
 
 function normalizeCapturedText(content: string, maxChars = 8000): string {
@@ -134,6 +119,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   }
 
   // --- Write Next ---
+  // TODO: migrate off PipelineRunner — writeNextChapter involves locking, multi-agent orchestration,
+  // state snapshots, and pipeline events. Needs dedicated extraction into a standalone function.
 
   app.post("/api/books/:id/write-next", async (c) => {
     const id = c.req.param("id");
@@ -180,6 +167,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Draft ---
+  // TODO: migrate off PipelineRunner — writeDraft shares the same complex orchestration as writeNextChapter.
 
   app.post("/api/books/:id/draft", async (c) => {
     const id = c.req.param("id");
@@ -236,6 +224,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Revise ---
+  // TODO: migrate off PipelineRunner — reviseDraft involves locking, re-audit, governed input
+  // preparation, and length-aware revision. Needs extraction into standalone revise service.
 
   app.post("/api/books/:id/revise/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -264,6 +254,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Rewrite ---
+  // TODO: migrate off PipelineRunner — rewrite depends on writeNextChapter after rollback.
 
   app.post("/api/books/:id/rewrite/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -292,6 +283,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Resync ---
+  // TODO: migrate off PipelineRunner — resyncChapterArtifacts involves locking, chapter analysis,
+  // jingwei file regeneration, and state snapshots.
 
   app.post("/api/books/:id/resync/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -376,7 +369,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     }
   });
 
-  // --- Style Import ---
+  // --- Style Import (direct Agent call — no PipelineRunner) ---
 
   app.post("/api/books/:id/style/import", async (c) => {
     const id = c.req.param("id");
@@ -384,11 +377,66 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
     broadcastStudioEvent("style:start", { bookId: id });
     try {
+      if (!text || text.length < 500) {
+        return c.json({ error: `Reference text too short (${text?.length ?? 0} chars, minimum 500). Provide at least 2000 chars for reliable style extraction.` }, 400);
+      }
+
       const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      const result = await pipeline.generateStyleGuide(id, text, sourceName ?? "unknown");
+      const config = await ctx.buildPipelineConfig(sessionLlm);
+
+      const bookDir = state.bookDir(id);
+      const storyDir = join(bookDir, "story");
+      await mkdir(storyDir, { recursive: true });
+
+      // 1. Statistical fingerprint
+      const { analyzeStyle } = await import("../engine/index.js");
+      const profile = analyzeStyle(text, sourceName ?? "unknown");
+      await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
+
+      // 2. LLM qualitative extraction
+      const styleGuideMessages: { role: "system" | "user"; content: string }[] = [
+        {
+          role: "system",
+          content: `你是一位文学风格分析专家。分析参考文本的写作风格，提取可供模仿的定性特征。
+
+输出格式（Markdown）：
+## 叙事声音与语气
+（冷峻/热烈/讽刺/温情/...，附1-2个原文例句）
+
+## 对话风格
+（角色说话的共性特征：句子长短、口头禅倾向、方言痕迹、对话节奏）
+
+## 场景描写特征
+（五感偏好、意象选择、描写密度、环境与情绪的关联方式）
+
+## 转折与衔接手法
+（场景如何切换、时间跳跃的处理方式、段落间的过渡特征）
+
+## 节奏特征
+（长短句分布、段落长度偏好、高潮/舒缓的交替方式）
+
+## 词汇偏好
+（高频特色用词、比喻/修辞倾向、口语化程度）
+
+## 情绪表达方式
+（直白抒情 vs 动作外化、内心独白的频率和风格）
+
+## 独特习惯
+（任何值得模仿的个人写作习惯）
+
+分析必须基于原文实际特征，不要泛泛而谈。每个部分用1-2个原文例句佐证。`,
+        },
+        {
+          role: "user",
+          content: `分析以下参考文本的写作风格：\n\n${text.slice(0, 20000)}`,
+        },
+      ];
+
+      const response = await chatCompletion(config.client, config.model, styleGuideMessages, { temperature: 0.3, maxTokens: 4096 });
+      await writeFile(join(storyDir, "style_guide.md"), response.content, "utf-8");
+
       broadcastStudioEvent("style:complete", { bookId: id });
-      return c.json({ ok: true, result });
+      return c.json({ ok: true, result: response.content });
     } catch (e) {
       broadcastStudioEvent("style:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
@@ -396,6 +444,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Import Chapters ---
+  // TODO: migrate off PipelineRunner — importChapters involves foundation generation via ArchitectAgent,
+  // sequential chapter replay with ChapterAnalyzerAgent, state snapshots, and style extraction.
 
   app.post("/api/books/:id/import/chapters", async (c) => {
     const id = c.req.param("id");
@@ -415,134 +465,6 @@ export function createAIRouter(ctx: RouterContext): Hono {
     } catch (e) {
       broadcastStudioEvent("import:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Import Canon ---
-
-  app.post("/api/books/:id/import/canon", async (c) => {
-    const id = c.req.param("id");
-    const { fromBookId } = await c.req.json<{ fromBookId: string }>();
-    if (!fromBookId) return c.json({ error: "fromBookId is required" }, 400);
-
-    broadcastStudioEvent("import:start", { bookId: id, type: "canon" });
-    try {
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      await pipeline.importCanon(id, fromBookId);
-      broadcastStudioEvent("import:complete", { bookId: id, type: "canon" });
-      return c.json({ ok: true });
-    } catch (e) {
-      broadcastStudioEvent("import:error", { bookId: id, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Fanfic Init ---
-
-  app.post("/api/fanfic/init", async (c) => {
-    const body = await c.req.json<{
-      title: string; sourceText: string; sourceName?: string;
-      mode?: string; genre?: string; platform?: string;
-      targetChapters?: number; chapterWordCount?: number; language?: string;
-    }>();
-    if (!body.title || !body.sourceText) {
-      return c.json({ error: "title and sourceText are required" }, 400);
-    }
-
-    const now = new Date().toISOString();
-    const bookId = body.title.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]/g, "-").replace(/-+/g, "-").slice(0, 30);
-
-    const bookConfig = {
-      id: bookId,
-      title: body.title,
-      platform: (body.platform ?? "other") as "other",
-      genre: (body.genre ?? "other") as "xuanhuan",
-      status: "outlining" as const,
-      targetChapters: body.targetChapters ?? 100,
-      chapterWordCount: body.chapterWordCount ?? 3000,
-      fanficMode: (body.mode ?? "canon") as "canon",
-      ...(body.language ? { language: body.language as "zh" | "en" } : {}),
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    broadcastStudioEvent("fanfic:start", { bookId, title: body.title });
-    try {
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      await pipeline.initFanficBook(bookConfig, body.sourceText, body.sourceName ?? "source", (body.mode ?? "canon") as "canon");
-      broadcastStudioEvent("fanfic:complete", { bookId });
-      return c.json({ ok: true, bookId });
-    } catch (e) {
-      broadcastStudioEvent("fanfic:error", { bookId, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Fanfic Refresh ---
-
-  app.post("/api/books/:id/fanfic/refresh", async (c) => {
-    const id = c.req.param("id");
-    const { sourceText, sourceName } = await c.req.json<{ sourceText: string; sourceName?: string }>();
-    if (!sourceText?.trim()) return c.json({ error: "sourceText is required" }, 400);
-
-    broadcastStudioEvent("fanfic:refresh:start", { bookId: id });
-    try {
-      const book = await state.loadBookConfig(id);
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      await pipeline.importFanficCanon(id, sourceText, sourceName ?? "source", (book.fanficMode ?? "canon") as "canon");
-      broadcastStudioEvent("fanfic:refresh:complete", { bookId: id });
-      return c.json({ ok: true });
-    } catch (e) {
-      broadcastStudioEvent("fanfic:refresh:error", { bookId: id, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Radar Scan ---
-
-  app.post("/api/radar/scan", async (c) => {
-    const body = await c.req.json<{ bookId?: string }>().catch(() => ({} as { bookId?: string }));
-    const targetBookId = body.bookId?.trim() || undefined;
-
-    if (targetBookId) {
-      try {
-        await state.loadBookConfig(targetBookId);
-      } catch {
-        return c.json({ error: `Book "${targetBookId}" not found` }, 404);
-      }
-    }
-
-    broadcastStudioEvent("radar:start", { bookId: targetBookId });
-    try {
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      const result = await pipeline.runRadar();
-
-      let persisted: AuthorMaterialPersistenceInfo | undefined;
-      if (targetBookId) {
-        const savedAt = new Date().toISOString();
-        persisted = await persistAuthorReviewFile({
-          state,
-          bookId: targetBookId,
-          fileName: AUTHOR_REVIEW_FILES.radar,
-          content: buildRadarReviewMarkdown(result, savedAt),
-          mode: "replace",
-        });
-      }
-
-      const response = persisted ? { ...result, persisted } : result;
-      broadcastStudioEvent("radar:complete", { result: response, bookId: targetBookId });
-      return c.json(response);
-    } catch (e) {
-      const message = toErrorMessage(e);
-      broadcastStudioEvent("radar:error", { error: message, bookId: targetBookId });
-      if (isMissingLlmConfigError(e)) {
-        return c.json({ error: structuredLlmConfigError() }, 400);
-      }
-      return c.json({ error: message }, 500);
     }
   });
 
