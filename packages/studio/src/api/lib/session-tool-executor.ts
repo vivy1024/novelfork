@@ -2335,10 +2335,15 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         const wordCount = typeof input.wordCount === "number" ? input.wordCount : undefined;
         const autoRevise = input.autoRevise !== false;
 
+        const { StateManager } = await import("@vivy1024/novelfork-core");
+        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+        const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+        const state = new StateManager(root);
+        const releaseLock = await state.acquireBookLock(bookId);
+
         try {
           // Resolve LLM client from the active session provider/model first.
           const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
-          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
           const { createLLMClient } = await import("@vivy1024/novelfork-core");
           const { executePipelineGenerate } = await import("@vivy1024/novelfork-novel-plugin/handlers");
 
@@ -2369,7 +2374,6 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             stream: true,
           };
           const client = createLLMClient(llmConfig);
-          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
 
           const result = await executePipelineGenerate(
             { bookId, chapterIntent, userDirectives, wordCount, autoRevise },
@@ -2399,6 +2403,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "pipeline-failed", summary: `写作管线执行失败: ${err instanceof Error ? err.message : String(err)}` };
+        } finally {
+          await releaseLock();
         }
       };
     default:

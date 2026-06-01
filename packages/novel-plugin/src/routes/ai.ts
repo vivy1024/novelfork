@@ -1,9 +1,10 @@
 /**
  * AI routes — mounted in all modes (standalone + relay).
- * Endpoints: write-next, draft, audit, revise, rewrite, resync, detect, style,
- * import/chapters, transform, outline, complete, context-assembly, web-capture, studio SSE.
+ * Endpoints: audit, revise, detect, style, transform, outline, complete,
+ * context-assembly, web-capture, studio SSE.
  *
  * Removed (no frontend callers): import/canon, fanfic/init, fanfic/refresh, radar/scan.
+ * Removed (PipelineRunner deleted): write-next, write-status, draft, rewrite, resync, import/chapters.
  */
 
 import { Hono } from "hono";
@@ -21,7 +22,6 @@ import {
   filterMatrixByPOV,
   filterHooksByPOV,
 } from "@vivy1024/novelfork-core";
-import { PipelineRunner } from "../engine/pipeline/runner.js";
 import { join } from "node:path";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import {
@@ -96,14 +96,6 @@ async function persistAuthorReviewFile(options: {
   };
 }
 
-interface WriteStatusEntry {
-  status: "idle" | "writing" | "completed" | "failed";
-  lastResult?: { chapterNumber?: number; title?: string; wordCount?: number; error?: string };
-  updatedAt: number;
-}
-
-const writeStatusMap = new Map<string, WriteStatusEntry>();
-
 export function createAIRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state, root, broadcast } = ctx;
@@ -117,79 +109,6 @@ export function createAIRouter(ctx: RouterContext): Hono {
       handler(event, data);
     }
   }
-
-  // --- Write Next ---
-  // Kept on PipelineRunner: writeNextChapter involves locking, governed input (Planner+Composer),
-  // length normalization, multi-step audit+revise, state snapshots, pipeline events, and post-write
-  // hooks. No standalone function with compatible API exists (executePipelineWrite requires SceneSpec).
-
-  app.post("/api/books/:id/write-next", async (c) => {
-    const id = c.req.param("id");
-    const body = await c.req.json<{ wordCount?: number }>().catch(() => ({ wordCount: undefined }));
-
-    // Concurrent write guard
-    const existing = writeStatusMap.get(id);
-    if (existing?.status === "writing") {
-      return c.json({ error: "already-writing", message: "该书籍正在写作中，请等待完成" }, 409);
-    }
-
-    broadcastStudioEvent("write:start", { bookId: id });
-    writeStatusMap.set(id, { status: "writing", updatedAt: Date.now() });
-
-    const sessionLlm = await ctx.getSessionLlm(c);
-    const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-    pipeline.writeNextChapter(id, body.wordCount).then(
-      (result: any) => {
-        writeStatusMap.set(id, { status: "completed", lastResult: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }, updatedAt: Date.now() });
-        broadcastStudioEvent("write:complete", { bookId: id, chapterNumber: result.chapterNumber, status: result.status, title: result.title, wordCount: result.wordCount });
-        // Evict from memory after 1 hour to prevent unbounded growth
-        setTimeout(() => writeStatusMap.delete(id), 3600_000);
-      },
-      (e: any) => {
-        writeStatusMap.set(id, { status: "failed", lastResult: { error: e instanceof Error ? e.message : String(e) }, updatedAt: Date.now() });
-        broadcastStudioEvent("write:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
-        // Evict from memory after 1 hour to prevent unbounded growth
-        setTimeout(() => writeStatusMap.delete(id), 3600_000);
-      },
-    );
-
-    return c.json({ status: "writing", bookId: id });
-  });
-
-  // --- Write Status ---
-
-  app.get("/api/books/:id/write-status", (c) => {
-    const id = c.req.param("id");
-    const entry = writeStatusMap.get(id);
-    if (!entry) {
-      return c.json({ status: "idle" as const });
-    }
-    return c.json({ status: entry.status, lastResult: entry.lastResult, updatedAt: entry.updatedAt });
-  });
-
-  // --- Draft ---
-  // Kept on PipelineRunner: writeDraft shares the same complex orchestration as writeNextChapter
-  // (locking, governed input, length normalization, jingwei persistence, state snapshots).
-
-  app.post("/api/books/:id/draft", async (c) => {
-    const id = c.req.param("id");
-    const body = await c.req.json<{ wordCount?: number; context?: string }>().catch(() => ({ wordCount: undefined, context: undefined }));
-
-    broadcastStudioEvent("draft:start", { bookId: id });
-
-    const sessionLlm = await ctx.getSessionLlm(c);
-    const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-    pipeline.writeDraft(id, body.context, body.wordCount).then(
-      (result: any) => {
-        broadcastStudioEvent("draft:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount });
-      },
-      (e: any) => {
-        broadcastStudioEvent("draft:error", { bookId: id, error: e instanceof Error ? e.message : String(e) });
-      },
-    );
-
-    return c.json({ status: "drafting", bookId: id });
-  });
 
   // --- Audit ---
 
@@ -315,58 +234,6 @@ export function createAIRouter(ctx: RouterContext): Hono {
       });
     } catch (e) {
       broadcastStudioEvent("revise:error", { bookId: id, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Rewrite ---
-  // Kept on PipelineRunner: rewrite = rollback + writeNextChapter, depends on the full pipeline.
-
-  app.post("/api/books/:id/rewrite/:chapter", async (c) => {
-    const id = c.req.param("id");
-    const chapterNum = parseInt(c.req.param("chapter"), 10);
-    const body: { brief?: string } = await c.req
-      .json<{ brief?: string }>()
-      .catch(() => ({}));
-
-    broadcastStudioEvent("rewrite:start", { bookId: id, chapter: chapterNum });
-    try {
-      const rollbackTarget = chapterNum - 1;
-      const discarded = await state.rollbackToChapter(id, rollbackTarget);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig({
-        externalContext: body.brief,
-        ...(await ctx.getSessionLlm(c)),
-      }));
-      pipeline.writeNextChapter(id).then(
-        (result: any) => broadcastStudioEvent("rewrite:complete", { bookId: id, chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount }),
-        (e: any) => broadcastStudioEvent("rewrite:error", { bookId: id, error: e instanceof Error ? e.message : String(e) }),
-      );
-      return c.json({ status: "rewriting", bookId: id, chapter: chapterNum, rolledBackTo: rollbackTarget, discarded });
-    } catch (e) {
-      broadcastStudioEvent("rewrite:error", { bookId: id, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Resync ---
-  // Kept on PipelineRunner: resyncChapterArtifacts involves locking, state validation with retry,
-  // governed artifacts, WriterAgent.settleChapterState, and StateValidatorAgent — too tightly coupled.
-
-  app.post("/api/books/:id/resync/:chapter", async (c) => {
-    const id = c.req.param("id");
-    const chapterNum = parseInt(c.req.param("chapter"), 10);
-    const body: { brief?: string } = await c.req
-      .json<{ brief?: string }>()
-      .catch(() => ({}));
-
-    try {
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig({
-        externalContext: body.brief,
-        ...(await ctx.getSessionLlm(c)),
-      }));
-      const result = await pipeline.resyncChapterArtifacts(id, chapterNum);
-      return c.json(result);
-    } catch (e) {
       return c.json({ error: String(e) }, 500);
     }
   });
@@ -505,32 +372,6 @@ export function createAIRouter(ctx: RouterContext): Hono {
       return c.json({ ok: true, result: response.content });
     } catch (e) {
       broadcastStudioEvent("style:error", { bookId: id, error: String(e) });
-      return c.json({ error: String(e) }, 500);
-    }
-  });
-
-  // --- Import Chapters ---
-  // Kept on PipelineRunner: importChapters involves locking, ArchitectAgent foundation generation
-  // with review cycle, sequential ChapterAnalyzerAgent replay, style extraction, state snapshots,
-  // and chapter index management — ~160 lines of orchestration logic.
-
-  app.post("/api/books/:id/import/chapters", async (c) => {
-    const id = c.req.param("id");
-    const { text, splitRegex } = await c.req.json<{ text: string; splitRegex?: string }>();
-    if (!text?.trim()) return c.json({ error: "text is required" }, 400);
-
-    broadcastStudioEvent("import:start", { bookId: id, type: "chapters" });
-    try {
-      const { splitChapters } = await import("@vivy1024/novelfork-core");
-      const chapters = [...splitChapters(text, splitRegex)];
-
-      const sessionLlm = await ctx.getSessionLlm(c);
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-      const result = await pipeline.importChapters({ bookId: id, chapters });
-      broadcastStudioEvent("import:complete", { bookId: id, type: "chapters", count: result.importedCount });
-      return c.json(result);
-    } catch (e) {
-      broadcastStudioEvent("import:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
     }
   });

@@ -16,7 +16,6 @@ import {
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import {
-  pipelineEvents,
   seedQuestionnaireTemplates,
   type PipelineConfig,
 } from "@vivy1024/novelfork-novel-plugin/engine";
@@ -139,21 +138,6 @@ function broadcast(event: string, data: unknown): void {
     handler(event, data);
   }
 }
-
-// Bridge core pipeline events → SSE
-pipelineEvents.on((event) => {
-  switch (event.type) {
-    case "run:start":
-      broadcast("pipeline:start", event.data);
-      break;
-    case "stage:update":
-      broadcast("pipeline:stage", event.data);
-      break;
-    case "run:complete":
-      broadcast("pipeline:complete", event.data);
-      break;
-  }
-});
 
 // --- Runtime mode ---
 
