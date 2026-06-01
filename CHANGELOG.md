@@ -4,6 +4,56 @@
 
 ## Unreleased
 
+## v1.2.0 (2026-05-31)
+
+### 🏗️ 架构统一：删除 PipelineRunner
+
+- **删除 CLI 包**（packages/cli）— InkOS 遗产，无人使用
+- **删除 PipelineRunner**（3187 行）— 所有写作能力统一到 Agent 工具层
+- **删除 pipeline 基础设施**（scheduler、agent loop、builtin-tools）— 共删除 ~21000 行
+- Agent 工具层为唯一执行路径，不再有两套并存系统
+
+### 📖 书籍设置页面
+
+- 驾驶舱底部"设置"入口，打开全屏书籍设置页面
+- 整合：基本信息、写作参数（目标章数/每章字数/弧线追踪/敏感词）、预设配置、节拍模板
+- 删除全局写作设置页面（配置移到书籍级别）
+- 角色弧线追踪从全局设置移到书籍级别
+
+### 🛠️ 新增 Agent 工具
+
+- `pipeline.revise` — 修订章节（审计+修订，5 种模式）
+- `pipeline.import_chapters` — 整书导入（分章+基础设定+文风提取）
+- `style.import` — 从参考文本提取文风
+- `style.get_profile` — 获取书籍文风档案
+- `rewrite.apply` — 将改写结果写回章节文件
+- `presets.list_available` — 列出所有可用预设
+- `chapter.list` — 列出章节目录
+- `jingwei.write` 新增 `mode=append` 追加模式
+- `presets.set_rules` 新增 `mode=add/remove` 防止预设丢失
+- `presets.create_custom` 创建后自动启用
+- `hooks.manage(action=delete)` 实现
+
+### 🗺️ 经纬系统改进
+
+- 表单改为 Markdown 优先（结构化字段降级为元数据标签）
+- 图谱视图按分类显示（仅有 relation 字段的分类）
+- Agent prompt 包含 16 分类内容模板指引
+- `jingwei.write` 工具支持 `fields` 参数
+
+### 🔧 工具系统
+
+- 恢复 4 个被错误废弃的工具（cockpit.list_open_hooks、presets.check_compliance、character.check_consistency、narrative.read_line）
+- ToolConfigBar 全部可选，按角色默认配置
+- StatusBar 精简为监控类（质量/AI味/警告）+ 设置入口
+
+### 🛡️ 安全与稳定性
+
+- Book lock 防止并发写入
+- Path traversal 防护（import_chapters）
+- routines 加载 2 秒缓存（避免重复文件读取）
+- solidified 消息 ID 防碰撞
+
 ## v1.1.1 (2026-05-31)
 
 ### 🔧 修复与改进
