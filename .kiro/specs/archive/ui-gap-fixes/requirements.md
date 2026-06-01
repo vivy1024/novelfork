@@ -1,0 +1,146 @@
+# UI 断裂修复 + 功能补全 — 需求文档
+
+## 背景
+
+代码审计发现多处"UI 存在但功能断裂"的问题。这些不是新功能，而是已有代码的接通问题。
+
+---
+
+## Phase 1：Critical 断裂修复（P0）
+
+### 1.1 预设执行 400 错误
+
+**现状**: 预设 Tab 的"执行"按钮发送 `mode: preset.category`（如 "genre"/"tone"）给 `/api/books/:id/inline-write`，但该 API 只接受 `continuation|expansion|bridge`
+**修复**: 预设执行应该走不同路径——将 `promptInjection` 注入到一次性生成调用中，而非走 inline-write
+
+### 1.2 预设启用/禁用 UI
+
+**现状**: 后端有 `PUT /api/books/:id/presets`（设置 enabledPresetIds），但预设 Tab 没有启用/禁用开关
+**修复**: 每个预设卡片添加 Switch 组件，切换时调用 API 更新 enabledPresetIds
+
+### 1.3 章节图永远禁用
+
+**现状**: `ChapterGraph` 组件完整，但 `StudioNextApp.tsx` 从不传 `chapters`/`chapterEdges` props
+**修复**: 从书籍 API 获取章节列表，构建简单的线性图（chapter1 → chapter2 → ...），传给组件
+
+---
+
+## Phase 2：功能补全（P1）
+
+### 2.1 节拍表真实进度追踪
+
+**现状**: `currentBeatIndex = currentChapter - 1`（假的）
+**修复**: 
+- 添加 beat-chapter 映射存储（SQLite 或 book config）
+- 用户可手动标记"当前章节对应哪个 beat"
+- 或 AI 自动分析章节内容匹配 beat
+
+### 2.2 叙事线前端交互
+
+**现状**: 后端有完整 CRUD（propose/apply），前端只显示 JSON
+**修复**: 用简单的节点列表 + "添加节点"/"编辑"按钮替代 JSON 显示
+
+### 2.3 Slash 命令补全
+
+**现状**: /tools /mcp /agents 返回"planned，尚不可执行"
+**修复**:
+- `/tools` — 列出当前会话可用工具
+- `/mcp` — 列出已连接 MCP 服务器和工具
+- `/agents` — 列出可用子代理类型
+
+---
+
+## Phase 3：设置页断裂修复（P1）
+
+### 3.1 终端设置面板接通后端
+
+**现状**: TerminalSettingsPanel 是纯占位 UI——无 API 调用、无持久化、setTimeout 模拟加载、"新建终端"是假按钮
+**后端**: `/api/terminals` 路由已存在（TerminalStore），支持 CRUD
+**修复**: 
+- 加载时调用 `GET /api/terminals`
+- 保存时调用 `PUT /api/settings/user` 持久化终端配置（字体/主题）
+- "新建终端"调用 `POST /api/terminals`
+- 终端列表显示真实 session
+
+### 3.3 外观设置字体不生效
+
+**现状**: 字体大小/字体族保存到后端但从未应用到 DOM（无 `document.documentElement.style.fontSize = ...`）
+**修复**: 
+- 保存后立即应用到 `<html>` 元素的 style
+- 页面加载时从配置读取并应用
+- 字体族同理
+
+### 3.4 设置页保存设计不一致
+
+**现状**: AI 代理/模型/写作面板有"保存"按钮 + dirty 检测；外观/通知面板是 auto-save（onChange 立即保存），无确认/取消
+**修复**: 统一为两种模式之一：
+- 方案 A：全部改为手动保存（有 dirty 状态 + 保存/取消按钮）
+- 方案 B：全部改为 auto-save + toast 提示"已保存"
+- 推荐方案 B（NarraFork 就是 auto-save 模式）
+
+### 3.5 服务器与系统面板硬编码
+
+**现状**: ServerSection 显示的信息可能是硬编码的静态文本
+**修复**: 从后端 API 动态获取：运行时版本、启动时间、端口、projectRoot、数据库路径等
+
+**现状**: 钉钉/飞书 Webhook URL 能保存但无代码在 Agent 完成/出错时发送通知
+**修复**: 
+- 在 `session-chat-service.ts` turn 结束后，读取通知配置
+- 如果配置了 Webhook URL，POST 通知到对应平台
+- 通知内容：会话标题 + 完成/失败状态 + 耗时
+
+---
+
+## Phase 4：套路页功能验证（P1）
+
+### 4.1 套路页各 Tab 功能确认
+
+需要验证的 Tab：
+- 命令 Tab — 能否添加/编辑/删除自定义命令？
+- 工具 Tab — 能否启用/禁用工具？
+- 权限 Tab — 能否设置 allow/deny/ask 规则？
+- 技能 Tab — 能否扫描/加载技能？
+- 子代理 Tab — 能否创建自定义子代理？
+- 提示词 Tab — 能否编辑全局/系统提示词？
+- MCP 工具 Tab — 能否添加/连接 MCP 服务器？
+- 钩子 Tab — 能否配置 Pre/Post/TurnComplete 钩子？
+
+### 4.2 套路页保存是否生效
+
+**关键问题**: 套路页的配置保存后，是否真的影响 Agent 行为？
+- 权限规则 → 是否在 session-tool-executor 中被读取？
+- 提示词 → 是否注入到 Agent system prompt？
+- 工具启用/禁用 → 是否影响工具列表？
+
+---
+
+## 实施顺序
+
+```
+Phase 1 — Critical 断裂修复（P0）
+  1.1 预设执行路径修复
+  1.2 预设启用/禁用 UI
+  1.3 章节图数据接通
+
+Phase 2 — 功能补全（P1）
+  2.1 节拍表进度追踪
+  2.2 叙事线前端交互
+  2.3 Slash 命令补全
+
+Phase 3 — 设置页断裂修复（P1）
+  3.1 终端设置面板接通后端
+  3.2 通知 Webhook 消费端
+
+Phase 4 — 套路页验证（P1）
+  4.1 各 Tab 功能确认
+  4.2 保存是否生效
+```
+
+---
+
+## 验证标准
+
+- Phase 1：预设执行不报 400；预设可启用/禁用；章节图显示线性章节关系
+- Phase 2：节拍表显示真实进度；叙事线可交互编辑；/tools 返回工具列表
+- Phase 3：终端设置保存后刷新不丢失；Agent 完成后钉钉收到通知
+- Phase 4：套路页保存的权限规则在下次工具调用时生效
