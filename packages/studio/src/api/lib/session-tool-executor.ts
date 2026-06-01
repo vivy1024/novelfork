@@ -1391,6 +1391,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           const resolvedPath = resolve(filePath);
 
           // Path traversal guard: only allow files within project root or home directory
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
           const allowedRoots = [root, process.env.HOME || process.env.USERPROFILE || ""].filter(Boolean);
           const isAllowed = allowedRoots.some(allowed => resolvedPath.startsWith(allowed));
           if (!isAllowed) {
@@ -1416,7 +1417,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           }
 
           // Prepare book directory
-          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
           const bookDir = join(root, "books", bookId);
           const chaptersDir = join(bookDir, "chapters");
           const storyDir = join(bookDir, "story");
