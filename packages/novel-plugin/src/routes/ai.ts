@@ -119,8 +119,9 @@ export function createAIRouter(ctx: RouterContext): Hono {
   }
 
   // --- Write Next ---
-  // TODO: migrate off PipelineRunner — writeNextChapter involves locking, multi-agent orchestration,
-  // state snapshots, and pipeline events. Needs dedicated extraction into a standalone function.
+  // Kept on PipelineRunner: writeNextChapter involves locking, governed input (Planner+Composer),
+  // length normalization, multi-step audit+revise, state snapshots, pipeline events, and post-write
+  // hooks. No standalone function with compatible API exists (executePipelineWrite requires SceneSpec).
 
   app.post("/api/books/:id/write-next", async (c) => {
     const id = c.req.param("id");
@@ -167,7 +168,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Draft ---
-  // TODO: migrate off PipelineRunner — writeDraft shares the same complex orchestration as writeNextChapter.
+  // Kept on PipelineRunner: writeDraft shares the same complex orchestration as writeNextChapter
+  // (locking, governed input, length normalization, jingwei persistence, state snapshots).
 
   app.post("/api/books/:id/draft", async (c) => {
     const id = c.req.param("id");
@@ -223,9 +225,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     }
   });
 
-  // --- Revise ---
-  // TODO: migrate off PipelineRunner — reviseDraft involves locking, re-audit, governed input
-  // preparation, and length-aware revision. Needs extraction into standalone revise service.
+  // --- Revise (direct Agent call — no PipelineRunner) ---
 
   app.post("/api/books/:id/revise/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -233,20 +233,86 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const body: { mode?: string; brief?: string } = await c.req
       .json<{ mode?: string; brief?: string }>()
       .catch(() => ({ mode: "spot-fix" }));
+    const mode = (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect";
 
     broadcastStudioEvent("revise:start", { bookId: id, chapter: chapterNum });
     try {
-      const pipeline = new PipelineRunner(await ctx.buildPipelineConfig({
-        externalContext: body.brief,
-        ...(await ctx.getSessionLlm(c)),
-      }));
-      const result = await pipeline.reviseDraft(
-        id,
-        chapterNum,
-        (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect",
+      const { ContinuityAuditor, ReviserAgent } = await import("../engine/index.js");
+      const { loadProjectConfig } = await import("@vivy1024/novelfork-core");
+
+      const currentConfig = await loadProjectConfig(root, { requireApiKey: false });
+      const client = createLLMClient(currentConfig.llm);
+      const agentCtx = { client, model: currentConfig.llm.model, projectRoot: root, bookId: id };
+
+      // Read chapter
+      const bookDir = state.bookDir(id);
+      const chaptersDir = join(bookDir, "chapters");
+      const files = await readdir(chaptersDir);
+      const padded = String(chapterNum).padStart(4, "0");
+      const match = files.find((f) => f.startsWith(padded) && f.endsWith(".md"));
+      if (!match) return c.json({ error: "Chapter not found" }, 404);
+      const raw = await readFile(join(chaptersDir, match), "utf-8");
+      // Strip title line to get content body
+      const lines = raw.split("\n");
+      const contentStart = lines.findIndex((l, i) => i > 0 && l.trim().length > 0);
+      const content = contentStart >= 0 ? lines.slice(contentStart).join("\n") : raw;
+
+      // Audit
+      const book = await state.loadBookConfig(id);
+      const auditor = new ContinuityAuditor(agentCtx);
+      const auditResult = await auditor.auditChapter(bookDir, content, chapterNum, book.genre);
+
+      // Revise if there are critical/warning issues
+      let revisedContent = content;
+      let revised = false;
+      let fixedIssues: string[] = [];
+      const blockingIssues = auditResult.issues.filter(
+        (i: { severity: string }) => i.severity === "critical" || i.severity === "warning",
       );
+
+      if (blockingIssues.length > 0) {
+        const reviser = new ReviserAgent(agentCtx);
+        const reviseResult = await reviser.reviseChapter(
+          bookDir,
+          content,
+          chapterNum,
+          blockingIssues,
+          mode,
+          book.genre,
+        );
+        if (reviseResult.revisedContent && reviseResult.revisedContent.length > 0) {
+          revisedContent = reviseResult.revisedContent;
+          revised = true;
+          fixedIssues = [...reviseResult.fixedIssues];
+
+          // Save revised chapter
+          const heading = lines[0] ?? "";
+          await writeFile(
+            join(chaptersDir, match),
+            heading ? `${heading}\n\n${revisedContent}` : revisedContent,
+            "utf-8",
+          );
+
+          // Update jingwei files if reviser provided them
+          const storyDir = join(bookDir, "story");
+          if (reviseResult.updatedState && reviseResult.updatedState !== "(状态卡未更新)") {
+            await writeFile(join(storyDir, "current_state.md"), reviseResult.updatedState, "utf-8");
+          }
+          if (reviseResult.updatedHooks && reviseResult.updatedHooks !== "(伏笔池未更新)") {
+            await writeFile(join(storyDir, "pending_hooks.md"), reviseResult.updatedHooks, "utf-8");
+          }
+        }
+      }
+
       broadcastStudioEvent("revise:complete", { bookId: id, chapter: chapterNum });
-      return c.json(result);
+      return c.json({
+        chapterNumber: chapterNum,
+        wordCount: revisedContent.replace(/\s+/g, "").length,
+        fixedIssues,
+        applied: revised,
+        status: revised ? "ready-for-review" : "unchanged",
+        skippedReason: revised ? undefined : "No warning or critical issues to fix.",
+      });
     } catch (e) {
       broadcastStudioEvent("revise:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);
@@ -254,7 +320,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Rewrite ---
-  // TODO: migrate off PipelineRunner — rewrite depends on writeNextChapter after rollback.
+  // Kept on PipelineRunner: rewrite = rollback + writeNextChapter, depends on the full pipeline.
 
   app.post("/api/books/:id/rewrite/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -283,8 +349,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Resync ---
-  // TODO: migrate off PipelineRunner — resyncChapterArtifacts involves locking, chapter analysis,
-  // jingwei file regeneration, and state snapshots.
+  // Kept on PipelineRunner: resyncChapterArtifacts involves locking, state validation with retry,
+  // governed artifacts, WriterAgent.settleChapterState, and StateValidatorAgent — too tightly coupled.
 
   app.post("/api/books/:id/resync/:chapter", async (c) => {
     const id = c.req.param("id");
@@ -444,8 +510,9 @@ export function createAIRouter(ctx: RouterContext): Hono {
   });
 
   // --- Import Chapters ---
-  // TODO: migrate off PipelineRunner — importChapters involves foundation generation via ArchitectAgent,
-  // sequential chapter replay with ChapterAnalyzerAgent, state snapshots, and style extraction.
+  // Kept on PipelineRunner: importChapters involves locking, ArchitectAgent foundation generation
+  // with review cycle, sequential ChapterAnalyzerAgent replay, style extraction, state snapshots,
+  // and chapter index management — ~160 lines of orchestration logic.
 
   app.post("/api/books/:id/import/chapters", async (c) => {
     const id = c.req.param("id");
