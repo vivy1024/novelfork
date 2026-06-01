@@ -1078,6 +1078,263 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           data: { chapterNumber, checks, results },
         };
       };
+    case "rewrite.apply":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        const chapterNumber = Number(input.chapterNumber);
+        const lineRange = input.lineRange as { start?: number; end?: number } | undefined;
+        const newText = String(input.newText ?? "");
+        const mode = String(input.mode || "replace");
+
+        if (!bookId || !chapterNumber || !lineRange?.start || !lineRange?.end) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 bookId, chapterNumber, lineRange.start, lineRange.end" };
+        }
+
+        try {
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { readFile, writeFile, readdir } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const chaptersDir = join(root, "books", bookId, "chapters");
+
+          // Find chapter file by number
+          const files = await readdir(chaptersDir);
+          const padded = String(chapterNumber).padStart(4, "0");
+          const chapterFile = files.find(f => f.startsWith(padded));
+          if (!chapterFile) {
+            return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `章节 ${chapterNumber} 不存在。` };
+          }
+
+          const filePath = join(chaptersDir, chapterFile);
+          const content = await readFile(filePath, "utf-8");
+          const lines = content.split("\n");
+
+          const start = lineRange.start - 1; // 0-based
+          const end = lineRange.end; // exclusive
+
+          if (start < 0 || end > lines.length || start >= end) {
+            return { ok: false, renderer: definition.renderer, error: "invalid-range", summary: `行号范围无效（1-${lines.length}）。` };
+          }
+
+          const newLines = newText.split("\n");
+          let resultLines: string[];
+
+          if (mode === "insert_after") {
+            resultLines = [...lines.slice(0, end), ...newLines, ...lines.slice(end)];
+          } else {
+            // replace mode (default)
+            resultLines = [...lines.slice(0, start), ...newLines, ...lines.slice(end)];
+          }
+
+          await writeFile(filePath, resultLines.join("\n"), "utf-8");
+
+          const oldLineCount = end - start;
+          const summary = mode === "insert_after"
+            ? `已在第 ${end} 行后插入 ${newLines.length} 行。`
+            : `已替换第 ${lineRange.start}-${lineRange.end} 行（${oldLineCount} 行 → ${newLines.length} 行）。`;
+
+          return { ok: true, renderer: definition.renderer, summary, data: { bookId, chapterNumber, mode, linesAffected: newLines.length } };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "apply-failed", summary: `写回失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "style.get_profile":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        try {
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { readFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const storyDir = join(root, "books", bookId, "story");
+
+          let profileJson: string | null = null;
+          let guideText: string | null = null;
+
+          try { profileJson = await readFile(join(storyDir, "style_profile.json"), "utf-8"); } catch { /* not found */ }
+          try { guideText = await readFile(join(storyDir, "style_guide.md"), "utf-8"); } catch { /* not found */ }
+
+          if (!profileJson && !guideText) {
+            return { ok: true, renderer: definition.renderer, summary: "该书籍尚未生成文风档案。可使用 style.import 从参考文本提取文风。", data: { bookId, hasProfile: false } };
+          }
+
+          let profile: Record<string, unknown> | null = null;
+          if (profileJson) {
+            try { profile = JSON.parse(profileJson); } catch { /* invalid json */ }
+          }
+
+          const summary = profile
+            ? `文风档案已加载。平均句长: ${(profile as any).avgSentenceLength ?? "—"}字，对话比例: ${(profile as any).dialogueRatio ?? "—"}%。`
+            : "文风指南已加载（无统计数据）。";
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary,
+            data: { bookId, hasProfile: true, profile, guide: guideText?.slice(0, 2000) },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "style-read-failed", summary: `读取文风档案失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "style.import":
+      return async ({ input, definition, sessionConfig }) => {
+        const bookId = String(input.bookId);
+        const referenceText = String(input.referenceText ?? "");
+        const sourceName = input.sourceName ? String(input.sourceName) : undefined;
+
+        if (referenceText.length < 2000) {
+          return { ok: false, renderer: definition.renderer, error: "text-too-short", summary: "参考文本至少需要 2000 字。" };
+        }
+
+        try {
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { writeFile, mkdir } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const { analyzeStyle } = await import("@vivy1024/novelfork-novel-plugin/engine");
+
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const storyDir = join(root, "books", bookId, "story");
+          await mkdir(storyDir, { recursive: true });
+
+          // 统计分析（纯文本，无 LLM）
+          const profile = analyzeStyle(referenceText, sourceName);
+          await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
+
+          // 生成文风指南（用 LLM）
+          const { generateSessionReply } = await import("./llm-runtime-service.js");
+
+          let guideText = "";
+          if (sessionConfig) {
+            const prompt = `分析以下文本的写作风格，生成一份文风指南（Markdown 格式）。包含：叙事声音、对话风格、场景描写特征、转折手法、节奏特征、词汇偏好、情绪表达方式、禁止漂移方向。${sourceName ? `\n\n参考来源：${sourceName}` : ""}\n\n文本（前 5000 字）：\n${referenceText.slice(0, 5000)}`;
+
+            const result = await generateSessionReply({
+              sessionConfig,
+              messages: [{ type: "message" as const, role: "user" as const, content: prompt }],
+              tools: [],
+            });
+
+            if (result.success && result.type === "message") {
+              guideText = result.content;
+            }
+          }
+
+          if (!guideText) {
+            // Fallback: 纯统计摘要
+            guideText = `# 文风指南\n\n基于统计分析生成（无 LLM 定性描述）。\n\n- 平均句长: ${profile.avgSentenceLength} 字\n- 句长标准差: ${profile.sentenceLengthStdDev}\n- 段落平均长度: ${profile.avgParagraphLength} 字\n- 词汇多样性(TTR): ${profile.vocabularyDiversity}\n${sourceName ? `\n参考来源: ${sourceName}` : ""}`;
+          }
+
+          await writeFile(join(storyDir, "style_guide.md"), guideText, "utf-8");
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `文风档案已生成。平均句长 ${profile.avgSentenceLength} 字，词汇多样性 ${profile.vocabularyDiversity}。${sourceName ? `参考: ${sourceName}` : ""}`,
+            data: { bookId, profile, guidePreview: guideText.slice(0, 500) },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "style-import-failed", summary: `文风导入失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "pipeline.revise":
+      return async ({ input, definition, sessionConfig, onToolOutputStream }) => {
+        const bookId = String(input.bookId);
+        const mode = String(input.mode || "polish");
+        try {
+          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+          const { readFile, writeFile } = await import("node:fs/promises");
+          const { join } = await import("node:path");
+          const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
+
+          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+          const booksDir = join(root, "books");
+
+          // Determine chapter number
+          let chapterNumber = input.chapterNumber ? Number(input.chapterNumber) : 0;
+          if (!chapterNumber) {
+            // Find latest chapter via StateManager
+            const { StateManager } = await import("@vivy1024/novelfork-core");
+            const state = new StateManager(root);
+            const chapters = await state.loadChapterIndex(bookId);
+            chapterNumber = chapters.length;
+            if (!chapterNumber) {
+              return { ok: false, renderer: definition.renderer, error: "no-chapters", summary: "该书籍尚无章节可修订。" };
+            }
+          }
+
+          // Read chapter content
+          const chapter = await handleChapterRead({ bookId, chapterNumber }, booksDir);
+          if (!chapter.ok || !chapter.data) {
+            return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `第 ${chapterNumber} 章不存在。` };
+          }
+
+          const originalContent = chapter.data.content;
+
+          // Read context files for revision
+          const storyDir = join(root, "books", bookId, "story");
+          const styleGuide = await readFile(join(storyDir, "style_guide.md"), "utf-8").catch(() => "");
+          const bookRules = await readFile(join(storyDir, "book_rules.md"), "utf-8").catch(() => "");
+
+          // Use LLM to revise
+          const { generateSessionReply } = await import("./llm-runtime-service.js");
+
+          const modePrompts: Record<string, string> = {
+            polish: "润色以下章节：修正错别字、优化句式、提升流畅度，保持原意和风格不变。",
+            rewrite: "重写以下章节：保持核心情节和角色不变，但重新组织语言、调整节奏、改善表达。",
+            rework: "大改以下章节：可以调整情节顺序、增删场景、改变叙事角度，但保持核心冲突和结局方向。",
+            "spot-fix": "定点修复以下章节中的问题：修正逻辑漏洞、角色行为不一致、时间线错误等，不改动无问题的部分。",
+            "anti-detect": "去除以下章节中的 AI 味：避免「值得注意的是」「不禁」「缓缓」「微微」「淡淡」「嘴角微扬」「眼中闪过」「心中暗道」「深吸一口气」等 AI 常用表达，用更自然的方式重写这些段落。",
+          };
+
+          const systemPrompt = `你是一位专业的网文修订编辑。${styleGuide ? `\n\n文风指南：\n${styleGuide.slice(0, 2000)}` : ""}${bookRules ? `\n\n书籍规则：\n${bookRules.slice(0, 1000)}` : ""}`;
+          const userPrompt = `${modePrompts[mode] ?? modePrompts.polish}\n\n只输出修订后的完整章节正文，不要解释。\n\n原文：\n${originalContent}`;
+
+          if (!sessionConfig) {
+            return { ok: false, renderer: definition.renderer, error: "no-session-config", summary: "修订需要会话模型配置（sessionConfig）。" };
+          }
+
+          const result = await generateSessionReply({
+            sessionConfig,
+            messages: [
+              { type: "message" as const, role: "user" as const, content: `${systemPrompt}\n\n${userPrompt}` },
+            ],
+            tools: [],
+            onStreamChunk: onToolOutputStream,
+          });
+
+          if (!result.success) {
+            return { ok: false, renderer: definition.renderer, error: "llm-failed", summary: `修订失败: ${(result as any).error ?? "LLM 调用失败"}` };
+          }
+
+          const revisedContent = result.type === "message" ? result.content : "";
+          if (!revisedContent.trim()) {
+            return { ok: false, renderer: definition.renderer, error: "empty-revision", summary: "修订结果为空。" };
+          }
+
+          // Write back using the same file path
+          const { readdirSync } = await import("node:fs");
+          const chaptersDir = join(booksDir, bookId, "chapters");
+          const files = readdirSync(chaptersDir);
+          const padded = String(chapterNumber).padStart(4, "0");
+          const chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
+          if (chapterFile) {
+            await writeFile(join(chaptersDir, chapterFile), revisedContent, "utf-8");
+          }
+
+          const originalWords = originalContent.length;
+          const revisedWords = revisedContent.length;
+          const diff = revisedWords - originalWords;
+
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `第 ${chapterNumber} 章修订完成（模式: ${mode}）。字数: ${originalWords} → ${revisedWords}（${diff >= 0 ? "+" : ""}${diff}）。`,
+            data: { bookId, chapterNumber, mode, originalWords, revisedWords },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "revise-failed", summary: `修订失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     case "rewrite.segment":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId ?? "");
@@ -1085,7 +1342,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const mode = String(input.mode ?? "");
         const selection = input.selection as { start?: number; end?: number } | undefined;
         if (!bookId || !chapterNumber || !mode || !selection?.start || !selection?.end) {
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId, chapterNumber, mode, selection.start, selection.end" };
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 bookId, chapterNumber, mode, selection.start, selection.end" };
         }
 
         const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
