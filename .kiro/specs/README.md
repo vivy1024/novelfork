@@ -10,9 +10,16 @@
 |------|------|------|
 | `context-visibility-system` | 🔥 主线 | 三种可见性 + 时间线纪律 + 自动链接 + 上下文组装 |
 | `writing-tools-completion` | 🔥 主线 | 驾驶舱工具面板 + 选段写作 + EPUB 导出 + 专注模式 + 拖拽排序 |
-| `agent-tool-gaps` | 🔥 主线 | Agent 工具缺口补全：修订、整书导入、文风提取、改写写回 |
 | `jingwei-core-brief-indexed-reading` | 📋 下一步 | 经纬从全量注入升级为核心包 + 分类目录 + 按需分页阅读 |
 | `agent-runtime-hardening` | 📋 下一步 | 级联压缩 + YOLO 安全判断 + turn 恢复 + 循环检测 |
+
+---
+
+## 已完成 Specs（近期）
+
+| Spec | 完成日期 | 成果 |
+|------|---------|------|
+| `agent-tool-gaps` | 2026-05-31 | Agent 工具缺口补全：pipeline.revise / pipeline.import_chapters / rewrite.apply / style.import / style.get_profile。PipelineRunner 已删除，Agent 工具层为唯一执行层。 |
 
 ---
 
@@ -21,8 +28,6 @@
 ### 主线（v1.2.0 目标）
 
 ```
-agent-tool-gaps（补齐 Agent 工具）
-  ↓
 context-visibility-system（经纬可见性控制）
   ↓
 writing-tools-completion（写作工具面板）
@@ -44,12 +49,13 @@ agent-runtime-hardening（运行时加固）
 
 | Spec | 归档原因 |
 |------|---------|
+| `agent-tool-gaps` | ✅ 已完成（5 个工具全部实现，PipelineRunner 已删除） |
 | `cockpit-redesign` | 已完成 |
 | `context-and-presets-overhaul` | 已完成（预设注入、写作设置注入已修复） |
 | `session-detail-panel` | 已完成（硬编码修复） |
 | `studio-bugs-and-features` | 已完成（bug 批量修复） |
 | `constraint-driven-writing-v2` | 核心已实现（10 工具、2 步管线、三层经纬） |
-| `unified-writing-pipeline` | 方向已变（保留 PipelineRunner，补齐 Agent 工具） |
+| `unified-writing-pipeline` | 方向已变（PipelineRunner 已删除） |
 | `runtime-capability-alignment` | 对标驱动，违反项目纪律 |
 | `narrafork-feature-parity` | 对标驱动，违反项目纪律 |
 | `docs-sync-v071` | 版本号过时（当前 v1.1.1） |
