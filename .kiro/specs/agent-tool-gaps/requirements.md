@@ -28,10 +28,30 @@ NovelFork 有两套写作执行体系：
 
 ## 非目标
 
-1. 不删除 PipelineRunner（HTTP API 仍依赖它）
-2. 不重写 HTTP API 路由
-3. 不做 CLI 适配
+1. 不删除 PipelineRunner（HTTP API 仍依赖它，违反铁律 3）
+2. 不重写 HTTP API 路由（保持前端兼容）
+3. 不做 CLI 适配（CLI 是技术债，不投入维护）
 4. 不做前端 UI（工具通过对话调用）
+
+## Pipeline 处置策略
+
+**现状**：PipelineRunner（3187 行）是 InkOS 遗产，HTTP API 的 7 个前端调用 endpoint 依赖它。
+
+**策略**：
+- 新工具**不经过 PipelineRunner**，直接调用底层 Agent 类（WriterAgent、ReviserAgent 等）
+- HTTP API 保持不变（前端兼容）
+- 长期：当所有前端按钮迁移为"通过 Agent 对话触发"后，HTTP API 和 PipelineRunner 自然退役
+- CLI 包（packages/cli）标记为 deprecated，不再维护
+
+**底层 Agent 类（可直接使用）**：
+- WriterAgent — 生成章节正文
+- ReviserAgent — 修订章节（5 种模式）
+- ContinuityAuditor — 37 维度审计
+- ArchitectAgent — 生成基础设定
+- ChapterAnalyzerAgent — 章节分析（导入时用）
+- StyleAnalyzer — 文风统计分析
+- PlannerAgent — 规划章节意图
+- ComposerAgent — 组装上下文包
 
 ---
 
