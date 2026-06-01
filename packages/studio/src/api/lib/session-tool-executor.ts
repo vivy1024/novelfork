@@ -1245,14 +1245,17 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           const { readFile, writeFile } = await import("node:fs/promises");
           const { join } = await import("node:path");
           const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
+          const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
+          const { createLLMClient } = await import("@vivy1024/novelfork-core");
+          const { ContinuityAuditor, ReviserAgent } = await import("@vivy1024/novelfork-novel-plugin/engine");
 
           const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
           const booksDir = join(root, "books");
+          const bookDir = join(root, "books", bookId);
 
           // Determine chapter number
           let chapterNumber = input.chapterNumber ? Number(input.chapterNumber) : 0;
           if (!chapterNumber) {
-            // Find latest chapter via StateManager
             const { StateManager } = await import("@vivy1024/novelfork-core");
             const state = new StateManager(root);
             const chapters = await state.loadChapterIndex(bookId);
@@ -1269,74 +1272,89 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           }
 
           const originalContent = chapter.data.content;
-
-          // Read context files for revision
-          const storyDir = join(root, "books", bookId, "story");
-          const styleGuide = await readFile(join(storyDir, "style_guide.md"), "utf-8").catch(() => "");
-          const bookRules = await readFile(join(storyDir, "book_rules.md"), "utf-8").catch(() => "");
-
-          // Use LLM to revise
-          const { generateSessionReply } = await import("./llm-runtime-service.js");
-
-          const modePrompts: Record<string, string> = {
-            polish: "润色以下章节：修正错别字、优化句式、提升流畅度，保持原意和风格不变。",
-            rewrite: "重写以下章节：保持核心情节和角色不变，但重新组织语言、调整节奏、改善表达。",
-            rework: "大改以下章节：可以调整情节顺序、增删场景、改变叙事角度，但保持核心冲突和结局方向。",
-            "spot-fix": "定点修复以下章节中的问题：修正逻辑漏洞、角色行为不一致、时间线错误等，不改动无问题的部分。",
-            "anti-detect": "去除以下章节中的 AI 味：避免「值得注意的是」「不禁」「缓缓」「微微」「淡淡」「嘴角微扬」「眼中闪过」「心中暗道」「深吸一口气」等 AI 常用表达，用更自然的方式重写这些段落。",
-          };
-
-          const systemPrompt = `你是一位专业的网文修订编辑。${styleGuide ? `\n\n文风指南：\n${styleGuide.slice(0, 2000)}` : ""}${bookRules ? `\n\n书籍规则：\n${bookRules.slice(0, 1000)}` : ""}`;
-          const userPrompt = `${modePrompts[mode] ?? modePrompts.polish}\n\n只输出修订后的完整章节正文，不要解释。\n\n原文：\n${originalContent}`;
-
-          if (!sessionConfig) {
-            return { ok: false, renderer: definition.renderer, error: "no-session-config", summary: "修订需要会话模型配置（sessionConfig）。" };
-          }
-
-          const result = await generateSessionReply({
-            sessionConfig,
-            messages: [
-              { type: "message" as const, role: "user" as const, content: `${systemPrompt}\n\n${userPrompt}` },
-            ],
-            tools: [],
-            onStreamChunk: onToolOutputStream,
-          });
-
-          if (!result.success) {
-            return { ok: false, renderer: definition.renderer, error: "llm-failed", summary: `修订失败: ${(result as any).error ?? "LLM 调用失败"}` };
-          }
-
-          const revisedContent = result.type === "message" ? result.content : "";
-          if (!revisedContent.trim()) {
-            return { ok: false, renderer: definition.renderer, error: "empty-revision", summary: "修订结果为空。" };
-          }
-
-          // Write back using the same file path
-          const { readdirSync } = await import("node:fs");
-          const chaptersDir = join(booksDir, bookId, "chapters");
-          const files = readdirSync(chaptersDir);
-          const padded = String(chapterNumber).padStart(4, "0");
-          const chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
-          if (chapterFile) {
-            await writeFile(join(chaptersDir, chapterFile), revisedContent, "utf-8");
-          }
-
           const originalWords = originalContent.length;
+
+          // Read genre from book.json
+          const bookJsonRaw = await readFile(join(bookDir, "book.json"), "utf-8").catch(() => "{}");
+          const bookJson = JSON.parse(bookJsonRaw) as { genre?: string };
+          const genre = bookJson.genre || undefined;
+
+          // Resolve LLM client
+          const providerStore = new ProviderRuntimeStore();
+          const sessionProvider = sessionConfig?.providerId
+            ? await providerStore.getProvider(sessionConfig.providerId)
+            : undefined;
+          const activeProvider = sessionProvider?.config?.apiKey
+            ? sessionProvider
+            : (await providerStore.listProviders()).find((p) => p.enabled !== false && p.config?.apiKey);
+
+          if (!activeProvider) {
+            return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先到管理中心配置 API Key。" };
+          }
+
+          const activeModel = activeProvider.models.find((m) => m.id === sessionConfig?.modelId && m.enabled !== false)
+            ?? activeProvider.models.find((m) => m.enabled !== false)
+            ?? activeProvider.models[0];
+
+          const llmConfig = {
+            provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
+            baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
+            apiKey: activeProvider.config?.apiKey ?? "",
+            model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
+            temperature: 0.3,
+            maxTokens: activeModel?.maxOutputTokens ?? 8192,
+            thinkingBudget: 0,
+            apiFormat: "chat" as const,
+            stream: false,
+          };
+          const client = createLLMClient(llmConfig);
+
+          const agentCtx = { client, model: llmConfig.model, projectRoot: root, bookId };
+
+          // 1. Audit
+          const auditor = new ContinuityAuditor(agentCtx);
+          const auditResult = await auditor.auditChapter(bookDir, originalContent, chapterNumber, genre);
+
+          // 2. Revise if critical issues found
+          let revisedContent = originalContent;
+          let revised = false;
+
+          if (auditResult.issues.some((i) => i.severity === "critical")) {
+            const reviser = new ReviserAgent(agentCtx);
+            const reviseMode = mode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect";
+            const reviseResult = await reviser.reviseChapter(bookDir, originalContent, chapterNumber, auditResult.issues, reviseMode, genre);
+            if (reviseResult.revisedContent) {
+              revisedContent = reviseResult.revisedContent;
+              revised = true;
+            }
+          }
+
+          // 3. Write back if revised
+          if (revised) {
+            const { readdirSync } = await import("node:fs");
+            const chaptersDir = join(booksDir, bookId, "chapters");
+            const files = readdirSync(chaptersDir);
+            const padded = String(chapterNumber).padStart(4, "0");
+            const chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
+            if (chapterFile) {
+              await writeFile(join(chaptersDir, chapterFile), revisedContent, "utf-8");
+            }
+          }
+
           const revisedWords = revisedContent.length;
-          const diff = revisedWords - originalWords;
 
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `第 ${chapterNumber} 章修订完成（模式: ${mode}）。字数: ${originalWords} → ${revisedWords}（${diff >= 0 ? "+" : ""}${diff}）。`,
-            data: { bookId, chapterNumber, mode, originalWords, revisedWords },
+            summary: `第 ${chapterNumber} 章修订完成。审计: ${auditResult.passed ? "✓ 通过" : `✗ ${auditResult.issues.length} 个问题`}${revised ? "，已自动修订" : ""}。`,
+            data: { bookId, chapterNumber, mode, auditPassed: auditResult.passed, issueCount: auditResult.issues.length, revised, originalWords, revisedWords },
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "revise-failed", summary: `修订失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
     case "pipeline.import_chapters":
-      return async ({ input, definition, onToolOutputStream }) => {
+      return async ({ input, definition, sessionConfig, onToolOutputStream }) => {
         const bookId = String(input.bookId);
         const filePath = String(input.filePath);
         const maxChapters = typeof input.maxChapters === "number" ? input.maxChapters : 500;
@@ -1416,20 +1434,99 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             await writeFile(join(storyDir, "style_guide.md"), guide, "utf-8");
           } catch { /* style analysis failure is non-fatal */ }
 
+          // Generate foundation settings via ArchitectAgent (non-fatal)
+          let foundationGenerated = false;
+          try {
+            if (onToolOutputStream) {
+              onToolOutputStream(`\n正在生成基础设定（世界观/角色/大纲）...\n`);
+            }
+
+            const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
+            const { createLLMClient } = await import("@vivy1024/novelfork-core");
+            const { ArchitectAgent } = await import("@vivy1024/novelfork-novel-plugin/engine");
+
+            // Resolve LLM client (same pattern as pipeline.revise)
+            const providerStore = new ProviderRuntimeStore();
+            const sessionProvider = sessionConfig?.providerId
+              ? await providerStore.getProvider(sessionConfig.providerId)
+              : undefined;
+            const activeProvider = sessionProvider?.config?.apiKey
+              ? sessionProvider
+              : (await providerStore.listProviders()).find((p) => p.enabled !== false && p.config?.apiKey);
+
+            if (!activeProvider) {
+              throw new Error("无可用模型配置");
+            }
+
+            const activeModel = activeProvider.models.find((m) => m.id === sessionConfig?.modelId && m.enabled !== false)
+              ?? activeProvider.models.find((m) => m.enabled !== false)
+              ?? activeProvider.models[0];
+
+            const llmConfig = {
+              provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
+              baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
+              apiKey: activeProvider.config?.apiKey ?? "",
+              model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
+              temperature: 0.7,
+              maxTokens: activeModel?.maxOutputTokens ?? 16384,
+              thinkingBudget: 0,
+              apiFormat: "chat" as const,
+              stream: false,
+            };
+            const client = createLLMClient(llmConfig);
+            const agentCtx = { client, model: llmConfig.model, projectRoot: root, bookId };
+
+            // Read book.json for BookConfig
+            const bookJsonRaw = await readFile(join(bookDir, "book.json"), "utf-8").catch(() => "{}");
+            const bookConfig = JSON.parse(bookJsonRaw) as { id?: string; title?: string; genre?: string; language?: "zh" | "en" };
+
+            if (!bookConfig.genre) {
+              throw new Error("book.json 中缺少 genre 字段");
+            }
+
+            const bookForArchitect = {
+              ...bookConfig,
+              id: bookConfig.id || bookId,
+              title: bookConfig.title || bookId,
+              genre: bookConfig.genre,
+            };
+
+            // Build sample text from chapters (first 20 chapters, max 50000 chars)
+            const sampleText = chapters.slice(0, 20).map((c, i) =>
+              `第${i + 1}章 ${c.title || `第${i + 1}章`}\n\n${c.content}`
+            ).join("\n\n---\n\n").slice(0, 50000);
+
+            const architect = new ArchitectAgent(agentCtx);
+            const foundation = await architect.generateFoundationFromImport(bookForArchitect as any, sampleText);
+            await architect.writeFoundationFiles(bookDir, foundation, undefined, bookConfig.language ?? "zh");
+
+            foundationGenerated = true;
+            if (onToolOutputStream) {
+              onToolOutputStream(`基础设定生成完成（story_bible / volume_outline / book_rules / current_state / pending_hooks）。\n`);
+            }
+          } catch (foundationErr) {
+            // Non-fatal: log but don't block import
+            if (onToolOutputStream) {
+              onToolOutputStream(`\n⚠️ 基础设定生成失败（不影响导入）: ${foundationErr instanceof Error ? foundationErr.message : String(foundationErr)}\n`);
+            }
+          }
+
           // Notify via stream
           if (onToolOutputStream) {
-            onToolOutputStream(`导入完成：${chapters.length} 章，共 ${totalWords} 字。\n`);
+            onToolOutputStream(`\n导入完成：${chapters.length} 章，共 ${totalWords} 字。\n`);
             onToolOutputStream(`章节文件已保存到 ${chaptersDir}\n`);
-            onToolOutputStream(`\n提示：导入后建议让 Agent 执行以下操作：\n`);
-            onToolOutputStream(`1. 读取前几章内容，建立经纬（角色/设定/世界观）\n`);
-            onToolOutputStream(`2. 生成卷大纲摘要\n`);
-            onToolOutputStream(`3. 使用 style.import 提取详细文风\n`);
+            if (!foundationGenerated) {
+              onToolOutputStream(`\n提示：基础设定未自动生成，建议手动执行以下操作：\n`);
+              onToolOutputStream(`1. 读取前几章内容，建立经纬（角色/设定/世界观）\n`);
+              onToolOutputStream(`2. 生成卷大纲摘要\n`);
+            }
+            onToolOutputStream(`提示：如需更详细的定性分析，请使用 style.import 工具传入参考文本。\n`);
           }
 
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `已导入 ${chapters.length} 章（共 ${totalWords} 字）到书籍「${bookId}」。文风统计已生成。建议接下来建立经纬和大纲。`,
+            summary: `已导入 ${chapters.length} 章（共 ${totalWords} 字）到书籍「${bookId}」。文风统计已生成。${foundationGenerated ? "基础设定已生成。" : "建议接下来建立经纬和大纲。"}`,
             data: {
               bookId,
               importedChapters: chapters.length,
