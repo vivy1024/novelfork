@@ -330,6 +330,47 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber", "selection", "mode"],
     additionalProperties: false,
   },
+  "rewrite.apply": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("章节序号。"),
+      lineRange: { type: "object", description: "行号范围 { start: number, end: number }。" },
+      newText: stringSchema("替换内容。"),
+      mode: stringSchema("写入模式：replace（替换选中行，默认）、insert_after（在选中行后插入）。"),
+    },
+    required: ["bookId", "chapterNumber", "lineRange", "newText"],
+    additionalProperties: false,
+  },
+  "style.get_profile": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "style.import": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      referenceText: stringSchema("参考文本（至少 2000 字）。"),
+      sourceName: stringSchema("参考来源名称（可选，如「耳根《仙逆》」）。"),
+    },
+    required: ["bookId", "referenceText"],
+    additionalProperties: false,
+  },
+  "pipeline.revise": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("章节序号（不填则修订最新章）。"),
+      mode: stringSchema("修订模式：polish（润色，默认）、rewrite（重写）、rework（大改）、spot-fix（定点修复）、anti-detect（去AI味）。"),
+      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
   "outline.suggest_next": {
     type: "object",
     properties: {
