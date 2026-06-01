@@ -111,7 +111,7 @@ export function ExpandablePanel({
 
       {/* 面板内容 */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3">
-        <PanelContent panel={activePanel} bookId={bookId} onClose={onClose} onSwitchPanel={onSwitchPanel} />
+        <PanelContent panel={activePanel} bookId={bookId} />
       </div>
     </div>
   );

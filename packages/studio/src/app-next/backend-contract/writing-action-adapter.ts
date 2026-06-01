@@ -180,8 +180,6 @@ export function createWritingActionAdapter(input: CreateWritingActionAdapterInpu
   return {
     previewWritingMode: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.previewWritingMode(bookId, payload)),
     applyWritingMode: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.applyWritingMode(bookId, payload)),
-    startAsyncWriteNext: async (bookId: string, payload?: unknown) => normalizeWritingActionResult(await input.writing.startWriteNext(bookId, payload)),
-    startAsyncDraft: async (bookId: string, payload?: unknown) => normalizeWritingActionResult(await input.writing.startDraft(bookId, payload)),
     generateHooks: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.generateHooks(bookId, payload)),
     applyHook: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.applyHook(bookId, payload)),
     auditChapter: async (bookId: string, chapterNumber: number) => normalizeWritingActionResult(await input.writing.auditChapter(bookId, chapterNumber)),

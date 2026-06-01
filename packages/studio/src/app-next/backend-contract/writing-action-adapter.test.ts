@@ -100,18 +100,12 @@ describe("writing action contract adapter", () => {
 
     const preview = await adapter.previewWritingMode("book/1", { mode: "continuation" });
     const applied = await adapter.applyWritingMode("book/1", { target: "chapter-replace", content: "候选正文" });
-    const writeNext = await adapter.startAsyncWriteNext("book/1", { wordCount: 3000 });
-    const draft = await adapter.startAsyncDraft("book/1", { context: "先写草稿" });
 
     expect(preview).toMatchObject({ kind: "prompt-preview", formalChapterWrite: false, candidateArtifact: null, draftArtifact: null, nextStep: "copy-or-explicit-apply" });
     expect(applied).toMatchObject({ kind: "candidate", formalChapterWrite: false, candidateArtifact: { id: "wm-candidate-1" }, nextStep: "review-candidate" });
-    expect(writeNext).toMatchObject({ kind: "async-started", formalChapterWrite: false, status: "writing", nextStep: "wait-for-events-or-refresh" });
-    expect(draft).toMatchObject({ kind: "async-started", formalChapterWrite: false, status: "drafting", nextStep: "wait-for-events-or-refresh" });
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       "/api/books/book%2F1/inline-write",
       "/api/books/book%2F1/writing-modes/apply",
-      "/api/books/book%2F1/write-next",
-      "/api/books/book%2F1/draft",
     ]);
   });
 

@@ -1094,46 +1094,55 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
           const { readFile, writeFile, readdir } = await import("node:fs/promises");
           const { join } = await import("node:path");
+          const { StateManager } = await import("@vivy1024/novelfork-core");
           const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-          const chaptersDir = join(root, "books", bookId, "chapters");
 
-          // Find chapter file by number
-          const files = await readdir(chaptersDir);
-          const padded = String(chapterNumber).padStart(4, "0");
-          const chapterFile = files.find(f => f.startsWith(padded));
-          if (!chapterFile) {
-            return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `章节 ${chapterNumber} 不存在。` };
+          // Acquire book lock
+          const state = new StateManager(root);
+          const releaseLock = await state.acquireBookLock(bookId);
+          try {
+            const chaptersDir = join(root, "books", bookId, "chapters");
+
+            // Find chapter file by number
+            const files = await readdir(chaptersDir);
+            const padded = String(chapterNumber).padStart(4, "0");
+            const chapterFile = files.find(f => f.startsWith(padded));
+            if (!chapterFile) {
+              return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `章节 ${chapterNumber} 不存在。` };
+            }
+
+            const filePath = join(chaptersDir, chapterFile);
+            const content = await readFile(filePath, "utf-8");
+            const lines = content.split("\n");
+
+            const start = lineRange.start - 1; // 0-based
+            const end = lineRange.end; // exclusive
+
+            if (start < 0 || end > lines.length || start >= end) {
+              return { ok: false, renderer: definition.renderer, error: "invalid-range", summary: `行号范围无效（1-${lines.length}）。` };
+            }
+
+            const newLines = newText.split("\n");
+            let resultLines: string[];
+
+            if (mode === "insert_after") {
+              resultLines = [...lines.slice(0, end), ...newLines, ...lines.slice(end)];
+            } else {
+              // replace mode (default)
+              resultLines = [...lines.slice(0, start), ...newLines, ...lines.slice(end)];
+            }
+
+            await writeFile(filePath, resultLines.join("\n"), "utf-8");
+
+            const oldLineCount = end - start;
+            const summary = mode === "insert_after"
+              ? `已在第 ${end} 行后插入 ${newLines.length} 行。`
+              : `已替换第 ${lineRange.start}-${lineRange.end} 行（${oldLineCount} 行 → ${newLines.length} 行）。`;
+
+            return { ok: true, renderer: definition.renderer, summary, data: { bookId, chapterNumber, mode, linesAffected: newLines.length } };
+          } finally {
+            await releaseLock();
           }
-
-          const filePath = join(chaptersDir, chapterFile);
-          const content = await readFile(filePath, "utf-8");
-          const lines = content.split("\n");
-
-          const start = lineRange.start - 1; // 0-based
-          const end = lineRange.end; // exclusive
-
-          if (start < 0 || end > lines.length || start >= end) {
-            return { ok: false, renderer: definition.renderer, error: "invalid-range", summary: `行号范围无效（1-${lines.length}）。` };
-          }
-
-          const newLines = newText.split("\n");
-          let resultLines: string[];
-
-          if (mode === "insert_after") {
-            resultLines = [...lines.slice(0, end), ...newLines, ...lines.slice(end)];
-          } else {
-            // replace mode (default)
-            resultLines = [...lines.slice(0, start), ...newLines, ...lines.slice(end)];
-          }
-
-          await writeFile(filePath, resultLines.join("\n"), "utf-8");
-
-          const oldLineCount = end - start;
-          const summary = mode === "insert_after"
-            ? `已在第 ${end} 行后插入 ${newLines.length} 行。`
-            : `已替换第 ${lineRange.start}-${lineRange.end} 行（${oldLineCount} 行 → ${newLines.length} 行）。`;
-
-          return { ok: true, renderer: definition.renderer, summary, data: { bookId, chapterNumber, mode, linesAffected: newLines.length } };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "apply-failed", summary: `写回失败: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -1253,102 +1262,114 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           const booksDir = join(root, "books");
           const bookDir = join(root, "books", bookId);
 
-          // Determine chapter number
-          let chapterNumber = input.chapterNumber ? Number(input.chapterNumber) : 0;
-          if (!chapterNumber) {
-            const { StateManager } = await import("@vivy1024/novelfork-core");
-            const state = new StateManager(root);
-            const chapters = await state.loadChapterIndex(bookId);
-            chapterNumber = chapters.length;
+          // Acquire book lock
+          const { StateManager } = await import("@vivy1024/novelfork-core");
+          const state = new StateManager(root);
+          const releaseLock = await state.acquireBookLock(bookId);
+          try {
+            // Determine chapter number
+            let chapterNumber = input.chapterNumber ? Number(input.chapterNumber) : 0;
             if (!chapterNumber) {
-              return { ok: false, renderer: definition.renderer, error: "no-chapters", summary: "该书籍尚无章节可修订。" };
+              const chapters = await state.loadChapterIndex(bookId);
+              chapterNumber = chapters.length;
+              if (!chapterNumber) {
+                return { ok: false, renderer: definition.renderer, error: "no-chapters", summary: "该书籍尚无章节可修订。" };
+              }
             }
-          }
 
-          // Read chapter content
-          const chapter = await handleChapterRead({ bookId, chapterNumber }, booksDir);
-          if (!chapter.ok || !chapter.data) {
-            return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `第 ${chapterNumber} 章不存在。` };
-          }
-
-          const originalContent = chapter.data.content;
-          const originalWords = originalContent.length;
-
-          // Read genre from book.json
-          const bookJsonRaw = await readFile(join(bookDir, "book.json"), "utf-8").catch(() => "{}");
-          const bookJson = JSON.parse(bookJsonRaw) as { genre?: string };
-          const genre = bookJson.genre || undefined;
-
-          // Resolve LLM client
-          const providerStore = new ProviderRuntimeStore();
-          const sessionProvider = sessionConfig?.providerId
-            ? await providerStore.getProvider(sessionConfig.providerId)
-            : undefined;
-          const activeProvider = sessionProvider?.config?.apiKey
-            ? sessionProvider
-            : (await providerStore.listProviders()).find((p) => p.enabled !== false && p.config?.apiKey);
-
-          if (!activeProvider) {
-            return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先到管理中心配置 API Key。" };
-          }
-
-          const activeModel = activeProvider.models.find((m) => m.id === sessionConfig?.modelId && m.enabled !== false)
-            ?? activeProvider.models.find((m) => m.enabled !== false)
-            ?? activeProvider.models[0];
-
-          const llmConfig = {
-            provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
-            baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
-            apiKey: activeProvider.config?.apiKey ?? "",
-            model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
-            temperature: 0.3,
-            maxTokens: activeModel?.maxOutputTokens ?? 8192,
-            thinkingBudget: 0,
-            apiFormat: "chat" as const,
-            stream: false,
-          };
-          const client = createLLMClient(llmConfig);
-
-          const agentCtx = { client, model: llmConfig.model, projectRoot: root, bookId };
-
-          // 1. Audit
-          const auditor = new ContinuityAuditor(agentCtx);
-          const auditResult = await auditor.auditChapter(bookDir, originalContent, chapterNumber, genre);
-
-          // 2. Revise if critical issues found
-          let revisedContent = originalContent;
-          let revised = false;
-
-          if (auditResult.issues.some((i) => i.severity === "critical")) {
-            const reviser = new ReviserAgent(agentCtx);
-            const reviseMode = mode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect";
-            const reviseResult = await reviser.reviseChapter(bookDir, originalContent, chapterNumber, auditResult.issues, reviseMode, genre);
-            if (reviseResult.revisedContent) {
-              revisedContent = reviseResult.revisedContent;
-              revised = true;
+            // Read chapter content
+            const chapter = await handleChapterRead({ bookId, chapterNumber }, booksDir);
+            if (!chapter.ok || !chapter.data) {
+              return { ok: false, renderer: definition.renderer, error: "chapter-not-found", summary: `第 ${chapterNumber} 章不存在。` };
             }
-          }
 
-          // 3. Write back if revised
-          if (revised) {
-            const { readdirSync } = await import("node:fs");
-            const chaptersDir = join(booksDir, bookId, "chapters");
-            const files = readdirSync(chaptersDir);
-            const padded = String(chapterNumber).padStart(4, "0");
-            const chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
-            if (chapterFile) {
-              await writeFile(join(chaptersDir, chapterFile), revisedContent, "utf-8");
+            const originalContent = chapter.data.content;
+            const originalWords = originalContent.length;
+
+            // Read genre from book.json
+            const bookJsonRaw = await readFile(join(bookDir, "book.json"), "utf-8").catch(() => "{}");
+            const bookJson = JSON.parse(bookJsonRaw) as { genre?: string };
+            const genre = bookJson.genre || undefined;
+
+            // Resolve LLM client
+            const providerStore = new ProviderRuntimeStore();
+            const sessionProvider = sessionConfig?.providerId
+              ? await providerStore.getProvider(sessionConfig.providerId)
+              : undefined;
+            const activeProvider = sessionProvider?.config?.apiKey
+              ? sessionProvider
+              : (await providerStore.listProviders()).find((p) => p.enabled !== false && p.config?.apiKey);
+
+            if (!activeProvider) {
+              return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先到管理中心配置 API Key。" };
             }
+
+            const activeModel = activeProvider.models.find((m) => m.id === sessionConfig?.modelId && m.enabled !== false)
+              ?? activeProvider.models.find((m) => m.enabled !== false)
+              ?? activeProvider.models[0];
+
+            const llmConfig = {
+              provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
+              baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
+              apiKey: activeProvider.config?.apiKey ?? "",
+              model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
+              temperature: 0.3,
+              maxTokens: activeModel?.maxOutputTokens ?? 8192,
+              thinkingBudget: 0,
+              apiFormat: "chat" as const,
+              stream: false,
+            };
+            const client = createLLMClient(llmConfig);
+
+            const agentCtx = { client, model: llmConfig.model, projectRoot: root, bookId };
+
+            // 1. Audit
+            const auditor = new ContinuityAuditor(agentCtx);
+            const auditResult = await auditor.auditChapter(bookDir, originalContent, chapterNumber, genre);
+
+            // 2. Decide whether to revise
+            // spot-fix: only revise if critical/warning issues found
+            // polish/rewrite/rework/anti-detect: always revise
+            const shouldRevise = mode === "spot-fix"
+              ? auditResult.issues.some((i) => i.severity === "critical" || i.severity === "warning")
+              : true;
+
+            let revisedContent = originalContent;
+            let revised = false;
+
+            if (shouldRevise) {
+              const reviser = new ReviserAgent(agentCtx);
+              const reviseMode = mode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect";
+              const reviseResult = await reviser.reviseChapter(bookDir, originalContent, chapterNumber, auditResult.issues, reviseMode, genre);
+              if (reviseResult.revisedContent) {
+                revisedContent = reviseResult.revisedContent;
+                revised = true;
+              }
+            }
+
+            // 3. Write back if revised
+            if (revised) {
+              const { readdirSync } = await import("node:fs");
+              const chaptersDir = join(booksDir, bookId, "chapters");
+              const files = readdirSync(chaptersDir);
+              const padded = String(chapterNumber).padStart(4, "0");
+              const chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
+              if (chapterFile) {
+                await writeFile(join(chaptersDir, chapterFile), revisedContent, "utf-8");
+              }
+            }
+
+            const revisedWords = revisedContent.length;
+
+            return {
+              ok: true,
+              renderer: definition.renderer,
+              summary: `第 ${chapterNumber} 章修订完成。审计: ${auditResult.passed ? "✓ 通过" : `✗ ${auditResult.issues.length} 个问题`}${revised ? "，已自动修订" : ""}。`,
+              data: { bookId, chapterNumber, mode, auditPassed: auditResult.passed, issueCount: auditResult.issues.length, revised, originalWords, revisedWords },
+            };
+          } finally {
+            await releaseLock();
           }
-
-          const revisedWords = revisedContent.length;
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `第 ${chapterNumber} 章修订完成。审计: ${auditResult.passed ? "✓ 通过" : `✗ ${auditResult.issues.length} 个问题`}${revised ? "，已自动修订" : ""}。`,
-            data: { bookId, chapterNumber, mode, auditPassed: auditResult.passed, issueCount: auditResult.issues.length, revised, originalWords, revisedWords },
-          };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "revise-failed", summary: `修订失败: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -1368,6 +1389,14 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
 
           // Validate file exists
           const resolvedPath = resolve(filePath);
+
+          // Path traversal guard: only allow files within project root or home directory
+          const allowedRoots = [root, process.env.HOME || process.env.USERPROFILE || ""].filter(Boolean);
+          const isAllowed = allowedRoots.some(allowed => resolvedPath.startsWith(allowed));
+          if (!isAllowed) {
+            return { ok: false, renderer: definition.renderer, error: "path-denied", summary: `文件路径不在允许范围内: ${filePath}` };
+          }
+
           if (!existsSync(resolvedPath)) {
             return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在: ${filePath}` };
           }

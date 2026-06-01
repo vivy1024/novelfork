@@ -11,14 +11,7 @@ export function createWritingActionClient(contract: ContractClient) {
       contract.post<T>(buildBookApiPath(bookId, "writing-modes", "apply"), payload, {
         capability: { id: "writing-modes.apply", status: "current" },
       }),
-    startWriteNext: <T = unknown>(bookId: string, payload?: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "write-next"), payload, {
-        capability: { id: "ai.write-next", status: "current" },
-      }),
-    startDraft: <T = unknown>(bookId: string, payload?: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "draft"), payload, {
-        capability: { id: "ai.draft", status: "current" },
-      }),
+
     generateHooks: <T = unknown>(bookId: string, payload: unknown) =>
       contract.post<T>(buildBookApiPath(bookId, "hooks", "generate"), payload, {
         capability: { id: "hooks.generate", status: "current" },
