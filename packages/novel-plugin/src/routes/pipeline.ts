@@ -3,7 +3,6 @@ import { streamSSE } from "hono/streaming";
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import type { RouterContext } from "./context.js";
-import { pipelineEvents } from "../engine/pipeline/pipeline-events.js";
 
 interface PipelineStage {
   readonly name: string;
@@ -89,17 +88,6 @@ async function loadLastRunForBook(bookDir: string): Promise<PipelineRun | null> 
     return null;
   }
 }
-
-// Listen to pipeline events from core
-pipelineEvents.on((event) => {
-  if (event.type === "run:start") {
-    createPipelineRun(event.data.runId, event.data.bookId, event.data.bookTitle);
-  } else if (event.type === "stage:update") {
-    updatePipelineStage(event.data.runId, event.data.stageName, event.data);
-  } else if (event.type === "run:complete") {
-    completePipelineRun(event.data.runId, event.data.status);
-  }
-});
 
 export function createPipelineRouter(ctx: RouterContext): Hono {
   // Store the book directory resolver for persistence

@@ -26,12 +26,8 @@ export interface DetectAllResult {
 }
 
 export interface AIClient {
-  writeNext(bookId: string, opts?: { wordCount?: number }): Promise<{ status: string; bookId: string }>;
-  draft(bookId: string, opts?: { wordCount?: number; context?: string }): Promise<{ status: string; bookId: string }>;
   audit(bookId: string, chapter: number): Promise<AuditResult>;
   revise(bookId: string, chapter: number, mode: string, brief?: string): Promise<ReviseResult>;
-  rewrite(bookId: string, chapter: number, brief?: string): Promise<{ status: string }>;
-  resync(bookId: string, chapter: number, brief?: string): Promise<unknown>;
   detect(bookId: string, chapter: number): Promise<DetectResult>;
   detectAll(bookId: string): Promise<DetectAllResult>;
   styleAnalyze(text: string, sourceName: string): Promise<unknown>;
