@@ -7,8 +7,14 @@ import { resolve } from "node:path";
 import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
 
+interface SchedulerLike {
+  isRunning: boolean;
+  start(): Promise<void>;
+  stop(): void;
+}
+
 interface DaemonRuntimeState {
-  schedulerInstance: import("@vivy1024/novelfork-novel-plugin/engine").Scheduler | null;
+  schedulerInstance: SchedulerLike | null;
   recentEvents: DaemonEvent[];
 }
 
@@ -111,71 +117,9 @@ export async function getDaemonAdminSnapshot(root: string): Promise<AdminDaemonS
   };
 }
 
-export async function startDaemon(ctx: RouterContext): Promise<void> {
-  const state = getDaemonState(ctx.root);
-
-  if (state.schedulerInstance?.isRunning) {
-    throw new Error("Daemon already running");
-  }
-
-  const { loadProjectConfig } = await import("@vivy1024/novelfork-core");
-  const { Scheduler } = await import("@vivy1024/novelfork-novel-plugin/engine");
-  const currentConfig = await loadProjectConfig(ctx.root);
-  const scheduler = new Scheduler({
-    ...(await ctx.buildPipelineConfig()),
-    radarCron: currentConfig.daemon.schedule.radarCron,
-    writeCron: currentConfig.daemon.schedule.writeCron,
-    maxConcurrentBooks: currentConfig.daemon.maxConcurrentBooks,
-    chaptersPerCycle: currentConfig.daemon.chaptersPerCycle,
-    retryDelayMs: currentConfig.daemon.retryDelayMs,
-    cooldownAfterChapterMs: currentConfig.daemon.cooldownAfterChapterMs,
-    maxChaptersPerDay: currentConfig.daemon.maxChaptersPerDay,
-    onChapterComplete: (bookId: any, chapter: any, status: any) => {
-      appendDaemonEvent(ctx.root, {
-        event: "chapter-complete",
-        level: "info",
-        message: `${bookId} 第 ${String(chapter)} 章完成：${String(status)}`,
-      });
-      ctx.broadcast("daemon:chapter", { bookId, chapter, status });
-    },
-    onError: (bookId: any, error: any) => {
-      const message = error instanceof Error ? error.message : String(error);
-      appendDaemonEvent(ctx.root, {
-        event: "error",
-        level: "error",
-        message: `${String(bookId)}：${message}`,
-      });
-      ctx.broadcast("daemon:error", { bookId, error: message });
-    },
-  });
-
-  state.schedulerInstance = scheduler;
-  appendDaemonEvent(ctx.root, {
-    event: "started",
-    level: "info",
-    message: `守护进程已启动（radar ${currentConfig.daemon.schedule.radarCron} / write ${currentConfig.daemon.schedule.writeCron}）`,
-  });
-  ctx.broadcast("daemon:started", {});
-
-  void scheduler.start().catch((error: unknown) => {
-    const normalized = error instanceof Error ? error : new Error(String(error));
-    if (state.schedulerInstance === scheduler) {
-      scheduler.stop();
-      state.schedulerInstance = null;
-      appendDaemonEvent(ctx.root, {
-        event: "stopped",
-        level: "info",
-        message: "守护进程因异常退出已停止",
-      });
-      ctx.broadcast("daemon:stopped", {});
-    }
-    appendDaemonEvent(ctx.root, {
-      event: "error",
-      level: "error",
-      message: normalized.message,
-    });
-    ctx.broadcast("daemon:error", { bookId: "scheduler", error: normalized.message });
-  });
+export async function startDaemon(_ctx: RouterContext): Promise<void> {
+  // Scheduler has been removed — daemon start is no longer supported
+  throw new Error("Scheduler has been removed. Daemon mode is no longer available.");
 }
 
 export function stopDaemon(ctx: RouterContext): void {

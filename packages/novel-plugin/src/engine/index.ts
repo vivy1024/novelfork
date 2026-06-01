@@ -15,13 +15,7 @@
 // ─── Pipeline ────────────────────────────────────────────────────────────────
 export { PipelineRunner } from "./pipeline/runner.js";
 export type { PipelineConfig, ChapterPipelineResult, DraftResult, PlanChapterResult, ComposeChapterResult, ReviseResult, JingweiFiles, TruthFiles, BookStatusInfo, ImportChaptersInput, ImportChaptersResult, TokenUsageSummary } from "./pipeline/runner.js";
-export { Scheduler } from "./pipeline/scheduler.js";
-export type { SchedulerConfig } from "./pipeline/scheduler.js";
-export { runAgentLoop, AGENT_TOOLS } from "./pipeline/agent.js";
-export type { AgentLoopOptions } from "./pipeline/agent.js";
 export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";
-export { runWritingPipeline, runAuditPipeline } from "./pipeline/agent-pipeline.js";
-export type { PipelineResult, PipelineError } from "./pipeline/agent-pipeline.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory } from "./pipeline/detection-runner.js";
 export type { DetectChapterResult, DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 export { pipelineEvents } from "./pipeline/pipeline-events.js";
