@@ -371,6 +371,17 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "pipeline.import_chapters": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      filePath: stringSchema("服务器上的文件路径（.txt/.md）。"),
+      splitPattern: stringSchema("章节分割正则（可选，默认匹配「第X章」「Chapter X」等）。"),
+      maxChapters: numberSchema("最大导入章数（可选，默认 500）。"),
+    },
+    required: ["bookId", "filePath"],
+    additionalProperties: false,
+  },
   "outline.suggest_next": {
     type: "object",
     properties: {
