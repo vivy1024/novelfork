@@ -14,7 +14,6 @@ import {
   type BookConfig,
 } from "@vivy1024/novelfork-core";
 import {
-  PipelineRunner,
   applyJingweiTemplate,
   createBookRepository,
   createStoryJingweiSectionRepository,
@@ -527,32 +526,11 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       };
 
       try {
-        const sessionLlm = await ctx.getSessionLlm(c);
-        const pipeline = new PipelineRunner(await ctx.buildPipelineConfig(sessionLlm));
-        const runtimeBookConfig: BookConfig = {
-          ...bookConfig,
-          ...(bookConfig.enabledPresetIds ? { enabledPresetIds: [...bookConfig.enabledPresetIds] } : {}),
-        };
-        pipeline.initBook(runtimeBookConfig).then(
-          async () => {
-            bookCreateStatus.delete(bookId);
-            broadcast("book:created", { bookId });
-          },
-          (e) => {
-            if (isModelConfigMissingError(e)) {
-              void scaffoldLocalBook(e).catch((scaffoldError) => {
-                const error = scaffoldError instanceof Error ? scaffoldError.message : String(scaffoldError);
-                bookCreateStatus.set(bookId, { status: "error", error });
-                broadcast("book:error", { bookId, error });
-              });
-              return;
-            }
-
-            const error = e instanceof Error ? e.message : String(e);
-            bookCreateStatus.set(bookId, { status: "error", error });
-            broadcast("book:error", { bookId, error });
-          },
-        );
+        // PipelineRunner removed — always use local scaffold for book initialization.
+        // AI-powered initialization (jingwei generation) is now handled by the writer agent session.
+        await writeLocalBookScaffold(state, bookConfig, body.jingweiTemplate);
+        bookCreateStatus.delete(bookId);
+        broadcast("book:created", { bookId });
       } catch (error) {
         if (!isModelConfigMissingError(error)) {
           throw error;

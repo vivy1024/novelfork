@@ -13,14 +13,6 @@ import type {
 import { fetchJson, postApi } from "../hooks/use-api.js";
 
 export class HttpAIClient implements AIClient {
-  async writeNext(bookId: string, opts?: { wordCount?: number }): Promise<{ status: string; bookId: string }> {
-    return postApi<{ status: string; bookId: string }>(`/books/${bookId}/write-next`, opts);
-  }
-
-  async draft(bookId: string, opts?: { wordCount?: number; context?: string }): Promise<{ status: string; bookId: string }> {
-    return postApi<{ status: string; bookId: string }>(`/books/${bookId}/draft`, opts);
-  }
-
   async audit(bookId: string, chapter: number): Promise<AuditResult> {
     return postApi<AuditResult>(`/books/${bookId}/audit/${chapter}`);
   }
@@ -30,22 +22,6 @@ export class HttpAIClient implements AIClient {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ mode, brief: brief || undefined }),
-    });
-  }
-
-  async rewrite(bookId: string, chapter: number, brief?: string): Promise<{ status: string }> {
-    return fetchJson<{ status: string }>(`/books/${bookId}/rewrite/${chapter}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brief: brief || undefined }),
-    });
-  }
-
-  async resync(bookId: string, chapter: number, brief?: string): Promise<unknown> {
-    return fetchJson(`/books/${bookId}/resync/${chapter}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ brief: brief || undefined }),
     });
   }
 

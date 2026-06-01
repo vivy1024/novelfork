@@ -13,13 +13,10 @@
  */
 
 // ─── Pipeline ────────────────────────────────────────────────────────────────
-export { PipelineRunner } from "./pipeline/runner.js";
-export type { PipelineConfig, ChapterPipelineResult, DraftResult, PlanChapterResult, ComposeChapterResult, ReviseResult, JingweiFiles, TruthFiles, BookStatusInfo, ImportChaptersInput, ImportChaptersResult, TokenUsageSummary } from "./pipeline/runner.js";
+export type { PipelineConfig } from "./pipeline/types.js";
 export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory } from "./pipeline/detection-runner.js";
 export type { DetectChapterResult, DetectAndRewriteResult } from "./pipeline/detection-runner.js";
-export { pipelineEvents } from "./pipeline/pipeline-events.js";
-export type { PipelineEvent, PipelineEventHandler, PipelineStageUpdate, PipelineRunStart, PipelineRunComplete } from "./pipeline/pipeline-events.js";
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 export { BaseAgent } from "./agents/base.js";
