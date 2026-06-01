@@ -186,3 +186,11 @@ NovelFork 有两套写作执行体系：
 1. tool-schemas.ts 中有 schema 定义
 2. session-tool-executor.ts 中有 handler 实现
 3. 在实际对话中让 Agent 调用一次，验证功能正常
+
+---
+
+## 完成状态
+
+✅ 全部 5 个需求已实现（2026-05-31）
+✅ PipelineRunner 已删除，Agent 工具层为唯一执行层
+✅ Book lock 已加入 pipeline.generate_chapter
