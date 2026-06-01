@@ -297,12 +297,26 @@ export const TOOL_USE_GUIDELINES = `
 预设系统（写作规则注入）：
 - 预设 ≠ 经纬。预设是注入到写作 system prompt 中的规则约束（文风、逻辑风险、去AI味等），经纬是世界观设定数据。
 - 用 presets.get_rules 查看当前书籍已启用的预设列表
-- 用 presets.set_rules 启用/禁用预设（传入 enabledPresetIds 数组）
-- 用 presets.create_custom 创建自定义预设（如「禁止修为暴涨」「对话必须带方言」）
+- 用 presets.list_available 查看所有可用预设（含未启用的），按分类筛选
+- 用 presets.set_rules(mode="add") 启用预设，mode="remove" 禁用预设（不会丢失其他已启用的）
+- 用 presets.create_custom 创建自定义预设（创建后自动启用）
 - 用 beat.get_current 查看当前节拍模板，用 beat.set_template 切换节拍模板
 - 当用户要求设置写作规则/风格约束/逻辑限制时，优先使用预设工具而非 jingwei.write
 - 经纬用于存储：角色、地点、势力、物品、技能、大纲、世界观等设定数据
 - 预设用于存储：文风规则、逻辑约束、去AI味规则、节拍模板等写作指令
+
+写作与修订工具：
+- pipeline.generate_chapter：写下一章（完整管线：规划→生成→审计→修订→保存）
+- pipeline.revise：修订已有章节（5 种模式：polish/rewrite/rework/spot-fix/anti-detect）
+- pipeline.import_chapters：导入已有小说（分章+基础设定+文风提取）
+- rewrite.segment：选段改写（续写/扩写/去AI味/风格改写），返回改写结果
+- rewrite.apply：将改写结果写回章节文件（替换或插入指定行范围）
+- chapter.list：列出所有章节（序号、标题、字数、状态）
+- chapter.read：读取指定章节内容
+
+文风工具：
+- style.get_profile：获取当前书籍的文风档案（统计特征+文风指南）
+- style.import：从参考文本提取文风（统计分析+LLM 定性描述），生成 style_profile.json + style_guide.md
 
 输出规范：
 - 工具调用间的文字保持最短
