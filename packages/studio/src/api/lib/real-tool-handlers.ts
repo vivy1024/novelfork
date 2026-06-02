@@ -167,7 +167,7 @@ export interface BashToolResult extends SessionToolExecutionResult {
  * - 进程树终止: kill(-pid) 发送到进程组
  */
 export async function executeBashTool(input: BashToolInput): Promise<BashToolResult> {
-  const { command, workDir, timeoutMs = 30000 } = input;
+  const { command, workDir, timeoutMs = 120000 } = input;
 
   if (isDangerousCommand(command)) {
     return {
