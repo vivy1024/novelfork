@@ -88,11 +88,11 @@ export function clearPluginRegistrations(): void {
 const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   sessionTool({
     name: "Bash",
-    description: "在工作目录中执行 shell 命令（Git Bash）。用于 git、npm、bun、编译、运行脚本等需要 shell 的操作。不要用 Bash 执行 cat/head/grep/find——用专用的 Read/Grep/Glob 工具代替。超时默认 120 秒。",
+    description: "在工作目录中执行 shell 命令（Git Bash）。用于 git、npm、bun、编译、运行脚本等需要 shell 的操作。不要用 Bash 执行 cat/head/grep/find——用专用的 Read/Grep/Glob 工具代替。默认超时 120 秒，可用 timeoutMs 参数调整（最大 600000ms=10分钟）。长任务可设 run_in_background=true 后台执行。",
     inputSchema: objectSchema({
       command: stringSchema("要执行的 shell 命令。"),
       workDir: stringSchema("工作目录路径（可选，默认使用 session workDir）。"),
-      timeoutMs: numberSchema("超时毫秒数（默认 30000）。"),
+      timeoutMs: numberSchema("超时毫秒数（默认 120000，最大 600000）。长时间任务请设大或用 run_in_background。"),
       run_in_background: booleanSchema("是否在后台运行命令。为 true 时立即返回 task ID，使用 Await 工具获取结果。"),
     }, ["command"]),
     risk: "destructive",
