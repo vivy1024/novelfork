@@ -833,6 +833,52 @@ ${contextParts.join("\n")}
     }
   });
 
+  // --- Sync book agents (补齐旧书缺失的 agent 会话) ---
+
+  app.post("/api/books/:id/sync-agents", async (c) => {
+    const bookId = c.req.param("id");
+    try {
+      const bookConfig = await state.loadBookConfig(bookId);
+      const title = (bookConfig as { title?: string }).title ?? bookId;
+
+      const BOOK_AGENTS = [
+        { agentId: "writer", title: `📝 写书 — ${title}`, sessionMode: "chat" as const, permissionMode: "edit" as const },
+        { agentId: "planner", title: `🧭 规划 — ${title}`, sessionMode: "plan" as const, permissionMode: "plan" as const },
+        { agentId: "auditor", title: `🔍 审校 — ${title}`, sessionMode: "chat" as const, permissionMode: "read" as const },
+        { agentId: "architect", title: `🏗️ 设定 — ${title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "explorer", title: `🔎 探索 — ${title}`, sessionMode: "chat" as const, permissionMode: "read" as const },
+        { agentId: "hooks", title: `🎣 伏笔 — ${title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "chapter-hooks", title: `🪝 章末钩子 — ${title}`, sessionMode: "chat" as const, permissionMode: "ask" as const },
+        { agentId: "outline", title: `📋 大纲与经纬 — ${title}`, sessionMode: "chat" as const, permissionMode: "edit" as const },
+      ];
+
+      const existingSessions = await listSessions({ projectId: bookId });
+      const existingAgentIds = new Set(existingSessions.map((s) => s.agentId).filter(Boolean));
+      const agentsToCreate = BOOK_AGENTS.filter((agent) => !existingAgentIds.has(agent.agentId));
+
+      if (agentsToCreate.length === 0) {
+        return c.json({ ok: true, created: 0, existing: existingSessions.length, message: "所有 agent 已存在" });
+      }
+
+      const created = await Promise.all(
+        agentsToCreate.map((agent) =>
+          createSession({
+            title: agent.title,
+            agentId: agent.agentId,
+            sessionMode: agent.sessionMode,
+            projectId: bookId,
+            sessionConfig: { permissionMode: agent.permissionMode },
+          }),
+        ),
+      );
+
+      return c.json({ ok: true, created: created.length, existing: existingSessions.length, agents: created.map(s => s.agentId) });
+    } catch (e) {
+      if (isMissingFileError(e)) return c.json({ error: `Book "${bookId}" not found` }, 404);
+      return c.json({ error: String(e) }, 500);
+    }
+  });
+
   app.delete("/api/books/:id", async (c) => {
     const id = c.req.param("id");
     try {
