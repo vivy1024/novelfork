@@ -33,8 +33,8 @@ const CATEGORIES = ["从这里开始", "AI 写作", "工具与分析", "设置�
 function classifyByPrefix(id: string): string {
   const num = parseInt(id.split("-")[0], 10);
   if (isNaN(num)) return "高级功能";
-  if (num <= 1) return "从这里开始";
-  if (num <= 4 || num === 8) return "AI 写作";
+  if (num <= 1 || num === 22) return "从这里开始";
+  if (num <= 4 || num === 8 || num === 21) return "AI 写作";
   if (num === 5 || num === 7) return "工具与分析";
   if (num === 6 || (num >= 9 && num <= 12)) return "设置与配置";
   if (num >= 13) return "高级功能";
@@ -126,7 +126,9 @@ async function loadCatalog(): Promise<LearningDocMeta[]> {
 async function loadDocContent(docId: string): Promise<string | null> {
   try {
     const filePath = join(getLearningDocsDir(), `${docId}.md`);
-    return await readFile(filePath, "utf-8");
+    const raw = await readFile(filePath, "utf-8");
+    // Strip YAML frontmatter (--- ... ---) from content
+    return raw.replace(/^---\n[\s\S]*?\n---\n*/, "");
   } catch {
     return null;
   }
