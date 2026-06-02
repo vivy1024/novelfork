@@ -1,7 +1,7 @@
 ---
 title: 运行时能力
-summary: CLAUDE.md 规则读取、LLM 压缩摘要、文件安全检查、Prompt Cache
-tags: [运行时, CLAUDE.md, 压缩, 安全, token, cache]
+summary: CLAUDE.md 规则读取、LLM 压缩摘要、容错解析、上下文防御、Prompt Cache
+tags: [运行时, CLAUDE.md, 压缩, 安全, token, cache, 容错]
 routes: []
 ---
 
@@ -18,6 +18,22 @@ routes: []
 3. **目录规则** `.claude/rules/*.md` — 细粒度规则，按目录生效
 
 规则注入到 Agent 上下文中，编辑对应文件后下次对话自动生效。
+
+## XML tool_use 容错解析
+
+部分模型在版本回退时可能输出非标准的 XML 格式工具调用（而非 JSON）。系统自动检测并解析 XML 格式的 tool_use 块，无需用户干预即可正常执行工具调用。这是对模型 regression 的自动防御。
+
+## 上下文中毒防御
+
+当对话上下文中混入恶意指令（如通过工具输出注入的 prompt injection），系统会自动检测异常模式并过滤。确保 Agent 行为始终受系统提示约束，不被外部内容劫持。
+
+## Token 与超时配置
+
+| 参数 | 值 | 说明 |
+|------|----|------|
+| max_tokens | 16384 | 单次回复的最大 token 数 |
+| 工具执行超时 | 120 秒 | 所有工具调用的统一超时 |
+| agent-turn-runtime | 120 秒 | 单轮 Agent 执行的总超时 |
 
 ## LLM 智能压缩摘要
 
@@ -47,6 +63,9 @@ routes: []
 - Dedup 基于文件路径 + 内容 hash
 - Prompt Cache 对 Anthropic 模型自动启用，其他供应商不支持
 - 二进制检测基于文件头 magic bytes
+- XML tool_use 容错：自动检测 `<tool_use>` XML 块并解析为标准工具调用
+- 上下文中毒防御：过滤工具输出中的 prompt injection 模式
+- max_tokens 上限 16384，工具超时与 agent-turn-runtime 均为 120 秒
 
 ## 可跳转功能入口
 
