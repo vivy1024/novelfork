@@ -492,6 +492,133 @@ app.post("/:id/truncate", async (c) => {
   }
 });
 
+// ─── Message Operation Endpoints ─────────────────────────────────────────────
+
+app.post("/:id/rollback/:messageId", async (c) => {
+  const id = c.req.param("id");
+  const messageId = c.req.param("messageId");
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  const cutIndex = snapshot.messages.findIndex((m) => m.id === messageId);
+  if (cutIndex < 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+
+  const remaining = snapshot.messages.slice(0, cutIndex);
+  const removedCount = snapshot.messages.length - cutIndex;
+
+  const result = await replaceSessionChatState(id, remaining);
+  if (!result) {
+    return c.json({ error: "Failed to rollback session" }, 500);
+  }
+
+  // Clear contextCutoffSeq if present
+  const session = await getSessionById(id);
+  if (session?.sessionConfig.contextCutoffSeq) {
+    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
+    await updateSession(id, { sessionConfig: updatedConfig });
+  }
+
+  return c.json({ ok: true, removedCount, remainingMessages: remaining.length });
+});
+
+app.post("/:id/retry", async (c) => {
+  const id = c.req.param("id");
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  // Find the last assistant message
+  let lastAssistantIdx = -1;
+  for (let i = snapshot.messages.length - 1; i >= 0; i--) {
+    if (snapshot.messages[i].role === "assistant") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
+  if (lastAssistantIdx < 0) {
+    return c.json({ error: "No assistant message to retry" }, 400);
+  }
+
+  // Remove the last assistant message and everything after it
+  const remaining = snapshot.messages.slice(0, lastAssistantIdx);
+
+  // Find the last user message in the remaining messages
+  let lastUserMessage: { id: string; content: string } | null = null;
+  for (let i = remaining.length - 1; i >= 0; i--) {
+    if (remaining[i].role === "user") {
+      lastUserMessage = { id: remaining[i].id, content: remaining[i].content };
+      break;
+    }
+  }
+
+  if (!lastUserMessage) {
+    return c.json({ error: "No user message found before assistant message" }, 400);
+  }
+
+  const result = await replaceSessionChatState(id, remaining);
+  if (!result) {
+    return c.json({ error: "Failed to update session state" }, 500);
+  }
+
+  // Clear contextCutoffSeq if present
+  const session = await getSessionById(id);
+  if (session?.sessionConfig.contextCutoffSeq) {
+    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
+    await updateSession(id, { sessionConfig: updatedConfig });
+  }
+
+  return c.json({ ok: true, retriedFromMessageId: lastUserMessage.id, lastUserContent: lastUserMessage.content });
+});
+
+app.post("/:id/continue", async (c) => {
+  return c.json({ ok: true, hint: "send empty message to continue" });
+});
+
+app.post("/:id/edit-and-regenerate/:messageId", async (c) => {
+  const id = c.req.param("id");
+  const messageId = c.req.param("messageId");
+  const body: { content?: string } = await c.req.json<{ content?: string }>().catch(() => ({}));
+
+  if (!body.content?.trim()) {
+    return c.json({ error: "content is required" }, 400);
+  }
+
+  const snapshot = await getSessionChatSnapshot(id);
+  if (!snapshot) {
+    return c.json({ error: "Session not found" }, 404);
+  }
+
+  const cutIndex = snapshot.messages.findIndex((m) => m.id === messageId);
+  if (cutIndex < 0) {
+    return c.json({ error: "Message not found" }, 404);
+  }
+
+  const remaining = snapshot.messages.slice(0, cutIndex);
+  const removedCount = snapshot.messages.length - cutIndex;
+
+  const result = await replaceSessionChatState(id, remaining);
+  if (!result) {
+    return c.json({ error: "Failed to update session state" }, 500);
+  }
+
+  // Clear contextCutoffSeq if present
+  const session = await getSessionById(id);
+  if (session?.sessionConfig.contextCutoffSeq) {
+    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
+    await updateSession(id, { sessionConfig: updatedConfig });
+  }
+
+  return c.json({ ok: true, newContent: body.content.trim(), removedCount });
+});
+
 app.delete("/:id/messages/:messageId", async (c) => {
   const id = c.req.param("id");
   const messageId = c.req.param("messageId");

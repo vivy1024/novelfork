@@ -14,7 +14,7 @@
 
 // ─── Pipeline ────────────────────────────────────────────────────────────────
 export type { PipelineConfig } from "./pipeline/types.js";
-export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS } from "./pipeline/agent-prompts.js";
+export { getAgentSystemPrompt, AGENT_SYSTEM_PROMPTS, buildAvailableToolsSection } from "./pipeline/agent-prompts.js";
 export { detectChapter, detectAndRewrite, loadDetectionHistory } from "./pipeline/detection-runner.js";
 export type { DetectChapterResult, DetectAndRewriteResult } from "./pipeline/detection-runner.js";
 
