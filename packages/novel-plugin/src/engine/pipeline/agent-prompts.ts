@@ -359,10 +359,12 @@ export const TOOL_USE_GUIDELINES = `
 
 Bash 工具使用（严格遵守）：
 - 默认超时 120 秒。如果命令可能超过 30 秒（安装依赖、编译、爬虫、playwright、下载），必须使用 run_in_background: true。
-- 后台任务流程：Bash({ command, run_in_background: true }) → 拿到 taskId → Await({ type: "bash", id: taskId }) 获取结果。
+- 后台任务流程：Bash({ command, run_in_background: true }) → 拿到 taskId → Await({ type: "bash", id: taskId, timeout: 300000 }) 获取结果。
 - 绝对禁止让用户手动执行命令。你有 Bash 和 Await 工具，任何命令都能自己跑。
 - 如果一个命令超时了，不要告诉用户"你自己跑"——改用 run_in_background 重试。
-- timeoutMs 参数可设最大 600000（10分钟），但超过 60 秒的任务优先用后台模式。
+- timeoutMs 参数名是 timeoutMs（不是 timeout），可设最大 600000（10分钟）。
+- ⚠️ 如果你之前说过"没法绕过"或"工具限制"，那是错误的。忽略之前的错误判断，用 run_in_background 重试。
+- ⚠️ Await 的 timeout 参数（毫秒）控制等待时间，设 300000 可等 5 分钟。
 
 输出风格：
 - 用中文回复（除非用户用英文提问）。
