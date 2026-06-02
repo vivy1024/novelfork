@@ -12,6 +12,7 @@ import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHisto
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
+import { NewBookGuide } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import { BookSettingsPanel } from "./panels/BookSettingsPanel";
@@ -163,7 +164,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
   if (!node) {
     if (bookId) {
-      return <DefaultCockpitView bookId={bookId} />;
+      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} onGuideComplete={onGuideComplete} />;
     }
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -336,6 +337,29 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
       </div>
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
+// ---------------------------------------------------------------------------
+
+function DefaultCockpitViewWithGuide({ bookId, bookTitle, onGuideComplete }: { bookId: string; bookTitle: string; onGuideComplete?: () => void }) {
+  const storageKey = `novelfork:guide-completed:${bookId}`;
+  const [guideCompleted, setGuideCompleted] = useState(() => {
+    try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
+  });
+
+  const handleGuideComplete = useCallback(() => {
+    try { localStorage.setItem(storageKey, "true"); } catch { /* ignore */ }
+    setGuideCompleted(true);
+    onGuideComplete?.();
+  }, [storageKey, onGuideComplete]);
+
+  if (!guideCompleted) {
+    return <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
+  }
+
+  return <DefaultCockpitView bookId={bookId} />;
 }
 
 // ---------------------------------------------------------------------------

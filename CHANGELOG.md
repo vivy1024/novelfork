@@ -4,6 +4,30 @@
 
 ## Unreleased
 
+## v1.2.1 (2026-06-02)
+
+### 🐛 Bug 修复
+
+- **ToolSearch 结果 [object Object]** — narrator 无法识别自己的工具列表，修复 toolResultContent 类型守卫
+- **右键"回退到此处"不工作** — truncate API 改为真正删除消息（之前只标记 contextCutoffSeq）
+- **"编辑重新生成"变二次发送** — 与上一条同源，修复后正常截断+重发
+- **"清空上下文"与"回退"混淆** — 区分 delete 模式（真删）和 cutoff 模式（保留消息但模型忽略）
+- **新书默认 targetChapters 硬编码** — 去掉后端 200 和前端 100 的默认值，创建时不设默认
+- **目录白名单全局共享** — 加入会话级 workDir 和 books/{projectId}/ 到允许列表
+- **import_chapters 路径防护过严** — allowedRoots 加入 options.workDir
+- **Agent 把角色写入 canon 层** — prompt 中加入 layer 选择规则
+
+### 🛡️ Agent 稳定性
+
+- **XML tool_use 容错解析** — 模型 regression 输出原始 XML 工具调用时，自动解析为结构化 tool_use
+- **stop_reason 感知** — 检测 max_tokens 截断并警告
+- **上下文中毒防御** — 漏网的 XML tool_use 不存入历史，防止级联故障
+- **max_tokens 提升到 16384** — 减少截断导致的格式泄漏
+
+### ✨ 新功能
+
+- **引导式创建书籍** — 新书首次打开时显示 NewBookGuide 引导配置流程
+
 ## v1.2.0 (2026-05-31)
 
 ### 🏗️ 架构统一：删除 PipelineRunner

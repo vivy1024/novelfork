@@ -284,6 +284,68 @@ function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readon
   return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
 }
 
+/**
+ * Parse XML-formatted tool calls from raw text output.
+ * Supports three formats:
+ * 1. <tool_use id="..." name="ToolName"> {json} </tool_use>
+ * 2. <invoke name="ToolName"> <parameter name="key">value</parameter> </invoke>
+ * 3. <invoke name="ToolName"> <parameter name="key">value</parameter> ... </invoke>
+ */
+function parseXmlToolCalls(text: string): RuntimeToolUse[] | null {
+  const results: RuntimeToolUse[] = [];
+
+  // Format 1: <tool_use id="..." name="..."> {json} </tool_use>
+  const toolUseRegex = /<tool_use\s+id="([^"]*)"\s+name="([^"]*)">([\s\S]*?)<\/tool_use>/g;
+  let match: RegExpExecArray | null;
+  while ((match = toolUseRegex.exec(text)) !== null) {
+    const [, id, name, body] = match;
+    try {
+      const input = JSON.parse(body.trim()) as Record<string, unknown>;
+      results.push({ id: id || `xml-tool-${results.length + 1}`, name, input });
+    } catch {
+      // Try to salvage — body might not be valid JSON
+    }
+  }
+
+  if (results.length > 0) return results;
+
+  // Format 2 & 3: <invoke name="..."> <parameter name="key">value</parameter> </invoke>
+  const invokeRegex = /<invoke\s+name="([^"]*)">([\s\S]*?)<\/invoke>/g;
+  while ((match = invokeRegex.exec(text)) !== null) {
+    const [, name, body] = match;
+    const input: Record<string, unknown> = {};
+
+    // Try parsing as JSON first (some models put raw JSON inside invoke)
+    const trimmedBody = body.trim();
+    if (trimmedBody.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(trimmedBody) as Record<string, unknown>;
+        results.push({ id: `xml-tool-${results.length + 1}`, name, input: parsed });
+        continue;
+      } catch { /* fall through to parameter parsing */ }
+    }
+
+    // Parse <parameter name="key">value</parameter> blocks
+    const paramRegex = /<parameter\s+name="([^"]*)">([\s\S]*?)<\/parameter>/g;
+    let paramMatch: RegExpExecArray | null;
+    while ((paramMatch = paramRegex.exec(body)) !== null) {
+      const [, paramName, paramValue] = paramMatch;
+      // Try to parse value as JSON, otherwise keep as string
+      try {
+        input[paramName] = JSON.parse(paramValue.trim());
+      } catch {
+        input[paramName] = paramValue.trim();
+      }
+    }
+
+    if (Object.keys(input).length > 0) {
+      results.push({ id: `xml-tool-${results.length + 1}`, name, input });
+    }
+  }
+
+  return results.length > 0 ? results : null;
+}
+
 async function consumeAnthropicStream(
   body: ReadableStream<Uint8Array>,
   onStreamChunk: (chunk: string) => void,
@@ -298,6 +360,7 @@ async function consumeAnthropicStream(
   let thinkingContent = "";
   let thinkingSignature = "";
   let usage: GenerateUsage | undefined;
+  let stopReason: string | undefined;
 
   // Tool use accumulation
   const toolUses: RuntimeToolUse[] = [];
@@ -388,6 +451,10 @@ async function consumeAnthropicStream(
               currentToolInputJson = "";
             }
           } else if (parsed.type === "message_delta") {
+            const delta = parsed.delta as Record<string, unknown> | undefined;
+            if (delta && typeof delta.stop_reason === "string") {
+              stopReason = delta.stop_reason;
+            }
             const msgUsage = parsed.usage as Record<string, unknown> | undefined;
             if (msgUsage) {
               const outputTokens = typeof msgUsage.output_tokens === "number" ? msgUsage.output_tokens : 0;
@@ -415,6 +482,34 @@ async function consumeAnthropicStream(
   if (toolUses.length > 0) {
     return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
   }
+
+  // If no structured tool_use was found, check for XML tool calls in the text output
+  if (toolUses.length === 0 && fullContent) {
+    const hasXmlToolPattern = /<tool_use\s+id="[^"]*"\s+name="[^"]*">/.test(fullContent)
+      || /<invoke\s+name="[^"]*">/.test(fullContent);
+
+    if (hasXmlToolPattern) {
+      console.log(`[anthropic.stream] Detected XML tool_use in text output (stop_reason=${stopReason ?? "unknown"}), attempting parse...`);
+      const parsed = parseXmlToolCalls(fullContent);
+      if (parsed && parsed.length > 0) {
+        // Resolve internal names if tools are available
+        const resolvedToolUses = tools
+          ? parsed.map(tu => ({ ...tu, name: toInternalToolName(tu.name, tools) }))
+          : parsed;
+        console.log(`[anthropic.stream] Successfully parsed ${resolvedToolUses.length} XML tool call(s): ${resolvedToolUses.map(t => t.name).join(", ")}`);
+        return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+      }
+      // Parse failed — return failure to trigger retry
+      console.warn(`[anthropic.stream] XML tool_use detected but parse failed, returning failure for retry`);
+      return failure("upstream-error", "Model output XML tool_use but parsing failed — likely truncated due to max_tokens");
+    }
+
+    // Warn if stopped due to max_tokens without any tool calls
+    if (stopReason === "max_tokens") {
+      console.warn(`[anthropic.stream] Response truncated (stop_reason=max_tokens) with no structured tool_use. Content length: ${fullContent.length}`);
+    }
+  }
+
   return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
 }
 
@@ -563,7 +658,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: effectiveModelId,
       messages: toAnthropicMessages(input.messages, ctx),
-      max_tokens: 8192,
+      max_tokens: 16384,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
     };
