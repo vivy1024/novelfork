@@ -2921,58 +2921,190 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         };
       };
     case "TaskCreate":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, sessionId }) => {
         const todos = Array.isArray(input.todos) ? input.todos : [];
         if (todos.length === 0) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "todos 数组为空。" };
         }
+
+        // Persist todos to session metadata
+        const { getSessionById, updateSession } = await import("./session-service.js");
+        const session = await getSessionById(sessionId);
+        if (!session) {
+          return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: "会话不存在。" };
+        }
+        await updateSession(sessionId, { todos });
+
+        // Broadcast via WebSocket
+        const { broadcastTodosUpdated } = await import("./session-chat-service.js");
+        await broadcastTodosUpdated(sessionId, todos);
+
+        const completedCount = todos.filter((t: Record<string, unknown>) => t.status === "completed").length;
+        const inProgressCount = todos.filter((t: Record<string, unknown>) => t.status === "in_progress").length;
+        const pendingCount = todos.length - completedCount - inProgressCount;
+
         return {
           ok: true,
           renderer: "tool.task-list",
-          summary: `已创建 ${todos.length} 个任务。`,
+          summary: `已更新待办事项：共 ${todos.length} 项（${completedCount} 已完成，${inProgressCount} 进行中，${pendingCount} 待处理）`,
           data: {
             status: "created",
             todos,
             totalCount: todos.length,
-            completedCount: todos.filter((t: Record<string, unknown>) => t.status === "completed").length,
+            completedCount,
           },
         };
       };
     case "Recall":
       return async ({ input, definition, sessionId }) => {
         const action = typeof input.action === "string" ? input.action : "search";
-        const query = typeof input.query === "string" ? (input.query as string).trim() : "";
+        const rawQuery = input.query;
+        const queries: string[] = Array.isArray(rawQuery)
+          ? rawQuery.filter((q): q is string => typeof q === "string").map(q => q.trim()).filter(Boolean)
+          : typeof rawQuery === "string" && rawQuery.trim() ? [rawQuery.trim()] : [];
 
-        if (action === "search" && !query) {
+        if (action === "search" && queries.length === 0) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "search action 需要 query 参数。" };
+        }
+
+        const limit = Math.min(Math.max(typeof input.limit === "number" ? input.limit : 20, 1), 50);
+
+        // Parse time range filters
+        const timeRange = typeof input.time_range === "string" ? input.time_range.trim() : "";
+        const fromStr = typeof input.from === "string" ? input.from.trim() : "";
+        const toStr = typeof input.to === "string" ? input.to.trim() : "";
+
+        let fromTs = 0;
+        let toTs = Number.MAX_SAFE_INTEGER;
+
+        if (timeRange) {
+          const match = timeRange.match(/^(\d+)(h|d|w|mo|y)$/);
+          if (match) {
+            const amount = Number.parseInt(match[1]!, 10);
+            const unit = match[2]!;
+            const msMap: Record<string, number> = { h: 3600000, d: 86400000, w: 604800000, mo: 2592000000, y: 31536000000 };
+            fromTs = Date.now() - amount * (msMap[unit] ?? 86400000);
+          }
+        }
+        if (fromStr) {
+          const parsed = Date.parse(fromStr);
+          if (!Number.isNaN(parsed)) fromTs = Math.max(fromTs, parsed);
+        }
+        if (toStr) {
+          const parsed = Date.parse(toStr);
+          if (!Number.isNaN(parsed)) toTs = Math.min(toTs, parsed);
         }
 
         const { loadSessionChatHistory } = await import("./session-history-store.js");
         const history = await loadSessionChatHistory(sessionId);
 
         if (action === "search") {
-          const lowerQuery = query.toLowerCase();
-          const limit = typeof input.limit === "number" ? input.limit : 10;
-          const matches = history
-            .filter(msg => msg.content.toLowerCase().includes(lowerQuery))
-            .slice(0, limit)
-            .map(msg => ({ id: msg.id, role: msg.role, content: msg.content.slice(0, 500), timestamp: msg.timestamp }));
+          // Use FTS5 via globalSearchIndex for messages indexed there,
+          // then fall back to local tokenized search on session history.
+          const { globalSearchIndex } = await import("./search-index.js");
+
+          const allMatches: Array<{ id: string; role: string; content: string; timestamp: number; score: number; highlights: string[] }> = [];
+          const seenIds = new Set<string>();
+
+          for (const q of queries) {
+            // Try FTS5 search first (searches indexed messages with type='message')
+            try {
+              const ftsResults = globalSearchIndex.search(q, "message", limit);
+              for (const result of ftsResults) {
+                // Filter by sessionId stored in metadata
+                const meta = result.metadata as Record<string, unknown> | undefined;
+                if (meta?.sessionId !== sessionId) continue;
+                // Filter by time range
+                if (result.timestamp < fromTs || result.timestamp > toTs) continue;
+                if (seenIds.has(result.id)) continue;
+                seenIds.add(result.id);
+                allMatches.push({
+                  id: result.id,
+                  role: (meta?.role as string) ?? "unknown",
+                  content: result.highlights.length > 0 ? result.highlights.join(" … ") : result.content.slice(0, 500),
+                  timestamp: result.timestamp,
+                  score: result.score,
+                  highlights: result.highlights,
+                });
+              }
+            } catch {
+              // FTS5 search failed, fall through to local search
+            }
+
+            // Local tokenized search on session history (covers un-indexed messages)
+            const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+            for (const msg of history) {
+              if (seenIds.has(msg.id)) continue;
+              if (msg.timestamp < fromTs || msg.timestamp > toTs) continue;
+              const lowerContent = msg.content.toLowerCase();
+              const matched = terms.every(term => lowerContent.includes(term));
+              if (!matched) continue;
+              seenIds.add(msg.id);
+              // Compute a simple relevance score based on term frequency
+              let score = 0;
+              for (const term of terms) {
+                let idx = 0;
+                while ((idx = lowerContent.indexOf(term, idx)) !== -1) { score++; idx += term.length; }
+              }
+              // Extract highlight snippet around first term match
+              const highlights: string[] = [];
+              for (const term of terms) {
+                const idx = lowerContent.indexOf(term);
+                if (idx !== -1) {
+                  const start = Math.max(0, idx - 40);
+                  const end = Math.min(msg.content.length, idx + term.length + 40);
+                  let snippet = msg.content.slice(start, end);
+                  if (start > 0) snippet = "..." + snippet;
+                  if (end < msg.content.length) snippet = snippet + "...";
+                  highlights.push(snippet);
+                  break;
+                }
+              }
+              allMatches.push({
+                id: msg.id,
+                role: msg.role,
+                content: msg.content.slice(0, 500),
+                timestamp: msg.timestamp,
+                score,
+                highlights,
+              });
+            }
+          }
+
+          // Sort by score descending, then slice to limit
+          allMatches.sort((a, b) => b.score - a.score);
+          const matches = allMatches.slice(0, limit);
+
           return {
             ok: true,
             renderer: definition.renderer,
             summary: `搜索到 ${matches.length} 条匹配消息。`,
-            data: { action: "search", query, matches, totalMatches: matches.length },
+            data: { action: "search", query: queries.length === 1 ? queries[0] : queries, matches, totalMatches: matches.length },
           };
         }
 
         if (action === "read_conversation") {
-          const limit = typeof input.limit === "number" ? input.limit : 20;
-          const messages = history.slice(-limit).map(msg => ({ id: msg.id, role: msg.role, content: msg.content.slice(0, 1000), timestamp: msg.timestamp }));
+          const messageId = typeof input.message_id === "string" ? input.message_id.trim() : "";
+          let messages: typeof history;
+          if (messageId) {
+            // Find the message and show context around it
+            const idx = history.findIndex(m => m.id === messageId);
+            if (idx === -1) {
+              return { ok: false, renderer: definition.renderer, error: "not-found", summary: `未找到消息 ${messageId}。` };
+            }
+            const contextRadius = Math.floor(limit / 2);
+            const start = Math.max(0, idx - contextRadius);
+            const end = Math.min(history.length, idx + contextRadius + 1);
+            messages = history.slice(start, end);
+          } else {
+            messages = history.slice(-limit);
+          }
+          const mapped = messages.map(msg => ({ id: msg.id, role: msg.role, content: msg.content.slice(0, 1000), timestamp: msg.timestamp }));
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `读取了最近 ${messages.length} 条消息。`,
-            data: { action: "read_conversation", messages },
+            summary: `读取了 ${mapped.length} 条消息。`,
+            data: { action: "read_conversation", messages: mapped },
           };
         }
 
