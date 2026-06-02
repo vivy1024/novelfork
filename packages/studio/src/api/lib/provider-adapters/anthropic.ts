@@ -366,6 +366,8 @@ async function consumeAnthropicStream(
   const toolUses: RuntimeToolUse[] = [];
   let currentToolId = "";
   let currentToolName = "";
+  // XML tool_use streaming suppression: once detected, stop pushing text to frontend
+  let xmlStreamingSuppressed = false;
   let currentToolInputJson = "";
 
   // Throttle tool input chunk emissions: max once per 200ms or 100 chars since last emit
@@ -417,7 +419,14 @@ async function consumeAnthropicStream(
             const delta = parsed.delta as Record<string, unknown> | undefined;
             if (delta && delta.type === "text_delta" && typeof delta.text === "string") {
               fullContent += delta.text;
-              onStreamChunk(delta.text);
+              // Suppress streaming if XML tool_use detected (model regression: outputs XML instead of structured tool_use)
+              if (!xmlStreamingSuppressed) {
+                if (/<(?:tool_use|invoke|antml:invoke)\s/.test(delta.text) || /<(?:tool_use|invoke|antml:invoke)\s/.test(fullContent.slice(-200))) {
+                  xmlStreamingSuppressed = true;
+                } else {
+                  onStreamChunk(delta.text);
+                }
+              }
             } else if (delta && delta.type === "thinking_delta" && typeof delta.thinking === "string") {
               thinkingContent += delta.thinking;
             } else if (delta && delta.type === "signature_delta" && typeof delta.signature === "string") {
