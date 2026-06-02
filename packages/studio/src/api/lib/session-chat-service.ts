@@ -78,6 +78,7 @@ import { autoCompact, detectCompactionAction, selectThresholds, estimateTokenCou
 import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkpoint.js";
 import { ProviderHealthManager, classifyError } from "./provider-health-manager.js";
 import { createContextBudgetManager } from "./context-budget-manager.js";
+import { getGlobalSearchIndex } from "./search-index.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
@@ -794,6 +795,28 @@ function appendMessageToState(
   return nextMessage;
 }
 
+/**
+ * Index a persisted message into the global search index (non-blocking).
+ * Only indexes user/assistant messages with non-empty content.
+ */
+function indexMessageToSearch(sessionId: string, message: NarratorSessionChatMessage): void {
+  try {
+    if (message.role !== "user" && message.role !== "assistant") return;
+    if (!message.content || !message.content.trim()) return;
+    getGlobalSearchIndex().index({
+      id: `msg:${sessionId}:${message.id}`,
+      type: "message",
+      title: `${message.role} message`,
+      content: message.content,
+      bookId: "",
+      timestamp: message.timestamp ?? Date.now(),
+      metadata: { sessionId, role: message.role, seq: message.seq },
+    });
+  } catch {
+    // Indexing failure must not affect message persistence
+  }
+}
+
 function updateTransportAck(
   state: SessionChatRuntimeState,
   transport: SessionChatTransport,
@@ -825,6 +848,11 @@ async function persistSessionChatProgress(
     state.messageCount = Math.max(state.messageCount, getLastSeq(persistedHistory));
     state.nextSeq = Math.max(state.nextSeq, state.messageCount + 1);
     state.availableFromSeq = persistedHistory[0]?.seq ?? state.availableFromSeq;
+  }
+
+  // Index persisted messages into search index (fire-and-forget)
+  for (const msg of messages) {
+    indexMessageToSearch(sessionId, msg);
   }
 
   const recovery = buildRecoveryMetadata(state, state.messages, failure);
@@ -1483,6 +1511,12 @@ export async function replaceSessionChatState(
   }
 
   await saveSessionChatHistory(sessionId, normalizedMessages);
+
+  // Re-index all messages into search index after state replacement
+  for (const msg of normalizedMessages) {
+    indexMessageToSearch(sessionId, msg);
+  }
+
   const recovery = buildRecoveryMetadata(loaded.state, normalizedMessages);
   loaded.state.recoveryJson = serializeRecoveryMetadata(recovery);
   await updateSessionChatRecoveryJson(sessionId, loaded.state.recoveryJson);
