@@ -92,6 +92,8 @@ export type SessionToolExecutorOptions = {
   readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
   /** 工作目录，用于 Bash/Read/Write/Edit 工具的路径边界 */
   readonly workDir?: string;
+  /** 当前会话绑定的书籍 ID，用于自动将 books/{projectId}/ 加入目录白名单 */
+  readonly projectId?: string;
   /** 当前 session ID，用于插件 handler 上下文 */
   readonly sessionId?: string;
   readonly now?: () => number;
@@ -1390,9 +1392,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           // Validate file exists
           const resolvedPath = resolve(filePath);
 
-          // Path traversal guard: only allow files within project root or home directory
+          // Path traversal guard: only allow files within project root, home directory, or session workDir
           const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-          const allowedRoots = [root, process.env.HOME || process.env.USERPROFILE || ""].filter(Boolean);
+          const allowedRoots = [root, process.env.HOME || process.env.USERPROFILE || "", options.workDir || ""].filter(Boolean);
           const isAllowed = allowedRoots.some(allowed => resolvedPath.startsWith(allowed));
           if (!isAllowed) {
             return { ok: false, renderer: definition.renderer, error: "path-denied", summary: `文件路径不在允许范围内: ${filePath}` };
@@ -2445,15 +2447,36 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
 async function checkDirectoryAccess(
   filePath: string,
   workDir: string,
+  sessionAllowedPaths?: readonly string[],
 ): Promise<{ blocked: boolean; allowed: boolean; reason?: string }> {
   try {
     const { loadUserConfig } = await import("./user-config-service.js");
     const config = await loadUserConfig();
     const { directoryAllowlist, directoryBlocklist } = config.runtimeControls.toolAccess;
-    return checkPathAgainstDirectoryLists(filePath, workDir, directoryAllowlist, directoryBlocklist);
+    // Merge global allowlist with session-specific paths (worktree + books/{projectId}/)
+    const mergedAllowlist = sessionAllowedPaths?.length
+      ? [...directoryAllowlist, ...sessionAllowedPaths]
+      : directoryAllowlist;
+    return checkPathAgainstDirectoryLists(filePath, workDir, mergedAllowlist, directoryBlocklist);
   } catch {
     return { blocked: false, allowed: false };
   }
+}
+
+/** Build session-specific allowed paths from workDir and projectId */
+function buildSessionAllowedPaths(options: SessionToolExecutorOptions): string[] {
+  const paths: string[] = [];
+  const workDir = options.workDir;
+  if (workDir) {
+    paths.push(workDir);
+    if (options.projectId) {
+      // books/{projectId} is relative to workDir
+      const sep = workDir.includes("\\") ? "\\" : "/";
+      const bookPath = workDir + sep + "books" + sep + options.projectId;
+      paths.push(bookPath);
+    }
+  }
+  return paths;
 }
 
 function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
@@ -2505,6 +2528,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       return { ok: true, renderer: definition.renderer, summary: `${toolName} 执行完成`, data: result };
     };
   }
+
+  // Pre-compute session-specific allowed paths for directory access checks
+  const sessionAllowedPaths = buildSessionAllowedPaths(options);
 
   switch (toolName) {
     // --- Claude Code / Codex 级开发工具 ---
@@ -2589,7 +2615,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        const dirCheck = await checkDirectoryAccess(filePath, workDir);
+        const dirCheck = await checkDirectoryAccess(filePath, workDir, sessionAllowedPaths);
 
         if (dirCheck.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "路径在黑名单目录内。" };
@@ -2610,7 +2636,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        const dirCheckW = await checkDirectoryAccess(filePath, workDir);
+        const dirCheckW = await checkDirectoryAccess(filePath, workDir, sessionAllowedPaths);
         if (dirCheckW.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckW.reason ?? "路径在黑名单目录内。" };
         }
@@ -2642,7 +2668,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const workDir = options.workDir ?? process.cwd();
         const filePath = String(input.path);
         // Phase 4.3: Check directory blocklist
-        const dirCheckE = await checkDirectoryAccess(filePath, workDir);
+        const dirCheckE = await checkDirectoryAccess(filePath, workDir, sessionAllowedPaths);
         if (dirCheckE.blocked) {
           return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckE.reason ?? "路径在黑名单目录内。" };
         }
@@ -2681,7 +2707,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const cwd = searchPath === "." ? workDir : resolvedPath;
           // Check directory access for non-workDir paths
           if (cwd !== workDir && !isPathWithinWorkDir(cwd, workDir)) {
-            const dirCheck = await checkDirectoryAccess(cwd, workDir);
+            const dirCheck = await checkDirectoryAccess(cwd, workDir, sessionAllowedPaths);
             if (dirCheck.blocked) {
               return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "搜索路径在黑名单目录内。" };
             }
@@ -2716,7 +2742,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const cwd = searchPath === "." ? workDir : resolvedSearchPath;
           // Check directory access for non-workDir paths
           if (cwd !== workDir && !isPathWithinWorkDir(cwd, workDir)) {
-            const dirCheck = await checkDirectoryAccess(cwd, workDir);
+            const dirCheck = await checkDirectoryAccess(cwd, workDir, sessionAllowedPaths);
             if (dirCheck.blocked) {
               return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheck.reason ?? "搜索路径在黑名单目录内。" };
             }

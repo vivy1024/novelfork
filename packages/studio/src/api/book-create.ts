@@ -68,7 +68,7 @@ export interface StudioBookConfigDraft {
   readonly platform: Platform;
   readonly genre: string;
   readonly status: "outlining";
-  readonly targetChapters: number;
+  readonly targetChapters?: number;
   readonly chapterWordCount: number;
   readonly language?: "zh" | "en";
   readonly enabledPresetIds?: string[];
@@ -311,7 +311,7 @@ export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): 
     platform: normalizeStudioPlatform(body.platform),
     genre: body.genre,
     status: "outlining",
-    targetChapters: body.targetChapters ?? 200,
+    ...(body.targetChapters != null ? { targetChapters: body.targetChapters } : {}),
     chapterWordCount: body.chapterWordCount ?? 3000,
     ...(normalizeEnabledPresetIds(body.enabledPresetIds, body.genre).length
       ? { enabledPresetIds: normalizeEnabledPresetIds(body.enabledPresetIds, body.genre) }

@@ -210,9 +210,18 @@ function toolResultContent(result: SessionToolExecutionResult, toolName?: string
     if (Array.isArray(data.matches) && data.matches.length > 0) {
       content += "\n\n" + (data.matches as string[]).join("\n");
     }
-    // Grep: 匹配行
+    // Grep: 匹配行 / ToolSearch: 工具列表
     if (Array.isArray(data.results) && data.results.length > 0) {
-      content += "\n\n" + (data.results as string[]).join("\n");
+      const first = data.results[0];
+      if (typeof first === "object" && first !== null && "name" in first) {
+        // ToolSearch 返回的对象数组 {name, description}
+        content += "\n\n" + (data.results as Array<{ name: string; description?: string }>)
+          .map(t => `- ${t.name}: ${t.description ?? ""}`)
+          .join("\n");
+      } else {
+        // Grep 返回的字符串数组
+        content += "\n\n" + (data.results as string[]).join("\n");
+      }
     }
     // Read/LearningGuide: 文件内容
     if (typeof data.content === "string" && data.content.trim()) {
@@ -560,6 +569,17 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         emit({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
         return events;
       }
+
+      // Detect malformed XML tool calls in assistant text (model regression fallback)
+      // If the adapter layer didn't catch it, sanitize here to prevent context poisoning
+      const xmlToolPattern = /<(?:tool_use|invoke|antml:invoke)\s+(?:id|name)=/;
+      if (xmlToolPattern.test(content)) {
+        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "xml-tool-use-in-text", sessionId: input.sessionId, contentPreview: content.slice(0, 200) }));
+        // Don't save malformed XML to context — emit failure and let user retry
+        emit({ type: "turn_failed", reason: "malformed-tool-call", message: "模型输出了格式异常的工具调用，请重试。" });
+        return events;
+      }
+
       consecutiveSilentToolCalls = 0; // Fix: reset on assistant message
       emit(
         { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },

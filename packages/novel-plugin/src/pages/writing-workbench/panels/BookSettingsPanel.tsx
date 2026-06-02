@@ -22,7 +22,7 @@ interface BookConfig {
   genre: string;
   platform: "tomato" | "feilu" | "qidian" | "other";
   language: "zh" | "en";
-  targetChapters: number;
+  targetChapters: number | null;
   chapterWordCount: number;
   arcTrackingMode: "off" | "rule" | "llm";
   customSensitiveWords: string;
@@ -157,7 +157,7 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
           genre: data.genre ?? "",
           platform: data.platform ?? "other",
           language: data.language ?? "zh",
-          targetChapters: data.targetChapters ?? 100,
+          targetChapters: data.targetChapters ?? null,
           chapterWordCount: data.chapterWordCount ?? 2000,
           arcTrackingMode: data.arcTrackingMode ?? "off",
           customSensitiveWords: data.customSensitiveWords ?? "",
@@ -272,7 +272,7 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
   const debouncedSave = useDebounce(saveConfig, 1000);
 
   const updateConfig = useCallback(
-    (key: keyof BookConfig, value: string | number) => {
+    (key: keyof BookConfig, value: string | number | null) => {
       setConfig((prev) => {
         if (!prev) return prev;
         const updated = { ...prev, [key]: value };
@@ -455,8 +455,9 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
                 <Input
                   type="number"
                   min={1}
-                  value={config.targetChapters}
-                  onChange={(e) => updateConfig("targetChapters", Number(e.target.value))}
+                  placeholder="未设置"
+                  value={config.targetChapters ?? ""}
+                  onChange={(e) => updateConfig("targetChapters", e.target.value ? Number(e.target.value) : null)}
                 />
               </div>
 

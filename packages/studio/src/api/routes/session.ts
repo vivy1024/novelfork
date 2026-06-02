@@ -417,44 +417,79 @@ app.post("/:id/compact-segment/undo", async (c) => {
 
 app.post("/:id/truncate", async (c) => {
   const id = c.req.param("id");
-  const body: { messageId?: string; seq?: number } = await c.req.json<{ messageId?: string; seq?: number }>().catch(() => ({}));
+  const body: { messageId?: string; seq?: number; mode?: "delete" | "cutoff" } = await c.req.json<{ messageId?: string; seq?: number; mode?: "delete" | "cutoff" }>().catch(() => ({}));
 
   const snapshot = await getSessionChatSnapshot(id);
   if (!snapshot) {
     return c.json({ error: "Session not found" }, 404);
   }
 
-  let cutSeq = -1;
-  if (body.messageId) {
-    const msg = snapshot.messages.find((m) => m.id === body.messageId);
-    cutSeq = msg?.seq ?? -1;
-  } else if (typeof body.seq === "number") {
-    cutSeq = body.seq;
+  // Determine the mode: messageId implies destructive delete (rollback),
+  // seq without messageId implies context cutoff (clear context, keep messages visible)
+  const mode = body.mode ?? (body.messageId ? "delete" : "cutoff");
+
+  if (mode === "delete") {
+    // Destructive truncation: remove the target message and everything after it
+    let cutIndex = -1;
+    if (body.messageId) {
+      cutIndex = snapshot.messages.findIndex((m) => m.id === body.messageId);
+    } else if (typeof body.seq === "number") {
+      cutIndex = snapshot.messages.findIndex((m) => m.seq === body.seq);
+    }
+
+    if (cutIndex < 0) {
+      return c.json({ error: "Message not found" }, 404);
+    }
+
+    const remaining = snapshot.messages.slice(0, cutIndex);
+    const removedCount = snapshot.messages.length - cutIndex;
+
+    const result = await replaceSessionChatState(id, remaining);
+    if (!result) {
+      return c.json({ error: "Failed to truncate session" }, 500);
+    }
+
+    // Also clear any stale contextCutoffSeq
+    const session = await getSessionById(id);
+    if (session?.sessionConfig.contextCutoffSeq) {
+      const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
+      await updateSession(id, { sessionConfig: updatedConfig });
+    }
+
+    return c.json({ ok: true, mode: "delete", removedCount, remainingMessages: remaining.length });
+  } else {
+    // Context cutoff: mark messages as excluded from model context but keep them visible
+    let cutSeq = -1;
+    if (body.messageId) {
+      const msg = snapshot.messages.find((m) => m.id === body.messageId);
+      cutSeq = msg?.seq ?? -1;
+    } else if (typeof body.seq === "number") {
+      cutSeq = body.seq;
+    }
+
+    if (cutSeq < 0) {
+      // For seq-based cutoff with very large seq (clear all), use max seq in messages
+      const maxSeq = Math.max(...snapshot.messages.map((m) => m.seq ?? 0), 0);
+      cutSeq = maxSeq > 0 ? maxSeq : 999999999;
+    }
+
+    const session = await getSessionById(id);
+    if (!session) {
+      return c.json({ error: "Session not found" }, 404);
+    }
+
+    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: cutSeq };
+    await updateSession(id, {
+      sessionConfig: updatedConfig,
+      cumulativeUsage: {
+        ...(session.cumulativeUsage ?? { totalInputTokens: 0, totalOutputTokens: 0, totalCacheCreationInputTokens: 0, totalCacheReadInputTokens: 0, turnCount: 0 }),
+        lastInputTokens: 0,
+        lastContextBreakdown: undefined,
+      },
+    });
+
+    return c.json({ ok: true, mode: "cutoff", contextCutoffSeq: cutSeq, totalMessages: snapshot.messages.length });
   }
-
-  if (cutSeq < 0) {
-    return c.json({ error: "Message not found" }, 404);
-  }
-
-  // Mark-based truncation: set contextCutoffSeq instead of deleting messages.
-  // Messages are preserved in history for viewing but excluded from model context.
-  const session = await getSessionById(id);
-  if (!session) {
-    return c.json({ error: "Session not found" }, 404);
-  }
-
-  const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: cutSeq };
-  // Reset context usage so Context Ring shows 0 after clear
-  await updateSession(id, {
-    sessionConfig: updatedConfig,
-    cumulativeUsage: {
-      ...(session.cumulativeUsage ?? { totalInputTokens: 0, totalOutputTokens: 0, totalCacheCreationInputTokens: 0, totalCacheReadInputTokens: 0, turnCount: 0 }),
-      lastInputTokens: 0,
-      lastContextBreakdown: undefined,
-    },
-  });
-
-  return c.json({ ok: true, contextCutoffSeq: cutSeq, totalMessages: snapshot.messages.length });
 });
 
 app.delete("/:id/messages/:messageId", async (c) => {
