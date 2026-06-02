@@ -38,6 +38,27 @@ import { loadUserConfig } from "../lib/user-config-service.js";
 const app = new Hono();
 const memoryBoundaryService = createSessionMemoryBoundaryService();
 
+// ─── Shared Helpers ──────────────────────────────────────────────────────────
+
+/** Clear contextCutoffSeq from session config (idempotent) */
+async function clearContextCutoffSeq(sessionId: string): Promise<void> {
+  const session = await getSessionById(sessionId);
+  if (session?.sessionConfig.contextCutoffSeq) {
+    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
+    await updateSession(sessionId, { sessionConfig: updatedConfig });
+  }
+}
+
+/** Delete messages from cutIndex onwards and clear contextCutoffSeq */
+async function deleteMessagesFrom(sessionId: string, cutIndex: number, messages: readonly unknown[]): Promise<{ ok: true; removedCount: number; remainingMessages: number } | { ok: false; error: string }> {
+  const remaining = messages.slice(0, cutIndex);
+  const removedCount = messages.length - cutIndex;
+  const result = await replaceSessionChatState(sessionId, remaining as any[]);
+  if (!result) return { ok: false, error: "Failed to update session state" };
+  await clearContextCutoffSeq(sessionId);
+  return { ok: true, removedCount, remainingMessages: remaining.length };
+}
+
 function parseSinceSeq(value: string | undefined): number {
   if (!value) {
     return 0;
@@ -508,22 +529,9 @@ app.post("/:id/rollback/:messageId", async (c) => {
     return c.json({ error: "Message not found" }, 404);
   }
 
-  const remaining = snapshot.messages.slice(0, cutIndex);
-  const removedCount = snapshot.messages.length - cutIndex;
-
-  const result = await replaceSessionChatState(id, remaining);
-  if (!result) {
-    return c.json({ error: "Failed to rollback session" }, 500);
-  }
-
-  // Clear contextCutoffSeq if present
-  const session = await getSessionById(id);
-  if (session?.sessionConfig.contextCutoffSeq) {
-    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
-    await updateSession(id, { sessionConfig: updatedConfig });
-  }
-
-  return c.json({ ok: true, removedCount, remainingMessages: remaining.length });
+  const result = await deleteMessagesFrom(id, cutIndex, snapshot.messages);
+  if (!result.ok) return c.json({ error: result.error }, 500);
+  return c.json(result);
 });
 
 app.post("/:id/retry", async (c) => {
@@ -547,14 +555,11 @@ app.post("/:id/retry", async (c) => {
     return c.json({ error: "No assistant message to retry" }, 400);
   }
 
-  // Remove the last assistant message and everything after it
-  const remaining = snapshot.messages.slice(0, lastAssistantIdx);
-
-  // Find the last user message in the remaining messages
+  // Find the last user message before the assistant message
   let lastUserMessage: { id: string; content: string } | null = null;
-  for (let i = remaining.length - 1; i >= 0; i--) {
-    if (remaining[i].role === "user") {
-      lastUserMessage = { id: remaining[i].id, content: remaining[i].content };
+  for (let i = lastAssistantIdx - 1; i >= 0; i--) {
+    if (snapshot.messages[i].role === "user") {
+      lastUserMessage = { id: snapshot.messages[i].id, content: snapshot.messages[i].content };
       break;
     }
   }
@@ -563,19 +568,9 @@ app.post("/:id/retry", async (c) => {
     return c.json({ error: "No user message found before assistant message" }, 400);
   }
 
-  const result = await replaceSessionChatState(id, remaining);
-  if (!result) {
-    return c.json({ error: "Failed to update session state" }, 500);
-  }
-
-  // Clear contextCutoffSeq if present
-  const session = await getSessionById(id);
-  if (session?.sessionConfig.contextCutoffSeq) {
-    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
-    await updateSession(id, { sessionConfig: updatedConfig });
-  }
-
-  return c.json({ ok: true, retriedFromMessageId: lastUserMessage.id, lastUserContent: lastUserMessage.content });
+  const result = await deleteMessagesFrom(id, lastAssistantIdx, snapshot.messages);
+  if (!result.ok) return c.json({ error: result.error }, 500);
+  return c.json({ ...result, retriedFromMessageId: lastUserMessage.id, lastUserContent: lastUserMessage.content });
 });
 
 app.post("/:id/continue", async (c) => {
@@ -601,22 +596,9 @@ app.post("/:id/edit-and-regenerate/:messageId", async (c) => {
     return c.json({ error: "Message not found" }, 404);
   }
 
-  const remaining = snapshot.messages.slice(0, cutIndex);
-  const removedCount = snapshot.messages.length - cutIndex;
-
-  const result = await replaceSessionChatState(id, remaining);
-  if (!result) {
-    return c.json({ error: "Failed to update session state" }, 500);
-  }
-
-  // Clear contextCutoffSeq if present
-  const session = await getSessionById(id);
-  if (session?.sessionConfig.contextCutoffSeq) {
-    const updatedConfig = { ...session.sessionConfig, contextCutoffSeq: undefined };
-    await updateSession(id, { sessionConfig: updatedConfig });
-  }
-
-  return c.json({ ok: true, newContent: body.content.trim(), removedCount });
+  const result = await deleteMessagesFrom(id, cutIndex, snapshot.messages);
+  if (!result.ok) return c.json({ error: result.error }, 500);
+  return c.json({ ...result, newContent: body.content!.trim() });
 });
 
 app.delete("/:id/messages/:messageId", async (c) => {

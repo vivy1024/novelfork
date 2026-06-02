@@ -249,9 +249,15 @@ export function ConversationSurface({
           try {
             const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/rollback/${encodeURIComponent(msg.id)}`, { method: "POST" });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            // Reload snapshot
-            const snapshot = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/chat/state`).then(r => r.json());
-            if (snapshot) window.location.reload();
+            // Reload snapshot without full page reload
+            if (onTruncateToMessage) {
+              // Reuse existing snapshot reload logic
+              const snapshot = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/chat/state`).then(r => r.ok ? r.json() : null);
+              if (snapshot) {
+                // Force re-render by applying snapshot envelope (handled by parent)
+                window.dispatchEvent(new CustomEvent("novelfork:session-snapshot-reload", { detail: { sessionId } }));
+              }
+            }
           } catch (err) {
             console.error("rollback failed:", err);
           }
