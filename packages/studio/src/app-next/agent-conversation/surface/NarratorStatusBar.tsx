@@ -243,6 +243,12 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
               )}
             </>
           )}
+          {/* Plan mode badge */}
+          {(status.planMode || status.permissionMode === "plan") && (
+            <span className="inline-flex items-center gap-1 rounded-md bg-green-100 dark:bg-green-900/30 px-2 py-0.5 text-[10px] font-medium text-green-700 dark:text-green-300">
+              📋 计划模式
+            </span>
+          )}
         </div>
 
         {/* Center: Git branch + changes (if available) */}

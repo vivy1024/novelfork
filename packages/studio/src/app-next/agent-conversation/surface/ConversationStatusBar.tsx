@@ -123,6 +123,8 @@ export interface ConversationStatus {
   sessionConfigLoaded?: boolean;
   /** 分叉来源会话 ID */
   parentSessionId?: string;
+  /** 是否处于计划模式（从 sessionMode 或 permissionMode === "plan" 推断） */
+  planMode?: boolean;
 }
 
 export interface ConversationSessionConfigPatch {

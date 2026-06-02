@@ -67,6 +67,7 @@ export type SessionServerEnvelope =
   | { type: "session:danger-reflection"; sessionId: string; reflection: { id: string; toolName: string; command: string; analysis: string; riskFactors: string[] } }
   | { type: "session:safety-pause"; sessionId: string; pause: { id: string; toolName: string; input: Record<string, unknown>; reason: string } }
   | { type: "session:compact-progress"; sessionId: string; progress: number }
+  | { type: "session:todos-updated"; sessionId: string; todos: Array<{ id: string; content: string; status: string; priority?: string }> }
   | { type: "client:message-sent" }
   | { type: "client:clear-error" };
 
@@ -279,6 +280,12 @@ export function reduceSessionEnvelope(
         ...state,
         compactProgress: envelope.progress >= 100 ? null : envelope.progress,
       };
+    case "session:todos-updated":
+      // Dispatch DOM event for TodosSummaryBar to pick up
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("novelfork:todos-updated", { detail: { sessionId: envelope.sessionId, todos: envelope.todos } }));
+      }
+      return state;
     case "client:message-sent":
       return {
         ...state,

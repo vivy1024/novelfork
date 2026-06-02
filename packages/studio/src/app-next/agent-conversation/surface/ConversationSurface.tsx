@@ -25,6 +25,7 @@ import { SessionDetailPanel, type SessionDetailData } from "./SessionDetailPanel
 import { TerminalListPanel } from "./TerminalListPanel";
 import { SafetyPauseCard } from "./SafetyPauseCard";
 import { CompactProgressIndicator } from "./CompactProgressIndicator";
+import { TodosSummaryBar } from "./TodosSummaryBar";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "@/components/ui/tooltip";
 import { Input } from "@/components/ui/input";
@@ -778,6 +779,9 @@ export function ConversationSurface({
         }}
         onOpenTerminal={() => setTerminalPanelOpen(true)}
       />
+
+      {/* ── Todos summary bar (above Composer) ── */}
+      {sessionId && <TodosSummaryBar sessionId={sessionId} />}
 
       {/* ── Composer ── */}
       <Composer
