@@ -22,7 +22,17 @@ routes:
 
 **节拍模板**：5 个内置模板（英雄之旅、救猫咪、三幕、网文开篇钩子、章末钩子）。Agent 可自行创建自定义模板。
 
-**上下文组装**：系统自动按优先级注入——经纬条目 → 前文摘要 → 驾驶舱快照 → PGI 回答 → Guided Plan。
+**上下文组装**：系统自动按优先级注入——经纬条目 → 前文摘要 → 驾驶舱快照 → PGI 回答 → Scene Spec 蓝图 → 预设规则。
+
+## 写作工具一览
+
+| 工具 | 适用场景 | 说明 |
+|------|---------|------|
+| `pipeline.generate_chapter` | 写下一章 | 完整管线：规划→生成→审计→修订→候选稿 |
+| `pipeline.write` | 已有蓝图写章节 | 精简管线：SceneSpec→Writer→AuditRevise |
+| `pipeline.revise` | 修订已有章节 | 5 种模式：polish/rewrite/rework/spot-fix/anti-detect |
+| `rewrite.segment` | 选段改写 | 续写/扩写/去AI味/风格改写 |
+| `style.import` | 提取文风 | 从参考文本生成 style_profile + style_guide |
 
 ## 推荐使用流程
 
@@ -33,7 +43,7 @@ routes:
 
 ## 最佳实践
 
-- 用"生成下一章"而非"续写草稿"，前者走完整 PGI + Guided Plan 流程，质量更高
+- 用"生成下一章"而非"续写草稿"，前者走完整 PGI + SceneSpec + pipeline 流程，质量更高
 - 不确定方向时先生成变体对比，再决定采纳哪个
 - 一部作品尽量固定一套预设，避免前后文风不一致
 - 让叙述者帮你选预设和节拍："帮我选择适合玄幻的预设和节拍"
@@ -47,11 +57,11 @@ routes:
 
 ## Agent 查阅提示
 
-- 所有生成结果必须进入候选区（`candidate.create_chapter`），禁止直接写入正式章节
-- 上下文组装顺序固定：经纬 → 前文摘要 → 驾驶舱快照 → PGI → Guided Plan
-- 预设通过 preset_id 关联，切换预设不影响已生成的候选稿
+- 所有生成结果必须进入候选区（通过 `pipeline.generate_chapter` 或 `candidate.create_chapter`），禁止直接写入正式章节
+- 上下文组装顺序固定：经纬 → 前文摘要 → 驾驶舱快照 → PGI → SceneSpec → 预设规则
+- 预设通过 `presets.set_rules` 管理，切换预设不影响已生成的候选稿
 - 变体生成时每个变体独立走完整管线，共享上下文但 temperature 不同
-- Agent 可通过工具自行选择和设置预设/节拍，无需用户手动操作
+- Agent 可通过 `presets.list_available` / `presets.set_rules` / `beat.set_template` 自行管理预设和节拍
 
 ## 可跳转功能入口
 
