@@ -4,6 +4,16 @@
 
 ## Unreleased
 
+## v1.3.0 (2026-06-02)
+
+### 🏗️ Agent 架构升级：NarraFork 能力对齐
+
+- **后端原子操作 API** — 新增独立端点 rollback/retry/continue/edit-and-regenerate，不再依赖 truncate 拼凑
+- **右键菜单改造** — "回退到此处"和"编辑重新生成"调用独立 API，彻底消除上下文丢失 bug
+- **系统提示词加固** — 注入行为规范（失败循环检测、默认行动决策树、验证流程、Bash 超时提示）
+- **工具列表直接注入 system prompt** — agent 不再需要 ToolSearch 确认自己有什么工具
+- **可用工具清单** — 每次 turn 自动将当前可用工具名写入 system prompt
+
 ## v1.2.2 (2026-06-02)
 
 ### 🐛 Bug 修复
