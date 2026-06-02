@@ -74,7 +74,7 @@ export interface AgentTurnRuntimeInput {
   readonly signal?: AbortSignal;
   /** Fix: silentToolCallThreshold — 连续无文本输出的工具调用次数阈值，超过后注入提示 */
   readonly silentToolCallThreshold?: number;
-  /** 工具执行超时（毫秒），默认 60000 */
+  /** 工具执行超时（毫秒），默认 120000 */
   readonly toolTimeoutMs?: number;
 }
 
@@ -510,7 +510,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
                       ...(input.signal ? { signal: input.signal } : {}),
                     }),
-                    input.toolTimeoutMs ?? 60000,
+                    input.toolTimeoutMs ?? 120000,
                     toolUse.name,
                     input.signal,
                   );
@@ -668,7 +668,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
                     ...(input.signal ? { signal: input.signal } : {}),
                   }),
-                  input.toolTimeoutMs ?? 60000,
+                  input.toolTimeoutMs ?? 120000,
                   toolUse.name,
                   input.signal,
                 );
@@ -811,7 +811,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                   ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
                   ...(input.signal ? { signal: input.signal } : {}),
                 }),
-                input.toolTimeoutMs ?? 60000,
+                input.toolTimeoutMs ?? 120000,
                 toolUse.name,
                 input.signal,
               );        } catch (err) {

@@ -421,7 +421,13 @@ async function consumeAnthropicStream(
               fullContent += delta.text;
               // Suppress streaming if XML tool_use detected (model regression: outputs XML instead of structured tool_use)
               if (!xmlStreamingSuppressed) {
-                if (/<(?:tool_use\s|invoke\s|antml:invoke\s)/.test(delta.text) || /<(?:tool_use\s|invoke\s|antml:invoke\s)/.test(fullContent.slice(-100))) {
+                // Check both current chunk and trailing content for partial XML tags
+                // Model may split "<tool_use " across chunks as "<tool" + "_use id=..."
+                const tail = fullContent.slice(-50);
+                if (/<(?:tool_use\s|invoke\s|antml:invoke\s)/.test(delta.text) 
+                    || /<(?:tool_use\s|invoke\s|antml:invoke\s)/.test(tail)
+                    || tail.endsWith("<tool") || tail.endsWith("<tool_") || tail.endsWith("<tool_u")
+                    || tail.endsWith("<invo") || tail.endsWith("<invok") || tail.endsWith("<invoke")) {
                   xmlStreamingSuppressed = true;
                 } else {
                   onStreamChunk(delta.text);
