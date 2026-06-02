@@ -272,7 +272,10 @@ export async function executeSessionTool(
   }
 
   // --- YOLO mode integration: check if we can auto-approve before asking user ---
-  const needsConfirmation = (policyResolution.reason === "policy-ask" || policyResolution.requiresConfirmation || definition.risk === "destructive")
+  // In "allow" mode, destructive tools are auto-approved (that's the whole point of allow mode).
+  // Only "ask" and "edit" modes require confirmation for destructive tools.
+  const isAllowMode = input.permissionMode === "allow";
+  const needsConfirmation = (policyResolution.reason === "policy-ask" || policyResolution.requiresConfirmation || (!isAllowMode && definition.risk === "destructive"))
     && input.confirmationDecision?.decision !== "approved";
 
   if (needsConfirmation) {
