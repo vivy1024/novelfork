@@ -348,11 +348,21 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Recall",
-    description: "搜索当前会话的对话历史，支持全文搜索和消息浏览。",
+    description: "搜索当前会话的对话历史，支持 FTS5 全文搜索、消息浏览和工具调用查看。",
     inputSchema: objectSchema({
-      action: stringSchema("操作：search | read_conversation | read_tool_call。"),
-      query: stringSchema("搜索查询（action=search 时使用）。"),
-      message_id: stringSchema("消息 ID（read_conversation 时可选，用于定位）。"),
+      action: stringSchema("操作：search | read_conversation | read_tool_call。默认 search。"),
+      query: {
+        description: "搜索查询（action=search 时使用）。支持单个字符串或字符串数组（批量搜索）。",
+        oneOf: [
+          { type: "string" },
+          { type: "array", items: { type: "string" } },
+        ],
+      },
+      time_range: stringSchema("相对时间范围（如 '24h', '7d', '1mo'）。可选。"),
+      from: stringSchema("绝对时间范围起始（ISO 格式）。可选。"),
+      to: stringSchema("绝对时间范围结束（ISO 格式）。可选。"),
+      limit: numberSchema("返回结果数量上限（默认 20，最大 50）。"),
+      message_id: stringSchema("消息 ID（read_conversation 时可选，用于定位上下文）。"),
       tool_call_id: stringSchema("工具调用 ID（action=read_tool_call 时使用）。"),
     }, ["action"]),
     risk: "read",

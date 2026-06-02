@@ -25,7 +25,9 @@ import type {
   NarratorSessionRecord,
   NarratorSessionRecoveryEnvelope,
   NarratorSessionRecoveryMetadata,
+  NarratorSessionTodosUpdatedEnvelope,
   SessionCumulativeUsage,
+  SessionTodoItem,
   TokenUsage,
   ToolCall,
 } from "../../shared/session-types.js";
@@ -1551,6 +1553,28 @@ export async function broadcastCompactProgress(
     stage,
     progress,
     ...(message ? { message } : {}),
+  };
+  const payload = serializeEnvelope(envelope);
+  for (const transport of loaded.state.transports.keys()) {
+    try {
+      transport.send(payload);
+    } catch {
+      loaded.state.transports.delete(transport);
+    }
+  }
+}
+
+/** 向指定 session 的所有已连接 transport 广播 todos 更新事件 */
+export async function broadcastTodosUpdated(
+  sessionId: string,
+  todos: SessionTodoItem[],
+): Promise<void> {
+  const loaded = await loadSessionState(sessionId);
+  if (!loaded) return;
+  const envelope: NarratorSessionTodosUpdatedEnvelope = {
+    type: "session:todos-updated",
+    sessionId,
+    todos,
   };
   const payload = serializeEnvelope(envelope);
   for (const transport of loaded.state.transports.keys()) {

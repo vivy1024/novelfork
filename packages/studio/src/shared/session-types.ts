@@ -173,6 +173,13 @@ export interface SessionGoal {
   createdAt: string;
 }
 
+export interface SessionTodoItem {
+  id: string;
+  content: string;
+  status: "pending" | "in_progress" | "completed";
+  priority?: "high" | "medium" | "low";
+}
+
 export interface NarratorSessionRecord {
   id: string;
   title: string;
@@ -194,6 +201,7 @@ export interface NarratorSessionRecord {
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
   goals?: SessionGoal[];
+  todos?: SessionTodoItem[];
   pinned?: boolean;
 }
 
@@ -226,6 +234,7 @@ export interface UpdateNarratorSessionInput {
   recovery?: NarratorSessionRecoveryMetadata;
   cumulativeUsage?: SessionCumulativeUsage;
   goals?: SessionGoal[];
+  todos?: SessionTodoItem[];
   pinned?: boolean;
 }
 
@@ -497,6 +506,12 @@ export interface NarratorSessionCompactProgressEnvelope {
   message?: string;
 }
 
+export interface NarratorSessionTodosUpdatedEnvelope {
+  type: "session:todos-updated";
+  sessionId: string;
+  todos: SessionTodoItem[];
+}
+
 export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatSnapshotEnvelope
   | NarratorSessionChatStateEnvelope
@@ -506,4 +521,5 @@ export type NarratorSessionChatServerEnvelope =
   | NarratorSessionChatToolStreamEnvelope
   | NarratorSessionChatToolInputChunkEnvelope
   | NarratorSessionSafetyPauseEnvelope
-  | NarratorSessionCompactProgressEnvelope;
+  | NarratorSessionCompactProgressEnvelope
+  | NarratorSessionTodosUpdatedEnvelope;
