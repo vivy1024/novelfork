@@ -62,6 +62,7 @@ interface BackgroundAgentTask {
   subagentType: string;
   prompt: string;
   abortController?: AbortController;
+  pendingMessages: string[];
 }
 const backgroundAgents = new Map<string, BackgroundAgentTask>();
 
@@ -474,13 +475,21 @@ export async function executeSessionTool(
   } catch { /* hook execution failure is non-fatal */ }
 
   try {
-    const result = await handler({ ...input, definition });
+    let result = await handler({ ...input, definition });
     // Pipeline 拦截：如果当前 session 有活跃 pipeline，捕获成功结果
     const pipeline = sessionPipelines.get(input.sessionId);
     if (pipeline && result.ok && definition.name !== "StartPipeline" && definition.name !== "EndPipeline") {
       pipeline.counter += 1;
       const alias = `p${pipeline.counter}`;
-      pipeline.captures.set(alias, result.summary ?? JSON.stringify(result.data).slice(0, 100));
+      // 捕获完整输出用于后续过滤
+      const fullContent = result.data
+        ? (typeof result.data === "string" ? result.data : JSON.stringify(result.data, null, 2))
+        : (result.summary ?? "");
+      pipeline.captures.set(alias, fullContent);
+      // 截断返回给 agent 的 summary，避免上下文膨胀
+      const preview = (result.summary ?? "").slice(0, 100);
+      const truncatedSummary = `[${alias}] ${preview}${(result.summary ?? "").length > 100 ? "…" : ""}`;
+      result = { ...result, summary: truncatedSummary, data: undefined };
     }
 
     // --- PostToolUse hooks ---
@@ -3312,12 +3321,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const rule = typeof input.rule === "string" ? input.rule.trim() : "";
         sessionPipelines.delete(sessionId);
 
-        const result = executePipelineRule(rule, pipeline.captures);
+        const filteredResult = executePipelineRule(rule, pipeline.captures);
+        const header = `管道结束，共 ${pipeline.captures.size} 个捕获。${rule ? ` 规则: ${rule}` : ""}`;
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `管道结束，共 ${pipeline.captures.size} 个捕获。${rule ? ` 规则: ${rule}` : ""}`,
-          data: { rule, captureCount: pipeline.captures.size, result },
+          summary: filteredResult ? `${header}\n\n${filteredResult}` : header,
+          data: { rule, captureCount: pipeline.captures.size, result: filteredResult },
         };
       };
     // --- ForkNarrator: 创建新的独立 session ---
@@ -3326,12 +3336,14 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const mode = typeof input.mode === "string" ? input.mode : "fresh";
         const message = typeof input.message === "string" ? (input.message as string).trim() : "";
         const title = typeof input.title === "string" ? (input.title as string).trim() : "";
+        const inheritMode = typeof input.inheritMode === "string" ? input.inheritMode : "full";
 
         if (!message) {
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "message 不能为空。" };
         }
 
         const { createSession, getSessionById } = await import("./session-service.js");
+        const { getSessionChatSnapshot, replaceSessionChatState } = await import("./session-chat-service.js");
 
         const parentSession = await getSessionById(sessionId);
         const newSession = await createSession({
@@ -3341,15 +3353,56 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           projectId: parentSession?.projectId,
           worktree: parentSession?.worktree,
           parentSessionId: mode === "fork" ? sessionId : undefined,
-          forkMode: mode === "fork" ? "full" : undefined,
+          forkMode: mode === "fork" ? (inheritMode as "full" | "compressed") : undefined,
           sessionConfig: parentSession ? { permissionMode: parentSession.sessionConfig.permissionMode } : undefined,
         });
+
+        // fork 模式：复制消息历史到新会话
+        if (mode === "fork") {
+          const snapshot = await getSessionChatSnapshot(sessionId);
+          if (snapshot && snapshot.messages.length > 0) {
+            if (inheritMode === "compressed") {
+              // compressed：将消息内容拼接并截取前 2000 字作为摘要 system 消息
+              const allContent = snapshot.messages
+                .map(m => `[${m.role}]: ${m.content}`)
+                .join("\n");
+              const summary = allContent.slice(0, 2000);
+              const summaryMessage: import("../../shared/session-types.js").NarratorSessionChatMessage = {
+                id: crypto.randomUUID(),
+                role: "system",
+                content: `[对话摘要]\n${summary}${allContent.length > 2000 ? "\n...(已截断)" : ""}`,
+                timestamp: Date.now(),
+              };
+              const userMessage: import("../../shared/session-types.js").NarratorSessionChatMessage = {
+                id: crypto.randomUUID(),
+                role: "user",
+                content: message,
+                timestamp: Date.now(),
+              };
+              await replaceSessionChatState(newSession.id, [summaryMessage, userMessage]);
+            } else {
+              // full：完整复制所有消息，再追加 user message
+              const copiedMessages = snapshot.messages.map(m => ({
+                ...m,
+                id: crypto.randomUUID(),
+                seq: undefined,
+              }));
+              const userMessage: import("../../shared/session-types.js").NarratorSessionChatMessage = {
+                id: crypto.randomUUID(),
+                role: "user",
+                content: message,
+                timestamp: Date.now(),
+              };
+              await replaceSessionChatState(newSession.id, [...copiedMessages, userMessage]);
+            }
+          }
+        }
 
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `已创建新叙述者：${newSession.title}（ID: ${newSession.id}）`,
-          data: { sessionId: newSession.id, title: newSession.title, mode },
+          summary: `已创建新叙述者：${newSession.title}（ID: ${newSession.id}，模式: ${mode}${mode === "fork" ? `/${inheritMode}` : ""}）`,
+          data: { sessionId: newSession.id, title: newSession.title, mode, inheritMode: mode === "fork" ? inheritMode : undefined },
         };
       };
     // --- ShareFile: 生成文件分享信息 ---
@@ -4065,6 +4118,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             subagentType,
             prompt: (prompt || description).slice(0, 100),
             abortController: subAbortController,
+            pendingMessages: [],
           };
           task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
           backgroundAgents.set(agentId, task);
@@ -4104,6 +4158,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
               subagentType,
               prompt: (prompt || description).slice(0, 100),
               abortController: subAbortController,
+              pendingMessages: [],
             };
             task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
             backgroundAgents.set(agentId, task);
@@ -4214,11 +4269,20 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
         if (!id || !message) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 和 message 不能为空。" };
         const task = backgroundAgents.get(id);
         if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `子代理 ${id} 不存在。` };
+        task.pendingMessages.push(message);
+        if (task.status === "completed" || task.status === "failed") {
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `消息已记录给子代理 ${id}（子代理已${task.status === "completed" ? "完成" : "失败"}，消息将在下次交互时生效）。`,
+            data: { id, message, status: task.status, pendingCount: task.pendingMessages.length },
+          };
+        }
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `消息已记录给子代理 ${id}（当前为一次性执行模式，消息将在下次交互时生效）。`,
-          data: { id, message, status: task.status },
+          summary: `消息已发送给子代理 ${id}`,
+          data: { id, message, status: task.status, pendingCount: task.pendingMessages.length },
         };
       };
     // --- ToolSearch: 动态工具搜索 ---
@@ -4260,7 +4324,7 @@ function executePipelineRule(rule: string, captures: Map<string, string>): strin
   const segments = rule.split("|").map(s => s.trim());
   let lines: string[] = [];
 
-  // 第一段：from 或默认全部
+  // 第一段：from / cat 或默认全部
   const first = segments[0] ?? "";
   if (first.startsWith("from ")) {
     const aliases = first.slice(5).trim().split(/\s+/);
@@ -4268,6 +4332,10 @@ function executePipelineRule(rule: string, captures: Map<string, string>): strin
       const content = captures.get(alias);
       return content ? content.split("\n") : [];
     });
+    // 后续段从 index 1 开始
+  } else if (first === "cat") {
+    // cat：拼接所有 captures
+    lines = [...captures.values()].flatMap(v => v.split("\n"));
     // 后续段从 index 1 开始
   } else if (first) {
     // 第一段也是命令（如 grep），用全部 captures
