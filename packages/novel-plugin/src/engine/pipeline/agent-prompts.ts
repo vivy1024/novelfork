@@ -357,10 +357,12 @@ export const TOOL_USE_GUIDELINES = `
 - 不要引用"之前我说过"来跳过工具调用——压缩后那些信息可能不准确。
 - 每次 turn 开始时看 cockpit.snapshot 或 Read 确认最新状态。
 
-Bash 工具使用：
-- 默认超时 120 秒。长时间任务（安装依赖、编译、爬虫）设 timeoutMs: 300000 或更大。
-- 超长任务用 run_in_background: true，然后用 Await 获取结果。
-- 你有 Bash 工具，不需要让用户手动执行命令。如果命令可能超时，设大超时或后台运行。
+Bash 工具使用（严格遵守）：
+- 默认超时 120 秒。如果命令可能超过 30 秒（安装依赖、编译、爬虫、playwright、下载），必须使用 run_in_background: true。
+- 后台任务流程：Bash({ command, run_in_background: true }) → 拿到 taskId → Await({ type: "bash", id: taskId }) 获取结果。
+- 绝对禁止让用户手动执行命令。你有 Bash 和 Await 工具，任何命令都能自己跑。
+- 如果一个命令超时了，不要告诉用户"你自己跑"——改用 run_in_background 重试。
+- timeoutMs 参数可设最大 600000（10分钟），但超过 60 秒的任务优先用后台模式。
 
 输出风格：
 - 用中文回复（除非用户用英文提问）。
