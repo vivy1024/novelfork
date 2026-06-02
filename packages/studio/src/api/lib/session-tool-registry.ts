@@ -315,6 +315,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
       mode: stringSchema("创建模式：fresh（全新）| fork（继承当前对话历史）。"),
       message: stringSchema("发送给新叙述者的初始消息。"),
       title: stringSchema("新叙述者的标题。"),
+      inheritMode: stringSchema("fork 模式下的继承方式：full（完整复制所有消息）| compressed（压缩摘要）。默认 full。"),
     }, ["mode", "message"]),
     risk: "confirmed-write",
     renderer: "tool.forkNarrator",
