@@ -366,6 +366,9 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
               </DropdownMenuRadioGroup>
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Timeout config — 超时时间（秒） */}
+          <TimeoutConfigInput />
         </div>
       </div>
     </TooltipProvider>
@@ -837,5 +840,76 @@ function ContextRing({ used, max }: { used: number; max: number }) {
       </svg>
       <span className="text-[10px] text-muted-foreground">{hasMax ? `${percent}%` : "—"}</span>
     </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// TimeoutConfigInput — 超时时间配置（秒）
+// ---------------------------------------------------------------------------
+
+function TimeoutConfigInput() {
+  const [timeout, setTimeout_] = useState(120);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/config")
+      .then(r => r.json())
+      .then((data: { runtimeControls?: { firstTokenTimeout?: number } }) => {
+        const val = data.runtimeControls?.firstTokenTimeout;
+        if (typeof val === "number" && val > 0) setTimeout_(val);
+        setLoaded(true);
+      })
+      .catch(() => setLoaded(true));
+  }, []);
+
+  const handleChange = (newVal: number) => {
+    if (newVal < 10 || newVal > 600) return;
+    setTimeout_(newVal);
+    fetch("/api/config", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runtimeControls: { firstTokenTimeout: newVal } }),
+    }).catch(() => { /* non-fatal */ });
+  };
+
+  if (!loaded) return null;
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs text-foreground hover:bg-muted transition-colors h-7"
+          title="超时时间（秒）"
+        >
+          <span className="text-[10px] text-muted-foreground">⏱</span>
+          <span>{timeout}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" className="w-48 p-3">
+        <div className="space-y-2">
+          <label className="text-xs font-medium text-foreground">超时时间（秒）</label>
+          <div className="flex items-center gap-2">
+            <Input
+              type="number"
+              min={10}
+              max={600}
+              value={timeout}
+              onChange={(e) => handleChange(Number(e.target.value))}
+              className="h-7 text-xs"
+            />
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs px-2"
+              onClick={() => handleChange(120)}
+            >
+              重置
+            </Button>
+          </div>
+          <p className="text-[10px] text-muted-foreground">API 首 token 等待超时，10-600 秒</p>
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }
