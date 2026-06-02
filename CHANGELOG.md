@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+## v1.4.0 (2026-06-02)
+
+### 🧰 工具系统升级
+
+- **Recall FTS5 全文搜索** — agent 可搜索对话历史，支持批量 query、时间范围过滤、消息定位
+- **TaskCreate 持久化** — 待办事项存入 session 记录（重启不丢失），WebSocket 实时广播
+- **套路页完善确认** — MCP/Commands/Prompts/Skills/Hooks/Permissions/SubAgents 标签已完整
+
+### 📚 学习中心更新
+
+- 更新 3 篇文档（对话操作、运行时能力、工具搜索）
+- 新增 2 篇文档（Agent 行为规范、新书引导）
+
 ## v1.3.0 (2026-06-02)
 
 ### 🏗️ Agent 架构升级：NarraFork 能力对齐
