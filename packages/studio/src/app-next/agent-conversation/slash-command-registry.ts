@@ -176,6 +176,12 @@ export interface UserCommand {
   description: string;
   prompt: string;
   enabled: boolean;
+  /** 执行前的 Bash 命令，stdout 可通过 {output} 模板变量使用 */
+  preCommand?: string;
+  /** 覆盖默认模型 */
+  modelOverride?: { providerId: string; modelId: string };
+  /** 命令参数定义 */
+  args?: Array<{ name: string; description?: string; required?: boolean }>;
 }
 
 export function mergeUserCommandsIntoRegistry(
@@ -208,4 +214,28 @@ export function mergeUserCommandsIntoRegistry(
  */
 export function expandUserCommandPrompt(prompt: string, args: string): string {
   return prompt.replace(/\{\{input\}\}/g, args).replace(/\{\{args\}\}/g, args);
+}
+
+/**
+ * 通过后端 API 执行带 preCommand 的用户自定义命令。
+ * 返回最终替换后的 prompt 文本。
+ */
+export async function executeUserCommandViaApi(
+  commandName: string,
+  args: Record<string, string> = {},
+): Promise<{ ok: true; prompt: string; modelOverride?: { providerId: string; modelId: string } } | { ok: false; error: string }> {
+  try {
+    const res = await fetch(`/api/routines/commands/${encodeURIComponent(commandName)}/execute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ args }),
+    });
+    const data = await res.json() as { ok: boolean; prompt?: string; error?: string; modelOverride?: { providerId: string; modelId: string } };
+    if (!res.ok || !data.ok) {
+      return { ok: false, error: data.error ?? `HTTP ${res.status}` };
+    }
+    return { ok: true, prompt: data.prompt!, ...(data.modelOverride ? { modelOverride: data.modelOverride } : {}) };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "网络错误" };
+  }
 }

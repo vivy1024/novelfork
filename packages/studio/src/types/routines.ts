@@ -4,12 +4,24 @@
 
 import type { WorkflowRecipeConfig } from "../shared/workflow-recipe.js";
 
+export interface CommandArg {
+  name: string;
+  description?: string;
+  required?: boolean;
+}
+
 export interface Command {
   id: string;
   name: string;
   description: string;
   prompt: string;
   enabled: boolean;
+  /** 执行前的 Bash 命令，stdout 可通过 {output} 模板变量使用 */
+  preCommand?: string;
+  /** 覆盖默认模型 */
+  modelOverride?: { providerId: string; modelId: string };
+  /** 命令参数定义 */
+  args?: CommandArg[];
 }
 
 export interface Tool {

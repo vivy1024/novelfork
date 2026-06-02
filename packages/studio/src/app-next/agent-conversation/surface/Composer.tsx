@@ -4,6 +4,7 @@ import { Send, Paperclip, ListPlus, Loader2, Square, RotateCcw, X } from "lucide
 import {
   createDefaultSlashCommandRegistry,
   executeSlashCommandInput,
+  executeUserCommandViaApi,
   getSlashCommandSuggestions,
   parseSlashCommandInput,
   expandUserCommandPrompt,
@@ -178,6 +179,17 @@ export function Composer({
               // 从已加载的 userCommands 中取 prompt 模板（避免重复 API 请求）
               const fullCmd = slashCommandContext?.userCommands?.find(c => c.name === parsed.name && c.enabled);
               if (fullCmd?.prompt) {
+                // 如果命令有 preCommand，通过后端 API 执行（需要 shell 环境）
+                if (fullCmd.preCommand) {
+                  const apiResult = await executeUserCommandViaApi(parsed.name, { input: parsed.args });
+                  if (apiResult.ok) {
+                    onSend(apiResult.prompt, imageAttachments);
+                  } else {
+                    setCommandStatus(`命令执行失败: ${apiResult.error}`);
+                  }
+                  setValue("");
+                  return;
+                }
                 const expanded = expandUserCommandPrompt(fullCmd.prompt, parsed.args);
                 onSend(expanded, imageAttachments);
                 setValue("");
