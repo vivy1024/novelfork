@@ -57,7 +57,7 @@ import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-ser
 import type { RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext, buildProjectExplorationContext } from "./agent-context.js";
-import { getAgentSystemPrompt } from "@vivy1024/novelfork-novel-plugin/engine";
+import { getAgentSystemPrompt, buildAvailableToolsSection } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { annotateSessionToolsWithPolicy } from "./session-tool-policy.js";
@@ -1108,7 +1108,7 @@ async function appendModelContinuationAfterToolDecision(
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
-      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${continuationRoutinePrompts}`,
+      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${continuationRoutinePrompts}${buildAvailableToolsSection(getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }).map(t => t.name))}`,
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
@@ -2072,7 +2072,8 @@ export async function handleSessionChatTransportMessage(
     } catch { /* project exploration failure is non-fatal */ }
 
     const routinePrompts = await loadRoutineGlobalPrompts();
-    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${routinePrompts}`;
+    const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
+    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${routinePrompts}${buildAvailableToolsSection(sessionTools.map(t => t.name))}`;
     const maxSteps = await resolveMaxTurnSteps();
     // Apply context cutoff: exclude messages at or before the cutoff seq from model context
     const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;

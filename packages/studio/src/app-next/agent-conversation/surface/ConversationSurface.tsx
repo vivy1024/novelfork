@@ -221,7 +221,6 @@ export function ConversationSurface({
         const msg = messages[msgIndex];
         const beforeSeq = (msg as unknown as { seq?: number }).seq;
         if (beforeSeq != null) {
-          // Call compact-segment API with beforeSeq
           void (async () => {
             try {
               const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/compact-segment`, {
@@ -233,7 +232,6 @@ export function ConversationSurface({
                 const errData = await res.json().catch(() => ({}));
                 console.error("compact-segment failed:", errData);
               }
-              // On success the WebSocket will push updated messages
             } catch (err) {
               console.error("compact-segment error:", err);
             }
@@ -244,14 +242,20 @@ export function ConversationSurface({
       }
     }
 
-    if (action === "rollback") {
-      if (msgIndex >= 0) {
-        const msg = messages[msgIndex];
-        if (onTruncateToMessage && msg) {
-          void onTruncateToMessage(msg.id);
-        } else if (onCompactSession) {
-          void onCompactSession(`回退：丢弃消息 #${msgIndex} 及之后的所有消息`);
-        }
+    if (action === "rollback" && sessionId) {
+      const msg = messages[msgIndex];
+      if (msg) {
+        void (async () => {
+          try {
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/rollback/${encodeURIComponent(msg.id)}`, { method: "POST" });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // Reload snapshot
+            const snapshot = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/chat/state`).then(r => r.json());
+            if (snapshot) window.location.reload();
+          } catch (err) {
+            console.error("rollback failed:", err);
+          }
+        })();
       }
     }
 
@@ -265,7 +269,6 @@ export function ConversationSurface({
       if (msg && msg.role === "user") {
         setEditingMessage({ id: msg.id, content: msg.content });
       } else if (msg && msg.role === "assistant" && msgIndex > 0) {
-        // 编辑上一条用户消息并重新生成
         const prevUser = messages.slice(0, msgIndex).reverse().find((m) => m.role === "user");
         if (prevUser) setEditingMessage({ id: prevUser.id, content: prevUser.content });
       }
@@ -276,7 +279,7 @@ export function ConversationSurface({
       if (msgIndex >= 0 && msg) {
         if (onDeleteMessage) {
           void onDeleteMessage(msg.id);
-        } else if (onCompactSession && confirm("确认删除此消息及之后的所有消息？")) {
+        } else if (onCompactSession && confirm("确认删除此消息？")) {
           void onCompactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
         }
       }
@@ -284,21 +287,25 @@ export function ConversationSurface({
   };
 
   const handleEditRegenerate = (newContent: string) => {
-    if (!editingMessage) return;
+    if (!editingMessage || !sessionId) return;
     setEditingMessage(null);
-    // Truncate to before the edited message, then resend with new content
-    const msgIndex = messages.findIndex((m) => m.id === editingMessage.id);
-    if (msgIndex >= 0 && onTruncateToMessage) {
-      void Promise.resolve(onTruncateToMessage(editingMessage.id)).then(() => {
+    // Use atomic edit-and-regenerate API, then resend
+    void (async () => {
+      try {
+        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/edit-and-regenerate/${encodeURIComponent(editingMessage.id)}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ content: newContent }),
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        // After server deletes old messages, send the new content to trigger agent
         setTimeout(() => onSend(newContent), 100);
-      }).catch(() => {
-        // Truncate failed — still send the message as fallback
+      } catch (err) {
+        console.error("edit-and-regenerate failed:", err);
+        // Fallback: just send as new message
         onSend(newContent);
-      });
-    } else {
-      // Fallback: just send as new message
-      onSend(newContent);
-    }
+      }
+    })();
   };
 
   const isWorking = localSending || status.narratorState === "working" || status.state === "running";
