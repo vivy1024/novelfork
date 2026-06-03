@@ -21,6 +21,14 @@ export interface ConversationThinkingBlock {
   summary?: string;
 }
 
+export interface MessageImageAttachmentView {
+  type: "image";
+  mimeType: string;
+  /** URL path to fetch the image (e.g. /api/upload/files/xxx.png) */
+  url: string;
+  fileName?: string;
+}
+
 export interface ConversationSurfaceMessage {
   id: string;
   role: "system" | "user" | "assistant" | "tool";
@@ -34,6 +42,8 @@ export interface ConversationSurfaceMessage {
   metadata?: Record<string, unknown>;
   /** 消息时间戳（Unix ms） */
   timestamp?: number;
+  /** 图片附件 */
+  attachments?: MessageImageAttachmentView[];
 }
 
 export interface MessageContextAction {
@@ -280,6 +290,20 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
               <span className="text-xs font-semibold text-foreground">用户</span>
               {timeStr && <span className="text-[10px] text-muted-foreground">{timeStr}</span>}
             </div>
+            {/* Image attachments */}
+            {message.attachments && message.attachments.length > 0 && (
+              <div className="flex flex-wrap gap-2 pl-7 mb-2">
+                {message.attachments.map((att, i) => (
+                  <a key={i} href={att.url} target="_blank" rel="noopener noreferrer" className="block">
+                    <img
+                      src={att.url}
+                      alt={att.fileName || "附件图片"}
+                      className="max-w-[200px] max-h-[200px] rounded-md border border-border object-cover hover:opacity-90 transition-opacity"
+                    />
+                  </a>
+                ))}
+              </div>
+            )}
             {/* Content */}
             <div className="text-sm pl-7 whitespace-pre-wrap break-words">
               {message.content}
