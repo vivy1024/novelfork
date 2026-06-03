@@ -2694,7 +2694,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         // File changes tracking: capture original content before edit
         const { captureOriginalContent: captureOrigE, trackFileChange: trackE } = await import("./file-changes-tracker.js");
         const originalContentE = await captureOrigE(filePath, workDir);
-        const result = await executeFileEditTool({ path: filePath, oldText: String(input.oldText), newText: String(input.newText), workDir, allowOutsideWorkDir: dirCheckE.allowed, replaceAll: input.replaceAll === true });
+        const result = await executeFileEditTool({ path: filePath, oldText: String(input.old_string ?? input.oldText), newText: String(input.new_string ?? input.newText), workDir, allowOutsideWorkDir: dirCheckE.allowed, replaceAll: input.replace_all === true || input.replaceAll === true });
         if (result.ok) {
           trackE(sessionId, {
             path: filePath,
@@ -2770,6 +2770,11 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           if (outputMode === "files_with_matches") args.push("-l");
           else if (outputMode === "count") args.push("-c");
           if (fileGlob) args.push("--glob", fileGlob);
+          // File type filter (rg --type)
+          const fileType = typeof input.type === "string" ? input.type : undefined;
+          if (fileType) args.push("--type", fileType);
+          // Case insensitive
+          if (input.case_insensitive === true) args.push("-i");
           // Context lines
           const contextLines = typeof input.context === "number" ? input.context : undefined;
           const beforeContext = typeof input.before_context === "number" ? input.before_context : undefined;
@@ -2801,13 +2806,14 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             if (!stdout && err.stdout) stdout = err.stdout;
           }
           const lines = stdout.trim().split("\n").filter(Boolean);
-          const GREP_MAX = 250;
+          const headLimit = typeof input.head_limit === "number" && input.head_limit > 0 ? input.head_limit : undefined;
+          const GREP_MAX = headLimit ?? 250;
           const total = lines.length;
           const truncated = total > GREP_MAX ? lines.slice(0, GREP_MAX) : lines;
           const summary = total > GREP_MAX
-            ? `搜索完成，${total} 条结果。（显示前 ${GREP_MAX} 条，共 ${total} 条匹配。用更精确的 pattern 或 path 缩小范围。）`
+            ? `搜索完成，${total} 条结果。（显示前 ${GREP_MAX} 条，共 ${total} 条匹配。）`
             : `搜索完成，${total} 条结果。`;
-          return { ok: true, renderer: definition.renderer, summary, data: { results: truncated, pattern, outputMode, totalResults: total, fullOutput: total > GREP_MAX ? lines : undefined } };
+          return { ok: true, renderer: definition.renderer, summary, data: { results: truncated, pattern, outputMode, totalResults: total } };
         } catch (error) {
           return { ok: false, renderer: definition.renderer, error: "grep-failed", summary: `Grep 执行失败：${error instanceof Error ? error.message : String(error)}` };
         }
