@@ -223,11 +223,17 @@ export function toAnthropicTools(tools: readonly RuntimeToolDefinition[], ctx?: 
     }
     return toProviderSafeToolName(name);
   };
-  return tools.map((tool) => ({
+  const result = tools.map((tool) => ({
     name: encodeName(tool.name),
     description: tool.description,
     input_schema: tool.inputSchema,
   }));
+  // Add cache_control to last tool definition for Anthropic prompt caching
+  // This caches the entire tools block across requests (saves ~2k tokens/request)
+  if (result.length > 0 && !(ctx && detectModelProvider(ctx.modelId, ctx.providerId, ctx.baseUrl) === "deepseek")) {
+    (result[result.length - 1] as Record<string, unknown>).cache_control = { type: "ephemeral" };
+  }
+  return result;
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────────────────
@@ -676,6 +682,9 @@ export class AnthropicAdapter implements RuntimeAdapter {
       max_tokens: 16384,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
+      // Automatic prompt caching: caches system + tools + message prefix automatically
+      // Cache moves forward as conversation grows, 90% cost reduction on cached tokens
+      cache_control: { type: "ephemeral" },
     };
 
     // Debug: log reasoning presence in messages sent to API
