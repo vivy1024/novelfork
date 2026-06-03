@@ -2711,6 +2711,71 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         return result;
       };
+    // --- ApplyPatch: unified diff 补丁应用 ---
+    case "ApplyPatch":
+      return async ({ input, sessionId, definition }) => {
+        const workDir = options.workDir ?? process.cwd();
+        const patch = String(input.patch);
+
+        // 从 diff 头部提取文件路径（+++ b/path 格式）
+        let filePath = typeof input.path === "string" && input.path.trim() ? input.path : "";
+        if (!filePath) {
+          const pathMatch = patch.match(/^\+\+\+ b\/(.+)$/m);
+          filePath = pathMatch?.[1] ?? "";
+        }
+        if (!filePath) {
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "无法确定目标文件路径。请提供 path 参数或确保 diff 包含 +++ b/path 头部。" };
+        }
+
+        // 路径安全检查
+        const dirCheckP = await checkDirectoryAccess(filePath, workDir, sessionAllowedPaths);
+        if (dirCheckP.blocked) {
+          return { ok: false, renderer: definition.renderer, error: "directory-blocklist", summary: dirCheckP.reason ?? "路径在黑名单目录内。" };
+        }
+        if (!isPathWithinWorkDir(filePath, workDir) && !dirCheckP.allowed) {
+          return { ok: false, renderer: definition.renderer, error: "path-outside-workdir", summary: `路径 "${filePath}" 超出工作目录边界。添加到目录白名单后可访问。` };
+        }
+
+        const { resolve: resolvePath } = await import("node:path");
+        const { readFile, writeFile } = await import("node:fs/promises");
+        const resolved = resolvePath(workDir, filePath);
+
+        // File changes tracking: capture original content before patch
+        const { captureOriginalContent: captureOrigP, trackFileChange: trackP } = await import("./file-changes-tracker.js");
+        const originalContentP = await captureOrigP(filePath, workDir);
+
+        let originalContent: string;
+        try {
+          originalContent = await readFile(resolved, "utf-8");
+        } catch {
+          return { ok: false, renderer: definition.renderer, error: "file-not-found", summary: `文件不存在: ${filePath}` };
+        }
+
+        // 应用 patch
+        const patchResult = applyUnifiedDiff(originalContent, patch);
+        if (!patchResult.ok) {
+          return { ok: false, renderer: definition.renderer, error: "patch-failed", summary: patchResult.error };
+        }
+
+        await writeFile(resolved, patchResult.content, "utf-8");
+
+        // Track file change
+        trackP(sessionId, {
+          path: filePath,
+          type: "modified",
+          originalContent: originalContentP,
+          toolName: "ApplyPatch",
+          toolCallId: `apply-patch-${Date.now()}`,
+        });
+
+        // Post-edit auto verification
+        const verifyResultP = await maybeRunVerification(options);
+        const summary = `已应用补丁到 ${filePath}（${patchResult.hunksApplied} 个 hunk）`;
+        if (verifyResultP && !verifyResultP.passed) {
+          return { ok: true, renderer: definition.renderer, summary: summary + `\n\n⚠️ 验证失败 (${verifyResultP.command}):\n${verifyResultP.output}`, data: { path: filePath, hunksApplied: patchResult.hunksApplied } };
+        }
+        return { ok: true, renderer: definition.renderer, summary, data: { path: filePath, hunksApplied: patchResult.hunksApplied } };
+      };
     // --- Glob/Grep (real handlers) ---
     case "Glob":
       return async ({ input, definition }) => {
@@ -4331,6 +4396,86 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
     default:
       return undefined;
   }
+}
+
+// --- Unified diff parser & applier (for ApplyPatch tool) ---
+
+function applyUnifiedDiff(original: string, patch: string): { ok: true; content: string; hunksApplied: number } | { ok: false; error: string } {
+  const lines = original.split("\n");
+  const patchLines = patch.split("\n");
+
+  // 解析 hunks
+  type HunkChange = { type: "context" | "remove" | "add"; line: string };
+  type Hunk = { startLine: number; removeCount: number; addCount: number; changes: HunkChange[] };
+  const hunks: Hunk[] = [];
+  let currentHunk: Hunk | null = null;
+
+  for (const pLine of patchLines) {
+    const hunkMatch = pLine.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+    if (hunkMatch) {
+      if (currentHunk) hunks.push(currentHunk);
+      currentHunk = {
+        startLine: parseInt(hunkMatch[1]!, 10),
+        removeCount: parseInt(hunkMatch[2] ?? "1", 10),
+        addCount: parseInt(hunkMatch[4] ?? "1", 10),
+        changes: [],
+      };
+      continue;
+    }
+    if (!currentHunk) continue;
+    if (pLine.startsWith("-")) {
+      currentHunk.changes.push({ type: "remove", line: pLine.slice(1) });
+    } else if (pLine.startsWith("+")) {
+      currentHunk.changes.push({ type: "add", line: pLine.slice(1) });
+    } else if (pLine.startsWith(" ")) {
+      currentHunk.changes.push({ type: "context", line: pLine.slice(1) });
+    } else if (pLine === "\\ No newline at end of file") {
+      // Git 产生的 "no newline" 标记，忽略
+      continue;
+    }
+  }
+  if (currentHunk) hunks.push(currentHunk);
+
+  if (hunks.length === 0) {
+    return { ok: false, error: "补丁中没有找到有效的 hunk（@@ ... @@）" };
+  }
+
+  // 从后向前应用 hunks（避免行号偏移）
+  const result = [...lines];
+  for (let i = hunks.length - 1; i >= 0; i--) {
+    const hunk = hunks[i]!;
+    const startIdx = hunk.startLine - 1; // 转为 0-based
+
+    // 验证上下文行和删除行是否匹配（防止应用到错误位置）
+    let lineIdx = startIdx;
+    for (const change of hunk.changes) {
+      if (change.type === "context" || change.type === "remove") {
+        if (lineIdx >= result.length) {
+          return { ok: false, error: `Hunk ${i + 1} 在行 ${lineIdx + 1} 处超出文件末尾。` };
+        }
+        if (result[lineIdx] !== change.line) {
+          return { ok: false, error: `Hunk ${i + 1} 在行 ${lineIdx + 1} 处上下文不匹配。\n  期望: ${JSON.stringify(change.line)}\n  实际: ${JSON.stringify(result[lineIdx])}` };
+        }
+        lineIdx++;
+      }
+    }
+
+    // 计算实际删除范围（context + remove 行数）
+    let removeCount = 0;
+    for (const change of hunk.changes) {
+      if (change.type === "remove" || change.type === "context") removeCount++;
+    }
+
+    // 构建替换内容（context + add 行，按顺序）
+    const replacement: string[] = [];
+    for (const change of hunk.changes) {
+      if (change.type === "context" || change.type === "add") replacement.push(change.line);
+    }
+
+    result.splice(startIdx, removeCount, ...replacement);
+  }
+
+  return { ok: true, content: result.join("\n"), hunksApplied: hunks.length };
 }
 
 // --- Pipeline rule execution ---

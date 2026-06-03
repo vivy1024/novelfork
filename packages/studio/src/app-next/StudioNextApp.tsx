@@ -1070,9 +1070,17 @@ function toConversationMessages(messages: readonly NarratorSessionChatMessage[],
     content: message.content,
     isStreaming: message.id === streamingMessageId || (!!isSessionWorking && message.role === "assistant" && index === lastAssistantIndex && index === messages.length - 1 && !message.toolCalls?.length),
     metadata: message.metadata,
+    timestamp: message.timestamp,
     // Map reasoning_content (string from backend) → thinking (ConversationThinkingBlock[])
     thinking: message.reasoning_content
       ? [{ content: message.reasoning_content }]
+      : undefined,
+    // Map image attachments — convert filePath to serving URL
+    attachments: message.attachments?.length
+      ? message.attachments.map((att) => {
+          const filename = att.filePath.split(/[/\\]/).pop() || "";
+          return { type: "image" as const, mimeType: att.mimeType, url: `/api/upload/files/${encodeURIComponent(filename)}`, fileName: att.fileName };
+        })
       : undefined,
     toolCalls: message.toolCalls?.map((toolCall, tcIndex) => ({
       id: toolCall.id ?? `${message.id}:tool:${tcIndex}`,

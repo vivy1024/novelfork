@@ -17,7 +17,6 @@ import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } from "./turn-checkpoint.js";
 import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
-import { truncateToolOutput as budgetTruncateToolOutput } from "./context-budget-manager.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -167,30 +166,17 @@ function getContextAwareInstruction(_toolName: string, _result: SessionToolExecu
   return "";
 }
 
-/** 截断过长的工具结果：仅对极端情况保底（1M 模型下不应主动截断） */
-const MAX_TOOL_RESULT_CHARS = 100000;
-const TRUNCATE_HEAD = 80000;
-const TRUNCATE_TAIL = 15000;
-const TOOL_OUTPUT_TOKEN_BUDGET = 30000;
-const JINGWEI_TOOL_TOKEN_BUDGET = 30000;
+/** 工具输出截断：不主动截断，仅对极端情况兜底防止单个工具占满上下文 */
+const MAX_TOOL_RESULT_CHARS = 200000; // ~50k tokens，单个工具最多占上下文 5%
+const TRUNCATE_HEAD = 160000;
+const TRUNCATE_TAIL = 30000;
 
-function getToolTokenBudget(toolName?: string): number {
-  if (toolName && (toolName.startsWith("jingwei.") || toolName === "cockpit.snapshot")) {
-    return JINGWEI_TOOL_TOKEN_BUDGET;
-  }
-  return TOOL_OUTPUT_TOKEN_BUDGET;
-}
-
-function truncateToolResult(content: string, toolName?: string): string {
-  const tokenBudget = getToolTokenBudget(toolName);
-  // Phase 1: token-based truncation (from ContextBudgetManager)
-  const { text: tokenTruncated, truncated: wasTruncated } = budgetTruncateToolOutput(content, tokenBudget);
-  const effective = wasTruncated ? tokenTruncated : content;
-
-  // Phase 2: character-based safety net
-  if (effective.length <= MAX_TOOL_RESULT_CHARS) return effective;
-  const omitted = effective.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
-  return `${effective.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 (约 ${Math.round(omitted / 4)} tokens) ...]\n\n${effective.slice(-TRUNCATE_TAIL)}`;
+function truncateToolResult(content: string, _toolName?: string): string {
+  // No token-based truncation — let the model handle full data (1M context)
+  // Only character-based safety net for extreme cases
+  if (content.length <= MAX_TOOL_RESULT_CHARS) return content;
+  const omitted = content.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
+  return `${content.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 ...]\n\n${content.slice(-TRUNCATE_TAIL)}`;
 }
 
 function toolResultContent(result: SessionToolExecutionResult, toolName?: string): string {

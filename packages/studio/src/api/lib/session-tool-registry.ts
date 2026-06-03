@@ -136,6 +136,17 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
     renderer: "tool.fileEdit",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
   }),
+  sessionTool({
+    name: "ApplyPatch",
+    description: "应用 unified diff 补丁到文件。适用于多处修改或大面积重构。输入为标准 unified diff 格式（以 --- a/path 和 +++ b/path 开头）。",
+    inputSchema: objectSchema({
+      patch: stringSchema("unified diff 格式的补丁内容。"),
+      path: stringSchema("目标文件路径（可选，如果 diff 头部已包含路径则自动提取）。"),
+    }, ["patch"]),
+    risk: "confirmed-write",
+    renderer: "tool.fileEdit",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
   // --- 文件搜索工具 ---
   sessionTool({
     name: "Glob",
