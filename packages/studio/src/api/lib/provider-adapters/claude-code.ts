@@ -178,15 +178,19 @@ export class ClaudeCodeAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toAnthropicMessages(input.messages),
-      max_tokens: 8192,
+      max_tokens: 16384,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools) } : {}),
+      // Automatic prompt caching (same as anthropic.ts)
+      cache_control: { type: "ephemeral" },
     };
 
-    // Extract system message
+    // Extract system message — use content block format with cache_control
     const systemMessage = input.messages.find((m) => m.role === "system");
     if (systemMessage && "content" in systemMessage && systemMessage.content.trim()) {
-      body.system = systemMessage.content;
+      body.system = [
+        { type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } },
+      ];
     }
 
     let lastError = "Claude Code messages request failed";
