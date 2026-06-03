@@ -72,6 +72,8 @@ interface BackgroundBashTask {
   promise: Promise<SessionToolExecutionResult>;
   result?: SessionToolExecutionResult;
   status: "running" | "completed" | "failed";
+  /** Accumulated stdout for partial output on timeout */
+  stdoutBuffer: string;
 }
 const backgroundTasks = new Map<string, BackgroundBashTask>();
 
@@ -2576,12 +2578,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
           if (input.run_in_background === true) {
             const taskId = `bg-${Date.now()}`;
-            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream }).catch(error => ({
+            const task: BackgroundBashTask = { id: taskId, command, promise: null as any, status: "running", stdoutBuffer: "" };
+            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: (chunk) => { task.stdoutBuffer += chunk; onToolOutputStream?.(chunk); } }).catch(error => ({
               ok: false as const,
               error: "background-task-failed",
               summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
             }));
-            const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
+            task.promise = taskPromise;
             taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
             backgroundTasks.set(taskId, task);
             return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
@@ -2610,12 +2613,13 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
         if (input.run_in_background === true) {
           const taskId = `bg-${Date.now()}`;
-          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream }).catch(error => ({
+          const task: BackgroundBashTask = { id: taskId, command, promise: null as any, status: "running", stdoutBuffer: "" };
+          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: (chunk) => { task.stdoutBuffer += chunk; onToolOutputStream?.(chunk); } }).catch(error => ({
             ok: false as const,
             error: "background-task-failed",
             summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
           }));
-          const task: BackgroundBashTask = { id: taskId, command, promise: taskPromise, status: "running" };
+          task.promise = taskPromise;
           taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
           backgroundTasks.set(taskId, task);
           return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
@@ -4212,7 +4216,8 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             return { ok: result.ok !== false, renderer: definition.renderer, summary: result.summary ?? "完成", data: { id, status: "completed", result } };
           } catch (error) {
             if (error instanceof Error && error.message === "timeout") {
-              return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${id} 仍在运行中（超时 ${timeout}ms）。`, data: { id, status: "running" } };
+              const partialOutput = bashTask.stdoutBuffer ? bashTask.stdoutBuffer.slice(-2000) : "";
+              return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${id} 仍在运行中（超时 ${timeout}ms）。${partialOutput ? "\n\n已有输出（末尾）:\n" + partialOutput : "\n\n暂无输出。"}`, data: { id, status: "running", partialOutput } };
             }
             return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
           }
