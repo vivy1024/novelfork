@@ -210,11 +210,15 @@ function extractFilePath(input: unknown): string | null {
     : null;
   if (!path) return null;
   // 附加参数说明（如 offset/limit/pages）
-  const extras: string[] = [];
-  if (typeof record.offset === "number") extras.push(`${record.offset}`);
-  if (typeof record.limit === "number") extras.push(`~${record.offset ? Number(record.offset) + Number(record.limit) : record.limit}`);
-  if (typeof record.pages === "string") extras.push(`p${record.pages}`);
-  return extras.length > 0 ? `${path} (${extras.join("")})` : path;
+  const offset = typeof record.offset === "number" ? record.offset : undefined;
+  const limit = typeof record.limit === "number" ? record.limit : undefined;
+  if (typeof record.pages === "string") return `${path} (p${record.pages})`;
+  if (offset != null || limit != null) {
+    const start = offset ?? 1;
+    const end = (offset ?? 0) + (limit ?? 0);
+    return `${path} (${start}-${end})`;
+  }
+  return path;
 }
 
 function extractGrepPattern(input: unknown): string | null {
@@ -268,15 +272,18 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
   // 折叠态只显示输入参数的描述，不显示输出/结果摘要
   // summary 仅在无法从 input 提取描述时作为 fallback
   switch (category) {
-    case "bash":
+    case "bash": {
+      const desc = toolCall.input && typeof toolCall.input === "object" ? (toolCall.input as Record<string, unknown>).description : undefined;
+      if (typeof desc === "string" && desc.trim()) return desc;
       return extractBashCommand(toolCall.input) ?? toolCall.summary ?? null;
+    }
     case "read":
       return extractFilePath(toolCall.input) ?? toolCall.summary ?? null;
     case "search": {
       const pattern = extractGrepPattern(toolCall.input);
-      const path = extractGrepPath(toolCall.input);
-      if (pattern && path) return `${pattern} in ${path.split(/[/\\]/).pop()}`;
-      if (pattern) return toolCall.toolName === "Glob" ? `Glob: ${pattern}` : pattern;
+      const searchPath = extractGrepPath(toolCall.input);
+      if (pattern && typeof searchPath === "string") return `"${pattern}" in ${searchPath}`;
+      if (pattern) return toolCall.toolName === "Glob" ? `Glob: ${pattern}` : `"${pattern}"`;
       return toolCall.summary ?? null;
     }
     case "write":
@@ -390,7 +397,11 @@ export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: C
           {isError && <X className="size-3 text-red-500" />}
           {typeof toolCall.durationMs === "number" && (
             <span className="text-[10px] text-muted-foreground">
-              {formatDuration(toolCall.durationMs)}{toolCall.timeoutMs ? ` / ${formatDuration(toolCall.timeoutMs)}` : ""}
+              {formatDuration(toolCall.durationMs)}
+              {(() => {
+                const timeout = toolCall.timeoutMs ?? (toolCall.input && typeof toolCall.input === "object" ? (toolCall.input as Record<string, unknown>).timeout as number | undefined ?? (toolCall.input as Record<string, unknown>).timeoutMs as number | undefined : undefined);
+                return timeout ? ` / ${formatDuration(timeout)}` : "";
+              })()}
             </span>
           )}
         </span>
