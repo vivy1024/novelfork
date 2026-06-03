@@ -167,12 +167,12 @@ function getContextAwareInstruction(_toolName: string, _result: SessionToolExecu
   return "";
 }
 
-/** 截断过长的工具结果：先按 token 预算截断，再按字符上限保底 */
-const MAX_TOOL_RESULT_CHARS = 30000;
-const TRUNCATE_HEAD = 20000;
-const TRUNCATE_TAIL = 5000;
-const TOOL_OUTPUT_TOKEN_BUDGET = 2000;
-const JINGWEI_TOOL_TOKEN_BUDGET = 6000;
+/** 截断过长的工具结果：仅对极端情况保底（1M 模型下不应主动截断） */
+const MAX_TOOL_RESULT_CHARS = 100000;
+const TRUNCATE_HEAD = 80000;
+const TRUNCATE_TAIL = 15000;
+const TOOL_OUTPUT_TOKEN_BUDGET = 30000;
+const JINGWEI_TOOL_TOKEN_BUDGET = 30000;
 
 function getToolTokenBudget(toolName?: string): number {
   if (toolName && (toolName.startsWith("jingwei.") || toolName === "cockpit.snapshot")) {
