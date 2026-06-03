@@ -2770,6 +2770,15 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           if (outputMode === "files_with_matches") args.push("-l");
           else if (outputMode === "count") args.push("-c");
           if (fileGlob) args.push("--glob", fileGlob);
+          // Context lines
+          const contextLines = typeof input.context === "number" ? input.context : undefined;
+          const beforeContext = typeof input.before_context === "number" ? input.before_context : undefined;
+          const afterContext = typeof input.after_context === "number" ? input.after_context : undefined;
+          if (contextLines && !beforeContext && !afterContext) args.push("-C", String(contextLines));
+          if (beforeContext) args.push("-B", String(beforeContext));
+          if (afterContext) args.push("-A", String(afterContext));
+          // Multiline mode
+          if (input.multiline === true) args.push("-U", "--multiline-dotall");
           args.push("--", pattern);
           let stdout = "";
           try {

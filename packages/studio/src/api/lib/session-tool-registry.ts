@@ -148,13 +148,16 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "Grep",
-    description: "正则表达式内容搜索。用 path 参数限定搜索范围（而非搜索全部文件后手动过滤）。支持文件类型过滤（glob 参数）和上下文行显示。返回匹配行及其文件位置。",
+    description: "正则表达式内容搜索（基于 ripgrep）。用 path 参数限定搜索范围。支持文件类型过滤、上下文行、跨行匹配。返回匹配行及其文件位置。",
     inputSchema: objectSchema({
       pattern: stringSchema("正则表达式搜索模式。"),
       path: stringSchema("搜索路径（相对于工作目录）。指定子目录可大幅减少搜索范围。"),
       glob: stringSchema("文件过滤 glob 模式（如 *.ts, **/*.json）。"),
       output_mode: stringSchema("输出模式：content（显示匹配行）| files_with_matches（仅文件路径）| count（匹配计数）。"),
-      context: numberSchema("显示匹配行前后的上下文行数。"),
+      context: numberSchema("显示匹配行前后的上下文行数（对称，等同于 -C）。"),
+      before_context: numberSchema("匹配行前显示的上下文行数（-B）。"),
+      after_context: numberSchema("匹配行后显示的上下文行数（-A）。"),
+      multiline: booleanSchema("启用跨行匹配模式（. 匹配换行，模式可跨行）。默认 false。"),
     }, ["pattern"]),
     risk: "read",
     renderer: "tool.grep",
