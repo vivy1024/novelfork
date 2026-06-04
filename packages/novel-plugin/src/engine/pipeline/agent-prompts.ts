@@ -376,7 +376,7 @@ Bash 工具使用（严格遵守）：
 /** 可用工具清单——注入到 system prompt 中，使 agent 无需 ToolSearch 即知道自己有哪些工具 */
 export function buildAvailableToolsSection(toolNames: string[]): string {
   if (toolNames.length === 0) return "";
-  return `\n\n<available_tools>\n你当前可用的工具（无需 ToolSearch 确认）：\n${toolNames.map(n => `- ${n}`).join("\n")}\n\n长时间 Bash 命令请设 timeoutMs 或 run_in_background=true。\n</available_tools>`;
+  return `\n\n<available_tools>\n你当前可用的工具（全部可直接调用，不需要通过 Skill 或 ToolSearch）：\n${toolNames.map(n => `- ${n}`).join("\n")}\n\n⚠️ 以上工具全部可直接调用。不要用 Skill 工具去调用它们，直接调用即可。\n长时间 Bash 命令请设 timeoutMs 或 run_in_background=true。\n</available_tools>`;
 }
 
 /** 默认 system prompt（agentId 不匹配任何已知角色时使用） */
