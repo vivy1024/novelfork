@@ -11,7 +11,6 @@ const loadSessionChatHistoryMock = vi.hoisted(() => vi.fn());
 const appendSessionChatHistoryMock = vi.hoisted(() => vi.fn());
 const runAgentTurnMock = vi.hoisted(() => vi.fn());
 const generateSessionReplyMock = vi.hoisted(() => vi.fn());
-const getAgentSystemPromptMock = vi.hoisted(() => vi.fn());
 const buildAgentContextMock = vi.hoisted(() => vi.fn());
 const getEnabledSessionToolsMock = vi.hoisted(() => vi.fn());
 
@@ -34,8 +33,10 @@ vi.mock("./llm-runtime-service.js", () => ({
   generateSessionReply: generateSessionReplyMock,
 }));
 
-vi.mock("@vivy1024/novelfork-core", () => ({
-  getAgentSystemPrompt: getAgentSystemPromptMock,
+vi.mock("./system-prompt-builder.js", () => ({
+  buildSystemPrompt: () => [{ id: "identity", content: "你是 NovelFork 叙述者。", cacheable: true }],
+  getIdentitySection: () => "你是 NovelFork 叙述者。",
+  renderSectionsToString: () => "你是 NovelFork 叙述者。",
 }));
 
 vi.mock("./agent-context.js", () => ({
@@ -80,7 +81,6 @@ function makeSession(overrides: Partial<NarratorSessionRecord> = {}): NarratorSe
 
 beforeEach(() => {
   vi.clearAllMocks();
-  getAgentSystemPromptMock.mockReturnValue("你是 NovelFork 叙述者。");
   buildAgentContextMock.mockResolvedValue("## 当前书籍\n- 测试书");
   getEnabledSessionToolsMock.mockReturnValue([]);
   loadSessionChatHistoryMock.mockResolvedValue([]);

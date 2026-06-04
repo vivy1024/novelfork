@@ -466,7 +466,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
 export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name);
 
 /**
- * 小说 Agent 角色预设 — 与 AGENT_SYSTEM_PROMPTS 保持一致
+ * 小说 Agent 角色预设 — 与 AGENT_ROLES 保持一致
  */
 export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
   writer: {

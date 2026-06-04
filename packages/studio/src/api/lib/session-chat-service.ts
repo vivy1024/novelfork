@@ -59,7 +59,11 @@ import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-ser
 import type { RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { getSessionById, updateSession } from "./session-service.js";
 import { buildAgentContext, buildProjectExplorationContext } from "./agent-context.js";
-import { getAgentSystemPrompt, buildAvailableToolsSection } from "@vivy1024/novelfork-novel-plugin/engine";
+import {
+  buildSystemPrompt,
+  getIdentitySection,
+  renderSectionsToString,
+} from "./system-prompt-builder.js";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { annotateSessionToolsWithPolicy } from "./session-tool-policy.js";
@@ -1109,7 +1113,6 @@ async function appendModelContinuationAfterToolDecision(
   timestamp: number,
 ): Promise<NarratorSessionRecoveryMetadata["lastFailure"] | undefined> {
   try {
-    const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
     const projectId = (loaded.session as { projectId?: string }).projectId;
     let bookContext = "";
     if (projectId) {
@@ -1134,11 +1137,20 @@ async function appendModelContinuationAfterToolDecision(
       : loaded.state.messages;
     const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, loaded.session.id);
     const continuationRoutinePrompts = await loadRoutineGlobalPrompts();
+    const continuationToolNames = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }).map(t => t.name);
+    const continuationSections = buildSystemPrompt({
+      agentId: loaded.session.agentId ?? "default",
+      toolNames: continuationToolNames,
+      identitySection: getIdentitySection(loaded.session.agentId),
+      writeNextInstructions: AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS.trim(),
+      goals: loaded.session.goals,
+      routinePrompts: continuationRoutinePrompts,
+    });
     const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
-      systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${continuationRoutinePrompts}${buildAvailableToolsSection(getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }).map(t => t.name))}`,
+      systemPrompt: renderSectionsToString(continuationSections),
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
@@ -2072,7 +2084,6 @@ export async function handleSessionChatTransportMessage(
   broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: workingSession, cursor: createCursor(loaded.state) }));
 
   try {
-    const agentSystemPrompt = getAgentSystemPrompt(loaded.session.agentId);
     const projectId = (loaded.session as { projectId?: string }).projectId;
     let bookContext = "";
     if (projectId) {
@@ -2131,7 +2142,15 @@ export async function handleSessionChatTransportMessage(
 
     const routinePrompts = await loadRoutineGlobalPrompts();
     const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
-    const fullSystemPrompt = `${agentSystemPrompt}${AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS}${buildGoalsPromptSection(loaded.session.goals)}${routinePrompts}${buildAvailableToolsSection(sessionTools.map(t => t.name))}`;
+    const systemPromptSections = buildSystemPrompt({
+      agentId: loaded.session.agentId ?? "default",
+      toolNames: sessionTools.map(t => t.name),
+      identitySection: getIdentitySection(loaded.session.agentId),
+      writeNextInstructions: AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS.trim(),
+      goals: loaded.session.goals,
+      routinePrompts,
+    });
+    const fullSystemPrompt = renderSectionsToString(systemPromptSections);
     const maxSteps = await resolveMaxTurnSteps();
     // Apply context cutoff: exclude messages at or before the cutoff seq from model context
     const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;
@@ -2551,12 +2570,6 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
     // On error, release the busy lock so the session isn't permanently stuck
     sessionBusy.delete(sessionId);
   }
-}
-
-function buildGoalsPromptSection(goals?: Array<{ id: string; objective: string; status: string }>): string {
-  const activeGoals = goals?.filter(g => g.status === "active") ?? [];
-  if (activeGoals.length === 0) return "";
-  return `\n\n## 当前目标\n\n${activeGoals.map((g, i) => `${i + 1}. ${g.objective}`).join("\n")}\n\n请优先推进以上目标。`;
 }
 
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `

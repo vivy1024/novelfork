@@ -61,7 +61,7 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   const snapshot = await getSessionChatSnapshot(sessionId);
   const parts: ContextBreakdownPart[] = [];
 
-  // 1. 系统提示词（agent prompt + TOOL_USE_GUIDELINES + write-next instructions）
+  // 1. 系统提示词（identity + system + doing_tasks + actions + using_tools + write-next）
   const systemPromptEstimate = 2000;
   parts.push({
     label: "系统提示词",

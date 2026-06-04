@@ -6,7 +6,7 @@ import type { AgentGenerateResult } from "./agent-turn-runtime.js";
 import { executeRuntimeTurn } from "./runtime-turn-service.js";
 import { createSession, getSessionById } from "./session-service.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
-import { getAgentSystemPrompt } from "@vivy1024/novelfork-novel-plugin/engine";
+import { buildSystemPrompt, getIdentitySection, renderSectionsToString } from "./system-prompt-builder.js";
 import { buildAgentContext, buildProjectAwarenessContext } from "./agent-context.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
@@ -165,7 +165,15 @@ export async function executeHeadless(input: HeadlessExecInput): Promise<Headles
   }
 
   // 2. Build agent context
-  const agentSystemPrompt = getAgentSystemPrompt(session.agentId);
+  const permissionMode: SessionPermissionMode = session.sessionConfig.permissionMode;
+  const tools = getEnabledSessionTools(permissionMode);
+  const headlessSections = buildSystemPrompt({
+    agentId: session.agentId ?? "default",
+    toolNames: tools.map(t => t.name),
+    identitySection: getIdentitySection(session.agentId),
+    writeNextInstructions: AGENT_NATIVE_HEADLESS_INSTRUCTIONS.trim(),
+  });
+  const agentSystemPrompt = renderSectionsToString(headlessSections);
   const projectId = input.projectId ?? (session as { projectId?: string }).projectId;
   let bookContext = "";
   if (projectId) {
@@ -194,19 +202,15 @@ export async function executeHeadless(input: HeadlessExecInput): Promise<Headles
     id: `headless-${Date.now()}`,
   };
 
-  // 5. Get enabled tools
-  const permissionMode: SessionPermissionMode = session.sessionConfig.permissionMode;
-  const tools = getEnabledSessionTools(permissionMode);
-
-  // 6. Create tool executor
+  // 5. Create tool executor
   const toolExecutor = createSessionToolExecutor();
 
-  // 7. Run agent turn
+  // 6. Run agent turn
   const runtimeTurn = await executeRuntimeTurn({
     sessionId: session.id,
     sessionConfig: session.sessionConfig,
     messages: [userMessage],
-    systemPrompt: `${agentSystemPrompt}${AGENT_NATIVE_HEADLESS_INSTRUCTIONS}`,
+    systemPrompt: agentSystemPrompt,
     context,
     tools,
     permissionMode,
