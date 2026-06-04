@@ -1,4 +1,4 @@
-import { getAgentSystemPrompt } from "@vivy1024/novelfork-novel-plugin/engine";
+import { buildSystemPrompt, getIdentitySection, renderSectionsToString } from "./system-prompt-builder.js";
 import { executeRuntimeCommandInput, type RuntimeCommandEvent } from "@vivy1024/novelfork-core/registry/command-executor";
 
 import type { CanvasContext, SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
@@ -689,14 +689,21 @@ export async function executeHeadlessChat(input: HeadlessChatInput): Promise<Hea
     id: `headless-chat-${startedAt}`,
   };
   const permissionMode: SessionPermissionMode = session.sessionConfig.permissionMode;
+  const headlessTools = getEnabledSessionTools(permissionMode);
+  const headlessSections = buildSystemPrompt({
+    agentId: session.agentId ?? "default",
+    toolNames: headlessTools.map(t => t.name),
+    identitySection: getIdentitySection(session.agentId),
+    writeNextInstructions: HEADLESS_CHAT_INSTRUCTIONS.trim(),
+  });
   const toolExecutor = createSessionToolExecutor();
   const runtimeTurn = await executeRuntimeTurn({
     sessionId: session.id,
     sessionConfig: session.sessionConfig,
     messages: [userMessage],
-    systemPrompt: `${getAgentSystemPrompt(session.agentId)}${HEADLESS_CHAT_INSTRUCTIONS}`,
+    systemPrompt: renderSectionsToString(headlessSections),
     context,
-    tools: getEnabledSessionTools(permissionMode),
+    tools: headlessTools,
     permissionMode,
     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
     maxSteps: input.maxSteps ?? (await resolveHeadlessMaxSteps()),

@@ -694,12 +694,29 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const inputWithReasoning = input.messages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content).length;
     console.log(`[anthropic.generate] ${anthropicMsgs.length} msgs, thinking=${thinkingCount}, tool_use=${toolUseCount}, inputReasoning=${inputWithReasoning}/${input.messages.length}`);
 
-    // Extract system message — use content block format with cache_control for prompt caching
+    // Extract system message — split by dynamic boundary for optimal prompt caching
     const systemMessage = input.messages.find((m) => m.role === "system");
     if (systemMessage && "content" in systemMessage && systemMessage.content.trim()) {
-      body.system = [
-        { type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } },
-      ];
+      const BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
+      const boundaryIdx = systemMessage.content.indexOf(BOUNDARY);
+      if (boundaryIdx !== -1) {
+        // Split: static part gets cache_control, dynamic part does not
+        const staticPart = systemMessage.content.slice(0, boundaryIdx).trim();
+        const dynamicPart = systemMessage.content.slice(boundaryIdx + BOUNDARY.length).trim();
+        const blocks: Array<Record<string, unknown>> = [];
+        if (staticPart) {
+          blocks.push({ type: "text", text: staticPart, cache_control: { type: "ephemeral" } });
+        }
+        if (dynamicPart) {
+          blocks.push({ type: "text", text: dynamicPart });
+        }
+        body.system = blocks.length > 0 ? blocks : undefined;
+      } else {
+        // No boundary marker — cache the whole thing (backward compat)
+        body.system = [
+          { type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } },
+        ];
+      }
     }
 
     // DeepSeek/Claude thinking support: if messages contain thinking blocks or model supports thinking,
