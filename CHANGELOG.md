@@ -4,6 +4,23 @@
 
 ## Unreleased
 
+## v1.5.0 (2026-06-03)
+
+### 🏗️ System Prompt 架构重写
+
+- **去 XML 改 Markdown** — 移除 `<tool_use>` `<available_tools>` `<behavior_rules>` `<error_recovery>` XML 标签，改为 Markdown 标题结构，消除与模型 tool_use 格式混淆
+- **工具名融入行为规则** — 废弃独立工具列表，每个工具直接写进 "To X use Y" 规则中，模型不再需要跨段关联
+- **静态/动态分界 + Prompt Caching** — system prompt 拆分为可缓存的静态段和每次变化的动态段，Anthropic API 可缓存静态段减少 90% input token 计费
+- **角色配置结构化** — 从大字符串重构为 `AgentRoleConfig`（identity/domainKnowledge/workflow/outputSpec/constraints），可维护可扩展
+- **工具名常量化** — `tool-names.ts` 统一管理，确保 prompt 和 tool schema 引用同一个源
+- **新增 system-prompt-builder.ts** — 分节构建器 `buildSystemPrompt()` 返回 `SystemPromptSection[]`，对标 Claude Code 架构
+
+### 🧹 清理
+
+- 移除 `TOOL_USE_GUIDELINES` 大字符串和 `buildAvailableToolsSection()` 
+- headless-exec-service / session-headless-chat-service 迁移到新 builder
+- agent-prompts.ts 瘦身为 deprecated 薄封装（不再从 engine barrel 导出）
+
 ## v1.4.0 (2026-06-02)
 
 ### 🧰 工具系统升级
