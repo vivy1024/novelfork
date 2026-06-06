@@ -31,9 +31,8 @@ interface ToolItem {
 // 角色默认工具表
 // ---------------------------------------------------------------------------
 
-/** 可选工具池（全部可切换，角色默认配置决定初始状态） */
+/** 可选工具池 — 仅写作过程中 agent 主动查询的辅助工具，可按需开关 */
 const OPTIONAL_TOOLS: ToolItem[] = [
-  // 小说只读工具
   { id: "jingwei.read", label: "经纬" },
   { id: "chapter.read", label: "章节" },
   { id: "cockpit.snapshot", label: "快照" },
@@ -41,27 +40,20 @@ const OPTIONAL_TOOLS: ToolItem[] = [
   { id: "character.check_consistency", label: "角色一致性" },
   { id: "presets.check_compliance", label: "合规检查" },
   { id: "narrative.read_line", label: "叙事线" },
-  // 小说配置工具（读+写）
-  { id: "presets.get_rules", label: "预设查看" },
-  { id: "presets.set_rules", label: "预设设置" },
-  { id: "presets.create_custom", label: "自定义预设" },
-  { id: "beat.get_current", label: "节拍查看" },
-  { id: "beat.set_template", label: "节拍设置" },
-  { id: "beat.create_custom", label: "自定义节拍" },
   { id: "hooks.manage", label: "钩子管理" },
 ];
 
 /** 各角色默认启用的工具 ID */
 const ROLE_DEFAULTS: Record<AgentRole, string[]> = {
-  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.get_rules", "presets.set_rules", "presets.create_custom", "presets.check_compliance", "beat.get_current", "beat.set_template"],
-  planner: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "beat.get_current", "beat.set_template", "narrative.read_line"],
+  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance"],
+  planner: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "narrative.read_line"],
   auditor: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance", "character.check_consistency"],
   architect: ["jingwei.read", "chapter.read", "cockpit.snapshot", "character.check_consistency", "narrative.read_line"],
   explorer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "character.check_consistency", "narrative.read_line"],
   hooks: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "hooks.manage"],
-  "chapter-hooks": ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "hooks.manage", "beat.get_current"],
-  outline: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "narrative.read_line", "beat.get_current"],
-  custom: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.get_rules", "presets.set_rules", "presets.create_custom", "beat.get_current", "beat.set_template", "beat.create_custom"],
+  "chapter-hooks": ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "hooks.manage"],
+  outline: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "narrative.read_line"],
+  custom: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks"],
 };
 
 // ---------------------------------------------------------------------------
