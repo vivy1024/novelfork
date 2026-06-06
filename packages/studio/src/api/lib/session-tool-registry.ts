@@ -595,11 +595,6 @@ const DEPRECATED_V1_TOOLS = new Set([
   "guided.exit",
   // 被 cockpit.snapshot 包含的健康度
   "health.read_summary",
-  // 写作时不需要的预设/节拍配置工具（通过 UI 配置）
-  "presets.set_rules",
-  "presets.create_custom",
-  "beat.set_template",
-  "beat.create_custom",
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {
