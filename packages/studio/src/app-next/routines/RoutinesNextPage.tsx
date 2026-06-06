@@ -15,7 +15,6 @@ import { PermissionsTab } from "../../components/Routines/PermissionsTab";
 import { PromptsTab } from "../../components/Routines/PromptsTab";
 import { SkillsTab } from "../../components/Routines/SkillsTab";
 import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
-import { ToolsTab } from "../../components/Routines/ToolsTab";
 import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
 import { MCPServerPanel } from "./MCPServerPanel";
 import type { RoutineHook, RoutineHookKind, Routines as RoutinesConfig } from "../../types/routines";
@@ -53,13 +52,6 @@ const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
     description: "用户级斜杠命令、空态和添加命令入口。",
     reuse: "复用 CommandsTab / commands 数据",
     getCount: (routines) => routines.commands.length,
-  },
-  {
-    id: "tools",
-    label: "可选工具",
-    description: "工具名称、说明、启用状态与 /LOAD 等价入口。",
-    reuse: "复用 ToolsTab / tools 数据",
-    getCount: (routines) => routines.tools.length,
   },
   {
     id: "permissions",
@@ -272,8 +264,6 @@ function RoutineSectionEditor({
           <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />
         </div>
       );
-    case "tools":
-      return <ToolsTab tools={routines.tools} onChange={(tools) => setRoutines({ ...routines, tools })} />;
     case "permissions":
       return <PermissionsTab permissions={routines.permissions} onChange={(permissions) => setRoutines({ ...routines, permissions })} />;
     case "globalSkills":

@@ -4,6 +4,15 @@
 
 ## Unreleased
 
+## v1.5.1 (2026-06-06)
+
+### 🔧 工具设置简化
+
+- **删除套路页「可选工具」tab** — ToolConfigBar（对话顶部勾选区）作为唯一的工具开关入口
+- **修复 presets/beat 写入工具不可用** — 从 DEPRECATED_V1_TOOLS 移除 presets.set_rules、presets.create_custom、beat.set_template、beat.create_custom
+- **ToolConfigBar 增加写入工具开关** — 预设设置、自定义预设、节拍设置、自定义节拍
+- **移除 routines.tools 继承逻辑** — 新建 session 不再从套路页工具配置继承 deny 列表
+
 ## v1.5.0 (2026-06-03)
 
 ### 🏗️ System Prompt 架构重写
