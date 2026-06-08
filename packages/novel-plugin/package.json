@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-novel-plugin",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
@@ -10,7 +10,8 @@
     "./routes": "./src/routes/index.ts",
     "./handlers": "./src/handlers/index.ts",
     "./pages": "./src/pages/index.ts",
-    "./pages/writing-workbench": "./src/pages/writing-workbench/index.ts"
+    "./pages/writing-workbench": "./src/pages/writing-workbench/index.ts",
+    "./pages/writing-config": "./src/pages/writing-config/index.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

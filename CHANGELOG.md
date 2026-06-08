@@ -4,6 +4,17 @@
 
 ## Unreleased
 
+## v1.6.0 (2026-06-08)
+
+### 🧩 插件 UI 注册机制（plugin-ui-registration spec P1+P2）
+
+- **插件可向宿主 UI 注册配置面板** — PluginManifest 新增 `uiSections` 字段（PluginUISection），插件声明在套路页/独立入口挂载的 section，前端用组件注册表（section-registry）按 componentKey 渲染
+- **网文「写作配置」统一入口** — 套路页新增「写作配置」section，整合写作预设 / 节拍模板 / 辅助工具开关三块，复用现有 presets API；conflictGroup 流派互斥、postWriteChecks 标签
+- **本体/插件概念分离** — 套路页「技能」tab 还原为通用 Skill 说明（不再劫持解释为"写作预设"）
+- **消灭孤儿组件** — 删除无引用的 PresetPanel.tsx / BeatPanel.tsx；BookSettingsPanel 标注职责边界（驾驶舱快捷配置 vs 套路页统一管理）
+- **修复 v1 旧工具名残留** — 写下一章链路提示词、writer 角色、/novel:write-next 命令描述统一为 v2 链路（cockpit.snapshot → pgi.ask → scene.spec → pipeline.write）
+
+
 ## v1.5.2 (2026-06-08)
 
 ### 🔧 工具分层（plugin-ui-registration spec P0）
