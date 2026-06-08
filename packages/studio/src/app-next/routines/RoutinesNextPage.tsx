@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -19,6 +19,8 @@ import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routine
 import { MCPServerPanel } from "./MCPServerPanel";
 import type { RoutineHook, RoutineHookKind, Routines as RoutinesConfig } from "../../types/routines";
 import { InlineError } from "../components/feedback";
+import { getPluginUISections } from "../plugin-ui/register-plugins";
+import { getPluginSection } from "../plugin-ui/section-registry";
 
 interface RoutinesNextPageProps {
   readonly projectRoot?: string;
@@ -122,7 +124,8 @@ function readStoredProjectRoot(): string | undefined {
 
 export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextPageProps) {
   const projectRoot = projectRootProp ?? readStoredProjectRoot();
-  const [activeSectionId, setActiveSectionId] = useState<RoutineSectionId>("commands");
+  const [activeSectionId, setActiveSectionId] = useState<string>("commands");
+  const pluginSections = getPluginUISections("routines");
   const {
     error,
     handleReset,
@@ -216,22 +219,101 @@ export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextP
             </Button>
           );
         })}
+        {pluginSections.map((section) => {
+          const isSelected = section.id === activeSectionId;
+          return (
+            <Button
+              key={section.id}
+              role="tab"
+              variant="ghost"
+              size="sm"
+              aria-selected={isSelected}
+              className={isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground"}
+              onClick={() => setActiveSectionId(section.id)}
+              type="button"
+            >
+              {section.label}
+            </Button>
+          );
+        })}
       </div>
       </div>
 
       {/* tab 内容 — 可滚动区域 */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4" role="tabpanel">
-        <fieldset className={isReadOnly ? "opacity-70" : ""} disabled={isReadOnly}>
-          <RoutineSectionEditor
-            routines={routines}
-            sectionId={activeSectionId}
-            setRoutines={setRoutines}
-          />
-        </fieldset>
-        {isReadOnly && <p className="mt-3 text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
+        {pluginSections.some((s) => s.id === activeSectionId) ? (
+          <PluginSectionRenderer sectionId={activeSectionId} />
+        ) : (
+          <>
+            <fieldset className={isReadOnly ? "opacity-70" : ""} disabled={isReadOnly}>
+              <RoutineSectionEditor
+                routines={routines}
+                sectionId={activeSectionId as RoutineSectionId}
+                setRoutines={setRoutines}
+              />
+            </fieldset>
+            {isReadOnly && <p className="mt-3 text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
+          </>
+        )}
       </div>
     </section>
   );
+}
+
+function PluginSectionRenderer({ sectionId }: { readonly sectionId: string }) {
+  const sections = getPluginUISections("routines");
+  const section = sections.find((s) => s.id === sectionId);
+  const [books, setBooks] = useState<Array<{ id: string; title: string }>>([]);
+  const [selectedBookId, setSelectedBookId] = useState<string | undefined>(undefined);
+
+  const requiresBook = section?.requiresBook ?? false;
+
+  useEffect(() => {
+    if (!requiresBook) return;
+    let cancelled = false;
+    void fetch("/api/books")
+      .then((r) => (r.ok ? r.json() : { books: [] }))
+      .then((data) => {
+        if (cancelled) return;
+        const list: Array<{ id: string; title: string }> = (data.books ?? []).map((b: { id: string; title?: string }) => ({ id: b.id, title: b.title ?? b.id }));
+        setBooks(list);
+        if (list.length > 0) setSelectedBookId((prev) => prev ?? list[0]!.id);
+      })
+      .catch(() => { /* non-fatal */ });
+    return () => { cancelled = true; };
+  }, [requiresBook]);
+
+  if (!section) {
+    return <p className="text-sm text-muted-foreground">未找到该插件分区。</p>;
+  }
+
+  const Component = getPluginSection(section.componentKey);
+  if (!Component) {
+    return <p className="text-sm text-muted-foreground">插件组件未注册：{section.componentKey}</p>;
+  }
+
+  if (requiresBook) {
+    if (books.length === 0) {
+      return <p className="text-sm text-muted-foreground">暂无作品。请先在「作品管理」创建作品后再配置。</p>;
+    }
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">作品：</span>
+          <SimpleSelect
+            value={selectedBookId ?? ""}
+            onValueChange={(v) => setSelectedBookId(v)}
+            options={books.map((b) => ({ value: b.id, label: b.title }))}
+            className="w-56"
+            aria-label="选择作品"
+          />
+        </div>
+        {selectedBookId && <Component bookId={selectedBookId} />}
+      </div>
+    );
+  }
+
+  return <Component />;
 }
 
 function RoutineSectionEditor({
@@ -273,12 +355,12 @@ function RoutineSectionEditor({
         <div className="space-y-4">
           <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
             <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-              {sectionId === "globalSkills" ? "全局写作预设" : "项目写作预设"}
+              {sectionId === "globalSkills" ? "全局技能" : "项目技能"}
             </p>
             <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
               {sectionId === "globalSkills"
-                ? "全局技能对应 NovelFork 的写作预设系统（流派/文风/基底/逻辑规则/去AI味/文学技法）。预设在写作工作台中应用，后续将支持在此处自定义编辑。"
-                : "项目技能对应当前书籍的专属写作预设。每本书可以有独立的文风、节奏、角色语言风格等配置。后续将支持在此处自定义编辑。"}
+                ? "技能是可复用的指令片段。启用后以 [技能:名称] 形式注入到 system prompt，指导 agent 的行为。对所有项目生效。"
+                : "项目技能仅在当前项目内生效，适合存放项目专属的指令规范。"}
             </p>
           </div>
           <SkillsTab

@@ -510,7 +510,10 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
         {/* Section 3: 预设配置 */}
         {/* ============================================================= */}
         <section className="space-y-3">
-          <h2 className="text-sm font-semibold text-foreground">预设配置</h2>
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">预设配置</h2>
+            <p className="text-xs text-muted-foreground">驾驶舱内快捷配置。也可在「套路 → 写作配置」中统一管理预设/节拍/辅助工具。</p>
+          </div>
 
           {presetsLoading ? (
             <div className="flex items-center justify-center py-6">

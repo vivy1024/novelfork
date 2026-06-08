@@ -105,7 +105,7 @@ describe("RoutinesNextPage", () => {
     });
 
     const routineNav = screen.getByRole("tablist", { name: "套路分区" });
-    for (const label of ["命令", "可选工具", "工具权限", "全局技能", "项目技能", "自定义子代理", "全局提示词", "系统提示词", "MCP 工具", "钩子"]) {
+    for (const label of ["命令", "工具权限", "全局技能", "项目技能", "自定义子代理", "全局提示词", "系统提示词", "MCP 工具", "钩子"]) {
       expect(within(routineNav).getByRole("tab", { name: new RegExp(label) })).toBeTruthy();
     }
     expect(screen.getByText(/只读视图，切换到全局或项目 scope 后可编辑/)).toBeTruthy();
@@ -147,11 +147,6 @@ describe("RoutinesNextPage", () => {
     expect(screen.getByText("/write-next")).toBeTruthy();
 
     const routineNav = screen.getByRole("tablist", { name: "套路分区" });
-    fireEvent.click(within(routineNav).getByRole("tab", { name: /可选工具/ }));
-    expect(screen.getByPlaceholderText("搜索工具...")).toBeTruthy();
-    expect(screen.getByText("/load terminal")).toBeTruthy();
-    expect(screen.getByText("/load share_file")).toBeTruthy();
-
     fireEvent.click(within(routineNav).getByRole("tab", { name: /工具权限/ }));
     expect(screen.getByText("Bash 命令规则")).toBeTruthy();
     expect(screen.getByText("MCP 工具权限")).toBeTruthy();
