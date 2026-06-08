@@ -4,6 +4,16 @@
 
 ## Unreleased
 
+## v1.5.2 (2026-06-08)
+
+### 🔧 工具分层（plugin-ui-registration spec P0）
+
+- **书绑定 session 工具分层** — 从一次性暴露全部 58 个工具改为 28 个（20 通用核心 + 8 网文核心），其余 19 个小说工具通过 ToolSearch 按需发现，降低模型每轮工具选择负担
+- **NOVEL_CORE_TOOLS 白名单** — jingwei.read/write、cockpit.snapshot、chapter.read/audit、pipeline.write、scene.spec、pgi.ask 八个高频工具常驻
+- **ToolSearch 返回完整 inputSchema** — 模型发现按需工具后可直接构造调用，无需二次查询
+- **修复写下一章链路提示词 v1 旧工具名** — cockpit.get_snapshot/pgi.generate_questions/pipeline.generate_chapter（已 deprecated）改为 v2 名 cockpit.snapshot→pgi.ask→scene.spec→pipeline.write
+
+
 ## v1.5.1 (2026-06-06)
 
 ### 🔧 工具设置简化
