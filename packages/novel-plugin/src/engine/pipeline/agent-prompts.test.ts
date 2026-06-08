@@ -17,10 +17,10 @@ describe("agent roles", () => {
     ]);
   });
 
-  it("writer role uses pipeline.generate_chapter as the full-chapter path", () => {
+  it("writer role uses pipeline.write as the full-chapter path", () => {
     const writer = AGENT_ROLES.writer;
-    expect(writer.workflow).toContain("pipeline.generate_chapter");
-    expect(writer.workflow).toContain("写下一章 / 生成下一章 的主链路是 pipeline.generate_chapter");
+    expect(writer.workflow).toContain("pipeline.write");
+    expect(writer.workflow).toContain("写下一章 / 生成下一章 的主链路是 pipeline.write");
     expect(writer.outputSpec).toContain("candidate.create_chapter 是底层候选稿保存工具");
   });
 

@@ -434,7 +434,7 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
   }),
   sessionTool({
     name: "ToolSearch",
-    description: "搜索可用工具。当你需要使用非核心工具时，先用此工具搜索。返回匹配工具的名称和描述。",
+    description: "搜索按需加载的工具。核心工具（读写章节、经纬、快照、审计、PGI 等）已直接可用；当你需要使用预设、节拍、文风导入、片段改写、章节导入、一致性检查等非核心工具时，先用此工具按关键词搜索。返回匹配工具的名称、描述和完整的 inputSchema，你可据此直接调用该工具。",
     inputSchema: objectSchema({
       query: stringSchema("搜索关键词"),
     }, ["query"]),
@@ -595,6 +595,23 @@ const DEPRECATED_V1_TOOLS = new Set([
   "guided.exit",
   // 被 cockpit.snapshot 包含的健康度
   "health.read_summary",
+]);
+
+/**
+ * 网文核心工具白名单（高频）。
+ * 书绑定 session 默认只暴露这些小说工具 + 通用核心工具 + ToolSearch，
+ * 其余小说工具（预设/节拍/文风/改写等）由模型通过 ToolSearch 按需发现。
+ * 可按实际使用日志调整。
+ */
+export const NOVEL_CORE_TOOLS = new Set<string>([
+  "jingwei.read",
+  "jingwei.write",
+  "cockpit.snapshot",
+  "chapter.read",
+  "chapter.audit",
+  "pipeline.write",
+  "scene.spec",
+  "pgi.ask",
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {
