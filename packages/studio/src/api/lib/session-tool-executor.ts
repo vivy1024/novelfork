@@ -4385,7 +4385,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           const haystack = `${t.name.toLowerCase()} ${(t.description ?? "").toLowerCase()}`;
           return keywords.some(kw => haystack.includes(kw));
         });
-        const results = matches.map(t => ({ name: t.name, description: t.description }));
+        const results = matches.map(t => ({ name: t.name, description: t.description, inputSchema: t.inputSchema }));
         return {
           ok: true,
           renderer: definition.renderer,

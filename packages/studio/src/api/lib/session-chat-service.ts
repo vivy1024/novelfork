@@ -65,7 +65,7 @@ import {
   renderSectionsToString,
 } from "./system-prompt-builder.js";
 import { createSessionToolExecutor, type SessionToolExecutorOptions } from "./session-tool-executor.js";
-import { getEnabledSessionTools } from "./session-tool-registry.js";
+import { getEnabledSessionTools, NOVEL_CORE_TOOLS } from "./session-tool-registry.js";
 import { annotateSessionToolsWithPolicy } from "./session-tool-policy.js";
 import type { AgentTurnItem, AgentGenerateResult } from "./agent-turn-runtime.js";
 import { executeRuntimeTurn } from "./runtime-turn-service.js";
@@ -2067,9 +2067,16 @@ export async function handleSessionChatTransportMessage(
   const CORE_TOOL_NAMES = new Set(["Read", "Write", "Edit", "Bash", "Grep", "Glob", "Agent", "Await", "ToolSearch", "Terminal", "Browser", "WebSearch", "WebFetch", "EnterPlanMode", "ExitPlanMode", "TaskCreate", "AskUserQuestion", "Send", "Recall", "Skill"]);
   const policyAllow = loaded.session.sessionConfig.toolPolicy?.allow;
   const hasBookBinding = Boolean(loaded.session.projectId);
-  const filteredTools = (policyAllow?.length || hasBookBinding)
-    ? sessionTools // Book-bound sessions get all tools (including novel tools)
-    : sessionTools.filter(t => CORE_TOOL_NAMES.has(t.name));
+  // 工具分层：
+  // - 显式 allow 清单 → 尊重用户配置，返回全部启用工具
+  // - 书绑定 session → 通用核心工具 + 网文核心工具 + ToolSearch（其余小说工具靠 ToolSearch 按需发现）
+  // - 普通 session → 仅通用核心工具
+  const filteredTools = policyAllow?.length
+    ? sessionTools
+    : sessionTools.filter(t =>
+        CORE_TOOL_NAMES.has(t.name) ||
+        (hasBookBinding && NOVEL_CORE_TOOLS.has(t.name))
+      );
 
   let canonicalEvents: readonly RuntimeEvent[] = [];
   let failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
@@ -2575,11 +2582,11 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
 
 ## Agent-native 写下一章链路
-当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.get_snapshot → pgi.generate_questions → AskUserQuestion → pipeline.generate_chapter。
-- PGI 无问题时也要明确说明 skippedReason=no-questions，并继续形成本章作者指示。
-- 必须等待用户通过 AskUserQuestion 确认方向；用户拒绝或要求修改时不得调用 pipeline.generate_chapter。
-- 批准后才允许调用 pipeline.generate_chapter，结果只进入候选稿并通过 artifact 在中间画布打开。
-- candidate.create_chapter 仅用于保存已有正文为候选稿，不是写下一章主链路；不得用它替代 pipeline.generate_chapter 生成完整章节。
+当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write。
+- pgi.ask 无问题时也要明确说明 skippedReason=no-questions，并继续形成本章作者指示。
+- 必须等待用户通过 AskUserQuestion 确认方向；用户拒绝或要求修改时不得调用 scene.spec / pipeline.write。
+- 批准后先用 scene.spec 生成结构化写作蓝图，再将其作为 sceneSpec 传给 pipeline.write；结果只进入候选稿并通过 artifact 在中间画布打开。
+- candidate.create_chapter 仅用于保存已有正文为候选稿，不是写下一章主链路；不得用它替代 pipeline.write 生成完整章节。
 - 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。`;
 
 const SESSION_CHAT_WS_PATH = "/api/sessions/:id/chat";
