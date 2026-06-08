@@ -15,5 +15,6 @@ export type {
   PluginAgentPreset,
   PluginRouteDefinition,
   PluginPromptExtension,
+  PluginUISection,
 } from "./types.js";
 export type { PluginManagerConfig } from "./plugin-manager.js";

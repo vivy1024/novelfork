@@ -38,8 +38,34 @@ export interface PluginManifest {
   readonly routes?: ReadonlyArray<PluginRouteDefinition>;
   /** System prompt extensions provided by this plugin */
   readonly systemPromptExtensions?: ReadonlyArray<PluginPromptExtension>;
+  /** UI sections contributed by this plugin (mounted into host UI like the Routines page) */
+  readonly uiSections?: ReadonlyArray<PluginUISection>;
   /** Plugin configuration schema */
   readonly configSchema?: Record<string, unknown>;
+}
+
+/**
+ * Plugin UI section — declarative metadata for a plugin-contributed UI panel.
+ *
+ * Only describes WHERE the section mounts and WHICH frontend component renders it
+ * (via componentKey). The actual React component is registered separately in the
+ * frontend section registry — core does not depend on React.
+ */
+export interface PluginUISection {
+  /** Unique identifier, e.g. "novel-writing-config" */
+  readonly id: string;
+  /** Display label shown in navigation */
+  readonly label: string;
+  /** Icon name (lucide) */
+  readonly icon?: string;
+  /** Mount point: inside the Routines page, or as a standalone entry */
+  readonly mountPoint: "routines" | "standalone";
+  /** Whether a book/project must be selected for this section to be usable */
+  readonly requiresBook?: boolean;
+  /** Sort weight (lower comes first) */
+  readonly order?: number;
+  /** Key into the frontend section component registry */
+  readonly componentKey: string;
 }
 
 /**

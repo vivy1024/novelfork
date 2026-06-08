@@ -117,6 +117,17 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   tools: NOVEL_TOOL_DEFINITIONS,
   agentPresets: NOVEL_AGENT_PRESET_LIST,
   routes: [],
+  uiSections: [
+    {
+      id: "novel-writing-config",
+      label: "写作配置",
+      icon: "PenLine",
+      mountPoint: "routines",
+      requiresBook: true,
+      order: 100,
+      componentKey: "novel-writing-config",
+    },
+  ],
   systemPromptExtensions: [],
 };
 
