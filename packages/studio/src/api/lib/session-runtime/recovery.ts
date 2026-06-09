@@ -82,7 +82,20 @@ export function createSessionChatCursor(
 }
 
 export function getPendingToolCalls(messages: readonly NarratorSessionChatMessage[]): ToolCall[] {
-  return messages.flatMap((message) => message.toolCalls ?? []).filter((toolCall) => toolCall.status === "pending" || toolCall.status === "running");
+  const pending = messages
+    .flatMap((message) => message.toolCalls ?? [])
+    .filter((toolCall) => toolCall.status === "pending" || toolCall.status === "running");
+  // 同一个 tool-use（按 id）可能在多条消息中重复出现（如 tool_use 消息 + 恢复后的副本），
+  // 按 id 去重，避免 pendingToolCallCount 被重复计数。
+  const seen = new Set<string>();
+  const deduped: ToolCall[] = [];
+  for (const toolCall of pending) {
+    const key = toolCall.id ?? `${toolCall.toolName}:${deduped.length}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(toolCall);
+  }
+  return deduped;
 }
 
 export function buildSessionRecoveryMetadata(
