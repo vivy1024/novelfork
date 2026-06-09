@@ -51,9 +51,13 @@ vi.mock("../components/InkEditor", () => ({
   InkEditor: vi.fn(() => null),
 }));
 
-vi.mock("../hooks/use-api", () => ({
-  fetchJson: fetchMock,
-}));
+vi.mock("../hooks/use-api", async () => {
+  const actual = await vi.importActual<typeof import("../hooks/use-api")>("../hooks/use-api");
+  return {
+    ...actual,
+    fetchJson: fetchMock,
+  };
+});
 
 vi.mock("./search/SearchPage", () => ({
   SearchPage: SearchPageMock,
@@ -72,7 +76,20 @@ vi.mock("./settings/ProviderSettingsPage", () => ({
 }));
 
 import { PROVIDER_MODELS_API_PATH, buildWorktreeStatusApiPath } from "./backend-contract";
+import type { ShellRoute } from "./shell/shell-route";
+import { toShellPath } from "./shell/shell-route";
 import { StudioNextApp } from "./StudioNextApp";
+import { RouterTestHarness } from "./test-helpers/router-harness";
+
+// 用真实 router harness 挂载 StudioNextApp（不 mock @tanstack/react-router）。
+// StudioNextApp 通过 useRouterState 读取路由，因此初始路由由 memory history 的路径决定。
+async function renderApp(route: ShellRoute = { kind: "home" }) {
+  const result = render(
+    <RouterTestHarness component={() => <StudioNextApp />} initialPath={toShellPath(route)} />,
+  );
+  await screen.findByTestId("shell-sidebar");
+  return result;
+}
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
@@ -137,8 +154,8 @@ beforeEach(() => {
 });
 
 describe("StudioNextApp", () => {
-  it("renders Agent Shell sidebar with storyline and narrator sections", () => {
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+  it("renders Agent Shell sidebar with storyline and narrator sections", async () => {
+    await renderApp({ kind: "home" });
 
     const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar.textContent).toContain("NovelFork Studio");
@@ -148,15 +165,15 @@ describe("StudioNextApp", () => {
     expect(sidebar.textContent).toContain("设置");
   });
 
-  it("shows books in sidebar storyline", () => {
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+  it("shows books in sidebar storyline", async () => {
+    await renderApp({ kind: "home" });
 
     const sidebar = screen.getByTestId("shell-sidebar");
     expect(sidebar.textContent).toContain("测试书");
   });
 
-  it("renders author home in main content area", () => {
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+  it("renders author home in main content area", async () => {
+    await renderApp({ kind: "home" });
 
     expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "作者首页" })).toBeTruthy();
   });
@@ -187,14 +204,14 @@ describe("StudioNextApp", () => {
     expect(studioNextSource).not.toContain("onSave={() => undefined}");
   });
 
-  it("mounts Agent Conversation for narrator routes", () => {
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+  it("mounts Agent Conversation for narrator routes", async () => {
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     expect(screen.getByTestId("conversation-route").getAttribute("data-session-id")).toBe("session-1");
     expect(screen.getByText("session-1")).toBeTruthy();
   });
 
-  it("hydrates narrator routes through the live conversation runtime", () => {
+  it("hydrates narrator routes through the live conversation runtime", async () => {
     useAgentConversationRuntimeMock.mockReturnValue({
       state: {
         session: {
@@ -225,7 +242,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     expect(useAgentConversationRuntimeMock).toHaveBeenCalledWith(expect.objectContaining({ sessionId: "session-1" }));
     expect(screen.getByText("第三章续写")).toBeTruthy();
@@ -264,7 +281,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     fireEvent.change(screen.getByLabelText("对话输入框"), { target: { value: "  继续写第三章  " } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
@@ -274,7 +291,7 @@ describe("StudioNextApp", () => {
     expect(abortMock).not.toHaveBeenCalled();
   });
 
-  it("routes abort actions through the live conversation runtime", () => {
+  it("routes abort actions through the live conversation runtime", async () => {
     useAgentConversationRuntimeMock.mockReturnValue({
       state: {
         session: {
@@ -304,7 +321,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     fireEvent.click(screen.getByRole("button", { name: "中断" }));
 
@@ -312,7 +329,7 @@ describe("StudioNextApp", () => {
     expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
-  it("shows runtime recovery and missing session state without fabricating messages", () => {
+  it("shows runtime recovery and missing session state without fabricating messages", async () => {
     useAgentConversationRuntimeMock.mockReturnValue({
       state: {
         session: null,
@@ -330,7 +347,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "missing-session" }} />);
+    await renderApp({ kind: "narrator", sessionId: "missing-session" });
 
     expect(screen.getByText("会话不存在")).toBeTruthy();
     expect(screen.getByTestId("conversation-recovery-notice").textContent).toContain("snapshot-load");
@@ -389,7 +406,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     await screen.findByLabelText("模型");
     fireEvent.change(screen.getByLabelText("模型"), { target: { value: "sub2api::gpt-5.5" } });
@@ -439,7 +456,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     expect(await screen.findByText("绑定：book-1 / 章节 3")).toBeTruthy();
     expect(screen.getByText("消息：7")).toBeTruthy();
@@ -513,7 +530,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     await screen.findByLabelText("模型");
     expect(screen.getAllByText("Sub2API / GPT-5.4").length).toBeGreaterThan(0);
@@ -582,7 +599,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     expect(await screen.findByTestId("unsupported-tools-notice")).toBeTruthy();
     expect(screen.getByTestId("unsupported-tools-notice").textContent).toContain("当前模型不支持工具调用");
@@ -624,7 +641,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     const gate = await screen.findByTestId("confirmation-gate");
     expect(within(gate).getByText("candidate.create_chapter")).toBeTruthy();
@@ -681,7 +698,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "narrator", sessionId: "session-1" }} />);
+    await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     await screen.findByTestId("confirmation-gate");
     const approveButton = screen.getByRole("button", { name: "批准" });
@@ -693,8 +710,8 @@ describe("StudioNextApp", () => {
     expect(applyEnvelopeMock).not.toHaveBeenCalled();
   });
 
-  it("mounts Writing Workbench for book routes", () => {
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+  it("mounts Writing Workbench for book routes", async () => {
+    await renderApp({ kind: "book", bookId: "b1" });
 
     expect(screen.getByTestId("writing-workbench-route").getAttribute("data-book-id")).toBe("b1");
     expect(screen.getByText("选择左侧资源开始写作")).toBeTruthy();
@@ -725,7 +742,7 @@ describe("StudioNextApp", () => {
       errors: [],
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     expect(loadWorkbenchResourcesFromContractMock).toHaveBeenCalledWith(expect.anything(), "b1");
     expect(await screen.findByRole("button", { name: /第一章/ })).toBeTruthy();
@@ -750,7 +767,7 @@ describe("StudioNextApp", () => {
       errors: [nodes.at(-1)],
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: /第一章/ }));
     expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第一章正文");
@@ -803,7 +820,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "草稿正文");
@@ -840,7 +857,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: /第一章/ }));
     fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "更新章节" } });
@@ -872,7 +889,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "失败草稿" } });
@@ -898,7 +915,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "未保存草稿" } });
@@ -930,7 +947,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 1,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
 
@@ -974,7 +991,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: "生成下一章" }));
 
@@ -997,7 +1014,7 @@ describe("StudioNextApp", () => {
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     fireEvent.click(await screen.findByRole("button", { name: "生成下一章" }));
 
@@ -1014,7 +1031,7 @@ describe("StudioNextApp", () => {
   it("keeps unsupported workbench writing actions disabled without fake navigation", async () => {
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     const previewButton = await screen.findByRole("button", { name: "扩写/改写" });
     expect(previewButton).toHaveProperty("disabled", true);
@@ -1049,7 +1066,7 @@ describe("StudioNextApp", () => {
       getResumeFromSeq: () => 0,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
     const writeNextButton = screen.getByRole("button", { name: "生成下一章" });
@@ -1064,26 +1081,26 @@ describe("StudioNextApp", () => {
   it("shows loading and real errors while loading book resources", async () => {
     loadWorkbenchResourcesFromContractMock.mockRejectedValue(new Error("资源树加载失败"));
 
-    render(<StudioNextApp initialRoute={{ kind: "book", bookId: "b1" }} />);
+    await renderApp({ kind: "book", bookId: "b1" });
 
     expect(screen.getByRole("status").textContent).toContain("资源加载中");
     expect((await screen.findByRole("alert")).textContent).toContain("资源加载失败：资源树加载失败");
   });
 
-  it("mounts live search, routines and settings pages instead of later-wiring placeholders", () => {
-    render(<StudioNextApp initialRoute={{ kind: "search" }} />);
+  it("mounts live search, routines and settings pages instead of later-wiring placeholders", async () => {
+    await renderApp({ kind: "search" });
     expect(screen.getByTestId("search-page")).toBeTruthy();
     expect(screen.queryByText(/稍后接线/)).toBeNull();
     expect(SearchPageMock).toHaveBeenCalledOnce();
 
     cleanup();
-    render(<StudioNextApp initialRoute={{ kind: "routines" }} />);
+    await renderApp({ kind: "routines" });
     expect(screen.getByTestId("routines-page")).toBeTruthy();
     expect(screen.queryByText(/稍后接线/)).toBeNull();
     expect(RoutinesNextPageMock).toHaveBeenCalledOnce();
 
     cleanup();
-    render(<StudioNextApp initialRoute={{ kind: "settings" }} />);
+    await renderApp({ kind: "settings" });
     expect(screen.getByTestId("settings-section-content").textContent).toContain("models");
     expect(screen.getByText("个人设置")).toBeTruthy();
     expect(screen.getByText("实例管理")).toBeTruthy();

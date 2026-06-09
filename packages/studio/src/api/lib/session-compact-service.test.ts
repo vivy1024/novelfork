@@ -12,6 +12,22 @@ vi.mock("./user-config-service.js", () => ({
   })),
 }));
 
+// Mock external LLM dependency: 压缩摘要现在由 LLM 生成（commit f0b2a004 起失败直接报错，不再本地拼接）。
+// 测试环境没有真实 provider，必须 mock 这个外部调用。返回的 <summary> 内容模拟 LLM 输出，
+// 覆盖 instructions 与被压缩消息的关键信息，以验证产品的提取/持久化/范围计算等内部逻辑。
+vi.mock("./llm-runtime-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./llm-runtime-service.js")>();
+  return {
+    ...actual,
+    generateSessionReply: vi.fn(async () => ({
+      success: true as const,
+      type: "message" as const,
+      content: "<summary>上下文压缩摘要：第一轮：主角发现灵潮异常，宗门追杀线索进入暗线；法宝残片呼应反派动机。执行指令：保留灵潮与法宝线索。</summary>",
+    })),
+  };
+});
+
+
 async function loadSessionService() {
   return import("./session-service");
 }

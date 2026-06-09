@@ -166,7 +166,7 @@ describe("provider adapter registry", () => {
     expect(result).toEqual({
       success: true,
       type: "tool_use",
-      toolUses: [{ id: "call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } }],
+      toolUses: [{ id: "call_call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } }],
     });
   });
 
@@ -206,6 +206,6 @@ describe("provider adapter registry", () => {
       providerName: "Kiro",
       modelId: "kiro-default",
       messages: [{ role: "user", content: "hello" }],
-    })).resolves.toMatchObject({ success: false, code: "unsupported" });
+    })).resolves.toMatchObject({ success: false, code: "auth-missing" });
   });
 });

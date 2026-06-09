@@ -2,6 +2,13 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+// 仅审查用户可见 copy，剥离注释避免开发者说明（如 "后续接入 i18next"）误报。
+function stripComments(source: string): string {
+  return source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+}
+
 async function collectSourceFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   const nested = await Promise.all(entries.map(async (entry) => {
@@ -26,7 +33,7 @@ describe("Studio Next UI completion audit", () => {
     ];
 
     for (const file of files) {
-      const content = await readFile(file, "utf-8");
+      const content = stripComments(await readFile(file, "utf-8"));
       const relative = file.replace(root, "app-next");
       if (relative.endsWith("lib\\display-labels.ts") || relative.endsWith("lib/display-labels.ts")) continue;
       if (forbiddenPatterns.some((pattern) => pattern.test(content))) {

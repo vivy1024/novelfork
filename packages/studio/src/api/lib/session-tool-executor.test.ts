@@ -7,6 +7,17 @@ import { createSessionToolExecutor } from "./session-tool-executor.js";
 import { clearPluginRegistrations, registerPluginTools } from "./session-tool-registry.js";
 import { createCockpitService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
 
+// Mock external LLM dependency: danger-reflection 在确认流程中会调用真实 LLM（依赖本机 user-config
+// 的 dangerReflection + summaryModel），会引入网络调用导致偶发超时。仅 mock 这个外部依赖，
+// reflection 走 fallback 后仍返回 pending-confirmation，符合测试期望。内部 DB/registry/executor 保持真实。
+vi.mock("./llm-runtime-service.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./llm-runtime-service.js")>();
+  return {
+    ...actual,
+    generateSessionReply: vi.fn(async () => ({ success: false as const, error: "mocked-llm" })),
+  };
+});
+
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
     sessionId: "session-1",
@@ -556,7 +567,7 @@ describe("session tool executor — real tool wiring (Task 28)", () => {
 
     const result = await executor.execute(toolInput({
       toolName: "Edit",
-      input: { path: "edit-me.txt", oldText: "bar", newText: "qux" },
+      input: { path: "edit-me.txt", old_string: "bar", new_string: "qux" },
       permissionMode: "allow",
       confirmationDecision: { confirmationId: "c3", decision: "approved", decidedAt: new Date().toISOString(), sessionId: "session-wiring-1" },
     }));

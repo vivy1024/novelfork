@@ -20,13 +20,13 @@ describe("ProviderManager", () => {
     const manager = new ProviderManager();
     manager.initialize();
 
-    const updated = manager.updateProvider("openai", {
+    const updated = manager.updateProvider("anthropic", {
       config: { apiKey: "test-key" },
     });
 
     expect(updated?.config.apiKey).toBe("test-key");
-    expect(updated?.models.map((model) => model.id)).toEqual(PROVIDERS.find((provider) => provider.id === "openai")?.models.map((model) => model.id));
-    expect(manager.getModel("openai:gpt-4-turbo")?.name).toBe("GPT-4 Turbo");
+    expect(updated?.models.map((model) => model.id)).toEqual(PROVIDERS.find((provider) => provider.id === "anthropic")?.models.map((model) => model.id));
+    expect(manager.getModel("anthropic:claude-sonnet-4-6")?.name).toBe("Claude Sonnet 4.6");
   });
 
   it("refreshes provider models with model-level settings metadata", () => {
@@ -57,18 +57,18 @@ describe("ProviderManager", () => {
   it("updates and tests individual model state without disabling the whole provider", async () => {
     const manager = new ProviderManager();
     manager.initialize();
-    manager.updateProvider("openai", { config: { apiKey: "test-key" } });
+    manager.updateProvider("anthropic", { config: { apiKey: "test-key" } });
 
-    const updatedModel = manager.updateModel("openai", "gpt-4-turbo", {
+    const updatedModel = manager.updateModel("anthropic", "claude-sonnet-4-6", {
       enabled: false,
       contextWindow: 64000,
     });
-    const testResult = await manager.testModelConnection("openai", "gpt-4-turbo");
+    const testResult = await manager.testModelConnection("anthropic", "claude-sonnet-4-6");
 
     expect(updatedModel).toMatchObject({ enabled: false, contextWindow: 64000 });
     expect(testResult).toMatchObject({ success: true });
-    expect(manager.getProvider("openai")?.enabled).toBe(true);
-    expect(manager.getModel("openai:gpt-4-turbo")).toMatchObject({
+    expect(manager.getProvider("anthropic")?.enabled).toBe(true);
+    expect(manager.getModel("anthropic:claude-sonnet-4-6")).toMatchObject({
       lastTestStatus: "success",
       lastTestLatency: expect.any(Number),
     });
