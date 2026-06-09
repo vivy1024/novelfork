@@ -1,13 +1,18 @@
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { GuidedGenerationPlan, SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createGuidedGenerationToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createGuidedGenerationToolService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { registerPluginTools } from "./session-tool-registry.js";
+
+beforeAll(() => {
+  registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+});
 
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
     sessionId: "session-1",
     toolName: "guided.enter",
-    input: { bookId: "book-1", sessionId: "session-1", goal: "写下一章", target: "chapter-candidate" },
+    input: { bookId: "book-1", sessionId: "session-1", goal: "写下一章" },
     permissionMode: "read",
     ...overrides,
   };
@@ -52,7 +57,6 @@ describe("guided generation session tools", () => {
           bookId: "book-1",
           status: "awaiting-user",
           goal: "写下一章",
-          questions: [],
           answers: {},
           artifacts: [],
         },
@@ -64,6 +68,8 @@ describe("guided generation session tools", () => {
       },
       artifact: { id: "guided:guided-state-1", kind: "guided-plan", openInCanvas: true },
     });
+    // questions may be auto-generated when none are provided
+    expect(Array.isArray((result.data as any).state.questions)).toBe(true);
   });
 
   it("answers and skips structured questions in existing guided state", async () => {
@@ -73,7 +79,6 @@ describe("guided generation session tools", () => {
       bookId: "book-1",
       sessionId: "session-1",
       goal: "写下一章",
-      target: "chapter-candidate",
       stateId: "guided-state-1",
       questions: [
         { id: "q-1", prompt: "是否回收伏笔？", type: "single", reason: "PGI 触发", required: true, source: "pgi" },
@@ -83,7 +88,8 @@ describe("guided generation session tools", () => {
 
     const result = await executor.execute(input({
       toolName: "guided.answer_question",
-      input: { bookId: "book-1", sessionId: "session-1", guidedStateId: "guided-state-1", answers: { "q-1": "继续悬置" }, skippedQuestionIds: ["q-2"] },
+      permissionMode: "edit",
+      input: { guidedStateId: "guided-state-1", answers: { "q-1": "继续悬置" }, skippedQuestionIds: ["q-2"] },
     }));
 
     expect(result).toMatchObject({
@@ -105,7 +111,7 @@ describe("guided generation session tools", () => {
       guidedService: createGuidedGenerationToolService({ now: () => new Date("2026-05-03T05:02:00.000Z"), createStateId: () => "guided-state-1" }),
       createConfirmationId: () => "confirm-guided-plan-1",
     });
-    await executor.execute(input({ input: { bookId: "book-1", sessionId: "session-1", goal: "写下一章", target: "chapter-candidate" } }));
+    await executor.execute(input({ input: { bookId: "book-1", sessionId: "session-1", goal: "写下一章" } }));
 
     const pending = await executor.execute(input({
       toolName: "guided.exit",

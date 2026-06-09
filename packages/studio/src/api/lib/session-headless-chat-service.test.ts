@@ -177,12 +177,12 @@ describe("session headless chat service", () => {
     const result = await executeHeadlessChat({ prompt: "/tools", outputFormat: "stream-json" });
 
     expect(runAgentTurnMock).not.toHaveBeenCalled();
-    expect(result).toMatchObject({ success: false, stopReason: "failed", exitCode: 1, error: "planned_command" });
+    expect(result).toMatchObject({ success: true, stopReason: "completed", exitCode: 0 });
     expect(result.events).toEqual([
       expect.objectContaining({ type: "user_message", session_id: "session-1", content: "/tools" }),
       expect.objectContaining({ type: "command_started", session_id: "session-1", command_id: "/tools" }),
-      expect.objectContaining({ type: "command_error", session_id: "session-1", command_id: "/tools", code: "planned_command" }),
-      expect.objectContaining({ type: "result", session_id: "session-1", success: false, stop_reason: "failed", exit_code: 1, error: "planned_command" }),
+      expect.objectContaining({ type: "command_completed", session_id: "session-1", command_id: "/tools" }),
+      expect.objectContaining({ type: "result", session_id: "session-1", success: true, stop_reason: "completed", exit_code: 0 }),
     ]);
   });
 
