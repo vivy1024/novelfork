@@ -15,6 +15,40 @@ function okAdapter(models: RuntimeModelInput[] = []): RuntimeAdapter {
   };
 }
 
+/**
+ * Mock only the external upstream HTTP. Internal adapters (real protocol
+ * adapters from the registry) run for real and route by URL path.
+ * - /models → returns the provided model catalog
+ * - /chat/completions → returns the provided completion outcome
+ */
+type UpstreamStub = {
+  readonly models?: Array<Record<string, unknown>>;
+  readonly completion?: { readonly status: number; readonly body: Record<string, unknown> };
+};
+
+function stubUpstreamFetch(stub: UpstreamStub): void {
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+    const target = typeof url === "string" ? url : url.toString();
+    if (target.includes("/models")) {
+      return new Response(JSON.stringify({ data: stub.models ?? [] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (target.includes("/chat/completions")) {
+      const completion = stub.completion ?? { status: 200, body: { choices: [{ message: { content: "ok" } }] } };
+      return new Response(JSON.stringify(completion.body), {
+        status: completion.status,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify({ error: { message: "unexpected upstream call" } }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }));
+}
+
 describe("providers route runtime store", () => {
   let runtimeDir: string;
   let store: ProviderRuntimeStore;
@@ -25,6 +59,7 @@ describe("providers route runtime store", () => {
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await rm(runtimeDir, { recursive: true, force: true });
   });
@@ -63,43 +98,37 @@ describe("providers route runtime store", () => {
   });
 
   it("refreshes models through the adapter and persists detected models", async () => {
-    const adapter = okAdapter([{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected" }]);
+    stubUpstreamFetch({ models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", context_window: 192000, max_output_tokens: 8192 }] });
     await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, baseUrl: "https://api.example.com/v1", compatibility: "openai-compatible", apiMode: "responses", config: { apiKey: "sk-secret" }, models: [] });
-    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }) });
+    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
 
     const response = await app.request("http://localhost/sub2api/models/refresh", { method: "POST" });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(adapter.listModels).toHaveBeenCalledWith(expect.objectContaining({ providerId: "sub2api", baseUrl: "https://api.example.com/v1", apiKey: "sk-secret" }));
     expect(body.models).toEqual([expect.objectContaining({ id: "gpt-5-codex", source: "detected", lastRefreshedAt: expect.any(String) })]);
     await expect(store.getModel("sub2api", "gpt-5-codex")).resolves.toMatchObject({ id: "gpt-5-codex", source: "detected" });
   });
 
   it("tests models through the adapter and writes real status", async () => {
-    const adapter = okAdapter();
+    stubUpstreamFetch({ completion: { status: 200, body: { choices: [{ message: { content: "pong" } }] } } });
     await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, baseUrl: "https://api.example.com/v1", compatibility: "openai-compatible", apiMode: "responses", config: { apiKey: "sk-secret" }, models: [] });
     await store.upsertModels("sub2api", [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected" }]);
-    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }) });
+    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
 
     const response = await app.request("http://localhost/sub2api/models/gpt-5-codex/test", { method: "POST" });
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(adapter.testModel).toHaveBeenCalledWith(expect.objectContaining({ modelId: "gpt-5-codex", apiKey: "sk-secret" }));
-    expect(body.model).toMatchObject({ id: "gpt-5-codex", lastTestStatus: "success", lastTestLatency: 7 });
-    await expect(store.getModel("sub2api", "gpt-5-codex")).resolves.toMatchObject({ lastTestStatus: "success", lastTestLatency: 7 });
+    expect(body.model).toMatchObject({ id: "gpt-5-codex", lastTestStatus: "success", lastTestLatency: expect.any(Number) });
+    await expect(store.getModel("sub2api", "gpt-5-codex")).resolves.toMatchObject({ lastTestStatus: "success" });
   });
 
   it("provider-level tests persist first model failure status without leaking credentials", async () => {
-    const adapter: RuntimeAdapter = {
-      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
-      testModel: vi.fn(async () => ({ success: false as const, code: "upstream-error" as const, error: "网关 502" })),
-      generate: vi.fn(async () => ({ success: true as const, type: "message" as const, content: "ok" })),
-    };
+    stubUpstreamFetch({ completion: { status: 502, body: { error: { message: "网关 502" } } } });
     await store.createProvider({ id: "sub2api", name: "Sub2API", type: "custom", enabled: true, priority: 1, apiKeyRequired: true, baseUrl: "https://api.example.com/v1", compatibility: "openai-compatible", apiMode: "responses", config: { apiKey: "sk-secret" }, models: [] });
     await store.upsertModels("sub2api", [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, source: "detected" }]);
-    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }) });
+    const app = createProvidersRouter({ store, adapters: createProviderAdapterRegistry() });
 
     const response = await app.request("http://localhost/sub2api/test", { method: "POST" });
     const body = await response.json();

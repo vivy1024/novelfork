@@ -2,7 +2,27 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// jsdom 未实现 scrollTo / IntersectionObserver（broad-infinite-list 虚拟列表依赖），补 noop polyfill，
+// 否则虚拟列表 effect 抛错会导致对话区子树无法渲染。
+beforeAll(() => {
+  if (!Element.prototype.scrollTo) {
+    Element.prototype.scrollTo = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+  if (!("IntersectionObserver" in globalThis)) {
+    class MockIntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
+    }
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = MockIntersectionObserver;
+  }
+});
 
 const useShellDataMock = vi.hoisted(() => vi.fn());
 const useShellDataStoreMock = vi.hoisted(() => vi.fn());

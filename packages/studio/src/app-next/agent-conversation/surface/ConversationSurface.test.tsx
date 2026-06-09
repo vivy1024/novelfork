@@ -1,13 +1,23 @@
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
-// jsdom 未实现 Element.prototype.scrollTo（broad-infinite-list 滚动到底部会调用），补 noop polyfill。
+// jsdom 未实现 Element.prototype.scrollTo / IntersectionObserver（broad-infinite-list 虚拟列表依赖），补 noop polyfill。
+// 缺失 IntersectionObserver 会让虚拟列表 effect 抛错导致整棵树卸载，消息无法渲染。
 beforeAll(() => {
   if (!Element.prototype.scrollTo) {
     Element.prototype.scrollTo = () => {};
   }
   if (!Element.prototype.scrollIntoView) {
     Element.prototype.scrollIntoView = () => {};
+  }
+  if (!("IntersectionObserver" in globalThis)) {
+    class MockIntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
+    }
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = MockIntersectionObserver;
   }
 });
 
