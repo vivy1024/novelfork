@@ -595,6 +595,15 @@ const DEPRECATED_V1_TOOLS = new Set([
   "guided.exit",
   // 被 cockpit.snapshot 包含的健康度
   "health.read_summary",
+  // 被 presets.read/write 合并替代（v2）
+  "presets.get_rules",
+  "presets.list_available",
+  "presets.set_rules",
+  "presets.create_custom",
+  // 被 beat.read/write 合并替代（v2）
+  "beat.get_current",
+  "beat.set_template",
+  "beat.create_custom",
 ]);
 
 /**
@@ -612,6 +621,12 @@ export const NOVEL_CORE_TOOLS = new Set<string>([
   "pipeline.write",
   "scene.spec",
   "pgi.ask",
+  // 配置工具（v2 合并形态）纳入常驻，确保 agent 能直接调用（不依赖 ToolSearch）
+  "presets.read",
+  "presets.write",
+  "presets.check_compliance",
+  "beat.read",
+  "beat.write",
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {

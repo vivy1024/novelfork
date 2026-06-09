@@ -32,6 +32,7 @@ import {
   TOOL_START_PIPELINE,
   TOOL_END_PIPELINE,
   TOOL_SKILL,
+  TOOL_TOOL_SEARCH,
   TOOL_SHARE_FILE,
   TOOL_JINGWEI_READ,
   TOOL_JINGWEI_WRITE,
@@ -47,12 +48,10 @@ import {
   TOOL_CANDIDATE_CREATE,
   TOOL_REWRITE_SEGMENT,
   TOOL_STYLE_IMPORT,
-  TOOL_PRESETS_GET_RULES,
-  TOOL_PRESETS_SET_RULES,
-  TOOL_PRESETS_CREATE_CUSTOM,
-  TOOL_PRESETS_LIST_AVAILABLE,
-  TOOL_BEAT_GET_CURRENT,
-  TOOL_BEAT_SET_TEMPLATE,
+  TOOL_PRESETS_READ,
+  TOOL_PRESETS_WRITE,
+  TOOL_BEAT_READ,
+  TOOL_BEAT_WRITE,
   TOOL_HEALTH_SUMMARY,
   TOOL_HOOKS_MANAGE,
   TOOL_OUTLINE_SUGGEST,
@@ -257,10 +256,17 @@ export function getUsingToolsSection(toolNames: string[]): string {
     );
   }
 
+  // ── ToolSearch（按需工具发现）──
+  if (has(TOOL_TOOL_SEARCH)) {
+    items.push(
+      `Not every tool is listed above. Less-common tools (presets.*, beat.*, style.import, rewrite.segment, pipeline.import_chapters, character.check_consistency, etc.) are discoverable via ${TOOL_TOOL_SEARCH}. Search by keyword, then call the returned tool DIRECTLY as a normal tool call using its name and inputSchema. Do NOT wrap it in ${TOOL_SKILL} — ${TOOL_SKILL} is only for named skills in available_skills, never for tool names like "presets.create_custom".`,
+    );
+  }
+
   // ── Skills ──
   if (has(TOOL_SKILL)) {
     items.push(
-      `To invoke a user-defined skill use ${TOOL_SKILL}. Only use for skills listed in available_skills.`,
+      `To invoke a user-defined skill use ${TOOL_SKILL}. Only use for skills listed in available_skills — never for tool names (those are called directly or discovered via ${TOOL_TOOL_SEARCH}).`,
     );
   }
 
@@ -343,16 +349,16 @@ export function getUsingToolsSection(toolNames: string[]): string {
   }
 
   // ── 预设 ──
-  if (has(TOOL_PRESETS_GET_RULES) || has(TOOL_PRESETS_SET_RULES)) {
+  if (has(TOOL_PRESETS_READ) || has(TOOL_PRESETS_WRITE)) {
     items.push(
-      `To manage writing presets (style rules, logic constraints, anti-AI rules): ${TOOL_PRESETS_GET_RULES} to view, ${TOOL_PRESETS_SET_RULES}(mode="add"/"remove") to enable/disable, ${TOOL_PRESETS_CREATE_CUSTOM} to create. Presets ≠ jingwei — presets inject rules into writing prompt; jingwei stores world data.`,
+      `To manage writing presets (style rules, logic constraints, anti-AI rules): ${TOOL_PRESETS_READ}(scope="enabled"/"available") to view, ${TOOL_PRESETS_WRITE}(action="enable"/"disable"/"set"/"create") to enable/disable/create. Presets ≠ jingwei — presets inject rules into writing prompt; jingwei stores world data.`,
     );
   }
 
   // ── 节拍 ──
-  if (has(TOOL_BEAT_GET_CURRENT) || has(TOOL_BEAT_SET_TEMPLATE)) {
+  if (has(TOOL_BEAT_READ) || has(TOOL_BEAT_WRITE)) {
     items.push(
-      `To view/change beat template use ${TOOL_BEAT_GET_CURRENT}/${TOOL_BEAT_SET_TEMPLATE}.`,
+      `To view/change beat template use ${TOOL_BEAT_READ} / ${TOOL_BEAT_WRITE}(action="select"/"create").`,
     );
   }
 

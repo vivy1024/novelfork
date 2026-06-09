@@ -4,6 +4,21 @@
 
 ## Unreleased
 
+## v1.7.0 (2026-06-08)
+
+### 🔧 小说工具合并精简（novel-tool-consolidation spec）
+
+- **预设/节拍工具合并为 read/write 二元**（照搬 jingwei.read/write 范式）：
+  - `presets.get_rules` + `presets.list_available` → `presets.read`(scope=enabled/available)
+  - `presets.set_rules` + `presets.create_custom` → `presets.write`(action=enable/disable/set/create)
+  - `beat.get_current` → `beat.read`；`beat.set_template` + `beat.create_custom` → `beat.write`(action=select/create)
+- **修复配置工具无法调用的 bug** — 合并后的 presets.read/write、beat.read/write 纳入 NOVEL_CORE_TOOLS 常驻白名单，agent 可直接调用（此前因工具分层被移出 tools 数组，模型只能误用 Skill 调用导致"未知命令"）
+- **删除 style.get_profile 死代码**（未注册、LLM 不可见）
+- **向后兼容** — 旧工具名加入 DEPRECATED_V1_TOOLS：从模型可见列表隐藏，但 handler 保留可执行
+- 活跃小说工具 27 → 24
+- 提示词同步更新为新工具名
+
+
 ## v1.6.0 (2026-06-08)
 
 ### 🧩 插件 UI 注册机制（plugin-ui-registration spec P1+P2）
