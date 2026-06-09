@@ -47,11 +47,12 @@ describe("MarkdownRenderer", () => {
     expect(del?.textContent).toBe("废弃的");
   });
 
-  it("renders fenced code blocks with language label", () => {
+  it("renders fenced code blocks with a copy toolbar", () => {
     const content = "```ts\nconst x: number = 42;\n```";
-    render(<MarkdownRenderer content={content} />);
-    // The CodeBlock toolbar shows the language label.
-    expect(screen.getByText("ts")).toBeTruthy();
+    const { container } = render(<MarkdownRenderer content={content} />);
+    // The CodeBlock renders a styled container with a copy action in its toolbar.
+    expect(container.querySelector(".code-block")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "复制" })).toBeTruthy();
   });
 
   it("renders inline math via remark-math + rehype-katex", () => {

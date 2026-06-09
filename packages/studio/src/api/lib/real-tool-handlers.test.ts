@@ -61,7 +61,8 @@ describe("real tool handlers", () => {
       const result = await executeFileReadTool({ path: "test.txt", workDir });
 
       expect(result.ok).toBe(true);
-      expect(result.data).toMatchObject({ content: "文件内容" });
+      // content 以 cat -n 行号格式返回（与 Claude Code FileRead 对齐）
+      expect(result.data).toMatchObject({ content: `${String(1).padStart(6, " ")}\t文件内容` });
     });
 
     it("rejects paths outside work directory", async () => {

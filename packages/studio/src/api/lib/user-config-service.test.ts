@@ -85,7 +85,9 @@ describe("user-config-service", () => {
     );
 
     const loaded = await service.loadUserConfig();
-    expect(loaded.runtimeControls).toEqual(DEFAULT_USER_CONFIG.runtimeControls);
+    // sandboxMode 已废弃（迁移到 codexSandboxMode），sanitizer 不再输出该字段
+    const { sandboxMode: _legacySandboxMode, ...expectedRuntimeControls } = DEFAULT_USER_CONFIG.runtimeControls;
+    expect(loaded.runtimeControls).toEqual(expectedRuntimeControls);
     expect(loaded.preferences.workbenchMode).toBe(false);
     expect(loaded.modelDefaults).toMatchObject({
       defaultSessionModel: "anthropic:not-a-model",
@@ -126,7 +128,11 @@ describe("user-config-service", () => {
     });
 
     expect(updated.runtimeControls).toEqual({
-      ...DEFAULT_USER_CONFIG.runtimeControls,
+      ...(() => {
+        // sandboxMode 已废弃（迁移到 codexSandboxMode），sanitizer 不再输出该字段
+        const { sandboxMode: _legacySandboxMode, ...rest } = DEFAULT_USER_CONFIG.runtimeControls;
+        return rest;
+      })(),
       defaultPermissionMode: "ask",
       contextCompressionThresholdPercent: 84,
       codexSandboxMode: "planned",

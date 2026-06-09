@@ -5,13 +5,15 @@ import { tmpdir } from "node:os";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
-  createBibleChapterSummaryRepository,
-  createBookRepository,
   createStorageDatabase,
   runStorageMigrations,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 
+import {
+  createBibleChapterSummaryRepository,
+  createBookRepository,
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import { createFilterRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
@@ -56,7 +58,7 @@ async function postJson(router: ReturnType<typeof createFilterRouter>, path: str
 }
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })));
 });
 
 describe("filter API routes", () => {

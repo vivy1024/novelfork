@@ -174,10 +174,14 @@ export const WebFetchTool: ToolDefinition = {
       case "readability": {
         // 尝试使用 @mozilla/readability + jsdom（可选依赖）
         try {
+          // 可选依赖在运行时按需加载；用变量作为 import 说明符，
+          // 避免打包/转译阶段把未声明的可选依赖当静态依赖去解析（@vite-ignore 注释会被 esbuild 剥离而失效）。
+          const jsdomSpecifier = "jsdom";
+          const readabilitySpecifier = "@mozilla/readability";
           // @ts-ignore - jsdom is an optional dependency loaded at runtime
-          const { JSDOM } = await import(/* @vite-ignore */ /* webpackIgnore: true */ "jsdom" as string);
+          const { JSDOM } = await import(/* @vite-ignore */ /* webpackIgnore: true */ jsdomSpecifier);
           // @ts-ignore - @mozilla/readability is an optional dependency loaded at runtime
-          const { Readability } = await import(/* @vite-ignore */ /* webpackIgnore: true */ "@mozilla/readability" as string);
+          const { Readability } = await import(/* @vite-ignore */ /* webpackIgnore: true */ readabilitySpecifier);
           const dom = new JSDOM(html, { url });
           const reader = new Readability(dom.window.document);
           const article = reader.parse();
