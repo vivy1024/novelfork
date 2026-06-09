@@ -1,5 +1,24 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// jsdom 未实现 scrollTo / IntersectionObserver（broad-infinite-list 虚拟列表依赖），补 noop polyfill。
+beforeAll(() => {
+  if (!Element.prototype.scrollTo) {
+    Element.prototype.scrollTo = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+  if (!("IntersectionObserver" in globalThis)) {
+    class MockIntersectionObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+      takeRecords() { return []; }
+    }
+    (globalThis as { IntersectionObserver?: unknown }).IntersectionObserver = MockIntersectionObserver;
+  }
+});
 
 import { ConversationRoute, type ConversationRouteMessage } from "./ConversationRoute";
 
@@ -63,11 +82,19 @@ describe("ConversationRoute", () => {
   });
 
   it("中断时复用 runtime abort envelope builder", () => {
-    const onClientEnvelope = vi.fn();
-    render(<ConversationRoute sessionId="session-1" initialStatus={{ state: "running", label: "生成中" }} onClientEnvelope={onClientEnvelope} />);
+    vi.useFakeTimers();
+    try {
+      const onClientEnvelope = vi.fn();
+      render(<ConversationRoute sessionId="session-1" initialStatus={{ state: "running", label: "生成中" }} onClientEnvelope={onClientEnvelope} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "中断" }));
+      // 运行中且输入框为空时，中断按钮改为「长按确认」（HoldAbortButton），需按住 800ms 才触发。
+      const abortButton = screen.getByRole("button", { name: "中断（长按确认）" });
+      fireEvent.mouseDown(abortButton);
+      act(() => { vi.advanceTimersByTime(850); });
 
-    expect(onClientEnvelope).toHaveBeenCalledWith({ type: "session:abort", sessionId: "session-1" });
+      expect(onClientEnvelope).toHaveBeenCalledWith({ type: "session:abort", sessionId: "session-1" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

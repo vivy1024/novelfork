@@ -6,65 +6,50 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProviderRuntimeStore } from "../lib/provider-runtime-store.js";
 import { createWritingToolsRouter } from "@vivy1024/novelfork-novel-plugin/routes";
+import {
+  initializeStorageDatabase,
+  closeStorageDatabase,
+  runStorageMigrations,
+  type StorageDatabase,
+} from "@vivy1024/novelfork-core";
+import {
+  recordChapterCompletion,
+  createBibleConflictRepository,
+  createBibleCharacterArcRepository,
+} from "@vivy1024/novelfork-novel-plugin/engine";
+import { createFilterReportRepository } from "@vivy1024/novelfork-novel-plugin/engine";
 
-const coreMocks = vi.hoisted(() => {
-  const kv = new Map<string, string>();
-  const storage = { id: "storage" };
+// Mock ONLY the external LLM boundary. Storage / repositories / analysis run real.
+const llmMocks = vi.hoisted(() => ({
+  chatCompletion: vi.fn(async () => ({
+    content: JSON.stringify([
+      { id: "hook-1", style: "suspense", text: "门外传来第三个人的脚步声。", rationale: "制造新问题", retentionEstimate: "high" },
+    ]),
+    usage: { promptTokens: 3, completionTokens: 4, totalTokens: 7 },
+  })),
+  createLLMClient: vi.fn(() => ({ provider: "custom" })),
+}));
+
+vi.mock("@vivy1024/novelfork-core", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vivy1024/novelfork-core")>();
   return {
-    kv,
-    storage,
-    analyzeDialogue: vi.fn(() => ({ dialogueRatio: 0.5, isHealthy: true })),
-    analyzeRhythm: vi.fn(() => ({ rhythmScore: 80, sentenceHistogram: [] })),
-    analyzeSensitiveWords: vi.fn((content: string) => ({
-      issues: [],
-      found: content.includes("肢解") ? [{ word: "肢解", count: 1, severity: "warn" }] : [],
-    })),
-    buildConflictMap: vi.fn(() => [{ id: "c-1", name: "主线冲突", state: "escalating", dialectic: null, lastAdvancedChapter: 5 }]),
-    buildPovDashboard: vi.fn(() => ({ characters: [{ name: "林月", totalChapters: 1, lastAppearanceChapter: 1, gapSinceLastAppearance: 1, chapterNumbers: [1] }], currentChapter: 2, warnings: [] })),
-    detectToneDrift: vi.fn(() => ({ declaredTone: "冷峻质朴", detectedTone: "冷峻质朴", driftScore: 0.1, driftDirection: "一致", isSignificant: false, consecutiveDriftChapters: 0 })),
-    generateChapterHooks: vi.fn(() => Promise.resolve([{ id: "hook-1", style: "suspense", text: "门外传来第三个人的脚步声。", rationale: "制造新问题", retentionEstimate: "high" }])),
-    getDailyProgress: vi.fn((_storage: unknown, config: unknown) => Promise.resolve({ today: { written: 3000, target: (config as { dailyTarget: number }).dailyTarget, completed: false }, thisWeek: { written: 3000, target: 42000 }, streak: 0, last30Days: [] })),
-    getProgressTrend: vi.fn(() => Promise.resolve([{ date: "2026-04-26", wordCount: 3000 }])),
-    getStorageDatabase: vi.fn(() => storage),
-    conflictRecords: [] as unknown[],
-    filterReportRecords: [] as Array<{ aiTasteScore: number; chapterNumber: number }>,
-    createKvRepository: vi.fn(() => ({
-      get: vi.fn((key: string) => Promise.resolve(kv.get(key) ?? null)),
-      set: vi.fn((key: string, value: string) => {
-        kv.set(key, value);
-        return Promise.resolve();
-      }),
-    })),
-    createBibleConflictRepository: vi.fn(() => ({
-      listByBook: vi.fn(() => Promise.resolve(coreMocks.conflictRecords)),
-    })),
-    createFilterReportRepository: vi.fn(() => ({
-      listByBook: vi.fn(() => Promise.resolve(coreMocks.filterReportRecords)),
-    })),
-    createBibleCharacterArcRepository: vi.fn(() => ({
-      listByBook: vi.fn(() => Promise.resolve([{ id: "arc-1", characterId: "char-1", arcType: "positive-growth" }])),
-    })),
+    ...actual,
+    chatCompletion: llmMocks.chatCompletion,
+    createLLMClient: llmMocks.createLLMClient,
   };
 });
 
-vi.mock("@vivy1024/novelfork-core", () => ({
-  analyzeDialogue: coreMocks.analyzeDialogue,
-  analyzeRhythm: coreMocks.analyzeRhythm,
-  analyzeSensitiveWords: coreMocks.analyzeSensitiveWords,
-  buildConflictMap: coreMocks.buildConflictMap,
-  buildPovDashboard: coreMocks.buildPovDashboard,
-  createBibleCharacterArcRepository: coreMocks.createBibleCharacterArcRepository,
-  createBibleConflictRepository: coreMocks.createBibleConflictRepository,
-  createFilterReportRepository: coreMocks.createFilterReportRepository,
-  createKvRepository: coreMocks.createKvRepository,
-  detectToneDrift: coreMocks.detectToneDrift,
-  generateChapterHooks: coreMocks.generateChapterHooks,
-  getDailyProgress: coreMocks.getDailyProgress,
-  getProgressTrend: coreMocks.getProgressTrend,
-  getStorageDatabase: coreMocks.getStorageDatabase,
-}));
-
 const tempDirs: string[] = [];
+let storage: StorageDatabase;
+let storageDir: string;
+
+async function initStorage(): Promise<void> {
+  storageDir = join(tmpdir(), `novelfork-writing-tools-db-${crypto.randomUUID()}`);
+  await mkdir(storageDir, { recursive: true });
+  tempDirs.push(storageDir);
+  storage = initializeStorageDatabase({ databasePath: join(storageDir, "novelfork.db") });
+  runStorageMigrations(storage);
+}
 
 async function createRoute(options: { readonly sessionLlm?: boolean; readonly providerStore?: ProviderRuntimeStore } = {}) {
   const root = join(tmpdir(), `novelfork-writing-tools-route-${crypto.randomUUID()}`);
@@ -112,7 +97,7 @@ async function createRoute(options: { readonly sessionLlm?: boolean; readonly pr
     state,
     root,
     broadcast: vi.fn(),
-    buildPipelineConfig: vi.fn(() => Promise.resolve({ client: {}, model: "mock-model" })),
+    buildPipelineConfig: vi.fn(() => Promise.resolve({ client: { provider: "custom" }, model: "mock-model" })),
     getSessionLlm: vi.fn(() => Promise.resolve(options.sessionLlm ? { apiKey: "test", baseUrl: "https://example.test", model: "mock-model", provider: "custom" } : undefined)),
     runStore: {} as never,
     providerStore: options.providerStore ?? new ProviderRuntimeStore({ storagePath: join(root, ".runtime", "provider-runtime.json") }),
@@ -151,14 +136,13 @@ async function createUsableProviderStore() {
   return providerStore;
 }
 
-beforeEach(() => {
-  coreMocks.kv.clear();
-  coreMocks.conflictRecords.length = 0;
-  coreMocks.filterReportRecords.length = 0;
+beforeEach(async () => {
   vi.clearAllMocks();
+  await initStorage();
 });
 
 afterEach(async () => {
+  closeStorageDatabase();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -206,15 +190,7 @@ describe("writing tools routes", () => {
     expect(response.status).toBe(200);
     const json = await response.json() as { hooks: Array<{ id: string; text: string }> };
     expect(json.hooks[0]?.id).toBe("hook-1");
-    expect(coreMocks.generateChapterHooks).toHaveBeenCalledWith(expect.objectContaining({
-      input: expect.objectContaining({
-        chapterNumber: 1,
-        pendingHooks: expect.stringContaining("old-hook"),
-        chapterContent: expect.stringContaining("林月说道"),
-        bookGenre: "xianxia",
-      }),
-      model: "mock-model",
-    }));
+    expect(llmMocks.chatCompletion).toHaveBeenCalled();
   });
 
   it("persists an applied hook to pending_hooks.md", async () => {

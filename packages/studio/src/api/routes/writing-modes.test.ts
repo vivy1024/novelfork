@@ -87,9 +87,9 @@ describe("writing-modes router", () => {
       mode: "generated",
       writingMode: "continuation",
       content: "模型生成内容",
-      promptPreview: "continuation-prompt",
       model: "test-model",
     });
+    expect(json.promptPreview).toContain("选段续写任务");
     expect(json.usage).toBeDefined();
   });
 
@@ -130,9 +130,9 @@ describe("writing-modes router", () => {
     expect(json).toMatchObject({
       mode: "generated",
       content: "模型生成内容",
-      promptPreview: "dialogue-prompt",
       model: "test-model",
     });
+    expect(json.promptPreview).toContain("对话生成任务");
     expect(json.usage).toBeDefined();
   });
 
@@ -166,9 +166,9 @@ describe("writing-modes router", () => {
     expect(json).toMatchObject({
       mode: "generated",
       content: "模型生成内容",
-      promptPreview: "branch-prompt",
       model: "test-model",
     });
+    expect(json.promptPreview).toContain("大纲分支生成任务");
     expect(json.usage).toBeDefined();
   });
 

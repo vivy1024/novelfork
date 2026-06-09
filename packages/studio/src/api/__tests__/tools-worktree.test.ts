@@ -24,6 +24,10 @@ import {
   mockGitCommands,
 } from "./setup";
 import * as path from "node:path";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 
 describe("Tool System Integration", () => {
   let executor: ToolExecutor;
@@ -685,20 +689,27 @@ describe("Tool System Integration", () => {
 
   describe("EnterWorktreeTool", () => {
     it("should fail if not in git repository", async () => {
-      const result = await executor.execute(
-        "EnterWorktree",
-        { name: "feature-test" },
-        {
-          workspaceRoot: TEST_WORKSPACE,
-          userId: "test-user",
-          sessionId: "test-session",
-          permissions: new Set(["worktree"]),
-        }
-      );
+      // TEST_WORKSPACE 位于 novelfork 仓库内部，会被识别为 Git 仓库。
+      // 用一个仓库外的独立临时目录（非 Git）来真实验证"不在 Git 仓库"的失败路径。
+      const nonGitDir = await mkdtemp(join(tmpdir(), `worktree-nongit-${randomUUID()}-`));
+      try {
+        const result = await executor.execute(
+          "EnterWorktree",
+          { name: "feature-test" },
+          {
+            workspaceRoot: nonGitDir,
+            userId: "test-user",
+            sessionId: `enter-nongit-${randomUUID()}`,
+            permissions: new Set(["worktree"]),
+          }
+        );
 
-      // 测试工作区不是 Git 仓库，应该失败
-      expect(result.success).toBe(false);
-      expect(result.error).toBeDefined();
+        // 测试工作区不是 Git 仓库，应该失败
+        expect(result.success).toBe(false);
+        expect(result.error).toBeDefined();
+      } finally {
+        await rm(nonGitDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+      }
     });
   });
 
@@ -710,7 +721,8 @@ describe("Tool System Integration", () => {
         {
           workspaceRoot: TEST_WORKSPACE,
           userId: "test-user",
-          sessionId: "test-session",
+          // 用唯一 sessionId，确保没有遗留的 worktree 会话状态
+          sessionId: `exit-no-session-${randomUUID()}`,
           permissions: new Set(["worktree"]),
         }
       );
