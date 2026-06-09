@@ -1,6 +1,7 @@
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Hono } from "hono";
@@ -17,6 +18,96 @@ const coreMocks = vi.hoisted(() => {
   const sessionRows = new Map<string, any>();
   const messageRows = new Map<string, any[]>();
   const cursorRows = new Map<string, any>();
+
+  // Real in-memory SQLite for novel-plugin repositories that call .prepare().get()/.all()
+  function createInMemoryStorageDatabase() {
+    const { DatabaseSync: DB } = require("node:sqlite") as { DatabaseSync: new (path: string) => any };
+    const raw = new DB(":memory:");
+    // Create tables needed by novel-plugin repositories
+    raw.exec(`
+      CREATE TABLE IF NOT EXISTS "book" (
+        "id" TEXT PRIMARY KEY NOT NULL,
+        "name" TEXT NOT NULL,
+        "bible_mode" TEXT NOT NULL DEFAULT 'static',
+        "current_chapter" INTEGER NOT NULL DEFAULT 0,
+        "created_at" INTEGER NOT NULL,
+        "updated_at" INTEGER NOT NULL
+      );
+      CREATE TABLE IF NOT EXISTS "story_jingwei_section" (
+        "id" TEXT PRIMARY KEY NOT NULL,
+        "book_id" TEXT NOT NULL,
+        "key" TEXT NOT NULL,
+        "name" TEXT NOT NULL,
+        "description" TEXT NOT NULL DEFAULT '',
+        "icon" TEXT,
+        "order" INTEGER NOT NULL DEFAULT 0,
+        "enabled" INTEGER NOT NULL DEFAULT 1,
+        "show_in_sidebar" INTEGER NOT NULL DEFAULT 1,
+        "participates_in_ai" INTEGER NOT NULL DEFAULT 1,
+        "default_visibility" TEXT NOT NULL DEFAULT 'tracked',
+        "fields_json" TEXT NOT NULL DEFAULT '[]',
+        "builtin_kind" TEXT,
+        "source_template" TEXT,
+        "created_at" INTEGER NOT NULL,
+        "updated_at" INTEGER NOT NULL,
+        "deleted_at" INTEGER
+      );
+      CREATE TABLE IF NOT EXISTS "writing_resource" (
+        "id" TEXT PRIMARY KEY,
+        "book_id" TEXT NOT NULL,
+        "type" TEXT NOT NULL,
+        "status" TEXT NOT NULL,
+        "title" TEXT NOT NULL,
+        "content" TEXT NOT NULL DEFAULT '',
+        "chapter_number" INTEGER,
+        "word_count" INTEGER NOT NULL DEFAULT 0,
+        "parent_id" TEXT,
+        "version" INTEGER NOT NULL DEFAULT 1,
+        "source" TEXT,
+        "metadata_json" TEXT,
+        "created_at" INTEGER NOT NULL,
+        "updated_at" INTEGER NOT NULL,
+        "accepted_at" INTEGER,
+        "deleted_at" INTEGER
+      );
+    `);
+    // Wrap with a facade matching StorageSqliteDatabase interface
+    const sqlite = {
+      get open() { return true; },
+      exec: (sql: string) => raw.exec(sql),
+      prepare: (sql: string) => {
+        const stmt = raw.prepare(sql);
+        return {
+          all: (...params: unknown[]) => stmt.all(...params),
+          get: (...params: unknown[]) => stmt.get(...params),
+          run: (...params: unknown[]) => stmt.run(...params),
+          values: (...params: unknown[]) => { stmt.setReturnArrays?.(true); try { return stmt.all(...params); } finally { stmt.setReturnArrays?.(false); } },
+        };
+      },
+      query: (sql: string) => sqlite.prepare(sql),
+      run: (sql: string, ...params: unknown[]) => raw.prepare(sql).run(...params),
+      transaction: <TArgs extends unknown[], TResult>(fn: (...args: TArgs) => TResult) => {
+        const wrapped = (...args: TArgs): TResult => {
+          raw.exec("BEGIN");
+          try { const r = fn(...args); raw.exec("COMMIT"); return r; } catch (e) { raw.exec("ROLLBACK"); throw e; }
+        };
+        (wrapped as any).deferred = wrapped;
+        (wrapped as any).immediate = wrapped;
+        (wrapped as any).exclusive = wrapped;
+        return wrapped as any;
+      },
+      pragma: () => undefined,
+      close: () => raw.close(),
+    };
+    return { databasePath: ":memory:", sqlite, db: {} as any, checkpoint: () => {}, close: () => raw.close() };
+  }
+
+  let currentDb: ReturnType<typeof createInMemoryStorageDatabase> | null = null;
+  const getOrCreateDb = () => {
+    if (!currentDb) currentDb = createInMemoryStorageDatabase();
+    return currentDb;
+  };
+
   return {
     chatCompletion: vi.fn(() => Promise.resolve({ content: "模型生成内容", usage: { promptTokens: 3, completionTokens: 4, totalTokens: 7 } })),
     buildContinuationPrompt: vi.fn(() => "continuation-prompt"),
@@ -35,10 +126,11 @@ const coreMocks = vi.hoisted(() => {
     applyJingweiTemplate: vi.fn(() => ({ templateId: "basic", sections: [] })),
     createBookRepository: vi.fn(() => ({ getById: vi.fn(() => Promise.resolve(null)), create: vi.fn(() => Promise.resolve()), update: vi.fn(() => Promise.resolve()) })),
     createStoryJingweiSectionRepository: vi.fn(() => ({ listByBook: vi.fn(() => Promise.resolve([])), create: vi.fn(() => Promise.resolve()) })),
-    getStorageDatabase: vi.fn(() => ({ databasePath: "mock-session.db", sqlite: { prepare: vi.fn(() => ({ run: vi.fn(() => ({ changes: 0 })) })) } })),
-    initializeStorageDatabase: vi.fn(() => ({ databasePath: "mock-session.db", sqlite: { prepare: vi.fn(() => ({ run: vi.fn(() => ({ changes: 0 })) })) } })),
+    getStorageDatabase: vi.fn(() => getOrCreateDb()),
+    initializeStorageDatabase: vi.fn(() => getOrCreateDb()),
+    _resetDb: () => { if (currentDb) { try { currentDb.close(); } catch {} } currentDb = null; },
     runStorageMigrations: vi.fn(),
-    closeStorageDatabase: vi.fn(() => sessionRows.clear()),
+    closeStorageDatabase: vi.fn(() => { sessionRows.clear(); }),
     createSessionRepository: vi.fn(() => ({
       create: vi.fn(async (input: any) => {
         sessionRows.set(input.id, { ...input, deletedAt: null });
@@ -204,6 +296,7 @@ describe("backend core contract regression", () => {
     const { __testing } = await import("../lib/session-service");
     __testing.resetSessionStoreMutationQueue();
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
+    coreMocks._resetDb();
     await rm(root, { recursive: true, force: true });
     await rm(providerRuntimeDir, { recursive: true, force: true });
     await rm(sessionStoreDir, { recursive: true, force: true });
@@ -251,6 +344,10 @@ describe("backend core contract regression", () => {
     });
     expect(created.status).toBe(200);
 
+    // Trigger file→SQLite migration so the accept route can find the candidate
+    const listAfterCreate = await app.request("http://localhost/api/books/book-1/candidates");
+    expect(listAfterCreate.status).toBe(200);
+
     const invalidAccept = await app.request("http://localhost/api/books/book-1/candidates/cand-1/accept", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -265,7 +362,9 @@ describe("backend core contract regression", () => {
       body: JSON.stringify({ action: "draft" }),
     });
     expect(asDraft.status).toBe(200);
-    expect(await json(asDraft)).toMatchObject({ candidate: { status: "accepted" }, draft: { id: "draft-cand-1", content: "候选正文" } });
+    const asDraftBody = await json(asDraft);
+    // to-draft transition changes the resource type/status in-place
+    expect(asDraftBody).toMatchObject({ candidate: { status: "draft" }, draft: { id: "cand-1", content: "候选正文" } });
     await expect(readFile(join(root, "books", "book-1", "chapters", "0001-first.md"), "utf-8")).resolves.toBe("# 第一章\n\n正式正文");
 
     const missingDraft = await app.request("http://localhost/api/books/book-1/drafts/missing");
@@ -326,7 +425,10 @@ describe("backend core contract regression", () => {
       body: JSON.stringify({ mode: "continuation", selectedText: "他拔剑。", beforeText: "前文" }),
     });
     expect(preview.status).toBe(200);
-    expect(await json(preview)).toMatchObject({ mode: "prompt-preview", promptPreview: "continuation-prompt", reason: "no-session-llm" });
+    const previewBody = await json(preview);
+    expect(previewBody).toMatchObject({ mode: "prompt-preview", reason: "no-session-llm" });
+    expect(previewBody.promptPreview).toContain("选段续写");
+    expect(previewBody.promptPreview).toContain("他拔剑。");
 
     const applyApp = createWritingModesRouter(buildWritingContext(root, { apiKey: "sk-test", baseUrl: "https://example.test/v1", model: "gpt-test", provider: "custom" }));
     const invalidApply = await applyApp.request("http://localhost/api/books/book-1/writing-modes/apply", {
