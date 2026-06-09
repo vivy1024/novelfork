@@ -342,14 +342,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber", "lineRange", "newText"],
     additionalProperties: false,
   },
-  "style.get_profile": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-    },
-    required: ["bookId"],
-    additionalProperties: false,
-  },
   "style.import": {
     type: "object",
     properties: {
@@ -429,6 +421,51 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("章节序号（可选，用于上下文）。"),
     },
     required: ["bookId", "content"],
+    additionalProperties: false,
+  },
+  "presets.read": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。scope=enabled 时必填。"),
+      scope: stringSchema("enabled=当前书籍已启用规则（含 promptInjection 全文）；available=全部可用预设（含 enabled 标记）。默认 enabled。"),
+      category: stringSchema("scope=available 时可按分类过滤（可选）。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  "presets.write": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("enable（启用）/disable（禁用）/set（覆盖启用列表）/create（创建自定义预设）。"),
+      enabledPresetIds: arraySchema("enable/disable/set 时操作的预设 ID 列表。", { type: "string" }),
+      name: stringSchema("action=create 时必填：预设名。"),
+      category: stringSchema("action=create 时必填：分类（tone/genre/setting-base/logic-risk/anti-ai/literary）。"),
+      promptInjection: stringSchema("action=create 时必填：注入到写作提示词的规则全文。"),
+      description: stringSchema("action=create 时可选：描述。"),
+    },
+    required: ["action"],
+    additionalProperties: false,
+  },
+  "beat.read": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "beat.write": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("select（切换到已有模板）/create（创建自定义节拍模板）。"),
+      templateId: stringSchema("action=select 时必填：模板 ID（如 opening-hooks、three-act、save-the-cat、heros-journey、chapter-ending-hooks）。"),
+      name: stringSchema("action=create 时必填：节拍模板名。"),
+      description: stringSchema("action=create 时必填：描述。"),
+      beats: arraySchema("action=create 时必填：节拍序列，每项含 name/emotionalTone/wordRatio/purpose?/networkNovelTip?。"),
+    },
+    required: ["action"],
     additionalProperties: false,
   },
   "beat.get_current": {

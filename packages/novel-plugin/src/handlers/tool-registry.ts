@@ -332,6 +332,43 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   // --- 预设与节拍工具 (cockpit-redesign spec) ---
+  // v2 合并工具：presets.read/write、beat.read/write（旧工具名保留兼容，但默认隐藏）
+  sessionTool({
+    name: "presets.read",
+    description: "读取预设。scope=enabled（默认）返回当前书籍已启用规则（含 promptInjection 全文）；scope=available 返回全部可用预设（含启用标记，可按 category 过滤）。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["presets.read"]),
+    risk: "read",
+    renderer: "presets.rules",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "presets.write",
+    description: "写预设。action=enable/disable/set 改变书籍启用的预设列表（传 enabledPresetIds）；action=create 创建自定义预设（传 name/category/promptInjection）。promptInjection 是注入写作 prompt 的规则全文。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["presets.write"]),
+    risk: "confirmed-write",
+    renderer: "presets.rules",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "beat.read",
+    description: "读取当前书籍的节拍模板与节拍列表，返回模板名、节拍序号、名称、情绪基调、字数建议；未选中模板时返回可选模板列表。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["beat.read"]),
+    risk: "read",
+    renderer: "beat.current",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "beat.write",
+    description: "写节拍。action=select 切换到已有模板（传 templateId，可用：opening-hooks/three-act/save-the-cat/heros-journey/chapter-ending-hooks）；action=create 创建自定义节拍（传 name/description/beats）。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["beat.write"]),
+    risk: "confirmed-write",
+    renderer: "beat.current",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
   sessionTool({
     name: "presets.get_rules",
     description: "读取当前书籍启用的预设规则列表，返回每条预设的名称、分类和 promptInjection。",

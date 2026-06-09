@@ -1163,45 +1163,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           return { ok: false, renderer: definition.renderer, error: "apply-failed", summary: `写回失败: ${err instanceof Error ? err.message : String(err)}` };
         }
       };
-    case "style.get_profile":
-      return async ({ input, definition }) => {
-        const bookId = String(input.bookId);
-        try {
-          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-          const { readFile } = await import("node:fs/promises");
-          const { join } = await import("node:path");
-          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-          const storyDir = join(root, "books", bookId, "story");
-
-          let profileJson: string | null = null;
-          let guideText: string | null = null;
-
-          try { profileJson = await readFile(join(storyDir, "style_profile.json"), "utf-8"); } catch { /* not found */ }
-          try { guideText = await readFile(join(storyDir, "style_guide.md"), "utf-8"); } catch { /* not found */ }
-
-          if (!profileJson && !guideText) {
-            return { ok: true, renderer: definition.renderer, summary: "该书籍尚未生成文风档案。可使用 style.import 从参考文本提取文风。", data: { bookId, hasProfile: false } };
-          }
-
-          let profile: Record<string, unknown> | null = null;
-          if (profileJson) {
-            try { profile = JSON.parse(profileJson); } catch { /* invalid json */ }
-          }
-
-          const summary = profile
-            ? `文风档案已加载。平均句长: ${(profile as any).avgSentenceLength ?? "—"}字，对话比例: ${(profile as any).dialogueRatio ?? "—"}%。`
-            : "文风指南已加载（无统计数据）。";
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary,
-            data: { bookId, hasProfile: true, profile, guide: guideText?.slice(0, 2000) },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "style-read-failed", summary: `读取文风档案失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
     case "style.import":
       return async ({ input, definition, sessionConfig }) => {
         const bookId = String(input.bookId);
@@ -1865,6 +1826,47 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         }
       };
     // --- 预设与节拍工具 (cockpit-redesign spec) ---
+    // ── v2 合并工具：presets.read / presets.write / beat.read / beat.write ──
+    // 复用旧 case 的内联逻辑（按 scope/action 转发到对应旧 handler），旧工具名保留兼容。
+    case "presets.read":
+      return async ({ input, definition, ...rest }) => {
+        const scope = String(input.scope ?? "enabled");
+        const target = scope === "available" ? "presets.list_available" : "presets.get_rules";
+        const handler = getNovelServiceHandler(target, options);
+        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: `内部错误：${target} handler 缺失。` };
+        return handler({ input, definition, ...rest });
+      };
+    case "presets.write":
+      return async ({ input, definition, ...rest }) => {
+        const action = String(input.action ?? "");
+        if (action === "create") {
+          const handler = getNovelServiceHandler("presets.create_custom", options);
+          if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：presets.create_custom handler 缺失。" };
+          return handler({ input, definition, ...rest });
+        }
+        if (action === "enable" || action === "disable" || action === "set") {
+          const mode = action === "enable" ? "add" : action === "disable" ? "remove" : "set";
+          const handler = getNovelServiceHandler("presets.set_rules", options);
+          if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：presets.set_rules handler 缺失。" };
+          return handler({ input: { ...input, mode }, definition, ...rest });
+        }
+        return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `presets.write 的 action 必须是 enable/disable/set/create，收到：${action}` };
+      };
+    case "beat.read":
+      return async ({ input, definition, ...rest }) => {
+        const handler = getNovelServiceHandler("beat.get_current", options);
+        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：beat.get_current handler 缺失。" };
+        return handler({ input, definition, ...rest });
+      };
+    case "beat.write":
+      return async ({ input, definition, ...rest }) => {
+        const action = String(input.action ?? "");
+        const target = action === "create" ? "beat.create_custom" : action === "select" ? "beat.set_template" : "";
+        if (!target) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `beat.write 的 action 必须是 select/create，收到：${action}` };
+        const handler = getNovelServiceHandler(target, options);
+        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: `内部错误：${target} handler 缺失。` };
+        return handler({ input, definition, ...rest });
+      };
     case "presets.get_rules":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
