@@ -237,7 +237,7 @@ describe("OpenAI-compatible streaming adapter", () => {
       expect(result.type).toBe("tool_use");
       if (result.type === "tool_use") {
         expect(result.toolUses).toHaveLength(1);
-        expect(result.toolUses[0].id).toBe("call-1");
+        expect(result.toolUses[0].id).toBe("call_call-1"); // provider-safe id 归一化（call_ 前缀）
         expect(result.toolUses[0].name).toBe("test_tool");
         expect(result.toolUses[0].input).toEqual({ key: "value" });
       }

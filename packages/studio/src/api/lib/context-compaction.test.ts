@@ -35,9 +35,8 @@ describe("context compaction", () => {
 
     const result = await autoCompact({
       messages,
-      maxTokens: 800, // threshold at 80% = 640 tokens, messages ~1000 tokens > 640
-      thresholdPercent: 80,
-      keepRecentCount: 5,
+      maxContextTokens: 800, // compress at 80% = 640 tokens, messages well above
+      thresholds: { truncatePercent: 60, compressPercent: 80, maxTruncateRatio: 50, keepTurns: 3 },
       summarize,
     });
 
@@ -45,8 +44,8 @@ describe("context compaction", () => {
     expect(result.messages.length).toBeLessThan(messages.length);
     expect(result.messages[0]?.role).toBe("system"); // Summary message
     expect(result.messages[0]?.content).toContain("摘要");
-    expect(result.keptMessageCount).toBe(5);
-    expect(result.compactedMessageCount).toBe(15);
+    expect(result.keptMessageCount).toBe(6); // keepTurns(3) * 2
+    expect(result.compactedMessageCount).toBe(14); // 20 - 6
     expect(summarize).toHaveBeenCalledOnce();
   });
 
@@ -58,9 +57,8 @@ describe("context compaction", () => {
 
     const result = await autoCompact({
       messages,
-      maxTokens: 100000,
-      thresholdPercent: 80,
-      keepRecentCount: 5,
+      maxContextTokens: 100000,
+      thresholds: { truncatePercent: 60, compressPercent: 80, maxTruncateRatio: 50, keepTurns: 5 },
       summarize: vi.fn(),
     });
 
@@ -81,9 +79,8 @@ describe("context compaction", () => {
 
     const result = await autoCompact({
       messages,
-      maxTokens: 400, // threshold at 50% = 200, messages well above
-      thresholdPercent: 50,
-      keepRecentCount: 4,
+      maxContextTokens: 400, // compress at 50% = 200, messages well above
+      thresholds: { truncatePercent: 40, compressPercent: 50, maxTruncateRatio: 50, keepTurns: 2 },
       summarize,
     });
 

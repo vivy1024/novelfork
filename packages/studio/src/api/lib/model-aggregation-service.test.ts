@@ -3,17 +3,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { createProviderAdapterRegistry, type RuntimeAdapter } from "./provider-adapters";
 import { ProviderRuntimeStore } from "./provider-runtime-store";
 import { createLlmRuntimeService } from "./llm-runtime-service";
 import type { ModelAggregation } from "../../types/settings";
 import { resetRoundRobinCounters } from "./model-aggregation-service";
 
-const okAdapter = (content = "ok"): RuntimeAdapter => ({
-  listModels: vi.fn(async () => ({ success: true as const, models: [] })),
-  testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
-  generate: vi.fn(async () => ({ success: true as const, type: "message" as const, content })),
-});
+/**
+ * Mock the external LLM upstream only. The internal adapter registry / runtime
+ * service use the real implementations; we route by baseUrl host so each
+ * provider returns identifiable content.
+ */
+function stubUpstreamFetch(contentByHost: Record<string, string>): void {
+  vi.stubGlobal("fetch", vi.fn(async (url: string | URL | Request) => {
+    const target = typeof url === "string" ? url : url.toString();
+    const matchedHost = Object.keys(contentByHost).find((host) => target.includes(host));
+    const content = matchedHost ? contentByHost[matchedHost] : "默认回复";
+    return new Response(JSON.stringify({
+      choices: [{ message: { content } }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } });
+  }));
+}
 
 // Mock user-config-service for aggregation lookups
 let mockAggregations: ModelAggregation[] = [];
@@ -54,12 +63,13 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
   });
 
   afterEach(async () => {
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
     await rm(runtimeDir, { recursive: true, force: true });
   });
 
   it("resolves aggregation with priority strategy to the first available member", async () => {
-    const adapter = okAdapter("来自 sub2api");
+    stubUpstreamFetch({ "sub2api.example": "来自 sub2api", "openrouter.example": "来自 openrouter" });
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -67,6 +77,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: true,
       priority: 1,
       apiKeyRequired: true,
+      baseUrl: "https://sub2api.example/v1",
       config: { apiKey: "sk-live" },
       models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
@@ -77,6 +88,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: true,
       priority: 2,
       apiKeyRequired: true,
+      baseUrl: "https://openrouter.example/v1",
       config: { apiKey: "sk-or" },
       models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
@@ -91,10 +103,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       routingStrategy: "priority",
     }];
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "", modelId: "agg:ds-v4-flash", permissionMode: "edit", reasoningEffort: "medium" },
@@ -110,7 +119,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
   });
 
   it("falls back to next member when first provider is unavailable", async () => {
-    const adapter = okAdapter("来自 openrouter");
+    stubUpstreamFetch({ "sub2api.example": "来自 sub2api", "openrouter.example": "来自 openrouter" });
     // sub2api is disabled
     await store.createProvider({
       id: "sub2api",
@@ -119,6 +128,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: false,
       priority: 1,
       apiKeyRequired: true,
+      baseUrl: "https://sub2api.example/v1",
       config: { apiKey: "sk-live" },
       models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
@@ -129,6 +139,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: true,
       priority: 2,
       apiKeyRequired: true,
+      baseUrl: "https://openrouter.example/v1",
       config: { apiKey: "sk-or" },
       models: [{ id: "deepseek-v4-flash", name: "DeepSeek V4 Flash", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
@@ -143,10 +154,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       routingStrategy: "priority",
     }];
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "", modelId: "agg:ds-v4-flash", permissionMode: "edit", reasoningEffort: "medium" },
@@ -172,10 +180,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       routingStrategy: "priority",
     }];
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": okAdapter() }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "", modelId: "agg:empty", permissionMode: "edit", reasoningEffort: "medium" },
@@ -192,10 +197,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
   it("returns model-unavailable for non-existent aggregation id", async () => {
     mockAggregations = [];
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": okAdapter() }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "", modelId: "agg:nonexistent", permissionMode: "edit", reasoningEffort: "medium" },
@@ -210,7 +212,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
   });
 
   it("round-robin strategy cycles through available members", async () => {
-    const adapter = okAdapter("rr");
+    stubUpstreamFetch({ "provider-a.example": "rr-a", "provider-b.example": "rr-b" });
     await store.createProvider({
       id: "provider-a",
       name: "Provider A",
@@ -218,6 +220,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: true,
       priority: 1,
       apiKeyRequired: true,
+      baseUrl: "https://provider-a.example/v1",
       config: { apiKey: "sk-a" },
       models: [{ id: "model-x", name: "Model X", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "manual" }],
     });
@@ -228,6 +231,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       enabled: true,
       priority: 2,
       apiKeyRequired: true,
+      baseUrl: "https://provider-b.example/v1",
       config: { apiKey: "sk-b" },
       models: [{ id: "model-x", name: "Model X", contextWindow: 128000, maxOutputTokens: 8192, enabled: true, source: "manual" }],
     });
@@ -242,10 +246,7 @@ describe("model-aggregation-service integration with llm-runtime-service", () =>
       routingStrategy: "round-robin",
     }];
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const input = {
       sessionConfig: { providerId: "", modelId: "agg:rr-test", permissionMode: "edit" as const, reasoningEffort: "medium" as const },

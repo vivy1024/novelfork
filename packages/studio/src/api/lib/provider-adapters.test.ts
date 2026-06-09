@@ -39,12 +39,12 @@ describe("provider adapters", () => {
         role: "assistant",
         content: "",
         tool_calls: [{
-          id: "call-1",
+          id: "call_call-1",
           type: "function",
           function: { name: "cockpit_get_snapshot", arguments: JSON.stringify({ bookId: "book-1" }) },
         }],
       },
-      { role: "tool", tool_call_id: "call-1", content: "已读取。" },
+      { role: "tool", tool_call_id: "call_call-1", content: "已读取。" },
     ]);
   });
 });

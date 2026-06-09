@@ -133,7 +133,11 @@ describe("legacy source retirement", () => {
   });
 
   it("keeps the retired direct /api/agent loop removed while preserving /api/agent/config", () => {
-    const aiRouteSource = readFileSync(join(process.cwd(), "src", "api", "routes", "ai.ts"), "utf-8");
+    // ai.ts 已迁移到 novel-plugin（refactor(plugin): Batch 3）。校验迁移后的源仍不含被退役的 agent loop。
+    const aiRouteSource = readFileSync(
+      join(process.cwd(), "..", "novel-plugin", "src", "routes", "ai.ts"),
+      "utf-8",
+    );
     const serverSource = readFileSync(join(process.cwd(), "src", "api", "server.ts"), "utf-8");
     const matrixSource = readFileSync(join(process.cwd(), "src", "api", "backend-contract-matrix.ts"), "utf-8");
 

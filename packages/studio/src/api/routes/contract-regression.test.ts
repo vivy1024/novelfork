@@ -10,7 +10,7 @@ import { createChapterCandidatesRouter } from "./chapter-candidates";
 import { createProviderAdapterRegistry, type RuntimeAdapter } from "../lib/provider-adapters";
 import { ProviderRuntimeStore, type RuntimeModelInput } from "../lib/provider-runtime-store";
 import { createProvidersRouter } from "./providers";
-import { createWritingModesRouter } from "./writing-modes";
+import { createWritingModesRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 import sessionRouter from "./session";
 
 const coreMocks = vi.hoisted(() => {
