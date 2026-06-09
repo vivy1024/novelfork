@@ -156,13 +156,13 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
       runtimeControls?.contextCompressionThresholdPercent,
       defaults.contextCompressionThresholdPercent,
       50,
-      95,
+      99,
     ),
     contextTruncateTargetPercent: clampNumber(
       runtimeControls?.contextTruncateTargetPercent,
       defaults.contextTruncateTargetPercent,
       40,
-      90,
+      95,
     ),
     recovery: sanitizeRecovery(runtimeControls?.recovery),
     toolAccess: sanitizeToolAccess(runtimeControls?.toolAccess),
@@ -180,8 +180,8 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     dumpApiRequests: typeof runtimeControls?.dumpApiRequests === "boolean" ? runtimeControls.dumpApiRequests : defaults.dumpApiRequests,
     sendMode: runtimeControls?.sendMode === "ctrl-enter" ? "ctrl-enter" : defaults.sendMode,
     codexSandboxMode: normalizeCodexSandboxMode((runtimeControls as { codexSandboxMode?: unknown } | undefined)?.codexSandboxMode).mode,
-    largeWindowCompressionThresholdPercent: clampNumber(runtimeControls?.largeWindowCompressionThresholdPercent, defaults.largeWindowCompressionThresholdPercent, 30, 95),
-    largeWindowTruncateTargetPercent: clampNumber(runtimeControls?.largeWindowTruncateTargetPercent, defaults.largeWindowTruncateTargetPercent, 20, 90),
+    largeWindowCompressionThresholdPercent: clampNumber(runtimeControls?.largeWindowCompressionThresholdPercent, defaults.largeWindowCompressionThresholdPercent, 30, 99),
+    largeWindowTruncateTargetPercent: clampNumber(runtimeControls?.largeWindowTruncateTargetPercent, defaults.largeWindowTruncateTargetPercent, 20, 95),
     arcTrackingMode:
       runtimeControls?.arcTrackingMode === "off"
       || runtimeControls?.arcTrackingMode === "rule"
