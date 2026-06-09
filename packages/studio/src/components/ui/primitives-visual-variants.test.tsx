@@ -15,7 +15,7 @@ describe("UI primitives visual variants", () => {
 
     expect(defaultClasses).toContain("bg-primary");
     expect(defaultClasses).toContain("text-primary-foreground");
-    expect(defaultClasses).toContain("hover:bg-primary/90");
+    expect(defaultClasses).toContain("hover:bg-primary/80");
 
     expect(outlineClasses).toContain("border-border");
     expect(outlineClasses).toContain("hover:bg-muted");

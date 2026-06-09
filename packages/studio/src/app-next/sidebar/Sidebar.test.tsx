@@ -98,6 +98,6 @@ describe("Sidebar", () => {
   it("displays version number in footer", () => {
     render(<Sidebar />);
     const sidebar = screen.getByTestId("studio-sidebar");
-    expect(sidebar.textContent).toContain("v0.");
+    expect(sidebar.textContent).toMatch(/v\d+\.\d+\.\d+/);
   });
 });

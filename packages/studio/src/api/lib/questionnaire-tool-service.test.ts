@@ -2,17 +2,20 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
-  createBiblePremiseRepository,
-  createBookRepository,
   createStorageDatabase,
   runStorageMigrations,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
+import {
+  createBiblePremiseRepository,
+  createBookRepository,
+} from "@vivy1024/novelfork-novel-plugin/engine";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createQuestionnaireToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createQuestionnaireToolService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { clearPluginRegistrations, registerPluginTools } from "./session-tool-registry.js";
 
 const tempDirs: string[] = [];
 
@@ -43,7 +46,13 @@ function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolE
   };
 }
 
+beforeEach(() => {
+  clearPluginRegistrations();
+  registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+});
+
 afterEach(async () => {
+  clearPluginRegistrations();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })));
 });
 

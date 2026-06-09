@@ -3,6 +3,8 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { closeStorageDatabase, initializeStorageDatabase, runStorageMigrations } from "@vivy1024/novelfork-core";
+
 import { createChapterCandidatesRouter } from "./chapter-candidates";
 
 describe("createChapterCandidatesRouter", () => {
@@ -10,6 +12,8 @@ describe("createChapterCandidatesRouter", () => {
 
   beforeEach(async () => {
     root = await mkdtemp(join(tmpdir(), "novelfork-candidates-"));
+    const storage = initializeStorageDatabase({ databasePath: join(root, "novelfork.db") });
+    runStorageMigrations(storage);
     await mkdir(join(root, "books", "book-1", "chapters"), { recursive: true });
     await writeFile(join(root, "books", "book-1", "chapters", "0001-first.md"), "# 第一章\n\n正式正文", "utf-8");
     await writeFile(
@@ -20,7 +24,8 @@ describe("createChapterCandidatesRouter", () => {
   });
 
   afterEach(async () => {
-    await rm(root, { recursive: true, force: true });
+    closeStorageDatabase();
+    await rm(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
 
   it("stores generated chapter candidates without touching formal chapter files", async () => {

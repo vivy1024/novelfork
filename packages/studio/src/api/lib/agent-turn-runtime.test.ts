@@ -171,7 +171,7 @@ describe("agent turn runtime", () => {
     }));
   });
 
-  it("adds continuation guidance to tool results returned to the model", async () => {
+  it("returns tool result summary to the model without injecting continuation instruction", async () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({
         success: true as const,
@@ -188,9 +188,10 @@ describe("agent turn runtime", () => {
 
     await runAgentTurn(input({ generate, executeTool: vi.fn(async () => ({ ok: true, summary: "已读取工作台快照。" })) }));
 
+    // NarraFork parity：不再向 tool_result 注入续写指令，仅回传工具摘要本身
     expect(generate).toHaveBeenLastCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
-        expect.objectContaining({ type: "tool_result", content: expect.stringContaining("请先总结已经获得的信息") }),
+        expect.objectContaining({ type: "tool_result", content: "已读取工作台快照。" }),
       ]),
     }));
   });
@@ -284,7 +285,17 @@ describe("agent turn runtime", () => {
     }));
 
     expect(events).toEqual([
-      { type: "turn_failed", reason: "model-unavailable", message: "Session has no configured runtime model", data: { metadata: { providerId: "", modelId: "" } } },
+      {
+        type: "turn_failed",
+        reason: "model-unavailable",
+        message: "Session has no configured runtime model",
+        data: {
+          errorCode: expect.any(String),
+          classifiedMessage: expect.any(String),
+          originalError: "Session has no configured runtime model",
+          metadata: { providerId: "", modelId: "" },
+        },
+      },
     ]);
   });
 

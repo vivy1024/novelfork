@@ -4,8 +4,9 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBookRepository, createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
 
+import { createBookRepository } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createJingweiRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
@@ -28,7 +29,7 @@ async function createStorage(): Promise<StorageDatabase> {
 }
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })));
 });
 
 async function postJson(router: ReturnType<typeof createJingweiRouter>, path: string, body: unknown): Promise<Response> {

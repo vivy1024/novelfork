@@ -42,7 +42,7 @@ describe("runtime model pool", () => {
       enabled: true,
       source: "detected",
       lastTestStatus: "success",
-      capabilities: { functionCalling: false, vision: false, streaming: true },
+      capabilities: { functionCalling: true, vision: false, streaming: true },
     })]);
     expect(JSON.stringify(pool)).not.toContain("sk-secret");
   });

@@ -1,18 +1,69 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { StateManager } from "@vivy1024/novelfork-core";
+import { StateManager, initializeStorageDatabase, closeStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
 import { ProviderRuntimeStore } from "./provider-runtime-store.js";
 import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
+
+let activeStorage: StorageDatabase | null = null;
 
 async function createHarness() {
   const root = await mkdtemp(join(tmpdir(), "novelfork-cockpit-service-"));
   const state = new StateManager(root);
   const providerStore = new ProviderRuntimeStore({ storagePath: join(root, "provider-runtime.json") });
   const service = createCockpitService({ state, providerStore, now: () => new Date("2026-05-02T00:00:00.000Z") });
-  return { root, state, providerStore, service, cleanup: () => rm(root, { recursive: true, force: true }) };
+  // 初始化真实 SQLite 存储（焦点/章节摘要/伏笔现从经纬库读取）
+  const storage = initializeStorageDatabase({ databasePath: join(root, "novelfork.db") });
+  runStorageMigrations(storage);
+  activeStorage = storage;
+  return { root, state, providerStore, service, storage, cleanup: async () => { closeStorageDatabase(); activeStorage = null; await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } };
+}
+
+const SEED_TS = new Date("2026-05-02T00:00:00.000Z").getTime();
+
+/** 在经纬库中插入 book + section 行（满足外键约束） */
+function seedJingweiBase(storage: StorageDatabase, bookId: string): string {
+  storage.sqlite.prepare(`INSERT OR IGNORE INTO "book" ("id", "name", "created_at", "updated_at") VALUES (?, ?, ?, ?)`)
+    .run(bookId, "天墟试炼", SEED_TS, SEED_TS);
+  const sectionId = `${bookId}-section`;
+  storage.sqlite.prepare(`INSERT OR IGNORE INTO "story_jingwei_section" ("id", "book_id", "key", "name", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?)`)
+    .run(sectionId, bookId, "default", "默认", SEED_TS, SEED_TS);
+  return sectionId;
+}
+
+/** 插入一条经纬条目 */
+function seedJingweiEntry(storage: StorageDatabase, params: {
+  id: string; bookId: string; sectionId: string; title: string; contentMd: string;
+  category: string; lifecycle?: string; sortOrder?: number; relatedChapters?: number[]; fields?: Record<string, unknown>;
+}): void {
+  storage.sqlite.prepare(`
+    INSERT INTO "story_jingwei_entry" (
+      "id", "book_id", "section_id", "title", "content_md", "category", "lifecycle", "sort_order",
+      "fields_json", "related_chapter_numbers_json", "created_at", "updated_at", "deleted_at"
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+  `).run(
+    params.id, params.bookId, params.sectionId, params.title, params.contentMd,
+    params.category, params.lifecycle ?? "active", params.sortOrder ?? 0,
+    JSON.stringify(params.fields ?? {}), JSON.stringify(params.relatedChapters ?? []), SEED_TS, SEED_TS,
+  );
+}
+
+/** 为某本书铺设焦点/章节摘要/伏笔的经纬数据 */
+function seedJingweiCockpitData(storage: StorageDatabase, bookId: string, options: { focus?: boolean; summaries?: boolean; hooks?: boolean } = {}) {
+  const { focus = true, summaries = true, hooks = true } = options;
+  const sectionId = seedJingweiBase(storage, bookId);
+  if (focus) {
+    seedJingweiEntry(storage, { id: `${bookId}-focus`, bookId, sectionId, title: "当前聚焦", contentMd: "# 当前聚焦\n\n推进主角拜入外门。\n", category: "focus" });
+  }
+  if (summaries) {
+    seedJingweiEntry(storage, { id: `${bookId}-sum-1`, bookId, sectionId, title: "第1章摘要", contentMd: "主角入山，青铜铃异动。", category: "chapter-summary", sortOrder: 1, relatedChapters: [1], fields: { chapterNumber: 1 } });
+    seedJingweiEntry(storage, { id: `${bookId}-sum-2`, bookId, sectionId, title: "第2章摘要", contentMd: "问心阵失败，师兄递来线索。", category: "chapter-summary", sortOrder: 2, relatedChapters: [2], fields: { chapterNumber: 2 } });
+  }
+  if (hooks) {
+    seedJingweiEntry(storage, { id: `${bookId}-hook-1`, bookId, sectionId, title: "第1章", contentMd: "青铜铃为何自鸣", category: "foreshadowing", lifecycle: "active", sortOrder: 1, relatedChapters: [1] });
+  }
 }
 
 async function createBook(root: string, bookId = "book-1") {
@@ -48,6 +99,14 @@ async function createBook(root: string, bookId = "book-1") {
 }
 
 describe("cockpit-service", () => {
+  afterEach(() => {
+    // 兜底：若某测试未走 cleanup（异常等），仍关闭存储避免锁库
+    if (activeStorage) {
+      closeStorageDatabase();
+      activeStorage = null;
+    }
+  });
+
   it("returns missing status for an empty book instead of fake cockpit data", async () => {
     const harness = await createHarness();
     try {
@@ -69,6 +128,7 @@ describe("cockpit-service", () => {
     const harness = await createHarness();
     try {
       await createBook(harness.root);
+      seedJingweiCockpitData(harness.storage, "book-1");
       await harness.providerStore.createProvider({
         id: "sub2api",
         name: "Sub2API",
@@ -95,7 +155,7 @@ describe("cockpit-service", () => {
         expect.objectContaining({ number: 2, summary: "问心阵失败，师兄递来线索。" }),
       ]);
       expect(snapshot.openHooks.items).toEqual([
-        expect.objectContaining({ text: "第1章：青铜铃为何自鸣", status: "open", sourceFile: "pending_hooks.md" }),
+        expect.objectContaining({ text: "第1章：青铜铃为何自鸣", status: "open", sourceFile: "jingwei:foreshadowing" }),
       ]);
       expect(snapshot.riskCards.items).toEqual([
         expect.objectContaining({ kind: "audit-failure", chapterNumber: 2, level: "danger" }),

@@ -2,10 +2,13 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createCandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createCandidateToolService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createWritingResourceService } from "@vivy1024/novelfork-novel-plugin/engine";
+import { closeStorageDatabase, getStorageDatabase, initializeStorageDatabase, runStorageMigrations } from "@vivy1024/novelfork-core";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { clearPluginRegistrations, registerPluginTools } from "./session-tool-registry.js";
 
 const tempDirs: string[] = [];
 
@@ -19,6 +22,10 @@ async function createBookRoot(): Promise<string> {
   await writeFile(join(bookDir, "chapters", "index.json"), JSON.stringify([
     { number: 2, title: "第二章", status: "approved", wordCount: 12, fileName: "0002-second.md" },
   ], null, 2), "utf-8");
+  // 初始化真实 SQLite 存储并跑迁移（候选稿持久化到 writing_resources 表）
+  const databasePath = join(root, "novelfork.db");
+  const storage = initializeStorageDatabase({ databasePath });
+  runStorageMigrations(storage);
   return root;
 }
 
@@ -33,14 +40,20 @@ function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolE
       chapterNumber: 2,
       title: "第二章候选",
       pgiInstructions: "【本章作者指示（PGI）】\n- conflict-escalate:conflict-1：保持 escalating",
-      guidedPlanId: "guided-state-1",
       content: "# 第二章候选\n\n候选正文。",
     },
     ...overrides,
   };
 }
 
+beforeEach(() => {
+  clearPluginRegistrations();
+  registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+});
+
 afterEach(async () => {
+  clearPluginRegistrations();
+  closeStorageDatabase();
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })));
 });
 
@@ -70,7 +83,6 @@ describe("candidate.create_chapter session tool", () => {
           title: "第二章候选",
           source: "session-tool:candidate.create_chapter",
           metadata: {
-            guidedPlanId: "guided-state-1",
             pgiInstructions: expect.stringContaining("本章作者指示"),
             nonDestructive: true,
           },
@@ -83,10 +95,14 @@ describe("candidate.create_chapter session tool", () => {
         openInCanvas: true,
       },
     });
-    await expect(readFile(join(root, "books", "book-1", "generated-candidates", "candidate-1.md"), "utf-8"))
-      .resolves.toContain("候选正文");
-    const index = JSON.parse(await readFile(join(root, "books", "book-1", "generated-candidates", "index.json"), "utf-8")) as Array<Record<string, unknown>>;
-    expect(index).toEqual([expect.objectContaining({ id: "candidate-1", targetChapterId: "2", status: "candidate" })]);
+    // 候选稿现在持久化到 writing_resources 表（不再写文件）
+    const resourceService = createWritingResourceService({ storage: getStorageDatabase() });
+    const stored = resourceService.getById("candidate-1");
+    expect(stored).toMatchObject({ id: "candidate-1", bookId: "book-1", status: "candidate", chapterNumber: 2 });
+    expect(stored?.content).toContain("候选正文");
+    const candidates = resourceService.list("book-1", { type: "candidate" });
+    expect(candidates).toEqual([expect.objectContaining({ id: "candidate-1", status: "candidate" })]);
+    // 正式章节文件不被触碰
     await expect(readFile(join(root, "books", "book-1", "chapters", "0002-second.md"), "utf-8"))
       .resolves.toBe("# 第二章\n\n正式正文不能被覆盖。");
   });
@@ -113,6 +129,8 @@ describe("candidate.create_chapter session tool", () => {
       error: "invalid-tool-input",
       summary: expect.stringContaining("缺少必填字段 content"),
     });
-    await expect(readFile(join(root, "books", "book-1", "generated-candidates", "index.json"), "utf-8")).rejects.toThrow();
+    // 校验失败时不应写入任何候选稿
+    const resourceService = createWritingResourceService({ storage: getStorageDatabase() });
+    expect(resourceService.list("book-1", { type: "candidate" })).toEqual([]);
   });
 });

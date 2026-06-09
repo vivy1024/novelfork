@@ -1,5 +1,15 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// jsdom 未实现 Element.prototype.scrollTo（broad-infinite-list 滚动到底部会调用），补 noop polyfill。
+beforeAll(() => {
+  if (!Element.prototype.scrollTo) {
+    Element.prototype.scrollTo = () => {};
+  }
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
 
 import { ConversationSurface, type ConversationSurfaceMessage } from "./ConversationSurface";
 import { Composer } from "./Composer";
