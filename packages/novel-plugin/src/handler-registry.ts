@@ -67,6 +67,12 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
 
   // Presets/Beat tools (implemented in session-tool-executor inline)
+  // v2 合并工具
+  { toolName: "presets.read", serviceKey: "inline", method: "readPresets" },
+  { toolName: "presets.write", serviceKey: "inline", method: "writePresets" },
+  { toolName: "beat.read", serviceKey: "inline", method: "readBeat" },
+  { toolName: "beat.write", serviceKey: "inline", method: "writeBeat" },
+  // deprecated 旧名（保留兼容）
   { toolName: "presets.get_rules", serviceKey: "inline", method: "getPresetRules" },
   { toolName: "presets.check_compliance", serviceKey: "inline", method: "checkCompliance" },
   { toolName: "presets.set_rules", serviceKey: "inline", method: "setPresetRules" },

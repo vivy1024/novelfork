@@ -131,13 +131,19 @@ export const TOOL_HOOKS_MANAGE = "hooks.manage";
 export const TOOL_HEALTH_SUMMARY = "health.read_summary";
 
 // ── 预设（Presets） ──
+export const TOOL_PRESETS_READ = "presets.read";
+export const TOOL_PRESETS_WRITE = "presets.write";
+export const TOOL_PRESETS_CHECK_COMPLIANCE = "presets.check_compliance";
+// deprecated（v2 合并为 presets.read/write，handler 保留兼容）
 export const TOOL_PRESETS_GET_RULES = "presets.get_rules";
 export const TOOL_PRESETS_SET_RULES = "presets.set_rules";
 export const TOOL_PRESETS_CREATE_CUSTOM = "presets.create_custom";
 export const TOOL_PRESETS_LIST_AVAILABLE = "presets.list_available";
-export const TOOL_PRESETS_CHECK_COMPLIANCE = "presets.check_compliance";
 
 // ── 节拍模板（Beat） ──
+export const TOOL_BEAT_READ = "beat.read";
+export const TOOL_BEAT_WRITE = "beat.write";
+// deprecated（v2 合并为 beat.read/write，handler 保留兼容）
 export const TOOL_BEAT_GET_CURRENT = "beat.get_current";
 export const TOOL_BEAT_SET_TEMPLATE = "beat.set_template";
 export const TOOL_BEAT_CREATE_CUSTOM = "beat.create_custom";
