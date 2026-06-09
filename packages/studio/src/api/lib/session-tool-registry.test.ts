@@ -18,6 +18,7 @@ const EXPECTED_BUILTIN_TOOL_NAMES = [
   "Read",
   "Write",
   "Edit",
+  "ApplyPatch",
   "Glob",
   "Grep",
   "EnterWorktree",
@@ -40,6 +41,7 @@ const EXPECTED_BUILTIN_TOOL_NAMES = [
   "EndPipeline",
   "LearningGuide",
   "Skill",
+  "ToolSearch",
   "GetGoals",
   "AddGoal",
   "UpdateGoal",
@@ -85,7 +87,7 @@ describe("session tool registry", () => {
     // getAllSessionToolDefinitions also reflects the merge
     const tools = getAllSessionToolDefinitions();
     expect(tools.length).toBe(NOVEL_SESSION_TOOL_DEFINITIONS.length + EXPECTED_BUILTIN_TOOL_NAMES.length);
-    expect(tools[0].name).toBe("cockpit.get_snapshot");
+    expect(tools[0].name).toBe("cockpit.snapshot");
   });
 
   it("clearPluginRegistrations removes all plugin tools", () => {
@@ -103,13 +105,13 @@ describe("session tool registry", () => {
       const visibleTools = getEnabledSessionTools(mode);
       expect(visibleTools.length).toBeGreaterThan(0);
       expect(visibleTools.every((tool) => !WRITE_RISKS.has(tool.risk))).toBe(true);
-      // These read-risk novel tools should be visible (not in UNAVAILABLE_SERVICE_TOOLS)
+      // These read-risk novel tools should be visible (not in UNAVAILABLE_SERVICE_TOOLS / DEPRECATED_V1_TOOLS)
       expect(visibleTools.map((tool) => tool.name)).toEqual(expect.arrayContaining([
-        "pgi.generate_questions",
-        "guided.enter",
+        "pgi.ask",
         "Read",
         "chapter.read",
-        "jingwei.read_context",
+        "jingwei.read",
+        "narrative.read_line",
       ]));
       expect(visibleTools.map((tool) => tool.name)).not.toContain("candidate.create_chapter");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("questionnaire.submit_response");
@@ -122,9 +124,9 @@ describe("session tool registry", () => {
 
     expect(getEnabledSessionTools("edit").map((tool) => tool.name)).toEqual(expect.arrayContaining([
       "candidate.create_chapter",
-      "questionnaire.submit_response",
-      "pgi.record_answers",
-      "guided.exit",
+      "presets.write",
+      "beat.write",
+      "jingwei.write",
       "Bash",
       "Write",
       "Edit",
@@ -144,12 +146,12 @@ describe("session tool registry", () => {
     expect(isSessionToolEnabledForMode("candidate.create_chapter", "edit")).toBe(true);
 
     const providerTools = getProviderSessionToolDefinitions("read");
-    // cockpit.get_snapshot is in UNAVAILABLE_SERVICE_TOOLS, so use a different novel tool
+    // 用一个当前可见的只读小说工具（pgi.generate_questions 已 deprecated 隐藏）
     expect(providerTools).toEqual(expect.arrayContaining([
       {
         type: "function",
         function: expect.objectContaining({
-          name: "pgi.generate_questions",
+          name: "pgi.ask",
           description: expect.any(String),
           parameters: expect.objectContaining({ type: "object" }),
         }),

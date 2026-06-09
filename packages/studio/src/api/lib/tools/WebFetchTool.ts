@@ -175,9 +175,9 @@ export const WebFetchTool: ToolDefinition = {
         // 尝试使用 @mozilla/readability + jsdom（可选依赖）
         try {
           // @ts-ignore - jsdom is an optional dependency loaded at runtime
-          const { JSDOM } = await import(/* webpackIgnore: true */ "jsdom");
+          const { JSDOM } = await import(/* @vite-ignore */ /* webpackIgnore: true */ "jsdom" as string);
           // @ts-ignore - @mozilla/readability is an optional dependency loaded at runtime
-          const { Readability } = await import(/* webpackIgnore: true */ "@mozilla/readability");
+          const { Readability } = await import(/* @vite-ignore */ /* webpackIgnore: true */ "@mozilla/readability" as string);
           const dom = new JSDOM(html, { url });
           const reader = new Readability(dom.window.document);
           const article = reader.parse();
