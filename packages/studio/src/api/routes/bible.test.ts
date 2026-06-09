@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createBookRepository, createStorageDatabase, runStorageMigrations, seedQuestionnaireTemplates, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
 
+import { createBookRepository, seedQuestionnaireTemplates } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createBibleRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
