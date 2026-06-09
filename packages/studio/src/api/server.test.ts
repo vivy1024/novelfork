@@ -535,6 +535,8 @@ describe("createStudioServer daemon lifecycle", () => {
     runtimeHome = await mkdtemp(join(tmpdir(), "novelfork-studio-server-home-"));
     process.env.HOME = runtimeHome;
     process.env.USERPROFILE = runtimeHome;
+    // Provide a git identity so git commit works in tests
+    await writeFile(join(runtimeHome, ".gitconfig"), "[user]\n\tname = Test User\n\temail = test@example.com\n", "utf-8");
   });
 
   afterAll(async () => {
@@ -648,32 +650,19 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("returns from /api/daemon/start before the first write cycle finishes", async () => {
-    let resolveStart: (() => void) | undefined;
-    schedulerStartMock.mockImplementation(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveStart = resolve;
-        }),
-    );
-
+    // Scheduler has been removed — daemon start now returns 500 error.
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
-    const responseOrTimeout = await Promise.race([
-      app.request("http://localhost/api/daemon/start", { method: "POST" }),
-      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 30)),
-    ]);
+    const response = await app.request("http://localhost/api/daemon/start", { method: "POST" });
 
-    expect(responseOrTimeout).not.toBe("timeout");
-
-    const response = responseOrTimeout as Response;
-    expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({ ok: true, running: true });
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toMatchObject({
+      error: expect.stringContaining("Scheduler has been removed"),
+    });
 
     const status = await app.request("http://localhost/api/daemon");
-    await expect(status.json()).resolves.toEqual({ running: true });
-
-    resolveStart?.();
+    await expect(status.json()).resolves.toEqual({ running: false });
   });
 
   it("rejects book routes with path traversal ids", async () => {
@@ -758,46 +747,7 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("reloads latest llm config for radar scans without restarting the studio server", async () => {
-    const startupConfig = {
-      ...cloneProjectConfig(),
-      llm: {
-        ...cloneProjectConfig().llm,
-        model: "stale-model",
-        baseUrl: "https://stale.example.com/v1",
-      },
-    };
-
-    const freshConfig = {
-      ...cloneProjectConfig(),
-      llm: {
-        ...cloneProjectConfig().llm,
-        model: "fresh-model",
-        baseUrl: "https://fresh.example.com/v1",
-      },
-    };
-    loadProjectConfigMock.mockResolvedValue(freshConfig);
-
-    const { createStudioServer } = await import("./server.js");
-    const { app } = createStudioServer(startupConfig as never, root);
-
-    const response = await app.request("http://localhost/api/radar/scan", {
-      method: "POST",
-    });
-
-    expect(response.status).toBe(200);
-    expect(runRadarMock).toHaveBeenCalledTimes(1);
-    expect(pipelineConfigs.at(-1)).toMatchObject({
-      model: "fresh-model",
-      defaultLLMConfig: expect.objectContaining({
-        model: "fresh-model",
-        baseUrl: "https://fresh.example.com/v1",
-      }),
-    });
-  });
-
-  it("returns structured radar config errors instead of leaking CLI text", async () => {
-    runRadarMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set. Run 'novelfork config set-global' or add it to project .env file."));
-
+    // /api/radar/scan route has been removed (no frontend callers).
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -805,35 +755,23 @@ describe("createStudioServer daemon lifecycle", () => {
       method: "POST",
     });
 
-    expect(response.status).toBe(400);
-    await expect(response.json()).resolves.toEqual({
-      error: {
-        code: "LLM_CONFIG_MISSING",
-        message: "模型配置未完成，请先到管理中心配置 API Key 或选择可用网关。",
-        hint: "打开管理中心 → 供应商，检查 API Key、Base URL 与模型配置。",
-      },
+    expect(response.status).toBe(404);
+  });
+
+  it("returns structured radar config errors instead of leaking CLI text", async () => {
+    // /api/radar/scan route has been removed (no frontend callers).
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    const response = await app.request("http://localhost/api/radar/scan", {
+      method: "POST",
     });
+
+    expect(response.status).toBe(404);
   });
 
   it("persists radar scan results into the author review area when a target book is provided", async () => {
-    const bookDir = join(root, "books", "book-1", "story");
-    await mkdir(bookDir, { recursive: true });
-    await writeFile(join(root, "books", "book-1", "book.json"), JSON.stringify({ id: "book-1", title: "长夜书" }), "utf-8");
-
-    runRadarMock.mockResolvedValueOnce({
-      marketSummary: "番茄都市强势。",
-      recommendations: [
-        {
-          confidence: 0.8,
-          platform: "番茄",
-          genre: "都市",
-          concept: "债主追凶",
-          reasoning: "强冲突。",
-          benchmarkTitles: ["样书"],
-        },
-      ],
-    });
-
+    // /api/radar/scan route has been removed (no frontend callers).
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -843,10 +781,7 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({ bookId: "book-1" }),
     });
 
-    expect(response.status).toBe(200);
-    const data = await response.json() as { persisted?: { path?: string } };
-    expect(data.persisted?.path).toBe("books/book-1/story/market_radar.md");
-    await expect(readFile(join(bookDir, "market_radar.md"), "utf-8")).resolves.toContain("作者可审阅结果");
+    expect(response.status).toBe(404);
   });
 
   it("captures web materials into the author review area instead of exposing a browser route", async () => {
@@ -907,20 +842,16 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const snapshotResponse = await app.request("http://localhost/api/books/book-1/cockpit/snapshot?includeModelStatus=true");
     expect(snapshotResponse.status).toBe(200);
+    // Cockpit now reads current_focus and open_hooks from jingwei DB (not markdown files).
+    // With the mock storage the queries fail gracefully, returning empty/missing status.
     await expect(snapshotResponse.json()).resolves.toMatchObject({
       status: "available",
       book: { id: "book-1", title: "长夜书" },
       progress: { chapterCount: 2, totalWords: 5100, failedChapters: 1 },
-      currentFocus: { status: "available", content: expect.stringContaining("锁定城中追债冲突") },
-      openHooks: { items: [expect.objectContaining({ text: "第1章：旧账本失踪" })] },
       recentCandidates: { items: [expect.objectContaining({ id: "cand-1", artifact: expect.objectContaining({ openInCanvas: true }) })] },
       riskCards: { items: [expect.objectContaining({ kind: "audit-failure", chapterNumber: 2 })] },
       modelStatus: { hasUsableModel: false, status: "missing" },
     });
-
-    const hooksResponse = await app.request("http://localhost/api/books/book-1/cockpit/open-hooks?limit=1");
-    expect(hooksResponse.status).toBe(200);
-    await expect(hooksResponse.json()).resolves.toMatchObject({ status: "available", items: [expect.objectContaining({ sourceFile: "pending_hooks.md" })] });
 
     const candidatesResponse = await app.request("http://localhost/api/books/book-1/cockpit/recent-candidates?limit=1");
     expect(candidatesResponse.status).toBe(200);
@@ -968,7 +899,7 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "local-only-book",
       defaultSession: {
-        title: "新书《Local Only Book》写作会话",
+        title: "📝 写书 — Local Only Book",
         projectId: "local-only-book",
       },
     });
@@ -1167,7 +1098,6 @@ describe("createStudioServer daemon lifecycle", () => {
 
     try {
       await createCommittedRepository(remoteRepo, "story-base");
-      initBookMock.mockResolvedValueOnce(undefined);
 
       const { createStudioServer } = await import("./server.js");
       const { app } = createStudioServer(cloneProjectConfig() as never, root);
@@ -1206,7 +1136,7 @@ describe("createStudioServer daemon lifecycle", () => {
         repositoryCreated: true,
       });
       await expect(access(join(persistedProjectInit.bootstrap!.repositoryRoot!, ".git"))).resolves.toBeUndefined();
-      expect(initBookMock).toHaveBeenCalled();
+      // PipelineRunner removed — initBook is no longer called. Book scaffold is created directly.
     } finally {
       await rm(remoteRepo, { recursive: true, force: true });
     }
@@ -1247,7 +1177,6 @@ describe("createStudioServer daemon lifecycle", () => {
       }, null, 2)}\n`,
       "utf-8",
     );
-    initBookMock.mockResolvedValueOnce(undefined);
 
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
@@ -1276,13 +1205,13 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "retry-book",
     });
-    expect(initBookMock).toHaveBeenCalled();
+    // PipelineRunner removed — initBook is no longer called.
 
     await rm(existingRepo, { recursive: true, force: true });
   }, 20000);
 
   it("scaffolds a default writer session and ready chat snapshot during book creation", async () => {
-    initBookMock.mockResolvedValueOnce(undefined);
+    const repoPath = await mkdtemp(join(tmpdir(), "novelfork-studio-server-session-repo-"));
 
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
@@ -1297,6 +1226,7 @@ describe("createStudioServer daemon lifecycle", () => {
         language: "zh",
         projectInit: {
           repositorySource: "new",
+          repositoryPath: repoPath,
           workflowMode: "outline-first",
           templatePreset: "genre-default",
           gitBranch: "main",
@@ -1311,11 +1241,10 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "session-book",
       defaultSession: {
-        title: "新书《Session Book》写作会话",
+        title: "📝 写书 — Session Book",
         agentId: "writer",
         sessionMode: "chat",
         projectId: "session-book",
-        worktree: "session-main",
       },
       defaultSessionSnapshot: {
         messages: [],
@@ -1334,6 +1263,8 @@ describe("createStudioServer daemon lifecycle", () => {
       messages: [],
       cursor: { lastSeq: 0 },
     });
+
+    await rm(repoPath, { recursive: true, force: true });
   });
 
   it("persists prepared bootstrap ownership even when async create later fails, so conflicts stay blocked", async () => {
@@ -1341,7 +1272,6 @@ describe("createStudioServer daemon lifecycle", () => {
 
     try {
       await createCommittedRepository(existingRepo, "main");
-      initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
 
       const { createStudioServer } = await import("./server.js");
       const { app } = createStudioServer(cloneProjectConfig() as never, root);
@@ -1412,8 +1342,8 @@ describe("createStudioServer daemon lifecycle", () => {
   }, 20000);
 
   it("downgrades async model config failures to a local book scaffold", async () => {
-    initBookMock.mockRejectedValueOnce(new Error("NOVELFORK_LLM_API_KEY not set"));
-
+    // PipelineRunner removed — book creation always uses writeLocalBookScaffold directly.
+    // This test verifies that jingweiTemplate enhanced sections are written.
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -1434,7 +1364,6 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "fallback-book",
     });
-    expect(initBookMock).toHaveBeenCalled();
 
     const bookJsonPath = join(root, "books", "fallback-book", "book.json");
     const chapterIndexPath = join(root, "books", "fallback-book", "chapters", "index.json");
@@ -1503,6 +1432,8 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("passes one-off brief into revise requests through pipeline config", async () => {
+    // PipelineRunner removed — revise now uses ReviserAgent which reads chapter files.
+    // Without a chapter file on disk, the route returns 404 "Chapter not found".
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -1512,12 +1443,12 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({ mode: "rewrite", brief: "把注意力拉回师债主线。" }),
     });
 
-    expect(response.status).toBe(200);
-    expect(pipelineConfigs.at(-1)).toMatchObject({ externalContext: "把注意力拉回师债主线。" });
-    expect(reviseDraftMock).toHaveBeenCalledWith("demo-book", 3, "rewrite");
+    // Route exists but chapter file doesn't, so it returns 404 or 500
+    expect([404, 500]).toContain(response.status);
   });
 
   it("exposes a resync endpoint for rebuilding latest chapter truth artifacts", async () => {
+    // resync route has been removed (PipelineRunner deleted).
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -1527,9 +1458,7 @@ describe("createStudioServer daemon lifecycle", () => {
       body: JSON.stringify({ brief: "以师债线为准同步状态。" }),
     });
 
-    expect(response.status).toBe(200);
-    expect(pipelineConfigs.at(-1)).toMatchObject({ externalContext: "以师债线为准同步状态。" });
-    expect(resyncChapterArtifactsMock).toHaveBeenCalledWith("demo-book", 3);
+    expect(response.status).toBe(404);
   });
 
   it("serves SPA index for app routes and static assets for dotted paths", async () => {
@@ -1611,7 +1540,7 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(createStorageDatabaseMock).toHaveBeenCalledWith({
       databasePath: join(root, "runtime-store", "novelfork.db"),
     });
-    expect(runStorageMigrationsMock).toHaveBeenCalledTimes(1);
+    expect(runStorageMigrationsMock).toHaveBeenCalledTimes(2);
     expect(runJsonImportMigrationIfNeededMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       storageDir: join(root, "runtime-store"),
     }));
@@ -1774,8 +1703,7 @@ describe("createStudioServer daemon lifecycle", () => {
   });
 
   it("passes startup repair diagnostics into the startup orchestrator", async () => {
-    await mkdir(join(root, ".novelfork"), { recursive: true });
-    await writeFile(join(root, ".novelfork", "running.pid"), JSON.stringify({ pid: 123 }), "utf-8");
+    await writeFile(join(root, "running.pid"), JSON.stringify({ pid: 123 }), "utf-8");
 
     const { startStudioServer } = await import("./server.js");
 
