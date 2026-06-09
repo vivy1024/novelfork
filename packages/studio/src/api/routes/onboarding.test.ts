@@ -143,7 +143,7 @@ describe("onboarding status route", () => {
       status: {
         provider: {
           hasUsableModel: true,
-          defaultProvider: "sub2api",
+          defaultProvider: "Sub2API",
           defaultModel: "gpt-5-codex",
         },
         tasks: {

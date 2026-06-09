@@ -65,13 +65,13 @@ describe("DashboardPage", () => {
 
     fireEvent.click(createToggle);
 
-    const submitCreate = screen.getByRole("button", { name: "创建" });
-    expect(submitCreate.hasAttribute("disabled")).toBe(true);
+    // 建书流程极简化：书名可选（留空由 AI 生成），提交按钮仅在创建中禁用。
+    const submitCreate = screen.getByRole("button", { name: "开始创作" });
+    expect(submitCreate.hasAttribute("disabled")).toBe(false);
     expect(submitCreate.className).toContain("bg-primary");
     expect(submitCreate.className).toContain("disabled:opacity-50");
 
-    fireEvent.change(screen.getByPlaceholderText("输入书名"), { target: { value: "新书测试" } });
-    expect(submitCreate.hasAttribute("disabled")).toBe(false);
+    expect(screen.getByPlaceholderText("留空则由 AI 引导生成")).toBeTruthy();
 
     fireEvent.click(importToggle);
 

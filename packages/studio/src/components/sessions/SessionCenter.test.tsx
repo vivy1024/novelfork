@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getCapabilityUiDecision, type ContractResult } from "@/app-next/backend-contract";
 import type { NarratorSessionRecord } from "@/shared/session-types";
@@ -56,6 +56,13 @@ type SessionCenterClient = {
 describe("SessionCenter", () => {
   let sessionClient: SessionCenterClient;
 
+  beforeAll(() => {
+    // Radix Select 在 jsdom 下需要的 polyfill（排序控件用 SimpleSelect → Radix）。
+    (window.HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = vi.fn();
+    (window.HTMLElement.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = vi.fn(() => false);
+    (window.HTMLElement.prototype as unknown as { releasePointerCapture: () => void }).releasePointerCapture = vi.fn();
+  });
+
   beforeEach(() => {
     sessionClient = createSessionClientStub();
   });
@@ -74,7 +81,7 @@ describe("SessionCenter", () => {
     const bookRow = screen.getByTestId("session-center-row-session-book");
     expect(bookRow.textContent).toContain("灵潮纪元 · 叙述者");
     expect(bookRow.textContent).toContain("writer");
-    expect(bookRow.textContent).toContain("anthropic:claude-sonnet-4-6");
+    expect(bookRow.textContent).toContain("claude-sonnet-4-6");
     expect(bookRow.textContent).toContain("允许编辑");
     expect(bookRow.textContent).toContain("书籍绑定");
     expect(bookRow.textContent).toContain("未处理确认 2");
@@ -89,7 +96,7 @@ describe("SessionCenter", () => {
     expect(openSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-book", title: "灵潮纪元 · 叙述者" }));
   });
 
-  it("RED: exposes release-ready metadata and sorting controls for large narrator lists", async () => {
+  it("exposes release-ready metadata and sorting controls for large narrator lists", async () => {
     render(<SessionCenter sessionClient={sessionClient as never} onOpenSession={vi.fn()} />);
 
     const standaloneRow = await screen.findByTestId("session-center-row-session-free");
@@ -97,17 +104,20 @@ describe("SessionCenter", () => {
     expect(standaloneRow.textContent).toContain("创建：2026-05-01");
     expect(standaloneRow.textContent).toContain("最后消息：2026-05-02");
 
-    fireEvent.change(screen.getByLabelText("排序会话"), { target: { value: "lastModified-desc" } });
+    // 排序控件是 Radix Select：pointerDown 打开后点选项触发 onValueChange。
+    fireEvent.pointerDown(screen.getByLabelText("排序会话"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "最后消息优先" }));
     await waitFor(() => expect(sessionClient.listActiveSessions).toHaveBeenCalledWith({ status: "active", sort: "lastModified-desc" }));
   });
 
   it("archives and restores sessions through the session domain client without deleting history", async () => {
     render(<SessionCenter sessionClient={sessionClient as never} onOpenSession={vi.fn()} />);
 
-    const bookRow = await screen.findByTestId("session-center-row-session-book");
-    fireEvent.click(within(bookRow).getByRole("button", { name: "归档" }));
+    // 书籍绑定会话禁止归档（projectId 存在时不显示归档按钮），改用独立会话归档。
+    const standaloneRow = await screen.findByTestId("session-center-row-session-free");
+    fireEvent.click(within(standaloneRow).getByRole("button", { name: "归档" }));
 
-    await waitFor(() => expect(sessionClient.updateSession).toHaveBeenCalledWith("session-book", { status: "archived" }));
+    await waitFor(() => expect(sessionClient.updateSession).toHaveBeenCalledWith("session-free", { status: "archived" }));
 
     fireEvent.click(screen.getByRole("button", { name: "已归档" }));
     await waitFor(() => expect(sessionClient.listActiveSessions).toHaveBeenCalledWith({ status: "archived" }));
