@@ -111,7 +111,7 @@ describe("NewSessionDialog", () => {
     });
   });
 
-  it("RED: captures independent narrator workspace, binding, model, permission and plan mode before creating", async () => {
+  it("captures independent narrator workspace, model, permission and plan mode before creating", async () => {
     mockRuntimeModels([
       { modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" },
       { modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", providerName: "Anthropic" },
@@ -131,8 +131,7 @@ describe("NewSessionDialog", () => {
 
     fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "世界观规划室" } });
     fireEvent.change(screen.getByLabelText("工作目录"), { target: { value: "D:\\novels\\lingchao" } });
-    fireEvent.change(screen.getByLabelText("绑定对象"), { target: { value: "standalone" } });
-    fireEvent.change(screen.getByLabelText("运行时模型"), { target: { value: "anthropic:claude-sonnet-4-6" } });
+    // 绑定对象 Select 已作为假功能移除（书籍叙述者通过书籍页面创建），不再出现在表单。
     fireEvent.click(screen.getByRole("button", { name: "计划模式" }));
     const permissionRegion = screen.getByText("权限模式").closest("div")?.parentElement;
     if (!permissionRegion) throw new Error("权限模式区域缺失");
@@ -143,11 +142,10 @@ describe("NewSessionDialog", () => {
       agentId: "planner",
       title: "世界观规划室",
       worktree: "D:\\novels\\lingchao",
-      binding: { type: "standalone" },
       sessionMode: "plan",
       sessionConfig: {
-        providerId: "anthropic",
-        modelId: "claude-sonnet-4-6",
+        providerId: "sub2api",
+        modelId: "gpt-5-codex",
         permissionMode: "read",
       },
     });

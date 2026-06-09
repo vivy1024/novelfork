@@ -151,8 +151,8 @@ describe("cockpit-service", () => {
         modelStatus: { status: "available", hasUsableModel: true, defaultProvider: "sub2api", defaultModel: "gpt-5.4", supportsToolUse: true },
       });
       expect(snapshot.recentChapterSummaries.items).toEqual([
-        expect.objectContaining({ number: 1, summary: "主角入山，青铜铃异动。" }),
         expect.objectContaining({ number: 2, summary: "问心阵失败，师兄递来线索。" }),
+        expect.objectContaining({ number: 1, summary: "主角入山，青铜铃异动。" }),
       ]);
       expect(snapshot.openHooks.items).toEqual([
         expect.objectContaining({ text: "第1章：青铜铃为何自鸣", status: "open", sourceFile: "jingwei:foreshadowing" }),
@@ -178,7 +178,7 @@ describe("cockpit-service", () => {
       await expect(harness.service.listOpenHooks({ bookId: "book-1", limit: 5 })).resolves.toMatchObject({
         status: "empty",
         items: [],
-        reason: "pending_hooks.md 不存在或没有未回收伏笔。",
+        reason: "经纬中暂无未回收伏笔。",
       });
       await expect(harness.service.listRecentCandidates({ bookId: "book-1", limit: 5 })).resolves.toMatchObject({
         status: "empty",
@@ -190,7 +190,7 @@ describe("cockpit-service", () => {
     }
   });
 
-  it("marks missing current_focus.md without blocking other real snapshot data", async () => {
+  it("marks empty current focus without blocking other real snapshot data", async () => {
     const harness = await createHarness();
     try {
       await createBook(harness.root);
@@ -199,10 +199,9 @@ describe("cockpit-service", () => {
       const snapshot = await harness.service.getSnapshot({ bookId: "book-1" });
 
       expect(snapshot.currentFocus).toMatchObject({
-        status: "missing",
+        status: "empty",
         content: null,
-        sourceFile: "current_focus.md",
-        reason: "current_focus.md 不存在或为空。",
+        reason: "经纬中暂无焦点/大纲数据。",
       });
       expect(snapshot.progress).toMatchObject({ status: "available", chapterCount: 2 });
       expect(snapshot.recentCandidates.items).toHaveLength(1);

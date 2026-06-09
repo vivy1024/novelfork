@@ -1,5 +1,12 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import {
+  RouterProvider,
+  createBrowserHistory,
+  createRootRoute,
+  createRoute,
+  createRouter,
+} from "@tanstack/react-router";
 
 import type { NarratorSessionRecord } from "../../shared/session-types";
 
@@ -41,6 +48,24 @@ vi.mock("../../components/sessions/SessionCenter", () => ({
 
 import { SessionCenterPage } from "./SessionCenterPage";
 
+// 用真实 router（浏览器 history）挂载 SessionCenterPage —— 不 mock @tanstack/react-router。
+// 该用例断言 window.location.pathname，因此必须用 browser history（memory history 不会改写 window.location）。
+function renderWithBrowserRouter(initialPath: string) {
+  window.history.replaceState(null, "", initialPath);
+  const rootRoute = createRootRoute();
+  const nextRoute = createRoute({ getParentRoute: () => rootRoute, path: "/next" });
+  const sessionsRoute = createRoute({ getParentRoute: () => nextRoute, path: "/sessions", component: SessionCenterPage });
+  const splatRoute = createRoute({ getParentRoute: () => nextRoute, path: "$" });
+  const indexRoute = createRoute({ getParentRoute: () => nextRoute, path: "/" });
+  const catchAll = createRoute({ getParentRoute: () => rootRoute, path: "$" });
+  const routeTree = rootRoute.addChildren([
+    nextRoute.addChildren([indexRoute, sessionsRoute, splatRoute]),
+    catchAll,
+  ]);
+  const router = createRouter({ routeTree, history: createBrowserHistory() });
+  return render(<RouterProvider router={router} />);
+}
+
 describe("SessionCenterPage", () => {
   afterEach(() => {
     cleanup();
@@ -48,13 +73,12 @@ describe("SessionCenterPage", () => {
     window.history.replaceState(null, "", "/next");
   });
 
-  it("opens sessions through the live narrator route instead of windowStore shell windows", () => {
-    window.history.replaceState(null, "", "/next/sessions");
+  it("opens sessions through the live narrator route instead of windowStore shell windows", async () => {
+    renderWithBrowserRouter("/next/sessions");
 
-    render(<SessionCenterPage />);
-    fireEvent.click(screen.getByRole("button", { name: "打开测试会话" }));
+    fireEvent.click(await screen.findByRole("button", { name: "打开测试会话" }));
 
     expect(useWindowStoreMock).not.toHaveBeenCalled();
-    expect(window.location.pathname).toBe("/next/narrators/session%201");
+    await waitFor(() => expect(window.location.pathname).toBe("/next/narrators/session%201"));
   });
 });

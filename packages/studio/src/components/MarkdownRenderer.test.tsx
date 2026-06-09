@@ -47,12 +47,16 @@ describe("MarkdownRenderer", () => {
     expect(del?.textContent).toBe("废弃的");
   });
 
-  it("renders fenced code blocks with a copy toolbar", () => {
+  it("renders fenced code blocks as a light bordered block preserving the source", () => {
     const content = "```ts\nconst x: number = 42;\n```";
     const { container } = render(<MarkdownRenderer content={content} />);
-    // The CodeBlock renders a styled container with a copy action in its toolbar.
-    expect(container.querySelector(".code-block")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "复制" })).toBeTruthy();
+    // Fenced code now renders as a light left-border block (see commit bf649084),
+    // not a dark code block with a copy toolbar.
+    const block = container.querySelector("div.border-l-3");
+    expect(block).toBeTruthy();
+    expect(block?.textContent).toContain("const x: number = 42;");
+    expect(container.querySelector(".code-block")).toBeNull();
+    expect(screen.queryByRole("button", { name: "复制" })).toBeNull();
   });
 
   it("renders inline math via remark-math + rehype-katex", () => {
