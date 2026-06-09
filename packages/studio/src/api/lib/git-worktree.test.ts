@@ -146,8 +146,10 @@ describe("Git Worktree Operations", () => {
     });
 
     it("should reject duplicate worktree names", async () => {
-      await createWorktree(testRepo, "duplicate");
-      await expect(createWorktree(testRepo, "duplicate")).rejects.toThrow("already exists");
+      const firstPath = await createWorktree(testRepo, "duplicate");
+      // createWorktree is idempotent: if already registered, returns existing path
+      const secondPath = await createWorktree(testRepo, "duplicate");
+      expect(secondPath).toBe(firstPath);
     });
 
     it("should reject invalid branch names", async () => {

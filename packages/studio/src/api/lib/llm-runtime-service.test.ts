@@ -4,8 +4,33 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import type { SessionToolDefinition } from "../../shared/agent-native-workspace";
-import { createProviderAdapterRegistry, type RuntimeAdapter } from "./provider-adapters";
+import type { RuntimeAdapter } from "./provider-adapters";
 import { ProviderRuntimeStore } from "./provider-runtime-store";
+
+// Mock the adapter registry so we can inject test adapters
+const getAdapterForProtocolMock = vi.fn();
+vi.mock("./provider-adapters/registry.js", () => ({
+  getAdapterForProtocol: (...args: unknown[]) => getAdapterForProtocolMock(...args),
+}));
+
+// Mock user config to avoid filesystem and use fast retries
+vi.mock("./user-config-service.js", () => ({
+  loadUserConfig: async () => ({
+    runtimeControls: {
+      recovery: {
+        resumeOnStartup: true,
+        maxRecoveryAttempts: 3,
+        maxRetryAttempts: 3,
+        initialRetryDelayMs: 0,
+        maxRetryDelayMs: 0,
+        backoffMultiplier: 1,
+        jitterPercent: 0,
+      },
+      retryRules: [],
+    },
+  }),
+}));
+
 import { createLlmRuntimeService } from "./llm-runtime-service";
 
 const cockpitSnapshotTool: SessionToolDefinition = {
@@ -39,11 +64,13 @@ describe("llm-runtime-service", () => {
   });
 
   afterEach(async () => {
-    await rm(runtimeDir, { recursive: true, force: true });
+    vi.clearAllMocks();
+    await rm(runtimeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
   it("validates the runtime model pool and calls the target adapter", async () => {
     const adapter = okAdapter("真实回复");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -57,10 +84,7 @@ describe("llm-runtime-service", () => {
       models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
@@ -84,10 +108,8 @@ describe("llm-runtime-service", () => {
   });
 
   it("fails without fake content when the session model is not usable", async () => {
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": okAdapter("不应调用") }),
-    });
+    getAdapterForProtocolMock.mockReturnValue(okAdapter("不应调用"));
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "missing", permissionMode: "edit", reasoningEffort: "medium" },
@@ -102,6 +124,7 @@ describe("llm-runtime-service", () => {
 
   it("returns unsupported-tools without calling the adapter when tools are requested for a non-tool model", async () => {
     const adapter = okAdapter("不应调用");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -114,10 +137,7 @@ describe("llm-runtime-service", () => {
       config: { apiKey: "sk-live" },
       models: [{ id: "plain-model", name: "Plain Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual", supportsFunctionCalling: false }],
     });
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "plain-model", permissionMode: "edit", reasoningEffort: "medium" },
@@ -135,6 +155,7 @@ describe("llm-runtime-service", () => {
 
   it("passes session tools to tool-capable adapters while preserving text response compatibility", async () => {
     const adapter = okAdapter("工具可用模型回复");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -147,10 +168,7 @@ describe("llm-runtime-service", () => {
       config: { apiKey: "sk-live" },
       models: [{ id: "tool-model", name: "Tool Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual", supportsFunctionCalling: true }],
     });
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "tool-model", permissionMode: "edit", reasoningEffort: "medium" },
@@ -170,6 +188,7 @@ describe("llm-runtime-service", () => {
 
   it("passes canonical tool calls and tool results to adapters", async () => {
     const adapter = okAdapter("已基于工具结果继续");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -182,10 +201,7 @@ describe("llm-runtime-service", () => {
       config: { apiKey: "sk-live" },
       models: [{ id: "tool-model", name: "Tool Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual", supportsFunctionCalling: true }],
     });
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "tool-model", permissionMode: "edit", reasoningEffort: "medium" },
@@ -216,6 +232,7 @@ describe("llm-runtime-service", () => {
         toolUses: [{ id: "call-1", name: "cockpit.get_snapshot", input: { bookId: "book-1" } }],
       })),
     };
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -228,10 +245,7 @@ describe("llm-runtime-service", () => {
       config: { apiKey: "sk-live" },
       models: [{ id: "tool-model", name: "Tool Model", contextWindow: 128000, maxOutputTokens: 4096, enabled: true, source: "manual", supportsFunctionCalling: true }],
     });
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "tool-model", permissionMode: "edit", reasoningEffort: "medium" },
@@ -260,6 +274,7 @@ describe("llm-runtime-service", () => {
         return { success: true as const, type: "message" as const, content: "重试后成功" };
       }),
     };
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -273,10 +288,7 @@ describe("llm-runtime-service", () => {
       models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
@@ -293,6 +305,7 @@ describe("llm-runtime-service", () => {
       testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
       generate: vi.fn(async () => ({ success: false as const, code: "upstream-error" as const, error: "503 service unavailable" })),
     };
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -306,20 +319,16 @@ describe("llm-runtime-service", () => {
       models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
       messages: [{ id: "m1", role: "user", content: "hello", timestamp: 1 }],
     });
 
-    // Should fail after retries exhausted (maxRetryAttempts defaults to 3)
+    // Should fail after retries exhausted (maxRetryAttempts = 3 from mocked config)
     expect(result.success).toBe(false);
     // adapter.generate should have been called multiple times (1 initial + retries)
-    // The exact count depends on maxRetryAttempts in user config
     expect((adapter.generate as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(1);
   });
 
@@ -329,6 +338,7 @@ describe("llm-runtime-service", () => {
       testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
       generate: vi.fn(async () => ({ success: false as const, code: "auth-missing" as const, error: "API key invalid" })),
     };
+    getAdapterForProtocolMock.mockReturnValue(adapter);
     await store.createProvider({
       id: "sub2api",
       name: "Sub2API",
@@ -342,10 +352,7 @@ describe("llm-runtime-service", () => {
       models: [{ id: "gpt-5-codex", name: "GPT-5 Codex", contextWindow: 192000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
     });
 
-    const service = createLlmRuntimeService({
-      store,
-      adapters: createProviderAdapterRegistry({ "openai-compatible": adapter }),
-    });
+    const service = createLlmRuntimeService({ store });
 
     const result = await service.generate({
       sessionConfig: { providerId: "sub2api", modelId: "gpt-5-codex", permissionMode: "edit", reasoningEffort: "medium" },
