@@ -41,79 +41,21 @@ const logger = {
   error: vi.fn(),
 };
 
-vi.mock("@vivy1024/novelfork-core", () => {
-  class MockStateManager {
-    constructor(private readonly root: string) {}
-
-    async listBooks(): Promise<string[]> {
-      return listBooksMock();
-    }
-
-    async loadBookConfig(bookId: string): Promise<Record<string, unknown>> {
-      return loadBookConfigMock(bookId);
-    }
-
-    async loadChapterIndex(bookId: string): Promise<unknown[]> {
-      return loadChapterIndexMock(bookId);
-    }
-
-    async saveChapterIndex(bookId: string, index: unknown): Promise<void> {
-      await saveChapterIndexMock(bookId, index);
-    }
-
-    async saveBookConfig(bookId: string, config: unknown): Promise<void> {
-      await saveBookConfigMock(bookId, config);
-    }
-
-    async rollbackToChapter(
-      bookId: string,
-      chapterNumber: number,
-    ): Promise<number[]> {
-      return (await rollbackToChapterMock(bookId, chapterNumber)) as number[];
-    }
-
-    async getNextChapterNumber(bookId: string): Promise<number> {
-      return getNextChapterNumberMock(bookId);
-    }
-
-    bookDir(id: string): string {
-      return join(this.root, "books", id);
-    }
-  }
-
-  class MockPipelineRunner {
-    constructor(config: unknown) {
-      pipelineConfigs.push(config);
-    }
-
-    initBook = initBookMock;
-    runRadar = runRadarMock;
-    reviseDraft = reviseDraftMock;
-    resyncChapterArtifacts = resyncChapterArtifactsMock;
-    writeNextChapter = writeNextChapterMock;
-    writeDraft = writeDraftMock;
-    importChapters = importChaptersMock;
-  }
-
-  class MockScheduler {
-    private running = false;
-
-    constructor(_config: unknown) {}
-
-    async start(): Promise<void> {
-      this.running = true;
-      await schedulerStartMock();
-    }
-
-    stop(): void {
-      this.running = false;
-    }
-
-    get isRunning(): boolean {
-      return this.running;
-    }
-  }
-
+// book / jingwei-section / genre / preset 等逻辑已从 core 迁到 novel-plugin/engine。
+// 这些仓库与模板函数的内存替身需在 core mock 与 plugin/engine mock 间共享同一份内存状态，
+// 用 vi.hoisted 提出来供两个 mock factory 共用。
+const {
+  sessionRows,
+  messageRows,
+  bookRows,
+  storyJingweiSectionRows,
+  storageDatabaseMock,
+  applyJingweiTemplateMock,
+  createSessionRepositoryMock,
+  createSessionMessageRepositoryMock,
+  createBookRepositoryMock,
+  createStoryJingweiSectionRepositoryMock,
+} = vi.hoisted(() => {
   const sessionRows = new Map<string, any>();
   const messageRows = new Map<string, any[]>();
   const bookRows = new Map<string, any>();
@@ -261,17 +203,30 @@ vi.mock("@vivy1024/novelfork-core", () => {
   }
 
   return {
-    StateManager: MockStateManager,
-    PipelineRunner: MockPipelineRunner,
-    Scheduler: MockScheduler,
+    sessionRows,
+    messageRows,
+    bookRows,
+    storyJingweiSectionRows,
+    storageDatabaseMock,
+    applyJingweiTemplateMock,
+    createSessionRepositoryMock,
+    createSessionMessageRepositoryMock,
+    createBookRepositoryMock,
+    createStoryJingweiSectionRepositoryMock,
+  };
+});
+
+// book / jingwei-section / genre / preset 等已迁到 novel-plugin/engine。
+// 仓库与磁盘读取（genres）用内存/桩替身覆盖，其余纯逻辑保持真实。
+vi.mock("@vivy1024/novelfork-novel-plugin/engine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vivy1024/novelfork-novel-plugin/engine")>();
+  return {
+    ...actual,
     applyJingweiTemplate: applyJingweiTemplateMock,
-    createLLMClient: createLLMClientMock,
-    createLogger: vi.fn(() => logger),
-    computeAnalytics: computeAnalyticsMock,
-    chatCompletion: chatCompletionMock,
-    loadProjectConfig: loadProjectConfigMock,
-    analyzeAITells: analyzeAITellsMock,
+    createBookRepository: createBookRepositoryMock,
+    createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
     registerBuiltinPresets: vi.fn(),
+    analyzeAITells: analyzeAITellsMock,
     listAvailableGenres: vi.fn(async () => [
       { id: "xuanhuan", name: "玄幻" },
       { id: "xianxia", name: "仙侠" },
@@ -280,7 +235,6 @@ vi.mock("@vivy1024/novelfork-core", () => {
       profile: { language: "zh", name: genreId },
       body: "# Genre body",
     })),
-    GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
     splitChapters: vi.fn(function* (text: string) {
       yield { title: "Chapter 1", content: text };
     }),
@@ -294,12 +248,99 @@ vi.mock("@vivy1024/novelfork-core", () => {
       sentencePatterns: [],
     })),
     getBuiltinGenresDir: vi.fn(() => join(tmpdir(), "novelfork-builtin-genres")),
+  };
+});
+
+vi.mock("@vivy1024/novelfork-core", () => {
+  class MockStateManager {
+    constructor(private readonly root: string) {}
+
+    async listBooks(): Promise<string[]> {
+      return listBooksMock();
+    }
+
+    async loadBookConfig(bookId: string): Promise<Record<string, unknown>> {
+      return loadBookConfigMock(bookId);
+    }
+
+    async loadChapterIndex(bookId: string): Promise<unknown[]> {
+      return loadChapterIndexMock(bookId);
+    }
+
+    async saveChapterIndex(bookId: string, index: unknown): Promise<void> {
+      await saveChapterIndexMock(bookId, index);
+    }
+
+    async saveBookConfig(bookId: string, config: unknown): Promise<void> {
+      await saveBookConfigMock(bookId, config);
+    }
+
+    async rollbackToChapter(
+      bookId: string,
+      chapterNumber: number,
+    ): Promise<number[]> {
+      return (await rollbackToChapterMock(bookId, chapterNumber)) as number[];
+    }
+
+    async getNextChapterNumber(bookId: string): Promise<number> {
+      return getNextChapterNumberMock(bookId);
+    }
+
+    bookDir(id: string): string {
+      return join(this.root, "books", id);
+    }
+  }
+
+  class MockPipelineRunner {
+    constructor(config: unknown) {
+      pipelineConfigs.push(config);
+    }
+
+    initBook = initBookMock;
+    runRadar = runRadarMock;
+    reviseDraft = reviseDraftMock;
+    resyncChapterArtifacts = resyncChapterArtifactsMock;
+    writeNextChapter = writeNextChapterMock;
+    writeDraft = writeDraftMock;
+    importChapters = importChaptersMock;
+  }
+
+  class MockScheduler {
+    private running = false;
+
+    constructor(_config: unknown) {}
+
+    async start(): Promise<void> {
+      this.running = true;
+      await schedulerStartMock();
+    }
+
+    stop(): void {
+      this.running = false;
+    }
+
+    get isRunning(): boolean {
+      return this.running;
+    }
+  }
+
+  return {
+    StateManager: MockStateManager,
+    PipelineRunner: MockPipelineRunner,
+    Scheduler: MockScheduler,
+    createLLMClient: createLLMClientMock,
+    createLogger: vi.fn(() => logger),
+    computeAnalytics: computeAnalyticsMock,
+    chatCompletion: chatCompletionMock,
+    loadProjectConfig: loadProjectConfigMock,
+    GLOBAL_ENV_PATH: join(tmpdir(), "novelfork-global.env"),
+    splitChapters: vi.fn(function* (text: string) {
+      yield { title: "Chapter 1", content: text };
+    }),
     closeStorageDatabase: vi.fn(),
     getStorageDatabase: vi.fn(() => storageDatabaseMock),
     initializeStorageDatabase: vi.fn(() => storageDatabaseMock),
     runStorageMigrations: vi.fn(() => ({ applied: [] })),
-    createBookRepository: createBookRepositoryMock,
-    createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,
     createSessionRepository: createSessionRepositoryMock,
     normalizeBookStatus: vi.fn((value: unknown) => {
@@ -528,6 +569,8 @@ describe("server integration — core 20 endpoints", () => {
         "# Existing",
         "utf-8",
       );
+      // Product also verifies the book exists in the database (guards against orphaned files).
+      loadBookConfigMock.mockResolvedValue({ id: bookId, title: "Existing Book" });
 
       const res = await jsonReq("/api/books/create", "POST", {
         title: "Existing Book",
@@ -703,24 +746,21 @@ describe("server integration — core 20 endpoints", () => {
   // ================================================================
 
   describe("POST /api/books/:id/import/chapters", () => {
-    it("splits pasted chapter text and delegates to the import pipeline", async () => {
+    // PipelineRunner 已删除（commit 94da5c55），import/chapters 路由随之移除。
+    // 章节导入现统一走 Agent 工具层，HTTP 路由不再存在 → 404。
+    it("no longer exposes the import route after PipelineRunner removal", async () => {
       const res = await jsonReq("/api/books/book-1/import/chapters", "POST", {
         text: "第一章 灵潮初起\n灵气复苏。\n第二章 风起青萍\n山雨欲来。",
       });
 
-      expect(res.status).toBe(200);
-      const data = await res.json() as { bookId: string; importedCount: number; nextChapter: number };
-      expect(data).toMatchObject({ bookId: "book-1", importedCount: 1, nextChapter: 2 });
-      expect(importChaptersMock).toHaveBeenCalledWith({
-        bookId: "book-1",
-        chapters: [{ title: "Chapter 1", content: "第一章 灵潮初起\n灵气复苏。\n第二章 风起青萍\n山雨欲来。" }],
-      });
+      expect(res.status).toBe(404);
+      expect(importChaptersMock).not.toHaveBeenCalled();
     });
 
-    it("rejects empty chapter imports without starting the pipeline", async () => {
+    it("does not start any pipeline for the removed import route", async () => {
       const res = await jsonReq("/api/books/book-1/import/chapters", "POST", { text: "   " });
 
-      expect(res.status).toBe(400);
+      expect(res.status).toBe(404);
       expect(importChaptersMock).not.toHaveBeenCalled();
     });
   });
@@ -1131,18 +1171,15 @@ describe("server integration — core 20 endpoints", () => {
       expect(data.running).toBe(false);
     });
 
-    it("returns running: true after daemon is started", async () => {
-      schedulerStartMock.mockImplementation(
-        () => new Promise<void>(() => {}), // Never resolves — daemon runs indefinitely
-      );
-
+    it("rejects daemon start after Scheduler removal", async () => {
+      // Scheduler 已删除（daemon.ts startDaemon 始终抛错），守护进程模式不再可用。
       const start = await req("/api/daemon/start", { method: "POST" });
-      expect(start.status).toBe(200);
+      expect(start.status).toBe(500);
 
       const status = await req("/api/daemon");
       expect(status.status).toBe(200);
       const data = await status.json();
-      expect(data.running).toBe(true);
+      expect(data.running).toBe(false);
     });
   });
 

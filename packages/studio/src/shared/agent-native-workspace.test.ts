@@ -250,7 +250,7 @@ describe("agent-native workspace shared contracts", () => {
     expect(contracts.SESSION_TOOL_RISKS).toEqual(["read", "draft-write", "confirmed-write", "destructive"]);
   });
 
-  it("maps session permission modes to risk decisions without allowing destructive writes silently", async () => {
+  it("maps session permission modes to risk decisions, gating writes by mode while honoring full-allow", async () => {
     const contracts = await loadContracts();
 
     expect(contracts.getSessionToolRiskDecision("read", "read")).toBe("allow");
@@ -259,8 +259,9 @@ describe("agent-native workspace shared contracts", () => {
     expect(contracts.getSessionToolRiskDecision("ask", "draft-write")).toBe("confirm");
     expect(contracts.getSessionToolRiskDecision("edit", "draft-write")).toBe("allow");
     expect(contracts.getSessionToolRiskDecision("edit", "confirmed-write")).toBe("confirm");
-    expect(contracts.getSessionToolRiskDecision("allow", "confirmed-write")).toBe("confirm");
-    expect(contracts.getSessionToolRiskDecision("allow", "destructive")).toBe("confirm");
+    // "allow"（全部允许）模式下所有非 read 风险工具直接放行，跳过确认
+    expect(contracts.getSessionToolRiskDecision("allow", "confirmed-write")).toBe("allow");
+    expect(contracts.getSessionToolRiskDecision("allow", "destructive")).toBe("allow");
   });
 
   it("normalizes unknown or unsafe risk values to destructive", async () => {
