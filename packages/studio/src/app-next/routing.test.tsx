@@ -2,16 +2,6 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useShellDataMock = vi.hoisted(() => vi.fn());
-const routerStateMock = vi.hoisted(() => vi.fn());
-
-vi.mock("@tanstack/react-router", async () => {
-  const actual = await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
-  return {
-    ...actual,
-    useRouterState: (...args: unknown[]) => routerStateMock(...args),
-    useNavigate: () => vi.fn(),
-  };
-});
 
 vi.mock("./shell", async () => {
   const actual = await vi.importActual<typeof import("./shell")>("./shell");
@@ -32,11 +22,14 @@ vi.mock("../components/InkEditor", () => ({
 
 import { resolveStudioNextRoute } from "./entry";
 import { StudioNextApp } from "./StudioNextApp";
+import { RouterTestHarness } from "./test-helpers/router-harness";
+
+const renderApp = (initialPath = "/next") =>
+  render(<RouterTestHarness component={() => <StudioNextApp />} initialPath={initialPath} />);
 
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
-  routerStateMock.mockReturnValue({ location: { pathname: "/next" } });
   useShellDataMock.mockReturnValue({
     books: [{ id: "b1", title: "测试书" }],
     sessions: [],
@@ -58,15 +51,15 @@ describe("Studio Next routing", () => {
     expect(resolveStudioNextRoute("/next/unknown")).toEqual({ kind: "home" });
   });
 
-  it("renders shell sidebar and content area", () => {
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+  it("renders shell sidebar and content area", async () => {
+    renderApp();
 
-    const sidebar = screen.getByTestId("shell-sidebar");
+    const sidebar = await screen.findByTestId("shell-sidebar");
     expect(sidebar).toBeTruthy();
     expect(within(screen.getByTestId("shell-main")).getByRole("heading", { name: "作者首页" })).toBeTruthy();
   });
 
-  it("shows author-facing home sections instead of the Agent Shell placeholder", () => {
+  it("shows author-facing home sections instead of the Agent Shell placeholder", async () => {
     useShellDataMock.mockReturnValue({
       books: [{ id: "book-1", title: "灵潮纪元", status: "drafting", genre: "xuanhuan", totalChapters: 1, totalWords: 3000, progress: 30 }],
       sessions: [{
@@ -89,9 +82,9 @@ describe("Studio Next routing", () => {
       error: null,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+    renderApp();
 
-    const main = screen.getByTestId("shell-main");
+    const main = await screen.findByTestId("shell-main");
     expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "模型健康" })).toBeTruthy();
@@ -100,7 +93,7 @@ describe("Studio Next routing", () => {
     expect(within(main).getByRole("button", { name: "打开设置" })).toBeTruthy();
   });
 
-  it("shows an empty state when the home shell has no books, sessions, or provider data", () => {
+  it("shows an empty state when the home shell has no books, sessions, or provider data", async () => {
     useShellDataMock.mockReturnValue({
       books: [],
       sessions: [],
@@ -110,9 +103,9 @@ describe("Studio Next routing", () => {
       error: null,
     });
 
-    render(<StudioNextApp initialRoute={{ kind: "home" }} />);
+    renderApp();
 
-    const main = screen.getByTestId("shell-main");
+    const main = await screen.findByTestId("shell-main");
     expect(within(main).getByText("还没有可用内容，先新建作品或新建会话。")).toBeTruthy();
     expect(within(main).getByRole("button", { name: "新建作品" })).toBeTruthy();
     expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
