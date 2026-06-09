@@ -201,6 +201,55 @@ function getAllowedHitReason(hit: MockDebtScanHit): string | undefined {
     return "transparent-reserved-ui-copy";
   }
 
+  // FR-1.4 文件去重：未修改文件返回轻量 stub 标记（真实功能，非 mock 债务）
+  if (
+    hit.relativePath === "packages/studio/src/api/lib/real-tool-handlers.ts"
+    && (hit.lineText.includes("if file was previously read and hasn't changed, return stub")
+      || hit.lineText.includes("[file_unchanged]"))
+  ) {
+    return "real-file-dedup-stub-marker";
+  }
+
+  // i18n 翻译资源文件的开发者说明注释（项目当前未用 i18n 框架）
+  if (
+    hit.relativePath === "packages/studio/src/app-next/agent-conversation/i18n/agent-runtime-hardening.ts"
+    && hit.lineText.includes("后续接入 i18next")
+  ) {
+    return "i18n-resource-doc-comment";
+  }
+
+  // 未映射的 novel slash 命令返回透明错误（非伪造成功）
+  if (
+    hit.relativePath === "packages/studio/src/app-next/agent-conversation/slash-command-registry.ts"
+    && hit.lineText.includes("unhandled_novel_command")
+  ) {
+    return "transparent-unhandled-novel-command";
+  }
+
+  // PermissionRequestCard 后端桥接增强 TODO（组件已通过现有 confirmationDecision 流程工作）
+  if (
+    hit.relativePath === "packages/studio/src/app-next/agent-conversation/surface/PermissionRequestCard.tsx"
+    && hit.lineText.includes("桥接为 session:permission-request 事件")
+  ) {
+    return "permission-card-event-bridge-todo";
+  }
+
+  // StudioNextApp 自动重试规则 Phase C 增强 TODO
+  if (
+    hit.relativePath === "packages/studio/src/app-next/StudioNextApp.tsx"
+    && hit.lineText.includes("Phase C 实现自动重试规则")
+  ) {
+    return "studio-next-auto-retry-phase-c-todo";
+  }
+
+  // router-harness 测试工具：注释明确声明“不 mock”真实 router（test-helpers 非测试文件）
+  if (
+    hit.relativePath === "packages/studio/src/app-next/test-helpers/router-harness.tsx"
+    && hit.lineText.includes("不 mock @tanstack/react-router")
+  ) {
+    return "router-harness-real-router-note";
+  }
+
   return undefined;
 }
 

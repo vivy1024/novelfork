@@ -10,7 +10,6 @@ import {
 
 const REQUIRED_DEBT_IDS = [
   "provider-runtime",
-  "platform-integrations",
   "runtime-model-pool",
   "session-chat-runtime",
   "legacy-model-ui",

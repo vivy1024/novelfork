@@ -10,10 +10,16 @@ import {
   createPipelineRun,
   updatePipelineStage,
 } from "@vivy1024/novelfork-novel-plugin/routes";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { RouterContext } from "./context";
 
 function createTestContext(): RouterContext {
-  return {} as RouterContext;
+  return {
+    state: {
+      bookDir: (bookId: string) => join(tmpdir(), "novelfork-pipeline-test", bookId),
+    },
+  } as unknown as RouterContext;
 }
 
 describe("pipeline route process-memory transparency", () => {

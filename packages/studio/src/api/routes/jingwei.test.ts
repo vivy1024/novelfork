@@ -158,6 +158,12 @@ describe("Jingwei API routes", () => {
         visibilityRule: { type: "global", visibleAfterChapter: 1 },
         participatesInAi: true,
       });
+      // 创建路由会把 visibility_rule_json 重置为 overhaul 默认值，需通过 PUT 显式设置可见性（与前端真实契约一致）
+      await router.request("http://localhost/api/books/book-1/jingwei/entries/entry-memory", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ visibilityRule: { type: "global", visibleAfterChapter: 1 } }),
+      });
 
       const previewResponse = await postJson(router, "/api/books/book-1/jingwei/preview-context", { currentChapter: 2 });
       expect(previewResponse.status).toBe(200);
