@@ -1,5 +1,7 @@
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
+import type { ProviderProtocol } from "../../../shared/provider-catalog.js";
 import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, applyProviderBodyTransforms, type ModelTransformContext } from "./model-transforms.js";
+import { getAdapterForProtocol } from "./registry.js";
 
 export type RuntimeAdapterId = "openai-compatible" | "anthropic-compatible" | "codex-platform" | "kiro-platform";
 export type RuntimeAdapterFailureCode = "unsupported" | "auth-missing" | "config-missing" | "upstream-error" | "network-error";
@@ -442,9 +444,7 @@ function normalizeOpenAiModel(value: unknown): RuntimeModelInput | null {
 // Backward-compat export for test files that still reference these
 export type ProviderAdapterRegistry = { get(id: RuntimeAdapterId): RuntimeAdapter };
 export function createProviderAdapterRegistry(): ProviderAdapterRegistry {
-  // Import the real adapters from registry
-  const { getAdapterForProtocol } = require("./registry.js");
-  const protocolMap: Record<RuntimeAdapterId, string> = {
+  const protocolMap: Record<RuntimeAdapterId, ProviderProtocol> = {
     "openai-compatible": "completions",
     "anthropic-compatible": "anthropic",
     "codex-platform": "codex",

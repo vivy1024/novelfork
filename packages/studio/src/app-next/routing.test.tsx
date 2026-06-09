@@ -2,6 +2,16 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const useShellDataMock = vi.hoisted(() => vi.fn());
+const routerStateMock = vi.hoisted(() => vi.fn());
+
+vi.mock("@tanstack/react-router", async () => {
+  const actual = await vi.importActual<typeof import("@tanstack/react-router")>("@tanstack/react-router");
+  return {
+    ...actual,
+    useRouterState: (...args: unknown[]) => routerStateMock(...args),
+    useNavigate: () => vi.fn(),
+  };
+});
 
 vi.mock("./shell", async () => {
   const actual = await vi.importActual<typeof import("./shell")>("./shell");
@@ -26,6 +36,7 @@ import { StudioNextApp } from "./StudioNextApp";
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
+  routerStateMock.mockReturnValue({ location: { pathname: "/next" } });
   useShellDataMock.mockReturnValue({
     books: [{ id: "b1", title: "测试书" }],
     sessions: [],
