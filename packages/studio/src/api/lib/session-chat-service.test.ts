@@ -934,9 +934,11 @@ describe("session-chat-service", () => {
     );
 
     expect(generateSessionReplyMock).toHaveBeenCalledTimes(2);
+    // 非书绑定会话仅暴露通用核心工具（小说工具如 cockpit.snapshot 需书绑定 + 插件注册）。
+    // 这里验证启用的核心工具确实被传给模型。
     expect(generateSessionReplyMock.mock.calls[0]?.[0]).toMatchObject({
       tools: expect.arrayContaining([
-        expect.objectContaining({ name: "cockpit.get_snapshot" }),
+        expect.objectContaining({ name: "Read" }),
       ]),
     });
     expect(executeSessionToolMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -1051,7 +1053,7 @@ describe("session-chat-service", () => {
         }),
         expect.objectContaining({
           role: "system",
-          content: expect.stringContaining("cockpit.get_snapshot → pgi.generate_questions → AskUserQuestion → pipeline.generate_chapter"),
+          content: expect.stringContaining("cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write"),
         }),
         expect.objectContaining({
           role: "system",
@@ -1582,8 +1584,8 @@ describe("session-chat-service", () => {
     expect(assistantMessages?.[1]?.metadata?.usage).toEqual(usage2);
     expect(assistantMessages?.[1]?.runtime?.usage).toEqual(usage2);
 
-    // Session-level cumulative usage
-    expect(snapshot?.session.cumulativeUsage).toEqual({
+    // Session-level cumulative usage（产品另含 lastContextBreakdown/lastInputTokens 等动态字段，用 toMatchObject 仅断言累计核心字段）
+    expect(snapshot?.session.cumulativeUsage).toMatchObject({
       totalInputTokens: 300,
       totalOutputTokens: 130,
       totalCacheCreationInputTokens: 10,
@@ -1623,7 +1625,7 @@ describe("session-chat-service", () => {
     const snapshot = await getSessionChatSnapshot(session.id);
     const assistantMessage = snapshot?.messages.find((m) => m.role === "assistant");
     expect(assistantMessage?.metadata?.usage).toBeUndefined();
-    expect(snapshot?.session.cumulativeUsage).toEqual({
+    expect(snapshot?.session.cumulativeUsage).toMatchObject({
       totalInputTokens: 0,
       totalOutputTokens: 0,
       totalCacheCreationInputTokens: 0,
@@ -1679,7 +1681,7 @@ describe("session-chat-service", () => {
     const finalAssistant = snapshot?.messages.find((m) => m.role === "assistant" && m.content === "工具调用后的回复。");
     expect(finalAssistant?.metadata?.usage).toEqual(finalUsage);
 
-    expect(snapshot?.session.cumulativeUsage).toEqual({
+    expect(snapshot?.session.cumulativeUsage).toMatchObject({
       totalInputTokens: 200,
       totalOutputTokens: 100,
       totalCacheCreationInputTokens: 0,

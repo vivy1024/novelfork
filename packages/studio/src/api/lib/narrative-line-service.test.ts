@@ -5,15 +5,18 @@ import { tmpdir } from "node:os";
 
 import {
   StateManager,
+  createStorageDatabase,
+  runStorageMigrations,
+} from "@vivy1024/novelfork-core";
+
+import {
   createBibleCharacterArcRepository,
   createBibleCharacterRepository,
   createBibleConflictRepository,
   createBibleEventRepository,
   createBibleSettingRepository,
   createBookRepository,
-  createStorageDatabase,
-  runStorageMigrations,
-} from "@vivy1024/novelfork-core";
+} from "@vivy1024/novelfork-novel-plugin/engine";
 
 import { createNarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 
@@ -70,7 +73,9 @@ async function createBookFiles(root: string, chapters: ReadonlyArray<{ number: n
 }
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(
+    tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })),
+  );
 });
 
 describe("narrative-line-service", () => {

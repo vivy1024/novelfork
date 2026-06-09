@@ -1,4 +1,5 @@
 import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
 import { buildRuntimeModelPool } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
 import { ProviderRuntimeStore } from "@vivy1024/novelfork-studio/api/lib/provider-runtime-store";
@@ -218,7 +219,6 @@ export class CockpitService {
   // ── SQLite Jingwei 数据源 ──
 
   private getStorage() {
-    const { getStorageDatabase } = require("@vivy1024/novelfork-core") as { getStorageDatabase: () => import("@vivy1024/novelfork-core").StorageDatabase };
     return getStorageDatabase();
   }
 
