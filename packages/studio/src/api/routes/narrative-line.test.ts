@@ -3,7 +3,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { StateManager, createBookRepository, createStorageDatabase, runStorageMigrations } from "@vivy1024/novelfork-core";
+import { StateManager, createStorageDatabase, runStorageMigrations } from "@vivy1024/novelfork-core";
+
+import { createBookRepository } from "@vivy1024/novelfork-novel-plugin/engine";
 
 import { createNarrativeLineRouter } from "./narrative-line.js";
 
@@ -35,7 +37,7 @@ async function createHarness() {
 }
 
 afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
+  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 })));
 });
 
 describe("narrative line route", () => {

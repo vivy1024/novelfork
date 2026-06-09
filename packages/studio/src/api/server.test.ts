@@ -21,6 +21,86 @@ const loadProjectConfigMock = vi.fn();
 const createStorageDatabaseMock = vi.fn(() => ({ close: vi.fn(), checkpoint: vi.fn() }));
 const runStorageMigrationsMock = vi.fn(() => ({ applied: ["0001_initial.sql"] }));
 const seedQuestionnaireTemplatesMock = vi.fn(async () => undefined);
+
+// 存储被整体 mock，但 book / jingwei-section 仓库已从 core 迁到 novel-plugin/engine。
+// 这些仓库的内存替身与 storageDatabaseMock 共享同一份内存状态，hoist 出来供 core mock 与 engine mock 共用。
+const {
+  bookRows,
+  storyJingweiSectionRows,
+  storageDatabaseMock,
+  createBookRepositoryMock,
+  createStoryJingweiSectionRepositoryMock,
+} = vi.hoisted(() => {
+  const bookRows = new Map<string, any>();
+  const storyJingweiSectionRows = new Map<string, any>();
+  const storageDatabaseMock = {
+    close: vi.fn(),
+    checkpoint: vi.fn(),
+    sqlite: {
+      prepare(sql: string) {
+        return {
+          run(id: string) {
+            if (sql.includes('DELETE FROM "book"')) {
+              const deleted = bookRows.delete(id);
+              for (const [sectionId, section] of storyJingweiSectionRows.entries()) {
+                if (section.bookId === id) storyJingweiSectionRows.delete(sectionId);
+              }
+              return { changes: deleted ? 1 : 0 };
+            }
+            return { changes: 0 };
+          },
+        };
+      },
+    },
+  };
+  function createBookRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input };
+        bookRows.set(input.id, row);
+        return row;
+      },
+      async getById(id: string) {
+        return bookRows.get(id) ?? null;
+      },
+      async update(id: string, updates: any) {
+        const row = bookRows.get(id);
+        if (!row) return null;
+        const next = { ...row, ...updates };
+        bookRows.set(id, next);
+        return next;
+      },
+      async list() {
+        return [...bookRows.values()];
+      },
+    };
+  }
+  function createStoryJingweiSectionRepositoryMock() {
+    return {
+      async create(input: any) {
+        const row = { ...input, deletedAt: null };
+        storyJingweiSectionRows.set(input.id, row);
+        return row;
+      },
+      async getById(bookId: string, id: string) {
+        const row = storyJingweiSectionRows.get(id);
+        return row && row.bookId === bookId && !row.deletedAt ? row : null;
+      },
+      async listByBook(bookId: string) {
+        return [...storyJingweiSectionRows.values()]
+          .filter((row) => row.bookId === bookId && !row.deletedAt)
+          .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
+      },
+    };
+  }
+  return {
+    bookRows,
+    storyJingweiSectionRows,
+    storageDatabaseMock,
+    createBookRepositoryMock,
+    createStoryJingweiSectionRepositoryMock,
+  };
+});
 const runJsonImportMigrationIfNeededMock = vi.fn(async () => ({
   status: "skipped",
   reason: "no-source",
@@ -128,6 +208,19 @@ vi.mock("./lib/session-chat-service.js", async (importOriginal) => {
   };
 });
 
+// seedQuestionnaireTemplates 走真实存储层，而本测试整体 mock 了存储（initializeStorageDatabase
+// 返回的替身没有真实 sqlite）。book / jingwei-section 仓库同理已迁到 engine，需用内存替身覆盖；
+// preset / beat / applyJingweiTemplate 等纯内存注册逻辑保持真实（内部逻辑不 mock）。
+vi.mock("@vivy1024/novelfork-novel-plugin/engine", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@vivy1024/novelfork-novel-plugin/engine")>();
+  return {
+    ...actual,
+    seedQuestionnaireTemplates: seedQuestionnaireTemplatesMock,
+    createBookRepository: createBookRepositoryMock,
+    createStoryJingweiSectionRepository: createStoryJingweiSectionRepositoryMock,
+  };
+});
+
 vi.mock("@vivy1024/novelfork-core", () => {
   class MockStateManager {
     constructor(private readonly root: string) {}
@@ -217,28 +310,6 @@ vi.mock("@vivy1024/novelfork-core", () => {
   const sessionRows = new Map<string, any>();
   const messageRows = new Map<string, any[]>();
   const kvRows = new Map<string, string>();
-  const bookRows = new Map<string, any>();
-  const storyJingweiSectionRows = new Map<string, any>();
-  const storageDatabaseMock = {
-    close: vi.fn(),
-    checkpoint: vi.fn(),
-    sqlite: {
-      prepare(sql: string) {
-        return {
-          run(id: string) {
-            if (sql.includes('DELETE FROM "book"')) {
-              const deleted = bookRows.delete(id);
-              for (const [sectionId, section] of storyJingweiSectionRows.entries()) {
-                if (section.bookId === id) storyJingweiSectionRows.delete(sectionId);
-              }
-              return { changes: deleted ? 1 : 0 };
-            }
-            return { changes: 0 };
-          },
-        };
-      },
-    },
-  };
 
   function applyJingweiTemplateMock(selection: { templateId: string }) {
     const basicSections = ["人物", "事件", "设定", "章节摘要"].map((name, order) => ({ key: `section-${order}`, name, order }));
@@ -334,48 +405,6 @@ vi.mock("@vivy1024/novelfork-core", () => {
     };
   }
 
-  function createBookRepositoryMock() {
-    return {
-      async create(input: any) {
-        const row = { ...input };
-        bookRows.set(input.id, row);
-        return row;
-      },
-      async getById(id: string) {
-        return bookRows.get(id) ?? null;
-      },
-      async update(id: string, updates: any) {
-        const row = bookRows.get(id);
-        if (!row) return null;
-        const next = { ...row, ...updates };
-        bookRows.set(id, next);
-        return next;
-      },
-      async list() {
-        return [...bookRows.values()];
-      },
-    };
-  }
-
-  function createStoryJingweiSectionRepositoryMock() {
-    return {
-      async create(input: any) {
-        const row = { ...input, deletedAt: null };
-        storyJingweiSectionRows.set(input.id, row);
-        return row;
-      },
-      async getById(bookId: string, id: string) {
-        const row = storyJingweiSectionRows.get(id);
-        return row && row.bookId === bookId && !row.deletedAt ? row : null;
-      },
-      async listByBook(bookId: string) {
-        return [...storyJingweiSectionRows.values()]
-          .filter((row) => row.bookId === bookId && !row.deletedAt)
-          .sort((left, right) => left.order - right.order || left.name.localeCompare(right.name));
-      },
-    };
-  }
-
   return {
     StateManager: MockStateManager,
     PipelineRunner: MockPipelineRunner,
@@ -395,7 +424,6 @@ vi.mock("@vivy1024/novelfork-core", () => {
     initializeStorageDatabase: createStorageDatabaseMock,
     runJsonImportMigrationIfNeeded: runJsonImportMigrationIfNeededMock,
     runStorageMigrations: runStorageMigrationsMock,
-    seedQuestionnaireTemplates: seedQuestionnaireTemplatesMock,
     createBookRepository: createBookRepositoryMock,
     createKvRepository: createKvRepositoryMock,
     createSessionMessageRepository: createSessionMessageRepositoryMock,

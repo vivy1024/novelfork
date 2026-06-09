@@ -1,49 +1,13 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+
+import { registerBuiltinPresets } from "@vivy1024/novelfork-novel-plugin/engine";
+
 import { createPresetsRouter } from "./presets";
 
-const coreMocks = vi.hoisted(() => {
-  const presets = [
-    { id: "anti-ai-full-scan", name: "12 特征全量扫描", category: "anti-ai", description: "AI 味过滤", promptInjection: "scan" },
-    { id: "literary-controlling-idea", name: "控制观念锚定", category: "literary", description: "文学技法", promptInjection: "idea" },
-  ];
-  const bundles = [
-    {
-      id: "industrial-occult-mystery",
-      name: "工业神秘悬疑",
-      category: "bundle",
-      description: "组合",
-      promptInjection: "bundle",
-      genreIds: ["mystery"],
-      toneId: "austere-pragmatic",
-      settingBaseId: "victorian-industrial-occult",
-      logicRiskIds: ["information-flow"],
-      difficulty: "hard",
-    },
-  ];
-  const beats = [{ id: "three-act", name: "三幕结构", description: "三幕", beats: [] }];
-  const allPresets = [...presets, ...bundles];
-
-  return {
-    presets,
-    bundles,
-    beats,
-    listPresets: vi.fn((category?: string) => category ? allPresets.filter((p) => p.category === category) : allPresets),
-    listBundles: vi.fn(() => bundles),
-    listBeatTemplates: vi.fn(() => beats),
-    getPreset: vi.fn((id: string) => allPresets.find((p) => p.id === id)),
-    getBundle: vi.fn((id: string) => bundles.find((p) => p.id === id)),
-    getPresetsByGenre: vi.fn(() => presets),
-  };
+beforeAll(() => {
+  // 预设是内部静态数据：注册真实内置预设，而非 mock。
+  registerBuiltinPresets();
 });
-
-vi.mock("@vivy1024/novelfork-core", () => ({
-  listPresets: coreMocks.listPresets,
-  listBundles: coreMocks.listBundles,
-  listBeatTemplates: coreMocks.listBeatTemplates,
-  getPreset: coreMocks.getPreset,
-  getBundle: coreMocks.getBundle,
-  getPresetsByGenre: coreMocks.getPresetsByGenre,
-}));
 
 function createRoute(initialBook?: Record<string, unknown>) {
   let book = initialBook;
@@ -86,13 +50,15 @@ describe("presets routes", () => {
 
     const bundlesResponse = await app.request("http://localhost/api/presets/bundles");
     expect(bundlesResponse.status).toBe(200);
-    const bundlesJson = await bundlesResponse.json() as { bundles: Array<{ id: string }> };
-    expect(bundlesJson.bundles).toEqual(coreMocks.bundles);
+    const bundlesJson = await bundlesResponse.json() as { bundles: Array<{ id: string; category: string }> };
+    expect(bundlesJson.bundles.length).toBeGreaterThan(0);
+    expect(bundlesJson.bundles.every((b) => b.category === "bundle")).toBe(true);
+    expect(bundlesJson.bundles.some((b) => b.id === "industrial-occult-mystery")).toBe(true);
 
     const beatsResponse = await app.request("http://localhost/api/presets/beats");
     expect(beatsResponse.status).toBe(200);
     const beatsJson = await beatsResponse.json() as { beats: Array<{ id: string }> };
-    expect(beatsJson.beats).toEqual(coreMocks.beats);
+    expect(beatsJson.beats.some((b) => b.id === "three-act")).toBe(true);
   });
 
   it("persists enabled presets to the book config", async () => {
