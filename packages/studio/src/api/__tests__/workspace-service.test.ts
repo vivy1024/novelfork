@@ -120,7 +120,7 @@ describe("workspace-service", () => {
       const book = books?.children?.find(e => e.name === "test-book");
       const story = book?.children?.find(e => e.name === "story");
       const jingweiFile = story?.children?.find(e => e.name === "current_state.md");
-      expect(jingweiFile?.storyRole).toBe("truth");
+      expect(jingweiFile?.storyRole).toBe("jingwei");
     });
   });
 
@@ -213,7 +213,7 @@ describe("workspace-service", () => {
       expect(chaptersOnly.every(r => r.storyRole === "chapter")).toBe(true);
 
       const truthOnly = await searchWorkspace(root, "L_fit", { scope: "truth" });
-      expect(truthOnly.every(r => r.storyRole === "truth")).toBe(true);
+      expect(truthOnly.every(r => r.storyRole === "jingwei")).toBe(true);
     });
 
     it("respects maxResults", async () => {

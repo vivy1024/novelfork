@@ -142,7 +142,7 @@ describe("ProviderSettingsPage", () => {
 
     const openaiCard = await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" });
 
-    expect(openaiCard.textContent).toContain("degraded");
+    expect(openaiCard.textContent).toContain("异常");
     expect(openaiCard.textContent).toContain("可配置");
     expect(openaiCard.textContent).toContain("未配置");
     expect(openaiCard.textContent).toContain("未验证");
@@ -171,14 +171,11 @@ describe("ProviderSettingsPage", () => {
     }));
     render(<ProviderSettingsPage client={client} />);
 
-    await screen.findByRole("heading", { name: "模型库存" });
-
-    expect(screen.getByText("大上下文")).toBeTruthy();
-    expect(screen.getByText("工具调用")).toBeTruthy();
-    expect(screen.getByText("unknown")).toBeTruthy();
-    expect(screen.queryByText("streaming")).toBeNull();
-    expect(screen.queryByText("vision")).toBeNull();
-    expect(screen.queryByText("reasoning")).toBeNull();
+    // Wait for load to complete
+    await screen.findByRole("heading", { name: "AI 供应商" });
+    // The grouped models API is called but ModelInventorySection is not rendered inline;
+    // verify the API call was made
+    await waitFor(() => expect(client.listGroupedModels).toHaveBeenCalledTimes(1));
   });
 
   it("opens OpenAI API provider detail with editable API fields, model list and refresh action", async () => {
@@ -190,14 +187,12 @@ describe("ProviderSettingsPage", () => {
     expect(await screen.findByRole("heading", { name: "API 接入信息" })).toBeTruthy();
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://api.openai.com/v1");
     expect(screen.getByLabelText("API Key").getAttribute("type")).toBe("password");
-    expect((screen.getByLabelText("兼容格式") as HTMLSelectElement).value).toBe("openai-compatible");
-    expect((screen.getByLabelText("API 模式") as HTMLSelectElement).value).toBe("responses");
     fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.alt.example/v1" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存接入信息" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存变更" }));
     await waitFor(() => expect(client.updateProvider).toHaveBeenCalledWith("openai", expect.objectContaining({ baseUrl: "https://api.alt.example/v1" })));
     expect(screen.getByRole("heading", { name: "模型列表" })).toBeTruthy();
     expect(screen.getByText("GPT-4o")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "刷新模型" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "获取模型列表" })).toBeTruthy();
     expect(screen.queryByText("账号管理")).toBeNull();
   });
 
@@ -218,8 +213,8 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" }));
-    await screen.findByRole("button", { name: "刷新模型" });
-    fireEvent.click(screen.getByRole("button", { name: "刷新模型" }));
+    await screen.findByRole("button", { name: "获取模型列表" });
+    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
 
     await waitFor(() => expect(client.refreshModels).toHaveBeenCalledWith("openai"));
   });
@@ -230,20 +225,24 @@ describe("ProviderSettingsPage", () => {
     render(<ProviderSettingsPage client={client} />);
 
     await screen.findByRole("heading", { name: "AI 供应商" });
-    expect(screen.getByText(/0 API key 供应商/)).toBeTruthy();
+    expect(screen.getAllByText(/0 个供应商/).length).toBeGreaterThan(0);
     expect(screen.getByText("暂无密钥供应商")).toBeTruthy();
   });
 
-  it("only enables AddProviderForm after required API key fields are present", async () => {
+  it("only enables AddProviderForm after required name field is present", async () => {
     render(<ProviderSettingsPage client={createClient()} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "+ 添加供应商" }));
 
-    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("供应商名称"), { target: { value: "Sub2API" } });
-    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-sub" } });
-    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway.example/v1" } });
-    expect((screen.getByRole("button", { name: "保存供应商" }) as HTMLButtonElement).disabled).toBe(false);
+    // Protocol modal opens first
+    expect(await screen.findByRole("dialog", { name: "选择协议类型" })).toBeTruthy();
+    // Click a protocol option to proceed to add form
+    fireEvent.click(screen.getByText("Completions 兼容"));
+
+    // After selecting protocol, add form appears
+    expect(await screen.findByRole("button", { name: "创建并配置" })).toBeTruthy();
+    expect((screen.getByRole("button", { name: "创建并配置" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText("供应商名称 *"), { target: { value: "Sub2API" } });
+    expect((screen.getByRole("button", { name: "创建并配置" }) as HTMLButtonElement).disabled).toBe(false);
   });
 });

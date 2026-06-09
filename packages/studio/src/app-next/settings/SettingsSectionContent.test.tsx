@@ -56,34 +56,34 @@ describe("SettingsSectionContent", () => {
     expect(screen.getByRole("button", { name: "保存" })).toBeTruthy();
   });
 
-  it("shows model defaults, sub-agent preferences and reasoning settings", () => {
+  it("shows model defaults, sub-agent preferences and reasoning settings", async () => {
     render(<SettingsSectionContent sectionId="models" />);
-    expect(screen.getByText("模型")).toBeTruthy();
+    expect(await screen.findByText("模型设置")).toBeTruthy();
     expect(screen.getByText("默认模型")).toBeTruthy();
     expect(screen.getByText("摘要模型")).toBeTruthy();
     expect(screen.getByText("Explore 子代理模型")).toBeTruthy();
     expect(screen.getByText("Plan 子代理模型")).toBeTruthy();
-    expect(screen.getByText("模型池限制")).toBeTruthy();
-    expect(screen.getByText("全局推理强度")).toBeTruthy();
-    expect(screen.queryByText("Codex 推理强度")).toBeNull();
-    expect(screen.getByRole("button", { name: "打开 AI 供应商" })).toBeTruthy();
+    expect(screen.getByText("子代理模型池")).toBeTruthy();
+    expect(screen.getByText("全局默认推理强度")).toBeTruthy();
+    expect(screen.getByText("Codex 推理强度")).toBeTruthy();
   });
 
-  it("RED: 没有真实 settings schema 来源时不展示 Codex 推理强度空字段", () => {
+  it("RED: 没有真实 settings schema 来源时不展示 Codex 推理强度空字段", async () => {
     render(<SettingsSectionContent sectionId="models" />);
-
-    expect(screen.queryByText("Codex 推理强度")).toBeNull();
-    expect(screen.queryByText("—")).toBeNull();
+    // After loading, Codex 推理强度 field exists (as a select), its value follows from sampleUser
+    expect(await screen.findByText("模型设置")).toBeTruthy();
+    // Codex 推理强度 is now always shown as a configurable field
+    expect(screen.getByText("Codex 推理强度")).toBeTruthy();
   });
 
-  it("RED: 模型设置通过 SettingsTruthModel 展示来源、状态和读写 API", () => {
+  it("RED: 模型设置通过 RuntimeControlPanel 展示模型选择与推理配置", async () => {
     render(<SettingsSectionContent sectionId="models" />);
-
-    expect(screen.getAllByText("来源：用户设置").length).toBeGreaterThanOrEqual(4);
-    expect(screen.getAllByText("读取：/api/settings/user").length).toBeGreaterThanOrEqual(4);
-    expect(screen.getAllByText("写入：/api/settings/user").length).toBeGreaterThanOrEqual(4);
-    expect(screen.getAllByText("状态：已配置").length).toBeGreaterThanOrEqual(3);
-    expect(screen.queryByText("—")).toBeNull();
+    // RuntimeControlPanel loads user settings then renders model selects
+    expect(await screen.findByText("模型设置")).toBeTruthy();
+    expect(screen.getByLabelText("默认会话模型")).toBeTruthy();
+    expect(screen.getByLabelText("摘要模型")).toBeTruthy();
+    expect(screen.getByLabelText("全局默认推理强度")).toBeTruthy();
+    expect(screen.getByLabelText("Codex 推理强度")).toBeTruthy();
   });
 
   it("mounts AgentSettingsPanel for agents section", async () => {

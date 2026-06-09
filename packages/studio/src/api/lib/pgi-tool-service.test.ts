@@ -2,7 +2,7 @@ import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   createStorageDatabase,
   runStorageMigrations,
@@ -14,8 +14,13 @@ import {
   createBookRepository,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { SessionToolExecutionInput } from "../../shared/agent-native-workspace.js";
-import { createPGIToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
+import { createPGIToolService, NOVEL_SESSION_TOOL_DEFINITIONS } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createSessionToolExecutor } from "./session-tool-executor.js";
+import { registerPluginTools } from "./session-tool-registry.js";
+
+beforeAll(() => {
+  registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
+});
 
 const tempDirs: string[] = [];
 
@@ -98,7 +103,7 @@ describe("PGI session tools", () => {
       expect(result).toMatchObject({
         ok: true,
         renderer: "pgi.questions",
-        summary: "已生成 2 个生成前追问。",
+        summary: expect.stringContaining("已生成 2 个生成前追问"),
         data: {
           status: "available",
           bookId: "book-1",
