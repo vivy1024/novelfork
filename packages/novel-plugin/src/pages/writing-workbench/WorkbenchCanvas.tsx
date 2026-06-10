@@ -113,6 +113,7 @@ export interface ChapterActionHandlers {
   onCreateDraft: (resourceId: string) => Promise<void>;
   onCreateVariant: (resourceId: string) => Promise<void>;
   onGetHistory: (resourceId: string) => Promise<ResourceHistoryEntry[]>;
+  onDelete?: (resourceId: string) => Promise<void>;
 }
 
 export interface JingweiActionHandlers {
@@ -274,6 +275,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
             version={typeof node.metadata?.version === "number" ? node.metadata.version : undefined}
             wordCount={typeof node.metadata?.wordCount === "number" ? node.metadata.wordCount : undefined}
+            status={typeof node.metadata?.status === "string" ? node.metadata.status : undefined}
+            onDelete={chapterActions.onDelete}
             onCreateDraft={chapterActions.onCreateDraft}
             onCreateVariant={chapterActions.onCreateVariant}
             onToggleHistory={async (resourceId) => {
