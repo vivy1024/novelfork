@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -141,6 +141,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  // TipTap 初始化时会规范化 markdown（如标准化换行/标题），导致首次 onContentChange
+  // 的内容 ≠ node.content 但语义相同。用 ref 记录规范化后的基准值，避免误标 dirty。
+  const normalizedBaseRef = useRef<string | null>(null);
 
   useEffect(() => {
     setContent(node?.content ?? "");
@@ -148,6 +151,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     setSaveError(null);
     setHistoryEntries(null);
     setHistoryError(null);
+    normalizedBaseRef.current = null; // reset on node change
   }, [node]);
 
   useEffect(() => {
@@ -316,9 +320,14 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         ) : (
           <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {
             setContent(nextContent);
-            // Only mark dirty if content actually differs from the original node content
-            // (TipTap may normalize markdown on init, triggering onContentChange with equivalent content)
-            setDirty(nextContent !== (node.content ?? ""));
+            // TipTap 首次 onContentChange 是规范化产物（非用户编辑），记为基准值。
+            // 后续编辑与基准值比较，避免规范化差异误标 dirty。
+            if (normalizedBaseRef.current === null) {
+              normalizedBaseRef.current = nextContent;
+              setDirty(false);
+            } else {
+              setDirty(nextContent !== normalizedBaseRef.current);
+            }
             setSaveError(null);
           }} onTabComplete={bookId && (node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") ? async (currentContent, cursorPosition) => {
             const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
