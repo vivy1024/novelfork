@@ -1476,6 +1476,10 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
       if (result.ok) return result.data.history;
       throw new Error("加载历史失败");
     },
+    onDelete: async (resourceId: string) => {
+      await resourceClient.deleteWritingResource(bookId, resourceId);
+      reloadResources();
+    },
   }), [bookId, reloadResources, resourceClient]);
 
   return (
