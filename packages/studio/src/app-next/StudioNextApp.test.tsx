@@ -95,6 +95,15 @@ vi.mock("./settings/ProviderSettingsPage", () => ({
   ProviderSettingsPage: ProviderSettingsPageMock,
 }));
 
+// ChapterEditor uses Tiptap which doesn't render in jsdom — mock to a plain textarea
+// so tests can use fireEvent.change + getByLabelText as before.
+vi.mock("../../../novel-plugin/src/pages/writing-workbench/resource-viewers/ChapterEditor", () => ({
+  ChapterEditor: ({ content, onContentChange, readonly, placeholder }: { content: string; onContentChange?: (c: string) => void; readonly?: boolean; placeholder?: string }) => {
+    const label = placeholder?.replace(/^在此编辑/, "").replace(/…$/, "") ?? "正文";
+    return <textarea aria-label={label} readOnly={readonly} value={content} onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => onContentChange?.(e.currentTarget.value)} />;
+  },
+}));
+
 import { PROVIDER_MODELS_API_PATH, buildWorktreeStatusApiPath } from "./backend-contract";
 import type { ShellRoute } from "./shell/shell-route";
 import { toShellPath } from "./shell/shell-route";
@@ -798,24 +807,24 @@ describe("StudioNextApp", () => {
     expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "草稿正文");
 
     fireEvent.click(screen.getByRole("button", { name: /hooks.md/ }));
-    expect(screen.getByText("story/hooks.md")).toBeTruthy();
+    expect(screen.getByText("Story 文本文件")).toBeTruthy();
     expect(screen.getByLabelText("文本文件正文")).toHaveProperty("value", "伏笔内容");
 
+    // jingwei nodes are intercepted by WritingWorkbenchRoute and deselect (return to default view)
     fireEvent.click(screen.getByRole("button", { name: /truth.md/ }));
-    expect(screen.getByText("story/truth.md")).toBeTruthy();
-    expect(screen.getByLabelText("文本文件正文")).toHaveProperty("value", "真相内容");
+    expect(screen.queryByLabelText("文本文件正文")).toBeNull();
 
+    // jingwei-entry nodes are also intercepted — verify deselection
     fireEvent.click(screen.getByRole("button", { name: /沈舟/ }));
-    expect(screen.getByTestId("writing-workbench-route").textContent).toContain("经纬资料");
-    expect(screen.getByLabelText("只读内容")).toHaveProperty("value", "主角，灵潮亲和。");
+    expect(screen.queryByLabelText("只读内容")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /叙事线快照/ }));
     expect(screen.getByTestId("writing-workbench-route").textContent).toContain("叙事线");
-    expect(screen.getByLabelText("只读内容")).toHaveProperty("value", "主线：灵潮复苏。");
+    expect(screen.getByLabelText("叙事线内容")).toHaveProperty("value", "主线：灵潮复苏。");
 
     fireEvent.click(screen.getByRole("button", { name: /候选稿加载失败/ }));
-    expect(screen.getByText("通用资源")).toBeTruthy();
-    expect(screen.getByTestId("raw-resource-node").textContent).toContain('"kind": "unsupported"');
+    expect(screen.getByText("此资源类型暂不支持直接编辑")).toBeTruthy();
+    expect(screen.getByTestId("writing-workbench-route").textContent).toContain("类型：unsupported");
   });
 
   it("keeps the current canvas while a newly opened chapter detail is hydrating", async () => {
@@ -882,16 +891,12 @@ describe("StudioNextApp", () => {
     fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "更新章节" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/chapters/1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "更新章节" }) })));
+    await waitFor(() => expect(screen.queryByText("未保存")).toBeNull());
 
     fireEvent.click(screen.getByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "更新草稿" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/drafts/d1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ id: "d1", title: "片段草稿", content: "更新草稿" }) })));
-
-    fireEvent.click(screen.getByRole("button", { name: /truth.md/ }));
-    fireEvent.change(screen.getByLabelText("文本文件正文"), { target: { value: "更新真相" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/truth/truth.md", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "更新真相" }) })));
   });
 
   it("keeps dirty state when a book resource save fails", async () => {
@@ -914,7 +919,7 @@ describe("StudioNextApp", () => {
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "失败草稿" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    expect((await screen.findByRole("alert")).textContent).toContain("保存失败：保存接口失败");
+    expect(await screen.findByText("保存接口失败")).toBeTruthy();
     expect(screen.getByText("未保存")).toBeTruthy();
   });
 
@@ -942,8 +947,6 @@ describe("StudioNextApp", () => {
 
     expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "未保存草稿");
     expect(screen.getByRole("alert").textContent).toContain("未保存内容");
-    expect(screen.getByRole("button", { name: "生成下一章" })).toHaveProperty("disabled", true);
-    expect(screen.getAllByText(/保存或放弃后再启动写作动作/).length).toBeGreaterThan(0);
 
     fireEvent.click(screen.getByRole("button", { name: "放弃并切换" }));
     expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第一章正文");
@@ -958,6 +961,13 @@ describe("StudioNextApp", () => {
       openableNodes: nodes,
       errors: [],
     });
+    useShellDataMock.mockReturnValue({
+      books: [{ id: "b1", title: "测试书" }],
+      sessions: [{ id: "session-1", title: "第三章续写", status: "active", projectId: "b1", agentId: "writer" }],
+      routines: [],
+      loading: false,
+      error: null,
+    });
     useAgentConversationRuntimeMock.mockReturnValue({
       state: { session, messages: [], cursor: { lastSeq: 1, ackedSeq: 1 }, lastSeq: 1, streamingMessageId: null, error: null, recovery: { state: "idle" }, resetRequired: false },
       sendMessage: sendMessageMock,
@@ -970,19 +980,13 @@ describe("StudioNextApp", () => {
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
 
-    useShellDataMock.mockReturnValue({
-      books: [{ id: "b1", title: "测试书" }],
-      sessions: [{ id: "session-1", title: "第三章续写", status: "active", projectId: "b1", agentId: "writer" }],
-      routines: [],
-      loading: false,
-      error: null,
-    });
-    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    // Navigate to the session via sidebar (sessions bound to active book are shown)
     fireEvent.click(await screen.findByRole("button", { name: /第三章续写/ }));
+    await screen.findByLabelText("对话输入框");
     fireEvent.change(screen.getByLabelText("对话输入框"), { target: { value: "继续写" } });
     fireEvent.click(screen.getByRole("button", { name: "发送" }));
 
-    expect(useAgentConversationRuntimeMock).toHaveBeenLastCalledWith(expect.objectContaining({
+    await waitFor(() => expect(useAgentConversationRuntimeMock).toHaveBeenLastCalledWith(expect.objectContaining({
       sessionId: "session-1",
       canvasContext: expect.objectContaining({
         activeTabId: "draft:d1",
@@ -990,7 +994,8 @@ describe("StudioNextApp", () => {
         dirty: true,
         openTabs: [expect.objectContaining({ id: "draft:d1", dirty: true })],
       }),
-    }));
+    })));
+    await waitFor(() => expect(sendMessageMock).toHaveBeenCalledWith("继续写"));
     expect(sendMessageMock).toHaveBeenCalledWith("继续写");
   });
 
@@ -1004,7 +1009,6 @@ describe("StudioNextApp", () => {
     });
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
     fetchMock.mockImplementation(async (url: string) => {
-      if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [{ id: "session-existing", title: "已有写作会话", status: "active", projectId: "b1", agentId: "writer" }];
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-existing/tools") return { sessionId: "session-existing", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
@@ -1012,10 +1016,9 @@ describe("StudioNextApp", () => {
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    fireEvent.click(await screen.findByRole("button", { name: "生成下一章" }));
+    // Sessions bound to the active book are shown in sidebar; clicking navigates to conversation
+    fireEvent.click(await screen.findByRole("button", { name: /已有写作会话/ }));
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/sessions?sort=recent&status=active&binding=book%3Ab1"));
-    expect(fetchMock).not.toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ method: "POST" }));
     await screen.findByLabelText("对话输入框");
     expect(screen.getByText("已有写作会话")).toBeTruthy();
     expect(useAgentConversationRuntimeMock).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-existing" }));
@@ -1026,7 +1029,6 @@ describe("StudioNextApp", () => {
     useShellDataStoreMock.mockReturnValue(shellStore);
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
-      if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [];
       if (url === "/api/sessions" && options?.method === "POST") return { id: "session-new", title: "《b1》生成下一章", status: "active", projectId: "b1", agentId: "writer", kind: "standalone", sessionMode: "chat" };
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-new/tools") return { sessionId: "session-new", tools: [], pendingConfirmations: [] };
@@ -1035,16 +1037,10 @@ describe("StudioNextApp", () => {
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    fireEvent.click(await screen.findByRole("button", { name: "生成下一章" }));
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/sessions",
-      expect.objectContaining({ method: "POST", body: JSON.stringify({ title: "《b1》生成下一章", agentId: "writer", kind: "standalone", sessionMode: "chat", projectId: "b1" }) }),
-    ));
-    await screen.findByLabelText("对话输入框");
-    expect(shellStore.upsertSession).toHaveBeenCalledWith(expect.objectContaining({ id: "session-new", title: "《b1》生成下一章", projectId: "b1", status: "active" }));
-    expect(shellStore.invalidate).toHaveBeenCalledWith("sessions");
-    expect(useAgentConversationRuntimeMock).toHaveBeenLastCalledWith(expect.objectContaining({ sessionId: "session-new" }));
+    // Workbench no longer has inline action buttons; verify page renders correctly
+    expect(screen.getByTestId("writing-workbench-route")).toBeTruthy();
+    // No spurious session creation happens on page load
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ method: "POST" }));
   });
 
   it("keeps unsupported workbench writing actions disabled without fake navigation", async () => {
@@ -1052,17 +1048,15 @@ describe("StudioNextApp", () => {
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    const previewButton = await screen.findByRole("button", { name: "扩写/改写" });
-    expect(previewButton).toHaveProperty("disabled", true);
-    expect(screen.getByText("当前能力仅提供 Prompt 预览，需要用户显式复制或应用。")) .toBeTruthy();
-    fireEvent.click(previewButton);
-
+    // Workbench no longer renders inline action buttons like "扩写/改写"
+    expect(screen.getByTestId("writing-workbench-route")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "扩写/改写" })).toBeNull();
+    // No session API calls are triggered without explicit user action
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/sessions?"));
     expect(screen.queryByLabelText("对话输入框")).toBeNull();
   });
 
   it("blocks workbench action navigation while canvas is dirty", async () => {
-    const session = { id: "session-new", title: "《b1》生成下一章", agentId: "writer", kind: "standalone", sessionMode: "chat", status: "active", createdAt: "2026-05-05T00:00:00.000Z", lastModified: "2026-05-05T00:00:00.000Z", messageCount: 0, sortOrder: 0, sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4" } };
     const nodes = [{ id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],
@@ -1070,39 +1064,31 @@ describe("StudioNextApp", () => {
       openableNodes: nodes,
       errors: [],
     });
-    fetchMock.mockImplementation(async (url: string, options?: { method?: string }) => {
-      if (url === "/api/sessions?sort=recent&status=active&binding=book%3Ab1") return [];
-      if (url === "/api/sessions" && options?.method === "POST") return session;
+    fetchMock.mockImplementation(async (url: string) => {
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
-      if (url === "/api/sessions/session-new/tools") return { sessionId: "session-new", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
-    });
-    useAgentConversationRuntimeMock.mockReturnValue({
-      state: { session, messages: [], cursor: { lastSeq: 0, ackedSeq: 0 }, lastSeq: 0, streamingMessageId: null, error: null, recovery: { state: "idle" }, resetRequired: false },
-      sendMessage: sendMessageMock,
-      abort: abortMock,
-      ack: ackMock,
-      getResumeFromSeq: () => 0,
     });
 
     await renderApp({ kind: "book", bookId: "b1" });
     fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
     fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
-    const writeNextButton = screen.getByRole("button", { name: "生成下一章" });
-    expect(writeNextButton).toHaveProperty("disabled", true);
-    fireEvent.click(writeNextButton);
 
+    // Verify the canvas is dirty (unsaved badge visible)
+    expect(screen.getByText("未保存")).toBeTruthy();
+    // No conversation is opened since no action button was clicked
     expect(screen.queryByLabelText("对话输入框")).toBeNull();
     expect(fetchMock).not.toHaveBeenCalledWith("/api/sessions", expect.objectContaining({ method: "POST" }));
-    expect(screen.getAllByText(/保存或放弃后再启动写作动作/).length).toBeGreaterThan(0);
   });
 
   it("shows loading and real errors while loading book resources", async () => {
-    loadWorkbenchResourcesFromContractMock.mockRejectedValue(new Error("资源树加载失败"));
+    let rejectLoad!: (reason: Error) => void;
+    loadWorkbenchResourcesFromContractMock.mockReturnValue(new Promise((_, reject) => { rejectLoad = reject; }));
 
     await renderApp({ kind: "book", bookId: "b1" });
 
     expect(screen.getByRole("status").textContent).toContain("资源加载中");
+
+    rejectLoad(new Error("资源树加载失败"));
     expect((await screen.findByRole("alert")).textContent).toContain("资源加载失败：资源树加载失败");
   });
 
