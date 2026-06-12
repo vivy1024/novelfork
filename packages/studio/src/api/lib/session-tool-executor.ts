@@ -736,9 +736,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             const filter = (input.filter ?? {}) as Record<string, unknown>;
             const resources = service.list(bookId, { type: filter.type as any, status: filter.status as any });
             const items = resources.map(r => ({ id: r.id, type: r.type, status: r.status, title: r.title, chapterNumber: r.chapterNumber, wordCount: r.wordCount }));
-            const preview = items.slice(0, 20).map(r => `${r.id} | ${r.type}/${r.status} | ${r.title ?? ""}${r.chapterNumber ? ` (ch${r.chapterNumber})` : ""}`).join("\n");
-            const more = items.length > 20 ? `\n...及另外 ${items.length - 20} 个` : "";
-            return { ok: true, renderer: definition.renderer, summary: `${items.length} 个资源：\n${preview}${more}`, data: { bookId, resources: items } };
+            const preview = items.slice(0, 30).map(r => `- ${r.id} | ${r.type}/${r.status} | ${r.title ?? ""}${r.chapterNumber ? ` (ch${r.chapterNumber})` : ""} | ${r.wordCount ?? 0}字`).join("\n");
+            const more = items.length > 30 ? `\n...及另外 ${items.length - 30} 个` : "";
+            return { ok: true, renderer: definition.renderer, summary: `共 ${items.length} 个资源：\n${preview}${more}`, data: { bookId, resources: items } };
           }
           const resourceId = String(input.resourceId ?? "");
           if (action === "create_draft") {
