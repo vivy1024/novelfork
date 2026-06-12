@@ -54,6 +54,7 @@ import {
   TOOL_BEAT_WRITE,
   TOOL_HEALTH_SUMMARY,
   TOOL_HOOKS_MANAGE,
+  TOOL_RESOURCE_MANAGE,
   TOOL_OUTLINE_SUGGEST,
   TOOL_APPLY_PATCH,
 } from "./tool-names.js";
@@ -373,6 +374,13 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_HOOKS_MANAGE)) {
     items.push(
       `To manage foreshadowing hooks (create/update/resolve) use ${TOOL_HOOKS_MANAGE}.`,
+    );
+  }
+
+  // ── 资源管理 ──
+  if (has(TOOL_RESOURCE_MANAGE)) {
+    items.push(
+      `To manage writing resources (candidates/drafts/chapters) use ${TOOL_RESOURCE_MANAGE}(action). action=list to list; accept/reject/archive/restore/delete to transition; create_draft to create a new draft.`,
     );
   }
 

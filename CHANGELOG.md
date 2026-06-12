@@ -4,6 +4,19 @@
 
 ## Unreleased
 
+## v1.8.0 (2026-06-10)
+
+### ✨ 新功能
+
+- **resource.manage 工具** — AI Agent 可管理写作资源（候选稿/草稿/章节）：list 列出、accept/reject/archive/restore/delete 状态转换、create_draft 创建草稿。纳入 NOVEL_CORE_TOOLS 常驻。
+- **资源树子目录** — 候选稿和草稿按章节号分子目录显示（"第X章候选"/"第X章草稿"），多于 1 个同章资源时自动分组，未关联章节的平铺显示。
+
+### 🐛 修复
+
+- **画布切换误报 dirty（P0）** — TipTap 初始化规范化 markdown 不再触发误标"未保存"
+- **归档章节无法删除（P1）** — ChapterActionsBar 新增删除按钮 + 正确显示"已归档"状态标签
+
+
 ## v1.7.0 (2026-06-08)
 
 ### 🔧 小说工具合并精简（novel-tool-consolidation spec）

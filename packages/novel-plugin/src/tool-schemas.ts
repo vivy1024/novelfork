@@ -628,4 +628,20 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "resource.manage": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("list（列出资源）/accept（接受候选稿）/reject（拒绝）/archive（归档）/restore（恢复归档）/delete（删除）/create_draft（创建草稿）。"),
+      resourceId: stringSchema("action 非 list/create_draft 时必填：目标资源 ID。"),
+      filter: { type: "object", description: "action=list 时可选过滤：{ type?: 'chapter'|'candidate'|'draft', status?: 'draft'|'candidate'|'accepted'|'rejected'|'archived' }" },
+      chapterNumber: numberSchema("action=accept 时必填：目标章节号。"),
+      acceptMode: stringSchema("action=accept 时：replace（替换）/merge（合并）/new（新建章节）。默认 replace。"),
+      title: stringSchema("action=create_draft 时可选：草稿标题。"),
+      content: stringSchema("action=create_draft 时可选：草稿初始内容。"),
+      parentId: stringSchema("action=create_draft 时可选：关联的父资源 ID。"),
+    },
+    required: ["bookId", "action"],
+    additionalProperties: false,
+  },
 };
