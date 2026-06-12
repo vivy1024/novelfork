@@ -2582,12 +2582,26 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
 
 ## Agent-native 写下一章链路
-当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write。
+当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → 后置更新。
 - pgi.ask 无问题时也要明确说明 skippedReason=no-questions，并继续形成本章作者指示。
 - 必须等待用户通过 AskUserQuestion 确认方向；用户拒绝或要求修改时不得调用 scene.spec / pipeline.write。
 - 批准后先用 scene.spec 生成结构化写作蓝图，再将其作为 sceneSpec 传给 pipeline.write；结果只进入候选稿并通过 artifact 在中间画布打开。
 - candidate.create_chapter 仅用于保存已有正文为候选稿，不是写下一章主链路；不得用它替代 pipeline.write 生成完整章节。
-- 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。`;
+- 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。
+
+## 后置更新（每章写完后必须执行）
+pipeline.write 成功后，**必须**执行以下经纬更新，不可跳过：
+1. **存章节摘要**：jingwei.write(category="chapter-summaries", title="第X章摘要", contentMd="100字内概括本章核心事件、角色行动、状态变化")
+2. **更新角色状态**（如本章角色有重大变化）：jingwei.write(category="character", title="角色名", contentMd="更新后的当前状态")，用 scope=search 先查是否已有该角色条目，有则更新无则创建
+3. **标记伏笔进展**（如本章埋设/触发/兑现了伏笔）：jingwei.write(category="foreshadowing", title="伏笔管理", contentMd="追加本章伏笔变化")
+4. 以上完成后才回复用户"本章已完成"
+
+## 连续写章模式
+当用户说「连续写N章」「自动写到第X章」时：
+- 每章按上述完整流程执行（包括后置更新）
+- 每章之间用 jingwei.read(scope=brief) 刷新上下文
+- 不需要每章都 AskUserQuestion——首章确认方向后，后续章按大纲自动推进
+- 遇到审计严重问题（critical）时暂停并报告，不继续`;
 
 const SESSION_CHAT_WS_PATH = "/api/sessions/:id/chat";
 const SESSION_CHAT_PATHNAME_REGEX = /^\/api\/sessions\/([^/]+)\/chat$/;
