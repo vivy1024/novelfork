@@ -178,7 +178,7 @@ export class ClaudeCodeAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toAnthropicMessages(input.messages),
-      max_tokens: 16384,
+      max_tokens: 32768,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools) } : {}),
       // Automatic prompt caching (same as anthropic.ts)
