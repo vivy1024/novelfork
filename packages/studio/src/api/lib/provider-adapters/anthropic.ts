@@ -679,7 +679,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: effectiveModelId,
       messages: toAnthropicMessages(input.messages, ctx),
-      max_tokens: 16384,
+      max_tokens: 32768,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
       // Automatic prompt caching: caches system + tools + message prefix automatically
