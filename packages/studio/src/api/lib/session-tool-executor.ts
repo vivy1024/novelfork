@@ -735,7 +735,10 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           if (action === "list") {
             const filter = (input.filter ?? {}) as Record<string, unknown>;
             const resources = service.list(bookId, { type: filter.type as any, status: filter.status as any });
-            return { ok: true, renderer: definition.renderer, summary: `${resources.length} 个资源。`, data: { bookId, resources: resources.map(r => ({ id: r.id, type: r.type, status: r.status, title: r.title, chapterNumber: r.chapterNumber, wordCount: r.wordCount })) } };
+            const items = resources.map(r => ({ id: r.id, type: r.type, status: r.status, title: r.title, chapterNumber: r.chapterNumber, wordCount: r.wordCount }));
+            const preview = items.slice(0, 20).map(r => `${r.id} | ${r.type}/${r.status} | ${r.title ?? ""}${r.chapterNumber ? ` (ch${r.chapterNumber})` : ""}`).join("\n");
+            const more = items.length > 20 ? `\n...及另外 ${items.length - 20} 个` : "";
+            return { ok: true, renderer: definition.renderer, summary: `${items.length} 个资源：\n${preview}${more}`, data: { bookId, resources: items } };
           }
           const resourceId = String(input.resourceId ?? "");
           if (action === "create_draft") {
