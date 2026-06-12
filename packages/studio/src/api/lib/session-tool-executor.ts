@@ -723,6 +723,42 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handlePgiAsk(input as any);
         return { ...result, renderer: definition.renderer };
       };
+    case "resource.manage":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId ?? "");
+        const action = String(input.action ?? "");
+        if (!bookId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "bookId 必填。" };
+        const { createWritingResourceService } = await import("@vivy1024/novelfork-novel-plugin/engine");
+        const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+        const service = createWritingResourceService({ storage: getStorageDatabase() });
+        try {
+          if (action === "list") {
+            const filter = (input.filter ?? {}) as Record<string, unknown>;
+            const resources = service.list(bookId, { type: filter.type as any, status: filter.status as any });
+            return { ok: true, renderer: definition.renderer, summary: `${resources.length} 个资源。`, data: { bookId, resources: resources.map(r => ({ id: r.id, type: r.type, status: r.status, title: r.title, chapterNumber: r.chapterNumber, wordCount: r.wordCount })) } };
+          }
+          const resourceId = String(input.resourceId ?? "");
+          if (action === "create_draft") {
+            const created = service.create({ bookId, type: "draft", status: "draft", title: String(input.title ?? "新草稿"), content: String(input.content ?? ""), parentId: input.parentId ? String(input.parentId) : undefined });
+            return { ok: true, renderer: definition.renderer, summary: `已创建草稿「${created.title}」(${created.id})。`, data: { resource: created } };
+          }
+          if (!resourceId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "action 非 list/create_draft 时 resourceId 必填。" };
+          if (action === "accept") {
+            const chapterNumber = Number(input.chapterNumber);
+            if (!chapterNumber) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "accept 需要 chapterNumber。" };
+            const mode = (input.acceptMode as "replace" | "merge" | "new") ?? "replace";
+            const result = service.transition(resourceId, { action: "accept", chapterNumber, mode });
+            return { ok: true, renderer: definition.renderer, summary: `已接受资源为第 ${chapterNumber} 章 (${mode})。`, data: { resource: result } };
+          }
+          if (action === "reject") { const r = service.transition(resourceId, { action: "reject" }); return { ok: true, renderer: definition.renderer, summary: `已拒绝资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "archive") { const r = service.transition(resourceId, { action: "archive" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "restore") { const r = service.transition(resourceId, { action: "restore" }); return { ok: true, renderer: definition.renderer, summary: `已恢复资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "delete") { const r = service.softDelete(resourceId); return { ok: true, renderer: definition.renderer, summary: `已删除资源「${r.title}」。`, data: { resource: r } }; }
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/accept/reject/archive/restore/delete/create_draft。` };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "resource-manage-failed", summary: `资源管理失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
     case "scene.spec":
       return async ({ input, definition }) => {
         const { handleSceneSpec } = await import("@vivy1024/novelfork-novel-plugin");

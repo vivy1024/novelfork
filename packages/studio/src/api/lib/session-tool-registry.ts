@@ -627,6 +627,8 @@ export const NOVEL_CORE_TOOLS = new Set<string>([
   "presets.check_compliance",
   "beat.read",
   "beat.write",
+  // 资源管理
+  "resource.manage",
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {

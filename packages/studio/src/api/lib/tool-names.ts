@@ -151,3 +151,6 @@ export const TOOL_BEAT_CREATE_CUSTOM = "beat.create_custom";
 // ── 叙事行编辑 ──
 export const TOOL_NARRATIVE_READ_LINE = "narrative.read_line";
 export const TOOL_NARRATIVE_PROPOSE_CHANGE = "narrative.propose_change";
+
+// ── 资源管理 ──
+export const TOOL_RESOURCE_MANAGE = "resource.manage";

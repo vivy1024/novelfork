@@ -91,6 +91,9 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
 
   // Scene spec (direct handler)
   { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },
+
+  // Resource management
+  { toolName: "resource.manage", serviceKey: "inline", method: "manageResource" },
 ];
 
 /**

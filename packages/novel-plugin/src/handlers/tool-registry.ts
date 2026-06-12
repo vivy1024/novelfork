@@ -495,6 +495,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
+  sessionTool({
+    name: "resource.manage",
+    description: "写作资源管理工具。action=list 列出资源；accept/reject/archive/restore/delete 管理候选稿/草稿/章节状态；create_draft 创建空草稿。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
+    risk: "confirmed-write",
+    renderer: "resource.manage",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
 ] as const;
 
 /**

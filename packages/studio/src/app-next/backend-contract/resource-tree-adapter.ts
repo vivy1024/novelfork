@@ -188,12 +188,50 @@ export async function loadResourceTreeFromContract(
 
 function buildWritingResourceGroups(resources: readonly WritingResource[]): { chapters: ContractResourceNode[]; candidates: ContractResourceNode[]; drafts: ContractResourceNode[]; archived: ContractResourceNode[] } {
   const active = resources.filter((resource) => resource.deletedAt === null);
-  return {
-    chapters: active.filter((resource) => resource.type === "chapter" && resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode),
-    candidates: active.filter((resource) => resource.type === "candidate" && resource.status === "candidate").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
-    drafts: active.filter((resource) => resource.type === "draft" && resource.status === "draft").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
-    archived: active.filter((resource) => resource.status === "archived" || resource.status === "rejected").sort(compareResourceUpdatedDesc).map(toWritingResourceNode),
-  };
+  const chapters = active.filter((resource) => resource.type === "chapter" && resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode);
+
+  // 候选稿按 chapterNumber 分子组
+  const rawCandidates = active.filter((resource) => resource.type === "candidate" && resource.status === "candidate").sort(compareResourceUpdatedDesc);
+  const candidates = groupByChapter(rawCandidates, "候选");
+
+  // 草稿按 chapterNumber 分子组
+  const rawDrafts = active.filter((resource) => resource.type === "draft" && resource.status === "draft").sort(compareResourceUpdatedDesc);
+  const drafts = groupByChapter(rawDrafts, "草稿");
+
+  const archived = active.filter((resource) => resource.status === "archived" || resource.status === "rejected").sort(compareResourceUpdatedDesc).map(toWritingResourceNode);
+  return { chapters, candidates, drafts, archived };
+}
+
+/** 按 chapterNumber 分子目录：有 chapterNumber 的分组为"第X章{label}"子目录，无的放"未分类"。 */
+function groupByChapter(resources: readonly WritingResource[], label: string): ContractResourceNode[] {
+  if (resources.length === 0) return [];
+  const byChapter = new Map<number, WritingResource[]>();
+  const uncategorized: WritingResource[] = [];
+  for (const r of resources) {
+    if (r.chapterNumber) {
+      const arr = byChapter.get(r.chapterNumber) ?? [];
+      arr.push(r);
+      byChapter.set(r.chapterNumber, arr);
+    } else {
+      uncategorized.push(r);
+    }
+  }
+  // 如果全部无 chapterNumber 或只有一个分组，平铺即可
+  if (byChapter.size === 0) return resources.map(toWritingResourceNode);
+  if (byChapter.size === 1 && uncategorized.length === 0) return resources.map(toWritingResourceNode);
+
+  const groups: ContractResourceNode[] = [];
+  for (const [chNum, items] of [...byChapter.entries()].sort((a, b) => a[0] - b[0])) {
+    if (items.length === 1) {
+      groups.push(toWritingResourceNode(items[0]!));
+    } else {
+      groups.push(group(`group:${label}-ch${chNum}`, `第${chNum}章${label}`, items.map(toWritingResourceNode)));
+    }
+  }
+  if (uncategorized.length > 0) {
+    groups.push(...uncategorized.map(toWritingResourceNode));
+  }
+  return groups;
 }
 
 function compareResourceChapter(a: WritingResource, b: WritingResource): number {
