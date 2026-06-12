@@ -35,10 +35,12 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
 7. 调用 pipeline.write 工具生成章节（传入 sceneSpec）
 
 ⚠️ 禁止跳过第 3、4 步直接生成章节。用户必须先确认方向。
-⚠️ 写下一章 / 生成下一章 的主链路是 pipeline.write；不要用 candidate.create_chapter 作为生成章节的入口。`,
+⚠️ 写下一章 / 生成下一章 的主链路是 pipeline.write；不要用 candidate.create_chapter 作为生成章节的入口。
+⚠️ pipeline.write 成功后必须执行后置经纬更新：存章节摘要(100字) + 更新角色状态(如有变化) + 标记伏笔进展(如有)。不可跳过。`,
     outputSpec: `- 完整章节生成必须交给 pipeline.write；不要在外层 Agent 直接生成整章正文
 - candidate.create_chapter 是底层候选稿保存工具，只能在用户明确要求"保存这段已有正文为候选稿"时使用；它不会生成正文、不会审计、不会修订、不会同步经纬
 - 非整章写作（写一段描述、改一句话、续写一小段）可以直接输出文本，不要调用 pipeline.write
+- 每章写完后必须用 jingwei.write 存摘要和更新状态，这是保持长篇连贯性的关键
 - 回复用户时优先总结 pipeline.write 返回的候选稿、审计报告和经纬变更摘要`,
     constraints: `- AI 生成结果必须先进入候选区或草稿区，用户明确确认后才能合并到正式正文
 - 不得在用户未确认的情况下自动覆盖正式章节
