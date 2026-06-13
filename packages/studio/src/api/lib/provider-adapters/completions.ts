@@ -389,17 +389,18 @@ export class CompletionsAdapter implements RuntimeAdapter {
   }
 
   async generate(input: GenerateInput): Promise<GenerateResult> {
-    const configFailure = requireOpenAiConfig(input);
-    if (configFailure) return configFailure;
+    if (!input.baseUrl || !input.apiKey) {
+      return failure("config-missing", "Missing baseUrl or apiKey");
+    }
 
+    // 有 onStreamChunk 时走流式（保留实时打字体验），否则非流式
     const useStreaming = Boolean(input.onStreamChunk);
-    console.log(`[completions.generate] useStreaming=${useStreaming}, model=${input.modelId}`);
-
     if (useStreaming) {
       return this.sendStreamingChatCompletion(input, input.messages, input.tools, input.onStreamChunk!, input.signal);
     }
 
-    return this.sendChatCompletion(input, input.messages, undefined, input.tools, input.signal);
+    // Default max_tokens to 32768 to avoid tool_call truncation for long content
+    return this.sendChatCompletion(input, input.messages, 32768, input.tools, input.signal);
   }
 
   // ─── Non-streaming ───────────────────────────────────────────────────────
@@ -474,6 +475,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
       messages: toOpenAiMessages(messages),
       stream: true,
       stream_options: { include_usage: true },
+      max_tokens: 32768,
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
     };
 

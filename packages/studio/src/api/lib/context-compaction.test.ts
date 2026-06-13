@@ -11,7 +11,8 @@ import {
 describe("context compaction", () => {
   it("estimates token count from text length", () => {
     expect(estimateTokenCount("hello world")).toBeGreaterThan(0);
-    expect(estimateTokenCount("a".repeat(4000))).toBeCloseTo(1000, -2); // ~4 chars per token
+    // 4000 个 ASCII 字符：基础 4000/4=1000，× 保守系数 4/3 ≈ 1333
+    expect(estimateTokenCount("a".repeat(4000))).toBeCloseTo(1333, -2);
   });
 
   it("triggers compaction when messages exceed threshold", () => {
