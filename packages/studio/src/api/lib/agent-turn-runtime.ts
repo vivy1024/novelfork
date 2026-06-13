@@ -77,6 +77,8 @@ export interface AgentTurnRuntimeInput {
   readonly silentToolCallThreshold?: number;
   /** 工具执行超时（毫秒），默认 120000 */
   readonly toolTimeoutMs?: number;
+  /** 模型上下文窗口大小（tokens），用于 Budget Pressure 计算上下文使用率 */
+  readonly contextWindowTokens?: number;
 }
 
 function buildSystemContent(systemPrompt: string, context?: string): string {
@@ -259,6 +261,31 @@ export function createFileReadDeduplicator(): FileReadDeduplicator {
 }
 
 
+// ---------------------------------------------------------------------------
+// Budget Pressure — 在 tool_result 末尾追加上下文使用率提醒（无损）
+//
+// 参考 LegnaCode/Claude Code：当上下文接近上限时，在工具结果末尾追加软提示，
+// 引导模型尽快收尾，避免在 context 快满时写长文导致截断。
+// 使用 provider 报告的真实 input_tokens（比字符估算准）。
+// ---------------------------------------------------------------------------
+
+const BUDGET_PRESSURE_SOFT = 0.80; // 80% — 软提示
+const BUDGET_PRESSURE_HARD = 0.92; // 92% — 紧急
+
+export function buildBudgetPressureNotice(inputTokens: number, contextWindow: number): string {
+  if (!contextWindow || contextWindow <= 0 || !inputTokens || inputTokens <= 0) return "";
+  const ratio = inputTokens / contextWindow;
+  const pct = Math.round(ratio * 100);
+  if (ratio >= BUDGET_PRESSURE_HARD) {
+    return `\n\n[⚠️ 上下文已用 ${pct}%，即将溢出。请立即完成当前输出并停止扩展；若任务未完成，请提示用户保存进度后再继续。]`;
+  }
+  if (ratio >= BUDGET_PRESSURE_SOFT) {
+    return `\n\n[提示：上下文已用 ${pct}%。请尽快收尾当前任务，避免长输出导致截断。]`;
+  }
+  return "";
+}
+
+
 function truncateToolResult(content: string, _toolName?: string): string {
   // No token-based truncation — let the model handle full data (1M context)
   // Only character-based safety net for extreme cases
@@ -412,6 +439,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let hasAttemptedOverflowRecovery = false;
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
+
+  // Budget Pressure: 跟踪 provider 报告的最近一次 input_tokens
+  let lastInputTokens = 0;
+  const contextWindowTokens = input.contextWindowTokens ?? 0;
 
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
@@ -627,7 +658,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 type: "tool_result",
                 toolCallId: toolUse.id,
                 name: toolUse.name,
-                content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator),
+                content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
                 ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
                 metadata: { toolResult },
               });
@@ -663,6 +694,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     // Feed token usage to health monitor
     if (usage) {
       turnHealthMonitor.addTokenUsage((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0));
+      // Budget Pressure: 记录真实 input_tokens 用于上下文使用率提醒
+      if (usage.input_tokens && usage.input_tokens > 0) {
+        lastInputTokens = usage.input_tokens;
+      }
     }
 
     if (reply.type !== "tool_use") {
@@ -807,7 +842,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult, toolUse.name),
+          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
@@ -938,7 +973,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult, toolUse.name),
+          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
