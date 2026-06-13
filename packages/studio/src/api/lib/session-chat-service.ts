@@ -292,6 +292,24 @@ async function maybeAutoCompact(
 
 const providerRuntimeStore = new ProviderRuntimeStore();
 
+/**
+ * 从 session 的 provider/model 配置解析上下文窗口大小（tokens）。
+ * 用于 Budget Pressure 等需要 context window 的场景。失败回退默认值。
+ */
+async function resolveModelContextWindow(sessionConfig?: { providerId?: string; modelId?: string }): Promise<number> {
+  try {
+    if (sessionConfig?.providerId) {
+      const provider = await providerRuntimeStore.getProvider(sessionConfig.providerId);
+      if (provider?.models?.length) {
+        const model = provider.models.find((m) => m.id === sessionConfig.modelId) ?? provider.models[0];
+        if (model?.contextWindow && model.contextWindow > 0) return model.contextWindow;
+      }
+    }
+  } catch { /* fallback */ }
+  return DEFAULT_MODEL_CONTEXT_WINDOW;
+}
+
+
 async function resolveReasoningPolicy(providerId?: string): Promise<ProviderReasoningPolicy | undefined> {
   if (!providerId) return undefined;
   try {
@@ -1175,6 +1193,7 @@ async function appendModelContinuationAfterToolDecision(
       goals: loaded.session.goals,
       routinePrompts: continuationRoutinePrompts,
     });
+    const continuationContextWindow = await resolveModelContextWindow(loaded.session.sessionConfig);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId: loaded.session.id,
       sessionConfig: loaded.session.sessionConfig,
@@ -1182,6 +1201,7 @@ async function appendModelContinuationAfterToolDecision(
       systemPrompt: renderSectionsToString(continuationSections),
       appendSystemPrompt: buildAppendSystemPrompt(loaded.session),
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
+      contextWindowTokens: continuationContextWindow,
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
@@ -2256,6 +2276,7 @@ export async function handleSessionChatTransportMessage(
       { label: `消息历史 (${compactedMessages.length} 条)`, tokens: Math.ceil(messagesChars * 0.6) },
     ];
 
+    const mainContextWindow = await resolveModelContextWindow(loaded.session.sessionConfig);
     const runtimeTurn = await executeRuntimeTurn({
       sessionId,
       sessionConfig: loaded.session.sessionConfig,
@@ -2263,6 +2284,7 @@ export async function handleSessionChatTransportMessage(
       systemPrompt: fullSystemPrompt,
       appendSystemPrompt: buildAppendSystemPrompt(loaded.session),
       context: runtimeContext,
+      contextWindowTokens: mainContextWindow,
       tools: filteredTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
       ...(canvasContext ? { canvasContext } : {}),
