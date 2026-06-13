@@ -389,9 +389,8 @@ export class CompletionsAdapter implements RuntimeAdapter {
   }
 
   async generate(input: GenerateInput): Promise<GenerateResult> {
-    if (!input.baseUrl || !input.apiKey) {
-      return failure("config-missing", "Missing baseUrl or apiKey");
-    }
+    const configFailure = requireOpenAiConfig(input);
+    if (configFailure) return configFailure;
 
     // 有 onStreamChunk 时走流式（保留实时打字体验），否则非流式
     const useStreaming = Boolean(input.onStreamChunk);
