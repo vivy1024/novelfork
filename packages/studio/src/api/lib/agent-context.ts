@@ -358,7 +358,8 @@ export async function buildAgentContext(params: {
       if (briefResult.coreBrief.length > 0) {
         const jwLines: string[] = ["", "### 经纬核心包"];
         for (const item of briefResult.coreBrief) {
-          jwLines.push(`【${item.sectionName}】${item.title}：${item.summaryMd}`);
+          // contentMd 已是按优先层 + 预算降级后的实际档位内容（full/normal/summary/brief）
+          jwLines.push(`【${item.sectionName}】${item.title}：${item.contentMd}`);
         }
 
         // 附加分类目录摘要，让模型知道可以补读
