@@ -166,7 +166,8 @@ async function maybeAutoCompact(
 
   const action = detectCompactionAction(compactMessages, maxContextTokens, thresholds);
   if (action === "none") {
-    return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
+    const lastAssistantTs = findLastAssistantTimestamp(messages);
+    return { items: microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: lastAssistantTs }), compacted: false };
   }
 
   try {
@@ -175,6 +176,7 @@ async function maybeAutoCompact(
       messages: compactMessages,
       maxContextTokens,
       thresholds,
+      sessionId,
       summaryModelContextWindow,
       generateSummary: summaryModelRef ? async (prompt: string) => {
         const smProviderId = summaryModelRef.split(":")[0] ?? "";
@@ -252,13 +254,40 @@ async function maybeAutoCompact(
         content: m.content,
         ...(m.id ? { id: m.id } : {}),
       }));
+
+      // Post-compact 状态恢复：Todos + Goals
+      const session = await getSessionById(sessionId);
+      if (session) {
+        const restoreParts: string[] = [];
+        // 恢复未完成 Todos
+        const pendingTodos = (session.todos ?? []).filter((t: { status: string }) => t.status !== "completed");
+        if (pendingTodos.length > 0) {
+          restoreParts.push("待办事项:\n" + pendingTodos.map((t: { status: string; content: string }) =>
+            `- [${t.status === "in_progress" ? "→" : "○"}] ${t.content}`
+          ).join("\n"));
+        }
+        // 恢复活跃 Goals
+        const activeGoals = (session.goals ?? []).filter((g: { status: string }) => g.status === "active");
+        if (activeGoals.length > 0) {
+          restoreParts.push("当前目标:\n" + activeGoals.map((g: { objective: string }) => `- ${g.objective}`).join("\n"));
+        }
+        if (restoreParts.length > 0) {
+          compactedItems.push({
+            type: "message",
+            role: "system",
+            content: `[上下文压缩后状态恢复]\n${restoreParts.join("\n\n")}`,
+          });
+        }
+      }
+
       return { items: compactedItems, compacted: true };
     }
   } catch {
-    // Compaction failure is non-fatal
+    // Compaction failure is non-fatal — circuit breaker counter is managed
+    // inside autoCompact itself (per-session), so nothing to do here.
   }
 
-  return { items: microCompact(sessionMessagesToTurnItems(messages)), compacted: false };
+  return { items: microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: findLastAssistantTimestamp(messages) }), compacted: false };
 }
 
 const providerRuntimeStore = new ProviderRuntimeStore();
@@ -1151,6 +1180,7 @@ async function appendModelContinuationAfterToolDecision(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: renderSectionsToString(continuationSections),
+      appendSystemPrompt: buildAppendSystemPrompt(loaded.session),
       context: createRuntimeContext(bookContext, canvasContext, loaded.session.worktree, continuationProjectContext),
       tools: getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }),
       permissionMode: loaded.session.sessionConfig.permissionMode,
@@ -1763,6 +1793,38 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
 
 const SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
 
+function findLastAssistantTimestamp(messages: readonly NarratorSessionChatMessage[]): number | undefined {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i]!.role === "assistant" && messages[i]!.timestamp) {
+      return messages[i]!.timestamp;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * 构建末尾追加的系统指令。
+ * 利用 recency bias 让模型更强地记住当前目标和待办。
+ */
+function buildAppendSystemPrompt(session: NarratorSessionRecord): string | undefined {
+  const parts: string[] = [];
+
+  // 活跃 Goals
+  const activeGoals = (session.goals ?? []).filter((g: { status: string }) => g.status === "active");
+  if (activeGoals.length > 0) {
+    parts.push("当前目标（请优先推进）:\n" + activeGoals.map((g: { objective: string }) => `- ${g.objective}`).join("\n"));
+  }
+
+  // 进行中的 Todos
+  const inProgressTodos = (session.todos ?? []).filter((t: { status: string }) => t.status === "in_progress");
+  if (inProgressTodos.length > 0) {
+    parts.push("进行中的任务:\n" + inProgressTodos.map((t: { content: string }) => `→ ${t.content}`).join("\n"));
+  }
+
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+
 function formatSessionToolResultContent(result: SessionToolExecutionResult): string {
   return result.summary ? `${result.summary}\n\n${SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION}` : SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION;
 }
@@ -2199,6 +2261,7 @@ export async function handleSessionChatTransportMessage(
       sessionConfig: loaded.session.sessionConfig,
       messages: compactedMessages,
       systemPrompt: fullSystemPrompt,
+      appendSystemPrompt: buildAppendSystemPrompt(loaded.session),
       context: runtimeContext,
       tools: filteredTools,
       permissionMode: loaded.session.sessionConfig.permissionMode,
