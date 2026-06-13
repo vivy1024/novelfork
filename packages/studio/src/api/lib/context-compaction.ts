@@ -55,6 +55,8 @@ export interface CompactInput {
   readonly messages: readonly CompactMessage[];
   readonly maxContextTokens: number;
   readonly thresholds: CompactionThresholds;
+  /** Session ID，用于 circuit breaker 按 session 隔离失败计数 */
+  readonly sessionId?: string;
   /** 调用摘要模型生成结构化摘要（传入完整消息列表作为 context） */
   readonly summarize: (messages: readonly CompactMessage[], customInstructions?: string) => Promise<string>;
   /** 压缩后恢复的关键文件路径 */
@@ -93,12 +95,28 @@ export interface CompactResult {
  * Token 估算：CJK ~1.5 tokens/char, English ~0.25 tokens/char
  */
 export function estimateTokenCount(text: string): number {
+  if (!text) return 0;
+
+  // 检测 JSON 内容（token 更密集）
+  const isJson = text.length > 2 && (text[0] === "{" || text[0] === "[");
+
   let cjkChars = 0;
   for (const char of text) {
     if (char.charCodeAt(0) > 0x2E80) cjkChars++;
   }
   const nonCjk = text.length - cjkChars;
-  return Math.ceil(cjkChars * 1.5 + nonCjk / 4);
+
+  let estimate: number;
+  if (isJson) {
+    // JSON 内容：每 2 字符约 1 token（密集）
+    estimate = Math.ceil(text.length / 2);
+  } else {
+    // CJK ×1.5，非 CJK ÷4
+    estimate = Math.ceil(cjkChars * 1.5 + nonCjk / 4);
+  }
+
+  // 保守系数 ×4/3（参考 Claude Code，避免低估导致 prompt_too_long）
+  return Math.ceil(estimate * 4 / 3);
 }
 
 function totalTokens(messages: readonly CompactMessage[]): number {
@@ -301,6 +319,37 @@ export function formatCompactSummary(raw: string): string {
 // Main compact function
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Circuit breaker — 连续失败 3 次后停止重试，防止无限消耗资源
+//
+// Per-session 状态：用 Map 按 sessionId 隔离，避免模块级全局在多 session/
+// 多 narrator 并发时互相污染（一个 session 失败不应熔断所有 session 的压缩）。
+// ---------------------------------------------------------------------------
+
+const MAX_COMPACT_FAILURES = 3;
+const compactFailuresBySession = new Map<string, number>();
+
+/** 默认 key——未提供 sessionId 时回退到单一全局桶 */
+const DEFAULT_COMPACT_KEY = "__default__";
+
+function getCompactFailures(sessionId?: string): number {
+  return compactFailuresBySession.get(sessionId ?? DEFAULT_COMPACT_KEY) ?? 0;
+}
+
+function incrementCompactFailures(sessionId?: string): void {
+  const key = sessionId ?? DEFAULT_COMPACT_KEY;
+  compactFailuresBySession.set(key, (compactFailuresBySession.get(key) ?? 0) + 1);
+}
+
+/** 外部可调用重置（如 session 切换后）。不传 sessionId 时清空全部。 */
+export function resetCompactCircuitBreaker(sessionId?: string): void {
+  if (sessionId) {
+    compactFailuresBySession.delete(sessionId);
+  } else {
+    compactFailuresBySession.clear();
+  }
+}
+
 /**
  * 自动压缩：根据双档阈值决定裁剪或压缩。
  *
@@ -310,6 +359,13 @@ export function formatCompactSummary(raw: string): string {
  * 3. compress：调用摘要模型生成结构化摘要 + 恢复文件上下文
  */
 export async function autoCompact(input: CompactInput): Promise<CompactResult> {
+  // Circuit breaker: 连续失败过多时跳过（按 session 隔离）
+  const failures = getCompactFailures(input.sessionId);
+  if (failures >= MAX_COMPACT_FAILURES) {
+    console.warn(`[autoCompact] Circuit breaker open for session=${input.sessionId ?? "default"} (${failures} consecutive failures), skipping compact`);
+    return { compacted: false, truncated: false, messages: [...input.messages], compactedMessageCount: 0, keptMessageCount: input.messages.length };
+  }
+
   const { messages, maxContextTokens, thresholds, summarize, recentFilePaths, readFile, customInstructions, summaryModelContextWindow, generateSummary, signal, onProgress } = input;
 
   const action = detectCompactionAction(messages, maxContextTokens, thresholds);
@@ -388,7 +444,18 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
   }
 
   // 调用摘要模型：传入完整旧消息列表（不是截断文本）
-  const rawSummary = await summarize(olderMessages, customInstructions);
+  let rawSummary: string;
+  try {
+    rawSummary = await summarize(olderMessages, customInstructions);
+  } catch (err) {
+    incrementCompactFailures(input.sessionId);
+    throw err;
+  }
+  // #7: 摘要为空/纯空白也算失败（模型返回空串但不抛异常的情况）
+  if (!rawSummary || rawSummary.trim().length === 0) {
+    incrementCompactFailures(input.sessionId);
+    throw new Error("Compact summary is empty");
+  }
   const formattedSummary = formatCompactSummary(rawSummary);
 
   const summaryMessage: CompactMessage = {
@@ -430,6 +497,9 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
   }
 
   compactedMessages.push(...recentMessages);
+
+  // Compact 成功，重置 circuit breaker（按 session）
+  resetCompactCircuitBreaker(input.sessionId);
 
   return {
     compacted: true,

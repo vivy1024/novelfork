@@ -5,6 +5,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 import { estimateTokensFromText } from "./ai-request-observer.js";
+import { estimateTokenCount } from "./context-compaction.js";
 import { getSessionById } from "./session-service.js";
 import { getSessionChatSnapshot } from "./session-chat-service.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
@@ -106,10 +107,22 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
     const contextMessages = contextCutoffSeq > 0
       ? snapshot.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
       : snapshot.messages;
-    const messagesContent = contextMessages
-      .map(m => typeof m.content === "string" ? m.content : "")
-      .join("");
-    const messagesTokens = estimateTokensFromText(messagesContent);
+    // 计算 content + tool_call input 体积（tool input 中的长文本是上下文大头）
+    // 用与 compaction 一致的 estimateTokenCount，确保显示的占用与实际触发压缩的口径相同
+    let messagesTokens = 0;
+    for (const m of contextMessages) {
+      if (typeof m.content === "string" && m.content) {
+        messagesTokens += estimateTokenCount(m.content);
+      }
+      if (m.toolCalls) {
+        for (const tc of m.toolCalls) {
+          if (tc.input && typeof tc.input === "object") {
+            messagesTokens += estimateTokenCount(JSON.stringify(tc.input));
+          }
+        }
+      }
+    }
+    messagesTokens = Math.max(1, messagesTokens);
     parts.push({
       label: `消息历史 (${contextMessages.length} 条)`,
       tokens: messagesTokens,
