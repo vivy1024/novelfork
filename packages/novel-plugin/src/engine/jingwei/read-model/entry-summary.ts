@@ -1,5 +1,6 @@
 import type {
   JingweiContextSource,
+  JingweiDetailLevel,
   JingweiPriorityTier,
   JingweiReadableItem,
   JingweiReadCategory,
@@ -30,11 +31,24 @@ export function getEntrySummaryMd(entry: StoryJingweiEntryRecord): string {
     ?? excerptText(entry.contentMd, 240);
 }
 
+/** L0 一句话摘要：优先用存储的 summaryL0，否则取 summaryMd 首句/前 40 字 */
+export function getEntryL0(entry: StoryJingweiEntryRecord): string {
+  const stored = entry.summaryL0?.trim();
+  if (stored) return stored;
+  const summary = normalizeSummary(getEntrySummaryMd(entry));
+  // 取第一句（中英文句号/问叹号/换行）
+  const sentenceMatch = summary.match(/^[^。！？.!?\n]{1,60}[。！？.!?]?/);
+  const firstSentence = sentenceMatch?.[0]?.trim();
+  if (firstSentence && firstSentence.length >= 4) return firstSentence;
+  return excerptText(summary, 40);
+}
+
 export function getEntryPriorityTier(entry: StoryJingweiEntryRecord): JingweiPriorityTier {
   return entry.priorityTier ?? "auto";
 }
 
-export function getEntryReadableContent(entry: StoryJingweiEntryRecord, detailLevel: "summary" | "normal" | "full"): string {
+export function getEntryReadableContent(entry: StoryJingweiEntryRecord, detailLevel: JingweiDetailLevel): string {
+  if (detailLevel === "brief") return getEntryL0(entry);
   if (detailLevel === "summary") return getEntrySummaryMd(entry);
   if (detailLevel === "normal") {
     const summary = getEntrySummaryMd(entry);
@@ -53,7 +67,7 @@ export function toJingweiReadableItem(
   entry: StoryJingweiEntryRecord,
   section: StoryJingweiSectionRecord,
   source: JingweiContextSource,
-  detailLevel: "summary" | "normal" | "full" = "summary",
+  detailLevel: JingweiDetailLevel = "summary",
 ): JingweiReadableItem {
   const category = resolveJingweiReadCategory(entry, section);
   const summaryMd = getEntrySummaryMd(entry);
@@ -62,7 +76,9 @@ export function toJingweiReadableItem(
   const priorityTier = getEntryPriorityTier(entry);
   const priorityBase = priorityTier === "core" ? 10_000 : priorityTier === "relevant" ? 2_000 : priorityTier === "reference" ? 500 : 0;
   const sourceBonus = source === "global" ? 30 : source === "tracked" ? 20 : 10;
-  const priority = priorityBase + sourceBonus + Math.max(0, 1000 - section.order);
+  // importance(0-100) 作为同层内的细粒度排序依据，叠加到层基数之上
+  const importanceBonus = typeof entry.importance === "number" ? Math.max(0, Math.min(100, entry.importance)) : 40;
+  const priority = priorityBase + sourceBonus + importanceBonus + Math.max(0, 1000 - section.order);
 
   return {
     id: entry.id,

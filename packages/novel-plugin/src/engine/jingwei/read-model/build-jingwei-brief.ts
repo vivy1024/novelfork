@@ -9,9 +9,10 @@ import type {
   StoryJingweiEntryRecord,
   StoryJingweiSectionRecord,
 } from "../types.js";
-import { toJingweiReadableItem } from "./entry-summary.js";
+import { toJingweiReadableItem, getEntryReadableContent } from "./entry-summary.js";
 import { buildJingweiIndexFromItems } from "./build-jingwei-index.js";
-import { applyTokenBudget } from "./token-budget.js";
+import { applyTokenBudgetWithDegradation, type DegradableItem, type JingweiBudgetDetailLevel } from "./token-budget.js";
+import { estimateJingweiTokens } from "../context/build-jingwei-context.js";
 
 export interface BuildJingweiBriefInput {
   readonly bookId: string;
@@ -93,6 +94,32 @@ function selectCoreCandidates(candidates: readonly CandidateItem[]): CandidateIt
   return selected;
 }
 
+/** 按优先层决定初始注入详细度：core 给更多内容，reference 给一句话 */
+function initialDetailLevelForCandidate(candidate: CandidateItem): JingweiBudgetDetailLevel {
+  const tier = candidate.entry.priorityTier ?? "auto";
+  if (tier === "core" || isCoreSection(candidate.section)) return "normal";
+  if (tier === "relevant") return "summary";
+  if (tier === "reference") return "brief";
+  return "summary"; // auto
+}
+
+/** 为候选条目计算各档 token 估算，供逐条降级使用 */
+function toDegradableItem(candidate: CandidateItem): DegradableItem {
+  const { entry, section } = candidate;
+  const label = `【${section.builtinKind ? section.name : `自定义-${section.name}`}】${entry.title}：`;
+  const levels = (["full", "normal", "summary", "brief"] as const).map((detailLevel) => {
+    const content = getEntryReadableContent(entry, detailLevel);
+    const cap = entry.tokenBudget ?? Number.POSITIVE_INFINITY;
+    return { detailLevel, estimatedTokens: Math.min(estimateJingweiTokens(label + content), cap) };
+  });
+  return {
+    id: candidate.id,
+    priority: candidate.priority,
+    levels,
+    initialLevel: initialDetailLevelForCandidate(candidate),
+  };
+}
+
 function toRecommendedReads(index: JingweiBriefIndex, sceneText: string, chapterIntent: string) {
   const taskText = `${sceneText}\n${chapterIntent}`.trim();
   const prefers = taskText.length === 0
@@ -136,8 +163,16 @@ export async function buildJingweiBrief(input: BuildJingweiBriefInput): Promise<
 
   const selected = selectCoreCandidates(candidates);
   const budget = input.tokenBudget ?? 4000;
-  const budgeted = applyTokenBudget(selected, budget);
-  const coreBrief = budgeted.items.map((candidate) => toJingweiReadableItem(candidate.entry, candidate.section, candidate.source, "summary"));
+
+  // Recall with Budget: 按层分配初始详细度，超预算逐条降级(L2→L1→L0)再丢弃
+  const candidateById = new Map(selected.map((c) => [c.id, c]));
+  const degradable = selected.map(toDegradableItem);
+  const degraded = applyTokenBudgetWithDegradation(degradable, budget);
+
+  const coreBrief = degraded.items.map((d) => {
+    const candidate = candidateById.get(d.id)!;
+    return toJingweiReadableItem(candidate.entry, candidate.section, candidate.source, d.detailLevel);
+  });
   const index = buildJingweiIndexFromItems(entries.map((entry) => {
     const section = sectionById.get(entry.sectionId);
     if (!section) {
@@ -153,8 +188,8 @@ export async function buildJingweiBrief(input: BuildJingweiBriefInput): Promise<
     coreBrief,
     index,
     recommendedReads: toRecommendedReads(index, sceneText, chapterIntent),
-    estimatedTokens: budgeted.estimatedTokens,
-    droppedEntryIds: budgeted.droppedEntryIds,
-    omittedSummary: budgeted.droppedEntryIds.length > 0 ? buildOmittedSummary(budgeted.droppedEntryIds.length, budget, budgeted.estimatedTokens) : undefined,
+    estimatedTokens: degraded.estimatedTokens,
+    droppedEntryIds: degraded.droppedEntryIds,
+    omittedSummary: degraded.droppedEntryIds.length > 0 ? buildOmittedSummary(degraded.droppedEntryIds.length, budget, degraded.estimatedTokens) : undefined,
   };
 }

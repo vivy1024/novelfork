@@ -26,6 +26,10 @@ export interface JingweiWriteInput {
   entryId?: string;
   fields?: Record<string, unknown>;
   mode?: "overwrite" | "append";
+  /** 优先层级，影响默认 importance 与注入详细度 */
+  priorityTier?: "core" | "relevant" | "reference" | "auto";
+  /** 重要度评分 0-100，省略时按 priorityTier 映射 */
+  importance?: number;
 }
 
 export interface JingweiWriteSuccess {
@@ -88,6 +92,28 @@ function inferCategory(raw: string, entryTitle: string, content: string): string
 
 function generateSummary(contentMd: string): string {
   return contentMd.trim().replace(/\s+/g, " ").slice(0, 240);
+}
+
+/** L0 一句话摘要：取首句或前 40 字 */
+function generateL0(contentMd: string): string {
+  const normalized = contentMd.trim().replace(/\s+/g, " ");
+  const sentenceMatch = normalized.match(/^[^。！？.!?\n]{1,60}[。！？.!?]?/);
+  const firstSentence = sentenceMatch?.[0]?.trim();
+  if (firstSentence && firstSentence.length >= 4) return firstSentence;
+  return normalized.slice(0, 40);
+}
+
+/** importance 默认值：写入参数优先，否则按 priorityTier 映射 */
+function resolveImportance(raw: unknown, priorityTier: string): number {
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    return Math.max(0, Math.min(100, Math.round(raw)));
+  }
+  switch (priorityTier) {
+    case "core": return 80;
+    case "relevant": return 50;
+    case "reference": return 20;
+    default: return 40; // auto
+  }
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -159,6 +185,11 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   const summaryMd = typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0
     ? input.summaryMd.trim()
     : generateSummary(contentMd);
+  const priorityTier = (input.priorityTier === "core" || input.priorityTier === "relevant" || input.priorityTier === "reference" || input.priorityTier === "auto")
+    ? input.priorityTier
+    : "auto";
+  const importance = resolveImportance(input.importance, priorityTier);
+  const summaryL0 = generateL0(summaryMd || contentMd);
   const relatedEntryIds = Array.isArray(input.relatedEntryIds)
     ? input.relatedEntryIds.filter((id): id is string => typeof id === "string")
     : [];
@@ -235,14 +266,15 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       const finalSummaryMd = input.mode === "append" && finalContentMd !== contentMd
         ? (typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0 ? input.summaryMd.trim() : generateSummary(finalContentMd))
         : summaryMd;
+      const finalSummaryL0 = generateL0(finalSummaryMd || finalContentMd);
 
       // Update existing entry
       const entryId = existing.id;
       storage.sqlite.prepare(`
         UPDATE story_jingwei_entry
-        SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, custom_fields_json = ?, updated_at = ?
+        SET content_md = ?, summary_md = ?, summary_l0 = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, updated_at = ?
         WHERE id = ?
-      `).run(finalContentMd, finalSummaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, fieldsJson, now, entryId);
+      `).run(finalContentMd, finalSummaryMd, finalSummaryL0, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, now, entryId);
 
       return {
         ok: true,
@@ -253,9 +285,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       // Create new entry
       const entryId = crypto.randomUUID();
       storage.sqlite.prepare(`
-        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?)
-      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, now, now);
+        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, summary_l0, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, priority_tier, importance, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?, ?, ?)
+      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, summaryL0, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, priorityTier, importance, now, now);
 
       return {
         ok: true,

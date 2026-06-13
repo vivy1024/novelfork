@@ -92,6 +92,10 @@ export interface StoryJingweiEntryRecord {
   tokenBudget: number | null;
   priorityTier?: JingweiPriorityTier;
   layer?: JingweiLayer;
+  /** 重要度评分 0-100，用于分级注入排序与逐条降级（默认 40） */
+  importance?: number;
+  /** 一句话摘要（L0），上下文预算紧张时的最简降级内容 */
+  summaryL0?: string | null;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
@@ -147,7 +151,14 @@ export type JingweiReadCategory =
   | "reference"
   | "unclassified";
 
-export type JingweiDetailLevel = "summary" | "normal" | "full";
+/**
+ * 经纬读取详细度（分级注入）：
+ * - brief: L0 一句话
+ * - summary: L1 核心摘要
+ * - normal: L1 摘要 + 部分正文
+ * - full: L2 完整正文
+ */
+export type JingweiDetailLevel = "brief" | "summary" | "normal" | "full";
 
 export interface JingweiReadableItem {
   id: string;
