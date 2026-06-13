@@ -13,7 +13,27 @@ import { loadUserConfig } from "../user-config-service.js";
 const COMPACT_MAX_OUTPUT_TOKENS = 20_000;
 const MAX_CONSECUTIVE_FAILURES = 3;
 
-let consecutiveFailures = 0;
+// Per-session 失败计数：用 Map 按 sessionId 隔离，避免模块级全局在多 session 并发时互相污染。
+// 未提供 sessionId 时回退到单一默认桶。
+const DEFAULT_FAILURE_KEY = "__default__";
+const failuresBySession = new Map<string, number>();
+
+function getFailures(sessionId?: string): number {
+  return failuresBySession.get(sessionId ?? DEFAULT_FAILURE_KEY) ?? 0;
+}
+
+function incrementFailures(sessionId?: string): void {
+  const key = sessionId ?? DEFAULT_FAILURE_KEY;
+  failuresBySession.set(key, (failuresBySession.get(key) ?? 0) + 1);
+}
+
+function clearFailures(sessionId?: string): void {
+  if (sessionId) {
+    failuresBySession.delete(sessionId);
+  } else {
+    failuresBySession.clear();
+  }
+}
 
 const COMPACT_SYSTEM_PROMPT = "你是一个对话摘要助手。你的任务是将一段长对话压缩为结构化摘要，保留所有关键信息。";
 
@@ -81,13 +101,15 @@ export interface FullCompactResult {
 export async function fullCompact(
   messages: readonly AgentTurnItem[],
   sessionConfig: SessionConfig,
+  sessionId?: string,
 ): Promise<FullCompactResult> {
-  // 熔断检查
-  if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
+  // 熔断检查（按 session 隔离）
+  const failures = getFailures(sessionId);
+  if (failures >= MAX_CONSECUTIVE_FAILURES) {
     return {
       success: false,
       messages,
-      error: `Full compact 已熔断：连续失败 ${consecutiveFailures} 次`,
+      error: `Full compact 已熔断：连续失败 ${failures} 次`,
     };
   }
 
@@ -131,7 +153,7 @@ export async function fullCompact(
     });
 
     if (!result.success) {
-      consecutiveFailures += 1;
+      incrementFailures(sessionId);
       return {
         success: false,
         messages,
@@ -140,7 +162,7 @@ export async function fullCompact(
     }
 
     if (result.type === "tool_use" || !result.content?.trim()) {
-      consecutiveFailures += 1;
+      incrementFailures(sessionId);
       return {
         success: false,
         messages,
@@ -149,7 +171,7 @@ export async function fullCompact(
     }
 
     // 成功，重置失败计数
-    consecutiveFailures = 0;
+    clearFailures(sessionId);
 
     const summary = extractSummary(result.content);
 
@@ -182,7 +204,7 @@ export async function fullCompact(
       summary,
     };
   } catch (error) {
-    consecutiveFailures += 1;
+    incrementFailures(sessionId);
     return {
       success: false,
       messages,
@@ -192,15 +214,15 @@ export async function fullCompact(
 }
 
 /**
- * 重置熔断计数（用于测试或手动恢复）。
+ * 重置熔断计数（用于测试或手动恢复）。不传 sessionId 时清空全部。
  */
-export function resetCompactFailures(): void {
-  consecutiveFailures = 0;
+export function resetCompactFailures(sessionId?: string): void {
+  clearFailures(sessionId);
 }
 
 /**
  * 获取当前连续失败次数。
  */
-export function getCompactFailureCount(): number {
-  return consecutiveFailures;
+export function getCompactFailureCount(sessionId?: string): number {
+  return getFailures(sessionId);
 }
