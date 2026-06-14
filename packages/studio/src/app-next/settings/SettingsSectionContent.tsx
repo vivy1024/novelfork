@@ -5,7 +5,7 @@ import { ProfilePanel } from "./panels/ProfilePanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { DataPanel } from "./panels/DataPanel";
-import { TerminalSettingsPanel } from "./panels/TerminalSettingsPanel";
+
 import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
@@ -52,8 +52,6 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <AppearancePanel />;
     case "proxy":
       return <ProxySettingsPanel />;
-    case "terminals":
-      return <TerminalSettingsPanel />;
     case "server":
       return <ServerSection />;
     case "storage":

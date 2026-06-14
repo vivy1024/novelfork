@@ -23,21 +23,12 @@ export interface UserPreferences {
   oledBlack: boolean;
   fontSize: number;
   fontFamily: string;
-  editorLineHeight: number;
-  editorTabSize: number;
   autoSave: boolean;
   autoSaveDelay: number;
   dailyWordTarget: number;
   workbenchMode: boolean;
   advancedAnimations: boolean;
-  wrapMarkdown: boolean;
-  wrapCode: boolean;
-  wrapDiff: boolean;
   language: string;
-  /** 终端字体大小 (8-32) */
-  terminalFontSize: number;
-  /** 终端主题 */
-  terminalTheme: "auto" | "dark" | "light";
 }
 
 export interface RuntimeRecoverySettings {
@@ -413,19 +404,12 @@ export const DEFAULT_USER_CONFIG: UserConfig = {
     oledBlack: false,
     fontSize: 14,
     fontFamily: "system-ui, -apple-system, sans-serif",
-    editorLineHeight: 1.6,
-    editorTabSize: 2,
     autoSave: true,
     autoSaveDelay: 2000,
     dailyWordTarget: 6000,
     workbenchMode: false,
     advancedAnimations: true,
-    wrapMarkdown: true,
-    wrapCode: true,
-    wrapDiff: true,
     language: "zh",
-    terminalFontSize: 14,
-    terminalTheme: "auto",
   },
   runtimeControls: {
     defaultPermissionMode: DEFAULT_SESSION_CONFIG.permissionMode,

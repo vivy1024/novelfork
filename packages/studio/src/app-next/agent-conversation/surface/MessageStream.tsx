@@ -18,6 +18,8 @@ export interface MessageStreamProps {
   codeCollapsed?: boolean;
   /** 默认展开推理/思考块 */
   expandReasoning?: boolean;
+  /** 启用消息正文流式逐词动画 */
+  advancedAnimations?: boolean;
 }
 
 /** 判断是否在底部附近（距底部 < threshold px） */
@@ -30,7 +32,7 @@ function isNearBottom(ref: BidirectionalListRef<ConversationSurfaceMessage> | nu
   }
 }
 
-export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false, expandReasoning = false }: MessageStreamProps) {
+export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false, expandReasoning = false, advancedAnimations = true }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
   /** 用户是否手动向上滚动（打断了自动下滑） */
@@ -157,11 +159,12 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
         onContextAction={onContextAction}
         codeCollapsed={codeCollapsed}
         expandReasoning={expandReasoning}
+        advancedAnimations={advancedAnimations}
         isSelected={isSelected(message.id)}
         onSelect={handleSelect}
       />
     ),
-    [onOpenArtifact, onContextAction, codeCollapsed, expandReasoning, isSelected, handleSelect],
+    [onOpenArtifact, onContextAction, codeCollapsed, expandReasoning, advancedAnimations, isSelected, handleSelect],
   );
 
   const itemKey = useCallback((message: ConversationSurfaceMessage) => message.id, []);

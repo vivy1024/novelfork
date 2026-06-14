@@ -41,7 +41,7 @@ vi.mock("./user-config-service", () => ({
       aggregations: mockAggregations,
     },
     profile: { name: "", email: "" },
-    preferences: { theme: "auto", fontSize: 14, fontFamily: "system-ui", editorLineHeight: 1.6, editorTabSize: 2, autoSave: true, autoSaveDelay: 2000, dailyWordTarget: 6000, workbenchMode: false, advancedAnimations: true, wrapMarkdown: true, wrapCode: true, wrapDiff: true, language: "zh" },
+    preferences: { theme: "auto", fontSize: 14, fontFamily: "system-ui", autoSave: true, autoSaveDelay: 2000, dailyWordTarget: 6000, workbenchMode: false, advancedAnimations: true, language: "zh" },
     runtimeControls: {},
     onboarding: { dismissedFirstRun: false, dismissedGettingStarted: false, tasks: {} },
     shortcuts: {},

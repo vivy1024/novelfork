@@ -168,9 +168,10 @@ export function ConversationSurface({
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [userCommands, setUserCommands] = useState<UserCommand[]>([]);
   const [disabledCommands, setDisabledCommands] = useState<string[]>([]);
-  // 渲染相关用户偏好（来自 /settings/user runtimeControls）
+  // 渲染相关用户偏好（来自 /settings/user）
   const [expandReasoning, setExpandReasoning] = useState(false);
   const [autoLoadHistory, setAutoLoadHistory] = useState(true);
+  const [advancedAnimations, setAdvancedAnimations] = useState(true);
   const routerNavigate = useNavigate();
 
   // 加载用户自定义命令和禁用命令列表
@@ -184,16 +185,17 @@ export function ConversationSurface({
       .catch(() => { /* non-fatal */ });
   }, []);
 
-  // 加载渲染相关用户偏好（默认展开推理内容 / 滚动自动加载历史）
+  // 加载渲染相关用户偏好（默认展开推理内容 / 滚动自动加载历史 / 高级动画）
   useEffect(() => {
     let active = true;
     const loadPrefs = () => {
       fetch("/api/settings/user")
         .then(res => res.ok ? res.json() : null)
-        .then((data: { runtimeControls?: { expandReasoning?: boolean; scrollAutoLoadHistory?: boolean } } | null) => {
-          if (!active || !data?.runtimeControls) return;
-          if (typeof data.runtimeControls.expandReasoning === "boolean") setExpandReasoning(data.runtimeControls.expandReasoning);
-          if (typeof data.runtimeControls.scrollAutoLoadHistory === "boolean") setAutoLoadHistory(data.runtimeControls.scrollAutoLoadHistory);
+        .then((data: { runtimeControls?: { expandReasoning?: boolean; scrollAutoLoadHistory?: boolean }; preferences?: { advancedAnimations?: boolean } } | null) => {
+          if (!active || !data) return;
+          if (typeof data.runtimeControls?.expandReasoning === "boolean") setExpandReasoning(data.runtimeControls.expandReasoning);
+          if (typeof data.runtimeControls?.scrollAutoLoadHistory === "boolean") setAutoLoadHistory(data.runtimeControls.scrollAutoLoadHistory);
+          if (typeof data.preferences?.advancedAnimations === "boolean") setAdvancedAnimations(data.preferences.advancedAnimations);
         })
         .catch(() => { /* non-fatal, keep defaults */ });
     };
@@ -662,7 +664,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} hasPrevious={effectiveHasPrevious} onLoadPrevious={handleLoadPreviousWrapped} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} expandReasoning={expandReasoning} />
+            <MessageStream messages={filteredMessages} hasPrevious={effectiveHasPrevious} onLoadPrevious={handleLoadPreviousWrapped} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} expandReasoning={expandReasoning} advancedAnimations={advancedAnimations} />
             {/* Confirmation gate / User question gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
