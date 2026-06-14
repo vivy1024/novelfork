@@ -17,6 +17,7 @@ import { WriterAgent } from "../engine/agents/writer.js";
 import { LengthNormalizerAgent } from "../engine/agents/length-normalizer.js";
 import { ContinuityAuditor } from "../engine/agents/continuity.js";
 import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/agents/adversarial-audit.js";
+import { evaluateGate } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { randomUUID } from "node:crypto";
@@ -233,12 +234,13 @@ export async function executePipelineWrite(
     let auditResult: AuditResult = await runAudit(finalContent);
     const maxRounds = Math.max(0, maxReviseRounds);
 
-    // 多轮自愈：有 critical 且允许修订时，spot-fix → re-audit，最多 maxRounds 轮
+    // 多轮自愈（P1-2 门禁）：S1/S2（critical）触发修订，spot-fix → re-audit，最多 maxRounds 轮
     while (autoRevise && reviseRounds < maxRounds) {
+      const gate = evaluateGate(auditResult.issues);
+      if (!gate.hasRevisable) break;
       const criticalIssues = auditResult.issues.filter((i) => i.severity === "critical");
-      if (criticalIssues.length === 0) break;
       reviseRounds += 1;
-      logger?.info(`[pipeline.write] Revise round ${reviseRounds}/${maxRounds}: ${criticalIssues.length} critical issues`);
+      logger?.info(`[pipeline.write] Revise round ${reviseRounds}/${maxRounds}: S1=${gate.counts.S1} S2=${gate.counts.S2}`);
       const reviseOutput = await new ReviserAgent(reviserCtx).reviseChapter(
         bookDir, finalContent, chapterNumber, criticalIssues, "spot-fix", book.genre,
         { chapterIntent, contextPackage, ruleStack, lengthSpec },
@@ -248,10 +250,11 @@ export async function executePipelineWrite(
       auditResult = await runAudit(finalContent); // re-audit 修订后的版本
     }
 
-    // 达上限仍有 critical → 标记需人工复核（Human Review Gate）
-    const needsHumanReview = auditResult.issues.some((i) => i.severity === "critical");
+    // 门禁：剩余 S1（致命）→ 阻断采纳送人工复核；S2 也未清完同样需复核
+    const finalGate = evaluateGate(auditResult.issues);
+    const needsHumanReview = finalGate.hasRevisable;
     if (needsHumanReview) {
-      logger?.warn(`[pipeline.write] ${reviseRounds} revise round(s) exhausted, critical issues remain → needs human review`);
+      logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
     }
 
     // 4. Save as candidate
