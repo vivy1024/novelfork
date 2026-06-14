@@ -365,14 +365,14 @@ export async function buildAgentContext(params: {
         // 附加分类目录摘要，让模型知道可以补读
         if (briefResult.index.categories.length > 0) {
           jwLines.push("");
-          jwLines.push("### 经纬分类目录（可按需调用 jingwei.read_category 读取细节）");
+          jwLines.push("### 经纬分类目录（可按需调用 jingwei.read(scope=category) 读取细节）");
           for (const cat of briefResult.index.categories.slice(0, 10)) {
             jwLines.push(`- ${cat.title}：${cat.count} 条（约 ${cat.estimatedTokens} tokens）`);
           }
         }
 
         if (briefResult.droppedEntryIds.length > 0) {
-          jwLines.push(`\n（因预算限制，${briefResult.droppedEntryIds.length} 条低优先级条目未注入核心包。如需详细信息，调用 jingwei.read_category 或 jingwei.search）`);
+          jwLines.push(`\n（因预算限制，${briefResult.droppedEntryIds.length} 条低优先级条目未注入核心包。如需详细信息，调用 jingwei.read(scope=category) 或 jingwei.read(scope=search)）`);
         }
         extraBlocks.push(jwLines.join("\n"));
       }

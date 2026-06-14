@@ -205,7 +205,7 @@ const TRUNCATE_TAIL = 30000;
 // File Unchanged Dedup — 同一文件连续读取时返回 stub 而非完整内容
 // ---------------------------------------------------------------------------
 
-const FILE_READ_TOOLS = new Set(["Read", "jingwei.read", "chapter.read", "jingwei.read_brief", "jingwei.read_category"]);
+const FILE_READ_TOOLS = new Set(["Read", "jingwei.read", "chapter.read"]);
 
 interface FileReadCacheEntry {
   contentHash: string;
