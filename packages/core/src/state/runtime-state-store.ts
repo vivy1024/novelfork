@@ -7,6 +7,7 @@ import {
   KnowledgeStateSchema,
   ResourceLedgerStateSchema,
   StateManifestSchema,
+  TimelineStateSchema,
   type RuntimeStateDelta,
 } from "../models/runtime-state.js";
 import type { Fact, StoredHook, StoredSummary } from "./memory-db.js";
@@ -45,6 +46,9 @@ export async function loadRuntimeStateSnapshot(bookDir: string): Promise<Runtime
   // 知识边界事件（P2-2）：旧书无此文件 → 默认空（向后兼容）
   const knowledge = (await readJsonOrNull(join(stateDir, "knowledge.json"), KnowledgeStateSchema))
     ?? KnowledgeStateSchema.parse({ events: [] });
+  // 全书时间线（P3-1）：旧书无此文件 → 默认空（向后兼容）
+  const timeline = (await readJsonOrNull(join(stateDir, "timeline.json"), TimelineStateSchema))
+    ?? TimelineStateSchema.parse({ entries: [] });
 
   const snapshot = {
     manifest,
@@ -53,6 +57,7 @@ export async function loadRuntimeStateSnapshot(bookDir: string): Promise<Runtime
     chapterSummaries,
     resourceLedger,
     knowledge,
+    timeline,
   };
 
   const issues = validateRuntimeState(snapshot);
@@ -108,6 +113,7 @@ export async function saveRuntimeStateSnapshot(
     writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify(snapshot.chapterSummaries, null, 2), "utf-8"),
     writeFile(join(stateDir, "resource_ledger.json"), JSON.stringify(snapshot.resourceLedger ?? { resources: [] }, null, 2), "utf-8"),
     writeFile(join(stateDir, "knowledge.json"), JSON.stringify(snapshot.knowledge ?? { events: [] }, null, 2), "utf-8"),
+    writeFile(join(stateDir, "timeline.json"), JSON.stringify(snapshot.timeline ?? { entries: [] }, null, 2), "utf-8"),
   ]);
 }
 

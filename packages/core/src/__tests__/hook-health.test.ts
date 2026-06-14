@@ -163,4 +163,34 @@ describe("analyzeHookHealth", () => {
 
     expect(issues.some((issue) => issue.description.includes("Opened 2 new hooks"))).toBe(false);
   });
+
+  it("P3-2: 跨卷未回收伏笔 → 升级告警", () => {
+    // 每卷10章，伏笔埋在第1卷(第3章)，当前在第3卷(第25章) → 跨2卷
+    const issues = analyzeHookHealth({
+      language: "zh",
+      chapterNumber: 25,
+      hooks: [createHook({ hookId: "ancient-curse", startChapter: 3, status: "open" })],
+      chaptersPerVolume: 10,
+    });
+    expect(issues.some((i) => i.description.includes("跨") && i.description.includes("ancient-curse"))).toBe(true);
+  });
+
+  it("P3-2: 同卷/相邻卷未回收 → 不触发跨卷告警", () => {
+    const issues = analyzeHookHealth({
+      language: "zh",
+      chapterNumber: 15, // 第2卷
+      hooks: [createHook({ hookId: "recent-debt", startChapter: 8, status: "open" })], // 第1卷，仅差1卷
+      chaptersPerVolume: 10,
+    });
+    expect(issues.some((i) => i.description.includes("跨") && i.description.includes("recent-debt"))).toBe(false);
+  });
+
+  it("P3-2: 未提供 chaptersPerVolume → 跳过跨卷检测", () => {
+    const issues = analyzeHookHealth({
+      language: "zh",
+      chapterNumber: 25,
+      hooks: [createHook({ hookId: "x", startChapter: 3, status: "open" })],
+    });
+    expect(issues.some((i) => i.description.includes("跨"))).toBe(false);
+  });
 });

@@ -15,6 +15,8 @@ export function analyzeHookHealth(params: {
   readonly staleAfterChapters?: number;
   readonly noAdvanceWindow?: number;
   readonly newHookBurstThreshold?: number;
+  /** 每卷章数（P3-2 跨卷未回收检测）。省略则跳过跨卷检测。 */
+  readonly chaptersPerVolume?: number;
 }): AuditIssue[] {
   const maxActiveHooks = params.maxActiveHooks ?? HOOK_HEALTH_DEFAULTS.maxActiveHooks;
   const staleAfterChapters = params.staleAfterChapters ?? HOOK_HEALTH_DEFAULTS.staleAfterChapters;
@@ -122,6 +124,26 @@ export function analyzeHookHealth(params: {
           ? "Keep the hook table from ballooning by pairing new openings with old payoffs."
           : "控制伏笔膨胀，新开伏笔时尽量配套回收旧伏笔。",
       ));
+    }
+  }
+
+  // P3-2 跨卷未回收检测：伏笔埋设卷 比 当前卷 落后 ≥2 卷且仍未回收 → 升级告警
+  if (params.chaptersPerVolume && params.chaptersPerVolume > 0) {
+    const volumeOf = (chapter: number) => Math.floor(Math.max(0, chapter - 1) / params.chaptersPerVolume!) + 1;
+    const currentVolume = volumeOf(params.chapterNumber);
+    for (const hook of activeHooks) {
+      const hookVolume = hook.volume ?? volumeOf(hook.startChapter);
+      if (currentVolume - hookVolume >= 2) {
+        issues.push(warning(
+          params.language,
+          params.language === "en"
+            ? `Hook "${hook.hookId}" was planted in volume ${hookVolume} but is still unresolved in volume ${currentVolume} (${currentVolume - hookVolume} volumes behind).`
+            : `伏笔「${hook.hookId}」埋设于第 ${hookVolume} 卷，到第 ${currentVolume} 卷仍未回收（已跨 ${currentVolume - hookVolume} 卷）。`,
+          params.language === "en"
+            ? "Cross-volume debt risks reader frustration; schedule a payoff or explicit defer."
+            : "跨卷未回收易让读者失去耐心，请安排回收或明确延后。",
+        ));
+      }
     }
   }
 
