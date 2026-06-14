@@ -589,6 +589,31 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     ackedSeqRef.current = resumeFromSeq;
   }, [resumeFromSeq, runtime]);
 
+  // Desktop notification preferences (browserNotifications master switch + per-event toggles).
+  // Loaded from /settings/user, refreshed on window focus so panel edits take effect.
+  const { notifyIfHidden } = useDesktopNotification();
+  const notificationPrefsRef = useRef<{ browserNotifications: boolean; events: { taskComplete: boolean; error: boolean } }>({
+    browserNotifications: false,
+    events: { taskComplete: true, error: true },
+  });
+  useEffect(() => {
+    let active = true;
+    const loadPrefs = () => {
+      void fetch("/api/settings/user").then((res) => res.ok ? res.json() : null).then((data) => {
+        if (!active || !data) return;
+        const n = (data.preferences as { notifications?: { browserNotifications?: boolean; events?: { taskComplete?: boolean; error?: boolean } } } | undefined)?.notifications;
+        if (!n) return;
+        notificationPrefsRef.current = {
+          browserNotifications: n.browserNotifications ?? false,
+          events: { taskComplete: n.events?.taskComplete ?? true, error: n.events?.error ?? true },
+        };
+      }).catch(() => { /* keep defaults */ });
+    };
+    loadPrefs();
+    window.addEventListener("focus", loadPrefs);
+    return () => { active = false; window.removeEventListener("focus", loadPrefs); };
+  }, []);
+
   // 错误发生时触发 toast 通知
   useEffect(() => {
     if (runtime.state.error) {
@@ -597,8 +622,13 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         id: "session-error",
         duration: 8000,
       });
+      // 标签隐藏时额外发桌面通知，受用户偏好门控
+      const prefs = notificationPrefsRef.current;
+      if (prefs.browserNotifications && prefs.events.error) {
+        notifyIfHidden("叙述者遇到错误", runtime.state.error.message);
+      }
     }
-  }, [runtime.state.error]);
+  }, [runtime.state.error, notifyIfHidden]);
 
   useEffect(() => {
     const worktree = runtime.state.session?.worktree?.trim();
@@ -805,15 +835,16 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     }
   }, []);
 
-  // Desktop notification: notify when narrator finishes while tab is hidden
-  const { notifyIfHidden } = useDesktopNotification();
   const prevNarratorStateRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     const currentState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
     const prevState = prevNarratorStateRef.current;
     prevNarratorStateRef.current = currentState;
     if (prevState === "working" && currentState === "idle") {
-      notifyIfHidden("叙述者已完成任务", runtime.state.session?.title ?? sessionId);
+      const prefs = notificationPrefsRef.current;
+      if (prefs.browserNotifications && prefs.events.taskComplete) {
+        notifyIfHidden("叙述者已完成任务", runtime.state.session?.title ?? sessionId);
+      }
     }
   }, [status.narratorState, status.state, notifyIfHidden, runtime.state.session?.title, sessionId]);
 
