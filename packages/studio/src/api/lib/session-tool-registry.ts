@@ -534,22 +534,6 @@ export function isSessionToolEnabledForMode(
 // ---------------------------------------------------------------------------
 
 const BUILTIN_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
-  planner: {
-    enable: ["Read", "Grep", "Glob", "WebSearch", "WebFetch", "TodoWrite"],
-    disable: ["Bash", "Write", "Edit", "Terminal"],
-  },
-  auditor: {
-    enable: ["Read", "Grep", "Glob"],
-    disable: ["Write", "Edit", "Bash", "Terminal"],
-  },
-  explorer: {
-    enable: ["Read", "Grep", "Glob", "Recall"],
-    disable: ["Write", "Edit", "Bash", "Terminal", "EnterWorktree", "ExitWorktree"],
-  },
-  architect: {
-    enable: ["Read", "Write", "Grep", "Glob", "WebSearch"],
-    disable: ["Bash", "Terminal"],
-  },
   subagent: {
     enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob"],
     disable: ["Terminal", "Browser", "ForkNarrator"],
@@ -613,22 +597,18 @@ const DEPRECATED_V1_TOOLS = new Set([
  * 可按实际使用日志调整。
  */
 export const NOVEL_CORE_TOOLS = new Set<string>([
+  // 写作主链路工具（高频，必须常驻）
   "jingwei.read",
   "jingwei.write",
   "cockpit.snapshot",
   "chapter.read",
-  "chapter.audit",
   "pipeline.write",
   "scene.spec",
   "pgi.ask",
-  // 配置工具（v2 合并形态）纳入常驻，确保 agent 能直接调用（不依赖 ToolSearch）
-  "presets.read",
-  "presets.write",
-  "presets.check_compliance",
-  "beat.read",
-  "beat.write",
-  // 资源管理
+  // 资源管理（accept/reject 操作高频）
   "resource.manage",
+  // 其余工具（chapter.audit, presets.*, beat.*）通过 ToolSearch 按需发现
+  // 这样 system prompt 中少了 ~5 个工具 schema ≈ 节省 ~2000 tokens
 ]);
 
 export function getEnabledSessionTools(permissionMode: SessionPermissionMode, agentId?: string, options?: { disabledTools?: readonly string[]; projectType?: string; sessionConfig?: { projectType?: string }; showDeprecated?: boolean }): SessionToolDefinition[] {

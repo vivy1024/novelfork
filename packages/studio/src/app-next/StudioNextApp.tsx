@@ -896,10 +896,10 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
 
   // Novel-specific header slot: ToolConfigBar + AgentQuickActions
   const novelBookId = canvasContext?.activeResource?.bookId ?? runtime.state.session?.projectId ?? undefined;
-  const novelAgentRole = runtime.state.session?.agentId ?? "writer";
+  const novelAgentRole = runtime.state.session?.agentId ?? "novelist";
   const novelHeaderSlot = novelBookId ? (
     <>
-      <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "writer" | "auditor" | "hooks" | "chapter-hooks" | "outline" | "custom"} />
+      <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "novelist" | "writer" | "custom"} />
       <AgentQuickActions
         agentRole={novelAgentRole}
         bookId={novelBookId}

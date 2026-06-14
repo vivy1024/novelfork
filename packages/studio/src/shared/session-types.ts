@@ -101,7 +101,7 @@ export function getRecommendedSessionPermissionMode(input: {
     return "ask";
   }
 
-  if (agentId.includes("writer") || agentId.includes("composer") || agentId.includes("reviser")) {
+  if (agentId.includes("writer") || agentId.includes("composer") || agentId.includes("reviser") || agentId.includes("novelist")) {
     return "edit";
   }
 

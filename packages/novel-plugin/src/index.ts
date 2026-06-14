@@ -98,13 +98,10 @@ export const NOVEL_TOOL_DEFINITIONS: readonly PluginToolDefinition[] = NOVEL_TOO
 }));
 
 /**
- * 小说 Agent 角色预设
+ * 小说 Agent 角色预设（v1.8: 合并为单一 novelist）
  */
 export const NOVEL_AGENT_PRESET_LIST: PluginAgentPreset[] = [
-  { agentId: "writer", name: "📝 写书", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"] },
-  { agentId: "hooks", name: "🎣 伏笔", tools: ["Read", "Write", "Grep", "Glob"] },
-  { agentId: "chapter-hooks", name: "🪝 章末钩子", tools: ["Read", "Grep", "Glob"] },
-  { agentId: "outline", name: "📋 大纲与经纬", tools: ["Read", "Write", "Edit", "Grep", "Glob"] },
+  { agentId: "novelist", name: "📝 小说创作", tools: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"] },
 ];
 
 export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {

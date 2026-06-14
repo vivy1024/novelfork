@@ -88,7 +88,7 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
       const resource = service.create({
         id,
         bookId,
-        type: "candidate",
+        type: "draft",
         status: "candidate",
         title,
         content,

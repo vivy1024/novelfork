@@ -67,7 +67,8 @@ function assertSaveable(node: WorkbenchResourceNode): void {
     throw new Error("资源详情尚未完成 hydrate，禁止保存预览内容");
   }
   if (node.kind === "candidate") {
-    throw new Error("候选稿不能从画布保存为正式资源，请通过应用/另存草稿流程处理");
+    // 待审核稿件编辑时自动退回编辑态，按草稿逻辑保存
+    // （调用方应先 transition to-draft，再保存内容）
   }
 }
 
@@ -148,7 +149,7 @@ export async function saveResourceAndHydrate(
   const bookId = metadataString(node, "bookId") ?? fallbackBookId;
 
   if (node.kind === "chapter") return saveChapterAndHydrate(resource, bookId, node, content);
-  if (node.kind === "draft") return saveDraftAndHydrate(resource, bookId, node, content);
+  if (node.kind === "draft" || node.kind === "candidate") return saveDraftAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei") return saveJingweiAndHydrate(resource, bookId, node, content);
   // 经纬文件节点（有 fileName）走文件保存，经纬条目节点（有 entryId）走条目保存
   if (node.kind === "jingwei-entry" && metadataString(node, "fileName")) return saveJingweiAndHydrate(resource, bookId, node, content);
