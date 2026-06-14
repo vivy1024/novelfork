@@ -121,7 +121,7 @@ export type ParsedWriterOutput = Omit<WriteChapterOutput, "postWriteErrors" | "p
 
 /**
  * Parse LLM output that uses === TAG === delimiters into structured chapter data.
- * Shared by WriterAgent (writing new chapters) and ChapterAnalyzerAgent (analyzing existing chapters).
+ * Used by WriterAgent when writing new chapters.
  */
 export function parseWriterOutput(
   chapterNumber: number,
