@@ -65,6 +65,8 @@ export interface MessageItemProps {
   onOpenArtifact?: unknown;
   onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
   codeCollapsed?: boolean;
+  /** 默认展开推理/思考块 */
+  expandReasoning?: boolean;
   /** Whether this message is currently selected (multi-select) */
   isSelected?: boolean;
   /** Callback for multi-select click (Ctrl/Cmd+Click or Shift+Click) */
@@ -130,7 +132,7 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
 // MessageItem — 对标 NarraFork 消息样式
 // ---------------------------------------------------------------------------
 
-export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false, isSelected = false, onSelect }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false, expandReasoning = false, isSelected = false, onSelect }: MessageItemProps) {
   const [hovered, setHovered] = useState(false);
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
@@ -355,7 +357,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
       <ContextMenuTrigger asChild>
         <div className={`py-2 select-text border-l-2 border-green-500/50 pl-3 ${selectionClasses}`} onClick={handleClick}>
           {message.thinking?.map((block, i) => (
-            <ThinkingBlock key={`thinking-${i}`} block={block} />
+            <ThinkingBlock key={`thinking-${i}`} block={block} defaultExpanded={expandReasoning} />
           ))}
           {renderedContent}
           {renderedToolCalls}

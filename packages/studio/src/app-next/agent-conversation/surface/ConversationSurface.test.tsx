@@ -62,6 +62,27 @@ describe("Conversation Surface", () => {
     expect(screen.getByText("42ms")).toBeTruthy();
   });
 
+  it("expandReasoning 控制思考块默认展开", () => {
+    const TAIL = "THINKING_TAIL_UNIQUE_MARKER_9f3a";
+    const thinkingMessages: ConversationSurfaceMessage[] = [
+      {
+        id: "m-think",
+        role: "assistant",
+        content: "回答正文",
+        thinking: [{ content: `这是一段足够长的推理开头用于占满四十字预览区域之后才是尾部标记${TAIL}` }],
+      },
+    ];
+
+    // 默认（expandReasoning 未传 = false）：思考块折叠，全文尾部标记不可见
+    const { unmount } = render(<MessageStream messages={thinkingMessages} />);
+    expect(screen.queryByText(new RegExp(TAIL))).toBeNull();
+    unmount();
+
+    // expandReasoning=true：思考块默认展开，全文（含尾部标记）可见
+    render(<MessageStream messages={thinkingMessages} expandReasoning />);
+    expect(screen.getByText(new RegExp(TAIL))).toBeTruthy();
+  });
+
   it("工具卡接入 Tool Result Renderer Registry 并保留 artifact 打开动作", () => {
     // Tool result renderer registry renders through MessageItem/ToolCallCard
     // ToolCallCard shows the tool name and status for candidate.create_chapter

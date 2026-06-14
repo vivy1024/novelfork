@@ -168,6 +168,9 @@ export function ConversationSurface({
   const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [userCommands, setUserCommands] = useState<UserCommand[]>([]);
   const [disabledCommands, setDisabledCommands] = useState<string[]>([]);
+  // 渲染相关用户偏好（来自 /settings/user runtimeControls）
+  const [expandReasoning, setExpandReasoning] = useState(false);
+  const [autoLoadHistory, setAutoLoadHistory] = useState(true);
   const routerNavigate = useNavigate();
 
   // 加载用户自定义命令和禁用命令列表
@@ -179,6 +182,24 @@ export function ConversationSurface({
         if (data?.routines?.disabledCommands) setDisabledCommands(data.routines.disabledCommands);
       })
       .catch(() => { /* non-fatal */ });
+  }, []);
+
+  // 加载渲染相关用户偏好（默认展开推理内容 / 滚动自动加载历史）
+  useEffect(() => {
+    let active = true;
+    const loadPrefs = () => {
+      fetch("/api/settings/user")
+        .then(res => res.ok ? res.json() : null)
+        .then((data: { runtimeControls?: { expandReasoning?: boolean; scrollAutoLoadHistory?: boolean } } | null) => {
+          if (!active || !data?.runtimeControls) return;
+          if (typeof data.runtimeControls.expandReasoning === "boolean") setExpandReasoning(data.runtimeControls.expandReasoning);
+          if (typeof data.runtimeControls.scrollAutoLoadHistory === "boolean") setAutoLoadHistory(data.runtimeControls.scrollAutoLoadHistory);
+        })
+        .catch(() => { /* non-fatal, keep defaults */ });
+    };
+    loadPrefs();
+    window.addEventListener("focus", loadPrefs);
+    return () => { active = false; window.removeEventListener("focus", loadPrefs); };
   }, []);
 
   // 合并内置命令和用户自定义命令
@@ -422,7 +443,8 @@ export function ConversationSurface({
     return [];
   }, [hasMoreLocalMessages, searchFiltered.length, onLoadPreviousMessages]);
 
-  const effectiveHasPrevious = hasMoreLocalMessages || hasPreviousMessages;
+  // 关闭"滚动自动加载历史"时，不向列表暴露 hasPrevious，滚动到顶部不再自动拉取
+  const effectiveHasPrevious = autoLoadHistory && (hasMoreLocalMessages || hasPreviousMessages);
 
   return (
     <TooltipProvider>
@@ -640,7 +662,7 @@ export function ConversationSurface({
           </div>
         ) : (
           <>
-            <MessageStream messages={filteredMessages} hasPrevious={effectiveHasPrevious} onLoadPrevious={handleLoadPreviousWrapped} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} />
+            <MessageStream messages={filteredMessages} hasPrevious={effectiveHasPrevious} onLoadPrevious={handleLoadPreviousWrapped} onContextAction={handleMessageContextAction} codeCollapsed={codeCollapsed} expandReasoning={expandReasoning} />
             {/* Confirmation gate / User question gate inline */}
             {pendingConfirmation && (
               <div className="my-3">
