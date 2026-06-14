@@ -2,12 +2,14 @@ import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
   HooksStateSchema,
+  ResourceLedgerStateSchema,
   RuntimeStateDeltaSchema,
   StateManifestSchema,
   type HookRecord,
   type ChapterSummariesState,
   type CurrentStateState,
   type HooksState,
+  type ResourceLedgerState,
   type RuntimeStateDelta,
   type StateManifest,
 } from "../models/runtime-state.js";
@@ -20,18 +22,28 @@ export interface RuntimeStateSnapshot {
   readonly currentState: CurrentStateState;
   readonly hooks: HooksState;
   readonly chapterSummaries: ChapterSummariesState;
+  readonly resourceLedger: ResourceLedgerState;
+}
+
+/** 资源验算告警（computedBalance ≠ settler 声明的 expectedBalance）。非致命，供审计。 */
+export interface ResourceLedgerWarning {
+  readonly resourceId: string;
+  readonly computedBalance: number;
+  readonly expectedBalance: number;
 }
 
 export function applyRuntimeStateDelta(params: {
   readonly snapshot: RuntimeStateSnapshot;
   readonly delta: RuntimeStateDelta;
   readonly allowReapply?: boolean;
+  readonly onResourceWarning?: (warning: ResourceLedgerWarning) => void;
 }): RuntimeStateSnapshot {
   const snapshot = {
     manifest: StateManifestSchema.parse(params.snapshot.manifest),
     currentState: CurrentStateStateSchema.parse(params.snapshot.currentState),
     hooks: HooksStateSchema.parse(params.snapshot.hooks),
     chapterSummaries: ChapterSummariesStateSchema.parse(params.snapshot.chapterSummaries),
+    resourceLedger: ResourceLedgerStateSchema.parse(params.snapshot.resourceLedger ?? { resources: [] }),
   };
   const delta = RuntimeStateDeltaSchema.parse(params.delta);
   const allowReapply = params.allowReapply ?? false;
@@ -59,6 +71,7 @@ export function applyRuntimeStateDelta(params: {
     delta,
   );
   const chapterSummaries = applySummaryDelta(snapshot.chapterSummaries, delta, allowReapply);
+  const resourceLedger = applyResourceOps(snapshot.resourceLedger, delta, params.onResourceWarning);
 
   const next: RuntimeStateSnapshot = {
     manifest: {
@@ -68,6 +81,7 @@ export function applyRuntimeStateDelta(params: {
     currentState,
     hooks,
     chapterSummaries,
+    resourceLedger,
   };
 
   const issues = validateRuntimeState(next);
@@ -137,6 +151,34 @@ function applyHookOps(hooksState: HooksState, delta: RuntimeStateDelta): HooksSt
       || left.lastAdvancedChapter - right.lastAdvancedChapter
       || left.hookId.localeCompare(right.hookId)
     )),
+  };
+}
+
+function applyResourceOps(
+  ledger: ResourceLedgerState,
+  delta: RuntimeStateDelta,
+  onWarning?: (warning: ResourceLedgerWarning) => void,
+): ResourceLedgerState {
+  const byId = new Map(ledger.resources.map((r) => [r.resourceId, { ...r, history: [...r.history] }]));
+
+  for (const op of delta.resourceOps) {
+    const existing = byId.get(op.resourceId);
+    const oldBalance = existing?.balance ?? 0;
+    const computedBalance = oldBalance + op.delta;
+
+    // 代码层验算（非 LLM）：settler 若声明期末值且与 old+delta 不符 → 告警（非致命）
+    if (op.expectedBalance !== undefined && op.expectedBalance !== computedBalance) {
+      onWarning?.({ resourceId: op.resourceId, computedBalance, expectedBalance: op.expectedBalance });
+    }
+
+    const historyEntry = { chapter: delta.chapter, delta: op.delta, reason: op.reason };
+    byId.set(op.resourceId, existing
+      ? { ...existing, name: op.name ?? existing.name, balance: computedBalance, lastChapter: delta.chapter, history: [...existing.history, historyEntry] }
+      : { resourceId: op.resourceId, name: op.name ?? "", balance: computedBalance, lastChapter: delta.chapter, history: [historyEntry] });
+  }
+
+  return {
+    resources: [...byId.values()].sort((a, b) => a.resourceId.localeCompare(b.resourceId)),
   };
 }
 
