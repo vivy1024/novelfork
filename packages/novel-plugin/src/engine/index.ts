@@ -52,8 +52,6 @@ export { analyzeStyle } from "./agents/style-analyzer.js";
 export { analyzeDetectionInsights } from "./agents/detection-insights.js";
 export { validatePostWrite, detectParagraphLengthDrift, detectParagraphShapeWarnings, detectDuplicateTitle } from "./agents/post-write-validator.js";
 export type { PostWriteViolation } from "./agents/post-write-validator.js";
-export { ChapterAnalyzerAgent } from "./agents/chapter-analyzer.js";
-export type { AnalyzeChapterInput, AnalyzeChapterOutput } from "./agents/chapter-analyzer.js";
 export { parseWriterOutput, parseCreativeOutput } from "./agents/writer-parser.js";
 export type { ParsedWriterOutput, CreativeOutput } from "./agents/writer-parser.js";
 export { buildSettlerSystemPrompt, buildSettlerUserPrompt } from "./agents/settler-prompts.js";
@@ -61,12 +59,9 @@ export { parseSettlementOutput } from "./agents/settler-parser.js";
 export type { SettlementOutput } from "./agents/settler-parser.js";
 export { parseSettlerDeltaOutput } from "./agents/settler-delta-parser.js";
 export type { SettlerDeltaOutput } from "./agents/settler-delta-parser.js";
-export { FanficCanonImporter } from "./agents/fanfic-canon-importer.js";
-export type { FanficCanonOutput } from "./agents/fanfic-canon-importer.js";
 export { getFanficDimensionConfig, FANFIC_DIMENSIONS } from "./agents/fanfic-dimensions.js";
 export type { FanficDimensionConfig } from "./agents/fanfic-dimensions.js";
 export { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./agents/fanfic-prompt-sections.js";
-export { ConsolidatorAgent } from "./agents/consolidator.js";
 export { StateValidatorAgent } from "./agents/state-validator.js";
 
 // Inline writing modes
