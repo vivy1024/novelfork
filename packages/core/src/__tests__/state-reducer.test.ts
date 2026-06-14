@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRuntimeStateDelta } from "../state/state-reducer.js";
+import { applyRuntimeStateDelta, findKnowledgeViolations } from "../state/state-reducer.js";
 import { RuntimeStateDeltaSchema } from "../models/runtime-state.js";
 
 describe("applyRuntimeStateDelta", () => {
@@ -437,6 +437,66 @@ describe("applyRuntimeStateDelta — resourceOps (P2-1 资源结构化验算)", 
       delta: RuntimeStateDeltaSchema.parse({ chapter: 2 }),
     });
     expect(next.resourceLedger.resources[0]!.balance).toBe(5);
+  });
+});
+
+describe("applyRuntimeStateDelta — knowledgeOps + findKnowledgeViolations (P2-2 信息边界)", () => {
+  const baseSnapshot = () => ({
+    manifest: { schemaVersion: 2, language: "zh" as const, lastAppliedChapter: 0, projectionVersion: 1, migrationWarnings: [] },
+    currentState: { chapter: 0, facts: [] },
+    hooks: { hooks: [] },
+    chapterSummaries: { rows: [] },
+    resourceLedger: { resources: [] },
+    knowledge: { events: [] },
+  });
+
+  it("knowledgeOps 落库并按习得章排序", () => {
+    const next = applyRuntimeStateDelta({
+      snapshot: baseSnapshot(),
+      delta: RuntimeStateDeltaSchema.parse({
+        chapter: 5,
+        knowledgeOps: [{ characterId: "protagonist", fact: "师父是魔门长老", learnedAtChapter: 5, source: "密室对话" }],
+      }),
+    });
+    expect(next.knowledge.events).toHaveLength(1);
+    expect(next.knowledge.events[0]!.fact).toBe("师父是魔门长老");
+    expect(next.knowledge.events[0]!.learnedAtChapter).toBe(5);
+  });
+
+  it("同角色同事实去重，取最早习得章", () => {
+    const snap = baseSnapshot();
+    (snap.knowledge.events as any).push({ characterId: "a", fact: "秘密X", learnedAtChapter: 8, source: "" });
+    const next = applyRuntimeStateDelta({
+      snapshot: snap,
+      delta: RuntimeStateDeltaSchema.parse({
+        chapter: 9,
+        knowledgeOps: [{ characterId: "a", fact: "秘密X", learnedAtChapter: 3, source: "更早" }],
+      }),
+    });
+    expect(next.knowledge.events).toHaveLength(1);
+    expect(next.knowledge.events[0]!.learnedAtChapter).toBe(3); // 取 min
+  });
+
+  it("findKnowledgeViolations: 角色用了未来才知道的信息 → 检出越界", () => {
+    const snap = baseSnapshot();
+    (snap.knowledge.events as any).push(
+      { characterId: "hero", fact: "已知的事", learnedAtChapter: 2, source: "" },
+      { characterId: "hero", fact: "第10章才知道的事", learnedAtChapter: 10, source: "" },
+    );
+    const next = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 11 }) });
+    // 站在第 5 章视角：hero 不该知道"第10章才知道的事"
+    const violations = findKnowledgeViolations(next.knowledge, "hero", 5);
+    expect(violations).toHaveLength(1);
+    expect(violations[0]!.fact).toBe("第10章才知道的事");
+    expect(violations[0]!.learnedAtChapter).toBe(10);
+  });
+
+  it("findKnowledgeViolations: 当前章已习得 → 无越界", () => {
+    const snap = baseSnapshot();
+    (snap.knowledge.events as any).push({ characterId: "hero", fact: "事", learnedAtChapter: 5, source: "" });
+    const next = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 6 }) });
+    expect(findKnowledgeViolations(next.knowledge, "hero", 5)).toHaveLength(0); // learnedAt=5 ≤ 当前5
+    expect(findKnowledgeViolations(next.knowledge, "hero", 4)).toHaveLength(1); // 第4章时还不知道
   });
 });
 

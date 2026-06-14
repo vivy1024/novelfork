@@ -141,6 +141,20 @@ export const ResourceOpSchema = z.object({
 });
 export type ResourceOp = z.infer<typeof ResourceOpSchema>;
 
+// ── 角色知识边界事件溯源（P2-2 / A3）：谁在第几章知道了什么，防信息越界 ──
+export const KnowledgeEventSchema = z.object({
+  characterId: z.string().min(1),
+  fact: z.string().min(1),
+  learnedAtChapter: z.number().int().min(0),
+  source: z.string().default(""),
+});
+export type KnowledgeEvent = z.infer<typeof KnowledgeEventSchema>;
+
+export const KnowledgeStateSchema = z.object({
+  events: z.array(KnowledgeEventSchema).default([]),
+});
+export type KnowledgeState = z.infer<typeof KnowledgeStateSchema>;
+
 export const RuntimeStateDeltaSchema = z.object({
   chapter: z.number().int().min(1),
   currentStatePatch: CurrentStatePatchSchema.optional(),
@@ -153,6 +167,7 @@ export const RuntimeStateDeltaSchema = z.object({
   newHookCandidates: z.array(NewHookCandidateSchema).default([]),
   chapterSummary: ChapterSummaryRowSchema.optional(),
   resourceOps: z.array(ResourceOpSchema).default([]),
+  knowledgeOps: z.array(KnowledgeEventSchema).default([]),
   subplotOps: z.array(LooseOpSchema).default([]),
   emotionalArcOps: z.array(LooseOpSchema).default([]),
   characterMatrixOps: z.array(LooseOpSchema).default([]),
