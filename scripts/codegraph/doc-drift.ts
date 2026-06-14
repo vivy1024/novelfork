@@ -50,32 +50,75 @@ function extractFileRefs(line: string): string[] {
   return refs;
 }
 
+/** 从 session-tool-registry.ts 读取 DEPRECATED_V1_TOOLS 工具名清单 */
+function loadDeprecatedTools(): string[] {
+  const reg = path.join(repoRoot, "packages/studio/src/api/lib/session-tool-registry.ts");
+  if (!existsSync(reg)) return [];
+  const src = readFileSync(reg, "utf-8");
+  const block = src.match(/DEPRECATED_V1_TOOLS[^=]*=\s*(?:new Set\()?\[([\s\S]*?)\]/);
+  if (!block?.[1]) return [];
+  const names = [...block[1].matchAll(/"([a-z_]+\.[a-z_]+)"/g)].map((m) => m[1]!);
+  return [...new Set(names)];
+}
+
+/** 文档中合法引用废弃工具的豁免目录（changelog/归档/迁移记录） */
+function isExemptDoc(docRel: string): boolean {
+  return /99-历史归档|archived|迁移|变更记录|parity-gap/i.test(docRel);
+}
+
+interface ToolDrift {
+  readonly doc: string;
+  readonly tool: string;
+  readonly line: number;
+}
+
 function main(): void {
   const docs: string[] = [];
   walkMd(docsRoot, docs);
 
   const drifts: Drift[] = [];
+  const deprecatedTools = loadDeprecatedTools();
+  const toolDrifts: ToolDrift[] = [];
+
   for (const docAbs of docs) {
     const lines = readFileSync(docAbs, "utf-8").split("\n");
     const docRel = posix(path.relative(repoRoot, docAbs));
     for (let i = 0; i < lines.length; i++) {
-      for (const ref of extractFileRefs(lines[i] ?? "")) {
-        // 归一：去掉可能的行号后缀 :NN 或 #anchor
+      const line = lines[i] ?? "";
+      for (const ref of extractFileRefs(line)) {
         const cleaned = ref.split(/[:#]/)[0]!;
         if (!existsSync(path.join(repoRoot, cleaned))) {
           drifts.push({ doc: docRel, ref: cleaned, line: i + 1 });
         }
       }
+      // 废弃工具名检测（豁免 changelog/归档/迁移文档）
+      if (!isExemptDoc(docRel)) {
+        // 同行含废弃标记 = 合法解释（如架构文档讲 v1 vs v2），跳过
+        const explainsDeprecation = /废弃|已删|deprecated|DEPRECATED|旧管线|旧工具|v1\b|迁移前|曾经|此前/.test(line);
+        if (!explainsDeprecation) {
+          for (const tool of deprecatedTools) {
+            const re = new RegExp(`(?<![\\w.])${tool.replace(".", "\\.")}(?![\\w])`);
+            if (re.test(line)) toolDrifts.push({ doc: docRel, tool, line: i + 1 });
+          }
+        }
+      }
     }
   }
 
-  if (drifts.length === 0) {
-    console.log("[docs:drift] ✓ 无过时文件引用");
-    return;
+  let failed = false;
+  if (drifts.length > 0) {
+    failed = true;
+    console.log(`[docs:drift] 发现 ${drifts.length} 处指向不存在文件的引用：`);
+    for (const d of drifts) console.log(`  ${d.doc}:${d.line} → ${d.ref}`);
   }
-  console.log(`[docs:drift] 发现 ${drifts.length} 处指向不存在文件的引用：`);
-  for (const d of drifts) {
-    console.log(`  ${d.doc}:${d.line} → ${d.ref}`);
+  if (toolDrifts.length > 0) {
+    failed = true;
+    console.log(`\n[docs:drift] 发现 ${toolDrifts.length} 处引用已废弃工具（DEPRECATED_V1_TOOLS）：`);
+    for (const d of toolDrifts) console.log(`  ${d.doc}:${d.line} → ${d.tool}`);
+  }
+  if (!failed) {
+    console.log("[docs:drift] ✓ 无过时文件引用、无废弃工具引用");
+    return;
   }
   process.exitCode = 1;
 }
