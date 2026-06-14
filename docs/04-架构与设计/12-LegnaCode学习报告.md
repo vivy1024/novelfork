@@ -1,7 +1,11 @@
 # LegnaCode-CLI 全量学习报告
 
-**分析日期**: 2025-06-13  
-**源码位置**: `D:\DESKTOP\novelfork\legnacode-cli\`  
+**版本**: v1.0.0
+**创建日期**: 2025-06-13
+**更新日期**: 2026-06-14
+**状态**: 📚 参考资料
+**文档类型**: reference
+**源码位置**: `legnacode-cli/`（已加入 .gitignore）
 **目的**: 识别可移植到 NovelFork 的技术，按优先级排列
 
 ---
