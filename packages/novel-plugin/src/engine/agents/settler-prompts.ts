@@ -150,6 +150,14 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
       "expectedBalance": 70
     }
   ],
+  "knowledgeOps": [
+    {
+      "characterId": "protagonist",
+      "fact": "得知师父真实身份是魔门长老",
+      "learnedAtChapter": 12,
+      "source": "本章密室对话"
+    }
+  ],
   "subplotOps": [],
   "emotionalArcOps": [],
   "characterMatrixOps": [],
@@ -169,7 +177,10 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
 9. resourceOps：正文中出现的每一项资源/数值变动（灵石、积分、修为、道具数量等）都要记一条。
    delta 为本章净增减（消耗为负、获得为正）；resourceId 用稳定英文小写标识；
    首次出现填 name；expectedBalance 填本章结束后该资源的期末值（系统会用"期初+delta"验算，不符会告警）。
-   没有数值体系的题材可留空数组。`;
+   没有数值体系的题材可留空数组。
+10. knowledgeOps：本章中某角色"首次得知"的关键信息记一条（谁 characterId、知道了什么 fact、
+    第几章 learnedAtChapter=当前章号、从何得知 source）。用于防止后续章节里角色使用"还不该知道"
+    的信息（信息越界）。只记关键秘密/真相，不记琐碎信息。`;
 }
 
 export function buildSettlerUserPrompt(params: {
