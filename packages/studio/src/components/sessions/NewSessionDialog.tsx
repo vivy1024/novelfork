@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Anchor, Bot, Lightbulb, Network, PenTool, Search, ShieldAlert, Sparkles } from "lucide-react";
+import { PenTool } from "lucide-react";
 
 import { fetchJson } from "@/hooks/use-api";
 import {
@@ -59,94 +59,25 @@ export const SESSION_MODE_LABELS: Record<NarratorSessionMode, string> = {
 
 export const SESSION_PRESETS = [
   {
-    id: "writer",
-    title: "Writer",
-    label: "写作 Writer",
-    description: "直接进入章节创作与续写。",
+    id: "novelist",
+    title: "Novelist",
+    label: "小说创作",
+    description: "写作、规划、审计、经纬管理一站完成。",
     icon: PenTool,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "edit",
-  },
-  {
-    id: "planner",
-    title: "Planner",
-    label: "规划 Planner",
-    description: "先拆解章节目标、节奏与结构。",
-    icon: Sparkles,
-    defaultSessionMode: "plan",
-    defaultPermissionMode: "plan",
-  },
-  {
-    id: "auditor",
-    title: "Auditor",
-    label: "审计 Auditor",
-    description: "做连续性、设定与逻辑排查。",
-    icon: ShieldAlert,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "read",
-  },
-  {
-    id: "architect",
-    title: "Architect",
-    label: "设定 Architect",
-    description: "用于世界观、卷纲与题材设计。",
-    icon: Bot,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "ask",
-  },
-  {
-    id: "explorer",
-    title: "Explorer",
-    label: "探索 Explorer",
-    description: "只读分析创作状态、伏笔、角色变化。",
-    icon: Search,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "read",
-  },
-  {
-    id: "hooks",
-    title: "Hooks",
-    label: "伏笔 Hooks",
-    description: "管理伏笔埋设、强化与回收建议。",
-    icon: Lightbulb,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "ask",
-  },
-  {
-    id: "chapter-hooks",
-    title: "Chapter Hooks",
-    label: "章末钩子 Chapter Hooks",
-    description: "为章节结尾设计悬念钩子方案。",
-    icon: Anchor,
-    defaultSessionMode: "chat",
-    defaultPermissionMode: "ask",
-  },
-  {
-    id: "outline",
-    title: "Outline",
-    label: "大纲 Outline",
-    description: "维护大纲、角色、势力和经纬设定。",
-    icon: Network,
     defaultSessionMode: "chat",
     defaultPermissionMode: "edit",
   },
 ] as const;
 
-function defaultTitleFor(presetId: string) {
-  const preset = SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0];
-  return `${preset.title} 会话`;
+function defaultTitleFor(_presetId: string) {
+  return "小说创作会话";
 }
 
-export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChange, onCreate }: NewSessionDialogProps) {
-  const [presetId, setPresetId] = useState<(typeof SESSION_PRESETS)[number]["id"]>(initialPresetId);
-  const [agentId, setAgentId] = useState<string>(initialPresetId);
+export function NewSessionDialog({ open, initialPresetId = "novelist", onOpenChange, onCreate }: NewSessionDialogProps) {
+  const [agentId, setAgentId] = useState<string>("novelist");
   const [title, setTitle] = useState(defaultTitleFor(initialPresetId));
-  const [sessionMode, setSessionMode] = useState<NarratorSessionMode>(
-    (SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0]).defaultSessionMode,
-  );
-  const [permissionMode, setPermissionMode] = useState<SessionPermissionMode>(
-    (SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0]).defaultPermissionMode,
-  );
+  const [sessionMode, setSessionMode] = useState<NarratorSessionMode>("chat");
+  const [permissionMode, setPermissionMode] = useState<SessionPermissionMode>("edit");
   const [permissionTouched, setPermissionTouched] = useState(false);
   const [titleTouched, setTitleTouched] = useState(false);
   const [worktree, setWorktree] = useState("");
@@ -158,12 +89,10 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
 
   useEffect(() => {
     if (!open) return;
-    const nextPreset = SESSION_PRESETS.find((item) => item.id === initialPresetId) ?? SESSION_PRESETS[0];
-    setPresetId(nextPreset.id);
-    setAgentId(nextPreset.id);
-    setTitle(defaultTitleFor(nextPreset.id));
-    setSessionMode(nextPreset.defaultSessionMode);
-    setPermissionMode(nextPreset.defaultPermissionMode);
+    setAgentId("novelist");
+    setTitle(defaultTitleFor("novelist"));
+    setSessionMode("chat");
+    setPermissionMode("edit");
     setWorktree("");
     setBinding("standalone");
     setBindingTouched(false);
@@ -200,26 +129,10 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
     };
   }, [open]);
 
-  const selectedPreset = useMemo(
-    () => SESSION_PRESETS.find((item) => item.id === presetId) ?? SESSION_PRESETS[0],
-    [presetId],
-  );
   const selectedPermission = getSessionPermissionModeOption(permissionMode);
   const selectedRuntimeModel = useMemo(() => runtimeModels.find((model) => model.modelId === selectedRuntimeModelId) ?? runtimeModels[0] ?? null, [runtimeModels, selectedRuntimeModelId]);
   const selectedRuntimeModelRef = selectedRuntimeModel ? splitRuntimeModelRef(selectedRuntimeModel) : null;
   const hasRuntimeModels = runtimeModels.length > 0;
-
-  const handlePresetSelect = (nextPresetId: (typeof SESSION_PRESETS)[number]["id"]) => {
-    setPresetId(nextPresetId);
-    setAgentId(nextPresetId);
-    const nextPreset = SESSION_PRESETS.find((item) => item.id === nextPresetId) ?? SESSION_PRESETS[0];
-    setSessionMode(nextPreset.defaultSessionMode);
-    setPermissionMode(nextPreset.defaultPermissionMode);
-    setPermissionTouched(false);
-    if (!titleTouched || !title.trim() || title === defaultTitleFor(presetId)) {
-      setTitle(defaultTitleFor(nextPresetId));
-    }
-  };
 
   const handleAgentIdChange = (nextAgentId: string) => {
     setAgentId(nextAgentId);
@@ -237,7 +150,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
 
   const handleSubmit = () => {
     const trimmedAgentId = agentId.trim();
-    const trimmedTitle = title.trim() || defaultTitleFor(presetId);
+    const trimmedTitle = title.trim() || defaultTitleFor("novelist");
     if (!trimmedAgentId || !selectedRuntimeModelRef) return;
 
     const trimmedWorktree = worktree.trim();
@@ -262,7 +175,7 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
         <DialogHeader className="px-6 pt-6">
           <DialogTitle>新建会话</DialogTitle>
           <DialogDescription>
-            不再用 prompt 手输 Agent ID，改成结构化表单选择常用会话模板，再补标题与自定义 Agent。
+            创建小说创作会话。统一 Novelist 角色覆盖写作、规划、审计、经纬管理全流程。
           </DialogDescription>
         </DialogHeader>
 
@@ -270,12 +183,12 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
           <div className="rounded-2xl border border-border/60 bg-muted/30 p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">当前对象</p>
-                <h3 className="mt-1 text-sm font-medium text-foreground">{selectedPreset.label}</h3>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">角色</p>
+                <h3 className="mt-1 text-sm font-medium text-foreground">Novelist · 小说创作</h3>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-primary/20 bg-primary/10 px-2.5 py-1 text-[10px] font-medium text-primary">
-                  {selectedPreset.title}
+                  全能
                 </span>
                 <span className="rounded-full border border-border/60 px-2.5 py-1 text-[10px] font-medium text-muted-foreground">
                   {SESSION_MODE_LABELS[sessionMode]}
@@ -286,44 +199,8 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
               </div>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
-              当前标题：{title.trim() || defaultTitleFor(selectedPreset.id)}。未手动编辑时会自动生成“{defaultTitleFor(selectedPreset.id)}”，切换模板时也会跟着更新。
+              写作、规划、审计、世界观构建、伏笔管理，一个角色全部搞定。根据你的指令自动选择工作流程。
             </p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              权限说明：{selectedPermission.description}（适合：{selectedPermission.bestFor}）。
-            </p>
-          </div>
-
-          <div className="grid gap-3 sm:grid-cols-2">
-            {SESSION_PRESETS.map((preset) => {
-              const Icon = preset.icon;
-              const active = preset.id === presetId;
-              return (
-                <Button
-                  key={preset.id}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => handlePresetSelect(preset.id)}
-                  className={`h-auto rounded-xl border px-4 py-4 text-left justify-start items-start ${
-                    active
-                      ? "border-primary bg-primary/5 shadow-sm"
-                      : "border-border bg-card hover:border-primary/40 hover:bg-muted/40"
-                  }`}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={`mt-0.5 flex size-9 items-center justify-center rounded-lg ${active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                      <Icon className="size-4" />
-                    </div>
-                    <div className="space-y-1">
-                      <div className="text-sm font-medium text-foreground">{preset.label}</div>
-                      <p className="text-xs leading-5 text-muted-foreground">{preset.description}</p>
-                      <p className="text-[11px] font-medium text-primary/80">
-                        默认权限：{getSessionPermissionModeOption(preset.defaultPermissionMode).label}
-                      </p>
-                    </div>
-                  </div>
-                </Button>
-              );
-            })}
           </div>
 
           <div className="space-y-2">
@@ -342,17 +219,11 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                 </Button>
               ))}
             </div>
-            <p className="text-xs text-muted-foreground">
-              Planner 默认进入计划模式；其他模板默认对话模式，也可以在创建前手动切换。
-            </p>
           </div>
 
           <div className="space-y-3">
             <div>
               <Label>运行时模型</Label>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                新会话默认使用统一运行时模型池中的首个可用模型；模型池为空时禁止创建。
-              </p>
             </div>
             {modelsLoading ? (
               <p className="text-xs text-muted-foreground">正在读取统一模型池…</p>
@@ -374,9 +245,6 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
           <div className="space-y-3">
             <div>
               <Label>权限模式</Label>
-              <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                创建时就决定本会话能否读资料、改正文、运行 Shell 或进入 Worktree；后续仍可在会话详情中调整。
-              </p>
             </div>
             <div className="grid gap-2">
               {SESSION_PERMISSION_MODE_OPTIONS.map((option) => {
@@ -422,18 +290,18 @@ export function NewSessionDialog({ open, initialPresetId = "writer", onOpenChang
                   setTitle(event.target.value);
                   setTitleTouched(true);
                 }}
-                placeholder={defaultTitleFor(presetId)}
+                placeholder="小说创作会话"
                 autoFocus
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="new-session-agent-id">Agent ID</Label>
+              <Label htmlFor="new-session-agent-id">Agent ID（高级）</Label>
               <Input
                 id="new-session-agent-id"
                 aria-label="Agent ID"
                 value={agentId}
                 onChange={(event) => handleAgentIdChange(event.target.value)}
-                placeholder={selectedPreset.id}
+                placeholder="novelist"
               />
             </div>
             <div className="space-y-2 sm:col-span-2">

@@ -19,7 +19,7 @@ afterEach(() => {
 });
 
 describe("NewSessionDialog", () => {
-  it("creates a session from a preset agent with generated title and runtime model", async () => {
+  it("creates a session with novelist agent and default title", async () => {
     mockRuntimeModels();
     const onCreate = vi.fn();
     const onOpenChange = vi.fn();
@@ -36,8 +36,8 @@ describe("NewSessionDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "writer",
-      title: "Writer 会话",
+      agentId: "novelist",
+      title: "小说创作会话",
       sessionMode: "chat",
       sessionConfig: {
         providerId: "sub2api",
@@ -63,19 +63,18 @@ describe("NewSessionDialog", () => {
 
     await screen.findByText("Sub2API · GPT-5 Codex");
 
-    fireEvent.click(screen.getByRole("button", { name: /审计 Auditor/ }));
-    fireEvent.change(screen.getAllByLabelText("Agent ID").at(-1) as HTMLElement, { target: { value: "continuity-auditor" } });
-    fireEvent.change(screen.getAllByLabelText("会话标题").at(-1) as HTMLElement, { target: { value: "连续性排查" } });
+    fireEvent.change(screen.getByLabelText("Agent ID"), { target: { value: "custom-agent" } });
+    fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "自定义会话" } });
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "continuity-auditor",
-      title: "连续性排查",
+      agentId: "custom-agent",
+      title: "自定义会话",
       sessionMode: "chat",
       sessionConfig: {
         providerId: "sub2api",
         modelId: "gpt-5-codex",
-        permissionMode: "read",
+        permissionMode: "ask",
       },
     });
   });
@@ -87,7 +86,6 @@ describe("NewSessionDialog", () => {
     render(
       <NewSessionDialog
         open
-        initialPresetId="architect"
         onOpenChange={() => {}}
         onCreate={onCreate}
       />,
@@ -95,13 +93,12 @@ describe("NewSessionDialog", () => {
 
     await screen.findByText("Sub2API · GPT-5 Codex");
 
-    expect(screen.getAllByText(/默认权限：逐项询问/).length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /全部允许/ }));
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "architect",
-      title: "Architect 会话",
+      agentId: "novelist",
+      title: "小说创作会话",
       sessionMode: "chat",
       sessionConfig: {
         providerId: "sub2api",
@@ -111,7 +108,7 @@ describe("NewSessionDialog", () => {
     });
   });
 
-  it("captures independent narrator workspace, model, permission and plan mode before creating", async () => {
+  it("captures workspace, model, permission and plan mode before creating", async () => {
     mockRuntimeModels([
       { modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" },
       { modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", providerName: "Anthropic" },
@@ -121,7 +118,6 @@ describe("NewSessionDialog", () => {
     render(
       <NewSessionDialog
         open
-        initialPresetId="planner"
         onOpenChange={() => {}}
         onCreate={onCreate}
       />,
@@ -131,7 +127,6 @@ describe("NewSessionDialog", () => {
 
     fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "世界观规划室" } });
     fireEvent.change(screen.getByLabelText("工作目录"), { target: { value: "D:\\novels\\lingchao" } });
-    // 绑定对象 Select 已作为假功能移除（书籍叙述者通过书籍页面创建），不再出现在表单。
     fireEvent.click(screen.getByRole("button", { name: "计划模式" }));
     const permissionRegion = screen.getByText("权限模式").closest("div")?.parentElement;
     if (!permissionRegion) throw new Error("权限模式区域缺失");
@@ -139,7 +134,7 @@ describe("NewSessionDialog", () => {
     fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "planner",
+      agentId: "novelist",
       title: "世界观规划室",
       worktree: "D:\\novels\\lingchao",
       sessionMode: "plan",

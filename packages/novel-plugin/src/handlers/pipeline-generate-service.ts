@@ -360,7 +360,7 @@ export async function executePipelineGenerate(
       resourceService.create({
         id: candidateId,
         bookId,
-        type: "candidate",
+        type: "draft",
         status: "candidate",
         title: writeOutput.title,
         content: finalContent,

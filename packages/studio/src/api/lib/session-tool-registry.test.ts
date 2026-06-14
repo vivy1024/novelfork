@@ -167,11 +167,11 @@ describe("session tool registry", () => {
     registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
     registerPluginAgentPresets(NOVEL_AGENT_PRESETS);
 
-    // "writer" preset disables Terminal, Browser, ForkNarrator, Recall, ShareFile
-    const writerTools = getEnabledSessionTools("edit", "writer");
-    expect(writerTools.map((t) => t.name)).not.toContain("Terminal");
-    expect(writerTools.map((t) => t.name)).not.toContain("Browser");
-    expect(writerTools.map((t) => t.name)).not.toContain("ForkNarrator");
+    // "novelist" preset does not disable any tools (unified agent has full access)
+    const novelistTools = getEnabledSessionTools("edit", "novelist");
+    expect(novelistTools.map((t) => t.name)).toContain("Read");
+    expect(novelistTools.map((t) => t.name)).toContain("Write");
+    expect(novelistTools.map((t) => t.name)).toContain("Bash");
   });
 
   it("without plugin registration, novel tools are not visible", () => {

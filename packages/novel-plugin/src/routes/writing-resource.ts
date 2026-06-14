@@ -88,8 +88,8 @@ function parseFilter(query: Record<string, string>): ListWritingResourcesFilter 
 }
 
 function parseCreateInput(bookId: string, body: Record<string, unknown>): CreateServiceInput {
-  const type = isType(body.type) ? body.type : "candidate";
-  const status = isStatus(body.status) ? body.status : (type === "draft" ? "draft" : type === "chapter" ? "accepted" : "candidate");
+  const type = isType(body.type) ? body.type : "draft";
+  const status = isStatus(body.status) ? body.status : (type === "chapter" ? "accepted" : "candidate");
   const title = stringBody(body.title, "title");
   const content = typeof body.content === "string" ? body.content : "";
   return {

@@ -515,36 +515,8 @@ export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_SESSION_TOOL_DEFINITION
  * 小说 Agent 角色预设 — 与 AGENT_ROLES 保持一致
  */
 export const NOVEL_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[] }> = {
-  writer: {
-    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate"],
-    disable: ["Terminal", "Browser", "ForkNarrator", "Recall", "ShareFile"],
-  },
-  planner: {
-    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
-  },
-  auditor: {
-    enable: ["Read", "Grep", "Glob"],
-    disable: ["Write", "Edit", "Bash", "Terminal", "Browser", "ForkNarrator"],
-  },
-  architect: {
-    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
-  },
-  explorer: {
-    enable: ["Read", "Grep", "Glob", "Recall"],
-    disable: ["Write", "Edit", "Bash", "Terminal", "Browser", "ForkNarrator", "ShareFile"],
-  },
-  hooks: {
-    enable: ["Read", "Write", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
-  },
-  "chapter-hooks": {
-    enable: ["Read", "Grep", "Glob"],
-    disable: ["Write", "Edit", "Bash", "Terminal", "Browser"],
-  },
-  outline: {
-    enable: ["Read", "Write", "Edit", "Grep", "Glob"],
-    disable: ["Bash", "Terminal", "Browser", "ForkNarrator"],
+  novelist: {
+    enable: ["Bash", "Read", "Write", "Edit", "Grep", "Glob", "EnterWorktree", "ExitWorktree", "TaskCreate", "Terminal", "Browser", "Recall", "ShareFile"],
+    disable: [],
   },
 };
