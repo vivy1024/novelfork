@@ -16,6 +16,7 @@ import type { AuditResult } from "../engine/agents/continuity.js";
 import { WriterAgent } from "../engine/agents/writer.js";
 import { LengthNormalizerAgent } from "../engine/agents/length-normalizer.js";
 import { ContinuityAuditor } from "../engine/agents/continuity.js";
+import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/agents/adversarial-audit.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { randomUUID } from "node:crypto";
@@ -29,6 +30,10 @@ export interface PipelineWriteInput {
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
   readonly autoRevise?: boolean;
+  /** 对抗式审查：3 视角独立审查 + 交叉合成（默认 false，回退单 agent） */
+  readonly adversarialAudit?: boolean;
+  /** 多轮自愈：审查→修订最多 N 轮（默认 1） */
+  readonly maxReviseRounds?: number;
 }
 
 export interface PipelineWriteOutput {
@@ -43,6 +48,10 @@ export interface PipelineWriteOutput {
   readonly artifact: CanvasArtifact;
   /** 长度治理：归一化后仍漂出 hard 区间时的警告（不阻断） */
   readonly lengthWarning?: string;
+  /** 多轮自愈达上限仍有 critical → 需人工复核（Human Review Gate） */
+  readonly needsHumanReview?: boolean;
+  /** 实际执行的修订轮数 */
+  readonly reviseRounds?: number;
 }
 
 export interface PipelineWriteError {
@@ -87,7 +96,7 @@ export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
-  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true } = input;
+  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
   const { root, logger } = options;
 
   // Validate scene spec (H4)
@@ -201,38 +210,48 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] Pre-audit hard violations: ${preAudit.hardViolations.map((v) => v.ruleId).join(", ")}`);
     }
 
-    // 3. AuditRevise — LLM-based audit + auto-fix
-    const auditorCtx = buildAgentCtx(options, "auditor", bookId);
-    const auditor = new ContinuityAuditor(auditorCtx);
-    let auditResult = await auditor.auditChapter(
-      bookDir,
-      governedContent,
-      chapterNumber,
-      book.genre,
-      { chapterIntent, contextPackage, ruleStack },
-    );
+    // 3. Audit + 多轮自愈修订（P1-1 对抗审查 / P1-3 多轮）
+    const reviserCtx = buildAgentCtx(options, "reviser", bookId);
+    const auditOpts = { chapterIntent, contextPackage, ruleStack };
+
+    // 审查函数：对抗式（3 视角交叉）或单 agent（回退）
+    const runAudit = async (content: string): Promise<AuditResult> => {
+      if (adversarialAudit) {
+        return auditChapterAdversarial(
+          { bookDir, chapterContent: content, chapterNumber, genre: book.genre, ...auditOpts },
+          () => new ContinuityAuditor(buildAgentCtx(options, "auditor", bookId)),
+        );
+      }
+      return new ContinuityAuditor(buildAgentCtx(options, "auditor", bookId)).auditChapter(
+        bookDir, content, chapterNumber, book.genre, auditOpts,
+      );
+    };
 
     let finalContent = governedContent;
     let revised = false;
+    let reviseRounds = 0;
+    let auditResult: AuditResult = await runAudit(finalContent);
+    const maxRounds = Math.max(0, maxReviseRounds);
 
-    if (!auditResult.passed && autoRevise) {
+    // 多轮自愈：有 critical 且允许修订时，spot-fix → re-audit，最多 maxRounds 轮
+    while (autoRevise && reviseRounds < maxRounds) {
       const criticalIssues = auditResult.issues.filter((i) => i.severity === "critical");
-      if (criticalIssues.length > 0) {
-        logger?.info(`[pipeline.write] Revising: ${criticalIssues.length} critical issues`);
-        const reviserCtx = buildAgentCtx(options, "reviser", bookId);
-        const reviser = new ReviserAgent(reviserCtx);
-        const reviseOutput = await reviser.reviseChapter(
-          bookDir,
-          finalContent,
-          chapterNumber,
-          criticalIssues,
-          "spot-fix",
-          book.genre,
-          { chapterIntent, contextPackage, ruleStack, lengthSpec },
-        );
-        finalContent = reviseOutput.revisedContent;
-        revised = true;
-      }
+      if (criticalIssues.length === 0) break;
+      reviseRounds += 1;
+      logger?.info(`[pipeline.write] Revise round ${reviseRounds}/${maxRounds}: ${criticalIssues.length} critical issues`);
+      const reviseOutput = await new ReviserAgent(reviserCtx).reviseChapter(
+        bookDir, finalContent, chapterNumber, criticalIssues, "spot-fix", book.genre,
+        { chapterIntent, contextPackage, ruleStack, lengthSpec },
+      );
+      finalContent = reviseOutput.revisedContent;
+      revised = true;
+      auditResult = await runAudit(finalContent); // re-audit 修订后的版本
+    }
+
+    // 达上限仍有 critical → 标记需人工复核（Human Review Gate）
+    const needsHumanReview = auditResult.issues.some((i) => i.severity === "critical");
+    if (needsHumanReview) {
+      logger?.warn(`[pipeline.write] ${reviseRounds} revise round(s) exhausted, critical issues remain → needs human review`);
     }
 
     // 4. Save as candidate
@@ -254,6 +273,9 @@ export async function executePipelineWrite(
           sceneSpec,
           auditResult: { passed: auditResult.passed, issueCount: auditResult.issues.length },
           revised,
+          reviseRounds,
+          ...(needsHumanReview ? { needsHumanReview: true } : {}),
+          ...(adversarialAudit ? { adversarialAudit: true } : {}),
           ...(lengthWarning ? { lengthWarning } : {}),
           generatedAt: new Date().toISOString(),
         },
@@ -273,6 +295,8 @@ export async function executePipelineWrite(
       auditResult,
       revised,
       candidateId,
+      reviseRounds,
+      ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
       artifact: {
         id: candidateId,
