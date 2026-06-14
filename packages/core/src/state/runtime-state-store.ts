@@ -66,6 +66,7 @@ export async function buildRuntimeStateArtifacts(params: {
   readonly delta: RuntimeStateDelta;
   readonly language: "zh" | "en";
   readonly allowReapply?: boolean;
+  readonly onResourceWarning?: (warning: import("./state-reducer.js").ResourceLedgerWarning) => void;
 }): Promise<RuntimeStateArtifacts> {
   const snapshot = await loadRuntimeStateSnapshot(params.bookDir);
   const { resolvedDelta } = arbitrateRuntimeStateDeltaHooks({
@@ -76,6 +77,7 @@ export async function buildRuntimeStateArtifacts(params: {
     snapshot,
     delta: resolvedDelta,
     allowReapply: params.allowReapply,
+    ...(params.onResourceWarning ? { onResourceWarning: params.onResourceWarning } : {}),
   });
 
   return {
