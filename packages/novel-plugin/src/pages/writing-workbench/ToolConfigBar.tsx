@@ -6,14 +6,8 @@ import { Wrench } from "lucide-react";
 // ---------------------------------------------------------------------------
 
 export type AgentRole =
-  | "writer"
-  | "planner"
-  | "auditor"
-  | "architect"
-  | "explorer"
-  | "hooks"
-  | "chapter-hooks"
-  | "outline"
+  | "novelist"
+  | "writer"  // legacy
   | "custom";
 
 export interface ToolConfigBarProps {
@@ -45,14 +39,8 @@ const OPTIONAL_TOOLS: ToolItem[] = [
 
 /** 各角色默认启用的工具 ID */
 const ROLE_DEFAULTS: Record<AgentRole, string[]> = {
-  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance"],
-  planner: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "narrative.read_line"],
-  auditor: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance", "character.check_consistency"],
-  architect: ["jingwei.read", "chapter.read", "cockpit.snapshot", "character.check_consistency", "narrative.read_line"],
-  explorer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "character.check_consistency", "narrative.read_line"],
-  hooks: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "hooks.manage"],
-  "chapter-hooks": ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "hooks.manage"],
-  outline: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "narrative.read_line"],
+  novelist: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance", "character.check_consistency", "hooks.manage", "narrative.read_line"],
+  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks", "presets.check_compliance", "character.check_consistency", "hooks.manage", "narrative.read_line"],
   custom: ["jingwei.read", "chapter.read", "cockpit.snapshot", "cockpit.list_open_hooks"],
 };
 
@@ -91,8 +79,8 @@ function saveConfig(sessionId: string | undefined, enabled: Set<string>): void {
 // Component
 // ---------------------------------------------------------------------------
 
-export function ToolConfigBar({ bookId: _bookId, sessionId, agentRole = "writer" }: ToolConfigBarProps) {
-  const defaults = ROLE_DEFAULTS[agentRole] ?? ROLE_DEFAULTS.writer;
+export function ToolConfigBar({ bookId: _bookId, sessionId, agentRole = "novelist" }: ToolConfigBarProps) {
+  const defaults = ROLE_DEFAULTS[agentRole] ?? ROLE_DEFAULTS.novelist;
 
   const [enabledTools, setEnabledTools] = useState<Set<string>>(() => {
     const stored = loadConfig(sessionId);
@@ -102,7 +90,7 @@ export function ToolConfigBar({ bookId: _bookId, sessionId, agentRole = "writer"
   // 当 sessionId 或 agentRole 变化时重新加载
   useEffect(() => {
     const stored = loadConfig(sessionId);
-    setEnabledTools(stored ?? new Set(ROLE_DEFAULTS[agentRole] ?? ROLE_DEFAULTS.writer));
+    setEnabledTools(stored ?? new Set(ROLE_DEFAULTS[agentRole] ?? ROLE_DEFAULTS.novelist));
   }, [sessionId, agentRole]);
 
   // 持久化到 localStorage + 同步到后端 session toolPolicy

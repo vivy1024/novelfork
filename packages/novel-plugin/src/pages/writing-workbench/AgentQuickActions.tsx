@@ -8,16 +8,9 @@ import { Button } from "@/components/ui/button";
 import {
   PenLine,
   FileText,
-  Scissors,
-  Layers,
   Shield,
-  Droplets,
   Lightbulb,
   Anchor,
-  Network,
-  RefreshCw,
-  Bot,
-  Search,
   Compass,
 } from "lucide-react";
 
@@ -33,45 +26,22 @@ interface QuickAction {
   message: string;
 }
 
+const NOVELIST_ACTIONS: QuickAction[] = [
+  { icon: <FileText className="size-3.5" />, label: "生成下一章", message: "请生成下一章内容" },
+  { icon: <PenLine className="size-3.5" />, label: "续写", message: "请续写当前章节" },
+  { icon: <Compass className="size-3.5" />, label: "规划", message: "请规划下一章的目标、节奏和情节点" },
+  { icon: <Shield className="size-3.5" />, label: "审计", message: "请对最新章节进行连续性审校和 AI 味检测" },
+  { icon: <Lightbulb className="size-3.5" />, label: "伏笔", message: "请分析当前可以埋设或回收的伏笔" },
+  { icon: <Anchor className="size-3.5" />, label: "章末钩子", message: "请为最新章节生成章末钩子方案" },
+];
+
 const ROLE_ACTIONS: Record<string, QuickAction[]> = {
-  writer: [
-    { icon: <FileText className="size-3.5" />, label: "生成下一章", message: "请生成下一章内容" },
-    { icon: <PenLine className="size-3.5" />, label: "续写", message: "请续写当前章节" },
-    { icon: <Scissors className="size-3.5" />, label: "选段写作", message: "请对选中段落进行扩写" },
-    { icon: <Layers className="size-3.5" />, label: "多版本", message: "请生成当前段落的多个改写版本" },
-  ],
-  planner: [
-    { icon: <Compass className="size-3.5" />, label: "规划下一章", message: "请规划下一章的目标、节奏和情节点" },
-    { icon: <Network className="size-3.5" />, label: "规划下一卷", message: "请规划下一卷大纲" },
-  ],
-  auditor: [
-    { icon: <Shield className="size-3.5" />, label: "连续性审校", message: "请对最新章节进行连续性审校" },
-    { icon: <Droplets className="size-3.5" />, label: "AI味检测", message: "请检测最新章节的 AI 味" },
-  ],
-  architect: [
-    { icon: <Bot className="size-3.5" />, label: "世界观", message: "请检查并补全当前作品的世界观设定" },
-    { icon: <Network className="size-3.5" />, label: "势力结构", message: "请设计或梳理当前作品的势力结构" },
-  ],
-  explorer: [
-    { icon: <Search className="size-3.5" />, label: "探索状态", message: "请只读分析当前作品状态、伏笔、角色变化和下一步风险" },
-    { icon: <Lightbulb className="size-3.5" />, label: "方向建议", message: "请基于当前上下文给出下一章的几个可能方向" },
-  ],
-  hooks: [
-    { icon: <Lightbulb className="size-3.5" />, label: "伏笔建议", message: "请分析当前可以埋设或回收的伏笔" },
-    { icon: <Anchor className="size-3.5" />, label: "章末钩子", message: "请为最新章节生成章末钩子方案" },
-  ],
-  "chapter-hooks": [
-    { icon: <Anchor className="size-3.5" />, label: "生成钩子", message: "请为最新章节生成章末钩子" },
-    { icon: <FileText className="size-3.5" />, label: "应用钩子", message: "请将选中的钩子方案应用到章节末尾" },
-  ],
-  outline: [
-    { icon: <Network className="size-3.5" />, label: "生成大纲", message: "请生成下一卷的大纲" },
-    { icon: <RefreshCw className="size-3.5" />, label: "重建经纬", message: "请根据已有章节重建经纬资料" },
-  ],
+  novelist: NOVELIST_ACTIONS,
+  writer: NOVELIST_ACTIONS,  // legacy
 };
 
 export function AgentQuickActions({ agentRole, bookId, onSendMessage }: AgentQuickActionsProps) {
-  const actions = ROLE_ACTIONS[agentRole] ?? ROLE_ACTIONS.writer;
+  const actions = ROLE_ACTIONS[agentRole] ?? ROLE_ACTIONS.novelist;
 
   return (
     <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/20 overflow-x-auto">

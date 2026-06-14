@@ -81,7 +81,7 @@ export const DYNAMIC_BOUNDARY_MARKER = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
 // ─── Build Options ────────────────────────────────────────────────────────────
 
 export interface BuildSystemPromptOptions {
-  /** Agent 角色 ID (writer/planner/auditor/architect/explorer/hooks/chapter-hooks/outline) */
+  /** Agent 角色 ID (novelist / default — 旧 ID 通过 legacy mapping 自动映射) */
   agentId: string;
   /** 当前 session 启用的工具名列表 */
   toolNames: string[];

@@ -76,12 +76,14 @@ export function createWritingResourceService(input: { readonly storage: StorageD
         return acceptResource(repository, resource, action.chapterNumber, action.mode, timestamp);
       }
       if (action.action === "to-draft") {
-        const updated = repository.update(id, { type: "draft", status: "draft", updatedAt: timestamp });
+        // 只改 status，不改 type（type 不再有业务含义）
+        const updated = repository.update(id, { status: "draft", updatedAt: timestamp });
         if (!updated) throw new Error(`Writing resource not found: ${id}`);
         return updated;
       }
       if (action.action === "to-candidate") {
-        const updated = repository.update(id, { type: "candidate", status: "candidate", updatedAt: timestamp });
+        // 只改 status，不改 type
+        const updated = repository.update(id, { status: "candidate", updatedAt: timestamp });
         if (!updated) throw new Error(`Writing resource not found: ${id}`);
         return updated;
       }

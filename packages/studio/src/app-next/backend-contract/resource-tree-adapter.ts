@@ -169,11 +169,11 @@ export async function loadResourceTreeFromContract(
       metadata: { book, nextChapter: bookResult.data.nextChapter },
       children: [
         group("group:chapters", "章节", resourceGroups.chapters),
-        group("group:candidates", "候选稿", [
+        group("group:candidates", "待审核", [
           ...resourceGroups.candidates,
           ...errors.filter((node) => node.id === "unsupported:candidates.list"),
         ]),
-        group("group:drafts", "草稿", resourceGroups.drafts),
+        group("group:drafts", "编辑中", resourceGroups.drafts),
         group("group:archived", "已归档", resourceGroups.archived),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         jingweiPanelEntryNode(),
@@ -188,15 +188,15 @@ export async function loadResourceTreeFromContract(
 
 function buildWritingResourceGroups(resources: readonly WritingResource[]): { chapters: ContractResourceNode[]; candidates: ContractResourceNode[]; drafts: ContractResourceNode[]; archived: ContractResourceNode[] } {
   const active = resources.filter((resource) => resource.deletedAt === null);
-  const chapters = active.filter((resource) => resource.type === "chapter" && resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode);
+  const chapters = active.filter((resource) => resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode);
 
-  // 候选稿按 chapterNumber 分子组
-  const rawCandidates = active.filter((resource) => resource.type === "candidate" && resource.status === "candidate").sort(compareResourceUpdatedDesc);
-  const candidates = groupByChapter(rawCandidates, "候选");
+  // 待审核（status=candidate，不管 type 是 candidate 还是 draft）
+  const rawCandidates = active.filter((resource) => resource.status === "candidate").sort(compareResourceUpdatedDesc);
+  const candidates = groupByChapter(rawCandidates, "待审");
 
-  // 草稿按 chapterNumber 分子组
-  const rawDrafts = active.filter((resource) => resource.type === "draft" && resource.status === "draft").sort(compareResourceUpdatedDesc);
-  const drafts = groupByChapter(rawDrafts, "草稿");
+  // 编辑中（status=draft）
+  const rawDrafts = active.filter((resource) => resource.status === "draft").sort(compareResourceUpdatedDesc);
+  const drafts = groupByChapter(rawDrafts, "编辑中");
 
   const archived = active.filter((resource) => resource.status === "archived" || resource.status === "rejected").sort(compareResourceUpdatedDesc).map(toWritingResourceNode);
   return { chapters, candidates, drafts, archived };
@@ -243,14 +243,16 @@ function compareResourceUpdatedDesc(a: WritingResource, b: WritingResource): num
 }
 
 function toWritingResourceNode(resource: WritingResource): ContractResourceNode {
-  const kind = resource.type;
+  // kind 基于 status 决定，不再基于 type
+  const kind: ContractResourceKind = resource.status === "accepted" ? "chapter"
+    : resource.status === "candidate" ? "candidate"
+    : "draft";
   const id = `${kind}:${resource.id}`;
   const metadata = {
     ...resource.metadata,
     bookId: resource.bookId,
     resourceId: resource.id,
-    candidateId: resource.type === "candidate" ? resource.id : undefined,
-    draftId: resource.type === "draft" ? resource.id : undefined,
+    draftId: resource.id,
     chapterNumber: resource.chapterNumber ?? undefined,
     status: resource.status,
     source: resource.source ?? undefined,
@@ -269,7 +271,7 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
     content: resource.content,
     capabilities: {
       read: CURRENT_READ("writing-resources.read"),
-      edit: resource.status === "draft" || resource.type === "chapter" ? CURRENT_EDIT("writing-resources.update") : UNSUPPORTED("writing-resources.edit"),
+      edit: resource.status === "draft" || resource.status === "accepted" || resource.status === "candidate" ? CURRENT_EDIT("writing-resources.update") : UNSUPPORTED("writing-resources.edit"),
       delete: resource.status === "accepted" ? UNSUPPORTED("writing-resources.delete") : CURRENT_DELETE("writing-resources.delete"),
       apply: resource.status === "candidate" || resource.status === "draft" ? CURRENT_APPLY("writing-resources.transition") : CURRENT_APPLY("writing-resources.variant"),
     },
