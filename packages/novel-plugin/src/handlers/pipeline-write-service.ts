@@ -75,6 +75,14 @@ function countWords(text: string): number {
   return text.replace(/\s+/g, "").length;
 }
 
+/** 截断控制文档到合理预算（~800 字），避免长视野文档占用过多上下文 */
+function truncateDoc(text: string, maxChars = 800): string {
+  const trimmed = (text ?? "").trim();
+  if (!trimmed) return "";
+  if (trimmed.length <= maxChars) return trimmed;
+  return trimmed.slice(0, maxChars).trimEnd() + "…";
+}
+
 export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
@@ -112,11 +120,25 @@ export async function executePipelineWrite(
     const writerCtx = buildAgentCtx(options, "writer", bookId);
     const writer = new WriterAgent(writerCtx);
 
+    // P0-2: 加载控制文档（全书长视野意图 + 近 1-3 章焦点），注入写作上下文。
+    // 此前 author_intent 只被 planner 消化成 goal，原文不进 writer 上下文 → 长篇易跑偏。
+    let authorIntentDoc = "";
+    let currentFocusDoc = "";
+    try {
+      const ctrl = await state.loadControlDocuments(bookId);
+      authorIntentDoc = truncateDoc(ctrl.authorIntent);
+      currentFocusDoc = truncateDoc(ctrl.currentFocus);
+    } catch (err) {
+      logger?.warn(`[pipeline.write] Failed to load control documents: ${err}`);
+    }
+
     // Build structured ContextPackage (修复：此前传字符串 + as any，导致 Writer 的
     // buildGovernedMemoryEvidenceBlocks 对字符串调 .selectedContext.filter 崩溃)
     const contextPackage: ContextPackage = {
       chapter: chapterNumber,
       selectedContext: [
+        ...(authorIntentDoc ? [{ source: "story/author_intent.md", reason: "全书长视野创作意图（最高锚点，避免长篇跑偏主题）", excerpt: authorIntentDoc }] : []),
+        ...(currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: currentFocusDoc }] : []),
         { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(sceneSpec) },
         ...(jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情", excerpt: jingweiContext }] : []),
         ...(previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: previousChapterTail }] : []),
