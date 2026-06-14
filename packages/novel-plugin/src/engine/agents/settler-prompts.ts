@@ -141,6 +141,15 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
     "mood": "紧绷",
     "chapterType": "${chapterTypeExample}"
   },
+  "resourceOps": [
+    {
+      "resourceId": "lingshi",
+      "name": "灵石",
+      "delta": -30,
+      "reason": "购买疗伤丹药",
+      "expectedBalance": 70
+    }
+  ],
   "subplotOps": [],
   "emotionalArcOps": [],
   "characterMatrixOps": [],
@@ -156,7 +165,11 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
 5. 如果旧 hook 只是被提到、没有真实状态变化，把它放进 mention，不要更新 lastAdvancedChapter
 6. 如果本章推进了旧 hook，lastAdvancedChapter 必须等于当前章号
 7. 如果回收或延后 hook，必须放在 resolve / defer 数组里
-8. chapterSummary.chapter 必须等于当前章节号`;
+8. chapterSummary.chapter 必须等于当前章节号
+9. resourceOps：正文中出现的每一项资源/数值变动（灵石、积分、修为、道具数量等）都要记一条。
+   delta 为本章净增减（消耗为负、获得为正）；resourceId 用稳定英文小写标识；
+   首次出现填 name；expectedBalance 填本章结束后该资源的期末值（系统会用"期初+delta"验算，不符会告警）。
+   没有数值体系的题材可留空数组。`;
 }
 
 export function buildSettlerUserPrompt(params: {
