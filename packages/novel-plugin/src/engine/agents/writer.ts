@@ -19,6 +19,7 @@ import type { ChapterTrace, ContextPackage, RuleStack } from "@vivy1024/novelfor
 import type { LengthSpec } from "@vivy1024/novelfork-core";
 import type { RuntimeStateDelta } from "@vivy1024/novelfork-core";
 import { buildLengthSpec, countChapterLength } from "@vivy1024/novelfork-core";
+import { analyzeWordFrequency, renderWordFrequencyHint } from "@vivy1024/novelfork-core";
 import { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "@vivy1024/novelfork-core";
 import { buildGovernedMemoryEvidenceBlocks } from "@vivy1024/novelfork-core";
 import {
@@ -145,6 +146,12 @@ export class WriterAgent extends BaseAgent {
     // Load more chapters for dialogue fingerprint extraction (voice consistency over longer span)
     const fingerprintChapters = await this.loadRecentChapters(bookDir, chapterNumber, 5);
 
+    // P4-1 动态词频：统计最近 5 章高频重复实词，提示本章避免重复用词
+    const wordFreqHint = renderWordFrequencyHint(
+      analyzeWordFrequency(fingerprintChapters.split("\n\n---\n\n").filter((s) => s.trim())),
+      book.language === "en" ? "en" : "zh",
+    );
+
     // Load genre profile + book rules
     const { profile: genreProfile, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
@@ -199,7 +206,7 @@ export class WriterAgent extends BaseAgent {
       enabledPresets,
     );
 
-    const creativeUserPrompt = input.chapterIntent && input.contextPackage && input.ruleStack
+    const creativeUserPrompt = (input.chapterIntent && input.contextPackage && input.ruleStack
       ? this.buildGovernedUserPrompt({
           chapterNumber,
           chapterIntent: input.chapterIntent,
@@ -247,7 +254,7 @@ export class WriterAgent extends BaseAgent {
             parentCanon: hasParentCanon ? parentCanon : undefined,
             language: book.language ?? genreProfile.language,
           });
-        })();
+        })()) + wordFreqHint;
 
     const creativeTemperature = input.temperatureOverride ?? 0.7;
 
