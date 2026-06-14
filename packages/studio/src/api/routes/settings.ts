@@ -315,8 +315,10 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
         },
         mcp: {
           strategy: config.runtimeControls?.toolAccess?.mcpStrategy ?? "disabled",
-          servers: [], // MCP server registry 尚未实现真实连接管理
-          status: "planned" as const,
+          // MCP 连接管理已实现（见 routes/mcp.ts + lib/mcp-registry.ts）；
+          // 实时 server 列表请查 GET /api/mcp/servers（此诊断不主动连接以免引入延迟/副作用）。
+          serversEndpoint: "/api/mcp/servers",
+          status: (!config.runtimeControls?.toolAccess?.mcpStrategy || config.runtimeControls.toolAccess.mcpStrategy === "deny") ? "disabled" as const : "current" as const,
         },
         sandbox: {
           mode: config.runtimeControls?.codexSandboxMode ?? undefined,
