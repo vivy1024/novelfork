@@ -34,6 +34,8 @@ export const HookRecordSchema = z.object({
   expectedPayoff: z.string().default(""),
   payoffTiming: HookPayoffTimingSchema.optional(),
   notes: z.string().default(""),
+  /** 埋设所在卷（P3-2 伏笔卷级追踪）。缺省按章号推断。 */
+  volume: z.number().int().min(0).optional(),
 });
 
 export type HookRecord = z.infer<typeof HookRecordSchema>;
@@ -155,6 +157,22 @@ export const KnowledgeStateSchema = z.object({
 });
 export type KnowledgeState = z.infer<typeof KnowledgeStateSchema>;
 
+// ── 全书时间线（P3-1 / B2）：结构化故事时间推进，机器校验时序矛盾 ──
+export const TimelineEntrySchema = z.object({
+  chapter: z.number().int().min(0),
+  storyTime: z.string().default(""),
+  label: z.string().default(""),
+  durationFromPrev: z.string().default(""),
+  /** 单调序号：用于检测时序倒流（settler 给出本章故事时间相对全书的累计推进刻度，单位由书自定） */
+  ordinal: z.number().optional(),
+});
+export type TimelineEntry = z.infer<typeof TimelineEntrySchema>;
+
+export const TimelineStateSchema = z.object({
+  entries: z.array(TimelineEntrySchema).default([]),
+});
+export type TimelineState = z.infer<typeof TimelineStateSchema>;
+
 export const RuntimeStateDeltaSchema = z.object({
   chapter: z.number().int().min(1),
   currentStatePatch: CurrentStatePatchSchema.optional(),
@@ -168,6 +186,7 @@ export const RuntimeStateDeltaSchema = z.object({
   chapterSummary: ChapterSummaryRowSchema.optional(),
   resourceOps: z.array(ResourceOpSchema).default([]),
   knowledgeOps: z.array(KnowledgeEventSchema).default([]),
+  timelineOp: TimelineEntrySchema.optional(),
   subplotOps: z.array(LooseOpSchema).default([]),
   emotionalArcOps: z.array(LooseOpSchema).default([]),
   characterMatrixOps: z.array(LooseOpSchema).default([]),

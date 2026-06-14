@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { applyRuntimeStateDelta, findKnowledgeViolations } from "../state/state-reducer.js";
+import { applyRuntimeStateDelta, findKnowledgeViolations, findTimelineConflicts } from "../state/state-reducer.js";
 import { RuntimeStateDeltaSchema } from "../models/runtime-state.js";
 
 describe("applyRuntimeStateDelta", () => {
@@ -497,6 +497,50 @@ describe("applyRuntimeStateDelta — knowledgeOps + findKnowledgeViolations (P2-
     const next = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 6 }) });
     expect(findKnowledgeViolations(next.knowledge, "hero", 5)).toHaveLength(0); // learnedAt=5 ≤ 当前5
     expect(findKnowledgeViolations(next.knowledge, "hero", 4)).toHaveLength(1); // 第4章时还不知道
+  });
+});
+
+describe("applyRuntimeStateDelta — timelineOp + findTimelineConflicts (P3-1 全书时序)", () => {
+  const baseSnapshot = () => ({
+    manifest: { schemaVersion: 2, language: "zh" as const, lastAppliedChapter: 0, projectionVersion: 1, migrationWarnings: [] },
+    currentState: { chapter: 0, facts: [] },
+    hooks: { hooks: [] },
+    chapterSummaries: { rows: [] },
+    resourceLedger: { resources: [] },
+    knowledge: { events: [] },
+    timeline: { entries: [] },
+  });
+
+  it("timelineOp 落库，同章覆盖", () => {
+    let snap: any = baseSnapshot();
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 1, timelineOp: { chapter: 1, storyTime: "开篇当天", label: "起", ordinal: 0 } }) });
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 2, timelineOp: { chapter: 2, storyTime: "三天后", label: "承", ordinal: 3 } }) });
+    expect(snap.timeline.entries).toHaveLength(2);
+    expect(snap.timeline.entries[1].storyTime).toBe("三天后");
+  });
+
+  it("findTimelineConflicts: ordinal 倒流 → 检出时序矛盾", () => {
+    let snap: any = baseSnapshot();
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 1, timelineOp: { chapter: 1, storyTime: "第10天", ordinal: 10 } }) });
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 2, timelineOp: { chapter: 2, storyTime: "第3天", ordinal: 3 } }) });
+    const conflicts = findTimelineConflicts(snap.timeline);
+    expect(conflicts).toHaveLength(1);
+    expect(conflicts[0]!.chapter).toBe(2);
+    expect(conflicts[0]!.prevChapter).toBe(1);
+  });
+
+  it("findTimelineConflicts: 时间正常推进 → 无矛盾", () => {
+    let snap: any = baseSnapshot();
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 1, timelineOp: { chapter: 1, ordinal: 0 } }) });
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 2, timelineOp: { chapter: 2, ordinal: 5 } }) });
+    expect(findTimelineConflicts(snap.timeline)).toHaveLength(0);
+  });
+
+  it("无 timelineOp → 时间线不变", () => {
+    let snap: any = baseSnapshot();
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 1, timelineOp: { chapter: 1, ordinal: 0 } }) });
+    snap = applyRuntimeStateDelta({ snapshot: snap, delta: RuntimeStateDeltaSchema.parse({ chapter: 2 }) });
+    expect(snap.timeline.entries).toHaveLength(1);
   });
 });
 
