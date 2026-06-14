@@ -24,7 +24,7 @@
 
 | 工具 | 功能 |
 |---|---|
-| `pipeline.generate_chapter` | 完整写作管线：Planner→Composer→Writer→Auditor→Reviser |
+| `pipeline.write` | 完整写作管线：Planner→Composer→Writer→Auditor→Reviser |
 | `pipeline.write` | v2 约束驱动写作（SceneSpec→Writer→AuditRevise） |
 | `pipeline.revise` | 修订章节（5 种模式：polish/rewrite/rework/spot-fix/anti-detect） |
 | `pipeline.import_chapters` | 整书导入（分章+基础设定+文风+经纬） |
@@ -59,10 +59,10 @@
 
 ---
 
-## pipeline.generate_chapter 流程
+## pipeline.write 流程
 
 ```
-pipeline.generate_chapter
+pipeline.write
     │  输入：bookId + chapterIntent + userDirectives
     │
     ├─ 1. Planner — 规则引擎提取 intent/goal/conflicts
@@ -122,16 +122,22 @@ v1.1.0 引入精简管线，从 5 次 LLM 调用降到 2 次：
 在叙述者会话中，写作通过工具链完成：
 
 ```
-cockpit.get_snapshot
+cockpit.snapshot
     │  获取驾驶舱快照（当前进度、伏笔、风险）
     ▼
-pgi.generate_questions
-    │  PGI 引擎生成引导问题（Plot Guidance Interface）
+jingwei.read(scope=brief)
+    │  读取经纬核心包和分类目录
     ▼
-guided.enter / guided.exit
-    │  进入/退出引导模式，收集用户对章节方向的偏好
+pgi.ask
+    │  PGI 引擎生成追问（Pre-Generation Interview）
     ▼
-candidate.create_chapter
+AskUserQuestion
+    │  向用户展示追问卡片，收集对章节方向的偏好（整个流程只一次）
+    ▼
+scene.spec
+    │  生成结构化写作蓝图（角色/地点/冲突/情绪/结果），pipeline.write 的硬前置
+    ▼
+pipeline.write
     │  生成候选稿（不直接写入正式章节）
     ▼
 [用户审阅候选稿]

@@ -1,6 +1,6 @@
 ---
 title: Agent 写作管线
-summary: 统一工具层架构——PGI 追问、SceneSpec 蓝图、pipeline.generate_chapter 全流程生成
+summary: 统一工具层架构——PGI 追问、SceneSpec 蓝图、pipeline.write 全流程生成
 tags: [Agent, Pipeline, 工具层, 写作, 候选稿]
 routes:
   - /next/narrators/:id
@@ -15,7 +15,7 @@ routes:
 NovelFork 的写作采用「工具层」模式：每个写作操作都是一个可被 Agent 调用的工具，Agent 按行为规范（system prompt）中定义的顺序串联它们。
 
 ```
-用户请求 → cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.generate_chapter → 候选稿
+用户请求 → cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → 候选稿
 ```
 
 **核心原则**：
@@ -28,7 +28,7 @@ NovelFork 的写作采用「工具层」模式：每个写作操作都是一个�
 
 | 工具 | 用途 | 风险等级 |
 |------|------|---------|
-| `pipeline.generate_chapter` | 完整写作管线：规划→上下文组装→生成→审计→修订→经纬同步→保存候选稿 | draft-write |
+| `pipeline.write` | 完整写作管线：规划→上下文组装→生成→审计→修订→经纬同步→保存候选稿 | draft-write |
 | `pipeline.write` | 精简管线（v2）：接受 scene.spec 蓝图，执行 Writer→AuditRevise 两步 | draft-write |
 | `pipeline.revise` | 修订已有章节（polish/rewrite/rework/spot-fix/anti-detect） | draft-write |
 | `pipeline.import_chapters` | 从 .txt/.md 文件按标题分割并导入章节 | draft-write |
@@ -37,7 +37,7 @@ NovelFork 的写作采用「工具层」模式：每个写作操作都是一个�
 
 ## 完整写作流程
 
-### 标准链路：pipeline.generate_chapter
+### 标准链路：pipeline.write
 
 ```
 1. cockpit.snapshot        → 了解书籍进度、伏笔、候选稿状态
@@ -46,7 +46,7 @@ NovelFork 的写作采用「工具层」模式：每个写作操作都是一个�
 4. AskUserQuestion         → 向用户展示追问（整个流程只调用一次）
 5. scene.spec              → 根据用户回答生成结构化写作蓝图
 6. jingwei.read(category)  → 按蓝图中的角色/地点补读经纬细节
-7. pipeline.generate_chapter → 执行完整管线
+7. pipeline.write → 执行完整管线
 ```
 
 ### 精简链路：scene.spec → pipeline.write
@@ -57,7 +57,7 @@ NovelFork 的写作采用「工具层」模式：每个写作操作都是一个�
 scene.spec → pipeline.write(sceneSpec) → 候选稿
 ```
 
-### pipeline.generate_chapter 内部流程
+### pipeline.write 内部流程
 
 工具内部自动执行五步，对外表现为一次工具调用：
 
@@ -76,11 +76,11 @@ scene.spec → pipeline.write(sceneSpec) → 候选稿
 所有 AI 生成内容先进入候选区（writing-resource 存储），不直接覆盖正式章节：
 
 ```
-pipeline.generate_chapter → candidateId → 画布展示 → 用户确认 → 正式入库
+pipeline.write → candidateId → 画布展示 → 用户确认 → 正式入库
 ```
 
 - `candidate.create_chapter` 只是底层保存工具——不生成正文、不审计、不修订
-- `pipeline.generate_chapter` 是「写下一章」的正确入口
+- `pipeline.write` 是「写下一章」的正确入口
 - 候选稿附带 artifact 引用，可在画布中直接打开审阅
 
 ## 上下文组装优先级
@@ -106,7 +106,7 @@ pipeline.generate_chapter → candidateId → 画布展示 → 用户确认 → 
 
 ## 常见坑
 
-- **用 candidate.create_chapter 写章节** → 错误用法。它只保存已有正文，不会生成内容。写下一章用 `pipeline.generate_chapter`
+- **用 candidate.create_chapter 写章节** → 错误用法。它只保存已有正文，不会生成内容。写下一章用 `pipeline.write`
 - **跳过 PGI 直接生成** → 质量下降。Agent 行为规范禁止跳过追问步骤
 - **审计后未自动修订** → autoRevise 默认开启，但只修复 critical 级别问题
 - **上下文溢出** → 经纬过大时自动截断，保留关键信息
@@ -114,7 +114,7 @@ pipeline.generate_chapter → candidateId → 画布展示 → 用户确认 → 
 ## Agent 查阅提示
 
 - 管线入口：Agent 在对话中按 system prompt 规定的顺序调用工具
-- 核心工具：`pipeline.generate_chapter` / `pipeline.write` / `pipeline.revise` / `rewrite.segment`
+- 核心工具：`pipeline.write` / `pipeline.write` / `pipeline.revise` / `rewrite.segment`
 - 候选稿保存后返回 `artifact` 对象，前端自动在画布中渲染
 - 智能重试：429/502/503 指数退避，最多 3 次
 - 安全原则：最小权限（默认只读）、可回退（候选区隔离）、透明（工具调用可见）、用户主权（随时中断）

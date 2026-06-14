@@ -28,7 +28,7 @@ routes:
 
 | 工具 | 适用场景 | 说明 |
 |------|---------|------|
-| `pipeline.generate_chapter` | 写下一章 | 完整管线：规划→生成→审计→修订→候选稿 |
+| `pipeline.write` | 写下一章 | 完整管线：规划→生成→审计→修订→候选稿 |
 | `pipeline.write` | 已有蓝图写章节 | 精简管线：SceneSpec→Writer→AuditRevise |
 | `pipeline.revise` | 修订已有章节 | 5 种模式：polish/rewrite/rework/spot-fix/anti-detect |
 | `rewrite.segment` | 选段改写 | 续写/扩写/去AI味/风格改写 |
@@ -57,11 +57,11 @@ routes:
 
 ## Agent 查阅提示
 
-- 所有生成结果必须进入候选区（通过 `pipeline.generate_chapter` 或 `candidate.create_chapter`），禁止直接写入正式章节
+- 所有生成结果必须进入候选区（通过 `pipeline.write` 或 `candidate.create_chapter`），禁止直接写入正式章节
 - 上下文组装顺序固定：经纬 → 前文摘要 → 驾驶舱快照 → PGI → SceneSpec → 预设规则
-- 预设通过 `presets.set_rules` 管理，切换预设不影响已生成的候选稿
+- 预设通过 `presets.write` 管理，切换预设不影响已生成的候选稿
 - 变体生成时每个变体独立走完整管线，共享上下文但 temperature 不同
-- Agent 可通过 `presets.list_available` / `presets.set_rules` / `beat.set_template` 自行管理预设和节拍
+- Agent 可通过 `presets.read` / `presets.write` / `beat.write` 自行管理预设和节拍
 
 ## 可跳转功能入口
 

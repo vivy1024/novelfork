@@ -27,7 +27,7 @@ routes:
 
 ### 自定义预设
 
-Agent 可以用 `presets.create_custom` 工具创建专属规则。例如：
+Agent 可以用 `presets.write(action=create)` 工具创建专属规则。例如：
 - "本书禁止出现'修为暴涨'类描写，所有突破必须有代价"
 - "对话中必须体现地域方言特色"
 
@@ -35,7 +35,7 @@ Agent 可以用 `presets.create_custom` 工具创建专属规则。例如：
 
 - **让 Agent 选**：告诉叙述者"帮我选择适合这本书的预设"
 - **手动选**：状态栏「预设」面板勾选
-- **Agent 工具**：`presets.get_rules`（查看）、`presets.set_rules`（设置）、`presets.create_custom`（创建）
+- **Agent 工具**：`presets.read`（查看）、`presets.write`（设置）、`presets.write(action=create)`（创建）
 
 ## 节拍模板
 
@@ -53,13 +53,13 @@ Agent 可以用 `presets.create_custom` 工具创建专属规则。例如：
 
 ### 自定义模板
 
-Agent 可以用 `beat.create_custom` 工具创建专属节拍。例如为你的书设计"日常渐变四阶段"。
+Agent 可以用 `beat.write(action=create)` 工具创建专属节拍。例如为你的书设计"日常渐变四阶段"。
 
 ### 操作方式
 
 - **让 Agent 选**：告诉叙述者"帮我设计适合这本书的节拍结构"
 - **手动选**：状态栏「节拍」面板切换
-- **Agent 工具**：`beat.get_current`（查看）、`beat.set_template`（设置）、`beat.create_custom`（创建）
+- **Agent 工具**：`beat.read`（查看）、`beat.write`（设置）、`beat.write(action=create)`（创建）
 
 ## 推荐使用流程
 
@@ -86,7 +86,7 @@ Agent 可以用 `beat.create_custom` 工具创建专属节拍。例如为你的�
 - 节拍存储：`book.json` 的 `beatTemplateId` 字段
 - 自定义预设/节拍存储：`user_template` 表（SQLite）
 - 预设注入时机：候选稿生成时注入 system prompt
-- 工具列表：`presets.get_rules`、`presets.set_rules`、`presets.create_custom`、`presets.check_compliance`、`beat.get_current`、`beat.set_template`、`beat.create_custom`
+- 工具列表：`presets.read`、`presets.write`、`presets.write(action=create)`、`presets.check_compliance`、`beat.read`、`beat.write`、`beat.write(action=create)`
 
 ## 可跳转功能入口
 
