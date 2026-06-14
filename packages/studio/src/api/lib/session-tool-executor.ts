@@ -797,7 +797,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
 
         const result = await executePipelineWrite(
-          { bookId: String(input.bookId), sceneSpec: input.sceneSpec as any, jingweiContext: input.jingweiContext as string | undefined, previousChapterTail: input.previousChapterTail as string | undefined, autoRevise: input.autoRevise !== false },
+          { bookId: String(input.bookId), sceneSpec: input.sceneSpec as any, jingweiContext: input.jingweiContext as string | undefined, previousChapterTail: input.previousChapterTail as string | undefined, autoRevise: input.autoRevise !== false, adversarialAudit: input.adversarialAudit === true, maxReviseRounds: typeof input.maxReviseRounds === "number" ? input.maxReviseRounds : 1 },
           { root, client, model: llmConfig.model, logger: undefined },
         );
 

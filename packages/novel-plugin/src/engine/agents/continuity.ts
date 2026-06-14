@@ -330,6 +330,8 @@ export class ContinuityAuditor extends BaseAgent {
         ledger?: string;
         hooks?: string;
       };
+      /** 对抗审查：仅审查指定维度子集（视角过滤）。省略时审全部激活维度。 */
+      viewDimensionIds?: ReadonlyArray<number>;
     },
   ): Promise<AuditResult> {
     const [diskCurrentState, diskLedger, diskHooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon, fanficCanon, volumeOutline] =
@@ -373,10 +375,19 @@ export class ContinuityAuditor extends BaseAgent {
     const resolvedLanguage = bookLanguage ?? gp.language;
     const isEnglish = resolvedLanguage === "en";
     const fanficMode = hasFanficCanon ? (bookRules?.fanficMode as FanficMode | undefined) : undefined;
-    const dimensions = buildDimensionList(gp, bookRules, resolvedLanguage, hasParentCanon, fanficMode);
+    const allDimensions = buildDimensionList(gp, bookRules, resolvedLanguage, hasParentCanon, fanficMode);
+    // 对抗审查：按视角过滤维度子集（若指定）。交集保证不超出本书激活维度。
+    const dimensions = options?.viewDimensionIds && options.viewDimensionIds.length > 0
+      ? allDimensions.filter((d) => options.viewDimensionIds!.includes(d.id))
+      : allDimensions;
     const dimList = dimensions
       .map((d) => `${d.id}. ${d.name}${d.note ? (isEnglish ? ` (${d.note})` : `（${d.note}）`) : ""}`)
       .join("\n");
+
+    // 视角过滤后无维度可审 → 直接返回 pass（不浪费 LLM 调用）
+    if (dimensions.length === 0) {
+      return { passed: true, issues: [], summary: isEnglish ? "No dimensions in this view." : "本视角无适用维度。" };
+    }
     const genreLabel = resolveGenreLabel(genreId, gp.name, resolvedLanguage);
 
     const protagonistBlock = bookRules?.protagonist
