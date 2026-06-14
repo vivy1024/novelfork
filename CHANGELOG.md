@@ -4,6 +4,36 @@
 
 ## Unreleased
 
+## v1.9.0 (2026-06-14)
+
+### 🎯 网文质量机制补全（novel-quality-hardening spec）
+
+核心理念：把关键质量机制从"LLM 自觉"（Markdown + prompt 约束）升级为"机制强制"（结构化数据 + 代码校验 + 可机器回溯），并恢复多 agent 对抗式审查的正确语义。
+
+#### 🐛 重大修复
+
+- **pipeline.write 崩溃修复（主力写作工具）** — v2 管线把 contextPackage/ruleStack 当字符串传入（`as any` 掩盖），Writer/Auditor/Reviser 的 governed 路径对字符串调 `.selectedContext.filter` 必然崩溃。自 v2 诞生起，凡 contextPackage 非空即崩。改为构造真正的 ContextPackage + RuleStack 结构化对象，并激活了 v2 本应有的 governed 写作路径。
+- **full-compact circuit breaker 并发隔离** — 模块级全局失败计数改为 per-session，避免一个 session 失败熔断所有 session 的压缩。
+
+#### ✨ 新机制
+
+- **对抗式审查（3 视角交叉）** — 同一份正文由连续性/叙事质量/文本质量 3 个独立视角审查官各自跑（独立 prompt、互不知对方结论），纯函数合成器去重+取高严重度+冲突标记需复核，暴露单 agent 自审盲区。`pipeline.write` 的 `adversarialAudit` 开关控制（默认关，控成本）。
+- **严重度门禁 S1-S4** — S1 致命（崩人设/设定硬冲突）阻断送人工复核、S2 严重触发修订、S3/S4 仅警告。
+- **多轮自愈 + Human Review Gate** — 审查→修订最多 N 轮，每轮 re-audit，达上限仍有 S1/S2 标记 needsHumanReview。
+- **资源账本结构化** — 灵石/积分/修为等数值用结构化 resourceLedger，reducer 代码层验算 `newBalance = old + delta`，与 settler 声明的期末值不符时告警（真实捕获 LLM 算账错误）。
+- **角色知识边界事件溯源** — knowledgeEvents 记录"谁在第几章知道了什么"，机器校验信息越界（角色用了还不该知道的信息）。
+- **全书结构化时间线** — timeline + ordinal 累计刻度，机器检测时序倒流。
+- **伏笔卷级追踪** — HookRecord 加 volume，跨卷（≥2 卷）未回收升级告警。
+- **长度治理接线** — Writer 产出后漂出 hard 区间则归一化一次，仍漂出记 warning（此前 LengthNormalizerAgent 是死代码）。
+- **author_intent/current_focus 注入** — 全书长视野意图 + 近章焦点注入写作上下文（此前 author_intent 原文不进 Writer，长篇易跑偏）。
+- **动态全局词频** — 统计最近 5 章高频重复实词，提示本章换用表达（与固定疲劳词表互补）。
+
+#### 📐 架构
+
+- 新增《写作管线架构图》（docs/04-架构与设计/07），画清主链路（3 重型 agent）+ 对抗审查 + 结构化状态机，根治"35 agent=黑盒"误区。
+- runtime-state 新增 resource_ledger/knowledge/timeline 三类文件快照（向后兼容，旧书默认空）。
+
+
 ## v1.8.0 (2026-06-10)
 
 ### ✨ 新功能
