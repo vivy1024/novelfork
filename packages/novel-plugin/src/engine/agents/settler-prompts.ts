@@ -158,6 +158,13 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
       "source": "本章密室对话"
     }
   ],
+  "timelineOp": {
+    "chapter": 12,
+    "storyTime": "入秋后第三日",
+    "label": "抵达临安城",
+    "durationFromPrev": "约两天",
+    "ordinal": 45
+  },
   "subplotOps": [],
   "emotionalArcOps": [],
   "characterMatrixOps": [],
@@ -180,7 +187,10 @@ function buildSettlerOutputFormat(gp: GenreProfile): string {
    没有数值体系的题材可留空数组。
 10. knowledgeOps：本章中某角色"首次得知"的关键信息记一条（谁 characterId、知道了什么 fact、
     第几章 learnedAtChapter=当前章号、从何得知 source）。用于防止后续章节里角色使用"还不该知道"
-    的信息（信息越界）。只记关键秘密/真相，不记琐碎信息。`;
+    的信息（信息越界）。只记关键秘密/真相，不记琐碎信息。
+11. timelineOp：本章故事时间推进。storyTime 写本章发生的故事内时间点（如"入秋后第三日"）；
+    durationFromPrev 写距上一章的时间跨度；ordinal 是故事时间的累计刻度（整数，单位自定如"天"），
+    必须随章节单调递增——系统用它检测时间倒流。本章时间未推进可省略 timelineOp。`;
 }
 
 export function buildSettlerUserPrompt(params: {

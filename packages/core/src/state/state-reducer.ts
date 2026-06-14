@@ -6,6 +6,7 @@ import {
   ResourceLedgerStateSchema,
   RuntimeStateDeltaSchema,
   StateManifestSchema,
+  TimelineStateSchema,
   type HookRecord,
   type ChapterSummariesState,
   type CurrentStateState,
@@ -14,6 +15,7 @@ import {
   type ResourceLedgerState,
   type RuntimeStateDelta,
   type StateManifest,
+  type TimelineState,
 } from "../models/runtime-state.js";
 import { evaluateHookAdmission } from "../utils/hook-governance.js";
 import { resolveHookPayoffTiming } from "../utils/hook-lifecycle.js";
@@ -26,6 +28,7 @@ export interface RuntimeStateSnapshot {
   readonly chapterSummaries: ChapterSummariesState;
   readonly resourceLedger: ResourceLedgerState;
   readonly knowledge: KnowledgeState;
+  readonly timeline: TimelineState;
 }
 
 /** 资源验算告警（computedBalance ≠ settler 声明的 expectedBalance）。非致命，供审计。 */
@@ -48,6 +51,7 @@ export function applyRuntimeStateDelta(params: {
     chapterSummaries: ChapterSummariesStateSchema.parse(params.snapshot.chapterSummaries),
     resourceLedger: ResourceLedgerStateSchema.parse(params.snapshot.resourceLedger ?? { resources: [] }),
     knowledge: KnowledgeStateSchema.parse(params.snapshot.knowledge ?? { events: [] }),
+    timeline: TimelineStateSchema.parse(params.snapshot.timeline ?? { entries: [] }),
   };
   const delta = RuntimeStateDeltaSchema.parse(params.delta);
   const allowReapply = params.allowReapply ?? false;
@@ -77,6 +81,7 @@ export function applyRuntimeStateDelta(params: {
   const chapterSummaries = applySummaryDelta(snapshot.chapterSummaries, delta, allowReapply);
   const resourceLedger = applyResourceOps(snapshot.resourceLedger, delta, params.onResourceWarning);
   const knowledge = applyKnowledgeOps(snapshot.knowledge, delta);
+  const timeline = applyTimelineOp(snapshot.timeline, delta);
 
   const next: RuntimeStateSnapshot = {
     manifest: {
@@ -88,6 +93,7 @@ export function applyRuntimeStateDelta(params: {
     chapterSummaries,
     resourceLedger,
     knowledge,
+    timeline,
   };
 
   const issues = validateRuntimeState(next);
@@ -220,6 +226,41 @@ export function findKnowledgeViolations(
   return knowledge.events
     .filter((ev) => ev.characterId === povCharacterId && ev.learnedAtChapter > currentChapter)
     .map((ev) => ({ fact: ev.fact, learnedAtChapter: ev.learnedAtChapter }));
+}
+
+function applyTimelineOp(state: TimelineState, delta: RuntimeStateDelta): TimelineState {
+  if (!delta.timelineOp) {
+    return { entries: [...state.entries] };
+  }
+  const entry = { ...delta.timelineOp, chapter: delta.timelineOp.chapter || delta.chapter };
+  const entries = state.entries.filter((e) => e.chapter !== entry.chapter); // 同章覆盖
+  entries.push(entry);
+  return { entries: entries.sort((a, b) => a.chapter - b.chapter) };
+}
+
+/**
+ * 时序矛盾检测（P3-1）：基于结构化时间线的 ordinal（故事时间累计刻度）。
+ * 若后面章节的 ordinal 小于前面章节（时间倒流）→ 报矛盾。
+ */
+export function findTimelineConflicts(
+  timeline: TimelineState,
+): ReadonlyArray<{ readonly chapter: number; readonly prevChapter: number; readonly issue: string }> {
+  const conflicts: Array<{ chapter: number; prevChapter: number; issue: string }> = [];
+  const withOrdinal = timeline.entries
+    .filter((e) => typeof e.ordinal === "number")
+    .sort((a, b) => a.chapter - b.chapter);
+  for (let i = 1; i < withOrdinal.length; i++) {
+    const prev = withOrdinal[i - 1]!;
+    const cur = withOrdinal[i]!;
+    if ((cur.ordinal as number) < (prev.ordinal as number)) {
+      conflicts.push({
+        chapter: cur.chapter,
+        prevChapter: prev.chapter,
+        issue: `第${cur.chapter}章故事时间(${cur.storyTime || cur.ordinal})早于第${prev.chapter}章(${prev.storyTime || prev.ordinal})，时间倒流`,
+      });
+    }
+  }
+  return conflicts;
 }
 
 function mergeDuplicateHookFamily(existing: HookRecord, incoming: HookRecord): HookRecord {
