@@ -25,7 +25,9 @@
 | [08-测试与质量/](08-测试与质量/) | 测试状态、验收报告 | QA/开发者 |
 | [90-参考资料/](90-参考资料/) | AI 写作工具对比、NarraFork 参考、调研 | 所有人 |
 | [99-历史归档/](99-历史归档/) | 旧文档、路线图、迁移方案归档 | 考古用 |
-| **[learning/](learning/)** | **学习中心：9 篇功能教学文档** | **用户/Agent** |
+| [codegraph/](codegraph/) | 代码索引（CODEMAP.md，给 AI 的导航地图，bun run codegraph 生成） | 开发者/Agent |
+| **[learning/](learning/)** | **学习中心：功能教学文档（YAML frontmatter，/learn 页面消费）** | **用户/Agent** |
+| [narrafork-parity-gap-report.md](narrafork-parity-gap-report.md) | NarraFork 对标差距报告（历史归档） | 考古用 |
 
 ---
 
