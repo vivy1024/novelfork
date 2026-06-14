@@ -2,6 +2,7 @@ import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
   HooksStateSchema,
+  KnowledgeStateSchema,
   ResourceLedgerStateSchema,
   RuntimeStateDeltaSchema,
   StateManifestSchema,
@@ -9,6 +10,7 @@ import {
   type ChapterSummariesState,
   type CurrentStateState,
   type HooksState,
+  type KnowledgeState,
   type ResourceLedgerState,
   type RuntimeStateDelta,
   type StateManifest,
@@ -23,6 +25,7 @@ export interface RuntimeStateSnapshot {
   readonly hooks: HooksState;
   readonly chapterSummaries: ChapterSummariesState;
   readonly resourceLedger: ResourceLedgerState;
+  readonly knowledge: KnowledgeState;
 }
 
 /** 资源验算告警（computedBalance ≠ settler 声明的 expectedBalance）。非致命，供审计。 */
@@ -44,6 +47,7 @@ export function applyRuntimeStateDelta(params: {
     hooks: HooksStateSchema.parse(params.snapshot.hooks),
     chapterSummaries: ChapterSummariesStateSchema.parse(params.snapshot.chapterSummaries),
     resourceLedger: ResourceLedgerStateSchema.parse(params.snapshot.resourceLedger ?? { resources: [] }),
+    knowledge: KnowledgeStateSchema.parse(params.snapshot.knowledge ?? { events: [] }),
   };
   const delta = RuntimeStateDeltaSchema.parse(params.delta);
   const allowReapply = params.allowReapply ?? false;
@@ -72,6 +76,7 @@ export function applyRuntimeStateDelta(params: {
   );
   const chapterSummaries = applySummaryDelta(snapshot.chapterSummaries, delta, allowReapply);
   const resourceLedger = applyResourceOps(snapshot.resourceLedger, delta, params.onResourceWarning);
+  const knowledge = applyKnowledgeOps(snapshot.knowledge, delta);
 
   const next: RuntimeStateSnapshot = {
     manifest: {
@@ -82,6 +87,7 @@ export function applyRuntimeStateDelta(params: {
     hooks,
     chapterSummaries,
     resourceLedger,
+    knowledge,
   };
 
   const issues = validateRuntimeState(next);
@@ -180,6 +186,40 @@ function applyResourceOps(
   return {
     resources: [...byId.values()].sort((a, b) => a.resourceId.localeCompare(b.resourceId)),
   };
+}
+
+function applyKnowledgeOps(state: KnowledgeState, delta: RuntimeStateDelta): KnowledgeState {
+  if (delta.knowledgeOps.length === 0) {
+    return { events: [...state.events] };
+  }
+  // 去重：同 (characterId, fact) 只保留最早习得章（learnedAtChapter 取 min）
+  const byKey = new Map<string, typeof state.events[number]>();
+  for (const ev of [...state.events, ...delta.knowledgeOps]) {
+    const key = `${ev.characterId}::${ev.fact}`.toLowerCase();
+    const existing = byKey.get(key);
+    if (!existing || ev.learnedAtChapter < existing.learnedAtChapter) {
+      byKey.set(key, ev);
+    }
+  }
+  return {
+    events: [...byKey.values()].sort((a, b) =>
+      a.learnedAtChapter - b.learnedAtChapter || a.characterId.localeCompare(b.characterId),
+    ),
+  };
+}
+
+/**
+ * 信息边界校验（P2-2）：给定 POV 角色与当前章，返回该角色"还不该知道"的事实
+ * （learnedAtChapter > 当前章，即未来才会习得的信息）。供写章 POV 过滤 / 审查 dim9/dim29。
+ */
+export function findKnowledgeViolations(
+  knowledge: KnowledgeState,
+  povCharacterId: string,
+  currentChapter: number,
+): ReadonlyArray<{ readonly fact: string; readonly learnedAtChapter: number }> {
+  return knowledge.events
+    .filter((ev) => ev.characterId === povCharacterId && ev.learnedAtChapter > currentChapter)
+    .map((ev) => ({ fact: ev.fact, learnedAtChapter: ev.learnedAtChapter }));
 }
 
 function mergeDuplicateHookFamily(existing: HookRecord, incoming: HookRecord): HookRecord {
