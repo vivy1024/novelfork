@@ -102,7 +102,6 @@ import {
   createExecRouter,
   createProxyRouter,
   createAggregationsRouter,
-  createTerminalsRouter,
   createRuntimeStatusRouter,
   createUsageRouter,
   createShareRouter,
@@ -477,8 +476,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Headless exec — non-interactive agent execution
     app.route("/api/exec", createExecRouter());
 
-    // Terminal management — agent Terminal 工具创建的终端进程管理
-    app.route("/api/terminals", createTerminalsRouter());
+    // Terminal 进程由 agent Terminal 工具自管理（globalThis store），无独立 HTTP 路由
 
     // Runtime environment status checks
     app.route("/api/runtime", createRuntimeStatusRouter());

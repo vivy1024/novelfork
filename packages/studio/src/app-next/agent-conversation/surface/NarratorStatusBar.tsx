@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Terminal, Trash2, Info } from "lucide-react";
+import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Trash2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -46,7 +46,6 @@ export interface NarratorStatusBarProps {
   onToggleFastMode?: () => void;
   onCompact?: () => void;
   onReset?: () => void;
-  onOpenTerminal?: () => void;
   fastMode?: boolean;
 }
 
@@ -137,7 +136,7 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, sessionId, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, onOpenTerminal, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, sessionId, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
@@ -271,18 +270,6 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
           {/* Writing preset quick switch — only when a book is bound */}
           {status.binding?.projectId && (
             <WritingPresetQuickSwitch bookId={status.binding.projectId} />
-          )}
-          {/* Terminal panel entry */}
-          {onOpenTerminal && (
-          <Tooltip>
-            <TooltipTrigger
-              className="rounded-md p-1.5 text-muted-foreground hover:bg-muted transition-colors"
-              onClick={onOpenTerminal}
-            >
-              <Terminal className="size-3.5" />
-            </TooltipTrigger>
-            <TooltipContent side="top">终端</TooltipContent>
-          </Tooltip>
           )}
           {/* Context usage ring — 在模型下拉左边 */}
           <ContextRingMenu

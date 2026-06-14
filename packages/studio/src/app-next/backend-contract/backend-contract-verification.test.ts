@@ -85,7 +85,6 @@ describe("backend contract verification", () => {
       "src/app-next/agent-conversation/surface/GitPanel.tsx",
       "src/app-next/agent-conversation/surface/MessageItem.tsx",
       "src/app-next/agent-conversation/surface/NarratorStatusBar.tsx",
-      "src/app-next/agent-conversation/surface/TerminalListPanel.tsx",
       "src/app-next/agent-conversation/surface/TodosSummaryBar.tsx",
       "src/app-next/books/BookManagementPage.tsx",
       "src/app-next/components/DirectoryPickerDialog.tsx",

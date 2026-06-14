@@ -27,7 +27,7 @@ export { default as sessionRouter } from "./session.js";
 export { createMonitorRouter, setupMonitorWebSocket } from "./monitor.js";
 export { createPresetsRouter } from "./presets.js";
 export { createExecRouter } from "./exec.js";
-export { createTerminalsRouter } from "./terminals.js";
+
 export { createProxyRouter } from "./proxy.js";
 export { createAggregationsRouter } from "./aggregations.js";
 export { createRuntimeStatusRouter } from "./runtime-status.js";
