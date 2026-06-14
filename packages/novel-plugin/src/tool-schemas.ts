@@ -195,11 +195,11 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("当前书籍 ID。"),
-      chapterIntent: stringSchema("候选章节写作意图。注意：本工具只保存已有正文；完整写下一章请使用 pipeline.generate_chapter。"),
+      chapterIntent: stringSchema("候选章节写作意图。注意：本工具只保存已有正文；完整写下一章请使用 pipeline.write。"),
       chapterNumber: numberSchema("目标章节序号。"),
       title: stringSchema("候选章节标题。"),
       pgiInstructions: stringSchema("由 PGI 格式化得到的本章作者指示。"),
-      content: stringSchema("已有的完整章节候选稿正文。本工具不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章请调用 pipeline.generate_chapter。"),
+      content: stringSchema("已有的完整章节候选稿正文。本工具不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章请调用 pipeline.write。"),
     },
     required: ["bookId", "chapterIntent", "content"],
     additionalProperties: false,
@@ -285,8 +285,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "jingwei.read_context": {
     type: "object",
     properties: {
-      bookId: stringSchema("书籍 ID。兼容工具：默认返回核心包 + 目录摘要；新流程请优先使用 jingwei.read_brief。"),
-      categories: arraySchema("要读取的经纬分类（可选）。新流程请改用 jingwei.read_category。"),
+      bookId: stringSchema("书籍 ID。兼容工具：默认返回核心包 + 目录摘要；新流程请优先使用 jingwei.read(scope=brief)。"),
+      categories: arraySchema("要读取的经纬分类（可选）。新流程请改用 jingwei.read(scope=category)。"),
       chapterNumber: numberSchema("当前章节号（用于 visibleAfterChapter 过滤，可选）。"),
       sceneText: stringSchema("当前场景文本（用于 tracked 条目匹配，可选）。"),
       mode: stringSchema("上下文模式：auto/core/relevant/full。注意 full 不再表示无界全量读取，会返回目录与分页建议。"),
