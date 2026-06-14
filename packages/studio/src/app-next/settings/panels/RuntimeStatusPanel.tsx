@@ -77,10 +77,9 @@ export function RuntimeStatusPanel() {
               {statusBadge(data.mcp.status)}
             </div>
             <Row label="策略" value={data.mcp.strategy} />
-            <Row label="已注册 Server" value={`${data.mcp.servers.length} 个`} />
-            {data.mcp.status === "planned" && (
-              <p className="text-xs text-muted-foreground">MCP server 连接管理尚未实现。当前只有工具策略字段（mcpStrategy）。</p>
-            )}
+            <p className="text-xs text-muted-foreground">
+              MCP server 连接管理已实现（注册/启停/调用）。实时 server 列表见 MCP 设置页或 GET /api/mcp/servers。
+            </p>
           </div>
 
           {/* Sandbox */}
