@@ -109,8 +109,6 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
       return c.json({
         fontSize: config.preferences.fontSize,
         fontFamily: config.preferences.fontFamily,
-        lineHeight: config.preferences.editorLineHeight,
-        tabSize: config.preferences.editorTabSize,
         autoSave: config.preferences.autoSave,
         autoSaveDelay: config.preferences.autoSaveDelay,
       });
@@ -126,8 +124,6 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
       const editorPrefs = await c.req.json<Partial<{
         fontSize: number;
         fontFamily: string;
-        lineHeight: number;
-        tabSize: number;
         autoSave: boolean;
         autoSaveDelay: number;
       }>>();
@@ -136,8 +132,6 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
         preferences: {
           fontSize: editorPrefs.fontSize,
           fontFamily: editorPrefs.fontFamily,
-          editorLineHeight: editorPrefs.lineHeight,
-          editorTabSize: editorPrefs.tabSize,
           autoSave: editorPrefs.autoSave,
           autoSaveDelay: editorPrefs.autoSaveDelay,
         },
@@ -146,8 +140,6 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
       return c.json({
         fontSize: updated.preferences.fontSize,
         fontFamily: updated.preferences.fontFamily,
-        lineHeight: updated.preferences.editorLineHeight,
-        tabSize: updated.preferences.editorTabSize,
         autoSave: updated.preferences.autoSave,
         autoSaveDelay: updated.preferences.autoSaveDelay,
       });

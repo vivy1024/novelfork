@@ -67,6 +67,8 @@ export interface MessageItemProps {
   codeCollapsed?: boolean;
   /** 默认展开推理/思考块 */
   expandReasoning?: boolean;
+  /** 启用消息正文流式逐词动画 */
+  advancedAnimations?: boolean;
   /** Whether this message is currently selected (multi-select) */
   isSelected?: boolean;
   /** Callback for multi-select click (Ctrl/Cmd+Click or Shift+Click) */
@@ -132,7 +134,7 @@ function ThinkingBlock({ block, defaultExpanded = false }: { block: Conversation
 // MessageItem — 对标 NarraFork 消息样式
 // ---------------------------------------------------------------------------
 
-export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false, expandReasoning = false, isSelected = false, onSelect }: MessageItemProps) {
+export const MessageItem = memo(function MessageItem({ message, onContextAction, codeCollapsed = false, expandReasoning = false, advancedAnimations = true, isSelected = false, onSelect }: MessageItemProps) {
   const [hovered, setHovered] = useState(false);
   const handleAction = useCallback((action: MessageContextAction["id"]) => {
     onContextAction?.(message.id, action);
@@ -155,7 +157,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
   // Memoize expensive content rendering for assistant messages
   const renderedContent = useMemo(() => {
     if (!message.content || message.toolCalls?.length) return null;
-    if (message.isStreaming) {
+    if (message.isStreaming && advancedAnimations) {
       return (
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <AnimatedMarkdown content={message.content} sep="word" animationDuration="0.3s" />
@@ -163,7 +165,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
       );
     }
     return <MarkdownRenderer content={message.content} />;
-  }, [message.content, message.isStreaming, message.toolCalls?.length]);
+  }, [message.content, message.isStreaming, message.toolCalls?.length, advancedAnimations]);
 
   // Memoize tool call cards — with grouping for 3+ same-type tools
   const renderedToolCalls = useMemo((): React.ReactNode => {
