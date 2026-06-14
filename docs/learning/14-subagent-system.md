@@ -30,7 +30,7 @@ routes:
 | **Await** | 等待结果 | 等待后台任务完成并获取结果，支持超时 |
 | **Recall** | 记忆检索 | 搜索历史对话和上下文，找到之前讨论过的内容 |
 | **TaskCreate** | 任务管理 | 创建和管理待办任务列表 |
-| **Pipeline** | 写作管线 | 调用小说写作工具链（pipeline.generate_chapter 等） |
+| **Pipeline** | 写作管线 | 调用小说写作工具链（pipeline.write 等） |
 
 ## ForkNarrator 详解
 
@@ -134,7 +134,7 @@ TaskCreate([
 - `Send` 工具可向后台运行的子代理或兄弟代理发送消息
 - `Recall` 工具搜索历史对话上下文
 - `TaskCreate` 工具管理结构化待办列表
-- `Pipeline` 工具调用小说写作管线（pipeline.generate_chapter 等）
+- `Pipeline` 工具调用小说写作管线（pipeline.write 等）
 - 子代理继承父代理的供应商配置和套路设置
 - 后台任务生命周期：派发（background=true） → 运行 → Await 获取结果
 - MCP 工具自动继承父代理配置

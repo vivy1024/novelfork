@@ -108,7 +108,7 @@
 | 经纬图谱工作区（react-flow） | ✅ |
 | 底部状态条（章数/节拍/质量/AI味/警告） | ✅ |
 | 可展开面板（预设/节拍/质量/警告） | ✅ |
-| Agent 工具（presets.get_rules / check_compliance / beat.get_current） | ✅ |
+| Agent 工具（presets.read / check_compliance / beat.read） | ✅ |
 | ToolConfigBar 工具启用控制 | ✅ |
 | AgentQuickActions 快捷按钮 | ✅ |
 | 质量趋势图（AI味/文风漂移/质量评分） | ✅ |

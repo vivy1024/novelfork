@@ -1005,7 +1005,7 @@ Studio 的核心价值仍然是写作工作台，不应为了像 NarraFork 而�
 | 标题 / 状态 / 绑定 | Playwright 访问 `/next/narrators/:sessionId`，断言 `conversation-session-header`、`conversation-session-facts`、标题、`就绪`、`绑定：standalone` 或书籍绑定可见 | 五区布局不再只靠一行基础文本承载会话事实 |
 | 模型不可用空态 | 通过真实 `/api/providers` 清空隔离 root provider、真实 `/api/settings/user` 清空默认模型、真实 `/api/sessions` 创建会话；RED 先失败于空态缺“模型池为空，请先到设置页启用模型”，随后补空态恢复说明与设置入口 | 空会话不再只显示“未选择模型”，会说明禁用原因和下一步 |
 | Token / 运行摘要 | `conversation-runtime-summary-cards` 在空会话显示 token/cost 摘要；已有消息时继续保留 context/usage 事实源 | 运行摘要已进入独立区域，后续仍需 clean root 截图确认视觉密度 |
-| 工具卡 | E2E 注入真实 chat state 后断言 `cockpit.get_snapshot` 工具卡、raw 展开脱敏 `[REDACTED]`、全屏详情均可用 | 工具透明度不只停留在组件测试 |
+| 工具卡 | E2E 注入真实 chat state 后断言 `cockpit.snapshot` 工具卡、raw 展开脱敏 `[REDACTED]`、全屏详情均可用 | 工具透明度不只停留在组件测试 |
 | pending confirmation | E2E 使用真实 `PUT /api/sessions/:id/chat/state` 准备 pending `guided.exit`，页面展示 recovery/confirmation lane；点击“拒绝”后轮询 `/api/sessions/:id/tools` 确认 pending 清空 | 确认门恢复/拒绝链路有浏览器证据，不调用真实模型 |
 | 模型/权限/推理回读 | E2E 选择模型、权限、推理强度后轮询 `/api/sessions/:id` 回读最终 `sessionConfig` | 控件仍绑定真实 session API，不是展示假 current |
 | composer dock | E2E 断言 `conversation-composer-dock`、禁用原因、设置入口、发送禁用和 slash 建议可见 | Composer 有发布检查点，但最终视觉仍需手工验活 |
