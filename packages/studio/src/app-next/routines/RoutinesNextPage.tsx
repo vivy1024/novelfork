@@ -412,9 +412,9 @@ function RoutineSectionEditor({
     case "hooks":
       return (
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">生命周期钩子暂未开放</p>
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Shell / Webhook / LLM 生命周期钩子功能根据用户反馈决定是否开放。如有需求请在 GitHub Issues 中反馈。</p>
+          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">生命周期钩子</p>
+            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Shell 钩子已接入运行时：在工具执行前/后或每轮对话结束后运行本地命令（PreToolUse 命令 exit code 2 可阻止工具执行）。Webhook / LLM 类型尚未接线，配置后不会触发。</p>
           </div>
           <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />
         </div>
@@ -486,17 +486,28 @@ function RuntimeCommandRegistryPanel({ commands, disabledCommands, onToggleComma
 
 const HOOK_KIND_LABELS: Record<RoutineHookKind, string> = {
   shell: "Shell",
-  webhook: "Webhook",
-  llm: "LLM 提示词",
+  webhook: "Webhook（暂未接线）",
+  llm: "LLM 提示词（暂未接线）",
 };
 
-const HOOK_EVENT_PRESETS = ["before-agent-run", "after-agent-run", "after-chapter-save", "after-audit", "on-error"];
+/**
+ * 运行时真正识别的生命周期事件（见 hook-executor.ts ROUTINE_EVENT_MAP）。
+ * 仅 kind=shell 的钩子会在这些事件触发：
+ * - PreToolUse：工具执行前（命令 exit code 2 可阻止工具执行）
+ * - PostToolUse：工具执行后
+ * - TurnComplete：每轮对话结束后
+ */
+const HOOK_EVENT_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "PreToolUse", label: "工具执行前" },
+  { value: "PostToolUse", label: "工具执行后" },
+  { value: "TurnComplete", label: "每轮对话结束后" },
+];
 
 function createHookDraft(): RoutineHook {
   return {
     id: `hook-${Date.now()}`,
     name: "新建钩子",
-    event: "after-chapter-save",
+    event: "TurnComplete",
     kind: "shell",
     target: "",
     enabled: true,
@@ -540,9 +551,9 @@ function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly
       </div>
 
       <div className="grid gap-3 md:grid-cols-3">
-        <HookTypeCard title="Shell" description="在指定生命周期节点运行本地命令，继承当前权限模式。" />
-        <HookTypeCard title="Webhook" description="向外部服务发送事件载荷，用于通知、同步或自动化。" />
-        <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词，生成审查或整理结果。" />
+        <HookTypeCard title="Shell" description="在工具执行前/后或每轮结束时运行本地命令，继承当前权限模式。已接入运行时。" />
+        <HookTypeCard title="Webhook" description="向外部服务发送事件载荷。暂未接线，配置后不会触发。" />
+        <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词。暂未接线，配置后不会触发。" />
       </div>
 
       {hooks.length === 0 ? (
@@ -558,9 +569,6 @@ function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly
           </SortableContext>
         </DndContext>
       )}
-      <datalist id="routine-hook-events">
-        {HOOK_EVENT_PRESETS.map((event) => <option key={event} value={event} />)}
-      </datalist>
     </div>
   );
 }
@@ -580,7 +588,12 @@ function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onU
       </label>
       <label className="text-sm">
         触发节点
-        <Input className="mt-1 w-full" list="routine-hook-events" value={hook.event} onChange={(event) => onUpdate(hook.id, { event: event.target.value })} />
+        <SimpleSelect
+          className="mt-1"
+          value={hook.event}
+          onValueChange={(v) => onUpdate(hook.id, { event: v })}
+          options={HOOK_EVENT_PRESETS.map((preset) => ({ value: preset.value, label: `${preset.label}（${preset.value}）` }))}
+        />
       </label>
       <label className="text-sm">
         执行方式

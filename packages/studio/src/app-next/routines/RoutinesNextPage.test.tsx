@@ -47,7 +47,7 @@ const sampleRoutines = {
   globalPrompts: [{ id: "prompt-1", name: "global", content: "global", enabled: true }],
   systemPrompts: [{ id: "prompt-2", name: "system", content: "system", enabled: true }],
   mcpTools: [{ id: "mcp-1", serverName: "memory", toolName: "recall", enabled: true, approved: true }],
-  hooks: [{ id: "hook-1", name: "审稿后通知", event: "after-audit", kind: "webhook", target: "https://hooks.example/audit", enabled: true }],
+  hooks: [{ id: "hook-1", name: "审稿后通知", event: "PostToolUse", kind: "webhook", target: "https://hooks.example/audit", enabled: true }],
   disabledCommands: [],
   workflowRecipes: [],
 } as unknown as RoutinesConfig;
@@ -202,18 +202,17 @@ describe("RoutinesNextPage", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "创建钩子" }));
     const hookNameInputs = screen.getAllByLabelText("钩子名称");
-    const hookEventInputs = screen.getAllByLabelText("触发节点");
     const hookTargetInputs = screen.getAllByLabelText("执行目标");
     fireEvent.change(hookNameInputs.at(-1) as HTMLElement, { target: { value: "章节后整理" } });
-    fireEvent.change(hookEventInputs.at(-1) as HTMLElement, { target: { value: "after-chapter-save" } });
     fireEvent.change(hookTargetInputs.at(-1) as HTMLElement, { target: { value: "bun scripts/after-chapter.ts" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     await waitFor(() => expect(saveRoutinesMock).toHaveBeenCalled());
     const [, saved] = saveRoutinesMock.mock.calls.at(-1) ?? [];
+    // 新建钩子默认 event=TurnComplete（运行时真正识别的事件，见 hook-executor.ts），无需手动选择
     expect((saved as unknown as { hooks: Array<{ name: string; event: string; kind: string; target: string }> }).hooks).toEqual(expect.arrayContaining([
       expect.objectContaining({ name: "审稿后通知", kind: "webhook" }),
-      expect.objectContaining({ name: "章节后整理", event: "after-chapter-save", kind: "shell", target: "bun scripts/after-chapter.ts" }),
+      expect.objectContaining({ name: "章节后整理", event: "TurnComplete", kind: "shell", target: "bun scripts/after-chapter.ts" }),
     ]));
   });
 });
