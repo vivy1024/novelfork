@@ -30,6 +30,7 @@
     "bun:build-client": "pnpm --dir packages/studio build:client",
     "bun:compile": "pnpm --dir packages/studio compile",
     "docs:verify": "bun run scripts/verify-docs.ts",
+    "codegraph": "bun run scripts/build-codegraph.ts",
     "verify:publish-manifests": "node scripts/verify-no-workspace-protocol.mjs packages/core packages/studio",
     "release": "pnpm build && pnpm test",
     "version": "pnpm -r exec npm version"
