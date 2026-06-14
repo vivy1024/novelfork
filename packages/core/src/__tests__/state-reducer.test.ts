@@ -370,3 +370,73 @@ describe("applyRuntimeStateDelta", () => {
     }));
   });
 });
+
+describe("applyRuntimeStateDelta — resourceOps (P2-1 资源结构化验算)", () => {
+  const baseSnapshot = () => ({
+    manifest: { schemaVersion: 2, language: "zh" as const, lastAppliedChapter: 0, projectionVersion: 1, migrationWarnings: [] },
+    currentState: { chapter: 0, facts: [] },
+    hooks: { hooks: [] },
+    chapterSummaries: { rows: [] },
+    resourceLedger: { resources: [] },
+  });
+
+  it("新资源首次出现：balance = delta", () => {
+    const next = applyRuntimeStateDelta({
+      snapshot: baseSnapshot(),
+      delta: RuntimeStateDeltaSchema.parse({ chapter: 1, resourceOps: [{ resourceId: "lingshi", name: "灵石", delta: 100, reason: "初始获得" }] }),
+    });
+    const r = next.resourceLedger.resources.find((x) => x.resourceId === "lingshi");
+    expect(r?.balance).toBe(100);
+    expect(r?.name).toBe("灵石");
+    expect(r?.history).toHaveLength(1);
+  });
+
+  it("已有资源：newBalance = old + delta（扣减）", () => {
+    const snap = baseSnapshot();
+    (snap.resourceLedger.resources as any).push({ resourceId: "lingshi", name: "灵石", balance: 100, lastChapter: 1, history: [] });
+    const next = applyRuntimeStateDelta({
+      snapshot: snap,
+      delta: RuntimeStateDeltaSchema.parse({ chapter: 2, resourceOps: [{ resourceId: "lingshi", delta: -30, reason: "购买法器" }] }),
+    });
+    expect(next.resourceLedger.resources[0]!.balance).toBe(70);
+    expect(next.resourceLedger.resources[0]!.history).toHaveLength(1);
+  });
+
+  it("expectedBalance 与验算不符 → 触发告警（非致命）", () => {
+    const warnings: any[] = [];
+    const snap = baseSnapshot();
+    (snap.resourceLedger.resources as any).push({ resourceId: "lingshi", balance: 100, name: "", lastChapter: 1, history: [] });
+    const next = applyRuntimeStateDelta({
+      snapshot: snap,
+      // 花了 50 但声称期末 70（应为 50）→ 告警
+      delta: RuntimeStateDeltaSchema.parse({ chapter: 2, resourceOps: [{ resourceId: "lingshi", delta: -50, reason: "x", expectedBalance: 70 }] }),
+      onResourceWarning: (w) => warnings.push(w),
+    });
+    expect(next.resourceLedger.resources[0]!.balance).toBe(50); // 以验算为准
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ resourceId: "lingshi", computedBalance: 50, expectedBalance: 70 });
+  });
+
+  it("expectedBalance 一致 → 无告警", () => {
+    const warnings: any[] = [];
+    const snap = baseSnapshot();
+    (snap.resourceLedger.resources as any).push({ resourceId: "lingshi", balance: 100, name: "", lastChapter: 1, history: [] });
+    applyRuntimeStateDelta({
+      snapshot: snap,
+      delta: RuntimeStateDeltaSchema.parse({ chapter: 2, resourceOps: [{ resourceId: "lingshi", delta: -50, reason: "x", expectedBalance: 50 }] }),
+      onResourceWarning: (w) => warnings.push(w),
+    });
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("无 resourceOps → 账本不变", () => {
+    const snap = baseSnapshot();
+    (snap.resourceLedger.resources as any).push({ resourceId: "x", balance: 5, name: "", lastChapter: 1, history: [] });
+    const next = applyRuntimeStateDelta({
+      snapshot: snap,
+      delta: RuntimeStateDeltaSchema.parse({ chapter: 2 }),
+    });
+    expect(next.resourceLedger.resources[0]!.balance).toBe(5);
+  });
+});
+
