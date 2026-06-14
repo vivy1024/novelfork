@@ -29,6 +29,9 @@
 | [08-小说后端架构.md](./08-小说后端架构.md) | current | ✅ 当前有效 | novel-plugin 模块地图、API 路由清单、服务层、数据库表 |
 | [09-Agent运行时对比分析.md](./09-Agent运行时对比分析.md) | current | ✅ 当前有效 | NovelFork/Claude Code/Codex CLI/NarraFork 对比 |
 | [10-经纬系统架构.md](./10-经纬系统架构.md) | current | ✅ 当前有效 | 经纬数据模型、上下文注入管线、可见性规则、关联层 |
+| [11-上下文工程优化方案.md](./11-上下文工程优化方案.md) | archived | 🗄️ 历史归档 | Claude Code 基线对比 11 项（已在 v1.9.0 实现） |
+| [12-LegnaCode学习报告.md](./12-LegnaCode学习报告.md) | reference | 📚 参考资料 | LegnaCode 可移植技术调研 |
+| [13-写作管线架构图.md](./13-写作管线架构图.md) | current | ✅ 当前有效 | 主写作链路（3 重型 agent）+ 对抗审查 + 结构化状态机 |
 
 ## 维护规则
 
