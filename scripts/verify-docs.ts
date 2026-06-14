@@ -21,12 +21,18 @@ function add(file: string, type: string, message: string) {
   problems.push({ file: rel(file), type, message });
 }
 
+// 跳过非"治理规范"管辖的目录：
+// - learning/：/learn 页面消费的 YAML frontmatter 文档（title/summary/tags/routes），格式不同
+// - codegraph/：bun run codegraph 自动生成的代码索引（CODEMAP.md 等）
+const SKIP_DIRS = new Set(['learning', 'codegraph']);
+
 function walk(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
   const result: string[] = [];
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
     if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
       result.push(...walk(fullPath));
     } else if (entry.isFile() && entry.name.endsWith('.md')) {
       result.push(fullPath);
@@ -40,6 +46,7 @@ function walkDirs(dir: string): string[] {
   const result = [dir];
   for (const entry of entries) {
     if (entry.isDirectory()) {
+      if (SKIP_DIRS.has(entry.name)) continue;
       result.push(...walkDirs(path.join(dir, entry.name)));
     }
   }
