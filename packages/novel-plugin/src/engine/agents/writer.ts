@@ -1204,6 +1204,17 @@ ${overrides}\n`;
       delta: safeDelta,
       language,
       allowReapply,
+      onResourceWarning: (w) => {
+        this.log?.warn?.("resource ledger mismatch", {
+          eventType: "ai.resource-ledger-mismatch",
+          requestDomain: "ai",
+          narrator: this.name,
+          bookId: this.ctx.bookId,
+          resourceId: w.resourceId,
+          computedBalance: w.computedBalance,
+          expectedBalance: w.expectedBalance,
+        });
+      },
     });
   }
 
