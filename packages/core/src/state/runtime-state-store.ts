@@ -4,6 +4,7 @@ import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
   HooksStateSchema,
+  ResourceLedgerStateSchema,
   StateManifestSchema,
   type RuntimeStateDelta,
 } from "../models/runtime-state.js";
@@ -37,12 +38,16 @@ export async function loadRuntimeStateSnapshot(bookDir: string): Promise<Runtime
     readJson(join(stateDir, "hooks.json"), HooksStateSchema),
     readJson(join(stateDir, "chapter_summaries.json"), ChapterSummariesStateSchema),
   ]);
+  // 资源账本（P2-1）：旧书无此文件 → 默认空账本（向后兼容）
+  const resourceLedger = (await readJsonOrNull(join(stateDir, "resource_ledger.json"), ResourceLedgerStateSchema))
+    ?? ResourceLedgerStateSchema.parse({ resources: [] });
 
   const snapshot = {
     manifest,
     currentState,
     hooks,
     chapterSummaries,
+    resourceLedger,
   };
 
   const issues = validateRuntimeState(snapshot);
@@ -94,6 +99,7 @@ export async function saveRuntimeStateSnapshot(
     writeFile(join(stateDir, "current_state.json"), JSON.stringify(snapshot.currentState, null, 2), "utf-8"),
     writeFile(join(stateDir, "hooks.json"), JSON.stringify(snapshot.hooks, null, 2), "utf-8"),
     writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify(snapshot.chapterSummaries, null, 2), "utf-8"),
+    writeFile(join(stateDir, "resource_ledger.json"), JSON.stringify(snapshot.resourceLedger ?? { resources: [] }, null, 2), "utf-8"),
   ]);
 }
 

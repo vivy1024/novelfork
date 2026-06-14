@@ -37,6 +37,12 @@ export {
   CurrentStatePatchSchema,
   HookOpsSchema,
   NewHookCandidateSchema,
+  ResourceLedgerEntrySchema,
+  ResourceLedgerStateSchema,
+  ResourceOpSchema,
+  type ResourceLedgerEntry,
+  type ResourceLedgerState,
+  type ResourceOp,
   RuntimeStateDeltaSchema,
 } from "./models/runtime-state.js";
 export {
@@ -113,7 +119,7 @@ export { loadRuntimeStateSnapshot, buildRuntimeStateArtifacts, saveRuntimeStateS
 export { StateManager } from "./state/manager.js";
 export { bootstrapStructuredStateFromMarkdown, rewriteStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state/state-bootstrap.js";
 export { renderCurrentStateProjection, renderHooksProjection, renderChapterSummariesProjection } from "./state/state-projections.js";
-export { applyRuntimeStateDelta, type RuntimeStateSnapshot } from "./state/state-reducer.js";
+export { applyRuntimeStateDelta, type RuntimeStateSnapshot, type ResourceLedgerWarning } from "./state/state-reducer.js";
 export { validateRuntimeState, type RuntimeStateValidationIssue } from "./state/state-validator.js";
 
 // Storage

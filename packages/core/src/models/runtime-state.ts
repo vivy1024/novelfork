@@ -112,6 +112,35 @@ export type NewHookCandidate = z.infer<typeof NewHookCandidateSchema>;
 
 const LooseOpSchema = z.record(z.string(), z.unknown());
 
+// ── 资源账本（P2-1 / A2）：结构化数值消耗，代码层验算，替代 LLM 维护的 Markdown ──
+export const ResourceLedgerEntrySchema = z.object({
+  resourceId: z.string().min(1),
+  name: z.string().default(""),
+  balance: z.number(),
+  lastChapter: z.number().int().min(0).default(0),
+  history: z.array(z.object({
+    chapter: z.number().int().min(0),
+    delta: z.number(),
+    reason: z.string().default(""),
+  })).default([]),
+});
+export type ResourceLedgerEntry = z.infer<typeof ResourceLedgerEntrySchema>;
+
+export const ResourceLedgerStateSchema = z.object({
+  resources: z.array(ResourceLedgerEntrySchema).default([]),
+});
+export type ResourceLedgerState = z.infer<typeof ResourceLedgerStateSchema>;
+
+/** settler 产出的资源操作：delta 为本章增减；可选 name（首次出现）与 expectedBalance（用于交叉验算） */
+export const ResourceOpSchema = z.object({
+  resourceId: z.string().min(1),
+  delta: z.number(),
+  reason: z.string().default(""),
+  name: z.string().optional(),
+  expectedBalance: z.number().optional(),
+});
+export type ResourceOp = z.infer<typeof ResourceOpSchema>;
+
 export const RuntimeStateDeltaSchema = z.object({
   chapter: z.number().int().min(1),
   currentStatePatch: CurrentStatePatchSchema.optional(),
@@ -123,6 +152,7 @@ export const RuntimeStateDeltaSchema = z.object({
   }),
   newHookCandidates: z.array(NewHookCandidateSchema).default([]),
   chapterSummary: ChapterSummaryRowSchema.optional(),
+  resourceOps: z.array(ResourceOpSchema).default([]),
   subplotOps: z.array(LooseOpSchema).default([]),
   emotionalArcOps: z.array(LooseOpSchema).default([]),
   characterMatrixOps: z.array(LooseOpSchema).default([]),
