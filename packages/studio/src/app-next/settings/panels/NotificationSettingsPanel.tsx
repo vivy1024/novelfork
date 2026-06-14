@@ -183,9 +183,10 @@ export function NotificationSettingsPanel() {
 
         <SwitchRow
           label="声音提醒"
-          description="播放提示音"
+          description="播放提示音（暂未接线）"
           checked={config.soundEnabled}
           onChange={(value) => setConfig((prev) => ({ ...prev, soundEnabled: value }))}
+          disabled
         />
 
         {config.soundEnabled && (
@@ -238,13 +239,14 @@ export function NotificationSettingsPanel() {
       {/* 事件类型 */}
       <div className="space-y-4 rounded-lg border border-border p-4">
         <h3 className="text-sm font-semibold text-foreground">通知事件</h3>
-        <p className="text-xs text-muted-foreground">选择哪些事件触发通知。</p>
+        <p className="text-xs text-muted-foreground">选择哪些事件触发桌面通知（需开启上方"浏览器通知"并授权）。当前已接线：任务完成、错误。</p>
 
         <SwitchRow
           label="权限请求"
-          description="Agent 请求工具执行权限时通知"
+          description="Agent 请求工具执行权限时通知（后端事件源未实现，暂未接线）"
           checked={config.events.permissionRequest}
           onChange={(value) => updateEvent("permissionRequest", value)}
+          disabled
         />
 
         <SwitchRow
@@ -263,9 +265,10 @@ export function NotificationSettingsPanel() {
 
         <SwitchRow
           label="后台任务完成"
-          description="后台运行的长时间任务完成时通知"
+          description="后台运行的长时间任务完成时通知（暂未接线）"
           checked={config.events.backgroundComplete}
           onChange={(value) => updateEvent("backgroundComplete", value)}
+          disabled
         />
       </div>
 
