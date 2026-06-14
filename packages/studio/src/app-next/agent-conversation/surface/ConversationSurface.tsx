@@ -22,7 +22,6 @@ import type { ConversationSessionConfigPatch, ConversationStatus } from "./Conve
 import { MessageStream, type ConversationSurfaceMessage } from "./MessageStream";
 import { NarratorStatusBar } from "./NarratorStatusBar";
 import { SessionDetailPanel, type SessionDetailData } from "./SessionDetailPanel";
-import { TerminalListPanel } from "./TerminalListPanel";
 import { SafetyPauseCard } from "./SafetyPauseCard";
 import { CompactProgressIndicator } from "./CompactProgressIndicator";
 import { TodosSummaryBar } from "./TodosSummaryBar";
@@ -165,7 +164,6 @@ export function ConversationSurface({
   const [gitPanelOpen, setGitPanelOpen] = useState(false);
   const [filesPanelOpen, setFilesPanelOpen] = useState(false);
   const [filesPanelDismissed, setFilesPanelDismissed] = useState(false);
-  const [terminalPanelOpen, setTerminalPanelOpen] = useState(false);
   const [userCommands, setUserCommands] = useState<UserCommand[]>([]);
   const [disabledCommands, setDisabledCommands] = useState<string[]>([]);
   // 渲染相关用户偏好（来自 /settings/user）
@@ -801,7 +799,6 @@ export function ConversationSurface({
             window.location.reload();
           }).catch(e => { alert(`清空上下文失败: ${e instanceof Error ? e.message : String(e)}`); });
         }}
-        onOpenTerminal={() => setTerminalPanelOpen(true)}
       />
 
       {/* ── Todos summary bar (above Composer) ── */}
@@ -824,19 +821,6 @@ export function ConversationSurface({
       />
       </div>
     </section>
-
-    {/* ── Terminal Panel (right-side Sheet) ── */}
-    <Sheet open={terminalPanelOpen} onOpenChange={setTerminalPanelOpen}>
-      <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle>终端</SheetTitle>
-          <SheetDescription>Agent 创建和管理的终端进程</SheetDescription>
-        </SheetHeader>
-        <div className="px-4 pb-4">
-          <TerminalListPanel />
-        </div>
-      </SheetContent>
-    </Sheet>
 
     </TooltipProvider>
   );
