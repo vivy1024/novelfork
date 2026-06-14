@@ -8,12 +8,13 @@
  * - 从 5 次 LLM 调用降到 2 次（Writer + AuditRevise）
  */
 
-import type { LLMClient, Logger } from "@vivy1024/novelfork-core";
-import { StateManager, buildLengthSpec } from "@vivy1024/novelfork-core";
+import type { LLMClient, Logger, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
+import { StateManager, buildLengthSpec, countChapterLength, chooseNormalizeMode, isOutsideHardRange } from "@vivy1024/novelfork-core";
 import type { BookConfig } from "@vivy1024/novelfork-core";
 import type { AgentContext } from "../engine/agents/base.js";
 import type { AuditResult } from "../engine/agents/continuity.js";
 import { WriterAgent } from "../engine/agents/writer.js";
+import { LengthNormalizerAgent } from "../engine/agents/length-normalizer.js";
 import { ContinuityAuditor } from "../engine/agents/continuity.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
@@ -40,6 +41,8 @@ export interface PipelineWriteOutput {
   readonly revised: boolean;
   readonly candidateId: string;
   readonly artifact: CanvasArtifact;
+  /** 长度治理：归一化后仍漂出 hard 区间时的警告（不阻断） */
+  readonly lengthWarning?: string;
 }
 
 export interface PipelineWriteError {
@@ -109,13 +112,28 @@ export async function executePipelineWrite(
     const writerCtx = buildAgentCtx(options, "writer", bookId);
     const writer = new WriterAgent(writerCtx);
 
-    // Build context package from scene spec + jingwei context
-    const contextPackage = [
-      `## 写作蓝图 (Scene Spec)\n${JSON.stringify(sceneSpec, null, 2)}`,
-      jingweiContext ? `## 经纬上下文\n${jingweiContext}` : "",
-      previousChapterTail ? `## 前章末尾\n${previousChapterTail}` : "",
-      sceneSpec.constraints?.length ? `## 硬约束\n${sceneSpec.constraints.map((c) => `- ${c}`).join("\n")}` : "",
-    ].filter(Boolean).join("\n\n");
+    // Build structured ContextPackage (修复：此前传字符串 + as any，导致 Writer 的
+    // buildGovernedMemoryEvidenceBlocks 对字符串调 .selectedContext.filter 崩溃)
+    const contextPackage: ContextPackage = {
+      chapter: chapterNumber,
+      selectedContext: [
+        { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(sceneSpec) },
+        ...(jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情", excerpt: jingweiContext }] : []),
+        ...(previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: previousChapterTail }] : []),
+      ],
+    };
+
+    // Build structured RuleStack（此前传字符串 + as any，Writer 访问 .activeOverrides 会出错）
+    const ruleStack: RuleStack = {
+      layers: [{ id: "scene-constraints", name: "Scene Constraints", precedence: 0, scope: "local" }],
+      sections: {
+        hard: sceneSpec.constraints ?? [],
+        soft: [],
+        diagnostic: [],
+      },
+      overrideEdges: [],
+      activeOverrides: [],
+    };
 
     const chapterIntent = `按照 Scene Spec 写第${chapterNumber}章「${sceneSpec.title}」`;
 
@@ -124,19 +142,36 @@ export async function executePipelineWrite(
       bookDir,
       chapterNumber,
       chapterIntent,
-      contextPackage: contextPackage as any,
-      ruleStack: (sceneSpec.constraints?.join("\n") ?? "") as any,
+      contextPackage,
+      ruleStack,
       externalContext: "",
       lengthSpec,
     });
 
     logger?.info(`[pipeline.write] Writer done: "${writeOutput.title}" ${writeOutput.wordCount} words`);
 
+    // 2.2. Length governance (P0-1): 漂出 hard 区间则归一化一次，仍漂出则记 warning（不阻断）
+    let governedContent = writeOutput.content;
+    let lengthWarning: string | undefined;
+    {
+      const count = countChapterLength(governedContent, lengthSpec.countingMode);
+      if (isOutsideHardRange(count, lengthSpec) && chooseNormalizeMode(count, lengthSpec) !== "none") {
+        logger?.info(`[pipeline.write] Length ${count} outside hard range ${lengthSpec.hardMin}-${lengthSpec.hardMax}, normalizing once`);
+        const normalizer = new LengthNormalizerAgent(buildAgentCtx(options, "length-normalizer", bookId));
+        const norm = await normalizer.normalizeChapter({ chapterContent: governedContent, lengthSpec, chapterIntent });
+        if (norm.applied) {
+          governedContent = norm.normalizedContent;
+          lengthWarning = norm.warning;
+          logger?.info(`[pipeline.write] Normalized to ${norm.finalCount} (${norm.mode})${norm.warning ? " — still out of range" : ""}`);
+        }
+      }
+    }
+
     // 2.5. Pre-audit: zero-cost hard constraint check (H2 canon + H7 POV + soft constraints)
     const preAudit = handleChapterAuditV2({
       bookId,
       chapterNumber,
-      content: writeOutput.content,
+      content: governedContent,
       sceneSpec,
       wordTarget: sceneSpec.wordTarget ?? book.chapterWordCount,
     });
@@ -149,13 +184,13 @@ export async function executePipelineWrite(
     const auditor = new ContinuityAuditor(auditorCtx);
     let auditResult = await auditor.auditChapter(
       bookDir,
-      writeOutput.content,
+      governedContent,
       chapterNumber,
       book.genre,
-      { chapterIntent, contextPackage: contextPackage as any, ruleStack: (sceneSpec.constraints?.join("\n") ?? "") as any },
+      { chapterIntent, contextPackage, ruleStack },
     );
 
-    let finalContent = writeOutput.content;
+    let finalContent = governedContent;
     let revised = false;
 
     if (!auditResult.passed && autoRevise) {
@@ -171,7 +206,7 @@ export async function executePipelineWrite(
           criticalIssues,
           "spot-fix",
           book.genre,
-          { chapterIntent, contextPackage: contextPackage as any, ruleStack: (sceneSpec.constraints?.join("\n") ?? "") as any, lengthSpec },
+          { chapterIntent, contextPackage, ruleStack, lengthSpec },
         );
         finalContent = reviseOutput.revisedContent;
         revised = true;
@@ -187,7 +222,7 @@ export async function executePipelineWrite(
       resourceService.create({
         id: candidateId,
         bookId,
-        type: "candidate",
+        type: "draft",
         status: "candidate",
         title: writeOutput.title,
         content: finalContent,
@@ -197,6 +232,7 @@ export async function executePipelineWrite(
           sceneSpec,
           auditResult: { passed: auditResult.passed, issueCount: auditResult.issues.length },
           revised,
+          ...(lengthWarning ? { lengthWarning } : {}),
           generatedAt: new Date().toISOString(),
         },
       });
@@ -215,6 +251,7 @@ export async function executePipelineWrite(
       auditResult,
       revised,
       candidateId,
+      ...(lengthWarning ? { lengthWarning } : {}),
       artifact: {
         id: candidateId,
         kind: "candidate-chapter",
