@@ -52,4 +52,5 @@ export {
   createWritingToolsRouter,
   createContextManagerRouter,
   createWritingResourceRouter,
+  createOverviewRouter,
 } from "@vivy1024/novelfork-novel-plugin/routes";
