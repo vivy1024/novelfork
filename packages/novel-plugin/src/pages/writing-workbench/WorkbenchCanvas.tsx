@@ -16,6 +16,7 @@ import { NewBookGuide } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import { BookSettingsPanel } from "./panels/BookSettingsPanel";
+import { ChapterToolbar } from "./ChapterToolbar";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -347,6 +348,11 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
           } : undefined} />
         )}
       </div>
+
+      {/* 章节体检工具栏（仅章节/候选/草稿类型显示） */}
+      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
+        <ChapterToolbar bookId={bookId} chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined} />
+      )}
     </div>
   );
 }
