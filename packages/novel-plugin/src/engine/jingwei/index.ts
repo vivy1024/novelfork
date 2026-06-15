@@ -1,5 +1,7 @@
 export * from "./types.js";
 export * from "./templates.js";
+export { getGenreTemplate, getGenreComplexity, type GenreTemplate, type GenreComplexity, DEFAULT_TEMPLATES } from "./genre-templates.js";
+export { createJingweiEntriesFromGuide, type GuidedSetupAnswers } from "./create-from-guide.js";
 
 // Auto-linker
 export { linkChapterToEntries, type LinkResult } from "./auto-linker.js";
