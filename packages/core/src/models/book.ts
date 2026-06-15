@@ -36,6 +36,10 @@ export const BookConfigSchema = z.object({
   customPresetOverrides: z.record(z.string(), z.unknown()).optional(),
   arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
   customSensitiveWords: z.string().optional(),
+  /** 题材复杂度（决定经纬初始展开规模） */
+  complexity: z.enum(["light", "medium", "heavy"]).optional(),
+  /** 作者手动覆盖的可见经纬分类（覆盖模板默认） */
+  visibleCategories: z.array(z.string()).optional(),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;
