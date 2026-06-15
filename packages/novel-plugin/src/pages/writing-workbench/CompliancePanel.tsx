@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, CheckCircle2, AlertTriangle, XCircle, Copy, Check } from "lucide-react";
+import { Loader2, CheckCircle2, AlertTriangle, XCircle, Copy, Check, Search } from "lucide-react";
 import { postApi } from "@/hooks/use-api";
 
 interface DimensionResult {
@@ -21,6 +21,19 @@ interface PublishReadinessReport {
 interface DisclosureResult {
   text: string;
   platform: string;
+}
+
+interface RuleHit {
+  ruleId: string;
+  severity: "high" | "medium" | "low";
+  message: string;
+  weightContribution: number;
+}
+
+interface ChapterScanResult {
+  aiTasteScore: number;
+  level: string;
+  hits: RuleHit[];
 }
 
 export interface CompliancePanelProps {
@@ -50,6 +63,12 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
   const [generatingDisclosure, setGeneratingDisclosure] = useState(false);
   const [disclosure, setDisclosure] = useState<DisclosureResult | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // B4: 逐章 AI 检测
+  const [scanChapter, setScanChapter] = useState<number>(1);
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<ChapterScanResult | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
 
   async function handleCheck() {
     setChecking(true);
@@ -91,6 +110,28 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
     await navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleChapterScan() {
+    setScanning(true);
+    setScanError(null);
+    setScanResult(null);
+    try {
+      // 1. 拿章节正文
+      const chapterRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters/${scanChapter}`);
+      if (!chapterRes.ok) throw new Error(`章节 ${scanChapter} 不存在`);
+      const chapterData = await chapterRes.json() as { content: string };
+      // 2. 调用朱雀扫描
+      const scanRes = await postApi<{ report: ChapterScanResult }>(
+        "/api/filter/scan",
+        { text: chapterData.content },
+      );
+      setScanResult(scanRes.report);
+    } catch (e) {
+      setScanError(e instanceof Error ? e.message : "检测失败");
+    } finally {
+      setScanning(false);
+    }
   }
 
   const dimensions: { key: keyof PublishReadinessReport; label: string }[] = [
@@ -197,6 +238,65 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
           )}
         </div>
       )}
+
+      {/* 逐章 AI 检测 */}
+      <div className="border-t border-border pt-2 space-y-2">
+        <span className="text-xs font-medium">逐章 AI 检测</span>
+        <div className="flex items-center gap-2">
+          <input
+            type="number"
+            min={1}
+            value={scanChapter}
+            onChange={(e) => setScanChapter(Math.max(1, parseInt(e.target.value) || 1))}
+            className="w-20 rounded-md border border-border bg-background px-2 py-1 text-xs"
+            placeholder="章节号"
+          />
+          <button
+            type="button"
+            disabled={scanning}
+            onClick={() => void handleChapterScan()}
+            className="flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {scanning ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
+            {scanning ? "检测中…" : "检测"}
+          </button>
+        </div>
+
+        {scanError && <p className="text-xs text-destructive">{scanError}</p>}
+
+        {scanResult && (
+          <div className="space-y-1.5 rounded-md bg-muted/50 p-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium">AI味评分:</span>
+              <Badge
+                variant={scanResult.level === "clean" ? "secondary" : scanResult.level === "severe" ? "destructive" : "outline"}
+                className="text-[10px]"
+              >
+                {scanResult.aiTasteScore.toFixed(0)}% · {scanResult.level}
+              </Badge>
+            </div>
+            {scanResult.hits.length > 0 && (
+              <div className="space-y-0.5">
+                <span className="text-[10px] text-muted-foreground">命中规则 ({scanResult.hits.length}):</span>
+                {scanResult.hits.slice(0, 10).map((hit, i) => (
+                  <div key={i} className="flex items-center gap-1.5 text-[10px]">
+                    <Badge
+                      variant={hit.severity === "high" ? "destructive" : hit.severity === "medium" ? "outline" : "secondary"}
+                      className="text-[9px] px-1 py-0"
+                    >
+                      {hit.severity}
+                    </Badge>
+                    <span className="text-muted-foreground truncate">{hit.message}</span>
+                  </div>
+                ))}
+                {scanResult.hits.length > 10 && (
+                  <span className="text-[10px] text-muted-foreground">…及另外 {scanResult.hits.length - 10} 条</span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

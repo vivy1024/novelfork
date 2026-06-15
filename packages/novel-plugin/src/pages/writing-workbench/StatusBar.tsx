@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Activity, Droplets, AlertTriangle, Cog, Heart, TrendingUp, Palette, ShieldCheck, Anchor, BarChart3 } from "lucide-react";
+import { BookOpen, Activity, Droplets, AlertTriangle, Cog, Heart, TrendingUp, Palette, ShieldCheck, Anchor, BarChart3, Database, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -81,6 +81,8 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
     { id: "drift", panel: "drift", icon: <Palette className="size-3.5" />, label: "文风" },
     { id: "compliance", panel: "compliance", icon: <ShieldCheck className="size-3.5" />, label: "合规" },
     { id: "foreshadowing", panel: "foreshadowing", icon: <Anchor className="size-3.5" />, label: "伏笔" },
+    { id: "runtime", panel: "runtime", icon: <Database className="size-3.5" />, label: "状态" },
+    { id: "coreshift", panel: "coreshift", icon: <Zap className="size-3.5" />, label: "转折" },
   ];
 
   return (

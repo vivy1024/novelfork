@@ -13,6 +13,12 @@ import { Check, X, Archive, Trash2, ChevronDown, Loader2 } from "lucide-react";
 export type CandidateAcceptAction = "merge" | "replace" | "draft";
 export type CandidateStatus = "candidate" | "accepted" | "rejected" | "archived";
 
+export interface GateResultInfo {
+  counts: { S1: number; S2: number; S3: number; S4: number };
+  hasBlocking: boolean;
+  hasRevisable: boolean;
+}
+
 export interface CandidateActionsBarProps {
   candidateId: string;
   bookId: string;
@@ -20,6 +26,8 @@ export interface CandidateActionsBarProps {
   source?: string;
   targetChapterId?: string;
   createdAt?: string;
+  gateResult?: GateResultInfo | null;
+  needsHumanReview?: boolean;
   onAccept: (candidateId: string, action: CandidateAcceptAction) => Promise<void>;
   onReject: (candidateId: string) => Promise<void>;
   onArchive: (candidateId: string) => Promise<void>;
@@ -55,6 +63,8 @@ export function CandidateActionsBar({
   source,
   targetChapterId,
   createdAt,
+  gateResult,
+  needsHumanReview,
   onAccept,
   onReject,
   onArchive,
@@ -90,6 +100,19 @@ export function CandidateActionsBar({
       {source && <span className="text-[10px] text-muted-foreground">来源: {source}</span>}
       {targetChapterId && <span className="text-[10px] text-muted-foreground">目标: 第{targetChapterId}章</span>}
       {createdAt && <span className="text-[10px] text-muted-foreground">{formatDate(createdAt)}</span>}
+
+      {/* 门禁详情 */}
+      {gateResult && (
+        <span className="flex items-center gap-1">
+          {gateResult.counts.S1 > 0 && <Badge variant="destructive" className="text-[9px] px-1 py-0">S1:{gateResult.counts.S1}</Badge>}
+          {gateResult.counts.S2 > 0 && <Badge className="text-[9px] px-1 py-0 bg-orange-500/10 text-orange-600 border-orange-500/20" variant="outline">S2:{gateResult.counts.S2}</Badge>}
+          {gateResult.counts.S3 > 0 && <Badge className="text-[9px] px-1 py-0 bg-yellow-500/10 text-yellow-700 border-yellow-500/20" variant="outline">S3:{gateResult.counts.S3}</Badge>}
+          {gateResult.counts.S4 > 0 && <Badge className="text-[9px] px-1 py-0" variant="secondary">S4:{gateResult.counts.S4}</Badge>}
+        </span>
+      )}
+      {needsHumanReview && (
+        <span className="text-[10px] text-orange-600 font-medium">⚠ 需人工复核</span>
+      )}
 
       {/* 分隔 */}
       <span className="flex-1" />

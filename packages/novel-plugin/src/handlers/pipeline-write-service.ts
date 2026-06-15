@@ -301,6 +301,7 @@ export async function executePipelineWrite(
         metadata: {
           sceneSpec,
           auditResult: { passed: auditResult.passed, issueCount: auditResult.issues.length },
+          gateResult: { counts: finalGate.counts, hasBlocking: finalGate.hasBlocking, hasRevisable: finalGate.hasRevisable },
           revised,
           reviseRounds,
           ...(needsHumanReview ? { needsHumanReview: true } : {}),
