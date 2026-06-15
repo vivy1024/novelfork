@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Save, Trash2, Loader2 } from "lucide-react";
+import { Save, Trash2, Loader2, FileText, Link2, History } from "lucide-react";
 
 export type JingweiPriorityTier = "auto" | "core" | "relevant" | "reference";
 
@@ -33,6 +33,7 @@ export function JingweiEntryEditor({ entry, sectionLabel, onSave, onDelete }: Ji
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"details" | "relations" | "history">("details");
 
   const dirty = title !== entry.title || content !== entry.contentMd || priorityTier !== (entry.priorityTier ?? "auto");
 
@@ -75,7 +76,39 @@ export function JingweiEntryEditor({ entry, sectionLabel, onSave, onDelete }: Ji
         )}
       </header>
 
-      {/* 标题编辑 */}
+      {/* Tab 切换 */}
+      <div className="flex gap-1 mb-3 border-b border-border pb-2">
+        <Button variant={activeTab === "details" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("details")}>
+          <FileText className="size-3 mr-1" />详情
+        </Button>
+        <Button variant={activeTab === "relations" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("relations")}>
+          <Link2 className="size-3 mr-1" />关系
+        </Button>
+        <Button variant={activeTab === "history" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("history")}>
+          <History className="size-3 mr-1" />历史
+        </Button>
+      </div>
+
+      {/* Tab: 关系（Phase 2 填充） */}
+      {activeTab === "relations" && (
+        <div className="text-center py-8 text-muted-foreground">
+          <Link2 className="size-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">关联条目</p>
+          <p className="text-xs mt-1">此条目关联的其他经纬条目将在此展示（后续实现）</p>
+        </div>
+      )}
+
+      {/* Tab: 修订历史（Phase 2 填充） */}
+      {activeTab === "history" && (
+        <div className="text-center py-8 text-muted-foreground">
+          <History className="size-8 mx-auto mb-2 opacity-30" />
+          <p className="text-sm">修订历史</p>
+          <p className="text-xs mt-1">条目的修改记录将在此展示（后续实现）</p>
+        </div>
+      )}
+
+      {/* Tab: 详情（原有表单内容） */}
+      {activeTab === "details" && (
       <div className="space-y-3">
         <div>
           <label className="text-xs text-muted-foreground mb-1 block">标题</label>
@@ -147,6 +180,7 @@ export function JingweiEntryEditor({ entry, sectionLabel, onSave, onDelete }: Ji
           )}
         </div>
       </div>
+      )}
     </section>
   );
 }
