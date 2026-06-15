@@ -1185,6 +1185,8 @@ async function appendModelContinuationAfterToolDecision(
     const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, loaded.session.id);
     const continuationRoutinePrompts = await loadRoutineGlobalPrompts();
     const continuationToolNames = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }).map(t => t.name);
+    const continuationLangConfig = await loadUserConfig();
+    const continuationLanguage = continuationLangConfig.runtimeControls?.forceUserLanguage !== false ? (continuationLangConfig.preferences?.language || "zh") : undefined;
     const continuationSections = buildSystemPrompt({
       agentId: loaded.session.agentId ?? "default",
       toolNames: continuationToolNames,
@@ -1192,6 +1194,7 @@ async function appendModelContinuationAfterToolDecision(
       writeNextInstructions: AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS.trim(),
       goals: loaded.session.goals,
       routinePrompts: continuationRoutinePrompts,
+      language: continuationLanguage,
     });
     const continuationContextWindow = await resolveModelContextWindow(loaded.session.sessionConfig);
     const runtimeTurn = await executeRuntimeTurn({
@@ -2231,6 +2234,8 @@ export async function handleSessionChatTransportMessage(
 
     const routinePrompts = await loadRoutineGlobalPrompts();
     const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
+    const langConfig = await loadUserConfig();
+    const sessionLanguage = langConfig.runtimeControls?.forceUserLanguage !== false ? (langConfig.preferences?.language || "zh") : undefined;
     const systemPromptSections = buildSystemPrompt({
       agentId: loaded.session.agentId ?? "default",
       toolNames: sessionTools.map(t => t.name),
@@ -2238,6 +2243,7 @@ export async function handleSessionChatTransportMessage(
       writeNextInstructions: AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS.trim(),
       goals: loaded.session.goals,
       routinePrompts,
+      language: sessionLanguage,
     });
     const fullSystemPrompt = renderSectionsToString(systemPromptSections);
     const maxSteps = await resolveMaxTurnSteps();
