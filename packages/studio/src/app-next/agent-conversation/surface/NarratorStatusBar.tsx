@@ -140,6 +140,19 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
+  // 读取用户设置：showTokenUsage / showOutputRate
+  const [showTokens, setShowTokens] = useState(true);
+  const [showOutputRate, setShowOutputRate] = useState(true);
+  useEffect(() => {
+    fetch("/api/settings/user")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.runtimeControls?.showTokenUsage === false) setShowTokens(false);
+        if (data?.runtimeControls?.showOutputRate === false) setShowOutputRate(false);
+      })
+      .catch(() => {});
+  }, []);
+
   // 实时计时器 — 基于 turnActive 状态，不依赖后端 turnStartedAt
   const isWorking = narratorState === "working";
   const [elapsed, setElapsed] = useState(0);
@@ -228,7 +241,7 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
                 ? `计划中 ${formatDuration(elapsed)}`
                 : substatus === "reasoning"
                 ? `推理中 ${formatDuration(elapsed)}`
-                : `思考中 ${formatDuration(elapsed)}${streamingChars && elapsed > 1000 ? ` · ${Math.round(streamingChars / (elapsed / 1000))}字/秒` : ""}`}
+                : `思考中 ${formatDuration(elapsed)}${showOutputRate && streamingChars && elapsed > 1000 ? ` · ${Math.round(streamingChars / (elapsed / 1000))}字/秒` : ""}`}
             </span>
           ) : isWaiting ? (
             <span className="text-xs font-medium text-yellow-600 dark:text-yellow-400">
@@ -280,6 +293,7 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
             onCompact={onCompact}
             onReset={onReset}
             sessionId={sessionId}
+            showTokens={showTokens}
           />
           {/* Model dropdown — 显示完整名称 */}
           <ModelDropdown
@@ -683,6 +697,7 @@ function ContextRingMenu({
   onCompact,
   onReset,
   sessionId,
+  showTokens = true,
 }: {
   used: number;
   max: number;
@@ -691,6 +706,7 @@ function ContextRingMenu({
   onCompact?: () => void;
   onReset?: () => void;
   sessionId?: string;
+  showTokens?: boolean;
 }) {
   const hasMax = max > 0;
   const percent = hasMax ? Math.min(100, (used / max) * 100) : 0;
@@ -737,9 +753,11 @@ function ContextRingMenu({
           </div>
 
           {/* Token 计数 */}
-          <div className="text-xs text-muted-foreground">
-            {used.toLocaleString()} / {hasMax ? max.toLocaleString() : "?"} tokens {hasMax ? "(估算)" : ""}
-          </div>
+          {showTokens && (
+            <div className="text-xs text-muted-foreground">
+              {used.toLocaleString()} / {hasMax ? max.toLocaleString() : "?"} tokens {hasMax ? "(估算)" : ""}
+            </div>
+          )}
 
           {/* 进度条 */}
           {hasMax && (
