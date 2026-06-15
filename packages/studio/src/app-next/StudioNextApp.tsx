@@ -28,6 +28,7 @@ const LearnPageLazy = lazy(() => import("./learn/LearnPage").then((m) => ({ defa
 const BookManagementPageLazy = lazy(() => import("./books/BookManagementPage").then((m) => ({ default: m.BookManagementPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
+import { FolderOpen } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
@@ -57,6 +58,8 @@ import {
   type ResourceHistoryEntry,
   ToolConfigBar,
   AgentQuickActions,
+  ConversationResourcePanel,
+  type ResourceFile,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
@@ -924,9 +927,10 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     return result.data;
   }, [refreshSnapshot, sessionClient, sessionId]);
 
-  // Novel-specific header slot: ToolConfigBar + AgentQuickActions
+  // Novel-specific header slot: ToolConfigBar + AgentQuickActions + 资源面板
   const novelBookId = canvasContext?.activeResource?.bookId ?? runtime.state.session?.projectId ?? undefined;
   const novelAgentRole = runtime.state.session?.agentId ?? "novelist";
+  const [resourcePanelOpen, setResourcePanelOpen] = useState(false);
   const novelHeaderSlot = novelBookId ? (
     <>
       <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "novelist" | "writer" | "custom"} />
@@ -935,6 +939,9 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         bookId={novelBookId}
         onSendMessage={(msg: string) => { void runtime.sendMessage(msg); }}
       />
+      <Button variant="ghost" size="xs" onClick={() => setResourcePanelOpen(true)} title="资源面板">
+        <FolderOpen className="size-3.5" />
+      </Button>
     </>
   ) : null;
 
