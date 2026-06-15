@@ -10,6 +10,24 @@
 import { WritingConfigSection, WRITING_CONFIG_UI_SECTION } from "@vivy1024/novelfork-novel-plugin/pages/writing-config";
 import type { PluginUISection } from "@vivy1024/novelfork-core";
 import { registerPluginSection } from "./section-registry";
+import { lazy } from "react";
+
+// TemplateMarketPanel 延迟加载 + props 适配
+const TemplateMarketPanel = lazy(() =>
+  import("../../../../novel-plugin/src/pages/writing-workbench/TemplateMarketPanel").then(m => ({
+    default: (props: { bookId?: string }) => m.TemplateMarketPanel({ bookId: props.bookId ?? "", onClose: () => {} }),
+  }))
+);
+
+const TEMPLATE_MARKET_UI_SECTION: PluginUISection = {
+  id: "novel-template-market",
+  label: "模板市场",
+  icon: "Store",
+  mountPoint: "routines",
+  requiresBook: false,
+  order: 200,
+  componentKey: "novel-template-market",
+};
 
 let registered = false;
 
@@ -18,9 +36,10 @@ export function ensurePluginSectionsRegistered(): void {
   if (registered) return;
   registered = true;
   registerPluginSection(WRITING_CONFIG_UI_SECTION.componentKey, WritingConfigSection);
+  registerPluginSection(TEMPLATE_MARKET_UI_SECTION.componentKey, TemplateMarketPanel);
 }
 
-const ALL_UI_SECTIONS: PluginUISection[] = [WRITING_CONFIG_UI_SECTION];
+const ALL_UI_SECTIONS: PluginUISection[] = [WRITING_CONFIG_UI_SECTION, TEMPLATE_MARKET_UI_SECTION];
 
 /** 收集所有插件的 uiSections 元数据（按 order 排序）。 */
 export function getPluginUISections(mountPoint: PluginUISection["mountPoint"]): PluginUISection[] {
