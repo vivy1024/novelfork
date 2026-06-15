@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Loader2, CheckSquare, Square, CheckCircle2 } from "lucide-react";
+import { Plus, Search, Loader2, CheckSquare, Square, CheckCircle2, Pencil, Bot, Clock, Sparkles } from "lucide-react";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
 import { getCategorySchema } from "./category-schemas";
 
@@ -24,6 +24,32 @@ const VISIBILITY_LABELS: Record<string, string> = {
 };
 
 type VisibilityRule = "global" | "tracked" | "nested";
+
+/** 来源 icon（协同审阅标记） */
+function SourceIcon({ source }: { source?: string }) {
+  switch (source) {
+    case "agent-write":
+    case "auto-settle":
+      return <span title="Agent 修改"><Bot className="size-3 text-blue-500 shrink-0" /></span>;
+    case "ai-enrich":
+      return <span title="AI 丰富"><Sparkles className="size-3 text-purple-500 shrink-0" /></span>;
+    case "system-init":
+      return <span title="系统初始化"><Clock className="size-3 text-muted-foreground shrink-0" /></span>;
+    default:
+      return <span title="用户编辑"><Pencil className="size-3 text-muted-foreground/50 shrink-0" /></span>;
+  }
+}
+
+/** 冲突红点 */
+function ConflictDot({ status, detail }: { status?: string; detail?: string }) {
+  if (status !== "pending") return null;
+  return (
+    <span className="relative flex size-2 shrink-0" title={detail ?? "存在未裁决的冲突"}>
+      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+      <span className="relative inline-flex size-2 rounded-full bg-red-500" />
+    </span>
+  );
+}
 
 export function JingweiEntryList({ category, entries, loading, selectedEntryId, onSelectEntry, onCreateEntry, onRefresh, bookId }: JingweiEntryListProps) {
   const [search, setSearch] = useState("");
@@ -156,6 +182,8 @@ export function JingweiEntryList({ category, entries, loading, selectedEntryId, 
                           : <Square className="size-3.5 text-muted-foreground shrink-0" />
                       )}
                       <span className="text-xs font-medium truncate flex-1">{entry.title}</span>
+                      <SourceIcon source={(entry as any).source} />
+                      <ConflictDot status={(entry as any).conflictStatus} detail={(entry as any).conflictDetail} />
                       <Badge variant="secondary" className="text-[9px] shrink-0">
                         {VISIBILITY_LABELS[entry.visibility] ?? entry.visibility}
                       </Badge>
