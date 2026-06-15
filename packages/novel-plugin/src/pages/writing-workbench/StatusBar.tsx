@@ -4,7 +4,7 @@
  * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
  */
 import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Activity, Droplets, AlertTriangle, Cog } from "lucide-react";
+import { BookOpen, Activity, Droplets, AlertTriangle, Cog, Heart, TrendingUp, Palette, ShieldCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { PanelType } from "./ExpandablePanel";
 
@@ -75,6 +75,10 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
     { id: "quality", panel: "quality", icon: <Activity className="size-3.5" />, label: qualityLabel },
     { id: "ai-taste", panel: "quality", icon: <Droplets className="size-3.5" />, label: aiTasteLabel },
     { id: "alert", panel: "alert", icon: <AlertTriangle className="size-3.5" />, label: alertLabel },
+    { id: "health", panel: "health", icon: <Heart className="size-3.5" />, label: "健康" },
+    { id: "arcs", panel: "arcs", icon: <TrendingUp className="size-3.5" />, label: "弧线" },
+    { id: "drift", panel: "drift", icon: <Palette className="size-3.5" />, label: "文风" },
+    { id: "compliance", panel: "compliance", icon: <ShieldCheck className="size-3.5" />, label: "合规" },
   ];
 
   return (
