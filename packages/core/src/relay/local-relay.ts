@@ -81,7 +81,7 @@ export class LocalAIRelay implements AIRelay {
     _snapshot: WriteSnapshot,
     _llm: LLMRelayConfig,
   ): Promise<RunHandle> {
-    throw new Error("startWriteNext is no longer available — PipelineRunner has been removed. Use pipeline.generate_chapter tool instead.");
+    throw new Error("startWriteNext is no longer available — PipelineRunner has been removed. Use pipeline.write tool instead.");
   }
 
   async startDraft(
@@ -89,7 +89,7 @@ export class LocalAIRelay implements AIRelay {
     _llm: LLMRelayConfig,
     _wordCount?: number,
   ): Promise<RunHandle> {
-    throw new Error("startDraft is no longer available — PipelineRunner has been removed. Use pipeline.generate_chapter tool instead.");
+    throw new Error("startDraft is no longer available — PipelineRunner has been removed. Use pipeline.write tool instead.");
   }
 
   async startRevise(

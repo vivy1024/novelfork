@@ -55,7 +55,7 @@ function commandToEntry(command: RuntimeCommandDefinition): CapabilityRegistryEn
 }
 
 const BUILTIN_TOOLS: readonly CapabilityRegistryEntry[] = [
-  { id: "tool:cockpit.get_snapshot", name: "cockpit.get_snapshot", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "读取驾驶舱快照" },
+  { id: "tool:cockpit.snapshot", name: "cockpit.snapshot", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "读取驾驶舱快照" },
   { id: "tool:chapter.read", name: "chapter.read", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "读取章节内容" },
   { id: "tool:chapter.save_checkpointed", name: "chapter.save_checkpointed", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "保存章节（带 checkpoint）" },
   { id: "tool:candidate.create_chapter", name: "candidate.create_chapter", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "创建候选稿" },

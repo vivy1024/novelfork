@@ -251,7 +251,7 @@ export const BACKEND_CONTRACT_CAPABILITIES: readonly BackendContractCapability[]
   {
     id: "session-native.write-next",
     userCapability: "Session-native 写下一章",
-    entry: "cockpit.get_snapshot → pgi.generate_questions → AskUserQuestion → pipeline.generate_chapter",
+    entry: "cockpit.snapshot → pgi.ask → AskUserQuestion → pipeline.write",
     status: "current",
     dataSource: "session tools + candidate service",
     failureBoundary: "模型不可用或工具失败时返回 tool_result 失败，不写正式章节。",

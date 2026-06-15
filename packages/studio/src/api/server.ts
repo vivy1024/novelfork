@@ -120,10 +120,6 @@ import { pluginRegistry } from "./lib/plugin-loader.js";
 import { NOVEL_PLUGIN_MANIFEST, NOVEL_AGENT_PRESET_LIST } from "@vivy1024/novelfork-novel-plugin";
 import {
   handleChapterRead,
-  handleJingweiReadBrief,
-  handleJingweiReadCategory,
-  handleJingweiSearch,
-  handleJingweiReadContext,
 } from "@vivy1024/novelfork-novel-plugin";
 
 // --- Studio event bus for SSE ---
@@ -178,10 +174,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     routes: [], // Routes will be migrated in Batch 3
     tools: [
       { toolName: "chapter.read", execute: async (input, ctx) => handleChapterRead(input as any, ctx as any) },
-      { toolName: "jingwei.read_brief", execute: async (input, ctx) => handleJingweiReadBrief(input as any, ctx as any) },
-      { toolName: "jingwei.read_category", execute: async (input, ctx) => handleJingweiReadCategory(input as any, ctx as any) },
-      { toolName: "jingwei.search", execute: async (input, ctx) => handleJingweiSearch(input as any, ctx as any) },
-      { toolName: "jingwei.read_context", execute: async (input, ctx) => handleJingweiReadContext(input as any, ctx as any) },
     ],
     pages: [], // Pages will be migrated in Batch 5
     agentPresets: NOVEL_AGENT_PRESET_LIST as unknown as Array<{ agentId: string; name: string; tools: string[] }>,

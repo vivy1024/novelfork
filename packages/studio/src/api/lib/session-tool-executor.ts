@@ -9,10 +9,7 @@ import {
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
 import type { CandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
-import type { GuidedGenerationToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import type { NarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
-import type { PGIToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
-import type { QuestionnaireToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
@@ -149,9 +146,6 @@ export type SessionToolHandler = (
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
   readonly cockpitService?: CockpitService;
-  readonly questionnaireService?: QuestionnaireToolService;
-  readonly pgiService?: PGIToolService;
-  readonly guidedService?: GuidedGenerationToolService;
   readonly candidateService?: CandidateToolService;
   readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
   /** 工作目录，用于 Bash/Read/Write/Edit 工具的路径边界 */
@@ -291,23 +285,6 @@ export async function executeSessionTool(
   });
   if (policyResolution.reason === "policy-denied") {
     return withDuration(createPolicyDeniedResult(input, definition, policyResolution), startedAt, options);
-  }
-
-  if (definition.name === "guided.exit" && input.confirmationDecision?.decision === "rejected") {
-    const handler = options.handlers?.[definition.name] ?? getDefaultHandler(definition.name, options);
-    if (!handler) {
-      return withDuration({
-        ok: false,
-        renderer: definition.renderer,
-        error: "tool-handler-missing",
-        summary: `session tool ${definition.name} 未配置执行处理器。`,
-      }, startedAt, options);
-    }
-    const result = await handler({ ...input, definition });
-    return withDuration(withConfirmationAudit({
-      ...result,
-      renderer: result.renderer ?? definition.renderer,
-    }, input, definition), startedAt, options);
   }
 
   if (policyResolution.reason === "permission-denied") {
@@ -601,69 +578,6 @@ export async function executeSessionTool(
  */
 function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
   switch (toolName) {
-    case "cockpit.get_snapshot":
-      if (!options.cockpitService) return undefined;
-      return async ({ input, definition }) => {
-        const snapshot = await options.cockpitService!.getSnapshot({
-          bookId: String(input.bookId),
-          includeModelStatus: input.includeModelStatus === true,
-        });
-        return {
-          ok: true,
-          renderer: definition.renderer,
-          summary: "已读取驾驶舱快照。",
-          data: snapshot,
-          artifact: {
-            id: `cockpit:${input.bookId}:snapshot`,
-            kind: "tool-result",
-            title: "驾驶舱快照",
-            renderer: definition.renderer,
-            openInCanvas: true,
-          },
-        };
-      };
-    case "cockpit.list_open_hooks":
-      if (!options.cockpitService) return undefined;
-      return async ({ input, definition }) => {
-        const hooks = await options.cockpitService!.listOpenHooks({ bookId: String(input.bookId), limit: Number(input.limit) });
-        return {
-          ok: true,
-          renderer: definition.renderer,
-          summary: `已读取 ${hooks.items.length} 条开放伏笔。`,
-          data: hooks,
-        };
-      };
-    case "cockpit.list_recent_candidates":
-      if (!options.cockpitService) return undefined;
-      return async ({ input, definition }) => {
-        const candidates = await options.cockpitService!.listRecentCandidates({ bookId: String(input.bookId), limit: Number(input.limit) });
-        return {
-          ok: true,
-          renderer: definition.renderer,
-          summary: `已读取 ${candidates.items.length} 条候选稿。`,
-          data: candidates,
-        };
-      };
-    case "questionnaire.list_templates":
-      return async ({ input }) => (await resolveQuestionnaireService(options)).listTemplates(input);
-    case "questionnaire.start":
-      return async ({ input }) => (await resolveQuestionnaireService(options)).start(input);
-    case "questionnaire.suggest_answer":
-      return async ({ input }) => (await resolveQuestionnaireService(options)).suggestAnswer(input);
-    case "questionnaire.submit_response":
-      return async ({ input }) => (await resolveQuestionnaireService(options)).submitResponse(input);
-    case "pgi.generate_questions":
-      return async ({ input }) => (await resolvePGIService(options)).generateQuestions(input);
-    case "pgi.record_answers":
-      return async ({ input }) => (await resolvePGIService(options)).recordAnswers(input);
-    case "pgi.format_answers_for_prompt":
-      return async ({ input }) => (await resolvePGIService(options)).formatAnswersForPrompt(input);
-    case "guided.enter":
-      return async ({ input }) => (await resolveGuidedService(options)).enter(input);
-    case "guided.answer_question":
-      return async ({ input }) => (await resolveGuidedService(options)).answerQuestion(input);
-    case "guided.exit":
-      return async ({ input, confirmationDecision }) => (await resolveGuidedService(options)).exit(input, confirmationDecision);
     case "candidate.create_chapter":
       return async ({ input, sessionConfig, onToolOutputStream }) => {
         const service = await resolveCandidateService(options);
@@ -873,240 +787,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           artifact: result.artifact,
         };
       };
-    case "jingwei.read_brief":
-      return async ({ input, definition }) => {
-        const { handleJingweiReadBrief } = await import("@vivy1024/novelfork-novel-plugin");
-        const bookId = String(input.bookId);
-        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
-        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
-        const chapterIntent = typeof input.chapterIntent === "string" ? input.chapterIntent : undefined;
-        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
-        const result = await handleJingweiReadBrief({ bookId, chapterNumber, sceneText, chapterIntent, tokenBudget });
-        return { ...result, renderer: definition.renderer };
-      };
-    case "jingwei.read_category":
-      return async ({ input, definition }) => {
-        const { handleJingweiReadCategory } = await import("@vivy1024/novelfork-novel-plugin");
-        const bookId = String(input.bookId);
-        const category = String(input.category);
-        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
-        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
-        const page = typeof input.page === "number" ? input.page : undefined;
-        const limit = typeof input.limit === "number" ? input.limit : undefined;
-        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
-        const detailLevel = input.detailLevel === "normal" || input.detailLevel === "full" ? input.detailLevel : "summary";
-        const result = await handleJingweiReadCategory({ bookId, category, chapterNumber, sceneText, page, limit, tokenBudget, detailLevel });
-        return { ...result, renderer: definition.renderer };
-      };
-    case "jingwei.search":
-      return async ({ input, definition }) => {
-        const { handleJingweiSearch } = await import("@vivy1024/novelfork-novel-plugin");
-        const bookId = String(input.bookId);
-        const query = String(input.query);
-        const categories = Array.isArray(input.categories) ? input.categories.filter((category): category is string => typeof category === "string") : undefined;
-        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
-        const tokenBudget = typeof input.tokenBudget === "number" ? input.tokenBudget : undefined;
-        const limit = typeof input.limit === "number" ? input.limit : undefined;
-        const result = await handleJingweiSearch({ bookId, query, categories, chapterNumber, tokenBudget, limit });
-        return { ...result, renderer: definition.renderer };
-      };
-    case "jingwei.read_context":
-      return async ({ input, definition }) => {
-        const { handleJingweiReadContext } = await import("@vivy1024/novelfork-novel-plugin");
-        const bookId = String(input.bookId);
-        const chapterNumber = typeof input.chapterNumber === "number" ? input.chapterNumber : undefined;
-        const sceneText = typeof input.sceneText === "string" ? input.sceneText : undefined;
-        const chapterIntent = typeof input.chapterIntent === "string" ? input.chapterIntent : undefined;
-        const result = await handleJingweiReadContext({ bookId, chapterNumber, sceneText, chapterIntent });
-        return { ...result, renderer: definition.renderer };
-      };
-    case "jingwei.upsert_entry":
-      return async ({ input, definition }) => {
-        const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-
-        function inferCategory(raw: string, entryTitle: string, content: string): string {
-          // 如果 agent 明确传了非 setting 的 category，尊重它
-          if (raw && raw !== "setting") return raw;
-          const text = (entryTitle + " " + content.slice(0, 500)).toLowerCase();
-          if (/伏笔|foreshadow|hook|悬念/.test(text)) return "foreshadowing";
-          if (/大纲|卷.*章|outline|volume|节拍|beat/.test(text)) return "outline";
-          if (/主角|配角|角色|人物|character|弧光/.test(text)) return "character";
-          if (/世界观|worldview|力量体系|修炼体系|境界/.test(text)) return "worldview";
-          if (/地图|地理|geography|部洲/.test(text)) return "geography";
-          if (/前提|premise|核心矛盾|主题/.test(text)) return "worldview";
-          if (/情节|plot|subplot|事件/.test(text)) return "plot";
-          if (/时间线|timeline/.test(text)) return "timeline";
-          if (/势力|faction|阵营|组织/.test(text)) return "faction";
-          return raw || "setting";
-        }
-        const storage = getStorageDatabase();
-        let bookId = String(input.bookId);
-        const rawCategory = String(input.category || "").trim();
-        const title = String(input.title || "").trim();
-        const contentMd = String(input.contentMd || "");
-        const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
-        const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
-        const visibility = String(input.visibility || "global");
-        const summaryMd = typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0
-          ? input.summaryMd.trim()
-          : contentMd.trim().replace(/\s+/g, " ").slice(0, 240);
-        const relatedEntryIds = Array.isArray(input.relatedEntryIds) ? input.relatedEntryIds.filter((id): id is string => typeof id === "string") : [];
-
-        // 智能分类：如果 agent 没传 category 或传了 setting，根据 title/content 关键词推断
-        const category = inferCategory(rawCategory, title, contentMd);
-
-        if (!title) {
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "title 不能为空。" };
-        }
-
-        // 验证 bookId 存在于 book 表中；如果不存在，尝试模糊匹配
-        const bookExists = storage.sqlite.prepare(`SELECT id FROM book WHERE id = ?`).get(bookId) as { id: string } | undefined;
-        if (!bookExists) {
-          // 尝试模糊匹配：bookId 可能是目录名（如 "文字修仙docs这个世界修仙讲科学"），实际 book id 是其子串
-          const fuzzyMatch = storage.sqlite.prepare(`SELECT id FROM book WHERE ? LIKE '%' || id || '%' OR id LIKE '%' || ? || '%' ORDER BY length(id) DESC LIMIT 1`).get(bookId, bookId) as { id: string } | undefined;
-          if (fuzzyMatch) {
-            bookId = fuzzyMatch.id;
-          } else {
-            return { ok: false, renderer: definition.renderer, error: "book-not-found", summary: `bookId "${bookId}" 在数据库中不存在。请确认正确的书籍 ID。可用的书籍：${(storage.sqlite.prepare("SELECT id FROM book LIMIT 5").all() as Array<{id:string}>).map(r => r.id).join(", ")}` };
-          }
-        }
-
-        try {
-          // 确保 section 存在（按 category 查找或创建）
-          const sectionRows = storage.sqlite.prepare(
-            `SELECT id FROM story_jingwei_section WHERE book_id = ? AND key = ?`
-          ).all(bookId, category) as Array<{ id: string }>;
-
-          let sectionId: string;
-          if (sectionRows.length > 0) {
-            sectionId = sectionRows[0]!.id;
-          } else {
-            // 自动创建 section
-            sectionId = crypto.randomUUID();
-            const CATEGORY_NAMES: Record<string, string> = {
-              character: "角色管理", event: "事件记录", worldview: "世界观设定",
-              "power-system": "力量体系", geography: "地理地图", faction: "势力阵营",
-              item: "物品列表", skill: "功法体系", currency: "货币体系",
-              special: "特殊设定", outline: "大纲设定", relationship: "人物关系",
-              foreshadowing: "伏笔管理", plot: "情节脉络", timeline: "时间线",
-              "chapter-summary": "章节摘要",
-            };
-            const name = CATEGORY_NAMES[category] ?? category;
-            const sectionNow = Date.now();
-            storage.sqlite.prepare(`
-              INSERT INTO story_jingwei_section (id, book_id, key, name, description, "order", enabled, show_in_sidebar, participates_in_ai, default_visibility, fields_json, created_at, updated_at)
-              VALUES (?, ?, ?, ?, '', 0, 1, 1, 1, 'tracked', '[]', ?, ?)
-            `).run(sectionId, bookId, category, name, sectionNow, sectionNow);
-          }
-
-          // 查找已有条目（按 book_id + title 匹配，不限 section，避免 category 变化导致重复创建）
-          const existingRows = storage.sqlite.prepare(
-            `SELECT id, section_id FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
-          ).all(bookId, title) as Array<{ id: string; section_id: string }>;
-
-          const visibilityJson = JSON.stringify({ type: visibility });
-          const aliasesJson = JSON.stringify(aliases);
-          const tagsJson = JSON.stringify(tags);
-          const relatedEntryIdsJson = JSON.stringify(relatedEntryIds);
-          const now = Date.now();
-
-          if (existingRows.length > 0) {
-            // 更新已有条目（同时更新 section_id 以反映 category 变化）
-            const entryId = existingRows[0]!.id;
-            storage.sqlite.prepare(`
-              UPDATE story_jingwei_entry
-              SET content_md = ?, summary_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, updated_at = ?
-              WHERE id = ?
-            `).run(contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, now, entryId);
-            return {
-              ok: true,
-              renderer: definition.renderer,
-              summary: `已更新经纬条目「${title}」（${category}）。`,
-              data: { action: "updated", entryId, bookId, category, title },
-            };
-          } else {
-            // 创建新条目
-            const entryId = crypto.randomUUID();
-            storage.sqlite.prepare(`
-              INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, created_at, updated_at)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, '{}', '[]', ?, ?, 1, NULL, ?, ?)
-            `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, now, now);
-            return {
-              ok: true,
-              renderer: definition.renderer,
-              summary: `已创建经纬条目「${title}」（${category}）。`,
-              data: { action: "created", entryId, bookId, category, title },
-            };
-          }
-        } catch (error) {
-          return {
-            ok: false,
-            renderer: definition.renderer,
-            error: "upsert-failed",
-            summary: `经纬写入失败：${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      };
-    case "health.read_summary":
-      return async ({ input, definition }) => {
-        const bookId = String(input.bookId);
-        if (!options.cockpitService) {
-          return { ok: false, renderer: definition.renderer, error: "service-unavailable", summary: "health.read_summary 需要 cockpitService 配置。" };
-        }
-        try {
-          const snapshot = await options.cockpitService.getSnapshot({ bookId, includeModelStatus: false });
-
-          // 补充健康度指标
-          const health: Record<string, unknown> = { bookId };
-
-          // 进度健康
-          const progress = snapshot.progress as { chapterCount?: number; targetChapters?: number } | undefined;
-          if (progress) {
-            health.progressPercent = progress.targetChapters ? Math.round((progress.chapterCount ?? 0) / progress.targetChapters * 100) : null;
-            health.chaptersWritten = progress.chapterCount ?? 0;
-            health.targetChapters = progress.targetChapters ?? null;
-          }
-
-          // 伏笔健康
-          const hooksResult = snapshot.openHooks as unknown as { items?: ReadonlyArray<{ chapterPlanted?: number }> } | undefined;
-          const hooks = hooksResult?.items ?? [];
-          health.openHooksCount = hooks.length;
-          health.overdueHooks = hooks.filter((h) => h.chapterPlanted && (progress?.chapterCount ?? 0) - h.chapterPlanted > 30).length;
-
-          // 候选稿积压
-          const candidatesResult = snapshot.recentCandidates as unknown as { items?: ReadonlyArray<unknown> } | undefined;
-          const candidates = candidatesResult?.items ?? [];
-          health.pendingCandidates = candidates.length;
-
-          // 经纬覆盖度
-          try {
-            const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-            const storage = getStorageDatabase();
-            const entryCount = (storage.sqlite.prepare(`SELECT COUNT(*) as c FROM story_jingwei_entry WHERE book_id = ? AND deleted_at IS NULL`).get(bookId) as { c: number })?.c ?? 0;
-            const sectionCount = (storage.sqlite.prepare(`SELECT COUNT(*) as c FROM story_jingwei_section WHERE book_id = ? AND deleted_at IS NULL AND enabled = 1`).get(bookId) as { c: number })?.c ?? 0;
-            health.jingweiEntries = entryCount;
-            health.jingweiSections = sectionCount;
-            health.jingweiCoverage = entryCount > 10 ? "good" : entryCount > 3 ? "basic" : "sparse";
-          } catch { /* non-fatal */ }
-
-          // 综合评分
-          const scores: number[] = [];
-          if (health.progressPercent !== null && typeof health.progressPercent === "number") scores.push(Math.min(10, health.progressPercent / 10));
-          if (health.overdueHooks === 0) scores.push(10); else if ((health.overdueHooks as number) <= 2) scores.push(7); else scores.push(4);
-          if (health.jingweiCoverage === "good") scores.push(10); else if (health.jingweiCoverage === "basic") scores.push(6); else scores.push(3);
-          health.overallScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length * 10) / 10 : null;
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `书籍 ${bookId} 健康度：${health.overallScore ?? "N/A"}/10（进度 ${health.progressPercent ?? "?"}%，${health.openHooksCount ?? 0} 个活跃伏笔，经纬 ${health.jingweiCoverage ?? "unknown"}）。`,
-            data: health,
-          };
-        } catch (error) {
-          return { ok: false, renderer: definition.renderer, error: "read-failed", summary: `读取健康度失败：${error instanceof Error ? error.message : String(error)}` };
-        }
-      };
-    // --- 新增小说工具组 (5 tools) ---
     case "chapter.audit":
       return async ({ input, definition }) => {
         const bookId = String(input.bookId ?? "");
@@ -1923,58 +1603,50 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `\u4e0d\u652f\u6301\u7684 action: ${action}` };
         }
       };
-    // --- 预设与节拍工具 (cockpit-redesign spec) ---
-    // ── v2 合并工具：presets.read / presets.write / beat.read / beat.write ──
-    // 复用旧 case 的内联逻辑（按 scope/action 转发到对应旧 handler），旧工具名保留兼容。
+    // --- 预设与节拍工具 ---
     case "presets.read":
-      return async ({ input, definition, ...rest }) => {
-        const scope = String(input.scope ?? "enabled");
-        const target = scope === "available" ? "presets.list_available" : "presets.get_rules";
-        const handler = getNovelServiceHandler(target, options);
-        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: `内部错误：${target} handler 缺失。` };
-        return handler({ input, definition, ...rest });
-      };
-    case "presets.write":
-      return async ({ input, definition, ...rest }) => {
-        const action = String(input.action ?? "");
-        if (action === "create") {
-          const handler = getNovelServiceHandler("presets.create_custom", options);
-          if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：presets.create_custom handler 缺失。" };
-          return handler({ input, definition, ...rest });
-        }
-        if (action === "enable" || action === "disable" || action === "set") {
-          const mode = action === "enable" ? "add" : action === "disable" ? "remove" : "set";
-          const handler = getNovelServiceHandler("presets.set_rules", options);
-          if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：presets.set_rules handler 缺失。" };
-          return handler({ input: { ...input, mode }, definition, ...rest });
-        }
-        return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `presets.write 的 action 必须是 enable/disable/set/create，收到：${action}` };
-      };
-    case "beat.read":
-      return async ({ input, definition, ...rest }) => {
-        const handler = getNovelServiceHandler("beat.get_current", options);
-        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: "内部错误：beat.get_current handler 缺失。" };
-        return handler({ input, definition, ...rest });
-      };
-    case "beat.write":
-      return async ({ input, definition, ...rest }) => {
-        const action = String(input.action ?? "");
-        const target = action === "create" ? "beat.create_custom" : action === "select" ? "beat.set_template" : "";
-        if (!target) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `beat.write 的 action 必须是 select/create，收到：${action}` };
-        const handler = getNovelServiceHandler(target, options);
-        if (!handler) return { ok: false, renderer: definition.renderer, error: "handler-missing", summary: `内部错误：${target} handler 缺失。` };
-        return handler({ input, definition, ...rest });
-      };
-    case "presets.get_rules":
       return async ({ input, definition }) => {
+        const scope = String(input.scope ?? "enabled");
+        if (scope === "available") {
+          try {
+            const { listPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            await ensurePresetsLoaded();
+            let allPresets = listPresets();
+            const category = input.category ? String(input.category) : undefined;
+            if (category) {
+              allPresets = allPresets.filter((p: any) => p.category === category);
+            }
+            let enabledIds: string[] = [];
+            const bookId = input.bookId ? String(input.bookId) : undefined;
+            if (bookId) {
+              try {
+                const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+                const { readFile } = await import("node:fs/promises");
+                const { join } = await import("node:path");
+                const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+                const raw = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8"));
+                enabledIds = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+              } catch {}
+            }
+            const items = allPresets.map((p: any) => ({
+              id: p.id, name: p.name, category: p.category,
+              description: p.description ?? "", enabled: enabledIds.includes(p.id),
+            }));
+            return {
+              ok: true, renderer: definition.renderer,
+              summary: `共 ${items.length} 个可用预设${category ? `（分类: ${category}）` : ""}，其中 ${items.filter((i: any) => i.enabled).length} 个已启用。`,
+              data: { presets: items, bookId },
+            };
+          } catch (err) {
+            return { ok: false, renderer: definition.renderer, error: "presets-list-failed", summary: `列出预设失败: ${err instanceof Error ? err.message : String(err)}` };
+          }
+        }
+        // scope === "enabled": get active rules
         const bookId = String(input.bookId);
         try {
           const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-
           await ensurePresetsLoaded();
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
-
-          // 从 book config 读取用户选择的预设
           let bookConfig: { enabledPresetIds?: string[]; beatTemplateId?: string } | null = null;
           if (options.loadBookConfig) {
             try { bookConfig = await options.loadBookConfig(bookId); } catch { /* ignore */ }
@@ -1989,23 +1661,212 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
               bookConfig = raw as unknown as { enabledPresetIds?: string[]; beatTemplateId?: string };
             } catch { /* ignore */ }
           }
-
           if (bookConfig?.enabledPresetIds && bookConfig.enabledPresetIds.length > 0) {
             enabledPresets = bookConfig.enabledPresetIds.map((id) => getPreset(id)).filter(Boolean) as typeof enabledPresets;
           } else {
-            // 未配置或空数组 → 不加载任何预设（用户需主动选择）
             enabledPresets = [];
           }
           const rules = enabledPresets.map((p) => ({
-            id: p.id,
-            name: p.name,
-            category: p.category,
-            promptInjection: p.promptInjection ?? "",
+            id: p.id, name: p.name, category: p.category, promptInjection: p.promptInjection ?? "",
           }));
           return { ok: true, renderer: definition.renderer, summary: `${rules.length} 条预设规则已加载。`, data: { bookId, rules } };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "presets-unavailable", summary: `预设加载失败: ${err instanceof Error ? err.message : String(err)}` };
         }
+      };
+    case "presets.write":
+      return async ({ input, definition }) => {
+        const action = String(input.action ?? "");
+        if (action === "create") {
+          // Inline: presets.create_custom
+          const bookId = input.bookId ? String(input.bookId) : undefined;
+          const name = String(input.name);
+          const category = String(input.category || "custom");
+          const promptInjection = String(input.promptInjection);
+          const description = input.description ? String(input.description) : undefined;
+          try {
+            const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+            const db = getStorageDatabase();
+            const repo = createUserTemplateRepository(db);
+            const id = `custom-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const bundleJson = JSON.stringify({ type: "preset", category, promptInjection });
+            repo.create({ id, bookId: bookId ?? null, name, genre: null, description: description ?? null, bundleJson });
+            const { registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            registerPreset({ id, name, category: category as any, promptInjection, description: description ?? "" });
+            let autoEnabled = false;
+            if (bookId) {
+              try {
+                const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+                const { readFile, writeFile } = await import("node:fs/promises");
+                const { join } = await import("node:path");
+                const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+                const bookJsonPath = join(root, "books", bookId, "book.json");
+                const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+                const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+                if (!currentIds.includes(id)) {
+                  raw.enabledPresetIds = [...currentIds, id];
+                  raw.updatedAt = new Date().toISOString();
+                  await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+                  autoEnabled = true;
+                }
+              } catch { /* auto-enable failure is non-fatal */ }
+            }
+            const enableNote = autoEnabled ? "已自动启用。" : bookId ? "自动启用失败，请手动调用 presets.write(action='enable') 启用。" : "全局预设，需在书籍中手动启用。";
+            return { ok: true, renderer: definition.renderer, summary: `已创建自定义预设「${name}」（ID: ${id}）。${enableNote}`, data: { id, name, category, bookId: bookId ?? null, autoEnabled } };
+          } catch (err) {
+            return { ok: false, renderer: definition.renderer, error: "preset-create-failed", summary: `创建自定义预设失败: ${err instanceof Error ? err.message : String(err)}` };
+          }
+        }
+        if (action === "enable" || action === "disable" || action === "set") {
+          // Inline: presets.set_rules
+          const mode = action === "enable" ? "add" : action === "disable" ? "remove" : "set";
+          const bookId = String(input.bookId);
+          const inputIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
+          try {
+            const { getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            await ensurePresetsLoaded();
+            const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+            const { readFile, writeFile } = await import("node:fs/promises");
+            const { join } = await import("node:path");
+            const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+            const bookJsonPath = join(root, "books", bookId, "book.json");
+            const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+            const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
+            let finalIds: string[];
+            if (mode === "add") { finalIds = [...new Set([...currentIds, ...inputIds])]; }
+            else if (mode === "remove") { const removeSet = new Set(inputIds); finalIds = currentIds.filter(id => !removeSet.has(id)); }
+            else { finalIds = inputIds; }
+            const validIds: string[] = [];
+            const invalidIds: string[] = [];
+            for (const id of finalIds) { if (getPreset(id)) validIds.push(id); else invalidIds.push(id); }
+            raw.enabledPresetIds = validIds;
+            raw.updatedAt = new Date().toISOString();
+            await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+            const modeLabel = mode === "add" ? "追加" : mode === "remove" ? "移除" : "设置";
+            const summary = validIds.length > 0
+              ? `已${modeLabel}预设规则，当前共 ${validIds.length} 条启用。${invalidIds.length > 0 ? `（${invalidIds.length} 个无效 ID 已忽略：${invalidIds.join("、")}）` : ""}`
+              : "已清空所有预设规则。";
+            return { ok: true, renderer: definition.renderer, summary, data: { bookId, mode, enabledPresetIds: validIds, invalidIds } };
+          } catch (err) {
+            return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
+          }
+        }
+        return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `presets.write 的 action 必须是 enable/disable/set/create，收到：${action}` };
+      };
+    case "beat.read":
+      return async ({ input, definition }) => {
+        const bookId = String(input.bookId);
+        try {
+          const { listBeatTemplates, getBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          let selectedTemplateId: string | undefined;
+          if (options.loadBookConfig) {
+            try {
+              const bookConfig = await options.loadBookConfig(bookId);
+              selectedTemplateId = bookConfig.beatTemplateId as string | undefined;
+            } catch { /* ignore */ }
+          }
+          if (!selectedTemplateId) {
+            try {
+              const { readFile } = await import("node:fs/promises");
+              const { join } = await import("node:path");
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+              const bookJsonPath = join(root, "books", bookId, "book.json");
+              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { beatTemplateId?: string };
+              selectedTemplateId = raw.beatTemplateId;
+            } catch { /* ignore */ }
+          }
+          await ensureBeatsLoaded();
+          const allTemplates = listBeatTemplates();
+          const activeTemplate = selectedTemplateId
+            ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId)
+            : undefined;
+          if (!activeTemplate) {
+            const availableList = allTemplates.map((t) => `${t.id}（${t.name}）`).join("、");
+            return { ok: true, renderer: definition.renderer, summary: `当前未选择节拍模板。可用模板：${availableList || "无"}`, data: { bookId, template: null, beats: [], available: allTemplates.map((t) => ({ id: t.id, name: t.name, beatCount: t.beats.length })) } };
+          }
+          return {
+            ok: true, renderer: definition.renderer,
+            summary: `当前节拍模板: ${activeTemplate.name}（${activeTemplate.beats.length} 个节拍）`,
+            data: {
+              bookId,
+              template: { id: activeTemplate.id, name: activeTemplate.name, description: activeTemplate.description, totalBeats: activeTemplate.beats.length },
+              beats: activeTemplate.beats.map((b, i) => ({ index: i, name: b.name, emotionalTone: b.emotionalTone, wordRatio: b.wordRatio, networkNovelTip: b.networkNovelTip ?? null })),
+            },
+          };
+        } catch (err) {
+          return { ok: false, renderer: definition.renderer, error: "beat-unavailable", summary: `节拍信息加载失败: ${err instanceof Error ? err.message : String(err)}` };
+        }
+      };
+    case "beat.write":
+      return async ({ input, definition }) => {
+        const action = String(input.action ?? "");
+        if (action === "select") {
+          // Inline: beat.set_template
+          const bookId = String(input.bookId);
+          const templateId = String(input.templateId);
+          try {
+            const { getBeatTemplate, listBeatTemplates } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            await ensureBeatsLoaded();
+            const template = getBeatTemplate(templateId) ?? listBeatTemplates().find((t) => t.id === templateId);
+            if (!template) {
+              const available = listBeatTemplates().map((t) => `${t.id}（${t.name}）`).join("、");
+              return { ok: false, renderer: definition.renderer, error: "invalid-template", summary: `模板 "${templateId}" 不存在。可用模板：${available}` };
+            }
+            if (options.loadBookConfig) {
+              const bookConfig = await options.loadBookConfig(bookId);
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const { writeFile } = await import("node:fs/promises");
+              const { join } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+              const bookJsonPath = join(root, "books", bookId, "book.json");
+              const updated = { ...bookConfig, beatTemplateId: templateId, updatedAt: new Date().toISOString() };
+              await writeFile(bookJsonPath, JSON.stringify(updated, null, 2), "utf-8");
+            } else {
+              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
+              const { readFile, writeFile } = await import("node:fs/promises");
+              const { join } = await import("node:path");
+              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
+              const bookJsonPath = join(root, "books", bookId, "book.json");
+              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
+              raw.beatTemplateId = templateId;
+              raw.updatedAt = new Date().toISOString();
+              await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
+            }
+            return { ok: true, renderer: definition.renderer, summary: `已将节拍模板设置为「${template.name}」（${template.beats.length} 个节拍）。`, data: { bookId, templateId, templateName: template.name, beatCount: template.beats.length } };
+          } catch (err) {
+            return { ok: false, renderer: definition.renderer, error: "beat-set-failed", summary: `设置节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
+          }
+        }
+        if (action === "create") {
+          // Inline: beat.create_custom
+          const bookId = input.bookId ? String(input.bookId) : undefined;
+          const name = String(input.name);
+          const description = String(input.description || "");
+          const beats = Array.isArray(input.beats) ? input.beats : [];
+          if (beats.length === 0) {
+            return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "beats 列表不能为空。" };
+          }
+          try {
+            const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+            const db = getStorageDatabase();
+            const repo = createUserTemplateRepository(db);
+            const id = `custom-beat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+            const normalizedBeats = beats.map((b: any, i: number) => ({
+              index: i + 1, name: String(b.name), emotionalTone: String(b.emotionalTone),
+              wordRatio: Number(b.wordRatio) || (1 / beats.length), purpose: String(b.purpose || ""),
+              networkNovelTip: b.networkNovelTip ? String(b.networkNovelTip) : undefined,
+            }));
+            const bundleJson = JSON.stringify({ type: "beat-template", name, description, beats: normalizedBeats });
+            repo.create({ id, bookId: bookId ?? null, name, genre: null, description, bundleJson });
+            const { registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+            registerBeatTemplate({ id, name, description, beats: normalizedBeats });
+            return { ok: true, renderer: definition.renderer, summary: `已创建自定义节拍模板「${name}」（${normalizedBeats.length} 个节拍，ID: ${id}）。使用 beat.write(action='select') 设置为当前书籍的节拍模板。`, data: { id, name, beatCount: normalizedBeats.length, bookId: bookId ?? null } };
+          } catch (err) {
+            return { ok: false, renderer: definition.renderer, error: "beat-create-failed", summary: `创建自定义节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
+          }
+        }
+        return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `beat.write 的 action 必须是 select/create，收到：${action}` };
       };
     case "presets.check_compliance":
       return async ({ input, definition }) => {
@@ -2095,394 +1956,6 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "check-failed", summary: `合规检查失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "beat.get_current":
-      return async ({ input, definition }) => {
-        const bookId = String(input.bookId);
-        try {
-          const { listBeatTemplates, getBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
-
-          // Try to get user's selected template from book config
-          let selectedTemplateId: string | undefined;
-          if (options.loadBookConfig) {
-            try {
-              const bookConfig = await options.loadBookConfig(bookId);
-              selectedTemplateId = bookConfig.beatTemplateId as string | undefined;
-            } catch { /* ignore */ }
-          }
-          if (!selectedTemplateId) {
-            // Direct file read fallback
-            try {
-              const { readFile } = await import("node:fs/promises");
-              const { join } = await import("node:path");
-              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-              const bookJsonPath = join(root, "books", bookId, "book.json");
-              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8")) as { beatTemplateId?: string };
-              selectedTemplateId = raw.beatTemplateId;
-            } catch { /* ignore */ }
-          }
-
-          await ensureBeatsLoaded();
-          const allTemplates = listBeatTemplates();
-          const activeTemplate = selectedTemplateId
-            ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId)
-            : undefined;
-
-          if (!activeTemplate) {
-            const availableList = allTemplates.map((t) => `${t.id}（${t.name}）`).join("、");
-            return { ok: true, renderer: definition.renderer, summary: `当前未选择节拍模板。可用模板：${availableList || "无"}`, data: { bookId, template: null, beats: [], available: allTemplates.map((t) => ({ id: t.id, name: t.name, beatCount: t.beats.length })) } };
-          }
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `当前节拍模板: ${activeTemplate.name}（${activeTemplate.beats.length} 个节拍）`,
-            data: {
-              bookId,
-              template: {
-                id: activeTemplate.id,
-                name: activeTemplate.name,
-                description: activeTemplate.description,
-                totalBeats: activeTemplate.beats.length,
-              },
-              beats: activeTemplate.beats.map((b, i) => ({
-                index: i,
-                name: b.name,
-                emotionalTone: b.emotionalTone,
-                wordRatio: b.wordRatio,
-                networkNovelTip: b.networkNovelTip ?? null,
-              })),
-            },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "beat-unavailable", summary: `节拍信息加载失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "beat.set_template":
-      return async ({ input, definition }) => {
-        const bookId = String(input.bookId);
-        const templateId = String(input.templateId);
-        try {
-          const { getBeatTemplate, listBeatTemplates } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          await ensureBeatsLoaded();
-
-          const template = getBeatTemplate(templateId) ?? listBeatTemplates().find((t) => t.id === templateId);
-          if (!template) {
-            const available = listBeatTemplates().map((t) => `${t.id}（${t.name}）`).join("、");
-            return { ok: false, renderer: definition.renderer, error: "invalid-template", summary: `模板 "${templateId}" 不存在。可用模板：${available}` };
-          }
-
-          // 写入 book.json
-          if (options.loadBookConfig) {
-            const bookConfig = await options.loadBookConfig(bookId);
-            const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-            const { writeFile } = await import("node:fs/promises");
-            const { join } = await import("node:path");
-            const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-            const bookJsonPath = join(root, "books", bookId, "book.json");
-            const updated = { ...bookConfig, beatTemplateId: templateId, updatedAt: new Date().toISOString() };
-            await writeFile(bookJsonPath, JSON.stringify(updated, null, 2), "utf-8");
-          } else {
-            const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-            const { readFile, writeFile } = await import("node:fs/promises");
-            const { join } = await import("node:path");
-            const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-            const bookJsonPath = join(root, "books", bookId, "book.json");
-            const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
-            raw.beatTemplateId = templateId;
-            raw.updatedAt = new Date().toISOString();
-            await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
-          }
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `已将节拍模板设置为「${template.name}」（${template.beats.length} 个节拍）。`,
-            data: { bookId, templateId, templateName: template.name, beatCount: template.beats.length },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "beat-set-failed", summary: `设置节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "presets.set_rules":
-      return async ({ input, definition }) => {
-        const bookId = String(input.bookId);
-        const inputIds = Array.isArray(input.enabledPresetIds) ? input.enabledPresetIds.map(String) : [];
-        const mode = String(input.mode || "set"); // set | add | remove
-        try {
-          // 验证预设 ID 是否有效
-          const { getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          await ensurePresetsLoaded();
-
-          // 读取当前 book.json
-          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-          const { readFile, writeFile } = await import("node:fs/promises");
-          const { join } = await import("node:path");
-          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-          const bookJsonPath = join(root, "books", bookId, "book.json");
-          const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
-          const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
-
-          // 根据 mode 计算最终列表
-          let finalIds: string[];
-          if (mode === "add") {
-            finalIds = [...new Set([...currentIds, ...inputIds])];
-          } else if (mode === "remove") {
-            const removeSet = new Set(inputIds);
-            finalIds = currentIds.filter(id => !removeSet.has(id));
-          } else {
-            // mode === "set" (default): 覆盖
-            finalIds = inputIds;
-          }
-
-          // 验证 ID 有效性
-          const validIds: string[] = [];
-          const invalidIds: string[] = [];
-          for (const id of finalIds) {
-            if (getPreset(id)) validIds.push(id);
-            else invalidIds.push(id);
-          }
-
-          raw.enabledPresetIds = validIds;
-          raw.updatedAt = new Date().toISOString();
-          await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
-
-          const modeLabel = mode === "add" ? "追加" : mode === "remove" ? "移除" : "设置";
-          const summary = validIds.length > 0
-            ? `已${modeLabel}预设规则，当前共 ${validIds.length} 条启用。${invalidIds.length > 0 ? `（${invalidIds.length} 个无效 ID 已忽略：${invalidIds.join("、")}）` : ""}`
-            : "已清空所有预设规则。";
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary,
-            data: { bookId, mode, enabledPresetIds: validIds, invalidIds },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "presets-set-failed", summary: `设置预设规则失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "presets.list_available":
-      return async ({ input, definition }) => {
-        try {
-          const { listPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          await ensurePresetsLoaded();
-
-          let allPresets = listPresets();
-          const category = input.category ? String(input.category) : undefined;
-          if (category) {
-            allPresets = allPresets.filter((p: any) => p.category === category);
-          }
-
-          // 标注已启用状态
-          let enabledIds: string[] = [];
-          const bookId = input.bookId ? String(input.bookId) : undefined;
-          if (bookId) {
-            try {
-              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-              const { readFile } = await import("node:fs/promises");
-              const { join } = await import("node:path");
-              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-              const raw = JSON.parse(await readFile(join(root, "books", bookId, "book.json"), "utf-8"));
-              enabledIds = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
-            } catch {}
-          }
-
-          const items = allPresets.map((p: any) => ({
-            id: p.id,
-            name: p.name,
-            category: p.category,
-            description: p.description ?? "",
-            enabled: enabledIds.includes(p.id),
-          }));
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `共 ${items.length} 个可用预设${category ? `（分类: ${category}）` : ""}，其中 ${items.filter((i: any) => i.enabled).length} 个已启用。`,
-            data: { presets: items, bookId },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "presets-list-failed", summary: `列出预设失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "presets.create_custom":
-      return async ({ input, definition }) => {
-        const bookId = input.bookId ? String(input.bookId) : undefined;
-        const name = String(input.name);
-        const category = String(input.category || "custom");
-        const promptInjection = String(input.promptInjection);
-        const description = input.description ? String(input.description) : undefined;
-        try {
-          const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-          const db = getStorageDatabase();
-          const repo = createUserTemplateRepository(db);
-          const id = `custom-preset-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          const bundleJson = JSON.stringify({
-            type: "preset",
-            category,
-            promptInjection,
-          });
-          const record = repo.create({ id, bookId: bookId ?? null, name, genre: null, description: description ?? null, bundleJson });
-
-          // 同时注册到内存 preset store 以便立即可用
-          const { registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          registerPreset({ id, name, category: category as any, promptInjection, description: description ?? "" });
-
-          // 自动启用：如果指定了 bookId，将新预设加入该书籍的启用列表
-          let autoEnabled = false;
-          if (bookId) {
-            try {
-              const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-              const { readFile, writeFile } = await import("node:fs/promises");
-              const { join } = await import("node:path");
-              const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-              const bookJsonPath = join(root, "books", bookId, "book.json");
-              const raw = JSON.parse(await readFile(bookJsonPath, "utf-8"));
-              const currentIds: string[] = Array.isArray(raw.enabledPresetIds) ? raw.enabledPresetIds : [];
-              if (!currentIds.includes(id)) {
-                raw.enabledPresetIds = [...currentIds, id];
-                raw.updatedAt = new Date().toISOString();
-                await writeFile(bookJsonPath, JSON.stringify(raw, null, 2), "utf-8");
-                autoEnabled = true;
-              }
-            } catch { /* auto-enable failure is non-fatal */ }
-          }
-
-          const enableNote = autoEnabled ? "已自动启用。" : bookId ? "自动启用失败，请手动调用 presets.set_rules(mode='add') 启用。" : "全局预设，需在书籍中手动启用。";
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `已创建自定义预设「${name}」（ID: ${id}）。${enableNote}`,
-            data: { id, name, category, bookId: bookId ?? null, autoEnabled },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "preset-create-failed", summary: `创建自定义预设失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "beat.create_custom":
-      return async ({ input, definition }) => {
-        const bookId = input.bookId ? String(input.bookId) : undefined;
-        const name = String(input.name);
-        const description = String(input.description || "");
-        const beats = Array.isArray(input.beats) ? input.beats : [];
-        if (beats.length === 0) {
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "beats 列表不能为空。" };
-        }
-        try {
-          const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-          const db = getStorageDatabase();
-          const repo = createUserTemplateRepository(db);
-          const id = `custom-beat-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-          const normalizedBeats = beats.map((b: any, i: number) => ({
-            index: i + 1,
-            name: String(b.name),
-            emotionalTone: String(b.emotionalTone),
-            wordRatio: Number(b.wordRatio) || (1 / beats.length),
-            purpose: String(b.purpose || ""),
-            networkNovelTip: b.networkNovelTip ? String(b.networkNovelTip) : undefined,
-          }));
-          const bundleJson = JSON.stringify({
-            type: "beat-template",
-            name,
-            description,
-            beats: normalizedBeats,
-          });
-          repo.create({ id, bookId: bookId ?? null, name, genre: null, description, bundleJson });
-
-          // 注册到内存 beat store 以便立即可用
-          const { registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          registerBeatTemplate({ id, name, description, beats: normalizedBeats });
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `已创建自定义节拍模板「${name}」（${normalizedBeats.length} 个节拍，ID: ${id}）。使用 beat.set_template 设置为当前书籍的节拍模板。`,
-            data: { id, name, beatCount: normalizedBeats.length, bookId: bookId ?? null },
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "beat-create-failed", summary: `创建自定义节拍模板失败: ${err instanceof Error ? err.message : String(err)}` };
-        }
-      };
-    case "pipeline.generate_chapter":
-      return async ({ input, definition, sessionConfig, onToolOutputStream }) => {
-        const bookId = String(input.bookId);
-        const chapterIntent = String(input.chapterIntent);
-        const userDirectives = input.userDirectives ? String(input.userDirectives) : undefined;
-        const wordCount = typeof input.wordCount === "number" ? input.wordCount : undefined;
-        const autoRevise = input.autoRevise !== false;
-
-        const { StateManager } = await import("@vivy1024/novelfork-core");
-        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-        const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-        const state = new StateManager(root);
-        const releaseLock = await state.acquireBookLock(bookId);
-
-        try {
-          // Resolve LLM client from the active session provider/model first.
-          const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
-          const { createLLMClient } = await import("@vivy1024/novelfork-core");
-          const { executePipelineGenerate } = await import("@vivy1024/novelfork-novel-plugin/handlers");
-
-          const providerStore = new ProviderRuntimeStore();
-          const providers = await providerStore.listProviders();
-          const sessionProvider = sessionConfig?.providerId
-            ? await providerStore.getProvider(sessionConfig.providerId)
-            : undefined;
-          const activeProvider = sessionProvider?.config?.apiKey
-            ? sessionProvider
-            : providers.find((p) => p.enabled !== false && p.config?.apiKey);
-          if (!activeProvider) {
-            return { ok: false, renderer: definition.renderer, error: "llm-config-missing", summary: "模型配置未完成，请先到管理中心配置 API Key。" };
-          }
-
-          const activeModel = activeProvider.models.find((model) => model.id === sessionConfig?.modelId && model.enabled !== false)
-            ?? activeProvider.models.find((model) => model.enabled !== false)
-            ?? activeProvider.models[0];
-          const llmConfig = {
-            provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
-            baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
-            apiKey: activeProvider.config?.apiKey ?? "",
-            model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
-            temperature: 0.7,
-            maxTokens: activeModel?.maxOutputTokens ?? 8192,
-            thinkingBudget: 0,
-            apiFormat: "chat" as const,
-            stream: true,
-          };
-          const client = createLLMClient(llmConfig);
-
-          const result = await executePipelineGenerate(
-            { bookId, chapterIntent, userDirectives, wordCount, autoRevise },
-            { root, client, model: llmConfig.model, onStream: onToolOutputStream, logger: undefined },
-          );
-
-          if (!result.ok) {
-            return { ok: false, renderer: definition.renderer, error: result.code, summary: result.error };
-          }
-
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过（" + result.auditResult.issues.length + " 个问题）"}${result.revised ? "，已自动修订" : ""}。`,
-            data: {
-              chapterNumber: result.chapterNumber,
-              title: result.title,
-              wordCount: result.wordCount,
-              auditPassed: result.auditResult.passed,
-              auditIssues: result.auditResult.issues,
-              auditSummary: result.auditResult.summary,
-              revised: result.revised,
-              jingweiDelta: result.jingweiDelta,
-              candidateId: result.candidateId,
-            },
-            artifact: result.artifact,
-          };
-        } catch (err) {
-          return { ok: false, renderer: definition.renderer, error: "pipeline-failed", summary: `写作管线执行失败: ${err instanceof Error ? err.message : String(err)}` };
-        } finally {
-          await releaseLock();
         }
       };
     default:
@@ -4632,24 +4105,6 @@ function applyPipelineCommand(cmd: string, lines: string[]): string[] {
   return lines;
 }
 
-async function resolveQuestionnaireService(options: SessionToolExecutorOptions): Promise<QuestionnaireToolService> {
-  if (options.questionnaireService) return options.questionnaireService;
-  const { createQuestionnaireToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
-  return createQuestionnaireToolService();
-}
-
-async function resolvePGIService(options: SessionToolExecutorOptions): Promise<PGIToolService> {
-  if (options.pgiService) return options.pgiService;
-  const { createPGIToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
-  return createPGIToolService();
-}
-
-async function resolveGuidedService(options: SessionToolExecutorOptions): Promise<GuidedGenerationToolService> {
-  if (options.guidedService) return options.guidedService;
-  const { createGuidedGenerationToolService } = await import("@vivy1024/novelfork-novel-plugin/handlers");
-  return createGuidedGenerationToolService();
-}
-
 async function resolveCandidateService(options: SessionToolExecutorOptions): Promise<CandidateToolService> {
   if (options.candidateService) return options.candidateService;
   throw new Error("candidate.create_chapter requires a configured CandidateToolService.");
@@ -4754,16 +4209,6 @@ function createConfirmationRequest(
 }
 
 function createConfirmationDiff(input: SessionToolExecutionInput, definition: SessionToolDefinition): unknown | undefined {
-  if (definition.name === "questionnaire.submit_response") {
-    return {
-      status: "mapping-preview",
-      bookId: input.input.bookId,
-      templateId: input.input.templateId,
-      ...(input.input.responseId ? { responseId: input.input.responseId } : {}),
-      answers: input.input.answers ?? {},
-    };
-  }
-
   if (definition.name === "narrative.propose_change") {
     return {
       status: "mutation-preview",

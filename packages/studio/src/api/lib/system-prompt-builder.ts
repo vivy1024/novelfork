@@ -36,7 +36,7 @@ import {
   TOOL_SHARE_FILE,
   TOOL_JINGWEI_READ,
   TOOL_JINGWEI_WRITE,
-  TOOL_PIPELINE_GENERATE_CHAPTER,
+  TOOL_PIPELINE_WRITE,
   TOOL_PIPELINE_REVISE,
   TOOL_PIPELINE_IMPORT,
   TOOL_COCKPIT_SNAPSHOT,
@@ -52,7 +52,6 @@ import {
   TOOL_PRESETS_WRITE,
   TOOL_BEAT_READ,
   TOOL_BEAT_WRITE,
-  TOOL_HEALTH_SUMMARY,
   TOOL_HOOKS_MANAGE,
   TOOL_RESOURCE_MANAGE,
   TOOL_OUTLINE_SUGGEST,
@@ -260,7 +259,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── ToolSearch（按需工具发现）──
   if (has(TOOL_TOOL_SEARCH)) {
     items.push(
-      `Not every tool is listed above. Less-common tools (presets.*, beat.*, style.import, rewrite.segment, pipeline.import_chapters, character.check_consistency, etc.) are discoverable via ${TOOL_TOOL_SEARCH}. Search by keyword, then call the returned tool DIRECTLY as a normal tool call using its name and inputSchema. Do NOT wrap it in ${TOOL_SKILL} — ${TOOL_SKILL} is only for named skills in available_skills, never for tool names like "presets.create_custom".`,
+      `Not every tool is listed above. Less-common tools (presets.*, beat.*, style.import, rewrite.segment, pipeline.import_chapters, character.check_consistency, etc.) are discoverable via ${TOOL_TOOL_SEARCH}. Search by keyword, then call the returned tool DIRECTLY as a normal tool call using its name and inputSchema. Do NOT wrap it in ${TOOL_SKILL} — ${TOOL_SKILL} is only for named skills in available_skills, never for tool names like "presets.write".`,
     );
   }
 
@@ -312,9 +311,9 @@ export function getUsingToolsSection(toolNames: string[]): string {
   }
 
   // ── 写作管线 ──
-  if (has(TOOL_PIPELINE_GENERATE_CHAPTER)) {
+  if (has(TOOL_PIPELINE_WRITE)) {
     items.push(
-      `To write a full chapter use ${TOOL_PIPELINE_GENERATE_CHAPTER} (full pipeline: plan→generate→audit→revise→save). Do NOT use ${TOOL_CANDIDATE_CREATE} as a substitute — it only saves existing text, doesn't generate.`,
+      `To write a full chapter use ${TOOL_PIPELINE_WRITE} (full pipeline: plan→generate→audit→revise→save). Do NOT use ${TOOL_CANDIDATE_CREATE} as a substitute — it only saves existing text, doesn't generate.`,
     );
   }
   if (has(TOOL_PIPELINE_REVISE)) {
@@ -331,7 +330,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── 场景蓝图 ──
   if (has(TOOL_SCENE_SPEC)) {
     items.push(
-      `To generate a structured writing blueprint use ${TOOL_SCENE_SPEC}. Required before ${TOOL_PIPELINE_GENERATE_CHAPTER}.`,
+      `To generate a structured writing blueprint use ${TOOL_SCENE_SPEC}. Required before ${TOOL_PIPELINE_WRITE}.`,
     );
   }
 
@@ -360,13 +359,6 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_BEAT_READ) || has(TOOL_BEAT_WRITE)) {
     items.push(
       `To view/change beat template use ${TOOL_BEAT_READ} / ${TOOL_BEAT_WRITE}(action="select"/"create").`,
-    );
-  }
-
-  // ── 健康度 ──
-  if (has(TOOL_HEALTH_SUMMARY)) {
-    items.push(
-      `To check book health metrics use ${TOOL_HEALTH_SUMMARY}.`,
     );
   }
 
