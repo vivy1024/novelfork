@@ -122,9 +122,20 @@ export function Composer({
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   const [aborting, setAborting] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [sendMode, setSendMode] = useState<"enter" | "ctrl-enter">("enter");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const registry = useMemo(() => slashCommandContext?.registry ?? createDefaultSlashCommandRegistry(), [slashCommandContext?.registry]);
+
+  // Fetch sendMode from user settings
+  useEffect(() => {
+    fetch("/api/settings/user")
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => {
+        if (data?.runtimeControls?.sendMode === "ctrl-enter") setSendMode("ctrl-enter");
+      })
+      .catch(() => {});
+  }, []);
 
   // Reset aborting state when turn ends
   useEffect(() => {
@@ -219,9 +230,16 @@ export function Composer({
   }, [value, attachedFiles, onSend, onSlashCommandResult, slashCommandContext, registry]);
 
   function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      void handleSend();
+    if (sendMode === "ctrl-enter") {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void handleSend();
+      }
+    } else {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        void handleSend();
+      }
     }
   }
 
@@ -335,7 +353,7 @@ export function Composer({
           ref={textareaRef}
           className="min-h-[40px] max-h-[400px] flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
           aria-label="对话输入框"
-          placeholder="发送消息... (Enter 发送, Shift+Enter 换行)"
+          placeholder={sendMode === "ctrl-enter" ? "发送消息... (Ctrl+Enter 发送)" : "发送消息... (Enter 发送, Shift+Enter 换行)"}
           value={value}
           onChange={(e) => setValue(e.currentTarget.value)}
           onKeyDown={handleKeyDown}

@@ -142,7 +142,7 @@ function sanitizeHooks(hooks: unknown): Hook[] {
 function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSettings> | null): RuntimeControlSettings {
   const defaults = DEFAULT_USER_CONFIG.runtimeControls;
   const rawPermissionMode = (runtimeControls as { defaultPermissionMode?: unknown } | undefined)?.defaultPermissionMode;
-  return {
+  const result: RuntimeControlSettings = {
     defaultPermissionMode: isSessionPermissionMode(rawPermissionMode)
       ? rawPermissionMode
       : normalizeSessionPermissionMode(rawPermissionMode, defaults.defaultPermissionMode),
@@ -210,6 +210,13 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
     tokenConsumptionWarnRatio: clampNumber(runtimeControls?.tokenConsumptionWarnRatio, defaults.tokenConsumptionWarnRatio, 0, 100),
     maxConsecutiveFailures: clampNumber(runtimeControls?.maxConsecutiveFailures, defaults.maxConsecutiveFailures, 1, 20),
   };
+
+  // 便捷字段同步到底层（确保两个面板入口写入一致）
+  if (typeof runtimeControls?.dumpApiRequests === "boolean") {
+    result.runtimeDebug.dumpEnabled = runtimeControls.dumpApiRequests;
+  }
+
+  return result;
 }
 
 function normalizeModelReference(value: unknown): string {
