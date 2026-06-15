@@ -95,13 +95,14 @@ export interface ComposerProps {
   onContinue?: () => void;
   onRetry?: () => void;
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
-  onAttach?: (files: FileList) => void;
   slashCommandContext?: SlashCommandExecutionContext;
   isRunning?: boolean;
   isInterrupted?: boolean;
   lastTurnFailed?: boolean;
   disabledReason?: string;
   settingsHref?: string;
+  /** 发送模式：enter 或 ctrl-enter（由父组件从 user settings 获取） */
+  sendMode?: "enter" | "ctrl-enter";
 }
 
 export function Composer({
@@ -110,32 +111,21 @@ export function Composer({
   onContinue,
   onRetry,
   onSlashCommandResult,
-  onAttach,
   slashCommandContext,
   isRunning = false,
   isInterrupted = false,
   lastTurnFailed = false,
   disabledReason,
   settingsHref,
+  sendMode = "enter",
 }: ComposerProps) {
   const [value, setValue] = useState("");
   const [commandStatus, setCommandStatus] = useState<string | null>(null);
   const [aborting, setAborting] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
-  const [sendMode, setSendMode] = useState<"enter" | "ctrl-enter">("enter");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const registry = useMemo(() => slashCommandContext?.registry ?? createDefaultSlashCommandRegistry(), [slashCommandContext?.registry]);
-
-  // Fetch sendMode from user settings
-  useEffect(() => {
-    fetch("/api/settings/user")
-      .then((r) => r.ok ? r.json() : null)
-      .then((data) => {
-        if (data?.runtimeControls?.sendMode === "ctrl-enter") setSendMode("ctrl-enter");
-      })
-      .catch(() => {});
-  }, []);
 
   // Reset aborting state when turn ends
   useEffect(() => {

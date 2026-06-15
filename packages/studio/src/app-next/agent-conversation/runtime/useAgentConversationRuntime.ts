@@ -103,10 +103,12 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
   const intentionalCloseRef = useRef(false);
   const lastSeqRef = useRef(0);
 
-  // Keep lastSeqRef in sync with state for reconnection sync checks
+  // Keep refs in sync with state for stable callbacks (avoid re-creating on every state change)
+  const stateRef = useRef(state);
   useEffect(() => {
+    stateRef.current = state;
     lastSeqRef.current = state.lastSeq;
-  }, [state.lastSeq]);
+  }, [state]);
 
   const applyEnvelope = useCallback((envelope: SessionServerEnvelope) => dispatch(envelope), []);
   const flushPendingClientEnvelopes = useCallback((socket: AgentConversationRuntimeSocket | null = socketRef.current) => {
@@ -243,18 +245,18 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
         messageId: createMessageId(),
         content,
         sessionMode,
-        ack: getResumeFromSeq(state),
+        ack: getResumeFromSeq(stateRef.current),
         canvasContext,
         attachments,
       }));
     },
-    [canvasContext, createMessageId, sendClientEnvelope, sessionId, sessionMode, state],
+    [canvasContext, createMessageId, sendClientEnvelope, sessionId, sessionMode],
   );
 
-  const ack = useCallback((ackSeq = getResumeFromSeq(state)) => {
+  const ack = useCallback((ackSeq = getResumeFromSeq(stateRef.current)) => {
     if (!sessionId) return null;
     return sendClientEnvelope(buildAckEnvelope({ sessionId, ack: ackSeq }));
-  }, [sendClientEnvelope, sessionId, state]);
+  }, [sendClientEnvelope, sessionId]);
 
   const abort = useCallback(() => {
     if (!sessionId) return null;

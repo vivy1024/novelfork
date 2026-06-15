@@ -3,7 +3,7 @@
  */
 
 import { Hono } from "hono";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeGoldenChapters } from "../lib/golden-chapters-analyzer.js";
 import type { RouterContext } from "./context.js";
@@ -28,10 +28,19 @@ export function createGoldenChaptersRouter(ctx: RouterContext): Hono {
       const bookDir = state.bookDir(bookId);
       const chapters: Array<{ number: number; content: string }> = [];
 
+      const chaptersDir = join(bookDir, "chapters");
+      let chapterFiles: string[] = [];
+      try { chapterFiles = await readdir(chaptersDir); } catch { /* dir missing */ }
+
       for (let i = 1; i <= 3; i++) {
         try {
-          const chapterPath = join(bookDir, "chapters", `chapter_${i}.md`);
-          const content = await readFile(chapterPath, "utf-8");
+          const padded = String(i).padStart(4, "0");
+          const match = chapterFiles.find(f => f.startsWith(padded) && f.endsWith(".md"));
+          if (!match) {
+            console.warn(`Chapter ${i} not found for book ${bookId}`);
+            continue;
+          }
+          const content = await readFile(join(chaptersDir, match), "utf-8");
           chapters.push({ number: i, content });
         } catch (err) {
           // 章节不存在，跳过
@@ -80,8 +89,14 @@ export function createGoldenChaptersRouter(ctx: RouterContext): Hono {
       const language = (bookConfig.language || "zh") as "zh" | "en";
 
       const bookDir = state.bookDir(bookId);
-      const chapterPath = join(bookDir, "chapters", `chapter_${chapterNum}.md`);
-      const content = await readFile(chapterPath, "utf-8");
+      const chaptersDir = join(bookDir, "chapters");
+      const chapterFiles = await readdir(chaptersDir);
+      const padded = String(chapterNum).padStart(4, "0");
+      const matchFile = chapterFiles.find(f => f.startsWith(padded) && f.endsWith(".md"));
+      if (!matchFile) {
+        return c.json({ error: `章节 ${chapterNum} 未找到` }, 404);
+      }
+      const content = await readFile(join(chaptersDir, matchFile), "utf-8");
 
       const result = analyzeGoldenChapters([{ number: chapterNum, content }], language);
 

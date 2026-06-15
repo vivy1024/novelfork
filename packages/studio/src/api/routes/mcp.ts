@@ -386,9 +386,13 @@ export async function callMcpToolViaManaged(
     return { content: `Invalid MCP tool name format: ${fullToolName}`, isError: true };
   }
 
+  const serverSlug = withoutPrefix.slice(0, lastSep);
   const toolName = withoutPrefix.slice(lastSep + 2);
 
+  // First: try to find the exact server by slug match
   for (const [, managed] of managedServers) {
+    const slug = (managed.entry.name ?? managed.entry.id).replace(/[^a-zA-Z0-9]/g, "_");
+    if (slug !== serverSlug) continue;
     const hasTool = [...managed.client.tools].some((t) => t.name === toolName);
     if (hasTool) {
       try {
@@ -402,7 +406,8 @@ export async function callMcpToolViaManaged(
         return { content: `MCP tool error: ${error instanceof Error ? error.message : String(error)}`, isError: true };
       }
     }
+    return { content: `MCP server "${managed.entry.name}" does not have tool: ${toolName}`, isError: true };
   }
 
-  return { content: `No MCP server has tool: ${toolName}`, isError: true };
+  return { content: `No MCP server matches slug "${serverSlug}" for tool: ${toolName}`, isError: true };
 }

@@ -93,7 +93,6 @@ import {
   createNarrativeLineRouter,
   sessionRouter,
   createSearchRouter,
-  createMonitorRouter,
   createPresetsRouter,
   createComplianceRouter,
   createWritingToolsRouter,
@@ -108,7 +107,6 @@ import {
   createShareRouter,
   createUploadRouter,
   setupAdminWebSocket,
-  setupMonitorWebSocket,
   createStorageDiagnosticsRouter,
   createLearningRouter,
   createFileChangesRouter,
@@ -394,7 +392,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Proxy management — per-provider HTTP proxy for accessing overseas APIs
     app.route("/api/proxy", createProxyRouter());
 
-    app.route("/api/git", createGitRouter());
+    app.route("/api/git", createGitRouter(root));
 
     // Agent configuration
     app.route("/api/agent/config", createAgentConfigRouter());
@@ -622,9 +620,6 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // File upload — attachment uploads
     app.route("/api/upload", createUploadRouter());
-
-    // Monitor visualization
-    app.route("", createMonitorRouter(ctx));
   } else {
     // Relay mode — snapshot-based AI endpoints only
     app.route("", createAIRelayRouter(ctx));
@@ -1047,7 +1042,6 @@ export async function startStudioServer(
     console.log(
       `[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat`,
     );
-    // setupMonitorWebSocket(startedServer, ctx);
   }
 
   // --- 启动时恢复被中断的会话（非阻塞） ---

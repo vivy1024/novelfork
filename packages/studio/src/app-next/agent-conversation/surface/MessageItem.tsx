@@ -62,7 +62,6 @@ const MESSAGE_CONTEXT_ACTIONS: MessageContextAction[] = [
 
 export interface MessageItemProps {
   message: ConversationSurfaceMessage;
-  onOpenArtifact?: unknown;
   onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
   codeCollapsed?: boolean;
   /** 默认展开推理/思考块 */

@@ -1,6 +1,6 @@
 /**
- * 工作区管理路由
- * 提供工作区设置读写、worktree 列表、合并、删除
+ * 工作区管理兼容路由
+ * 保持 /api/workspace/* 旧 URL 不断，内部委托到 git.ts 统一路由的实现。
  */
 
 import { Hono } from "hono";
@@ -10,7 +10,6 @@ import {
   listWorktrees,
   removeWorktree,
   mergeBranch,
-  getCurrentBranch,
   getWorktreeStatus,
   isPathInsideRoot,
   isValidBranchName,
@@ -101,7 +100,6 @@ export function createWorkspaceManagementRouter(root: string): Hono {
     }
 
     try {
-      // 找到对应的 worktree
       const worktrees = await listWorktrees(root);
       const worktree = worktrees.find((wt) => {
         const wtPath = toGitPath(wt.path);
@@ -112,13 +110,11 @@ export function createWorkspaceManagementRouter(root: string): Hono {
         throw new ApiError(404, "WORKTREE_NOT_FOUND", `Worktree not found: ${name}`);
       }
 
-      // 获取 worktree 的分支名
       const branch = worktree.branch.replace(/^refs\/heads\//, "");
       if (!isValidBranchName(branch)) {
         throw new ApiError(400, "INVALID_BRANCH", `Invalid branch name: ${branch}`);
       }
 
-      // 在主工作区执行合并
       const result = await mergeBranch(root, branch, true);
 
       return c.json({
@@ -145,7 +141,6 @@ export function createWorkspaceManagementRouter(root: string): Hono {
     }
 
     try {
-      // 找到对应的 worktree
       const worktrees = await listWorktrees(root);
       const worktree = worktrees.find((wt) => {
         const wtPath = toGitPath(wt.path);
@@ -156,12 +151,10 @@ export function createWorkspaceManagementRouter(root: string): Hono {
         throw new ApiError(404, "WORKTREE_NOT_FOUND", `Worktree not found: ${name}`);
       }
 
-      // 不允许删除主 worktree
       if (toGitPath(worktree.path) === toGitPath(root)) {
         throw new ApiError(400, "CANNOT_DELETE_MAIN", "Cannot delete the main worktree");
       }
 
-      // 检查分支是否已合并到当前分支
       const branch = worktree.branch.replace(/^refs\/heads\//, "");
       let isMerged = false;
       try {
@@ -185,7 +178,6 @@ export function createWorkspaceManagementRouter(root: string): Hono {
 
       await removeWorktree(root, worktree.path, force);
 
-      // 删除对应的本地分支（如果已合并）
       if (isMerged && isValidBranchName(branch)) {
         try {
           await execGit(["branch", "-d", branch], root);

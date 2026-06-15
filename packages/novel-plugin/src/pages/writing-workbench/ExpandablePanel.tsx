@@ -15,8 +15,9 @@ const DailyProgressCard = lazy(() => import("./DailyProgressCard").then(m => ({ 
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
+const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
 
-export type PanelType = "quality" | "alert" | "health" | "progress" | "arcs" | "drift" | "compliance" | null;
+export type PanelType = "quality" | "alert" | "health" | "progress" | "arcs" | "drift" | "compliance" | "foreshadowing" | null;
 
 export interface ExpandablePanelProps {
   activePanel: NonNullable<PanelType>;
@@ -37,6 +38,7 @@ const PANEL_TITLES: Record<NonNullable<PanelType>, string> = {
   arcs: "📐 角色弧线",
   drift: "🎨 文风漂移",
   compliance: "✅ 平台合规",
+  foreshadowing: "🎣 伏笔看板",
 };
 
 const MIN_HEIGHT = 150;
@@ -145,6 +147,8 @@ function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId
       return <Suspense fallback={<PanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "compliance":
       return <Suspense fallback={<PanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "foreshadowing":
+      return <Suspense fallback={<PanelLoading />}><ForeshadowingBoard bookId={bookId} /></Suspense>;
   }
 }
 

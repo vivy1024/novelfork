@@ -5,7 +5,7 @@
  * Tab 切换，可收起/展开。
  */
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Activity, Droplets, Play } from "lucide-react";
+import { ChevronUp, ChevronDown, Activity, Droplets, Play, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -21,6 +21,24 @@ export interface ChapterToolbarProps {
 export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<ToolbarTab>("health");
+  const [detecting, setDetecting] = useState(false);
+  const [detectResult, setDetectResult] = useState<{ score?: number; details?: string } | null>(null);
+
+  const handleRunDetect = async () => {
+    if (!chapterNumber) return;
+    setDetecting(true);
+    setDetectResult(null);
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/detect/${chapterNumber}`, { method: "POST" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setDetectResult(data);
+    } catch (err) {
+      setDetectResult({ details: err instanceof Error ? err.message : "检测失败" });
+    } finally {
+      setDetecting(false);
+    }
+  };
 
   return (
     <div className="shrink-0 border-t border-border bg-muted/20">
@@ -72,10 +90,22 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
               <Droplets className="size-6 opacity-30 mb-2" />
               <p className="text-xs">AI 味检测</p>
               <p className="text-[10px] mt-1 opacity-60">保存章节后可运行检测</p>
-              <Button variant="outline" size="xs" className="mt-3 gap-1">
-                <Play className="size-3" />
-                运行检测
+              <Button
+                variant="outline"
+                size="xs"
+                className="mt-3 gap-1"
+                disabled={detecting || !chapterNumber}
+                onClick={() => void handleRunDetect()}
+              >
+                {detecting ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
+                {detecting ? "检测中..." : "运行检测"}
               </Button>
+              {detectResult && (
+                <div className="mt-3 text-xs text-center">
+                  {detectResult.score != null && <p>AI 味分数：<span className="font-semibold">{detectResult.score}</span></p>}
+                  {detectResult.details && <p className="mt-1 opacity-70">{detectResult.details}</p>}
+                </div>
+              )}
             </div>
           )}
         </div>

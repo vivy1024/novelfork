@@ -46,4 +46,13 @@ export const builtinTonePresets = [
     compatibleGenres: ["urban", "romance", "xianxia"],
     conflictGroup: "tone",
   },
+  {
+    id: "passionate-heroic",
+    name: "热血燃向",
+    category: "tone",
+    description: "节奏明快、情绪高昂、以行动和突破推动高潮的热血表达。",
+    promptInjection: "保持热血燃向的语言气质：节奏紧凑有力，用行动场面和突破时刻推动情绪高点，对白干脆有信念感，避免空喊口号和无代价的热血。",
+    compatibleGenres: ["xianxia", "urban", "scifi", "sports", "game"],
+    conflictGroup: "tone",
+  },
 ] as const satisfies ReadonlyArray<Preset>;

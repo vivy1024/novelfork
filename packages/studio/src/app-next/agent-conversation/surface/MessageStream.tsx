@@ -1,14 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import BidirectionalList, { type BidirectionalListRef } from "broad-infinite-list/react";
 import { ArrowDown } from "lucide-react";
-import type { ToolResultArtifact } from "../../tool-results";
 import { MessageItem, type ConversationSurfaceMessage, type MessageContextAction } from "./MessageItem";
 import { useMessageSelection } from "./useMessageSelection";
 import { SelectionActionBar } from "./SelectionActionBar";
 
 export interface MessageStreamProps {
   messages: readonly ConversationSurfaceMessage[];
-  onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   onContextAction?: (messageId: string, action: MessageContextAction["id"]) => void;
   /** 是否有更早的消息可加载 */
   hasPrevious?: boolean;
@@ -32,7 +30,7 @@ function isNearBottom(ref: BidirectionalListRef<ConversationSurfaceMessage> | nu
   }
 }
 
-export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false, expandReasoning = false, advancedAnimations = true }: MessageStreamProps) {
+export function MessageStream({ messages, onContextAction, hasPrevious = false, onLoadPrevious, codeCollapsed = false, expandReasoning = false, advancedAnimations = true }: MessageStreamProps) {
   const listRef = useRef<BidirectionalListRef<ConversationSurfaceMessage>>(null);
   const prevLengthRef = useRef(messages.length);
   /** 用户是否手动向上滚动（打断了自动下滑） */
@@ -44,6 +42,7 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
   const { selectedIds, isSelected, selectionCount, toggle, clear } = useMessageSelection(messageIds);
 
   // 监听滚动事件，检测用户是否手动向上滚动
+  // 使用空依赖数组避免 messages.length 变化时频繁重挂 listener
   useEffect(() => {
     const scrollEl = listRef.current?.scrollViewRef?.current;
     if (!scrollEl) return;
@@ -60,7 +59,7 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
 
     scrollEl.addEventListener("scroll", handleScroll, { passive: true });
     return () => scrollEl.removeEventListener("scroll", handleScroll);
-  }, [messages.length]); // 重新绑定当消息列表变化时
+  }, []);
 
   /** 程序化滚动到底部（不触发 userScrolledUp） */
   function scrollToBottomProgrammatic(behavior: ScrollBehavior = "instant") {
@@ -155,7 +154,6 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
     (message: ConversationSurfaceMessage) => (
       <MessageItem
         message={message}
-        onOpenArtifact={onOpenArtifact}
         onContextAction={onContextAction}
         codeCollapsed={codeCollapsed}
         expandReasoning={expandReasoning}
@@ -164,7 +162,7 @@ export function MessageStream({ messages, onOpenArtifact, onContextAction, hasPr
         onSelect={handleSelect}
       />
     ),
-    [onOpenArtifact, onContextAction, codeCollapsed, expandReasoning, advancedAnimations, isSelected, handleSelect],
+    [onContextAction, codeCollapsed, expandReasoning, advancedAnimations, isSelected, handleSelect],
   );
 
   const itemKey = useCallback((message: ConversationSurfaceMessage) => message.id, []);

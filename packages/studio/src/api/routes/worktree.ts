@@ -1,21 +1,26 @@
 /**
- * Worktree 管理路由
- * 提供 worktree 列表、创建、删除、状态查询
+ * Worktree 兼容路由
+ * 保持 /api/worktree/* 旧 URL 不断，内部委托到 git.ts 统一路由的实现。
  */
 
 import { Hono } from "hono";
-import * as fs from "node:fs/promises";
 
 import { ApiError } from "../errors.js";
-import { listWorktrees, createWorktree, removeWorktree, getWorktreeStatus, isPathInsideRoot } from "../lib/git-utils.js";
+import {
+  listWorktrees,
+  createWorktree,
+  removeWorktree,
+  getWorktreeStatus,
+  getFileDiff,
+  isPathInsideRoot,
+  mergeBranch,
+  forkBranch,
+} from "../lib/git-utils.js";
 
 export function createWorktreeRouter(root: string): Hono {
   const app = new Hono();
 
-  /**
-   * GET /list
-   * 列出所有 worktrees 及其状态
-   */
+  // GET /list → 对应统一路由 GET /worktrees
   app.get("/list", async (c) => {
     try {
       const worktrees = await listWorktrees(root);
@@ -49,11 +54,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * POST /create
-   * 创建新 worktree
-   * Body: { name: string, branch?: string }
-   */
+  // POST /create → 对应统一路由 POST /worktrees
   app.post("/create", async (c) => {
     try {
       const body = await c.req.json<{ name?: string; branch?: string }>();
@@ -70,11 +71,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * DELETE /remove
-   * 删除 worktree
-   * Body: { path: string, force?: boolean }
-   */
+  // DELETE /remove
   app.delete("/remove", async (c) => {
     try {
       const body = await c.req.json<{ path?: string; force?: boolean }>();
@@ -83,6 +80,7 @@ export function createWorktreeRouter(root: string): Hono {
         throw new ApiError(400, "PATH_REQUIRED", "Worktree path is required");
       }
 
+      const fs = await import("node:fs/promises");
       try {
         await fs.access(body.path);
       } catch {
@@ -97,10 +95,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * GET /status?path=<worktree-path>
-   * 获取指定 worktree 的详细状态
-   */
+  // GET /status?path=<worktree-path>
   app.get("/status", async (c) => {
     try {
       const worktreePath = c.req.query("path");
@@ -117,10 +112,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * GET /diff?path=<worktree-path>&file=<file-path>
-   * 获取指定文件的 diff
-   */
+  // GET /diff?path=<worktree-path>&file=<file-path>
   app.get("/diff", async (c) => {
     try {
       const worktreePath = c.req.query("path");
@@ -134,9 +126,7 @@ export function createWorktreeRouter(root: string): Hono {
         throw new ApiError(400, "FILE_REQUIRED", "File path is required");
       }
 
-      const { getFileDiff } = await import("../lib/git-utils.js");
       const diff = await getFileDiff(worktreePath, filePath);
-
       return c.json({ diff });
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -144,11 +134,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * POST /merge
-   * 合并分支到当前分支
-   * Body: { path: string, sourceBranch: string, noFf?: boolean }
-   */
+  // POST /merge
   app.post("/merge", async (c) => {
     try {
       const body = await c.req.json<{ path?: string; sourceBranch?: string; noFf?: boolean }>();
@@ -161,9 +147,7 @@ export function createWorktreeRouter(root: string): Hono {
         throw new ApiError(400, "SOURCE_BRANCH_REQUIRED", "Source branch is required");
       }
 
-      const { mergeBranch } = await import("../lib/git-utils.js");
       const result = await mergeBranch(body.path, body.sourceBranch.trim(), body.noFf ?? true);
-
       return c.json({ ok: result.success, message: result.message });
     } catch (error) {
       if (error instanceof ApiError) throw error;
@@ -171,11 +155,7 @@ export function createWorktreeRouter(root: string): Hono {
     }
   });
 
-  /**
-   * POST /fork
-   * 从当前分支创建新分支（Fork）
-   * Body: { path: string, newBranch: string }
-   */
+  // POST /fork
   app.post("/fork", async (c) => {
     try {
       const body = await c.req.json<{ path?: string; newBranch?: string }>();
@@ -188,9 +168,7 @@ export function createWorktreeRouter(root: string): Hono {
         throw new ApiError(400, "NEW_BRANCH_REQUIRED", "New branch name is required");
       }
 
-      const { forkBranch } = await import("../lib/git-utils.js");
       const branchName = await forkBranch(body.path, body.newBranch.trim());
-
       return c.json({ ok: true, branch: branchName });
     } catch (error) {
       if (error instanceof ApiError) throw error;

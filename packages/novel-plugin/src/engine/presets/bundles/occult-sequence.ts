@@ -10,7 +10,7 @@ export const occultSequenceBundle: PresetBundle = {
   tags: ["诡秘", "序列", "克苏鲁", "悬疑"],
   genreIds: ["occult"],
   toneId: "tragic-solitude",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "supernatural-occult",
   logicRiskIds: ["technology-boundary", "information-flow", "character-motivation", "satisfaction-cost"],
   difficulty: "hard",
   prerequisites: ["作者需要明确序列/途径体系、晋升代价和世界观的恐怖层级。"],
