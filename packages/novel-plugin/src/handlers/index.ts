@@ -41,20 +41,6 @@ export type {
   CandidateToolServiceOptions,
 } from "./candidate-tool-service.js";
 
-export { createPGIToolService } from "./pgi-tool-service.js";
-export type { PGIToolService, PGIToolServiceOptions } from "./pgi-tool-service.js";
-
-export { createGuidedGenerationToolService } from "./guided-generation-tool-service.js";
-export type { GuidedGenerationToolService, GuidedGenerationToolServiceOptions } from "./guided-generation-tool-service.js";
-
-export { createQuestionnaireToolService } from "./questionnaire-tool-service.js";
-export type {
-  QuestionnaireSuggestionProvider,
-  QuestionnaireSuggestionProviderInput,
-  QuestionnaireToolService,
-  QuestionnaireToolServiceOptions,
-} from "./questionnaire-tool-service.js";
-
 export { createNarrativeLineService, NarrativeLineService } from "./narrative-line-service.js";
 export type {
   NarrativeLineApplyResult,
@@ -72,17 +58,6 @@ export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS }
 
 export { executeWritingModeTool } from "./writing-mode-tool.js";
 export type { WritingMode, WritingModeInput, WritingModeResult } from "./writing-mode-tool.js";
-
-export { executePipelineGenerate } from "./pipeline-generate-service.js";
-export type {
-  PipelineGenerateInput,
-  PipelineGenerateOutput,
-  PipelineGenerateError,
-  PipelineGenerateResult,
-  PipelineGenerateOptions,
-  JingweiDelta,
-  JingweiDeltaEntry,
-} from "./pipeline-generate-service.js";
 
 export { executePipelineWrite } from "./pipeline-write-service.js";
 export type {

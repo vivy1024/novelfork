@@ -145,7 +145,7 @@ function acceptResource(
   });
   if (!updated) throw new Error(`Writing resource not found: ${resource.id}`);
 
-  // Auto-apply jingwei delta if present (from pipeline.generate_chapter)
+  // Auto-apply jingwei delta if present (from pipeline.write)
   const jingweiDelta = (resource.metadata as Record<string, unknown> | undefined)?.jingweiDelta;
   if (jingweiDelta && typeof jingweiDelta === "object") {
     void applyJingweiDeltaOnAccept(resource.bookId, jingweiDelta as JingweiDeltaForAccept).catch(() => {

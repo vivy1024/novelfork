@@ -36,7 +36,7 @@ export interface ArtifactPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.upsert_entry", "jingwei_upsert_entry", "candidate.create_chapter", "candidate_create_chapter"]);
+const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.write", "jingwei_write", "jingwei.upsert_entry", "jingwei_upsert_entry", "candidate.create_chapter", "candidate_create_chapter"]);
 
 /** 从部分 JSON 字符串中尽力解析 file_path 和 content */
 function parsePartialWriteInput(partialJson: string, toolName: string): { filePath: string; content: string } | null {

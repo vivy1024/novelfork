@@ -541,54 +541,10 @@ const BUILTIN_AGENT_PRESETS: Record<string, { enable: string[]; disable: string[
 };
 
 const UNAVAILABLE_SERVICE_TOOLS = new Set([
-  "cockpit.get_snapshot",
-  "cockpit.list_recent_candidates",
   "narrative.propose_change",
-  "health.read_summary",
 ]);
 
-/**
- * v1 工具已被 v2 替代，默认不暴露给模型。
- * 用户可通过 showDeprecated=true 或设置中"显示全部工具"恢复。
- */
-const DEPRECATED_V1_TOOLS = new Set([
-  // 被 jingwei.read(scope=brief/category/search) 替代
-  "jingwei.read_brief",
-  "jingwei.read_category",
-  "jingwei.search",
-  "jingwei.read_context",
-  // 被 jingwei.write 替代
-  "jingwei.upsert_entry",
-  // 被 pgi.ask 替代
-  "pgi.generate_questions",
-  "pgi.record_answers",
-  "pgi.format_answers_for_prompt",
-  // 被 pipeline.write 替代
-  "pipeline.generate_chapter",
-  // 被 cockpit.snapshot 替代（已在 UNAVAILABLE 中，双重保险）
-  "cockpit.get_snapshot",
-  "cockpit.list_recent_candidates",
-  // 写作时不需要的配置工具
-  "questionnaire.list_templates",
-  "questionnaire.start",
-  "questionnaire.suggest_answer",
-  "questionnaire.submit_response",
-  // 被 pgi.ask + scene.spec 流程替代的引导式生成
-  "guided.enter",
-  "guided.answer_question",
-  "guided.exit",
-  // 被 cockpit.snapshot 包含的健康度
-  "health.read_summary",
-  // 被 presets.read/write 合并替代（v2）
-  "presets.get_rules",
-  "presets.list_available",
-  "presets.set_rules",
-  "presets.create_custom",
-  // 被 beat.read/write 合并替代（v2）
-  "beat.get_current",
-  "beat.set_template",
-  "beat.create_custom",
-]);
+
 
 /**
  * 网文核心工具白名单（高频）。
@@ -618,11 +574,6 @@ export function getEnabledSessionTools(permissionMode: SessionPermissionMode, ag
     // Exposing them causes the model to repeatedly call tools that can only return configuration errors.
     .filter((tool) => !UNAVAILABLE_SERVICE_TOOLS.has(tool.name))
     .map(cloneDefinition);
-
-  // v2 工具可见性分层：默认隐藏被 v2 替代的旧工具
-  if (!options?.showDeprecated) {
-    tools = tools.filter((tool) => !DEPRECATED_V1_TOOLS.has(tool.name));
-  }
 
   // 按 projectType 过滤 scope（向后兼容：不传或 "novel" 时返回所有工具）
   const projectType = options?.projectType ?? options?.sessionConfig?.projectType;

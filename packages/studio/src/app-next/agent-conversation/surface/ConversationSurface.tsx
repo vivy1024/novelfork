@@ -389,7 +389,7 @@ export function ConversationSurface({
     prevMsgLenForFiles.current = messages.length;
     const WRITE_TOOLS = new Set([
       "Write", "Edit", "candidate.create_chapter",
-      "questionnaire.submit_response", "narrative.propose_change",
+      "narrative.propose_change",
     ]);
     // Check recent messages for completed write tool calls
     const recentMsgs = messages.slice(-3);
