@@ -3,13 +3,20 @@
  *
  * 从底部向上展开，支持关闭/最大化/拖拽调整高度。面板互斥。
  */
-import { useRef, useCallback, useEffect } from "react";
-import { X, Maximize2, Minimize2 } from "lucide-react";
+import { useRef, useCallback, useEffect, lazy, Suspense } from "react";
+import { X, Maximize2, Minimize2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QualityPanel } from "./panels/QualityPanel";
 import { AlertPanel } from "./panels/AlertPanel";
 
-export type PanelType = "quality" | "alert" | null;
+// 延迟加载非核心面板（避免首屏 bundle 过大）
+const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
+const DailyProgressCard = lazy(() => import("./DailyProgressCard").then(m => ({ default: m.DailyProgressCard })));
+const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
+const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
+const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
+
+export type PanelType = "quality" | "alert" | "health" | "progress" | "arcs" | "drift" | "compliance" | null;
 
 export interface ExpandablePanelProps {
   activePanel: NonNullable<PanelType>;
@@ -25,6 +32,11 @@ export interface ExpandablePanelProps {
 const PANEL_TITLES: Record<NonNullable<PanelType>, string> = {
   quality: "📊 质量监控",
   alert: "⚠ 警告",
+  health: "💚 全书健康",
+  progress: "📈 每日进度",
+  arcs: "📐 角色弧线",
+  drift: "🎨 文风漂移",
+  compliance: "✅ 平台合规",
 };
 
 const MIN_HEIGHT = 150;
@@ -123,5 +135,19 @@ function PanelContent({ panel, bookId }: { panel: NonNullable<PanelType>; bookId
       return <QualityPanel bookId={bookId} />;
     case "alert":
       return <AlertPanel bookId={bookId} />;
+    case "health":
+      return <Suspense fallback={<PanelLoading />}><BookHealthSummary bookId={bookId} /></Suspense>;
+    case "progress":
+      return <Suspense fallback={<PanelLoading />}><DailyProgressCard /></Suspense>;
+    case "arcs":
+      return <Suspense fallback={<PanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "drift":
+      return <Suspense fallback={<PanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "compliance":
+      return <Suspense fallback={<PanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
   }
+}
+
+function PanelLoading() {
+  return <div className="flex items-center justify-center py-8"><Loader2 className="size-4 animate-spin text-muted-foreground" /></div>;
 }
