@@ -99,6 +99,7 @@ import {
   createWritingToolsRouter,
   createWritingModesRouter,
   createWritingResourceRouter,
+  createOverviewRouter,
   createExecRouter,
   createProxyRouter,
   createAggregationsRouter,
@@ -350,6 +351,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Unified writing resources + legacy generated chapter / draft candidates.
     app.route("", createWritingResourceRouter());
+    app.route("", createOverviewRouter());
     app.route("", createChapterCandidatesRouter(root));
 
     // Snapshots routes (chapter version control)
