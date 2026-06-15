@@ -287,6 +287,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             source={typeof node.metadata?.source === "string" ? node.metadata.source : undefined}
             targetChapterId={typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : undefined}
             createdAt={typeof node.metadata?.createdAt === "string" ? node.metadata.createdAt : undefined}
+            gateResult={node.metadata?.gateResult as import("./CandidateActionsBar").GateResultInfo | undefined}
+            needsHumanReview={node.metadata?.needsHumanReview === true}
             onAccept={candidateActions.onAccept}
             onReject={candidateActions.onReject}
             onArchive={candidateActions.onArchive}
