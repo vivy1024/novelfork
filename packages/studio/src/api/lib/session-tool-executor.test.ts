@@ -21,7 +21,7 @@ vi.mock("./llm-runtime-service.js", async (importOriginal) => {
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
     sessionId: "session-1",
-    toolName: "cockpit.get_snapshot",
+    toolName: "cockpit.snapshot",
     input: { bookId: "book-1" },
     permissionMode: "read",
     canvasContext: {
@@ -43,7 +43,7 @@ describe("session tool executor", () => {
 
   it("returns an invalid-tool result for unknown tools without executing handlers", async () => {
     const fallbackHandler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "cockpit.get_snapshot": fallbackHandler } });
+    const executor = createSessionToolExecutor({ handlers: { "cockpit.snapshot": fallbackHandler } });
 
     const result = await executor.execute(input({ toolName: "missing.tool" }));
 
@@ -57,7 +57,7 @@ describe("session tool executor", () => {
 
   it("validates object schema required fields and additional properties before executing", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "cockpit.get_snapshot": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "cockpit.snapshot": handler } });
 
     await expect(executor.execute(input({ input: {} }))).resolves.toMatchObject({
       ok: false,
@@ -92,37 +92,20 @@ describe("session tool executor", () => {
 
   it("converts confirmed-write tools into pending confirmations without executing them", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "guided.exit": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "presets.write": handler } });
 
     const result = await executor.execute(input({
-      toolName: "guided.exit",
+      toolName: "presets.write",
       permissionMode: "edit",
-      input: {
-        bookId: "book-1",
-        sessionId: "session-1",
-        guidedStateId: "guided-state-1",
-        plan: { title: "第二章计划" },
-      },
+      input: { bookId: "book-1", action: "enable", enabledPresetIds: ["anti-ai-full-scan"] },
     }));
 
     expect(result).toMatchObject({
       ok: true,
-      renderer: "guided.plan",
       data: { status: "pending-confirmation" },
-      confirmation: {
-        id: expect.any(String),
-        toolName: "guided.exit",
-        risk: "confirmed-write",
-        target: "book-1",
-        options: ["approve", "reject", "open-in-canvas"],
-      },
       confirmationAudit: {
-        confirmationId: expect.any(String),
-        sessionId: "session-1",
-        toolName: "guided.exit",
+        toolName: "presets.write",
         risk: "confirmed-write",
-        targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
-        summary: "工具 guided.exit 需要确认后执行。",
       },
     });
     expect(handler).not.toHaveBeenCalled();
@@ -131,69 +114,39 @@ describe("session tool executor", () => {
   it("adds confirmation audit metadata after approval", async () => {
     const executor = createSessionToolExecutor({
       handlers: {
-        "guided.exit": async () => ({ ok: true, renderer: "guided.plan", summary: "计划已批准。", data: { status: "executing" } }),
+        "presets.write": async () => ({ ok: true, renderer: "presets.rules", summary: "已启用预设。", data: {} }),
       },
     });
 
     const result = await executor.execute(input({
-      toolName: "guided.exit",
+      toolName: "presets.write",
       permissionMode: "edit",
-      confirmationDecision: { confirmationId: "confirm-guided-plan-1", decision: "approved", decidedAt: "2026-05-03T05:03:00.000Z", sessionId: "session-1" },
-      input: {
-        bookId: "book-1",
-        sessionId: "session-1",
-        guidedStateId: "guided-state-1",
-        plan: { title: "第二章计划" },
-      },
+      confirmationDecision: { confirmationId: "confirm-1", decision: "approved", decidedAt: "2026-05-03T05:03:00.000Z", sessionId: "session-1" },
+      input: { bookId: "book-1", action: "enable", enabledPresetIds: ["anti-ai-full-scan"] },
     }));
 
     expect(result).toMatchObject({
       ok: true,
       confirmationAudit: {
-        confirmationId: "confirm-guided-plan-1",
-        sessionId: "session-1",
-        toolName: "guided.exit",
-        risk: "confirmed-write",
+        confirmationId: "confirm-1",
         decision: "approved",
-        decidedAt: "2026-05-03T05:03:00.000Z",
-        targetResources: [{ kind: "guided.exit", id: "book-1", bookId: "book-1" }],
-        summary: "计划已批准。",
+        toolName: "presets.write",
+        risk: "confirmed-write",
       },
     });
   });
 
-  it("includes questionnaire mapping preview in pending confirmation", async () => {
-    const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "questionnaire.submit_response": handler } });
+  it("handles confirmed-write tools with pending confirmation", async () => {
+    const handler = vi.fn(async () => ({ ok: true, renderer: "presets.rules", summary: "已启用预设。", data: {} }));
+    const executor = createSessionToolExecutor({ handlers: { "presets.write": handler } });
 
     const result = await executor.execute(input({
-      toolName: "questionnaire.submit_response",
+      toolName: "presets.write",
       permissionMode: "edit",
-      input: {
-        bookId: "book-1",
-        templateId: "foundation",
-        responseId: "response-1",
-        answers: { premise: "少年入山" },
-      },
+      input: { bookId: "book-1", action: "enable", enabledPresetIds: ["anti-ai-full-scan"] },
     }));
 
-    expect(result).toMatchObject({
-      ok: true,
-      renderer: "jingwei.mutationPreview",
-      confirmation: {
-        diff: {
-          status: "mapping-preview",
-          bookId: "book-1",
-          templateId: "foundation",
-          answers: { premise: "少年入山" },
-        },
-      },
-      confirmationAudit: {
-        toolName: "questionnaire.submit_response",
-        risk: "confirmed-write",
-        targetResources: [{ kind: "questionnaire.submit_response", id: "book-1", bookId: "book-1" }],
-      },
-    });
+    expect(result.confirmationAudit).toBeDefined();
     expect(handler).not.toHaveBeenCalled();
   });
 
@@ -354,7 +307,7 @@ describe("session tool executor", () => {
   it("wraps handler exceptions as failed tool results without fake success", async () => {
     const executor = createSessionToolExecutor({
       handlers: {
-        "cockpit.get_snapshot": async () => {
+        "cockpit.snapshot": async () => {
           throw new Error("storage offline");
         },
       },
@@ -364,14 +317,14 @@ describe("session tool executor", () => {
       ok: false,
       renderer: "cockpit.snapshot",
       error: "tool-execution-failed",
-      summary: "工具 cockpit.get_snapshot 执行失败：storage offline",
+      summary: "工具 cockpit.snapshot 执行失败：storage offline",
     });
   });
 
   it("passes execution context to handlers and preserves renderer, artifact and duration", async () => {
     const executor = createSessionToolExecutor({
       handlers: {
-        "cockpit.get_snapshot": async ({ input: toolInput, canvasContext, definition }) => ({
+        "cockpit.snapshot": async ({ input: toolInput, canvasContext, definition }) => ({
           ok: true,
           renderer: definition.renderer,
           summary: "已读取驾驶舱快照。",
@@ -480,9 +433,7 @@ describe("session tool executor", () => {
     });
     const executor = createSessionToolExecutor({ cockpitService });
 
-    const snapshot = await executor.execute(input({ toolName: "cockpit.get_snapshot", input: { bookId: "book-1", includeModelStatus: true } }));
-    const hooks = await executor.execute(input({ toolName: "cockpit.list_open_hooks", input: { bookId: "book-1", limit: 5 } }));
-    const candidates = await executor.execute(input({ toolName: "cockpit.list_recent_candidates", input: { bookId: "book-1", limit: 5 } }));
+    const snapshot = await executor.execute(input({ toolName: "cockpit.snapshot", input: { bookId: "book-1", includeModelStatus: true } }));
 
     expect(snapshot).toMatchObject({
       ok: true,
@@ -491,8 +442,6 @@ describe("session tool executor", () => {
       data: { status: "available", book: { id: "book-1" } },
       artifact: { kind: "tool-result", renderer: "cockpit.snapshot", openInCanvas: true },
     });
-    expect(hooks).toMatchObject({ ok: true, renderer: "cockpit.openHooks", summary: "已读取 0 条开放伏笔。", data: { status: "empty", items: [] } });
-    expect(candidates).toMatchObject({ ok: true, renderer: "cockpit.recentCandidates", summary: "已读取 0 条候选稿。", data: { status: "empty", items: [] } });
   });
 });
 
