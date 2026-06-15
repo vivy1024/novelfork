@@ -403,14 +403,43 @@ function DefaultCockpitViewWithGuide({ bookId, bookTitle, onGuideComplete }: { b
 }
 
 // ---------------------------------------------------------------------------
-// DefaultCockpitView — JingweiPanel + 底部 StatusBar + 可展开面板
+// DefaultCockpitView — 作品状态仪表盘 + 经纬浏览 + 可展开面板
 // ---------------------------------------------------------------------------
+
+interface OverviewStats {
+  volumeProgress: { current: number; total: number; percent: number };
+  foreshadowing: { planted: number; recovered: number; recoveryRate: number };
+  activePlotLines: number;
+  wordCount: { today: number; total: number };
+  chapterCount: number;
+}
+
+function StatCard({ label, value, sub, className }: { label: string; value: string; sub?: string; className?: string }) {
+  return (
+    <div className={`rounded-lg border border-border bg-card p-3 ${className ?? ""}`}>
+      <div className="text-[10px] text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold mt-0.5">{value}</div>
+      {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
+    </div>
+  );
+}
 
 function DefaultCockpitView({ bookId }: { bookId: string }) {
   const [activePanel, setActivePanel] = useState<PanelType>(null);
   const [panelHeight, setPanelHeight] = useState<number>(320);
   const [panelMaximized, setPanelMaximized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [stats, setStats] = useState<OverviewStats | null>(null);
+
+  // Fetch overview stats
+  useEffect(() => {
+    let active = true;
+    fetch(`/api/books/${encodeURIComponent(bookId)}/overview-stats`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => { if (active && data) setStats(data); })
+      .catch(() => {});
+    return () => { active = false; };
+  }, [bookId]);
 
   const handleStatusBarClick = useCallback((panel: NonNullable<PanelType>) => {
     setActivePanel((prev) => (prev === panel ? null : panel));
@@ -456,7 +485,26 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
 
   return (
     <div className="flex h-full flex-col min-h-0">
-      {/* 主区域：JingweiPanel */}
+      {/* 状态卡片网格（作品总览） */}
+      {!panelMaximized && stats && (
+        <div className="shrink-0 grid grid-cols-3 gap-2 px-3 pt-3 pb-2">
+          <StatCard label="章节进度" value={`${stats.chapterCount} 章`} sub={`目标 ${stats.volumeProgress.total} · ${stats.volumeProgress.percent}%`} />
+          <StatCard label="伏笔回收" value={`${stats.foreshadowing.recoveryRate}%`} sub={`埋 ${stats.foreshadowing.planted} / 收 ${stats.foreshadowing.recovered}`} />
+          <StatCard label="今日字数" value={`${stats.wordCount.today.toLocaleString()}`} sub={`总计 ${(stats.wordCount.total / 10000).toFixed(1)} 万字`} />
+          {/* 节拍进度条（BeatProgressBar 内嵌） */}
+          <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
+            <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
+              <span>卷进度</span>
+              <span>{stats.volumeProgress.current} / {stats.volumeProgress.total}</span>
+            </div>
+            <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(stats.volumeProgress.percent, 100)}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 主区域：经纬浏览 */}
       {!panelMaximized && (
         <div className="flex-1 min-h-0">
           <JingweiPanel bookId={bookId} />
