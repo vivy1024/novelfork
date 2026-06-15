@@ -19,6 +19,7 @@ import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import { BookSettingsPanel } from "./panels/BookSettingsPanel";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { VariantsPanel } from "./VariantsPanel";
+import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -146,6 +147,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
   const [variantsOpen, setVariantsOpen] = useState(false);
+  const [sceneSpecOpen, setSceneSpecOpen] = useState(false);
+  const [sceneSpec, setSceneSpec] = useState<SceneSpec | null>(null);
+  const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
   // TipTap 初始化时会规范化 markdown（如标准化换行/标题），导致首次 onContentChange
   // 的内容 ≠ node.content 但语义相同。用 ref 记录规范化后的基准值，避免误标 dirty。
   const normalizedBaseRef = useRef<string | null>(null);
@@ -224,6 +228,36 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
           {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
             <Button size="sm" variant="outline" onClick={() => setVariantsOpen(true)} title="生成变体">
               <GitCompare className="size-3.5" />
+            </Button>
+          )}
+          {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sceneSpecLoading}
+              onClick={async () => {
+                setSceneSpecLoading(true);
+                try {
+                  const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : 1;
+                  const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/scene-spec`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ chapterNumber, userDirectives: content.slice(0, 200) }),
+                  });
+                  if (res.ok) {
+                    const data = await res.json();
+                    if (data.data?.sceneSpec) {
+                      setSceneSpec(data.data.sceneSpec);
+                      setSceneSpecOpen(true);
+                    }
+                  }
+                } finally {
+                  setSceneSpecLoading(false);
+                }
+              }}
+              title="生成章节蓝图"
+            >
+              <FileText className="size-3.5" />
             </Button>
           )}
         </div>
@@ -366,6 +400,20 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             </SheetHeader>
             <div className="p-4">
               <VariantsPanel bookId={bookId ?? ""} onClose={() => setVariantsOpen(false)} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
+
+      {/* 章节蓝图面板（右侧抽屉） */}
+      {sceneSpec && (
+        <Sheet open={sceneSpecOpen} onOpenChange={setSceneSpecOpen}>
+          <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>章节蓝图</SheetTitle>
+            </SheetHeader>
+            <div className="p-4">
+              <SceneSpecPanel spec={sceneSpec} />
             </div>
           </SheetContent>
         </Sheet>
