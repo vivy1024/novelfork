@@ -4,6 +4,51 @@
 
 ## Unreleased
 
+## v1.10.0 (2026-06-15)
+
+### 🧹 代码库精简与质量提升
+
+全代码库精读审计（9 个子代理并行扫描 811 文件/4006 符号），发现并修复 41 项问题，删除 4800+ 行废弃代码。
+
+#### 🔴 严重修复
+
+- **MCP 多服务器路由错误** — 同名工具路由到错误服务器（忽略 serverSlug）
+- **golden-chapters 文件名格式** — 硬编码 `chapter_N.md` 永远 404（应为 `0001-*.md`）
+- **外观偏好不加载** — `fetch("/settings/user")` 缺 `/api` 前缀
+- **rewrite.apply 工具不可用** — 有 schema+handler 但漏注册
+- **passionate-heroic tone 幽灵 ID** — 8 个 bundle 引用不存在的语调预设
+
+#### ✨ 新功能
+
+- **RuntimeStatePanel** — 运行时状态面板（知识边界/时间线/资源账本 3 tab）
+- **CoreShiftPanel** — 核心转折提案管理（查看/接受/拒绝）
+- **门禁详情展示** — 候选稿显示 S1-S4 严重度 + 拦截原因
+- **朱雀逐章扫描** — CompliancePanel 新增单章 AI 检测入口
+- **ForeshadowingBoard 接入** — 伏笔看板通过 StatusBar 可达
+- **DailyProgressCard 接入** — 每日进度面板通过 StatusBar 可达
+- **知识/时间线校验接入管线** — findKnowledgeViolations + findTimelineConflicts 写入候选稿 metadata
+
+#### 🗑️ 废弃代码删除（Phase A）
+
+- 删除 22 个 DEPRECATED_V1 工具（handler+schema+registry，-3200 行）
+- 删除 questionnaire/guided/pgi-full service 文件
+- 删除 pipeline.generate_chapter（v1 旧管线）
+- 删除 monitor.ts、truth 别名路由、settings 别名
+- Git 三重路由合并为统一 git.ts + 路径安全校验
+- session-tool-executor.ts: 4857→3200 行
+
+#### 🔧 其他修复
+
+- 预设初始化 6x 重复 → `ensurePresetsLoaded()` helper
+- MCP sendNotification 协议修正 + handleDisconnect await
+- compliance importedWords 内存泄漏修复
+- saveRuntimeStateSnapshot 原子写入（tmp+rename）
+- backgroundTasks Map GC 机制（30min 过期清理）
+- MessageStream/sendMessage/BashExpanded 性能优化
+- settingBase 补建 modern-urban-daily + supernatural-occult
+- Git discard-all 加 stash 保护
+- 10+ 前端死 props / 死组件 / 死代码清理
+
 ## v1.9.0 (2026-06-14)
 
 ### 🎯 网文质量机制补全（novel-quality-hardening spec）
