@@ -1,3 +1,5 @@
+import type { EntrySource, EntryRevision, ConflictStatus } from "./repositories/collaborative-types.js";
+
 export type JingweiTemplateId = "blank" | "basic" | "enhanced" | "genre-recommended";
 
 export type JingweiVisibilityRuleType = "tracked" | "global" | "nested";
@@ -96,10 +98,20 @@ export interface StoryJingweiEntryRecord {
   importance?: number;
   /** 一句话摘要（L0），上下文预算紧张时的最简降级内容 */
   summaryL0?: string | null;
+  /** 最近一次修改来源 */
+  source?: EntrySource;
+  /** 修订历史（最近 20 条） */
+  revisionHistory?: EntryRevision[];
+  /** 冲突标记（多写入源产生分歧时） */
+  conflictStatus?: ConflictStatus;
+  /** 冲突说明 */
+  conflictDetail?: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
 }
+
+export type { EntrySource, EntryRevision, ConflictStatus } from "./repositories/collaborative-types.js";
 
 export type CreateStoryJingweiEntryInput = Omit<StoryJingweiEntryRecord, "deletedAt">;
 export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryInput, "id" | "bookId" | "createdAt">>;
