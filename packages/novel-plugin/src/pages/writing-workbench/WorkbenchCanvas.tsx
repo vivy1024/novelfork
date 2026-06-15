@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Save, FileText, AlertCircle, Loader2 } from "lucide-react";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Save, FileText, AlertCircle, Loader2, GitCompare } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
@@ -17,6 +18,7 @@ import { StatusBar } from "./StatusBar";
 import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import { BookSettingsPanel } from "./panels/BookSettingsPanel";
 import { ChapterToolbar } from "./ChapterToolbar";
+import { VariantsPanel } from "./VariantsPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -143,6 +145,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
   const [historyEntries, setHistoryEntries] = useState<ResourceHistoryEntry[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [variantsOpen, setVariantsOpen] = useState(false);
   // TipTap 初始化时会规范化 markdown（如标准化换行/标题），导致首次 onContentChange
   // 的内容 ≠ node.content 但语义相同。用 ref 记录规范化后的基准值，避免误标 dirty。
   const normalizedBaseRef = useRef<string | null>(null);
@@ -218,6 +221,11 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
             <span className="ml-1">保存</span>
           </Button>
+          {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
+            <Button size="sm" variant="outline" onClick={() => setVariantsOpen(true)} title="生成变体">
+              <GitCompare className="size-3.5" />
+            </Button>
+          )}
         </div>
       </header>
 
@@ -348,6 +356,20 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
           } : undefined} />
         )}
       </div>
+
+      {/* 变体面板（右侧抽屉） */}
+      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
+        <Sheet open={variantsOpen} onOpenChange={setVariantsOpen}>
+          <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
+            <SheetHeader>
+              <SheetTitle>变体对比</SheetTitle>
+            </SheetHeader>
+            <div className="p-4">
+              <VariantsPanel bookId={bookId ?? ""} onClose={() => setVariantsOpen(false)} />
+            </div>
+          </SheetContent>
+        </Sheet>
+      )}
 
       {/* 章节体检工具栏（仅章节/候选/草稿类型显示） */}
       {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (

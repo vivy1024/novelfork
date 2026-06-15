@@ -8,6 +8,7 @@ import { JingweiEntryForm } from "./JingweiEntryForm";
 import { JingweiGraphView } from "./JingweiGraphView";
 import { useJingweiEntries } from "./hooks/useJingweiEntries";
 import { CATEGORY_SCHEMAS, type CategoryVisibility } from "./category-schemas";
+import { PresetsPanel } from "../PresetsPanel";
 
 /** Check if a category has relation-type fields (eligible for graph view) */
 function categoryHasRelations(categoryId: string): boolean {
@@ -111,8 +112,12 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
           </div>
         )}
 
-        {/* Content: graph or list */}
-        {showGraph && hasRelations ? (
+        {/* Content: rules 分类显示预设面板 / graph / list */}
+        {selectedCategory === "rules" ? (
+          <div className="flex-1 min-h-0 overflow-y-auto p-3">
+            <PresetsPanel bookId={bookId} />
+          </div>
+        ) : showGraph && hasRelations ? (
           <JingweiGraphView
             bookId={bookId}
             entries={entries}
