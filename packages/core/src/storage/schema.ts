@@ -372,6 +372,11 @@ export const storyJingweiEntries = sqliteTable(
     layer: text("layer", { enum: ["canon", "dynamic", "reference"] }).notNull().default("dynamic"),
     importance: integer("importance").notNull().default(40),
     summaryL0: text("summary_l0"),
+    // 协同维护字段（0022 migration）
+    source: text("source", { enum: ["user", "agent-write", "auto-settle", "system-init", "ai-enrich"] }).notNull().default("user"),
+    revisionHistory: text("revision_history").notNull().default("[]"),
+    conflictStatus: text("conflict_status", { enum: ["none", "pending", "resolved"] }).notNull().default("none"),
+    conflictDetail: text("conflict_detail"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
