@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Sparkles, Shuffle, PenLine, ChevronRight, ChevronLeft, Check } from "lucide-react";
 import { postApi } from "@/hooks/use-api";
+import { getGenreComplexity, type GenreComplexity } from "../../engine/jingwei/genre-templates";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -20,6 +21,8 @@ interface GuideQuestion {
   placeholder?: string;
   /** 映射到经纬的字段 */
   fieldPath: string;
+  /** 最低需要的题材复杂度才展示此问题（undefined=所有档位展示） */
+  minComplexity?: GenreComplexity;
 }
 
 type AnswerMode = "preset" | "custom" | "random";
@@ -79,6 +82,7 @@ const GUIDE_QUESTIONS: GuideQuestion[] = [
     allowCustom: true,
     placeholder: "描述世界观设定，如：灵气复苏后的现代地球…",
     fieldPath: "worldModel",
+    minComplexity: "medium",
   },
   {
     id: "powerSystem",
@@ -87,6 +91,7 @@ const GUIDE_QUESTIONS: GuideQuestion[] = [
     allowCustom: true,
     placeholder: "描述你的力量等级划分，如：灵根→练气→筑基→结丹→元婴→化神…",
     fieldPath: "powerSystem",
+    minComplexity: "heavy",
   },
   {
     id: "tone",
@@ -139,10 +144,22 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
   const [answers, setAnswers] = useState<Record<string, GuideAnswer>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selectedGenre, setSelectedGenre] = useState<string>("");
 
-  const question = GUIDE_QUESTIONS[step];
-  const total = GUIDE_QUESTIONS.length;
-  const currentAnswer = answers[question.id];
+  // 根据题材复杂度动态过滤问题
+  const complexity = getGenreComplexity(selectedGenre);
+  const activeQuestions = useMemo(() => {
+    return GUIDE_QUESTIONS.filter((q) => {
+      if (!q.minComplexity) return true;
+      if (q.minComplexity === "medium") return complexity !== "light";
+      if (q.minComplexity === "heavy") return complexity === "heavy";
+      return true;
+    });
+  }, [complexity]);
+
+  const question = activeQuestions[step];
+  const total = activeQuestions.length;
+  const currentAnswer = question ? answers[question.id] : undefined;
   const isLast = step === total - 1;
 
   const setAnswer = (mode: AnswerMode, value: string) => {
@@ -158,13 +175,16 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
         delete next[question.id];
         return next;
       });
+      if (question.id === "genre") setSelectedGenre("");
     } else {
       setAnswer("preset", preset);
+      if (question.id === "genre") setSelectedGenre(preset);
     }
   };
 
   const handleCustomInput = (value: string) => {
     setAnswer("custom", value);
+    if (question.id === "genre") setSelectedGenre(value);
   };
 
   const handleRandom = () => {
@@ -177,7 +197,7 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
       setAnswer("random", "");
     }
     if (!isLast) {
-      setStep((s) => s + 1);
+      setStep((s) => Math.min(s + 1, activeQuestions.length - 1));
     }
   };
 
@@ -198,7 +218,7 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
     try {
       // 构建提交数据
       const payload: Record<string, { mode: AnswerMode; value: string }> = {};
-      for (const q of GUIDE_QUESTIONS) {
+      for (const q of activeQuestions) {
         payload[q.fieldPath] = finalAnswers[q.id] ?? { mode: "random", value: "" };
       }
 
