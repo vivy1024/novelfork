@@ -5,6 +5,7 @@ import type {
   StoryJingweiEntryRecord,
   UpdateStoryJingweiEntryInput,
 } from "../types.js";
+import type { EntrySource, EntryRevision, ConflictStatus } from "./collaborative-types.js";
 
 interface StoryJingweiEntryRow {
   id: string;
@@ -25,6 +26,10 @@ interface StoryJingweiEntryRow {
   layer?: "canon" | "dynamic" | "reference";
   importance?: number;
   summary_l0?: string | null;
+  source?: string;
+  revision_history?: string;
+  conflict_status?: string;
+  conflict_detail?: string | null;
   created_at: number;
   updated_at: number;
   deleted_at: number | null;
@@ -33,7 +38,7 @@ interface StoryJingweiEntryRow {
 const selectColumns = `
   "id", "book_id", "section_id", "title", "content_md", "summary_md", "tags_json", "aliases_json",
   "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
-  "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", COALESCE("layer", 'dynamic') AS "layer", COALESCE("importance", 40) AS "importance", "summary_l0", "created_at", "updated_at", "deleted_at"
+  "participates_in_ai", "token_budget", COALESCE("priority_tier", 'auto') AS "priority_tier", COALESCE("layer", 'dynamic') AS "layer", COALESCE("importance", 40) AS "importance", "summary_l0", COALESCE("source", 'user') AS "source", COALESCE("revision_history", '[]') AS "revision_history", COALESCE("conflict_status", 'none') AS "conflict_status", "conflict_detail", "created_at", "updated_at", "deleted_at"
 `;
 
 function parseJson<T>(value: string, fallback: T): T {
@@ -68,6 +73,10 @@ function toEntry(row: StoryJingweiEntryRow): StoryJingweiEntryRecord {
     layer: (row.layer as "canon" | "dynamic" | "reference") ?? "dynamic",
     importance: typeof row.importance === "number" ? row.importance : 40,
     summaryL0: row.summary_l0 ?? null,
+    source: (row.source ?? "user") as EntrySource,
+    revisionHistory: parseJson<EntryRevision[]>(row.revision_history ?? "[]", []),
+    conflictStatus: (row.conflict_status ?? "none") as ConflictStatus,
+    conflictDetail: row.conflict_detail ?? undefined,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: row.deleted_at === null ? null : new Date(row.deleted_at),
@@ -81,8 +90,8 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         INSERT INTO "story_jingwei_entry" (
           "id", "book_id", "section_id", "title", "content_md", "summary_md", "tags_json", "aliases_json",
           "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json",
-          "participates_in_ai", "token_budget", "priority_tier", "importance", "summary_l0", "created_at", "updated_at", "deleted_at"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
+          "participates_in_ai", "token_budget", "priority_tier", "importance", "summary_l0", "source", "revision_history", "conflict_status", "created_at", "updated_at", "deleted_at"
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
       `).run(
         input.id,
         input.bookId,
@@ -101,6 +110,9 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         input.priorityTier ?? "auto",
         typeof input.importance === "number" ? input.importance : 40,
         input.summaryL0 ?? null,
+        (input as any).source ?? "user",
+        JSON.stringify((input as any).revisionHistory ?? []),
+        (input as any).conflictStatus ?? "none",
         input.createdAt.getTime(),
         input.updatedAt.getTime(),
       );
@@ -154,11 +166,32 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       const current = await this.getById(bookId, id);
       if (!current) return null;
 
+      // 协同维护：来源 + 修订历史 + 冲突检测
+      const source: string = (updates as any).source ?? "user";
+      const now = new Date().toISOString();
+      const changedFields = Object.keys(updates).filter(k => k !== "source" && k !== "updatedAt");
+      const newRevision = { timestamp: now, source, changedFields };
+      const currentHistory = (current as any).revisionHistory ?? [];
+      const newRevisionHistory = [...currentHistory.slice(-19), newRevision]; // 最多保留 20 条
+
+      // 冲突检测：agent 写入时如果最近一次修改来自 user 且在 5 分钟内
+      let conflictStatus: string = (current as any).conflictStatus ?? "none";
+      let conflictDetail: string | null = (current as any).conflictDetail ?? null;
+      if ((source === "agent-write" || source === "auto-settle") && (current as any).source === "user") {
+        const lastUserEdit = new Date((current as any).updatedAt ?? current.updatedAt).getTime();
+        const fiveMinutesAgo = Date.now() - 5 * 60 * 1000;
+        if (lastUserEdit > fiveMinutesAgo) {
+          conflictStatus = "pending";
+          conflictDetail = `agent(${source}) 修改了 ${changedFields.join("/")}，但用户在 5 分钟内编辑过此条目`;
+        }
+      }
+
       storage.sqlite.prepare(`
         UPDATE "story_jingwei_entry"
         SET "section_id" = ?, "title" = ?, "content_md" = ?, "summary_md" = ?, "tags_json" = ?, "aliases_json" = ?,
           "custom_fields_json" = ?, "related_chapter_numbers_json" = ?, "related_entry_ids_json" = ?,
-          "visibility_rule_json" = ?, "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "importance" = ?, "summary_l0" = ?, "updated_at" = ?
+          "visibility_rule_json" = ?, "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "importance" = ?, "summary_l0" = ?,
+          "source" = ?, "revision_history" = ?, "conflict_status" = ?, "conflict_detail" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(
         updates.sectionId ?? current.sectionId,
@@ -176,6 +209,10 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         updates.priorityTier ?? current.priorityTier,
         updates.importance ?? current.importance ?? 40,
         updates.summaryL0 ?? current.summaryL0 ?? null,
+        source,
+        JSON.stringify(newRevisionHistory),
+        conflictStatus,
+        conflictDetail,
         (updates.updatedAt ?? current.updatedAt).getTime(),
         bookId,
         id,
