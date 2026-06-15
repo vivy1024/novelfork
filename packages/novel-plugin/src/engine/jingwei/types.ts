@@ -134,22 +134,10 @@ export interface JingweiContextResult {
   sectionStats: Array<{ sectionId: string; sectionName: string; count: number }>;
 }
 
-export type JingweiReadCategory =
-  | "premise"
-  | "world-model"
-  | "characters"
-  | "relationships"
-  | "factions"
-  | "locations"
-  | "power-system"
-  | "timeline"
-  | "chapter-summaries"
-  | "foreshadowing"
-  | "conflicts"
-  | "props"
-  | "rules"
-  | "reference"
-  | "unclassified";
+import type { JingweiCategory } from "./unified-categories.js";
+
+/** 统一分类类型（原 15 类已扩展为 16 类，含 outline） */
+export type JingweiReadCategory = JingweiCategory;
 
 /**
  * 经纬读取详细度（分级注入）：
