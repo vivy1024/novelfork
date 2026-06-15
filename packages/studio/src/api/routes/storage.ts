@@ -16,7 +16,10 @@ import {
 import {
   applyJingweiTemplate,
   createBookRepository,
+  createJingweiEntriesFromGuide,
+  createStoryJingweiEntryRepository,
   createStoryJingweiSectionRepository,
+  getGenreTemplate,
   getPreset,
   linkChapterToEntries,
   registerBuiltinPresets,
@@ -585,127 +588,24 @@ export function createStorageRouter(ctx: RouterContext): Hono {
       const book = await state.loadBookConfig(id);
       const answers = body.answers;
 
-      // 更新 book.json 中的基础字段
-      const updates: Record<string, unknown> = {};
-      if (answers.genre && answers.genre.mode !== "random") {
-        updates.genre = answers.genre.value;
-      }
-      if (answers.platform && answers.platform.mode !== "random") {
-        updates.platform = answers.platform.value;
-      }
+      // ① 确定题材模板
+      const genre = answers.genre?.value ?? "";
+      const template = getGenreTemplate(genre);
+
+      // ② 更新 book.json
+      const updates: Record<string, unknown> = {
+        complexity: template.complexity,
+        visibleCategories: [...template.visibleCategories],
+      };
+      if (answers.genre && answers.genre.mode !== "random") updates.genre = answers.genre.value;
+      if (answers.platform && answers.platform.mode !== "random") updates.platform = answers.platform.value;
       if (answers.chapterWordCount && answers.chapterWordCount.mode !== "random") {
         const parsed = parseInt(answers.chapterWordCount.value, 10);
         if (!isNaN(parsed) && parsed > 0) updates.chapterWordCount = parsed;
       }
+      await storageWriteService.updateBook(id, updates as any);
 
-      if (Object.keys(updates).length > 0) {
-        await storageWriteService.updateBook(id, updates as { chapterWordCount?: number; targetChapters?: number; status?: string; language?: string });
-      }
-
-      // 将故事设定写入经纬文件集
-      const storyDir = join(state.bookDir(id), "story");
-
-      // 确保 story 目录存在
-      await mkdir(storyDir, { recursive: true });
-
-      // 1. story_bible.md — 故事经纬
-      const bibleLines: string[] = ["# 故事经纬\n"];
-      const fieldLabels: Record<string, string> = {
-        genre: "题材",
-        premise: "核心前提",
-        protagonist: "主角设定",
-        goldenFinger: "金手指",
-        worldModel: "世界观",
-        powerSystem: "力量体系",
-        tone: "基调与文风",
-        writingPhilosophy: "创作方式",
-        platform: "目标平台",
-        aiTasteLevel: "AI 味容忍度",
-      };
-
-      for (const [field, label] of Object.entries(fieldLabels)) {
-        const answer = answers[field];
-        if (answer && answer.mode !== "random" && answer.value.trim()) {
-          bibleLines.push(`## ${label}\n`);
-          bibleLines.push(`${answer.value.trim()}\n`);
-        } else {
-          bibleLines.push(`## ${label}\n`);
-          bibleLines.push(`*（待 AI 生成）*\n`);
-        }
-      }
-      await writeFile(join(storyDir, "story_bible.md"), bibleLines.join("\n"), "utf-8");
-
-      // 2. book_rules.md — 书籍规则（从题材和文风推导）
-      const rulesLines: string[] = ["# 书籍规则\n"];
-      const genre = answers.genre?.value ?? "通用";
-      const tone = answers.tone?.value ?? "";
-      const platform = answers.platform?.value ?? "";
-      const aiTaste = answers.aiTasteLevel?.value ?? "中等";
-
-      rulesLines.push("## 基本约束\n");
-      rulesLines.push(`- 题材：${genre}\n`);
-      if (tone) rulesLines.push(`- 文风基调：${tone}\n`);
-      if (platform) rulesLines.push(`- 目标平台：${platform}\n`);
-      rulesLines.push(`- AI 味容忍度：${aiTaste}\n`);
-      rulesLines.push("\n## 写作规则\n");
-      rulesLines.push("- 每章字数目标：" + (updates.chapterWordCount ?? 3000) + " 字\n");
-      rulesLines.push("- 禁止连续 3 个 <40 字短段并列连排\n");
-      rulesLines.push("- 伏笔兑现必须有 ≥60 字具体段落（advance/resolve）\n");
-      rulesLines.push("- 对话不超过章节篇幅的 40%\n");
-      rulesLines.push("\n## 连续性规则\n");
-      rulesLines.push("- 角色名称前后一致\n");
-      rulesLines.push("- 时间线不矛盾\n");
-      rulesLines.push("- 已死角色不复活（除非有明确设定支持）\n");
-      await writeFile(join(storyDir, "book_rules.md"), rulesLines.join("\n"), "utf-8");
-
-      // 3. volume_outline.md — 卷大纲骨架（仅"建筑师派"）
-      const writingPhilosophy = answers.writingPhilosophy?.value ?? "";
-      if (writingPhilosophy !== "花园派") {
-        const outlineLines: string[] = ["# 卷大纲\n"];
-        outlineLines.push("## 第一卷\n");
-        outlineLines.push("### 核心冲突\n");
-        if (answers.premise?.value) {
-          outlineLines.push(`${answers.premise.value.trim()}\n`);
-        } else {
-          outlineLines.push("*（待规划）*\n");
-        }
-        outlineLines.push("\n### 章节规划\n");
-        outlineLines.push("- 第 1 章：开篇（引入主角、建立世界观）\n");
-        outlineLines.push("- 第 2 章：日常（展示主角日常、埋下伏笔）\n");
-        outlineLines.push("- 第 3 章：变故（打破日常的事件）\n");
-        outlineLines.push("- 第 4-5 章：应对（主角面对变故的反应）\n");
-        outlineLines.push("- 第 6-8 章：发展（主角成长、获得金手指/机遇）\n");
-        outlineLines.push("- 第 9-10 章：第一卷高潮（首个大冲突解决）\n");
-        outlineLines.push("\n### 主角弧线\n");
-        if (answers.protagonist?.value) {
-          outlineLines.push(`起点：${answers.protagonist.value.trim()}\n`);
-        }
-        outlineLines.push("终点：*（待规划）*\n");
-        await writeFile(join(storyDir, "volume_outline.md"), outlineLines.join("\n"), "utf-8");
-      }
-
-      // 4. current_state.md — 初始状态
-      const stateLines: string[] = ["# 当前状态\n"];
-      stateLines.push("## 进度\n");
-      stateLines.push("- 当前章节：第 0 章（尚未开始）\n");
-      stateLines.push("- 当前卷：第一卷\n");
-      stateLines.push("\n## 世界状态\n");
-      if (answers.worldModel?.value) {
-        stateLines.push(`${answers.worldModel.value.trim()}\n`);
-      } else {
-        stateLines.push("*（待第一章建立）*\n");
-      }
-      stateLines.push("\n## 角色状态\n");
-      if (answers.protagonist?.value) {
-        stateLines.push(`- 主角：${answers.protagonist.value.trim()}\n`);
-      } else {
-        stateLines.push("- 主角：*（待设定）*\n");
-      }
-      stateLines.push("\n## 活跃伏笔\n");
-      stateLines.push("*（暂无）*\n");
-      await writeFile(join(storyDir, "current_state.md"), stateLines.join("\n"), "utf-8");
-
-      // 根据题材自动启用对应预设
+      // ③ 预设：模板预设 + 题材映射合并
       const GENRE_TO_PRESET: Record<string, string[]> = {
         "玄幻": ["xuanhuan-bloodline"],
         "仙侠": ["classical-travel-xianxia"],
@@ -734,57 +634,64 @@ export function createStorageRouter(ctx: RouterContext): Hono {
         "历史": ["historical-governance"],
       };
       const setupGenre = answers.genre?.value ?? "";
-      const presetIds = GENRE_TO_PRESET[setupGenre] ?? [];
+      const presetIds = [...new Set([...template.presetIds, ...(GENRE_TO_PRESET[setupGenre] ?? [])])];
       if (presetIds.length > 0) {
         await storageWriteService.updateBook(id, { enabledPresetIds: presetIds });
       }
 
+      // ④ 直接生成 SQLite 经纬条目（替代写 md + 导入）
+      const result = await createJingweiEntriesFromGuide(id, answers, template, getStorageDatabase());
+
       broadcast("book:updated", { bookId: id });
 
-      // 异步调用 LLM 丰富经纬内容（不阻塞响应）
+      // ⑤ 异步 AI 丰富（用 template.enrichConstraints 约束范围）
       void (async () => {
         try {
           const { loadUserConfig } = await import("../lib/user-config-service.js");
           const config = await loadUserConfig();
           const defaultModel = config.modelDefaults?.defaultSessionModel;
-          if (!defaultModel) return; // 无模型配置，跳过 AI 生成
+          if (!defaultModel) return;
 
           const { generateSessionReply } = await import("../lib/llm-runtime-service.js");
           const [providerId, modelId] = defaultModel.includes(":") ? defaultModel.split(":") : ["", defaultModel];
 
-          // 将向导答案格式化为 prompt
           const contextParts: string[] = [];
+          const fieldLabels: Record<string, string> = {
+            genre: "题材", premise: "核心前提", protagonist: "主角设定",
+            goldenFinger: "金手指", worldModel: "世界观", powerSystem: "力量体系",
+            tone: "基调与文风", platform: "目标平台",
+          };
           for (const [field, label] of Object.entries(fieldLabels)) {
             const answer = answers[field];
             if (answer && answer.mode !== "random" && answer.value.trim()) {
               contextParts.push(`${label}：${answer.value.trim()}`);
             }
           }
-          if (contextParts.length === 0) return; // 全部跳过，无需生成
+          if (contextParts.length === 0) return;
 
-          const userPrompt = `基于以下创作设定，生成一份详细的故事经纬（story_bible.md）。要求：
-1. 扩展世界观细节（地理/历史/社会结构）
-2. 丰富主角设定（性格/背景/动机/成长方向）
-3. 设计 2-3 个重要配角（各有独立动机）
-4. 明确力量体系的层级和规则
-5. 提出 3-5 个初始伏笔种子
+          const userPrompt = `基于以下创作设定，丰富经纬条目。约束：\n${template.enrichConstraints}\n\n用户设定：\n${contextParts.join("\n")}\n\n请直接输出 Markdown 格式的补充内容，用 ## 二级标题分区。`;
 
-用户设定：
-${contextParts.join("\n")}
-
-请直接输出 Markdown 格式的故事经纬内容，用 ## 二级标题分区。`;
-
-          const result = await generateSessionReply({
+          const aiResult = await generateSessionReply({
             sessionConfig: { providerId, modelId, permissionMode: "read", reasoningEffort: "low" },
             messages: [
-              { type: "message", role: "system", content: "你是一个专业的网文世界观架构师。根据用户提供的创作方向，生成详细、具体、可直接用于写作的故事经纬。输出纯 Markdown，不要解释。" },
+              { type: "message", role: "system", content: "你是一个网文世界观架构师。根据用户创作方向和约束范围，生成可直接用于写作的设定补充。输出纯 Markdown。" },
               { type: "message", role: "user", content: userPrompt },
             ],
             tools: [],
           });
 
-          if (result.success && result.type === "message" && result.content?.trim()) {
-            await writeFile(join(storyDir, "story_bible.md"), result.content.trim(), "utf-8");
+          if (aiResult.success && aiResult.type === "message" && aiResult.content?.trim()) {
+            // AI 丰富结果写入 premise 条目（追加内容）
+            const entryRepo = createStoryJingweiEntryRepository(getStorageDatabase());
+            const entries = await entryRepo.listByBook(id);
+            const premiseEntry = entries.find(e => (e.customFields as any)?.category === "premise" || e.sectionId.includes("premise"));
+            if (premiseEntry) {
+              await entryRepo.update(id, premiseEntry.id, {
+                contentMd: premiseEntry.contentMd + "\n\n---\n\n" + aiResult.content.trim(),
+                updatedAt: new Date(),
+                source: "ai-enrich" as any,
+              });
+            }
             broadcast("book:updated", { bookId: id });
             console.log(JSON.stringify({ component: "guided-setup", event: "ai-enrich-complete", bookId: id }));
           }
@@ -792,15 +699,6 @@ ${contextParts.join("\n")}
           console.log(JSON.stringify({ component: "guided-setup", event: "ai-enrich-failed", bookId: id, error: err instanceof Error ? err.message : String(err) }));
         }
       })();
-
-      // 自动将 md 文件导入 SQLite 经纬条目（确保 JingweiPanel 和 Agent 工具能读到数据）
-      try {
-        const importRes = await fetch(`http://localhost:${c.req.raw.url ? new URL(c.req.raw.url).port || "4567" : "4567"}/api/books/${encodeURIComponent(id)}/jingwei/import-from-files`, { method: "POST" });
-        const importData = await importRes.json() as { imported?: number; updated?: number };
-        console.log(JSON.stringify({ component: "guided-setup", event: "jingwei-import", bookId: id, imported: importData.imported, updated: importData.updated }));
-      } catch (importErr) {
-        console.log(JSON.stringify({ component: "guided-setup", event: "jingwei-import-failed", bookId: id, error: importErr instanceof Error ? importErr.message : String(importErr) }));
-      }
 
       return c.json({ ok: true, bookId: id });
     } catch (e) {
