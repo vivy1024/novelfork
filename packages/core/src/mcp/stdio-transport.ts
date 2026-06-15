@@ -129,6 +129,14 @@ export class StdioTransport extends EventEmitter {
     });
   }
 
+  async sendNotification(notification: { jsonrpc: "2.0"; method: string; params?: Record<string, unknown> }): Promise<void> {
+    if (!this.process) {
+      throw new Error("Transport not connected");
+    }
+    const message = JSON.stringify(notification) + "\n";
+    this.process.writeStdin(message, () => {});
+  }
+
   private handleData(data: string): void {
     this.buffer += data;
 

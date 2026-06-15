@@ -10,7 +10,7 @@ export const politicsCareerBundle: PresetBundle = {
   tags: ["官场", "权谋", "博弈", "晋升"],
   genreIds: ["politics"],
   toneId: "austere-pragmatic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["institution-response", "character-motivation", "information-flow"],
   difficulty: "hard",
   prerequisites: ["作者需要了解基本的体制运作规则、晋升机制和官场潜规则。"],

@@ -278,6 +278,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "rewrite.apply",
+    description: "将改写结果写回章节文件指定行号范围。支持 replace（替换）和 insert_after（行后插入）两种模式。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["rewrite.apply"]),
+    risk: "draft-write",
+    renderer: "tool.rewrite-apply",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "style.import",
     description: "从参考文本提取文风档案（统计分析+LLM 定性描述），生成 style_profile.json 和 style_guide.md。参考文本至少 2000 字。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.import"]),

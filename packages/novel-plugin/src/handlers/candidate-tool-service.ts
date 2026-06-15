@@ -172,7 +172,7 @@ async function runPostWriteComplianceCheck(
         id: p.id,
         name: p.name,
         rules: p.promptInjection,
-        antiPatterns: p.postWriteChecks?.map((c: { name: string }) => c.name) ?? undefined,
+        antiPatterns: undefined,
       }));
 
     if (enabledPresets.length === 0) return null;

@@ -19,6 +19,49 @@ import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFile
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir, checkCommandAgainstLists, checkPathAgainstDirectoryLists } from "./permission-pipeline.js";
 import { getYoloDecision, performSafetyReflection } from "./yolo-mode.js";
 
+// --- Preset/Beat store lazy initialization helper ---
+// Ensures builtin presets are registered and custom presets are restored from DB.
+// Safe to call multiple times (no-ops if store is already populated).
+async function ensurePresetsLoaded(): Promise<void> {
+  const { listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+  if (listPresets().length > 0) return;
+  try { registerBuiltinPresets(); } catch { /* ignore */ }
+  try {
+    const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+    const db = getStorageDatabase();
+    const repo = createUserTemplateRepository(db);
+    for (const t of repo.list()) {
+      try {
+        const b = JSON.parse(t.bundleJson);
+        if (b.type === "preset" && b.promptInjection) {
+          registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" });
+        }
+      } catch { /* skip malformed */ }
+    }
+  } catch { /* ignore */ }
+}
+
+async function ensureBeatsLoaded(): Promise<void> {
+  const { listBeatTemplates, registerBuiltinPresets, registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
+  if (listBeatTemplates().length > 0) return;
+  try { registerBuiltinPresets(); } catch { /* ignore */ }
+  try {
+    const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
+    const db = getStorageDatabase();
+    for (const t of createUserTemplateRepository(db).list()) {
+      try {
+        const b = JSON.parse(t.bundleJson);
+        if (b.type === "beat-template" && Array.isArray(b.beats)) {
+          registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats });
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+}
+
+// --- Common AI-tell markers used by chapter.audit and rewrite.segment ---
+const AI_MARKERS = ["值得注意的是", "需要指出", "总而言之", "不禁", "缓缓", "微微", "淡淡", "嘴角微扬", "眼中闪过", "心中暗道", "深吸一口气", "不由得"];
+
 // --- Browser page interface (extracted from playwright Page) ---
 interface BrowserPageLike {
   goto(url: string, opts?: Record<string, unknown>): Promise<unknown>;
@@ -59,6 +102,7 @@ interface BackgroundAgentTask {
   result?: string;
   status: "running" | "completed" | "failed";
   startedAt: number;
+  completedAt?: number;
   subagentType: string;
   prompt: string;
   abortController?: AbortController;
@@ -72,10 +116,27 @@ interface BackgroundBashTask {
   promise: Promise<SessionToolExecutionResult>;
   result?: SessionToolExecutionResult;
   status: "running" | "completed" | "failed";
+  completedAt?: number;
   /** Accumulated stdout for partial output on timeout */
   stdoutBuffer: string;
 }
 const backgroundTasks = new Map<string, BackgroundBashTask>();
+
+/** 清理已完成超过 30 分钟的后台任务，防止 Map 无限增长 */
+const BACKGROUND_TASK_TTL_MS = 30 * 60 * 1000;
+function gcBackgroundMaps(): void {
+  const now = Date.now();
+  for (const [id, task] of backgroundAgents) {
+    if (task.completedAt && now - task.completedAt > BACKGROUND_TASK_TTL_MS) {
+      backgroundAgents.delete(id);
+    }
+  }
+  for (const [id, task] of backgroundTasks) {
+    if (task.completedAt && now - task.completedAt > BACKGROUND_TASK_TTL_MS) {
+      backgroundTasks.delete(id);
+    }
+  }
+}
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
@@ -1070,7 +1131,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
 
         if (checks.includes("ai_taste")) {
-          const AI_MARKERS = ["\u503c\u5f97\u6ce8\u610f\u7684\u662f", "\u9700\u8981\u6307\u51fa", "\u603b\u800c\u8a00\u4e4b", "\u4e0d\u7981", "\u7f13\u7f13", "\u5fae\u5fae", "\u6de1\u6de1", "\u5634\u89d2\u5fae\u626c", "\u773c\u4e2d\u95ea\u8fc7", "\u5fc3\u4e2d\u6697\u9053", "\u6df1\u5438\u4e00\u53e3\u6c14", "\u4e0d\u7531\u5f97"];
           const found = AI_MARKERS.filter(marker => content.includes(marker));
           // Find positions of each marker in content for highlighting
           const highlights: Array<{ marker: string; line: number; column: number; context: string }> = [];
@@ -1585,7 +1645,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
       };
     case "rewrite.segment":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, sessionId: ctxSessionId }) => {
         const bookId = String(input.bookId ?? "");
         const chapterNumber = Number(input.chapterNumber ?? 0);
         const mode = String(input.mode ?? "");
@@ -1618,7 +1678,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         try {
           const { generateSessionReply } = await import("./llm-runtime-service.js");
           const { getSessionById } = await import("./session-service.js");
-          const session = await getSessionById(String(input.sessionId ?? ""));
+          const session = await getSessionById(String(input.sessionId || ctxSessionId || ""));
           if (!session) return { ok: false, renderer: definition.renderer, error: "no-session", summary: "\u65e0\u6cd5\u83b7\u53d6\u5f53\u524d\u4f1a\u8bdd\u914d\u7f6e\u3002" };
 
           const result = await generateSessionReply({
@@ -1634,7 +1694,6 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           // For reduce_ai mode: auto-detect AI taste before/after and return comparison
           let aiTasteComparison: { before: { count: number; markers: string[] }; after: { count: number; markers: string[] } } | undefined;
           if (mode === "reduce_ai" && rewrittenText) {
-            const AI_MARKERS = ["\u503c\u5f97\u6ce8\u610f\u7684\u662f", "\u9700\u8981\u6307\u51fa", "\u603b\u800c\u8a00\u4e4b", "\u4e0d\u7981", "\u7f13\u7f13", "\u5fae\u5fae", "\u6de1\u6de1", "\u5634\u89d2\u5fae\u626c", "\u773c\u4e2d\u95ea\u8fc7", "\u5fc3\u4e2d\u6697\u9053", "\u6df1\u5438\u4e00\u53e3\u6c14", "\u4e0d\u7531\u5f97"];
             const beforeMarkers = AI_MARKERS.filter(m => selectedText.includes(m));
             const afterMarkers = AI_MARKERS.filter(m => rewrittenText.includes(m));
             aiTasteComparison = {
@@ -1654,7 +1713,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
       };
     case "outline.suggest_next":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, sessionId: ctxSessionId }) => {
         const bookId = String(input.bookId ?? "");
         if (!bookId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "\u9700\u8981 bookId" };
 
@@ -1699,7 +1758,7 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         try {
           const { generateSessionReply } = await import("./llm-runtime-service.js");
           const { getSessionById } = await import("./session-service.js");
-          const session = await getSessionById(String(input.sessionId ?? ""));
+          const session = await getSessionById(String(input.sessionId || ctxSessionId || ""));
           if (!session) return { ok: false, renderer: definition.renderer, error: "no-session", summary: "\u65e0\u6cd5\u83b7\u53d6\u5f53\u524d\u4f1a\u8bdd\u914d\u7f6e\u3002" };
 
           const result = await generateSessionReply({
@@ -1910,26 +1969,9 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
       return async ({ input, definition }) => {
         const bookId = String(input.bookId);
         try {
-          const { listPresets, getPreset, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
 
-          // 确保 preset store 已初始化（启动时注册可能因 DB 未就绪而跳过）
-          if (listPresets().length === 0) {
-            try { registerBuiltinPresets(); } catch { /* ignore */ }
-            // 恢复自定义预设
-            try {
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              const repo = createUserTemplateRepository(db);
-              for (const t of repo.list()) {
-                try {
-                  const bundle = JSON.parse(t.bundleJson);
-                  if (bundle.type === "preset" && bundle.promptInjection) {
-                    registerPreset({ id: t.id, name: t.name, category: bundle.category ?? "custom", promptInjection: bundle.promptInjection, description: t.description ?? "" });
-                  }
-                } catch { /* skip */ }
-              }
-            } catch { /* ignore */ }
-          }
+          await ensurePresetsLoaded();
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           // 从 book config 读取用户选择的预设
@@ -1973,18 +2015,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
           return { ok: false, renderer: definition.renderer, error: "missing-content", summary: "content 参数不能为空。" };
         }
         try {
-          const { listPresets, getPreset, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          // 确保 preset store 已初始化
-          if (listPresets().length === 0) {
-            try { registerBuiltinPresets(); } catch { /* ignore */ }
-            try {
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              for (const t of createUserTemplateRepository(db).list()) {
-                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch { /* skip */ }
-              }
-            } catch { /* ignore */ }
-          }
+          const { listPresets, getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          await ensurePresetsLoaded();
           let enabledPresets: Array<{ id: string; name: string; category: string; promptInjection?: string }>;
 
           if (options.loadBookConfig) {
@@ -2092,20 +2124,7 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
             } catch { /* ignore */ }
           }
 
-          const templates = listBeatTemplates();
-          // 如果 templates 为空，尝试重新注册（内置 + 自定义）
-          if (templates.length === 0) {
-            try {
-              const { registerBuiltinPresets, registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
-              registerBuiltinPresets();
-              // 恢复自定义节拍模板
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              for (const t of createUserTemplateRepository(db).list()) {
-                try { const b = JSON.parse(t.bundleJson); if (b.type === "beat-template" && Array.isArray(b.beats)) registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats }); } catch { /* skip */ }
-              }
-            } catch { /* ignore */ }
-          }
+          await ensureBeatsLoaded();
           const allTemplates = listBeatTemplates();
           const activeTemplate = selectedTemplateId
             ? getBeatTemplate(selectedTemplateId) ?? allTemplates.find((t) => t.id === selectedTemplateId)
@@ -2145,17 +2164,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         const bookId = String(input.bookId);
         const templateId = String(input.templateId);
         try {
-          const { getBeatTemplate, listBeatTemplates, registerBuiltinPresets, registerBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          if (listBeatTemplates().length === 0) {
-            try {
-              registerBuiltinPresets();
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              for (const t of createUserTemplateRepository(db).list()) {
-                try { const b = JSON.parse(t.bundleJson); if (b.type === "beat-template" && Array.isArray(b.beats)) registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats }); } catch { /* skip */ }
-              }
-            } catch { /* ignore */ }
-          }
+          const { getBeatTemplate, listBeatTemplates } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          await ensureBeatsLoaded();
 
           const template = getBeatTemplate(templateId) ?? listBeatTemplates().find((t) => t.id === templateId);
           if (!template) {
@@ -2202,17 +2212,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
         const mode = String(input.mode || "set"); // set | add | remove
         try {
           // 验证预设 ID 是否有效
-          const { getPreset, listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          if (listPresets().length === 0) {
-            try { registerBuiltinPresets(); } catch { /* ignore */ }
-            try {
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              for (const t of createUserTemplateRepository(db).list()) {
-                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch { /* skip */ }
-              }
-            } catch { /* ignore */ }
-          }
+          const { getPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          await ensurePresetsLoaded();
 
           // 读取当前 book.json
           const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
@@ -2265,17 +2266,8 @@ ${hooks || "\u6682\u65e0\u4f0f\u7b14"}
     case "presets.list_available":
       return async ({ input, definition }) => {
         try {
-          const { listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-          if (listPresets().length === 0) {
-            try { registerBuiltinPresets(); } catch {}
-            try {
-              const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
-              const db = getStorageDatabase();
-              for (const t of createUserTemplateRepository(db).list()) {
-                try { const b = JSON.parse(t.bundleJson); if (b.type === "preset" && b.promptInjection) registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" }); } catch {}
-              }
-            } catch {}
-          }
+          const { listPresets } = await import("@vivy1024/novelfork-novel-plugin/engine");
+          await ensurePresetsLoaded();
 
           let allPresets = listPresets();
           const category = input.category ? String(input.category) : undefined;
@@ -2626,7 +2618,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
             }));
             task.promise = taskPromise;
-            taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
+            taskPromise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
+            gcBackgroundMaps();
             backgroundTasks.set(taskId, task);
             return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
           }
@@ -2661,7 +2654,8 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
           }));
           task.promise = taskPromise;
-          taskPromise.then(r => { task.result = r; task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
+          taskPromise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
+          gcBackgroundMaps();
           backgroundTasks.set(taskId, task);
           return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
         }
@@ -4245,7 +4239,8 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             abortController: subAbortController,
             pendingMessages: [],
           };
-          task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
+          task.promise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = "completed"; }).catch(e => { task.result = String(e); task.completedAt = Date.now(); task.status = "failed"; });
+          gcBackgroundMaps();
           backgroundAgents.set(agentId, task);
           return {
             ok: true,
@@ -4285,7 +4280,8 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
               abortController: subAbortController,
               pendingMessages: [],
             };
-            task.promise.then(r => { task.result = r; task.status = "completed"; }).catch(e => { task.result = String(e); task.status = "failed"; });
+            task.promise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = "completed"; }).catch(e => { task.result = String(e); task.completedAt = Date.now(); task.status = "failed"; });
+            gcBackgroundMaps();
             backgroundAgents.set(agentId, task);
 
             const reason = raceResult === "timeout"

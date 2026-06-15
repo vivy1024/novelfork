@@ -124,6 +124,21 @@ export class SSETransport extends EventEmitter {
     });
   }
 
+  async sendNotification(notification: { jsonrpc: "2.0"; method: string; params?: Record<string, unknown> }): Promise<void> {
+    if (!this.eventSource) {
+      throw new Error("Transport not connected");
+    }
+    // Fire-and-forget POST without registering a pending response
+    fetch(this.config.url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...this.config.headers,
+      },
+      body: JSON.stringify(notification),
+    }).catch(() => {});
+  }
+
   private handleMessage(message: MCPResponse | MCPNotification): void {
     if ("id" in message) {
       // Response

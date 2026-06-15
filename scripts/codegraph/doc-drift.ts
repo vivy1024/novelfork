@@ -61,9 +61,9 @@ function loadDeprecatedTools(): string[] {
   return [...new Set(names)];
 }
 
-/** 文档中合法引用废弃工具的豁免目录（changelog/归档/迁移记录） */
+/** 文档中合法引用废弃工具的豁免目录（changelog/归档/迁移/参考调研——非当前 NovelFork 教学） */
 function isExemptDoc(docRel: string): boolean {
-  return /99-历史归档|archived|迁移|变更记录|parity-gap/i.test(docRel);
+  return /99-历史归档|90-参考资料|archived|迁移|变更记录|parity-gap|CHANGELOG/i.test(docRel);
 }
 
 interface ToolDrift {

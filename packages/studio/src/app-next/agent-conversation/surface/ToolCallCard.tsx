@@ -305,7 +305,7 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
 // ToolCallCard — 对标 NarraFork 风格，使用 shadcn 组件
 // ---------------------------------------------------------------------------
 
-export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: ConversationToolCall; onOpenArtifact?: unknown; forceCollapsed?: boolean }) {
+export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: ConversationToolCall; forceCollapsed?: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const effectiveExpanded = expanded && !forceCollapsed;
   const [longRunning, setLongRunning] = useState(false);
@@ -499,9 +499,20 @@ function BashExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
     }
   }, [streamingOutput, isRunning]);
 
-  // Line count & byte count for streaming progress
+  // Line count & byte count for streaming progress (avoid creating Blob on every render)
   const lineCount = displayOutput ? displayOutput.split("\n").length : 0;
-  const byteCount = displayOutput ? new Blob([displayOutput]).size : 0;
+  const lastByteLenRef = useRef(0);
+  const lastByteCountRef = useRef(0);
+  const byteCount = useMemo(() => {
+    if (!displayOutput) return 0;
+    const len = displayOutput.length;
+    // Only recompute when length changes by >1000 chars to reduce encoder allocations
+    if (Math.abs(len - lastByteLenRef.current) > 1000 || lastByteCountRef.current === 0) {
+      lastByteLenRef.current = len;
+      lastByteCountRef.current = new TextEncoder().encode(displayOutput).length;
+    }
+    return lastByteCountRef.current;
+  }, [displayOutput]);
 
   return (
     <>

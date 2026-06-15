@@ -299,16 +299,6 @@ export const BACKEND_CONTRACT_CAPABILITIES: readonly BackendContractCapability[]
     source: { kind: "route", file: "packages/studio/src/api/routes/pipeline.ts", exportName: "createPipelineRouter" },
   },
   {
-    id: "legacy.monitor.unsupported",
-    userCapability: "Monitor 状态与日志",
-    entry: "GET /api/monitor/status + WS /api/monitor/logs",
-    status: "unsupported",
-    dataSource: "daemon/runtime 事件事实源尚未接入",
-    failureBoundary: "HTTP 返回 501 unsupported；WebSocket 发送 unsupported 事件后关闭，不伪造 stopped 或实时日志。",
-    frontendRule: "UI 必须显示未接入说明或禁用入口；接入真实事实源前不得恢复绿色状态。",
-    source: { kind: "route", file: "packages/studio/src/api/routes/monitor.ts", exportName: "createMonitorRouter" },
-  },
-  {
     id: "legacy.ai-agent.unsupported",
     userCapability: "已退役 direct agent loop",
     entry: "retired POST /api/agent",

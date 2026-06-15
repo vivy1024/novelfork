@@ -252,17 +252,11 @@ export class MCPClientImpl implements MCPClient {
   }
 
   private async sendNotification(notification: { jsonrpc: "2.0"; method: string; params?: Record<string, unknown> }): Promise<void> {
-    // Notifications don't expect responses
-    // For stdio, just write to stdin; for SSE, POST without waiting
+    // Notifications don't expect responses and MUST NOT have an id field per MCP protocol
     if (!this.transport) throw new Error("Transport not available");
 
-    const request: MCPRequest = {
-      ...notification,
-      id: this.transport.nextRequestId(),
-    };
-
-    // Fire and forget
-    this.transport.sendRequest(request).catch(() => {});
+    // Fire and forget — write raw notification without id
+    this.transport.sendNotification(notification).catch(() => {});
   }
 
   private async cleanup(): Promise<void> {
@@ -279,10 +273,10 @@ export class MCPClientImpl implements MCPClient {
     this.events?.onStateChange?.(state);
   }
 
-  private handleDisconnect(): void {
+  private async handleDisconnect(): Promise<void> {
     if (this._state === "disconnected") return;
 
-    this.cleanup();
+    await this.cleanup();
 
     // Auto-reconnect if enabled
     if (this.config.autoReconnect !== false && this.reconnectAttempts < this.maxReconnectAttempts) {

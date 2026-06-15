@@ -10,7 +10,7 @@ export const sonInLawRevealBundle: PresetBundle = {
   tags: ["赘婿", "逆转", "打脸", "身份"],
   genreIds: ["son-in-law"],
   toneId: "passionate-heroic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["character-motivation", "information-flow", "satisfaction-cost"],
   difficulty: "easy",
   prerequisites: ["作者需要明确主角真实身份、隐藏原因和打脸节奏规划。"],

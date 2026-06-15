@@ -10,7 +10,7 @@ export const lightNovelCampusBundle: PresetBundle = {
   tags: ["轻小说", "校园", "日常", "恋爱"],
   genreIds: ["light-novel"],
   toneId: "passionate-heroic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["character-motivation"],
   difficulty: "easy",
   prerequisites: ["作者需要明确角色设定、校园背景和核心关系线。"],

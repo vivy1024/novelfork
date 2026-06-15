@@ -398,8 +398,8 @@ export class ContinuityAuditor extends BaseAgent {
 
     const searchNote = gp.eraResearch
       ? isEnglish
-        ? "\n\nYou have web-search capability (search_web / fetch_url). For real-world eras, people, events, geography, or policies, you must verify with search_web instead of relying on memory. Cross-check at least 2 sources."
-        : "\n\n你有联网搜索能力（search_web / fetch_url）。对于涉及真实年代、人物、事件、地理、政策的内容，你必须用search_web核实，不可凭记忆判断。至少对比2个来源交叉验证。"
+        ? "\n\nFor real-world eras, people, events, geography, or policies: relevant search results have been injected into context. Use them to verify facts instead of relying on memory. Cross-check with the provided sources."
+        : "\n\n涉及真实年代、人物、事件、地理、政策时：相关搜索结果已注入上下文。请据此核实事实，不可凭记忆判断。以提供的资料为准交叉验证。"
       : "";
 
     const systemPrompt = isEnglish

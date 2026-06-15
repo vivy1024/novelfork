@@ -72,6 +72,17 @@ export function applyRuntimeStateDelta(params: {
     throw new Error(`duplicate summary row for chapter ${delta.chapterSummary.chapter}`);
   }
 
+  // subplotOps / emotionalArcOps / characterMatrixOps — schema 预留字段，RuntimeStateSnapshot
+  // 中尚无对应数据结构。settler 如果产出这些 ops 会被忽略（记 warning），待正式设计后实现。
+  if (delta.subplotOps.length > 0 || delta.emotionalArcOps.length > 0 || delta.characterMatrixOps.length > 0) {
+    const skipped = [
+      delta.subplotOps.length > 0 ? `subplotOps(${delta.subplotOps.length})` : "",
+      delta.emotionalArcOps.length > 0 ? `emotionalArcOps(${delta.emotionalArcOps.length})` : "",
+      delta.characterMatrixOps.length > 0 ? `characterMatrixOps(${delta.characterMatrixOps.length})` : "",
+    ].filter(Boolean).join(", ");
+    console.warn(`[state-reducer] Skipping unimplemented ops for chapter ${delta.chapter}: ${skipped}`);
+  }
+
   const hooks = applyHookOps(snapshot.hooks, delta);
   const currentState = applyCurrentStatePatch(
     snapshot.currentState,

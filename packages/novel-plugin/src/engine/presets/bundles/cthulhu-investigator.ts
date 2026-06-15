@@ -10,7 +10,7 @@ export const cthulhuInvestigatorBundle: PresetBundle = {
   tags: ["克苏鲁", "调查", "恐惧", "理智"],
   genreIds: ["cthulhu"],
   toneId: "tragic-solitude",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "supernatural-occult",
   logicRiskIds: ["information-flow", "character-motivation", "satisfaction-cost"],
   difficulty: "hard",
   prerequisites: ["作者需要了解克苏鲁神话体系、恐惧营造技巧和理智机制设计。"],

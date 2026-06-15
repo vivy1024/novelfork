@@ -55,4 +55,22 @@ export const builtinSettingBasePresets = [
     compatibleGenres: ["scifi"],
     conflictGroup: "setting-base",
   },
+  {
+    id: "modern-urban-daily",
+    name: "现代都市日常",
+    category: "setting-base",
+    description: "当代中国城市背景，公司/学校/机关/社区为主要场域，社会规则与人情世故驱动冲突。",
+    promptInjection: "采用现代都市日常基底：冲突来源为职场/家庭/人际/制度摩擦；信息通过手机、社交媒体和面对面传递；经济逻辑遵循工薪/创业/房贷现实；权力结构为公司层级/体制内/家族关系；不引入超自然或科幻元素。",
+    compatibleGenres: ["urban", "romance", "sports"],
+    conflictGroup: "setting-base",
+  },
+  {
+    id: "supernatural-occult",
+    name: "灵异神秘",
+    category: "setting-base",
+    description: "现代或近现代背景叠加超自然层，规则体系、代价机制与秘密组织构成的灵异世界基底。",
+    promptInjection: "采用灵异神秘基底：超自然力量必须有规则体系和使用代价；信息获取受限于调查和线索链；存在隐秘组织或势力维护帷幕；普通社会与超自然层并行但有边界；恐惧来自未知而非纯粹暴力。",
+    compatibleGenres: ["mystery", "horror", "urban"],
+    conflictGroup: "setting-base",
+  },
 ] as const satisfies ReadonlyArray<Preset>;

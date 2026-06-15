@@ -502,8 +502,8 @@ export function createStorageRouter(ctx: RouterContext): Hono {
             ),
           )
         : [];
-      const defaultSession = createdSessions.find((s) => s.agentId === "writer")
-        ?? existingSessions.find((s) => s.agentId === "writer")
+      const defaultSession = createdSessions.find((s) => s.agentId === "novelist")
+        ?? existingSessions.find((s) => s.agentId === "novelist")
         ?? createdSessions[0]
         ?? existingSessions[0];
       if (!defaultSession) {

@@ -12,7 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import type { ToolResultArtifact } from "../../tool-results";
 import type { SlashCommandExecutionContext, SlashCommandExecutionResult } from "../slash-command-registry";
 import { createDefaultSlashCommandRegistry, mergeUserCommandsIntoRegistry, expandUserCommandPrompt, type UserCommand, type SlashCommandRegistry } from "../slash-command-registry";
 import { Composer } from "./Composer";
@@ -68,7 +67,6 @@ export interface ConversationSurfaceProps {
   /** 删除单条消息 */
   onDeleteMessage?: (messageId: string) => Promise<void> | void;
   onSlashCommandResult?: (result: SlashCommandExecutionResult) => void;
-  onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   /** 附件上传回调 */
   onAttach?: (files: FileList) => void;
   /** 历史消息分页 */
@@ -170,6 +168,8 @@ export function ConversationSurface({
   const [expandReasoning, setExpandReasoning] = useState(false);
   const [autoLoadHistory, setAutoLoadHistory] = useState(true);
   const [advancedAnimations, setAdvancedAnimations] = useState(true);
+  const [sendMode, setSendMode] = useState<"enter" | "ctrl-enter">("enter");
+  const [statusBarPrefs, setStatusBarPrefs] = useState<{ showTokenUsage?: boolean; showOutputRate?: boolean }>({});
   const routerNavigate = useNavigate();
 
   // 加载用户自定义命令和禁用命令列表
@@ -183,17 +183,22 @@ export function ConversationSurface({
       .catch(() => { /* non-fatal */ });
   }, []);
 
-  // 加载渲染相关用户偏好（默认展开推理内容 / 滚动自动加载历史 / 高级动画）
+  // 加载渲染相关用户偏好（默认展开推理内容 / 滚动自动加载历史 / 高级动画 / 发送模式）
   useEffect(() => {
     let active = true;
     const loadPrefs = () => {
       fetch("/api/settings/user")
         .then(res => res.ok ? res.json() : null)
-        .then((data: { runtimeControls?: { expandReasoning?: boolean; scrollAutoLoadHistory?: boolean }; preferences?: { advancedAnimations?: boolean } } | null) => {
+        .then((data: { runtimeControls?: { expandReasoning?: boolean; scrollAutoLoadHistory?: boolean; sendMode?: string; showTokenUsage?: boolean; showOutputRate?: boolean }; preferences?: { advancedAnimations?: boolean } } | null) => {
           if (!active || !data) return;
           if (typeof data.runtimeControls?.expandReasoning === "boolean") setExpandReasoning(data.runtimeControls.expandReasoning);
           if (typeof data.runtimeControls?.scrollAutoLoadHistory === "boolean") setAutoLoadHistory(data.runtimeControls.scrollAutoLoadHistory);
           if (typeof data.preferences?.advancedAnimations === "boolean") setAdvancedAnimations(data.preferences.advancedAnimations);
+          if (data.runtimeControls?.sendMode === "ctrl-enter") setSendMode("ctrl-enter");
+          setStatusBarPrefs({
+            showTokenUsage: data.runtimeControls?.showTokenUsage,
+            showOutputRate: data.runtimeControls?.showOutputRate,
+          });
         })
         .catch(() => { /* non-fatal, keep defaults */ });
     };
@@ -359,13 +364,15 @@ export function ConversationSurface({
   const streamingChars = isWorking ? (messages.filter(m => m.isStreaming).reduce((sum, m) => sum + m.content.length, 0)) : 0;
 
   // 检测回复到达，重置 localSending
+  const messagesRef = useRef(messages);
+  messagesRef.current = messages;
   useEffect(() => {
     if (messages.length > prevMessageCount.current && localSending) {
-      const lastMsg = messages[messages.length - 1];
+      const lastMsg = messagesRef.current[messagesRef.current.length - 1];
       if (lastMsg?.role === "assistant") setLocalSending(false);
     }
     prevMessageCount.current = messages.length;
-  }, [messages.length, localSending, messages]);
+  }, [messages.length, localSending]);
 
   // Auto-show FileChangesPanel when write tools complete
   const prevMsgLenForFiles = useRef(messages.length);
@@ -799,6 +806,7 @@ export function ConversationSurface({
             window.location.reload();
           }).catch(e => { alert(`清空上下文失败: ${e instanceof Error ? e.message : String(e)}`); });
         }}
+        userPrefs={statusBarPrefs}
       />
 
       {/* ── Todos summary bar (above Composer) ── */}
@@ -810,7 +818,6 @@ export function ConversationSurface({
         onAbort={onAbort}
         onContinue={() => { setLocalSending(true); if (onContinueSession) { onContinueSession(); } else { onSend(""); } }}
         onRetry={handleRetry}
-        onAttach={onAttach}
         onSlashCommandResult={handleSlashCommandResult}
         slashCommandContext={{ registry: slashRegistry, status, compactSession: onCompactSession, bookId: status.binding?.projectId, userCommands, commandEnabledRegistry: { isEnabled: (id: string) => !disabledCommands.includes(id) } }}
         isRunning={isWorking}
@@ -818,6 +825,7 @@ export function ConversationSurface({
         lastTurnFailed={lastTurnFailed}
         disabledReason={sendDisabledReason}
         settingsHref={settingsHref}
+        sendMode={sendMode}
       />
       </div>
     </section>

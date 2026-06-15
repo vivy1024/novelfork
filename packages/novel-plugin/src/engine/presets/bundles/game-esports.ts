@@ -10,7 +10,7 @@ export const gameEsportsBundle: PresetBundle = {
   tags: ["游戏", "电竞", "竞技", "数值"],
   genreIds: ["game"],
   toneId: "passionate-heroic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["technology-boundary", "information-flow"],
   difficulty: "easy",
   prerequisites: ["作者需要明确游戏规则体系、等级上限和核心玩法机制。"],

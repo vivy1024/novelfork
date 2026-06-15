@@ -47,6 +47,8 @@ export interface NarratorStatusBarProps {
   onCompact?: () => void;
   onReset?: () => void;
   fastMode?: boolean;
+  /** 外部传入的用户偏好（避免重复 fetch /api/settings/user） */
+  userPrefs?: { showTokenUsage?: boolean; showOutputRate?: boolean };
 }
 
 const STATE_DOT_COLORS: Record<string, string> = {
@@ -136,14 +138,20 @@ function formatDuration(ms: number): string {
   return minutes > 0 ? `${minutes}:${secs.toString().padStart(2, "0")}` : `0:${secs.toString().padStart(2, "0")}`;
 }
 
-export function NarratorStatusBar({ status, sessionId, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode }: NarratorStatusBarProps) {
+export function NarratorStatusBar({ status, sessionId, streamingStartedAt, streamingChars, onUpdateModel, onUpdateReasoningEffort, onUpdatePermissionMode, onToggleFastMode, onCompact, onReset, fastMode, userPrefs }: NarratorStatusBarProps) {
   const narratorState: NarratorState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
   const substatus = status.substatus;
 
-  // 读取用户设置：showTokenUsage / showOutputRate
-  const [showTokens, setShowTokens] = useState(true);
-  const [showOutputRate, setShowOutputRate] = useState(true);
+  // 读取用户设置：showTokenUsage / showOutputRate — 优先使用外部传入的 userPrefs
+  const [showTokens, setShowTokens] = useState(userPrefs?.showTokenUsage !== false);
+  const [showOutputRate, setShowOutputRate] = useState(userPrefs?.showOutputRate !== false);
   useEffect(() => {
+    if (userPrefs) {
+      // 外部已提供，不需要重复 fetch
+      if (userPrefs.showTokenUsage === false) setShowTokens(false);
+      if (userPrefs.showOutputRate === false) setShowOutputRate(false);
+      return;
+    }
     fetch("/api/settings/user")
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
@@ -151,7 +159,7 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
         if (data?.runtimeControls?.showOutputRate === false) setShowOutputRate(false);
       })
       .catch(() => {});
-  }, []);
+  }, [userPrefs]);
 
   // 实时计时器 — 基于 turnActive 状态，不依赖后端 turnStartedAt
   const isWorking = narratorState === "working";

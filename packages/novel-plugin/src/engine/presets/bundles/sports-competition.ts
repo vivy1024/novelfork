@@ -10,7 +10,7 @@ export const sportsCompetitionBundle: PresetBundle = {
   tags: ["体育", "竞技", "热血", "成长"],
   genreIds: ["sports"],
   toneId: "passionate-heroic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["character-motivation", "satisfaction-cost"],
   difficulty: "medium",
   prerequisites: ["作者需要对所写运动有专业了解，包括规则、技术和训练方法。"],

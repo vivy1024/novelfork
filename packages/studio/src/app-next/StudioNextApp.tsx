@@ -28,7 +28,6 @@ const LearnPageLazy = lazy(() => import("./learn/LearnPage").then((m) => ({ defa
 const BookManagementPageLazy = lazy(() => import("./books/BookManagementPage").then((m) => ({ default: m.BookManagementPage })));
 import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
 import { Button } from "../components/ui/button";
-import { FolderOpen } from "lucide-react";
 import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
@@ -58,8 +57,6 @@ import {
   type ResourceHistoryEntry,
   ToolConfigBar,
   AgentQuickActions,
-  ConversationResourcePanel,
-  type ResourceFile,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
@@ -573,7 +570,6 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
   const [workspaceFact, setWorkspaceFact] = useState<ConversationRouteStatus["workspace"] | undefined>(undefined);
   const [compactThresholdPercent, setCompactThresholdPercent] = useState(80);
-  const [autoCompactEnabled, setAutoCompactEnabled] = useState(true);
   const shellDataStore = useShellDataStore();
   const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError, workspaceFact, compactThresholdPercent);
   const ackedSeqRef = useRef<number | null>(null);
@@ -704,9 +700,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       if (!active || !data) return;
       const rc = data.runtimeControls;
       if (rc?.contextCompressionThresholdPercent) setCompactThresholdPercent(rc.contextCompressionThresholdPercent);
-      // autoCompact lives in agent behavior settings (same endpoint)
-      const behavior = data.agentBehavior ?? data.behavior;
-      if (behavior && typeof behavior.autoCompact === "boolean") setAutoCompactEnabled(behavior.autoCompact);
+      // autoCompact is handled server-side; no client state needed
     }).catch(() => { /* use defaults */ });
     return () => { active = false; };
   }, []);
@@ -930,7 +924,6 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
   // Novel-specific header slot: ToolConfigBar + AgentQuickActions + 资源面板
   const novelBookId = canvasContext?.activeResource?.bookId ?? runtime.state.session?.projectId ?? undefined;
   const novelAgentRole = runtime.state.session?.agentId ?? "novelist";
-  const [resourcePanelOpen, setResourcePanelOpen] = useState(false);
   const novelHeaderSlot = novelBookId ? (
     <>
       <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "novelist" | "writer" | "custom"} />
@@ -939,9 +932,6 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
         bookId={novelBookId}
         onSendMessage={(msg: string) => { void runtime.sendMessage(msg); }}
       />
-      <Button variant="ghost" size="xs" onClick={() => setResourcePanelOpen(true)} title="资源面板">
-        <FolderOpen className="size-3.5" />
-      </Button>
     </>
   ) : null;
 
@@ -1078,8 +1068,8 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
 function MissingSessionActions() {
   return (
     <nav aria-label="缺失会话操作" className="conversation-route__missing-actions">
-      <a href="/next">返回会话列表</a>
-      <a href="/next">新建会话</a>
+      <a href="/next/sessions">返回会话列表</a>
+      <a href="/next">首页</a>
     </nav>
   );
 }
@@ -1625,7 +1615,7 @@ export function StudioNextApp(_props: StudioNextAppProps) {
 
   // Apply appearance preferences on app startup (font size, font family, OLED black)
   useEffect(() => {
-    fetch("/settings/user").then(r => r.ok ? r.json() : null).then((data: { preferences?: { fontSize?: number; fontFamily?: string; oledBlack?: boolean } } | null) => {
+    fetch("/api/settings/user").then(r => r.ok ? r.json() : null).then((data: { preferences?: { fontSize?: number; fontFamily?: string; oledBlack?: boolean } } | null) => {
       if (!data?.preferences) return;
       const { fontSize, fontFamily, oledBlack } = data.preferences;
       if (fontSize) document.documentElement.style.fontSize = `${fontSize}px`;

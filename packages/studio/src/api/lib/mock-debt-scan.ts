@@ -210,14 +210,6 @@ function getAllowedHitReason(hit: MockDebtScanHit): string | undefined {
     return "real-file-dedup-stub-marker";
   }
 
-  // i18n 翻译资源文件的开发者说明注释（项目当前未用 i18n 框架）
-  if (
-    hit.relativePath === "packages/studio/src/app-next/agent-conversation/i18n/agent-runtime-hardening.ts"
-    && hit.lineText.includes("后续接入 i18next")
-  ) {
-    return "i18n-resource-doc-comment";
-  }
-
   // 未映射的 novel slash 命令返回透明错误（非伪造成功）
   if (
     hit.relativePath === "packages/studio/src/app-next/agent-conversation/slash-command-registry.ts"

@@ -10,7 +10,7 @@ export const supernaturalDetectiveBundle: PresetBundle = {
   tags: ["灵异", "侦探", "驱邪", "民俗"],
   genreIds: ["supernatural"],
   toneId: "tragic-solitude",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "supernatural-occult",
   logicRiskIds: ["information-flow", "character-motivation", "satisfaction-cost"],
   difficulty: "medium",
   prerequisites: ["作者需要明确灵异规则体系、主角能力边界和恐怖氛围营造方法。"],

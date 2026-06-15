@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
   ChapterSummariesStateSchema,
@@ -107,14 +107,23 @@ export async function saveRuntimeStateSnapshot(
   await mkdir(stateDir, { recursive: true });
 
   await Promise.all([
-    writeFile(join(stateDir, "manifest.json"), JSON.stringify(snapshot.manifest, null, 2), "utf-8"),
-    writeFile(join(stateDir, "current_state.json"), JSON.stringify(snapshot.currentState, null, 2), "utf-8"),
-    writeFile(join(stateDir, "hooks.json"), JSON.stringify(snapshot.hooks, null, 2), "utf-8"),
-    writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify(snapshot.chapterSummaries, null, 2), "utf-8"),
-    writeFile(join(stateDir, "resource_ledger.json"), JSON.stringify(snapshot.resourceLedger ?? { resources: [] }, null, 2), "utf-8"),
-    writeFile(join(stateDir, "knowledge.json"), JSON.stringify(snapshot.knowledge ?? { events: [] }, null, 2), "utf-8"),
-    writeFile(join(stateDir, "timeline.json"), JSON.stringify(snapshot.timeline ?? { entries: [] }, null, 2), "utf-8"),
+    atomicWriteJson(join(stateDir, "manifest.json"), snapshot.manifest),
+    atomicWriteJson(join(stateDir, "current_state.json"), snapshot.currentState),
+    atomicWriteJson(join(stateDir, "hooks.json"), snapshot.hooks),
+    atomicWriteJson(join(stateDir, "chapter_summaries.json"), snapshot.chapterSummaries),
+    atomicWriteJson(join(stateDir, "resource_ledger.json"), snapshot.resourceLedger ?? { resources: [] }),
+    atomicWriteJson(join(stateDir, "knowledge.json"), snapshot.knowledge ?? { events: [] }),
+    atomicWriteJson(join(stateDir, "timeline.json"), snapshot.timeline ?? { entries: [] }),
   ]);
+}
+
+/**
+ * 原子写入 JSON 文件：先写 .tmp 再 rename，避免进程崩溃时产生半截文件。
+ */
+async function atomicWriteJson(path: string, data: unknown): Promise<void> {
+  const tmpPath = path + ".tmp";
+  await writeFile(tmpPath, JSON.stringify(data, null, 2), "utf-8");
+  await rename(tmpPath, path);
 }
 
 export async function loadNarrativeMemorySeed(bookDir: string): Promise<NarrativeMemorySeed> {

@@ -239,7 +239,7 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideT
         void handleDeleteRelation(edge.id);
       }
     },
-    [],
+    [bookId],
   );
 
   return (

@@ -1,7 +1,6 @@
 import { useMemo, useState, useEffect, type ReactNode } from "react";
 
 import type { CanvasContext } from "../../shared/agent-native-workspace";
-import type { ToolResultArtifact } from "../tool-results";
 import type { NarratorSessionMode } from "../../shared/session-types";
 import type { SlashCommandCompactResult } from "./slash-command-registry";
 import { buildAbortEnvelope, buildMessageEnvelope } from "./runtime";
@@ -45,7 +44,6 @@ export interface ConversationRouteProps {
   onDeleteMessage?: (messageId: string) => Promise<void> | void;
   onApproveConfirmation?: (id: string, answers?: Record<string, unknown>) => void;
   onRejectConfirmation?: (id: string) => void;
-  onOpenArtifact?: (artifact: ToolResultArtifact) => void;
   /** 历史消息分页 */
   hasPreviousMessages?: boolean;
   onLoadPreviousMessages?: () => Promise<ConversationSurfaceMessage[]>;
@@ -116,7 +114,6 @@ export function ConversationRoute({
   onDeleteMessage,
   onApproveConfirmation = () => undefined,
   onRejectConfirmation = () => undefined,
-  onOpenArtifact,
   hasPreviousMessages,
   onLoadPreviousMessages,
   onEditTitle,
@@ -214,7 +211,6 @@ export function ConversationRoute({
         onCompactSession={onCompactSession}
         onTruncateToMessage={onTruncateToMessage}
         onDeleteMessage={onDeleteMessage}
-        onOpenArtifact={onOpenArtifact}
         hasPreviousMessages={hasPreviousMessages}
         onLoadPreviousMessages={onLoadPreviousMessages}
         onEditTitle={onEditTitle}

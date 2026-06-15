@@ -10,7 +10,7 @@ export const rebirthRevengeBundle: PresetBundle = {
   tags: ["重生", "复仇", "布局", "逆转"],
   genreIds: ["rebirth"],
   toneId: "austere-pragmatic",
-  settingBaseId: "near-future-industrial-scifi",
+  settingBaseId: "modern-urban-daily",
   logicRiskIds: ["information-flow", "character-motivation", "economy-resource"],
   difficulty: "easy",
   prerequisites: ["作者需要明确重生时间点、先知信息范围和核心复仇目标。"],

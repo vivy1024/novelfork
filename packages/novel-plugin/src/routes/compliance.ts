@@ -196,6 +196,8 @@ function invalidPlatformResponse(c: { json: (value: unknown, status?: number) =>
   return c.json({ error: `Unsupported platform: ${String(value)}` }, 400);
 }
 
+const IMPORTED_WORDS_MAX = 10000;
+
 export function createComplianceRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const importedWords: SensitiveWord[] = [];
@@ -278,8 +280,24 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     const body = await readJsonBody(c);
     const source = Array.isArray(body.words) ? body.words : Array.isArray(body.dictionary) ? body.dictionary : [];
     const dictionary = normalizeSensitiveWords(source);
-    importedWords.push(...dictionary);
-    return c.json({ importedCount: dictionary.length, dictionary, totalCustomWordCount: importedWords.length });
+
+    // Deduplicate by word field against existing importedWords
+    const existingSet = new Set(importedWords.map((w) => w.word));
+    const newWords = dictionary.filter((w) => !existingSet.has(w.word));
+
+    // Enforce upper limit: if adding would exceed max, drop oldest entries
+    const overflow = (importedWords.length + newWords.length) - IMPORTED_WORDS_MAX;
+    if (overflow > 0) {
+      importedWords.splice(0, overflow);
+    }
+    importedWords.push(...newWords);
+
+    return c.json({ importedCount: newWords.length, dictionary: newWords, totalCustomWordCount: importedWords.length });
+  });
+
+  app.delete("/api/compliance/dictionaries/imported", (_c) => {
+    importedWords.length = 0;
+    return _c.json({ cleared: true, totalCustomWordCount: 0 });
   });
 
   return app;

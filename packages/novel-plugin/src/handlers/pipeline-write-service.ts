@@ -9,7 +9,7 @@
  */
 
 import type { LLMClient, Logger, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
-import { StateManager, buildLengthSpec, countChapterLength, chooseNormalizeMode, isOutsideHardRange } from "@vivy1024/novelfork-core";
+import { StateManager, buildLengthSpec, countChapterLength, chooseNormalizeMode, isOutsideHardRange, loadRuntimeStateSnapshot, findKnowledgeViolations, findTimelineConflicts } from "@vivy1024/novelfork-core";
 import type { BookConfig } from "@vivy1024/novelfork-core";
 import type { AgentContext } from "../engine/agents/base.js";
 import type { AuditResult } from "../engine/agents/continuity.js";
@@ -257,6 +257,32 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
     }
 
+    // 4.0. Knowledge boundary & timeline conflict checks (P2-2 / P3-1)
+    let knowledgeWarnings: string[] = [];
+    let timelineWarnings: string[] = [];
+    try {
+      const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir);
+      // POV character: derive from first scene's first character (SceneSpec has no explicit pov field)
+      const povCharacterId = sceneSpec.scenes[0]?.characters?.[0] ?? "";
+      if (povCharacterId && runtimeSnapshot.knowledge.events.length > 0) {
+        const violations = findKnowledgeViolations(runtimeSnapshot.knowledge, povCharacterId, chapterNumber);
+        if (violations.length > 0) {
+          knowledgeWarnings = violations.map((v) => `[知识越界] ${povCharacterId} 在第${chapterNumber}章不应知道「${v.fact}」（第${v.learnedAtChapter}章才习得）`);
+          logger?.warn(`[pipeline.write] Knowledge violations: ${knowledgeWarnings.length} found for POV="${povCharacterId}"`);
+        }
+      }
+      if (runtimeSnapshot.timeline.entries.length > 0) {
+        const conflicts = findTimelineConflicts(runtimeSnapshot.timeline);
+        if (conflicts.length > 0) {
+          timelineWarnings = conflicts.map((c) => c.issue);
+          logger?.warn(`[pipeline.write] Timeline conflicts: ${timelineWarnings.length} found`);
+        }
+      }
+    } catch (err) {
+      // 旧书可能没有 runtime state — 跳过，不阻断
+      logger?.debug(`[pipeline.write] Runtime state check skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // 4. Save as candidate
     const candidateId = `pipeline-write-${randomUUID()}`;
     try {
@@ -280,6 +306,8 @@ export async function executePipelineWrite(
           ...(needsHumanReview ? { needsHumanReview: true } : {}),
           ...(adversarialAudit ? { adversarialAudit: true } : {}),
           ...(lengthWarning ? { lengthWarning } : {}),
+          ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
+          ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
           generatedAt: new Date().toISOString(),
         },
       });

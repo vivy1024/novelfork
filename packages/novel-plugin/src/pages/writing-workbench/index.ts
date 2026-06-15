@@ -12,7 +12,6 @@ export * from "./ResourceDetailLoader";
 export * from "./ResourceSaveController";
 export * from "./WorkbenchCanvas";
 export * from "./WorkbenchResourceTree";
-export * from "./WorkbenchTopBar";
 export * from "./WritingWorkbenchRoute";
 export * from "./resource-viewers";
 export * from "./useWorkbenchResources";
