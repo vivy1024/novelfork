@@ -107,6 +107,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
               <Network className="size-3" />
               {showGraph ? "返回列表" : "关系图谱"}
             </Button>
+            {showGraph && <span className="text-[9px] text-muted-foreground">实验性</span>}
           </div>
         )}
 
