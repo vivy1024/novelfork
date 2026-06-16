@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result" | "tool";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -101,4 +101,47 @@ export async function loadWorkbenchResourcesFromContract(resource: ResourceDomai
 
 export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
   return useMemo(() => createWorkbenchResourcesResult(buildWorkbenchResourceTree(nodes)), [nodes]);
+}
+
+// ---------------------------------------------------------------------------
+// Tool section — 工具分区节点（供资源树使用）
+// ---------------------------------------------------------------------------
+
+export type ToolPanelId = "quality" | "health" | "progress" | "arcs" | "drift" | "compliance" | "foreshadowing" | "runtime" | "coreshift";
+
+export interface ToolNodeDef {
+  id: string;
+  title: string;
+  toolPanel: ToolPanelId;
+}
+
+const TOOL_NODES: ToolNodeDef[] = [
+  { id: "tool:quality", title: "📊 质量监控", toolPanel: "quality" },
+  { id: "tool:health", title: "💚 全书健康", toolPanel: "health" },
+  { id: "tool:progress", title: "📈 每日进度", toolPanel: "progress" },
+  { id: "tool:arcs", title: "📐 角色弧线", toolPanel: "arcs" },
+  { id: "tool:drift", title: "🎨 文风漂移", toolPanel: "drift" },
+  { id: "tool:compliance", title: "✅ 平台合规", toolPanel: "compliance" },
+  { id: "tool:foreshadowing", title: "🎣 伏笔看板", toolPanel: "foreshadowing" },
+  { id: "tool:runtime", title: "📦 运行时状态", toolPanel: "runtime" },
+  { id: "tool:coreshift", title: "⚡ 核心转折", toolPanel: "coreshift" },
+];
+
+/** Create the "工具" section with tool panel child nodes */
+export function createToolSectionNodes(): WorkbenchResourceNode {
+  const children: WorkbenchResourceNode[] = TOOL_NODES.map((def) => ({
+    id: def.id,
+    kind: "tool" as WorkbenchResourceKind,
+    title: def.title,
+    metadata: { toolPanel: def.toolPanel },
+    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+  }));
+
+  return {
+    id: "tool-section",
+    kind: "group" as WorkbenchResourceKind,
+    title: "工具",
+    capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+    children,
+  };
 }

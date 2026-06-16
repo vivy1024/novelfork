@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,9 +15,20 @@ import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import { NewBookGuide } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
-import { ExpandablePanel, type PanelType } from "./ExpandablePanel";
 import { BookSettingsPanel } from "./panels/BookSettingsPanel";
 import { ChapterToolbar } from "./ChapterToolbar";
+import { QualityPanel } from "./panels/QualityPanel";
+import type { ToolPanelId } from "./useWorkbenchResources";
+
+// Lazy-loaded tool panels
+const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
+const DailyProgressCard = lazy(() => import("./DailyProgressCard").then(m => ({ default: m.DailyProgressCard })));
+const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
+const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
+const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
+const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
+const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
+const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
@@ -93,11 +104,45 @@ const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   "narrative-line": "叙事线",
   storyline: "叙事线",
   "tool-result": "工具结果",
+  tool: "工具",
   unsupported: "不支持",
 };
 
 function resourceTypeLabel(kind: WorkbenchResourceKind): string {
   return resourceTypeLabels[kind] ?? kind;
+}
+
+// ---------------------------------------------------------------------------
+// ToolPanelView — renders tool panel content in the canvas area
+// ---------------------------------------------------------------------------
+
+function ToolPanelLoading() {
+  return <div className="flex items-center justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
+}
+
+function ToolPanelView({ toolPanel, bookId }: { toolPanel: ToolPanelId; bookId: string }) {
+  switch (toolPanel) {
+    case "quality":
+      return <QualityPanel bookId={bookId} />;
+    case "health":
+      return <Suspense fallback={<ToolPanelLoading />}><BookHealthSummary bookId={bookId} /></Suspense>;
+    case "progress":
+      return <Suspense fallback={<ToolPanelLoading />}><DailyProgressCard /></Suspense>;
+    case "arcs":
+      return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "drift":
+      return <Suspense fallback={<ToolPanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "compliance":
+      return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "foreshadowing":
+      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} /></Suspense>;
+    case "runtime":
+      return <Suspense fallback={<ToolPanelLoading />}><RuntimeStatePanel bookId={bookId} /></Suspense>;
+    case "coreshift":
+      return <Suspense fallback={<ToolPanelLoading />}><CoreShiftPanel bookId={bookId} /></Suspense>;
+    default:
+      return <div className="p-4 text-muted-foreground">未知工具面板</div>;
+  }
 }
 
 export interface CandidateActionHandlers {
@@ -184,6 +229,23 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         <p>请先选择或创建一本作品</p>
       </div>
     );
+  }
+
+  // Tool panel nodes — render tool panel content directly in canvas
+  if (node.kind === "tool" && bookId) {
+    const toolPanel = node.metadata?.toolPanel as ToolPanelId | undefined;
+    if (toolPanel) {
+      return (
+        <div className="flex h-full flex-col min-h-0">
+          <header className="shrink-0 flex items-center border-b border-border px-4 py-2">
+            <h2 className="text-sm font-semibold">{node.title}</h2>
+          </header>
+          <div className="flex-1 min-h-0 overflow-y-auto p-3">
+            <ToolPanelView toolPanel={toolPanel} bookId={bookId} />
+          </div>
+        </div>
+      );
+    }
   }
 
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
@@ -475,9 +537,6 @@ function StatCard({ label, value, sub, className }: { label: string; value: stri
 }
 
 function DefaultCockpitView({ bookId }: { bookId: string }) {
-  const [activePanel, setActivePanel] = useState<PanelType>(null);
-  const [panelHeight, setPanelHeight] = useState<number>(320);
-  const [panelMaximized, setPanelMaximized] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [stats, setStats] = useState<OverviewStats | null>(null);
 
@@ -491,25 +550,8 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
     return () => { active = false; };
   }, [bookId]);
 
-  const handleStatusBarClick = useCallback((panel: NonNullable<PanelType>) => {
-    setActivePanel((prev) => (prev === panel ? null : panel));
-    setPanelMaximized(false);
-    setShowSettings(false);
-  }, []);
-
-  const handlePanelClose = useCallback(() => {
-    setActivePanel(null);
-    setPanelMaximized(false);
-  }, []);
-
-  const handlePanelMaximize = useCallback(() => {
-    setPanelMaximized((prev) => !prev);
-  }, []);
-
   const handleSettingsClick = useCallback(() => {
     setShowSettings(true);
-    setActivePanel(null);
-    setPanelMaximized(false);
   }, []);
 
   const handleSettingsBack = useCallback(() => {
@@ -525,8 +567,6 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
         </div>
         <StatusBar
           bookId={bookId}
-          activePanel={activePanel}
-          onPanelClick={handleStatusBarClick}
           onSettingsClick={handleSettingsBack}
         />
       </div>
@@ -536,12 +576,12 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
   return (
     <div className="flex h-full flex-col min-h-0">
       {/* 状态卡片网格（作品总览） */}
-      {!panelMaximized && stats && (
+      {stats && (
         <div className="shrink-0 grid grid-cols-3 gap-2 px-3 pt-3 pb-2">
           <StatCard label="章节进度" value={`${stats.chapterCount} 章`} sub={`目标 ${stats.volumeProgress.total} · ${stats.volumeProgress.percent}%`} />
           <StatCard label="伏笔回收" value={`${stats.foreshadowing.recoveryRate}%`} sub={`埋 ${stats.foreshadowing.planted} / 收 ${stats.foreshadowing.recovered}`} />
           <StatCard label="今日字数" value={`${stats.wordCount.today.toLocaleString()}`} sub={`总计 ${(stats.wordCount.total / 10000).toFixed(1)} 万字`} />
-          {/* 节拍进度条（BeatProgressBar 内嵌） */}
+          {/* 节拍进度条 */}
           <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
               <span>卷进度</span>
@@ -555,31 +595,13 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
       )}
 
       {/* 主区域：经纬浏览 */}
-      {!panelMaximized && (
-        <div className="flex-1 min-h-0">
-          <JingweiPanel bookId={bookId} />
-        </div>
-      )}
+      <div className="flex-1 min-h-0">
+        <JingweiPanel bookId={bookId} />
+      </div>
 
-      {/* 可展开面板 */}
-      {activePanel && (
-        <ExpandablePanel
-          activePanel={activePanel}
-          height={panelMaximized ? undefined : panelHeight}
-          maximized={panelMaximized}
-          bookId={bookId}
-          onClose={handlePanelClose}
-          onMaximize={handlePanelMaximize}
-          onHeightChange={setPanelHeight}
-          onSwitchPanel={setActivePanel}
-        />
-      )}
-
-      {/* 底部状态条 */}
+      {/* 底部状态条（纯信息展示） */}
       <StatusBar
         bookId={bookId}
-        activePanel={activePanel}
-        onPanelClick={handleStatusBarClick}
         onSettingsClick={handleSettingsClick}
       />
     </div>

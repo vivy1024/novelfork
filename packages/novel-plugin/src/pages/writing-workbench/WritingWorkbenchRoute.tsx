@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { BookOpen, GitBranch, History, Home } from "lucide-react";
@@ -6,6 +6,7 @@ import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandl
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
 import { CheckpointPanel, type CheckpointEntry } from "./CheckpointPanel";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
+import { createToolSectionNodes } from "./useWorkbenchResources";
 import { ChapterGraph, type ChapterGraphChapter, type ChapterGraphEdge } from "@/app-next/chapter-graph";
 
 export interface WritingWorkbenchRouteProps {
@@ -54,6 +55,12 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
+
+  // Merge tool section into the resource tree
+  const nodesWithTools = useMemo(() => {
+    const toolSection = createToolSectionNodes();
+    return [...nodes, toolSection];
+  }, [nodes]);
 
   /** Intercept resource tree clicks: jingwei nodes → 回到默认视图（JingweiPanel 全屏） */
   const handleResourceOpen = useCallback((node: WorkbenchResourceNode) => {
@@ -149,7 +156,7 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
         <div className="flex flex-1 min-h-0">
           {/* 左侧资源树 */}
           <section aria-label="资源树" className="w-64 shrink-0 border-r border-border overflow-y-auto p-2">
-            <WorkbenchResourceTree nodes={nodes} selectedNodeId={selectedNode?.id} onOpen={handleResourceOpen} onAction={async (action) => {
+            <WorkbenchResourceTree nodes={nodesWithTools} selectedNodeId={selectedNode?.id} onOpen={handleResourceOpen} onAction={async (action) => {
               const nodeId = action.node?.id ?? "";
               if (action.type === "create") {
                 const title = prompt("新建条目标题：");
