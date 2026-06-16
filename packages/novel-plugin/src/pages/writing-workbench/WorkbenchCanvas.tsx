@@ -222,7 +222,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
   if (!node) {
     if (bookId) {
-      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} onGuideComplete={onGuideComplete} />;
+      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} />;
     }
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -495,9 +495,12 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 // DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
 // ---------------------------------------------------------------------------
 
-function DefaultCockpitViewWithGuide({ bookId, bookTitle, onGuideComplete }: { bookId: string; bookTitle: string; onGuideComplete?: () => void }) {
+function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
+  // Skip guide if book already has chapters (old book without localStorage mark)
+  const hasChapters = nodes?.some(n => n.kind === "chapter") ?? false;
   const [guideCompleted, setGuideCompleted] = useState(() => {
+    if (hasChapters) return true;
     try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
   });
 
