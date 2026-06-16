@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result" | "tool";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result" | "tool" | "tool-group";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -115,33 +115,66 @@ export interface ToolNodeDef {
   toolPanel: ToolPanelId;
 }
 
-const TOOL_NODES: ToolNodeDef[] = [
-  { id: "tool:quality", title: "📊 质量监控", toolPanel: "quality" },
-  { id: "tool:health", title: "💚 全书健康", toolPanel: "health" },
-  { id: "tool:progress", title: "📈 每日进度", toolPanel: "progress" },
-  { id: "tool:arcs", title: "📐 角色弧线", toolPanel: "arcs" },
-  { id: "tool:drift", title: "🎨 文风漂移", toolPanel: "drift" },
-  { id: "tool:compliance", title: "✅ 平台合规", toolPanel: "compliance" },
-  { id: "tool:foreshadowing", title: "🎣 伏笔看板", toolPanel: "foreshadowing" },
-  { id: "tool:runtime", title: "📦 运行时状态", toolPanel: "runtime" },
-  { id: "tool:coreshift", title: "⚡ 核心转折", toolPanel: "coreshift" },
+interface ToolGroupDef {
+  id: string;
+  title: string;
+  tools: ToolNodeDef[];
+}
+
+const TOOL_GROUPS: ToolGroupDef[] = [
+  {
+    id: "tool-group:progress",
+    title: "📈 进度类",
+    tools: [
+      { id: "tool:progress", title: "每日进度", toolPanel: "progress" },
+      { id: "tool:health", title: "全书健康", toolPanel: "health" },
+    ],
+  },
+  {
+    id: "tool-group:quality",
+    title: "🔍 质量类",
+    tools: [
+      { id: "tool:quality", title: "质量监控", toolPanel: "quality" },
+      { id: "tool:drift", title: "文风一致性", toolPanel: "drift" },
+      { id: "tool:compliance", title: "平台合规", toolPanel: "compliance" },
+    ],
+  },
+  {
+    id: "tool-group:structure",
+    title: "📐 结构类",
+    tools: [
+      { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
+      { id: "tool:foreshadowing", title: "伏笔看板", toolPanel: "foreshadowing" },
+      { id: "tool:coreshift", title: "关键转折点", toolPanel: "coreshift" },
+      { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
+    ],
+  },
 ];
 
-/** Create the "工具" section with tool panel child nodes */
+/** Create the "工具" section with grouped tool panel child nodes */
 export function createToolSectionNodes(): WorkbenchResourceNode {
-  const children: WorkbenchResourceNode[] = TOOL_NODES.map((def) => ({
-    id: def.id,
-    kind: "tool" as WorkbenchResourceKind,
-    title: def.title,
-    metadata: { toolPanel: def.toolPanel },
-    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+  const groupCaps: WorkbenchResourceCapabilities = { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
+  const toolCaps: WorkbenchResourceCapabilities = { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false };
+
+  const children: WorkbenchResourceNode[] = TOOL_GROUPS.map((group) => ({
+    id: group.id,
+    kind: "tool-group" as WorkbenchResourceKind,
+    title: group.title,
+    capabilities: groupCaps,
+    children: group.tools.map((def) => ({
+      id: def.id,
+      kind: "tool" as WorkbenchResourceKind,
+      title: def.title,
+      metadata: { toolPanel: def.toolPanel },
+      capabilities: toolCaps,
+    })),
   }));
 
   return {
     id: "tool-section",
     kind: "group" as WorkbenchResourceKind,
-    title: "工具",
-    capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+    title: "🔧 工具",
+    capabilities: groupCaps,
     children,
   };
 }

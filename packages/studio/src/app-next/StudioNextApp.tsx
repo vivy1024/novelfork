@@ -142,10 +142,6 @@ function providerRuntimeStatus(providerStatus: ShellDataProviderStatus | null): 
   return record as { readonly hasUsableModel?: boolean; readonly defaultProvider?: string; readonly defaultModel?: string; readonly lastConnectionError?: string };
 }
 
-function HomeRouteAction({ label, onClick, variant = "outline" }: { readonly label: string; readonly onClick: () => void; readonly variant?: "default" | "outline" }) {
-  return <Button type="button" variant={variant} onClick={onClick}>{label}</Button>;
-}
-
 function HomeStatCard({ label, value }: { readonly label: string; readonly value: string }) {
   return (
     <div className="rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
@@ -175,24 +171,12 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const [createBookError, setCreateBookError] = useState<string | null>(null);
   const [creatingBook, setCreatingBook] = useState(false);
   const [showDirPicker, setShowDirPicker] = useState(false);
-  const recentBooks = books.slice(0, 3);
-  const standaloneSessions = sessions.filter((s) => !s.projectId);
-  const recentSessions = standaloneSessions.slice(0, 3);
+  const recentBook = books[0] ?? null;
 
   // Onboarding checklist state
   const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>("/onboarding/status");
   const onboardingStatus = onboardingData?.status ?? null;
-  const summary = providerSummaryRecord(providerSummary);
   const runtimeStatus = providerRuntimeStatus(providerStatus);
-  const providerList = Array.isArray(summary?.providers) ? (summary.providers as readonly unknown[]) : null;
-  const providerCount = providerList?.length;
-  const activeProviderId = typeof summary?.activeProviderId === "string" ? summary.activeProviderId : runtimeStatus?.defaultProvider;
-  const activeProviderName = (() => {
-    if (!activeProviderId || !providerList) return activeProviderId;
-    const provider = providerList.find((p) => p && typeof p === "object" && (p as { id?: string }).id === activeProviderId) as { name?: string } | undefined;
-    return provider?.name || activeProviderId;
-  })();
-  const latestSession = sessions[0];
 
   const handleCreateBook = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -233,19 +217,17 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         <div className="space-y-2">
           <p className="text-xs font-medium text-muted-foreground">NovelFork Next</p>
           <h1 className="text-2xl font-semibold">作者首页</h1>
-          <p className="text-sm text-muted-foreground">从最近作品、最近会话和模型健康快速进入写作。</p>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <HomeRouteAction label="新建作品" onClick={() => setCreateBookOpen(true)} variant="default" />
-          <HomeRouteAction label="新建会话" onClick={() => onNavigate({ kind: "sessions" })} />
-          <HomeRouteAction
-            label="继续最近会话"
-            onClick={() => onNavigate(latestSession ? { kind: "narrator", sessionId: latestSession.id } : { kind: "sessions" })}
-            variant="outline"
-          />
-          <HomeRouteAction label="打开设置" onClick={() => onNavigate({ kind: "settings" })} variant="outline" />
-          <HomeRouteAction label="套路库" onClick={() => onNavigate({ kind: "routines" })} variant="outline" />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {recentBook && (
+            <Button type="button" size="lg" className="w-full sm:w-auto" onClick={() => onNavigate({ kind: "book", bookId: recentBook.id })}>
+              继续写作 → {recentBook.title}
+            </Button>
+          )}
+          <Button type="button" variant="outline" size="lg" className="w-full sm:w-auto" onClick={() => setCreateBookOpen(true)}>
+            新建作品
+          </Button>
         </div>
       </header>
 
@@ -268,11 +250,9 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <HomeStatCard label="最近作品" value={`${books.length} 本`} />
-        <HomeStatCard label="最近会话" value={`${standaloneSessions.length} 条`} />
-        <HomeStatCard label="模型健康" value={runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"} />
-        <HomeStatCard label="当前提供方" value={activeProviderName ?? "未配置"} />
+      <div className="grid gap-3 sm:grid-cols-2 max-w-md">
+        <HomeStatCard label="作品数" value={`${books.length} 本`} />
+        <HomeStatCard label="会话数" value={`${sessions.length} 条`} />
       </div>
 
       {onboardingStatus && !onboardingStatus.dismissedGettingStarted && (
@@ -369,66 +349,6 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
           还没有可用内容，先新建作品或新建会话。
         </div>
       ) : null}
-
-      <div className="grid gap-6 xl:grid-cols-3">
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">最近作品</h2>
-            <span className="text-xs text-muted-foreground">{books.length} 本</span>
-          </div>
-          {recentBooks.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">暂无作品，先创建一本书开始写作。</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {recentBooks.map((book) => (
-                <Button key={book.id} type="button" variant="outline" className="w-full justify-between" onClick={() => onNavigate({ kind: "book", bookId: book.id })}>
-                  <span className="truncate text-left">{book.title}</span>
-                  <span className="text-xs text-muted-foreground">打开</span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">最近会话</h2>
-            <span className="text-xs text-muted-foreground">{standaloneSessions.length} 条</span>
-          </div>
-          {recentSessions.length === 0 ? (
-            <p className="mt-3 text-sm text-muted-foreground">暂无会话，先新建叙述者或继续最近会话。</p>
-          ) : (
-            <div className="mt-3 space-y-2">
-              {recentSessions.map((session) => (
-                <Button key={session.id} type="button" variant="outline" className="h-auto w-full justify-between py-2" onClick={() => onNavigate({ kind: "narrator", sessionId: session.id })}>
-                  <span className="min-w-0 flex-1 text-left">
-                    <span className="block truncate font-medium text-foreground">{session.title}</span>
-                    <span className="block truncate text-xs text-muted-foreground">
-                      {session.projectName ? `作品：${session.projectName}` : session.agentId ? `Agent：${session.agentId}` : "独立叙述者"}
-                    </span>
-                  </span>
-                  <span className="text-xs text-muted-foreground">打开</span>
-                </Button>
-              ))}
-            </div>
-          )}
-        </section>
-
-        <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <h2 className="text-lg font-semibold">模型健康</h2>
-            <span className="text-xs text-muted-foreground">透明摘要</span>
-          </div>
-          <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-            <p>状态：{runtimeStatus?.hasUsableModel ? "有可用模型" : "暂无可用模型"}</p>
-            <p>默认提供方：{activeProviderName ?? "未配置"}</p>
-            <p>默认模型：{runtimeStatus?.defaultModel ?? "未配置"}</p>
-            {providerCount !== undefined ? <p>摘要中的提供方数量：{providerCount}</p> : null}
-            {runtimeStatus?.lastConnectionError ? <p role="status">最近错误：{runtimeStatus.lastConnectionError}</p> : null}
-            {!summary && !runtimeStatus ? <p>暂无 provider 摘要，先到设置页完成模型配置。</p> : null}
-          </div>
-        </section>
-      </div>
     </section>
   );
 }
@@ -1509,6 +1429,17 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
     },
   }), [bookId, reloadResources, resourceClient]);
 
+  const handleCreateChapter = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: "" }),
+      });
+      if (res.ok) reloadResources();
+    } catch { /* non-fatal */ }
+  }, [bookId, reloadResources]);
+
   return (
     <>
       {loading ? <p role="status">资源加载中…</p> : null}
@@ -1537,6 +1468,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onDeselectNode={() => setSelectedNode(null)}
         onSave={handleSave}
         onCanvasContextChange={handleCanvasContextChange}
+        onCreateChapter={handleCreateChapter}
         onGuideComplete={reloadResources}
         candidateActions={candidateActions}
         draftActions={draftActions}

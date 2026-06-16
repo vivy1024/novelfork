@@ -1,6 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { BookOpen, GitBranch, History, Home } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext, type CandidateActionHandlers, type DraftActionHandlers, type ChapterActionHandlers, type JingweiActionHandlers } from "./WorkbenchCanvas";
 import { WorkbenchResourceTree } from "./WorkbenchResourceTree";
@@ -55,6 +57,45 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
   const [checkpoints, setCheckpoints] = useState<CheckpointEntry[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
   const hasGraphData = chapters && chapters.length > 0;
+
+  // Dialog state for resource tree actions (replacing native prompt/confirm)
+  const [dialogType, setDialogType] = useState<"create" | "rename" | "delete" | null>(null);
+  const [dialogNodeId, setDialogNodeId] = useState("");
+  const [dialogInputValue, setDialogInputValue] = useState("");
+  const dialogInputRef = useRef<HTMLInputElement>(null);
+
+  const closeDialog = useCallback(() => {
+    setDialogType(null);
+    setDialogNodeId("");
+    setDialogInputValue("");
+  }, []);
+
+  const handleDialogConfirm = useCallback(async () => {
+    if (!bookId) return;
+    try {
+      if (dialogType === "create") {
+        if (!dialogInputValue.trim()) return;
+        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ parentId: dialogNodeId, title: dialogInputValue.trim(), content: `# ${dialogInputValue.trim()}\n\n` }),
+        });
+        if (res.ok) onGuideComplete?.();
+      } else if (dialogType === "rename") {
+        if (!dialogInputValue.trim()) return;
+        await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(dialogNodeId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ title: dialogInputValue.trim() }),
+        });
+        onGuideComplete?.();
+      } else if (dialogType === "delete") {
+        await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(dialogNodeId)}`, { method: "DELETE" });
+        onGuideComplete?.();
+      }
+    } catch { /* non-fatal */ }
+    closeDialog();
+  }, [bookId, dialogType, dialogNodeId, dialogInputValue, onGuideComplete, closeDialog]);
 
   // Merge tool section into the resource tree
   const nodesWithTools = useMemo(() => {
@@ -156,36 +197,19 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
         <div className="flex flex-1 min-h-0">
           {/* 左侧资源树 */}
           <section aria-label="资源树" className="w-64 shrink-0 border-r border-border overflow-y-auto p-2">
-            <WorkbenchResourceTree nodes={nodesWithTools} selectedNodeId={selectedNode?.id} onOpen={handleResourceOpen} onAction={async (action) => {
+            <WorkbenchResourceTree nodes={nodesWithTools} selectedNodeId={selectedNode?.id} onOpen={handleResourceOpen} onAction={(action) => {
               const nodeId = action.node?.id ?? "";
               if (action.type === "create") {
-                const title = prompt("新建条目标题：");
-                if (!title?.trim()) return;
-                try {
-                  const res = await fetch(`/api/books/${encodeURIComponent(bookId ?? "")}/jingwei/entries`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ parentId: nodeId, title: title.trim(), content: `# ${title.trim()}\n\n` }),
-                  });
-                  if (res.ok) window.location.reload();
-                } catch { /* non-fatal */ }
+                setDialogNodeId(nodeId);
+                setDialogInputValue("");
+                setDialogType("create");
               } else if (action.type === "delete") {
-                if (!confirm("确定删除此条目？")) return;
-                try {
-                  await fetch(`/api/books/${encodeURIComponent(bookId ?? "")}/jingwei/entries/${encodeURIComponent(nodeId)}`, { method: "DELETE" });
-                  window.location.reload();
-                } catch { /* non-fatal */ }
+                setDialogNodeId(nodeId);
+                setDialogType("delete");
               } else if (action.type === "rename") {
-                const newTitle = prompt("新标题：");
-                if (!newTitle?.trim()) return;
-                try {
-                  await fetch(`/api/books/${encodeURIComponent(bookId ?? "")}/jingwei/entries/${encodeURIComponent(nodeId)}`, {
-                    method: "PATCH",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ title: newTitle.trim() }),
-                  });
-                  window.location.reload();
-                } catch { /* non-fatal */ }
+                setDialogNodeId(nodeId);
+                setDialogInputValue(action.node?.title ?? "");
+                setDialogType("rename");
               }
             }} />
           </section>
@@ -215,6 +239,41 @@ export function WritingWorkbenchRoute({ bookId, repositoryPath, nodes, selectedN
           </div>
         </div>
       )}
+
+      {/* Dialog for resource tree actions (create/rename/delete) */}
+      <Dialog open={dialogType === "create" || dialogType === "rename"} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{dialogType === "create" ? "新建条目" : "重命名"}</DialogTitle>
+            <DialogDescription>{dialogType === "create" ? "请输入新条目的标题" : "请输入新的标题"}</DialogDescription>
+          </DialogHeader>
+          <Input
+            ref={dialogInputRef}
+            value={dialogInputValue}
+            onChange={(e) => setDialogInputValue(e.target.value)}
+            placeholder={dialogType === "create" ? "条目标题" : "新标题"}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === "Enter") void handleDialogConfirm(); }}
+          />
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>取消</Button>
+            <Button onClick={() => void handleDialogConfirm()} disabled={!dialogInputValue.trim()}>确定</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={dialogType === "delete"} onOpenChange={(open) => { if (!open) closeDialog(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认删除</DialogTitle>
+            <DialogDescription>确定要删除此条目吗？此操作不可撤销。</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>取消</Button>
+            <Button variant="destructive" onClick={() => void handleDialogConfirm()}>删除</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
