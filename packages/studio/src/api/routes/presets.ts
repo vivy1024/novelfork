@@ -10,17 +10,41 @@ import {
   getBundle,
   getPresetsByGenre,
   listBeatTemplates,
+  registerBuiltinPresets,
+  registerPreset,
+  registerBeatTemplate,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import type { RouterContext } from "./context.js";
 
 const REMOTE_TEMPLATES_URL =
   "https://raw.githubusercontent.com/vivy1024/novelfork-templates/main/index.json";
 
+/** Ensure preset/beat stores are populated (builtin + user custom) */
+function ensureStoresLoaded(): void {
+  if (listPresets().length > 0) return;
+  try { registerBuiltinPresets(); } catch { /* ignore */ }
+  try {
+    const db = getStorageDatabase();
+    const repo = createUserTemplateRepository(db);
+    for (const t of repo.list()) {
+      try {
+        const b = JSON.parse(t.bundleJson);
+        if (b.type === "preset" && b.promptInjection) {
+          registerPreset({ id: t.id, name: t.name, category: b.category ?? "custom", promptInjection: b.promptInjection, description: t.description ?? "" });
+        } else if (b.type === "beat-template" && Array.isArray(b.beats)) {
+          registerBeatTemplate({ id: t.id, name: b.name ?? t.name, description: b.description ?? "", beats: b.beats });
+        }
+      } catch { /* skip */ }
+    }
+  } catch { /* ignore */ }
+}
+
 export function createPresetsRouter(ctx: RouterContext): Hono {
   const app = new Hono();
   const { state } = ctx;
 
   app.get("/api/presets", (c) => {
+    ensureStoresLoaded();
     const category = c.req.query("category");
     const genre = c.req.query("genre");
 
@@ -40,6 +64,7 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   });
 
   app.get("/api/presets/beats", (c) => {
+    ensureStoresLoaded();
     return c.json({ beats: listBeatTemplates() });
   });
 
@@ -81,6 +106,7 @@ export function createPresetsRouter(ctx: RouterContext): Hono {
   });
 
   app.get("/api/books/:id/presets", async (c) => {
+    ensureStoresLoaded();
     const bookId = c.req.param("id");
     try {
       const book = await state.loadBookConfig(bookId);
