@@ -2,7 +2,7 @@ import { useCallback, useRef, useState, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Pencil, Trash2 } from "lucide-react";
+import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Pencil, Trash2, Wrench } from "lucide-react";
 import type { WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 
@@ -39,6 +39,8 @@ function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
       return <BookMarked className="size-4 text-teal-500" />;
     case "narrative-line":
       return <Route className="size-4 text-rose-500" />;
+    case "tool":
+      return <Wrench className="size-4 text-indigo-500" />;
     default:
       return <Sparkles className="size-4 text-muted-foreground" />;
   }

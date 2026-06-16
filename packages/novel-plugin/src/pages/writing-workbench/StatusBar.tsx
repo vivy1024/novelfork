@@ -1,35 +1,24 @@
 /**
- * StatusBar — 底部状态条
+ * StatusBar — 底部状态条（精简版）
  *
- * 固定 36px 高度，显示关键指标，每个区段可点击展开对应面板。
+ * 固定 36px 高度，仅展示关键指标：章数 + AI味 + 警告数 + 设置齿轮。
+ * 面板切换已迁移到左侧资源树"工具"分区。
  */
-import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Activity, Droplets, AlertTriangle, Cog, Heart, TrendingUp, Palette, ShieldCheck, Anchor, BarChart3, Database, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { PanelType } from "./ExpandablePanel";
+import { useState, useEffect } from "react";
+import { BookOpen, Droplets, AlertTriangle, Cog } from "lucide-react";
 
 export interface StatusBarProps {
   bookId: string;
-  activePanel: PanelType;
-  onPanelClick: (panel: NonNullable<PanelType>) => void;
   onSettingsClick?: () => void;
-}
-
-interface StatusSegment {
-  id: string;
-  panel: NonNullable<PanelType>;
-  icon: React.ReactNode;
-  label: string;
 }
 
 interface HealthData {
   chapterCount: number;
-  totalChapters: number;
   aiTasteAvg: number | null;
   alertCount: number;
 }
 
-export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }: StatusBarProps) {
+export function StatusBar({ bookId, onSettingsClick }: StatusBarProps) {
   const [health, setHealth] = useState<HealthData | null>(null);
 
   useEffect(() => {
@@ -40,7 +29,6 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
         if (res.ok) {
           const data = await res.json();
           if (!cancelled) {
-            // Count alerts from chapters with audit warnings
             const chapters = Array.isArray(data.health?.chapters) ? data.health.chapters : [];
             const warnings = Array.isArray(data.health?.warnings) ? data.health.warnings : [];
             const auditFails = chapters.filter((c: { auditStatus?: string }) => c.auditStatus === "warn").length;
@@ -49,7 +37,6 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
             setHealth({
               chapterCount: typeof data.chapterCount === "number" ? data.chapterCount
                 : typeof data.health?.totalChapters?.value === "number" ? data.health.totalChapters.value : 0,
-              totalChapters: typeof data.totalChapters === "number" ? data.totalChapters : 0,
               aiTasteAvg: typeof data.aiTasteAvg === "number" ? data.aiTasteAvg
                 : typeof data.health?.aiTasteMean?.value === "number" ? data.health.aiTasteMean.value : null,
               alertCount,
@@ -62,50 +49,29 @@ export function StatusBar({ bookId, activePanel, onPanelClick, onSettingsClick }
     return () => { cancelled = true; };
   }, [bookId]);
 
-  const handleSegmentClick = useCallback((seg: StatusSegment) => {
-    onPanelClick(seg.panel);
-  }, [onPanelClick]);
-
   const chapterLabel = health ? `${health.chapterCount} 章` : "— 章";
-  const qualityLabel = "质量 —";
   const aiTasteLabel = health?.aiTasteAvg != null ? `AI味 ${health.aiTasteAvg.toFixed(0)}%` : "AI味 —";
-  const alertLabel = health ? `⚠ ${health.alertCount ?? 0}` : "⚠ 0";
-
-  const segments: StatusSegment[] = [
-    { id: "quality", panel: "quality", icon: <Activity className="size-3.5" />, label: qualityLabel },
-    { id: "ai-taste", panel: "quality", icon: <Droplets className="size-3.5" />, label: aiTasteLabel },
-    { id: "alert", panel: "alert", icon: <AlertTriangle className="size-3.5" />, label: alertLabel },
-    { id: "health", panel: "health", icon: <Heart className="size-3.5" />, label: "健康" },
-    { id: "progress", panel: "progress", icon: <BarChart3 className="size-3.5" />, label: "进度" },
-    { id: "arcs", panel: "arcs", icon: <TrendingUp className="size-3.5" />, label: "弧线" },
-    { id: "drift", panel: "drift", icon: <Palette className="size-3.5" />, label: "文风" },
-    { id: "compliance", panel: "compliance", icon: <ShieldCheck className="size-3.5" />, label: "合规" },
-    { id: "foreshadowing", panel: "foreshadowing", icon: <Anchor className="size-3.5" />, label: "伏笔" },
-    { id: "runtime", panel: "runtime", icon: <Database className="size-3.5" />, label: "状态" },
-    { id: "coreshift", panel: "coreshift", icon: <Zap className="size-3.5" />, label: "转折" },
-  ];
+  const alertLabel = health ? `⚠ ${health.alertCount}` : "⚠ 0";
 
   return (
     <div className="flex h-9 shrink-0 items-center border-t border-border bg-muted/30 px-3 text-xs text-muted-foreground">
-      {/* 章数：纯展示，不可点击 */}
+      {/* 章数 */}
       <span className="flex items-center gap-1.5 px-3 py-1">
         <BookOpen className="size-3.5" />
         <span>{chapterLabel}</span>
       </span>
 
-      {segments.map((seg) => (
-        <button
-          key={seg.id}
-          onClick={() => handleSegmentClick(seg)}
-          className={cn(
-            "flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors hover:bg-muted hover:text-foreground",
-            activePanel === seg.panel && "bg-muted text-foreground font-medium"
-          )}
-        >
-          {seg.icon}
-          <span>{seg.label}</span>
-        </button>
-      ))}
+      {/* AI味 */}
+      <span className="flex items-center gap-1.5 px-3 py-1">
+        <Droplets className="size-3.5" />
+        <span>{aiTasteLabel}</span>
+      </span>
+
+      {/* 警告数 */}
+      <span className="flex items-center gap-1.5 px-3 py-1">
+        <AlertTriangle className="size-3.5" />
+        <span>{alertLabel}</span>
+      </span>
 
       {/* 设置按钮 — 右侧固定 */}
       <div className="ml-auto">
