@@ -255,8 +255,14 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       params.push(sectionId);
     }
     if (category) {
-      sql += ` AND e.category = ?`;
-      params.push(category);
+      // 兼容旧数据：查询时匹配新分类名 + 所有映射到该分类的旧名
+      const { LEGACY_CATEGORY_MAP } = await import("../engine/jingwei/unified-categories.js");
+      const legacyAliases = Object.entries(LEGACY_CATEGORY_MAP)
+        .filter(([, v]) => v.category === category)
+        .map(([k]) => k);
+      const allNames = [...new Set([category, ...legacyAliases])];
+      sql += ` AND e.category IN (${allNames.map(() => "?").join(",")})`;
+      params.push(...allNames);
     }
     if (parentId !== undefined) {
       const targetParent = parentId === "" || parentId === "null" ? null : parentId;
@@ -431,7 +437,12 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const { createStoryJingweiEntryRepository } = await loadEngine();
     let entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
     if (category) {
-      entries = entries.filter((e) => (e as EntryWithOverhaulFields).category === category);
+      const { LEGACY_CATEGORY_MAP } = await import("../engine/jingwei/unified-categories.js");
+      const legacyAliases = Object.entries(LEGACY_CATEGORY_MAP)
+        .filter(([, v]) => v.category === category)
+        .map(([k]) => k);
+      const allNames = new Set([category, ...legacyAliases]);
+      entries = entries.filter((e) => allNames.has((e as EntryWithOverhaulFields).category ?? ""));
     }
     // Fetch overhaul fields for tree building
     const rows = storage.sqlite.prepare(`
