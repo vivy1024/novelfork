@@ -147,11 +147,10 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
               ? bookItems.map((item) => {
                 const isActive = isShellNavItemActive(item, route);
                 const bookId = item.route.bookId;
-                // Show bound Agent sessions when book is active OR when viewing one of its agents
+                // Always show bound Agent sessions (only 1 novelist per book now)
                 const allBookAgents = sessions.filter((s) => s.projectId === bookId && s.status === "active");
                 const isViewingBookAgent = route.kind === "narrator" && allBookAgents.some((s) => s.id === route.sessionId);
-                const shouldExpand = isActive || isViewingBookAgent;
-                const bookAgents = shouldExpand ? allBookAgents : [];
+                const bookAgents = allBookAgents;
                 return (
                   <div key={item.id}>
                     <NavButton label={item.label} active={isActive || isViewingBookAgent} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
