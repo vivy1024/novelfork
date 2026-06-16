@@ -106,7 +106,7 @@ export function BookManagementPage({ onNavigateToBook, onCreateBook }: BookManag
               </div>
               <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
                 {book.chapterCount !== undefined && (
-                  <span>{book.chapterCount}{book.targetChapters ? `/${book.targetChapters}` : ""} 章</span>
+                  <span>{book.chapterCount} 章</span>
                 )}
                 {book.wordCount !== undefined && (
                   <span>{book.wordCount >= 10000 ? `${(book.wordCount / 10000).toFixed(1)} 万字` : `${book.wordCount} 字`}</span>

@@ -1,4 +1,4 @@
-import { normalizeBookStatus, normalizeChapterStatus } from "@vivy1024/novelfork-core";
+import { normalizeBookStatus, normalizeChapterStatus, getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StateManager } from "@vivy1024/novelfork-core";
 
 export interface BooksReadServiceOptions {
@@ -51,7 +51,18 @@ export function createBooksReadService(options: BooksReadServiceOptions) {
         bookIds.map(async (id) => {
           const book = await state.loadBookConfig(id) as unknown as Record<string, unknown>;
           await syncBookScaffold(book);
-          const chapters = await state.loadChapterIndex(id).catch(() => []) as unknown as ReadonlyArray<Record<string, unknown>>;
+          let chapters = await state.loadChapterIndex(id).catch(() => []) as unknown as ReadonlyArray<Record<string, unknown>>;
+          // If file-system index is empty, check writing_resource table for accepted chapters
+          if (chapters.length === 0) {
+            try {
+              const db = getStorageDatabase();
+              const row = db.sqlite.prepare(`SELECT COUNT(*) as cnt FROM writing_resource WHERE book_id = ? AND status = 'accepted'`).get(id) as { cnt: number } | undefined;
+              if (row && row.cnt > 0) {
+                // Synthesize minimal chapter entries for count purposes
+                chapters = Array.from({ length: row.cnt }, (_, i) => ({ number: i + 1, status: "approved", wordCount: 0 }));
+              }
+            } catch { /* ignore — DB not available */ }
+          }
           return normalizeApiBook(book, chapters);
         }),
       );
