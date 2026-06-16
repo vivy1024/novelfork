@@ -288,14 +288,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             <span className="ml-1">保存</span>
           </Button>
           {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
-            <Button size="sm" variant="outline" onClick={() => setVariantsOpen(true)} title="生成变体">
+            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setVariantsOpen(true)} title="生成变体">
               <GitCompare className="size-3.5" />
+              <span>变体</span>
             </Button>
           )}
           {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
             <Button
               size="sm"
               variant="outline"
+              className="gap-1.5"
               disabled={sceneSpecLoading}
               onClick={async () => {
                 setSceneSpecLoading(true);
@@ -320,6 +322,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
               title="生成章节蓝图"
             >
               <FileText className="size-3.5" />
+              <span>蓝图</span>
             </Button>
           )}
         </div>

@@ -41,6 +41,8 @@ function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
       return <Route className="size-4 text-rose-500" />;
     case "tool":
       return <Wrench className="size-4 text-indigo-500" />;
+    case "tool-group":
+      return <FolderOpen className="size-4 text-indigo-400" />;
     default:
       return <Sparkles className="size-4 text-muted-foreground" />;
   }

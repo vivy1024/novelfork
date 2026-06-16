@@ -24,7 +24,7 @@ function NavButton({ label, active, onClick, collapsed }: { readonly label: stri
           }`}
           onClick={onClick}
         >
-          <span className="text-[10px] font-bold">{label.charAt(0).toUpperCase()}</span>
+          <BookOpen className="size-4" />
         </TooltipTrigger>
         <TooltipContent side="right">{label}</TooltipContent>
       </Tooltip>
