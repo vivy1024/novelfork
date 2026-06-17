@@ -804,28 +804,17 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
     if (reply.type !== "tool_use") {
       const content = reply.content.trim();
-      if (!content) {
-        emit({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
-        return events;
-      }
 
-      // Detect malformed XML tool calls in assistant text (model regression fallback)
-      // If the adapter layer didn't catch it, sanitize here to prevent context poisoning
-      const xmlToolPattern = /<(?:tool_use|invoke|antml:invoke)\s+(?:id|name)=/;
-      if (xmlToolPattern.test(content)) {
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "xml-tool-use-in-text", sessionId: input.sessionId, contentPreview: content.slice(0, 200) }));
-        // Don't save malformed XML to context — emit failure and let user retry
-        emit({ type: "turn_failed", reason: "malformed-tool-call", message: "模型输出了格式异常的工具调用，请重试。" });
-        return events;
-      }
-
-      // P2.1: max_output_tokens recovery — detect truncated responses
+      // P2.1: max_output_tokens recovery — MUST check before empty-response fail
+      // When stop_reason=max_tokens, content may be empty/1-char (truncated before meaningful output)
       if (isMaxTokensTruncated(reply.metadata) && maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
         maxOutputTokensRecoveryCount++;
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "max-output-tokens-recovery", sessionId: input.sessionId, attempt: maxOutputTokensRecoveryCount, stopReason: reply.metadata?.stopReason }));
+        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "max-output-tokens-recovery", sessionId: input.sessionId, attempt: maxOutputTokensRecoveryCount, stopReason: reply.metadata?.stopReason, contentLength: content.length }));
 
-        // Push the truncated assistant message to context
-        messages.push({ type: "message", role: "assistant", content });
+        // Push the truncated assistant message to context (if non-empty)
+        if (content) {
+          messages.push({ type: "message", role: "assistant", content });
+        }
 
         if (maxOutputTokensRecoveryCount === 1 && !maxOutputTokensOverride) {
           // First recovery: escalate max_output_tokens
@@ -841,7 +830,20 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         continue;
       }
 
-      consecutiveSilentToolCalls = 0; // Fix: reset on assistant message
+      if (!content) {
+        emit({ type: "turn_failed", reason: "empty-response", message: "Agent runtime returned an empty response" });
+        return events;
+      }
+
+      // Detect malformed XML tool calls in assistant text (model regression fallback)
+      const xmlToolPattern = /<(?:tool_use|invoke|antml:invoke)\s+(?:id|name)=/;
+      if (xmlToolPattern.test(content)) {
+        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "xml-tool-use-in-text", sessionId: input.sessionId, contentPreview: content.slice(0, 200) }));
+        emit({ type: "turn_failed", reason: "malformed-tool-call", message: "模型输出了格式异常的工具调用，请重试。" });
+        return events;
+      }
+
+      consecutiveSilentToolCalls = 0;
 
       // P4: Blocking TurnComplete hooks — allow external validators to inject corrections
       if (input.onTurnComplete && turnCompleteHookRetries < 2) {
