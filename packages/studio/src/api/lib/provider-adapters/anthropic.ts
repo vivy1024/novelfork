@@ -260,6 +260,7 @@ function readAnthropicUsage(payload: Record<string, unknown>): GenerateUsage | u
 function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readonly RuntimeToolDefinition[]): GenerateResult {
   const usage = readAnthropicUsage(payload);
   const content = Array.isArray(payload.content) ? payload.content as Array<Record<string, unknown>> : [];
+  const payloadStopReason = typeof payload.stop_reason === "string" ? payload.stop_reason : undefined;
 
   const toolUses: RuntimeToolUse[] = [];
   let textContent = "";
@@ -284,10 +285,10 @@ function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readon
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(payloadStopReason ? { stopReason: payloadStopReason } : {}) };
   }
 
-  return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+  return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(payloadStopReason ? { stopReason: payloadStopReason } : {}) };
 }
 
 /**
@@ -387,7 +388,7 @@ async function consumeAnthropicStream(
         if (toolUses.length > 0) {
           return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
         }
-        return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+        return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
       }
 
       const { done, value } = await reader.read();
@@ -501,7 +502,7 @@ async function consumeAnthropicStream(
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
   }
 
   // If no structured tool_use was found, check for XML tool calls in the text output
@@ -518,7 +519,7 @@ async function consumeAnthropicStream(
           ? parsed.map(tu => ({ ...tu, name: toInternalToolName(tu.name, tools) }))
           : parsed;
         console.log(`[anthropic.stream] Successfully parsed ${resolvedToolUses.length} XML tool call(s): ${resolvedToolUses.map(t => t.name).join(", ")}`);
-        return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+        return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
       }
       // Parse failed — return failure to trigger retry
       console.warn(`[anthropic.stream] XML tool_use detected but parse failed, returning failure for retry`);
@@ -531,7 +532,7 @@ async function consumeAnthropicStream(
     }
   }
 
-  return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+  return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
 }
 
 async function readAnthropicError(response: Response): Promise<string> {
@@ -679,7 +680,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const body: Record<string, unknown> = {
       model: effectiveModelId,
       messages: toAnthropicMessages(input.messages, ctx),
-      max_tokens: 32768,
+      max_tokens: input.maxOutputTokensOverride ?? 32768,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
       // Automatic prompt caching: caches system + tools + message prefix automatically

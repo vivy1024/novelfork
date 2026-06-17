@@ -30,6 +30,7 @@ export interface LlmRuntimeMetadata {
     cache_read_input_tokens?: number;
   };
   readonly fallbackAttempts?: number;
+  readonly stopReason?: string;
 }
 
 export type LlmRuntimeGenerateResult =
@@ -47,6 +48,8 @@ export interface LlmRuntimeGenerateInput {
   readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly onRetry?: (attempt: number, maxAttempts: number) => void;
   readonly signal?: AbortSignal;
+  /** P2.1: 覆盖 max_output_tokens（用于截断恢复） */
+  readonly maxOutputTokensOverride?: number;
 }
 
 export interface LlmRuntimeServiceOptions {
@@ -322,6 +325,7 @@ export class LlmRuntimeService {
           ...(input.signal ? { signal: input.signal } : {}),
           ...(input.sessionConfig.reasoningEffort ? { reasoningEffort: input.sessionConfig.reasoningEffort } : {}),
           ...(input.sessionConfig.serviceTier ? { serviceTier: input.sessionConfig.serviceTier } : {}),
+          ...(input.maxOutputTokensOverride ? { maxOutputTokensOverride: input.maxOutputTokensOverride } : {}),
         });
 
         const metadata: LlmRuntimeMetadata = {
@@ -330,6 +334,7 @@ export class LlmRuntimeService {
           modelId: candidate.rawModelId,
           ...(result.success && result.usage ? { usage: result.usage } : {}),
           ...(attempt > 0 ? { fallbackAttempts: attempt } : {}),
+          ...(result.success && result.stopReason ? { stopReason: result.stopReason } : {}),
         };
 
         if (!result.success) {

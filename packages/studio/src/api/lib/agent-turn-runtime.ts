@@ -18,6 +18,7 @@ import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } fro
 import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
 import { pruneToolOutput } from "./compact/tool-output-pruner.js";
+import { createContentReplacementState, applyContentReplacement } from "./content-replacement.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -33,6 +34,8 @@ export interface AgentGenerateInput {
   readonly onStreamChunk?: (chunk: string) => void;
   readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly signal?: AbortSignal;
+  /** P2.1: 覆盖 max_output_tokens（用于 escalation 恢复） */
+  readonly maxOutputTokensOverride?: number;
 }
 
 export type AgentGenerateResult =
@@ -80,6 +83,12 @@ export interface AgentTurnRuntimeInput {
   readonly toolTimeoutMs?: number;
   /** 模型上下文窗口大小（tokens），用于 Budget Pressure 计算上下文使用率 */
   readonly contextWindowTokens?: number;
+  /** P2.1: 覆盖 max_output_tokens（用于 escalation 恢复） */
+  readonly maxOutputTokensOverride?: number;
+  /** P2.2: 备用模型 ID — 当主模型不可用时自动切换 */
+  readonly fallbackModel?: string;
+  /** P4: TurnComplete hooks — called when agent is about to finish. Return messages to inject for self-correction. */
+  readonly onTurnComplete?: (context: { lastAssistantContent: string; toolsUsed: string[] }) => Promise<string[] | null>;
 }
 
 function buildSystemContent(systemPrompt: string, context?: string): string {
@@ -284,8 +293,13 @@ export function createFileReadDeduplicator(): FileReadDeduplicator {
 // 使用 provider 报告的真实 input_tokens（比字符估算准）。
 // ---------------------------------------------------------------------------
 
+const BUDGET_PRESSURE_INFO = 0.70;  // 70% — 信息级
 const BUDGET_PRESSURE_SOFT = 0.80; // 80% — 软提示
 const BUDGET_PRESSURE_HARD = 0.92; // 92% — 紧急
+
+const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
+const ESCALATED_MAX_TOKENS = 64000;
+const BLOCKING_LIMIT_THRESHOLD = 0.97;
 
 export function buildBudgetPressureNotice(inputTokens: number, contextWindow: number): string {
   if (!contextWindow || contextWindow <= 0 || !inputTokens || inputTokens <= 0) return "";
@@ -297,6 +311,9 @@ export function buildBudgetPressureNotice(inputTokens: number, contextWindow: nu
   if (ratio >= BUDGET_PRESSURE_SOFT) {
     return `\n\n[提示：上下文已用 ${pct}%。请尽快收尾当前任务，避免长输出导致截断。]`;
   }
+  if (ratio >= BUDGET_PRESSURE_INFO) {
+    return `\n\n[信息：上下文已用 ${pct}%。当前进展顺利，建议适时向用户汇报阶段性结果。]`;
+  }
   return "";
 }
 
@@ -305,7 +322,7 @@ function truncateToolResult(content: string, toolName?: string): string {
   return pruneToolOutput(toolName ?? "unknown", content);
 }
 
-function toolResultContent(result: SessionToolExecutionResult, toolName?: string, toolInput?: Record<string, unknown>, deduplicator?: FileReadDeduplicator): string {
+function toolResultContent(result: SessionToolExecutionResult, toolName?: string, toolInput?: Record<string, unknown>, deduplicator?: FileReadDeduplicator, contentState?: ReturnType<typeof createContentReplacementState>): string {
   const instruction = toolName ? getContextAwareInstruction(toolName, result) : TOOL_RESULT_CONTINUATION_INSTRUCTION;
   let content = result.summary ?? "";
   // 将 data 中的关键结果附加到 content（让模型能看到实际数据）
@@ -372,6 +389,10 @@ function toolResultContent(result: SessionToolExecutionResult, toolName?: string
   if (toolName && toolInput && deduplicator) {
     content = deduplicator.deduplicate(toolName, toolInput, content);
   }
+  // Content replacement: large results get stored as references
+  if (contentState && toolName && content.length > 0) {
+    content = applyContentReplacement(contentState, toolName, content);
+  }
   // Return content directly without instruction injection (NarraFork parity)
   return content ? truncateToolResult(content, toolName) : (result.summary ?? "ok");
 }
@@ -385,6 +406,33 @@ function createDuplicateToolResult(firstResult: SessionToolExecutionResult): Ses
       firstSummary: firstResult.summary,
     },
   };
+}
+
+// ---------------------------------------------------------------------------
+// P2.2 Model Fallback — eligible error detection
+// ---------------------------------------------------------------------------
+
+function isFallbackEligibleError(code: string): boolean {
+  const combined = code.toLowerCase();
+  const eligiblePatterns = [
+    "rate_limit", "rate-limit", "ratelimit",
+    "overloaded", "overload",
+    "503", "529",
+    "service_unavailable", "service-unavailable",
+    "model_not_available", "model-not-available", "model_unavailable",
+    "capacity",
+  ];
+  return eligiblePatterns.some(p => combined.includes(p));
+}
+
+// ---------------------------------------------------------------------------
+// P2.1 max_output_tokens Recovery — truncation detection
+// ---------------------------------------------------------------------------
+
+function isMaxTokensTruncated(metadata: { stopReason?: string } | undefined): boolean {
+  if (!metadata?.stopReason) return false;
+  const reason = metadata.stopReason.toLowerCase();
+  return reason === "max_tokens" || reason === "length";
 }
 
 function isPendingConfirmationResult(result: SessionToolExecutionResult): boolean {
@@ -432,6 +480,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
   // Per-turn file dedup — 独立实例，避免并发 turn 间互相污染
   const fileReadDeduplicator = createFileReadDeduplicator();
+  // Content Replacement: store large tool results as references to save context
+  const contentReplacementState = createContentReplacementState();
   const filteredTools = filterSessionToolsForProvider(input.tools, input.sessionConfig.toolPolicy, {
     permissionMode: input.permissionMode,
     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
@@ -451,6 +501,14 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
 
+  // P2.1: max_output_tokens recovery state
+  let maxOutputTokensRecoveryCount = 0;
+  let maxOutputTokensOverride: number | undefined = input.maxOutputTokensOverride;
+
+  // P2.2: model fallback state
+  let hasAttemptedFallback = false;
+  let currentSessionConfig = input.sessionConfig;
+
   // Budget Pressure: 跟踪 provider 报告的最近一次 input_tokens
   let lastInputTokens = 0;
   const contextWindowTokens = input.contextWindowTokens ?? 0;
@@ -458,6 +516,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
   const silentThreshold = input.silentToolCallThreshold ?? -1; // -1 = disabled
+
+  // P4: Blocking TurnComplete hook retry guard (max 2 retries)
+  let turnCompleteHookRetries = 0;
 
   // --- Turn health monitor & checkpoint state ---
   const turnId = `${input.sessionId}:${Date.now()}`;
@@ -494,8 +555,21 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           emitStreamChunk(chunk);
         }
       : undefined;
+
+    // P2.4: Blocking limit pre-check — proactive compact trigger at 97%+
+    if (contextWindowTokens > 0 && lastInputTokens > 0) {
+      const ratio = lastInputTokens / contextWindowTokens;
+      if (ratio >= BLOCKING_LIMIT_THRESHOLD) {
+        messages.push({
+          type: "message",
+          role: "system",
+          content: `[⛔ 上下文已达 ${Math.round(ratio * 100)}%，即将溢出。请立即停止工具调用，输出已完成的结果后结束本轮。]`,
+        });
+      }
+    }
+
     const reply = await input.generate({
-      sessionConfig: input.sessionConfig,
+      sessionConfig: currentSessionConfig,
       messages,
       tools: filteredTools.tools,
       permissionMode: input.permissionMode,
@@ -503,6 +577,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       ...(ttftStreamChunk ? { onStreamChunk: ttftStreamChunk } : {}),
       ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
       ...(input.signal ? { signal: input.signal } : {}),
+      ...(maxOutputTokensOverride ? { maxOutputTokensOverride } : {}),
     });
     const generateDurationMs = Date.now() - generateStartedAt;
     const ttftMs = firstChunkAt ? firstChunkAt - generateStartedAt : undefined;
@@ -545,6 +620,19 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       const userMessage = getErrorUserMessage(errorCode);
       console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, error: reply.error, errorCode, userMessage, durationMs: generateDurationMs }));
 
+      // P2.2: Model fallback — switch to backup model on eligible errors
+      if (input.fallbackModel && !hasAttemptedFallback && isFallbackEligibleError(reply.code || reply.error)) {
+        hasAttemptedFallback = true;
+        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "model-fallback", sessionId: input.sessionId, from: currentSessionConfig.modelId, to: input.fallbackModel, triggerCode: reply.code }));
+        currentSessionConfig = { ...currentSessionConfig, modelId: input.fallbackModel };
+        messages.push({
+          type: "message",
+          role: "system",
+          content: `[系统] 模型暂时不可用，已自动切换至备用模型 ${input.fallbackModel}`,
+        });
+        continue;
+      }
+
       // Attempt context overflow recovery (max 2 retries, progressively more aggressive)
       if (!hasAttemptedOverflowRecovery && isContextOverflowError(reply.code, reply.error)) {
         hasAttemptedOverflowRecovery = true;
@@ -563,7 +651,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           // Retry generate with truncated messages
           const retryStartedAt = Date.now();
           const retryReply = await input.generate({
-            sessionConfig: input.sessionConfig,
+            sessionConfig: currentSessionConfig,
             messages,
             tools: filteredTools.tools,
             permissionMode: input.permissionMode,
@@ -571,6 +659,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             ...(emitStreamChunk ? { onStreamChunk: emitStreamChunk } : {}),
             ...(emitToolEvent ? { onToolEvent: emitToolEvent } : {}),
             ...(input.signal ? { signal: input.signal } : {}),
+            ...(maxOutputTokensOverride ? { maxOutputTokensOverride } : {}),
           });
           const retryDurationMs = Date.now() - retryStartedAt;
 
@@ -669,7 +758,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 type: "tool_result",
                 toolCallId: toolUse.id,
                 name: toolUse.name,
-                content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
+                content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator, contentReplacementState) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
                 ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
                 metadata: { toolResult },
               });
@@ -728,7 +817,48 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         return events;
       }
 
+      // P2.1: max_output_tokens recovery — detect truncated responses
+      if (isMaxTokensTruncated(reply.metadata) && maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
+        maxOutputTokensRecoveryCount++;
+        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "max-output-tokens-recovery", sessionId: input.sessionId, attempt: maxOutputTokensRecoveryCount, stopReason: reply.metadata?.stopReason }));
+
+        // Push the truncated assistant message to context
+        messages.push({ type: "message", role: "assistant", content });
+
+        if (maxOutputTokensRecoveryCount === 1 && !maxOutputTokensOverride) {
+          // First recovery: escalate max_output_tokens
+          maxOutputTokensOverride = ESCALATED_MAX_TOKENS;
+        } else {
+          // Subsequent recoveries: inject a recovery user message
+          messages.push({
+            type: "message",
+            role: "user",
+            content: "Output token limit hit. Resume directly — no apology, no recap. Pick up mid-thought. Break remaining work into smaller pieces.",
+          });
+        }
+        continue;
+      }
+
       consecutiveSilentToolCalls = 0; // Fix: reset on assistant message
+
+      // P4: Blocking TurnComplete hooks — allow external validators to inject corrections
+      if (input.onTurnComplete && turnCompleteHookRetries < 2) {
+        const hookMessages = await input.onTurnComplete({
+          lastAssistantContent: content,
+          toolsUsed: recentToolCalls,
+        });
+        if (hookMessages && hookMessages.length > 0) {
+          turnCompleteHookRetries++;
+          // Inject blocking errors and continue the turn
+          messages.push({ type: "message", role: "assistant", content });
+          for (const msg of hookMessages) {
+            messages.push({ type: "message", role: "system", content: `[TurnComplete Hook] ${msg}` });
+          }
+          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "turn-complete-hook-blocking", sessionId: input.sessionId, hookCount: hookMessages.length }));
+          continue;
+        }
+      }
+
       emit(
         { type: "assistant_message", content, reasoningContent: reply.reasoningContent, runtime: reply.metadata },
       );
@@ -746,6 +876,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       emit({ type: "turn_failed", reason: "empty-tool-use", message: "Agent runtime received a tool_use reply without executable tools" });
       return events;
     }
+
+    // P4: Reset hook retry counter when tools are executed (agent is working, not repeating)
+    turnCompleteHookRetries = 0;
 
     // Insert assistant message with reasoning_content before tool calls
     // Controlled by reasoningPolicy: strip (never), passback-on-tool-loop (default, tool loops only), always-passback (always)
@@ -853,7 +986,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
+          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator, contentReplacementState) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
@@ -984,7 +1117,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           type: "tool_result",
           toolCallId: toolUse.id,
           name: toolUse.name,
-          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
+          content: toolResultContent(toolResult, toolUse.name, toolUse.input, fileReadDeduplicator, contentReplacementState) + buildBudgetPressureNotice(lastInputTokens, contextWindowTokens),
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
