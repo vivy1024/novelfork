@@ -274,9 +274,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       const entryId = existing.id;
       storage.sqlite.prepare(`
         UPDATE story_jingwei_entry
-        SET content_md = ?, summary_md = ?, summary_l0 = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, updated_at = ?
+        SET content_md = ?, summary_md = ?, summary_l0 = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, category = ?, updated_at = ?
         WHERE id = ?
-      `).run(finalContentMd, finalSummaryMd, finalSummaryL0, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, now, entryId);
+      `).run(finalContentMd, finalSummaryMd, finalSummaryL0, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, category, now, entryId);
 
       return {
         ok: true,
