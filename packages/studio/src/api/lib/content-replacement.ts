@@ -46,6 +46,10 @@ const PREVIEW_LENGTH = 200;
 const NEVER_REPLACE_TOOLS = new Set([
   "Bash", // Bash output is usually short and critical for debugging
   "WebFetch", // User explicitly requested this content
+  "Read", // File content must be visible to the agent (no expand mechanism yet)
+  "Grep", // Search results are the primary information the agent needs
+  "jingwei.read", // Novel setting data — agent needs full context
+  "chapter.read", // Chapter content must be readable
 ]);
 
 // ── State Management ─────────────────────────────────────────────────────

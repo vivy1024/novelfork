@@ -72,8 +72,8 @@ const SECRET_PATTERNS: SecretPattern[] = [
   // npm tokens
   { name: 'npm Token', type: 'npm_token', regex: /\bnpm_[A-Za-z0-9]{36}\b/g },
 
-  // Heroku
-  { name: 'Heroku API Key', type: 'heroku_key', regex: /\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\b/g },
+  // Heroku — REMOVED: generic UUID regex matches all UUIDs (session IDs, etc.)
+  // { name: 'Heroku API Key', type: 'heroku_key', regex: /\b[0-9a-f]{8}-...\b/g },
 
   // SendGrid
   { name: 'SendGrid API Key', type: 'sendgrid_key', regex: /\bSG\.[A-Za-z0-9_-]{22}\.[A-Za-z0-9_-]{43}\b/g },
@@ -83,8 +83,9 @@ const SECRET_PATTERNS: SecretPattern[] = [
 ]
 
 // Patterns that are too generic and produce false positives — skip for containsSecrets fast check
+// Also exclude aws_secret_key (matches any 40-char base64 string — git SHA, etc.)
 const HIGH_CONFIDENCE_PATTERNS = SECRET_PATTERNS.filter(
-  p => !['generic_secret', 'bearer_token', 'heroku_key'].includes(p.type)
+  p => !['generic_secret', 'bearer_token', 'heroku_key', 'aws_secret_key'].includes(p.type)
 )
 
 // ── Public API ───────────────────────────────────────────────────────────

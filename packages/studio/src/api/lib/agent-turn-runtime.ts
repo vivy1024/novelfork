@@ -508,6 +508,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   // P2.2: model fallback state
   let hasAttemptedFallback = false;
   let currentSessionConfig = input.sessionConfig;
+  let hasInjectedBlockingWarning = false;
 
   // Budget Pressure: 跟踪 provider 报告的最近一次 input_tokens
   let lastInputTokens = 0;
@@ -557,9 +558,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       : undefined;
 
     // P2.4: Blocking limit pre-check — proactive compact trigger at 97%+
-    if (contextWindowTokens > 0 && lastInputTokens > 0) {
+    if (!hasInjectedBlockingWarning && contextWindowTokens > 0 && lastInputTokens > 0) {
       const ratio = lastInputTokens / contextWindowTokens;
       if (ratio >= BLOCKING_LIMIT_THRESHOLD) {
+        hasInjectedBlockingWarning = true;
         messages.push({
           type: "message",
           role: "system",

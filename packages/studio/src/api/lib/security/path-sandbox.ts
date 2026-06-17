@@ -5,7 +5,7 @@
  * escape the configured working directory boundary.
  */
 
-import { resolve, normalize } from "node:path";
+import { resolve, normalize, sep } from "node:path";
 
 export interface PathSandboxConfig {
   /** The root working directory boundary */
@@ -25,8 +25,9 @@ export function validatePath(filePath: string, config: PathSandboxConfig): { val
   // Resolve the target path (handles ../ traversal)
   const resolvedPath = normalize(resolve(normalizedWorkDir, filePath));
 
-  // Check if within workDir
-  if (resolvedPath.startsWith(normalizedWorkDir)) {
+  // Check if within workDir (ensure boundary ends with separator to prevent prefix collision)
+  const boundary = normalizedWorkDir.endsWith(sep) ? normalizedWorkDir : normalizedWorkDir + sep;
+  if (resolvedPath === normalizedWorkDir || resolvedPath.startsWith(boundary)) {
     return { valid: true, resolvedPath };
   }
 
@@ -34,7 +35,8 @@ export function validatePath(filePath: string, config: PathSandboxConfig): { val
   if (config.allowedPaths) {
     for (const allowed of config.allowedPaths) {
       const normalizedAllowed = normalize(resolve(allowed));
-      if (resolvedPath.startsWith(normalizedAllowed)) {
+      const allowedBoundary = normalizedAllowed.endsWith(sep) ? normalizedAllowed : normalizedAllowed + sep;
+      if (resolvedPath === normalizedAllowed || resolvedPath.startsWith(allowedBoundary)) {
         return { valid: true, resolvedPath };
       }
     }
