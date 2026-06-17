@@ -29,6 +29,7 @@ import {
   TOOL_WEB_SEARCH,
   TOOL_WEB_FETCH,
   TOOL_RECALL,
+  TOOL_SNIP,
   TOOL_START_PIPELINE,
   TOOL_END_PIPELINE,
   TOOL_SKILL,
@@ -248,6 +249,11 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_RECALL)) {
     items.push(
       `To search conversation history use ${TOOL_RECALL}.`,
+    );
+  }
+  if (has(TOOL_SNIP)) {
+    items.push(
+      `Context management: old tool results are automatically folded. If you see "[上下文提醒]" about folded results, use jingwei.read/chapter.read to re-fetch needed data. For long conversations where early discussion is no longer needed (conclusions already saved to jingwei/files), use ${TOOL_SNIP} to proactively free context space. Prefer snipping after confirming results are persisted externally.`,
     );
   }
   if (has(TOOL_START_PIPELINE) && has(TOOL_END_PIPELINE)) {

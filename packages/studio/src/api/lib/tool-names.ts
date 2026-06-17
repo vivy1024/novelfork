@@ -39,6 +39,7 @@ export const TOOL_WEB_FETCH = "WebFetch";
 
 // ── 上下文 ──
 export const TOOL_RECALL = "Recall";
+export const TOOL_SNIP = "Snip";
 export const TOOL_START_PIPELINE = "StartPipeline";
 export const TOOL_END_PIPELINE = "EndPipeline";
 export const TOOL_LEARNING_GUIDE = "LearningGuide";

@@ -34,7 +34,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   sessionTool({
     name: "cockpit.snapshot",
     description:
-      "一次性读取当前书籍的驾驶舱全景快照，合并了 cockpit.get_snapshot、cockpit.list_open_hooks、cockpit.list_recent_candidates 的输出。返回 progress/hooks/candidates/health/recentChapters。",
+      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- candidates：最近的候选稿列表\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
     risk: "read",
     renderer: "cockpit.snapshot",
@@ -227,7 +227,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "精简写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→AuditRevise 两步生成章节候选稿。前置条件：必须先调用 scene.spec 获得有效蓝图。",
+    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节候选稿。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 产出候选稿保存在 chapter-candidates 中，用 resource.manage 接受/拒绝\n\n注意：\n- 不要用 candidate.create_chapter 代替——那只是保存已有文本，不会生成/审计\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "draft-write",
     renderer: "pipeline.chapter-result",
@@ -236,7 +236,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.write",
-    description: "经纬写入/删除工具。action=create/update 创建或更新条目；action=delete 删除条目（Canon 条目不可删除）。支持 layer 分层：canon（不可变）、dynamic（默认）、reference。",
+    description: "经纬（设定数据库）写入工具。用于管理世界观、角色、伏笔等设定数据。\n\naction=create：创建新条目。必须传入 title、category、contentMd。\naction=update：更新已有条目（传入 entryId）。\naction=delete：删除条目（Canon 层条目不可删除）。\n\nlayer 三层含义：\n- canon：不可变真相（世界规则、已发生历史）——一旦设定不可修改\n- dynamic（默认）：随剧情演进可变的设定（角色状态、势力关系）\n- reference：低优先级参考资料，AI 仅在相关时读取\n\ncategory 必须使用统一枚举值：premise/world-model/characters/relationships/factions/locations/props/outline/conflicts/foreshadowing/timeline/chapter-summaries/power-system/rules/reference。不要使用旧值（setting/character/worldview 等）。\n\n注意：修改设定请用此工具，不要直接用 Write/Edit 改文件。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
@@ -245,7 +245,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "scene.spec",
-    description: "生成结构化写作蓝图（Scene Spec）。包含角色、地点、冲突、情绪、结果等约束，是调用 pipeline.write 的硬前置条件。",
+    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 再调用 jingwei.read(scope=brief) 获取核心设定包\n3. 可选调用 pgi.ask 向用户追问本章意图\n4. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n注意：蓝图是约束集合，不是正文大纲——Writer 会在约束内自由发挥。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",
@@ -254,7 +254,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.read",
-    description: "统一经纬读取工具。scope=brief 返回核心包+分类目录；scope=category 按分类分页读取；scope=search 按关键词搜索。替代旧的 read_brief/read_category/search/read_context。",
+    description: "经纬（设定数据库）读取工具。三种模式按需选用：\n\nscope=brief（推荐首选）：返回核心设定包 + 分类目录索引。约 2000-5000 tokens，适合每次写作前快速加载上下文。\n\nscope=category：按分类分页读取详细条目。传入 category（如 characters/world-model/conflicts 等统一枚举值）和可选 page。适合需要某类设定完整细节时使用。\n\nscope=search：关键词搜索所有条目。传入 query 字符串。适合查找特定角色/地点/设定。\n\n注意：\n- 旧工具结果可能已被折叠——如果上下文中看不到之前读过的设定，请重新调用\n- brief 模式 token 开销最小，优先使用\n- category 值必须使用统一枚举（characters/world-model/locations/conflicts 等），不要用旧名（character/worldview/geography）",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
     risk: "read",
     renderer: "jingwei.read",
