@@ -146,7 +146,10 @@ export function parseSessionServerEnvelope(payload: string | ArrayBuffer | Uint8
     case "session:error":
       return parsed as unknown as NarratorSessionChatErrorEnvelope;
     default:
-      throw new Error(`Unsupported session WebSocket envelope: ${parsed.type}`);
+      // Pass-through: newer envelope types (compact-progress, permission-request,
+      // safety-pause, danger-reflection, todos-updated) are handled by the
+      // downstream ws-envelope-reducer. Don't throw on unknown types.
+      return parsed as unknown as NarratorSessionChatServerEnvelope;
   }
 }
 
