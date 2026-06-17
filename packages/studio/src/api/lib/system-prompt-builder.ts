@@ -12,6 +12,7 @@
  */
 
 import { getAgentRole } from "@vivy1024/novelfork-novel-plugin/engine";
+import { buildCoordinatorPrompt, shouldInjectCoordinatorPrompt, type CoordinatorContext } from "./coordinator-prompt.js";
 
 import {
   TOOL_READ,
@@ -97,6 +98,8 @@ export interface BuildSystemPromptOptions {
   identitySection?: string;
   /** Agent-native 写下一章链路指令（可选） */
   writeNextInstructions?: string;
+  /** 协调者上下文（有活跃子代理时注入协调提示） */
+  coordinatorContext?: CoordinatorContext;
 }
 
 // ─── Section Builders ─────────────────────────────────────────────────────────
@@ -496,6 +499,15 @@ export function buildSystemPrompt(options: BuildSystemPromptOptions): SystemProm
     sections.push({
       id: "language",
       content: `# Language\n\nAlways respond in ${options.language}. Use ${options.language} for all explanations and communications. Technical terms and code identifiers remain in their original form.`,
+      cacheable: false,
+    });
+  }
+
+  // Coordinator prompt (injected when session has active subagents)
+  if (options.coordinatorContext && shouldInjectCoordinatorPrompt(options.coordinatorContext)) {
+    sections.push({
+      id: "coordinator",
+      content: buildCoordinatorPrompt(options.coordinatorContext),
       cacheable: false,
     });
   }

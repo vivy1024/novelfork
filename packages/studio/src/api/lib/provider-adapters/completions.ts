@@ -399,7 +399,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
     }
 
     // Default max_tokens to 32768 to avoid tool_call truncation for long content
-    return this.sendChatCompletion(input, input.messages, 32768, input.tools, input.signal);
+    return this.sendChatCompletion(input, input.messages, input.maxOutputTokensOverride ?? 32768, input.tools, input.signal);
   }
 
   // ─── Non-streaming ───────────────────────────────────────────────────────
@@ -443,6 +443,10 @@ export class CompletionsAdapter implements RuntimeAdapter {
       ? (payload as { choices: unknown[] }).choices
       : [];
     const firstChoice = choices[0];
+    const finishReason = firstChoice && typeof firstChoice === "object" && "finish_reason" in firstChoice
+      && typeof (firstChoice as { finish_reason?: unknown }).finish_reason === "string"
+        ? (firstChoice as { finish_reason: string }).finish_reason
+        : undefined;
     const content = firstChoice && typeof firstChoice === "object"
       && "message" in firstChoice
       && (firstChoice as { message?: unknown }).message
@@ -456,7 +460,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
       && typeof (firstChoice as { message: { reasoning_content?: unknown } }).message.reasoning_content === "string"
         ? (firstChoice as { message: { reasoning_content: string } }).message.reasoning_content
         : undefined;
-    return { success: true, type: "message", content, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+    return { success: true, type: "message", content, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}), ...(finishReason ? { stopReason: finishReason } : {}) };
   }
 
   // ─── Streaming ───────────────────────────────────────────────────────────
@@ -474,7 +478,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
       messages: toOpenAiMessages(messages),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: 32768,
+      max_tokens: input.maxOutputTokensOverride ?? 32768,
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
     };
 
@@ -535,6 +539,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
     let fullContent = "";
     let reasoningContent = "";
     let usage: GenerateUsage | undefined;
+    let streamFinishReason: string | undefined;
 
     // Tool calls accumulation (OpenAI streams tool_calls as deltas)
     const toolCallAccumulators: Map<number, { id: string; name: string; arguments: string }> = new Map();
@@ -585,6 +590,11 @@ export class CompletionsAdapter implements RuntimeAdapter {
             const choices = Array.isArray(parsed.choices) ? parsed.choices : [];
             const choice = choices[0] as Record<string, unknown> | undefined;
             if (!choice) continue;
+
+            // Capture finish_reason from the final chunk
+            if (typeof choice.finish_reason === "string" && choice.finish_reason) {
+              streamFinishReason = choice.finish_reason;
+            }
 
             const delta = typeof choice.delta === "object" && choice.delta ? choice.delta as Record<string, unknown> : undefined;
             if (!delta) continue;
@@ -645,6 +655,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
       content: fullContent,
       ...(reasoningContent ? { reasoningContent } : {}),
       ...(usage ? { usage } : {}),
+      ...(streamFinishReason ? { stopReason: streamFinishReason } : {}),
     };
   }
 }

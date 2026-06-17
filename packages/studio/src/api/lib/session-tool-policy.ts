@@ -6,6 +6,7 @@ import {
   type SessionToolRisk,
 } from "../../shared/agent-native-workspace.js";
 import type { SessionPermissionMode, SessionToolPolicy } from "../../shared/session-types.js";
+import { detectProjectSignals, evaluateActivation, filterToolsByActivation } from "./skill-activation.js";
 
 export type SessionToolPolicyAction = "allow" | "deny" | "ask" | "inherit";
 
@@ -199,4 +200,49 @@ export function filterSessionToolsForProvider(
     return false;
   });
   return { tools: filtered, deniedTools, resolutions };
+}
+
+// ── P10.7: Skill Conditional Activation ─────────────────────────────────────
+
+export interface SkillActivationFilterOptions extends SessionToolProviderFilterOptions {
+  readonly workDir?: string;
+  readonly sessionMode?: string;
+}
+
+/**
+ * Wraps filterSessionToolsForProvider with skill-activation filtering.
+ * After policy filtering, applies project-context-based tool activation
+ * to further reduce the tool set sent to the model.
+ */
+export function filterSessionToolsWithActivation(
+  tools: readonly SessionToolDefinition[],
+  policy: SessionToolPolicy | undefined,
+  options: SkillActivationFilterOptions = {},
+): { readonly tools: readonly SessionToolDefinition[]; readonly deniedTools: readonly string[]; readonly resolutions: readonly SessionToolPolicyResolution[] } {
+  const base = filterSessionToolsForProvider(tools, policy, options);
+
+  if (!options.workDir) return base;
+
+  try {
+    const signals = detectProjectSignals(options.workDir);
+    if (options.sessionMode) {
+      signals.sessionMode = options.sessionMode;
+    }
+    const activation = evaluateActivation(signals);
+    if (activation.disabledTools.size > 0) {
+      const activationFiltered = filterToolsByActivation(base.tools, activation);
+      const activationDenied = [...base.tools]
+        .filter((t) => activation.disabledTools.has(t.name))
+        .map((t) => t.name);
+      return {
+        tools: activationFiltered,
+        deniedTools: [...base.deniedTools, ...activationDenied],
+        resolutions: base.resolutions,
+      };
+    }
+  } catch {
+    // Skill activation failure is non-fatal — fall through to base result
+  }
+
+  return base;
 }

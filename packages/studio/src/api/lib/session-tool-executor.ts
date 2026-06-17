@@ -557,9 +557,26 @@ export async function executeSessionTool(
       ? { ...result, summary: (result.summary ?? "") + postHookAppend }
       : result;
 
+    // --- Secret Redaction (P3: prevent secrets from reaching model context) ---
+    let redactedResult = finalResult;
+    if (redactedResult.summary && redactedResult.summary.length > 0) {
+      const { containsSecrets, redactSecrets } = await import("./security/secret-detector.js");
+      if (containsSecrets(redactedResult.summary)) {
+        console.log(JSON.stringify({ component: "session-tool-executor", event: "secret-redacted", toolName: definition.name }));
+        redactedResult = { ...redactedResult, summary: redactSecrets(redactedResult.summary) };
+      }
+    }
+    if (redactedResult.data && typeof redactedResult.data === "string" && redactedResult.data.length > 0) {
+      const { containsSecrets, redactSecrets } = await import("./security/secret-detector.js");
+      if (containsSecrets(redactedResult.data as string)) {
+        console.log(JSON.stringify({ component: "session-tool-executor", event: "secret-redacted", toolName: definition.name }));
+        redactedResult = { ...redactedResult, data: redactSecrets(redactedResult.data as string) };
+      }
+    }
+
     return withDuration(withConfirmationAudit({
-      ...finalResult,
-      renderer: finalResult.renderer ?? definition.renderer,
+      ...redactedResult,
+      renderer: redactedResult.renderer ?? definition.renderer,
     }, input, definition), startedAt, options);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

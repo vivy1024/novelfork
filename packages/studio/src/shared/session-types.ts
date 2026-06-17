@@ -278,6 +278,7 @@ export interface NarratorSessionRuntimeMetadata {
   providerName?: string;
   modelId: string;
   usage?: TokenUsage;
+  stopReason?: string;
 }
 
 export interface NarratorSessionChatMessage {

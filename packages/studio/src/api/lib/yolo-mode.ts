@@ -52,6 +52,16 @@ const DANGEROUS_PATTERNS: RegExp[] = [
   /\bcurl\s+.*\|\s*(bash|sh)\b/i,
   /\bchmod\s+777\b/i,
   /\bsudo\s+rm\b/i,
+  // Additional from legnacode exec policy:
+  /\brm\s+-rf\s+[\/~*]/i,               // rm -rf / or ~ or *
+  /\bdd\s+if=.*of=\/dev\//i,            // Raw disk write
+  /\bshutdown\b/i,                       // System shutdown
+  /\breboot\b/i,                         // System reboot
+  /\binit\s+[06]\b/i,                   // Halt/reboot via init
+  /:\(\)\s*\{/,                          // Fork bomb
+  /\bwget\s+.*\|\s*(sh|bash|zsh)\b/i,   // Pipe wget to shell
+  /\bcurl\s+.*\|\s*(python|node|perl|ruby)\b/i,  // Pipe curl to interpreter
+  /\bgit\s+push\s+.*--force-with-lease/i,  // Force-with-lease is less dangerous but still risky
 ];
 
 /**

@@ -83,6 +83,7 @@ import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkp
 import { ProviderHealthManager, classifyError } from "./provider-health-manager.js";
 import { createContextBudgetManager } from "./context-budget-manager.js";
 import { getGlobalSearchIndex } from "./search-index.js";
+import { destroySessionHub } from "./peer-messaging.js";
 
 const MAX_SESSION_MESSAGES = 500;
 const MAX_SESSION_TOOL_LOOP_STEPS = 200;
@@ -1268,6 +1269,7 @@ async function appendModelContinuationAfterToolDecision(
             broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
           },
           signal: generateInput.signal,
+          ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
         });
         // Record provider health
         const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
@@ -1847,6 +1849,7 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
 
   if (state.transports.size === 0 && state.messages.length === 0 && !abortControllerBySessionId.has(sessionId)) {
     runtimeStateBySessionId.delete(sessionId);
+    destroySessionHub(sessionId);
   }
 }
 
@@ -2406,6 +2409,7 @@ export async function handleSessionChatTransportMessage(
             broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
           },
           signal: generateInput.signal,
+          ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
         });
         // Record provider health
         const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
@@ -2603,6 +2607,79 @@ export async function handleSessionChatTransportMessage(
         await executeHook(hook, { toolName: "", workDir });
       }
     } catch { /* TurnComplete hook failure is non-fatal */ }
+  })();
+
+  // --- Turn Memory Extraction (fire-and-forget) ---
+  void (async () => {
+    try {
+      const { extractAndPersistTurnMemories } = await import("./turn-memory-extractor.js");
+      const lastAssistant = loaded.state.messages
+        ?.filter((m: any) => m.role === "assistant")
+        ?.at(-1);
+      const content = typeof lastAssistant?.content === "string" ? lastAssistant.content : "";
+      if (content.length > 50) {
+        const workDir = loaded.session.worktree?.trim() || process.cwd();
+        await extractAndPersistTurnMemories(content, { workDir });
+      }
+    } catch { /* memory extraction failure is non-fatal */ }
+  })();
+
+  // --- Auto-update context.md (fire-and-forget) ---
+  void (async () => {
+    try {
+      const { writeFile, mkdir } = await import("node:fs/promises");
+      const { join } = await import("node:path");
+      const { existsSync } = await import("node:fs");
+      
+      const workDir = loaded.session.worktree?.trim() || process.cwd();
+      const memDir = join(workDir, ".narrafork", "memory");
+      if (!existsSync(memDir)) {
+        await mkdir(memDir, { recursive: true });
+      }
+      
+      // Extract recent activity from messages
+      const recentMessages = (loaded.state.messages ?? []).slice(-20);
+      const userRequests = recentMessages
+        .filter((m: any) => m.role === "user" && typeof m.content === "string")
+        .map((m: any) => (m.content as string).slice(0, 100))
+        .slice(-5);
+      const toolsUsed = recentMessages
+        .filter((m: any) => m.role === "tool_call" || m.type === "tool_call")
+        .map((m: any) => m.name || m.toolName || "unknown")
+        .filter(Boolean);
+      const uniqueTools = [...new Set(toolsUsed)].slice(0, 10);
+      
+      const lastAssistant = [...recentMessages]
+        .reverse()
+        .find((m: any) => m.role === "assistant" && typeof m.content === "string");
+      const lastAssistantPreview = lastAssistant
+        ? (lastAssistant.content as string).slice(0, 200)
+        : "";
+
+      const now = new Date().toISOString().slice(0, 10);
+      const contextContent = [
+        `# 上次进度 — ${now}`,
+        "",
+        "## 正在做",
+        "",
+        userRequests.length > 0
+          ? userRequests.map(r => `- ${r}`).join("\n")
+          : "（无最近请求）",
+        "",
+        "## 最近使用工具",
+        "",
+        uniqueTools.length > 0
+          ? uniqueTools.join(", ")
+          : "（无）",
+        "",
+        "## 最后助手输出（预览）",
+        "",
+        lastAssistantPreview || "（空）",
+        "",
+      ].join("\n");
+
+      await writeFile(join(memDir, "context.md"), contextContent, "utf-8");
+    } catch { /* context.md update failure is non-fatal */ }
   })();
 
   // --- Webhook notification (fire-and-forget) ---

@@ -12,6 +12,7 @@ import { dirname, extname, join, resolve, relative } from "node:path";
 import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+import { validatePath, hasSuspiciousTraversal } from "./security/path-sandbox.js";
 
 // --- Staleness check & dedup state (FR-1.3 / FR-1.4) ---
 
@@ -141,6 +142,25 @@ function resolveToolPath(filePath: string, workDir: string, allowOutside = false
   const absolutePath = resolve(workDir, filePath);
   if (!allowOutside && !isPathWithinWorkDir(filePath, workDir)) return null;
   return absolutePath;
+}
+
+/**
+ * Validate a file path against the working directory sandbox (defense-in-depth).
+ * Returns null if valid, or an error message if the path escapes the sandbox.
+ */
+function checkPathSandbox(filePath: string, workDir: string): string | null {
+  if (!filePath || !workDir) return null; // skip validation if no workDir configured
+
+  // Quick pre-check for obvious traversal
+  if (hasSuspiciousTraversal(filePath)) {
+    return `路径包含可疑的遍历模式: ${filePath}`;
+  }
+
+  const result = validatePath(filePath, { workDir });
+  if (!result.valid) {
+    return result.reason;
+  }
+  return null;
 }
 
 // --- Bash Tool ---
@@ -354,6 +374,14 @@ export interface FileReadToolInput {
 }
 
 export async function executeFileReadTool(input: FileReadToolInput): Promise<SessionToolExecutionResult> {
+  // Defense-in-depth: path sandbox validation (skip if allowOutsideWorkDir)
+  if (!input.allowOutsideWorkDir) {
+    const pathError = checkPathSandbox(input.path, input.workDir);
+    if (pathError) {
+      return { ok: false, error: "path-sandbox-violation", summary: pathError };
+    }
+  }
+
   const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
@@ -476,6 +504,14 @@ export interface FileWriteToolInput {
 }
 
 export async function executeFileWriteTool(input: FileWriteToolInput): Promise<SessionToolExecutionResult> {
+  // Defense-in-depth: path sandbox validation (skip if allowOutsideWorkDir)
+  if (!input.allowOutsideWorkDir) {
+    const pathError = checkPathSandbox(input.path, input.workDir);
+    if (pathError) {
+      return { ok: false, error: "path-sandbox-violation", summary: pathError };
+    }
+  }
+
   const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
@@ -551,6 +587,14 @@ function normalizeQuotes(text: string): string {
 }
 
 export async function executeFileEditTool(input: FileEditToolInput): Promise<SessionToolExecutionResult> {
+  // Defense-in-depth: path sandbox validation (skip if allowOutsideWorkDir)
+  if (!input.allowOutsideWorkDir) {
+    const pathError = checkPathSandbox(input.path, input.workDir);
+    if (pathError) {
+      return { ok: false, error: "path-sandbox-violation", summary: pathError };
+    }
+  }
+
   const resolved = resolveToolPath(input.path, input.workDir, input.allowOutsideWorkDir);
   if (!resolved) {
     return {
