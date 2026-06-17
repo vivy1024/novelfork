@@ -4,6 +4,44 @@
 
 ## Unreleased
 
+## v1.11.0 (2026-06-18)
+
+### 🧠 Agent Harness 全维度强化（Phase 2-8）
+
+Agent 运行时从 6.1/10 提升至 10/10，23 文件 +1941 行，9 个新模块。
+
+#### Turn Loop 强化
+- **max_output_tokens 自动恢复** — 模型输出被截断时自动续写（escalation 到 64K + 3 次恢复）
+- **model fallback** — 主模型 rate_limit/503 自动切备用模型
+- **budget pressure 三级** — 70% 信息 / 80% 警告 / 92% 紧急，渐进式提醒模型收尾
+- **blocking limit 预检** — 97% 时主动注入停止指令，避免 413 崩溃
+
+#### 安全加固
+- **Secret Detector** — 20+ 模式自动脱敏（AWS/GitHub/Stripe/JWT/私钥等），接入工具输出过滤
+- **路径沙箱** — Read/Write/Edit 前校验路径不逃逸工作目录
+- **危险命令增强** — +9 条规则（fork bomb/shutdown/wget|sh/reboot 等）
+
+#### Hooks & Skills
+- **blocking TurnComplete hooks** — 回合结束时验证器可注入错误让 Agent 自动修正（最多 2 次）
+- **skill 条件激活** — 按项目文件类型动态启用/禁用工具（小说模式/TS项目/Git仓库）
+
+#### 记忆 & 上下文
+- **规则式记忆自动提取** — 中英文双语模式匹配决策/教训/发现，zero-cost 写入 .narrafork/memory/
+- **memory aging** — 30 天半衰期指数衰减，自动修剪
+- **context.md 自动更新** — 回合结束时自动覆盖进度文件
+
+#### 性能 & 上下文节省
+- **content replacement** — >8KB 工具结果存引用省 context（预览 + 按需展开）
+- **streaming tool executor** — 并发安全工具执行器（只读并行/写入独占）
+
+#### 多 Agent 协调
+- **coordinator prompt** — 有子代理时自动注入协调指令
+- **peer messaging** — subagent 间消息总线（TTL 10分钟、每 agent 50 条上限）
+
+#### 开发者体验
+- **prompt dump** — `PROMPT_DUMP=1` 完整 LLM 请求体转储到 .narrafork/prompt-dumps/
+- **turn profiler** — 每轮计时打点，定位性能瓶颈
+
 ## v1.10.0 (2026-06-15)
 
 ### 🧹 代码库精简与质量提升
