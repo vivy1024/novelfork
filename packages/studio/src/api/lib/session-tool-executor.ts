@@ -15,6 +15,7 @@ import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./se
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir, checkCommandAgainstLists, checkPathAgainstDirectoryLists } from "./permission-pipeline.js";
 import { getYoloDecision, performSafetyReflection } from "./yolo-mode.js";
+import { log } from "./logger.js";
 
 // --- Preset/Beat store lazy initialization helper ---
 // Ensures builtin presets are registered and custom presets are restored from DB.
@@ -562,14 +563,14 @@ export async function executeSessionTool(
     if (redactedResult.summary && redactedResult.summary.length > 0) {
       const { containsSecrets, redactSecrets } = await import("./security/secret-detector.js");
       if (containsSecrets(redactedResult.summary)) {
-        console.log(JSON.stringify({ component: "session-tool-executor", event: "secret-redacted", toolName: definition.name }));
+        log.info("Secret redacted in tool output", { toolName: definition.name });
         redactedResult = { ...redactedResult, summary: redactSecrets(redactedResult.summary) };
       }
     }
     if (redactedResult.data && typeof redactedResult.data === "string" && redactedResult.data.length > 0) {
       const { containsSecrets, redactSecrets } = await import("./security/secret-detector.js");
       if (containsSecrets(redactedResult.data as string)) {
-        console.log(JSON.stringify({ component: "session-tool-executor", event: "secret-redacted", toolName: definition.name }));
+        log.info("Secret redacted in tool output", { toolName: definition.name });
         redactedResult = { ...redactedResult, data: redactSecrets(redactedResult.data as string) };
       }
     }
