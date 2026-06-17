@@ -1319,6 +1319,7 @@ async function appendModelContinuationAfterToolDecision(
       }
 
       if (event.type === "tool_call") {
+        accumulateUsage(loaded.state.cumulativeUsage, event.runtime?.usage);
         toolInputsById.set(event.id, event.input);
         const toolUseMessage = appendMessageToState(loaded.state, {
           id: `confirmation-tool-use-${event.id}-${nextTimestamp}`,
@@ -2457,6 +2458,8 @@ export async function handleSessionChatTransportMessage(
       }
 
       if (event.type === "tool_call") {
+        // Update context usage from tool_call's generate result (each generate reports input_tokens)
+        accumulateUsage(loaded.state.cumulativeUsage, event.runtime?.usage);
         // 如果已在 onEvent 中实时广播，跳过
         if (realtimeBroadcastedIds.has(`tool-call-${event.id}`)) continue;
         toolInputsById.set(event.id, event.input);
