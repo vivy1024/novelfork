@@ -17,6 +17,7 @@ import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-run
 import { inferProtocol } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { log } from "./logger.js";
+import { isPromptDumpEnabled, dumpPrompt } from "./prompt-dump.js";
 
 export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed" | "user-aborted";
 
@@ -314,6 +315,19 @@ export class LlmRuntimeService {
           // Log the raw input messages to see if reasoning_content is present
           const rawReasoning = input.messages.filter(m => "reasoning_content" in m && (m as { reasoning_content?: string }).reasoning_content);
           log.info("LLM runtime raw input reasoning", { count: rawReasoning.length });
+        }
+
+        // Prompt dump: save complete request body for debugging
+        if (isPromptDumpEnabled()) {
+          void dumpPrompt({
+            timestamp: new Date().toISOString(),
+            systemPrompt: runtimeMessages.find(m => m.role === "system")?.content,
+            messages: runtimeMessages,
+            tools: requestedTools as unknown[] | undefined,
+            model: candidate.rawModelId,
+            maxOutputTokens: input.maxOutputTokensOverride,
+            metadata: { providerId: candidate.providerId, attempt, retryAttempt },
+          });
         }
 
         const result = await adapter.generate({

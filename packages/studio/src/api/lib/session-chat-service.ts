@@ -1534,10 +1534,22 @@ export async function confirmSessionToolDecision(
     },
   });
   broadcastMessageEnvelope(sessionId, loaded.state, resultMessage);
-  const failure = await appendModelContinuationAfterToolDecision(loaded, timestamp + 1);
-  const updatedSession = await persistMergedSessionChatProgress(sessionId, loaded.session, loaded.state, failure);
-  const serverFirstSession = buildServerFirstSession(updatedSession ?? loaded.session, loaded.state);
-  broadcastStateEnvelope(serverFirstSession, loaded.state);
+
+  // Wrap continuation in try/catch to guarantee idle broadcast even on unexpected errors
+  let serverFirstSession: NarratorSessionRecord;
+  try {
+    const failure = await appendModelContinuationAfterToolDecision(loaded, timestamp + 1);
+    const updatedSession = await persistMergedSessionChatProgress(sessionId, loaded.session, loaded.state, failure);
+    serverFirstSession = buildServerFirstSession(updatedSession ?? loaded.session, loaded.state);
+  } catch (error) {
+    log.error("confirmSessionToolDecision continuation failed", { sessionId, error: error instanceof Error ? error.message : String(error) });
+    serverFirstSession = buildServerFirstSession(loaded.session, loaded.state);
+  }
+  // Always broadcast idle state after confirmation continuation completes (success or failure)
+  // Without this, if the continuation fails or ends without an explicit idle broadcast,
+  // the frontend stays stuck on "仍在执行中"
+  const idleSession = { ...serverFirstSession, narratorState: "idle" as const };
+  broadcastStateEnvelope(idleSession, loaded.state);
 
   return {
     ok: true,
