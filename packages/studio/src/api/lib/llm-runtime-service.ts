@@ -16,6 +16,7 @@ import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
 import { inferProtocol } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
+import { log } from "./logger.js";
 
 export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed";
 
@@ -341,15 +342,13 @@ export class LlmRuntimeService {
           // Check if this is a retriable transient error
           if (isRetriableError(result.code, result.error, customRetryRules) && retryAttempt < retrySettings.maxRetryAttempts) {
             const delayMs = calculateRetryDelay(retryAttempt, retrySettings);
-            console.log(JSON.stringify({
-              component: "llm-runtime",
-              event: "retry",
+            log.info("LLM retry", {
               attempt: retryAttempt + 1,
               delayMs,
               reason: result.error,
               providerId: candidate.providerId,
               modelId: candidate.rawModelId,
-            }));
+            });
 
             input.onRetry?.(retryAttempt + 1, retrySettings.maxRetryAttempts);
 

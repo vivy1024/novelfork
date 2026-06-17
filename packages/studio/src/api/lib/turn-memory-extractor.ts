@@ -11,6 +11,7 @@
 import { appendFile, readFile, writeFile, mkdir } from "node:fs/promises";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
+import { log } from "./logger.js";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
@@ -250,15 +251,13 @@ export async function extractAndPersistTurnMemories(
     const entries = extractMemories(assistantContent);
     if (entries.length > 0) {
       await persistMemories(entries, config);
-      console.log(JSON.stringify({
-        component: "turn-memory-extractor",
-        event: "extracted",
+      log.info("Turn memory extracted", {
         count: entries.length,
         types: entries.map(e => e.type),
-      }));
+      });
     }
   } catch (err) {
     // Non-fatal — memory extraction should never break the main flow
-    console.warn(`[turn-memory-extractor] Failed: ${err instanceof Error ? err.message : String(err)}`);
+    log.warn("Turn memory extraction failed", { error: err instanceof Error ? err.message : String(err) });
   }
 }

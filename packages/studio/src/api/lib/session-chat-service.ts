@@ -31,6 +31,7 @@ import type {
   TokenUsage,
   ToolCall,
 } from "../../shared/session-types.js";
+import { log } from "./logger.js";
 import {
   appendSessionChatHistory,
   getSessionChatCursor,
@@ -423,11 +424,10 @@ export async function recoverInterruptedSessions(): Promise<void> {
     if (checkpoints.length === 0) return;
 
     const sessionIds = [...new Set(checkpoints.map(cp => cp.sessionId))];
-    console.log(JSON.stringify({
-      component: "session.startup-recovery",
+    log.info("Startup recovery: found unfinished checkpoints", {
       msg: `Found ${checkpoints.length} unfinished checkpoint(s) across ${sessionIds.length} session(s)`,
       sessionIds,
-    }));
+    });
 
     for (const sessionId of sessionIds) {
       try {
@@ -447,19 +447,15 @@ export async function recoverInterruptedSessions(): Promise<void> {
           },
         });
       } catch {
-        console.log(JSON.stringify({
-          component: "session.startup-recovery",
-          msg: `Failed to mark session as interrupted`,
+        log.warn("Startup recovery: failed to mark session as interrupted", {
           sessionId,
-        }));
+        });
       }
     }
   } catch (error) {
-    console.log(JSON.stringify({
-      component: "session.startup-recovery",
-      msg: "Startup recovery failed",
+    log.error("Startup recovery failed", {
       error: error instanceof Error ? error.message : "unknown",
-    }));
+    });
   }
 }
 
@@ -527,7 +523,7 @@ const MAX_QUEUE_SIZE = 10;
 function abortSession(sessionId: string): void {
   const controller = abortControllerBySessionId.get(sessionId);
   if (controller) {
-    console.log(JSON.stringify({ component: "session-chat", event: "abort", sessionId }));
+    log.info("Session abort", { sessionId });
     controller.abort();
     abortControllerBySessionId.delete(sessionId);
   }
@@ -1804,9 +1800,7 @@ export async function attachSessionChatTransport(
     });
   }
 
-  console.log(JSON.stringify({
-    component: "session.recovery",
-    ok: true,
+  log.info("Session recovery", {
     sessionId,
     route: "/api/sessions/:id/chat",
     requestedResumeSeq,
@@ -1814,7 +1808,7 @@ export async function attachSessionChatTransport(
     lastSeq: cursor.lastSeq,
     pendingMessageCount: session.recovery?.pendingMessageCount ?? 0,
     recoveryState: resumeOutOfRange ? "resetting" : "idle",
-  }));
+  });
 
   sendEnvelope(
     transport,
@@ -2124,7 +2118,7 @@ export async function handleSessionChatTransportMessage(
         recovery: { ...currentRecovery, lastFailure: undefined, updatedAt: new Date().toISOString() },
       });
     }
-    console.log(JSON.stringify({ component: "session-chat", event: "session:continue", sessionId }));
+    log.info("Session continue", { sessionId });
     // Re-enter as a normal message with continuation instruction
     const continuePayload = JSON.stringify({
       type: "session:message",
@@ -2138,14 +2132,14 @@ export async function handleSessionChatTransportMessage(
   if (payload.type === "session:safety-decision") {
     const decision = (payload as { decision?: "approve" | "reject" }).decision ?? "reject";
     resolveSafetyDecision(sessionId, decision);
-    console.log(JSON.stringify({ component: "session-chat", event: "session:safety-decision", sessionId, decision }));
+    log.info("Session safety decision", { sessionId, decision });
     return;
   }
 
   const content = ("content" in payload ? payload.content : "").trim();
   const effectiveContent = content || "继续";
   if (!content) {
-    console.log(JSON.stringify({ component: "session-chat", event: "continue", sessionId }));
+    log.info("Session continue (empty content)", { sessionId });
   }
 
   // ─── Parse and persist image attachments ────────────────────────────────────
@@ -2164,7 +2158,7 @@ export async function handleSessionChatTransportMessage(
     }
     queue.push({ content: effectiveContent, messageId, canvasContext, transport, queuedAt: Date.now() });
     sessionMessageQueue.set(sessionId, queue);
-    console.log(JSON.stringify({ component: "session-chat", event: "message-queued", sessionId, queueLength: queue.length }));
+    log.info("Message queued", { sessionId, queueLength: queue.length });
     return;
   }
 
@@ -2751,7 +2745,7 @@ export async function handleSessionChatTransportMessage(
 
   // ─── Buffered Message Queue: drain after turn completes ─────────────────────
   void drainSessionQueue(sessionId).catch((err) => {
-    console.log(JSON.stringify({ component: "session-chat", event: "drain-queue-unhandled-error", sessionId, error: err instanceof Error ? err.message : "unknown" }));
+    log.error("Drain queue unhandled error", { sessionId, error: err instanceof Error ? err.message : "unknown" });
     sessionBusy.delete(sessionId);
   });
 }
@@ -2768,7 +2762,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
     sessionMessageQueue.delete(sessionId);
   }
 
-  console.log(JSON.stringify({ component: "session-chat", event: "message-dequeued", sessionId, queueLength: queue.length }));
+  log.info("Message dequeued", { sessionId, queueLength: queue.length });
 
   // NOTE: Do NOT clear sessionBusy here — we stay busy while processing the queued message.
   // The drain will be called again at the end of handleSessionChatTransportMessage.
@@ -2777,7 +2771,7 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
     const syntheticPayload = JSON.stringify({ type: "session:message", content: next.content, messageId: next.messageId, _fromQueue: true });
     await handleSessionChatTransportMessage(sessionId, next.transport, syntheticPayload);
   } catch (error) {
-    console.log(JSON.stringify({ component: "session-chat", event: "drain-queue-error", sessionId, error: error instanceof Error ? error.message : "unknown" }));
+    log.error("Drain queue error", { sessionId, error: error instanceof Error ? error.message : "unknown" });
     // On error, release the busy lock so the session isn't permanently stuck
     sessionBusy.delete(sessionId);
   }

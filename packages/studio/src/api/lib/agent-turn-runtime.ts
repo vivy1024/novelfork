@@ -12,6 +12,7 @@ import type {
 import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import type { LlmRuntimeFailureCode } from "./llm-runtime-service.js";
 import type { RuntimeToolUse, RuntimeToolStreamEvent } from "./provider-adapters/index.js";
+import { log } from "./logger.js";
 import { filterSessionToolsForProvider } from "./session-tool-policy.js";
 import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } from "./turn-checkpoint.js";
@@ -543,7 +544,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
   for (;;) {
     if (input.signal?.aborted) {
-      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "aborted", sessionId: input.sessionId, executedToolSteps }));
+      log.info("Agent turn aborted", { sessionId: input.sessionId, executedToolSteps });
       emit({ type: "turn_completed" });
       return events;
     }
@@ -620,12 +621,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     if (!reply.success) {
       const errorCode = classifyError(reply.code || reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
       const userMessage = getErrorUserMessage(errorCode);
-      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-failed", sessionId: input.sessionId, code: reply.code, error: reply.error, errorCode, userMessage, durationMs: generateDurationMs }));
+      log.warn("Generate failed", { sessionId: input.sessionId, code: reply.code, error: reply.error, errorCode, userMessage, durationMs: generateDurationMs });
 
       // P2.2: Model fallback — switch to backup model on eligible errors
       if (input.fallbackModel && !hasAttemptedFallback && isFallbackEligibleError(reply.code || reply.error)) {
         hasAttemptedFallback = true;
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "model-fallback", sessionId: input.sessionId, from: currentSessionConfig.modelId, to: input.fallbackModel, triggerCode: reply.code }));
+        log.warn("Model fallback triggered", { sessionId: input.sessionId, from: currentSessionConfig.modelId, to: input.fallbackModel, triggerCode: reply.code });
         currentSessionConfig = { ...currentSessionConfig, modelId: input.fallbackModel };
         messages.push({
           type: "message",
@@ -642,13 +643,13 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         const truncated = emergencyTruncateMessages(messages);
 
         if (truncated.length < originalCount) {
-          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "context-overflow-detected", sessionId: input.sessionId, originalCount, truncatedCount: truncated.length }));
+          log.warn("Context overflow detected", { sessionId: input.sessionId, originalCount, truncatedCount: truncated.length });
 
           // Replace messages with truncated version
           messages.length = 0;
           messages.push(...truncated);
 
-          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "context-overflow-retry", sessionId: input.sessionId, messageCount: messages.length }));
+          log.info("Context overflow retry", { sessionId: input.sessionId, messageCount: messages.length });
 
           // Retry generate with truncated messages
           const retryStartedAt = Date.now();
@@ -692,7 +693,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           });
 
           if (retryReply.success) {
-            console.log(JSON.stringify({ component: "agent-turn-runtime", event: "context-overflow-recovery-success", sessionId: input.sessionId }));
+            log.info("Context overflow recovery success", { sessionId: input.sessionId });
             // Re-assign and continue the loop by processing retryReply below
             // We need to handle the retryReply the same way as a normal reply
             if (retryReply.type !== "tool_use") {
@@ -751,7 +752,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                   );
               const toolDurationMs = Date.now() - toolStartedAt;
               executedToolSteps += 1;
-              console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps }));
+              log.info("Tool executed", { sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps });
               if (!duplicateResult) {
                 toolResultsBySignature.set(signature, toolResult);
               }
@@ -778,7 +779,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             // After processing retry tool uses, continue the main loop for next generate
             continue;
           } else {
-            console.log(JSON.stringify({ component: "agent-turn-runtime", event: "context-overflow-recovery-failed", sessionId: input.sessionId, code: retryReply.code }));
+            log.warn("Context overflow recovery failed", { sessionId: input.sessionId, code: retryReply.code });
             // Fall through to emit failure with the retry's error
             emit(buildFailureEvent(retryReply));
             return events;
@@ -791,7 +792,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     }
 
     const usage = reply.metadata?.usage;
-    console.log(JSON.stringify({ component: "agent-turn-runtime", event: "generate-ok", sessionId: input.sessionId, type: reply.type ?? "message", durationMs: generateDurationMs, ...(usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } : {}) }));
+    log.info("Generate OK", { sessionId: input.sessionId, type: reply.type ?? "message", durationMs: generateDurationMs, ...(usage ? { inputTokens: usage.input_tokens, outputTokens: usage.output_tokens } : {}) });
 
     // Feed token usage to health monitor
     if (usage) {
@@ -809,7 +810,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       // When stop_reason=max_tokens, content may be empty/1-char (truncated before meaningful output)
       if (isMaxTokensTruncated(reply.metadata) && maxOutputTokensRecoveryCount < MAX_OUTPUT_TOKENS_RECOVERY_LIMIT) {
         maxOutputTokensRecoveryCount++;
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "max-output-tokens-recovery", sessionId: input.sessionId, attempt: maxOutputTokensRecoveryCount, stopReason: reply.metadata?.stopReason, contentLength: content.length }));
+        log.info("Max output tokens recovery", { sessionId: input.sessionId, attempt: maxOutputTokensRecoveryCount, stopReason: reply.metadata?.stopReason, contentLength: content.length });
 
         // Push the truncated assistant message to context (if non-empty)
         if (content) {
@@ -838,7 +839,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       // Detect malformed XML tool calls in assistant text (model regression fallback)
       const xmlToolPattern = /<(?:tool_use|invoke|antml:invoke)\s+(?:id|name)=/;
       if (xmlToolPattern.test(content)) {
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "xml-tool-use-in-text", sessionId: input.sessionId, contentPreview: content.slice(0, 200) }));
+        log.warn("XML tool_use in text detected", { sessionId: input.sessionId, contentPreview: content.slice(0, 200) });
         emit({ type: "turn_failed", reason: "malformed-tool-call", message: "模型输出了格式异常的工具调用，请重试。" });
         return events;
       }
@@ -858,7 +859,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           for (const msg of hookMessages) {
             messages.push({ type: "message", role: "system", content: `[TurnComplete Hook] ${msg}` });
           }
-          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "turn-complete-hook-blocking", sessionId: input.sessionId, hookCount: hookMessages.length }));
+          log.info("Turn complete hook blocking", { sessionId: input.sessionId, hookCount: hookMessages.length });
           continue;
         }
       }
@@ -890,10 +891,10 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     // We push it as a standalone message here; toOpenAiMessages will merge it with the following tool_calls.
     const policy = input.reasoningPolicy ?? "passback-on-tool-loop";
     if (reply.reasoningContent && policy !== "strip") {
-      console.log(`[agent-turn] pushing reasoning: ${reply.reasoningContent.length} chars, signature=${reply.reasoningSignature?.length ?? 0} chars`);
+      log.info("Pushing reasoning to context", { length: reply.reasoningContent.length, signatureLength: reply.reasoningSignature?.length ?? 0 });
       messages.push({ type: "message", role: "assistant", content: "", reasoning_content: reply.reasoningContent, reasoning_signature: reply.reasoningSignature });
     } else if (reply.type === "tool_use") {
-      console.log(`[agent-turn] tool_use reply but NO reasoningContent (policy=${policy}, hasRC=${!!reply.reasoningContent})`);
+      log.info("Tool use reply without reasoning", { policy, hasRC: !!reply.reasoningContent });
     }
 
     // Determine if all tools in this batch are read-only (parallelizable)
@@ -917,7 +918,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         return events;
       }
 
-      console.log(JSON.stringify({ component: "agent-turn-runtime", event: "parallel-tool-execution", count: reply.toolUses.length, sessionId: input.sessionId }));
+      log.info("Parallel tool execution", { count: reply.toolUses.length, sessionId: input.sessionId });
 
       // Emit all tool_call events first
       for (const toolUse of reply.toolUses) {
@@ -958,7 +959,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                   input.signal,
                 );
           } catch (err) {
-            console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
+            log.error("Tool execution error", { sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) });
             toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
           }
           const toolDurationMs = Date.now() - toolStartedAt;
@@ -974,7 +975,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         }
 
         executedToolSteps += 1;
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: isDuplicate, step: executedToolSteps }));
+        log.info("Tool executed", { sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: isDuplicate, step: executedToolSteps });
         if (!isDuplicate) {
           toolResultsBySignature.set(signature, toolResult);
         }
@@ -1100,12 +1101,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 toolUse.name,
                 input.signal,
               );        } catch (err) {
-          console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-execution-error", sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) }));
+          log.error("Tool execution error", { sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) });
           toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
         }
         const toolDurationMs = Date.now() - toolStartedAt;
         executedToolSteps += 1;
-        console.log(JSON.stringify({ component: "agent-turn-runtime", event: "tool-executed", sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps }));
+        log.info("Tool executed", { sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps });
         if (!duplicateResult) {
           toolResultsBySignature.set(signature, toolResult);
         }
