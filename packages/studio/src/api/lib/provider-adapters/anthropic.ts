@@ -6,6 +6,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { log } from "../logger.js";
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
 import type {
   RuntimeProviderRef,
@@ -511,24 +512,24 @@ async function consumeAnthropicStream(
       || /<invoke\s+name="[^"]*">/.test(fullContent);
 
     if (hasXmlToolPattern) {
-      console.log(`[anthropic.stream] Detected XML tool_use in text output (stop_reason=${stopReason ?? "unknown"}), attempting parse...`);
+      log.info("Anthropic stream detected XML tool_use in text output", { stopReason: stopReason ?? "unknown" });
       const parsed = parseXmlToolCalls(fullContent);
       if (parsed && parsed.length > 0) {
         // Resolve internal names if tools are available
         const resolvedToolUses = tools
           ? parsed.map(tu => ({ ...tu, name: toInternalToolName(tu.name, tools) }))
           : parsed;
-        console.log(`[anthropic.stream] Successfully parsed ${resolvedToolUses.length} XML tool call(s): ${resolvedToolUses.map(t => t.name).join(", ")}`);
+        log.info("Anthropic stream parsed XML tool calls", { count: resolvedToolUses.length, names: resolvedToolUses.map(t => t.name).join(", ") });
         return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
       }
       // Parse failed — return failure to trigger retry
-      console.warn(`[anthropic.stream] XML tool_use detected but parse failed, returning failure for retry`);
+      log.warn("Anthropic stream XML tool_use detected but parse failed", {});
       return failure("upstream-error", "Model output XML tool_use but parsing failed — likely truncated due to max_tokens");
     }
 
     // Warn if stopped due to max_tokens without any tool calls
     if (stopReason === "max_tokens") {
-      console.warn(`[anthropic.stream] Response truncated (stop_reason=max_tokens) with no structured tool_use. Content length: ${fullContent.length}`);
+      log.warn("Anthropic stream response truncated", { stopReason: "max_tokens", contentLength: fullContent.length });
     }
   }
 
@@ -693,7 +694,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const thinkingCount = anthropicMsgs.filter(m => Array.isArray(m.content) && (m.content as Array<Record<string, unknown>>).some(b => b.type === "thinking")).length;
     const toolUseCount = anthropicMsgs.filter(m => Array.isArray(m.content) && (m.content as Array<Record<string, unknown>>).some(b => b.type === "tool_use")).length;
     const inputWithReasoning = input.messages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content).length;
-    console.log(`[anthropic.generate] ${anthropicMsgs.length} msgs, thinking=${thinkingCount}, tool_use=${toolUseCount}, inputReasoning=${inputWithReasoning}/${input.messages.length}`);
+    log.info("Anthropic generate request", { msgCount: anthropicMsgs.length, thinkingCount, toolUseCount, inputWithReasoning, totalMessages: input.messages.length });
 
     // Extract system message — split by dynamic boundary for optimal prompt caching
     const systemMessage = input.messages.find((m) => m.role === "system");
@@ -751,11 +752,11 @@ export class AnthropicAdapter implements RuntimeAdapter {
         if (m.role === "assistant" && Array.isArray(m.content)) {
           const blocks = (m.content as Array<Record<string, unknown>>);
           const tuIds = blocks.filter(b => b.type === "tool_use").map(b => (b as {id?:string}).id ?? "?");
-          console.log(`[deepseek.sanitize] msg[${i}] assistant tool_use_ids=[${tuIds.join(",")}]`);
+          log.info("DeepSeek sanitize assistant message", { msgIndex: i, toolUseIds: tuIds });
         } else if (m.role === "user" && Array.isArray(m.content)) {
           const blocks = (m.content as Array<Record<string, unknown>>);
           const trIds = blocks.filter(b => b.type === "tool_result").map(b => (b as {tool_use_id?:string}).tool_use_id ?? "?");
-          if (trIds.length > 0) console.log(`[deepseek.sanitize] msg[${i}] user tool_result_ids=[${trIds.join(",")}]`);
+          if (trIds.length > 0) log.info("DeepSeek sanitize user message", { msgIndex: i, toolResultIds: trIds });
         }
       }
     } else if (hasThinkingInHistory) {
@@ -769,7 +770,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
         if (!Array.isArray(msg.content)) continue;
         for (const block of (msg.content as Array<Record<string, unknown>>)) {
           if (block.type === "thinking") {
-            console.log(`[anthropic.generate] thinking block: thinking=${typeof block.thinking === "string" ? (block.thinking as string).length + " chars" : "MISSING"}, signature=${typeof block.signature === "string" ? (block.signature as string).length + " chars" : "MISSING"}`);
+            log.info("Anthropic generate thinking block", { thinkingLength: typeof block.thinking === "string" ? (block.thinking as string).length : 0, signatureLength: typeof block.signature === "string" ? (block.signature as string).length : 0 });
           }
         }
       }
@@ -797,7 +798,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
 
         if (!response.ok) {
           const errorText = await readAnthropicError(response);
-          console.log(`[anthropic.generate] API error ${response.status}: ${errorText}, providerHint=${providerHint}, hasThinking=${hasThinkingInHistory}, bodyHasThinking=${!!body.thinking}`);
+          log.info("Anthropic generate API error", { status: response.status, error: errorText, providerHint, hasThinking: hasThinkingInHistory, bodyHasThinking: !!body.thinking });
           if (canRetry && (response.status === 404 || response.status === 405)) {
             lastError = errorText;
             continue;

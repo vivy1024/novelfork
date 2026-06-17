@@ -6,6 +6,7 @@
  */
 
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
+import { log } from "../logger.js";
 import type {
   RuntimeProviderRef,
   TestModelInput,
@@ -512,7 +513,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
           return failure("upstream-error", "Streaming response has no body");
         }
 
-        console.log(`[streaming] Connected to ${url}, status=${response.status}, content-type=${response.headers.get("content-type")}`);
+        log.info("Streaming connected", { url, status: response.status, contentType: response.headers.get("content-type") });
         return await this.consumeStream(response.body, onStreamChunk, signal, tools ?? undefined);
       } catch (error) {
         if (signal?.aborted) {

@@ -6,6 +6,7 @@
  */
 
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
+import { log } from "../logger.js";
 import type {
   RuntimeProviderRef,
   TestModelInput,
@@ -164,7 +165,7 @@ export class ClaudeCodeAdapter implements RuntimeAdapter {
   }
 
   async generate(input: GenerateInput): Promise<GenerateResult> {
-    console.log(`[claude-code.generate] hasOnStreamChunk=${typeof input.onStreamChunk}, model=${input.modelId}, baseUrl=${input.baseUrl}`);
+    log.info("Claude Code generate", { hasOnStreamChunk: typeof input.onStreamChunk !== "undefined", model: input.modelId, baseUrl: input.baseUrl });
     if (!input.apiKey?.trim()) {
       return failure("auth-missing", `API key missing for provider ${input.providerId}`);
     }

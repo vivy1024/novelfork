@@ -7,6 +7,7 @@
  */
 
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
+import { log } from "../logger.js";
 import type {
   RuntimeProviderRef,
   TestModelInput,
@@ -153,7 +154,7 @@ export class CodexAdapter implements RuntimeAdapter {
     if (configFailure) return configFailure;
 
     const useStreaming = Boolean(input.onStreamChunk);
-    console.log(`[codex.generate] useStreaming=${useStreaming}, model=${input.modelId}`);
+    log.info("Codex generate", { useStreaming, model: input.modelId });
 
     if (useStreaming) {
       return this.sendStreamingChatCompletion(input, input.messages, input.tools, input.onStreamChunk!, input.signal);
@@ -274,7 +275,7 @@ export class CodexAdapter implements RuntimeAdapter {
           return failure("upstream-error", "Streaming response has no body");
         }
 
-        console.log(`[codex.streaming] Connected to ${url}, status=${response.status}`);
+        log.info("Codex streaming connected", { url, status: response.status });
         return await this.consumeStream(response.body, onStreamChunk, signal, tools ?? undefined);
       } catch (error) {
         if (signal?.aborted) {

@@ -10,6 +10,7 @@
 
 import { spawn, type ChildProcess } from "node:child_process";
 import { createInterface, type Interface as ReadlineInterface } from "node:readline";
+import { log } from "./logger.js";
 
 export type McpTransport = "stdio" | "sse" | "http";
 export type McpClientStatus = "disconnected" | "connecting" | "connected" | "error" | "needs-auth";
@@ -179,16 +180,16 @@ export function createMcpClient(config: McpServerConfig): McpClient {
 
             const attemptReconnect = () => {
               retries++;
-              console.log(`[MCP] Server "${config.name}" exited unexpectedly (code=${code}, signal=${signal}). Reconnect attempt ${retries}/${MAX_RECONNECT_RETRIES}...`);
+              log.info("MCP server exited unexpectedly, reconnecting", { server: config.name, code, signal, attempt: retries, maxRetries: MAX_RECONNECT_RETRIES });
               setTimeout(async () => {
                 try {
                   await client.connect();
-                  console.log(`[MCP] Server "${config.name}" reconnected successfully.`);
+                  log.info("MCP server reconnected successfully", { server: config.name });
                 } catch (err) {
                   if (retries < MAX_RECONNECT_RETRIES) {
                     attemptReconnect();
                   } else {
-                    console.error(`[MCP] Server "${config.name}" failed to reconnect after ${MAX_RECONNECT_RETRIES} attempts. Marking as permanently disconnected.`);
+                    log.error("MCP server failed to reconnect permanently", { server: config.name, maxRetries: MAX_RECONNECT_RETRIES });
                     status = "error";
                   }
                 }

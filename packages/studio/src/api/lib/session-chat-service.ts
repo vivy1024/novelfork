@@ -857,7 +857,7 @@ function saveAttachmentsToDisk(
       writeFileSync(filePath, new Uint8Array(Buffer.from(att.data, "base64")));
       result.push({ type: "image", mimeType: att.mimeType, filePath, fileName });
     } catch (e) {
-      console.error("Failed to save attachment:", e);
+      log.error("Failed to save attachment", { error: e instanceof Error ? e.message : String(e) });
     }
   }
   return result;

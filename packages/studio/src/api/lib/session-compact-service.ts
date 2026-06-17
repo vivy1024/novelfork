@@ -5,6 +5,7 @@ import { getSessionChatSnapshot, replaceSessionChatState } from "./session-chat-
 import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
 import { loadUserConfig } from "./user-config-service.js";
+import { log } from "./logger.js";
 
 // Store last pre-compact snapshot for undo capability
 const preCompactSnapshots = new Map<string, NarratorSessionChatMessage[]>();
@@ -157,7 +158,7 @@ async function generateLlmSummary(
   if (!providerId || !modelId) return null;
 
   const prompt = buildCompactPrompt(compactedMessages, instructions);
-  console.log(`[compact] generating summary with ${providerId}:${modelId}, ${compactedMessages.length} messages`);
+  log.info("Compact generating summary", { providerId, modelId, messageCount: compactedMessages.length });
 
   try {
     // 30 秒超时保护，防止 API 无响应时永远挂起
@@ -187,7 +188,7 @@ async function generateLlmSummary(
     });
 
     if (result.success && result.type === "message" && result.content.trim()) {
-      console.log(`[compact] summary generated, ${result.content.length} chars`);
+      log.info("Compact summary generated", { chars: result.content.length });
       // 提取 <summary> 内容，去掉 <analysis>
       let summary = result.content.trim();
       summary = summary.replace(/<analysis>[\s\S]*?<\/analysis>/i, "").trim();
@@ -197,9 +198,9 @@ async function generateLlmSummary(
       }
       return summary;
     }
-    console.log(`[compact] LLM returned unexpected result: success=${result.success}`);
+    log.warn("Compact LLM returned unexpected result", { success: result.success });
   } catch (err) {
-    console.error(`[compact] LLM summary failed:`, err instanceof Error ? err.message : err);
+    log.error("Compact LLM summary failed", { error: err instanceof Error ? err.message : String(err) });
   }
 
   return null;

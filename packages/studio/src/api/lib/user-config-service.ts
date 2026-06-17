@@ -26,6 +26,7 @@ import { isSessionPermissionMode, normalizeSessionPermissionMode } from "../../s
 import { ProviderRuntimeStore } from "./provider-runtime-store.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
+import { log } from "./logger.js";
 
 /**
  * 获取用户配置文件路径
@@ -414,7 +415,7 @@ export async function loadUserConfig(): Promise<UserConfig> {
       update: sanitizeUpdate((config as unknown as Record<string, unknown>).update as Partial<UpdateSettings> | null),
     };
   } catch (error) {
-    console.error("Failed to load user config, using default:", error);
+    log.error("Failed to load user config, using default", { error: error instanceof Error ? error.message : String(error) });
     return DEFAULT_USER_CONFIG;
   }
 }
@@ -438,7 +439,7 @@ export async function saveUserConfig(config: UserConfig): Promise<void> {
         }
       }
     } catch (error) {
-      console.warn("Failed to backup config:", error);
+      log.warn("Failed to backup config", { error: error instanceof Error ? error.message : String(error) });
     }
   }
 

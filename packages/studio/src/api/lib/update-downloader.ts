@@ -17,6 +17,7 @@ import { spawn } from "node:child_process";
 import { pipeline } from "node:stream/promises";
 import { Readable } from "node:stream";
 import { loadUserConfig } from "./user-config-service.js";
+import { log } from "./logger.js";
 
 export interface DownloadProgress {
   phase: "downloading" | "verifying" | "ready" | "error";
@@ -227,7 +228,7 @@ export function installUpdate(newExePath: string): void {
   child.unref();
 
   // 退出当前进程
-  console.log("[update] Replacement script launched, exiting current process...");
+  log.info("Update replacement script launched, exiting current process");
   process.exit(0);
 }
 
