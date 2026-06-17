@@ -37,6 +37,8 @@ export interface CompactMessage {
   readonly id?: string;
   readonly role: "system" | "user" | "assistant" | "tool_result";
   readonly content: string;
+  /** Extra token overhead from tool call inputs/results not captured in content */
+  readonly extraTokens?: number;
   readonly toolCalls?: readonly { readonly id: string; readonly toolName: string }[];
 }
 
@@ -120,7 +122,7 @@ export function estimateTokenCount(text: string): number {
 }
 
 function totalTokens(messages: readonly CompactMessage[]): number {
-  return messages.reduce((sum, msg) => sum + estimateTokenCount(msg.content), 0);
+  return messages.reduce((sum, msg) => sum + estimateTokenCount(msg.content) + (msg.extraTokens ?? 0), 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,8 +170,9 @@ export function detectCompactionAction(
   messages: readonly CompactMessage[],
   maxContextTokens: number,
   thresholds: CompactionThresholds,
+  overrideTokenCount?: number,
 ): CompactionAction {
-  const tokens = totalTokens(messages);
+  const tokens = overrideTokenCount ?? totalTokens(messages);
   const usagePercent = (tokens / maxContextTokens) * 100;
 
   if (usagePercent >= thresholds.compressPercent) {

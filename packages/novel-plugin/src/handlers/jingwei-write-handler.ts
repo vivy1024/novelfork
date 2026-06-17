@@ -8,6 +8,7 @@
  */
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { JingweiLayer } from "../engine/jingwei/types.js";
+import { normalizeCategory } from "../engine/jingwei/unified-categories.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -194,7 +195,8 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     ? input.relatedEntryIds.filter((id): id is string => typeof id === "string")
     : [];
 
-  const category = inferCategory(rawCategory, title, contentMd);
+  const rawInferred = inferCategory(rawCategory, title, contentMd);
+  const { category } = normalizeCategory(rawInferred);
 
   if (!title) {
     return { ok: false, error: "invalid-input", summary: "title 不能为空。" };

@@ -9,7 +9,7 @@
  */
 
 import { useEffect, useState } from "react";
-import { Loader2, Zap, PenLine, GitBranch, FolderPlus, Check, Trash2, Info } from "lucide-react";
+import { Loader2, Zap, GitBranch, FolderPlus, Check, Trash2, Info } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
@@ -288,10 +288,7 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
 
         {/* Right: context ring + model + reasoning + fast + permission */}
         <div className="flex items-center gap-1.5">
-          {/* Writing preset quick switch — only when a book is bound */}
-          {status.binding?.projectId && (
-            <WritingPresetQuickSwitch bookId={status.binding.projectId} />
-          )}
+
           {/* Context usage ring — 在模型下拉左边 */}
           <ContextRingMenu
             used={status.contextUsage?.usedTokens ?? 0}
@@ -469,104 +466,6 @@ function ModelDropdown({
               );
             })}
           </DropdownMenuGroup>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// WritingPresetQuickSwitch — 写作预设快速切换
-// ---------------------------------------------------------------------------
-
-interface PresetQuickItem {
-  id: string;
-  name: string;
-  category: string;
-}
-
-function WritingPresetQuickSwitch({ bookId }: { bookId: string }) {
-  const [presets, setPresets] = useState<PresetQuickItem[]>([]);
-  const [enabledIds, setEnabledIds] = useState<string[]>([]);
-  const [loaded, setLoaded] = useState(false);
-
-  // Lazy-load presets and enabled IDs when dropdown opens
-  async function loadData() {
-    if (loaded) return;
-    try {
-      const [presetsResp, bookResp] = await Promise.all([
-        fetch("/api/presets").then((r) => r.ok ? r.json() : { presets: [] }),
-        fetch(`/api/books/${bookId}`).then((r) => r.ok ? r.json() as Promise<{ enabledPresetIds?: string[] }> : Promise.resolve({} as { enabledPresetIds?: string[] })),
-      ]);
-      setPresets((presetsResp.presets ?? []).slice(0, 20));
-      setEnabledIds(bookResp.enabledPresetIds ?? []);
-      setLoaded(true);
-    } catch {
-      setLoaded(true);
-    }
-  }
-
-  async function togglePreset(presetId: string) {
-    const nextIds = enabledIds.includes(presetId)
-      ? enabledIds.filter((id) => id !== presetId)
-      : [...enabledIds, presetId];
-    setEnabledIds(nextIds);
-    try {
-      await fetch(`/api/books/${bookId}/presets`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ enabledPresetIds: nextIds }),
-      });
-      const label = presets.find((p) => p.id === presetId)?.name ?? presetId;
-      const action = nextIds.includes(presetId) ? "启用" : "关闭";
-      notify.success(`已${action}预设「${label}」`);
-    } catch {
-      setEnabledIds(enabledIds); // revert
-      notify.error("预设切换失败");
-    }
-  }
-
-  const enabledCount = enabledIds.length;
-
-  return (
-    <DropdownMenu onOpenChange={(open) => { if (open) void loadData(); }}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <DropdownMenuTrigger
-            className="relative rounded-md p-1.5 text-muted-foreground hover:bg-muted transition-colors"
-          >
-            <PenLine className="size-3.5" />
-            {enabledCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 flex size-3 items-center justify-center rounded-full bg-primary text-[8px] font-bold text-primary-foreground">
-                {enabledCount}
-              </span>
-            )}
-          </DropdownMenuTrigger>
-        </TooltipTrigger>
-        <TooltipContent side="top">写作预设</TooltipContent>
-      </Tooltip>
-      <DropdownMenuContent side="top" align="end" className="min-w-[200px] max-h-[300px] overflow-y-auto">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>写作预设快速切换</DropdownMenuLabel>
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        {!loaded && (
-          <div className="px-2 py-2 text-xs text-muted-foreground">加载中…</div>
-        )}
-        {loaded && presets.length === 0 && (
-          <div className="px-2 py-2 text-xs text-muted-foreground">暂无可用预设</div>
-        )}
-        {presets.map((preset) => (
-          <DropdownMenuItem
-            key={preset.id}
-            onClick={() => void togglePreset(preset.id)}
-            className="flex items-center justify-between gap-2"
-          >
-            <span className="truncate text-xs">{preset.name}</span>
-            {enabledIds.includes(preset.id) && (
-              <Check className="size-3 text-primary shrink-0" />
-            )}
-          </DropdownMenuItem>
         ))}
       </DropdownMenuContent>
     </DropdownMenu>

@@ -203,6 +203,18 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
     renderer: "tool.exitWorktree",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
   }),
+  // --- 上下文管理工具 ---
+  sessionTool({
+    name: "Snip",
+    description: "从 Agent 可见上下文中移除旧消息段，释放上下文空间。被移除的消息仍保留在聊天记录中（用户可查看），但 Agent 不再看到它们。\n\n使用时机：\n- 长对话中早期的探索/讨论已经定稿存入外部系统（如经纬数据库），保留在上下文中无额外价值\n- budget pressure 提示上下文接近上限时，主动清理不再需要的旧内容\n- 多轮工具调用的中间过程已得出结论，只需保留结论\n\n注意：\n- 只能移除比当前消息更早的内容\n- 无法撤销——慎重选择要移除的范围\n- 系统会自动保留最近的消息不被 snip",
+    inputSchema: objectSchema({
+      reason: stringSchema("为什么要 snip 这些消息（记录在日志中）。"),
+      keep_recent: numberSchema("保留最近多少条消息不被 snip（默认 10）。可选。"),
+    }, ["reason"]),
+    risk: "confirmed-write",
+    renderer: "tool.snip",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
   // --- 用户交互工具 ---
   sessionTool({
     name: "AskUserQuestion",

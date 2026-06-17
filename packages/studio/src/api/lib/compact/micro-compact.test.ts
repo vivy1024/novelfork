@@ -40,8 +40,9 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "outline-6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result, foldedCount } = microCompact(msgs);
 
+    expect(foldedCount).toBe(1);
     // 第 1 条被折叠
     expect(result[0]!.type).toBe("tool_result");
     expect((result[0] as Extract<AgentTurnItem, { type: "tool_result" }>).content).toMatch(
@@ -66,7 +67,7 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "大纲内容6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result } = microCompact(msgs);
     const folded = result[0] as Extract<AgentTurnItem, { type: "tool_result" }>;
 
     expect(folded.content).toMatch(/^\[旧工具结果已折叠: cockpit\.get_snapshot — /);
@@ -87,7 +88,7 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "outline6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result } = microCompact(msgs);
 
     expect((result[0] as Extract<AgentTurnItem, { type: "message" }>).content).toBe("你好");
     expect((result[1] as Extract<AgentTurnItem, { type: "message" }>).content).toBe("你好！");
@@ -113,7 +114,7 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "outline-6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result } = microCompact(msgs);
 
     // 所有 tool_call 保持原样
     for (const item of result) {
@@ -132,7 +133,9 @@ describe("microCompact", () => {
   });
 
   it("空消息数组返回空数组", () => {
-    expect(microCompact([])).toEqual([]);
+    const { items, foldedCount } = microCompact([]);
+    expect(items).toEqual([]);
+    expect(foldedCount).toBe(0);
   });
 
   it("少于 keepRecentResults 条时全部保留", () => {
@@ -141,8 +144,9 @@ describe("microCompact", () => {
       toolResult("2", "narrative.outline", "outline"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result, foldedCount } = microCompact(msgs);
 
+    expect(foldedCount).toBe(0);
     expect((result[0] as Extract<AgentTurnItem, { type: "tool_result" }>).content).toBe("snapshot");
     expect((result[1] as Extract<AgentTurnItem, { type: "tool_result" }>).content).toBe("outline");
   });
@@ -156,8 +160,9 @@ describe("microCompact", () => {
       toolResult("5", "pgi.generate_questions", "questions-5"),
     ];
 
-    const result = microCompact(msgs, { keepRecentResults: 1 });
+    const { items: result, foldedCount } = microCompact(msgs, { keepRecentResults: 1 });
 
+    expect(foldedCount).toBe(4);
     // 前 4 条被折叠
     for (let i = 0; i < 4; i++) {
       expect((result[i] as Extract<AgentTurnItem, { type: "tool_result" }>).content).toMatch(
@@ -179,7 +184,7 @@ describe("microCompact", () => {
       toolResult("7", "narrative.outline", "outline-7"),
     ];
 
-    const result = microCompact(msgs, { keepRecentResults: 5 });
+    const { items: result } = microCompact(msgs, { keepRecentResults: 5 });
 
     // 不可折叠的工具始终保留
     expect((result[0] as Extract<AgentTurnItem, { type: "tool_result" }>).content).toBe("other-content");
@@ -199,7 +204,7 @@ describe("microCompact", () => {
       toolResult("6", "pgi.generate_questions", "questions-5"),
     ];
 
-    const result = microCompact(msgs, { keepRecentResults: 5 });
+    const { items: result } = microCompact(msgs, { keepRecentResults: 5 });
 
     // Agent 结果即使在最旧位置也不折叠
     expect((result[0] as Extract<AgentTurnItem, { type: "tool_result" }>).content).not.toMatch(
@@ -233,7 +238,7 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "outline-6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result } = microCompact(msgs);
     const folded = result[0] as Extract<AgentTurnItem, { type: "tool_result" }>;
 
     expect(folded.metadata).toEqual({ key: "value" });
@@ -250,7 +255,7 @@ describe("microCompact", () => {
       toolResult("6", "narrative.outline", "outline-6"),
     ];
 
-    const result = microCompact(msgs);
+    const { items: result } = microCompact(msgs);
     const folded = result[0] as Extract<AgentTurnItem, { type: "tool_result" }>;
 
     // 占位符中的摘要应该被截断

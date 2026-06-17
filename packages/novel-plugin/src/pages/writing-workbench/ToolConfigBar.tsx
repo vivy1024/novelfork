@@ -33,14 +33,13 @@ const OPTIONAL_TOOLS: ToolItem[] = [
   { id: "hooks.manage", label: "伏笔" },
   { id: "character.check_consistency", label: "角色一致性" },
   { id: "presets.check_compliance", label: "合规检查" },
-  { id: "narrative.read_line", label: "叙事线" },
-  { id: "hooks.manage", label: "钩子管理" },
+  { id: "outline.suggest_next", label: "大纲建议" },
 ];
 
 /** 各角色默认启用的工具 ID */
 const ROLE_DEFAULTS: Record<AgentRole, string[]> = {
-  novelist: ["jingwei.read", "chapter.read", "cockpit.snapshot", "hooks.manage", "presets.check_compliance", "character.check_consistency", "narrative.read_line"],
-  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "hooks.manage", "presets.check_compliance", "character.check_consistency", "narrative.read_line"],
+  novelist: ["jingwei.read", "chapter.read", "cockpit.snapshot", "hooks.manage", "presets.check_compliance", "character.check_consistency", "outline.suggest_next"],
+  writer: ["jingwei.read", "chapter.read", "cockpit.snapshot", "hooks.manage", "presets.check_compliance", "character.check_consistency", "outline.suggest_next"],
   custom: ["jingwei.read", "chapter.read", "cockpit.snapshot", "hooks.manage"],
 };
 

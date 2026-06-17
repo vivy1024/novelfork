@@ -76,7 +76,7 @@ import type { ProviderReasoningPolicy } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { loadGlobalRoutines } from "./routines-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
-import { microCompact } from "./compact/micro-compact.js";
+import { microCompact, type MicroCompactResult } from "./compact/micro-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
 import { autoCompact, detectCompactionAction, selectThresholds, estimateTokenCount, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
 import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkpoint.js";
@@ -157,17 +157,44 @@ async function maybeAutoCompact(
 
   const compactMessages: CompactMessage[] = messages
     .filter((m) => !(m.metadata as any)?.collapsed)
-    .map((m) => ({
-    id: m.id,
-    role: m.role as "system" | "user" | "assistant",
-    content: m.content,
-    ...(m.toolCalls?.length ? { toolCalls: m.toolCalls.filter((tc) => tc.id).map((tc) => ({ id: tc.id!, toolName: tc.toolName })) } : {}),
-  }));
+    .map((m) => {
+      let extraTokens = 0;
+      if (m.toolCalls?.length) {
+        for (const tc of m.toolCalls) {
+          if (tc.input) extraTokens += estimateTokenCount(JSON.stringify(tc.input));
+          if (tc.result) extraTokens += estimateTokenCount(JSON.stringify(tc.result));
+        }
+      }
+      return {
+        id: m.id,
+        role: m.role as "system" | "user" | "assistant",
+        content: m.content,
+        ...(extraTokens > 0 ? { extraTokens } : {}),
+        ...(m.toolCalls?.length ? { toolCalls: m.toolCalls.filter((tc) => tc.id).map((tc) => ({ id: tc.id!, toolName: tc.toolName })) } : {}),
+      };
+    });
 
-  const action = detectCompactionAction(compactMessages, maxContextTokens, thresholds);
+  // Prefer API-reported lastInputTokens (precise) over character-based estimation.
+  // Use the HIGHER of the two to be conservative and avoid 413 errors.
+  const apiReportedTokens = state.cumulativeUsage?.lastInputTokens;
+  const estimatedTokens = estimateTokenCount(compactMessages.map(m => m.content).join("")) + compactMessages.reduce((s, m) => s + (m.extraTokens ?? 0), 0);
+  const effectiveTokens = apiReportedTokens && apiReportedTokens > 0
+    ? Math.max(apiReportedTokens, estimatedTokens)
+    : undefined;
+
+  const action = detectCompactionAction(compactMessages, maxContextTokens, thresholds, effectiveTokens);
   if (action === "none") {
     const lastAssistantTs = findLastAssistantTimestamp(messages);
-    return { items: microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: lastAssistantTs }), compacted: false };
+    const mcResult = microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: lastAssistantTs });
+    const items = mcResult.items;
+    if (mcResult.foldedCount > 0) {
+      items.unshift({
+        type: "message",
+        role: "system",
+        content: `[上下文提醒] 本次对话有 ${mcResult.foldedCount} 条旧工具结果已折叠以节约空间。如需查阅历史设定/章节内容，请主动调用 jingwei.read 或 chapter.read 重新获取。`,
+      });
+    }
+    return { items, compacted: false };
   }
 
   try {
@@ -287,7 +314,16 @@ async function maybeAutoCompact(
     // inside autoCompact itself (per-session), so nothing to do here.
   }
 
-  return { items: microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: findLastAssistantTimestamp(messages) }), compacted: false };
+  const mcFallback = microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: findLastAssistantTimestamp(messages) });
+  const fallbackItems = mcFallback.items;
+  if (mcFallback.foldedCount > 0) {
+    fallbackItems.unshift({
+      type: "message",
+      role: "system",
+      content: `[上下文提醒] 本次对话有 ${mcFallback.foldedCount} 条旧工具结果已折叠以节约空间。如需查阅历史设定/章节内容，请主动调用 jingwei.read 或 chapter.read 重新获取。`,
+    });
+  }
+  return { items: fallbackItems, compacted: false };
 }
 
 const providerRuntimeStore = new ProviderRuntimeStore();

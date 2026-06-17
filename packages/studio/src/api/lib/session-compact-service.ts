@@ -247,7 +247,7 @@ export async function compactSession(input: CompactSessionInput): Promise<Sessio
 
   const compactedMessages = sourceMessages.slice(0, sourceMessages.length - preserveRecentMessages);
   const preservedMessages = sourceMessages.slice(-preserveRecentMessages);
-  const compactedItems = microCompact(compactedMessages.map(toTurnItem));
+  const compactedItems = microCompact(compactedMessages.map(toTurnItem)).items;
   const runtimeTranscriptEvents = collectRuntimeTranscriptEvents(compactedMessages);
   const runtimeTranscriptSummary = {
     eventCount: runtimeTranscriptEvents.length,

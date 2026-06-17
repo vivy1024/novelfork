@@ -116,6 +116,7 @@ export const LEGACY_CATEGORY_MAP: Record<string, { category: JingweiCategory; su
   plot: { category: "conflicts", subcategory: "plot" },
   timeline: { category: "timeline" },
   "chapter-summary": { category: "chapter-summaries" },
+  setting: { category: "world-model" },
   // 读模型已有的分类（直接对应自身，无需映射）
   premise: { category: "premise" },
   "world-model": { category: "world-model" },

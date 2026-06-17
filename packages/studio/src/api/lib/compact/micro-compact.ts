@@ -1,5 +1,10 @@
 import type { AgentTurnItem } from "../agent-turn-runtime.js";
 
+export interface MicroCompactResult {
+  items: AgentTurnItem[];
+  foldedCount: number;
+}
+
 /**
  * 可折叠的工具名称前缀/全名。
  * 覆盖所有 I/O 工具（参考 Claude Code microCompact）。
@@ -69,7 +74,7 @@ export function microCompact(
     /** 上次 assistant 消息的时间戳（用于时间触发） */
     lastAssistantTimestamp?: number;
   },
-): AgentTurnItem[] {
+): MicroCompactResult {
   const now = Date.now();
   const elapsed = options?.lastAssistantTimestamp
     ? now - options.lastAssistantTimestamp
@@ -92,7 +97,7 @@ export function microCompact(
   const foldSet = new Set(compactableIndices.slice(0, foldCount));
 
   // 构建新数组
-  return messages.map((msg, idx) => {
+  const items = messages.map((msg, idx) => {
     if (!foldSet.has(idx)) return { ...msg };
     // 此处 msg 一定是 tool_result
     const tr = msg as Extract<AgentTurnItem, { type: "tool_result" }>;
@@ -105,4 +110,6 @@ export function microCompact(
       ...(tr.metadata !== undefined ? { metadata: tr.metadata } : {}),
     } satisfies AgentTurnItem;
   });
+
+  return { items, foldedCount: foldCount };
 }

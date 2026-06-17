@@ -17,6 +17,7 @@ import { logRequest, normalizeTokenUsage } from "./request-observability.js";
 import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } from "./turn-checkpoint.js";
 import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
+import { pruneToolOutput } from "./compact/tool-output-pruner.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -117,8 +118,24 @@ function buildFailureEvent(reply: Extract<AgentGenerateResult, { success: false 
 }
 
 function isContextOverflowError(code: string, errorMessage: string): boolean {
-  const overflowIndicators = ["context_length_exceeded", "maximum context length", "token limit", "context window"];
   const combined = `${code} ${errorMessage}`.toLowerCase();
+
+  // Direct status code match (413 = Payload Too Large)
+  if (/\b413\b/.test(combined)) return true;
+
+  // Known error patterns from various providers
+  const overflowIndicators = [
+    "context_length_exceeded",
+    "maximum context length",
+    "token limit",
+    "context window",
+    "prompt_too_long",
+    "prompt is too long",
+    "request_too_large",
+    "too many tokens",
+    "max_tokens",
+    "input is too long",
+  ];
   return overflowIndicators.some(indicator => combined.includes(indicator));
 }
 
@@ -197,9 +214,7 @@ function getContextAwareInstruction(_toolName: string, _result: SessionToolExecu
 }
 
 /** 工具输出截断：不主动截断，仅对极端情况兜底防止单个工具占满上下文 */
-const MAX_TOOL_RESULT_CHARS = 200000; // ~50k tokens，单个工具最多占上下文 5%
-const TRUNCATE_HEAD = 160000;
-const TRUNCATE_TAIL = 30000;
+
 
 // ---------------------------------------------------------------------------
 // File Unchanged Dedup — 同一文件连续读取时返回 stub 而非完整内容
@@ -286,12 +301,8 @@ export function buildBudgetPressureNotice(inputTokens: number, contextWindow: nu
 }
 
 
-function truncateToolResult(content: string, _toolName?: string): string {
-  // No token-based truncation — let the model handle full data (1M context)
-  // Only character-based safety net for extreme cases
-  if (content.length <= MAX_TOOL_RESULT_CHARS) return content;
-  const omitted = content.length - TRUNCATE_HEAD - TRUNCATE_TAIL;
-  return `${content.slice(0, TRUNCATE_HEAD)}\n\n[... 已省略 ${omitted} 字符 ...]\n\n${content.slice(-TRUNCATE_TAIL)}`;
+function truncateToolResult(content: string, toolName?: string): string {
+  return pruneToolOutput(toolName ?? "unknown", content);
 }
 
 function toolResultContent(result: SessionToolExecutionResult, toolName?: string, toolInput?: Record<string, unknown>, deduplicator?: FileReadDeduplicator): string {

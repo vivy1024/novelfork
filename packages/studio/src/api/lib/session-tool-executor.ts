@@ -2429,6 +2429,42 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         return { ok: false, renderer: definition.renderer, error: "invalid-action", summary: `无效的 action: ${action}，应为 keep 或 remove。` };
       };
+    // --- Snip: Agent 主动释放上下文 ---
+    case "Snip":
+      return async ({ input, sessionId, definition }) => {
+        const keepRecent = typeof input.keep_recent === "number" && input.keep_recent > 0 ? input.keep_recent : 10;
+        const reason = typeof input.reason === "string" ? input.reason : "Agent requested context cleanup";
+
+        const { getSessionChatSnapshot, replaceSessionChatState } = await import("./session-chat-service.js");
+        const snapshot = await getSessionChatSnapshot(sessionId);
+        if (!snapshot || !snapshot.messages || snapshot.messages.length <= keepRecent) {
+          return { ok: true, renderer: definition.renderer, summary: "没有可移除的消息（消息数不足）。", data: { snipped: 0 } };
+        }
+
+        const messages = snapshot.messages;
+        const toCollapseCount = messages.length - keepRecent;
+        let collapsedCount = 0;
+        const updatedMessages = messages.map((msg, idx) => {
+          if (idx < toCollapseCount && !(msg.metadata as any)?.collapsed) {
+            collapsedCount++;
+            return { ...msg, metadata: { ...(msg.metadata ?? {}), collapsed: true, snipReason: reason } };
+          }
+          return msg;
+        });
+
+        if (collapsedCount === 0) {
+          return { ok: true, renderer: definition.renderer, summary: "没有新消息需要 snip（目标范围内已全部折叠）。", data: { snipped: 0 } };
+        }
+
+        await replaceSessionChatState(sessionId, updatedMessages);
+
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `已从上下文中移除 ${collapsedCount} 条旧消息。保留最近 ${keepRecent} 条。原因：${reason}`,
+          data: { snipped: collapsedCount, kept: keepRecent, reason },
+        };
+      };
     // --- Implemented Phase 2 tools ---
     case "AskUserQuestion":
       return async ({ input, definition }) => {
