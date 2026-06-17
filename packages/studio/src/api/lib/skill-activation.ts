@@ -189,8 +189,18 @@ export function filterToolsByActivation<T extends { name: string }>(
 /**
  * Quick helper: detect project signals from a working directory.
  * Synchronous scan of top-level directory structure.
+ * Results cached per workDir for 30 seconds to avoid repeated IO.
  */
+const signalsCache = new Map<string, { signals: ProjectSignals; expires: number }>();
+const SIGNALS_CACHE_TTL = 30_000; // 30s
+
 export function detectProjectSignals(workDir: string): ProjectSignals {
+  const now = Date.now();
+  const cached = signalsCache.get(workDir);
+  if (cached && cached.expires > now) {
+    return cached.signals;
+  }
+
   const signals: ProjectSignals = {
     fileExtensions: [],
     directories: [],
@@ -225,5 +235,6 @@ export function detectProjectSignals(workDir: string): ProjectSignals {
     // Non-fatal — return partial signals
   }
 
+  signalsCache.set(workDir, { signals, expires: now + SIGNALS_CACHE_TTL });
   return signals;
 }

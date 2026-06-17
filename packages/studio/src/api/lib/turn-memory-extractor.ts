@@ -79,6 +79,9 @@ export function extractMemories(assistantContent: string): MemoryEntry[] {
   for (const para of paragraphs) {
     if (para.length < 10) continue;
 
+    // One entry per paragraph — priority: decision > learning > discovery
+    let matched = false;
+
     for (const pattern of DECISION_PATTERNS) {
       const match = pattern.exec(para);
       if (match) {
@@ -88,33 +91,39 @@ export function extractMemories(assistantContent: string): MemoryEntry[] {
           content: match[0].slice(0, 200),
           context: para.slice(0, 300),
         });
-        break; // one match per paragraph
-      }
-    }
-
-    for (const pattern of LEARNING_PATTERNS) {
-      const match = pattern.exec(para);
-      if (match) {
-        entries.push({
-          timestamp,
-          type: "learning",
-          content: match[0].slice(0, 200),
-          context: para.slice(0, 300),
-        });
+        matched = true;
         break;
       }
     }
 
-    for (const pattern of DISCOVERY_PATTERNS) {
-      const match = pattern.exec(para);
-      if (match) {
-        entries.push({
-          timestamp,
-          type: "discovery",
-          content: match[0].slice(0, 200),
-          context: para.slice(0, 300),
-        });
-        break;
+    if (!matched) {
+      for (const pattern of LEARNING_PATTERNS) {
+        const match = pattern.exec(para);
+        if (match) {
+          entries.push({
+            timestamp,
+            type: "learning",
+            content: match[0].slice(0, 200),
+            context: para.slice(0, 300),
+          });
+          matched = true;
+          break;
+        }
+      }
+    }
+
+    if (!matched) {
+      for (const pattern of DISCOVERY_PATTERNS) {
+        const match = pattern.exec(para);
+        if (match) {
+          entries.push({
+            timestamp,
+            type: "discovery",
+            content: match[0].slice(0, 200),
+            context: para.slice(0, 300),
+          });
+          break;
+        }
       }
     }
   }
