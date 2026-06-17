@@ -11,6 +11,7 @@
 import { existsSync, readdirSync, renameSync, mkdirSync, copyFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
+import { log } from "./logger.js";
 
 function getExeDir(): string | null {
   if (process.execPath?.endsWith(".exe")) {
@@ -98,7 +99,7 @@ function doMigration(sourceDir: string, targetDir: string): MigrationResult {
       moveDir(sourceBooksDir, targetBooksDir);
       items.push("books/");
     } catch (err) {
-      console.warn(`[migration] Failed to move books/: ${err}`);
+      log.warn("Migration failed to move books/", { error: String(err) });
     }
   }
 
@@ -111,7 +112,7 @@ function doMigration(sourceDir: string, targetDir: string): MigrationResult {
       rmSync(sourceConfig, { force: true });
       items.push("novelfork.json");
     } catch (err) {
-      console.warn(`[migration] Failed to move novelfork.json: ${err}`);
+      log.warn("Migration failed to move novelfork.json", { error: String(err) });
     }
   }
 
@@ -124,12 +125,12 @@ function doMigration(sourceDir: string, targetDir: string): MigrationResult {
       rmSync(sourceLog, { force: true });
       items.push("novelfork.log");
     } catch (err) {
-      console.warn(`[migration] Failed to move novelfork.log: ${err}`);
+      log.warn("Migration failed to move novelfork.log", { error: String(err) });
     }
   }
 
   if (items.length > 0) {
-    console.log(`[migration] Migrated data from ${sourceDir} to ${targetDir}: ${items.join(", ")}`);
+    log.info("Migration completed", { sourceDir, targetDir, items: items.join(", ") });
   }
 
   return { migrated: items.length > 0, source: sourceDir, items };

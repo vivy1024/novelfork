@@ -4,6 +4,7 @@
 
 import { loadUserConfig, updateUserConfig } from "./user-config-service.js";
 import { STUDIO_PACKAGE_VERSION } from "../../shared/release-manifest.js";
+import { log } from "./logger.js";
 
 export interface UpdateCheckResult {
   currentVersion: string;
@@ -137,7 +138,7 @@ export async function checkForUpdate(): Promise<UpdateCheckResult> {
     try {
       result = await checkFromUpdateServer(serverUrl, channel, proxyUrl);
     } catch (serverError) {
-      console.warn(`[update] Update server unreachable, falling back to GitHub:`, serverError);
+      log.warn("Update server unreachable, falling back to GitHub", { error: serverError instanceof Error ? serverError.message : String(serverError) });
       result = await checkFromGitHub(proxyUrl);
     }
 

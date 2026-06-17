@@ -1,4 +1,5 @@
 import type { Hono } from "hono";
+import { log } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Interfaces
@@ -62,9 +63,7 @@ export class PluginRegistry {
   /** Register a plugin. Overwrites any existing plugin with the same id. */
   register(plugin: LoadedPlugin): void {
     this.plugins.set(plugin.id, plugin);
-    console.log(
-      `[plugin-registry] registered plugin: ${plugin.name} (${plugin.id}) v${plugin.version}`,
-    );
+    log.info("Plugin registered", { name: plugin.name, id: plugin.id, version: plugin.version });
   }
 
   /** Retrieve a single plugin by id. */

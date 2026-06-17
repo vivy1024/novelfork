@@ -310,10 +310,10 @@ export class LlmRuntimeService {
         // Debug: check reasoning presence before sending to adapter
         const reasoningMsgs = runtimeMessages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content);
         if (reasoningMsgs.length > 0 || runtimeMessages.some(m => m.role === "assistant" && (m as { toolCalls?: unknown[] }).toolCalls?.length)) {
-          console.log(`[llm-runtime] ${runtimeMessages.length} msgs, ${reasoningMsgs.length} with reasoning, input.messages=${input.messages.length}`);
+          log.info("LLM runtime messages", { runtimeMsgCount: runtimeMessages.length, withReasoning: reasoningMsgs.length, inputMessages: input.messages.length });
           // Log the raw input messages to see if reasoning_content is present
           const rawReasoning = input.messages.filter(m => "reasoning_content" in m && (m as { reasoning_content?: string }).reasoning_content);
-          console.log(`[llm-runtime] raw input reasoning: ${rawReasoning.length}`);
+          log.info("LLM runtime raw input reasoning", { count: rawReasoning.length });
         }
 
         const result = await adapter.generate({
@@ -380,7 +380,7 @@ export class LlmRuntimeService {
         if (result.type === "tool_use") {
           const rc = (result as { reasoningContent?: string }).reasoningContent;
           const rs = (result as { reasoningSignature?: string }).reasoningSignature;
-          console.log(`[llm-runtime] tool_use result: reasoningContent=${rc ? rc.length + ' chars' : 'NONE'}, signature=${rs ? rs.length + ' chars' : 'NONE'}`);
+          log.info("LLM runtime tool_use result", { reasoningContentLength: rc ? rc.length : 0, signatureLength: rs ? rs.length : 0 });
           return { success: true, type: "tool_use", toolUses: result.toolUses, ...(rc ? { reasoningContent: rc, reasoningSignature: rs } : {}), metadata };
         }
 

@@ -13,6 +13,7 @@
 
 import { getAgentRole } from "@vivy1024/novelfork-novel-plugin/engine";
 import { buildCoordinatorPrompt, shouldInjectCoordinatorPrompt, type CoordinatorContext } from "./coordinator-prompt.js";
+import { log } from "./logger.js";
 
 import {
   TOOL_READ,
@@ -551,9 +552,7 @@ export function assertToolNameConsistency(
     }
   }
   if (missing.length > 0 && process.env.NODE_ENV !== "production") {
-    console.warn(
-      `[system-prompt-builder] ${missing.length} tool(s) not referenced in prompt: ${missing.join(", ")}`,
-    );
+    log.warn("Tools not referenced in prompt", { count: missing.length, tools: missing.join(", ") });
   }
   return missing;
 }

@@ -14,6 +14,7 @@
  */
 
 import { cascadeCompact } from "./compact/cascade-compact.js";
+import { log } from "./logger.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -365,7 +366,7 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
   // Circuit breaker: 连续失败过多时跳过（按 session 隔离）
   const failures = getCompactFailures(input.sessionId);
   if (failures >= MAX_COMPACT_FAILURES) {
-    console.warn(`[autoCompact] Circuit breaker open for session=${input.sessionId ?? "default"} (${failures} consecutive failures), skipping compact`);
+    log.warn("AutoCompact circuit breaker open", { sessionId: input.sessionId ?? "default", failures });
     return { compacted: false, truncated: false, messages: [...input.messages], compactedMessageCount: 0, keptMessageCount: input.messages.length };
   }
 
