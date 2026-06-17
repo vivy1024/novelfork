@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JingweiCategorySidebar } from "./JingweiCategorySidebar";
@@ -22,17 +22,32 @@ interface JingweiPanelProps {
 }
 
 export function JingweiPanel({ bookId }: JingweiPanelProps) {
-  const [selectedCategory, setSelectedCategory] = useState("character");
+  const [selectedCategory, setSelectedCategory] = useState("characters");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [showGraph, setShowGraph] = useState(false);
 
   const { entries, loading, refresh, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
 
-  const entryCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    counts[selectedCategory] = entries.length;
-    return counts;
-  }, [selectedCategory, entries.length]);
+  // Fetch entry counts for ALL categories (for sidebar display)
+  const [entryCounts, setEntryCounts] = useState<Record<string, number>>({});
+  const fetchEntryCounts = useCallback(async () => {
+    if (!bookId) return;
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const allEntries: Array<{ category?: string }> = Array.isArray(data.entries) ? data.entries : [];
+      const counts: Record<string, number> = {};
+      for (const entry of allEntries) {
+        if (entry.category) {
+          counts[entry.category] = (counts[entry.category] ?? 0) + 1;
+        }
+      }
+      setEntryCounts(counts);
+    } catch { /* non-fatal */ }
+  }, [bookId]);
+
+  useEffect(() => { void fetchEntryCounts(); }, [fetchEntryCounts]);
 
   const selectedEntry = useMemo(() => {
     if (!selectedEntryId) return null;
