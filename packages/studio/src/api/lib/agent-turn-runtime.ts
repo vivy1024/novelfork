@@ -619,6 +619,13 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     });
 
     if (!reply.success) {
+      // User-aborted: silent completion (not an error)
+      if (reply.code === "user-aborted") {
+        log.info("Generate aborted by user", { sessionId: input.sessionId, durationMs: generateDurationMs });
+        emit({ type: "turn_completed" });
+        return events;
+      }
+
       const errorCode = classifyError(reply.code || reply.error, { startedAtMs: generateStartedAt, totalDurationMs: generateDurationMs, firstTokenAtMs: firstChunkAt });
       const userMessage = getErrorUserMessage(errorCode);
       log.warn("Generate failed", { sessionId: input.sessionId, code: reply.code, error: reply.error, errorCode, userMessage, durationMs: generateDurationMs });
