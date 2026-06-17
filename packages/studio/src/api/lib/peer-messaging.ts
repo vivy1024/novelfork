@@ -102,8 +102,9 @@ export function createPeerMessagingHub(): PeerMessagingHub {
 
     broadcast(from: string, content: string, metadata?: Record<string, unknown>): PeerMessage[] {
       const sent: PeerMessage[] = [];
-      for (const agentId of mailboxes.keys()) {
-        if (agentId === from) continue; // don't send to self
+      // Snapshot keys to avoid mutation during iteration
+      const recipients = [...mailboxes.keys()].filter(id => id !== from);
+      for (const agentId of recipients) {
         sent.push(this.send(from, agentId, content, metadata));
       }
       return sent;

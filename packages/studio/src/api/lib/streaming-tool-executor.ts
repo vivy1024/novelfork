@@ -34,6 +34,7 @@ interface TrackedTool {
   isConcurrencySafe: boolean;
   promise?: Promise<void>;
   result?: SessionToolExecutionResult;
+  yielded?: boolean;
 }
 
 export interface StreamingToolResult {
@@ -107,10 +108,13 @@ export class StreamingToolExecutor {
   /**
    * Get any completed results that haven't been consumed yet (non-blocking).
    * Returns results in order, stopping at the first non-completed tool.
+   * Marks yielded tools so they won't be returned again.
    */
   *getCompletedResults(): Generator<StreamingToolResult> {
     for (const tool of this.tools) {
+      if (tool.yielded) continue;
       if (tool.status === "completed" && tool.result) {
+        tool.yielded = true;
         yield { id: tool.call.id, name: tool.call.name, result: tool.result };
       } else if (tool.status !== "completed") {
         // Maintain order: don't yield later tools before earlier ones complete
@@ -185,17 +189,19 @@ export class StreamingToolExecutor {
   }
 
   private async waitForAll(): Promise<void> {
-    const promises = this.tools
-      .filter(t => t.promise && t.status === "executing")
-      .map(t => t.promise!);
-    if (promises.length > 0) {
-      await Promise.all(promises);
-    }
-    // Process any remaining queued tools
-    if (this.tools.some(t => t.status === "queued")) {
-      await this.processQueue();
-      // Wait again for newly started tools
-      await this.waitForAll();
+    while (true) {
+      const promises = this.tools
+        .filter(t => t.promise && t.status === "executing")
+        .map(t => t.promise!);
+      if (promises.length > 0) {
+        await Promise.all(promises);
+      }
+      // Process any remaining queued tools
+      if (this.tools.some(t => t.status === "queued")) {
+        await this.processQueue();
+      } else {
+        break;
+      }
     }
   }
 }
