@@ -18,7 +18,7 @@ import { inferProtocol } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { log } from "./logger.js";
 
-export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed";
+export type LlmRuntimeFailureCode = RuntimeAdapterFailureCode | "model-unavailable" | "provider-unavailable" | "empty-response" | "unsupported-tools" | "all-providers-failed" | "user-aborted";
 
 export interface LlmRuntimeMetadata {
   readonly providerId: string;
@@ -299,8 +299,8 @@ export class LlmRuntimeService {
         if (input.signal?.aborted) {
           return {
             success: false,
-            code: "network-error" as LlmRuntimeFailureCode,
-            error: "Request aborted",
+            code: "user-aborted" as LlmRuntimeFailureCode,
+            error: "用户中断了请求",
             metadata: { providerId: candidate.providerId, providerName: candidate.providerName, modelId: candidate.rawModelId },
           };
         }
@@ -358,8 +358,8 @@ export class LlmRuntimeService {
               // Aborted during sleep
               return {
                 success: false,
-                code: "network-error" as LlmRuntimeFailureCode,
-                error: "Request aborted during retry backoff",
+                code: "user-aborted" as LlmRuntimeFailureCode,
+                error: "用户中断了请求（重试等待中）",
                 metadata,
               };
             }
