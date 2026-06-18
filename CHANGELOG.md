@@ -2,6 +2,45 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v1.11.1 (2026-06-18)
+
+### 🐛 修复（15 commits）
+
+#### 上下文管理（对齐 legnacode-cli）
+- **lastInputTokens 加 output_tokens** — 不再低估上下文占用
+- **contextWindow 扣除 32K 输出预留** — budget pressure 更早触发
+- **In-flight microcompact** — 60% 时自动折叠旧 tool_result，长 turn 中间释放空间
+- **前端复合估算** — context ring 显示 API 报告值 + 新增消息估算，实时准确
+- **tool_call 时更新 lastInputTokens** — 不再只在 assistant_message 时更新
+
+#### 经纬系统
+- **jingwei.write UPDATE 漏写 category 字段** — Agent 调用分类修改实际无效，现已修复
+- **前端侧边栏 entryCounts** — 改为查询全部条目统计，不再只显示当前分类的数量
+- **默认分类从 "character"(旧名) 改为 "characters"**
+
+#### Agent Runtime
+- **max_tokens 截断 + 空内容不再误报 empty-response** — 截断检查提前到空判断之前
+- **用户中断不再显示"网络连接失败"** — 新增 user-aborted 错误码，静默完成
+- **AskUserQuestion 不再卡住** — confirmation 后显式广播 idle 状态
+- **WebSocket envelope pass-through** — 新 envelope 类型不再 throw
+
+#### 安全审计修复
+- path-sandbox startsWith 前缀碰撞（加 sep 分隔符）
+- secret-detector heroku UUID 正则移除（匹配所有 UUID）
+- content-replacement 对 Read/Grep 不替换（无 expand 机制）
+- blocking warning 去重、streaming executor yielded 标记、memory 跨类互斥、broadcast 迭代安全、skill-activation 30s 缓存
+
+#### 开发体验
+- **结构化日志** — 全部 console.log 替换为 `{"ts","level","msg",...}` 格式（对齐 NarraFork）
+- **prompt-dump 接入设置页** — "Dump API 请求" 开关现在生效
+- **prompt-dump 接入 llm-runtime** — 完整请求体可转储
+
+#### 文档
+- README 重写（开源项目标准，412 行，badge + feature grid + changelog）
+- 技术文档重写（architecture / agent-runtime / novel-workflow / development）
+- codegraph 更新（820 行，含新模块）
+- 学习中心更新（2 篇更新 + 3 篇新建：上下文管理/模型配置/调试排错）
+
 ## Unreleased
 
 ## v1.11.0 (2026-06-18)
