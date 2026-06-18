@@ -37,7 +37,7 @@ export interface LlmRuntimeMetadata {
 
 export type LlmRuntimeGenerateResult =
   | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: LlmRuntimeMetadata }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: LlmRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly content?: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: LlmRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode; readonly error: string; readonly metadata?: Partial<LlmRuntimeMetadata> };
 
 export type LlmRuntimeInputMessage = NarratorSessionChatMessage | AgentTurnItem;
@@ -395,7 +395,7 @@ export class LlmRuntimeService {
           const rc = (result as { reasoningContent?: string }).reasoningContent;
           const rs = (result as { reasoningSignature?: string }).reasoningSignature;
           log.info("LLM runtime tool_use result", { reasoningContentLength: rc ? rc.length : 0, signatureLength: rs ? rs.length : 0 });
-          return { success: true, type: "tool_use", toolUses: result.toolUses, ...(rc ? { reasoningContent: rc, reasoningSignature: rs } : {}), metadata };
+          return { success: true, type: "tool_use", toolUses: result.toolUses, ...(result.content ? { content: result.content } : {}), ...(rc ? { reasoningContent: rc, reasoningSignature: rs } : {}), metadata };
         }
 
         if (!result.content.trim()) {

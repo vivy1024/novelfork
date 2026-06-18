@@ -41,7 +41,7 @@ export interface AgentGenerateInput {
 
 export type AgentGenerateResult =
   | { readonly success: true; readonly type?: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: NarratorSessionRuntimeMetadata }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: NarratorSessionRuntimeMetadata }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly content?: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly metadata: NarratorSessionRuntimeMetadata }
   | { readonly success: false; readonly code: LlmRuntimeFailureCode | string; readonly error: string; readonly metadata?: Partial<NarratorSessionRuntimeMetadata> };
 
 export type AgentToolExecutionInput = Omit<SessionToolExecutionInput, "sessionConfig"> & {
@@ -949,6 +949,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     if (reply.toolUses.length === 0) {
       emit({ type: "turn_failed", reason: "empty-tool-use", message: "Agent runtime received a tool_use reply without executable tools" });
       return events;
+    }
+
+    // Preserve text content that accompanied tool_use (model said something + called tools)
+    if (reply.type === "tool_use" && reply.content && reply.content.trim()) {
+      const textContent = reply.content.trim();
+      messages.push({ type: "message", role: "assistant", content: textContent });
     }
 
     // P4: Reset hook retry counter when tools are executed (agent is working, not repeating)

@@ -437,7 +437,18 @@ export class CompletionsAdapter implements RuntimeAdapter {
     const toolUses = readOpenAiToolUses(payload, tools);
     const usage = readOpenAiUsage(payload);
     if (toolUses.length > 0) {
-      return { success: true, type: "tool_use", toolUses, ...(usage ? { usage } : {}) };
+      // Extract text content that may accompany tool calls
+      const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
+        ? (payload as { choices: unknown[] }).choices
+        : [];
+      const firstChoice = choices[0];
+      const textContent = firstChoice && typeof firstChoice === "object"
+        && "message" in firstChoice
+        && (firstChoice as { message?: unknown }).message
+        && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
+          ? (firstChoice as { message: { content: string } }).message.content
+          : "";
+      return { success: true, type: "tool_use", toolUses, ...(textContent ? { content: textContent } : {}), ...(usage ? { usage } : {}) };
     }
 
     const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)
@@ -551,7 +562,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
           reader.cancel().catch(() => {});
           if (toolCallAccumulators.size > 0) {
             const toolUses = finalizeOpenAiStreamToolCalls(toolCallAccumulators, tools);
-            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+            if (toolUses.length > 0) return { success: true, type: "tool_use", toolUses, ...(fullContent ? { content: fullContent } : {}), ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
           }
           return {
             success: true,
@@ -646,7 +657,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
     if (toolCallAccumulators.size > 0) {
       const toolUses = finalizeOpenAiStreamToolCalls(toolCallAccumulators, tools);
       if (toolUses.length > 0) {
-        return { success: true, type: "tool_use", toolUses, ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
+        return { success: true, type: "tool_use", toolUses, ...(fullContent ? { content: fullContent } : {}), ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
       }
     }
 
