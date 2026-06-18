@@ -249,9 +249,10 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
             summary: "Canon 条目的 layer 不能被修改。如需废弃，请联系管理员。",
           };
         }
+        // Content protection: only check if contentMd is actually provided and different
+        // (allows category/metadata-only updates without triggering canon protection)
         const oldContent = existing.content_md;
-        // 防止空 content_md 的 canon 条目被绕过（startsWith("") 总是 true）
-        if (oldContent && oldContent.length > 0 && !contentMd.startsWith(oldContent)) {
+        if (contentMd && oldContent && oldContent.length > 0 && !contentMd.startsWith(oldContent)) {
           return {
             ok: false,
             error: "canon-immutable",

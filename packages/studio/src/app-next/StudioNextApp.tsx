@@ -55,8 +55,6 @@ import {
   type CandidateAcceptAction,
   type DraftAcceptMode,
   type ResourceHistoryEntry,
-  ToolConfigBar,
-  AgentQuickActions,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
@@ -841,19 +839,8 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     return result.data;
   }, [refreshSnapshot, sessionClient, sessionId]);
 
-  // Novel-specific header slot: ToolConfigBar + AgentQuickActions + 资源面板
-  const novelBookId = canvasContext?.activeResource?.bookId ?? runtime.state.session?.projectId ?? undefined;
-  const novelAgentRole = runtime.state.session?.agentId ?? "novelist";
-  const novelHeaderSlot = novelBookId ? (
-    <>
-      <ToolConfigBar bookId={novelBookId} sessionId={sessionId} agentRole={novelAgentRole as "novelist" | "writer" | "custom"} />
-      <AgentQuickActions
-        agentRole={novelAgentRole}
-        bookId={novelBookId}
-        onSendMessage={(msg: string) => { void runtime.sendMessage(msg); }}
-      />
-    </>
-  ) : null;
+  // Novel-specific header slot removed (ToolConfigBar + AgentQuickActions deleted)
+  const novelHeaderSlot = null;
 
   return (
     <>

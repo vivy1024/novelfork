@@ -57,6 +57,13 @@ function loadConfig(sessionId: string | undefined): Set<string> | null {
     const raw = localStorage.getItem(storageKey(sessionId));
     if (raw) {
       const arr = JSON.parse(raw) as string[];
+      const validIds = new Set(OPTIONAL_TOOLS.map((t) => t.id));
+      // 如果缓存中有不存在于当前工具池的 id，说明版本过期，返回 null 让调用方用 defaults
+      const hasStale = arr.some((id) => !validIds.has(id));
+      if (hasStale) {
+        localStorage.removeItem(storageKey(sessionId));
+        return null;
+      }
       return new Set(arr);
     }
   } catch {
