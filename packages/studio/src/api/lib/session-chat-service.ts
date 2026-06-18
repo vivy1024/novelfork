@@ -202,7 +202,18 @@ async function maybeAutoCompact(
       }
       return { items, compacted: false };
     }
-    // Under 40% usage: pass messages through WITHOUT folding — preserve full history
+    // Between 20% and 40%: apply context collapse (selective segment folding)
+    // This preserves recent history while freeing space from stale old segments
+    if (currentUsageRatio >= 0.20 && messages.length > 30) {
+      const { collapseStaleSegments } = await import("./compact/context-collapse.js");
+      const items = sessionMessagesToTurnItems(messages);
+      const collapseResult = collapseStaleSegments(items);
+      if (collapseResult.collapsedSegments > 0) {
+        log.info("Context collapse", { segments: collapseResult.collapsedSegments, freed: collapseResult.freedMessages, usageRatio: Math.round(currentUsageRatio * 100) });
+      }
+      return { items: collapseResult.items, compacted: false };
+    }
+    // Under 20% usage: pass messages through completely unmodified
     return { items: sessionMessagesToTurnItems(messages), compacted: false };
   }
 
