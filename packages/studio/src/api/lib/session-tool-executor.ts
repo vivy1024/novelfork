@@ -20,10 +20,15 @@ import { log } from "./logger.js";
 // --- Preset/Beat store lazy initialization helper ---
 // Ensures builtin presets are registered and custom presets are restored from DB.
 // Safe to call multiple times (no-ops if store is already populated).
+let _presetsLoadedOnce = false;
 async function ensurePresetsLoaded(): Promise<void> {
+  if (_presetsLoadedOnce) return;
+  _presetsLoadedOnce = true;
   const { listPresets, registerBuiltinPresets, registerPreset } = await import("@vivy1024/novelfork-novel-plugin/engine");
-  if (listPresets().length > 0) return;
-  try { registerBuiltinPresets(); } catch { /* ignore */ }
+  if (listPresets().length === 0) {
+    try { registerBuiltinPresets(); } catch { /* ignore */ }
+  }
+  // ALWAYS load custom presets from DB (even if builtins already loaded)
   try {
     const { getStorageDatabase, createUserTemplateRepository } = await import("@vivy1024/novelfork-core");
     const db = getStorageDatabase();
