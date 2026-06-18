@@ -286,7 +286,7 @@ function parseAnthropicResponse(payload: Record<string, unknown>, tools?: readon
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(payloadStopReason ? { stopReason: payloadStopReason } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(textContent ? { content: textContent } : {}), ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(payloadStopReason ? { stopReason: payloadStopReason } : {}) };
   }
 
   return { success: true, type: "message", content: textContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(payloadStopReason ? { stopReason: payloadStopReason } : {}) };
@@ -387,7 +387,7 @@ async function consumeAnthropicStream(
       if (signal?.aborted) {
         reader.cancel().catch(() => {});
         if (toolUses.length > 0) {
-          return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
+          return { success: true, type: "tool_use", toolUses, ...(fullContent ? { content: fullContent } : {}), ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}) };
         }
         return { success: true, type: "message", content: fullContent, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
       }
@@ -503,7 +503,7 @@ async function consumeAnthropicStream(
   }
 
   if (toolUses.length > 0) {
-    return { success: true, type: "tool_use", toolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
+    return { success: true, type: "tool_use", toolUses, ...(fullContent ? { content: fullContent } : {}), ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
   }
 
   // If no structured tool_use was found, check for XML tool calls in the text output
@@ -520,7 +520,7 @@ async function consumeAnthropicStream(
           ? parsed.map(tu => ({ ...tu, name: toInternalToolName(tu.name, tools) }))
           : parsed;
         log.info("Anthropic stream parsed XML tool calls", { count: resolvedToolUses.length, names: resolvedToolUses.map(t => t.name).join(", ") });
-        return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
+        return { success: true, type: "tool_use", toolUses: resolvedToolUses, ...(fullContent ? { content: fullContent } : {}), ...(thinkingContent ? { reasoningContent: thinkingContent, reasoningSignature: thinkingSignature || undefined } : {}), ...(usage ? { usage } : {}), ...(stopReason ? { stopReason } : {}) };
       }
       // Parse failed — return failure to trigger retry
       log.warn("Anthropic stream XML tool_use detected but parse failed", {});

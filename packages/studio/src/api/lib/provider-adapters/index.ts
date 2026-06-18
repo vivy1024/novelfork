@@ -115,7 +115,7 @@ export interface GenerateUsage {
 
 export type GenerateResult =
   | { readonly success: true; readonly type: "message"; readonly content: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly usage?: GenerateUsage; readonly stopReason?: string }
-  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly usage?: GenerateUsage; readonly stopReason?: string }
+  | { readonly success: true; readonly type: "tool_use"; readonly toolUses: readonly RuntimeToolUse[]; readonly content?: string; readonly reasoningContent?: string; readonly reasoningSignature?: string; readonly usage?: GenerateUsage; readonly stopReason?: string }
   | RuntimeAdapterFailure;
 
 export interface RuntimeAdapter {

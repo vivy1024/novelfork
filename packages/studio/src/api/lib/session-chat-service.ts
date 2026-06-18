@@ -1232,9 +1232,18 @@ async function appendModelContinuationAfterToolDecision(
     const maxSteps = await resolveMaxTurnSteps();
     // Apply context cutoff: exclude messages at or before the cutoff seq from model context
     const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;
-    const contextMessages = contextCutoffSeq > 0
+    let contextMessages = contextCutoffSeq > 0
       ? loaded.state.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
-      : loaded.state.messages;
+      : [...loaded.state.messages];
+    // Skip orphaned tool_result messages at the start (no preceding tool_call after cutoff)
+    while (contextMessages.length > 0) {
+      const first = contextMessages[0];
+      if (first.role === "assistant" && first.toolCalls?.length && (first.metadata as any)?.toolResult) {
+        contextMessages = contextMessages.slice(1);
+      } else {
+        break;
+      }
+    }
     const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, loaded.session.id);
     const continuationRoutinePrompts = await loadRoutineGlobalPrompts();
     const continuationToolNames = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny }).map(t => t.name);
@@ -1959,6 +1968,23 @@ function buildFullToolResultContent(result: SessionToolExecutionResult, _toolNam
     if (typeof data.result === "string" && data.result.trim() && !data.text && !data.html) {
       content += "\n\n" + data.result;
     }
+    // Hooks list (hooks.manage)
+    if (Array.isArray(data.hooks) && data.hooks.length > 0 && !data.matches && !data.results) {
+      content += "\n\n" + (data.hooks as Array<{ description?: string; done?: boolean }>).map((h, i) => `${i + 1}. ${h.done ? "[已兑现]" : "[待兑现]"} ${h.description ?? ""}`).join("\n");
+    }
+    // Learning docs list (LearningGuide)
+    if (Array.isArray(data.docs) && data.docs.length > 0) {
+      content += "\n\n" + (data.docs as Array<{ id?: string; title?: string }>).map(d => `- ${d.title ?? d.id ?? ""}`).join("\n");
+    }
+    // Recall/search sessions
+    if (Array.isArray(data.sessions) && data.sessions.length > 0 && !data.docs) {
+      content += "\n\n" + (data.sessions as Array<{ id?: string; title?: string }>).map(s => `- ${s.title ?? s.id ?? ""}`).join("\n");
+    }
+    // Terminal list
+    if (data.terminals && typeof data.terminals === "object" && !Array.isArray(data.terminals)) {
+      const terms = data.terminals as { running?: Array<{ id: string; name: string }> };
+      if (terms.running?.length) content += "\n\n运行中终端: " + terms.running.map(t => `${t.name}(${t.id})`).join(", ");
+    }
   }
 
   return content || (result.summary ?? "ok");
@@ -2029,12 +2055,13 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
       });
     }
 
-    if (!message.content.trim()) return [];
+    if (!message.content.trim() && !message.reasoning_content) return [];
     return [{
       type: "message",
       id: message.id,
       role: message.role,
       content: message.content,
+      ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
       ...(message.metadata ? { metadata: message.metadata } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     }];
@@ -2372,9 +2399,18 @@ export async function handleSessionChatTransportMessage(
     const maxSteps = await resolveMaxTurnSteps();
     // Apply context cutoff: exclude messages at or before the cutoff seq from model context
     const contextCutoffSeq = loaded.session.sessionConfig.contextCutoffSeq ?? 0;
-    const contextMessages = contextCutoffSeq > 0
+    let contextMessages = contextCutoffSeq > 0
       ? loaded.state.messages.filter((m) => (m.seq ?? 0) > contextCutoffSeq)
-      : loaded.state.messages;
+      : [...loaded.state.messages];
+    // Skip orphaned tool_result messages at the start (no preceding tool_call after cutoff)
+    while (contextMessages.length > 0) {
+      const first = contextMessages[0];
+      if (first.role === "assistant" && first.toolCalls?.length && (first.metadata as any)?.toolResult) {
+        contextMessages = contextMessages.slice(1);
+      } else {
+        break;
+      }
+    }
     const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, sessionId);
     const abortController = createSessionAbortController(sessionId);
     // Fix: firstTokenTimeout + silentToolCallThreshold — 从用户配置读取运行时控制
