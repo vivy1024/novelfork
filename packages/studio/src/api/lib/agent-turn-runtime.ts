@@ -932,6 +932,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     const PARALLEL_SAFE_TOOLS = new Set([
       "Read", "Glob", "Grep", "WebSearch", "WebFetch",
       "GetGoals", "LearningGuide", "Recall",
+      // Novel domain read-only / analysis tools
+      "jingwei.read", "chapter.read", "cockpit.snapshot",
+      "chapter.list", "chapter.audit", "presets.read", "beat.read",
+      "outline.suggest_next", "character.check_consistency",
+      "hooks.manage", "presets.check_compliance",
     ]);
 
     const allParallelSafe = reply.toolUses.length > 1 && reply.toolUses.every(tu => PARALLEL_SAFE_TOOLS.has(tu.name));
