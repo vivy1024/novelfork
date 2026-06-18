@@ -501,6 +501,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let hasAttemptedOverflowRecovery = false;
   const recentToolCalls: string[] = [];
   const toolResultsBySignature = new Map<string, SessionToolExecutionResult>();
+  const toolCallCounts = new Map<string, number>();
 
   // P2.1: max_output_tokens recovery state
   let maxOutputTokensRecoveryCount = 0;
@@ -1109,6 +1110,20 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
         recentToolCalls.push(toolUse.name);
 
+        // Loop detection: if the same tool+args pattern repeats 3+ times, inject a warning
+        if (recentToolCalls.length >= 6) {
+          const last6 = recentToolCalls.slice(-6);
+          const last3 = last6.slice(-3);
+          const prev3 = last6.slice(0, 3);
+          if (last3.every((name, i) => name === prev3[i])) {
+            messages.push({
+              type: "message",
+              role: "system",
+              content: `[⚠️ 循环检测] 最近的工具调用模式在重复（${last3.join(" → ")}）。请改变策略或停止当前操作。如果需要批量操作，请写一个脚本一次执行。`,
+            });
+          }
+        }
+
         const toolStartedAt = Date.now();
         const signature = toolSignature(toolUse.name, toolUse.input);
         const duplicateResult = toolResultsBySignature.get(signature);
@@ -1139,6 +1154,31 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         log.info("Tool executed", { sessionId: input.sessionId, toolName: toolUse.name, ok: toolResult.ok, durationMs: toolDurationMs, duplicate: Boolean(duplicateResult), step: executedToolSteps });
         if (!duplicateResult) {
           toolResultsBySignature.set(signature, toolResult);
+        }
+
+        // Duplicate call counter: warn if same tool+args called 3+ times
+        const callCount = (toolCallCounts.get(signature) ?? 0) + 1;
+        toolCallCounts.set(signature, callCount);
+        if (callCount >= 3) {
+          messages.push({
+            type: "message",
+            role: "system",
+            content: `[⚠️ 重复检测] 工具 ${toolUse.name} 相同参数已调用 ${callCount} 次。请停止重复操作，改变策略。`,
+          });
+        }
+
+        // Error file auto-injection: if Bash fails, try to extract file paths from error and read them
+        if (!toolResult.ok && toolUse.name === "Bash" && toolResult.summary) {
+          const filePathMatch = toolResult.summary.match(/(?:^|\s)([\w./\\-]+\.[a-z]{1,4}):(\d+)/m);
+          if (filePathMatch) {
+            const errorFile = filePathMatch[1];
+            const errorLine = parseInt(filePathMatch[2], 10);
+            messages.push({
+              type: "message",
+              role: "system",
+              content: `[自动提示] 错误引用了文件 ${errorFile}:${errorLine}。建议读取该文件相关行以理解错误上下文。`,
+            });
+          }
         }
 
         emit({

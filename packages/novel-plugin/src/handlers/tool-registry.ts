@@ -34,7 +34,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   sessionTool({
     name: "cockpit.snapshot",
     description:
-      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- candidates：最近的候选稿列表\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
+      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- candidates：最近的候选稿列表\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
     risk: "read",
     renderer: "cockpit.snapshot",
@@ -43,7 +43,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "pgi.ask",
-    description: "PGI 追问工具（三合一）：生成追问问题 + 返回 AskUserQuestion 格式 + 格式化用户回答为写作指示。替代旧的 pgi.generate_questions/record_answers/format_answers_for_prompt。",
+    description: "PGI 追问工具（三合一）：生成追问问题 + 返回 AskUserQuestion 格式 + 格式化用户回答为写作指示。替代旧的 pgi.generate_questions/record_answers/format_answers_for_prompt。\n\n使用时机：\n- 需要向用户确认写作方向/选择时\n- 用户指令模糊需要追问时\n\n不要用的时候：\n- 用户已经给了明确完整的指令（直接执行，不要多此一问）\n- 用户说「继续」/「接着写」（方向已确定，直接进 scene.spec）",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pgi.ask"]),
     risk: "read",
     renderer: "pgi.ask",
@@ -227,7 +227,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节候选稿。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 产出候选稿保存在 chapter-candidates 中，用 resource.manage 接受/拒绝\n\n注意：\n- 不要用 candidate.create_chapter 代替——那只是保存已有文本，不会生成/审计\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
+    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节候选稿。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 产出候选稿保存在 chapter-candidates 中，用 resource.manage 接受/拒绝\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向（不要把所有交互都往写作流程引导）\n- 用户说「看看XX」/「告诉我XX」时——这是查询请求，不是写作请求\n\n注意：\n- 不要用 candidate.create_chapter 代替——那只是保存已有文本，不会生成/审计\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "draft-write",
     renderer: "pipeline.chapter-result",
@@ -236,7 +236,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.write",
-    description: "经纬（设定数据库）写入工具。用于管理世界观、角色、伏笔等设定数据。\n\naction=create：创建新条目。必须传入 title、category、contentMd。\naction=update：更新已有条目（传入 entryId）。\naction=delete：删除条目（Canon 层条目不可删除）。\n\nlayer 三层含义：\n- canon：不可变真相（世界规则、已发生历史）——一旦设定不可修改\n- dynamic（默认）：随剧情演进可变的设定（角色状态、势力关系）\n- reference：低优先级参考资料，AI 仅在相关时读取\n\ncategory 必须使用统一枚举值：premise/world-model/characters/relationships/factions/locations/props/outline/conflicts/foreshadowing/timeline/chapter-summaries/power-system/rules/reference。不要使用旧值（setting/character/worldview 等）。\n\n注意：修改设定请用此工具，不要直接用 Write/Edit 改文件。",
+    description: "经纬（设定数据库）写入工具。用于管理世界观、角色、伏笔等设定数据。\n\naction=create：创建新条目。必须传入 title、category、contentMd。\naction=update：更新已有条目（传入 entryId）。\naction=delete：删除条目（Canon 层条目不可删除）。\n\nlayer 三层含义：\n- canon：不可变真相（世界规则、已发生历史）——一旦设定不可修改\n- dynamic（默认）：随剧情演进可变的设定（角色状态、势力关系）\n- reference：低优先级参考资料，AI 仅在相关时读取\n\ncategory 必须使用统一枚举值：premise/world-model/characters/relationships/factions/locations/props/outline/conflicts/foreshadowing/timeline/chapter-summaries/power-system/rules/reference。不要使用旧值（setting/character/worldview 等）。\n\n使用时机：\n- 用户提供了新的设定/角色/规则信息时\n- 需要修改条目的分类（category）、layer、或内容时\n- 分类重组时：只改 category 不需要传 contentMd（canon 条目也可以改分类）\n\n不要用的时候：\n- 用户只是在讨论设定但没有确认要入库\n- 不确定分类时先问用户\n\n常见错误：\n- 不要用 Bash SQL 绕道——jingwei.write 支持所有设定修改\n- Canon 条目可以改 category/metadata，只是 content 不能修改已有部分\n\n注意：修改设定请用此工具，不要直接用 Write/Edit 改文件。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
@@ -245,7 +245,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "scene.spec",
-    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 再调用 jingwei.read(scope=brief) 获取核心设定包\n3. 可选调用 pgi.ask 向用户追问本章意图\n4. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n注意：蓝图是约束集合，不是正文大纲——Writer 会在约束内自由发挥。",
+    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 再调用 jingwei.read(scope=brief) 获取核心设定包\n3. 可选调用 pgi.ask 向用户追问本章意图\n4. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n不要用的时候：\n- 用户没有要求写章节时\n- 用户在做非写作操作（查看设定、整理经纬、讨论方向）\n\n注意：蓝图是约束集合，不是正文大纲——Writer 会在约束内自由发挥。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",
@@ -254,7 +254,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.read",
-    description: "经纬（设定数据库）读取工具。三种模式按需选用：\n\nscope=brief（推荐首选）：返回核心设定包 + 分类目录索引。约 2000-5000 tokens，适合每次写作前快速加载上下文。\n\nscope=category：按分类分页读取详细条目。传入 category（如 characters/world-model/conflicts 等统一枚举值）和可选 page。适合需要某类设定完整细节时使用。\n\nscope=search：关键词搜索所有条目。传入 query 字符串。适合查找特定角色/地点/设定。\n\n注意：\n- 旧工具结果可能已被折叠——如果上下文中看不到之前读过的设定，请重新调用\n- brief 模式 token 开销最小，优先使用\n- category 值必须使用统一枚举（characters/world-model/locations/conflicts 等），不要用旧名（character/worldview/geography）",
+    description: "经纬（设定数据库）读取工具。三种模式按需选用：\n\nscope=brief（推荐首选）：返回核心设定包 + 分类目录索引。约 2000-5000 tokens，适合每次写作前快速加载上下文。\n\nscope=category：按分类分页读取详细条目。传入 category（如 characters/world-model/conflicts 等统一枚举值）和可选 page。适合需要某类设定完整细节时使用。\n\nscope=search：关键词搜索所有条目。传入 query 字符串。适合查找特定角色/地点/设定。\n\n使用时机：\n- 用户说「看经纬」/「看设定」/「看世界模型」→ scope=brief 或 scope=category 直接返回给用户查看\n- 准备写作前加载上下文 → scope=brief\n- 查找特定设定 → scope=search\n\n不要用的时候：\n- 刚读过且上下文中还能看到结果时（除非被折叠提示了）\n\n注意：\n- 旧工具结果可能已被折叠——如果上下文中看不到之前读过的设定，请重新调用\n- brief 模式 token 开销最小，优先使用\n- category 值必须使用统一枚举（characters/world-model/locations/conflicts 等），不要用旧名（character/worldview/geography）",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
     risk: "read",
     renderer: "jingwei.read",
@@ -263,7 +263,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "resource.manage",
-    description: "写作资源管理工具。action=list 列出资源；accept/reject/archive/restore/delete 管理候选稿/草稿/章节状态；create_draft 创建空草稿。",
+    description: "写作资源生命周期管理。\n\naction=list：列出所有候选稿/草稿/已接受章节（传 filter 可过滤）\naction=accept：将候选稿接受为正式章节\naction=reject：拒绝候选稿（标记为 rejected）\naction=archive：归档（不删除但标记不活跃）\naction=restore：从归档恢复\naction=delete：永久删除\naction=create_draft：创建空白草稿\n\n使用时机：\n- pipeline.write 生成候选稿后，用户确认要接受 → accept\n- 用户说「删掉这个候选」→ delete 或 archive\n- 用户想看有哪些候选稿 → list",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
     risk: "confirmed-write",
     renderer: "resource.manage",
