@@ -1157,8 +1157,26 @@ function toConversationStatus(
   // Prefer API-reported lastInputTokens (precise) over local character-based estimation.
   // lastInputTokens represents the actual context window usage from the last LLM request.
   const apiReportedTokens = (state.session as { cumulativeUsage?: { lastInputTokens?: number } } | null)?.cumulativeUsage?.lastInputTokens;
+  // Find the last message that has runtime.usage (= when API last reported)
+  const lastApiMessageIndex = [...state.messages].reverse().findIndex(m => m.runtime?.usage);
+  const messagesAfterLastApi = lastApiMessageIndex >= 0
+    ? state.messages.slice(state.messages.length - lastApiMessageIndex)
+    : [];
+  // Estimate tokens for messages added AFTER the last API call
+  const newMessageTokens = messagesAfterLastApi.reduce((sum, m) => {
+    let chars = m.content?.length ?? 0;
+    if (m.toolCalls) {
+      for (const tc of m.toolCalls) {
+        chars += tc.summary?.length ?? 0;
+        chars += JSON.stringify(tc.input ?? {}).length;
+      }
+    }
+    return sum + chars;
+  }, 0);
+  const estimatedNewTokens = Math.ceil(newMessageTokens / 1.5);
+
   const usedTokens = apiReportedTokens && apiReportedTokens > 0
-    ? apiReportedTokens
+    ? apiReportedTokens + estimatedNewTokens
     : state.messages.length > 0
       ? Math.ceil(state.messages.reduce((sum, m) => {
           let chars = m.content?.length ?? 0;

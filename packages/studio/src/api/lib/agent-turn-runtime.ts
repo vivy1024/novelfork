@@ -513,7 +513,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
 
   // Budget Pressure: 跟踪 provider 报告的最近一次 input_tokens
   let lastInputTokens = 0;
-  const contextWindowTokens = input.contextWindowTokens ?? 0;
+  // Subtract output reserve (32K default max_output) so budget pressure thresholds
+  // are relative to the USABLE input window, not the total context window.
+  const contextWindowTokens = Math.max(0, (input.contextWindowTokens ?? 0) - 32768);
 
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
@@ -557,6 +559,27 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           emitStreamChunk(chunk);
         }
       : undefined;
+
+    // In-flight microcompact: fold old tool results if context is growing too large
+    // This prevents 413 errors during long tool-call loops (aligns with legnacode's per-iteration microcompact)
+    if (contextWindowTokens > 0 && lastInputTokens > 0) {
+      const usageRatio = lastInputTokens / contextWindowTokens;
+      if (usageRatio >= 0.60 && messages.length > 20) {
+        // Fold tool_result messages older than the last 6 (keep recent for context)
+        const keepRecent = 6;
+        let foldedCount = 0;
+        for (let i = 0; i < messages.length - keepRecent; i++) {
+          const m = messages[i];
+          if (m.type === "tool_result" && m.content && m.content.length > 500) {
+            messages[i] = { ...m, content: `[已折叠: ${m.name ?? "tool"} 输出 ${m.content.length} 字符]` };
+            foldedCount++;
+          }
+        }
+        if (foldedCount > 0) {
+          log.info("In-flight microcompact", { foldedCount, usageRatio: Math.round(usageRatio * 100), messageCount: messages.length });
+        }
+      }
+    }
 
     // P2.4: Blocking limit pre-check — proactive compact trigger at 97%+
     if (!hasInjectedBlockingWarning && contextWindowTokens > 0 && lastInputTokens > 0) {
