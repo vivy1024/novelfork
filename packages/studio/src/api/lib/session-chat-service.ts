@@ -2356,7 +2356,21 @@ export async function handleSessionChatTransportMessage(
         }
       },
       onEvent: (event) => {
-        if (event.type === "tool_call") {
+        if (event.type === "assistant_message") {
+          // 实时推送工具链中间的 assistant 文字到前端（防止切换页面后丢失）
+          const midTurnAssistantMessage = appendMessageToState(loaded.state, {
+            id: `${userMessage.id}-mid-turn-${Date.now()}`,
+            role: "assistant",
+            content: event.content,
+            reasoning_content: event.reasoningContent,
+            timestamp: timestamp + messagesToPersist.length,
+            runtime: event.runtime,
+            ...(event.runtime?.usage ? { metadata: { usage: event.runtime.usage } } : {}),
+          });
+          messagesToPersist.push(midTurnAssistantMessage);
+          broadcastMessageEnvelope(sessionId, loaded.state, midTurnAssistantMessage);
+          realtimeBroadcastedIds.add(`assistant-${midTurnAssistantMessage.id}`);
+        } else if (event.type === "tool_call") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "tool_calling" as const, toolName: event.toolName, turnStartedAt: turnStartedAtIso };
           broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
           // 实时推送 tool_call 消息到前端（不等 turn 结束）
@@ -2453,9 +2467,17 @@ export async function handleSessionChatTransportMessage(
     clearSessionAbortController(sessionId);
 
     let assistantIndex = 0;
+    // Count how many assistant_messages were already broadcast via onEvent (mid-turn)
+    const alreadyBroadcastedAssistantCount = [...realtimeBroadcastedIds].filter(id => id.startsWith("assistant-")).length;
+    let skippedAssistantCount = 0;
     for (const event of runtimeEvents) {
       if (event.type === "assistant_message") {
         accumulateUsage(loaded.state.cumulativeUsage, event.runtime?.usage);
+        // Skip assistant messages already broadcast in real-time during onEvent
+        if (skippedAssistantCount < alreadyBroadcastedAssistantCount) {
+          skippedAssistantCount++;
+          continue;
+        }
         const assistantMessage = appendMessageToState(loaded.state, {
           id: assistantIndex === 0 ? `${userMessage.id}-assistant` : `${userMessage.id}-assistant-${assistantIndex + 1}`,
           role: "assistant",
