@@ -183,11 +183,13 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_READ)) {
     items.push(
       `To read files use ${TOOL_READ}, not ${TOOL_BASH} cat/head/tail. Use offset/limit for files > 200 lines.`,
+      `When NOT to use ${TOOL_READ}: Don't read a file you just wrote/edited (you already know the content). Don't read an entire large file if you only need a specific section (use offset/limit).`,
     );
   }
   if (has(TOOL_EDIT)) {
     items.push(
       `To edit files use ${TOOL_EDIT} (old_string → new_string), not ${TOOL_BASH} sed/awk. old_string must uniquely match in the file. Read first before editing.`,
+      `${TOOL_EDIT} tips: old_string must be EXACTLY as it appears in the file (including indentation). If unsure, ${TOOL_READ} first. Keep old_string as short as possible while still being unique (2-4 lines of context is usually enough). If the edit fails with "not found", re-read the file — it may have changed.`,
     );
   }
   if (has(TOOL_WRITE)) {
@@ -214,8 +216,10 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── Shell ──
   if (has(TOOL_BASH)) {
     items.push(
-      `For shell commands use ${TOOL_BASH}. Default timeout 120s (timeoutMs param, max 600000). Commands likely > 30s (install/compile/download) must use run_in_background: true, then ${TOOL_AWAIT}({ type: "bash", id, timeout: 300000 }) to get results.`,
-      `EFFICIENCY: If you need to run the same type of operation N times (N > 3), write a script or use a loop in ONE ${TOOL_BASH} call. NEVER call ${TOOL_BASH} 10+ times for repetitive tasks — each call costs the full context window. Example: "for f in *.txt; do ...; done" or write a .sh/.py script then execute it once.`,
+      `IMPORTANT: ${TOOL_BASH} is for commands that genuinely need shell execution (git, npm, bun, compilation). Do NOT use it for: reading files (use ${TOOL_READ}), searching (use ${TOOL_GREP}/${TOOL_GLOB}), editing (use ${TOOL_EDIT}), or file operations that have dedicated tools.`,
+      `When multiple commands need similar repetitive work (>3 iterations): write a script file first, then execute it in ONE ${TOOL_BASH} call. NEVER call ${TOOL_BASH} 10+ times for repetitive tasks.`,
+      `If a ${TOOL_BASH} command fails: read the error message carefully. If it mentions a file path, read that file to understand the error context. Don't blindly retry the same command.`,
+      `Default timeout 120s (timeoutMs param, max 600000). Commands likely > 30s (install/compile/download) must use run_in_background: true, then ${TOOL_AWAIT}({ type: "bash", id, timeout: 300000 }) to get results.`,
     );
   }
   if (has(TOOL_TERMINAL)) {
@@ -234,7 +238,9 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── Agent ──
   if (has(TOOL_AGENT)) {
     items.push(
-      `For broad codebase exploration or independent subtasks, use ${TOOL_AGENT}. For simple lookups (a specific file/function), use ${TOOL_GLOB}/${TOOL_GREP} directly.`,
+      `When to use ${TOOL_AGENT}: ONLY for tasks that genuinely benefit from isolated context — cross-module investigation, needle-in-haystack search across many files, or self-contained subtasks (>5 steps).`,
+      `When NOT to use ${TOOL_AGENT}: reading a specific file (use ${TOOL_READ}), searching for a definition (use ${TOOL_GREP}), or any task you can do in 1-3 tool calls.`,
+      `NEVER instruct a subagent to return full file contents back to you — that defeats the purpose. Ask for summaries, specific answers, or relevant snippets.`,
     );
   }
 
@@ -306,7 +312,8 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── Cockpit ──
   if (has(TOOL_COCKPIT_SNAPSHOT)) {
     items.push(
-      `To get book progress overview use ${TOOL_COCKPIT_SNAPSHOT}.`,
+      `To get book progress overview use ${TOOL_COCKPIT_SNAPSHOT}. Call it at session start, before writing, or when user asks about progress/hooks/status.`,
+      `When NOT to use ${TOOL_COCKPIT_SNAPSHOT}: if you just called it and the result is still visible in context (unless folded).`,
     );
   }
 
@@ -314,6 +321,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_PGI_ASK)) {
     items.push(
       `To generate clarifying questions based on story context use ${TOOL_PGI_ASK}. If it returns askUserQuestionInput, pass directly to ${TOOL_ASK_USER_QUESTION}.`,
+      `When NOT to use ${TOOL_PGI_ASK}: user already gave clear, complete instructions (just execute). User said "继续"/"接着写" (direction is already set — go straight to scene.spec).`,
     );
   }
 
@@ -328,6 +336,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_PIPELINE_WRITE)) {
     items.push(
       `To write a full chapter use ${TOOL_PIPELINE_WRITE} (full pipeline: plan→generate→audit→revise→save). Do NOT use ${TOOL_CANDIDATE_CREATE} as a substitute — it only saves existing text, doesn't generate.`,
+      `When NOT to use ${TOOL_PIPELINE_WRITE}: user is just asking questions, viewing settings, or discussing direction — don't route every interaction to writing. "看看XX"/"告诉我XX" is a query, not a write request.`,
     );
   }
   if (has(TOOL_PIPELINE_REVISE)) {
@@ -345,6 +354,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_SCENE_SPEC)) {
     items.push(
       `To generate a structured writing blueprint use ${TOOL_SCENE_SPEC}. Required before ${TOOL_PIPELINE_WRITE}.`,
+      `When NOT to use ${TOOL_SCENE_SPEC}: user hasn't asked to write a chapter; user is doing non-writing ops (viewing settings, organizing jingwei, discussing direction).`,
     );
   }
 
