@@ -13,6 +13,20 @@ import { existsSync } from "node:fs";
 
 let dumpEnabled = process.env.PROMPT_DUMP === "1" || process.env.PROMPT_DUMP === "true";
 let dumpDir = process.env.PROMPT_DUMP_DIR || "";
+
+// Sync with user config setting (dumpApiRequests) — called on first generate
+let configSynced = false;
+async function syncWithConfig(): Promise<void> {
+  if (configSynced) return;
+  configSynced = true;
+  try {
+    const { loadUserConfig } = await import("./user-config-service.js");
+    const config = await loadUserConfig();
+    if (config.runtimeControls?.dumpApiRequests) {
+      dumpEnabled = true;
+    }
+  } catch { /* non-fatal */ }
+}
 let dumpCounter = 0;
 
 export function enablePromptDump(dir?: string): void {
@@ -24,7 +38,8 @@ export function disablePromptDump(): void {
   dumpEnabled = false;
 }
 
-export function isPromptDumpEnabled(): boolean {
+export async function isPromptDumpEnabled(): Promise<boolean> {
+  await syncWithConfig();
   return dumpEnabled;
 }
 
