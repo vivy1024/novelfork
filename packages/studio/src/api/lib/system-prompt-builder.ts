@@ -215,6 +215,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   if (has(TOOL_BASH)) {
     items.push(
       `For shell commands use ${TOOL_BASH}. Default timeout 120s (timeoutMs param, max 600000). Commands likely > 30s (install/compile/download) must use run_in_background: true, then ${TOOL_AWAIT}({ type: "bash", id, timeout: 300000 }) to get results.`,
+      `EFFICIENCY: If you need to run the same type of operation N times (N > 3), write a script or use a loop in ONE ${TOOL_BASH} call. NEVER call ${TOOL_BASH} 10+ times for repetitive tasks — each call costs the full context window. Example: "for f in *.txt; do ...; done" or write a .sh/.py script then execute it once.`,
     );
   }
   if (has(TOOL_TERMINAL)) {
@@ -296,6 +297,9 @@ export function getUsingToolsSection(toolNames: string[]): string {
     );
     items.push(
       `${TOOL_JINGWEI_WRITE} layer rules: canon = eternal world rules only (physics, history facts); dynamic = everything that changes with plot (characters, events, relationships, outlines) — DEFAULT; reference = external materials. If it could change with future plot → use dynamic.`,
+    );
+    items.push(
+      `${TOOL_JINGWEI_WRITE} supports category changes on canon entries (category is metadata, not content). When reorganizing categories, use ${TOOL_JINGWEI_WRITE}(action=update, entryId=X, category=newCategory) — do NOT bypass via ${TOOL_BASH} SQL. If you need to update many entries, batch them efficiently (3-5 per tool call is fine).`,
     );
   }
 
