@@ -482,6 +482,45 @@ const BUILTIN_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
     renderer: "tool.goals",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
   }),
+  // --- 上下文与任务管理 ---
+  sessionTool({
+    name: "CtxInspect",
+    description: "查看当前上下文使用情况：已用 token 数、上下文窗口大小、使用百分比、各部分占比。用于决定是否需要 compact 或 snip。",
+    inputSchema: objectSchema({}),
+    risk: "read",
+    renderer: "tool.ctxInspect",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "Sleep",
+    description: "等待指定时间（秒）。用于等待后台任务完成、轮询外部状态、或在操作之间插入延迟。最大 300 秒。",
+    inputSchema: objectSchema({
+      seconds: numberSchema("等待秒数（1-300）。"),
+    }, ["seconds"]),
+    risk: "read",
+    renderer: "tool.sleep",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "TaskGet",
+    description: "获取后台任务状态和输出。传入 taskId 查看特定任务，不传则列出所有活跃任务。",
+    inputSchema: objectSchema({
+      taskId: stringSchema("任务 ID（可选）。"),
+    }),
+    risk: "read",
+    renderer: "tool.taskGet",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+  }),
+  sessionTool({
+    name: "TaskStop",
+    description: "停止正在运行的后台任务。",
+    inputSchema: objectSchema({
+      taskId: stringSchema("要停止的任务 ID。"),
+    }, ["taskId"]),
+    risk: "draft-write",
+    renderer: "tool.taskStop",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+  }),
 ] as const;
 
 // ---------------------------------------------------------------------------
