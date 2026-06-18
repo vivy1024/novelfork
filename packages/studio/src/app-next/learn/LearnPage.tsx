@@ -205,7 +205,7 @@ function DocCard({ doc, active, onClick }: { doc: LearningDocEntry; active: bool
       {doc.tags.length > 0 && (
         <div className="flex flex-wrap gap-1 mt-1.5">
           {doc.tags.slice(0, 4).map((tag) => (
-            <span key={tag} className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            <span key={tag} className="text-[10px] rounded-full bg-primary/10 px-2 py-0.5 text-primary/80">
               {tag}
             </span>
           ))}
@@ -262,7 +262,7 @@ function DocContentView({ doc }: { doc: DocContent }) {
       {doc.tags.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {doc.tags.map((tag) => (
-            <span key={tag} className="text-[10px] rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            <span key={tag} className="text-[10px] rounded-full bg-primary/10 px-2 py-0.5 text-primary/80">
               {tag}
             </span>
           ))}
@@ -383,7 +383,7 @@ function renderInline(text: string): React.ReactNode {
       candidates.push({ index: boldMatch.index, length: boldMatch[0].length, node: <strong key={`b-${key++}`}>{boldMatch[1]}</strong> });
     }
     if (codeMatch && codeMatch.index !== undefined) {
-      candidates.push({ index: codeMatch.index, length: codeMatch[0].length, node: <code key={`c-${key++}`} className="text-[11px] bg-muted px-1 py-0.5 rounded">{codeMatch[1]}</code> });
+      candidates.push({ index: codeMatch.index, length: codeMatch[0].length, node: <code key={`c-${key++}`} className="text-[11px] bg-muted px-1 py-0.5 rounded text-foreground">{codeMatch[1]}</code> });
     }
 
     const firstMatch = candidates.sort((a, b) => a.index - b.index)[0] ?? null;
@@ -430,7 +430,7 @@ function MarkdownTable({ lines }: { lines: string[] }) {
           {rows.map((row, ri) => (
             <tr key={ri} className="border-b border-border/50 hover:bg-muted/30">
               {row.map((cell, ci) => (
-                <td key={ci} className="px-3 py-1.5 text-muted-foreground">{renderInline(cell)}</td>
+                <td key={ci} className="px-3 py-1.5 text-foreground">{renderInline(cell)}</td>
               ))}
             </tr>
           ))}
