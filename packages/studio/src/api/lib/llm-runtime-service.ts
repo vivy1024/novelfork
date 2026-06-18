@@ -318,7 +318,7 @@ export class LlmRuntimeService {
         }
 
         // Prompt dump: save complete request body for debugging
-        if (isPromptDumpEnabled()) {
+        if (await isPromptDumpEnabled()) {
           void dumpPrompt({
             timestamp: new Date().toISOString(),
             systemPrompt: runtimeMessages.find(m => m.role === "system")?.content,
