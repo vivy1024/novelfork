@@ -325,5 +325,51 @@ export function createSettingsRouter(options: SettingsRouterOptions = {}) {
     }
   });
 
+  // 规则文件读写（CLAUDE.md）
+  app.get("/rules", async (c) => {
+    const { readFile } = await import("node:fs/promises");
+    const { join } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const { existsSync } = await import("node:fs");
+
+    let globalRules = "";
+    let projectRules = "";
+
+    const globalPath = join(homedir(), ".novelfork", "CLAUDE.md");
+    if (existsSync(globalPath)) {
+      try { globalRules = await readFile(globalPath, "utf-8"); } catch { /* ignore */ }
+    }
+
+    const projectPath = join(process.cwd(), "CLAUDE.md");
+    if (existsSync(projectPath)) {
+      try { projectRules = await readFile(projectPath, "utf-8"); } catch { /* ignore */ }
+    }
+
+    return c.json({ globalRules, projectRules });
+  });
+
+  app.put("/rules", async (c) => {
+    const { writeFile, mkdir } = await import("node:fs/promises");
+    const { join, dirname } = await import("node:path");
+    const { homedir } = await import("node:os");
+    const { existsSync } = await import("node:fs");
+
+    const body = await c.req.json<{ globalRules?: string; projectRules?: string }>();
+
+    if (typeof body.globalRules === "string") {
+      const globalPath = join(homedir(), ".novelfork", "CLAUDE.md");
+      const dir = dirname(globalPath);
+      if (!existsSync(dir)) await mkdir(dir, { recursive: true });
+      await writeFile(globalPath, body.globalRules, "utf-8");
+    }
+
+    if (typeof body.projectRules === "string") {
+      const projectPath = join(process.cwd(), "CLAUDE.md");
+      await writeFile(projectPath, body.projectRules, "utf-8");
+    }
+
+    return c.json({ ok: true });
+  });
+
   return app;
 }

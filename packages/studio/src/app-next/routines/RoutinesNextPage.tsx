@@ -36,6 +36,7 @@ type RoutineSectionId =
   | "globalPrompts"
   | "systemPrompts"
   | "mcpTools"
+  | "rules"
   | "hooks";
 
 interface RoutineSectionDefinition {
@@ -103,6 +104,13 @@ const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
     description: "服务器级管理入口：导入 JSON、添加服务器、连接状态、工具数量。",
     reuse: "迁移 MCPToolsTab 数据，后续升级服务器级管理",
     getCount: (routines) => routines.mcpTools.length,
+  },
+  {
+    id: "rules",
+    label: "规则文件",
+    description: "全局 CLAUDE.md 和项目 CLAUDE.md 规则编辑（自动注入 Agent 上下文）。",
+    reuse: "读写 ~/.novelfork/CLAUDE.md 和 {project}/CLAUDE.md",
+    getCount: () => 0,
   },
   {
     id: "hooks",
@@ -401,14 +409,16 @@ function RoutineSectionEditor({
     case "mcpTools":
       return (
         <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">MCP 工具集成暂未开放</p>
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">Model Context Protocol 工具服务器集成功能根据用户反馈决定是否开放。如有需求请在 GitHub Issues 中反馈。</p>
+          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
+            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">MCP 服务器管理</p>
+            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">添加 MCP 服务器后，其提供的工具会自动注入到 Agent 可用工具列表。支持 stdio（本地进程）和 SSE（远程 HTTP）两种连接方式。</p>
           </div>
-          <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
           <MCPServerPanel />
+          <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
         </div>
       );
+    case "rules":
+      return <RulesFilesEditor />;
     case "hooks":
       return (
         <div className="space-y-4">
@@ -625,6 +635,79 @@ function HookTypeCard({ title, description }: { readonly title: string; readonly
     <div className="rounded-xl border border-border bg-background p-3">
       <div className="font-semibold">{title}</div>
       <p className="mt-1 text-sm text-muted-foreground">{description}</p>
+    </div>
+  );
+}
+
+function RulesFilesEditor() {
+  const [globalRules, setGlobalRules] = useState("");
+  const [projectRules, setProjectRules] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch("/api/settings/rules");
+        if (res.ok) {
+          const data = await res.json();
+          setGlobalRules(data.globalRules ?? "");
+          setProjectRules(data.projectRules ?? "");
+        }
+      } catch { /* non-fatal */ }
+      setLoading(false);
+    })();
+  }, []);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await fetch("/api/settings/rules", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ globalRules, projectRules }),
+      });
+    } catch { /* non-fatal */ }
+    setSaving(false);
+  };
+
+  if (loading) return <p className="text-xs text-muted-foreground">加载中...</p>;
+
+  return (
+    <div className="space-y-6">
+      <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
+        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">规则文件</p>
+        <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+          规则文件的内容会自动注入到 Agent 的系统提示词中。支持 Markdown 格式。
+          全局规则对所有会话生效，项目规则仅对绑定了工作目录的会话生效。
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">全局规则 (~/.novelfork/CLAUDE.md)</label>
+        <textarea
+          className="w-full h-40 rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-y"
+          value={globalRules}
+          onChange={(e) => setGlobalRules(e.target.value)}
+          placeholder={"# 全局规则\n\n在这里写对所有会话生效的规则..."}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <label className="text-sm font-medium">项目规则 (CLAUDE.md)</label>
+        <textarea
+          className="w-full h-40 rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-y"
+          value={projectRules}
+          onChange={(e) => setProjectRules(e.target.value)}
+          placeholder={"# 项目规则\n\n在这里写当前项目专属的规则..."}
+        />
+        <p className="text-xs text-muted-foreground">项目规则文件位于当前工作目录的 CLAUDE.md</p>
+      </div>
+
+      <Button onClick={handleSave} disabled={saving} size="sm">
+        {saving ? "保存中..." : "保存规则"}
+      </Button>
     </div>
   );
 }
