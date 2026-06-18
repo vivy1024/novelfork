@@ -1915,7 +1915,27 @@ function buildAppendSystemPrompt(session: NarratorSessionRecord): string | undef
 
 
 function formatSessionToolResultContent(result: SessionToolExecutionResult): string {
-  return result.summary ? `${result.summary}\n\n${SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION}` : SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION;
+  // Include full data content (not just summary) so subsequent turns see complete tool output
+  let content = result.summary ?? "";
+  if (result.data && typeof result.data === "object") {
+    const data = result.data as Record<string, unknown>;
+    // Extract meaningful content from data fields (same logic as agent-turn-runtime toolResultContent)
+    if (typeof data.content === "string" && data.content.trim()) {
+      content += "\n\n" + data.content;
+    } else if (typeof data.output === "string" && data.output.trim()) {
+      content += "\n\n" + data.output;
+    } else if (Array.isArray(data.matches) && data.matches.length > 0) {
+      content += "\n\n" + (data.matches as string[]).join("\n");
+    } else if (Array.isArray(data.results) && data.results.length > 0) {
+      const first = data.results[0];
+      if (typeof first === "string") {
+        content += "\n\n" + (data.results as string[]).join("\n");
+      }
+    } else if (typeof data.text === "string" && data.text.trim()) {
+      content += "\n\n" + data.text;
+    }
+  }
+  return content || (result.summary ?? "ok");
 }
 
 function extractMessageToolResult(message: NarratorSessionChatMessage): SessionToolExecutionResult | undefined {
