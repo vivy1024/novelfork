@@ -159,6 +159,95 @@ function commandStartsWith(command: string, prefixes: readonly string[]): boolea
 }
 
 export function classifyBashCommand(command: string): BashCommandClassification {
+  // Split compound commands (&&, ||, ;, |) and classify the WORST segment
+  const segments = splitCommandSegments(command);
+
+  let worstClassification: BashCommandClassification = { classification: "trusted", risk: "read" };
+
+  for (const segment of segments) {
+    const segmentResult = classifySingleCommand(segment);
+    // Upgrade to worse classification
+    if (segmentResult.classification === "dangerous") return segmentResult;
+    if (segmentResult.classification === "untrusted" && worstClassification.classification === "trusted") {
+      worstClassification = segmentResult;
+    }
+    if (segmentResult.risk === "network" && worstClassification.risk !== "network") {
+      worstClassification = segmentResult;
+    }
+    if (segmentResult.risk === "write" && worstClassification.risk === "read") {
+      worstClassification = segmentResult;
+    }
+  }
+
+  return worstClassification;
+}
+
+/**
+ * Split a compound command into segments, respecting quotes.
+ * Splits on: &&, ||, ;, | (unquoted)
+ */
+function splitCommandSegments(command: string): string[] {
+  const segments: string[] = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let escaped = false;
+
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i]!;
+
+    if (escaped) {
+      current += ch;
+      escaped = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaped = true;
+      current += ch;
+      continue;
+    }
+
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      current += ch;
+      continue;
+    }
+
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      current += ch;
+      continue;
+    }
+
+    // Only split when not inside quotes
+    if (!inSingle && !inDouble) {
+      if (ch === ";") {
+        if (current.trim()) segments.push(current.trim());
+        current = "";
+        continue;
+      }
+      if (ch === "|") {
+        if (command[i + 1] === "|") i++; // skip ||
+        if (current.trim()) segments.push(current.trim());
+        current = "";
+        continue;
+      }
+      if (ch === "&") {
+        if (command[i + 1] === "&") i++; // skip &&
+        if (current.trim()) segments.push(current.trim());
+        current = "";
+        continue;
+      }
+    }
+
+    current += ch;
+  }
+  if (current.trim()) segments.push(current.trim());
+  return segments.length > 0 ? segments : [command.trim()];
+}
+
+function classifySingleCommand(command: string): BashCommandClassification {
   // Check dangerous first
   if (isDangerousCommand(command)) {
     return { classification: "dangerous", risk: "destructive", reason: getDangerousReason(command) };
