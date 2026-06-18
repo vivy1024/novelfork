@@ -1381,7 +1381,7 @@ async function appendModelContinuationAfterToolDecision(
         const toolResultMessage = appendMessageToState(loaded.state, {
           id: messageId,
           role: "assistant",
-          content: toolResult.summary,
+          content: buildFullToolResultContent(toolResult, event.toolName),
           timestamp: nextTimestamp,
           runtime: event.runtime,
           toolCalls: [buildToolResultCall(toolUse, toolResult)],
@@ -1539,7 +1539,7 @@ export async function confirmSessionToolDecision(
   const resultMessage = appendMessageToState(loaded.state, {
     id: `confirmation-result-${match.confirmation.id}-${timestamp}`,
     role: "assistant",
-    content: toolResult.summary,
+    content: buildFullToolResultContent(toolResult, toolName),
     timestamp,
     runtime: match.message.runtime,
     toolCalls: [buildToolResultCall({
@@ -1914,28 +1914,60 @@ function buildAppendSystemPrompt(session: NarratorSessionRecord): string | undef
 }
 
 
-function formatSessionToolResultContent(result: SessionToolExecutionResult): string {
-  // Include full data content (not just summary) so subsequent turns see complete tool output
+/**
+ * Build full tool result content for message persistence.
+ * Extracts complete data from result (not just summary).
+ * This is what the model will see in subsequent turns.
+ */
+function buildFullToolResultContent(result: SessionToolExecutionResult, _toolName?: string): string {
   let content = result.summary ?? "";
+
   if (result.data && typeof result.data === "object") {
     const data = result.data as Record<string, unknown>;
-    // Extract meaningful content from data fields (same logic as agent-turn-runtime toolResultContent)
+    // File content (Read, jingwei.read, chapter.read)
     if (typeof data.content === "string" && data.content.trim()) {
       content += "\n\n" + data.content;
-    } else if (typeof data.output === "string" && data.output.trim()) {
+    }
+    // Command output (Bash)
+    if (typeof data.output === "string" && data.output.trim()) {
       content += "\n\n" + data.output;
-    } else if (Array.isArray(data.matches) && data.matches.length > 0) {
-      content += "\n\n" + (data.matches as string[]).join("\n");
-    } else if (Array.isArray(data.results) && data.results.length > 0) {
+    }
+    // Search results (Grep)
+    if (Array.isArray(data.results) && data.results.length > 0) {
       const first = data.results[0];
-      if (typeof first === "string") {
+      if (typeof first === "object" && first !== null && "name" in first) {
+        content += "\n\n" + (data.results as Array<{ name: string; description?: string }>)
+          .map(t => `- ${t.name}: ${t.description ?? ""}`)
+          .join("\n");
+      } else if (typeof first === "string") {
         content += "\n\n" + (data.results as string[]).join("\n");
       }
-    } else if (typeof data.text === "string" && data.text.trim()) {
+    }
+    // Glob matches
+    if (Array.isArray(data.matches) && data.matches.length > 0) {
+      content += "\n\n" + (data.matches as string[]).join("\n");
+    }
+    // Browser text
+    if (typeof data.text === "string" && data.text.trim()) {
       content += "\n\n" + data.text;
     }
+    // HTML content
+    if (typeof data.html === "string" && data.html.trim()) {
+      content += "\n\n" + data.html;
+    }
+    // Generic result
+    if (typeof data.result === "string" && data.result.trim() && !data.text && !data.html) {
+      content += "\n\n" + data.result;
+    }
   }
+
   return content || (result.summary ?? "ok");
+}
+
+function formatSessionToolResultContent(result: SessionToolExecutionResult): string {
+  // Content is now stored fully in message.content at persistence time.
+  // This function is only called as fallback for legacy messages without full content.
+  return buildFullToolResultContent(result);
 }
 
 function extractMessageToolResult(message: NarratorSessionChatMessage): SessionToolExecutionResult | undefined {
@@ -1970,11 +2002,16 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
       if (toolResult) {
         return toolCalls.flatMap((toolCall): AgentTurnItem[] => {
           if (!toolCall.id || latestResultIndexByToolCallId.get(toolCall.id) !== messageIndex) return [];
+          // Prefer message.content if it contains full data (new format)
+          // Fall back to formatSessionToolResultContent for legacy messages
+          const fullContent = message.content.length > 100
+            ? message.content
+            : formatSessionToolResultContent(toolResult);
           return [{
             type: "tool_result",
             toolCallId: toolCall.id,
             name: toolCall.toolName,
-            content: formatSessionToolResultContent(toolResult),
+            content: fullContent,
             ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
             metadata: { toolResult },
           }];
@@ -2446,7 +2483,7 @@ export async function handleSessionChatTransportMessage(
           const toolResultMessage = appendMessageToState(loaded.state, {
             id: messageId,
             role: "assistant",
-            content: toolResult.summary,
+            content: buildFullToolResultContent(toolResult, event.toolName),
             timestamp: timestamp + messagesToPersist.length,
             runtime: event.runtime,
             toolCalls: [buildToolResultCall(toolUse, toolResult)],
@@ -2574,7 +2611,7 @@ export async function handleSessionChatTransportMessage(
         const toolResultMessage = appendMessageToState(loaded.state, {
           id: messageId,
           role: "assistant",
-          content: toolResult.summary,
+          content: buildFullToolResultContent(toolResult, event.toolName),
           timestamp: timestamp + messagesToPersist.length,
           runtime: event.runtime,
           toolCalls: [buildToolResultCall(toolUse, toolResult)],
