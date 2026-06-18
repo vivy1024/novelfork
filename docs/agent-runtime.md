@@ -1,126 +1,164 @@
-# Agent Runtime 详解
+# Agent Turn Runtime 详解
 
-Agent Runtime 是 NovelFork 的 AI 对话执行引擎。核心入口 `runAgentTurn()`，位于 `packages/studio/src/api/lib/agent-turn-runtime.ts`。
+NovelFork v1.11.2 的 Agent Runtime 核心位于 `packages/studio/src/api/lib/agent-turn-runtime.ts`，实现了完整的 Agent 回合循环（Turn Loop），包含错误恢复、上下文压力管理、循环检测等机制。
 
 ## Turn Loop 生命周期
 
+每次用户消息触发一个 Turn，流程如下：
+
 ```
-runAgentTurn(input)
-  ├── buildInitialMessages()   // 组装 system prompt + context + messages
-  ├── appendSystemPrompt       // 高优先级动态指令（recency bias）
-  ├── filterSessionToolsForProvider()  // 按 policy 过滤工具
-  │
-  └── for (;;) {               // 主循环
-        ├── signal.aborted?  → turn_completed（静默结束）
-        ├── in-flight microcompact（折叠旧 tool_result）
-        ├── blocking limit pre-check（97% 注入停止指令）
-        │
-        ├── generate()  →  LLM 调用
-        │     ├── 成功 + type:"message"  → emit assistant_message → TurnComplete hook → 结束
-        │     ├── 成功 + type:"tool_use" → 执行工具 → 追加 tool_result → continue
-        │     ├── 失败 + user-aborted   → 静默 turn_completed
-        │     ├── 失败 + rate_limit     → model fallback（切备用模型）→ continue
-        │     ├── 失败 + context_overflow → emergencyTruncateMessages → retry
-        │     └── 失败 + max_tokens     → escalation 64K → retry（最多 3 次）
-        │
-        ├── Budget Pressure（追加上下文使用率提醒）
-        ├── 重复工具调用检测（signature dedup）
-        ├── File Read 去重（hash 比较，返回 stub）
-        └── maxSteps 达到 → 强制结束
-      }
+1. buildInitialMessages — 组装 system prompt + context + appendSystemPrompt
+2. filterSessionToolsForProvider — 按 policy 过滤可用工具
+3. 主循环（无限循环直到终止条件）:
+   a. In-flight microcompact（60%+ 折叠旧 tool_result）
+   b. Aggressive fold（85%+ 激进折叠）
+   c. Blocking limit（97%+ 注入停止指令）
+   d. generate() — 调用 LLM
+   e. 处理结果:
+      - 失败 → 恢复策略（fallback/overflow recovery）
+      - message → 输出并结束
+      - tool_use → 执行工具 → 追加结果 → 继续循环
 ```
 
-## max_output_tokens 恢复
+## 四层渐进压缩
 
-当 LLM 返回 `stop_reason: "max_tokens"` 或 `"length"` 时：
+上下文管理采用基于真实 input_tokens 的四层压缩策略：
 
-1. 递增 `maxOutputTokensRecoveryCount`（上限 3 次）
-2. 设置 `maxOutputTokensOverride = 64000`（ESCALATED_MAX_TOKENS）
-3. 将截断的 assistant 内容追加到 messages 中
-4. 注入系统提示："输出被截断，请继续"
-5. 重新 generate
-
-3 次仍被截断则放弃，emit `turn_failed`。
-
-## 模型 Fallback
-
-当主模型返回可 fallback 的错误（rate_limit / overloaded / 503 / 529 / service_unavailable）时：
-
-1. 检查 `input.fallbackModel` 是否配置
-2. 一次机会（`hasAttemptedFallback` 标记）
-3. 切换 `currentSessionConfig.modelId` 为备用模型
-4. 注入系统消息通知模型已切换
-5. continue 进入下一轮 generate
-
-## Budget Pressure
-
-基于 provider 报告的 `input_tokens` 与上下文窗口（减去 32K 输出预留）的比值：
-
-| 阈值 | 级别 | 行为 |
+| 层级 | 阈值 | 动作 |
 |------|------|------|
-| 70% | 信息 | "上下文已用 N%，建议适时汇报阶段性结果" |
-| 80% | 软提示 | "请尽快收尾，避免长输出导致截断" |
-| 92% | 紧急 | "即将溢出，请立即完成并停止扩展" |
-| 97% | 阻断 | 直接注入 system message 要求停止工具调用 |
+| 轻度折叠 | 60% | 保留最近 6 条，旧 tool_result >500 字符折叠为 stub |
+| 激进折叠 | 85% | 保留最近 4 条，旧 tool_result >100 字符全部折叠 |
+| 阻断警告 | 97% | 注入系统消息要求立即停止工具调用 |
+| 反应式恢复 | 413 错误 | 全量折叠 + emergency truncate + 重试 |
 
-提示以 `\n\n[...]` 形式追加到最后一条 `tool_result` 末尾（无损）。
+阈值基于 `lastInputTokens / (contextWindowTokens - 32768)`，其中 32768 是 output 预留。
+
+## Budget Pressure（三级提醒）
+
+在每个 tool_result 末尾追加上下文使用率提醒（不破坏输出）：
+
+| 级别 | 阈值 | 提示内容 |
+|------|------|----------|
+| 信息 | 70% | 建议适时向用户汇报阶段性结果 |
+| 软提示 | 80% | 请尽快收尾，避免长输出导致截断 |
+| 紧急 | 92% | 请立即完成当前输出并停止扩展 |
+
+## max_output_tokens Recovery
+
+当模型输出因 `max_tokens` / `length` 停止时的恢复策略：
+
+1. **第一次截断** — 将 `maxOutputTokensOverride` 提升到 64000
+2. **后续截断** — 注入 user 消息要求模型继续（"Resume directly — no recap"）
+3. **最多重试 3 次**，超过则正常结束
+
+截断的 assistant 内容会被 push 到 messages 中保持上下文连续。
+## Model Fallback
+
+当主模型出现特定错误（rate_limit、overloaded、503、529、service_unavailable、capacity 等）时：
+
+1. 检查是否配置了 `fallbackModel`
+2. 仅尝试一次切换（`hasAttemptedFallback` 防重复）
+3. 注入系统消息告知模型已切换
+4. 用新 sessionConfig 继续循环
+
+## Loop Detection（循环检测）
+
+两种检测机制：
+
+### 模式重复检测
+取最近 6 个工具调用名序列，检查 `last3` 是否与 `prev3` 完全相同。匹配则注入警告："请改变策略或停止当前操作。如果需要批量操作，请写一个脚本一次执行。"
+
+### 签名重复检测
+对每个 `toolName + stableJson(input)` 计数。同一签名调用 ≥3 次时注入警告："请停止重复操作，改变策略。"
+
+### Health Monitor 补充
+`TurnHealthMonitor` 提供更全面的健康检查：
+- 连续失败 ≥5 次 → 强制停止
+- 连续失败 ≥3 次 → 警告
+- token 消耗超过上下文窗口 50% → 警告
+
+## Error File Auto-Hint
+
+当 Bash 工具执行失败时，从错误信息中提取文件路径：
+
+```
+正则: /(?:^|\s)([\w./\\-]+\.[a-z]{1,4}):(\d+)/m
+```
+
+匹配到文件:行号后注入提示："建议读取该文件相关行以理解错误上下文。"
+帮助模型自主定位问题而非盲目重试。
+
+## 子命令拆分安全
+
+`permission-pipeline.ts` 中的 `splitCommandSegments()` 实现了引号感知的命令拆分：
+
+- 在 `&&`、`||`、`;`、`|` 处拆分
+- 尊重单引号和双引号内的内容
+- 处理反斜杠转义
+- 对所有子段取**最严格**分类（dangerous > untrusted > trusted）
+
+分类优先级：dangerous（13+ 种危险模式）→ network → write → read
+
+## User-Aborted Handling
+
+当 `signal.aborted` 时，或 generate 返回 `code: "user-aborted"` 时：
+- 不触发错误事件
+- 直接 emit `turn_completed` 并正常返回
+- 日志记录 "Generate aborted by user"
+
+## Confirmation Flow
+
+工具返回 `confirmation` 或 `status: "pending-confirmation"` 时：
+- emit `confirmation_required` 事件
+- 立即返回暂停 turn（等待用户确认后恢复）
+- Idle broadcast 通过 session-chat-service 通知前端显示权限对话框
 
 ## In-flight Microcompact
 
-在 for(;;) 每次迭代开始时检查：
+在每次 generate() 调用前、循环内执行：
+- 60% 阈值：折叠距离最近 6 条之前的 tool_result（>500 字符）
+- 85% 阈值：更激进折叠（>100 字符，仅保留最近 4 条）
+- 不需要调用外部摘要模型，纯规则替换
 
-- 条件：`usageRatio >= 0.60` 且 `messages.length > 20`
-- 行为：将 **最后 6 条以外** 的 `tool_result` 中内容超过 500 字符的折叠为 `[已折叠: {name} 输出 N 字符]`
-- 目的：防止长工具循环中触发 413 错误
+## CtxInspect 工具
 
-## 上下文窗口计算
+模型可主动调用 `CtxInspect` 查看当前上下文使用情况：
+- 已用 token 数
+- 上下文窗口大小
+- 使用百分比
+- 各部分占比
+
+帮助模型自主决定是否需要 compact 或 snip。
+
+## Mid-turn Assistant Message Persistence
+
+在 tool_use 阶段，如果模型输出包含 reasoning_content，会被推入 messages 数组作为 assistant 消息保留。这确保：
+- 上下文压缩时不丢失推理过程
+- Snapshot 恢复后上下文完整
+- DeepSeek 等需要 reasoning 与 tool_calls 在同一 assistant 消息中的模型正常工作
+
+## 并行工具执行
+
+当一个 batch 中所有工具都属于 `PARALLEL_SAFE_TOOLS`（18 个只读工具）时，使用 `Promise.all` 并行执行：
 
 ```
-usableWindow = contextWindowTokens - 32768（output reserve）
-usageRatio = lastInputTokens / usableWindow
+Read, Glob, Grep, WebSearch, WebFetch, GetGoals, LearningGuide, Recall,
+jingwei.read, chapter.read, cockpit.snapshot, chapter.list, chapter.audit,
+presets.read, beat.read, outline.suggest_next, character.check_consistency,
+hooks.manage, presets.check_compliance
 ```
 
-`lastInputTokens` 来自 provider 返回的 `usage.input_tokens`。
+结果按原始顺序 emit 事件以保持一致性。
 
-## 安全层
+## 文件去重（File Read Dedup）
 
-### Secret Detector（`security/secret-detector.ts`）
+每个 turn 创建独立的 `FileReadDeduplicator` 实例：
+- 对 Read、jingwei.read、chapter.read 工具追踪内容 hash（djb2 + 长度）
+- 同一文件内容未变时返回 stub（节省 context）
+- 独立实例避免并发 turn 间污染
 
-扫描工具输出中的密钥模式（API key、token、password 等），检测到时替换为 `[REDACTED]`。
+## 工具输出截断
 
-### Path Sandbox（`security/path-sandbox.ts`）
-
-文件操作工具（Read / Write / Edit）执行前校验路径：
-- 不允许访问工作目录外的文件
-- 拦截 `..` 逃逸
-- 白名单机制
-
-### DANGEROUS_PATTERNS
-
-Bash 工具执行前匹配危险命令模式（`rm -rf /`、`git push --force`、`DROP TABLE` 等），匹配到则触发确认流程。
-
-## Blocking TurnComplete Hooks
-
-当 Agent 准备结束回合（输出 message 而非 tool_use）时：
-
-1. 调用 `onTurnComplete(context)` 回调
-2. 回调可返回注入消息（用于自我修正）
-3. 注入后重新 generate
-4. 最多重试 2 次（`turnCompleteHookRetries` 上限）
-
-## User-aborted 处理
-
-当 `signal.aborted` 或 generate 返回 `code: "user-aborted"` 时：
-- 不 emit `turn_failed`
-- 直接 emit `turn_completed`（静默结束）
-- 日志记录但不对用户报错
-
-## Confirmation 流程
-
-工具执行返回 `result.confirmation` 时：
-
-1. emit `confirmation_required` 事件
-2. Turn Loop 暂停（return events）
-3. 前端展示确认 UI → 用户决定
-4. 用户确认后重新发起消息继续 turn
-5. session-chat-service 广播 idle 状态
+通过 `compact/tool-output-pruner.ts` 对极端长输出兜底：
+- 超过 8K 字符的输出进行截断
+- Content Replacement 机制将大结果存为引用
