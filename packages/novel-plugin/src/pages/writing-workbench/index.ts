@@ -15,8 +15,6 @@ export * from "./WorkbenchResourceTree";
 export * from "./WritingWorkbenchRoute";
 export * from "./resource-viewers";
 export * from "./useWorkbenchResources";
-export * from "./ToolConfigBar";
-export * from "./AgentQuickActions";
 export * from "./ConversationResourcePanel";
 export * from "./RuntimeStatePanel";
 export * from "./CoreShiftPanel";
