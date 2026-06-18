@@ -3957,6 +3957,80 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           data: { query, results },
         };
       };
+    // --- CtxInspect: 上下文用量检查 ---
+    case "CtxInspect":
+      return async ({ sessionId, sessionConfig, definition }) => {
+        const { getSessionChatSnapshot } = await import("./session-chat-service.js");
+        const snapshot = await getSessionChatSnapshot(sessionId);
+        const session = snapshot?.session as Record<string, unknown> | undefined;
+        const usage = (session?.cumulativeUsage ?? (session as any)?.["cumulativeUsage"]) as { lastInputTokens?: number; lastContextBreakdown?: unknown[] } | undefined;
+        const lastInput = usage?.lastInputTokens ?? 0;
+        // Try to resolve context window from session config model
+        let contextWindow = 200000; // fallback
+        try {
+          const mod = await import("./session-chat-service.js") as any;
+          if (typeof mod.resolveModelContextWindow === "function") {
+            contextWindow = await mod.resolveModelContextWindow(sessionConfig) || contextWindow;
+          }
+        } catch { /* fallback */ }
+        const usagePercent = contextWindow > 0 ? Math.round((lastInput / contextWindow) * 100) : 0;
+        const messageCount = snapshot?.messages?.length ?? 0;
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `上下文使用: ${lastInput.toLocaleString()} / ${contextWindow.toLocaleString()} tokens (${usagePercent}%)`,
+          data: { usedTokens: lastInput, contextWindow, usagePercent, messageCount },
+        };
+      };
+    // --- Sleep: 延时等待 ---
+    case "Sleep":
+      return async ({ input, definition }) => {
+        const seconds = Math.min(300, Math.max(1, Number(input.seconds) || 5));
+        await new Promise(resolve => setTimeout(resolve, seconds * 1000));
+        return { ok: true, renderer: definition.renderer, summary: `已等待 ${seconds} 秒。`, data: { sleptSeconds: seconds } };
+      };
+    // --- TaskGet: 获取后台任务状态 ---
+    case "TaskGet":
+      return async ({ input, definition }) => {
+        const taskId = typeof input.taskId === "string" ? input.taskId : undefined;
+        if (taskId) {
+          const bashTask = backgroundTasks.get(taskId);
+          const agentTask = backgroundAgents.get(taskId);
+          if (bashTask) {
+            return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${taskId}: ${bashTask.status}`, data: { id: taskId, type: "bash", status: bashTask.status, command: bashTask.command?.slice(0, 200), output: bashTask.stdoutBuffer?.slice(-2000) } };
+          }
+          if (agentTask) {
+            return { ok: true, renderer: definition.renderer, summary: `Agent 任务 ${taskId}: ${agentTask.status}`, data: { id: taskId, type: "agent", status: agentTask.status, subagentType: agentTask.subagentType, result: agentTask.result?.slice(0, 2000) } };
+          }
+          return { ok: false, renderer: definition.renderer, error: "not-found", summary: `任务 ${taskId} 不存在。` };
+        }
+        const bashTasks = [...backgroundTasks.entries()].map(([id, t]) => ({ id, type: "bash" as const, status: t.status, command: t.command?.slice(0, 80) }));
+        const agentTasks = [...backgroundAgents.entries()].map(([id, t]) => ({ id, type: "agent" as const, status: t.status, subagentType: t.subagentType }));
+        const allTasks = [...bashTasks, ...agentTasks];
+        return { ok: true, renderer: definition.renderer, summary: `${allTasks.length} 个后台任务`, data: { tasks: allTasks } };
+      };
+    // --- TaskStop: 停止后台任务 ---
+    case "TaskStop":
+      return async ({ input, definition }) => {
+        const taskId = String(input.taskId ?? "");
+        if (!taskId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "taskId 不能为空。" };
+        const bashTask = backgroundTasks.get(taskId);
+        const agentTask = backgroundAgents.get(taskId);
+        if (bashTask) {
+          if (bashTask.status !== "running") return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Bash 任务 ${taskId} 不在运行中（状态: ${bashTask.status}）。` };
+          bashTask.status = "failed";
+          bashTask.completedAt = Date.now();
+          return { ok: true, renderer: definition.renderer, summary: `已停止 Bash 任务 ${taskId}。` };
+        }
+        if (agentTask) {
+          if (agentTask.status !== "running") return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Agent 任务 ${taskId} 不在运行中（状态: ${agentTask.status}）。` };
+          agentTask.abortController?.abort();
+          agentTask.status = "failed";
+          agentTask.completedAt = Date.now();
+          return { ok: true, renderer: definition.renderer, summary: `已停止 Agent 任务 ${taskId}。` };
+        }
+        return { ok: false, renderer: definition.renderer, error: "not-found", summary: `任务 ${taskId} 不存在。` };
+      };
     default:
       return undefined;
   }

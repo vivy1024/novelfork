@@ -582,6 +582,26 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       }
     }
 
+    // Proactive aggressive fold at 85%: fold ALL tool_results older than last 4
+    // More aggressive than the 60% microcompact — lower threshold, keeps fewer recent messages
+    if (contextWindowTokens > 0 && lastInputTokens > 0) {
+      const aggressiveRatio = lastInputTokens / contextWindowTokens;
+      if (aggressiveRatio >= 0.85 && aggressiveRatio < BLOCKING_LIMIT_THRESHOLD) {
+        let aggressiveFoldCount = 0;
+        const keepLast = 4;
+        for (let i = 0; i < messages.length - keepLast; i++) {
+          const m = messages[i];
+          if (m.type === "tool_result" && m.content && m.content.length > 100) {
+            messages[i] = { ...m, content: `[折叠: ${m.name ?? "tool"}]` };
+            aggressiveFoldCount++;
+          }
+        }
+        if (aggressiveFoldCount > 0) {
+          log.info("Aggressive pre-compact fold at 85%", { foldedCount: aggressiveFoldCount, ratio: Math.round(aggressiveRatio * 100) });
+        }
+      }
+    }
+
     // P2.4: Blocking limit pre-check — proactive compact trigger at 97%+
     if (!hasInjectedBlockingWarning && contextWindowTokens > 0 && lastInputTokens > 0) {
       const ratio = lastInputTokens / contextWindowTokens;
@@ -667,14 +687,32 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         continue;
       }
 
-      // Attempt context overflow recovery (max 2 retries, progressively more aggressive)
+      // Reactive Compact: on context overflow, fold tool_results first, then truncate if still needed
       if (!hasAttemptedOverflowRecovery && isContextOverflowError(reply.code, reply.error)) {
         hasAttemptedOverflowRecovery = true;
         const originalCount = messages.length;
-        const truncated = emergencyTruncateMessages(messages);
 
-        if (truncated.length < originalCount) {
-          log.warn("Context overflow detected", { sessionId: input.sessionId, originalCount, truncatedCount: truncated.length });
+        // Step 1: Aggressively fold ALL old tool_result messages (keep only last few intact)
+        let foldedCount = 0;
+        const keepRecentCount = Math.min(10, Math.floor(messages.length / 4));
+        for (let i = 0; i < messages.length - keepRecentCount; i++) {
+          const m = messages[i];
+          if (m.type === "tool_result" && m.content && m.content.length > 200) {
+            messages[i] = { ...m, content: `[已压缩: ${m.name ?? "tool"} 结果]` };
+            foldedCount++;
+          }
+        }
+
+        // Step 2: If still too many messages after folding, apply emergency truncation
+        let truncated: AgentTurnItem[];
+        if (messages.length > 30) {
+          truncated = emergencyTruncateMessages(messages, Math.min(20, Math.floor(messages.length / 2)));
+        } else {
+          truncated = messages;
+        }
+
+        if (truncated.length < originalCount || foldedCount > 0) {
+          log.warn("Reactive compact triggered", { sessionId: input.sessionId, originalCount, foldedCount, truncatedCount: truncated.length });
 
           // Replace messages with truncated version
           messages.length = 0;

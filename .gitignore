@@ -62,6 +62,7 @@ cockpit-tools/
 CLAUDE.md
 AGENTS.md
 legnacode-cli/
+codex-main/
 
 # CodeGraph 母库（可由 bun run codegraph 重生，避免 1.3MB git 噪音；CODEMAP.md 已提交）
 docs/codegraph/codegraph.json
