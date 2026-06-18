@@ -186,17 +186,24 @@ async function maybeAutoCompact(
 
   const action = detectCompactionAction(compactMessages, maxContextTokens, thresholds, effectiveTokens);
   if (action === "none") {
-    const lastAssistantTs = findLastAssistantTimestamp(messages);
-    const mcResult = microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: lastAssistantTs });
-    const items = mcResult.items;
-    if (mcResult.foldedCount > 0) {
-      items.unshift({
-        type: "message",
-        role: "system",
-        content: `[上下文提醒] 本次对话有 ${mcResult.foldedCount} 条旧工具结果已折叠以节约空间。如需查阅历史设定/章节内容，请主动调用 jingwei.read 或 chapter.read 重新获取。`,
-      });
+    // Only run microCompact if context usage exceeds 40% — for large windows (1M+),
+    // premature folding destroys valuable conversation history that the model can still use.
+    const currentUsageRatio = (effectiveTokens ?? estimatedTokens) / maxContextTokens;
+    if (currentUsageRatio >= 0.40) {
+      const lastAssistantTs = findLastAssistantTimestamp(messages);
+      const mcResult = microCompact(sessionMessagesToTurnItems(messages), { lastAssistantTimestamp: lastAssistantTs });
+      const items = mcResult.items;
+      if (mcResult.foldedCount > 0) {
+        items.unshift({
+          type: "message",
+          role: "system",
+          content: `[上下文提醒] 本次对话有 ${mcResult.foldedCount} 条旧工具结果已折叠以节约空间。如需查阅历史设定/章节内容，请主动调用 jingwei.read 或 chapter.read 重新获取。`,
+        });
+      }
+      return { items, compacted: false };
     }
-    return { items, compacted: false };
+    // Under 40% usage: pass messages through WITHOUT folding — preserve full history
+    return { items: sessionMessagesToTurnItems(messages), compacted: false };
   }
 
   try {
