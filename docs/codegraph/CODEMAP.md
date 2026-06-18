@@ -2,7 +2,7 @@
 
 > 由 `bun run codegraph` 自动生成，请勿手改。
 > **AI 用法**：先读本图定位「符号在哪个文件」，再 Read 该文件看细节；完整签名/依赖边查 `codegraph.json`。
-> 生成：2026-06-18T07:51:10.840Z　|　818 文件 / 4046 符号 / 1525 依赖边
+> 生成：2026-06-18T10:43:57.408Z　|　820 文件 / 4050 符号 / 1523 依赖边
 
 ## 🔥 核心热点文件（被引用最多，优先理解）
 
@@ -180,8 +180,8 @@
 - `packages/novel-plugin/src/engine/presets/index.ts` [ref:4] — registerPreset·fn, registerBeatTemplate·fn, getPreset·fn, listPresets·fn, getPresetsByGenre·fn, getBeatTemplate·fn, listBeatTemplates·fn, listSettingBases·fn, listLogicRisks·fn, listBundles·fn, getBundle·fn, registerAll·fn, _resetForTesting·fn
 - `packages/novel-plugin/src/engine/compliance/format-checker.ts` [ref:2] — FormatChapterInput·interface, BookFormatConfig·interface, checkFormat·fn
 - `packages/novel-plugin/src/engine/compliance/sensitive-scanner.ts` [ref:2] — loadDictionary·fn, scanChapter·fn, ChapterInput·interface, scanBook·fn
-- `packages/novel-plugin/src/engine/jingwei/context/token-budget.ts` [ref:3] — TokenBudgetResult·interface, BudgetedJingweiContextItem·interface, estimateTokens·fn, sortByContextPriority·fn, applyTokenBudget·fn, BudgetedBibleContextItem·type
 - `packages/novel-plugin/src/pages/writing-workbench/JingweiEmptyState.tsx` [ref:1] — JingweiEmptyStateProps·interface, JingweiEmptyState·fn
+- `packages/novel-plugin/src/engine/jingwei/context/token-budget.ts` [ref:3] — TokenBudgetResult·interface, BudgetedJingweiContextItem·interface, estimateTokens·fn, sortByContextPriority·fn, applyTokenBudget·fn, BudgetedBibleContextItem·type
 - `packages/novel-plugin/src/engine/jingwei/read-model/entry-summary.ts` [ref:3] — getEntrySummaryMd·fn, getEntryL0·fn, getEntryPriorityTier·fn, getEntryReadableContent·fn, toJingweiReadableItem·fn, createReadableCategoryTitle·fn
 - `packages/novel-plugin/src/engine/jingwei/read-model/token-budget.ts` [ref:3] — BudgetedItem·interface, BudgetResult·interface, applyTokenBudget·fn, paginateItems·fn, JingweiBudgetDetailLevel·type, DegradableLevel·interface, DegradableItem·interface, DegradedItem·interface, DegradationResult·interface, applyTokenBudgetWithDegradation·fn
 - `packages/novel-plugin/src/pages/writing-workbench/panels/QualityPanel.tsx` [ref:2] — QualityPanelProps·interface, QualityPanel·fn
@@ -202,8 +202,8 @@
 - `packages/novel-plugin/src/engine/filter/engine/index.ts` [ref:2] — FILTER_ENGINE_VERSION·const, RunFilterOptions·interface, mapAiTasteLevel·fn, runFilter·fn, summarizeHitCounts·fn
 - `packages/novel-plugin/src/engine/filter/repositories/filter-report-repo.ts` [ref:2] — createFilterReportRepository·fn
 - `packages/novel-plugin/src/engine/agents/en-prompt-sections.ts` [ref:1] — buildEnglishCoreRules·fn, buildEnglishAntiAIRules·fn, buildEnglishCharacterMethod·fn, buildEnglishPreWriteChecklist·fn, buildEnglishGenreIntro·fn
-- `packages/novel-plugin/src/engine/jingwei/repositories/chapter-summary-repo.ts` [ref:3] — createJingweiChapterSummaryRepository·fn, createBibleChapterSummaryRepository·const
 - `packages/novel-plugin/src/pages/writing-workbench/resource-viewers/ChapterEditor.tsx` [ref:1] — ChapterEditor·fn
+- `packages/novel-plugin/src/engine/jingwei/repositories/chapter-summary-repo.ts` [ref:3] — createJingweiChapterSummaryRepository·fn, createBibleChapterSummaryRepository·const
 - `packages/novel-plugin/src/engine/jingwei/core-shift/impact-analysis.ts` [ref:2] — AnalyzeCoreShiftImpactInput·interface, CoreShiftImpactAnalysis·interface, analyzeCoreShiftImpact·fn
 - `packages/novel-plugin/src/engine/jingwei/repositories/core-shift-repo.ts` [ref:2] — createCoreShiftRepository·fn
 - `packages/novel-plugin/src/engine/presets/compliance-checker.ts` [ref:2] — ComplianceViolation·interface, ComplianceCheckResult·interface, checkPresetCompliance·fn
@@ -236,13 +236,13 @@
 - `packages/novel-plugin/src/engine/tools/arcs/character-arc-tracker.ts` [ref:2] — ArcInconsistency·interface, StagnantArc·interface, detectArcInconsistency·fn, detectStagnantArc·fn
 - `packages/novel-plugin/src/engine/tools/arcs/llm-refiner.ts` [ref:2] — LLM_REFINER_PROMPT_TEMPLATE·const, refineBeatsWithLlm·fn
 - `packages/novel-plugin/src/engine/tools/arcs/arc-sync.ts` [ref:2] — ArcTrackingMode·type, SyncCharacterArcsParams·interface, SyncCharacterArcsResult·interface, syncCharacterArcs·fn
+- `packages/novel-plugin/src/pages/writing-workbench/PresetsPanel.tsx` [ref:2] — PresetsPanelProps·interface, PresetsPanel·fn
 - `packages/novel-plugin/src/engine/jingwei/read-model/build-jingwei-index.ts` [ref:2] — buildJingweiIndexFromItems·fn
 - `packages/novel-plugin/src/engine/presets/beats/chapter-ending-hooks.ts` [ref:1] — chapterEndingHooksTemplate·const
 - `packages/novel-plugin/src/engine/presets/beats/heros-journey.ts` [ref:1] — herosJourneyTemplate·const
 - `packages/novel-plugin/src/engine/presets/beats/opening-hooks.ts` [ref:1] — openingHooksTemplate·const
 - `packages/novel-plugin/src/engine/presets/beats/save-the-cat.ts` [ref:1] — saveTheCatTemplate·const
 - `packages/novel-plugin/src/engine/presets/beats/three-act.ts` [ref:1] — threeActTemplate·const
-- `packages/novel-plugin/src/pages/writing-workbench/PresetsPanel.tsx` [ref:2] — PresetsPanelProps·interface, PresetsPanel·fn
 - `packages/novel-plugin/src/engine/agents/ai-tells.ts` [ref:2] — AITellIssue·interface, AITellResult·interface, analyzeAITells·fn
 - `packages/novel-plugin/src/engine/agents/settler-delta-parser.ts` [ref:2] — SettlerDeltaOutput·interface, parseSettlerDeltaOutput·fn
 - `packages/novel-plugin/src/engine/agents/settler-parser.ts` [ref:2] — SettlementOutput·interface, parseSettlementOutput·fn
@@ -290,14 +290,12 @@
 - `packages/novel-plugin/src/engine/jingwei/repositories/premise-repo.ts` [ref:2] — createJingweiPremiseRepository·fn, createBiblePremiseRepository·const
 - `packages/novel-plugin/src/engine/jingwei/repositories/setting-repo.ts` [ref:2] — createJingweiSettingRepository·fn, createBibleSettingRepository·const
 - `packages/novel-plugin/src/engine/jingwei/repositories/world-model-repo.ts` [ref:2] — createJingweiWorldModelRepository·fn, createBibleWorldModelRepository·const
-- `packages/novel-plugin/src/pages/writing-workbench/AgentQuickActions.tsx` [ref:1] — AgentQuickActionsProps·interface, AgentQuickActions·fn
 - `packages/novel-plugin/src/pages/writing-workbench/AiTasteReport.tsx` [ref:1] — RuleSeverity·type, AiTasteLevel·type, RuleSpan·interface, RuleHit·interface, FilterReport·interface, SevenTacticSuggestion·interface, AiTasteScoreBadge·fn, AiTasteReportProps·interface, AiTasteReport·fn
 - `packages/novel-plugin/src/pages/writing-workbench/ComplianceViolationCard.tsx` [ref:1] — ComplianceViolation·interface, ComplianceViolationCard·fn
 - `packages/novel-plugin/src/pages/writing-workbench/ConversationResourcePanel.tsx` [ref:1] — ResourceFile·interface, ConversationResourcePanelProps·interface, ConversationResourcePanel·fn
 - `packages/novel-plugin/src/pages/writing-workbench/CoreShiftPanel.tsx` [ref:1] — CoreShiftPanelProps·interface, CoreShiftPanel·fn
 - `packages/novel-plugin/src/pages/writing-workbench/ResourceSaveController.ts` [ref:1] — saveResourceAndHydrate·fn
 - `packages/novel-plugin/src/pages/writing-workbench/RuntimeStatePanel.tsx` [ref:1] — RuntimeStatePanelProps·interface, RuntimeStatePanel·fn
-- `packages/novel-plugin/src/pages/writing-workbench/ToolConfigBar.tsx` [ref:1] — AgentRole·type, ToolConfigBarProps·interface, ToolConfigBar·fn
 - `packages/novel-plugin/src/pages/writing-workbench/WritingWorkbenchRoute.tsx` [ref:1] — WritingWorkbenchRouteProps·interface, WritingWorkbenchRoute·fn
 - `packages/novel-plugin/src/pages/writing-workbench/ChapterToolbar.tsx` [ref:1] — ChapterToolbarProps·interface, ChapterToolbar·fn
 - `packages/novel-plugin/src/pages/writing-workbench/jingwei/JingweiPanel.tsx` [ref:1] — JingweiPanel·fn
@@ -413,6 +411,7 @@
 - `packages/novel-plugin/src/handlers/jingwei-read.ts` — JingweiReadContextInput·interface, JingweiReadContextResult·interface, JingweiReadBriefInput·interface, JingweiReadBriefResponse·interface, JingweiReadCategoryInput·interface, JingweiReadCategoryResponse·interface, JingweiSearchInput·interface, JingweiSearchResponse·interface, handleJingweiReadBrief·fn, handleJingweiReadCategory·fn, handleJingweiSearch·fn, handleJingweiReadContext·fn
 - `packages/novel-plugin/src/index.ts` — NOVEL_TOOL_SCHEMAS·re-export, NOVEL_HANDLER_DECLARATIONS·re-export, isNovelPluginTool·re-export, getHandlerDeclaration·re-export, NOVEL_TOOL_NAMES·const, NOVEL_TOOL_DEFINITIONS·const, NOVEL_AGENT_PRESET_LIST·const, NOVEL_PLUGIN_MANIFEST·const
 - `packages/novel-plugin/src/pages/writing-config/index.ts` — WritingConfigSection·re-export, WRITING_CONFIG_UI_SECTION·const
+- `packages/novel-plugin/src/pages/writing-workbench/AgentQuickActions.tsx` — AgentQuickActionsProps·interface, AgentQuickActions·fn
 - `packages/novel-plugin/src/pages/writing-workbench/BeatProgressBar.tsx` — BeatProgressBarProps·interface, BeatProgressBar·fn, BeatTemplateListProps·interface, BeatTemplateList·fn
 - `packages/novel-plugin/src/pages/writing-workbench/BookHealthSummary.tsx` — BookHealthSummary·fn
 - `packages/novel-plugin/src/pages/writing-workbench/CharacterArcsPanel.tsx` — CharacterArcsPanelProps·interface, CharacterArcsPanel·fn
@@ -424,9 +423,10 @@
 - `packages/novel-plugin/src/pages/writing-workbench/JingweiGraphWorkspace.tsx` — GraphViewMode·type, JingweiGraphWorkspaceProps·interface, JingweiGraphWorkspace·fn
 - `packages/novel-plugin/src/pages/writing-workbench/StyleDriftPanel.tsx` — StyleDriftPanelProps·interface, StyleDriftPanel·fn
 - `packages/novel-plugin/src/pages/writing-workbench/TemplateMarketPanel.tsx` — TemplateMarketPanelProps·interface, TemplateMarketPanel·fn
+- `packages/novel-plugin/src/pages/writing-workbench/ToolConfigBar.tsx` — AgentRole·type, ToolConfigBarProps·interface, ToolConfigBar·fn
 - `packages/novel-plugin/src/routes/index.ts` — createAIRouter·re-export, createJingweiRouter·re-export, createWritingModesRouter·re-export, createPipelineRouter·re-export, createPipelineRun·re-export, updatePipelineStage·re-export, completePipelineRun·re-export, createFilterRouter·re-export, createComplianceRouter·re-export, createBibleRouter·re-export, createWritingToolsRouter·re-export, createContextManagerRouter·re-export, createQualityTrendRouter·re-export, createPresetHitsRouter·re-export, createChapterLinksRouter·re-export, createWritingResourceRouter·re-export, createOverviewRouter·re-export
 
-## studio　(390 个有导出的文件)
+## studio　(392 个有导出的文件)
 
 - `packages/studio/src/shared/session-types.ts` [ref:30] — SESSION_PERMISSION_MODES·const, SessionPermissionMode·type, SessionReasoningEffort·type, SessionPermissionModeOption·interface, SESSION_PERMISSION_MODE_OPTIONS·const, SESSION_PERMISSION_MODE_LABELS·const, isSessionPermissionMode·fn, normalizeSessionPermissionMode·fn, getSessionPermissionModeOption·fn, getSessionPermissionModeLabel·fn, getSessionPermissionModeDescription·fn, getRecommendedSessionPermissionMode·fn, SessionToolPolicy·interface, SessionConfig·interface, NarratorSessionKind·type, NarratorSessionStatus·type, NarratorSessionMode·type, NarratorSessionRecoveryMetadata·interface, SessionGoal·interface, SessionTodoItem·interface, NarratorSessionRecord·interface, CreateNarratorSessionInput·interface, UpdateNarratorSessionInput·interface, DEFAULT_SESSION_CONFIG·const, MessageImageAttachment·interface, NarratorSessionChatRole·type, TokenUsage·interface, SessionCumulativeUsage·interface, NarratorSessionRuntimeMetadata·interface, NarratorSessionChatMessage·interface, ToolCallStatus·type, ToolCallExecutionEnvelope·interface, ToolCallGovernanceEnvelope·interface, ToolCall·interface, ChatMessage·interface, NarratorSessionChatCursor·interface, NarratorSessionChatSnapshot·interface, NarratorSessionChatHistory·interface, UpdateNarratorSessionChatStateInput·interface, NarratorSessionChatMessageClientEnvelope·interface, NarratorSessionChatAckClientEnvelope·interface, NarratorSessionChatAbortClientEnvelope·interface, NarratorSessionChatContinueClientEnvelope·interface, NarratorSessionSafetyDecisionClientEnvelope·interface, NarratorSessionChatClientMessage·type, NarratorSessionRecoveryState·type, NarratorSessionRecoveryReason·type, NarratorSessionRecoveryEnvelope·interface, NarratorSessionChatSnapshotEnvelope·interface, NarratorSessionChatStateEnvelope·interface, NarratorSessionChatMessageEnvelope·interface, NarratorSessionChatErrorEnvelope·interface, RuntimeError·interface, NarratorSessionChatStreamEnvelope·interface, NarratorSessionChatToolStreamEnvelope·interface, NarratorSessionChatToolInputChunkEnvelope·interface, NarratorSessionSafetyPauseEnvelope·interface, NarratorSessionCompactProgressEnvelope·interface, NarratorSessionTodosUpdatedEnvelope·interface, NarratorSessionChatServerEnvelope·type
 - `packages/studio/src/shared/agent-native-workspace.ts` [ref:21] — SESSION_TOOL_RISKS·const, SessionToolRisk·type, SessionToolRiskDecision·type, SessionToolVisibility·type, JsonObjectSchema·type, SessionToolScope·type, SessionToolDefinition·type, WorkspaceResourceViewKind·type, WorkspaceArtifactKind·type, WorkspaceResourceRef·type, CanvasArtifact·type, OpenResourceTab·type, CanvasSelection·type, CanvasContext·type, ToolConfirmationRisk·type, ToolConfirmationOption·type, ToolConfirmationOperation·type, ToolConfirmationSource·type, ToolConfirmationCheckpoint·type, ToolConfirmationRequest·type, ToolConfirmationDecision·type, ToolConfirmationAudit·type, NormalizeToolConfirmationRequestContext·interface, normalizeToolConfirmationRequest·fn, GuidedGenerationStatus·type, GuidedGenerationTarget·type, GuidedQuestionType·type, GuidedQuestionSource·type, GuidedContextSource·type, GuidedQuestionMapping·type, GuidedQuestion·type, JingweiMutationPreview·type, GuidedGenerationPlan·type, GuidedGenerationState·type, PgiQuestionMetadata·type, PgiMetadata·type, NarrativeNodeType·type, NarrativeEdgeType·type, NarrativeEdgeConfidence·type, NarrativeLine·type, NarrativeNode·type, NarrativeEdge·type, StoryBeat·type, ConflictThread·type, ForeshadowThread·type, PayoffLink·type, NarrativeWarning·type, NarrativeLineSnapshot·type, NarrativeLineMutationPreview·type, GuidedToolMetadata·type, NarrativeToolMetadata·type, AgentNativeToolMetadata·type, SessionToolExecutionInput·type, SessionToolExecutionResult·type, AgentNativeMessageMetadata·type, normalizeSessionToolRisk·fn, getSessionToolRiskDecision·fn
@@ -729,7 +729,9 @@
 - `packages/studio/src/api/lib/api-token-auth.ts` — apiTokenAuth·fn, clearApiTokenCache·fn
 - `packages/studio/src/api/lib/background-task-store.ts` — BackgroundTaskStatus·type, BackgroundTask·interface, CreateBackgroundTaskInput·interface, UpdateBackgroundTaskInput·interface, createBackgroundTask·fn, updateBackgroundTask·fn, getBackgroundTask·fn, listBackgroundTasks·fn, markInterruptedTasks·fn
 - `packages/studio/src/api/lib/command-enabled-registry.ts` — CommandExecutionCheck·interface, CommandEnabledRegistry·interface, CommandEnabledRegistryConfig·interface, createCommandEnabledRegistry·fn
+- `packages/studio/src/api/lib/command-semantics.ts` — CommandInterpretation·interface, interpretCommandResult·fn
 - `packages/studio/src/api/lib/compact/full-compact.ts` — FullCompactResult·interface, fullCompact·fn, resetCompactFailures·fn, getCompactFailureCount·fn
+- `packages/studio/src/api/lib/destructive-command-warning.ts` — getDestructiveWarning·fn, formatDestructiveWarning·fn
 - `packages/studio/src/api/lib/docx-generator.ts` — generateDocx·fn
 - `packages/studio/src/api/lib/epub-generator.ts` — generateEpub·fn
 - `packages/studio/src/api/lib/eval-runner.ts` — BenchmarkType·type, EvalStatus·type, EvalTask·interface, EvalResult·interface, EvalSuiteResult·interface, EvalRunnerOptions·interface, runEvalTask·fn, runEvalSuite·fn
