@@ -494,8 +494,10 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
   // 记录最后一次请求的 input tokens（代表当前上下文窗口占用）
   // Include cache_read tokens because providers with KV cache (DeepSeek) report
   // cached tokens separately — the actual context size is input + cache_read.
+  // Also include output_tokens: the assistant response occupies the context window
+  // for the NEXT request, so the true "current window usage" is input + cache_read + output.
   if (usage.input_tokens != null) {
-    cumulative.lastInputTokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+    cumulative.lastInputTokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.output_tokens ?? 0);
   }
 }
 const abortControllerBySessionId = new Map<string, AbortController>();
