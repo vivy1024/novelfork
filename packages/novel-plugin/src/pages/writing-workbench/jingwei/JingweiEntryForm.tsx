@@ -51,7 +51,8 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
 
   const [title, setTitle] = useState(entry.title);
   const [contentMd, setContentMd] = useState(entry.contentMd ?? "");
-  const [formData, setFormData] = useState<Record<string, unknown>>(entry.fields ?? {});
+  // Deep copy entry.fields to prevent shared reference mutation
+  const [formData, setFormData] = useState<Record<string, unknown>>(() => entry.fields ? JSON.parse(JSON.stringify(entry.fields)) : {});
   const [visibility, setVisibility] = useState<CategoryVisibility>(entry.visibility);
   const [priorityTier, setPriorityTier] = useState<"auto" | "core" | "relevant" | "reference">(entry.priorityTier ?? "auto");
   const [saving, setSaving] = useState(false);
@@ -59,16 +60,16 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form when entry changes
+  // Reset form when entry changes — deep copy fields to prevent shared reference issues
   useEffect(() => {
     setTitle(entry.title);
     setContentMd(entry.contentMd ?? "");
-    setFormData(entry.fields ?? {});
+    setFormData(entry.fields ? JSON.parse(JSON.stringify(entry.fields)) : {});
     setVisibility(entry.visibility);
     setPriorityTier(entry.priorityTier ?? "auto");
     setError(null);
     setConfirmDelete(false);
-  }, [entry.id, entry.title, entry.contentMd, entry.fields, entry.visibility]);
+  }, [entry.id]);
 
   const dirty = useMemo(() => {
     if (title !== entry.title) return true;

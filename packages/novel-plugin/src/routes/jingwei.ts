@@ -341,6 +341,13 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       updatedAt: new Date(),
     });
     if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
+
+    // Also update overhaul columns (fields_json) so frontend reads consistent data
+    const entryId = c.req.param("entryId");
+    if (body.customFields && typeof body.customFields === "object") {
+      storage.sqlite.prepare(`UPDATE "story_jingwei_entry" SET "fields_json" = ? WHERE "id" = ?`).run(JSON.stringify(body.customFields), entryId);
+    }
+
     return c.json({ entry });
   });
 
