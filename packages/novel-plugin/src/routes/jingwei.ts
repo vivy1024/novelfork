@@ -753,5 +753,175 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     }, 201);
   });
 
+  // --- Jingwei v2: Full-text search ---
+  app.get("/api/books/:bookId/jingwei/search", async (c) => {
+    const bookId = c.req.param("bookId");
+    const q = c.req.query("q") ?? "";
+    if (!q.trim()) return c.json({ results: [] });
+
+    const storage = await resolveStorage(options);
+    const results = storage.sqlite.prepare(`
+      SELECT id, title, category, layer, status, substr(content_md, 1, 200) as preview
+      FROM story_jingwei_entry
+      WHERE book_id = ? AND deleted_at IS NULL
+      AND (title LIKE ? OR content_md LIKE ? OR aliases_json LIKE ?)
+      ORDER BY updated_at DESC LIMIT 50
+    `).all(bookId, `%${q}%`, `%${q}%`, `%${q}%`);
+    return c.json({ results });
+  });
+
+  // --- Jingwei v2: Bulk operations ---
+  app.post("/api/books/:bookId/jingwei/bulk", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<{ action: string; entryIds: string[]; target?: string }>();
+    const { action, entryIds, target } = body;
+
+    if (!entryIds?.length) return c.json({ error: "No entries specified" }, 400);
+
+    const placeholders = entryIds.map(() => "?").join(",");
+    const now = Date.now();
+
+    switch (action) {
+      case "move":
+        if (!target) return c.json({ error: "target category required" }, 400);
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET category = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(target, now, ...entryIds, bookId);
+        break;
+      case "delete":
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET deleted_at = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(now, now, ...entryIds, bookId);
+        break;
+      case "set-status":
+        if (!target) return c.json({ error: "target status required" }, 400);
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(target, now, ...entryIds, bookId);
+        break;
+      default:
+        return c.json({ error: `Unknown action: ${action}` }, 400);
+    }
+    return c.json({ ok: true, affected: entryIds.length });
+  });
+
+  // --- Jingwei v2: Revision history ---
+  app.get("/api/books/:bookId/jingwei/entries/:entryId/revisions", async (c) => {
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    const storage = await resolveStorage(options);
+    const revisions = storage.sqlite.prepare(`
+      SELECT id, content_md, category, layer, reason, changed_by, created_at
+      FROM jingwei_revision
+      WHERE entry_id = ? AND book_id = ?
+      ORDER BY created_at DESC LIMIT 20
+    `).all(entryId, bookId);
+    return c.json({ revisions });
+  });
+
+  // --- Jingwei v2: Revert to revision ---
+  app.post("/api/books/:bookId/jingwei/entries/:entryId/revert", async (c) => {
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<{ revisionId: string }>();
+
+    const revision = storage.sqlite.prepare(`SELECT content_md, category, layer FROM jingwei_revision WHERE id = ? AND entry_id = ? AND book_id = ?`).get(body.revisionId, entryId, bookId) as { content_md: string; category?: string; layer?: string } | undefined;
+    if (!revision) return c.json({ error: "Revision not found" }, 404);
+
+    // Save current as new revision before reverting
+    const current = storage.sqlite.prepare(`SELECT content_md, category, layer FROM story_jingwei_entry WHERE id = ? AND book_id = ?`).get(entryId, bookId) as { content_md: string; category?: string; layer?: string } | undefined;
+    if (current) {
+      storage.sqlite.prepare(`INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(crypto.randomUUID(), entryId, bookId, current.content_md, current.category, current.layer, "revert", "user", Date.now());
+    }
+
+    storage.sqlite.prepare(`UPDATE story_jingwei_entry SET content_md = ?, version = version + 1, updated_at = ? WHERE id = ? AND book_id = ?`).run(revision.content_md, Date.now(), entryId, bookId);
+    return c.json({ ok: true });
+  });
+
+  // --- Jingwei v2: Custom categories ---
+  app.get("/api/books/:bookId/jingwei/categories", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+
+    const { CATEGORY_META } = await import("../engine/jingwei/unified-categories.js");
+    const customCats = storage.sqlite.prepare(`SELECT id, name, description, icon, sort_order FROM jingwei_custom_category WHERE book_id = ? ORDER BY sort_order`).all(bookId) as Array<{ id: string; name: string; description?: string; icon?: string; sort_order?: number }>;
+
+    const builtinCategories = CATEGORY_META.map((m: { id: string; name: string; icon: string }) => ({ id: m.id, name: m.name, icon: m.icon, builtin: true }));
+    const customCategories = customCats.map((cat) => ({ id: cat.id, name: cat.name, icon: cat.icon ?? "📁", builtin: false, description: cat.description }));
+
+    return c.json({ categories: [...builtinCategories, ...customCategories] });
+  });
+
+  app.post("/api/books/:bookId/jingwei/categories", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<{ name: string; description?: string; icon?: string }>();
+
+    const id = body.name.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9\u4e00-\u9fff-]/g, "");
+    storage.sqlite.prepare(`INSERT OR IGNORE INTO jingwei_custom_category (id, book_id, name, description, icon, sort_order, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`).run(id || crypto.randomUUID(), bookId, body.name, body.description ?? null, body.icon ?? "📁", 99, Date.now());
+    return c.json({ ok: true, id });
+  });
+
+  // --- Jingwei v2: Injection preview ---
+  app.get("/api/books/:bookId/jingwei/injection-preview", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    const chapterNumber = Number(c.req.query("chapterNumber") ?? 1);
+
+    const entries = storage.sqlite.prepare(`
+      SELECT id, title, category, layer, priority_tier, importance,
+        substr(content_md, 1, 100) as preview,
+        length(content_md) as contentLength,
+        visibility_rule_json
+      FROM story_jingwei_entry
+      WHERE book_id = ? AND deleted_at IS NULL AND participates_in_ai = 1
+      ORDER BY
+        CASE priority_tier WHEN 'core' THEN 0 WHEN 'relevant' THEN 1 WHEN 'reference' THEN 2 ELSE 3 END,
+        importance DESC
+    `).all(bookId) as Array<{ id: string; title: string; category: string; layer: string; priority_tier: string; importance: number; preview: string; contentLength: number; visibility_rule_json: string }>;
+
+    const injected = entries.filter((e) => {
+      const rule = JSON.parse(e.visibility_rule_json || '{"type":"tracked"}');
+      if (rule.type === "global") return true;
+      if (rule.type === "tracked") {
+        const after = rule.visibleAfterChapter ?? 0;
+        const until = rule.visibleUntilChapter ?? Infinity;
+        return chapterNumber >= after && chapterNumber <= until;
+      }
+      return false;
+    });
+
+    return c.json({
+      chapterNumber,
+      totalEntries: entries.length,
+      injectedCount: injected.length,
+      entries: injected.map((e) => ({
+        id: e.id,
+        title: e.title,
+        category: e.category,
+        layer: e.layer,
+        priorityTier: e.priority_tier,
+        importance: e.importance,
+        preview: e.preview,
+        estimatedTokens: Math.ceil(e.contentLength / 1.5),
+      })),
+    });
+  });
+
+  // --- Jingwei v2: Import from markdown ---
+  app.post("/api/books/:bookId/jingwei/import", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<{ entries: Array<{ title: string; contentMd: string; category: string; layer?: string }> }>();
+
+    const now = Date.now();
+    let imported = 0;
+    for (const entry of body.entries) {
+      const id = crypto.randomUUID();
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, layer, priority_tier, importance, category, status, version, created_at, updated_at)
+        VALUES (?, ?, '', ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 1, ?, 'auto', 40, ?, 'draft', 1, ?, ?)
+      `).run(id, bookId, entry.title, entry.contentMd, entry.layer ?? "dynamic", entry.category, now, now);
+      imported++;
+    }
+    return c.json({ ok: true, imported });
+  });
+
   return app;
 }
