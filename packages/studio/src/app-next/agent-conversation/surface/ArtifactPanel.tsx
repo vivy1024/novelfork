@@ -38,6 +38,19 @@ export interface ArtifactPanelProps {
 
 const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.write", "jingwei_write", "jingwei.upsert_entry", "jingwei_upsert_entry", "candidate.create_chapter", "candidate_create_chapter"]);
 
+// Bug 6 fix: jingwei category 校验
+const VALID_JINGWEI_CATEGORIES = new Set([
+  "premise", "world-model", "characters", "relationships", "factions",
+  "locations", "props", "outline", "conflicts", "foreshadowing",
+  "timeline", "chapter-summaries", "power-system", "rules", "reference",
+  "unclassified",
+]);
+
+function normalizeCategory(raw: unknown): string {
+  if (typeof raw === "string" && VALID_JINGWEI_CATEGORIES.has(raw)) return raw;
+  return "unclassified";
+}
+
 /** 从部分 JSON 字符串中尽力解析 file_path 和 content */
 function parsePartialWriteInput(partialJson: string, toolName: string): { filePath: string; content: string } | null {
   // 尝试完整 JSON 解析
@@ -52,12 +65,12 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
     }
     // jingwei.upsert_entry 格式
     if (parsed.title && typeof parsed.contentMd === "string") {
-      const category = parsed.category ?? "unknown";
+      const category = normalizeCategory(parsed.category);
       return { filePath: `jingwei/${category}/${parsed.title}.md`, content: parsed.contentMd };
     }
     // candidate.create_chapter 格式
     if (typeof parsed.content === "string" && (parsed.title || parsed.chapterNumber || toolName.includes("candidate"))) {
-      const title = parsed.title ?? (parsed.chapterNumber ? `第${parsed.chapterNumber}章候选稿` : "章节候选稿");
+      const title = parsed.title ?? (parsed.chapterNumber !== undefined && parsed.chapterNumber !== null ? `第${parsed.chapterNumber}章候选稿` : "章节候选稿");
       return { filePath: `candidates/${title}.md`, content: parsed.content };
     }
   } catch {
@@ -83,19 +96,35 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
 
   // jingwei.upsert_entry 的部分 JSON 解析
   if (toolName.includes("jingwei") || toolName.includes("upsert")) {
-    const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]+)"/);
-    const categoryMatch = partialJson.match(/"category"\s*:\s*"([^"]+)"/);
-    const contentMdMatch = partialJson.match(/"contentMd"\s*:\s*"([\s\S]*)$/);
+    const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]*?)"/);
+    const categoryMatch = partialJson.match(/"category"\s*:\s*"([^"]*?)"/);
+    // Use a non-greedy approach: match contentMd value, stop at the closing of the JSON object
+    const contentMdStart = partialJson.indexOf('"contentMd"');
     const title = titleMatch?.[1] ?? "";
-    const category = categoryMatch?.[1] ?? "unknown";
+    const category = normalizeCategory(categoryMatch?.[1]);
     const filePath = title ? `jingwei/${category}/${title}.md` : "";
 
-    if (contentMdMatch) {
-      let raw = contentMdMatch[1].replace(/["\s}]*$/, "");
-      try {
-        return { filePath, content: JSON.parse(`"${raw}"`) };
-      } catch {
-        return { filePath, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+    if (contentMdStart >= 0) {
+      const afterKey = partialJson.slice(contentMdStart);
+      const colonIdx = afterKey.indexOf(':');
+      if (colonIdx >= 0) {
+        const afterColon = afterKey.slice(colonIdx + 1).trimStart();
+        if (afterColon.startsWith('"')) {
+          let raw = afterColon.slice(1);
+          // Try to find the real end: closing quote followed by next field
+          const nextFieldMatch = raw.match(/",\s*"(?:title|category|layer|action|bookId|entryId|content|mode|priorityTier)/);
+          if (nextFieldMatch && nextFieldMatch.index !== undefined) {
+            raw = raw.slice(0, nextFieldMatch.index);
+          } else {
+            // No next field found — take everything (streaming case)
+            raw = raw.replace(/["\s}]*$/, "");
+          }
+          try {
+            return { filePath, content: JSON.parse(`"${raw}"`) };
+          } catch {
+            return { filePath, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+          }
+        }
       }
     }
     if (filePath) {
@@ -107,18 +136,13 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
   const pathMatch = partialJson.match(/"file_path"\s*:\s*"([^"]+)"/);
   const filePath = pathMatch?.[1] ?? "";
 
-  // 正则提取 content（贪婪匹配到最后）
-  const contentMatch = partialJson.match(/"content"\s*:\s*"([\s\S]*)$/);
+  // 正则提取 content（非贪婪到下一个顶级 key）
+  const contentMatch = partialJson.match(/"content"\s*:\s*"([\s\S]*?)"\s*[,}]/);
   if (contentMatch) {
-    // 尝试 unescape JSON 字符串（部分的）
-    let raw = contentMatch[1];
-    // 移除末尾未闭合的引号/括号
-    raw = raw.replace(/["\s}]*$/, "");
     try {
-      return { filePath, content: JSON.parse(`"${raw}"`) };
+      return { filePath, content: JSON.parse(`"${contentMatch[1]}"`) };
     } catch {
-      // 简单 unescape
-      return { filePath, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+      return { filePath, content: contentMatch[1].replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
     }
   }
 
@@ -169,8 +193,19 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
 
       for (const tc of toolCalls) {
         if (!WRITE_TOOL_NAMES.has(tc.toolName)) continue;
-        if (!tc.id || seen.has(tc.id)) continue;
-        seen.add(tc.id);
+
+        // Bug 2 fix: For jingwei writes, dedup by title+category (not toolCallId)
+        // so that updating the same entry replaces the previous artifact
+        let dedupKey = tc.id ?? "";
+        if (tc.toolName.includes("jingwei") && tc.input) {
+          const inp = tc.input as Record<string, unknown>;
+          if (inp.title) {
+            dedupKey = `jingwei/${normalizeCategory(inp.category)}/${inp.title}`;
+          }
+        }
+
+        if (!tc.id || seen.has(dedupKey)) continue;
+        seen.add(dedupKey);
 
         const isStreaming = tc.status === "running";
 
@@ -198,7 +233,7 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
             || (tc.toolName.includes("candidate") && (input.title || input.chapterNumber)
               ? `candidates/${input.title ?? `第${input.chapterNumber}章候选稿`}.md`
               : "")
-            || (input.title ? `jingwei/${input.category ?? "unknown"}/${input.title}.md` : "");
+            || (input.title ? `jingwei/${normalizeCategory(input.category)}/${input.title}.md` : "");
           if (derivedPath) {
             files.push({
               toolCallId: tc.id,
