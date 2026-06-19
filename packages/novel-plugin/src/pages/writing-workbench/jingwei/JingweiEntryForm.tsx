@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, Trash2, Loader2, X } from "lucide-react";
+import { Save, Trash2, Loader2, X, Plus } from "lucide-react";
 import { getCategorySchema, type CategoryFieldSchema, type CategoryVisibility } from "./category-schemas";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
 import { JingweiProgressions } from "./JingweiProgressions";
@@ -14,7 +14,6 @@ interface JingweiEntryFormProps {
   bookId?: string;
   onSave: (entryId: string, payload: {
     title: string;
-    contentMd?: string;
     fields: Record<string, unknown>;
     visibility: CategoryVisibility;
     aliases?: string[];
@@ -33,51 +32,53 @@ const VISIBILITY_OPTIONS = [
 ];
 
 const PRIORITY_TIER_OPTIONS = [
-  { value: "auto", label: "自动" },
-  { value: "core", label: "核心" },
-  { value: "relevant", label: "相关" },
-  { value: "reference", label: "参考" },
+  { value: "auto", label: "自动（按规则推断）" },
+  { value: "core", label: "核心（始终注入）" },
+  { value: "relevant", label: "相关（按匹配注入）" },
+  { value: "reference", label: "参考（仅 full 模式）" },
 ];
 
 export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: JingweiEntryFormProps) {
   const schema = getCategorySchema(entry.category);
   const fields = schema?.fields ?? [];
 
-  // Only render select/multi-select/tags fields in metadata row
-  const metadataFields = useMemo(
-    () => fields.filter((f) => f.type === "select" || f.type === "multi-select" || f.type === "tags"),
-    [fields]
-  );
-
   const [title, setTitle] = useState(entry.title);
   const [contentMd, setContentMd] = useState(entry.contentMd ?? "");
-  // Deep copy entry.fields to prevent shared reference mutation
-  const [formData, setFormData] = useState<Record<string, unknown>>(() => entry.fields ? JSON.parse(JSON.stringify(entry.fields)) : {});
+  const [formData, setFormData] = useState<Record<string, unknown>>(entry.fields ?? {});
   const [visibility, setVisibility] = useState<CategoryVisibility>(entry.visibility);
   const [priorityTier, setPriorityTier] = useState<"auto" | "core" | "relevant" | "reference">(entry.priorityTier ?? "auto");
+  const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
+  const [aliasInput, setAliasInput] = useState("");
+  const [visibleAfterChapter, setVisibleAfterChapter] = useState<number | null>(entry.visibleAfterChapter ?? null);
+  const [visibleUntilChapter, setVisibleUntilChapter] = useState<number | null>(entry.visibleUntilChapter ?? null);
   const [saving, setSaving] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Reset form when entry changes — deep copy fields to prevent shared reference issues
+  // Reset form when entry changes
   useEffect(() => {
     setTitle(entry.title);
     setContentMd(entry.contentMd ?? "");
-    setFormData(entry.fields ? JSON.parse(JSON.stringify(entry.fields)) : {});
+    setFormData(entry.fields ?? {});
     setVisibility(entry.visibility);
     setPriorityTier(entry.priorityTier ?? "auto");
+    setAliases(entry.aliases ?? []);
+    setAliasInput("");
+    setVisibleAfterChapter(entry.visibleAfterChapter ?? null);
+    setVisibleUntilChapter(entry.visibleUntilChapter ?? null);
     setError(null);
     setConfirmDelete(false);
-  }, [entry.id]);
+  }, [entry.id, entry.title, entry.fields, entry.visibility, entry.aliases, entry.visibleAfterChapter, entry.visibleUntilChapter]);
 
   const dirty = useMemo(() => {
     if (title !== entry.title) return true;
-    if (contentMd !== (entry.contentMd ?? "")) return true;
     if (visibility !== entry.visibility) return true;
-    if (priorityTier !== (entry.priorityTier ?? "auto")) return true;
+    if (JSON.stringify(aliases) !== JSON.stringify(entry.aliases ?? [])) return true;
+    if (visibleAfterChapter !== (entry.visibleAfterChapter ?? null)) return true;
+    if (visibleUntilChapter !== (entry.visibleUntilChapter ?? null)) return true;
     return JSON.stringify(formData) !== JSON.stringify(entry.fields ?? {});
-  }, [title, contentMd, formData, visibility, priorityTier, entry]);
+  }, [title, formData, visibility, aliases, visibleAfterChapter, visibleUntilChapter, entry]);
 
   function setField(key: string, value: unknown) {
     setFormData((prev) => ({ ...prev, [key]: value }));
@@ -89,9 +90,11 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     setError(null);
     const ok = await onSave(entry.id, {
       title: title.trim(),
-      contentMd,
       fields: formData,
       visibility,
+      aliases,
+      visibleAfterChapter,
+      visibleUntilChapter,
     });
     if (!ok) setError("保存失败");
     setSaving(false);
@@ -110,51 +113,136 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
     <div className="flex-1 min-w-0 flex flex-col min-h-0 border-l border-border">
       {/* Header */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-b border-border">
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          className="text-sm h-8 font-medium flex-1"
-          placeholder="条目标题"
-        />
+        <h3 className="text-sm font-medium truncate flex-1">{entry.title}</h3>
         <Button size="xs" variant="ghost" onClick={onClose} title="关闭">
           <X className="size-3" />
         </Button>
       </div>
 
-      {/* Metadata tag row */}
-      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5 border-b border-border flex-wrap">
-        <SimpleSelect
-          value={visibility}
-          onValueChange={(v) => setVisibility(v as CategoryVisibility)}
-          options={VISIBILITY_OPTIONS}
-          className="w-28"
-          aria-label="可见性"
-        />
-        <SimpleSelect
-          value={priorityTier}
-          onValueChange={(v) => setPriorityTier(v as "auto" | "core" | "relevant" | "reference")}
-          options={PRIORITY_TIER_OPTIONS}
-          className="w-24"
-          aria-label="优先级"
-        />
-        {metadataFields.map((field) => (
-          <InlineFieldRenderer
+      {/* Form body */}
+      {contentMd ? (
+        /* Markdown 模式：标题 + 优先级 + 全屏编辑器 */
+        <div className="flex-1 flex flex-col min-h-0 p-3 gap-2">
+          <div className="shrink-0 flex items-center gap-3">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground mb-1 block">标题</label>
+              <Input value={title} onChange={(e) => setTitle(e.target.value)} className="text-sm h-8" />
+            </div>
+            <div className="w-48 shrink-0">
+              <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
+              <SimpleSelect
+                value={priorityTier}
+                onValueChange={(v) => setPriorityTier(v as "auto" | "core" | "relevant" | "reference")}
+                options={PRIORITY_TIER_OPTIONS}
+                className="w-full"
+                aria-label="上下文优先级"
+              />
+            </div>
+          </div>
+
+        {/* Visibility */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">可见性</label>
+          <SimpleSelect
+            value={visibility}
+            onValueChange={(v) => setVisibility(v as CategoryVisibility)}
+            options={VISIBILITY_OPTIONS}
+            className="w-full"
+            aria-label="可见性"
+          />
+        </div>
+
+        {/* Priority Tier */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">上下文优先级</label>
+          <SimpleSelect
+            value={priorityTier}
+            onValueChange={(v) => setPriorityTier(v as "auto" | "core" | "relevant" | "reference")}
+            options={PRIORITY_TIER_OPTIONS}
+            className="w-full"
+            aria-label="上下文优先级"
+          />
+          <p className="mt-1 text-[10px] text-muted-foreground">核心=始终注入 Agent；参考=仅 full 模式</p>
+        </div>
+
+        {/* Chapter visibility range */}
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">可见起始章节</label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="留空=始终"
+              value={visibleAfterChapter ?? ""}
+              onChange={(e) => setVisibleAfterChapter(e.target.value ? Number(e.target.value) : null)}
+              className="text-sm h-8"
+            />
+          </div>
+          <div>
+            <label className="text-xs text-muted-foreground mb-1 block">可见截止章节</label>
+            <Input
+              type="number"
+              min={0}
+              placeholder="留空=永不过期"
+              value={visibleUntilChapter ?? ""}
+              onChange={(e) => setVisibleUntilChapter(e.target.value ? Number(e.target.value) : null)}
+              className="text-sm h-8"
+            />
+          </div>
+        </div>
+
+        {/* Aliases */}
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">别名（用于 AI 上下文匹配）</label>
+          <div className="flex flex-wrap gap-1 mb-1.5">
+            {aliases.map((alias, i) => (
+              <Badge key={i} variant="secondary" className="text-[10px] gap-0.5 pr-1">
+                {alias}
+                <button
+                  type="button"
+                  onClick={() => setAliases(aliases.filter((_, j) => j !== i))}
+                  className="ml-0.5 hover:text-destructive"
+                >
+                  <X className="size-2.5" />
+                </button>
+              </Badge>
+            ))}
+          </div>
+          <div className="flex gap-1">
+            <Input
+              value={aliasInput}
+              onChange={(e) => setAliasInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && aliasInput.trim()) {
+                  e.preventDefault();
+                  setAliases([...aliases, aliasInput.trim()]);
+                  setAliasInput("");
+                }
+              }}
+              placeholder="输入别名后回车"
+              className="text-sm h-7 flex-1"
+            />
+            <Button
+              type="button"
+              size="xs"
+              variant="outline"
+              disabled={!aliasInput.trim()}
+              onClick={() => { setAliases([...aliases, aliasInput.trim()]); setAliasInput(""); }}
+            >
+              <Plus className="size-3" />
+            </Button>
+          </div>
+        </div>
+
+        {/* Dynamic fields */}
+        {fields.map((field) => (
+          <FieldRenderer
             key={field.key}
             field={field}
             value={formData[field.key]}
             onChange={(val) => setField(field.key, val)}
           />
         ))}
-      </div>
-
-      {/* Markdown editor — always visible, flex-1 */}
-      <div className="flex-1 flex flex-col min-h-0 p-3 gap-2">
-        <Textarea
-          value={contentMd}
-          onChange={(e) => setContentMd(e.target.value)}
-          className="font-mono text-sm flex-1 min-h-[300px] resize-none"
-          placeholder="在此编写条目内容（支持 Markdown 格式）..."
-        />
 
         {/* Progressions section */}
         {bookId && (
@@ -189,44 +277,112 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
   );
 }
 
-/** Inline renderer for select/multi-select/tags fields in the metadata row */
-function InlineFieldRenderer({ field, value, onChange }: { field: CategoryFieldSchema; value: unknown; onChange: (val: unknown) => void }) {
+/** Render a single field based on its schema type */
+function FieldRenderer({ field, value, onChange }: { field: CategoryFieldSchema; value: unknown; onChange: (val: unknown) => void }) {
   const strVal = typeof value === "string" ? value : (value == null ? "" : String(value));
+  const numVal = typeof value === "number" ? value : (value ? Number(value) : undefined);
 
   switch (field.type) {
+    case "text":
+    case "relation":
+      return (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <Input value={strVal} onChange={(e) => onChange(e.target.value)} className="text-sm h-8" placeholder={field.helpText} />
+        </div>
+      );
+
+    case "textarea":
+      return (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <Textarea value={strVal} onChange={(e) => onChange(e.target.value)} rows={3} className="text-sm" placeholder={field.helpText} />
+        </div>
+      );
+
+    case "number":
+      return (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <Input type="number" value={numVal ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)} className="text-sm h-8" />
+        </div>
+      );
+
+    case "chapter":
+      return (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <div className="flex items-center gap-1">
+            <Input type="number" value={numVal ?? ""} onChange={(e) => onChange(e.target.value ? Number(e.target.value) : undefined)} className="text-sm h-8 w-24" min={1} />
+            <span className="text-xs text-muted-foreground">章</span>
+          </div>
+        </div>
+      );
+
     case "select":
       return (
-        <SimpleSelect
-          value={strVal}
-          onValueChange={(v) => onChange(v)}
-          options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
-          placeholder={field.label}
-          className="w-28"
-          aria-label={field.label}
-        />
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <SimpleSelect
+            value={strVal}
+            onValueChange={(v) => onChange(v)}
+            options={(field.options ?? []).map((o) => ({ value: o, label: o }))}
+            placeholder="请选择"
+            className="w-full"
+            aria-label={field.label}
+          />
+        </div>
       );
 
     case "multi-select":
       return (
-        <Input
-          value={strVal}
-          onChange={(e) => onChange(e.target.value)}
-          className="text-xs h-7 w-36"
-          placeholder={field.label}
-          title={field.helpText ?? "逗号分隔多个选项"}
-        />
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">
+            {field.label}
+            {field.required && <span className="text-destructive ml-0.5">*</span>}
+          </label>
+          <Input value={strVal} onChange={(e) => onChange(e.target.value)} className="text-sm h-8" placeholder="逗号分隔多个选项" />
+        </div>
       );
 
     case "tags":
-      return <InlineTagsField field={field} value={value} onChange={onChange} />;
+      return <TagsField field={field} value={value} onChange={onChange} />;
+
+    case "boolean":
+      return (
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={!!value} onChange={(e) => onChange(e.target.checked)} className="rounded" />
+          <label className="text-xs text-muted-foreground">{field.label}</label>
+        </div>
+      );
 
     default:
-      return null;
+      return (
+        <div>
+          <label className="text-xs text-muted-foreground mb-1 block">{field.label}</label>
+          <Input value={strVal} onChange={(e) => onChange(e.target.value)} className="text-sm h-8" />
+        </div>
+      );
   }
 }
 
-/** Inline tags field for metadata row */
-function InlineTagsField({ field, value, onChange }: { field: CategoryFieldSchema; value: unknown; onChange: (val: unknown) => void }) {
+/** Tags field with badge display */
+function TagsField({ field, value, onChange }: { field: CategoryFieldSchema; value: unknown; onChange: (val: unknown) => void }) {
   const tags: string[] = Array.isArray(value) ? value : (typeof value === "string" && value ? value.split(",").map((s) => s.trim()).filter(Boolean) : []);
   const [input, setInput] = useState("");
 
@@ -238,22 +394,34 @@ function InlineTagsField({ field, value, onChange }: { field: CategoryFieldSchem
     setInput("");
   }
 
+  function removeTag(tag: string) {
+    onChange(tags.filter((t) => t !== tag));
+  }
+
   return (
-    <div className="inline-flex items-center gap-1">
-      {tags.map((tag) => (
-        <Badge key={tag} variant="secondary" className="text-[10px] gap-0.5">
-          {tag}
-          <button type="button" onClick={() => onChange(tags.filter((t) => t !== tag))} className="ml-0.5 hover:text-destructive">
-            <X className="size-2.5" />
-          </button>
-        </Badge>
-      ))}
+    <div>
+      <label className="text-xs text-muted-foreground mb-1 block">
+        {field.label}
+        {field.required && <span className="text-destructive ml-0.5">*</span>}
+      </label>
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-1.5">
+          {tags.map((tag) => (
+            <Badge key={tag} variant="secondary" className="text-[10px] gap-0.5">
+              {tag}
+              <button type="button" onClick={() => removeTag(tag)} className="ml-0.5 hover:text-destructive">
+                <X className="size-2.5" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+      )}
       <Input
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTag(); } }}
-        placeholder={field.label}
-        className="text-xs h-7 w-24"
+        placeholder={field.helpText ?? "输入后回车添加"}
+        className="text-sm h-7"
       />
     </div>
   );
