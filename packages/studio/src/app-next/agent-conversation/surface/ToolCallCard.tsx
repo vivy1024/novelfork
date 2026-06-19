@@ -38,9 +38,9 @@ export interface ConversationToolCall {
 // ---------------------------------------------------------------------------
 
 const BASH_TOOLS = new Set(["Bash", "Shell", "Execute", "Terminal"]);
-const READ_TOOLS = new Set(["Read", "WebSearch", "WebFetch"]);
+const READ_TOOLS = new Set(["Read", "WebSearch", "WebFetch", "jingwei.read"]);
 const SEARCH_TOOLS = new Set(["Glob", "Grep", "Find"]);
-const WRITE_TOOLS = new Set(["Write", "Edit", "create_file", "edit_file", "write_file"]);
+const WRITE_TOOLS = new Set(["Write", "Edit", "create_file", "edit_file", "write_file", "jingwei.write"]);
 const BROWSER_TOOLS = new Set(["Browser"]);
 const AGENT_TOOLS = new Set(["Agent", "Task", "Send", "Await", "TeamStatus", "TaskCreate"]);
 const QUESTION_TOOLS = new Set(["AskUserQuestion", "UserQuestionGate"]);
@@ -427,11 +427,14 @@ export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: C
 function ToolCallExpanded({ toolCall, category }: { toolCall: ConversationToolCall; category: ToolCategory }) {
   return (
     <div className="px-3 py-2 space-y-2 text-xs overflow-hidden">
+      {/* jingwei.read — 结构化经纬条目卡片 */}
+      {toolCall.toolName === "jingwei.read" && <JingweiReadExpanded toolCall={toolCall} />}
+
       {/* Bash 终端风格 */}
-      {category === "bash" && <BashExpanded toolCall={toolCall} />}
+      {toolCall.toolName !== "jingwei.read" && category === "bash" && <BashExpanded toolCall={toolCall} />}
 
       {/* Read 工具 — 文件路径 + 代码内容 */}
-      {category === "read" && <ReadExpanded toolCall={toolCall} />}
+      {toolCall.toolName !== "jingwei.read" && category === "read" && <ReadExpanded toolCall={toolCall} />}
 
       {/* Search (Grep/Glob) — 搜索词 badge + 结果列表 */}
       {category === "search" && <SearchExpanded toolCall={toolCall} />}
@@ -1047,6 +1050,152 @@ function NovelAuditExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   }
 
   return <GenericExpanded toolCall={toolCall} />;
+}
+
+// ---------------------------------------------------------------------------
+// JingweiRead 展开 — 结构化经纬条目卡片
+// ---------------------------------------------------------------------------
+
+function JingweiReadExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
+  const input = (toolCall.input ?? {}) as Record<string, unknown>;
+  const scope = (typeof input.scope === "string" ? input.scope : "brief") as "brief" | "category" | "search";
+  const result = toolCall.result as Record<string, unknown> | undefined;
+  const data = (result && typeof result === "object" && "data" in result)
+    ? result.data as Record<string, unknown>
+    : undefined;
+
+  // Fallback: 如果无法解析结构化数据，显示 summary
+  if (!data) {
+    return (
+      <div className="space-y-1">
+        <span className="text-[10px] text-muted-foreground">{toolCall.summary ?? "经纬读取完成"}</span>
+      </div>
+    );
+  }
+
+  const estimatedTokens = typeof data.estimatedTokens === "number" ? data.estimatedTokens : undefined;
+  const droppedCount = Array.isArray(data.droppedEntryIds) ? data.droppedEntryIds.length : 0;
+
+  return (
+    <div className="space-y-2">
+      {/* 头部：scope badge + token 统计 */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Badge variant="outline" className="h-4 px-1.5 text-[10px] font-medium">
+          {scope === "brief" ? "核心包" : scope === "category" ? `分类: ${String(data.category ?? "")}` : `搜索: ${String(data.query ?? "")}`}
+        </Badge>
+        {estimatedTokens != null && (
+          <span className="text-[10px] text-muted-foreground">{estimatedTokens} tokens</span>
+        )}
+        {droppedCount > 0 && (
+          <span className="text-[10px] text-amber-600 dark:text-amber-400">· {droppedCount} 条已省略</span>
+        )}
+      </div>
+
+      {/* brief scope: coreBrief 条目列表 + 推荐读取 */}
+      {scope === "brief" && (
+        <>
+          {Array.isArray(data.coreBrief) && data.coreBrief.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+                核心条目 ({(data.coreBrief as unknown[]).length})
+              </span>
+              <div className="max-h-60 overflow-auto rounded-md bg-muted/40 px-3 py-2 space-y-1.5">
+                {(data.coreBrief as Array<Record<string, unknown>>).map((item, i) => (
+                  <div key={i} className="text-[11px]">
+                    <div className="flex items-center gap-1.5">
+                      {typeof item.priorityTier === "string" && (
+                        <span className={`size-1.5 rounded-full shrink-0 ${
+                          item.priorityTier === "core" ? "bg-blue-500" :
+                          item.priorityTier === "relevant" ? "bg-green-500" : "bg-gray-400"
+                        }`} />
+                      )}
+                      <span className="font-medium truncate">{String(item.title ?? "")}</span>
+                      {typeof item.sectionName === "string" && (
+                        <span className="text-muted-foreground/60 shrink-0">· {item.sectionName}</span>
+                      )}
+                    </div>
+                    {typeof item.summaryMd === "string" && item.summaryMd.trim() && (
+                      <div className="pl-3 text-muted-foreground line-clamp-2">{item.summaryMd}</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 分类目录 index */}
+          {data.index && typeof data.index === "object" && Array.isArray((data.index as Record<string, unknown>).categories) && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">分类目录</span>
+              <div className="flex flex-wrap gap-1">
+                {((data.index as Record<string, unknown>).categories as Array<Record<string, unknown>>).map((cat, i) => (
+                  <span key={i} className="inline-flex items-center gap-1 rounded bg-muted/60 px-1.5 py-0.5 text-[10px]">
+                    <span className="font-medium">{String(cat.title ?? cat.category ?? "")}</span>
+                    {typeof cat.count === "number" && <span className="text-muted-foreground">({cat.count})</span>}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 推荐读取 */}
+          {Array.isArray(data.recommendedReads) && data.recommendedReads.length > 0 && (
+            <div className="space-y-1">
+              <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">推荐深入读取</span>
+              <div className="rounded-md bg-muted/40 px-3 py-1.5 space-y-0.5">
+                {(data.recommendedReads as Array<Record<string, unknown>>).map((rec, i) => (
+                  <div key={i} className="text-[11px] text-muted-foreground">
+                    <span className="font-medium text-foreground">{String(rec.category ?? "")}</span>
+                    {typeof rec.reason === "string" && <span> — {rec.reason}</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* category/search scope: items 列表 */}
+      {(scope === "category" || scope === "search") && Array.isArray(data.items) && (
+        <div className="space-y-1">
+          <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            条目 ({typeof data.returnedCount === "number" ? data.returnedCount : (data.items as unknown[]).length}
+            {typeof data.totalAvailable === "number" ? ` / ${data.totalAvailable}` : ""})
+          </span>
+          <div className="max-h-60 overflow-auto rounded-md bg-muted/40 px-3 py-2 space-y-1.5">
+            {(data.items as Array<Record<string, unknown>>).map((item, i) => (
+              <div key={i} className="text-[11px]">
+                <div className="flex items-center gap-1.5">
+                  {typeof item.priorityTier === "string" && (
+                    <span className={`size-1.5 rounded-full shrink-0 ${
+                      item.priorityTier === "core" ? "bg-blue-500" :
+                      item.priorityTier === "relevant" ? "bg-green-500" : "bg-gray-400"
+                    }`} />
+                  )}
+                  <span className="font-medium truncate">{String(item.title ?? "")}</span>
+                  {typeof item.sectionName === "string" && (
+                    <span className="text-muted-foreground/60 shrink-0">· {item.sectionName}</span>
+                  )}
+                  {typeof item.score === "number" && scope === "search" && (
+                    <span className="text-muted-foreground/50 shrink-0">score: {item.score.toFixed(2)}</span>
+                  )}
+                </div>
+                {typeof item.summaryMd === "string" && item.summaryMd.trim() && (
+                  <div className="pl-3 text-muted-foreground line-clamp-2">{item.summaryMd}</div>
+                )}
+                {typeof item.matchReason === "string" && (
+                  <div className="pl-3 text-blue-600 dark:text-blue-400 text-[10px]">匹配: {item.matchReason}</div>
+                )}
+              </div>
+            ))}
+          </div>
+          {typeof data.hasMore === "boolean" && data.hasMore && (
+            <span className="text-[10px] text-muted-foreground">还有更多条目，可翻页继续读取</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 
 function GenericExpanded({ toolCall }: { toolCall: ConversationToolCall }) {

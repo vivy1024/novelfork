@@ -835,6 +835,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                 metadata: { toolResult },
               });
 
+              // jingwei.write 成功后注入缓存失效提示
+              if (toolUse.name === "jingwei.write" && toolResult.ok) {
+                systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+              }
+
               if (isPendingConfirmationResult(toolResult)) {
                 emit({ type: "confirmation_required", id: toolResult.confirmation?.id ?? toolUse.id, toolName: toolUse.name, result: toolResult, sourceToolUseId: toolUse.id });
                 return events;
@@ -1076,6 +1081,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           metadata: { toolResult },
         });
 
+        // jingwei.write 成功后注入缓存失效提示，避免后续回合使用过期经纬数据
+        if (toolUse.name === "jingwei.write" && toolResult.ok) {
+          systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+        }
+
         if (isPendingConfirmationResult(toolResult)) {
           emit({
             type: "confirmation_required",
@@ -1245,6 +1255,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           ...(toolResult.data !== undefined ? { data: toolResult.data } : {}),
           metadata: { toolResult },
         });
+
+        // jingwei.write 成功后注入缓存失效提示，避免后续回合使用过期经纬数据
+        if (toolUse.name === "jingwei.write" && toolResult.ok) {
+          systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+        }
 
         if (isPendingConfirmationResult(toolResult)) {
           emit({
