@@ -8,7 +8,7 @@
  */
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { JingweiLayer } from "../engine/jingwei/types.js";
-import { normalizeCategory } from "../engine/jingwei/unified-categories.js";
+import { LEGACY_CATEGORY_MAP, JINGWEI_CATEGORIES } from "../engine/jingwei/unified-categories.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -31,6 +31,12 @@ export interface JingweiWriteInput {
   priorityTier?: "core" | "relevant" | "reference" | "auto";
   /** 重要度评分 0-100，省略时按 priorityTier 映射 */
   importance?: number;
+  /** 确认修改 canon 条目（canon 条目更新时必须为 true） */
+  confirmCanonEdit?: boolean;
+  /** 条目状态 */
+  status?: "draft" | "confirmed" | "needs-review";
+  /** 变更原因（存入 revision history） */
+  reason?: string;
 }
 
 export interface JingweiWriteSuccess {
@@ -91,17 +97,13 @@ function inferCategory(raw: string, entryTitle: string, content: string): string
   return raw || "setting";
 }
 
-function generateSummary(contentMd: string): string {
-  return contentMd.trim().replace(/\s+/g, " ").slice(0, 240);
-}
-
-/** L0 一句话摘要：取首句或前 40 字 */
-function generateL0(contentMd: string): string {
-  const normalized = contentMd.trim().replace(/\s+/g, " ");
-  const sentenceMatch = normalized.match(/^[^。！？.!?\n]{1,60}[。！？.!?]?/);
-  const firstSentence = sentenceMatch?.[0]?.trim();
-  if (firstSentence && firstSentence.length >= 4) return firstSentence;
-  return normalized.slice(0, 40);
+/** Legacy normalizeCategory: map old names to unified enum, but allow free-form */
+function normalizeCategoryLegacy(raw: string): string {
+  const mapped = LEGACY_CATEGORY_MAP[raw];
+  if (mapped) return mapped.category;
+  if ((JINGWEI_CATEGORIES as readonly string[]).includes(raw)) return raw;
+  // Free-form: return trimmed value as-is (custom category)
+  return raw.trim() || "unclassified";
 }
 
 /** importance 默认值：写入参数优先，否则按 priorityTier 映射 */
@@ -183,20 +185,19 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
   const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
   const visibility = String(input.visibility || "tracked");
-  const summaryMd = typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0
-    ? input.summaryMd.trim()
-    : generateSummary(contentMd);
   const priorityTier = (input.priorityTier === "core" || input.priorityTier === "relevant" || input.priorityTier === "reference" || input.priorityTier === "auto")
     ? input.priorityTier
     : "auto";
   const importance = resolveImportance(input.importance, priorityTier);
-  const summaryL0 = generateL0(summaryMd || contentMd);
   const relatedEntryIds = Array.isArray(input.relatedEntryIds)
     ? input.relatedEntryIds.filter((id): id is string => typeof id === "string")
     : [];
+  const entryStatus = (input.status === "draft" || input.status === "confirmed" || input.status === "needs-review")
+    ? input.status
+    : "confirmed";
 
   const rawInferred = inferCategory(rawCategory, title, contentMd);
-  const { category } = normalizeCategory(rawInferred);
+  const category = normalizeCategoryLegacy(rawInferred);
 
   if (!title) {
     return { ok: false, error: "invalid-input", summary: "title 不能为空。" };
@@ -223,8 +224,8 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
     // Find existing entry by title
     const existingRows = storage.sqlite.prepare(
-      `SELECT id, section_id, content_md, layer FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
-    ).all(bookId, title) as Array<{ id: string; section_id: string; content_md: string; layer: string | null }>;
+      `SELECT id, section_id, content_md, layer, category FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
+    ).all(bookId, title) as Array<{ id: string; section_id: string; content_md: string; layer: string | null; category: string | null }>;
 
     const visibilityJson = JSON.stringify({ type: visibility });
     const aliasesJson = JSON.stringify(aliases);
@@ -238,9 +239,17 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     if (existingRows.length > 0) {
       const existing = existingRows[0]!;
       const existingLayer = (existing.layer as JingweiLayer) || "dynamic";
+      const existingCategory = existing.category || "unclassified";
 
-      // Canon write protection: existing canon entries can only be appended to
+      // Canon write protection: requires explicit confirmation
       if (existingLayer === "canon") {
+        if (input.confirmCanonEdit !== true) {
+          return {
+            ok: false,
+            error: "canon-confirm-required",
+            summary: `Canon 条目「${title}」需要确认后才能修改。请添加 confirmCanonEdit: true 参数确认修改。`,
+          };
+        }
         // Critical fix: Canon 条目的 layer 不能被降级（防止先降级再删除的绕过攻击）
         if (layer !== "canon") {
           return {
@@ -261,23 +270,26 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         }
       }
 
+      // Save revision before overwriting
+      const revisionId = crypto.randomUUID();
+      storage.sqlite.prepare(`
+        INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(revisionId, existing.id, bookId, existing.content_md, existingCategory, existingLayer, input.reason ?? null, "agent", now);
+
       // Append mode: concatenate new content to existing content
       let finalContentMd = contentMd;
       if (input.mode === "append" && existing.content_md && existing.content_md.trim().length > 0 && contentMd) {
         finalContentMd = existing.content_md + "\n\n" + contentMd;
       }
-      const finalSummaryMd = input.mode === "append" && finalContentMd !== contentMd
-        ? (typeof input.summaryMd === "string" && input.summaryMd.trim().length > 0 ? input.summaryMd.trim() : generateSummary(finalContentMd))
-        : summaryMd;
-      const finalSummaryL0 = generateL0(finalSummaryMd || finalContentMd);
 
-      // Update existing entry
+      // Update existing entry (version increment + no summary generation)
       const entryId = existing.id;
       storage.sqlite.prepare(`
         UPDATE story_jingwei_entry
-        SET content_md = ?, summary_md = ?, summary_l0 = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, category = ?, updated_at = ?
+        SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, category = ?, status = ?, version = version + 1, updated_at = ?
         WHERE id = ?
-      `).run(finalContentMd, finalSummaryMd, finalSummaryL0, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, category, now, entryId);
+      `).run(finalContentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, category, entryStatus, now, entryId);
 
       return {
         ok: true,
@@ -288,9 +300,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       // Create new entry
       const entryId = crypto.randomUUID();
       storage.sqlite.prepare(`
-        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, summary_md, summary_l0, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, priority_tier, importance, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?, ?, ?)
-      `).run(entryId, bookId, sectionId, title, contentMd, summaryMd, summaryL0, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, priorityTier, importance, now, now);
+        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, priority_tier, importance, status, version, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?, ?, 1, ?, ?)
+      `).run(entryId, bookId, sectionId, title, contentMd, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, priorityTier, importance, entryStatus, now, now);
 
       return {
         ok: true,

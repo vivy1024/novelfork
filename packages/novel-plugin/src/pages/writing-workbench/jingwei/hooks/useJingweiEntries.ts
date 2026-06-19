@@ -15,6 +15,9 @@ export interface JingweiEntry {
   visibleUntilChapter?: number | null;
   createdAt?: string;
   updatedAt?: string;
+  status?: "draft" | "confirmed" | "needs-review";
+  version?: number;
+  layer?: "canon" | "dynamic" | "reference";
 }
 
 interface UseJingweiEntriesResult {
@@ -23,7 +26,7 @@ interface UseJingweiEntriesResult {
   error: string | null;
   refresh: () => void;
   createEntry: (title: string, fields?: Record<string, unknown>, parentId?: string) => Promise<JingweiEntry | null>;
-  updateEntry: (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "fields" | "visibility" | "aliases" | "relatedEntryIds" | "visibleAfterChapter" | "visibleUntilChapter">>) => Promise<boolean>;
+  updateEntry: (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "contentMd" | "fields" | "visibility" | "aliases" | "relatedEntryIds" | "visibleAfterChapter" | "visibleUntilChapter">>) => Promise<boolean>;
   deleteEntry: (entryId: string) => Promise<boolean>;
 }
 

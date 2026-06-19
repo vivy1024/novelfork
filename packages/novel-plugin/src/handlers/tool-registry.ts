@@ -236,7 +236,34 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.write",
-    description: "经纬（设定数据库）写入工具。用于管理世界观、角色、伏笔等设定数据。\n\naction=create：创建新条目。必须传入 title、category、contentMd。\naction=update：更新已有条目（传入 entryId）。\naction=delete：删除条目（Canon 层条目不可删除）。\n\nlayer 三层含义：\n- canon：不可变真相（世界规则、已发生历史）——一旦设定不可修改\n- dynamic（默认）：随剧情演进可变的设定（角色状态、势力关系）\n- reference：低优先级参考资料，AI 仅在相关时读取\n\ncategory 必须使用统一枚举值：premise/world-model/characters/relationships/factions/locations/props/outline/conflicts/foreshadowing/timeline/chapter-summaries/power-system/rules/reference。不要使用旧值（setting/character/worldview 等）。\n\n使用时机：\n- 用户提供了新的设定/角色/规则信息时\n- 需要修改条目的分类（category）、layer、或内容时\n- 分类重组时：只改 category 不需要传 contentMd（canon 条目也可以改分类）\n\n不要用的时候：\n- 用户只是在讨论设定但没有确认要入库\n- 不确定分类时先问用户\n\n常见错误：\n- 不要用 Bash SQL 绕道——jingwei.write 支持所有设定修改\n- Canon 条目可以改 category/metadata，只是 content 不能修改已有部分\n\n注意：修改设定请用此工具，不要直接用 Write/Edit 改文件。",
+    description: `经纬（设定数据库）写入工具。用于管理世界观、角色、设定等。
+
+action=create：创建新条目。必须传入 title、category、contentMd。
+action=update：更新已有条目（传 entryId 或 title 匹配）。
+action=delete：删除条目。
+
+layer 三层：canon（世界规则，修改需 confirmCanonEdit=true）/ dynamic（随剧情变化，默认）/ reference（低优先级参考）
+
+category 自由填写——可以用内置分类（characters/world-model/power-system/factions/locations/props/outline/conflicts/foreshadowing/timeline/rules/relationships/chapter-summaries/premise/reference），也可以创建任何新分类名。
+
+新增功能：
+- confirmCanonEdit: true — 修改 Canon 条目时必须传此参数
+- reason: "变更原因" — 记录到修改历史，方便回溯
+- status: "draft"/"confirmed"/"needs-review" — 标记条目状态
+
+使用时机：
+- 用户提供了新设定/角色/规则信息 → 创建或更新
+- 分类重组 → update + 新 category（canon 条目也可以改分类）
+- 写完章节后更新角色状态 → update dynamic 条目
+
+不要用的时候：
+- 用户只是在讨论设定但没确认要入库
+- 不确定分类时先问用户
+
+常见错误：
+- 不要用 Bash SQL 绕道——本工具支持所有操作
+- Canon 条目可以改 category 和追加内容
+- 要修改 Canon 的正文内容需要 confirmCanonEdit=true`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
@@ -254,7 +281,19 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "jingwei.read",
-    description: "经纬（设定数据库）读取工具。三种模式按需选用：\n\nscope=brief（推荐首选）：返回核心设定包 + 分类目录索引。约 2000-5000 tokens，适合每次写作前快速加载上下文。\n\nscope=category：按分类分页读取详细条目。传入 category（如 characters/world-model/conflicts 等统一枚举值）和可选 page。适合需要某类设定完整细节时使用。\n\nscope=search：关键词搜索所有条目。传入 query 字符串。适合查找特定角色/地点/设定。\n\n使用时机：\n- 用户说「看经纬」/「看设定」/「看世界模型」→ scope=brief 或 scope=category 直接返回给用户查看\n- 准备写作前加载上下文 → scope=brief\n- 查找特定设定 → scope=search\n\n不要用的时候：\n- 刚读过且上下文中还能看到结果时（除非被折叠提示了）\n\n注意：\n- 旧工具结果可能已被折叠——如果上下文中看不到之前读过的设定，请重新调用\n- brief 模式 token 开销最小，优先使用\n- category 值必须使用统一枚举（characters/world-model/locations/conflicts 等），不要用旧名（character/worldview/geography）",
+    description: `经纬（设定数据库）读取工具。
+
+scope=brief：返回核心设定包 + 分类目录。约 2000-5000 tokens。
+scope=category：按分类读取详细条目。传 category（任何已有分类名）和 page。
+scope=search：关键词搜索。传 query 字符串。
+
+使用时机：
+- 用户说"看经纬"/"看设定"/"看世界模型" → scope=brief 返回给用户看
+- 准备写作前加载上下文 → scope=brief
+- 查找特定设定 → scope=search
+
+不要用的时候：
+- 刚读过且上下文中还能看到结果时`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
     risk: "read",
     renderer: "jingwei.read",
