@@ -904,6 +904,52 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     });
   });
 
+  // --- Jingwei v2: Entry Dependencies CRUD ---
+  app.get("/api/books/:bookId/jingwei/entries/:entryId/dependencies", async (c) => {
+    const bookId = c.req.param("bookId");
+    const entryId = c.req.param("entryId");
+    const storage = await resolveStorage(options);
+
+    const dependsOn = storage.sqlite.prepare(`
+      SELECT d.id as depId, d.relation_type as relationType, d.target_entry_id as targetEntryId,
+        e.title, e.category
+      FROM jingwei_dependency d
+      JOIN story_jingwei_entry e ON e.id = d.target_entry_id
+      WHERE d.source_entry_id = ? AND d.book_id = ? AND e.deleted_at IS NULL
+    `).all(entryId, bookId);
+
+    const dependedBy = storage.sqlite.prepare(`
+      SELECT d.id as depId, d.relation_type as relationType, d.source_entry_id as sourceEntryId,
+        e.title, e.category
+      FROM jingwei_dependency d
+      JOIN story_jingwei_entry e ON e.id = d.source_entry_id
+      WHERE d.target_entry_id = ? AND d.book_id = ? AND e.deleted_at IS NULL
+    `).all(entryId, bookId);
+
+    return c.json({ dependsOn, dependedBy });
+  });
+
+  app.post("/api/books/:bookId/jingwei/dependencies", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    const body = await c.req.json<{ sourceEntryId: string; targetEntryId: string; relationType?: string }>();
+
+    const id = crypto.randomUUID();
+    storage.sqlite.prepare(`
+      INSERT OR IGNORE INTO jingwei_dependency (id, source_entry_id, target_entry_id, book_id, relation_type, created_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(id, body.sourceEntryId, body.targetEntryId, bookId, body.relationType ?? "references", Date.now());
+    return c.json({ ok: true, id });
+  });
+
+  app.delete("/api/books/:bookId/jingwei/dependencies/:depId", async (c) => {
+    const bookId = c.req.param("bookId");
+    const depId = c.req.param("depId");
+    const storage = await resolveStorage(options);
+    storage.sqlite.prepare(`DELETE FROM jingwei_dependency WHERE id = ? AND book_id = ?`).run(depId, bookId);
+    return c.json({ ok: true });
+  });
+
   // --- Jingwei v2: Import from markdown ---
   app.post("/api/books/:bookId/jingwei/import", async (c) => {
     const bookId = c.req.param("bookId");

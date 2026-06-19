@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, Trash2, Loader2, X, History } from "lucide-react";
+import { Save, Trash2, Loader2, X, History, Link } from "lucide-react";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
 
 interface JingweiEntryFormProps {
@@ -140,6 +140,9 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
         />
       </div>
 
+      {/* Dependencies */}
+      <DependenciesSection bookId={bookId} entryId={entry.id} />
+
       {/* Footer */}
       <div className="shrink-0 flex items-center gap-2 px-3 py-2 border-t border-border">
         <Button size="sm" disabled={saving} onClick={handleSave}>
@@ -159,6 +162,115 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
 
       {/* Revision history panel (conditional) */}
       {showHistory && <RevisionHistoryPanel bookId={bookId} entryId={entry.id} />}
+    </div>
+  );
+}
+
+function DependenciesSection({ bookId, entryId }: { bookId?: string; entryId: string }) {
+  const [deps, setDeps] = useState<{ dependsOn: any[]; dependedBy: any[] }>({ dependsOn: [], dependedBy: [] });
+  const [addingDep, setAddingDep] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (!bookId) return;
+    fetch(`/api/books/${bookId}/jingwei/entries/${entryId}/dependencies`)
+      .then(r => r.json())
+      .then(setDeps)
+      .catch(() => {});
+  }, [bookId, entryId]);
+
+  const handleSearch = async (q: string) => {
+    setSearchQuery(q);
+    if (!q.trim() || !bookId) { setSearchResults([]); return; }
+    const r = await fetch(`/api/books/${bookId}/jingwei/search?q=${encodeURIComponent(q)}`);
+    const d = await r.json();
+    setSearchResults((d.results ?? []).filter((r: any) => r.id !== entryId));
+  };
+
+  const addDependency = async (targetId: string) => {
+    if (!bookId) return;
+    await fetch(`/api/books/${bookId}/jingwei/dependencies`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sourceEntryId: entryId, targetEntryId: targetId }),
+    });
+    const r = await fetch(`/api/books/${bookId}/jingwei/entries/${entryId}/dependencies`);
+    setDeps(await r.json());
+    setAddingDep(false);
+    setSearchQuery("");
+    setSearchResults([]);
+  };
+
+  const removeDependency = async (depId: string) => {
+    if (!bookId) return;
+    await fetch(`/api/books/${bookId}/jingwei/dependencies/${depId}`, { method: "DELETE" });
+    const r = await fetch(`/api/books/${bookId}/jingwei/entries/${entryId}/dependencies`);
+    setDeps(await r.json());
+  };
+
+  const hasDeps = deps.dependsOn.length > 0 || deps.dependedBy.length > 0;
+  if (!hasDeps && !addingDep) {
+    return (
+      <div className="px-3 py-1 border-t border-border">
+        <button onClick={() => setAddingDep(true)} className="text-[10px] text-muted-foreground hover:text-foreground flex items-center gap-1">
+          <Link className="size-2.5" />添加关联
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="px-3 py-2 border-t border-border space-y-1">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] text-muted-foreground font-medium">关联条目</span>
+        {!addingDep && (
+          <button onClick={() => setAddingDep(true)} className="text-[10px] text-primary hover:underline">+添加</button>
+        )}
+      </div>
+
+      {deps.dependsOn.length > 0 && (
+        <div className="space-y-0.5">
+          <span className="text-[9px] text-muted-foreground">引用 →</span>
+          {deps.dependsOn.map((d: any) => (
+            <div key={d.depId} className="flex items-center gap-1 text-[10px]">
+              <span className="text-foreground">{d.title}</span>
+              <span className="text-muted-foreground">({d.category})</span>
+              <button onClick={() => removeDependency(d.depId)} className="text-muted-foreground hover:text-destructive ml-auto">×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {deps.dependedBy.length > 0 && (
+        <div className="space-y-0.5">
+          <span className="text-[9px] text-muted-foreground">← 被引用</span>
+          {deps.dependedBy.map((d: any) => (
+            <div key={d.depId} className="flex items-center gap-1 text-[10px]">
+              <span className="text-foreground">{d.title}</span>
+              <span className="text-muted-foreground">({d.category})</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {addingDep && (
+        <div className="space-y-1">
+          <Input
+            value={searchQuery}
+            onChange={e => handleSearch(e.target.value)}
+            placeholder="搜索要关联的条目..."
+            className="text-xs h-6"
+            autoFocus
+          />
+          {searchResults.map((r: any) => (
+            <button key={r.id} onClick={() => addDependency(r.id)} className="w-full text-left text-[10px] px-2 py-1 rounded hover:bg-muted">
+              {r.title} <span className="text-muted-foreground">({r.category})</span>
+            </button>
+          ))}
+          <button onClick={() => { setAddingDep(false); setSearchQuery(""); setSearchResults([]); }} className="text-[10px] text-muted-foreground">取消</button>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { Network, Eye, X } from "lucide-react";
+import { Network, Eye, X, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { JingweiCategorySidebar } from "./JingweiCategorySidebar";
 import { JingweiEntryList } from "./JingweiEntryList";
 import { JingweiEntryTree } from "./JingweiEntryTree";
@@ -30,6 +31,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
   const [searchResults, setSearchResults] = useState<Array<{ id: string; title: string; category: string; preview: string }> | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [showImport, setShowImport] = useState(false);
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { entries, loading, refresh, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
@@ -139,7 +141,16 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
   }
 
   return (
-    <div className="flex h-full min-h-0" data-testid="jingwei-panel">
+    <div className="flex h-full min-h-0 relative" data-testid="jingwei-panel">
+      {/* Import panel overlay */}
+      {showImport && (
+        <ImportPanel
+          bookId={bookId}
+          onClose={() => setShowImport(false)}
+          onImported={() => { refresh(); fetchEntryCounts(); setShowImport(false); }}
+        />
+      )}
+
       {/* Left: Category sidebar */}
       <JingweiCategorySidebar
         selectedCategory={selectedCategory}
@@ -165,6 +176,9 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
           {showGraph && hasRelations && <span className="text-[9px] text-muted-foreground">实验性</span>}
           <Button size="xs" variant="outline" onClick={handleFetchPreview} className="h-6 text-xs gap-1">
             <Eye className="size-3" />AI 视角
+          </Button>
+          <Button size="xs" variant="outline" onClick={() => setShowImport(true)} className="h-6 text-xs gap-1">
+            <Upload className="size-3" />导入
           </Button>
           <span className="flex-1" />
           <Input
@@ -262,6 +276,83 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ImportPanel({ bookId, onClose, onImported }: { bookId: string; onClose: () => void; onImported: () => void }) {
+  const [text, setText] = useState("");
+  const [category, setCategory] = useState("world-model");
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
+
+  const handleImport = async () => {
+    if (!text.trim()) return;
+    setImporting(true);
+
+    const entries: Array<{ title: string; contentMd: string; category: string }> = [];
+    const sections = text.split(/^## /m).filter(Boolean);
+    for (const section of sections) {
+      const lines = section.split("\n");
+      const title = lines[0]?.trim() ?? "未命名";
+      const contentMd = lines.slice(1).join("\n").trim();
+      if (contentMd) {
+        entries.push({ title, contentMd, category });
+      }
+    }
+
+    if (entries.length === 0) {
+      entries.push({ title: "导入内容", contentMd: text.trim(), category });
+    }
+
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      });
+      const data = await res.json();
+      setResult(`成功导入 ${data.imported} 条经纬条目`);
+      setTimeout(onImported, 800);
+    } catch {
+      setResult("导入失败");
+    }
+    setImporting(false);
+  };
+
+  return (
+    <div className="absolute inset-0 bg-background/95 z-50 flex flex-col p-4 gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium">导入经纬</h3>
+        <Button size="xs" variant="ghost" onClick={onClose}><X className="size-3" /></Button>
+      </div>
+      <p className="text-[10px] text-muted-foreground">粘贴 Markdown 内容，按 ## 标题自动拆分为多条经纬条目。</p>
+      <div className="flex gap-2 items-center">
+        <span className="text-xs text-muted-foreground">分类:</span>
+        <select className="h-7 text-xs border rounded px-2 bg-background" value={category} onChange={e => setCategory(e.target.value)}>
+          <option value="world-model">世界模型</option>
+          <option value="characters">角色</option>
+          <option value="power-system">力量体系</option>
+          <option value="rules">规则</option>
+          <option value="factions">势力</option>
+          <option value="locations">地点</option>
+          <option value="props">物品</option>
+          <option value="timeline">时间线</option>
+        </select>
+      </div>
+      <Textarea
+        value={text}
+        onChange={e => setText(e.target.value)}
+        className="flex-1 font-mono text-xs"
+        placeholder={"粘贴 Markdown 内容...\n\n## 条目标题1\n内容...\n\n## 条目标题2\n内容..."}
+      />
+      <div className="flex items-center gap-2">
+        <Button size="sm" onClick={handleImport} disabled={importing || !text.trim()}>
+          {importing ? "导入中..." : "导入"}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onClose}>取消</Button>
+        {result && <span className="text-xs text-green-600">{result}</span>}
       </div>
     </div>
   );
