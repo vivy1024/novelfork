@@ -78,7 +78,6 @@ import { loadUserConfig } from "./user-config-service.js";
 import { loadGlobalRoutines } from "./routines-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact, type MicroCompactResult } from "./compact/micro-compact.js";
-import { reactiveCompact, resetReactiveState } from "./compact/reactive-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
 import { autoCompact, detectCompactionAction, selectThresholds, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
 import { estimateTokenCount, getContextTokensFromUsage } from "./token-utils.js";
@@ -2733,39 +2732,6 @@ export async function handleSessionChatTransportMessage(
     }
   } catch (error) {
     let message = error instanceof Error ? error.message : "LLM runtime request failed";
-
-    // ── 413 / prompt_too_long 救援：snipCompact 快速缩减上下文 ────────
-    const isPTL = error instanceof Error &&
-      (message.includes("prompt_too_long") || message.includes("request_too_large") || message.includes("413"));
-    if (isPTL) {
-      try {
-        const currentCompactMessages = loaded.state.messages.map((m) => ({
-          id: m.id,
-          role: m.role as "system" | "user" | "assistant",
-          content: m.content,
-        }));
-        const rescue = await reactiveCompact(sessionId, currentCompactMessages, async (msgs) => {
-          // 有意降级：413 时只做 snipCompact（快速裁剪），不重试 LLM fullCompact。
-          // 原因：prompt_too_long 说明上下文已超窗口，再调 LLM 做摘要同样会 413。
-          // snipCompact 保留最近 5 条是激进策略，但 413 场景下宁可丢历史也不能卡死。
-          return { compacted: false, messages: [...msgs] };
-        });
-        if (rescue.success) {
-          loaded.state.messages = rescue.messages.map((cm, idx) => ({
-            id: cm.id || `compact-${idx}`,
-            role: cm.role === "tool_result" ? "system" as const : cm.role as "system" | "user" | "assistant",
-            content: cm.content,
-            timestamp: Date.now() + idx,
-            toolCalls: [],
-          }));
-          resetReactiveState(sessionId);
-          log.info("413 rescue: context snipped, user should retry", { sessionId });
-          message = `上下文过长 (413)，已自动裁剪旧消息。请重新发送上一条消息。`;
-        }
-      } catch (rescueErr) {
-        log.warn("413 rescue failed", { sessionId, error: rescueErr instanceof Error ? rescueErr.message : "unknown" });
-      }
-    }
 
     // 区分首 token 超时和其他错误
     if (error instanceof Error && (error.name === "TimeoutError" || message.includes("timeout"))) {
