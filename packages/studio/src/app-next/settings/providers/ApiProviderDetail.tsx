@@ -432,6 +432,9 @@ function ModelList({
                   }}
                 />
                 <span className="text-[10px] text-muted-foreground whitespace-nowrap">tokens</span>
+                {(!model.contextWindow || model.contextWindow <= 0) && (
+                  <span className="text-[10px] text-amber-500 whitespace-nowrap" title="上下文窗口未配置，对话时无法正确管理上下文用量">⚠ 需配置</span>
+                )}
               </div>
 
               {/* 测试按钮 */}
