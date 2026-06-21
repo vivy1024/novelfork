@@ -24,14 +24,14 @@
 
 ## Highlights
 
-- 🧠 **生产级 Agent Runtime** — max_output 自动恢复 + model fallback + 3 级 budget pressure + in-flight microcompact
+- 🧠 **生产级 Agent Runtime** — max_output 自动恢复 + model fallback + 3 级 budget pressure + 6 档推理强度
 - 📚 **经纬系统** — 16 分类 + Canon/Dynamic/Reference 三层 + SQLite 全文索引 + PGI 追问
 - ✍️ **写作管线 v2** — scene.spec 蓝图 → pipeline.write 生成 → 对抗式 3 视角审查 → S1-S4 门禁
+- 🖥️ **IDE 写作工作台** — 三栏布局 + Tab 拖拽 + Ctrl+F 搜索 + 经纬 TipTap 编辑器 + Minimap
+- 📊 **上下文管理** — 四字段 token 统一（对齐 Codex/Claude CLI）+ 分层压缩 + 有效窗口扣输出预留
+- ⚡ **推理强度系统** — 6 档（none~xhigh）+ 三级优先级（叙述者>供应商>全局）+ 全协议适配
 - 🔒 **安全层** — Secret Detector (20+ 模式) + 路径沙箱 + 24 条危险命令规则
-- 💾 **智能记忆** — 规则式自动提取 + 30 天半衰期老化 + context.md 自动更新
-- 🔌 **多模型** — Anthropic / DeepSeek / OpenAI / 任何兼容 API，自动 fallback
-- 📊 **实时上下文** — API 报告 token + 新增消息复合估算，前端实时准确
-- 🛠️ **开发者工具** — PROMPT_DUMP 请求体转储 + turn-profiler 计时 + 结构化日志
+- 🔌 **多模型** — Anthropic / DeepSeek / OpenAI / 任何兼容 API，自动 fallback + 自动重试规则
 
 ---
 
@@ -41,6 +41,8 @@
 
 | 版本 | 日期 | 主题 | 亮点 |
 |------|------|------|------|
+| **v2.1.0** | 2026-06-22 | 上下文根因修复 + 推理强度 + IDE 打磨 | 四字段 token 统一 · 删除 413 救援 · 6 档推理强度 · 20 项 IDE · 自动重试接线 |
+| **v2.0.0** | 2026-06-21 | Bible→Jingwei 重命名 + IDE 工作台 | 5 个死 agent 删除 · bible 路由清理 · IDE 三栏布局 · Command Palette · Writing Resource 文件存储 |
 | **v1.11.0** | 2026-06-18 | Agent Harness 全维度强化 | max_output 恢复 · model fallback · budget pressure 3 级 · Secret Detector · blocking hooks · 规则式记忆提取 · content-replacement · coordinator-prompt · turn-profiler |
 | **v1.10.0** | 2026-06-15 | 代码库精简与质量提升 | 全库审计 811 文件 · 修复 5 个严重 bug · 删除 4800+ 行废弃代码 · RuntimeStatePanel · CoreShiftPanel · 伏笔看板/日进度接入 |
 | **v1.9.0** | 2026-06-14 | 网文质量机制补全 | pipeline.write 崩溃修复 · 对抗式 3 视角审查 · S1-S4 门禁 · 资源账本验算 · 知识边界校验 · 结构化时间线 · 动态词频 |
@@ -79,8 +81,10 @@
 - max_output_tokens 截断自动续写（3 次 + escalation 64K）
 - 主模型 rate_limit/503 自动切备用模型
 - Budget pressure 三级渐进提醒（70%/80%/92%）
-- Blocking TurnComplete hooks — 验证失败自动修正
-- 上下文溢出检测 → microcompact → 413 reactive
+- 6 档推理强度（none/minimal/low/medium/high/xhigh）
+- 三级优先级：叙述者 > 供应商 > 全局默认
+- 上下文四字段 token 统一（对齐 Codex/Claude CLI）
+- 自动重试规则（HTTP 状态码 + 关键词匹配 + 指数退避）
 
 </td>
 <td width="50%" valign="top">
@@ -93,7 +97,8 @@
 - SQLite FTS5 全文索引 + normalizeCategory 容错
 - PGI 追问引擎（生成问题 → 用户确认方向）
 - 可见性模型（global/tracked/nested + 章节窗口）
-- react-flow 关系图谱 + 5 种视图模式
+- TipTap 富文本编辑器 + 预览/编辑切换
+- 关联条目 clickable chip 跳转 + 修改历史时间线
 
 </td>
 </tr>
@@ -108,9 +113,25 @@ scene.spec 蓝图驱动，多 Agent 协作生成。
 - Writer: creative → observer → settler 三段式
 - 对抗式 3 视角审查（连续性/叙事/文本独立跑）
 - S1-S4 严重度门禁（S1 阻断 / S2 修订 / S3-4 警告）
-- 动态词频提示 + 长度归一化 + 写后校验
+- AI BubbleMenu（选中文本续写/润色/改写/扩写）
 
 </td>
+<td width="50%" valign="top">
+
+### 🖥️ IDE 写作工作台
+
+三栏布局，对标 VS Code。
+
+- ActivityBar + Sidebar + Editor(Tabs) + ChatPanel
+- Tab 拖拽排序 + editor-state-cache（切换保滚动位置）
+- Ctrl+F 搜索 + Ctrl+H 替换（自研 SearchExtension）
+- Command Palette（Ctrl+Shift+P）+ Quick Open（fuzzysort）
+- 全局跨文件搜索 + 面包屑可点击跳转
+- Minimap + 段落折叠 + 底部面板（问题/输出）
+
+</td>
+</tr>
+<tr>
 <td width="50%" valign="top">
 
 ### 🔒 安全 & 记忆
@@ -122,21 +143,6 @@ scene.spec 蓝图驱动，多 Agent 协作生成。
 - 规则式记忆提取（中英双语模式匹配）
 - 30 天半衰期指数衰减 + 自动修剪
 - context.md 回合结束自动更新
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🤝 多 Agent 协调
-
-coordinator + peer messaging + streaming executor。
-
-- 有子代理时自动注入协调指令
-- Subagent 间消息总线（TTL 10min / 50 条上限）
-- Streaming tool executor（只读并行 / 写入独占）
-- Content replacement: >8KB 工具结果存引用省 context
-- Skill 条件激活（按项目类型动态启用工具）
 
 </td>
 <td width="50%" valign="top">
@@ -203,14 +209,15 @@ cd packages/studio && bun run compile
 └─────────────────────────────────────────────────────────────┘
 ```
 
-支持的 AI 供应商：
+支持的 AI 供应商（5 种协议）：
 
-| 供应商 | 协议 | 说明 |
-|--------|------|------|
-| Anthropic | Claude API | Claude 3.5 / Opus 4 等 |
-| DeepSeek | Anthropic 兼容 | v4-pro 等 |
-| OpenAI | Chat Completions | GPT-4o 等 |
-| 自定义 | OpenAI 兼容 | 任何兼容 API（本地 / 第三方中转） |
+| 供应商 | 协议 | 推理强度 | 说明 |
+|--------|------|---------|------|
+| Anthropic | Anthropic 原生 | effort→budget_tokens | Claude Opus 4.8 / Fable 5 等 |
+| DeepSeek | Anthropic 兼容 | effort via output_config | v4-pro 等 |
+| OpenAI | Responses | reasoning.effort | GPT-5 等 |
+| Codex | Codex | reasoning.effort（已接） | ChatGPT 账号反代 |
+| 自定义 | Completions | reasoning_effort 顶层 | 任何 OpenAI 兼容 API |
 
 ---
 
@@ -269,16 +276,26 @@ novelfork/
 │   ├── studio/               # Web 工作台 (React 19 + Hono + Vite)
 │   │   └── src/api/lib/      # Agent Runtime 核心
 │   │       ├── agent-turn-runtime.ts      # Turn Loop 主循环
+│   │       ├── provider-adapters/         # 5 协议适配器
+│   │       ├── compact/                   # 上下文压缩引擎
+│   │       ├── token-utils.ts             # Token 统一计算（四字段）
 │   │       ├── security/                  # Secret Detector + 路径沙箱
-│   │       ├── content-replacement.ts     # 大文本引用替代
-│   │       ├── streaming-tool-executor.ts # 并发工具执行
-│   │       ├── turn-memory-extractor.ts   # 记忆自动提取
-│   │       └── prompt-dump.ts             # 调试转储
+│   │       └── session-chat-service.ts    # 会话运行时
 │   └── novel-plugin/         # 小说领域插件
 │       ├── engine/           # Agent / Jingwei / Pipeline / Filter
 │       ├── routes/           # HTTP API 路由
 │       ├── handlers/         # 业务服务层
-│       └── pages/            # 前端组件 (38 组件)
+│       └── pages/            # 前端组件
+│           ├── writing-workbench/         # 写作工作台（38 组件）
+│           │   ├── ide/                   # IDE 布局（11 组件）
+│           │   │   ├── IdeWorkbench.tsx    # 三栏主布局
+│           │   │   ├── EditorTabs.tsx      # Tab 拖拽排序
+│           │   │   ├── command-palette.tsx  # 命令面板
+│           │   │   ├── SearchBar.tsx       # Ctrl+F 搜索
+│           │   │   └── SearchExtension.ts  # TipTap 搜索扩展
+│           │   └── resource-viewers/       # 编辑器
+│           │       ├── ChapterEditor.tsx   # 章节编辑器（TipTap + BubbleMenu）
+│           │       └── EditorMinimap.tsx   # Minimap
 ├── docs/                     # 技术文档
 ├── dist/                     # 编译产物输出
 └── scripts/                  # 构建 & Codegraph 脚本
@@ -305,21 +322,30 @@ bun run codegraph                        # 生成代码导航图
 │                     NovelFork Studio                             │
 │              React 19 + Hono + Vite + SQLite                    │
 ├─────────────────────────────────────────────────────────────────┤
+│                   IDE Writing Workbench                           │
+│  ┌───────────┐  ┌──────────────┐  ┌───────────────────────┐    │
+│  │ActivityBar│  │   Sidebar    │  │   Editor (Tabs)       │    │
+│  │ files     │  │ Explorer     │  │ TipTap + SearchBar    │    │
+│  │ search    │  │ Jingwei      │  │ Minimap + Folding     │    │
+│  │ tools     │  │ Tools        │  │ BubbleMenu (AI)       │    │
+│  │ settings  │  │              │  │ CommandPalette        │    │
+│  └───────────┘  └──────────────┘  └───────────────────────┘    │
+├─────────────────────────────────────────────────────────────────┤
 │                      Agent Runtime                               │
 │  ┌───────────┐  ┌──────────────┐  ┌───────────────────────┐    │
 │  │ Turn Loop │  │   Security   │  │    Context Engine     │    │
 │  │           │  │              │  │                       │    │
-│  │ generate  │  │ secret-det.  │  │ budget pressure      │    │
-│  │ tool_use  │  │ path-sandbox │  │ microcompact         │    │
-│  │ execute   │  │ cmd-rules    │  │ content-replacement  │    │
-│  │ loop/stop │  │ YOLO reflect │  │ tool-output-pruner   │    │
+│  │ generate  │  │ secret-det.  │  │ 四字段 token 统一     │    │
+│  │ tool_use  │  │ path-sandbox │  │ 有效窗口扣输出预留    │    │
+│  │ execute   │  │ cmd-rules    │  │ budget pressure 3级   │    │
+│  │ loop/stop │  │ YOLO reflect │  │ auto-compact          │    │
 │  └───────────┘  └──────────────┘  └───────────────────────┘    │
 │  ┌───────────┐  ┌──────────────┐  ┌───────────────────────┐    │
-│  │  Memory   │  │ Multi-Agent  │  │   Provider Adapter   │    │
+│  │  Memory   │  │ Multi-Agent  │  │   Provider Adapters   │    │
 │  │           │  │              │  │                       │    │
-│  │ extractor │  │ coordinator  │  │ Anthropic            │    │
-│  │ aging     │  │ peer-msg     │  │ DeepSeek             │    │
-│  │ context.md│  │ streaming-ex │  │ OpenAI compat        │    │
+│  │ extractor │  │ coordinator  │  │ Anthropic (5 protocol)│    │
+│  │ aging     │  │ peer-msg     │  │ 6档推理强度+3级优先级 │    │
+│  │ context.md│  │ streaming-ex │  │ temperature/maxOutput │    │
 │  └───────────┘  └──────────────┘  └───────────────────────┘    │
 ├─────────────────────────────────────────────────────────────────┤
 │                      Plugin Layer                                │
@@ -356,8 +382,9 @@ bun run codegraph                        # 生成代码导航图
 
 应用内置完整的设置管理界面，覆盖以下配置维度：
 
-- **AI 供应商** — 多供应商管理 + 模型池 + 优先级/轮询策略
-- **Agent 行为** — 权限模式 / YOLO 模式 / 工具限制 / 子代理模型
+- **AI 供应商** — 多供应商管理 + 模型池 + 默认推理强度 + 上下文窗口配置提醒
+- **Agent 行为** — 权限模式 / YOLO 模式 / 工具限制 / 子代理模型 / 全局推理强度
+- **自动重试** — 规则引擎（HTTP 状态码 + 关键词匹配 + 指数退避 + 抖动）
 - **外观** — 亮色/暗色/OLED 纯黑 + 字体 + 代码主题
 - **安全** — 目录白名单/黑名单 + 命令白名单/黑名单
 - **通知** — 桌面通知 + 钉钉/飞书 Webhook
