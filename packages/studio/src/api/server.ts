@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import {
   StateManager,
+  resolveBookStorageDir,
   createLLMClient,
   createLogger,
   getStorageDatabase,
@@ -72,6 +73,7 @@ import {
   createMCPRouter,
   createPipelineRouter,
   createWorkbenchRouter,
+  createBookFilesRouter,
   createLorebookRouter,
   createSettingsRouter,
   createOnboardingRouter,
@@ -86,7 +88,6 @@ import {
   createGoldenChaptersRouter,
   createContextManagerRouter,
   createAdminRouter,
-  createBibleRouter,
   createJingweiRouter,
   createFilterRouter,
   createRoutinesRouter,
@@ -333,14 +334,17 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     const workbenchToken = process.env.NOVELFORK_WORKBENCH_TOKEN;
     app.route("", createWorkbenchRouter(root, workbenchToken));
 
+    // Book files — IDE 资源管理器读绑定目录真实文件树 + CRUD
+    app.route("", createBookFilesRouter(root));
+
     // AI operations + legacy SSE — standalone uses book-id based routes
     app.route("", createAIRouter(ctx));
 
     // Storage routes (books CRUD, chapters, truth, genres, config, export, logs, doctor)
     app.route("", createStorageRouter(ctx));
 
-    // Unified writing resources + legacy generated chapter / draft candidates.
-    app.route("", createWritingResourceRouter());
+    // Unified writing resources — file-based storage（章节落盘到绑定目录）
+    app.route("", createWritingResourceRouter({ resolveBookDir: (bid: string) => resolveBookStorageDir(root, bid) }));
     app.route("", createOverviewRouter());
     app.route("", createChapterCandidatesRouter(root));
 
@@ -356,8 +360,7 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
     // Lorebook / World Info
     app.route("", createLorebookRouter(root));
 
-    // Story Jingwei structured authoring API (legacy Bible routes remain compatible)
-    app.route("", createBibleRouter());
+    // Story Jingwei structured authoring API
 
     // Story Jingwei structured authoring API
     app.route("", createJingweiRouter());
@@ -969,6 +972,28 @@ export async function startStudioServer(
   logStartupHealthSummary(startupSummary, { includeWarnings: options?.foregroundDiagnostics });
   if (options?.foregroundDiagnostics) {
     console.log("Startup recovery report:", JSON.stringify(startupSummary.recoveryReport));
+  }
+
+  // Migrate writing_resource data from SQLite to filesystem (one-time per book)
+  try {
+    const { migrateWritingResourcesToFiles } = await import("@vivy1024/novelfork-novel-plugin/engine");
+    const migrationResult = await migrateWritingResourcesToFiles(getStorageDatabase(), (bid: string) => resolveBookStorageDir(root, bid));
+    if (migrationResult.chapters > 0 || migrationResult.drafts > 0) {
+      console.log(`[migration] SQLite → files: ${migrationResult.chapters} chapters, ${migrationResult.drafts} drafts`);
+    }
+  } catch (error) {
+    console.warn("[migration] writing_resource → files failed:", error);
+  }
+
+  // Migrate existing chapter files from default books dir to binding dir (one-time per bound book)
+  try {
+    const { migrateChaptersToBindingDir } = await import("@vivy1024/novelfork-core");
+    const bindingResult = await migrateChaptersToBindingDir(root, () => ctx.state.listBooks());
+    if (bindingResult.movedFiles > 0) {
+      console.log(`[migration] chapters → binding dir: ${bindingResult.migratedBooks} books, ${bindingResult.movedFiles} files`);
+    }
+  } catch (error) {
+    console.warn("[migration] chapters → binding dir failed:", error);
   }
 
   if (staticProvider) {

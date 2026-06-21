@@ -7,6 +7,7 @@ export interface JingweiFilesData {
   readonly currentState: string;
   readonly particleLedger: string;
   readonly pendingHooks: string;
+  /** @deprecated story_bible.md 已废弃，经纬 DB 替代。始终返回空字符串。 */
   readonly storyBible: string;
   readonly volumeOutline: string;
   readonly bookRules: string;

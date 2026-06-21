@@ -4,7 +4,7 @@ export function formatJingweiContextForPrompt(context: BuildJingweiLegacyContext
   if (context.items.length === 0) return "";
 
   return [
-    "# Novel Bible Context",
+    "# Novel Jingwei Context",
     "",
     `mode: ${context.mode}`,
     `totalTokens: ${context.totalTokens}`,
@@ -26,8 +26,3 @@ export function mergeJingweiContextWithExternalContext(
   return `${jingweiContext}\n\n---\n\n${userContext}`;
 }
 
-// --- Deprecated aliases ---
-/** @deprecated Use formatJingweiContextForPrompt instead */
-export const formatBibleContextForPrompt = formatJingweiContextForPrompt;
-/** @deprecated Use mergeJingweiContextWithExternalContext instead */
-export const mergeBibleContextWithExternalContext = mergeJingweiContextWithExternalContext;

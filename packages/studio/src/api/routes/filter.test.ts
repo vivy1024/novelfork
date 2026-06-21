@@ -11,7 +11,7 @@ import {
 } from "@vivy1024/novelfork-core";
 
 import {
-  createBibleChapterSummaryRepository,
+  createJingweiChapterSummaryRepository,
   createBookRepository,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createFilterRouter } from "@vivy1024/novelfork-novel-plugin/routes";
@@ -32,7 +32,7 @@ async function createStorage(): Promise<StorageDatabase> {
     createdAt: new Date("2026-04-25T01:00:00.000Z"),
     updatedAt: new Date("2026-04-25T01:00:00.000Z"),
   });
-  await createBibleChapterSummaryRepository(storage).upsert({
+  await createJingweiChapterSummaryRepository(storage).upsert({
     id: "summary-1",
     bookId: "book-1",
     chapterNumber: 1,

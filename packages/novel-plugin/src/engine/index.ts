@@ -9,15 +9,13 @@
  * - presets/ — genre presets, beat templates, compliance checking
  * - compliance/ — sensitive word scanning, publish readiness
  * - tools/ — chapter hooks, POV, progress, rhythm, arcs, tone, import
- * - bible/ — backward compat re-export of jingwei
  */
 
 // ─── Pipeline ────────────────────────────────────────────────────────────────
 export type { PipelineConfig } from "./pipeline/types.js";
 export { getAgentRole, AGENT_ROLES } from "./pipeline/agent-roles.js";
 export type { AgentRoleConfig } from "./pipeline/agent-roles.js";
-export { detectChapter, detectAndRewrite, loadDetectionHistory } from "./pipeline/detection-runner.js";
-export type { DetectChapterResult, DetectAndRewriteResult } from "./pipeline/detection-runner.js";
+
 
 // ─── Agents ──────────────────────────────────────────────────────────────────
 export { BaseAgent } from "./agents/base.js";
@@ -26,8 +24,6 @@ export { PlannerAgent } from "./agents/planner.js";
 export type { PlanChapterInput, PlanChapterOutput } from "./agents/planner.js";
 export { ComposerAgent } from "./agents/composer.js";
 export type { ComposeChapterInput, ComposeChapterOutput } from "./agents/composer.js";
-export { ArchitectAgent } from "./agents/architect.js";
-export type { ArchitectOutput } from "./agents/architect.js";
 export { WriterAgent } from "./agents/writer.js";
 export type { WriteChapterInput, WriteChapterOutput, TokenUsage } from "./agents/writer.js";
 export { LengthNormalizerAgent } from "./agents/length-normalizer.js";
@@ -46,10 +42,7 @@ export { analyzeAITells } from "./agents/ai-tells.js";
 export type { AITellResult, AITellIssue } from "./agents/ai-tells.js";
 export { analyzeSensitiveWords } from "./agents/sensitive-words.js";
 export type { SensitiveWordResult, SensitiveWordMatch } from "./agents/sensitive-words.js";
-export { detectAIContent } from "./agents/detector.js";
-export type { DetectionResult } from "./agents/detector.js";
 export { analyzeStyle } from "./agents/style-analyzer.js";
-export { analyzeDetectionInsights } from "./agents/detection-insights.js";
 export { validatePostWrite, detectParagraphLengthDrift, detectParagraphShapeWarnings, detectDuplicateTitle } from "./agents/post-write-validator.js";
 export type { PostWriteViolation } from "./agents/post-write-validator.js";
 export { parseWriterOutput, parseCreativeOutput } from "./agents/writer-parser.js";
@@ -110,8 +103,6 @@ export * from "./compliance/index.js";
 // ─── Tools (novel analysis) ──────────────────────────────────────────────────
 export * from "./tools/index.js";
 
-// ─── Bible (backward compat) ─────────────────────────────────────────────────
-export * from "./bible/index.js";
 
 // ─── Writing Resource ─────────────────────────────────────────────────────
 export * from "./writing-resource/index.js";

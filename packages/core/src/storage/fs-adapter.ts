@@ -20,7 +20,7 @@ const JINGWEI_FILE_MAP: Readonly<Record<string, string>> = {
   currentState: "current_state.md",
   particleLedger: "particle_ledger.md",
   pendingHooks: "pending_hooks.md",
-  storyBible: "story_bible.md",
+  storyBible: "story_bible.md", // [CLEANUP] 已废弃，经纬 DB 替代
   volumeOutline: "volume_outline.md",
   bookRules: "book_rules.md",
 };
@@ -138,14 +138,14 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       currentState,
       particleLedger,
       pendingHooks,
-      storyBible,
+      _storyBible,
       volumeOutline,
       bookRules,
     ] = await Promise.all([
       readSafe(join(storyDir, "current_state.md")),
       readSafe(join(storyDir, "particle_ledger.md")),
       readSafe(join(storyDir, "pending_hooks.md")),
-      readSafe(join(storyDir, "story_bible.md")),
+      Promise.resolve(""), // [CLEANUP] story_bible.md 已废弃，经纬 DB 替代
       readSafe(join(storyDir, "volume_outline.md")),
       readSafe(join(storyDir, "book_rules.md")),
     ]);
@@ -154,7 +154,7 @@ export class FileSystemStorageAdapter implements StorageAdapter {
       currentState,
       particleLedger,
       pendingHooks,
-      storyBible,
+      storyBible: "", // [CLEANUP] story_bible.md 已废弃，经纬 DB 替代
       volumeOutline,
       bookRules,
     };

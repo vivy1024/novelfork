@@ -334,20 +334,19 @@ export class ContinuityAuditor extends BaseAgent {
       viewDimensionIds?: ReadonlyArray<number>;
     },
   ): Promise<AuditResult> {
-    const [diskCurrentState, diskLedger, diskHooks, styleGuideRaw, subplotBoard, emotionalArcs, characterMatrix, chapterSummaries, parentCanon, fanficCanon, volumeOutline] =
-      await Promise.all([
-        this.readFileSafe(join(bookDir, "story/current_state.md")),
-        this.readFileSafe(join(bookDir, "story/particle_ledger.md")),
-        this.readFileSafe(join(bookDir, "story/pending_hooks.md")),
-        this.readFileSafe(join(bookDir, "story/style_guide.md")),
-        this.readFileSafe(join(bookDir, "story/subplot_board.md")),
-        this.readFileSafe(join(bookDir, "story/emotional_arcs.md")),
-        this.readFileSafe(join(bookDir, "story/character_matrix.md")),
-        this.readFileSafe(join(bookDir, "story/chapter_summaries.md")),
-        this.readFileSafe(join(bookDir, "story/parent_canon.md")),
-        this.readFileSafe(join(bookDir, "story/fanfic_canon.md")),
-        this.readFileSafe(join(bookDir, "story/volume_outline.md")),
-      ]);
+    // [CLEANUP] story/*.md 已废弃（inkos 残留）。上下文由 jingweiFileOverrides 或经纬 DB 提供。
+    // 保留占位值以兼容下游 !== "(文件不存在)" 判断（均为 false）。
+    const diskCurrentState = "(文件不存在)";
+    const diskLedger = "(文件不存在)";
+    const diskHooks = "(文件不存在)";
+    const styleGuideRaw = "(文件不存在)";
+    const subplotBoard = "(文件不存在)";
+    const emotionalArcs = "(文件不存在)";
+    const characterMatrix = "(文件不存在)";
+    const chapterSummaries = "(文件不存在)";
+    const parentCanon = "(文件不存在)";
+    const fanficCanon = "(文件不存在)";
+    const volumeOutline = "(文件不存在)";
     const currentState = options?.jingweiFileOverrides?.currentState ?? diskCurrentState;
     const ledger = options?.jingweiFileOverrides?.ledger ?? diskLedger;
     const hooks = options?.jingweiFileOverrides?.hooks ?? diskHooks;

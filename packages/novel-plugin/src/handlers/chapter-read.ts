@@ -1,8 +1,8 @@
 import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
-import { createWritingResourceRepository } from "../engine/writing-resource/repository.js";
+import { join, dirname } from "node:path";
+import { resolveBookStorageDir } from "@vivy1024/novelfork-core";
+import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
 
 export interface ChapterReadInput {
   bookId: string;
@@ -18,13 +18,17 @@ export interface ChapterReadResult {
 
 /**
  * 读取指定章节文件内容。
- * 按 `{chapterNumber padded to 4}.md` 模式匹配 chapters 目录下的文件。
+ * 优先从文件存储层（绑定目录/默认 books 目录）读，回退到传入 booksDir 下的旧路径。
  */
 export async function handleChapterRead(input: ChapterReadInput, booksDir: string): Promise<ChapterReadResult> {
   const { bookId, chapterNumber } = input;
+
+  // projectRoot = booksDir 的父目录（booksDir = {projectRoot}/books）
+  const projectRoot = dirname(booksDir);
+
   try {
-    const repository = createWritingResourceRepository(getStorageDatabase());
-    const resource = repository.findAcceptedChapter(bookId, chapterNumber);
+    const fileStore = createWritingResourceFileStore((bid) => resolveBookStorageDir(projectRoot, bid));
+    const resource = await fileStore.findAcceptedChapter(bookId, chapterNumber);
     if (resource) {
       return {
         ok: true,
@@ -33,11 +37,11 @@ export async function handleChapterRead(input: ChapterReadInput, booksDir: strin
       };
     }
   } catch {
-    // Fall back to legacy file storage below.
+    // Fall back to legacy file path below.
   }
 
+  // 回退：传入 booksDir 下的旧路径
   const chaptersDir = join(booksDir, bookId, "chapters");
-
   let chapterFile: string | undefined;
   try {
     const files = readdirSync(chaptersDir);

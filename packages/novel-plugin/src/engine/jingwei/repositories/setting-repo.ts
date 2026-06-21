@@ -38,7 +38,7 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiSettingInput): Promise<JingweiSettingRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_setting" (
+        INSERT INTO "jingwei_setting" (
           "id", "book_id", "category", "name", "content", "visibility_rule_json", "nested_refs_json",
           "created_at", "updated_at", "deleted_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -61,7 +61,7 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
     async getById(bookId: string, id: string): Promise<JingweiSettingRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_setting"
+        FROM "jingwei_setting"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiSettingRow | undefined;
       return row ? toSetting(row) : null;
@@ -70,7 +70,7 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiSettingRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_setting"
+        FROM "jingwei_setting"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as JingweiSettingRow[];
@@ -82,7 +82,7 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_setting"
+        UPDATE "jingwei_setting"
         SET "category" = ?, "name" = ?, "content" = ?, "visibility_rule_json" = ?, "nested_refs_json" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(
@@ -100,7 +100,7 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_setting"
+        UPDATE "jingwei_setting"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -110,4 +110,3 @@ export function createJingweiSettingRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiSettingRepository instead */
-export const createBibleSettingRepository = createJingweiSettingRepository;

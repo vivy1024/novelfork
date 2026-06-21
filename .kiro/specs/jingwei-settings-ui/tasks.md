@@ -6,10 +6,10 @@
 ---
 
 ## Task 1：JingweiCategorySidebar 改造
-- [ ] 从 `unified-categories` 导入 CATEGORY_META
-- [ ] 按 `book.visibleCategories` 过滤显示分类
-- [ ] 渲染 icon + 中文名 + 条目计数
-- [ ] 点击分类切换右侧列表
+- [x] 从 `unified-categories` 导入 CATEGORY_META
+- [x] 按 `book.visibleCategories` 过滤显示分类
+- [x] 渲染 icon + 中文名 + 条目计数
+- [x] 点击分类切换右侧列表
 
 ## Task 2：条目列表视图（JingweiEntryList）
 - [ ] 卡片组件：名称/标签/来源 icon（铅笔/机器人/时钟）
@@ -23,10 +23,10 @@
 - [ ] Tab 3 追踪：AI 注入策略 + 修订历史时间线
 
 ## Task 4：ForeshadowingBoard 看板组件
-- [ ] 四列看板布局（已埋设/部分揭示/已回收/已废弃）
-- [ ] 卡片渲染（名称/埋设章节/目标章节/悬念天数）
-- [ ] 悬念债务告警（超阈值红边框 + ⚠️）
-- [ ] 在伏笔分类下加"看板视图"切换入口
+- [x] 四列看板布局（已埋设/部分揭示/已回收/已废弃）
+- [x] 卡片渲染（名称/埋设章节/目标章节/悬念天数）
+- [x] 悬念债务告警（超阈值红边框 + ⚠️）
+- [x] 在伏笔分类下加"看板视图"切换入口
 
 ## Task 5：图谱降级
 - [ ] DefaultCockpitView 移除 JingweiGraphWorkspace 默认渲染

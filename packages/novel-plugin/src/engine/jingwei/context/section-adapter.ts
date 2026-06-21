@@ -327,6 +327,3 @@ export function createLegacyJingweiAdapter(storage: StorageDatabase) {
     },
   };
 }
-
-/** @deprecated Use createLegacyJingweiAdapter instead */
-export const createLegacyBibleJingweiAdapter = createLegacyJingweiAdapter;

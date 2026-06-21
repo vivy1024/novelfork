@@ -221,8 +221,8 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const storage = getStorageDatabase();
     const config = await loadProgressConfig(storage);
     const progress = await getDailyProgress(storage, config);
-    const { createBibleConflictRepository, createFilterReportRepository } = await import("../engine/index.js");
-    const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
+    const { createJingweiConflictRepository, createFilterReportRepository } = await import("../engine/index.js");
+    const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
     const language = isRecord(book) && book.language === "en" ? "en" : "zh";
     const sensitiveWordCount = chapters.reduce((total, chapter) => total + countSensitiveHits(chapter.content, language), 0);
     const warnings = buildHealthWarnings(sensitiveWordCount, conflicts.length);
@@ -239,7 +239,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
         dailyWords: measuredMetric(progress.today.written, "writing-log"),
         dailyTarget: measuredMetric(progress.today.target, "progress-config"),
         sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
-        knownConflictCount: measuredMetric(conflicts.length, "bible-conflicts"),
+        knownConflictCount: measuredMetric(conflicts.length, "jingwei-conflicts"),
         consistencyScore,
         hookRecoveryRate,
         aiTasteMean,
@@ -253,8 +253,8 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const storage = getStorageDatabase();
-    const { createBibleConflictRepository } = await import("../engine/index.js");
-    const conflicts = await createBibleConflictRepository(storage).listByBook(bookId);
+    const { createJingweiConflictRepository } = await import("../engine/index.js");
+    const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
     return c.json({ conflicts: buildConflictMap(conflicts) });
   });
 
@@ -262,8 +262,8 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const storage = getStorageDatabase();
-    const { createBibleCharacterArcRepository } = await import("../engine/index.js");
-    const arcs = await createBibleCharacterArcRepository(storage).listByBook(bookId);
+    const { createJingweiCharacterArcRepository } = await import("../engine/index.js");
+    const arcs = await createJingweiCharacterArcRepository(storage).listByBook(bookId);
     return c.json({ arcs });
   });
 

@@ -15,10 +15,10 @@ export function SessionCenterPage() {
   return (
     <SectionLayout
       title="会话中心"
-      description="按独立和书籍绑定状态管理长期 Agent 会话，打开后复用现有会话恢复链。"
+      description="管理独立对话。书籍内的对话在工作台右侧面板管理。"
       actions={<MessageSquareText className="h-5 w-5 text-muted-foreground" aria-hidden="true" />}
     >
-      <SessionCenter onOpenSession={openSession} />
+      <SessionCenter onOpenSession={openSession} initialBinding="standalone" />
     </SectionLayout>
   );
 }

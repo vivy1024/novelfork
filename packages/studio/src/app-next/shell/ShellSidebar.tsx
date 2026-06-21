@@ -146,32 +146,9 @@ export function ShellSidebar({ route, books, sessions, onNavigate, onDeleteBook,
             {bookItems.length > 0
               ? bookItems.map((item) => {
                 const isActive = isShellNavItemActive(item, route);
-                const bookId = item.route.bookId;
-                // Always show bound Agent sessions (only 1 novelist per book now)
-                const allBookAgents = sessions.filter((s) => s.projectId === bookId && s.status === "active");
-                const isViewingBookAgent = route.kind === "narrator" && allBookAgents.some((s) => s.id === route.sessionId);
-                const bookAgents = allBookAgents;
                 return (
                   <div key={item.id}>
-                    <NavButton label={item.label} active={isActive || isViewingBookAgent} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
-                    {!collapsed && bookAgents.length > 0 && (
-                      <div className="ml-3 space-y-0.5 border-l border-border pl-2">
-                        {bookAgents.map((agent) => (
-                          <button
-                            key={agent.id}
-                            type="button"
-                            className={`w-full truncate rounded px-2 py-0.5 text-left text-[11px] ${
-                              route.kind === "narrator" && route.sessionId === agent.id
-                                ? "bg-primary/10 text-primary font-medium"
-                                : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                            }`}
-                            onClick={() => onNavigate({ kind: "narrator", sessionId: agent.id })}
-                          >
-                            {agent.title}
-                          </button>
-                        ))}
-                      </div>
-                    )}
+                    <NavButton label={item.label} active={isActive} onClick={() => onNavigate(item.route)} collapsed={collapsed} />
                   </div>
                 );
               })

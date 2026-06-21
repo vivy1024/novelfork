@@ -25,7 +25,7 @@ async function createTestStorage(): Promise<StorageDatabase> {
 
 async function seedBook(storage: StorageDatabase, bookId: string): Promise<void> {
   storage.sqlite.exec(
-    `INSERT INTO "book" ("id", "name", "bible_mode", "current_chapter", "created_at", "updated_at")
+    `INSERT INTO "book" ("id", "name", "jingwei_mode", "current_chapter", "created_at", "updated_at")
      VALUES ('${bookId}', 'test', 'static', 0, ${Date.now()}, ${Date.now()})`,
   );
 }

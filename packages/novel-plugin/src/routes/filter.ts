@@ -110,7 +110,7 @@ export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hon
   app.post("/api/books/:bookId/filter/batch-rescan", async (c) => {
     const storage = await resolveStorage(options);
     const core = await loadEngine();
-    const summaries = await core.createBibleChapterSummaryRepository(storage).listByBook(c.req.param("bookId"));
+    const summaries = await core.createJingweiChapterSummaryRepository(storage).listByBook(c.req.param("bookId"));
     const reports = [];
     for (const summary of summaries) {
       reports.push(await core.scanChapterAndStoreFilterReport(storage, {

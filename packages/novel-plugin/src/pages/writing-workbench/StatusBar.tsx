@@ -62,15 +62,17 @@ export function StatusBar({ bookId, onSettingsClick }: StatusBarProps) {
         </span>
       )}
 
-      <div className="ml-auto">
-        <button
-          onClick={onSettingsClick}
-          className="flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors hover:bg-muted hover:text-foreground"
-          title="书籍设置"
-        >
-          <Cog className="size-3.5" />
-        </button>
-      </div>
+      {onSettingsClick && (
+        <div className="ml-auto">
+          <button
+            onClick={onSettingsClick}
+            className="flex items-center gap-1.5 px-3 py-1 rounded-md transition-colors hover:bg-muted hover:text-foreground"
+            title="书籍设置"
+          >
+            <Cog className="size-3.5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }

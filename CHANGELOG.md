@@ -2,6 +2,64 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v2.0.0 (2026-06-21)
+
+### ⚡ Breaking Changes
+
+- **bible → jingwei 重命名** — 全模块、路由、数据库表、API 路径统一为 jingwei 命名
+- **5 个死 agent 删除** — architect / chapter-review-cycle / chapter-state-recovery / detection-insights / detector
+- **bible 路由删除** — `routes/bible.ts` + 对应测试删除，功能已迁移到 jingwei 体系
+- **detection 系统删除** — detection-runner / detection-insights / detector 全链路清理
+
+### ✨ 新功能
+
+#### IDE 写作工作台
+- **三栏 IDE 布局** — ActivityBar + Explorer + Editor(Tabs) + ChatPanel，基于 Allotment
+- **Command Palette** — Ctrl+Shift+P 命令面板 + Ctrl+P 快速打开文件/章节/经纬
+- **面板管理系统** — PanelManager 命令式 DOM 管理，解决 production build 渲染问题
+- **右键菜单** — 移除 Radix ContextMenu，回归原生 contextmenu（exe 兼容性）
+
+#### Writing Resource 文件存储
+- **章节 + 草稿统一存储** — chapters/ + drafts/ 双目录 + index.json 索引
+- **候选稿生命周期** — draft → candidate → accepted 状态机
+- **文件迁移工具** — 旧 SQLite 章节数据自动迁移到文件系统
+
+#### 经纬系统 v2
+- **Markdown 导入 UI** — 批量导入经纬条目
+- **条目依赖关系** — relatedEntryIds 可视化与跳转
+- **修订历史** — 条目修改记录追踪
+- **搜索 + 批量操作** — 全文搜索 + 多选批量管理
+
+#### UI 面板
+- **质量趋势图** — AI 味 / 文风漂移 / 质量评分三张趋势图（recharts）
+- **驾驶舱进度看板** — DailyProgressCard（今日字数 + 连续达标 + 7 天趋势）
+- **伏笔看板** — 四列看板（已埋设/部分揭示/已回收/已废弃）+ 悬念天数
+- **运行状态面板** — 知识边界 / 时间线 / 资源账本三 tab
+- **核心转折面板** — 提案卡片列表 + 接受/拒绝操作
+
+### 🔧 改进
+
+- **Radix 完全移除** — ContextMenu / Dialog 等在 exe 中有兼容问题，全部替换
+- **Tailwind content glob** — 修复 novel-plugin 样式不生成的问题
+- **StatusBar 精简** — 章数 + 警告数 + 设置齿轮
+- **资源树优化** — WorkbenchResourceTree 重构为单层组件，减少嵌套
+
+### 📋 Spec 归档
+
+- context-management-overhaul / jingwei-core-brief-indexed-reading / system-prompt-rewrite — 全部完成
+- codebase-consolidation / novel-quality-hardening / writing-scene-spec-ui — 全部完成
+- jingwei-data-layer-unify / jingwei-settings-ui / context-visibility-system — 大部分完成
+- plugin-ui-registration / novel-tool-consolidation — 大部分完成
+- cockpit-panel-layout / narrafork-tools-and-routines / ide-workbench-v2 — 部分完成
+
+### 📊 统计
+
+- 102 文件变更，+1150 行，-6229 行（净减 5079 行）
+- 删除 5 个死 agent + 8 个废弃测试 + bible 完整模块
+- 新增 IDE 工作台 10 个组件 + writing-resource 文件存储
+
+---
+
 ## v1.11.1 (2026-06-18)
 
 ### 🐛 修复（15 commits）

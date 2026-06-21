@@ -235,7 +235,7 @@ export interface JingweiSearchResult {
   droppedEntryIds: string[];
 }
 
-// --- Legacy Bible types (renamed to Jingwei*) ---
+// --- Core Types ---
 
 export type JingweiMode = "static" | "dynamic";
 
@@ -522,65 +522,3 @@ export interface CoreShiftRecord {
 export type CreateCoreShiftInput = CoreShiftRecord;
 export type UpdateCoreShiftInput = Partial<Omit<CreateCoreShiftInput, "id" | "bookId" | "targetType" | "targetId" | "createdAt">>;
 
-// --- Deprecated aliases (backward compatibility) ---
-
-/** @deprecated Use JingweiMode instead */
-export type BibleMode = JingweiMode;
-/** @deprecated Use JingweiVisibilitySource instead */
-export type BibleVisibilitySource = JingweiVisibilitySource;
-/** @deprecated Use JingweiContextItemType instead */
-export type BibleContextItemType = JingweiContextItemType;
-/** @deprecated Use JingweiLegacyContextItem instead */
-export type BibleContextItem = JingweiLegacyContextItem;
-/** @deprecated Use BuildJingweiLegacyContextInput instead */
-export type BuildBibleContextInput = BuildJingweiLegacyContextInput;
-/** @deprecated Use BuildJingweiLegacyContextResult instead */
-export type BuildBibleContextResult = BuildJingweiLegacyContextResult;
-/** @deprecated Use JingweiCharacterRecord instead */
-export type BibleCharacterRecord = JingweiCharacterRecord;
-/** @deprecated Use CreateJingweiCharacterInput instead */
-export type CreateBibleCharacterInput = CreateJingweiCharacterInput;
-/** @deprecated Use UpdateJingweiCharacterInput instead */
-export type UpdateBibleCharacterInput = UpdateJingweiCharacterInput;
-/** @deprecated Use JingweiEventRecord instead */
-export type BibleEventRecord = JingweiEventRecord;
-/** @deprecated Use CreateJingweiEventInput instead */
-export type CreateBibleEventInput = CreateJingweiEventInput;
-/** @deprecated Use UpdateJingweiEventInput instead */
-export type UpdateBibleEventInput = UpdateJingweiEventInput;
-/** @deprecated Use JingweiSettingRecord instead */
-export type BibleSettingRecord = JingweiSettingRecord;
-/** @deprecated Use CreateJingweiSettingInput instead */
-export type CreateBibleSettingInput = CreateJingweiSettingInput;
-/** @deprecated Use UpdateJingweiSettingInput instead */
-export type UpdateBibleSettingInput = UpdateJingweiSettingInput;
-/** @deprecated Use JingweiChapterSummaryRecord instead */
-export type BibleChapterSummaryRecord = JingweiChapterSummaryRecord;
-/** @deprecated Use CreateJingweiChapterSummaryInput instead */
-export type CreateBibleChapterSummaryInput = CreateJingweiChapterSummaryInput;
-/** @deprecated Use UpdateJingweiChapterSummaryInput instead */
-export type UpdateBibleChapterSummaryInput = UpdateJingweiChapterSummaryInput;
-/** @deprecated Use JingweiConflictRecord instead */
-export type BibleConflictRecord = JingweiConflictRecord;
-/** @deprecated Use CreateJingweiConflictInput instead */
-export type CreateBibleConflictInput = CreateJingweiConflictInput;
-/** @deprecated Use UpdateJingweiConflictInput instead */
-export type UpdateBibleConflictInput = UpdateJingweiConflictInput;
-/** @deprecated Use JingweiWorldModelRecord instead */
-export type BibleWorldModelRecord = JingweiWorldModelRecord;
-/** @deprecated Use CreateJingweiWorldModelInput instead */
-export type CreateBibleWorldModelInput = CreateJingweiWorldModelInput;
-/** @deprecated Use UpdateJingweiWorldModelInput instead */
-export type UpdateBibleWorldModelInput = UpdateJingweiWorldModelInput;
-/** @deprecated Use JingweiPremiseRecord instead */
-export type BiblePremiseRecord = JingweiPremiseRecord;
-/** @deprecated Use CreateJingweiPremiseInput instead */
-export type CreateBiblePremiseInput = CreateJingweiPremiseInput;
-/** @deprecated Use UpdateJingweiPremiseInput instead */
-export type UpdateBiblePremiseInput = UpdateJingweiPremiseInput;
-/** @deprecated Use JingweiCharacterArcRecord instead */
-export type BibleCharacterArcRecord = JingweiCharacterArcRecord;
-/** @deprecated Use CreateJingweiCharacterArcInput instead */
-export type CreateBibleCharacterArcInput = CreateJingweiCharacterArcInput;
-/** @deprecated Use UpdateJingweiCharacterArcInput instead */
-export type UpdateBibleCharacterArcInput = UpdateJingweiCharacterArcInput;

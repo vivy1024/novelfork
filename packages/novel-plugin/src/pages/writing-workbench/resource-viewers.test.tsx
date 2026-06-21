@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 
 describe("resource viewer registry", () => {
   it("注册 writing workbench 支持的最小 viewer", () => {
-    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "jingwei", "bible-entry", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
+    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "jingwei", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
 
     for (const kind of kinds) {
       expect(resourceViewerRegistry[kind]).toBeTruthy();

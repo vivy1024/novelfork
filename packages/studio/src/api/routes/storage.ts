@@ -1523,20 +1523,7 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     }
   });
 
-  // --- Detect stats (local computation) ---
-
-  app.get("/api/books/:id/detect/stats", async (c) => {
-    const id = c.req.param("id");
-    try {
-      const { loadDetectionHistory, analyzeDetectionInsights } = await import("@vivy1024/novelfork-novel-plugin/engine");
-      const bookDir = state.bookDir(id);
-      const history = await loadDetectionHistory(bookDir);
-      const insights = analyzeDetectionInsights(history);
-      return c.json(insights);
-    } catch (e) {
-      return c.json({ error: String(e) }, 500);
-    }
-  });
+  // --- Detect stats endpoint removed (detection system deprecated, see T7.3) ---
 
   // --- Logs ---
 

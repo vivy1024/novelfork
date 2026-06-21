@@ -3,20 +3,33 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceService, type CreateServiceInput, type WritingResourceTransitionAction } from "../engine/writing-resource/service.js";
 import type { ListWritingResourcesFilter, WritingResourceStatus, WritingResourceType } from "../engine/writing-resource/types.js";
 
-export function createWritingResourceRouter(): Hono {
+export interface WritingResourceRouterOptions {
+  resolveBookDir: (bookId: string) => string;
+}
+
+export function createWritingResourceRouter(options: WritingResourceRouterOptions): Hono {
   const app = new Hono();
 
-  app.get("/api/books/:bookId/resources", (c) => {
+  function serviceForRequest() {
+    return createWritingResourceService({
+      storage: getStorageDatabase(),
+      resolveBookDir: options.resolveBookDir,
+    });
+  }
+
+  app.get("/api/books/:bookId/resources", async (c) => {
     const bookId = c.req.param("bookId");
     const filter = parseFilter(c.req.query());
     const service = serviceForRequest();
-    return c.json({ resources: service.list(bookId, filter) });
+    const resources = await service.list(bookId, filter);
+    return c.json({ resources });
   });
 
-  app.get("/api/books/:bookId/resources/:resourceId", (c) => {
+  app.get("/api/books/:bookId/resources/:resourceId", async (c) => {
+    const bookId = c.req.param("bookId");
     const service = serviceForRequest();
-    const resource = service.getById(c.req.param("resourceId"));
-    if (!resource || resource.bookId !== c.req.param("bookId") || resource.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
+    const resource = await service.getById(bookId, c.req.param("resourceId"));
+    if (!resource || resource.bookId !== bookId || resource.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
     return c.json({ resource });
   });
 
@@ -24,17 +37,19 @@ export function createWritingResourceRouter(): Hono {
     const bookId = c.req.param("bookId");
     const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({}));
     const service = serviceForRequest();
-    const input = parseCreateInput(bookId, body);
-    const resource = service.create(input);
+    const input = parseCreateInput(body);
+    const resource = await service.create(bookId, input);
     return c.json({ resource }, 201);
   });
 
   app.put("/api/books/:bookId/resources/:resourceId", async (c) => {
+    const bookId = c.req.param("bookId");
     const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({}));
     const service = serviceForRequest();
-    const current = service.getById(c.req.param("resourceId"));
-    if (!current || current.bookId !== c.req.param("bookId") || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
-    const resource = service.update(current.id, {
+    const resourceId = c.req.param("resourceId");
+    const current = await service.getById(bookId, resourceId);
+    if (!current || current.bookId !== bookId || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
+    const resource = await service.update(bookId, current.id, {
       ...(typeof body.title === "string" ? { title: body.title } : {}),
       ...(typeof body.content === "string" ? { content: body.content } : {}),
       ...(isRecord(body.metadata) ? { metadata: body.metadata } : {}),
@@ -43,39 +58,42 @@ export function createWritingResourceRouter(): Hono {
   });
 
   app.post("/api/books/:bookId/resources/:resourceId/transition", async (c) => {
+    const bookId = c.req.param("bookId");
     const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({}));
     const service = serviceForRequest();
-    const current = service.getById(c.req.param("resourceId"));
-    if (!current || current.bookId !== c.req.param("bookId") || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
+    const resourceId = c.req.param("resourceId");
+    const current = await service.getById(bookId, resourceId);
+    if (!current || current.bookId !== bookId || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
     const action = parseTransition(body);
     try {
-      const resource = service.transition(current.id, action);
+      const resource = await service.transition(bookId, current.id, action);
       return c.json({ resource });
     } catch (cause) {
       return c.json({ error: cause instanceof Error ? cause.message : "Transition failed" }, 400);
     }
   });
 
-  app.delete("/api/books/:bookId/resources/:resourceId", (c) => {
+  app.delete("/api/books/:bookId/resources/:resourceId", async (c) => {
+    const bookId = c.req.param("bookId");
     const service = serviceForRequest();
-    const current = service.getById(c.req.param("resourceId"));
-    if (!current || current.bookId !== c.req.param("bookId") || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
-    const resource = service.softDelete(current.id);
+    const resourceId = c.req.param("resourceId");
+    const current = await service.getById(bookId, resourceId);
+    if (!current || current.bookId !== bookId || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
+    const resource = await service.softDelete(bookId, current.id);
     return c.json({ ok: true, resourceId: resource.id });
   });
 
-  app.get("/api/books/:bookId/resources/:resourceId/history", (c) => {
+  app.get("/api/books/:bookId/resources/:resourceId/history", async (c) => {
+    const bookId = c.req.param("bookId");
     const service = serviceForRequest();
-    const current = service.getById(c.req.param("resourceId"));
-    if (!current || current.bookId !== c.req.param("bookId")) return c.json({ error: "Writing resource not found" }, 404);
-    return c.json({ history: service.getHistory(current.id) });
+    const resourceId = c.req.param("resourceId");
+    const current = await service.getById(bookId, resourceId);
+    if (!current || current.bookId !== bookId) return c.json({ error: "Writing resource not found" }, 404);
+    const history = await service.getHistory(bookId, current.id);
+    return c.json({ history });
   });
 
   return app;
-}
-
-function serviceForRequest() {
-  return createWritingResourceService({ storage: getStorageDatabase() });
 }
 
 function parseFilter(query: Record<string, string>): ListWritingResourcesFilter {
@@ -87,13 +105,12 @@ function parseFilter(query: Record<string, string>): ListWritingResourcesFilter 
   };
 }
 
-function parseCreateInput(bookId: string, body: Record<string, unknown>): CreateServiceInput {
+function parseCreateInput(body: Record<string, unknown>): CreateServiceInput {
   const type = isType(body.type) ? body.type : "draft";
   const status = isStatus(body.status) ? body.status : (type === "chapter" ? "accepted" : "candidate");
   const title = stringBody(body.title, "title");
   const content = typeof body.content === "string" ? body.content : "";
   return {
-    bookId,
     type,
     status,
     title,

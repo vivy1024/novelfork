@@ -10,11 +10,11 @@ import {
 } from "@vivy1024/novelfork-core";
 
 import {
-  createBibleCharacterArcRepository,
-  createBibleCharacterRepository,
-  createBibleConflictRepository,
-  createBibleEventRepository,
-  createBibleSettingRepository,
+  createJingweiCharacterArcRepository,
+  createJingweiCharacterRepository,
+  createJingweiConflictRepository,
+  createJingweiEventRepository,
+  createJingweiSettingRepository,
   createBookRepository,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 
@@ -130,7 +130,7 @@ describe("narrative-line-service", () => {
         { number: 12, title: "裂铃" },
       ]);
       await writeFile(join(harness.root, "books", "book-1", "story", "pending_hooks.md"), "# 待处理伏笔\n\n- [ ] 第1章：青铜铃为何自鸣\n", "utf-8");
-      await createBibleEventRepository(harness.storage).create({
+      await createJingweiEventRepository(harness.storage).create({
         id: "event-foreshadow-1",
         bookId: "book-1",
         name: "青铜铃自鸣",
@@ -144,7 +144,7 @@ describe("narrative-line-service", () => {
         createdAt: new Date("2026-05-01T00:00:00.000Z"),
         updatedAt: new Date("2026-05-01T00:00:00.000Z"),
       });
-      await createBibleEventRepository(harness.storage).create({
+      await createJingweiEventRepository(harness.storage).create({
         id: "event-payoff-1",
         bookId: "book-1",
         name: "旧神回声",
@@ -158,7 +158,7 @@ describe("narrative-line-service", () => {
         createdAt: new Date("2026-05-01T00:00:00.000Z"),
         updatedAt: new Date("2026-05-01T00:00:00.000Z"),
       });
-      await createBibleConflictRepository(harness.storage).create({
+      await createJingweiConflictRepository(harness.storage).create({
         id: "conflict-1",
         bookId: "book-1",
         name: "资源稀缺",
@@ -177,7 +177,7 @@ describe("narrative-line-service", () => {
         createdAt: new Date("2026-05-01T00:00:00.000Z"),
         updatedAt: new Date("2026-05-01T00:00:00.000Z"),
       });
-      await createBibleCharacterRepository(harness.storage).create({
+      await createJingweiCharacterRepository(harness.storage).create({
         id: "char-1",
         bookId: "book-1",
         name: "林月",
@@ -191,7 +191,7 @@ describe("narrative-line-service", () => {
         createdAt: new Date("2026-05-01T00:00:00.000Z"),
         updatedAt: new Date("2026-05-01T00:00:00.000Z"),
       });
-      await createBibleCharacterArcRepository(harness.storage).create({
+      await createJingweiCharacterArcRepository(harness.storage).create({
         id: "arc-1",
         bookId: "book-1",
         characterId: "char-1",
@@ -204,7 +204,7 @@ describe("narrative-line-service", () => {
         createdAt: new Date("2026-05-01T00:00:00.000Z"),
         updatedAt: new Date("2026-05-01T00:00:00.000Z"),
       });
-      await createBibleSettingRepository(harness.storage).create({
+      await createJingweiSettingRepository(harness.storage).create({
         id: "setting-1",
         bookId: "book-1",
         category: "world-rule",

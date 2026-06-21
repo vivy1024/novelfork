@@ -1,5 +1,5 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { createBibleChapterSummaryRepository } from "../../jingwei/repositories/chapter-summary-repo.js";
+import { createJingweiChapterSummaryRepository } from "../../jingwei/repositories/chapter-summary-repo.js";
 import { runFilter } from "../engine/index.js";
 import { createFilterReportRepository } from "../repositories/filter-report-repo.js";
 import { summarizeHitCounts } from "../engine/index.js";
@@ -23,7 +23,7 @@ function parseJsonObject(raw: string): Record<string, unknown> {
 }
 
 export async function scanChapterAndStoreFilterReport(storage: StorageDatabase, input: ScanChapterAndStoreFilterReportInput): Promise<FilterReport> {
-  const summaryRepo = createBibleChapterSummaryRepository(storage);
+  const summaryRepo = createJingweiChapterSummaryRepository(storage);
   const summary = await summaryRepo.getByChapter(input.bookId, input.chapterNumber);
   const metadata = parseJsonObject(summary?.metadataJson ?? "{}");
   const pgiUsed = Boolean(metadata.pgi_answers);

@@ -4,7 +4,7 @@ import type { BookRecord, JingweiMode, CreateBookInput, UpdateBookInput } from "
 interface BookRow {
   id: string;
   name: string;
-  bible_mode: JingweiMode;
+  jingwei_mode: JingweiMode;
   current_chapter: number;
   created_at: number;
   updated_at: number;
@@ -14,7 +14,7 @@ function toBook(row: BookRow): BookRecord {
   return {
     id: row.id,
     name: row.name,
-    jingweiMode: row.bible_mode,
+    jingweiMode: row.jingwei_mode,
     currentChapter: row.current_chapter,
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
@@ -26,7 +26,7 @@ export function createBookRepository(storage: StorageDatabase) {
     async create(input: CreateBookInput): Promise<BookRecord> {
       storage.sqlite.prepare(`
         INSERT INTO "book" (
-          "id", "name", "bible_mode", "current_chapter", "created_at", "updated_at"
+          "id", "name", "jingwei_mode", "current_chapter", "created_at", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         input.id,
@@ -43,7 +43,7 @@ export function createBookRepository(storage: StorageDatabase) {
 
     async getById(id: string): Promise<BookRecord | null> {
       const row = storage.sqlite.prepare(`
-        SELECT "id", "name", "bible_mode", "current_chapter", "created_at", "updated_at"
+        SELECT "id", "name", "jingwei_mode", "current_chapter", "created_at", "updated_at"
         FROM "book"
         WHERE "id" = ?
       `).get(id) as BookRow | undefined;
@@ -52,7 +52,7 @@ export function createBookRepository(storage: StorageDatabase) {
 
     async list(): Promise<BookRecord[]> {
       const rows = storage.sqlite.prepare(`
-        SELECT "id", "name", "bible_mode", "current_chapter", "created_at", "updated_at"
+        SELECT "id", "name", "jingwei_mode", "current_chapter", "created_at", "updated_at"
         FROM "book"
         ORDER BY "updated_at" DESC
       `).all() as BookRow[];
@@ -65,7 +65,7 @@ export function createBookRepository(storage: StorageDatabase) {
 
       storage.sqlite.prepare(`
         UPDATE "book"
-        SET "name" = ?, "bible_mode" = ?, "current_chapter" = ?, "updated_at" = ?
+        SET "name" = ?, "jingwei_mode" = ?, "current_chapter" = ?, "updated_at" = ?
         WHERE "id" = ?
       `).run(
         updates.name ?? current.name,

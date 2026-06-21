@@ -38,7 +38,7 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiPremiseInput): Promise<JingweiPremiseRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_premise" (
+        INSERT INTO "jingwei_premise" (
           "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook",
           "genre_tags_json", "created_at", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,7 +61,7 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
 
     async upsert(input: CreateJingweiPremiseInput): Promise<JingweiPremiseRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_premise" (
+        INSERT INTO "jingwei_premise" (
           "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook",
           "genre_tags_json", "created_at", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -95,7 +95,7 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
     async getByBook(bookId: string): Promise<JingweiPremiseRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_premise"
+        FROM "jingwei_premise"
         WHERE "book_id" = ?
       `).get(bookId) as JingweiPremiseRow | undefined;
       return row ? toPremise(row) : null;
@@ -104,7 +104,7 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiPremiseRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_premise"
+        FROM "jingwei_premise"
         WHERE "book_id" = ?
         ORDER BY "updated_at" DESC
       `).all(bookId) as JingweiPremiseRow[];
@@ -116,7 +116,7 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_premise"
+        UPDATE "jingwei_premise"
         SET "logline" = ?, "theme_json" = ?, "tone" = ?, "target_readers" = ?, "unique_hook" = ?,
           "genre_tags_json" = ?, "updated_at" = ?
         WHERE "book_id" = ?
@@ -136,4 +136,3 @@ export function createJingweiPremiseRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiPremiseRepository instead */
-export const createBiblePremiseRepository = createJingweiPremiseRepository;

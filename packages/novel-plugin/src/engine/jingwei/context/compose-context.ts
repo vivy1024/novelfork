@@ -49,12 +49,3 @@ export function composeJingweiContext(
   };
 }
 
-// --- Deprecated aliases ---
-/** @deprecated Use ComposableJingweiContextItem instead */
-export type ComposableBibleContextItem = ComposableJingweiContextItem;
-/** @deprecated Use ComposeJingweiContextOptions instead */
-export type ComposeBibleContextOptions = ComposeJingweiContextOptions;
-/** @deprecated Use formatJingweiContextItem instead */
-export const formatBibleContextItem = formatJingweiContextItem;
-/** @deprecated Use composeJingweiContext instead */
-export const composeBibleContext = composeJingweiContext;

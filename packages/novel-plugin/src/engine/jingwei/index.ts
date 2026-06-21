@@ -12,21 +12,21 @@ export { buildJingweiBrief, type BuildJingweiBriefInput } from "./read-model/bui
 export { readJingweiCategory, type ReadJingweiCategoryInput } from "./read-model/read-jingwei-category.js";
 export { searchJingwei, type SearchJingweiInput } from "./read-model/search-jingwei.js";
 export { buildJingweiIndexFromItems } from "./read-model/build-jingwei-index.js";
-export { createLegacyJingweiAdapter, createLegacyBibleJingweiAdapter } from "./context/section-adapter.js";
+export { createLegacyJingweiAdapter } from "./context/section-adapter.js";
 
 // Jingwei repositories
 export { createStoryJingweiEntryRepository } from "./repositories/entry-repo.js";
 export { createStoryJingweiSectionRepository } from "./repositories/section-repo.js";
 
-// Legacy Jingwei context (renamed from Bible)
+// Legacy Jingwei context
 export { createAliasMatcher, matchTrackedByAliases, AliasMatcher, type AliasMatchEntry } from "./context/alias-matcher.js";
-export { buildJingweiLegacyContext, buildBibleContext, injectCharacterArcs, injectConflicts, injectPremise, injectWorldModel, type BuildJingweiLegacyContextOptions, type BuildBibleContextOptions } from "./context/build-bible-context.js";
-export { composeJingweiContext, composeBibleContext, formatJingweiContextItem, formatBibleContextItem, type ComposableJingweiContextItem, type ComposableBibleContextItem, type ComposeJingweiContextOptions, type ComposeBibleContextOptions } from "./context/compose-context.js";
+export { buildJingweiLegacyContext, injectCharacterArcs, injectConflicts, injectPremise, injectWorldModel, type BuildJingweiLegacyContextOptions } from "./context/build-jingwei-context.js";
+export { composeJingweiContext, formatJingweiContextItem, type ComposableJingweiContextItem, type ComposeJingweiContextOptions } from "./context/compose-context.js";
 export { resolveNestedRefs, type NestedRefEntry, type ResolveNestedRefsOptions } from "./context/nested-resolver.js";
-export { formatJingweiContextForPrompt, mergeJingweiContextWithExternalContext, formatBibleContextForPrompt, mergeBibleContextWithExternalContext } from "./context/pipeline-bridge.js";
+export { formatJingweiContextForPrompt, mergeJingweiContextWithExternalContext } from "./context/pipeline-bridge.js";
 export { formatDescriptor, hasDescriptorContent, safeParseDescriptor } from "./context/format-descriptor.js";
 export { detectStalledConflict, detectStalledConflicts, getStalledConflicts, type StalledConflictWarning } from "./context/stalled-detector.js";
-export { applyTokenBudget, estimateTokens, sortByContextPriority, type BudgetedJingweiContextItem, type BudgetedBibleContextItem, type TokenBudgetResult } from "./context/token-budget.js";
+export { applyTokenBudget, estimateTokens, sortByContextPriority, type BudgetedJingweiContextItem, type TokenBudgetResult } from "./context/token-budget.js";
 export { filterEntriesVisibleAtChapter, getVisibilityRule, isVisibleAtChapter, parseVisibilityRule, type VisibilityRuleEntry } from "./context/visibility-filter.js";
 
 // Core shift
@@ -59,16 +59,16 @@ export { extractChapterEntities, updateCooccurrence, type CooccurrenceEdge } fro
 export { propagateSpikes, type SpikeResult } from "./associative/spike-routing.js";
 export { buildDreamPrompt, parseDreamDiscoveries, type DreamDiscovery } from "./associative/dream-system.js";
 
-// Jingwei repositories (renamed from Bible)
+// Jingwei repositories
 export { createBookRepository } from "./repositories/book-repo.js";
-export { createJingweiCharacterArcRepository, createBibleCharacterArcRepository } from "./repositories/character-arc-repo.js";
-export { createJingweiCharacterRepository, createBibleCharacterRepository } from "./repositories/character-repo.js";
-export { createJingweiConflictRepository, createBibleConflictRepository } from "./repositories/conflict-repo.js";
+export { createJingweiCharacterArcRepository } from "./repositories/character-arc-repo.js";
+export { createJingweiCharacterRepository } from "./repositories/character-repo.js";
+export { createJingweiConflictRepository } from "./repositories/conflict-repo.js";
 export { createCoreShiftRepository } from "./repositories/core-shift-repo.js";
-export { createJingweiEventRepository, createBibleEventRepository } from "./repositories/event-repo.js";
-export { createJingweiPremiseRepository, createBiblePremiseRepository } from "./repositories/premise-repo.js";
+export { createJingweiEventRepository } from "./repositories/event-repo.js";
+export { createJingweiPremiseRepository } from "./repositories/premise-repo.js";
 export { createQuestionnaireResponseRepository } from "./repositories/questionnaire-response-repo.js";
 export { createQuestionnaireTemplateRepository } from "./repositories/questionnaire-template-repo.js";
-export { createJingweiSettingRepository, createBibleSettingRepository } from "./repositories/setting-repo.js";
-export { createJingweiWorldModelRepository, createBibleWorldModelRepository } from "./repositories/world-model-repo.js";
-export { createJingweiChapterSummaryRepository, createBibleChapterSummaryRepository } from "./repositories/chapter-summary-repo.js";
+export { createJingweiSettingRepository } from "./repositories/setting-repo.js";
+export { createJingweiWorldModelRepository } from "./repositories/world-model-repo.js";
+export { createJingweiChapterSummaryRepository } from "./repositories/chapter-summary-repo.js";

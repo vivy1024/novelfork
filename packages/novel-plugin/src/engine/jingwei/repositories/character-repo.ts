@@ -44,7 +44,7 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiCharacterInput): Promise<JingweiCharacterRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_character" (
+        INSERT INTO "jingwei_character" (
           "id", "book_id", "name", "aliases_json", "role_type", "summary", "traits_json",
           "visibility_rule_json", "first_chapter", "last_chapter", "created_at", "updated_at", "deleted_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -70,7 +70,7 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
     async getById(bookId: string, id: string): Promise<JingweiCharacterRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_character"
+        FROM "jingwei_character"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiCharacterRow | undefined;
       return row ? toCharacter(row) : null;
@@ -79,7 +79,7 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiCharacterRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_character"
+        FROM "jingwei_character"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as JingweiCharacterRow[];
@@ -91,7 +91,7 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_character"
+        UPDATE "jingwei_character"
         SET "name" = ?, "aliases_json" = ?, "role_type" = ?, "summary" = ?, "traits_json" = ?,
           "visibility_rule_json" = ?, "first_chapter" = ?, "last_chapter" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -113,7 +113,7 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_character"
+        UPDATE "jingwei_character"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -123,4 +123,3 @@ export function createJingweiCharacterRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiCharacterRepository instead */
-export const createBibleCharacterRepository = createJingweiCharacterRepository;

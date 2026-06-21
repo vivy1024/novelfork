@@ -215,7 +215,8 @@ export class ComposerAgent extends BaseAgent {
     storyDir: string,
     chapterNumber: number,
   ): Promise<ContextPackage["selectedContext"]> {
-    const content = await this.readFileOrDefault(join(storyDir, "chapter_summaries.md"));
+    // [CLEANUP] story/*.md 已废弃,ComposerAgent 本身不再被生产代码调用
+    const content = "";
     if (!content || content === "(文件尚未创建)") {
       return [];
     }
@@ -330,7 +331,7 @@ export class ComposerAgent extends BaseAgent {
     }
 
     const summaries = parseChapterSummariesMarkdown(
-      await this.readFileOrDefault(join(storyDir, "chapter_summaries.md")),
+      "", // [CLEANUP] story/chapter_summaries.md 已废弃
     );
 
     return targetHookIds.flatMap((hookId) => {
