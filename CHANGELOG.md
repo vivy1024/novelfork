@@ -2,6 +2,70 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v2.1.0 (2026-06-22)
+
+### 🧠 上下文管理根因修复（解决了19次反复修不好的问题）
+
+**根因**：`lastInputTokens` 只算 `input+cache_read`（漏 output+cache_creation），runtime 折叠更只算 `input`。开 prompt caching 后 input 仅 2k（内容 80k 在 cache_read），旧逻辑算成 1.6% 永远不触发压缩，直到撞 413 崩溃。
+
+- `token-utils.ts`：新增 `getContextTokensFromUsage`（四字段权威定义）+ `getEffectiveContextWindow`（窗口扣输出预留）
+- `session-chat-service.ts`：`accumulateUsage.lastInputTokens` 改四字段全算
+- `agent-turn-runtime.ts`：折叠取值 input→四字段；窗口分母统一；TurnHealthMonitor 用真实窗口
+- `StudioNextApp.tsx`：contextWindow 未配置时 ring 不显示（不再 fallback 虚假 200k）
+- 31 个测试含回归保护（开缓存场景：旧 1.6%→新 94.5%）
+- 删除 413 reactiveCompact 救援机制（根因已修，该机制 snip 到 5 条太激进）
+
+### ⚡ 推理强度统一系统（对齐 NarraFork v0.4.26+）
+
+- 6 档：none/minimal/low/medium/high/xhigh
+- 三级优先级：叙述者 > 供应商 > 全局默认 > medium 兜底
+- anthropic adapter：effort→budget_tokens 映射（low=2k/medium=4k/high=8k/xhigh=16k）
+- completions adapter：reasoning_effort + 非推理模型静默跳过
+- Provider 设置页：新增「默认推理强度」下拉 + contextWindow 未配置提醒
+- 全局设置 + RuntimeControlPanel 支持 6 档选择
+- reasoningEffort 白名单校验 + temperature 范围校验 clamp 0-2
+
+### 🔧 四个死配置接线
+
+- **maxOutputTokens**：GenerateInput 新增字段，三 adapter 读配置值 ?? 32768
+- **temperature**：SessionConfig 新增字段，anthropic/completions adapter 发送，thinking 时跳过
+- **thinkingStrength**：合并进 reasoningEffort 统一系统
+- **reasoningEffort**：三级优先级 + 全协议 adapter 接线
+
+### ✨ IDE 打磨（20 项）
+
+- editor-state-cache（Tab 切换保滚动位置/undo 栈）
+- Ctrl+F 搜索 + Ctrl+H 替换（SearchExtension + SearchBar）
+- StatusBar：行:列 + 字数 + 保存状态
+- EditorTabs 拖拽排序（@dnd-kit）
+- 经纬 TipTap 编辑器 + 预览/编辑切换 + 关系/历史 tab
+- 全局跨文件搜索 Sidebar 视图
+- Quick Open 模糊搜索（fuzzysort）
+- 面包屑可点击跳转
+- BeatProgressBar 接入驾驶舱 + StatCard 点击联动
+- AI BubbleMenu（续写/润色/改写/扩写）
+- 伏笔看板拖拽切换状态 + 目标章节跳转
+- MCP 服务器管理 UI
+- 段落折叠 + Minimap + 底部面板（问题/输出）
+- URL 路由参数驱动面板展开
+- PresetSuggestionCard（建书后弹推荐预设）
+
+### 🐛 修复
+
+- 段落折叠 bug 移除（setupFoldGutters 给每行注入箭头）
+- ToolConfigBar + AgentQuickActions 死组件删除
+- Agent 模式切换按钮（ChatHeader message-square 图标）
+- 面板 maxSize 移除（自由调整大小）
+- 自动重试按钮从 TODO 接线为真正实现（从错误码创建 retryRule）
+
+### 📊 统计
+
+- 11 个 commit，60 文件，+3827 -692 行
+- 31 个测试全过（token-utils 18 + reasoning-effort 8 + context-compaction 5）
+- 1496 个历史 commit 邮箱重写（vivy1024@example.com → xuexc1024@gmail.com）
+
+---
+
 ## v2.0.0 (2026-06-21)
 
 ### ⚡ Breaking Changes
