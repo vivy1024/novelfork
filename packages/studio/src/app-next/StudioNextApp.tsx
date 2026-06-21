@@ -869,10 +869,31 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       onDismissError={() => {
         runtime.clearError();
       }}
-      onAutoRetryError={(errorCode) => {
-        // TODO: Phase C 实现自动重试规则
-        runtime.clearError();
-        notify.info("已设置自动重试", { description: `后续 ${errorCode} 错误将自动重试` });
+      onAutoRetryError={async (errorCode) => {
+        // 从错误码创建重试规则，保存到 runtimeControls.retryRules
+        try {
+          const existing = await fetch("/api/settings").then(r => r.ok ? r.json() : null);
+          const rules = existing?.runtimeControls?.retryRules ?? [];
+          const ruleId = `auto-${errorCode}-${Date.now()}`;
+          // 用错误码做 httpStatus 或 contentKeyword 匹配
+          const isHttpCode = /^\d{3}$/.test(errorCode);
+          const newRule = {
+            id: ruleId,
+            enabled: true,
+            httpStatus: isHttpCode ? errorCode : "",
+            contentKeyword: isHttpCode ? "" : errorCode,
+          };
+          await fetch("/api/settings", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ runtimeControls: { retryRules: [...rules, newRule] } }),
+          });
+          runtime.clearError();
+          notify.success("已添加自动重试规则", { description: `后续匹配「${errorCode}」的错误将自动重试` });
+        } catch {
+          runtime.clearError();
+          notify.error("保存重试规则失败");
+        }
       }}
       sendDisabledReason={missingSession ? "会话缺失或快照不可用，请返回会话列表或新建会话。" : modelPoolEmpty ? "模型池为空，请先到设置页启用模型" : undefined}
       settingsHref={missingSession ? "/next" : modelPoolEmpty ? "/next/settings" : undefined}
@@ -1179,14 +1200,14 @@ function toConversationStatus(
           return sum + chars;
         }, 0) / 4)
       : 0;
-  // detected 模型可能 contextWindow=0（未手动填），兜底 200k 与后端 fallback 一致，
-  // 避免 ring 显示 0 容量而后端按 200k 触发压缩（前后端不一致）。
-  const effectiveMaxTokens = maxTokens && maxTokens > 0 ? maxTokens : 200000;
-  const contextUsage = {
+  // contextWindow 未配置时（detected 模型返回 0），不 fallback 虚假值，
+  // 而是不显示 ring 并在前端提醒用户到设置页配置上下文窗口。
+  const contextWindowConfigured = maxTokens && maxTokens > 0;
+  const contextUsage = contextWindowConfigured ? {
     usedTokens,
-    maxTokens: effectiveMaxTokens,
-    compactThreshold: Math.round(effectiveMaxTokens * (compactThresholdPercent / 100)),
-  };
+    maxTokens,
+    compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)),
+  } : undefined;
 
   return {
     state: runtimeState,
