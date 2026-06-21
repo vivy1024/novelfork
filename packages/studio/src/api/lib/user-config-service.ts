@@ -148,9 +148,12 @@ function sanitizeRuntimeControls(runtimeControls?: Partial<RuntimeControlSetting
       ? rawPermissionMode
       : normalizeSessionPermissionMode(rawPermissionMode, defaults.defaultPermissionMode),
     defaultReasoningEffort:
-      runtimeControls?.defaultReasoningEffort === "low"
+      runtimeControls?.defaultReasoningEffort === "none"
+      || runtimeControls?.defaultReasoningEffort === "minimal"
+      || runtimeControls?.defaultReasoningEffort === "low"
       || runtimeControls?.defaultReasoningEffort === "medium"
       || runtimeControls?.defaultReasoningEffort === "high"
+      || runtimeControls?.defaultReasoningEffort === "xhigh"
         ? runtimeControls.defaultReasoningEffort
         : defaults.defaultReasoningEffort,
     contextCompressionThresholdPercent: clampNumber(
@@ -271,9 +274,12 @@ async function sanitizeModelDefaults(modelDefaults?: Partial<ModelDefaultSetting
     generalSubagentModel: normalizeModelReference(modelDefaults?.generalSubagentModel ?? defaultModelDefaults.generalSubagentModel),
     subagentModelPool,
     codexReasoningEffort:
-      modelDefaults?.codexReasoningEffort === "low"
+      modelDefaults?.codexReasoningEffort === "none"
+      || modelDefaults?.codexReasoningEffort === "minimal"
+      || modelDefaults?.codexReasoningEffort === "low"
       || modelDefaults?.codexReasoningEffort === "medium"
       || modelDefaults?.codexReasoningEffort === "high"
+      || modelDefaults?.codexReasoningEffort === "xhigh"
         ? modelDefaults.codexReasoningEffort
         : defaultModelDefaults.codexReasoningEffort,
     validation,

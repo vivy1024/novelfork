@@ -95,6 +95,10 @@ export interface GenerateInput extends RuntimeProviderRef {
   readonly serviceTier?: string;
   /** P2.1: Override max_output_tokens for truncation recovery */
   readonly maxOutputTokensOverride?: number;
+  /** 模型配置的 maxOutputTokens（用户在设置页配置，区别于截断恢复用的 override） */
+  readonly maxOutputTokens?: number;
+  /** temperature 采样温度（0-1，开 thinking 时 adapter 自动跳过） */
+  readonly temperature?: number;
 }
 
 export type RuntimeAdapterFailure = {

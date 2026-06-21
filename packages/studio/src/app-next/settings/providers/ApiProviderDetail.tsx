@@ -10,6 +10,8 @@ import { EmptyState } from "../../components/feedback";
 import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel, providerProtocolLabel, providerProtocolDescription } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderProtocol, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
 import { inferProtocol } from "@/shared/provider-catalog";
+import type { SessionReasoningEffort } from "@/shared/session-types";
+import { SESSION_REASONING_EFFORT_OPTIONS } from "@/shared/session-types";
 import type { ApiProvider } from "../provider-types";
 
 const PROTOCOLS: ProviderProtocol[] = ["completions", "responses", "anthropic", "codex", "claude-code"];
@@ -64,12 +66,14 @@ export function ApiProviderDetail({
   const [apiKey, setApiKey] = useState("");
   const [proxy, setProxy] = useState((provider as { proxy?: string }).proxy ?? "");
   const [protocol, setProtocol] = useState<ProviderProtocol>(inferProtocol(provider));
+  const [defaultReasoningEffort, setDefaultReasoningEffort] = useState<SessionReasoningEffort | undefined>(provider.defaultReasoningEffort);
 
   useEffect(() => {
     setBaseUrl(provider.baseUrl ?? provider.config.endpoint ?? "");
     setApiKey("");
     setProxy((provider as { proxy?: string }).proxy ?? "");
     setProtocol(inferProtocol(provider));
+    setDefaultReasoningEffort(provider.defaultReasoningEffort);
   }, [provider]);
 
   const saveConnectionInfo = async () => {
@@ -82,6 +86,7 @@ export function ApiProviderDetail({
       compatibility,
       apiMode,
       type: providerTypeFromCompatibility(compatibility),
+      defaultReasoningEffort,
       ...(proxy.trim() ? { proxy: proxy.trim() } : { proxy: undefined }),
       ...(trimmedApiKey ? { config: { apiKey: trimmedApiKey } } : {}),
     });
@@ -91,13 +96,14 @@ export function ApiProviderDetail({
   const originalBaseUrl = provider.baseUrl ?? provider.config.endpoint ?? "";
   const originalProxy = (provider as { proxy?: string }).proxy ?? "";
   const originalProtocol = inferProtocol(provider);
-  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol;
+  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol || defaultReasoningEffort !== provider.defaultReasoningEffort;
 
   const resetForm = () => {
     setBaseUrl(originalBaseUrl);
     setApiKey("");
     setProxy(originalProxy);
     setProtocol(originalProtocol);
+    setDefaultReasoningEffort(provider.defaultReasoningEffort);
   };
 
   return (
@@ -159,6 +165,21 @@ export function ApiProviderDetail({
             />
             <span className="text-[10px] text-muted-foreground">
               {providerProtocolDescription(protocol)}
+            </span>
+          </label>
+          <label className="text-sm">
+            默认推理强度
+            <SimpleSelect
+              className="mt-1"
+              value={defaultReasoningEffort ?? ""}
+              onValueChange={(v) => setDefaultReasoningEffort(v ? v as SessionReasoningEffort : undefined)}
+              options={[
+                { value: "", label: "（继承全局默认）" },
+                ...SESSION_REASONING_EFFORT_OPTIONS.map((opt) => ({ value: opt.value, label: `${opt.label}（${opt.description}）` })),
+              ]}
+            />
+            <span className="text-[10px] text-muted-foreground">
+              覆盖该供应商的默认推理强度，优先于全局默认
             </span>
           </label>
         </div>

@@ -16,9 +16,12 @@ const REASONING_OPTIONS: Array<{
   value: ModelDefaultSettings["codexReasoningEffort"];
   label: string;
 }> = [
+  { value: "none", label: "关闭" },
+  { value: "minimal", label: "最轻" },
   { value: "low", label: "低" },
   { value: "medium", label: "中" },
   { value: "high", label: "高" },
+  { value: "xhigh", label: "最高" },
 ];
 
 const DEFAULT_RUNTIME_CONTROLS = DEFAULT_USER_CONFIG.runtimeControls;

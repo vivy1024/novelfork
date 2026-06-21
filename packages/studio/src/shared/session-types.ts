@@ -3,7 +3,7 @@ import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
 
 export const SESSION_PERMISSION_MODES = ["ask", "edit", "allow", "read", "plan"] as const;
 export type SessionPermissionMode = (typeof SESSION_PERMISSION_MODES)[number];
-export type SessionReasoningEffort = "low" | "medium" | "high";
+export type SessionReasoningEffort = "none" | "minimal" | "low" | "medium" | "high" | "xhigh";
 
 export interface SessionPermissionModeOption {
   value: SessionPermissionMode;
@@ -49,6 +49,15 @@ export const SESSION_PERMISSION_MODE_OPTIONS: readonly SessionPermissionModeOpti
     description: "允许查阅素材并产出计划，不允许直接改正文、设定或执行工程化动作。",
     bestFor: "大纲规划、卷纲拆解、复杂任务先想清楚",
   },
+] as const;
+
+export const SESSION_REASONING_EFFORT_OPTIONS: readonly { value: SessionReasoningEffort; label: string; description: string }[] = [
+  { value: "none", label: "关闭", description: "不启用推理/思考，响应最快" },
+  { value: "minimal", label: "最轻", description: "最少推理开销" },
+  { value: "low", label: "低", description: "轻度推理" },
+  { value: "medium", label: "中", description: "平衡推理与速度" },
+  { value: "high", label: "高", description: "深度推理" },
+  { value: "xhigh", label: "最高", description: "最大推理深度，部分模型不支持时自动降级" },
 ] as const;
 
 export const SESSION_PERMISSION_MODE_LABELS: Record<SessionPermissionMode, string> = Object.fromEntries(
@@ -120,6 +129,8 @@ export interface SessionConfig {
   permissionMode: SessionPermissionMode;
   reasoningEffort: SessionReasoningEffort;
   serviceTier?: "default" | "priority";
+  /** temperature 采样温度（0-1，开 thinking 时 adapter 自动跳过） */
+  temperature?: number;
   toolPolicy?: SessionToolPolicy;
   mode?: "normal" | "plan";
   /** Project type for scope-based tool filtering (e.g. "novel", "general") */
