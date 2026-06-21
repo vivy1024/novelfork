@@ -4,7 +4,10 @@
 
 import { estimateTokenCount, estimateMessageTokens as _estimateMessageTokens } from "../token-utils.js";
 
-/** Re-export with original names for backward compatibility */
+/** Re-export with original names for backward compatibility.
+ *  语义变更：旧实现使用 CJK-aware 估算（CJK ×1.5 + 保守系数），
+ *  新实现统一为 ceil(length/4)，对齐 Claude CLI / Codex / LegnaCLI。
+ *  对纯中文文本估算值会偏低约 60%，但 API usage 才是精确来源，本地估算只用于增量。 */
 export const estimateTokens = estimateTokenCount;
 export const estimateMessageTokens = _estimateMessageTokens;
 

@@ -303,11 +303,13 @@ const MAX_PTL_RETRIES = 3;
  * 用于 PTL（prompt_too_long）重试：逐轮削减输入直到能通过模型窗口。
  */
 function dropOldestTurn(messages: readonly CompactMessage[]): CompactMessage[] {
+  if (messages.length === 0) return [];
   let dropCount = 0;
   for (let i = 0; i < messages.length; i++) {
     dropCount++;
     if (messages[i].role === "assistant") break; // user + assistant = 一轮
   }
+  if (dropCount >= messages.length) return messages.slice(-1);
   return messages.slice(dropCount);
 }
 

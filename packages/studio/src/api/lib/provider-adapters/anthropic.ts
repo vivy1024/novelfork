@@ -681,7 +681,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     // Reasoning effort → budget_tokens mapping (align with claude-code / NarraFork)
     const reasoningEffort = input.reasoningEffort;
     const EFFORT_BUDGET: Record<string, number> = { minimal: 1024, low: 2048, medium: 4096, high: 8192, xhigh: 16384 };
-    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
+    const maxTokens = Math.max(1, input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768);
 
     const body: Record<string, unknown> = {
       model: effectiveModelId,
@@ -781,7 +781,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     } else if (reasoningEffort === "none") {
       // Explicitly disable thinking when effort is "none"
       body.thinking = { type: "disabled" };
-    } else if (reasoningEffort && reasoningEffort !== "none") {
+    } else if (reasoningEffort) {
       // effort → budget_tokens (clamped to max_tokens - 1)
       const budget = Math.min(EFFORT_BUDGET[reasoningEffort] ?? 4096, maxTokens - 1);
       body.thinking = { type: "enabled", budget_tokens: budget };

@@ -95,8 +95,9 @@ export function estimateTokenCount(text: string): number {
  */
 export function estimateMessageTokens(message: MessageLike): number {
   // extraTokens 已存在（CompactMessage 预计算），直接用
+  // 每条消息有 role/formatting 结构开销，对齐 Claude CLI 估算（+4 token/消息）
   if (message.extraTokens != null) {
-    return estimateTokenCount(message.content ?? "") + message.extraTokens;
+    return estimateTokenCount(message.content ?? "") + message.extraTokens + 4;
   }
   // 原始消息：手动累加 toolCalls
   let chars = (message.content ?? "").length;
@@ -107,7 +108,8 @@ export function estimateMessageTokens(message: MessageLike): number {
       if (tc.result != null) chars += (JSON.stringify(tc.result) ?? "").length;
     }
   }
-  return Math.ceil(chars / 4);
+  // 每条消息有 role/formatting 结构开销，对齐 Claude CLI 估算（+4 token/消息）
+  return Math.ceil(chars / 4) + 4;
 }
 
 /**

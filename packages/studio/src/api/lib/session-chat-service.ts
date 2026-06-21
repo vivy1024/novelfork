@@ -524,7 +524,7 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
   // 必须计入才能正确预判占用，否则压缩判断严重低估（该压缩时不压缩 → 撞 413）。
   if (usage.input_tokens != null) {
     cumulative.lastInputTokens = getContextTokensFromUsage(usage);
-    cumulative.lastOutputTokens = (usage.output_tokens ?? 0);
+    cumulative.lastOutputTokens = (usage.output_tokens ?? 0); // 写入但当前无消费方（前端/逻辑均未读取），保留供后续指标统计用
   }
 }
 const abortControllerBySessionId = new Map<string, AbortController>();
@@ -2745,7 +2745,9 @@ export async function handleSessionChatTransportMessage(
           content: m.content,
         }));
         const rescue = await reactiveCompact(sessionId, currentCompactMessages, async (msgs) => {
-          // no-op fullCompact: 只利用 snipCompact 结果，不重试 LLM
+          // 有意降级：413 时只做 snipCompact（快速裁剪），不重试 LLM fullCompact。
+          // 原因：prompt_too_long 说明上下文已超窗口，再调 LLM 做摘要同样会 413。
+          // snipCompact 保留最近 5 条是激进策略，但 413 场景下宁可丢历史也不能卡死。
           return { compacted: false, messages: [...msgs] };
         });
         if (rescue.success) {
