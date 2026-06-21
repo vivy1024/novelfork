@@ -569,8 +569,8 @@ export function ConversationSurface({
               </div>
             </SheetContent>
           </Sheet>
-          {/* 归档按钮 — 书籍叙述者不可归档 */}
-          {!status.binding?.projectId && (
+          {/* 归档按钮 — 书籍会话在 IDE ChatPanel 管理，通用叙述者在此归档 */}
+          {(
           <Tooltip>
             <TooltipTrigger asChild>
               <Button variant="ghost" size="icon-sm" onClick={() => onArchive?.()}>

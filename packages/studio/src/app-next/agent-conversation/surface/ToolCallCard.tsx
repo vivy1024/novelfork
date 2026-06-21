@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useRef, useCallback, lazy, Suspense, type ComponentType, type CSSProperties } from "react";
 import { Check, X, ChevronDown, ChevronRight, Loader2, Terminal, Eye, Search, Globe, Bot, HelpCircle, Pencil, FileText, ShieldAlert } from "lucide-react";
+import { diffLines as computeDiffLines, type Change } from "diff";
 
 import { Badge } from "@/components/ui/badge";
 
@@ -728,11 +729,17 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
   const diffLines = useMemo(() => {
     if (!editStrings) return null;
     const { oldStr, newStr } = editStrings;
-    const oldLines = oldStr.split("\n");
-    const newLines = newStr.split("\n");
-    const lines: { type: "remove" | "add"; content: string }[] = [];
-    for (const line of oldLines) lines.push({ type: "remove", content: line });
-    for (const line of newLines) lines.push({ type: "add", content: line });
+    const changes: Change[] = computeDiffLines(oldStr, newStr);
+    const lines: { type: "context" | "remove" | "add"; content: string }[] = [];
+    for (const change of changes) {
+      const type = change.added ? "add" : change.removed ? "remove" : "context";
+      // Split into individual lines, remove trailing empty line from split
+      const lineTexts = change.value.split("\n");
+      if (lineTexts[lineTexts.length - 1] === "") lineTexts.pop();
+      for (const text of lineTexts) {
+        lines.push({ type, content: text });
+      }
+    }
     return lines;
   }, [editStrings]);
 
@@ -768,19 +775,20 @@ function WriteExpanded({ toolCall }: { toolCall: ConversationToolCall }) {
 
       {/* Edit: diff 渲染 */}
       {!isRunning && diffLines && (
-        <div className="rounded-md border border-border overflow-hidden text-[11px] font-mono leading-relaxed">
+        <div className="rounded-md border border-border overflow-hidden text-[11px] font-mono leading-relaxed max-h-72 overflow-y-auto">
           {diffLines.map((line, i) => (
             <div
               key={i}
               className={
                 line.type === "remove" ? "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 px-3 py-px"
-                : "bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300 px-3 py-px"
+                : line.type === "add" ? "bg-green-50 dark:bg-green-950/30 text-green-800 dark:text-green-300 px-3 py-px"
+                : "text-muted-foreground px-3 py-px"
               }
             >
               <span className="inline-block w-4 text-right text-muted-foreground/60 select-none mr-2">
-                {line.type === "remove" ? "−" : "+"}
+                {line.type === "remove" ? "−" : line.type === "add" ? "+" : " "}
               </span>
-              {line.content}
+              {line.content || " "}
             </div>
           ))}
         </div>

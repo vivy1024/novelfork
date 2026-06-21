@@ -114,7 +114,7 @@ export function GettingStartedChecklist({
     },
     {
       title: "进入书籍工作台",
-      description: "创建书后点击进入工作台，书籍叙述者会自动引导你完成题材、设定和大纲。",
+      description: "创建书后点击进入工作台，右侧对话面板可随时与 AI 协作完成题材、设定和大纲。",
       completed: status.tasks.hasMetNarrator,
       actionLabel: status.tasks.hasMetNarrator ? "继续写作" : "进入工作台",
       onClick: onMeetNarrator,

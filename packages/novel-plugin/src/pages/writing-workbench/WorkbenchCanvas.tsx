@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
+import type { RefObject } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -15,7 +17,6 @@ import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import { NewBookGuide } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
-import { BookSettingsPanel } from "./panels/BookSettingsPanel";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
@@ -63,10 +64,9 @@ function toResourceViewKind(kind: WorkbenchResourceKind): WorkspaceResourceViewK
     case "jingwei":
       return "markdown-viewer";
     case "jingwei-section":
-      return "bible-category-view";
+      return "jingwei-category-view";
     case "jingwei-entry":
-    case "bible-entry":
-      return "bible-entry-editor";
+      return "jingwei-entry-editor";
     case "narrative-line":
     case "storyline":
       return "narrative-line";
@@ -100,7 +100,6 @@ const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   jingwei: "经纬资料",
   "jingwei-section": "经纬分区",
   "jingwei-entry": "经纬条目",
-  "bible-entry": "经纬资料",
   "narrative-line": "叙事线",
   storyline: "叙事线",
   "tool-result": "工具结果",
@@ -181,9 +180,11 @@ export interface WorkbenchCanvasProps {
   draftActions?: DraftActionHandlers;
   chapterActions?: ChapterActionHandlers;
   jingweiActions?: JingweiActionHandlers;
+  /** 外部容器 ref，操作按钮通过 portal 渲染到此处（IDE 模式用） */
+  toolbarSlotRef?: RefObject<HTMLDivElement | null>;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -220,6 +221,14 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     });
   }, [content, dirty, node, onCanvasContextChange]);
 
+  // ide:save 自定义事件监听（必须在所有 early return 之前声明，避免 hooks 数量变化）
+  const saveRef = useRef(() => {});
+  useEffect(() => {
+    const handler = () => { saveRef.current(); };
+    window.addEventListener("ide:save", handler);
+    return () => window.removeEventListener("ide:save", handler);
+  }, []);
+
   if (!node) {
     if (bookId) {
       return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} />;
@@ -248,6 +257,15 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     }
   }
 
+  // Jingwei panel entry — render JingweiPanel directly
+  if (node.kind === "jingwei" && node.metadata?.action === "open-jingwei-panel" && bookId) {
+    return (
+      <div className="flex h-full flex-col min-h-0">
+        <JingweiPanel bookId={bookId} />
+      </div>
+    );
+  }
+
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
   const needsHydration = resourceNeedsDetailHydration(node);
   const hydrateError = typeof node.metadata?.detailError === "string" ? node.metadata.detailError : null;
@@ -266,67 +284,63 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     }
   }
 
+  // saveRef 赋值（放在 early return 之后是安全的，因为 ref 已在上方声明）
+  saveRef.current = handleSave;
+
+  // 工具栏按钮（可 portal 到外部容器，也可本地渲染）
+  const toolbarButtons = (
+    <div className="flex items-center gap-1.5">
+      {saveError && <span className="text-xs text-destructive truncate max-w-48">{saveError}</span>}
+      <Button size="sm" disabled={readonly || needsHydration || !dirty || saving} onClick={handleSave}>
+        {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
+      </Button>
+      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
+        <Button size="sm" variant="ghost" className="gap-1" onClick={() => setVariantsOpen(true)} title="生成变体">
+          <GitCompare className="size-3.5" />
+        </Button>
+      )}
+      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
+        <Button size="sm" variant="ghost" className="gap-1" disabled={sceneSpecLoading}
+          onClick={async () => {
+            setSceneSpecLoading(true);
+            try {
+              const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : 1;
+              const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/scene-spec`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ chapterNumber, userDirectives: content.slice(0, 200) }),
+              });
+              if (res.ok) {
+                const data = await res.json();
+                if (data.data?.sceneSpec) { setSceneSpec(data.data.sceneSpec); setSceneSpecOpen(true); }
+              }
+            } finally { setSceneSpecLoading(false); }
+          }}
+          title="生成章节蓝图"
+        >
+          <FileText className="size-3.5" />
+        </Button>
+      )}
+    </div>
+  );
+
   return (
     <div className="flex h-full flex-col min-h-0">
-      {/* Header */}
-      <header className="shrink-0 flex items-center justify-between border-b border-border px-4 py-2">
-        <div className="flex items-center gap-2 min-w-0">
-          <h2 className="text-sm font-semibold truncate">{node.title}</h2>
-          <Badge variant="secondary" className="text-[10px] shrink-0">{resourceTypeLabel(node.kind)}</Badge>
-          {readonly && <Badge variant="outline" className="text-[10px] shrink-0">只读</Badge>}
-          {dirty && <Badge className="text-[10px] shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
-          {!dirty && !needsHydration && !readonly && <span className="text-[10px] text-muted-foreground">已保存</span>}
-        </div>
-        <div className="flex items-center gap-2">
-          {saveError && <span className="text-xs text-destructive truncate max-w-48">{saveError}</span>}
-          <Button
-            size="sm"
-            disabled={readonly || needsHydration || !dirty || saving}
-            onClick={handleSave}
-          >
-            {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
-            <span className="ml-1">保存</span>
-          </Button>
-          {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
-            <Button size="sm" variant="outline" className="gap-1.5" onClick={() => setVariantsOpen(true)} title="生成变体">
-              <GitCompare className="size-3.5" />
-              <span>变体</span>
-            </Button>
-          )}
-          {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
-            <Button
-              size="sm"
-              variant="outline"
-              className="gap-1.5"
-              disabled={sceneSpecLoading}
-              onClick={async () => {
-                setSceneSpecLoading(true);
-                try {
-                  const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : 1;
-                  const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/scene-spec`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ chapterNumber, userDirectives: content.slice(0, 200) }),
-                  });
-                  if (res.ok) {
-                    const data = await res.json();
-                    if (data.data?.sceneSpec) {
-                      setSceneSpec(data.data.sceneSpec);
-                      setSceneSpecOpen(true);
-                    }
-                  }
-                } finally {
-                  setSceneSpecLoading(false);
-                }
-              }}
-              title="生成章节蓝图"
-            >
-              <FileText className="size-3.5" />
-              <span>蓝图</span>
-            </Button>
-          )}
-        </div>
-      </header>
+      {/* Header（IDE 模式下 toolbar 通过 portal 渲染到 EditorTabs 右侧） */}
+      {!toolbarSlotRef && (
+        <header className="shrink-0 flex items-center justify-between border-b border-border px-4 py-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <h2 className="text-sm font-semibold truncate">{node.title}</h2>
+            <Badge variant="secondary" className="text-[10px] shrink-0">{resourceTypeLabel(node.kind)}</Badge>
+            {readonly && <Badge variant="outline" className="text-[10px] shrink-0">只读</Badge>}
+            {dirty && <Badge className="text-[10px] shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+            {!dirty && !needsHydration && !readonly && <span className="text-[10px] text-muted-foreground">已保存</span>}
+          </div>
+          {toolbarButtons}
+        </header>
+      )}
+      {/* IDE 模式：portal 渲染操作按钮到 EditorTabs 右侧 */}
+      {toolbarSlotRef && toolbarSlotRef.current && createPortal(toolbarButtons, toolbarSlotRef.current)}
 
       {/* Alerts */}
       {needsHydration && (
@@ -418,7 +432,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
       {/* Editor */}
       <div className="flex-1 min-h-0 overflow-y-auto">
-        {needsHydration ? null : (node.kind === "jingwei-entry" || node.kind === "bible-entry") && jingweiActions && !node.metadata?.fileName ? (
+        {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (
           <JingweiEntryEditor
             entry={{
               id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
@@ -543,7 +557,6 @@ function StatCard({ label, value, sub, className }: { label: string; value: stri
 }
 
 function DefaultCockpitView({ bookId }: { bookId: string }) {
-  const [showSettings, setShowSettings] = useState(false);
   const [stats, setStats] = useState<OverviewStats | null>(null);
 
   // Fetch overview stats
@@ -555,29 +568,6 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
       .catch(() => {});
     return () => { active = false; };
   }, [bookId]);
-
-  const handleSettingsClick = useCallback(() => {
-    setShowSettings(true);
-  }, []);
-
-  const handleSettingsBack = useCallback(() => {
-    setShowSettings(false);
-  }, []);
-
-  // Settings page replaces the entire cockpit view
-  if (showSettings) {
-    return (
-      <div className="flex h-full flex-col min-h-0">
-        <div className="flex-1 min-h-0 overflow-y-auto">
-          <BookSettingsPanel bookId={bookId} onBack={handleSettingsBack} />
-        </div>
-        <StatusBar
-          bookId={bookId}
-          onSettingsClick={handleSettingsBack}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="flex h-full flex-col min-h-0">
@@ -600,16 +590,95 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
         </div>
       )}
 
-      {/* 主区域：经纬浏览 */}
-      <div className="flex-1 min-h-0">
-        <JingweiPanel bookId={bookId} />
+      {/* 主区域：驾驶舱概览（近期候选稿 + 待处理伏笔，与左侧经纬视图不重复） */}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        <CockpitOverview bookId={bookId} />
       </div>
 
-      {/* 底部状态条（纯信息展示） */}
-      <StatusBar
-        bookId={bookId}
-        onSettingsClick={handleSettingsClick}
-      />
+      {/* 底部状态条（纯信息展示，设置入口已移至 ActivityBar） */}
+      <StatusBar bookId={bookId} />
     </div>
   );
+}
+
+// ---------------------------------------------------------------------------
+// CockpitOverview — 驾驶舱主区：近期候选稿 + 待处理伏笔（真实接口，不与经纬视图重复）
+// ---------------------------------------------------------------------------
+
+interface CockpitListItem {
+  id: string;
+  text?: string;
+  title?: string;
+  sourceChapter?: number;
+  status?: string;
+}
+
+function CockpitOverview({ bookId }: { bookId: string }) {
+  const [candidates, setCandidates] = useState<CockpitListItem[]>([]);
+  const [hooks, setHooks] = useState<CockpitListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([
+      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/recent-candidates?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/open-hooks?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
+    ]).then(([cand, hk]) => {
+      if (!active) return;
+      setCandidates(Array.isArray(cand?.items) ? cand.items : []);
+      setHooks(Array.isArray(hk?.items) ? hk.items : []);
+      setLoading(false);
+    });
+    return () => { active = false; };
+  }, [bookId]);
+
+  if (loading) {
+    return <div className="flex items-center justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2">
+      {/* 近期候选稿 */}
+      <section className="rounded-lg border border-border bg-card p-3">
+        <h3 className="mb-2 text-xs font-semibold text-foreground">近期候选稿</h3>
+        {candidates.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">暂无候选稿。让 AI 写一章后会出现在这里。</p>
+        ) : (
+          <ul className="space-y-1">
+            {candidates.map((c) => (
+              <li key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/40">
+                <PenLineIcon />
+                <span className="truncate flex-1">{c.title || c.text?.slice(0, 40) || "未命名候选稿"}</span>
+                {typeof c.sourceChapter === "number" && c.sourceChapter > 0 && (
+                  <span className="text-[10px] text-muted-foreground">第 {c.sourceChapter} 章</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* 待处理伏笔 */}
+      <section className="rounded-lg border border-border bg-card p-3">
+        <h3 className="mb-2 text-xs font-semibold text-foreground">待处理伏笔</h3>
+        {hooks.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">暂无待回收伏笔。</p>
+        ) : (
+          <ul className="space-y-1">
+            {hooks.map((h) => (
+              <li key={h.id} className="flex items-start gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/40">
+                <span className="mt-0.5 size-1.5 shrink-0 rounded-full bg-amber-500" />
+                <span className="line-clamp-2 flex-1 text-muted-foreground">{(h.text || "").replace(/^pending hooks：/, "").trim() || "（空）"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PenLineIcon() {
+  return <FileText className="size-3.5 shrink-0 text-violet-500" />;
 }

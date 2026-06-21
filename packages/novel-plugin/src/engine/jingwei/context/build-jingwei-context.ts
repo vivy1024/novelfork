@@ -1,258 +1,350 @@
-import { createBookRepository } from "../repositories/book-repo.js";
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { createStoryJingweiEntryRepository } from "../repositories/entry-repo.js";
-import { createStoryJingweiSectionRepository } from "../repositories/section-repo.js";
-import { resolveJingweiContextLayer, shouldIncludeLayer } from "./context-policy.js";
 import type {
-  BuildJingweiContextInput,
-  JingweiContextItem,
-  JingweiContextResult,
-  JingweiContextSource,
-  StoryJingweiEntryRecord,
-  StoryJingweiSectionRecord,
+  JingweiChapterSummaryRecord,
+  JingweiCharacterArcRecord,
+  JingweiCharacterRecord,
+  JingweiConflictRecord,
+  JingweiLegacyContextItem,
+  JingweiEventRecord,
+  JingweiMode,
+  JingweiPremiseRecord,
+  JingweiSettingRecord,
+  JingweiWorldModelRecord,
+  BuildJingweiLegacyContextInput,
+  BuildJingweiLegacyContextResult,
+  VisibilityRule,
 } from "../types.js";
+import { createBookRepository } from "../repositories/book-repo.js";
+import { createJingweiCharacterRepository } from "../repositories/character-repo.js";
+import { createJingweiChapterSummaryRepository } from "../repositories/chapter-summary-repo.js";
+import { createJingweiCharacterArcRepository } from "../repositories/character-arc-repo.js";
+import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
+import { createJingweiEventRepository } from "../repositories/event-repo.js";
+import { createJingweiPremiseRepository } from "../repositories/premise-repo.js";
+import { createJingweiSettingRepository } from "../repositories/setting-repo.js";
+import { createJingweiWorldModelRepository } from "../repositories/world-model-repo.js";
+import { matchTrackedByAliases } from "./alias-matcher.js";
+import { composeJingweiContext, type ComposableJingweiContextItem } from "./compose-context.js";
+import { resolveNestedRefs } from "./nested-resolver.js";
+import { estimateTokens } from "./token-budget.js";
+import { filterEntriesVisibleAtChapter, getVisibilityRule } from "./visibility-filter.js";
+import { formatDescriptor, hasDescriptorContent, safeParseDescriptor } from "./format-descriptor.js";
 
-export interface BuildJingweiContextOptions extends BuildJingweiContextInput {
+export interface BuildJingweiLegacyContextOptions extends BuildJingweiLegacyContextInput {
   storage?: StorageDatabase;
-  maxNestedDepth?: number;
 }
 
-interface InternalJingweiContextItem extends JingweiContextItem {
-  sectionOrder: number;
-  updatedAtMs: number;
-  coreMemory: boolean;
+interface CandidateJingweiContextItem extends ComposableJingweiContextItem {
+  aliasesJson?: string;
+  nestedRefsJson?: string;
+  visibilityRule: VisibilityRule;
+  visibilityRuleJson: string;
 }
 
-const BUILTIN_SECTION_KEYS = new Set([
-  "people",
-  "events",
-  "settings",
-  "chapter-summary",
-  "foreshadowing",
-  "iconic-scenes",
-  "core-memory",
-]);
-
-const SOURCE_RANK: Record<JingweiContextSource, number> = {
-  global: 30,
-  tracked: 20,
-  nested: 10,
-};
-
-export function estimateJingweiTokens(text: string): number {
-  if (text.length === 0) return 0;
-  return Math.ceil(text.length * 0.6);
+function sourceFromRule(rule: VisibilityRule): JingweiLegacyContextItem["source"] {
+  return rule.type;
 }
 
-function isCoreMemorySection(section: StoryJingweiSectionRecord): boolean {
-  return section.builtinKind === "core-memory" || section.key === "core-memory" || section.name === "核心记忆";
+function priorityFromSource(source: JingweiLegacyContextItem["source"]): number {
+  if (source === "global") return 30;
+  if (source === "nested") return 20;
+  return 10;
 }
 
-function formatSectionName(section: StoryJingweiSectionRecord): string {
-  if (section.builtinKind || BUILTIN_SECTION_KEYS.has(section.key)) return section.name;
-  return `自定义-${section.name}`;
+function makeItem(input: {
+  id: string;
+  type: JingweiLegacyContextItem["type"];
+  category?: string;
+  name: string;
+  rawContent: string;
+  source: JingweiLegacyContextItem["source"];
+  aliasesJson?: string;
+  nestedRefsJson?: string;
+  visibilityRule: VisibilityRule;
+  visibilityRuleJson: string;
+  updatedAt: Date;
+}): CandidateJingweiContextItem {
+  return {
+    id: input.id,
+    type: input.type,
+    ...(input.category ? { category: input.category } : {}),
+    name: input.name,
+    content: input.rawContent,
+    rawContent: input.rawContent,
+    priority: priorityFromSource(input.source),
+    source: input.source,
+    estimatedTokens: estimateTokens(input.rawContent),
+    aliasesJson: input.aliasesJson,
+    nestedRefsJson: input.nestedRefsJson,
+    visibilityRule: input.visibilityRule,
+    visibilityRuleJson: input.visibilityRuleJson,
+    updatedAt: input.updatedAt,
+  };
 }
 
-function isVisibleAtChapter(entry: StoryJingweiEntryRecord, currentChapter: number): boolean {
-  const { visibleAfterChapter, visibleUntilChapter } = entry.visibilityRule;
-  if (visibleAfterChapter !== undefined && currentChapter < visibleAfterChapter) return false;
-  if (visibleUntilChapter !== undefined && currentChapter > visibleUntilChapter) return false;
-  return true;
-}
-
-function normalizeText(text: string): string {
-  return text.trim().toLocaleLowerCase();
-}
-
-function containsAny(haystack: string, needles: readonly string[]): boolean {
-  const normalizedHaystack = normalizeText(haystack);
-  return needles.some((needle) => {
-    const normalizedNeedle = normalizeText(needle);
-    return normalizedNeedle.length > 0 && normalizedHaystack.includes(normalizedNeedle);
+function characterToItem(row: JingweiCharacterRecord): CandidateJingweiContextItem {
+  const visibilityRule = getVisibilityRule(row);
+  return makeItem({
+    id: row.id,
+    type: "character",
+    name: row.name,
+    rawContent: row.summary,
+    source: sourceFromRule(visibilityRule),
+    aliasesJson: row.aliasesJson,
+    nestedRefsJson: "[]",
+    visibilityRule,
+    visibilityRuleJson: row.visibilityRuleJson,
+    updatedAt: row.updatedAt,
   });
 }
 
-function matchesTracked(entry: StoryJingweiEntryRecord, sceneText: string): boolean {
-  return containsAny(sceneText, [
-    entry.title,
-    ...entry.aliases,
-    ...(entry.visibilityRule.keywords ?? []),
-  ]);
+function eventToItem(row: JingweiEventRecord): CandidateJingweiContextItem {
+  const visibilityRule = getVisibilityRule(row);
+  return makeItem({
+    id: row.id,
+    type: "event",
+    name: row.name,
+    rawContent: row.summary,
+    source: sourceFromRule(visibilityRule),
+    aliasesJson: JSON.stringify([row.name]),
+    nestedRefsJson: "[]",
+    visibilityRule,
+    visibilityRuleJson: row.visibilityRuleJson,
+    updatedAt: row.updatedAt,
+  });
 }
 
-function makePriority(section: StoryJingweiSectionRecord, source: JingweiContextSource): number {
-  return (isCoreMemorySection(section) ? 10_000 : 0) + SOURCE_RANK[source] + Math.max(0, 1000 - section.order);
+function settingToItem(row: JingweiSettingRecord): CandidateJingweiContextItem {
+  const visibilityRule = getVisibilityRule(row);
+  return makeItem({
+    id: row.id,
+    type: "setting",
+    category: row.category,
+    name: row.name,
+    rawContent: row.content,
+    source: sourceFromRule(visibilityRule),
+    aliasesJson: JSON.stringify([row.name]),
+    nestedRefsJson: row.nestedRefsJson,
+    visibilityRule,
+    visibilityRuleJson: row.visibilityRuleJson,
+    updatedAt: row.updatedAt,
+  });
 }
 
-function toContextItem(
-  entry: StoryJingweiEntryRecord,
-  section: StoryJingweiSectionRecord,
-  source: JingweiContextSource,
-): InternalJingweiContextItem {
-  const sectionLabel = formatSectionName(section);
-  const text = `【${sectionLabel}】${entry.title}：${entry.contentMd}`;
-  return {
-    id: entry.id,
-    entryId: entry.id,
-    sectionId: section.id,
-    sectionKey: section.key,
-    sectionName: section.name,
-    title: entry.title,
-    text,
-    source,
-    priority: makePriority(section, source),
-    estimatedTokens: Math.min(estimateJingweiTokens(text), entry.tokenBudget ?? Number.POSITIVE_INFINITY),
-    sectionOrder: section.order,
-    updatedAtMs: entry.updatedAt.getTime(),
-    coreMemory: isCoreMemorySection(section),
-  };
+function chapterSummaryToItem(row: JingweiChapterSummaryRecord): CandidateJingweiContextItem {
+  const visibilityRule: VisibilityRule = { type: "global", visibleAfterChapter: row.chapterNumber };
+  return makeItem({
+    id: row.id,
+    type: "chapter-summary",
+    name: row.title || `第 ${row.chapterNumber} 章`,
+    rawContent: row.summary,
+    source: "global",
+    aliasesJson: "[]",
+    nestedRefsJson: "[]",
+    visibilityRule,
+    visibilityRuleJson: JSON.stringify(visibilityRule),
+    updatedAt: row.updatedAt,
+  });
 }
 
-function sortByPriority(items: readonly InternalJingweiContextItem[]): InternalJingweiContextItem[] {
-  return [...items].sort((a, b) => (
-    Number(b.coreMemory) - Number(a.coreMemory)
-    || SOURCE_RANK[b.source] - SOURCE_RANK[a.source]
-    || b.priority - a.priority
-    || a.sectionOrder - b.sectionOrder
-    || b.updatedAtMs - a.updatedAtMs
-    || a.entryId.localeCompare(b.entryId)
-  ));
-}
+function dedupeByBestSource<TItem extends ComposableJingweiContextItem>(items: readonly TItem[]): TItem[] {
+  const rank: Record<JingweiLegacyContextItem["source"], number> = { global: 3, nested: 2, tracked: 1 };
+  const byId = new Map<string, TItem>();
 
-function sortByDropPriority(items: readonly InternalJingweiContextItem[]): InternalJingweiContextItem[] {
-  return [...items].sort((a, b) => (
-    Number(a.coreMemory) - Number(b.coreMemory)
-    || SOURCE_RANK[a.source] - SOURCE_RANK[b.source]
-    || a.priority - b.priority
-    || a.updatedAtMs - b.updatedAtMs
-    || b.sectionOrder - a.sectionOrder
-    || a.entryId.localeCompare(b.entryId)
-  ));
-}
-
-function applyTokenBudget(items: readonly InternalJingweiContextItem[], tokenBudget: number): { items: InternalJingweiContextItem[]; totalTokens: number; droppedEntryIds: string[] } {
-  const kept = sortByPriority(items);
-  let totalTokens = kept.reduce((sum, item) => sum + item.estimatedTokens, 0);
-  const droppedEntryIds: string[] = [];
-
-  for (const candidate of sortByDropPriority(kept)) {
-    if (totalTokens <= tokenBudget) break;
-    const index = kept.findIndex((item) => item.entryId === candidate.entryId);
-    if (index === -1) continue;
-    const [dropped] = kept.splice(index, 1);
-    if (!dropped) continue;
-    totalTokens -= dropped.estimatedTokens;
-    droppedEntryIds.push(dropped.entryId);
-  }
-
-  return { items: kept, totalTokens, droppedEntryIds };
-}
-
-function isReferencedByInjected(
-  candidate: StoryJingweiEntryRecord,
-  injectedIds: ReadonlySet<string>,
-  injectedEntries: readonly StoryJingweiEntryRecord[],
-): boolean {
-  if ((candidate.visibilityRule.parentEntryIds ?? []).some((id) => injectedIds.has(id))) return true;
-  return injectedEntries.some((entry) => entry.relatedEntryIds.includes(candidate.id));
-}
-
-function resolveNestedEntries(
-  initialEntries: readonly StoryJingweiEntryRecord[],
-  candidates: readonly StoryJingweiEntryRecord[],
-  maxDepth: number,
-): StoryJingweiEntryRecord[] {
-  const injected = new Map(initialEntries.map((entry) => [entry.id, entry]));
-  const nested: StoryJingweiEntryRecord[] = [];
-
-  for (let depth = 0; depth < maxDepth; depth += 1) {
-    const injectedIds = new Set(injected.keys());
-    const next = candidates.filter((candidate) => (
-      candidate.visibilityRule.type === "nested"
-      && !injected.has(candidate.id)
-      && isReferencedByInjected(candidate, injectedIds, [...injected.values()])
-    ));
-    if (next.length === 0) break;
-    for (const entry of next) {
-      injected.set(entry.id, entry);
-      nested.push(entry);
+  for (const item of items) {
+    const current = byId.get(item.id);
+    if (!current || rank[item.source] > rank[current.source]) {
+      byId.set(item.id, item);
     }
   }
 
-  return nested;
+  return Array.from(byId.values());
 }
 
-function publicItem(item: InternalJingweiContextItem): JingweiContextItem {
+async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string, currentChapter: number): Promise<CandidateJingweiContextItem[]> {
+  const characters = await createJingweiCharacterRepository(storage).listByBook(bookId);
+  const events = await createJingweiEventRepository(storage).listByBook(bookId);
+  const settings = await createJingweiSettingRepository(storage).listByBook(bookId);
+  const summaries = (await createJingweiChapterSummaryRepository(storage).listByBook(bookId))
+    .filter((summary) => summary.chapterNumber <= currentChapter)
+    .sort((a, b) => b.chapterNumber - a.chapterNumber)
+    .slice(0, 15); // 滑动窗口：只注入最近 15 章摘要，更早的靠经纬条目覆盖
+
+  return [
+    ...characters.map(characterToItem),
+    ...events.map(eventToItem),
+    ...settings.map(settingToItem),
+    ...summaries.map(chapterSummaryToItem),
+  ];
+}
+
+function markNested(item: CandidateJingweiContextItem): CandidateJingweiContextItem {
   return {
-    id: item.id,
-    entryId: item.entryId,
-    sectionId: item.sectionId,
-    sectionKey: item.sectionKey,
-    sectionName: item.sectionName,
-    title: item.title,
-    text: item.text,
-    source: item.source,
-    priority: item.priority,
-    estimatedTokens: item.estimatedTokens,
+    ...item,
+    source: "nested",
+    priority: priorityFromSource("nested"),
   };
 }
 
-function buildSectionStats(
-  sections: readonly StoryJingweiSectionRecord[],
-  items: readonly InternalJingweiContextItem[],
-): JingweiContextResult["sectionStats"] {
-  return sections.map((section) => ({
-    sectionId: section.id,
-    sectionName: section.name,
-    count: items.filter((item) => item.sectionId === section.id).length,
-  })).filter((stat) => stat.count > 0);
+function premiseToItem(row: JingweiPremiseRecord): ComposableJingweiContextItem | null {
+  const parts = [
+    row.logline,
+    row.tone ? `基调 ${row.tone}` : "",
+    row.targetReaders ? `目标读者 ${row.targetReaders}` : "",
+    row.uniqueHook ? `差异化钩子 ${row.uniqueHook}` : "",
+  ].filter(Boolean);
+  if (parts.length === 0) return null;
+  const rawContent = parts.join(" · ");
+  return {
+    id: row.id,
+    type: "premise",
+    name: "故事基线",
+    content: rawContent,
+    rawContent,
+    priority: 100,
+    source: "global",
+    estimatedTokens: estimateTokens(rawContent),
+    updatedAt: row.updatedAt,
+  };
 }
 
-export async function buildJingweiContext(input: BuildJingweiContextOptions): Promise<JingweiContextResult> {
+function worldModelToItems(row: JingweiWorldModelRecord): ComposableJingweiContextItem[] {
+  const dimensions: Array<[string, string, string]> = [
+    ["economy", "经济", row.economyJson],
+    ["society", "社会", row.societyJson],
+    ["geography", "地理", row.geographyJson],
+    ["power-system", "力量体系", row.powerSystemJson],
+    ["culture", "文化", row.cultureJson],
+    ["timeline", "纪年", row.timelineJson],
+  ];
+
+  return dimensions
+    .filter(([, , raw]) => hasDescriptorContent(raw))
+    .map(([key, label, raw]) => {
+      const rawContent = formatDescriptor(safeParseDescriptor(raw));
+      return {
+        id: `world-model:${key}`,
+        type: "world-model",
+        category: label,
+        name: label,
+        content: rawContent,
+        rawContent,
+        priority: 90,
+        source: "global",
+        estimatedTokens: estimateTokens(rawContent),
+        updatedAt: row.updatedAt,
+      } satisfies ComposableJingweiContextItem;
+    });
+}
+
+function conflictToItem(row: JingweiConflictRecord): ComposableJingweiContextItem {
+  const rawContent = `【矛盾-${row.type}】${row.name}（${row.resolutionState}）：${row.stakes}`;
+  return {
+    id: row.id,
+    type: "conflict",
+    category: row.type,
+    name: row.name,
+    content: rawContent,
+    rawContent,
+    priority: 70 - row.priority,
+    source: row.scope === "main" ? "global" : "tracked",
+    estimatedTokens: estimateTokens(rawContent),
+    updatedAt: row.updatedAt,
+  };
+}
+
+function arcToItem(row: JingweiCharacterArcRecord, characterName: string): ComposableJingweiContextItem | null {
+  if (!row.currentPosition && !row.startingState && !row.endingState) return null;
+  const rawContent = `${characterName} 当前处于 ${row.currentPosition || "未标注"}（${row.arcType}：${row.startingState} → ${row.endingState}）`;
+  return {
+    id: row.id,
+    type: "character-arc",
+    name: characterName,
+    content: rawContent,
+    rawContent,
+    priority: 35,
+    source: "global",
+    estimatedTokens: estimateTokens(rawContent),
+    updatedAt: row.updatedAt,
+  };
+}
+
+export async function injectPremise(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
+  const premise = await createJingweiPremiseRepository(options.storage).getByBook(options.bookId);
+  const item = premise ? premiseToItem(premise) : null;
+  return item ? [item] : [];
+}
+
+export async function injectWorldModel(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
+  const worldModel = await createJingweiWorldModelRepository(options.storage).getByBook(options.bookId);
+  return worldModel ? worldModelToItems(worldModel) : [];
+}
+
+export async function injectConflicts(options: { storage: StorageDatabase; bookId: string; currentChapter: number }): Promise<ComposableJingweiContextItem[]> {
+  const conflicts = await createJingweiConflictRepository(options.storage).getActiveConflictsAtChapter(options.bookId, options.currentChapter);
+  return conflicts.map(conflictToItem);
+}
+
+export async function injectCharacterArcs(options: { storage: StorageDatabase; bookId: string; currentChapter: number; characterIds?: readonly string[] }): Promise<ComposableJingweiContextItem[]> {
+  const repo = createJingweiCharacterArcRepository(options.storage);
+  const [characters, arcs] = await Promise.all([
+    createJingweiCharacterRepository(options.storage).listByBook(options.bookId),
+    options.characterIds && options.characterIds.length > 0
+      ? Promise.all(options.characterIds.map((characterId) => repo.listByCharacter(options.bookId, characterId))).then((groups) => groups.flat())
+      : repo.listByBook(options.bookId),
+  ]);
+  const characterNames = new Map(characters.map((character) => [character.id, character.name]));
+  return filterEntriesVisibleAtChapter(arcs.map((arc) => ({ ...arc, visibilityRuleJson: arc.visibilityRuleJson })), options.currentChapter)
+    .map((arc) => arcToItem(arc, characterNames.get(arc.characterId) ?? arc.characterId))
+    .filter((item): item is ComposableJingweiContextItem => item !== null);
+}
+
+export async function buildJingweiLegacyContext(input: BuildJingweiLegacyContextOptions): Promise<BuildJingweiLegacyContextResult> {
   const storage = input.storage ?? getStorageDatabase();
   const book = await createBookRepository(storage).getById(input.bookId);
-  if (!book) throw new Error(`Book not found: ${input.bookId}`);
+  if (!book) {
+    throw new Error(`Book not found: ${input.bookId}`);
+  }
 
+  const mode: JingweiMode = book.jingweiMode;
   const currentChapter = input.currentChapter ?? book.currentChapter;
-  const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(input.bookId);
-  const sectionById = new Map(sections.map((section) => [section.id, section]));
-  const entries = (await createStoryJingweiEntryRepository(storage).listForAi(input.bookId, sections.map((section) => section.id)))
-    .filter((entry) => isVisibleAtChapter(entry, currentChapter));
+  const allEntries = await loadAllCandidateEntries(storage, input.bookId, currentChapter);
+  const timelineFiltered = filterEntriesVisibleAtChapter(allEntries, currentChapter);
+  const phaseBAnchors = [
+    ...await injectPremise({ storage, bookId: input.bookId }),
+    ...await injectWorldModel({ storage, bookId: input.bookId }),
+    ...await injectConflicts({ storage, bookId: input.bookId, currentChapter }),
+  ];
 
-  const mode = input.mode ?? "auto";
-  const layerVisible = (entry: StoryJingweiEntryRecord): boolean => {
-    const section = sectionById.get(entry.sectionId);
-    const layer = resolveJingweiContextLayer(entry, section);
-    return shouldIncludeLayer(mode, layer);
-  };
-  const globals = entries.filter((entry) => entry.visibilityRule.type === "global" && layerVisible(entry));
-  const tracked = input.sceneText
-    ? entries.filter((entry) => entry.visibilityRule.type === "tracked" && matchesTracked(entry, input.sceneText ?? "") && layerVisible(entry))
-    : [];
-  const includedBaseIds = new Set([...globals, ...tracked].map((entry) => entry.id));
-  const references = mode === "full"
-    ? entries.filter((entry) => entry.visibilityRule.type !== "nested" && !includedBaseIds.has(entry.id) && layerVisible(entry))
-    : [];
+  if (mode === "static") {
+    const globals = timelineFiltered.filter((entry) => entry.visibilityRule.type === "global");
+    const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
+    const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
+    return composeJingweiContext([
+      ...phaseBAnchors,
+      ...globals,
+      ...arcs,
+    ], { mode, tokenBudget: input.tokenBudget });
+  }
 
-  const nested = resolveNestedEntries([...globals, ...tracked, ...references], entries, input.maxNestedDepth ?? 3);
-  const internalItems = [
-    ...globals.map((entry) => [entry, "global"] as const),
-    ...tracked.map((entry) => [entry, "tracked"] as const),
-    ...references.map((entry) => [entry, "tracked"] as const),
-    ...nested.map((entry) => [entry, "nested"] as const),
-  ].map(([entry, source]) => {
-    const section = sectionById.get(entry.sectionId);
-    return section ? toContextItem(entry, section, source) : null;
-  }).filter((item): item is InternalJingweiContextItem => item !== null);
+  const globals = timelineFiltered.filter((entry) => entry.visibilityRule.type === "global");
+  if (!input.sceneText) {
+    const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
+    const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
+    return composeJingweiContext([...phaseBAnchors, ...globals, ...arcs], { mode, tokenBudget: input.tokenBudget });
+  }
 
-  const defaultBudget = mode === "full" ? 20000 : mode === "core" ? 4000 : mode === "relevant" ? 8000 : 15000;
-  const budgeted = applyTokenBudget(internalItems, input.tokenBudget ?? defaultBudget);
-  const sortedItems = sortByPriority(budgeted.items);
+  const trackedCandidates = timelineFiltered.filter((entry) => entry.visibilityRule.type === "tracked");
+  const tracked = matchTrackedByAliases(trackedCandidates, input.sceneText);
+  const nested = resolveNestedRefs([...globals, ...tracked], timelineFiltered, { maxDepth: 3 }).map(markNested);
+  const characterIds = [...globals, ...tracked, ...nested].filter((entry) => entry.type === "character").map((entry) => entry.id);
+  const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
+  const merged = dedupeByBestSource([...phaseBAnchors, ...globals, ...tracked, ...arcs, ...nested]);
 
-  return {
-    items: sortedItems.map(publicItem),
-    totalTokens: budgeted.totalTokens,
-    droppedEntryIds: budgeted.droppedEntryIds,
-    sectionStats: buildSectionStats(sections, sortedItems),
-  };
+  return composeJingweiContext(merged, { mode, tokenBudget: input.tokenBudget });
 }
+
+export { buildJingweiLegacyContext as buildJingweiContext };
+export type { BuildJingweiLegacyContextOptions as BuildJingweiContextOptions };
+export { estimateTokens as estimateJingweiTokens } from "./token-budget.js";
+

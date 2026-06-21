@@ -3,8 +3,8 @@ import type { ArcBeat, CharacterArc } from "./arc-types.js";
 import { extractBeatsFromChapter, type CharacterInput } from "./rule-engine.js";
 import { refineBeatsWithLlm } from "./llm-refiner.js";
 import { detectArcInconsistency, detectStagnantArc } from "./character-arc-tracker.js";
-import { createBibleCharacterRepository } from "../../jingwei/repositories/character-repo.js";
-import { createBibleCharacterArcRepository } from "../../jingwei/repositories/character-arc-repo.js";
+import { createJingweiCharacterRepository } from "../../jingwei/repositories/character-repo.js";
+import { createJingweiCharacterArcRepository } from "../../jingwei/repositories/character-arc-repo.js";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -61,7 +61,7 @@ function parseKeyTurningPoints(json: string): ArcBeat[] {
  * 2. Run rule engine to extract beats
  * 3. Optionally refine with LLM
  * 4. Deduplicate (skip if beat already exists for this chapter+character)
- * 5. Write new beats to bible_character_arc table
+ * 5. Write new beats to jingwei_character_arc table
  * 6. Run detection tools and collect warnings
  */
 export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promise<SyncCharacterArcsResult> {
@@ -72,7 +72,7 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
   }
 
   // 1. Load registered characters
-  const characterRepo = createBibleCharacterRepository(storage);
+  const characterRepo = createJingweiCharacterRepository(storage);
   const characters = await characterRepo.listByBook(bookId);
 
   if (characters.length === 0) {
@@ -98,7 +98,7 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
   }
 
   // 4. Deduplicate & write to DB
-  const arcRepo = createBibleCharacterArcRepository(storage);
+  const arcRepo = createJingweiCharacterArcRepository(storage);
   const allArcs = await arcRepo.listByBook(bookId);
   const warnings: string[] = [];
 

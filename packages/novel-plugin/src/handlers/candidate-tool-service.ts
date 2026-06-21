@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 
 import type { CanvasArtifact, SessionToolExecutionResult } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { getStorageDatabase, resolveBookStorageDir } from "@vivy1024/novelfork-core";
 import { getPreset, type Preset } from "../engine/presets/index.js";
 import { checkPresetCompliance, type ComplianceCheckResult } from "../engine/presets/compliance-checker.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
@@ -84,10 +84,9 @@ export function createCandidateToolService(options: CandidateToolServiceOptions)
         promptPreview,
         ...(complianceResult ? { compliance: complianceResult } : {}),
       };
-      const service = createWritingResourceService({ storage: getStorageDatabase(), now: () => timestampMs });
-      const resource = service.create({
+      const service = createWritingResourceService({ storage: getStorageDatabase(), resolveBookDir: (bid: string) => resolveBookStorageDir(options.root, bid), now: () => timestampMs });
+      const resource = await service.create(bookId, {
         id,
-        bookId,
         type: "draft",
         status: "candidate",
         title,

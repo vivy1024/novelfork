@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  BibleEntryStatusSchema,
+  JingweiEntryStatusSchema,
   BookStatusSchema,
   CandidateStatusSchema,
   ChapterStatusSchema,
-  normalizeBibleEntryStatus,
+  normalizeJingweiEntryStatus,
   normalizeBookStatus,
   normalizeCandidateStatus,
   normalizeChapterStatus,
@@ -36,12 +36,12 @@ describe("canonical status models", () => {
     expect(normalizeChapterStatus("not-a-status")).toBe("draft");
   });
 
-  it("defines candidate and bible entry status sets with safe fallbacks", () => {
+  it("defines candidate and jingwei entry status sets with safe fallbacks", () => {
     expect(CandidateStatusSchema.options).toEqual(["candidate", "accepted", "rejected", "archived"]);
-    expect(BibleEntryStatusSchema.options).toEqual(["active", "unresolved", "resolved", "deprecated"]);
+    expect(JingweiEntryStatusSchema.options).toEqual(["active", "unresolved", "resolved", "deprecated"]);
     expect(normalizeCandidateStatus("accepted")).toBe("accepted");
     expect(normalizeCandidateStatus("missing")).toBe("candidate");
-    expect(normalizeBibleEntryStatus("resolved")).toBe("resolved");
-    expect(normalizeBibleEntryStatus("missing")).toBe("active");
+    expect(normalizeJingweiEntryStatus("resolved")).toBe("resolved");
+    expect(normalizeJingweiEntryStatus("missing")).toBe("active");
   });
 });

@@ -322,7 +322,7 @@ export class StateManager {
   async isCompleteBookDirectory(bookDir: string): Promise<boolean> {
     const requiredPaths = [
       join(bookDir, "book.json"),
-      join(bookDir, "story", "story_bible.md"),
+      // [CLEANUP] story_bible.md 已废弃，不再作为完整性检查条件
       join(bookDir, "story", "volume_outline.md"),
       join(bookDir, "story", "book_rules.md"),
       join(bookDir, "story", "current_state.md"),

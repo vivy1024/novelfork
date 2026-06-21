@@ -21,6 +21,7 @@ import { evaluateGate } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { randomUUID } from "node:crypto";
+import { join } from "node:path";
 import type { CanvasArtifact } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
@@ -286,12 +287,11 @@ export async function executePipelineWrite(
     // 4. Save as candidate
     const candidateId = `pipeline-write-${randomUUID()}`;
     try {
-      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const { getStorageDatabase, resolveBookStorageDir } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
-      const resourceService = createWritingResourceService({ storage });
-      resourceService.create({
+      const resourceService = createWritingResourceService({ storage, resolveBookDir: (bid: string) => resolveBookStorageDir(root, bid) });
+      await resourceService.create(bookId, {
         id: candidateId,
-        bookId,
         type: "draft",
         status: "candidate",
         title: writeOutput.title,

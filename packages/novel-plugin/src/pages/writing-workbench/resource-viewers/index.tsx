@@ -15,7 +15,6 @@ export type ResourceViewerKind =
   | "draft"
   | "story"
   | "jingwei"
-  | "bible-entry"
   | "storyline"
   | "jingwei-section"
   | "jingwei-entry"
@@ -774,7 +773,6 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   draft: { kind: "draft", label: "草稿", render: renderChapterEditor },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
   jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
-  "bible-entry": { kind: "bible-entry", label: "经纬资料", render: renderReadonlySummary },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
   "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderJingweiCard },
   "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderJingweiCard },
@@ -789,7 +787,6 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "draft",
   "story",
   "jingwei",
-  "bible-entry",
   "storyline",
   "jingwei-section",
   "jingwei-entry",

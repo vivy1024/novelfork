@@ -663,9 +663,10 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const { handleChapterRead } = await import("@vivy1024/novelfork-novel-plugin");
         const bookId = String(input.bookId);
         const chapterNumber = Number(input.chapterNumber);
-        const workDir = options.workDir ?? process.cwd();
         const { join } = await import("node:path");
-        const booksDir = join(workDir, "books");
+        const { resolveRuntimeStoragePath: resolveRtPath } = await import("./runtime-storage-paths.js");
+        const projectRoot = process.env.NOVELFORK_PROJECT_ROOT || resolveRtPath();
+        const booksDir = join(projectRoot, "books");
         const result = await handleChapterRead({ bookId, chapterNumber }, booksDir);
         return { ...result, renderer: definition.renderer };
       };
@@ -727,12 +728,14 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const action = String(input.action ?? "");
         if (!bookId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "bookId 必填。" };
         const { createWritingResourceService } = await import("@vivy1024/novelfork-novel-plugin/engine");
-        const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-        const service = createWritingResourceService({ storage: getStorageDatabase() });
+        const { getStorageDatabase, resolveBookStorageDir } = await import("@vivy1024/novelfork-core");
+        const { resolveRuntimeStoragePath: resolveRtPath } = await import("./runtime-storage-paths.js");
+        const resourceRoot = process.env.NOVELFORK_PROJECT_ROOT || resolveRtPath();
+        const service = createWritingResourceService({ storage: getStorageDatabase(), resolveBookDir: (bid: string) => resolveBookStorageDir(resourceRoot, bid) });
         try {
           if (action === "list") {
             const filter = (input.filter ?? {}) as Record<string, unknown>;
-            const resources = service.list(bookId, { type: filter.type as any, status: filter.status as any });
+            const resources = await service.list(bookId, { type: filter.type as any, status: filter.status as any });
             const items = resources.map(r => ({ id: r.id, type: r.type, status: r.status, title: r.title, chapterNumber: r.chapterNumber, wordCount: r.wordCount }));
             const preview = items.slice(0, 30).map(r => `- ${r.id} | ${r.type}/${r.status} | ${r.title ?? ""}${r.chapterNumber ? ` (ch${r.chapterNumber})` : ""} | ${r.wordCount ?? 0}字`).join("\n");
             const more = items.length > 30 ? `\n...及另外 ${items.length - 30} 个` : "";
@@ -740,7 +743,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           }
           const resourceId = String(input.resourceId ?? "");
           if (action === "create_draft") {
-            const created = service.create({ bookId, type: "draft", status: "draft", title: String(input.title ?? "新草稿"), content: String(input.content ?? ""), parentId: input.parentId ? String(input.parentId) : undefined });
+            const created = await service.create(bookId, { type: "draft", status: "draft", title: String(input.title ?? "新草稿"), content: String(input.content ?? ""), parentId: input.parentId ? String(input.parentId) : undefined });
             return { ok: true, renderer: definition.renderer, summary: `已创建草稿「${created.title}」(${created.id})。`, data: { resource: created } };
           }
           if (!resourceId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "action 非 list/create_draft 时 resourceId 必填。" };
@@ -748,13 +751,13 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             const chapterNumber = Number(input.chapterNumber);
             if (!chapterNumber) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "accept 需要 chapterNumber。" };
             const mode = (input.acceptMode as "replace" | "merge" | "new") ?? "replace";
-            const result = service.transition(resourceId, { action: "accept", chapterNumber, mode });
+            const result = await service.transition(bookId, resourceId, { action: "accept", chapterNumber, mode });
             return { ok: true, renderer: definition.renderer, summary: `已接受资源为第 ${chapterNumber} 章 (${mode})。`, data: { resource: result } };
           }
-          if (action === "reject") { const r = service.transition(resourceId, { action: "reject" }); return { ok: true, renderer: definition.renderer, summary: `已拒绝资源「${r.title}」。`, data: { resource: r } }; }
-          if (action === "archive") { const r = service.transition(resourceId, { action: "archive" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
-          if (action === "restore") { const r = service.transition(resourceId, { action: "restore" }); return { ok: true, renderer: definition.renderer, summary: `已恢复资源「${r.title}」。`, data: { resource: r } }; }
-          if (action === "delete") { const r = service.softDelete(resourceId); return { ok: true, renderer: definition.renderer, summary: `已删除资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "reject") { const r = await service.transition(bookId, resourceId, { action: "reject" }); return { ok: true, renderer: definition.renderer, summary: `已拒绝资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "archive") { const r = await service.transition(bookId, resourceId, { action: "archive" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "restore") { const r = await service.transition(bookId, resourceId, { action: "restore" }); return { ok: true, renderer: definition.renderer, summary: `已恢复资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "delete") { const r = await service.softDelete(bookId, resourceId); return { ok: true, renderer: definition.renderer, summary: `已删除资源「${r.title}」。`, data: { resource: r } }; }
           return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/accept/reject/archive/restore/delete/create_draft。` };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "resource-manage-failed", summary: `资源管理失败: ${err instanceof Error ? err.message : String(err)}` };
@@ -1242,99 +1245,17 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             await writeFile(join(storyDir, "style_guide.md"), guide, "utf-8");
           } catch { /* style analysis failure is non-fatal */ }
 
-          // Generate foundation settings via ArchitectAgent (non-fatal)
-          let foundationGenerated = false;
-          try {
-            if (onToolOutputStream) {
-              onToolOutputStream(`\n正在生成基础设定（世界观/角色/大纲）...\n`);
-            }
-
-            const { ProviderRuntimeStore } = await import("./provider-runtime-store.js");
-            const { createLLMClient } = await import("@vivy1024/novelfork-core");
-            const { ArchitectAgent } = await import("@vivy1024/novelfork-novel-plugin/engine");
-
-            // Resolve LLM client (same pattern as pipeline.revise)
-            const providerStore = new ProviderRuntimeStore();
-            const sessionProvider = sessionConfig?.providerId
-              ? await providerStore.getProvider(sessionConfig.providerId)
-              : undefined;
-            const activeProvider = sessionProvider?.config?.apiKey
-              ? sessionProvider
-              : (await providerStore.listProviders()).find((p) => p.enabled !== false && p.config?.apiKey);
-
-            if (!activeProvider) {
-              throw new Error("无可用模型配置");
-            }
-
-            const activeModel = activeProvider.models.find((m) => m.id === sessionConfig?.modelId && m.enabled !== false)
-              ?? activeProvider.models.find((m) => m.enabled !== false)
-              ?? activeProvider.models[0];
-
-            const llmConfig = {
-              provider: (activeProvider.protocol === "anthropic" ? "anthropic" : "openai") as "openai" | "anthropic",
-              baseUrl: activeProvider.config?.endpoint || activeProvider.baseUrl || "https://api.openai.com/v1",
-              apiKey: activeProvider.config?.apiKey ?? "",
-              model: activeModel?.id ?? sessionConfig?.modelId ?? "gpt-4",
-              temperature: 0.7,
-              maxTokens: activeModel?.maxOutputTokens ?? 16384,
-              thinkingBudget: 0,
-              apiFormat: "chat" as const,
-              stream: false,
-            };
-            const client = createLLMClient(llmConfig);
-            const agentCtx = { client, model: llmConfig.model, projectRoot: root, bookId };
-
-            // Read book.json for BookConfig
-            const bookJsonRaw = await readFile(join(bookDir, "book.json"), "utf-8").catch(() => "{}");
-            const bookConfig = JSON.parse(bookJsonRaw) as { id?: string; title?: string; genre?: string; language?: "zh" | "en" };
-
-            if (!bookConfig.genre) {
-              throw new Error("book.json 中缺少 genre 字段");
-            }
-
-            const bookForArchitect = {
-              ...bookConfig,
-              id: bookConfig.id || bookId,
-              title: bookConfig.title || bookId,
-              genre: bookConfig.genre,
-            };
-
-            // Build sample text from chapters (first 20 chapters, max 50000 chars)
-            const sampleText = chapters.slice(0, 20).map((c, i) =>
-              `第${i + 1}章 ${c.title || `第${i + 1}章`}\n\n${c.content}`
-            ).join("\n\n---\n\n").slice(0, 50000);
-
-            const architect = new ArchitectAgent(agentCtx);
-            const foundation = await architect.generateFoundationFromImport(bookForArchitect as any, sampleText);
-            await architect.writeFoundationFiles(bookDir, foundation, undefined, bookConfig.language ?? "zh");
-
-            foundationGenerated = true;
-            if (onToolOutputStream) {
-              onToolOutputStream(`基础设定生成完成（story_bible / volume_outline / book_rules / current_state / pending_hooks）。\n`);
-            }
-          } catch (foundationErr) {
-            // Non-fatal: log but don't block import
-            if (onToolOutputStream) {
-              onToolOutputStream(`\n⚠️ 基础设定生成失败（不影响导入）: ${foundationErr instanceof Error ? foundationErr.message : String(foundationErr)}\n`);
-            }
-          }
-
           // Notify via stream
           if (onToolOutputStream) {
             onToolOutputStream(`\n导入完成：${chapters.length} 章，共 ${totalWords} 字。\n`);
             onToolOutputStream(`章节文件已保存到 ${chaptersDir}\n`);
-            if (!foundationGenerated) {
-              onToolOutputStream(`\n提示：基础设定未自动生成，建议手动执行以下操作：\n`);
-              onToolOutputStream(`1. 读取前几章内容，建立经纬（角色/设定/世界观）\n`);
-              onToolOutputStream(`2. 生成卷大纲摘要\n`);
-            }
-            onToolOutputStream(`提示：如需更详细的定性分析，请使用 style.import 工具传入参考文本。\n`);
+            onToolOutputStream(`\n接下来你可以让我读取章节内容，帮你建立经纬（角色/设定/世界观/伏笔等）。\n`);
           }
 
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `已导入 ${chapters.length} 章（共 ${totalWords} 字）到书籍「${bookId}」。文风统计已生成。${foundationGenerated ? "基础设定已生成。" : "建议接下来建立经纬和大纲。"}`,
+            summary: `已导入 ${chapters.length} 章（共 ${totalWords} 字）到书籍「${bookId}」。接下来可以让 AI 读取章节并建立经纬。`,
             data: {
               bookId,
               importedChapters: chapters.length,

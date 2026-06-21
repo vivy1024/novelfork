@@ -28,7 +28,7 @@ export async function migrateWritingResourcesFromFiles(input: {
     const markerPath = join(bookDir, MIGRATION_MARKER);
     if (await exists(markerPath)) { skipped += 1; continue; }
 
-    const existing = input.service.list(bookId, { includeDeleted: true });
+    const existing = await input.service.list(bookId, { includeDeleted: true });
     if (existing.length > 0) {
       await writeMarker(markerPath, { status: "skipped-existing-db", at: now(), count: existing.length });
       skipped += 1;
@@ -75,9 +75,8 @@ async function migrateIndexedResources(input: {
     const timestamp = Date.parse(stringValue(record.updatedAt) ?? stringValue(record.createdAt) ?? "") || input.now();
     const chapterNumber = numberValue(record.chapterNumber) ?? numberValue(record.number) ?? numberValue(record.targetChapterId);
     const status = normalizeStatus(stringValue(record.status), input.defaultStatus);
-    input.service.create({
+    await input.service.create(input.bookId, {
       id,
-      bookId: input.bookId,
       type: input.type,
       status,
       title,

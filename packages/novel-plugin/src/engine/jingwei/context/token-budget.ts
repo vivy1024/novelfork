@@ -82,6 +82,3 @@ export function applyTokenBudget<TItem extends BudgetedJingweiContextItem>(
     droppedIds,
   };
 }
-
-/** @deprecated Use BudgetedJingweiContextItem instead */
-export type BudgetedBibleContextItem = BudgetedJingweiContextItem;

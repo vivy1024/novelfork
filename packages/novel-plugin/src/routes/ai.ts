@@ -688,7 +688,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const storyDir = join(bookDir, "story");
 
       // Load jingwei files for context
-      const [outline, summaries, bible, currentState, hooks] = await Promise.all([
+      const [outline, summaries, storyJingwei, currentState, hooks] = await Promise.all([
         loadJingweiFile(storyDir, "volume_outline.md"),
         loadJingweiFile(storyDir, "chapter_summaries.md"),
         loadJingweiFile(storyDir, "story_bible.md"),
@@ -709,7 +709,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const contextParts = [
         outline ? `### 现有大纲\n${outline}` : "### 现有大纲\n（无）",
         summaries ? `### 章节摘要\n${summaries}` : "",
-        bible ? `### 故事经纬（摘要）\n${bible.slice(0, 2000)}` : "",
+        storyJingwei ? `### 故事经纬（摘要）\n${storyJingwei.slice(0, 2000)}` : "",
         currentState ? `### 当前状态\n${currentState}` : "",
         hooks ? `### 悬念钩子\n${hooks.slice(0, 1000)}` : "",
         `### 已有章节文件\n${chapterFiles.length > 0 ? chapterFiles.join(", ") : "（无）"}`,

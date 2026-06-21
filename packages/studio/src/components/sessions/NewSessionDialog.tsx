@@ -313,7 +313,7 @@ export function NewSessionDialog({ open, initialPresetId = "novelist", onOpenCha
                 onChange={(event) => setWorktree(event.target.value)}
                 placeholder="例如 D:\\novels\\my-book"
               />
-              <p className="text-[10px] text-muted-foreground">书籍叙述者通过书籍页面自动创建，此处新建的是独立叙述者。</p>
+              <p className="text-[10px] text-muted-foreground">书籍内的对话在工作台右侧面板管理，此处新建的是独立对话。</p>
             </div>
           </div>
         </div>

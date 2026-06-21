@@ -6,11 +6,11 @@ import {
   getStorageDatabase,
 } from "@vivy1024/novelfork-core";
 import {
-  createBibleCharacterArcRepository,
-  createBibleChapterSummaryRepository,
-  createBibleConflictRepository,
-  createBibleEventRepository,
-  createBibleSettingRepository,
+  createJingweiCharacterArcRepository,
+  createJingweiChapterSummaryRepository,
+  createJingweiConflictRepository,
+  createJingweiEventRepository,
+  createJingweiSettingRepository,
 } from "../engine/jingwei/index.js";
 
 import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "@vivy1024/novelfork-studio/api/lib/resource-checkpoint-service";
@@ -265,7 +265,7 @@ export class NarrativeLineService {
     const storage = await this.resolveStorage();
     if (!storage) return fromFile;
     try {
-      const rows = await createBibleChapterSummaryRepository(storage).listByBook(bookId);
+      const rows = await createJingweiChapterSummaryRepository(storage).listByBook(bookId);
       const fromStorage = rows.map((row) => ({
         number: Number(row.chapterNumber),
         title: typeof row.title === "string" ? row.title : undefined,
@@ -288,7 +288,7 @@ export class NarrativeLineService {
     const storage = await this.resolveStorage();
     if (!storage) return [];
     try {
-      return await createBibleEventRepository(storage).listByBook(bookId) as EventRecord[];
+      return await createJingweiEventRepository(storage).listByBook(bookId) as EventRecord[];
     } catch {
       return [];
     }
@@ -298,7 +298,7 @@ export class NarrativeLineService {
     const storage = await this.resolveStorage();
     if (!storage) return [];
     try {
-      return await createBibleSettingRepository(storage).listByBook(bookId) as SettingRecord[];
+      return await createJingweiSettingRepository(storage).listByBook(bookId) as SettingRecord[];
     } catch {
       return [];
     }
@@ -308,7 +308,7 @@ export class NarrativeLineService {
     const storage = await this.resolveStorage();
     if (!storage) return [];
     try {
-      return await createBibleConflictRepository(storage).listByBook(bookId) as ConflictRecord[];
+      return await createJingweiConflictRepository(storage).listByBook(bookId) as ConflictRecord[];
     } catch {
       return [];
     }
@@ -318,7 +318,7 @@ export class NarrativeLineService {
     const storage = await this.resolveStorage();
     if (!storage) return [];
     try {
-      return await createBibleCharacterArcRepository(storage).listByBook(bookId) as CharacterArcRecord[];
+      return await createJingweiCharacterArcRepository(storage).listByBook(bookId) as CharacterArcRecord[];
     } catch {
       return [];
     }

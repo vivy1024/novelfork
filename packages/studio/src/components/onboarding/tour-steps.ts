@@ -19,7 +19,7 @@ export const HOME_TOUR_STEPS: readonly TourStep[] = [
   {
     targetId: "sidebar-narrators",
     title: "独立叙述者",
-    description: "这里是独立对话。书籍叙述者（规划、写作、审校）在进入书籍工作台后自动出现。",
+    description: "这里是独立对话，可以跟 AI 聊任何话题。进入书籍后会有专属的 AI 对话面板。",
     placement: "right",
   },
   {

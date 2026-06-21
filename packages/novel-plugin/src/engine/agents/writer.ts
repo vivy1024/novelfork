@@ -122,25 +122,21 @@ export class WriterAgent extends BaseAgent {
   async writeChapter(input: WriteChapterInput): Promise<WriteChapterOutput> {
     const { book, bookDir, chapterNumber } = input;
 
-    const [
-      storyBible, volumeOutline, styleGuide, currentState, ledger, hooks,
-      chapterSummaries, subplotBoard, emotionalArcs, characterMatrix, styleProfileRaw,
-      parentCanon, fanficCanonRaw,
-    ] = await Promise.all([
-        this.readFileOrDefault(join(bookDir, "story/story_bible.md")),
-        this.readFileOrDefault(join(bookDir, "story/volume_outline.md")),
-        this.readFileOrDefault(join(bookDir, "story/style_guide.md")),
-        this.readFileOrDefault(join(bookDir, "story/current_state.md")),
-        this.readFileOrDefault(join(bookDir, "story/particle_ledger.md")),
-        this.readFileOrDefault(join(bookDir, "story/pending_hooks.md")),
-        this.readFileOrDefault(join(bookDir, "story/chapter_summaries.md")),
-        this.readFileOrDefault(join(bookDir, "story/subplot_board.md")),
-        this.readFileOrDefault(join(bookDir, "story/emotional_arcs.md")),
-        this.readFileOrDefault(join(bookDir, "story/character_matrix.md")),
-        this.readFileOrDefault(join(bookDir, "story/style_profile.json")),
-        this.readFileOrDefault(join(bookDir, "story/parent_canon.md")),
-        this.readFileOrDefault(join(bookDir, "story/fanfic_canon.md")),
-      ]);
+    // [CLEANUP] story/*.md 文件系统已废弃（inkos 残留）。所有上下文现由经纬 DB 提供。
+    // 保留原占位值以兼容下游 !== "(文件尚未创建)" 判断,后续重构彻底移除 legacy 路径。
+    const storyBible = "(文件尚未创建)";
+    const volumeOutline = "(文件尚未创建)";
+    const styleGuide = "(文件尚未创建)";
+    const currentState = "(文件尚未创建)";
+    const ledger = "(文件尚未创建)";
+    const hooks = "(文件尚未创建)";
+    const chapterSummaries = "(文件尚未创建)";
+    const subplotBoard = "(文件尚未创建)";
+    const emotionalArcs = "(文件尚未创建)";
+    const characterMatrix = "(文件尚未创建)";
+    const styleProfileRaw = "(文件尚未创建)";
+    const parentCanon = "(文件尚未创建)";
+    const fanficCanonRaw = "(文件尚未创建)";
 
     const recentChapters = await this.loadRecentChapters(bookDir, chapterNumber);
     // Load more chapters for dialogue fingerprint extraction (voice consistency over longer span)
@@ -429,25 +425,15 @@ export class WriterAgent extends BaseAgent {
   }
 
   async settleChapterState(input: SettleChapterStateInput): Promise<WriteChapterOutput> {
-    const [
-      currentState,
-      ledger,
-      hooks,
-      chapterSummaries,
-      subplotBoard,
-      emotionalArcs,
-      characterMatrix,
-      volumeOutline,
-    ] = await Promise.all([
-      this.readFileOrDefault(join(input.bookDir, "story/current_state.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/particle_ledger.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/pending_hooks.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/chapter_summaries.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/subplot_board.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/emotional_arcs.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/character_matrix.md")),
-      this.readFileOrDefault(join(input.bookDir, "story/volume_outline.md")),
-    ]);
+    // [CLEANUP] story/*.md 已废弃,同 writeChapter()
+    const currentState = "(文件尚未创建)";
+    const ledger = "(文件尚未创建)";
+    const hooks = "(文件尚未创建)";
+    const chapterSummaries = "(文件尚未创建)";
+    const subplotBoard = "(文件尚未创建)";
+    const emotionalArcs = "(文件尚未创建)";
+    const characterMatrix = "(文件尚未创建)";
+    const volumeOutline = "(文件尚未创建)";
 
     const { profile: genreProfile } = await readGenreProfile(this.ctx.projectRoot, input.book.genre);
     const parsedBookRules = await readBookRules(input.bookDir);

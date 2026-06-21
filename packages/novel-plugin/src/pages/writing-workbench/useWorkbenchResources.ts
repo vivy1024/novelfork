@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "bible-entry" | "storyline" | "tool-result" | "tool" | "tool-group";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "storyline" | "tool-result" | "tool" | "tool-group";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -145,7 +145,6 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     tools: [
       { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
       { id: "tool:foreshadowing", title: "伏笔看板", toolPanel: "foreshadowing" },
-      { id: "tool:coreshift", title: "关键转折点", toolPanel: "coreshift" },
       { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
     ],
   },

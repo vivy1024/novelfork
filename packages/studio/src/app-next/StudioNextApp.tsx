@@ -56,6 +56,7 @@ import {
   type DraftAcceptMode,
   type ResourceHistoryEntry,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
+import { IdeWorkbench } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute; // kept for API compat; ignored when router is active
@@ -1305,8 +1306,10 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
 
   useEffect(() => { reloadResources(); }, [reloadResources]);
 
-  // Load repository path from sessions bound to this book
+  // Load repository path + book session ID from sessions bound to this book
   const [repositoryPath, setRepositoryPath] = useState<string | undefined>(undefined);
+  const [bookSessionId, setBookSessionId] = useState<string | null>(null);
+  const [bookSessions, setBookSessions] = useState<readonly { id: string; title: string }[]>([]);
   useEffect(() => {
     void fetch(`/api/sessions?status=active&projectId=${encodeURIComponent(bookId)}`)
       .then(res => res.ok ? res.json() : null)
@@ -1314,8 +1317,26 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         const sessions = Array.isArray(data) ? data : [];
         const withWorktree = sessions.find((s: { worktree?: string }) => s.worktree);
         if (withWorktree?.worktree) setRepositoryPath(withWorktree.worktree);
+        setBookSessions(sessions.map((s: { id: string; title: string }) => ({ id: s.id, title: s.title })));
+        if (sessions.length > 0 && sessions[0]?.id) {
+          setBookSessionId(sessions[0].id);
+        }
       })
       .catch(() => { /* non-critical */ });
+  }, [bookId]);
+
+  const handleCreateBookSession = useCallback(async () => {
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: `对话 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`, projectId: bookId, sessionMode: "chat" }),
+      });
+      if (!res.ok) return;
+      const session = await res.json() as { id: string; title: string };
+      setBookSessions((prev) => [{ id: session.id, title: session.title }, ...prev]);
+      setBookSessionId(session.id);
+    } catch { /* non-critical */ }
   }, [bookId]);
 
   const openResourceNode = useCallback(
@@ -1462,13 +1483,10 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
           <Button type="button" variant="outline" size="sm" onClick={() => openResourceNode(switchGuard.target)}>放弃并切换</Button>
         </p>
       ) : null}
-      <WritingWorkbenchRoute
+      <IdeWorkbench
         bookId={bookId}
-        repositoryPath={repositoryPath}
         nodes={resources.tree}
         selectedNode={selectedNode}
-        chapters={deriveChaptersFromTree(resources.tree)}
-        chapterEdges={deriveChapterEdgesFromTree(resources.tree)}
         onOpen={handleOpen}
         onDeselectNode={() => setSelectedNode(null)}
         onSave={handleSave}
@@ -1478,6 +1496,12 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         candidateActions={candidateActions}
         draftActions={draftActions}
         chapterActions={chapterActions}
+        chatSlot={bookSessionId ? <ConversationRouteLive sessionId={bookSessionId} canvasContext={undefined} /> : undefined}
+        onSwitchToAgent={bookSessionId ? () => onNavigateToConversation(bookSessionId) : undefined}
+        bookSessions={bookSessions}
+        activeSessionId={bookSessionId}
+        onSwitchSession={(id) => setBookSessionId(id)}
+        onCreateSession={handleCreateBookSession}
       />
     </>
   );

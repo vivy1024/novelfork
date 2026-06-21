@@ -36,7 +36,7 @@ export function createJingweiWorldModelRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiWorldModelInput): Promise<JingweiWorldModelRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_world_model" (
+        INSERT INTO "jingwei_world_model" (
           "id", "book_id", "economy_json", "society_json", "geography_json",
           "power_system_json", "culture_json", "timeline_json", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -58,7 +58,7 @@ export function createJingweiWorldModelRepository(storage: StorageDatabase) {
 
     async upsert(input: CreateJingweiWorldModelInput): Promise<JingweiWorldModelRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_world_model" (
+        INSERT INTO "jingwei_world_model" (
           "id", "book_id", "economy_json", "society_json", "geography_json",
           "power_system_json", "culture_json", "timeline_json", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -90,7 +90,7 @@ export function createJingweiWorldModelRepository(storage: StorageDatabase) {
     async getByBook(bookId: string): Promise<JingweiWorldModelRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_world_model"
+        FROM "jingwei_world_model"
         WHERE "book_id" = ?
       `).get(bookId) as JingweiWorldModelRow | undefined;
       return row ? toWorldModel(row) : null;
@@ -101,7 +101,7 @@ export function createJingweiWorldModelRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_world_model"
+        UPDATE "jingwei_world_model"
         SET "economy_json" = ?, "society_json" = ?, "geography_json" = ?, "power_system_json" = ?,
           "culture_json" = ?, "timeline_json" = ?, "updated_at" = ?
         WHERE "book_id" = ?
@@ -121,4 +121,3 @@ export function createJingweiWorldModelRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiWorldModelRepository instead */
-export const createBibleWorldModelRepository = createJingweiWorldModelRepository;

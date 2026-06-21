@@ -69,7 +69,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiConflictInput): Promise<JingweiConflictRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_conflict" (
+        INSERT INTO "jingwei_conflict" (
           "id", "book_id", "name", "type", "scope", "priority", "protagonist_side_json",
           "antagonist_side_json", "stakes", "root_cause_json", "evolution_path_json", "resolution_state",
           "resolution_chapter", "related_conflict_ids_json", "visibility_rule_json", "created_at", "updated_at", "deleted_at"
@@ -101,7 +101,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
     async getById(bookId: string, id: string): Promise<JingweiConflictRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_conflict"
+        FROM "jingwei_conflict"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiConflictRow | undefined;
       return row ? toConflict(row) : null;
@@ -110,7 +110,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiConflictRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_conflict"
+        FROM "jingwei_conflict"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "priority" ASC, "updated_at" DESC, "name" ASC
       `).all(bookId) as JingweiConflictRow[];
@@ -120,7 +120,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
     async getActiveConflictsAtChapter(bookId: string, chapter: number): Promise<JingweiConflictRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_conflict"
+        FROM "jingwei_conflict"
         WHERE "book_id" = ?
           AND "deleted_at" IS NULL
           AND "resolution_state" NOT IN ('resolved', 'deferred')
@@ -143,7 +143,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_conflict"
+        UPDATE "jingwei_conflict"
         SET "name" = ?, "type" = ?, "scope" = ?, "priority" = ?, "protagonist_side_json" = ?,
           "antagonist_side_json" = ?, "stakes" = ?, "root_cause_json" = ?, "evolution_path_json" = ?,
           "resolution_state" = ?, "resolution_chapter" = ?, "related_conflict_ids_json" = ?,
@@ -172,7 +172,7 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_conflict"
+        UPDATE "jingwei_conflict"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -182,4 +182,3 @@ export function createJingweiConflictRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiConflictRepository instead */
-export const createBibleConflictRepository = createJingweiConflictRepository;

@@ -42,7 +42,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiCharacterArcInput): Promise<JingweiCharacterArcRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_character_arc" (
+        INSERT INTO "jingwei_character_arc" (
           "id", "book_id", "character_id", "arc_type", "starting_state", "ending_state",
           "key_turning_points_json", "current_position", "visibility_rule_json", "deleted_at", "created_at", "updated_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?)
@@ -67,7 +67,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
     async getById(bookId: string, id: string): Promise<JingweiCharacterArcRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_character_arc"
+        FROM "jingwei_character_arc"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiCharacterArcRow | undefined;
       return row ? toCharacterArc(row) : null;
@@ -76,7 +76,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiCharacterArcRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_character_arc"
+        FROM "jingwei_character_arc"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "id" ASC
       `).all(bookId) as JingweiCharacterArcRow[];
@@ -86,7 +86,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
     async listByCharacter(bookId: string, characterId: string): Promise<JingweiCharacterArcRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_character_arc"
+        FROM "jingwei_character_arc"
         WHERE "book_id" = ? AND "character_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "id" ASC
       `).all(bookId, characterId) as JingweiCharacterArcRow[];
@@ -98,7 +98,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_character_arc"
+        UPDATE "jingwei_character_arc"
         SET "arc_type" = ?, "starting_state" = ?, "ending_state" = ?, "key_turning_points_json" = ?,
           "current_position" = ?, "visibility_rule_json" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -118,7 +118,7 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_character_arc"
+        UPDATE "jingwei_character_arc"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -128,4 +128,3 @@ export function createJingweiCharacterArcRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiCharacterArcRepository instead */
-export const createBibleCharacterArcRepository = createJingweiCharacterArcRepository;

@@ -6,6 +6,7 @@ export { createAIRelayRouter } from "./ai-relay.js";
 export { createDaemonRouter } from "./daemon.js";
 export { createMCPRouter } from "./mcp.js";
 export { createWorkbenchRouter } from "./workbench.js";
+export { createBookFilesRouter } from "./book-files.js";
 export { createLorebookRouter } from "./lorebook.js";
 export { createSettingsRouter } from "./settings.js";
 export { createOnboardingRouter } from "./onboarding.js";
@@ -48,7 +49,6 @@ export {
   createPipelineRouter,
   createFilterRouter,
   createComplianceRouter,
-  createBibleRouter,
   createWritingToolsRouter,
   createContextManagerRouter,
   createWritingResourceRouter,

@@ -44,7 +44,7 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
   return {
     async create(input: CreateJingweiEventInput): Promise<JingweiEventRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_event" (
+        INSERT INTO "jingwei_event" (
           "id", "book_id", "name", "event_type", "chapter_start", "chapter_end", "summary",
           "related_character_ids_json", "visibility_rule_json", "foreshadow_state", "created_at", "updated_at", "deleted_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -70,7 +70,7 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
     async getById(bookId: string, id: string): Promise<JingweiEventRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_event"
+        FROM "jingwei_event"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiEventRow | undefined;
       return row ? toEvent(row) : null;
@@ -79,7 +79,7 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
     async listByBook(bookId: string): Promise<JingweiEventRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_event"
+        FROM "jingwei_event"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as JingweiEventRow[];
@@ -91,7 +91,7 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_event"
+        UPDATE "jingwei_event"
         SET "name" = ?, "event_type" = ?, "chapter_start" = ?, "chapter_end" = ?, "summary" = ?,
           "related_character_ids_json" = ?, "visibility_rule_json" = ?, "foreshadow_state" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -113,7 +113,7 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_event"
+        UPDATE "jingwei_event"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -123,4 +123,3 @@ export function createJingweiEventRepository(storage: StorageDatabase) {
 }
 
 /** @deprecated Use createJingweiEventRepository instead */
-export const createBibleEventRepository = createJingweiEventRepository;

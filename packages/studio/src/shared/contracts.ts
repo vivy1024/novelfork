@@ -3,7 +3,7 @@
  * Ported from PR #96 (Te9ui1a) — prevents client/server type drift.
  */
 
-import type { BibleEntryStatus, CanonicalBookStatus, CanonicalChapterStatus, CandidateStatus } from "@vivy1024/novelfork-core";
+import type { JingweiEntryStatus, CanonicalBookStatus, CanonicalChapterStatus, CandidateStatus } from "@vivy1024/novelfork-core";
 
 // --- Health ---
 
@@ -167,7 +167,7 @@ export interface DraftResource {
   readonly metadata?: AiResultMetadata;
 }
 
-export interface BibleResourceCounts {
+export interface JingweiResourceCounts {
   readonly characters?: number;
   readonly locations?: number;
   readonly factions?: number;
@@ -176,12 +176,12 @@ export interface BibleResourceCounts {
   readonly worldRules?: number;
 }
 
-export interface BibleEntryResource {
+export interface JingweiEntryResource {
   readonly id: string;
-  readonly category: keyof BibleResourceCounts;
+  readonly category: keyof JingweiResourceCounts;
   readonly title: string;
   readonly summary?: string;
-  readonly status?: BibleEntryStatus;
+  readonly status?: JingweiEntryStatus;
 }
 
 export interface TextFileResource {
@@ -215,8 +215,8 @@ export interface WorkspaceResourceSnapshot {
   readonly chapters: readonly ChapterSummary[];
   readonly generatedChapters?: readonly GeneratedChapterCandidate[];
   readonly drafts?: readonly DraftResource[];
-  readonly bibleCounts?: BibleResourceCounts;
-  readonly bibleEntries?: readonly BibleEntryResource[];
+  readonly jingweiCounts?: JingweiResourceCounts;
+  readonly jingweiEntries?: readonly JingweiEntryResource[];
   readonly storyFiles?: readonly TextFileResource[];
   readonly jingweiFiles?: readonly TextFileResource[];
   readonly materials?: readonly MaterialResource[];

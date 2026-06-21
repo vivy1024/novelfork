@@ -155,7 +155,7 @@ export async function loadResourceDetailState(
     return errorState(node, { code: "candidate-content-missing" }, "候选稿列表未返回正文，当前没有独立详情接口");
   }
 
-  if (node.kind === "jingwei-entry" || node.kind === "jingwei-section" || node.kind === "narrative-line" || node.kind === "storyline" || node.kind === "bible-entry" || node.kind === "tool-result") {
+  if (node.kind === "jingwei-entry" || node.kind === "jingwei-section" || node.kind === "narrative-line" || node.kind === "storyline" || node.kind === "tool-result") {
     // 经纬文件节点：尝试通过 API 加载完整内容
     const fileName = metadataString(node, "fileName");
     if (fileName && node.kind === "jingwei-entry") {

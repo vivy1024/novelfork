@@ -9,8 +9,8 @@ export type ChapterStatus = z.infer<typeof ChapterStatusSchema>;
 export const CandidateStatusSchema = z.enum(["candidate", "accepted", "rejected", "archived"]);
 export type CandidateStatus = z.infer<typeof CandidateStatusSchema>;
 
-export const BibleEntryStatusSchema = z.enum(["active", "unresolved", "resolved", "deprecated"]);
-export type BibleEntryStatus = z.infer<typeof BibleEntryStatusSchema>;
+export const JingweiEntryStatusSchema = z.enum(["active", "unresolved", "resolved", "deprecated"]);
+export type JingweiEntryStatus = z.infer<typeof JingweiEntryStatusSchema>;
 
 export function normalizeBookStatus(value: unknown): BookStatus {
   if (BookStatusSchema.safeParse(value).success) return value as BookStatus;
@@ -58,6 +58,6 @@ export function normalizeCandidateStatus(value: unknown): CandidateStatus {
   return CandidateStatusSchema.safeParse(value).success ? value as CandidateStatus : "candidate";
 }
 
-export function normalizeBibleEntryStatus(value: unknown): BibleEntryStatus {
-  return BibleEntryStatusSchema.safeParse(value).success ? value as BibleEntryStatus : "active";
+export function normalizeJingweiEntryStatus(value: unknown): JingweiEntryStatus {
+  return JingweiEntryStatusSchema.safeParse(value).success ? value as JingweiEntryStatus : "active";
 }

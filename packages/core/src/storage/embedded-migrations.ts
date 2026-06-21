@@ -899,4 +899,17 @@ CREATE TABLE IF NOT EXISTS jingwei_custom_category (
 );
 CREATE INDEX IF NOT EXISTS idx_jingwei_custom_cat_book ON jingwei_custom_category(book_id);
 ` },
+  { name: "0025_rename_bible_to_jingwei.sql", sql: `-- Rename legacy bible_* tables to jingwei_*
+ALTER TABLE "bible_character" RENAME TO "jingwei_character";
+ALTER TABLE "bible_event" RENAME TO "jingwei_event";
+ALTER TABLE "bible_setting" RENAME TO "jingwei_setting";
+ALTER TABLE "bible_chapter_summary" RENAME TO "jingwei_chapter_summary";
+ALTER TABLE "bible_conflict" RENAME TO "jingwei_conflict";
+ALTER TABLE "bible_world_model" RENAME TO "jingwei_world_model";
+ALTER TABLE "bible_premise" RENAME TO "jingwei_premise";
+ALTER TABLE "bible_character_arc" RENAME TO "jingwei_character_arc";
+
+-- Rename bible_mode column in book table
+ALTER TABLE "book" RENAME COLUMN "bible_mode" TO "jingwei_mode";
+` },
 ];

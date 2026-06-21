@@ -44,7 +44,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
   return {
     async create(input: CreateJingweiChapterSummaryInput): Promise<JingweiChapterSummaryRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_chapter_summary" (
+        INSERT INTO "jingwei_chapter_summary" (
           "id", "book_id", "chapter_number", "title", "summary", "word_count", "key_events_json",
           "appearing_character_ids_json", "pov", "metadata_json", "created_at", "updated_at", "deleted_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -69,7 +69,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
 
     async upsert(input: CreateJingweiChapterSummaryInput): Promise<JingweiChapterSummaryRecord> {
       storage.sqlite.prepare(`
-        INSERT INTO "bible_chapter_summary" (
+        INSERT INTO "jingwei_chapter_summary" (
           "id", "book_id", "chapter_number", "title", "summary", "word_count", "key_events_json",
           "appearing_character_ids_json", "pov", "metadata_json", "created_at", "updated_at", "deleted_at"
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)
@@ -106,7 +106,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
     async getById(bookId: string, id: string): Promise<JingweiChapterSummaryRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_chapter_summary"
+        FROM "jingwei_chapter_summary"
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(bookId, id) as JingweiChapterSummaryRow | undefined;
       return row ? toChapterSummary(row) : null;
@@ -115,7 +115,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
     async getByChapter(bookId: string, chapterNumber: number): Promise<JingweiChapterSummaryRecord | null> {
       const row = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_chapter_summary"
+        FROM "jingwei_chapter_summary"
         WHERE "book_id" = ? AND "chapter_number" = ? AND "deleted_at" IS NULL
       `).get(bookId, chapterNumber) as JingweiChapterSummaryRow | undefined;
       return row ? toChapterSummary(row) : null;
@@ -124,7 +124,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
     async listByBook(bookId: string): Promise<JingweiChapterSummaryRecord[]> {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
-        FROM "bible_chapter_summary"
+        FROM "jingwei_chapter_summary"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "chapter_number" ASC
       `).all(bookId) as JingweiChapterSummaryRow[];
@@ -136,7 +136,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
       if (!current) return null;
 
       storage.sqlite.prepare(`
-        UPDATE "bible_chapter_summary"
+        UPDATE "jingwei_chapter_summary"
         SET "title" = ?, "summary" = ?, "word_count" = ?, "key_events_json" = ?,
           "appearing_character_ids_json" = ?, "pov" = ?, "metadata_json" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
@@ -157,7 +157,7 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
 
     async softDelete(bookId: string, id: string, deletedAt = new Date()): Promise<boolean> {
       const result = storage.sqlite.prepare(`
-        UPDATE "bible_chapter_summary"
+        UPDATE "jingwei_chapter_summary"
         SET "deleted_at" = ?, "updated_at" = ?
         WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
@@ -167,4 +167,3 @@ export function createJingweiChapterSummaryRepository(storage: StorageDatabase) 
 }
 
 /** @deprecated Use createJingweiChapterSummaryRepository instead */
-export const createBibleChapterSummaryRepository = createJingweiChapterSummaryRepository;

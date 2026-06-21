@@ -1,4 +1,4 @@
-import type { BibleConflictRecord } from "../../bible/types.js";
+import type { JingweiConflictRecord } from "../../jingwei/types.js";
 import type {
   ConflictDialecticExtension,
   ConflictResolutionState,
@@ -36,7 +36,7 @@ function parseEvolutionPath(raw: string): EvolutionNode[] {
   }
 }
 
-function parseDialectic(record: BibleConflictRecord): ConflictDialecticExtension | null {
+function parseDialectic(record: JingweiConflictRecord): ConflictDialecticExtension | null {
   const sides: [string, string] = (() => {
     try {
       const p = JSON.parse(record.protagonistSideJson) as unknown;
@@ -75,7 +75,7 @@ function parseDialectic(record: BibleConflictRecord): ConflictDialecticExtension
   };
 }
 
-function getLastAdvancedChapter(record: BibleConflictRecord): number | null {
+function getLastAdvancedChapter(record: JingweiConflictRecord): number | null {
   const path = parseEvolutionPath(record.evolutionPathJson);
   const chapters = path
     .map((n) => n.chapter)
@@ -83,7 +83,7 @@ function getLastAdvancedChapter(record: BibleConflictRecord): number | null {
   return chapters.length > 0 ? chapters[chapters.length - 1]! : null;
 }
 
-export function buildConflictMap(conflicts: readonly BibleConflictRecord[]): ConflictMapEntry[] {
+export function buildConflictMap(conflicts: readonly JingweiConflictRecord[]): ConflictMapEntry[] {
   return conflicts.map((c) => ({
     id: c.id,
     name: c.name,
@@ -98,7 +98,7 @@ export function buildConflictMap(conflicts: readonly BibleConflictRecord[]): Con
  * Default threshold = 5 chapters.
  */
 export function detectMainConflictDrift(
-  conflicts: readonly BibleConflictRecord[],
+  conflicts: readonly JingweiConflictRecord[],
   currentChapter: number,
   threshold = 5,
 ): MainConflictDrift | null {

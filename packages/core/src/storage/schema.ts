@@ -52,14 +52,14 @@ export const kvStore = sqliteTable("kv_store", {
 export const books = sqliteTable("book", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
-  bibleMode: text("bible_mode", { enum: ["static", "dynamic"] }).notNull().default("static"),
+  jingweiMode: text("jingwei_mode", { enum: ["static", "dynamic"] }).notNull().default("static"),
   currentChapter: integer("current_chapter").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
 
-export const bibleCharacters = sqliteTable(
-  "bible_character",
+export const jingweiCharacters = sqliteTable(
+  "jingwei_character",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -77,11 +77,11 @@ export const bibleCharacters = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("bible_character_book_id_idx").on(table.bookId)],
+  (table) => [index("jingwei_character_book_id_idx").on(table.bookId)],
 );
 
-export const bibleEvents = sqliteTable(
-  "bible_event",
+export const jingweiEvents = sqliteTable(
+  "jingwei_event",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -99,11 +99,11 @@ export const bibleEvents = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("bible_event_book_id_idx").on(table.bookId)],
+  (table) => [index("jingwei_event_book_id_idx").on(table.bookId)],
 );
 
-export const bibleSettings = sqliteTable(
-  "bible_setting",
+export const jingweiSettings = sqliteTable(
+  "jingwei_setting",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -118,11 +118,11 @@ export const bibleSettings = sqliteTable(
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
-  (table) => [index("bible_setting_book_id_idx").on(table.bookId)],
+  (table) => [index("jingwei_setting_book_id_idx").on(table.bookId)],
 );
 
-export const bibleChapterSummaries = sqliteTable(
-  "bible_chapter_summary",
+export const jingweiChapterSummaries = sqliteTable(
+  "jingwei_chapter_summary",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -141,13 +141,13 @@ export const bibleChapterSummaries = sqliteTable(
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
-    uniqueIndex("bible_chapter_summary_book_chapter_idx").on(table.bookId, table.chapterNumber),
-    index("bible_chapter_summary_book_id_idx").on(table.bookId),
+    uniqueIndex("jingwei_chapter_summary_book_chapter_idx").on(table.bookId, table.chapterNumber),
+    index("jingwei_chapter_summary_book_id_idx").on(table.bookId),
   ],
 );
 
-export const bibleConflicts = sqliteTable(
-  "bible_conflict",
+export const jingweiConflicts = sqliteTable(
+  "jingwei_conflict",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -171,13 +171,13 @@ export const bibleConflicts = sqliteTable(
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
   },
   (table) => [
-    index("bible_conflict_book_status_idx").on(table.bookId, table.resolutionState),
-    index("bible_conflict_book_priority_idx").on(table.bookId, table.priority),
+    index("jingwei_conflict_book_status_idx").on(table.bookId, table.resolutionState),
+    index("jingwei_conflict_book_priority_idx").on(table.bookId, table.priority),
   ],
 );
 
-export const bibleWorldModels = sqliteTable(
-  "bible_world_model",
+export const jingweiWorldModels = sqliteTable(
+  "jingwei_world_model",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -192,11 +192,11 @@ export const bibleWorldModels = sqliteTable(
     timelineJson: text("timeline_json").notNull().default("{}"),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [uniqueIndex("bible_world_model_book_id_idx").on(table.bookId)],
+  (table) => [uniqueIndex("jingwei_world_model_book_id_idx").on(table.bookId)],
 );
 
-export const biblePremises = sqliteTable(
-  "bible_premise",
+export const jingweiPremises = sqliteTable(
+  "jingwei_premise",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -212,11 +212,11 @@ export const biblePremises = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [uniqueIndex("bible_premise_book_id_idx").on(table.bookId)],
+  (table) => [uniqueIndex("jingwei_premise_book_id_idx").on(table.bookId)],
 );
 
-export const bibleCharacterArcs = sqliteTable(
-  "bible_character_arc",
+export const jingweiCharacterArcs = sqliteTable(
+  "jingwei_character_arc",
   {
     id: text("id").primaryKey(),
     bookId: text("book_id")
@@ -224,7 +224,7 @@ export const bibleCharacterArcs = sqliteTable(
       .references(() => books.id, { onDelete: "cascade" }),
     characterId: text("character_id")
       .notNull()
-      .references(() => bibleCharacters.id, { onDelete: "cascade" }),
+      .references(() => jingweiCharacters.id, { onDelete: "cascade" }),
     arcType: text("arc_type").notNull(),
     startingState: text("starting_state").notNull().default(""),
     endingState: text("ending_state").notNull().default(""),
@@ -235,7 +235,7 @@ export const bibleCharacterArcs = sqliteTable(
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
   },
-  (table) => [index("bible_character_arc_book_character_idx").on(table.bookId, table.characterId)],
+  (table) => [index("jingwei_character_arc_book_character_idx").on(table.bookId, table.characterId)],
 );
 
 export const questionnaireTemplates = sqliteTable(

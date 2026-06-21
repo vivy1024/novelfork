@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { createCandidateDestructiveService } from "../lib/candidate-destructive-service.js";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
-import { createWritingResourceService, migrateWritingResourcesFromFiles } from "@vivy1024/novelfork-novel-plugin/engine";
+import { createWritingResourceService } from "@vivy1024/novelfork-novel-plugin/engine";
 
 export type ChapterCandidateStatus = "candidate" | "accepted" | "rejected" | "archived";
 export type ChapterCandidateAcceptAction = "merge" | "replace" | "draft";
@@ -78,19 +78,11 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
   const now = options.now ?? (() => new Date());
   const createId = options.createId ?? (() => randomUUID());
   const destructiveService = createCandidateDestructiveService({ root });
-  const resourceService = () => createWritingResourceService({ storage: getStorageDatabase(), now: () => now().getTime() });
-  let migrationPromise: Promise<unknown> | null = null;
-  const ensureMigrated = () => {
-    migrationPromise ??= migrateWritingResourcesFromFiles({ root, service: resourceService(), now: () => now().getTime() }).catch((error: unknown) => {
-      console.warn("[writing-resource] file migration failed", error);
-    });
-    return migrationPromise;
-  };
+  const resourceService = () => createWritingResourceService({ storage: getStorageDatabase(), resolveBookDir: (bookId: string) => join(root, "books", bookId), now: () => now().getTime() });
 
   app.get("/api/books/:id/candidates", async (c) => {
-    await ensureMigrated();
     const bookId = c.req.param("id");
-    const candidates = resourceService().list(bookId, { type: "candidate" }).map((resource) => ({
+    const candidates = (await resourceService().list(bookId, { type: "candidate" })).map((resource) => ({
       id: resource.id,
       bookId: resource.bookId,
       targetChapterId: resource.chapterNumber ? String(resource.chapterNumber) : undefined,
@@ -106,9 +98,8 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
   });
 
   app.get("/api/books/:id/drafts", async (c) => {
-    await ensureMigrated();
     const bookId = c.req.param("id");
-    const drafts = resourceService().list(bookId, { type: "draft" }).map((resource) => ({
+    const drafts = (await resourceService().list(bookId, { type: "draft" })).map((resource) => ({
       id: resource.id,
       bookId: resource.bookId,
       title: resource.title,
@@ -124,7 +115,7 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
 
   app.get("/api/books/:id/drafts/:draftId", async (c) => {
     const bookId = c.req.param("id");
-    const draft = resourceService().getById(c.req.param("draftId"));
+    const draft = await resourceService().getById(bookId, c.req.param("draftId"));
     if (!draft || draft.bookId !== bookId || draft.type !== "draft" || draft.deletedAt !== null) return c.json({ error: "Draft not found" }, 404);
     return c.json({ draft: {
       id: draft.id,
@@ -144,9 +135,8 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     const body: CreateDraftBody = await c.req.json<CreateDraftBody>().catch(() => ({}));
     if (!body.title?.trim()) return c.json({ error: "Draft title is required" }, 400);
     if (typeof body.content !== "string") return c.json({ error: "Draft content is required" }, 400);
-    const draft = resourceService().create({
+    const draft = await resourceService().create(bookId, {
       id: buildDraftId(createId()),
-      bookId,
       type: "draft",
       status: "draft",
       title: body.title.trim(),
@@ -161,10 +151,10 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     const bookId = c.req.param("id");
     const draftId = c.req.param("draftId");
     const service = resourceService();
-    const existing = service.getById(draftId);
+    const existing = await service.getById(bookId, draftId);
     if (!existing || existing.bookId !== bookId || existing.type !== "draft") return c.json({ error: "Draft not found" }, 404);
     const body: UpdateDraftBody = await c.req.json<UpdateDraftBody>().catch(() => ({}));
-    const draft = service.update(existing.id, {
+    const draft = await service.update(bookId, existing.id, {
       ...(body.title?.trim() ? { title: body.title.trim() } : {}),
       ...(typeof body.content === "string" ? { content: body.content } : {}),
     });
@@ -210,46 +200,50 @@ export function createChapterCandidatesRouter(root: string, options: ChapterCand
     const body = await c.req.json<{ action?: ChapterCandidateAcceptAction; chapterNumber?: number }>().catch(() => ({ action: undefined }));
     const action = body.action;
     const service = resourceService();
-    const record = service.getById(candidateId);
+    const record = await service.getById(bookId, candidateId);
     if (!record || record.bookId !== bookId || record.type !== "candidate") return c.json({ error: "Candidate not found" }, 404);
     if (action === "draft") {
-      const draft = service.transition(candidateId, { action: "to-draft" });
+      const draft = await service.transition(bookId, candidateId, { action: "to-draft" });
       return c.json({ draft, candidate: draft });
     }
     if (action !== "merge" && action !== "replace") return c.json({ error: "Accept action must be merge, replace, or draft" }, 400);
     const chapterNumber = body.chapterNumber ?? record.chapterNumber ?? Number(record.metadata.targetChapterId ?? 0);
     if (!chapterNumber) return c.json({ error: "chapterNumber is required" }, 400);
-    const candidate = service.transition(candidateId, { action: "accept", chapterNumber, mode: action });
+    const candidate = await service.transition(bookId, candidateId, { action: "accept", chapterNumber, mode: action });
     return c.json({ candidate });
   });
 
-  app.post("/api/books/:id/candidates/:candidateId/reject", (c) => {
+  app.post("/api/books/:id/candidates/:candidateId/reject", async (c) => {
+    const bookId = c.req.param("id");
     const service = resourceService();
-    const current = service.getById(c.req.param("candidateId"));
-    if (!current || current.bookId !== c.req.param("id")) return c.json({ error: "Candidate not found" }, 404);
-    return c.json({ candidate: service.transition(current.id, { action: "reject" }) });
+    const current = await service.getById(bookId, c.req.param("candidateId"));
+    if (!current || current.bookId !== bookId) return c.json({ error: "Candidate not found" }, 404);
+    return c.json({ candidate: await service.transition(bookId, current.id, { action: "reject" }) });
   });
 
-  app.post("/api/books/:id/candidates/:candidateId/archive", (c) => {
+  app.post("/api/books/:id/candidates/:candidateId/archive", async (c) => {
+    const bookId = c.req.param("id");
     const service = resourceService();
-    const current = service.getById(c.req.param("candidateId"));
-    if (!current || current.bookId !== c.req.param("id")) return c.json({ error: "Candidate not found" }, 404);
-    return c.json({ candidate: service.transition(current.id, { action: "archive" }) });
+    const current = await service.getById(bookId, c.req.param("candidateId"));
+    if (!current || current.bookId !== bookId) return c.json({ error: "Candidate not found" }, 404);
+    return c.json({ candidate: await service.transition(bookId, current.id, { action: "archive" }) });
   });
 
-  app.delete("/api/books/:id/drafts/:draftId", (c) => {
+  app.delete("/api/books/:id/drafts/:draftId", async (c) => {
+    const bookId = c.req.param("id");
     const service = resourceService();
-    const current = service.getById(c.req.param("draftId"));
-    if (!current || current.bookId !== c.req.param("id")) return c.json({ error: "Draft not found" }, 404);
-    service.softDelete(current.id);
+    const current = await service.getById(bookId, c.req.param("draftId"));
+    if (!current || current.bookId !== bookId) return c.json({ error: "Draft not found" }, 404);
+    await service.softDelete(bookId, current.id);
     return c.json({ ok: true, draftId: current.id });
   });
 
-  app.delete("/api/books/:id/candidates/:candidateId", (c) => {
+  app.delete("/api/books/:id/candidates/:candidateId", async (c) => {
+    const bookId = c.req.param("id");
     const service = resourceService();
-    const current = service.getById(c.req.param("candidateId"));
-    if (!current || current.bookId !== c.req.param("id")) return c.json({ error: "Candidate not found" }, 404);
-    service.softDelete(current.id);
+    const current = await service.getById(bookId, c.req.param("candidateId"));
+    if (!current || current.bookId !== bookId) return c.json({ error: "Candidate not found" }, 404);
+    await service.softDelete(bookId, current.id);
     return c.json({ ok: true, candidateId: current.id });
   });
 
