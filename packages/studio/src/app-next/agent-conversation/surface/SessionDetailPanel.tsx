@@ -361,6 +361,7 @@ export function SessionDetailPanel({
         <DetailRow label="模型">{status.modelLabel ?? status.modelId ?? "—"}</DetailRow>
         <DetailRow label="权限模式">{status.permissionMode ?? "—"}</DetailRow>
         <DetailRow label="思考强度">{status.reasoningEffort ?? "—"}</DetailRow>
+        <DetailRow label="采样温度">{detail?.sessionConfig?.temperature != null ? detail.sessionConfig.temperature : "默认（API）"}</DetailRow>
         <DetailRow label="快速模式">{detail?.runtimeConfig?.yoloSkipReadonlyConfirmation ? "开启" : "关闭"}</DetailRow>
         <DetailRow label="宽松规划">{detail?.runtimeConfig?.relaxedPlanning ? "开启" : "关闭"}</DetailRow>
 
