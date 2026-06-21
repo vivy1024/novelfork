@@ -337,11 +337,17 @@ export class LlmRuntimeService {
         }
 
         // 推理强度三级优先级解析（叙述者会话 > 供应商默认 > 全局默认）
-        const resolvedReasoningEffort = input.sessionConfig.reasoningEffort
+        const candidateEffort = input.sessionConfig.reasoningEffort
           ?? input.providerDefaultReasoningEffort
-          ?? provider?.defaultReasoningEffort
           ?? input.globalDefaultReasoningEffort
           ?? "medium";
+        const VALID_EFFORTS = new Set(["none", "minimal", "low", "medium", "high", "xhigh"]);
+        const resolvedReasoningEffort = VALID_EFFORTS.has(candidateEffort) ? candidateEffort : "medium";
+
+        // 温度范围校验（OpenAI 0-2，Anthropic 0-1，取 0-2 兜底）
+        const clampedTemperature = input.sessionConfig?.temperature != null
+          ? Math.max(0, Math.min(2, input.sessionConfig.temperature))
+          : undefined;
 
         const result = await adapter.generate({
           ...providerRef(provider),
@@ -356,7 +362,7 @@ export class LlmRuntimeService {
           ...(input.maxOutputTokensOverride ? { maxOutputTokensOverride: input.maxOutputTokensOverride } : {}),
           // 新增透传：模型配置输出上限 + 用户配置温度
           ...(input.maxOutputTokens ? { maxOutputTokens: input.maxOutputTokens } : {}),
-          ...(input.sessionConfig.temperature != null ? { temperature: input.sessionConfig.temperature } : {}),
+          ...(clampedTemperature != null ? { temperature: clampedTemperature } : {}),
         });
 
         const metadata: LlmRuntimeMetadata = {

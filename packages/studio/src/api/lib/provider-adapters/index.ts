@@ -1,5 +1,6 @@
 import type { RuntimeModelInput } from "../provider-runtime-store.js";
 import type { ProviderProtocol } from "../../../shared/provider-catalog.js";
+import type { SessionReasoningEffort } from "../../../shared/session-types.js";
 import { detectModelProvider, encodeDeepSeekToolName, decodeDeepSeekToolName, needsDeepSeekToolNameEncoding, resolveModelId, shouldStripSamplingParams, applyProviderBodyTransforms, type ModelTransformContext } from "./model-transforms.js";
 import { getAdapterForProtocol } from "./registry.js";
 
@@ -90,7 +91,7 @@ export interface GenerateInput extends RuntimeProviderRef {
   readonly onToolEvent?: (event: RuntimeToolStreamEvent) => void;
   readonly signal?: AbortSignal;
   /** Reasoning effort level (low/medium/high) — passed to models that support it */
-  readonly reasoningEffort?: string;
+  readonly reasoningEffort?: SessionReasoningEffort;
   /** Service tier (e.g. "default", "priority" for fast mode) */
   readonly serviceTier?: string;
   /** P2.1: Override max_output_tokens for truncation recovery */

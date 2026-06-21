@@ -400,7 +400,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
     }
 
     // Default max_tokens to 32768 to avoid tool_call truncation for long content
-    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
+    const maxTokens = Math.max(1, input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768);
     return this.sendChatCompletion(input, input.messages, maxTokens, input.tools, input.signal);
   }
 
@@ -495,7 +495,7 @@ export class CompletionsAdapter implements RuntimeAdapter {
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
     const stripSampling = shouldStripSamplingParams(input);
-    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
+    const maxTokens = Math.max(1, input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768);
     const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toOpenAiMessages(messages),
