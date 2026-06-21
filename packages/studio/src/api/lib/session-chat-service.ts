@@ -81,7 +81,7 @@ import { microCompact, type MicroCompactResult } from "./compact/micro-compact.j
 import { reactiveCompact, resetReactiveState } from "./compact/reactive-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
 import { autoCompact, detectCompactionAction, selectThresholds, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
-import { estimateTokenCount } from "./token-utils.js";
+import { estimateTokenCount, getContextTokensFromUsage } from "./token-utils.js";
 import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkpoint.js";
 import { ProviderHealthManager, classifyError } from "./provider-health-manager.js";
 import { createContextBudgetManager } from "./context-budget-manager.js";
@@ -519,10 +519,11 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
   cumulative.totalCacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
   cumulative.totalCacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
   cumulative.turnCount += 1;
-  // 记录最后一次请求的 input tokens（仅 input + cache_read，不含 output）
-  // output 单独记录在 lastOutputTokens，避免压缩判断偏保守
+  // 记录最后一次请求的上下文占用 = 四字段全算（input + cache_creation + cache_read + output）。
+  // 对齐 Claude-Code / Codex / LegnaCLI：上一轮 output 会成为下一轮 input 的一部分，
+  // 必须计入才能正确预判占用，否则压缩判断严重低估（该压缩时不压缩 → 撞 413）。
   if (usage.input_tokens != null) {
-    cumulative.lastInputTokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+    cumulative.lastInputTokens = getContextTokensFromUsage(usage);
     cumulative.lastOutputTokens = (usage.output_tokens ?? 0);
   }
 }

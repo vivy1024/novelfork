@@ -26,6 +26,52 @@ interface MessageLike {
 export interface LastApiUsage {
   readonly inputTokens: number;
   readonly cacheReadTokens: number;
+  readonly cacheCreationTokens?: number;
+  readonly outputTokens?: number;
+}
+
+/** 原始 API usage 字段（对应各 provider 返回结构） */
+export interface RawTokenUsage {
+  readonly input_tokens?: number;
+  readonly output_tokens?: number;
+  readonly cache_creation_input_tokens?: number;
+  readonly cache_read_input_tokens?: number;
+}
+
+/**
+ * 上下文占用的【单一权威定义】——四字段全算。
+ *
+ * input + cache_creation + cache_read + output。
+ * 对齐 Claude-Code getTokenCountFromUsage / Codex total_tokens / LegnaCLI getTokenCountFromUsage。
+ *
+ * 所有"上下文已用了多少 token"的判断（压缩触发、runtime 折叠、budget pressure、ring 显示）
+ * 都必须以此为基准，禁止只取 input 或 input+cache_read（会严重低估导致该压缩时不压缩 / 撞 413）。
+ *
+ * 为什么含 output：上一轮的 output 会成为下一轮 input 的一部分，预判下一轮占用必须计入（三大参考项目一致）。
+ */
+export function getContextTokensFromUsage(usage: RawTokenUsage | undefined): number {
+  if (!usage) return 0;
+  return (
+    (usage.input_tokens ?? 0) +
+    (usage.cache_creation_input_tokens ?? 0) +
+    (usage.cache_read_input_tokens ?? 0) +
+    (usage.output_tokens ?? 0)
+  );
+}
+
+/**
+ * 有效上下文窗口的【单一权威定义】——全窗口扣除输出预留。
+ *
+ * 对齐 Claude-Code getEffectiveContextWindowSize（window - min(maxOutput, 20k)）
+ * / Codex（window × 95%）。触发压缩 / 折叠 / 阈值判断的分母都应该用它，
+ * 而非全窗口（否则会触发偏晚撞 413）。
+ *
+ * @param contextWindow 模型上下文窗口（来自 provider 配置）
+ * @param maxOutputReserve 输出预留 token（默认 32768，与 adapters max_tokens 硬编码一致）
+ */
+export function getEffectiveContextWindow(contextWindow: number, maxOutputReserve = 32768): number {
+  if (!contextWindow || contextWindow <= 0) return 0;
+  return Math.max(0, contextWindow - Math.min(maxOutputReserve, contextWindow));
 }
 
 // ---------------------------------------------------------------------------
@@ -85,8 +131,12 @@ export function tokenCountWithEstimation(
   // 无 API usage 时返回全量估算
   if (!lastApiUsage) return localEstimate;
 
-  // API 精确值（不含 output，设计修正）
-  const apiTotal = lastApiUsage.inputTokens + lastApiUsage.cacheReadTokens;
+  // API 精确值（四字段全算，对齐 getContextTokensFromUsage）
+  const apiTotal =
+    lastApiUsage.inputTokens +
+    lastApiUsage.cacheReadTokens +
+    (lastApiUsage.cacheCreationTokens ?? 0) +
+    (lastApiUsage.outputTokens ?? 0);
 
   // API 值已经包含所有历史消息，本地估算只覆盖增量
   // 取 max 避免低估导致 prompt_too_long
