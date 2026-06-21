@@ -5,7 +5,7 @@ import type { RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Save, FileText, AlertCircle, Loader2, GitCompare } from "lucide-react";
+import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronDown, ChevronUp } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
@@ -30,6 +30,7 @@ const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ defa
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
+const BeatProgressBar = lazy(() => import("./BeatProgressBar").then(m => ({ default: m.BeatProgressBar })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
@@ -182,9 +183,11 @@ export interface WorkbenchCanvasProps {
   jingweiActions?: JingweiActionHandlers;
   /** 外部容器 ref，操作按钮通过 portal 渲染到此处（IDE 模式用） */
   toolbarSlotRef?: RefObject<HTMLDivElement | null>;
+  /** 当前 canvas 是否为激活状态（多实例模式下控制 portal 行为） */
+  isActive?: boolean;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef, isActive = true }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -340,7 +343,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         </header>
       )}
       {/* IDE 模式：portal 渲染操作按钮到 EditorTabs 右侧 */}
-      {toolbarSlotRef && toolbarSlotRef.current && createPortal(toolbarButtons, toolbarSlotRef.current)}
+      {isActive && toolbarSlotRef && toolbarSlotRef.current && createPortal(toolbarButtons, toolbarSlotRef.current)}
 
       {/* Alerts */}
       {needsHydration && (
@@ -546,18 +549,30 @@ interface OverviewStats {
   chapterCount: number;
 }
 
-function StatCard({ label, value, sub, className }: { label: string; value: string; sub?: string; className?: string }) {
+function StatCard({ label, value, sub, className, active, onClick }: {
+  label: string; value: string; sub?: string; className?: string;
+  active?: boolean; onClick?: () => void;
+}) {
   return (
-    <div className={`rounded-lg border border-border bg-card p-3 ${className ?? ""}`}>
-      <div className="text-[10px] text-muted-foreground">{label}</div>
+    <div
+      className={`rounded-lg border bg-card p-3 transition-colors ${onClick ? "cursor-pointer hover:border-primary/50 hover:bg-accent/30" : ""} ${active ? "border-primary/60 bg-primary/5" : "border-border"} ${className ?? ""}`}
+      onClick={onClick}
+    >
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] text-muted-foreground">{label}</div>
+        {onClick && (active ? <ChevronUp className="size-3 text-muted-foreground" /> : <ChevronDown className="size-3 text-muted-foreground" />)}
+      </div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
     </div>
   );
 }
 
+type ExpandedPanel = "foreshadowing" | "quality" | "words" | null;
+
 function DefaultCockpitView({ bookId }: { bookId: string }) {
   const [stats, setStats] = useState<OverviewStats | null>(null);
+  const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
 
   // Fetch overview stats
   useEffect(() => {
@@ -569,15 +584,34 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
     return () => { active = false; };
   }, [bookId]);
 
+  const togglePanel = useCallback((panel: ExpandedPanel) => {
+    setExpandedPanel(prev => prev === panel ? null : panel);
+  }, []);
+
   return (
     <div className="flex h-full flex-col min-h-0">
-      {/* 状态卡片网格（作品总览） */}
+      {/* 状态卡片网格（作品总览）—— StatCard 点击展开对应面板 */}
       {stats && (
         <div className="shrink-0 grid grid-cols-3 gap-2 px-3 pt-3 pb-2">
-          <StatCard label="章节进度" value={`${stats.chapterCount} 章`} sub={`目标 ${stats.volumeProgress.total} · ${stats.volumeProgress.percent}%`} />
-          <StatCard label="伏笔回收" value={`${stats.foreshadowing.recoveryRate}%`} sub={`埋 ${stats.foreshadowing.planted} / 收 ${stats.foreshadowing.recovered}`} />
-          <StatCard label="今日字数" value={`${stats.wordCount.today.toLocaleString()}`} sub={`总计 ${(stats.wordCount.total / 10000).toFixed(1)} 万字`} />
-          {/* 节拍进度条 */}
+          <StatCard
+            label="章节进度" value={`${stats.chapterCount} 章`}
+            sub={`目标 ${stats.volumeProgress.total} · ${stats.volumeProgress.percent}%`}
+            active={expandedPanel === "quality"}
+            onClick={() => togglePanel("quality")}
+          />
+          <StatCard
+            label="伏笔回收" value={`${stats.foreshadowing.recoveryRate}%`}
+            sub={`埋 ${stats.foreshadowing.planted} / 收 ${stats.foreshadowing.recovered}`}
+            active={expandedPanel === "foreshadowing"}
+            onClick={() => togglePanel("foreshadowing")}
+          />
+          <StatCard
+            label="今日字数" value={`${stats.wordCount.today.toLocaleString()}`}
+            sub={`总计 ${(stats.wordCount.total / 10000).toFixed(1)} 万字`}
+            active={expandedPanel === "words"}
+            onClick={() => togglePanel("words")}
+          />
+          {/* 节拍进度条（Task C: BeatProgressBar 接入驾驶舱） */}
           <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
               <span>卷进度</span>
@@ -586,6 +620,33 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(stats.volumeProgress.percent, 100)}%` }} />
             </div>
+            {/* BeatProgressBar：默认节拍模板进度 */}
+            <div className="mt-2">
+              <Suspense fallback={null}>
+                <BeatProgressBar templateId="default" />
+              </Suspense>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 可展开的详情面板（Task D: StatCard 点击联动） */}
+      {expandedPanel && (
+        <div className="shrink-0 border-b border-border px-3 pb-2">
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-xs font-semibold text-foreground">
+                {expandedPanel === "foreshadowing" ? "伏笔详情" : expandedPanel === "quality" ? "质量监控" : "写作统计"}
+              </h3>
+              <button type="button" onClick={() => setExpandedPanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
+                <ChevronUp className="size-3.5" />
+              </button>
+            </div>
+            <Suspense fallback={<ToolPanelLoading />}>
+              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} />}
+              {expandedPanel === "quality" && <QualityPanel bookId={bookId} />}
+              {expandedPanel === "words" && <DailyProgressCard />}
+            </Suspense>
           </div>
         </div>
       )}

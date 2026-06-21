@@ -1,13 +1,12 @@
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
+import { estimateTokenCount } from "./token-utils.js";
 
 /**
  * 粗估 token 数：content.length / 4
  * 不依赖 tiktoken，适用于英文和中文混合文本的快速估算。
+ * 委托给 token-utils.ts estimateTokenCount（唯一来源）。
  */
-export function roughTokenEstimation(content: string): number {
-  if (!content) return 0;
-  return Math.ceil(content.length / 4);
-}
+export const roughTokenEstimation = estimateTokenCount;
 
 /**
  * 兼容接口：返回 { tokens } 对象，供 context-manager 等路由使用。
@@ -75,7 +74,7 @@ export function tokenCountWithEstimation(messages: readonly AgentTurnItem[]): nu
   if (lastUsageIndex < 0 || !lastUsage) {
     let total = 0;
     for (const item of messages) {
-      total += roughTokenEstimation(extractTextFromItem(item));
+      total += estimateTokenCount(extractTextFromItem(item));
     }
     return total;
   }
@@ -84,7 +83,7 @@ export function tokenCountWithEstimation(messages: readonly AgentTurnItem[]): nu
   const precise = tokenCountFromUsage(lastUsage);
   let estimated = 0;
   for (let i = lastUsageIndex + 1; i < messages.length; i++) {
-    estimated += roughTokenEstimation(extractTextFromItem(messages[i]));
+    estimated += estimateTokenCount(extractTextFromItem(messages[i]));
   }
   return precise + estimated;
 }

@@ -3,7 +3,7 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 export type TabKind = "chapter" | "draft" | "candidate" | "jingwei-entry" | "file" | "tool" | "other";
 
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab */
-export type TabView = "explorer" | "jingwei" | "tools";
+export type TabView = "explorer" | "jingwei" | "tools" | "search";
 
 export interface TabState {
   id: string;
@@ -27,6 +27,7 @@ export interface UseIdeTabsReturn {
   closeRight: (tabId: string) => void;
   activateTab: (tabId: string) => void;
   setDirty: (tabId: string, dirty: boolean) => void;
+  reorderTabs: (fromIndex: number, toIndex: number) => void;
   hasDirtyTabs: () => boolean;
 }
 
@@ -38,7 +39,7 @@ interface IdeTabsState {
   activeByView: Record<TabView, string | null>;
 }
 
-const EMPTY_ACTIVE: Record<TabView, string | null> = { explorer: null, jingwei: null, tools: null };
+const EMPTY_ACTIVE: Record<TabView, string | null> = { explorer: null, jingwei: null, tools: null, search: null };
 
 type IdeTabsAction =
   | { type: "LOAD"; state: IdeTabsState }
@@ -49,7 +50,8 @@ type IdeTabsAction =
   | { type: "CLOSE_SAVED"; view: TabView }
   | { type: "CLOSE_RIGHT"; tabId: string; view: TabView }
   | { type: "ACTIVATE"; tabId: string; view: TabView }
-  | { type: "SET_DIRTY"; tabId: string; dirty: boolean };
+  | { type: "SET_DIRTY"; tabId: string; dirty: boolean }
+  | { type: "REORDER"; fromIndex: number; toIndex: number; view: TabView };
 
 function viewOf(state: IdeTabsState, tabId: string): TabView | null {
   return state.tabs.find((t) => t.id === tabId)?.view ?? null;
@@ -132,6 +134,37 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
 
     case "SET_DIRTY":
       return { ...state, tabs: state.tabs.map((t) => (t.id === action.tabId ? { ...t, dirty: action.dirty } : t)) };
+
+    case "REORDER": {
+      const { fromIndex, toIndex, view } = action;
+      // 提取目标视图的 tab 及其在全局数组中的索引
+      const viewTabsWithGlobalIdx: { tab: TabState; globalIdx: number }[] = [];
+      state.tabs.forEach((t, i) => {
+        if (t.view === view) viewTabsWithGlobalIdx.push({ tab: t, globalIdx: i });
+      });
+      if (fromIndex < 0 || fromIndex >= viewTabsWithGlobalIdx.length) return state;
+      if (toIndex < 0 || toIndex >= viewTabsWithGlobalIdx.length) return state;
+      if (fromIndex === toIndex) return state;
+
+      // 在视图局部数组中移动元素
+      const moved = viewTabsWithGlobalIdx[fromIndex];
+      const newViewTabs = [...viewTabsWithGlobalIdx];
+      newViewTabs.splice(fromIndex, 1);
+      newViewTabs.splice(toIndex, 0, moved);
+
+      // 重建全局 tabs 数组：非当前视图保持原序，当前视图用新序
+      const next: TabState[] = [];
+      let viewIdx = 0;
+      for (let i = 0; i < state.tabs.length; i++) {
+        if (state.tabs[i].view === view) {
+          next.push(newViewTabs[viewIdx].tab);
+          viewIdx++;
+        } else {
+          next.push(state.tabs[i]);
+        }
+      }
+      return { ...state, tabs: next };
+    }
   }
 }
 
@@ -211,6 +244,7 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
   const closeRight = useCallback((tabId: string) => dispatch({ type: "CLOSE_RIGHT", tabId, view: activeView }), [activeView]);
   const activateTab = useCallback((tabId: string) => dispatch({ type: "ACTIVATE", tabId, view: activeView }), [activeView]);
   const setDirty = useCallback((tabId: string, dirty: boolean) => dispatch({ type: "SET_DIRTY", tabId, dirty }), []);
+  const reorderTabs = useCallback((fromIndex: number, toIndex: number) => dispatch({ type: "REORDER", fromIndex, toIndex, view: activeView }), [activeView]);
   const hasDirtyTabs = useCallback(() => state.tabs.some((t) => t.dirty), [state.tabs]);
 
   const tabs = useMemo(() => state.tabs.filter((t) => t.view === activeView), [state.tabs, activeView]);
@@ -227,6 +261,7 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
     closeRight,
     activateTab,
     setDirty,
+    reorderTabs,
     hasDirtyTabs,
   };
 }

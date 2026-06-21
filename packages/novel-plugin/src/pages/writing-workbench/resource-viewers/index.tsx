@@ -121,6 +121,7 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         readonly={readonly}
         onContentChange={options.onContentChange}
         placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
+        bookId={options.bookId}
       />
     </ViewerShell>
   );

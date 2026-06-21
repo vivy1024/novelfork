@@ -267,8 +267,10 @@ export interface SessionCumulativeUsage {
   totalCacheCreationInputTokens: number;
   totalCacheReadInputTokens: number;
   turnCount: number;
-  /** 最后一次请求的 input tokens（代表当前上下文窗口占用） */
+  /** 最后一次请求的 input tokens（仅 input + cache_read，不含 output） */
   lastInputTokens?: number;
+  /** 最后一次请求的 output tokens */
+  lastOutputTokens?: number;
   /** 最后一次请求时各部分的 token 分解（构造 prompt 时记录） */
   lastContextBreakdown?: Array<{ label: string; tokens: number }>;
 }

@@ -2,17 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   autoCompact,
-  estimateTokenCount,
   shouldTriggerCompaction,
   type CompactInput,
   type CompactResult,
 } from "./context-compaction";
+import { estimateTokenCount } from "./token-utils";
 
 describe("context compaction", () => {
   it("estimates token count from text length", () => {
     expect(estimateTokenCount("hello world")).toBeGreaterThan(0);
-    // 4000 个 ASCII 字符：基础 4000/4=1000，× 保守系数 4/3 ≈ 1333
-    expect(estimateTokenCount("a".repeat(4000))).toBeCloseTo(1333, -2);
+    // 4000 个 ASCII 字符：ceil(4000/4) = 1000
+    expect(estimateTokenCount("a".repeat(4000))).toBe(1000);
   });
 
   it("triggers compaction when messages exceed threshold", () => {

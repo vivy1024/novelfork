@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -28,6 +28,8 @@ import { useIdeKeybindings } from "./use-ide-keybindings";
 import { usePanelManager, type ViewId } from "./use-panel-manager";
 import { CommandPalette } from "./command-palette";
 import { useIdeCommands } from "./use-ide-commands";
+import { ProblemsPanel, type EditorIssue } from "./ProblemsPanel";
+import { clearEditorState } from "./editor-state-cache";
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
@@ -51,7 +53,7 @@ function toTabView(node: WorkbenchResourceNode): TabView {
 
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView = "explorer" | "jingwei" | "tools";
+export type SidebarView = "explorer" | "jingwei" | "tools" | "search";
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -73,12 +75,17 @@ export interface IdeWorkbenchProps {
   activeSessionId?: string | null;
   onSwitchSession?: (sessionId: string) => void;
   onCreateSession?: () => void;
+  /** Task C: 底部"问题"面板数据（传入则显示面板） */
+  issues?: readonly EditorIssue[];
+  /** 问题条目点击回调（如跳转到对应行） */
+  onIssueClick?: (issue: EditorIssue) => void;
 }
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
 
 const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title: string }[] = [
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
+  { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
   { id: "tools", icon: Wrench, label: "工具", title: "工具" },
 ];
@@ -110,6 +117,8 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
       return collectNodes(children, n => JINGWEI_KINDS.has(n.kind));
     case "tools":
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
+    case "search":
+      return [];
   }
 }
 
@@ -132,6 +141,8 @@ export function IdeWorkbench({
   activeSessionId,
   onSwitchSession,
   onCreateSession,
+  issues,
+  onIssueClick,
 }: IdeWorkbenchProps) {
   // --- Layout state ---
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -253,6 +264,17 @@ export function IdeWorkbench({
     return loadedFiles.get(splitNodeId) ?? resourceMap.get(splitNodeId) ?? null;
   }, [splitNodeId, resourceMap, loadedFiles]);
 
+  // 多实例条件渲染：收集所有需要保持 mount 的 Tab 节点
+  const multiTabNodes = useMemo(() => {
+    return ideTabs.tabs
+      .map(tab => {
+        const node = loadedFiles.get(tab.id) ?? resourceMap.get(tab.id) ?? null;
+        if (!node) return null;
+        return { tabId: tab.id, node };
+      })
+      .filter((x): x is { tabId: string; node: WorkbenchResourceNode } => x !== null);
+  }, [ideTabs.tabs, resourceMap, loadedFiles]);
+
   // 恢复的文件 Tab 懒加载内容：active 节点是文件但尚未加载过内容时拉取一次
   useEffect(() => {
     const node = activeNode;
@@ -279,6 +301,7 @@ export function IdeWorkbench({
       if (!confirm(`"${tab.title}" 有未保存的修改，确认关闭？`)) return;
     }
     ideTabs.closeTab(tabId);
+    clearEditorState(tabId);
     setLoadedFiles(prev => {
       if (!prev.has(tabId)) return prev;
       const next = new Map(prev);
@@ -315,6 +338,29 @@ export function IdeWorkbench({
     onOpen(node);
   }, [onOpen, bookId]);
 
+  // --- URL 参数驱动面板（?panel=foreshadowing 等） ---
+  const urlPanelConsumedRef = useRef(false);
+  useEffect(() => {
+    if (!bookId || urlPanelConsumedRef.current) return;
+    let panelId: string | null = null;
+    try {
+      panelId = new URLSearchParams(window.location.search).get("panel");
+    } catch { /* non-URL env */ }
+    if (!panelId) return;
+    urlPanelConsumedRef.current = true;
+    const nodeId = `tool:${panelId}`;
+    const toolNode = resourceMap.get(nodeId);
+    if (toolNode) {
+      handleOpen(toolNode);
+    }
+    // Clean up the URL parameter without triggering a page reload
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("panel");
+      window.history.replaceState(null, "", url.toString());
+    } catch { /* ignore */ }
+  }, [bookId, resourceMap, handleOpen]);
+
   const handleCanvasContextChange = useCallback((ctx: WorkbenchCanvasContext) => {
     const { activeTabId: tabId, setDirty } = ideTabsRef.current;
     if (tabId) setDirty(tabId, ctx.dirty);
@@ -339,6 +385,41 @@ export function IdeWorkbench({
       },
     };
   }, [bookId]);
+
+  // ── 面包屑导航 ──
+  const handleBreadcrumbNavigate = useCallback((segment: string, index: number) => {
+    if (index === 0) {
+      // 点击书名 → 关闭所有 tab 回到驾驶舱
+      ideTabsRef.current.closeAll();
+      return;
+    }
+    if (!activeNode) return;
+
+    // 文件节点：尝试拼接路径段找到对应资源
+    if (activeNode.metadata?.isFile) {
+      const filePath = activeNode.metadata?.filePath;
+      if (typeof filePath === "string") {
+        const parts = filePath.split(/[\\/]/).filter(Boolean);
+        const subPath = parts.slice(0, index).join("/");
+        if (subPath) {
+          const match = fileTree.nodes.find(n => {
+            const fp = n.metadata?.filePath;
+            return typeof fp === "string" && (fp === subPath || fp.endsWith("/" + subPath) || fp.endsWith("\\" + subPath));
+          });
+          if (match) { handleOpen(match); return; }
+        }
+      }
+    }
+
+    // 经纬条目：点击分类段 → 打开分类节点
+    if (activeNode.kind === "jingwei-entry" || activeNode.kind === "jingwei") {
+      const catMeta = CATEGORY_META.find(m => m.name === segment);
+      if (catMeta) {
+        const sectionNode = jingweiSections.find(s => s.metadata?.category === catMeta.id);
+        if (sectionNode) { handleOpen(sectionNode); return; }
+      }
+    }
+  }, [activeNode, fileTree.nodes, jingweiSections, handleOpen]);
 
   // ActivityBar click: VS Code 行为 — 同一个图标折叠，不同图标切换
   // ActivityBar click: 命令式切换面板
@@ -377,7 +458,7 @@ export function IdeWorkbench({
       const idx = tabs.findIndex(t => t.id === activeTabId);
       activateTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
     },
-    switchView: (view: "explorer" | "jingwei" | "tools") => {
+    switchView: (view: "explorer" | "jingwei" | "tools" | "search") => {
       setShowSettings(false);
       showPanel(view as ViewId);
       setSidebarVisible(true);
@@ -548,12 +629,12 @@ export function IdeWorkbench({
       <div className="relative flex-1" style={{ minWidth: 0, minHeight: 0, height: "100%" }}>
         <Allotment proportionalLayout={false}>
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
-          <Allotment.Pane minSize={150} preferredSize={220} maxSize={360} visible={sidebarVisible}>
+          <Allotment.Pane minSize={150} preferredSize={220} visible={sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
               {/* Sidebar 标题 */}
               <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2">
                 <span className="text-[11px] font-semibold text-foreground uppercase tracking-wide pl-3">
-                  {activeView === "explorer" ? "资源管理器" : activeView === "jingwei" ? "经纬" : "工具"}
+                    {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
                 </span>
               </div>
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
@@ -575,6 +656,10 @@ export function IdeWorkbench({
                 <WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
                 getContainer("tools")!
               )}
+              {panelsReady && getContainer("search") && createPortal(
+                <SearchPanel nodes={fileTree.nodes} jingweiSections={jingweiSections} onOpen={handleOpen} />,
+                getContainer("search")!
+              )}
             </div>
           </Allotment.Pane>
 
@@ -595,32 +680,40 @@ export function IdeWorkbench({
                       onCloseAll={ideTabs.closeAll}
                       onCloseSaved={ideTabs.closeSaved}
                       onCloseRight={ideTabs.closeRight}
+                      onReorder={ideTabs.reorderTabs}
                       actionsSlotRef={toolbarSlotRef}
                       onSplitRight={(tabId) => setSplitNodeId(tabId)}
                     />
                   )}
-                  <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} />
+                  <EditorBreadcrumbs bookTitle={bookRoot?.title} node={activeNode} view={activeView} showSettings={showSettings} onNavigate={handleBreadcrumbNavigate} />
                   <div className="flex-1 min-h-0">
                   <EditorErrorBoundary>
                     {showSettings && bookId ? (
                       <div className="h-full overflow-y-auto">
                         <BookSettingsPanel bookId={bookId} onBack={() => setShowSettings(false)} />
                       </div>
-                    ) : activeNode ? (
-                      <WorkbenchCanvas
-                        key={activeNode.id}
-                        node={activeNode}
-                        nodes={nodes}
-                        bookId={bookId}
-                        onSave={onSave}
-                        onCanvasContextChange={handleCanvasContextChange}
-                        onGuideComplete={onGuideComplete}
-                        candidateActions={candidateActions}
-                        draftActions={draftActions}
-                        chapterActions={chapterActions}
-                        jingweiActions={jingweiActions}
-                        toolbarSlotRef={toolbarSlotRef}
-                      />
+                    ) : activeNode || multiTabNodes.length > 0 ? (
+                      <>
+                        {/* 多实例条件渲染：所有打开的 Tab 保持 mount，非 active 用 display:none 隐藏 */}
+                        {multiTabNodes.map(({ tabId, node: tabNode }) => (
+                          <div key={tabId} style={{ display: tabId === ideTabs.activeTabId ? "contents" : "none" }} className="h-full">
+                            <WorkbenchCanvas
+                              node={tabId === ideTabs.activeTabId ? activeNode : tabNode}
+                              nodes={nodes}
+                              bookId={bookId}
+                              onSave={onSave}
+                              onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
+                              onGuideComplete={onGuideComplete}
+                              candidateActions={candidateActions}
+                              draftActions={draftActions}
+                              chapterActions={chapterActions}
+                              jingweiActions={jingweiActions}
+                              toolbarSlotRef={toolbarSlotRef}
+                              isActive={tabId === ideTabs.activeTabId}
+                            />
+                          </div>
+                        ))}
+                      </>
                     ) : activeView === "explorer" ? (
                       <WorkbenchCanvas
                         node={null}
@@ -640,6 +733,13 @@ export function IdeWorkbench({
                     )}
                   </EditorErrorBoundary>
                   </div>
+                  {/* Task C: 底部"问题"面板（VS Code Problems 风格） */}
+                  {issues && issues.length > 0 && (
+                    <ProblemsPanel
+                      issues={issues}
+                      onIssueClick={onIssueClick}
+                    />
+                  )}
                 </div>
               </Allotment.Pane>
 
@@ -673,13 +773,14 @@ export function IdeWorkbench({
           </Allotment.Pane>
 
           {/* Chat Panel（右侧辅助栏，类似 VS Code AuxiliaryBar） */}
-          <Allotment.Pane minSize={200} preferredSize={320} maxSize={460} visible={chatVisible}>
+          <Allotment.Pane minSize={200} preferredSize={320} visible={chatVisible}>
             <div className="flex h-full flex-col border-l border-border bg-card">
               <ChatHeader
                 sessions={bookSessions}
                 activeSessionId={activeSessionId}
                 onSwitchSession={onSwitchSession}
                 onCreateSession={onCreateSession}
+                onSwitchToAgent={onSwitchToAgent}
               />
               <div className="flex-1 min-h-0 overflow-hidden">
                 {chatSlot ?? (
@@ -712,6 +813,7 @@ export function IdeWorkbench({
       onClose={() => setPaletteOpen(false)}
       commands={paletteMode === "commands" ? ideCommands : quickOpenCommands}
       placeholder={paletteMode === "commands" ? "输入命令..." : "输入文件名..."}
+      mode={paletteMode}
     />
     </TooltipProvider>
   );
@@ -754,11 +856,13 @@ function ChatHeader({
   activeSessionId,
   onSwitchSession,
   onCreateSession,
+  onSwitchToAgent,
 }: {
   sessions?: readonly { id: string; title: string; updatedAt?: string }[];
   activeSessionId?: string | null;
   onSwitchSession?: (id: string) => void;
   onCreateSession?: () => void;
+  onSwitchToAgent?: () => void;
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -794,6 +898,17 @@ function ChatHeader({
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom">新建对话</TooltipContent>
+            </Tooltip>
+          )}
+          {onSwitchToAgent && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" onClick={onSwitchToAgent}
+                  className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
+                  <MessageSquare className="size-4" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">切换到 Agent 对话模式</TooltipContent>
             </Tooltip>
           )}
         </div>
@@ -917,9 +1032,17 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   explorer: "资源管理器",
   jingwei: "经纬",
   tools: "工具",
+  search: "搜索",
 };
 
-function EditorBreadcrumbs({ bookTitle, node, view, showSettings }: { bookTitle?: string; node: WorkbenchResourceNode | null; view: SidebarView; showSettings?: boolean }) {
+function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {
+  bookTitle?: string;
+  node: WorkbenchResourceNode | null;
+  view: SidebarView;
+  showSettings?: boolean;
+  /** 点击面包屑段时回调（segment 文本 + index） */
+  onNavigate?: (segment: string, index: number) => void;
+}) {
   // 写作设置 → 书 › 写作设置；有激活节点 → 节点路径；否则 → 书 › 视图名
   const segments = showSettings
     ? [bookTitle || "NovelFork", "写作设置"]
@@ -930,10 +1053,14 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings }: { bookTitle?
     <div style={{ height: 24, minHeight: 24 }} className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border bg-card/50 px-3 [&::-webkit-scrollbar]:hidden">
       {segments.map((seg, i) => {
         const isLast = i === segments.length - 1;
+        const clickable = !!onNavigate && !isLast;
         return (
           <span key={`${seg}-${i}`} className="flex items-center gap-0.5 shrink-0">
             {i > 0 && <ChevronRight className="size-3 text-muted-foreground/50" />}
-            <span className={`text-[11px] truncate max-w-[180px] ${isLast ? "text-foreground" : "text-muted-foreground"}`}>
+            <span
+              className={`text-[11px] truncate max-w-[180px] ${isLast ? "text-foreground" : "text-muted-foreground"} ${clickable ? "cursor-pointer hover:text-foreground hover:underline underline-offset-2 transition-colors" : ""}`}
+              onClick={clickable ? () => onNavigate(seg, i) : undefined}
+            >
               {seg}
             </span>
           </span>
@@ -948,6 +1075,8 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings }: { bookTitle?
 function ViewEmptyState({ view }: { view: SidebarView }) {
   const meta = view === "jingwei"
     ? { icon: "📜", title: "经纬", desc: "从左侧选择一个分类或条目查看与编辑设定" }
+    : view === "search"
+    ? { icon: "🔍", title: "搜索", desc: "在搜索面板中输入关键词查找资源" }
     : { icon: "🔧", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、伏笔看板等）" };
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-background p-8 text-center">
@@ -956,6 +1085,154 @@ function ViewEmptyState({ view }: { view: SidebarView }) {
       <p className="max-w-[280px] text-xs text-muted-foreground">{meta.desc}</p>
     </div>
   );
+}
+
+// ── SearchPanel（全局搜索面板） ──────────────────────────────
+
+interface SearchResultNode extends WorkbenchResourceNode {
+  matchType: "title" | "content";
+  matchedLine?: string;
+  /** 分组标签 */
+  group: string;
+}
+
+function SearchPanel({ nodes, jingweiSections, onOpen }: {
+  nodes: readonly WorkbenchResourceNode[];
+  jingweiSections: WorkbenchResourceNode[];
+  onOpen: (node: WorkbenchResourceNode) => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResultNode[]>([]);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+
+  // 收集所有可搜索节点（扁平化）
+  const allNodes = useMemo(() => {
+    const list: WorkbenchResourceNode[] = [];
+    const walk = (ns: readonly WorkbenchResourceNode[]) => {
+      for (const n of ns) {
+        list.push(n);
+        if (n.children) walk(n.children);
+      }
+    };
+    walk(nodes);
+    walk(jingweiSections);
+    return list;
+  }, [nodes, jingweiSections]);
+
+  // 搜索逻辑（debounce 150ms）
+  const doSearch = useCallback((q: string) => {
+    if (!q.trim()) { setResults([]); return; }
+    const lower = q.toLowerCase();
+    const matched: SearchResultNode[] = [];
+    for (const node of allNodes) {
+      const title = node.title ?? "";
+      const content = node.content ?? "";
+      if (title.toLowerCase().includes(lower)) {
+        matched.push({ ...node, matchType: "title", group: nodeKindToGroup(node.kind) });
+      } else if (content && content.toLowerCase().includes(lower)) {
+        const idx = content.toLowerCase().indexOf(lower);
+        const start = Math.max(0, idx - 30);
+        const end = Math.min(content.length, idx + q.length + 30);
+        const matchedLine = (start > 0 ? "..." : "") + content.slice(start, end) + (end < content.length ? "..." : "");
+        matched.push({ ...node, matchType: "content", matchedLine, group: nodeKindToGroup(node.kind) });
+      }
+    }
+    setResults(matched);
+  }, [allNodes]);
+
+  // Debounced search
+  useEffect(() => {
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(query), 150);
+    return () => clearTimeout(debounceRef.current);
+  }, [query, doSearch]);
+
+  // 按分组聚合
+  const grouped = useMemo(() => {
+    const map = new Map<string, SearchResultNode[]>();
+    for (const r of results) {
+      const arr = map.get(r.group) ?? [];
+      arr.push(r);
+      map.set(r.group, arr);
+    }
+    return map;
+  }, [results]);
+
+  // 高亮匹配文本
+  const highlight = useCallback((text: string, q: string) => {
+    if (!q.trim()) return text;
+    const lower = text.toLowerCase();
+    const ql = q.toLowerCase();
+    const idx = lower.indexOf(ql);
+    if (idx === -1) return text;
+    return <>{text.slice(0, idx)}<mark className="bg-primary/20 text-foreground rounded-sm px-px">{text.slice(idx, idx + q.length)}</mark>{text.slice(idx + q.length)}</>;
+  }, []);
+
+  return (
+    <div className="flex h-full flex-col">
+      {/* 搜索输入框 */}
+      <div className="shrink-0 border-b border-border px-2 py-1.5">
+        <div className="flex items-center gap-1.5 rounded-md border border-border bg-background px-2 py-1">
+          <Search className="size-3.5 shrink-0 text-muted-foreground" />
+          <input
+            ref={inputRef}
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索资源..."
+            autoFocus
+            className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
+          />
+        </div>
+      </div>
+      {/* 搜索结果列表 */}
+      <div ref={resultsRef} className="flex-1 overflow-y-auto px-1 py-1">
+        {query.trim() && results.length === 0 && (
+          <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配结果</p>
+        )}
+        {[...grouped.entries()].map(([group, items]) => (
+          <div key={group} className="mb-1">
+            <div className="flex items-center gap-1 px-2 py-1 text-[10px] font-semibold text-muted-foreground uppercase tracking-wide">
+              <span>{group}</span>
+              <span className="text-muted-foreground/50">({items.length})</span>
+            </div>
+            {items.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/50"
+                onClick={() => onOpen(item)}
+              >
+                <span className="text-xs text-foreground truncate">
+                  {item.matchType === "title" ? highlight(item.title, query) : item.title}
+                </span>
+                {item.matchType === "content" && item.matchedLine && (
+                  <span className="text-[11px] text-muted-foreground truncate leading-snug">
+                    {highlight(item.matchedLine, query)}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 节点 kind → 搜索结果分组名 */
+function nodeKindToGroup(kind: string): string {
+  switch (kind) {
+    case "chapter": return "章节";
+    case "candidate": return "候选稿";
+    case "draft": return "草稿";
+    case "jingwei-entry": return "经纬条目";
+    case "jingwei-section":
+    case "jingwei": return "经纬";
+    default: return "其他";
+  }
 }
 
 // ── ErrorBoundary（防止 lazy 面板加载失败崩溃整个编辑器） ──

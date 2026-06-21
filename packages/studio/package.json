@@ -9,6 +9,7 @@
     ".": "./dist/api/index.js",
     "./api/lib/ai-request-observer": "./src/api/lib/ai-request-observer.ts",
     "./api/lib/token-counter": "./src/api/lib/token-counter.ts",
+    "./api/lib/token-utils": "./src/api/lib/token-utils.ts",
     "./api/lib/user-config-service": "./src/api/lib/user-config-service.ts",
     "./api/lib/rhythm-analyzer": "./src/api/lib/rhythm-analyzer.ts",
     "./api/lib/ai-gate": "./src/api/lib/ai-gate.ts",

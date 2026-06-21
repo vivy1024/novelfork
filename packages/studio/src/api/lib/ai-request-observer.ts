@@ -1,6 +1,9 @@
 import type { Logger } from "@vivy1024/novelfork-core";
 
 import { getModel } from "../../shared/provider-catalog.js";
+import { estimateTokenCount } from "./token-utils.js";
+
+export const estimateTokensFromText = estimateTokenCount;
 import type { RequestTokenUsage } from "./request-observability.js";
 
 export interface AiObservationScope {
@@ -29,12 +32,6 @@ export interface AiObservationSuccess {
 export function summarizeError(error: unknown, maxLength = 160): string {
   const message = error instanceof Error ? error.message : String(error);
   return message.length > maxLength ? `${message.slice(0, maxLength - 1)}…` : message;
-}
-
-export function estimateTokensFromText(text: string): number {
-  const normalized = text.replace(/\s+/g, "").trim();
-  if (!normalized) return 0;
-  return Math.max(1, Math.ceil(normalized.length / 2));
 }
 
 export function estimateTokensFromMessages(messages: ReadonlyArray<{ content: string }>): number {

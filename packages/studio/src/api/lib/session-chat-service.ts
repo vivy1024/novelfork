@@ -78,8 +78,10 @@ import { loadUserConfig } from "./user-config-service.js";
 import { loadGlobalRoutines } from "./routines-service.js";
 import { generateSessionTitle } from "./session-auto-title.js";
 import { microCompact, type MicroCompactResult } from "./compact/micro-compact.js";
+import { reactiveCompact, resetReactiveState } from "./compact/reactive-compact.js";
 import { translateThinkingBlocks } from "./thinking-translator.js";
-import { autoCompact, detectCompactionAction, selectThresholds, estimateTokenCount, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
+import { autoCompact, detectCompactionAction, selectThresholds, COMPACT_SYSTEM_PROMPT, buildCompactPrompt, type CompactMessage } from "./context-compaction.js";
+import { estimateTokenCount } from "./token-utils.js";
 import { getUnfinishedCheckpoints, clearSessionCheckpoints } from "./turn-checkpoint.js";
 import { ProviderHealthManager, classifyError } from "./provider-health-manager.js";
 import { createContextBudgetManager } from "./context-budget-manager.js";
@@ -327,6 +329,14 @@ async function maybeAutoCompact(
         }
       }
 
+      // Task 13: 压缩成功后抑制下一轮的压缩警告，并广播压缩完成事件
+      compactWarningSuppressed.add(sessionId);
+      broadcastToAll(state, serializeEnvelope({
+        type: "session:compacted",
+        sessionId,
+        data: { postCompactTokens: result.postCompactTokens },
+      } as any));
+
       return { items: compactedItems, compacted: true };
     }
   } catch {
@@ -509,13 +519,11 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
   cumulative.totalCacheCreationInputTokens += usage.cache_creation_input_tokens ?? 0;
   cumulative.totalCacheReadInputTokens += usage.cache_read_input_tokens ?? 0;
   cumulative.turnCount += 1;
-  // 记录最后一次请求的 input tokens（代表当前上下文窗口占用）
-  // Include cache_read tokens because providers with KV cache (DeepSeek) report
-  // cached tokens separately — the actual context size is input + cache_read.
-  // Also include output_tokens: the assistant response occupies the context window
-  // for the NEXT request, so the true "current window usage" is input + cache_read + output.
+  // 记录最后一次请求的 input tokens（仅 input + cache_read，不含 output）
+  // output 单独记录在 lastOutputTokens，避免压缩判断偏保守
   if (usage.input_tokens != null) {
-    cumulative.lastInputTokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.output_tokens ?? 0);
+    cumulative.lastInputTokens = (usage.input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
+    cumulative.lastOutputTokens = (usage.output_tokens ?? 0);
   }
 }
 const abortControllerBySessionId = new Map<string, AbortController>();
@@ -537,6 +545,12 @@ interface QueuedMessage {
 
 const sessionMessageQueue = new Map<string, QueuedMessage[]>();
 const sessionBusy = new Set<string>();
+const compactWarningSuppressed = new Set<string>();
+
+export function isCompactWarningSuppressed(sessionId: string): boolean {
+  return compactWarningSuppressed.has(sessionId);
+}
+
 const MAX_QUEUE_SIZE = 10;
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -2282,6 +2296,8 @@ export async function handleSessionChatTransportMessage(
   if (!isFromQueue) {
     sessionBusy.add(sessionId);
   }
+  // 新一轮用户消息到达，清除压缩警告抑制
+  compactWarningSuppressed.delete(sessionId);
   // ────────────────────────────────────────────────────────────────────────────
 
   const timestamp = Date.now();
@@ -2700,6 +2716,38 @@ export async function handleSessionChatTransportMessage(
     }
   } catch (error) {
     let message = error instanceof Error ? error.message : "LLM runtime request failed";
+
+    // ── 413 / prompt_too_long 救援：snipCompact 快速缩减上下文 ────────
+    const isPTL = error instanceof Error &&
+      (message.includes("prompt_too_long") || message.includes("request_too_large") || message.includes("413"));
+    if (isPTL) {
+      try {
+        const currentCompactMessages = loaded.state.messages.map((m) => ({
+          id: m.id,
+          role: m.role as "system" | "user" | "assistant",
+          content: m.content,
+        }));
+        const rescue = await reactiveCompact(sessionId, currentCompactMessages, async (msgs) => {
+          // no-op fullCompact: 只利用 snipCompact 结果，不重试 LLM
+          return { compacted: false, messages: [...msgs] };
+        });
+        if (rescue.success) {
+          loaded.state.messages = rescue.messages.map((cm, idx) => ({
+            id: cm.id || `compact-${idx}`,
+            role: cm.role === "tool_result" ? "system" as const : cm.role as "system" | "user" | "assistant",
+            content: cm.content,
+            timestamp: Date.now() + idx,
+            toolCalls: [],
+          }));
+          resetReactiveState(sessionId);
+          log.info("413 rescue: context snipped, user should retry", { sessionId });
+          message = `上下文过长 (413)，已自动裁剪旧消息。请重新发送上一条消息。`;
+        }
+      } catch (rescueErr) {
+        log.warn("413 rescue failed", { sessionId, error: rescueErr instanceof Error ? rescueErr.message : "unknown" });
+      }
+    }
+
     // 区分首 token 超时和其他错误
     if (error instanceof Error && (error.name === "TimeoutError" || message.includes("timeout"))) {
       message = `API 响应超时。可在设置 → AI 代理 → 首 token 超时中调整超时时间，或检查网络连接。`;

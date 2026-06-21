@@ -2,38 +2,11 @@
  * Shared utilities for context compaction (cascade and segment).
  */
 
-/**
- * Estimate token count for a string.
- * CJK characters ~1.5 tokens/char, English ~0.25 tokens/char (4 chars per token).
- */
-export function estimateTokens(text: string): number {
-  let cjkChars = 0;
-  let otherChars = 0;
-  for (const char of text) {
-    const code = char.codePointAt(0)!;
-    // CJK Unified Ideographs, CJK Extension A/B, Hangul, Kana
-    if (
-      (code >= 0x4e00 && code <= 0x9fff) ||
-      (code >= 0x3400 && code <= 0x4dbf) ||
-      (code >= 0x20000 && code <= 0x2a6df) ||
-      (code >= 0xac00 && code <= 0xd7af) ||
-      (code >= 0x3040 && code <= 0x30ff)
-    ) {
-      cjkChars++;
-    } else {
-      otherChars++;
-    }
-  }
-  return Math.ceil(cjkChars * 1.5 + otherChars * 0.25);
-}
+import { estimateTokenCount, estimateMessageTokens as _estimateMessageTokens } from "../token-utils.js";
 
-/**
- * Estimate tokens for a message (role + content + metadata overhead).
- */
-export function estimateMessageTokens(message: { role: string; content: string }): number {
-  // ~4 tokens overhead per message for role/formatting
-  return 4 + estimateTokens(message.content);
-}
+/** Re-export with original names for backward compatibility */
+export const estimateTokens = estimateTokenCount;
+export const estimateMessageTokens = _estimateMessageTokens;
 
 /**
  * Split messages into chunks where each chunk's total tokens <= tokenBudget.

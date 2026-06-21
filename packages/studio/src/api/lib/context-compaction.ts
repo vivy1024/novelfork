@@ -15,6 +15,7 @@
 
 import { cascadeCompact } from "./compact/cascade-compact.js";
 import { log } from "./logger.js";
+import { estimateTokenCount } from "./token-utils.js";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -93,34 +94,6 @@ export interface CompactResult {
 // ---------------------------------------------------------------------------
 // Token estimation
 // ---------------------------------------------------------------------------
-
-/**
- * Token 估算：CJK ~1.5 tokens/char, English ~0.25 tokens/char
- */
-export function estimateTokenCount(text: string): number {
-  if (!text) return 0;
-
-  // 检测 JSON 内容（token 更密集）
-  const isJson = text.length > 2 && (text[0] === "{" || text[0] === "[");
-
-  let cjkChars = 0;
-  for (const char of text) {
-    if (char.charCodeAt(0) > 0x2E80) cjkChars++;
-  }
-  const nonCjk = text.length - cjkChars;
-
-  let estimate: number;
-  if (isJson) {
-    // JSON 内容：每 2 字符约 1 token（密集）
-    estimate = Math.ceil(text.length / 2);
-  } else {
-    // CJK ×1.5，非 CJK ÷4
-    estimate = Math.ceil(cjkChars * 1.5 + nonCjk / 4);
-  }
-
-  // 保守系数 ×4/3（参考 Claude Code，避免低估导致 prompt_too_long）
-  return Math.ceil(estimate * 4 / 3);
-}
 
 function totalTokens(messages: readonly CompactMessage[]): number {
   return messages.reduce((sum, msg) => sum + estimateTokenCount(msg.content) + (msg.extraTokens ?? 0), 0);
@@ -320,6 +293,25 @@ export function formatCompactSummary(raw: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// PTL retry helpers
+// ---------------------------------------------------------------------------
+
+const MAX_PTL_RETRIES = 3;
+
+/**
+ * 从消息列表头部丢弃最旧的一个对话轮次（user + assistant）。
+ * 用于 PTL（prompt_too_long）重试：逐轮削减输入直到能通过模型窗口。
+ */
+function dropOldestTurn(messages: readonly CompactMessage[]): CompactMessage[] {
+  let dropCount = 0;
+  for (let i = 0; i < messages.length; i++) {
+    dropCount++;
+    if (messages[i].role === "assistant") break; // user + assistant = 一轮
+  }
+  return messages.slice(dropCount);
+}
+
+// ---------------------------------------------------------------------------
 // Main compact function
 // ---------------------------------------------------------------------------
 
@@ -331,18 +323,34 @@ export function formatCompactSummary(raw: string): string {
 // ---------------------------------------------------------------------------
 
 const MAX_COMPACT_FAILURES = 3;
-const compactFailuresBySession = new Map<string, number>();
+/** Circuit breaker 冷却时间：30 分钟后自动恢复 */
+const COOLDOWN_MS = 30 * 60 * 1000;
+
+interface CircuitBreakerState {
+  failures: number;
+  lastFailureTime: number;
+}
+
+const compactFailuresBySession = new Map<string, CircuitBreakerState>();
 
 /** 默认 key——未提供 sessionId 时回退到单一全局桶 */
 const DEFAULT_COMPACT_KEY = "__default__";
 
 function getCompactFailures(sessionId?: string): number {
-  return compactFailuresBySession.get(sessionId ?? DEFAULT_COMPACT_KEY) ?? 0;
+  return compactFailuresBySession.get(sessionId ?? DEFAULT_COMPACT_KEY)?.failures ?? 0;
+}
+
+function getCompactState(sessionId?: string): CircuitBreakerState | undefined {
+  return compactFailuresBySession.get(sessionId ?? DEFAULT_COMPACT_KEY);
 }
 
 function incrementCompactFailures(sessionId?: string): void {
   const key = sessionId ?? DEFAULT_COMPACT_KEY;
-  compactFailuresBySession.set(key, (compactFailuresBySession.get(key) ?? 0) + 1);
+  const existing = compactFailuresBySession.get(key);
+  compactFailuresBySession.set(key, {
+    failures: (existing?.failures ?? 0) + 1,
+    lastFailureTime: Date.now(),
+  });
 }
 
 /** 外部可调用重置（如 session 切换后）。不传 sessionId 时清空全部。 */
@@ -355,6 +363,29 @@ export function resetCompactCircuitBreaker(sessionId?: string): void {
 }
 
 /**
+ * 查询 circuit breaker 状态（供前端展示）
+ * 返回当前失败次数、最后一次失败时间、是否处于熔断状态
+ */
+export function getCompactCircuitState(sessionId?: string): {
+  failures: number;
+  lastFailureTime: number;
+  isBlocked: boolean;
+} {
+  const state = getCompactState(sessionId);
+  if (!state) {
+    return { failures: 0, lastFailureTime: 0, isBlocked: false };
+  }
+  const isBlocked =
+    state.failures >= MAX_COMPACT_FAILURES &&
+    Date.now() - state.lastFailureTime <= COOLDOWN_MS;
+  return {
+    failures: state.failures,
+    lastFailureTime: state.lastFailureTime,
+    isBlocked,
+  };
+}
+
+/**
  * 自动压缩：根据双档阈值决定裁剪或压缩。
  *
  * 流程：
@@ -363,11 +394,19 @@ export function resetCompactCircuitBreaker(sessionId?: string): void {
  * 3. compress：调用摘要模型生成结构化摘要 + 恢复文件上下文
  */
 export async function autoCompact(input: CompactInput): Promise<CompactResult> {
-  // Circuit breaker: 连续失败过多时跳过（按 session 隔离）
+  // Circuit breaker: 连续失败过多时跳过（按 session 隔离，30 分钟 TTL 自动恢复）
   const failures = getCompactFailures(input.sessionId);
   if (failures >= MAX_COMPACT_FAILURES) {
-    log.warn("AutoCompact circuit breaker open", { sessionId: input.sessionId ?? "default", failures });
-    return { compacted: false, truncated: false, messages: [...input.messages], compactedMessageCount: 0, keptMessageCount: input.messages.length };
+    const state = getCompactState(input.sessionId);
+    const elapsed = state ? Date.now() - state.lastFailureTime : Infinity;
+    if (elapsed > COOLDOWN_MS) {
+      // TTL 已过期，重置 circuit breaker 后继续执行
+      log.info("AutoCompact circuit breaker TTL expired, resetting", { sessionId: input.sessionId ?? "default", failures, elapsed });
+      resetCompactCircuitBreaker(input.sessionId);
+    } else {
+      log.warn("AutoCompact circuit breaker open", { sessionId: input.sessionId ?? "default", failures, cooldownRemaining: COOLDOWN_MS - elapsed });
+      return { compacted: false, truncated: false, messages: [...input.messages], compactedMessageCount: 0, keptMessageCount: input.messages.length };
+    }
   }
 
   const { messages, maxContextTokens, thresholds, summarize, recentFilePaths, readFile, customInstructions, summaryModelContextWindow, generateSummary, signal, onProgress } = input;
@@ -448,9 +487,25 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
   }
 
   // 调用摘要模型：传入完整旧消息列表（不是截断文本）
-  let rawSummary: string;
+  // PTL 重试：如果遇到 prompt_too_long / 413，从头部删旧轮次后重试
+  let rawSummary: string | undefined;
+  let ptlMessages = olderMessages;
   try {
-    rawSummary = await summarize(olderMessages, customInstructions);
+    for (let attempt = 0; attempt <= MAX_PTL_RETRIES; attempt++) {
+      try {
+        rawSummary = await summarize(ptlMessages, customInstructions);
+        break; // 成功
+      } catch (err) {
+        const isPTL =
+          err instanceof Error &&
+          (err.message.includes("prompt_too_long") || err.message.includes("413"));
+        if (!isPTL || attempt === MAX_PTL_RETRIES) throw err;
+        ptlMessages = dropOldestTurn(ptlMessages);
+        log.warn(`[compact] PTL retry ${attempt + 1}/${MAX_PTL_RETRIES}, dropped oldest turn`, {
+          remainingMessages: ptlMessages.length,
+        });
+      }
+    }
   } catch (err) {
     incrementCompactFailures(input.sessionId);
     throw err;
@@ -509,7 +564,7 @@ export async function autoCompact(input: CompactInput): Promise<CompactResult> {
     compacted: true,
     truncated: false,
     messages: compactedMessages,
-    compactedMessageCount: olderMessages.length,
+    compactedMessageCount: ptlMessages.length,
     keptMessageCount: recentMessages.length,
     summaryTokens: estimateTokenCount(formattedSummary),
     restoredFileCount,

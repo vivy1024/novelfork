@@ -840,7 +840,6 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
     return result.data;
   }, [refreshSnapshot, sessionClient, sessionId]);
 
-  // Novel-specific header slot removed (ToolConfigBar + AgentQuickActions deleted)
   const novelHeaderSlot = null;
 
   return (
@@ -1147,8 +1146,9 @@ function toConversationStatus(
   const apiReportedTokens = (state.session as { cumulativeUsage?: { lastInputTokens?: number } } | null)?.cumulativeUsage?.lastInputTokens;
   // Find the last message that has runtime.usage (= when API last reported)
   const lastApiMessageIndex = [...state.messages].reverse().findIndex(m => m.runtime?.usage);
-  const messagesAfterLastApi = lastApiMessageIndex >= 0
-    ? state.messages.slice(state.messages.length - lastApiMessageIndex)
+  const lastApiIdx = lastApiMessageIndex >= 0 ? state.messages.length - 1 - lastApiMessageIndex : -1;
+  const messagesAfterLastApi = lastApiIdx >= 0
+    ? state.messages.slice(lastApiIdx + 1)  // +1 排除有 usage 的那条
     : [];
   // Estimate tokens for messages added AFTER the last API call
   const newMessageTokens = messagesAfterLastApi.reduce((sum, m) => {
@@ -1157,11 +1157,12 @@ function toConversationStatus(
       for (const tc of m.toolCalls) {
         chars += tc.summary?.length ?? 0;
         chars += JSON.stringify(tc.input ?? {}).length;
+        if (tc.result) chars += JSON.stringify(tc.result).length;
       }
     }
     return sum + chars;
   }, 0);
-  const estimatedNewTokens = Math.ceil(newMessageTokens / 1.5);
+  const estimatedNewTokens = Math.ceil(newMessageTokens / 4);
 
   const usedTokens = apiReportedTokens && apiReportedTokens > 0
     ? apiReportedTokens + estimatedNewTokens
@@ -1176,7 +1177,7 @@ function toConversationStatus(
             }
           }
           return sum + chars;
-        }, 0) / 1.5)
+        }, 0) / 4)
       : 0;
   const contextUsage = {
     usedTokens,

@@ -5,7 +5,7 @@ import { homedir } from "os";
 import { join } from "path";
 import { existsSync, readFileSync } from "fs";
 import { estimateTokensFromText } from "./ai-request-observer.js";
-import { estimateTokenCount } from "./context-compaction.js";
+import { estimateTokenCount } from "./token-utils.js";
 import { getSessionById } from "./session-service.js";
 import { getSessionChatSnapshot } from "./session-chat-service.js";
 import { getEnabledSessionTools } from "./session-tool-registry.js";
@@ -63,6 +63,7 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   const parts: ContextBreakdownPart[] = [];
 
   // 1. 系统提示词（identity + system + doing_tasks + actions + using_tools + write-next）
+  // 粗估，待后续接入 buildSystemPrompt 实际内容后用 estimateTokenCount 计算
   const systemPromptEstimate = 2000;
   parts.push({
     label: "系统提示词",
@@ -92,9 +93,11 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   const tools = getEnabledSessionTools(session.sessionConfig.permissionMode, session.agentId, {
     disabledTools: session.sessionConfig.toolPolicy?.deny,
   });
-  // 每个工具的 schema JSON 大约 300-500 tokens，取实际工具数
+  // 用 estimateTokenCount 从实际工具定义 JSON 计算，比硬编码 ×380 更准确
   const toolCount = tools.length;
-  const toolsTokens = Math.round(toolCount * 380);
+  const toolsTokens = toolCount > 0
+    ? tools.reduce((sum, t) => sum + estimateTokenCount(JSON.stringify({ name: t.name, description: t.description, parameters: t.inputSchema })), 0)
+    : 0;
   parts.push({
     label: `工具定义 (${toolCount} 个)`,
     tokens: toolsTokens,
@@ -166,6 +169,7 @@ export async function getContextBreakdown(sessionId: string): Promise<ContextBre
   }
 
   // 7. 格式化开销（JSON 结构、role 标签、分隔符等）
+  // 粗估，待后续接入实际消息模板内容后用 estimateTokenCount 计算
   const formatOverhead = 800;
   parts.push({
     label: "格式化开销",

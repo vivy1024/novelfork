@@ -1,5 +1,25 @@
+import { useState, useCallback } from "react";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragOverlay,
+  type DragStartEvent,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+  sortableKeyboardCoordinates,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
-import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen } from "lucide-react";
+import { toast } from "@/components/ui/toast";
+import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical } from "lucide-react";
 import { useApi } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
@@ -49,6 +69,8 @@ const DEBT_THRESHOLD = 30;
 
 const VALID_STATUSES: readonly ForeshadowingStatus[] = ["已埋设", "部分揭示", "已回收", "已废弃"];
 
+const DROPPABLE_IDS = COLUMNS.map((c) => c.status) as string[];
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -84,27 +106,57 @@ function parseForeshadowing(entry: ForeshadowingEntry): ParsedForeshadowing {
   };
 }
 
+function findColumnByItemId(items: readonly ParsedForeshadowing[], itemId: string): ForeshadowingStatus | null {
+  const item = items.find((i) => i.id === itemId);
+  return item?.status ?? null;
+}
+
 // ---------------------------------------------------------------------------
-// Card component
+// SortableCard component
 // ---------------------------------------------------------------------------
 
-function ForeshadowingCard({
+function SortableForeshadowingCard({
   item,
   currentChapter,
 }: {
   item: ParsedForeshadowing;
   currentChapter: number;
 }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: item.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  };
+
   const suspenseDays = item.plantedChapter > 0 ? currentChapter - item.plantedChapter : 0;
   const isOverdue = item.status === "已埋设" && suspenseDays > DEBT_THRESHOLD;
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={`rounded-md border p-3 bg-card text-card-foreground shadow-sm space-y-1.5 ${
         isOverdue ? "border-red-500 border-2" : "border-border"
-      }`}
+      } ${isDragging ? "ring-2 ring-primary" : ""}`}
     >
       <div className="flex items-center gap-1.5">
+        <button
+          type="button"
+          className="cursor-grab active:cursor-grabbing text-muted-foreground hover:text-foreground shrink-0 touch-none"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="w-3.5 h-3.5" />
+        </button>
         {isOverdue && <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
         <span className="text-sm font-medium truncate">{item.name}</span>
       </div>
@@ -125,12 +177,121 @@ function ForeshadowingCard({
 }
 
 // ---------------------------------------------------------------------------
+// DragOverlay card (non-interactive snapshot shown during drag)
+// ---------------------------------------------------------------------------
+
+function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; currentChapter: number }) {
+  const suspenseDays = item.plantedChapter > 0 ? currentChapter - item.plantedChapter : 0;
+  const isOverdue = item.status === "已埋设" && suspenseDays > DEBT_THRESHOLD;
+
+  return (
+    <div
+      className={`rounded-md border p-3 bg-card text-card-foreground shadow-xl space-y-1.5 ring-2 ring-primary rotate-2 ${
+        isOverdue ? "border-red-500 border-2" : "border-border"
+      }`}
+    >
+      <div className="flex items-center gap-1.5">
+        <GripVertical className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+        {isOverdue && <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+        <span className="text-sm font-medium truncate">{item.name}</span>
+      </div>
+      {item.description && (
+        <p className="text-xs text-muted-foreground line-clamp-2">{item.description}</p>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main component
 // ---------------------------------------------------------------------------
 
 export function ForeshadowingBoard({ bookId, currentChapter = 1 }: ForeshadowingBoardProps) {
   const { data, loading, error } = useApi<EntriesResponse>(
     `/api/books/${bookId}/jingwei/entries?category=foreshadowing`,
+  );
+
+  // Local entries state for optimistic UI updates
+  const [entries, setEntries] = useState<ParsedForeshadowing[] | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
+
+  // Derive entries from API data (only when local state is null)
+  const items = entries ?? (data?.entries ?? []).map(parseForeshadowing);
+
+  // Sync from API when data changes and local state hasn't been modified
+  if (entries === null && data?.entries) {
+    // This runs on re-render; entries will be set on next state update if needed
+  }
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const activeItem = activeId ? items.find((i) => i.id === activeId) : null;
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      const { active, over } = event;
+      setActiveId(null);
+
+      if (!over) return;
+
+      const draggedId = String(active.id);
+      const overId = String(over.id);
+
+      // Determine target column: over.id could be a column status or an item id
+      let targetStatus: ForeshadowingStatus | null = null;
+      if (DROPPABLE_IDS.includes(overId)) {
+        targetStatus = overId as ForeshadowingStatus;
+      } else {
+        // Dropped on another card — find which column that card belongs to
+        const overItem = items.find((i) => i.id === overId);
+        if (overItem) {
+          targetStatus = overItem.status;
+        }
+      }
+
+      if (!targetStatus) return;
+
+      const sourceStatus = findColumnByItemId(items, draggedId);
+      if (!sourceStatus || sourceStatus === targetStatus) return;
+
+      // Optimistic local update
+      setEntries((prev) => {
+        const source = prev ?? items;
+        return source.map((item) =>
+          item.id === draggedId ? { ...item, status: targetStatus! } : item,
+        );
+      });
+
+      // Toast feedback
+      toast(`伏笔状态已更新：${sourceStatus} → ${targetStatus}`, "success");
+
+      // Fire-and-forget API update
+      void (async () => {
+        try {
+          const res = await fetch(
+            `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(draggedId)}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ customFields: { status: targetStatus } }),
+            },
+          );
+          if (!res.ok) {
+            throw new Error(`${res.status}`);
+          }
+        } catch {
+          toast("伏笔状态保存失败，请重试", "error");
+        }
+      })();
+    },
+    [items, bookId],
   );
 
   if (loading) {
@@ -151,13 +312,6 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1 }: Foreshadowing
     );
   }
 
-  const items = (data?.entries ?? []).map(parseForeshadowing);
-
-  const grouped = COLUMNS.map((col) => ({
-    ...col,
-    items: items.filter((i) => i.status === col.status),
-  }));
-
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
@@ -168,24 +322,70 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1 }: Foreshadowing
     );
   }
 
+  const grouped = COLUMNS.map((col) => ({
+    ...col,
+    items: items.filter((i) => i.status === col.status),
+  }));
+
   return (
-    <div className="grid grid-cols-4 gap-3 p-3 h-full overflow-auto">
-      {grouped.map((col) => (
-        <div key={col.status} className="flex flex-col min-w-0">
-          <div className="flex items-center gap-1.5 mb-2 px-1">
-            {col.icon}
-            <span className="text-xs font-medium">{col.label}</span>
-            <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
-              {col.items.length}
-            </Badge>
-          </div>
-          <div className="flex flex-col gap-2 flex-1">
-            {col.items.map((item) => (
-              <ForeshadowingCard key={item.id} item={item} currentChapter={currentChapter} />
-            ))}
-          </div>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="grid grid-cols-4 gap-3 p-3 h-full overflow-auto">
+        {grouped.map((col) => (
+          <DroppableColumn
+            key={col.status}
+            column={col}
+            currentChapter={currentChapter}
+          />
+        ))}
+      </div>
+      <DragOverlay dropAnimation={null}>
+        {activeItem ? (
+          <DragOverlayCard item={activeItem} currentChapter={currentChapter} />
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// DroppableColumn — each status column with sortable cards
+// ---------------------------------------------------------------------------
+
+function DroppableColumn({
+  column,
+  currentChapter,
+}: {
+  column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
+  currentChapter: number;
+}) {
+  // SortableContext needs an array of IDs
+  const itemIds = column.items.map((i) => i.id);
+
+  return (
+    <div className="flex flex-col min-w-0">
+      <div className="flex items-center gap-1.5 mb-2 px-1">
+        {column.icon}
+        <span className="text-xs font-medium">{column.label}</span>
+        <Badge variant="secondary" className="text-[10px] px-1.5 py-0 h-4 ml-auto">
+          {column.items.length}
+        </Badge>
+      </div>
+      <SortableContext id={column.status} items={itemIds} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-2 flex-1 min-h-[60px]">
+          {column.items.map((item) => (
+            <SortableForeshadowingCard
+              key={item.id}
+              item={item}
+              currentChapter={currentChapter}
+            />
+          ))}
         </div>
-      ))}
+      </SortableContext>
     </div>
   );
 }
