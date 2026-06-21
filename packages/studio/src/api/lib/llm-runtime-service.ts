@@ -52,6 +52,12 @@ export interface LlmRuntimeGenerateInput {
   readonly signal?: AbortSignal;
   /** P2.1: 覆盖 max_output_tokens（用于截断恢复） */
   readonly maxOutputTokensOverride?: number;
+  /** 供应商默认推理强度（从 provider.defaultReasoningEffort 来） */
+  readonly providerDefaultReasoningEffort?: string;
+  /** 全局默认推理强度（从 runtimeControls.defaultReasoningEffort 来） */
+  readonly globalDefaultReasoningEffort?: string;
+  /** 模型配置的 maxOutputTokens（用户在设置页配置，区别于截断恢复用的 override） */
+  readonly maxOutputTokens?: number;
 }
 
 export interface LlmRuntimeServiceOptions {
@@ -330,6 +336,13 @@ export class LlmRuntimeService {
           });
         }
 
+        // 推理强度三级优先级解析（叙述者会话 > 供应商默认 > 全局默认）
+        const resolvedReasoningEffort = input.sessionConfig.reasoningEffort
+          ?? input.providerDefaultReasoningEffort
+          ?? provider?.defaultReasoningEffort
+          ?? input.globalDefaultReasoningEffort
+          ?? "medium";
+
         const result = await adapter.generate({
           ...providerRef(provider),
           modelId: candidate.rawModelId,
@@ -338,9 +351,12 @@ export class LlmRuntimeService {
           ...(input.onStreamChunk ? { onStreamChunk: input.onStreamChunk } : {}),
           ...(input.onToolEvent ? { onToolEvent: input.onToolEvent } : {}),
           ...(input.signal ? { signal: input.signal } : {}),
-          ...(input.sessionConfig.reasoningEffort ? { reasoningEffort: input.sessionConfig.reasoningEffort } : {}),
+          reasoningEffort: resolvedReasoningEffort,
           ...(input.sessionConfig.serviceTier ? { serviceTier: input.sessionConfig.serviceTier } : {}),
           ...(input.maxOutputTokensOverride ? { maxOutputTokensOverride: input.maxOutputTokensOverride } : {}),
+          // 新增透传：模型配置输出上限 + 用户配置温度
+          ...(input.maxOutputTokens ? { maxOutputTokens: input.maxOutputTokens } : {}),
+          ...(input.sessionConfig.temperature != null ? { temperature: input.sessionConfig.temperature } : {}),
         });
 
         const metadata: LlmRuntimeMetadata = {

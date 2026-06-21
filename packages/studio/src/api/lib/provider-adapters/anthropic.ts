@@ -678,10 +678,15 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const ctx: ModelTransformContext = { modelId: input.modelId, providerId: input.providerId, baseUrl: input.baseUrl };
     const effectiveModelId = resolveModelId(ctx);
 
+    // Reasoning effort → budget_tokens mapping (align with claude-code / NarraFork)
+    const reasoningEffort = input.reasoningEffort;
+    const EFFORT_BUDGET: Record<string, number> = { minimal: 1024, low: 2048, medium: 4096, high: 8192, xhigh: 16384 };
+    const maxTokens = input.maxOutputTokensOverride ?? 32768;
+
     const body: Record<string, unknown> = {
       model: effectiveModelId,
       messages: toAnthropicMessages(input.messages, ctx),
-      max_tokens: input.maxOutputTokensOverride ?? 32768,
+      max_tokens: maxTokens,
       ...(useStreaming ? { stream: true } : {}),
       ...(input.tools?.length ? { tools: toAnthropicTools(input.tools, ctx) } : {}),
       // Automatic prompt caching: caches system + tools + message prefix automatically
@@ -721,9 +726,19 @@ export class AnthropicAdapter implements RuntimeAdapter {
       }
     }
 
-    // DeepSeek/Claude thinking support: if messages contain thinking blocks or model supports thinking,
-    // we must include the thinking parameter in the request body. Without it, the API rejects
-    // requests that contain thinking blocks in the message history (e.g. during tool-use continuation).
+    // Thinking / reasoning effort configuration (aligned with claude-code / NarraFork).
+    //
+    // reasoningEffort drives thinking mode:
+    //   "none"      → thinking disabled
+    //   "minimal"   → thinking enabled, budget_tokens = 1024
+    //   "low"       → thinking enabled, budget_tokens = 2048
+    //   "medium"    → thinking enabled, budget_tokens = 4096
+    //   "high"      → thinking enabled, budget_tokens = 8192
+    //   "xhigh"     → thinking enabled, budget_tokens = 16384
+    //   (absent)    → if history has thinking blocks → enabled (budget 4096); otherwise no field
+    //
+    // Special: DeepSeek via Anthropic protocol doesn't support thinking field at all.
+    //          We disable thinking, strip thinking blocks, and pass effort via output_config.
     const providerHint = detectModelProvider(input.modelId, input.providerId, input.baseUrl);
     const hasThinkingInHistory = thinkingCount > 0;
 
@@ -732,6 +747,10 @@ export class AnthropicAdapter implements RuntimeAdapter {
       // when thinking mode is enabled. Since we can't guarantee this (e.g. after context compaction
       // or failed turns), we explicitly disable thinking mode to avoid 400 errors.
       body.thinking = { type: "disabled" };
+      // Pass reasoning effort via output_config (DeepSeek supports this in Anthropic protocol)
+      if (reasoningEffort && reasoningEffort !== "none") {
+        body.output_config = { effort: reasoningEffort };
+      }
       // DeepSeek doesn't support cache_control
       stripCacheControlFromBody(body);
       // Strip any thinking blocks from messages since thinking is disabled
@@ -759,9 +778,25 @@ export class AnthropicAdapter implements RuntimeAdapter {
           if (trIds.length > 0) log.info("DeepSeek sanitize user message", { msgIndex: i, toolResultIds: trIds });
         }
       }
+    } else if (reasoningEffort === "none") {
+      // Explicitly disable thinking when effort is "none"
+      body.thinking = { type: "disabled" };
+    } else if (reasoningEffort && reasoningEffort !== "none") {
+      // effort → budget_tokens (clamped to max_tokens - 1)
+      const budget = Math.min(EFFORT_BUDGET[reasoningEffort] ?? 4096, maxTokens - 1);
+      body.thinking = { type: "enabled", budget_tokens: budget };
+      log.info("Anthropic thinking enabled via reasoningEffort", { reasoningEffort, budget_tokens: budget });
     } else if (hasThinkingInHistory) {
-      // Claude: enable thinking and keep blocks as-is
-      body.thinking = { type: "enabled", budget_tokens: 4096 };
+      // No explicit effort, but history has thinking blocks — must enable to keep API happy
+      body.thinking = { type: "enabled", budget_tokens: Math.min(4096, maxTokens - 1) };
+    }
+
+    // Temperature: Anthropic forces temperature=1 when thinking is enabled.
+    // Only send temperature when thinking is NOT enabled.
+    if (!body.thinking || (body.thinking as Record<string, unknown>).type === "disabled") {
+      if (input.temperature != null) {
+        body.temperature = input.temperature;
+      }
     }
 
     // Debug: log the thinking blocks being sent back to API

@@ -1,3 +1,5 @@
+import type { SessionReasoningEffort } from "./session-types.js";
+
 export type ProviderType = "anthropic" | "openai" | "deepseek" | "custom";
 export type ProviderCompatibility = "openai-compatible" | "anthropic-compatible";
 export type ProviderApiMode = "completions" | "responses" | "codex";
@@ -63,6 +65,8 @@ export interface Provider {
   thinkingStrength?: ProviderThinkingStrength;
   /** Controls reasoning/thinking passback behavior in tool loops */
   reasoningPolicy?: ProviderReasoningPolicy;
+  /** 该供应商默认推理强度，优先于全局默认（不支持时自动降级） */
+  defaultReasoningEffort?: SessionReasoningEffort;
   models: Model[];
 }
 

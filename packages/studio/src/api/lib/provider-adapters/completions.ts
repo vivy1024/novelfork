@@ -400,7 +400,8 @@ export class CompletionsAdapter implements RuntimeAdapter {
     }
 
     // Default max_tokens to 32768 to avoid tool_call truncation for long content
-    return this.sendChatCompletion(input, input.messages, input.maxOutputTokensOverride ?? 32768, input.tools, input.signal);
+    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
+    return this.sendChatCompletion(input, input.messages, maxTokens, input.tools, input.signal);
   }
 
   // ─── Non-streaming ───────────────────────────────────────────────────────
@@ -413,12 +414,20 @@ export class CompletionsAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
-    const body = {
+    const stripSampling = shouldStripSamplingParams(input);
+    // Extract GenerateInput-only fields with type narrowing
+    const reasoningEffort = "reasoningEffort" in input ? input.reasoningEffort : undefined;
+    const temperature = "temperature" in input ? input.temperature : undefined;
+    const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toOpenAiMessages(messages),
       stream: false,
       ...(maxTokens ? { max_tokens: maxTokens } : {}),
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
+      // reasoning_effort（仅推理模型，非推理模型静默跳过不报错）
+      ...(reasoningEffort && reasoningEffort !== "none" ? { reasoning_effort: reasoningEffort } : {}),
+      // temperature（推理模型不发）
+      ...(!stripSampling && temperature != null ? { temperature } : {}),
     };
 
     const urls = resolveCompletionsUrls(input.baseUrl!);
@@ -485,13 +494,19 @@ export class CompletionsAdapter implements RuntimeAdapter {
     signal?: AbortSignal,
   ): Promise<GenerateResult> {
     const hasTools = Boolean(tools?.length);
-    const body = {
+    const stripSampling = shouldStripSamplingParams(input);
+    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
+    const body: Record<string, unknown> = {
       model: input.modelId,
       messages: toOpenAiMessages(messages),
       stream: true,
       stream_options: { include_usage: true },
-      max_tokens: input.maxOutputTokensOverride ?? 32768,
+      max_tokens: maxTokens,
       ...(hasTools ? { tools: toOpenAiTools(tools!), tool_choice: "auto" } : {}),
+      // reasoning_effort（仅推理模型，非推理模型静默跳过不报错）
+      ...(input.reasoningEffort && input.reasoningEffort !== "none" ? { reasoning_effort: input.reasoningEffort } : {}),
+      // temperature（推理模型不发）
+      ...(!stripSampling && input.temperature != null ? { temperature: input.temperature } : {}),
     };
 
     const urls = resolveCompletionsUrls(input.baseUrl!);

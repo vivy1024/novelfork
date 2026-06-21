@@ -1298,6 +1298,11 @@ async function appendModelContinuationAfterToolDecision(
         // tool_started is handled via onEvent tool_call broadcast
       },
       generate: async (generateInput): Promise<AgentGenerateResult> => {
+        // 解析推理强度优先级所需的供应商/全局默认值
+        const [provider, userConfig] = await Promise.all([
+          providerRuntimeStore.getProvider(generateInput.sessionConfig.providerId),
+          loadUserConfig(),
+        ]);
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,
           messages: generateInput.messages,
@@ -1310,6 +1315,9 @@ async function appendModelContinuationAfterToolDecision(
           },
           signal: generateInput.signal,
           ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
+          // 推理强度三级优先级：叙述者会话 > 供应商默认 > 全局默认
+          providerDefaultReasoningEffort: provider?.defaultReasoningEffort,
+          globalDefaultReasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
         });
         // Record provider health
         const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
@@ -2549,6 +2557,11 @@ export async function handleSessionChatTransportMessage(
       },
       signal: combinedSignal,
       generate: async (generateInput): Promise<AgentGenerateResult> => {
+        // 解析推理强度优先级所需的供应商/全局默认值
+        const [provider, userConfig] = await Promise.all([
+          providerRuntimeStore.getProvider(generateInput.sessionConfig.providerId),
+          loadUserConfig(),
+        ]);
         const result = await generateSessionReply({
           sessionConfig: generateInput.sessionConfig,
           messages: generateInput.messages,
@@ -2561,6 +2574,9 @@ export async function handleSessionChatTransportMessage(
           },
           signal: generateInput.signal,
           ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
+          // 推理强度三级优先级：叙述者会话 > 供应商默认 > 全局默认
+          providerDefaultReasoningEffort: provider?.defaultReasoningEffort,
+          globalDefaultReasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
         });
         // Record provider health
         const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
