@@ -17,10 +17,10 @@
 - [ ] 点击打开编辑器
 
 ## Task 3：JingweiEntryEditor 多 tab 升级
-- [ ] Header：类型标签/名称/来源标记/冲突状态
-- [ ] Tab 1 详情：按 category field schema 动态渲染字段
-- [ ] Tab 2 关系：relatedEntryIds 列表 + 跳转 + 增删
-- [ ] Tab 3 追踪：AI 注入策略 + 修订历史时间线
+- [x] Header：类型标签/名称/来源标记/冲突状态
+- [x] Tab 1 详情：按 category field schema 动态渲染字段
+- [x] Tab 2 关系：relatedEntryIds 列表 + 跳转 + 增删
+- [x] Tab 3 追踪：AI 注入策略 + 修订历史时间线
 
 ## Task 4：ForeshadowingBoard 看板组件
 - [x] 四列看板布局（已埋设/部分揭示/已回收/已废弃）

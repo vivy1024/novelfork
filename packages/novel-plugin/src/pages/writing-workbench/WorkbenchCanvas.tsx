@@ -16,6 +16,7 @@ import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHisto
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import { NewBookGuide } from "./NewBookGuide";
+import { PresetSuggestionCard } from "./PresetSuggestionCard";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityPanel } from "./panels/QualityPanel";
@@ -120,7 +121,7 @@ function ToolPanelLoading() {
   return <div className="flex items-center justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
 }
 
-function ToolPanelView({ toolPanel, bookId }: { toolPanel: ToolPanelId; bookId: string }) {
+function ToolPanelView({ toolPanel, bookId, onJumpToChapter }: { toolPanel: ToolPanelId; bookId: string; onJumpToChapter?: (chapterNumber: number) => void }) {
   switch (toolPanel) {
     case "quality":
       return <QualityPanel bookId={bookId} />;
@@ -135,7 +136,7 @@ function ToolPanelView({ toolPanel, bookId }: { toolPanel: ToolPanelId; bookId: 
     case "compliance":
       return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "foreshadowing":
-      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} /></Suspense>;
+      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "runtime":
       return <Suspense fallback={<ToolPanelLoading />}><RuntimeStatePanel bookId={bookId} /></Suspense>;
     case "coreshift":
@@ -185,9 +186,11 @@ export interface WorkbenchCanvasProps {
   toolbarSlotRef?: RefObject<HTMLDivElement | null>;
   /** 当前 canvas 是否为激活状态（多实例模式下控制 portal 行为） */
   isActive?: boolean;
+  /** 工具面板（如伏笔看板）跳转到指定章节，由上层打开对应章节 Tab */
+  onJumpToChapter?: (chapterNumber: number) => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef, isActive = true }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -234,7 +237,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 
   if (!node) {
     if (bookId) {
-      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} />;
+      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
     }
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -253,7 +256,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             <h2 className="text-sm font-semibold">{node.title}</h2>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <ToolPanelView toolPanel={toolPanel} bookId={bookId} />
+            <ToolPanelView toolPanel={toolPanel} bookId={bookId} onJumpToChapter={onJumpToChapter} />
           </div>
         </div>
       );
@@ -515,26 +518,49 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
 // DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
 // ---------------------------------------------------------------------------
 
-function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void }) {
+function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void; onJumpToChapter?: (chapterNumber: number) => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
+  const presetSuggestedKey = `novelfork:preset-suggested:${bookId}`;
   // Skip guide if book already has chapters (old book without localStorage mark)
   const hasChapters = nodes?.some(n => n.kind === "chapter") ?? false;
   const [guideCompleted, setGuideCompleted] = useState(() => {
     if (hasChapters) return true;
     try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
   });
+  // 建书引导刚完成时弹出预设推荐（仅一次，用 localStorage 标记避免重复）
+  const [showPresetSuggestion, setShowPresetSuggestion] = useState(false);
 
   const handleGuideComplete = useCallback(() => {
     try { localStorage.setItem(storageKey, "true"); } catch { /* ignore */ }
     setGuideCompleted(true);
+    // 引导完成后，若未提示过预设推荐，则展示
+    try {
+      if (localStorage.getItem(presetSuggestedKey) !== "true") {
+        setShowPresetSuggestion(true);
+      }
+    } catch {
+      setShowPresetSuggestion(true);
+    }
     onGuideComplete?.();
-  }, [storageKey, onGuideComplete]);
+  }, [storageKey, presetSuggestedKey, onGuideComplete]);
+
+  const handlePresetSuggestionClose = useCallback(() => {
+    try { localStorage.setItem(presetSuggestedKey, "true"); } catch { /* ignore */ }
+    setShowPresetSuggestion(false);
+  }, [presetSuggestedKey]);
 
   if (!guideCompleted) {
     return <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
   }
 
-  return <DefaultCockpitView bookId={bookId} />;
+  return (
+    <>
+      <DefaultCockpitView bookId={bookId} onJumpToChapter={onJumpToChapter} />
+      {showPresetSuggestion && (
+        <PresetSuggestionCard bookId={bookId} onClose={handlePresetSuggestionClose} />
+      )}
+    </>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -570,7 +596,7 @@ function StatCard({ label, value, sub, className, active, onClick }: {
 
 type ExpandedPanel = "foreshadowing" | "quality" | "words" | null;
 
-function DefaultCockpitView({ bookId }: { bookId: string }) {
+function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJumpToChapter?: (chapterNumber: number) => void }) {
   const [stats, setStats] = useState<OverviewStats | null>(null);
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
 
@@ -643,7 +669,7 @@ function DefaultCockpitView({ bookId }: { bookId: string }) {
               </button>
             </div>
             <Suspense fallback={<ToolPanelLoading />}>
-              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} />}
+              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} onJumpToChapter={onJumpToChapter} />}
               {expandedPanel === "quality" && <QualityPanel bookId={bookId} />}
               {expandedPanel === "words" && <DailyProgressCard />}
             </Suspense>

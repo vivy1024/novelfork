@@ -107,142 +107,6 @@ function AIBubbleMenu({ editor, bookId }: { editor: Editor; bookId: string }) {
 }
 
 // ---------------------------------------------------------------------------
-// Task A: Heading Folding Extension (via onUpdate, no prosemirror-state needed)
-// ---------------------------------------------------------------------------
-
-/** 注入折叠箭头 + 标记折叠态 */
-function setupFoldGutters(container: HTMLElement, foldedSet: Set<string>) {
-  // container 可能是 ProseMirror 元素本身，也可能是外层 wrapper
-  const editorEl = (container.classList.contains("ProseMirror")
-    ? container
-    : container.querySelector(".ProseMirror")) as HTMLElement | null;
-  if (!editorEl) return;
-
-  // 1) 注入/更新样式标签
-  let styleEl = document.getElementById("chapter-fold-styles");
-  if (!styleEl) {
-    styleEl = document.createElement("style");
-    styleEl.id = "chapter-fold-styles";
-    styleEl.textContent = `
-.chapter-editor-wrapper { position: relative; }
-.chapter-editor-wrapper .ProseMirror { padding-left: 32px !important; }
-.ce-fold-gutter {
-  position: absolute; left: 0; width: 24px; display: flex;
-  align-items: center; justify-content: center; cursor: pointer;
-  color: var(--muted-foreground, #888); opacity: 0; transition: opacity .15s;
-  z-index: 1; user-select: none; font-size: 12px;
-}
-.ProseMirror h1, .ProseMirror h2, .ProseMirror h3,
-.ProseMirror h4, .ProseMirror h5, .ProseMirror h6 { position: relative; }
-.ProseMirror h1:hover, .ProseMirror h2:hover, .ProseMirror h3:hover,
-.ProseMirror h4:hover, .ProseMirror h5:hover, .ProseMirror h6:hover { position: relative; }
-.ProseMirror h1>.ce-fold-gutter, .ProseMirror h2>.ce-fold-gutter,
-.ProseMirror h3>.ce-fold-gutter, .ProseMirror h4>.ce-fold-gutter,
-.ProseMirror h5>.ce-fold-gutter, .ProseMirror h6>.ce-fold-gutter { opacity: 0; }
-.ProseMirror h1:hover>.ce-fold-gutter, .ProseMirror h2:hover>.ce-fold-gutter,
-.ProseMirror h3:hover>.ce-fold-gutter, .ProseMirror h4:hover>.ce-fold-gutter,
-.ProseMirror h5:hover>.ce-fold-gutter, .ProseMirror h6:hover>.ce-fold-gutter { opacity: 1; }
-.ce-fold-gutter[data-folded="true"] { opacity: 1 !important; }
-.ce-fold-gutter[data-folded="true"]+.ce-fold-placeholder { display: block; }
-.ce-fold-placeholder {
-  display: none; padding: 2px 8px; margin: 0 0 4px; font-size: 11px;
-  color: var(--muted-foreground, #888); opacity: .6; pointer-events: none;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 300px;
-}
-
-/* ── 折叠隐藏规则（纯 CSS，用 data-folded-to 属性选择器） ── */
-.ce-folded-to-h1~* { display: none !important; }
-.ce-folded-to-h1~*.ProseMirror-heading[data-level="1"] { display: block !important; }
-.ce-folded-to-h2~* { display: none !important; }
-.ce-folded-to-h2~*.ProseMirror-heading[data-level="1"],
-.ce-folded-to-h2~*.ProseMirror-heading[data-level="2"] { display: block !important; }
-.ce-folded-to-h3~* { display: none !important; }
-.ce-folded-to-h3~*.ProseMirror-heading[data-level="1"],
-.ce-folded-to-h3~*.ProseMirror-heading[data-level="2"],
-.ce-folded-to-h3~*.ProseMirror-heading[data-level="3"] { display: block !important; }
-.ce-folded-to-h4~* { display: none !important; }
-.ce-folded-to-h4~*.ProseMirror-heading[data-level="1"],
-.ce-folded-to-h4~*.ProseMirror-heading[data-level="2"],
-.ce-folded-to-h4~*.ProseMirror-heading[data-level="3"],
-.ce-folded-to-h4~*.ProseMirror-heading[data-level="4"] { display: block !important; }
-.ce-folded-to-h5~* { display: none !important; }
-.ce-folded-to-h5~*.ProseMirror-heading[data-level="1"],
-.ce-folded-to-h5~*.ProseMirror-heading[data-level="2"],
-.ce-folded-to-h5~*.ProseMirror-heading[data-level="3"],
-.ce-folded-to-h5~*.ProseMirror-heading[data-level="4"],
-.ce-folded-to-h5~*.ProseMirror-heading[data-level="5"] { display: block !important; }
-.ce-folded-to-h6~* { display: none !important; }
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="1"],
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="2"],
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="3"],
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="4"],
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="5"],
-.ce-folded-to-h6~*.ProseMirror-heading[data-level="6"] { display: block !important; }
-`;
-    document.head.appendChild(styleEl);
-  }
-
-  // 2) 事件委托（只绑定一次）
-  if (!editorEl.dataset.foldDelegated) {
-    editorEl.dataset.foldDelegated = "true";
-    editorEl.addEventListener("click", (e) => {
-      const toggle = (e.target as HTMLElement).closest(".ce-fold-gutter");
-      if (!toggle) return;
-      e.preventDefault();
-      e.stopPropagation();
-
-      const heading = toggle.parentElement as HTMLElement;
-      if (!heading) return;
-      const level = heading.dataset.level;
-      if (!level) return;
-
-      const key = `${level}:${heading.textContent?.slice(0, 20) ?? ""}`;
-      const isCurrentlyFolded = toggle.getAttribute("data-folded") === "true";
-
-      if (isCurrentlyFolded) {
-        toggle.setAttribute("data-folded", "false");
-        toggle.textContent = "▸";
-        heading.classList.remove(`ce-folded-to-h${level}`);
-        foldedSet.delete(key);
-      } else {
-        toggle.setAttribute("data-folded", "true");
-        toggle.textContent = "▾";
-        heading.classList.add(`ce-folded-to-h${level}`);
-        foldedSet.add(key);
-      }
-    });
-  }
-
-  // 3) 为每个标题注入折叠按钮
-  const headings = editorEl.querySelectorAll<HTMLElement>(
-    ".ProseMirror-heading, h1, h2, h3, h4, h5, h6",
-  );
-
-  for (const heading of headings) {
-    const level = heading.dataset.level ?? heading.tagName.replace("H", "");
-    if (heading.querySelector(".ce-fold-gutter")) continue;
-
-    // 标记为标题节点（用于 CSS 选择器）
-    heading.classList.add("ProseMirror-heading");
-    heading.dataset.level = level;
-
-    const key = `${level}:${heading.textContent?.slice(0, 20) ?? ""}`;
-    const isFolded = foldedSet.has(key);
-
-    const btn = document.createElement("span");
-    btn.className = "ce-fold-gutter";
-    btn.setAttribute("data-folded", String(isFolded));
-    btn.textContent = isFolded ? "▾" : "▸";
-    btn.title = "折叠/展开";
-    heading.prepend(btn);
-
-    if (isFolded) {
-      heading.classList.add(`ce-folded-to-h${level}`);
-    }
-  }
-}
-
-// ---------------------------------------------------------------------------
 // ChapterEditor 组件
 // ---------------------------------------------------------------------------
 
@@ -269,9 +133,6 @@ export function ChapterEditor({
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isExternalUpdate = useRef(false);
-
-  // Task A: 折叠状态（ref，不触发 re-render）
-  const foldedRef = useRef(new Set<string>());
 
   // Task B: Minimap 需要的 ref
   const editorRef = useRef<HTMLDivElement>(null);
@@ -300,12 +161,6 @@ export function ChapterEditor({
       const text = ed.getText();
       setWordCount(text.length);
 
-      // Task A: 在每次更新后设置折叠 gutter
-      requestAnimationFrame(() => {
-        const editorEl = ed.view.dom as HTMLElement;
-        setupFoldGutters(editorEl, foldedRef.current);
-      });
-
       // Debounced save
       clearTimeout(saveTimer.current);
       saveTimer.current = setTimeout(() => {
@@ -321,15 +176,6 @@ export function ChapterEditor({
       editor.setEditable(!readonly);
     }
   }, [editor, readonly]);
-
-  // Task A: 初始化折叠 gutter（editor 创建后 + 内容变更后）
-  useEffect(() => {
-    if (!editor) return;
-    const timer = setTimeout(() => {
-      setupFoldGutters(editor.view.dom as HTMLElement, foldedRef.current);
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [editor, content]);
 
   // Sync external content changes
   useEffect(() => {

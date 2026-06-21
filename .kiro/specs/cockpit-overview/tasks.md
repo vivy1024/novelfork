@@ -6,16 +6,16 @@
 ---
 
 ## Task 1：后端 `/books/:id/overview-stats` 端点
-- [ ] 新建路由（或在 ai.ts 中加入）
-- [ ] 聚合逻辑：从经纬条目统计 volumeProgress / foreshadowingRate / activePlotLines
-- [ ] wordCount：从 chapter-summaries 统计今日/总字数
-- [ ] publishReadiness：转发合规端点结果
+- [x] 新建路由（或在 ai.ts 中加入）
+- [x] 聚合逻辑：从经纬条目统计 volumeProgress / foreshadowingRate / activePlotLines
+- [x] wordCount：从 chapter-summaries 统计今日/总字数
+- [x] publishReadiness：转发合规端点结果
 - [ ] curl 验证返回数据正确
 
 ## Task 2：DefaultCockpitView 重写为仪表盘
-- [ ] StatCard 组件（label/value/subtext/status/icon）
-- [ ] StatCard Grid 布局（2x3 响应式网格）
-- [ ] fetch overview-stats 数据绑定
+- [x] StatCard 组件（label/value/subtext/status/icon）
+- [x] StatCard Grid 布局（2x3 响应式网格）
+- [x] fetch overview-stats 数据绑定
 
 ## Task 3：接入 BookHealthSummary + DailyProgressCard
 - [ ] import 两个孤儿组件

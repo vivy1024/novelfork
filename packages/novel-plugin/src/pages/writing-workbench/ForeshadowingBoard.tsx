@@ -52,6 +52,8 @@ interface ParsedForeshadowing {
 export interface ForeshadowingBoardProps {
   readonly bookId: string;
   readonly currentChapter?: number;
+  /** 点击"目标: 第X章"时跳转到写作区打开该章节 */
+  readonly onJumpToChapter?: (chapterNumber: number) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -118,9 +120,11 @@ function findColumnByItemId(items: readonly ParsedForeshadowing[], itemId: strin
 function SortableForeshadowingCard({
   item,
   currentChapter,
+  onJumpToChapter,
 }: {
   item: ParsedForeshadowing;
   currentChapter: number;
+  onJumpToChapter?: (chapterNumber: number) => void;
 }) {
   const {
     attributes,
@@ -165,7 +169,20 @@ function SortableForeshadowingCard({
       )}
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {item.plantedChapter > 0 && <span>埋设: 第{item.plantedChapter}章</span>}
-        {item.targetChapter > 0 && <span>目标: 第{item.targetChapter}章</span>}
+        {item.targetChapter > 0 && (
+          onJumpToChapter ? (
+            <button
+              type="button"
+              onClick={() => onJumpToChapter(item.targetChapter)}
+              className="cursor-pointer text-primary hover:underline underline-offset-2 transition-colors"
+              title={`跳转到第${item.targetChapter}章`}
+            >
+              目标: 第{item.targetChapter}章
+            </button>
+          ) : (
+            <span>目标: 第{item.targetChapter}章</span>
+          )
+        )}
         {item.plantedChapter > 0 && (
           <span className={isOverdue ? "text-red-500 font-medium" : ""}>
             悬念: {suspenseDays}章
@@ -206,7 +223,7 @@ function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; 
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ForeshadowingBoard({ bookId, currentChapter = 1 }: ForeshadowingBoardProps) {
+export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter }: ForeshadowingBoardProps) {
   const { data, loading, error } = useApi<EntriesResponse>(
     `/api/books/${bookId}/jingwei/entries?category=foreshadowing`,
   );
@@ -340,6 +357,7 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1 }: Foreshadowing
             key={col.status}
             column={col}
             currentChapter={currentChapter}
+            onJumpToChapter={onJumpToChapter}
           />
         ))}
       </div>
@@ -359,9 +377,11 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1 }: Foreshadowing
 function DroppableColumn({
   column,
   currentChapter,
+  onJumpToChapter,
 }: {
   column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
   currentChapter: number;
+  onJumpToChapter?: (chapterNumber: number) => void;
 }) {
   // SortableContext needs an array of IDs
   const itemIds = column.items.map((i) => i.id);
@@ -382,6 +402,7 @@ function DroppableColumn({
               key={item.id}
               item={item}
               currentChapter={currentChapter}
+              onJumpToChapter={onJumpToChapter}
             />
           ))}
         </div>

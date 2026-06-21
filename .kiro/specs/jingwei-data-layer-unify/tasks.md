@@ -16,10 +16,10 @@
 - [x] 单测：映射覆盖所有旧值、无遗漏
 
 ### Task 1.2 SQLite 迁移（加列 + 分类迁移）
-- [ ] 新增 migration：`source`/`revision_history`/`conflict_status`/`conflict_detail` 四列
-- [ ] 分类迁移逻辑：遍历所有条目，按 LEGACY_CATEGORY_MAP 更新 category + 写入 subcategory
-- [ ] 幂等保证：重复运行不损坏（检测已迁移标记）
-- [ ] 单测：迁移前后数据完整、幂等
+- [x] 新增 migration：`source`/`revision_history`/`conflict_status`/`conflict_detail` 四列
+- [x] 分类迁移逻辑：遍历所有条目，按 LEGACY_CATEGORY_MAP 更新 category + 写入 subcategory
+- [x] 幂等保证：重复运行不损坏（检测已迁移标记）
+- [x] 单测：迁移前后数据完整、幂等
 
 ### Task 1.3 消费方迁移（删旧引新）
 - [x] `read-model/category-map.ts`：删除 JINGWEI_READ_CATEGORIES / CATEGORY_ALIASES，改为从 unified-categories 导入

@@ -4,14 +4,14 @@
 
 ## Task 1: NewBookGuide 动态跳问
 
-- [ ] GUIDE_QUESTIONS 加 `minComplexity` 字段：powerSystem="heavy"、worldModel="medium"，其余不设
-- [ ] 加 `selectedGenre` state + `getGenreComplexity` 导入
-- [ ] 用 `useMemo` 根据 complexity 过滤 `activeQuestions`
-- [ ] 进度条 `total` 改为 `activeQuestions.length`
-- [ ] `question` 改为 `activeQuestions[step]`
-- [ ] 题材选择（step 0 的 handlePresetSelect/handleCustomInput）同步更新 `selectedGenre`
-- [ ] 回退到 step 0 改题材时，clamp step 不超出新 activeQuestions 长度
-- [ ] typecheck 干净
+- [x] GUIDE_QUESTIONS 加 `minComplexity` 字段：powerSystem="heavy"、worldModel="medium"，其余不设
+- [x] 加 `selectedGenre` state + `getGenreComplexity` 导入
+- [x] 用 `useMemo` 根据 complexity 过滤 `activeQuestions`
+- [x] 进度条 `total` 改为 `activeQuestions.length`
+- [x] `question` 改为 `activeQuestions[step]`
+- [x] 题材选择（step 0 的 handlePresetSelect/handleCustomInput）同步更新 `selectedGenre`
+- [x] 回退到 step 0 改题材时，clamp step 不超出新 activeQuestions 长度
+- [x] typecheck 干净
 
 ## Task 2: 验证
 
