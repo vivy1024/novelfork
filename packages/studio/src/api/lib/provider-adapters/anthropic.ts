@@ -681,7 +681,7 @@ export class AnthropicAdapter implements RuntimeAdapter {
     // Reasoning effort → budget_tokens mapping (align with claude-code / NarraFork)
     const reasoningEffort = input.reasoningEffort;
     const EFFORT_BUDGET: Record<string, number> = { minimal: 1024, low: 2048, medium: 4096, high: 8192, xhigh: 16384 };
-    const maxTokens = input.maxOutputTokensOverride ?? 32768;
+    const maxTokens = input.maxOutputTokensOverride ?? input.maxOutputTokens ?? 32768;
 
     const body: Record<string, unknown> = {
       model: effectiveModelId,
