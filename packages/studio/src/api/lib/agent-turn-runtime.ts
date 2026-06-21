@@ -20,6 +20,7 @@ import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from ".
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
 import { pruneToolOutput } from "./compact/tool-output-pruner.js";
 import { getBudgetPressureMessage } from "./compact/budget-pressure.js";
+import { getContextTokensFromUsage, getEffectiveContextWindow } from "./token-utils.js";
 import { createContentReplacementState, applyContentReplacement } from "./content-replacement.js";
 
 export type AgentTurnItem =
@@ -500,11 +501,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   let currentSessionConfig = input.sessionConfig;
   let hasInjectedBlockingWarning = false;
 
-  // Budget Pressure: 跟踪 provider 报告的最近一次 input_tokens
+  // Budget Pressure: 跟踪 provider 报告的最近一次上下文占用（四字段）
   let lastInputTokens = 0;
-  // Subtract output reserve (32K default max_output) so budget pressure thresholds
-  // are relative to the USABLE input window, not the total context window.
-  const contextWindowTokens = Math.max(0, (input.contextWindowTokens ?? 0) - 32768);
+  // 有效窗口 = 全窗口扣除输出预留（统一函数，对齐 Claude/Codex）。
+  // 阈值判断（budget pressure / 折叠 / 阻断）的分母都用它，而非全窗口。
+  const contextWindowTokens = getEffectiveContextWindow(input.contextWindowTokens ?? 0);
 
   // Fix: silentToolCallThreshold — 跟踪连续无文本输出的工具调用次数
   let consecutiveSilentToolCalls = 0;
@@ -520,7 +521,9 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   const turnHealthMonitor = new TurnHealthMonitor({
     loopDetectionThreshold: input.sessionConfig?.loopDetectionThreshold ?? 0.8,
     tokenConsumptionWarnRatio: input.sessionConfig?.tokenConsumptionWarnRatio ?? 0.5,
-    contextWindowTokens: 200_000,
+    // 用真实模型窗口（来自 provider 配置），而非硬编码 200k。
+    // 缺失时回退 200k 仅作兜底。
+    contextWindowTokens: (input.contextWindowTokens && input.contextWindowTokens > 0) ? input.contextWindowTokens : 200_000,
     maxConsecutiveFailures: input.sessionConfig?.maxConsecutiveFailures ?? 5,
   });
 
@@ -859,9 +862,12 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
     // Feed token usage to health monitor
     if (usage) {
       turnHealthMonitor.addTokenUsage((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0));
-      // Budget Pressure: 记录真实 input_tokens 用于上下文使用率提醒
-      if (usage.input_tokens && usage.input_tokens > 0) {
-        lastInputTokens = usage.input_tokens;
+      // Budget Pressure: 记录上下文占用 = 四字段全算（对齐 getContextTokensFromUsage）。
+      // 不能只取 input_tokens —— 开 prompt caching 后 input 很小、cache_read 占大头，
+      // 只看 input 会严重低估占用，导致该折叠时不折叠。
+      const ctxTokens = getContextTokensFromUsage(usage);
+      if (ctxTokens > 0) {
+        lastInputTokens = ctxTokens;
       }
     }
 

@@ -1179,10 +1179,13 @@ function toConversationStatus(
           return sum + chars;
         }, 0) / 4)
       : 0;
+  // detected 模型可能 contextWindow=0（未手动填），兜底 200k 与后端 fallback 一致，
+  // 避免 ring 显示 0 容量而后端按 200k 触发压缩（前后端不一致）。
+  const effectiveMaxTokens = maxTokens && maxTokens > 0 ? maxTokens : 200000;
   const contextUsage = {
     usedTokens,
-    maxTokens: maxTokens && maxTokens > 0 ? maxTokens : 0,
-    ...(maxTokens && maxTokens > 0 ? { compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)) } : {}),
+    maxTokens: effectiveMaxTokens,
+    compactThreshold: Math.round(effectiveMaxTokens * (compactThresholdPercent / 100)),
   };
 
   return {

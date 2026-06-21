@@ -1,5 +1,5 @@
 import type { AgentTurnItem } from "./agent-turn-runtime.js";
-import { estimateTokenCount } from "./token-utils.js";
+import { estimateTokenCount, getContextTokensFromUsage } from "./token-utils.js";
 
 /**
  * 粗估 token 数：content.length / 4
@@ -26,15 +26,11 @@ export interface TokenUsage {
 }
 
 /**
- * 从 API usage 提取精确 token 计数（input + output + cache）。
+ * 从 API usage 提取上下文占用（四字段全算）。
+ * 委托给 token-utils.getContextTokensFromUsage（单一权威来源）。
  */
 export function tokenCountFromUsage(usage: TokenUsage): number {
-  return (
-    (usage.input_tokens ?? 0) +
-    (usage.output_tokens ?? 0) +
-    (usage.cache_creation_input_tokens ?? 0) +
-    (usage.cache_read_input_tokens ?? 0)
-  );
+  return getContextTokensFromUsage(usage);
 }
 
 /**
