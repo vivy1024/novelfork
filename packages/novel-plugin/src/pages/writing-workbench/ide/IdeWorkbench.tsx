@@ -338,6 +338,37 @@ export function IdeWorkbench({
     onOpen(node);
   }, [onOpen, bookId]);
 
+  // 伏笔看板"目标章节"跳转：按章节号在资源/文件树中找到章节节点并打开
+  const handleJumpToChapter = useCallback((chapterNumber: number) => {
+    // 章节节点来源有二：资源树（metadata.chapterNumber）与文件树（chapters/NNNN_*.md）
+    const findChapterNode = (ns: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
+      for (const n of ns) {
+        if (n.kind === "chapter") {
+          // 资源树：metadata.chapterNumber 直接匹配
+          if (typeof n.metadata?.chapterNumber === "number" && n.metadata.chapterNumber === chapterNumber) {
+            return n;
+          }
+          // 文件树：从 chapters/NNNN_xxx.md 解析章节号
+          const filePath = typeof n.metadata?.filePath === "string" ? n.metadata.filePath : n.path;
+          if (typeof filePath === "string") {
+            const m = filePath.match(/chapters[\\/](\d{4})_/);
+            if (m && parseInt(m[1], 10) === chapterNumber) return n;
+          }
+        }
+        if (n.children) {
+          const found = findChapterNode(n.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
+    const target = findChapterNode(nodes) ?? findChapterNode(fileTree.nodes);
+    if (target) {
+      handleOpen(target);
+    }
+  }, [nodes, fileTree.nodes, handleOpen]);
+
   // --- URL 参数驱动面板（?panel=foreshadowing 等） ---
   const urlPanelConsumedRef = useRef(false);
   useEffect(() => {
@@ -710,6 +741,7 @@ export function IdeWorkbench({
                               jingweiActions={jingweiActions}
                               toolbarSlotRef={toolbarSlotRef}
                               isActive={tabId === ideTabs.activeTabId}
+                              onJumpToChapter={handleJumpToChapter}
                             />
                           </div>
                         ))}
@@ -727,6 +759,7 @@ export function IdeWorkbench({
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         toolbarSlotRef={toolbarSlotRef}
+                        onJumpToChapter={handleJumpToChapter}
                       />
                     ) : (
                       <ViewEmptyState view={activeView} />
@@ -764,6 +797,7 @@ export function IdeWorkbench({
                         draftActions={draftActions}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
+                        onJumpToChapter={handleJumpToChapter}
                       />
                     </div>
                   </div>
