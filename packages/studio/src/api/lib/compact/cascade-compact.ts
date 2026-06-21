@@ -5,6 +5,7 @@
  */
 
 import { splitMessagesByTokenBudget, estimateTokens, buildSummaryMessage } from "./compact-utils.js";
+import { log } from "../logger.js";
 
 export interface CascadeCompactOptions {
   messages: Array<{ role: string; content: string; seq?: number }>;
@@ -65,9 +66,19 @@ export async function cascadeCompact(options: CascadeCompactOptions): Promise<Ca
     signal?.throwIfAborted();
 
     const chunk = chunksToCompress[i];
-    const summary = await compressChunk(chunk, previousSummary, generateSummary, signal);
-    summaries.push(summary);
-    previousSummary = summary;
+    try {
+      const summary = await compressChunk(chunk, previousSummary, generateSummary, signal);
+      summaries.push(summary);
+      previousSummary = summary;
+    } catch (err) {
+      if (signal?.aborted) throw err; // 用户取消不重试
+      log.warn(`[cascade-compact] chunk ${i} failed, retrying...`, { error: String(err) });
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      signal?.throwIfAborted(); // 等待期间可能被取消
+      const summary = await compressChunk(chunk, previousSummary, generateSummary, signal);
+      summaries.push(summary);
+      previousSummary = summary;
+    }
 
     onProgress?.(Math.round(((i + 1) / chunksToCompress.length) * 100));
   }

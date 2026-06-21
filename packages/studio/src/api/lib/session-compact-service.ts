@@ -6,6 +6,7 @@ import { collectRuntimeTranscriptEvents } from "./runtime-transcript.js";
 import { generateSessionReply } from "./llm-runtime-service.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { log } from "./logger.js";
+import { estimateTokenCount } from "./token-utils.js";
 
 // Store last pre-compact snapshot for undo capability
 const preCompactSnapshots = new Map<string, NarratorSessionChatMessage[]>();
@@ -66,8 +67,8 @@ function seqOf(message: NarratorSessionChatMessage | undefined, fallback: number
 }
 
 function estimateTokens(messages: readonly NarratorSessionChatMessage[]): number {
-  const chars = messages.reduce((total, message) => total + message.content.length, 0);
-  return Math.max(1, Math.ceil(chars / 4));
+  const text = messages.map(m => m.content).join("");
+  return estimateTokenCount(text) || 1;
 }
 
 function toTurnItem(message: NarratorSessionChatMessage): AgentTurnItem {

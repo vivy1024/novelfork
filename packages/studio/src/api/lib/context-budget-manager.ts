@@ -7,6 +7,8 @@
  * 设计参考 Codex CLI ContextManager 的 byte/token 预算策略。
  */
 
+import { estimateTokenCount as estimateTokensFromText } from "./token-utils.js";
+
 export interface ContextBudgetConfig {
   /** 模型上下文窗口 tokens（如 200000） */
   readonly modelContextWindow: number;
@@ -47,17 +49,12 @@ const DEFAULT_CONFIG: ContextBudgetConfig = {
   minHistoryTurns: 3,
 };
 
-export function estimateTokensFromText(text: string): number {
-  if (!text || text.length === 0) return 0;
-  return Math.ceil(text.length * 0.6);
-}
-
 export function truncateToolOutput(text: string, maxTokens: number): { text: string; truncated: boolean; originalTokens: number } {
   const originalTokens = estimateTokensFromText(text);
   if (originalTokens <= maxTokens) {
     return { text, truncated: false, originalTokens };
   }
-  const maxChars = Math.floor(maxTokens / 0.6);
+  const maxChars = Math.floor(maxTokens * 4);
   const truncated = text.slice(0, maxChars).trimEnd();
   const suffix = `\n\n[... 输出已截断，原始约 ${originalTokens} tokens，保留前 ${maxTokens} tokens]`;
   return { text: truncated + suffix, truncated: true, originalTokens };

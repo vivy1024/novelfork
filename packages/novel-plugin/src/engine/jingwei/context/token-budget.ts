@@ -1,3 +1,4 @@
+export { estimateTokenCount as estimateTokens } from "@vivy1024/novelfork-studio/api/lib/token-utils";
 import type { JingweiLegacyContextItem } from "../types.js";
 
 export interface TokenBudgetResult<TItem extends JingweiLegacyContextItem = JingweiLegacyContextItem> {
@@ -26,11 +27,6 @@ function phaseOrder(item: JingweiLegacyContextItem): number {
   if (item.type === "conflict") return 50;
   if (item.type === "chapter-summary") return 10;
   return sourceRank[item.source] * 10;
-}
-
-export function estimateTokens(text: string): number {
-  if (text.length === 0) return 0;
-  return Math.ceil(text.length * 0.6);
 }
 
 function updatedAtMs(item: BudgetedJingweiContextItem): number {

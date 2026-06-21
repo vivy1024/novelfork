@@ -43,7 +43,7 @@ export interface JingweiImportReport {
 
 function estimateTokens(text: string): number {
   if (text.length === 0) return 0;
-  return Math.ceil(text.length * 0.6);
+  return Math.ceil(text.length / 4);
 }
 
 function excerptForSummary(text: string, maxChars = 240): string {

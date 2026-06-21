@@ -534,7 +534,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
   const CONTEXT_BUDGET_MAX = 8000;
 
   function estimateTokens(content: string): number {
-    return Math.ceil(content.length / 2);
+    return Math.ceil(content.length / 4);
   }
 
   async function loadJingweiFile(storyDir: string, filename: string): Promise<string | null> {

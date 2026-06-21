@@ -19,6 +19,7 @@ import { saveTurnCheckpoint, clearTurnCheckpoint, type ToolExecutionRecord } fro
 import { TurnHealthMonitor, type ToolCallRecord, type TurnHealthConfig } from "./turn-health-monitor.js";
 import { classifyError, getErrorUserMessage, type GenerateErrorCode } from "./provider-health-manager.js";
 import { pruneToolOutput } from "./compact/tool-output-pruner.js";
+import { getBudgetPressureMessage } from "./compact/budget-pressure.js";
 import { createContentReplacementState, applyContentReplacement } from "./content-replacement.js";
 
 export type AgentTurnItem =
@@ -294,10 +295,6 @@ export function createFileReadDeduplicator(): FileReadDeduplicator {
 // 使用 provider 报告的真实 input_tokens（比字符估算准）。
 // ---------------------------------------------------------------------------
 
-const BUDGET_PRESSURE_INFO = 0.70;  // 70% — 信息级
-const BUDGET_PRESSURE_SOFT = 0.80; // 80% — 软提示
-const BUDGET_PRESSURE_HARD = 0.92; // 92% — 紧急
-
 const MAX_OUTPUT_TOKENS_RECOVERY_LIMIT = 3;
 const ESCALATED_MAX_TOKENS = 64000;
 const BLOCKING_LIMIT_THRESHOLD = 0.97;
@@ -305,17 +302,8 @@ const BLOCKING_LIMIT_THRESHOLD = 0.97;
 export function buildBudgetPressureNotice(inputTokens: number, contextWindow: number): string {
   if (!contextWindow || contextWindow <= 0 || !inputTokens || inputTokens <= 0) return "";
   const ratio = inputTokens / contextWindow;
-  const pct = Math.round(ratio * 100);
-  if (ratio >= BUDGET_PRESSURE_HARD) {
-    return `\n\n[⚠️ 上下文已用 ${pct}%，即将溢出。请立即完成当前输出并停止扩展；若任务未完成，请提示用户保存进度后再继续。]`;
-  }
-  if (ratio >= BUDGET_PRESSURE_SOFT) {
-    return `\n\n[提示：上下文已用 ${pct}%。请尽快收尾当前任务，避免长输出导致截断。]`;
-  }
-  if (ratio >= BUDGET_PRESSURE_INFO) {
-    return `\n\n[信息：上下文已用 ${pct}%。当前进展顺利，建议适时向用户汇报阶段性结果。]`;
-  }
-  return "";
+  const msg = getBudgetPressureMessage(ratio, 0);
+  return msg ? `\n\n${msg}` : "";
 }
 
 

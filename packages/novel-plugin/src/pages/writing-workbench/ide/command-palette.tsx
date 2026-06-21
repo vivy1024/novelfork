@@ -6,6 +6,7 @@
  * - files: Ctrl+P，快速打开文件/经纬/章节
  */
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import fuzzysort from "fuzzysort";
 
 export interface PaletteCommand {
   id: string;
@@ -20,24 +21,39 @@ interface CommandPaletteProps {
   onClose: () => void;
   commands: PaletteCommand[];
   placeholder?: string;
+  /** 过滤模式：commands 用 includes，files 用 fuzzysort 模糊搜索 */
+  mode?: "commands" | "files";
 }
 
-export function CommandPalette({ open, onClose, commands, placeholder }: CommandPaletteProps) {
+export function CommandPalette({ open, onClose, commands, placeholder, mode = "commands" }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
-  // Filter commands by query (simple includes match)
+  // Filter commands: files mode uses fuzzysort, commands mode uses simple includes
   const filtered = useMemo(() => {
     if (!query.trim()) return commands;
     const q = query.toLowerCase();
+    if (mode === "files") {
+      // Fuzzy search: score each item, filter nulls, sort by score descending
+      const scored: Array<{ cmd: PaletteCommand; score: number }> = [];
+      for (const cmd of commands) {
+        const result = fuzzysort.single(q, cmd.label);
+        if (result !== null) {
+          scored.push({ cmd, score: result.score });
+        }
+      }
+      scored.sort((a, b) => b.score - a.score);
+      return scored.map(s => s.cmd);
+    }
+    // commands mode: simple includes match
     return commands.filter(
       (cmd) =>
         cmd.label.toLowerCase().includes(q) ||
         (cmd.category?.toLowerCase().includes(q) ?? false)
     );
-  }, [commands, query]);
+  }, [commands, query, mode]);
 
   // Reset state on open/close
   useEffect(() => {
