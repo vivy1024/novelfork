@@ -59,6 +59,7 @@ export interface SessionDetailData {
   sessionConfig?: {
     mode?: "normal" | "plan";
     toolPolicy?: { allow?: string[]; deny?: string[]; ask?: string[] };
+    temperature?: number;
   };
   /** 运行时控制（从 /api/settings 读取） */
   runtimeConfig?: {
