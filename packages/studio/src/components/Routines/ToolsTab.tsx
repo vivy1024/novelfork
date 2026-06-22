@@ -2,7 +2,7 @@
  * Tools Tab - 可选工具管理
  */
 
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Search } from "lucide-react";
 
 import { Input } from "@/components/ui/input";
@@ -48,19 +48,24 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
   const [search, setSearch] = useState("");
 
   // 合并默认工具和用户配置，保留用户新增的未知工具。
-  const catalogTools = AVAILABLE_TOOLS.map((defaultTool) => {
-    const userTool = tools.find((t) => t.name === defaultTool.name);
-    return { ...defaultTool, ...userTool, loadCommand: userTool?.loadCommand ?? defaultTool.loadCommand ?? `/LOAD ${defaultTool.name}` };
-  });
-  const customTools = tools
-    .filter((tool) => !AVAILABLE_TOOLS.some((defaultTool) => defaultTool.name === tool.name))
-    .map((tool) => ({ ...tool, loadCommand: tool.loadCommand ?? `/LOAD ${tool.name}` }));
-  const mergedTools = [...catalogTools, ...customTools];
+  const mergedTools = useMemo(() => {
+    const catalogTools = AVAILABLE_TOOLS.map((defaultTool) => {
+      const userTool = tools.find((t) => t.name === defaultTool.name);
+      return { ...defaultTool, ...userTool, loadCommand: userTool?.loadCommand ?? defaultTool.loadCommand ?? `/LOAD ${defaultTool.name}` };
+    });
+    const customTools = tools
+      .filter((tool) => !AVAILABLE_TOOLS.some((defaultTool) => defaultTool.name === tool.name))
+      .map((tool) => ({ ...tool, loadCommand: tool.loadCommand ?? `/LOAD ${tool.name}` }));
+    return [...catalogTools, ...customTools];
+  }, [tools]);
 
-  const filteredTools = mergedTools.filter((tool) =>
-    tool.name.toLowerCase().includes(search.toLowerCase()) ||
-    tool.description?.toLowerCase().includes(search.toLowerCase()) ||
-    tool.loadCommand?.toLowerCase().includes(search.toLowerCase())
+  const filteredTools = useMemo(() =>
+    mergedTools.filter((tool) =>
+      tool.name.toLowerCase().includes(search.toLowerCase()) ||
+      tool.description?.toLowerCase().includes(search.toLowerCase()) ||
+      tool.loadCommand?.toLowerCase().includes(search.toLowerCase())
+    ),
+    [mergedTools, search]
   );
 
   const handleToggle = (name: string) => {
@@ -77,7 +82,8 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
     }
   };
 
-  const enabledCount = filteredTools.filter((t) => t.enabled).length;
+  const totalCount = mergedTools.length;
+  const totalEnabled = mergedTools.filter((t) => t.enabled).length;
 
   return (
     <div className="space-y-4">
@@ -96,7 +102,7 @@ export function ToolsTab({ tools, onChange }: ToolsTabProps) {
             />
           </div>
           <div className="text-sm text-muted-foreground">
-            已启用 {enabledCount} / {filteredTools.length}
+            已启用 {totalEnabled} / {totalCount}
           </div>
         </div>
       </div>

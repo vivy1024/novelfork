@@ -5,7 +5,7 @@
  * 实时流式展示正在生成的文件内容。类似 Claude Artifacts 体验。
  */
 
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useMemo, useState, useEffect, useRef, useDeferredValue } from "react";
 import { X, FileText, Sparkles } from "lucide-react";
 import { MarkdownRenderer } from "@/components/MarkdownRenderer";
 import type { ConversationSurfaceMessage } from "./MessageStream";
@@ -136,8 +136,8 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
   const pathMatch = partialJson.match(/"file_path"\s*:\s*"([^"]+)"/);
   const filePath = pathMatch?.[1] ?? "";
 
-  // 正则提取 content（非贪婪到下一个顶级 key）
-  const contentMatch = partialJson.match(/"content"\s*:\s*"([\s\S]*?)"\s*[,}]/);
+  // 正则提取 content（处理转义序列，避免 \" 误断）
+  const contentMatch = partialJson.match(/"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*[,}]/);
   if (contentMatch) {
     try {
       return { filePath, content: JSON.parse(`"${contentMatch[1]}"`) };
@@ -255,14 +255,37 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
 // Component
 // ---------------------------------------------------------------------------
 
+// #10: 内联 style 提取为组件外常量，避免每次渲染重注入
+const BLINK_STYLE = `
+  @keyframes blink {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0; }
+  }
+  .animate-blink {
+    animation: blink 1s step-end infinite;
+  }
+`;
+
 export function ArtifactPanel({ messages, onClose }: ArtifactPanelProps) {
   const files = useArtifactFiles(messages);
   const [activeTab, setActiveTab] = useState(0);
   const contentRef = useRef<HTMLDivElement>(null);
+  const userSelectedTabRef = useRef(false);
 
-  // 新文件出现时自动切换到最新 tab
+  // #12: files 变化时 clamp activeTab 防止越界，并在 files 清空后重置用户选择标记
   useEffect(() => {
-    if (files.length > 0) {
+    setActiveTab((prev) => {
+      if (files.length === 0) {
+        userSelectedTabRef.current = false;
+        return 0;
+      }
+      return Math.min(prev, files.length - 1);
+    });
+  }, [files.length]);
+
+  // #5: 新文件出现时自动切换到最新 tab（仅用户未手动选择时）
+  useEffect(() => {
+    if (files.length > 0 && !userSelectedTabRef.current) {
       setActiveTab(files.length - 1);
     }
   }, [files.length]);
@@ -279,6 +302,9 @@ export function ArtifactPanel({ messages, onClose }: ArtifactPanelProps) {
 
   const currentFile = files[activeTab] ?? files[files.length - 1];
   if (!currentFile) return null;
+
+  // #11: 流式场景下延迟更新 Markdown 渲染，避免输入卡顿
+  const deferredContent = useDeferredValue(currentFile.content);
 
   return (
     <div className="flex w-[400px] shrink-0 flex-col border-l border-border bg-background overflow-hidden animate-in slide-in-from-right-4 duration-300">
@@ -310,7 +336,7 @@ export function ArtifactPanel({ messages, onClose }: ArtifactPanelProps) {
       <div ref={contentRef} className="flex-1 overflow-y-auto overflow-x-hidden px-4 py-3 min-h-0">
         {currentFile.content ? (
           <div className="text-sm">
-            <MarkdownRenderer content={currentFile.content} />
+            <MarkdownRenderer content={deferredContent} />
             {currentFile.streaming && (
               <span className="inline-block w-[2px] h-[1em] bg-blue-500 ml-0.5 align-middle animate-blink" />
             )}
@@ -329,7 +355,7 @@ export function ArtifactPanel({ messages, onClose }: ArtifactPanelProps) {
           {files.map((file, index) => (
             <button
               key={file.toolCallId}
-              onClick={() => setActiveTab(index)}
+              onClick={() => { userSelectedTabRef.current = true; setActiveTab(index); }}
               className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] whitespace-nowrap transition-colors ${
                 index === activeTab
                   ? "bg-primary/10 text-primary font-medium"
@@ -343,16 +369,8 @@ export function ArtifactPanel({ messages, onClose }: ArtifactPanelProps) {
         </div>
       )}
 
-      {/* 光标闪烁动画 CSS */}
-      <style>{`
-        @keyframes blink {
-          0%, 50% { opacity: 1; }
-          51%, 100% { opacity: 0; }
-        }
-        .animate-blink {
-          animation: blink 1s step-end infinite;
-        }
-      `}</style>
+      {/* 光标闪烁动画 CSS — 常量提取到组件外避免重注入 */}
+      <style>{BLINK_STYLE}</style>
     </div>
   );
 }

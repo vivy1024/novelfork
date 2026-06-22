@@ -1,5 +1,5 @@
 import { RuntimeControlPanel } from "./panels/RuntimeControlPanel";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useApi, fetchJson, putApi } from "../../hooks/use-api";
 import { ProfilePanel } from "./panels/ProfilePanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
@@ -179,6 +179,12 @@ function ServerSection() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  // cleanup: 清理 savedTimerRef
+  useEffect(() => {
+    return () => { clearTimeout(savedTimerRef.current); };
+  }, []);
 
   // Update check state
   const [updatePhase, setUpdatePhase] = useState<UpdateCheckPhase>("idle");
@@ -186,13 +192,21 @@ function ServerSection() {
   const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchJson<{ server?: ServerSettings; update?: UpdateSettings }>("/settings/user")
+    const ctrl = new AbortController();
+    fetchJson<{ server?: ServerSettings; update?: UpdateSettings }>("/settings/user", { signal: ctrl.signal })
       .then((data) => {
+        if (ctrl.signal.aborted) return;
         if (data.server) setServer(data.server);
         if (data.update) setUpdate(data.update);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "加载失败"))
-      .finally(() => setLoading(false));
+      .catch((err) => {
+        if (ctrl.signal.aborted) return;
+        setError(err instanceof Error ? err.message : "加载失败");
+      })
+      .finally(() => {
+        if (!ctrl.signal.aborted) setLoading(false);
+      });
+    return () => ctrl.abort();
   }, []);
 
   async function handleSave() {
@@ -200,8 +214,9 @@ function ServerSection() {
     setError(null);
     try {
       await putApi("/settings/user", { server, update });
+      clearTimeout(savedTimerRef.current);
       setSaved(true);
-      setTimeout(() => setSaved(false), 2000);
+      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
     } catch (e) {
       setError(e instanceof Error ? e.message : "保存失败");
     } finally {
@@ -334,7 +349,7 @@ function ServerSection() {
                     className="text-xs font-mono"
                   />
                 </div>
-                <Button variant="outline" size="sm" className="gap-1.5">
+                <Button variant="outline" size="sm" className="gap-1.5" disabled title="功能开发中">
                   <ShieldAlert className="size-3.5" />
                   生成自签名证书
                 </Button>

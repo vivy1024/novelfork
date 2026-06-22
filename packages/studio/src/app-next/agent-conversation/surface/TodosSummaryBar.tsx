@@ -18,6 +18,7 @@ export function TodosSummaryBar({ sessionId }: TodosSummaryBarProps) {
 
   // Fetch initial todos from session metadata
   useEffect(() => {
+    setTodos([]); // 先清空旧数据，防止 sessionId 切换时残留
     if (!sessionId) return;
     let cancelled = false;
     fetch(`/api/sessions/${encodeURIComponent(sessionId)}`)
@@ -35,7 +36,7 @@ export function TodosSummaryBar({ sessionId }: TodosSummaryBarProps) {
   useEffect(() => {
     const handler = (e: Event) => {
       const detail = (e as CustomEvent<{ sessionId: string; todos: SessionTodoItem[] }>).detail;
-      if (detail.sessionId === sessionId) {
+      if (detail?.sessionId === sessionId && Array.isArray(detail.todos)) {
         setTodos(detail.todos);
       }
     };

@@ -69,10 +69,16 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
   const handleAdd = () => {
     if (!newTool.trim()) return;
 
+    const trimmedTool = newTool.trim();
+    const trimmedPattern = newPattern.trim() || undefined;
+    if (permissions.some((p) => p.tool === trimmedTool && p.pattern === trimmedPattern)) {
+      return;
+    }
+
     const permission: ToolPermission = {
-      tool: newTool.trim(),
+      tool: trimmedTool,
       permission: newPermission,
-      pattern: newPattern.trim() || undefined,
+      pattern: trimmedPattern,
       source: "user",
     };
 
@@ -112,9 +118,11 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
     }
   };
 
-  const bashRules = permissions.filter((perm) => perm.tool === "Bash" || perm.pattern?.toLowerCase().includes("bash"));
   const mcpRules = permissions.filter((perm) => perm.tool.startsWith("mcp__") || perm.tool.includes("__mcp"));
-  const builtInRules = permissions.filter((perm) => !bashRules.includes(perm) && !mcpRules.includes(perm));
+  const mcpSet = new Set(mcpRules);
+  const bashRules = permissions.filter((perm) => !mcpSet.has(perm) && (perm.tool === "Bash" || perm.pattern?.toLowerCase().includes("bash")));
+  const bashSet = new Set(bashRules);
+  const builtInRules = permissions.filter((perm) => !mcpSet.has(perm) && !bashSet.has(perm));
 
   return (
     <div className="space-y-4">
@@ -186,7 +194,7 @@ export function PermissionsTab({ permissions, onChange }: PermissionsTabProps) {
       <div className="space-y-2">
         {permissions.map((perm, index) => (
           <div
-            key={index}
+            key={`${perm.tool}:${perm.pattern ?? ''}:${index}`}
             className="border rounded-lg p-3 bg-card flex items-center gap-3"
           >
             <div className="flex-shrink-0">

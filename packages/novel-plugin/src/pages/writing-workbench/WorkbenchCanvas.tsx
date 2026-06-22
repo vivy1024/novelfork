@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, lazy, Suspense } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import type { RefObject } from "react";
 
@@ -12,6 +12,7 @@ import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActi
 import { DraftActionsBar, type DraftAcceptMode } from "./DraftActionsBar";
 import { ChapterActionsBar } from "./ChapterActionsBar";
 import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHistoryPanel";
+import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
@@ -235,6 +236,48 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     return () => window.removeEventListener("ide:save", handler);
   }, []);
 
+  // ── 编辑器状态缓存（Tab 切换时保存/恢复滚动位置） ──
+  const containerRef = useRef<HTMLDivElement>(null);
+  const prevIsActiveRef = useRef(isActive);
+
+  // isActive 从 true → false：保存当前滚动位置
+  useLayoutEffect(() => {
+    if (prevIsActiveRef.current && !isActive && node) {
+      const el = containerRef.current;
+      if (el) {
+        // 查找内层 TipTap 编辑器滚动容器（ChapterEditor 的 editorRef）
+        const inner = el.querySelector<HTMLElement>(".chapter-editor-wrapper");
+        saveEditorState(node.id, {
+          scrollTop: el.scrollTop,
+          scrollLeft: el.scrollLeft,
+          innerScrollTop: inner?.scrollTop,
+        });
+      }
+    }
+    prevIsActiveRef.current = isActive;
+  }, [isActive, node]);
+
+  // isActive 从 false → true：恢复滚动位置（需等待 DOM 渲染完成）
+  useEffect(() => {
+    if (!prevIsActiveRef.current && isActive && node) {
+      const el = containerRef.current;
+      if (!el) return;
+      const cached = getEditorState(node.id);
+      if (!cached) return;
+      // requestAnimationFrame 等 display:none → contents 布局完成
+      const raf = requestAnimationFrame(() => {
+        el.scrollTop = cached.scrollTop;
+        el.scrollLeft = cached.scrollLeft;
+        if (typeof cached.innerScrollTop === "number") {
+          const inner = el.querySelector<HTMLElement>(".chapter-editor-wrapper");
+          if (inner) inner.scrollTop = cached.innerScrollTop;
+        }
+      });
+      return () => cancelAnimationFrame(raf);
+    }
+    // 注意：不更新 prevIsActiveRef，由上方 useLayoutEffect 统一管理
+  }, [isActive, node]);
+
   if (!node) {
     if (bookId) {
       return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
@@ -437,7 +480,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
       )}
 
       {/* Editor */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
         {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (
           <JingweiEntryEditor
             entry={{

@@ -106,6 +106,8 @@ export interface ConversationSurfaceProps {
   onContinueSession?: () => void;
   /** 安全暂停决策回调 */
   onSafetyPauseDecision?: (id: string, decision: "approve" | "reject") => void;
+  /** 嵌入模式（隐藏返回按钮等全屏模式元素） */
+  embedded?: boolean;
 }
 
 export function ConversationSurface({
@@ -155,6 +157,7 @@ export function ConversationSurface({
   onAutoRetryError,
   onContinueSession,
   onSafetyPauseDecision,
+  embedded = false,
 }: ConversationSurfaceProps) {
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -220,12 +223,6 @@ export function ConversationSurface({
     }
   };
 
-  const handleOpenExternal = () => {
-    if (sessionId) {
-      window.open(`/next/narrators/${encodeURIComponent(sessionId)}`, "_blank");
-    }
-  };
-
   const handleSlashCommandResult = (result: SlashCommandExecutionResult) => {
     onSlashCommandResult?.(result);
     if (result.ok && result.kind === "update-session-config") {
@@ -240,17 +237,22 @@ export function ConversationSurface({
   const [localSending, setLocalSending] = useState(false);
   const prevMessageCount = useRef(messages.length);
 
-  const handleMessageContextAction = (messageId: string, action: string) => {
+  // ── Refs for stable callbacks (避免闭包持有旧引用) ──
+  const contextCallbacksRef = useRef({ onCompactSession, onForkSession, onDeleteMessage, onTruncateToMessage, sessionId });
+  contextCallbacksRef.current = { onCompactSession, onForkSession, onDeleteMessage, onTruncateToMessage, sessionId };
+
+  const handleMessageContextAction = useCallback((messageId: string, action: string) => {
+    const { onCompactSession: compactSession, onForkSession: forkSession, onDeleteMessage: deleteMessage, onTruncateToMessage: truncateToMessage, sessionId: sid } = contextCallbacksRef.current;
     const msgIndex = messages.findIndex((m) => m.id === messageId);
 
-    if (action === "compact-before" && sessionId) {
+    if (action === "compact-before" && sid) {
       if (msgIndex > 0) {
         const msg = messages[msgIndex];
         const beforeSeq = (msg as unknown as { seq?: number }).seq;
         if (beforeSeq != null) {
           void (async () => {
             try {
-              const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/compact-segment`, {
+              const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/compact-segment`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ beforeSeq }),
@@ -263,26 +265,26 @@ export function ConversationSurface({
               console.error("compact-segment error:", err);
             }
           })();
-        } else if (onCompactSession) {
-          void onCompactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
+        } else if (compactSession) {
+          void compactSession(`压缩到消息 #${msgIndex} 之前的 ${msgIndex} 条消息`);
         }
       }
     }
 
-    if (action === "rollback" && sessionId) {
+    if (action === "rollback" && sid) {
       const msg = messages[msgIndex];
       if (msg) {
         void (async () => {
           try {
-            const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/rollback/${encodeURIComponent(msg.id)}`, { method: "POST" });
+            const res = await fetch(`/api/sessions/${encodeURIComponent(sid)}/rollback/${encodeURIComponent(msg.id)}`, { method: "POST" });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             // Reload snapshot without full page reload
-            if (onTruncateToMessage) {
+            if (truncateToMessage) {
               // Reuse existing snapshot reload logic
-              const snapshot = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/chat/state`).then(r => r.ok ? r.json() : null);
+              const snapshot = await fetch(`/api/sessions/${encodeURIComponent(sid)}/chat/state`).then(r => r.ok ? r.json() : null);
               if (snapshot) {
                 // Force re-render by applying snapshot envelope (handled by parent)
-                window.dispatchEvent(new CustomEvent("novelfork:session-snapshot-reload", { detail: { sessionId } }));
+                window.dispatchEvent(new CustomEvent("novelfork:session-snapshot-reload", { detail: { sessionId: sid } }));
               }
             }
           } catch (err) {
@@ -292,9 +294,9 @@ export function ConversationSurface({
       }
     }
 
-    if (action === "fork" && onForkSession) {
+    if (action === "fork" && forkSession) {
       const msg = messages[msgIndex];
-      void onForkSession(`从消息 "${msg?.content?.slice(0, 20) ?? messageId}" 分叉`);
+      void forkSession(`从消息 "${msg?.content?.slice(0, 20) ?? messageId}" 分叉`);
     }
 
     if (action === "edit-regenerate") {
@@ -310,14 +312,29 @@ export function ConversationSurface({
     if (action === "delete") {
       const msg = messages[msgIndex];
       if (msgIndex >= 0 && msg) {
-        if (onDeleteMessage) {
-          void onDeleteMessage(msg.id);
-        } else if (onCompactSession && confirm("确认删除此消息？")) {
-          void onCompactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
+        if (deleteMessage) {
+          void deleteMessage(msg.id);
+        } else if (compactSession && confirm("确认删除此消息？")) {
+          void compactSession(`删除：丢弃消息 #${msgIndex} 及之后的所有内容`);
         }
       }
     }
-  };
+  }, [messages]);
+
+  // ── Refs for handleEditRegenerate (闭包安全) ──
+  const onSendRef = useRef(onSend);
+  onSendRef.current = onSend;
+  const editTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 组件卸载时清除未执行的定时器
+  useEffect(() => {
+    return () => {
+      if (editTimerRef.current != null) {
+        clearTimeout(editTimerRef.current);
+        editTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleEditRegenerate = (newContent: string) => {
     if (!editingMessage || !sessionId) return;
@@ -332,11 +349,13 @@ export function ConversationSurface({
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         // After server deletes old messages, send the new content to trigger agent
-        setTimeout(() => onSend(newContent), 100);
+        editTimerRef.current = setTimeout(() => {
+          editTimerRef.current = null;
+          onSendRef.current(newContent);
+        }, 100);
       } catch (err) {
         console.error("edit-and-regenerate failed:", err);
-        // Fallback: just send as new message
-        onSend(newContent);
+        alert("编辑并重新生成失败，请手动重试");
       }
     })();
   };
@@ -403,12 +422,15 @@ export function ConversationSurface({
         }
       }
     }
-  }, [messages, filesPanelDismissed]);
+  }, [messages.length, messages[messages.length - 1]?.id, filesPanelDismissed]);
 
   // 搜索过滤（对标 NarraFork messageSearchPlaceholder: "搜索已加载消息..."）
-  const searchFiltered = searchQuery
-    ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
-    : messages;
+  const searchFiltered = useMemo(() =>
+    searchQuery
+      ? messages.filter((m) => m.content.toLowerCase().includes(searchQuery.toLowerCase()))
+      : messages,
+    [messages, searchQuery],
+  );
 
   // ── 分页：初始只渲染最近 50 条，滚动到顶部时加载更多 ──
   const PAGE_SIZE = 50;
@@ -424,7 +446,7 @@ export function ConversationSurface({
   useEffect(() => {
     if (searchFiltered.length > prevMsgCountForPaging.current) {
       // 新消息追加，扩展可见范围以包含新消息
-      setVisibleCount((prev) => Math.max(prev, searchFiltered.length - Math.max(0, searchFiltered.length - PAGE_SIZE - (prev - PAGE_SIZE))));
+      setVisibleCount((prev) => Math.max(prev, searchFiltered.length));
     }
     prevMsgCountForPaging.current = searchFiltered.length;
   }, [searchFiltered.length]);
@@ -459,22 +481,16 @@ export function ConversationSurface({
       {/* ── Top toolbar ── */}
       <header className="flex shrink-0 items-center justify-between border-b border-border px-4 py-2">
         <div className="flex items-center gap-1.5 min-w-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={() => routerNavigate({ to: ".." })}>
-                <ArrowLeft className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>返回</TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button variant="ghost" size="icon-xs" onClick={handleOpenExternal}>
-                <ExternalLink className="size-3.5" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>在新标签打开</TooltipContent>
-          </Tooltip>
+          {!embedded && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon-xs" onClick={() => routerNavigate({ to: ".." })}>
+                  <ArrowLeft className="size-3.5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>返回</TooltipContent>
+            </Tooltip>
+          )}
           <h2 className="truncate text-sm font-semibold text-foreground">{title}</h2>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -795,10 +811,11 @@ export function ConversationSurface({
         onCompact={onCompactSession ? () => { onCompactSession("压缩上下文到目标阈值").catch((e) => { alert(`压缩失败: ${e instanceof Error ? e.message : String(e)}`); }); } : undefined}
         onReset={() => {
           if (!window.confirm("确定要清空上下文吗？Agent 将忘记之前的对话内容，但聊天记录仍然保留可查看。")) return;
+          const maxSeq = messages.reduce((max, m) => Math.max(max, (m as unknown as { seq?: number }).seq ?? 0), 0);
           fetch(`/api/sessions/${encodeURIComponent(sessionId ?? "")}/truncate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ seq: 999999999 }),
+            body: JSON.stringify({ seq: maxSeq || 999999999 }),
           }).then(res => {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             return res.json();

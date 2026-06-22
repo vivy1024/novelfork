@@ -306,9 +306,21 @@ function getDescription(toolCall: ConversationToolCall, category: ToolCategory):
 // ToolCallCard — 对标 NarraFork 风格，使用 shadcn 组件
 // ---------------------------------------------------------------------------
 
-export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: ConversationToolCall; forceCollapsed?: boolean }) {
-  const [expanded, setExpanded] = useState(false);
-  const effectiveExpanded = expanded && !forceCollapsed;
+export function ToolCallCard({ toolCall, codeCollapsed = false }: { toolCall: ConversationToolCall; codeCollapsed?: boolean }) {
+  const [localExpanded, setLocalExpanded] = useState(false);
+
+  // 当 codeCollapsed 从 false 变为 true 时，重置所有卡片为折叠
+  // 但从 true 变 false 时不自动展开，用户手动展开后不被后续变化覆盖
+  const prevCollapsedRef = useRef(codeCollapsed);
+  useEffect(() => {
+    if (codeCollapsed && !prevCollapsedRef.current) {
+      setLocalExpanded(false);
+    }
+    prevCollapsedRef.current = codeCollapsed;
+  }, [codeCollapsed]);
+
+  const expanded = localExpanded;
+  const effectiveExpanded = expanded;
   const [longRunning, setLongRunning] = useState(false);
   const category = getToolCategory(toolCall.toolName);
   const colors = CATEGORY_COLORS[category];
@@ -331,7 +343,7 @@ export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: C
   // Auto-expand running Bash tools to show streaming output
   useEffect(() => {
     if (isRunning && category === "bash") {
-      setExpanded(true);
+      setLocalExpanded(true);
     }
   }, [isRunning, category]);
 
@@ -349,7 +361,7 @@ export function ToolCallCard({ toolCall, forceCollapsed = false }: { toolCall: C
       {/* Header — NarraFork 风格：带边框卡片，紧凑行 */}
       <button
         type="button"
-        onClick={() => setExpanded(!expanded)}
+        onClick={() => setLocalExpanded(!expanded)}
         className="flex w-full items-center gap-1.5 px-3 py-1.5 text-left cursor-pointer hover:bg-muted/30 transition-colors overflow-hidden"
       >
         {/* 工具图标（彩色圆形背景） */}

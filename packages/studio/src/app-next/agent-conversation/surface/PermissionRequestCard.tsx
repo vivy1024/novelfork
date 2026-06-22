@@ -1,16 +1,19 @@
 /**
  * PermissionRequestCard — 权限决策确认卡片
- * 
+ *
+ * @deprecated 未集成 — 实际权限确认流程走 ConfirmationGate。
+ * 保留供未来参考，不在线上使用。
+ *
  * 后端集成状态：
  * - session-tool-executor.ts 已实现 pending-confirmation 机制（通过 confirmation_required 事件）
  * - 当前通过 agent-turn-runtime 的 confirmation_required 事件触发
  * - session:permission-request WebSocket 事件已定义但尚未从后端发射
  * - 实际权限确认通过现有的 confirmationDecision 流程处理
- * 
+ *
  * TODO: 将 session-tool-executor 的 pending-confirmation 结果桥接为 session:permission-request 事件
  */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ShieldAlert, Check, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,9 +55,21 @@ function formatInput(input: Record<string, unknown>): string {
 export function PermissionRequestCard({ request, onDecision }: Props) {
   const [decided, setDecided] = useState<"allow" | "deny" | null>(null);
 
-  const handleDecision = (decision: "allow" | "deny") => {
-    setDecided(decision);
-    onDecision(request.id, decision);
+  // #6: 当 request.id 变化时重置 decided 状态，防止旧决策残留
+  useEffect(() => {
+    setDecided(null);
+  }, [request.id]);
+
+  // #13: 异步处理决策，捕获异常防止 UI 卡死
+  const handleDecision = async (decision: "allow" | "deny") => {
+    if (decided) return; // 防重入
+    try {
+      await Promise.resolve(onDecision(request.id, decision));
+      setDecided(decision);
+    } catch (err) {
+      console.error("Permission decision failed:", err);
+      // 不设 decided，保持按钮可点击
+    }
   };
 
   const riskColor = RISK_COLORS[request.riskLevel];

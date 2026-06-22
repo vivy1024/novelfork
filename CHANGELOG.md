@@ -2,6 +2,49 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v2.2.0 (2026-06-22)
+
+### 🧹 候选稿/草稿废除 + 资源管理器清理
+
+- 移除候选稿"待审核"和草稿"编辑中"分组（resource-tree-adapter）
+- 移除候选稿/草稿保存逻辑（ResourceSaveController）和详情加载（ResourceDetailLoader）
+- resource.manage 工具精简：移除 accept/reject/create_draft，保留 list/archive/restore/delete
+- 删除死代码：WritingWorkbenchRoute.tsx（旧版布局）、ConversationResourcePanel.tsx（旧版对话侧栏）
+- ActivityBar 新增 Chat 切换按钮
+
+### 🐛 前端 Bug 批量修复（24 个）
+
+**ConversationSurface**（7 个）：setTimeout 清理 + 闭包修复、handleMessageContextAction useCallback+ref 稳定虚拟列表、API 失败不再无条件重发、搜索 memoize、messages effect 依赖修复、分页公式修复、seq 动态化
+
+**ArtifactPanel**（5 个）：正则转义引号匹配、activeTab 不再打断用户阅读、内联 style 提取为常量、useDeferredValue 流式优化、activeTab 越界 clamp
+
+**TodosSummaryBar**（2 个）：sessionId 切换时清空旧 todos、CustomEvent Array.isArray 校验
+
+**PermissionRequestCard**（3 个）：decided 随 request.id 重置（安全门禁修复）、onDecision async try/catch 防 UI 卡死、@deprecated 标记
+
+**SettingsSectionContent**（3 个）：AbortController 防竞态、savedTimerRef 清理、生成自签名证书按钮 disabled
+
+**PermissionsTab**（3 个）：key 稳定化（不再用 index）、规则分类互斥优先级、重复规则检测
+
+**ToolsTab**（2 个）：mergedTools/filteredTools useMemo、enabledCount 基于全量
+
+**SimpleSelect**：空 value 拦截防 Radix 报错
+**command.tsx**：React 19 类型冲突修复
+
+### 🖥️ 对话面板修复（5 个）
+
+- 删除 ExternalLink 按钮（无功能意义）
+- ArrowLeft 嵌入模式隐藏（防离开写作工作台）
+- CodeXml 折叠改为不覆盖用户显式展开
+- Reasoning 模式扩展到所有协议（不再限 Codex）
+- GitPanel 10 秒自动刷新（修复 AI 修改文件后状态过期）
+
+### 📝 Spec 归档
+
+14 个 spec tasks.md 更新（80+ 处 checkbox 标记已完成代码）
+
+---
+
 ## v2.1.0 (2026-06-22)
 
 ### 🧠 上下文管理根因修复（解决了19次反复修不好的问题）

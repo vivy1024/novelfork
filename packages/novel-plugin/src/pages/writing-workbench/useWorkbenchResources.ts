@@ -99,6 +99,10 @@ export async function loadWorkbenchResourcesFromContract(resource: ResourceDomai
   return createWorkbenchResourcesResult(tree, errors);
 }
 
+/**
+ * 注意：调用方应确保 nodes 引用稳定（用 useMemo 包裹），
+ * 否则每次父组件渲染都会重建整棵资源树。
+ */
 export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
   return useMemo(() => createWorkbenchResourcesResult(buildWorkbenchResourceTree(nodes)), [nodes]);
 }
