@@ -302,7 +302,7 @@ scope=search：关键词搜索。传 query 字符串。
   }),
   sessionTool({
     name: "resource.manage",
-    description: "写作资源生命周期管理。\n\naction=list：列出所有候选稿/草稿/已接受章节（传 filter 可过滤）\naction=accept：将候选稿接受为正式章节\naction=reject：拒绝候选稿（标记为 rejected）\naction=archive：归档（不删除但标记不活跃）\naction=restore：从归档恢复\naction=delete：永久删除\naction=create_draft：创建空白草稿\n\n使用时机：\n- pipeline.write 生成候选稿后，用户确认要接受 → accept\n- 用户说「删掉这个候选」→ delete 或 archive\n- 用户想看有哪些候选稿 → list",
+    description: "写作资源生命周期管理。\n\naction=list：列出所有章节（传 filter 可过滤）\naction=archive：归档（不删除但标记不活跃）\naction=restore：从归档恢复\naction=delete：永久删除\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
     risk: "confirmed-write",
     renderer: "resource.manage",

@@ -138,31 +138,14 @@ export async function loadResourceDetailState(
     return ready(node, typeof data.content === "string" ? data.content : "", "detail", { detailSource: "detail", fileName: data.file ?? fileName, bookId });
   }
 
-  if (node.kind === "draft") {
-    const bookId = metadataString(node, "bookId") ?? fallbackBookId;
-    const draftId = metadataString(node, "draftId") ?? nodeIdSuffix(node, "draft:");
-    if (isPreviewSource(node) && draftId) {
-      const result = await resource.getDraft(bookId, draftId);
-      if (!result.ok) return errorState(node, result.error ?? result.raw ?? result.code, messageFromContractResult(result, "草稿详情加载失败"));
-      const data = result.data as { readonly content?: unknown; readonly id?: unknown; readonly updatedAt?: unknown };
-      return ready(node, typeof data.content === "string" ? data.content : "", "detail", { detailSource: "detail", draftId: data.id ?? draftId, updatedAt: data.updatedAt, bookId });
-    }
-    return ready(node, typeof node.content === "string" ? node.content : "", "detail", { detailSource: "detail", bookId, draftId });
-  }
-
-  if (node.kind === "candidate") {
-    if (typeof node.content === "string") return ready(node, node.content, "detail", { detailSource: "detail" });
-    return errorState(node, { code: "candidate-content-missing" }, "候选稿列表未返回正文，当前没有独立详情接口");
-  }
-
   if (node.kind === "jingwei-entry" || node.kind === "jingwei-section" || node.kind === "narrative-line" || node.kind === "storyline" || node.kind === "tool-result") {
     // 经纬文件节点：尝试通过 API 加载完整内容
     const fileName = metadataString(node, "fileName");
     if (fileName && node.kind === "jingwei-entry") {
       const bookId = fallbackBookId;
       const result = await resource.getJingweiFile<{ file: string; content: string | null }>(bookId, fileName);
-      if (result.ok && result.data?.content) {
-        return ready(node, result.data.content, "detail", { detailSource: "detail" });
+      if (result.ok && result.data) {
+        return ready(node, result.data.content ?? "", "detail", { detailSource: "detail" });
       }
     }
     return ready(node, contentFromSnapshot(node), "detail", { detailSource: "detail" });

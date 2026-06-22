@@ -1,4 +1,4 @@
-import type { ContractResult, ResourceDomainClient } from "@/app-next/backend-contract";
+import type { ResourceDomainClient } from "@/app-next/backend-contract";
 import { applyResourceDetailToNode, loadResourceDetailState, resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -21,23 +21,8 @@ function pathFileName(path?: string): string | undefined {
   return path?.split("/").at(-1) ?? path?.split("\\").at(-1);
 }
 
-function contractErrorMessage(result: ContractResult<unknown>, fallback: string): string {
-  if (result.ok) return fallback;
-  const error = result.error;
-  if (error && typeof error === "object") {
-    const record = error as Record<string, unknown>;
-    if (typeof record.message === "string") return record.message;
-    if (record.error && typeof record.error === "object") {
-      const nested = record.error as Record<string, unknown>;
-      if (typeof nested.message === "string") return nested.message;
-    }
-  }
-  if (typeof error === "string") return error;
-  return result.code ? `${fallback}：${result.code}` : fallback;
-}
-
-async function assertContractSave(result: ContractResult<unknown>, fallback: string): Promise<void> {
-  if (!result.ok) throw new Error(contractErrorMessage(result, fallback));
+function assertContractSave(result: { ok: boolean }, fallback: string): void {
+  if (!result.ok) throw new Error(fallback);
 }
 
 function chapterNumberFromNode(node: WorkbenchResourceNode): number | string | undefined {
@@ -51,10 +36,6 @@ function fileNameFromNode(node: WorkbenchResourceNode, prefix: string): string |
   return metadataString(node, "fileName") ?? nodeIdSuffix(node, prefix) ?? pathFileName(node.path);
 }
 
-function draftIdFromNode(node: WorkbenchResourceNode): string | undefined {
-  return metadataString(node, "draftId") ?? nodeIdSuffix(node, "draft:");
-}
-
 function jingweiEntryIdFromNode(node: WorkbenchResourceNode): string | undefined {
   return metadataString(node, "entryId") ?? nodeIdSuffix(node, "jingwei-entry:");
 }
@@ -65,10 +46,6 @@ function assertSaveable(node: WorkbenchResourceNode): void {
   }
   if (resourceNeedsDetailHydration(node)) {
     throw new Error("资源详情尚未完成 hydrate，禁止保存预览内容");
-  }
-  if (node.kind === "candidate") {
-    // 待审核稿件编辑时自动退回编辑态，按草稿逻辑保存
-    // （调用方应先 transition to-draft，再保存内容）
   }
 }
 
@@ -92,26 +69,6 @@ async function saveJingweiAndHydrate(resource: ResourceDomainClient, bookId: str
   if (!fileName) throw new Error("经纬资料缺少文件名，无法保存");
   await assertContractSave(await resource.saveJingweiFile(bookId, fileName, { content }), "经纬资料保存失败");
   return hydrateAfterSave(resource, bookId, node);
-}
-
-async function saveDraftAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
-  const draftId = draftIdFromNode(node);
-  if (!draftId) throw new Error("草稿资源缺少 draftId，无法保存");
-  await assertContractSave(await resource.saveDraft(bookId, { id: draftId, title: node.title, content }), "草稿保存失败");
-  const result = await resource.getDraft(bookId, draftId);
-  if (!result.ok) throw new Error(contractErrorMessage(result, "草稿保存后详情回读失败"));
-  const data = result.data as { readonly id?: unknown; readonly content?: unknown; readonly updatedAt?: unknown };
-  return {
-    ...node,
-    content: typeof data.content === "string" ? data.content : content,
-    metadata: {
-      ...node.metadata,
-      detailSource: "detail",
-      draftId: typeof data.id === "string" ? data.id : draftId,
-      updatedAt: data.updatedAt,
-      loadedAt: new Date().toISOString(),
-    },
-  };
 }
 
 async function saveJingweiEntryAndHydrate(resource: ResourceDomainClient, bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
@@ -149,7 +106,6 @@ export async function saveResourceAndHydrate(
   const bookId = metadataString(node, "bookId") ?? fallbackBookId;
 
   if (node.kind === "chapter") return saveChapterAndHydrate(resource, bookId, node, content);
-  if (node.kind === "draft" || node.kind === "candidate") return saveDraftAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei") return saveJingweiAndHydrate(resource, bookId, node, content);
   // 经纬文件节点（有 fileName）走文件保存，经纬条目节点（有 entryId）走条目保存
   if (node.kind === "jingwei-entry" && metadataString(node, "fileName")) return saveJingweiAndHydrate(resource, bookId, node, content);

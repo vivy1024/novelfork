@@ -72,7 +72,15 @@ export function GitPanel({ workDir, onClose }: GitPanelProps) {
     } catch { /* ignore */ }
   }, [workDir]);
 
-  useEffect(() => { void loadStatus(); void loadLog(); }, [loadStatus, loadLog]);
+  useEffect(() => {
+    void loadStatus();
+    void loadLog();
+    const interval = setInterval(() => {
+      void loadStatus();
+      void loadLog();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [loadStatus, loadLog]);
 
   const stageFile = async (file: string) => {
     await fetch("/api/git/add", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: workDir, file }) });

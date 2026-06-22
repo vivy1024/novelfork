@@ -742,23 +742,11 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             return { ok: true, renderer: definition.renderer, summary: `共 ${items.length} 个资源：\n${preview}${more}`, data: { bookId, resources: items } };
           }
           const resourceId = String(input.resourceId ?? "");
-          if (action === "create_draft") {
-            const created = await service.create(bookId, { type: "draft", status: "draft", title: String(input.title ?? "新草稿"), content: String(input.content ?? ""), parentId: input.parentId ? String(input.parentId) : undefined });
-            return { ok: true, renderer: definition.renderer, summary: `已创建草稿「${created.title}」(${created.id})。`, data: { resource: created } };
-          }
-          if (!resourceId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "action 非 list/create_draft 时 resourceId 必填。" };
-          if (action === "accept") {
-            const chapterNumber = Number(input.chapterNumber);
-            if (!chapterNumber) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "accept 需要 chapterNumber。" };
-            const mode = (input.acceptMode as "replace" | "merge" | "new") ?? "replace";
-            const result = await service.transition(bookId, resourceId, { action: "accept", chapterNumber, mode });
-            return { ok: true, renderer: definition.renderer, summary: `已接受资源为第 ${chapterNumber} 章 (${mode})。`, data: { resource: result } };
-          }
-          if (action === "reject") { const r = await service.transition(bookId, resourceId, { action: "reject" }); return { ok: true, renderer: definition.renderer, summary: `已拒绝资源「${r.title}」。`, data: { resource: r } }; }
+          if (!resourceId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "action 非 list 时 resourceId 必填。" };
           if (action === "archive") { const r = await service.transition(bookId, resourceId, { action: "archive" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
           if (action === "restore") { const r = await service.transition(bookId, resourceId, { action: "restore" }); return { ok: true, renderer: definition.renderer, summary: `已恢复资源「${r.title}」。`, data: { resource: r } }; }
           if (action === "delete") { const r = await service.softDelete(bookId, resourceId); return { ok: true, renderer: definition.renderer, summary: `已删除资源「${r.title}」。`, data: { resource: r } }; }
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/accept/reject/archive/restore/delete/create_draft。` };
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/archive/restore/delete。` };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "resource-manage-failed", summary: `资源管理失败: ${err instanceof Error ? err.message : String(err)}` };
         }

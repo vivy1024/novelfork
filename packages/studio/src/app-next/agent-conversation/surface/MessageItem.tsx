@@ -204,7 +204,7 @@ export const MessageItem = memo(function MessageItem({ message, onContextAction,
         group.calls.length >= 3 ? (
           [<ToolCallGroup key={`group-${idx}`} toolCalls={group.calls} toolName={group.toolName} />]
         ) : (
-          group.calls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} forceCollapsed={codeCollapsed} />)
+          group.calls.map((tc) => <ToolCallCard key={tc.id} toolCall={tc} codeCollapsed={codeCollapsed} />)
         ),
       )}
     </>);

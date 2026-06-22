@@ -648,6 +648,12 @@ export function IdeWorkbench({
         </div>
         <div className="flex flex-col items-center gap-1 pb-2">
           <ActivityBarItem
+            icon={MessageSquare}
+            label="AI 对话"
+            active={chatVisible && !showSettings}
+            onClick={() => setChatVisible(v => !v)}
+          />
+          <ActivityBarItem
             icon={Settings}
             label="写作设置"
             active={showSettings}

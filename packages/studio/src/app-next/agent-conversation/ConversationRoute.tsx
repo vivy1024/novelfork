@@ -79,6 +79,8 @@ export interface ConversationRouteProps {
   onRetryError?: () => void;
   onDismissError?: () => void;
   onAutoRetryError?: (errorCode: string) => void;
+  /** 嵌入模式（隐藏返回按钮等全屏模式元素） */
+  embedded?: boolean;
 }
 
 const defaultStatus: ConversationRouteStatus = { state: "idle", label: "未连接" };
@@ -135,6 +137,7 @@ export function ConversationRoute({
   onRetryError,
   onDismissError,
   onAutoRetryError,
+  embedded,
 }: ConversationRouteProps) {
   if (!sessionId) {
     return (
@@ -231,6 +234,7 @@ export function ConversationRoute({
         onRetryError={onRetryError}
         onDismissError={onDismissError}
         onAutoRetryError={onAutoRetryError}
+        embedded={embedded}
       />
       {showArtifactPanel && (
         <ArtifactPanel

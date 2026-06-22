@@ -48,7 +48,6 @@ import {
   resourceNeedsDetailHydration,
   saveResourceAndHydrate,
   loadWorkbenchResourcesFromContract,
-  WritingWorkbenchRoute,
   type WorkbenchCanvasContext,
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
@@ -473,7 +472,7 @@ interface SessionCompactCommandPayload {
   readonly budget: { readonly estimatedTokensBefore: number; readonly estimatedTokensAfter: number };
 }
 
-function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionId: string; readonly canvasContext?: CanvasContext }) {
+function ConversationRouteLive({ sessionId, canvasContext, embedded }: { readonly sessionId: string; readonly canvasContext?: CanvasContext; readonly embedded?: boolean }) {
   const runtime = useAgentConversationRuntime({ sessionId, canvasContext });
   const routerNavigate = useNavigate();
   const contractClient = useMemo(() => createDefaultContractClient(), []);
@@ -859,6 +858,7 @@ function ConversationRouteLive({ sessionId, canvasContext }: { readonly sessionI
       initialAck={runtime.getResumeFromSeq()}
       initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId, runtime.state.turnActive)}
       headerSlot={novelHeaderSlot}
+      embedded={embedded}
       initialStatus={status}
       initialConfirmation={pendingConfirmation}
       initialRecoveryNotice={runtime.state.recovery}
@@ -1521,7 +1521,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         candidateActions={candidateActions}
         draftActions={draftActions}
         chapterActions={chapterActions}
-        chatSlot={bookSessionId ? <ConversationRouteLive sessionId={bookSessionId} canvasContext={undefined} /> : undefined}
+        chatSlot={bookSessionId ? <ConversationRouteLive sessionId={bookSessionId} canvasContext={undefined} embedded /> : undefined}
         onSwitchToAgent={bookSessionId ? () => onNavigateToConversation(bookSessionId) : undefined}
         bookSessions={bookSessions}
         activeSessionId={bookSessionId}

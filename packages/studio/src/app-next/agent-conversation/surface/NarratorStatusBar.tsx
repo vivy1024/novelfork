@@ -199,8 +199,8 @@ export function NarratorStatusBar({ status, sessionId, streamingStartedAt, strea
   const modelInitial = (status.modelLabel ?? status.modelId ?? "?").charAt(0).toUpperCase();
   // 权限完整文字
   const permissionFullLabel = PERMISSION_LABELS[status.permissionMode ?? "edit"] ?? "允许编辑";
-  // 条件显示：推理强度和 Fast Mode 仅 Codex API 模式显示
-  const showReasoningEffort = status.apiMode === "codex";
+  // 条件显示：推理强度 — 除非后端明确标记不支持，否则始终显示
+  const showReasoningEffort = !status.reasoningUnsupportedReason;
   // 条件显示：Fast Mode 仅 Codex 显示
   const showFastMode = status.apiMode === "codex";
 

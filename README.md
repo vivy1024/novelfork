@@ -41,6 +41,7 @@
 
 | 版本 | 日期 | 主题 | 亮点 |
 |------|------|------|------|
+| **v2.2.0** | 2026-06-22 | 候选稿废除 + 前端 Bug 修复 + 对话面板改进 | 候选稿/草稿清理 · 24 个前端 bug · 5 个对话面板修复 · 14 spec 归档 |
 | **v2.1.0** | 2026-06-22 | 上下文根因修复 + 推理强度 + IDE 打磨 | 四字段 token 统一 · 删除 413 救援 · 6 档推理强度 · 20 项 IDE · 自动重试接线 |
 | **v2.0.0** | 2026-06-21 | Bible→Jingwei 重命名 + IDE 工作台 | 5 个死 agent 删除 · bible 路由清理 · IDE 三栏布局 · Command Palette · Writing Resource 文件存储 |
 | **v1.11.0** | 2026-06-18 | Agent Harness 全维度强化 | max_output 恢复 · model fallback · budget pressure 3 级 · Secret Detector · blocking hooks · 规则式记忆提取 · content-replacement · coordinator-prompt · turn-profiler |

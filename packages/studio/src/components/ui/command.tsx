@@ -45,7 +45,8 @@ function CommandDialog({
   description?: string
   className?: string
   showCloseButton?: boolean
-  children: React.ReactNode
+  // biome-ignore lint/suspicious/noExplicitAny: React 19 type dedup workaround
+  children?: any
 }) {
   return (
     <Dialog {...props}>
