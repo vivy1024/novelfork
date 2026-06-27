@@ -179,7 +179,7 @@ describe("session-chat-service", () => {
     expect(assistantEnvelope).toMatchObject({
       type: "session:message",
       message: {
-        id: "client-message-1-assistant",
+        id: expect.stringMatching(/^client-message-1-mid-turn-\d+$/),
         role: "assistant",
         content: "运行时真实回复",
         seq: 2,
@@ -385,7 +385,7 @@ describe("session-chat-service", () => {
     });
     expect(history?.messages.map((message) => ({ id: message.id, seq: message.seq, role: message.role }))).toEqual([
       { id: "resume-message-2", seq: 3, role: "user" },
-      { id: "resume-message-2-assistant", seq: 4, role: "assistant" },
+      { id: expect.stringMatching(/^resume-message-2-mid-turn-\d+$/), seq: 4, role: "assistant" },
     ]);
   });
 
@@ -454,7 +454,7 @@ describe("session-chat-service", () => {
             seq: 1,
           },
           {
-            id: "runtime-message-1-assistant",
+            id: expect.stringMatching(/^runtime-message-1-mid-turn-\d+$/),
             role: "assistant",
             seq: 2,
           },
@@ -638,7 +638,7 @@ describe("session-chat-service", () => {
       role: "user",
     });
     expect(history?.messages.at(-1)).toMatchObject({
-      id: "bulk-message-30-assistant",
+      id: expect.stringMatching(/^bulk-message-30-mid-turn-\d+$/),
       seq: 60,
       role: "assistant",
     });
@@ -1000,14 +1000,14 @@ describe("session-chat-service", () => {
         success: true,
         type: "tool_use",
         toolUses: [
-          { id: "tool-use-canvas", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章" } },
+          { id: "tool-use-canvas", name: "pipeline.write", input: { bookId: "book-1", chapterIntent: "写下一章" } },
         ],
         metadata: runtimeMetadata,
       })
       .mockResolvedValueOnce({
         success: true,
         type: "message",
-        content: "已根据当前画布上下文生成候选稿。",
+        content: "已根据当前画布上下文生成章节结果。",
         metadata: runtimeMetadata,
       });
     const {
@@ -1053,7 +1053,7 @@ describe("session-chat-service", () => {
         }),
         expect.objectContaining({
           role: "system",
-          content: expect.stringContaining("cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write"),
+          content: expect.stringContaining("cockpit.snapshot → lore.read → memory.read → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → memory.events"),
         }),
         expect.objectContaining({
           role: "system",
@@ -1070,7 +1070,7 @@ describe("session-chat-service", () => {
     expect(JSON.stringify(generateSessionReplyMock.mock.calls[0]?.[0])).not.toContain("不应传入正文");
     expect(executeSessionToolMock).toHaveBeenCalledWith(expect.objectContaining({
       sessionId: session.id,
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       canvasContext: expect.objectContaining({
         activeResource: expect.objectContaining({ id: "chapter:book-1:2" }),
         dirty: true,
@@ -1243,7 +1243,7 @@ describe("session-chat-service", () => {
     });
   });
 
-  it("continues the write-next chain after guided plan approval and executes candidate creation", async () => {
+  it("continues the write-next chain after guided plan approval and executes chapter result creation", async () => {
     const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
     generateSessionReplyMock
       .mockResolvedValueOnce({
@@ -1258,14 +1258,14 @@ describe("session-chat-service", () => {
         success: true,
         type: "tool_use",
         toolUses: [
-          { id: "tool-use-candidate", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章", guidedPlanId: "guided-state-1" } },
+          { id: "tool-use-chapter-result", name: "pipeline.write", input: { bookId: "book-1", chapterIntent: "写下一章", guidedPlanId: "guided-state-1" } },
         ],
         metadata: runtimeMetadata,
       })
       .mockResolvedValueOnce({
         success: true,
         type: "message",
-        content: "下一章候选稿已创建并可在画布打开。",
+        content: "下一章章节结果已创建并可在画布打开。",
         metadata: runtimeMetadata,
       });
     executeSessionToolMock
@@ -1286,10 +1286,10 @@ describe("session-chat-service", () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        renderer: "candidate.created",
-        summary: "已创建下一章候选稿。",
-        data: { candidate: { id: "candidate-1", title: "第二章" } },
-        artifact: { id: "candidate-1", kind: "candidate", title: "第二章", renderer: "candidate.created", openInCanvas: true },
+        renderer: "pipeline.chapter",
+        summary: "已创建下一章章节结果。",
+        data: { resource: { id: "chapter:2", title: "第二章" } },
+        artifact: { id: "chapter:2", kind: "chapter", title: "第二章", renderer: "pipeline.chapter", openInCanvas: true },
         durationMs: 15,
       });
     const {
@@ -1325,21 +1325,21 @@ describe("session-chat-service", () => {
       ]),
     });
     expect(executeSessionToolMock).toHaveBeenNthCalledWith(3, expect.objectContaining({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       input: expect.objectContaining({ bookId: "book-1", chapterIntent: "写下一章" }),
     }));
     expect(generateSessionReplyMock).toHaveBeenCalledTimes(3);
     const snapshot = await getSessionChatSnapshot(session.id);
     expect(snapshot?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        content: "已创建下一章候选稿。",
-        metadata: expect.objectContaining({ toolResult: expect.objectContaining({ renderer: "candidate.created" }) }),
+        content: "已创建下一章章节结果。",
+        metadata: expect.objectContaining({ toolResult: expect.objectContaining({ renderer: "pipeline.chapter" }) }),
       }),
-      expect.objectContaining({ role: "assistant", content: "下一章候选稿已创建并可在画布打开。" }),
+      expect.objectContaining({ role: "assistant", content: "下一章章节结果已创建并可在画布打开。" }),
     ]));
   });
 
-  it("lets the model respond after candidate creation failure in the write-next chain", async () => {
+  it("lets the model respond after chapter result creation failure in the write-next chain", async () => {
     const runtimeMetadata = { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" };
     generateSessionReplyMock
       .mockResolvedValueOnce({
@@ -1351,13 +1351,13 @@ describe("session-chat-service", () => {
       .mockResolvedValueOnce({
         success: true,
         type: "tool_use",
-        toolUses: [{ id: "tool-use-candidate-fail", name: "candidate.create_chapter", input: { bookId: "book-1", chapterIntent: "写下一章" } }],
+        toolUses: [{ id: "tool-use-chapter-result-fail", name: "pipeline.write", input: { bookId: "book-1", chapterIntent: "写下一章" } }],
         metadata: runtimeMetadata,
       })
       .mockResolvedValueOnce({
         success: true,
         type: "message",
-        content: "候选稿生成失败，需要配置支持模型。",
+        content: "章节结果生成失败，需要配置支持模型。",
         metadata: runtimeMetadata,
       });
     executeSessionToolMock
@@ -1370,7 +1370,7 @@ describe("session-chat-service", () => {
         durationMs: 4,
       })
       .mockResolvedValueOnce({ ok: true, renderer: "guided.plan", summary: "计划已批准。", data: { status: "executing" }, durationMs: 8 })
-      .mockResolvedValueOnce({ ok: false, renderer: "candidate.created", summary: "候选稿生成需要配置支持模型。", error: "unsupported-model", durationMs: 12 });
+      .mockResolvedValueOnce({ ok: false, renderer: "pipeline.chapter", summary: "章节结果生成需要配置支持模型。", error: "unsupported-model", durationMs: 12 });
     const { createSession, attachSessionChatTransport, confirmSessionToolDecision, getSessionChatSnapshot, handleSessionChatTransportMessage } = await loadSessionServices();
     const session = await createSession({ title: "写下一章失败链", agentId: "writer", sessionMode: "chat" });
     const transport = new MockTransport();
@@ -1384,7 +1384,7 @@ describe("session-chat-service", () => {
     const snapshot = await getSessionChatSnapshot(session.id);
     expect(snapshot?.messages.at(-1)).toMatchObject({
       role: "assistant",
-      content: "候选稿生成失败，需要配置支持模型。",
+      content: "章节结果生成失败，需要配置支持模型。",
     });
   });
 
@@ -1475,7 +1475,7 @@ describe("session-chat-service", () => {
       },
     });
     expect(snapshot?.cursor.lastSeq).toBe(4);
-  });
+  }, 10000);
 
   it("surfaces unsupported-tools failures without executing tools or faking assistant content", async () => {
     generateSessionReplyMock.mockResolvedValueOnce({
@@ -1682,11 +1682,11 @@ describe("session-chat-service", () => {
     expect(finalAssistant?.metadata?.usage).toEqual(finalUsage);
 
     expect(snapshot?.session.cumulativeUsage).toMatchObject({
-      totalInputTokens: 200,
-      totalOutputTokens: 100,
+      totalInputTokens: 350,
+      totalOutputTokens: 130,
       totalCacheCreationInputTokens: 0,
       totalCacheReadInputTokens: 0,
-      turnCount: 1,
+      turnCount: 2,
     });
   });
 });

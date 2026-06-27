@@ -24,6 +24,7 @@ interface UseVerticalResizableResult {
 
 function readStored(key: string, fallback: number): number {
   try {
+    if (typeof localStorage?.getItem !== "function") return fallback;
     const raw = localStorage.getItem(key);
     if (raw !== null) {
       const n = Number(raw);
@@ -68,6 +69,7 @@ export function useVerticalResizable({
   useEffect(() => {
     if (!isDragging) {
       try {
+        if (typeof localStorage?.setItem !== "function") return;
         localStorage.setItem(storageKey, String(Math.round(height)));
       } catch {
         // ignore

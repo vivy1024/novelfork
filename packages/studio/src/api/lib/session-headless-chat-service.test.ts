@@ -97,7 +97,7 @@ describe("session headless chat service", () => {
     const session = makeSession();
     createSessionMock.mockResolvedValue(session);
     const runtimeEvents: AgentTurnEvent[] = [
-      { type: "assistant_message", content: "第三章候选稿已生成。", runtime: { providerId: "provider-1", providerName: "Provider", modelId: "model-1" } },
+      { type: "assistant_message", content: "第三章章节结果已生成。", runtime: { providerId: "provider-1", providerName: "Provider", modelId: "model-1" } },
       { type: "turn_completed" },
     ];
     runAgentTurnMock.mockResolvedValue(runtimeEvents);
@@ -110,7 +110,7 @@ describe("session headless chat service", () => {
       "session-1",
       expect.arrayContaining([
         expect.objectContaining({ role: "user", content: "写下一章", seq: 1 }),
-        expect.objectContaining({ role: "assistant", content: "第三章候选稿已生成。", seq: 2 }),
+        expect.objectContaining({ role: "assistant", content: "第三章章节结果已生成。", seq: 2 }),
       ]),
       [],
     );
@@ -118,7 +118,7 @@ describe("session headless chat service", () => {
     expect(result.ephemeral).toBe(false);
     expect(result.events).toEqual([
       expect.objectContaining({ type: "user_message", session_id: "session-1", content: "写下一章" }),
-      expect.objectContaining({ type: "assistant_message", session_id: "session-1", content: "第三章候选稿已生成。" }),
+      expect.objectContaining({ type: "assistant_message", session_id: "session-1", content: "第三章章节结果已生成。" }),
       expect.objectContaining({ type: "result", session_id: "session-1", success: true, stop_reason: "completed" }),
     ]);
   });
@@ -278,15 +278,15 @@ describe("session headless chat service", () => {
   it("persists canonical transcript events for resume and replay", async () => {
     const session = makeSession();
     createSessionMock.mockResolvedValue(session);
-    const checkpointCandidateResult: SessionToolExecutionResult = {
+    const checkpointChapterResult: SessionToolExecutionResult = {
       ok: true,
-      summary: "候选稿已创建并保存 checkpoint。",
+      summary: "章节结果已创建并保存 checkpoint。",
       data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] },
       artifact: {
-        id: "candidate-1",
-        kind: "candidate",
-        title: "第 1 章候选稿",
-        resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" },
+        id: "chapter:1",
+        kind: "chapter",
+        title: "第 1 章章节结果",
+        resourceRef: { kind: "chapter", id: "chapter:1", bookId: "book-1", chapterNumber: 1 },
       },
     };
     const confirmationResult: SessionToolExecutionResult = {
@@ -295,7 +295,7 @@ describe("session headless chat service", () => {
       data: { status: "pending-confirmation" },
       confirmation: {
         id: "confirm-1",
-        toolName: "candidate.apply",
+        toolName: "pipeline.write",
         target: "正式章节",
         risk: "confirmed-write",
         summary: "确认写入正式章节",
@@ -303,9 +303,9 @@ describe("session headless chat service", () => {
       },
     };
     runAgentTurnMock.mockResolvedValue([
-      { type: "tool_call", id: "tool-1", toolName: "candidate.create_chapter", input: { bookId: "book-1" }, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
-      { type: "tool_result", id: "tool-1", toolName: "candidate.create_chapter", result: checkpointCandidateResult, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
-      { type: "assistant_message", content: "候选稿已生成。", runtime: { providerId: "p", providerName: "P", modelId: "m", usage: { input_tokens: 3, output_tokens: 5 } } },
+      { type: "tool_call", id: "tool-1", toolName: "pipeline.write", input: { bookId: "book-1" }, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
+      { type: "tool_result", id: "tool-1", toolName: "pipeline.write", result: checkpointChapterResult, runtime: { providerId: "p", providerName: "P", modelId: "m" } },
+      { type: "assistant_message", content: "章节结果已生成。", runtime: { providerId: "p", providerName: "P", modelId: "m", usage: { input_tokens: 3, output_tokens: 5 } } },
       { type: "confirmation_required", id: "confirm-1", toolName: "candidate.apply", result: confirmationResult },
       { type: "turn_failed", reason: "pending-confirmation", message: "等待用户确认。" },
       { type: "turn_completed" },
@@ -317,7 +317,6 @@ describe("session headless chat service", () => {
       "tool_use",
       "tool_result",
       "checkpoint",
-      "candidate",
       "message",
       "usage",
       "permission_request",
@@ -330,7 +329,6 @@ describe("session headless chat service", () => {
       "tool_use",
       "tool_result",
       "checkpoint",
-      "candidate",
       "message",
       "usage",
       "permission_request",

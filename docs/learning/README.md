@@ -18,13 +18,13 @@ routes:
 |---|------|------|------|
 | 00 | [一页理解 NovelFork](./00-overview.md) | 核心概念、三栏布局、5 分钟上手 | `入门` `概览` |
 | 01 | [作品与章节管理](./01-book-management.md) | 创建作品、资源树、新书引导向导 | `作品` `章节` `资源树` |
-| 02 | [AI 写作功能](./02-ai-writing.md) | 选段写作、变体、候选稿、预设、节拍 | `AI写作` `候选稿` `预设` |
-| 03 | [引导式生成](./03-guided-generation.md) | PGI 追问、Guided Plan、计划批准 | `PGI` `引导式生成` |
+| 02 | [AI 写作功能](./02-ai-writing.md) | 选段写作、变体、正式章节结果、预设、节拍 | `AI写作` `正式章节` `预设` |
+| 03 | [引导式生成](./03-guided-generation.md) | PGI 追问、AskUserQuestion、scene.spec 蓝图批准 | `PGI` `引导式生成` |
 | 04 | [叙述者对话](./04-narrator-conversation.md) | 会话界面、确认门、Slash 命令 | `叙述者` `对话` `确认门` |
-| 05 | [故事经纬](./05-story-jingwei.md) | 经纬分区、可见性规则、AI 上下文参与 | `经纬` `世界观` `设定` |
+| 05 | [故事经纬](./05-story-jingwei.md) | 静态 Lore、Canon evidence 门禁、与叙事记忆边界 | `经纬` `Lore` `设定` |
 | 06 | [设置与套路](./06-settings-and-routines.md) | 供应商、模型聚合、套路、MCP、Hooks | `设置` `供应商` `套路` |
 | 07 | [写作分析工具](./07-writing-tools.md) | AI 味检测、健康度、文风、弧线、合规导出 | `写作工具` `分析` |
-| 08 | [Agent 写作管线](./08-agent-pipeline.md) | 5 Agent 协作、管线流程、确认门 | `Agent` `Pipeline` |
+| 08 | [Agent 写作管线](./08-agent-pipeline.md) | cockpit/lore/memory/PGI/scene.spec/pipeline.write 工具链 | `Agent` `Pipeline` |
 | 09 | [Agent 设置](./09-agent-settings.md) | 模型、推理强度、运行时控制 | `Agent` `设置` `模型` |
 | 10 | [代理设置](./10-proxy-settings.md) | 网络代理配置 | `代理` `网络` |
 | 11 | [使用历史](./11-usage-history.md) | Token 用量、费用统计 | `用量` `费用` |
@@ -37,6 +37,11 @@ routes:
 | 18 | [网络工具](./18-web-tools.md) | WebSearch、WebFetch 四种模式 | `网络` `搜索` |
 | 19 | [预设规则与节拍模板](./19-presets-and-beats.md) | 53 条内置预设 + 自定义 + 节拍模板 + Agent 工具 | `预设` `节拍` `自定义` |
 | 20 | [书籍叙述者分工](./20-book-narrators.md) | 五个专职叙述者的职责和快捷操作 | `叙述者` `角色` `分工` |
+| 21 | [Agent 行为规范](./21-agent-behavior-rules.md) | 失败循环检测、默认行动、验证流程、Bash 规则 | `Agent` `规范` `验证` |
+| 22 | [新书引导](./22-new-book-guide.md) | 创建新书后回答关键问题，生成作品骨架 | `新书` `引导` `经纬` |
+| 23 | [上下文管理](./23-context-management.md) | token、压缩、budget pressure、microcompact | `上下文` `压缩` `token` |
+| 24 | [模型选择与配置](./24-model-configuration.md) | 供应商、模型、fallback 与推理强度 | `模型` `供应商` `fallback` |
+| 25 | [调试与排错](./25-debugging.md) | 日志、Prompt Dump、上下文详情与排错流程 | `调试` `日志` `诊断` |
 
 ---
 
@@ -63,6 +68,7 @@ routes:
 1. [06-settings-and-routines](./06-settings-and-routines.md) — 供应商和套路
 2. [09-agent-settings](./09-agent-settings.md) — Agent 运行时参数
 3. [16-security-and-sandbox](./16-security-and-sandbox.md) — 安全与沙箱
+4. [24-model-configuration](./24-model-configuration.md) — 模型与 fallback
 
 ### 我想了解 Agent 能力
 
@@ -76,15 +82,21 @@ routes:
 
 1. [07-writing-tools](./07-writing-tools.md) — 所有分析工具
 
+### 我遇到了问题
+
+1. [25-debugging](./25-debugging.md) — 日志、Prompt Dump 与排错
+2. [23-context-management](./23-context-management.md) — 上下文超限与压缩
+
 ---
 
 ## 术语表
 
 | 术语 | 英文 | 说明 |
 |------|------|------|
-| 经纬 | Jingwei | 世界观/设定的结构化存储系统（16 个分类） |
+| 经纬 / Lore | Jingwei / Lore | 作者显式维护的静态设定库（人物、地点、规则、术语等） |
 | 叙述者 | Narrator | AI 对话助手，每本书有多个专职叙述者 |
-| 候选稿 | Candidate | AI 生成的待审阅草稿 |
+| 叙事记忆 | Narrative Memory | 动态事实、时间线、伏笔、角色弧线和召回诊断 |
+| 正式章节结果 | Formal Chapter Result | AI 生成并保存的章节正文结果 |
 | 确认门 | Confirmation Gate | 写入正式资源前的审批机制 |
 | PGI | Pre-Generation Interview | 生成前追问 |
 | 套路 | Routines | Agent 行为规则集（命令/工具/权限/提示词/MCP） |

@@ -2,7 +2,7 @@
  * 章节文件迁移：默认 books 目录 → 绑定目录
  *
  * 场景：之前章节迁移到了 {projectRoot}/books/{bookId}/chapters，
- * 但用户绑定了外部目录（repositoryPath）。本迁移把章节/草稿文件
+ * 但用户绑定了外部目录（repositoryPath）。本迁移把正式章节文件
  * 搬到绑定目录，让用户能用外部编辑器/Git 管理。
  *
  * 幂等：绑定目录已有 chapters/index.json 则跳过。
@@ -34,7 +34,7 @@ async function copyDirIfExists(srcDir: string, destDir: string): Promise<number>
 }
 
 /**
- * 把每本绑定书的章节/草稿从默认 books 目录搬到绑定目录。
+ * 把每本绑定书的正式章节从默认 books 目录搬到绑定目录。
  */
 export async function migrateChaptersToBindingDir(
   projectRoot: string,
@@ -56,10 +56,9 @@ export async function migrateChaptersToBindingDir(
     if (existsSync(marker)) continue;
 
     const movedChapters = await copyDirIfExists(join(defaultDir, "chapters"), join(boundDir, "chapters"));
-    const movedDrafts = await copyDirIfExists(join(defaultDir, "drafts"), join(boundDir, "drafts"));
-    movedFiles += movedChapters + movedDrafts;
+    movedFiles += movedChapters;
 
-    if (movedChapters > 0 || movedDrafts > 0) {
+    if (movedChapters > 0) {
       migratedBooks++;
     }
 

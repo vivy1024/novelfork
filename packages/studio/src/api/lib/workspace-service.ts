@@ -6,7 +6,7 @@
  * Writes use atomic temp-file → rename pattern.
  */
 
-import { readFile, writeFile, readdir, stat, mkdir, rename, unlink } from "node:fs/promises";
+import { readFile, writeFile, readdir, stat, mkdir, rename, unlink, rm } from "node:fs/promises";
 import { join, resolve, relative, sep, posix, normalize } from "node:path";
 import { randomUUID } from "node:crypto";
 
@@ -99,8 +99,8 @@ export async function buildProjectTree(
   const result: TreeEntry[] = [];
 
   for (const entry of entries) {
-    // Skip hidden files, node_modules, .git
-    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    // Skip hidden files, node_modules, .git and lock files by default for IDE file tree noise control.
+    if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name.endsWith(".lock")) continue;
 
     const relPath = relDir ? `${relDir}/${entry.name}` : entry.name;
 
@@ -253,14 +253,20 @@ export async function renameWorkspace(
 }
 
 /**
- * Delete a file within the workspace.
+ * Delete a file or directory within the workspace.
+ * Directories are deleted recursively.
  */
 export async function deleteWorkspace(
   root: string,
   relPath: string,
 ): Promise<void> {
   const absPath = resolveWithinWorkspace(root, relPath);
-  await unlink(absPath);
+  const info = await stat(absPath);
+  if (info.isDirectory()) {
+    await rm(absPath, { recursive: true, force: true });
+  } else {
+    await unlink(absPath);
+  }
 }
 
 // ---------------------------------------------------------------------------

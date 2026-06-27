@@ -12,6 +12,8 @@
  *   POST   /api/books/:bookId/files/rename  — 重命名/移动
  *   POST   /api/books/:bookId/files/delete  — 删除
  */
+import { readFile, stat } from "node:fs/promises";
+import { extname } from "node:path";
 import { Hono } from "hono";
 import { resolveBookStorageDir } from "@vivy1024/novelfork-core";
 import { ApiError } from "../errors.js";
@@ -22,8 +24,22 @@ import {
   mkdirWorkspace,
   renameWorkspace,
   deleteWorkspace,
+  resolveWithinWorkspace,
   WorkspaceSecurityError,
 } from "../lib/workspace-service.js";
+
+const IMAGE_CONTENT_TYPES: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".svg": "image/svg+xml",
+  ".webp": "image/webp",
+};
+
+function contentTypeForPath(path: string): string {
+  return IMAGE_CONTENT_TYPES[extname(path).toLowerCase()] ?? "application/octet-stream";
+}
 
 export function createBookFilesRouter(projectRoot: string): Hono {
   const app = new Hono();
@@ -52,6 +68,26 @@ export function createBookFilesRouter(projectRoot: string): Hono {
     try {
       const result = await readWorkspaceFile(root, path);
       return c.json(result);
+    } catch (e) {
+      if (e instanceof WorkspaceSecurityError) throw e;
+      throw new ApiError(404, "FILE_NOT_FOUND", `File not found: ${path}`);
+    }
+  });
+
+  app.get("/api/books/:bookId/files/raw", async (c) => {
+    const root = bookRoot(c.req.param("bookId"));
+    const path = c.req.query("path");
+    if (!path) throw new ApiError(400, "MISSING_PATH", "Query parameter 'path' is required");
+    try {
+      const absPath = resolveWithinWorkspace(root, path);
+      const [buffer, fileStat] = await Promise.all([readFile(absPath), stat(absPath)]);
+      return new Response(new Uint8Array(buffer), {
+        headers: {
+          "Content-Type": contentTypeForPath(path),
+          "Content-Length": String(fileStat.size),
+          "Cache-Control": "no-store",
+        },
+      });
     } catch (e) {
       if (e instanceof WorkspaceSecurityError) throw e;
       throw new ApiError(404, "FILE_NOT_FOUND", `File not found: ${path}`);

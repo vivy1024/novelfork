@@ -22,13 +22,13 @@ describe("runtime command executor", () => {
     ]);
   });
 
-  it("returns command_error events for planned commands instead of falling through to the model", async () => {
+  it("returns current command status without falling through to the model", async () => {
     const result = await executeRuntimeCommandInput("/tools", { sessionId: "session-1" });
 
-    expect(result).toMatchObject({ ok: false, result: { kind: "error", code: "planned_command" } });
+    expect(result).toMatchObject({ ok: true, result: { kind: "status" } });
     expect(result.events).toEqual([
       expect.objectContaining({ type: "command_started", session_id: "session-1", command_id: "/tools" }),
-      expect.objectContaining({ type: "command_error", session_id: "session-1", command_id: "/tools", code: "planned_command" }),
+      expect.objectContaining({ type: "command_completed", session_id: "session-1", command_id: "/tools", result: expect.objectContaining({ kind: "status" }) }),
     ]);
   });
 });

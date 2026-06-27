@@ -8,10 +8,11 @@
 
 | Spec | 状态 | 说明 |
 |------|------|------|
-| `context-visibility-system` | 🔥 主线 | 三种可见性 + 时间线纪律 + 自动链接 + 上下文组装 |
-| `writing-tools-completion` | 🔥 主线 | 驾驶舱工具面板 + 选段写作 + EPUB 导出 + 专注模式 + 拖拽排序 |
-| `jingwei-core-brief-indexed-reading` | 📋 下一步 | 经纬从全量注入升级为核心包 + 分类目录 + 按需分页阅读 |
-| `agent-runtime-hardening` | 📋 下一步 | 级联压缩 + YOLO 安全判断 + turn 恢复 + 循环检测 |
+| `docs-rewrite-v3` | 🔥 当前执行 | 重写 docs 为够准、够短、可验证的文档中心；保留 `learning/` 与 `codegraph/`。 |
+| `ide-file-tree-and-tabs` | 📋 待执行 | IDE 文件树与标签页体验改进。 |
+| `lore-memory-boundary` | 📋 待执行 | 经纬静态 Lore 与动态叙事记忆边界治理。 |
+| `narrative-wave-memory` | 📋 待执行 | 叙事浪潮记忆能力建设。 |
+| `writing-panel-triage` | 📋 待执行 | 写作面板问题整理与收口。 |
 
 ---
 
@@ -19,55 +20,23 @@
 
 | Spec | 完成日期 | 成果 |
 |------|---------|------|
+| `simplify-writing-model-codewiki` | 2026-06-21 | 候选稿/草稿主概念清理、正式章节结果流、CodeWiki 第一入口与维护规则。 |
 | `agent-tool-gaps` | 2026-05-31 | Agent 工具缺口补全：pipeline.revise / pipeline.import_chapters / rewrite.apply / style.import / style.get_profile。PipelineRunner 已删除，Agent 工具层为唯一执行层。 |
 
 ---
 
-## 后续规划
+## 执行纪律
 
-### 主线（v1.2.0 目标）
-
-```
-context-visibility-system（经纬可见性控制）
-  ↓
-writing-tools-completion（写作工具面板）
-```
-
-### 第二优先级
-
-```
-jingwei-core-brief-indexed-reading（经纬按需阅读）
-  ↓
-agent-runtime-hardening（运行时加固）
-```
+- 执行任何 spec 前必须同时读取 `requirements.md`、`design.md`、`tasks.md`。
+- 完成任务不等于完成需求；必须满足 requirements 的验收条件。
+- 用户可见能力必须有实际验证证据，不能只靠文档声明。
+- 文档相关 spec 必须运行 `bun run docs:verify` 与 `bun run docs:drift`。
 
 ---
 
-## 归档 Specs（70+ 个）
+## 归档 Specs
 
-`archive/` 下已完成/过时的 spec。本次归档（2026-05-31）：
-
-| Spec | 归档原因 |
-|------|---------|
-| `agent-tool-gaps` | ✅ 已完成（5 个工具全部实现，PipelineRunner 已删除） |
-| `cockpit-redesign` | 已完成 |
-| `context-and-presets-overhaul` | 已完成（预设注入、写作设置注入已修复） |
-| `session-detail-panel` | 已完成（硬编码修复） |
-| `studio-bugs-and-features` | 已完成（bug 批量修复） |
-| `constraint-driven-writing-v2` | 核心已实现（10 工具、2 步管线、三层经纬） |
-| `unified-writing-pipeline` | 方向已变（PipelineRunner 已删除） |
-| `runtime-capability-alignment` | 对标驱动，违反项目纪律 |
-| `narrafork-feature-parity` | 对标驱动，违反项目纪律 |
-| `docs-sync-v071` | 版本号过时（当前 v1.1.1） |
-| `error-transparency-and-context-viz` | 被 context-visibility-system 取代 |
-| `general-capability-completion` | 对标驱动 |
-| `unified-writing-resource` | 被 constraint-driven-writing-v2 取代 |
-| `coding-agent-quality` | 已归档（早期） |
-| `ui-visibility-gaps` | 已归档（早期） |
-| `ui-gap-fixes` | 已归档（早期） |
-| `smart-preset-system` | 已归档（早期） |
-| `novel-creation-closure` | 已归档（早期） |
-| `remaining-closure` | 已归档（早期） |
+`archive/` 下保存已完成/过时 spec。归档内容只作为历史参考，不作为当前事实入口。
 
 ---
 

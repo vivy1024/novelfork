@@ -135,14 +135,30 @@ export function createStorageWriteService(options: StorageWriteServiceOptions) {
   const { state } = options;
 
   return {
-    async updateBook(bookId: string, updates: { readonly chapterWordCount?: number; readonly targetChapters?: number; readonly status?: string; readonly language?: string; readonly enabledPresetIds?: string[] }) {
+    async updateBook(bookId: string, updates: {
+      readonly title?: string;
+      readonly genre?: string;
+      readonly platform?: string;
+      readonly chapterWordCount?: number;
+      readonly targetChapters?: number | null;
+      readonly status?: string;
+      readonly language?: string;
+      readonly arcTrackingMode?: string;
+      readonly customSensitiveWords?: string;
+      readonly enabledPresetIds?: string[];
+    }) {
       const book = await state.loadBookConfig(bookId);
       const updated: BookConfig = {
         ...book,
+        ...(updates.title !== undefined ? { title: String(updates.title) } : {}),
+        ...(updates.genre !== undefined ? { genre: String(updates.genre) } : {}),
+        ...(updates.platform !== undefined ? { platform: updates.platform as BookConfig["platform"] } : {}),
         ...(updates.chapterWordCount !== undefined ? { chapterWordCount: Number(updates.chapterWordCount) } : {}),
-        ...(updates.targetChapters !== undefined ? { targetChapters: Number(updates.targetChapters) } : {}),
+        ...(updates.targetChapters !== undefined ? { targetChapters: updates.targetChapters === null ? undefined as unknown as number : Number(updates.targetChapters) } : {}),
         ...(updates.status !== undefined ? { status: updates.status as BookConfig["status"] } : {}),
         ...(updates.language !== undefined ? { language: updates.language as "zh" | "en" } : {}),
+        ...(updates.arcTrackingMode !== undefined ? { arcTrackingMode: updates.arcTrackingMode as BookConfig["arcTrackingMode"] } : {}),
+        ...(updates.customSensitiveWords !== undefined ? { customSensitiveWords: String(updates.customSensitiveWords) } : {}),
         ...(updates.enabledPresetIds !== undefined ? { enabledPresetIds: updates.enabledPresetIds } : {}),
         updatedAt: currentIso(options),
       };

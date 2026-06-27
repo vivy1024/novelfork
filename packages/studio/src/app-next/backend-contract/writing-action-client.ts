@@ -7,11 +7,6 @@ export function createWritingActionClient(contract: ContractClient) {
       contract.post<T>(buildBookApiPath(bookId, "inline-write"), payload, {
         capability: { id: "writing-modes.preview", status: "prompt-preview" },
       }),
-    applyWritingMode: <T = unknown>(bookId: string, payload: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "writing-modes", "apply"), payload, {
-        capability: { id: "writing-modes.apply", status: "current" },
-      }),
-
     generateHooks: <T = unknown>(bookId: string, payload: unknown) =>
       contract.post<T>(buildBookApiPath(bookId, "hooks", "generate"), payload, {
         capability: { id: "hooks.generate", status: "current" },

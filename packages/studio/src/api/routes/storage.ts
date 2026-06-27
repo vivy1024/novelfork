@@ -31,7 +31,7 @@ import {
   buildDefaultBookSessionTitle,
   buildStudioBookConfig,
   buildStudioProjectInitRecord,
-  type StudioBookConfigDraft,
+  type StudioBookConfigInput,
   type StudioCreateBookBody,
   type StudioProjectInitRecord,
 } from "../book-create.js";
@@ -42,7 +42,6 @@ import {
   type PreparedStudioProjectBootstrap,
 } from "../lib/project-bootstrap.js";
 import { createBooksReadService } from "../lib/books-service.js";
-import { createCandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createCockpitService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createNarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { createResourceCheckpointService } from "../lib/resource-checkpoint-service.js";
@@ -119,7 +118,7 @@ function presetPromptLines(presets: ReadonlyArray<Preset>): string {
   return presets.map((preset) => `## ${preset.name}\n\n${preset.promptInjection}`).join("\n\n");
 }
 
-function resolveEnabledPresets(bookConfig: Pick<StudioBookConfigDraft, "enabledPresetIds">): ReadonlyArray<Preset> {
+function resolveEnabledPresets(bookConfig: Pick<StudioBookConfigInput, "enabledPresetIds">): ReadonlyArray<Preset> {
   return (bookConfig.enabledPresetIds ?? [])
     .map((id) => getPreset(id))
     .filter((preset): preset is Preset => Boolean(preset));
@@ -272,7 +271,7 @@ async function syncLocalBookScaffoldToSqlite(
 
 async function writeLocalBookScaffold(
   state: RouterContext["state"],
-  bookConfig: StudioBookConfigDraft,
+  bookConfig: StudioBookConfigInput,
   jingweiTemplate?: StudioCreateBookBody["jingweiTemplate"],
 ): Promise<void> {
   const bookDir = state.bookDir(bookConfig.id);
@@ -390,9 +389,8 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     deleteBookRecord: (bookId) => getStorageDatabase().sqlite.prepare(`DELETE FROM "book" WHERE "id" = ?`).run(bookId),
   });
   const cockpitService = createCockpitService({ state, providerStore: ctx.providerStore });
-  const candidateService = createCandidateToolService({ root });
   const narrativeService = createNarrativeLineService({ state, checkpoint: resourceCheckpointService });
-  configureSessionToolExecutor({ cockpitService, candidateService, narrativeService, loadBookConfig: state.loadBookConfig.bind(state) });
+  configureSessionToolExecutor({ cockpitService, narrativeService, loadBookConfig: state.loadBookConfig.bind(state) });
 
   // 动态注册小说插件工具与 Agent 预设
   registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
@@ -570,9 +568,9 @@ export function createStorageRouter(ctx: RouterContext): Hono {
     return c.json(result, result.status === "missing" ? 404 : 200);
   });
 
-  app.get("/api/books/:id/cockpit/recent-candidates", async (c) => {
+  app.get("/api/books/:id/cockpit/recent-chapter-results", async (c) => {
     const id = c.req.param("id");
-    const result = await cockpitService.listRecentCandidates({ bookId: id, limit: Number(c.req.query("limit")) });
+    const result = await cockpitService.listRecentChapterResults({ bookId: id, limit: Number(c.req.query("limit")) });
     return c.json(result, result.status === "missing" ? 404 : 200);
   });
 
@@ -712,10 +710,15 @@ export function createStorageRouter(ctx: RouterContext): Hono {
   app.put("/api/books/:id", async (c) => {
     const id = c.req.param("id");
     const updates = await c.req.json<{
+      title?: string;
+      genre?: string;
+      platform?: string;
       chapterWordCount?: number;
-      targetChapters?: number;
+      targetChapters?: number | null;
       status?: string;
       language?: string;
+      arcTrackingMode?: string;
+      customSensitiveWords?: string;
     }>();
     try {
       return c.json(await storageWriteService.updateBook(id, updates));

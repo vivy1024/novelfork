@@ -663,6 +663,21 @@ describe("createStudioServer daemon lifecycle", () => {
 
     const status = await app.request("http://localhost/api/daemon");
     await expect(status.json()).resolves.toEqual({ running: false });
+  }, 15000);
+
+  it("does not register deprecated candidate and draft routes on the main server", async () => {
+    const { createStudioServer } = await import("./server.js");
+    const { app } = createStudioServer(cloneProjectConfig() as never, root);
+
+    for (const path of [
+      "/api/books/book-1/candidates",
+      "/api/books/book-1/drafts",
+      "/api/books/book-1/candidates/create",
+      "/api/books/book-1/cockpit/recent-candidates",
+    ]) {
+      const response = await app.request(`http://localhost${path}`);
+      expect(response.status).toBe(404);
+    }
   });
 
   it("rejects book routes with path traversal ids", async () => {
@@ -813,7 +828,6 @@ describe("createStudioServer daemon lifecycle", () => {
     const bookDir = join(root, "books", "book-1");
     await mkdir(join(bookDir, "story"), { recursive: true });
     await mkdir(join(bookDir, "chapters"), { recursive: true });
-    await mkdir(join(bookDir, "generated-candidates"), { recursive: true });
     await writeFile(join(bookDir, "book.json"), JSON.stringify({
       id: "book-1",
       title: "长夜书",
@@ -833,10 +847,6 @@ describe("createStudioServer daemon lifecycle", () => {
     await writeFile(join(bookDir, "story", "current_focus.md"), "# 当前聚焦\n\n锁定城中追债冲突。\n", "utf-8");
     await writeFile(join(bookDir, "story", "pending_hooks.md"), "# 待处理伏笔\n\n- [ ] 第1章：旧账本失踪\n", "utf-8");
     await writeFile(join(bookDir, "story", "chapter_summaries.md"), "# 章节摘要\n\n- 第1章：主角接下追债委托。\n- 第2章：旧账本线索断裂。\n", "utf-8");
-    await writeFile(join(bookDir, "generated-candidates", "index.json"), JSON.stringify([
-      { id: "cand-1", bookId: "book-1", title: "第三章候选", source: "write-next", status: "candidate", createdAt: "2026-05-02T10:00:00.000Z", updatedAt: "2026-05-02T10:00:00.000Z", contentFileName: "cand-1.md" },
-    ]), "utf-8");
-
     const { createStudioServer } = await import("./server.js");
     const { app } = createStudioServer(cloneProjectConfig() as never, root);
 
@@ -844,18 +854,20 @@ describe("createStudioServer daemon lifecycle", () => {
     expect(snapshotResponse.status).toBe(200);
     // Cockpit now reads current_focus and open_hooks from jingwei DB (not markdown files).
     // With the mock storage the queries fail gracefully, returning empty/missing status.
-    await expect(snapshotResponse.json()).resolves.toMatchObject({
+    const snapshot = await snapshotResponse.json();
+    expect(snapshot).toMatchObject({
       status: "available",
       book: { id: "book-1", title: "长夜书" },
       progress: { chapterCount: 2, totalWords: 5100, failedChapters: 1 },
-      recentCandidates: { items: [expect.objectContaining({ id: "cand-1", artifact: expect.objectContaining({ openInCanvas: true }) })] },
+      recentChapterResults: { items: expect.arrayContaining([expect.objectContaining({ id: "chapter:2", artifact: expect.objectContaining({ kind: "chapter", openInCanvas: true }) })]) },
       riskCards: { items: [expect.objectContaining({ kind: "audit-failure", chapterNumber: 2 })] },
       modelStatus: { hasUsableModel: false, status: "missing" },
     });
+    expect("recentCandidates" in snapshot).toBe(false);
 
-    const candidatesResponse = await app.request("http://localhost/api/books/book-1/cockpit/recent-candidates?limit=1");
-    expect(candidatesResponse.status).toBe(200);
-    await expect(candidatesResponse.json()).resolves.toMatchObject({ status: "available", items: [expect.objectContaining({ id: "cand-1" })] });
+    const chapterResultsResponse = await app.request("http://localhost/api/books/book-1/cockpit/recent-chapter-results?limit=1");
+    expect(chapterResultsResponse.status).toBe(200);
+    await expect(chapterResultsResponse.json()).resolves.toMatchObject({ status: "available", items: [expect.objectContaining({ id: "chapter:2" })] });
   });
 
   it("updates the first-run language immediately after the language selector saves", async () => {
@@ -899,7 +911,7 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "local-only-book",
       defaultSession: {
-        title: "📝 写书 — Local Only Book",
+        title: "📝 小说创作 — Local Only Book",
         projectId: "local-only-book",
       },
     });
@@ -1241,8 +1253,8 @@ describe("createStudioServer daemon lifecycle", () => {
       status: "creating",
       bookId: "session-book",
       defaultSession: {
-        title: "📝 写书 — Session Book",
-        agentId: "writer",
+        title: "📝 小说创作 — Session Book",
+        agentId: "novelist",
         sessionMode: "chat",
         projectId: "session-book",
       },

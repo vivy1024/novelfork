@@ -8,11 +8,10 @@ import { Sparkles, Pencil, Plus, Trash2 } from "lucide-react";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
+import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 
 export type ResourceViewerKind =
   | "chapter"
-  | "candidate"
-  | "draft"
   | "story"
   | "jingwei"
   | "storyline"
@@ -20,6 +19,8 @@ export type ResourceViewerKind =
   | "jingwei-entry"
   | "narrative-line"
   | "tool-result"
+  | "file"
+  | "image"
   | "generic";
 
 export interface ResourceViewerRenderOptions {
@@ -36,8 +37,6 @@ export interface ResourceViewerDefinition {
 
 const editableLabels: Record<string, string> = {
   chapter: "章节正文",
-  candidate: "候选稿正文",
-  draft: "草稿正文",
 };
 
 function CapabilityNotice({ node }: { node: WorkbenchResourceNode }) {
@@ -52,13 +51,17 @@ function CapabilityNotice({ node }: { node: WorkbenchResourceNode }) {
 
 function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; label: string; children: ReactNode }) {
   return (
-    <section className="resource-viewer" data-resource-kind={node.kind}>
-      <header className="resource-viewer__header">
-        <p>{label}</p>
-        <h2>{node.title}</h2>
-        <CapabilityNotice node={node} />
+    <section className="flex flex-col h-full min-h-0" data-resource-kind={node.kind}>
+      <header className="resource-viewer__header shrink-0 px-4 py-2 border-b border-border/50">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-muted-foreground">{label}</span>
+          <h2 className="text-sm font-medium truncate">{node.title}</h2>
+          <CapabilityNotice node={node} />
+        </div>
       </header>
-      {children}
+      <div className="flex-1 min-h-0 overflow-y-auto">
+        {children}
+      </div>
     </section>
   );
 }
@@ -93,10 +96,10 @@ function TextBody({ node, label, onContentChange, onTabComplete }: { node: Workb
   }, [onTabComplete, readonly, completing, onContentChange]);
 
   return (
-    <div className="relative">
-      <Textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} rows={18} onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} />
+    <div className="flex flex-col h-full min-h-0 relative p-3">
+      <textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} className="flex-1 min-h-0 resize-none w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30" onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} />
       {completing && (
-        <span className="absolute bottom-2 right-2 text-[10px] text-muted-foreground animate-pulse">续写中…</span>
+        <span className="absolute bottom-5 right-5 text-[10px] text-muted-foreground animate-pulse">续写中…</span>
       )}
     </div>
   );
@@ -232,9 +235,10 @@ function renderJingweiFile(node: WorkbenchResourceNode, options: ResourceViewerR
 }
 
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
+  const isNarrativeMemory = node.metadata?.isNarrativeMemoryEntry === true;
   return (
-    <ViewerShell node={node} label="Story 文本文件">
-      <TextBody node={node} label="文本文件正文" onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
+    <ViewerShell node={node} label={isNarrativeMemory ? "叙事记忆" : "Story 文本文件"}>
+      <TextBody node={node} label={isNarrativeMemory ? "记忆内容" : "文本文件正文"} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
     </ViewerShell>
   );
 }
@@ -733,6 +737,21 @@ function renderReadonlySummary(node: WorkbenchResourceNode, options: ResourceVie
   );
 }
 
+function renderImageFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
+  const rawUrl = options.bookId ? getImageRawUrl(options.bookId, node) : null;
+  return (
+    <ViewerShell node={node} label="图片预览">
+      <div className="flex min-h-[420px] items-center justify-center bg-muted/30 p-4">
+        {rawUrl ? (
+          <img src={rawUrl} alt={node.title} className="max-h-full max-w-full object-contain" />
+        ) : (
+          <div className="text-sm text-muted-foreground">缺少书籍 ID，无法预览图片</div>
+        )}
+      </div>
+    </ViewerShell>
+  );
+}
+
 function renderGeneric(node: WorkbenchResourceNode) {
   return (
     <ViewerShell node={node} label="资源">
@@ -752,26 +771,8 @@ function renderToolResult(node: WorkbenchResourceNode) {
   );
 }
 
-function renderCandidateText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
-  // 候选稿默认只读展示，操作通过 CandidateActionsBar 完成
-  const readonly = true;
-  return (
-    <ViewerShell node={node} label="候选稿">
-      <Textarea
-        aria-label="候选稿正文"
-        readOnly={readonly}
-        value={node.content ?? ""}
-        rows={18}
-        onChange={(event) => options.onContentChange?.(event.currentTarget.value)}
-      />
-    </ViewerShell>
-  );
-}
-
 export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDefinition> = {
   chapter: { kind: "chapter", label: "章节", render: renderChapterEditor },
-  candidate: { kind: "candidate", label: "候选稿", render: renderCandidateText },
-  draft: { kind: "draft", label: "草稿", render: renderChapterEditor },
   story: { kind: "story", label: "Story 文件", render: renderTextFile },
   jingwei: { kind: "jingwei", label: "经纬资料", render: renderJingweiFile },
   storyline: { kind: "storyline", label: "叙事线", render: renderReadonlySummary },
@@ -779,13 +780,13 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderJingweiCard },
   "narrative-line": { kind: "narrative-line", label: "叙事线", render: renderReadonlySummary },
   "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },
+  file: { kind: "file", label: "文本文件", render: renderTextFile },
+  image: { kind: "image", label: "图片预览", render: renderImageFile },
   generic: { kind: "generic", label: "通用资源", render: renderGeneric },
 };
 
 const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "chapter",
-  "candidate",
-  "draft",
   "story",
   "jingwei",
   "storyline",
@@ -793,10 +794,17 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
   "jingwei-entry",
   "narrative-line",
   "tool-result",
+  "file",
 ]);
 
 export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDefinition {
-  if (!viewerKinds.has(node.kind) || node.capabilities.unsupported) {
+  if (node.capabilities.unsupported) {
+    return resourceViewerRegistry.generic;
+  }
+  if (isImageResourceNode(node)) {
+    return resourceViewerRegistry.image;
+  }
+  if (!viewerKinds.has(node.kind)) {
     return resourceViewerRegistry.generic;
   }
 

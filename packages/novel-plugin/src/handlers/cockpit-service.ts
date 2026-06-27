@@ -50,21 +50,21 @@ export interface CockpitHookItem {
   readonly sourceKind: "pending-hooks" | "jingwei";
 }
 
-export interface CockpitCandidateItem {
+export interface CockpitChapterResultItem {
   readonly id: string;
   readonly bookId: string;
+  readonly chapterNumber: number;
   readonly title: string;
-  readonly source: string;
   readonly status: string;
+  readonly wordCount: number;
   readonly createdAt: string;
   readonly updatedAt: string;
-  readonly metadata?: Record<string, unknown>;
   readonly artifact: {
     readonly id: string;
-    readonly kind: "candidate";
+    readonly kind: "chapter";
     readonly title: string;
-    readonly resourceRef: { readonly kind: "candidate"; readonly id: string; readonly bookId: string; readonly title: string };
-    readonly renderer: "candidate.created";
+    readonly resourceRef: { readonly kind: "chapter"; readonly id: string; readonly bookId: string; readonly chapterNumber: number; readonly title: string };
+    readonly renderer: "chapter.result";
     readonly openInCanvas: true;
   };
 }
@@ -104,7 +104,7 @@ export interface CockpitSnapshot {
   readonly currentFocus: CockpitCurrentFocusSummary;
   readonly recentChapterSummaries: CockpitListResult<CockpitChapterSummaryItem>;
   readonly openHooks: CockpitListResult<CockpitHookItem>;
-  readonly recentCandidates: CockpitListResult<CockpitCandidateItem>;
+  readonly recentChapterResults: CockpitListResult<CockpitChapterResultItem>;
   readonly riskCards: CockpitListResult<CockpitRiskCard>;
   readonly modelStatus?: CockpitModelStatus;
 }
@@ -113,17 +113,6 @@ export interface CockpitServiceOptions {
   readonly state: StateManager;
   readonly providerStore?: ProviderRuntimeStore;
   readonly now?: () => Date;
-}
-
-interface CandidateRecord {
-  readonly id: string;
-  readonly bookId?: string;
-  readonly title?: string;
-  readonly source?: string;
-  readonly createdAt?: string;
-  readonly updatedAt?: string;
-  readonly status?: string;
-  readonly metadata?: Record<string, unknown>;
 }
 
 const DEFAULT_DAILY_TARGET = 3000;
@@ -157,19 +146,19 @@ export class CockpitService {
         currentFocus: { status: "missing", content: null, reason: `Book ${input.bookId} not found` },
         recentChapterSummaries: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
         openHooks: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
-        recentCandidates: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
+        recentChapterResults: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
         riskCards: { status: "missing", items: [], reason: `Book ${input.bookId} not found` },
         ...(input.includeModelStatus ? { modelStatus: await this.getModelStatus() } : {}),
       };
     }
 
-    const [chapters, currentFocus, recentChapterSummaries, openHooks, recentCandidates] = await Promise.all([
+    const [chapters, currentFocus, recentChapterSummaries, openHooks] = await Promise.all([
       this.state.loadChapterIndex(input.bookId),
       this.readCurrentFocusFromJingwei(input.bookId),
       this.readChapterSummariesFromJingwei(input.bookId),
       this.listOpenHooksFromJingwei(input),
-      this.listRecentCandidates(input),
     ]);
+    const recentChapterResults = buildRecentChapterResults(input.bookId, chapters);
     const progress = buildProgress(book, chapters);
     const riskCards = buildRiskCards(chapters, openHooks.items);
 
@@ -188,7 +177,7 @@ export class CockpitService {
       currentFocus,
       recentChapterSummaries,
       openHooks,
-      recentCandidates,
+      recentChapterResults,
       riskCards,
       ...(input.includeModelStatus ? { modelStatus: await this.getModelStatus() } : {}),
     };
@@ -198,22 +187,14 @@ export class CockpitService {
     return this.listOpenHooksFromJingwei(input);
   }
 
-  async listRecentCandidates(input: { readonly bookId: string; readonly limit?: number }): Promise<CockpitListResult<CockpitCandidateItem>> {
+  async listRecentChapterResults(input: { readonly bookId: string; readonly limit?: number }): Promise<CockpitListResult<CockpitChapterResultItem>> {
     const book = await this.loadBook(input.bookId);
     if (!book) {
       return { status: "missing", items: [], reason: `Book ${input.bookId} not found` };
     }
 
-    const records = await this.loadCandidateRecords(input.bookId);
-    const items = records
-      .filter((candidate) => candidate.status === "candidate")
-      .sort((left, right) => (right.updatedAt ?? right.createdAt ?? "").localeCompare(left.updatedAt ?? left.createdAt ?? ""))
-      .slice(0, normalizeLimit(input.limit))
-      .map((candidate) => toCandidateItem(input.bookId, candidate));
-
-    return items.length > 0
-      ? { status: "available", items }
-      : { status: "empty", items: [], reason: "暂无候选稿。" };
+    const chapters = await this.state.loadChapterIndex(input.bookId);
+    return buildRecentChapterResults(input.bookId, chapters, input.limit);
   }
 
   // ── SQLite Jingwei 数据源 ──
@@ -335,18 +316,6 @@ export class CockpitService {
     }
   }
 
-  private async loadCandidateRecords(bookId: string): Promise<CandidateRecord[]> {
-    try {
-      const { readFile } = await import("node:fs/promises");
-      const { join } = await import("node:path");
-      const raw = await readFile(join(this.state.bookDir(bookId), "generated-candidates", "index.json"), "utf-8");
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? parsed.filter(isCandidateRecord) : [];
-    } catch {
-      return [];
-    }
-  }
-
   private async getModelStatus(): Promise<CockpitModelStatus> {
     const pool = await buildRuntimeModelPool(this.providerStore);
     const first = pool[0];
@@ -406,6 +375,41 @@ function computeHookRisk(sourceChapter: number, currentChapter: number, threshol
   return "open";
 }
 
+function buildRecentChapterResults(bookId: string, chapters: readonly ChapterMeta[], limit?: number): CockpitListResult<CockpitChapterResultItem> {
+  const items = chapters
+    .slice()
+    .sort((left, right) => (right.updatedAt ?? right.createdAt ?? "").localeCompare(left.updatedAt ?? left.createdAt ?? ""))
+    .slice(0, normalizeLimit(limit))
+    .map((chapter) => toChapterResultItem(bookId, chapter));
+
+  return items.length > 0
+    ? { status: "available", items }
+    : { status: "empty", items: [], reason: "暂无章节结果。" };
+}
+
+function toChapterResultItem(bookId: string, chapter: ChapterMeta): CockpitChapterResultItem {
+  const title = chapter.title || `第${chapter.number}章`;
+  const id = `chapter:${chapter.number}`;
+  return {
+    id,
+    bookId,
+    chapterNumber: chapter.number,
+    title,
+    status: chapter.status ?? "unknown",
+    wordCount: chapter.wordCount ?? 0,
+    createdAt: chapter.createdAt ?? "",
+    updatedAt: chapter.updatedAt ?? chapter.createdAt ?? "",
+    artifact: {
+      id,
+      kind: "chapter",
+      title,
+      resourceRef: { kind: "chapter", id, bookId, chapterNumber: chapter.number, title },
+      renderer: "chapter.result",
+      openInCanvas: true,
+    },
+  };
+}
+
 function buildRiskCards(chapters: readonly ChapterMeta[], hooks: readonly CockpitHookItem[]): CockpitListResult<CockpitRiskCard> {
   const cards: CockpitRiskCard[] = [];
   for (const chapter of chapters) {
@@ -436,32 +440,6 @@ function buildRiskCards(chapters: readonly ChapterMeta[], hooks: readonly Cockpi
     }
   }
   return cards.length > 0 ? { status: "available", items: cards } : { status: "empty", items: [], reason: "暂无驾驶舱风险。" };
-}
-
-function isCandidateRecord(value: unknown): value is CandidateRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value) && typeof (value as { id?: unknown }).id === "string";
-}
-
-function toCandidateItem(bookId: string, candidate: CandidateRecord): CockpitCandidateItem {
-  const title = candidate.title || candidate.id;
-  return {
-    id: candidate.id,
-    bookId,
-    title,
-    source: candidate.source ?? "unknown",
-    status: candidate.status ?? "candidate",
-    createdAt: candidate.createdAt ?? "",
-    updatedAt: candidate.updatedAt ?? candidate.createdAt ?? "",
-    ...(candidate.metadata ? { metadata: candidate.metadata } : {}),
-    artifact: {
-      id: `candidate:${bookId}:${candidate.id}`,
-      kind: "candidate",
-      title,
-      resourceRef: { kind: "candidate", id: candidate.id, bookId, title },
-      renderer: "candidate.created",
-      openInCanvas: true,
-    },
-  };
 }
 
 function safeParseJson<T>(value: string | null | undefined, fallback: T): T {

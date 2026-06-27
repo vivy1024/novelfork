@@ -79,9 +79,6 @@ export const TOOL_CHAPTER_READ = "chapter.read";
 export const TOOL_CHAPTER_LIST = "chapter.list";
 export const TOOL_CHAPTER_AUDIT = "chapter.audit";
 
-// ── 候选稿 ──
-export const TOOL_CANDIDATE_CREATE = "candidate.create_chapter";
-
 // ── 写作管线 ──
 export const TOOL_PIPELINE_WRITE = "pipeline.write";
 export const TOOL_PIPELINE_REVISE = "pipeline.revise";

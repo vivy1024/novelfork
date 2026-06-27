@@ -29,6 +29,7 @@ const useShellDataStoreMock = vi.hoisted(() => vi.fn());
 const useAgentConversationRuntimeMock = vi.hoisted(() => vi.fn());
 const loadWorkbenchResourcesFromContractMock = vi.hoisted(() => vi.fn());
 const fetchMock = vi.hoisted(() => vi.fn());
+const nativeFetchMock = vi.hoisted(() => vi.fn());
 const sendMessageMock = vi.hoisted(() => vi.fn());
 const abortMock = vi.hoisted(() => vi.fn());
 const ackMock = vi.hoisted(() => vi.fn());
@@ -48,9 +49,76 @@ vi.mock("./shell", async () => {
 
 vi.mock("./agent-conversation", async () => {
   const actual = await vi.importActual<typeof import("./agent-conversation")>("./agent-conversation");
+  const React = await vi.importActual<typeof import("react")>("react");
   return {
     ...actual,
     useAgentConversationRuntime: useAgentConversationRuntimeMock,
+    ConversationRoute: (props: any) => {
+      const [message, setMessage] = React.useState("");
+      const [confirmationBusy, setConfirmationBusy] = React.useState(false);
+      const send = () => {
+        const trimmed = message.trim();
+        if (!trimmed || props.sendDisabledReason) return;
+        props.onSendMessage?.(trimmed, undefined);
+        setMessage("");
+      };
+      const decide = async (decision: "approve" | "reject") => {
+        if (!props.initialConfirmation || confirmationBusy) return;
+        setConfirmationBusy(true);
+        if (decision === "approve") {
+          await props.onApproveConfirmation?.(props.initialConfirmation.id);
+        } else {
+          await props.onRejectConfirmation?.(props.initialConfirmation.id);
+        }
+        setConfirmationBusy(false);
+      };
+      return (
+        <section data-testid="conversation-route" data-session-id={props.sessionId}>
+          <h2>{props.title ?? props.sessionId}</h2>
+          {props.initialStatus?.binding?.label ? <p>绑定：{props.initialStatus.binding.label}</p> : null}
+          {typeof props.initialStatus?.messageCount === "number" ? <p>消息：{props.initialStatus.messageCount}</p> : null}
+          {props.initialStatus?.binding?.worktree ? <p>工作区：{props.initialStatus.binding.worktree}</p> : null}
+          {props.initialStatus?.workspace?.git ? <p>Git：{props.initialStatus.workspace.git.status === "unavailable" ? `不可用（${props.initialStatus.workspace.git.reason ?? "未知原因"}）` : props.initialStatus.workspace.git.summary ?? props.initialStatus.workspace.git.status}</p> : null}
+          {props.initialStatus?.unsupportedToolsReason ? <div data-testid="unsupported-tools-notice">{props.initialStatus.unsupportedToolsReason}</div> : null}
+          {props.sendDisabledReason ? <p>{props.sendDisabledReason}</p> : null}
+          {props.initialStatus?.modelOptions?.length ? (
+            <>
+              <label>模型
+                <select aria-label="模型" value={`${props.initialStatus.providerId ?? ""}::${props.initialStatus.modelId ?? ""}`} onChange={(event) => {
+                  const [providerId, modelId] = event.currentTarget.value.split("::");
+                  props.onUpdateSessionConfig?.({ providerId, modelId });
+                }}>
+                  {props.initialStatus.modelOptions.map((model: any) => <option key={`${model.providerId}::${model.modelId}`} value={`${model.providerId}::${model.modelId}`}>{model.providerLabel ?? model.providerId} / {model.modelLabel ?? model.modelId}</option>)}
+                </select>
+              </label>
+              <label>权限
+                <select aria-label="权限" value={props.initialStatus.permissionMode ?? "edit"} onChange={(event) => props.onUpdateSessionConfig?.({ permissionMode: event.currentTarget.value })}>
+                  <option value="ask">ask</option><option value="edit">edit</option><option value="yolo">yolo</option><option value="plan">plan</option>
+                </select>
+              </label>
+              <label>推理强度
+                <select aria-label="推理强度" value={props.initialStatus.reasoningEffort ?? "medium"} onChange={(event) => props.onUpdateSessionConfig?.({ reasoningEffort: event.currentTarget.value })}>
+                  <option value="low">low</option><option value="medium">medium</option><option value="high">high</option>
+                </select>
+              </label>
+            </>
+          ) : null}
+          {props.initialMessages?.map((msg: any) => <p key={msg.id}>{msg.content}</p>)}
+          {props.initialError ? <p>{props.initialError.message}</p> : null}
+          {props.initialRecoveryNotice?.state && props.initialRecoveryNotice.state !== "idle" ? <p>{props.initialRecoveryNotice.reason ?? props.initialRecoveryNotice.state}</p> : null}
+          {props.initialConfirmation ? (
+            <div data-testid="confirmation-gate">
+              <p>{props.initialConfirmation.toolName ?? props.initialConfirmation.title}</p>
+              {props.initialConfirmation.error ? <p>{props.initialConfirmation.error}</p> : null}
+              <button type="button" disabled={confirmationBusy} onClick={() => void decide("approve")}>批准</button>
+              <button type="button" disabled={confirmationBusy} onClick={() => void decide("reject")}>拒绝</button>
+            </div>
+          ) : null}
+          <textarea aria-label="对话输入框" value={message} onChange={(event) => setMessage(event.currentTarget.value)} />
+          {props.initialStatus?.state === "running" ? <button type="button" onClick={() => props.onAbortSession?.()}>中断（长按确认）</button> : <button type="button" disabled={!message.trim() || Boolean(props.sendDisabledReason)} onClick={send}>发送</button>}
+        </section>
+      );
+    },
   };
 });
 
@@ -59,6 +127,85 @@ vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench", async () => 
   return {
     ...actual,
     loadWorkbenchResourcesFromContract: loadWorkbenchResourcesFromContractMock,
+  };
+});
+
+vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", async () => {
+  const React = await vi.importActual<typeof import("react")>("react");
+  const flatten = (nodes: readonly any[]): any[] => nodes.flatMap((node) => [node, ...flatten(node.children ?? [])]);
+  const editorLabel = (node: any) => {
+    if (node.kind === "chapter") return "章节正文";
+    if (node.kind === "narrative-line") return "叙事线内容";
+    return "文本文件正文";
+  };
+  return {
+    IdeWorkbench: (props: any) => {
+      const nodes = flatten(props.nodes ?? []).filter((node) => node.capabilities?.open !== false);
+      const selected = props.selectedNode;
+      const [content, setContent] = React.useState(selected?.content ?? "");
+      const [dirty, setDirty] = React.useState(false);
+      const [error, setError] = React.useState<string | null>(null);
+      React.useEffect(() => {
+        setContent(selected?.content ?? "");
+        setDirty(false);
+        setError(null);
+      }, [selected?.id, selected?.content]);
+      const markDirty = (value: string) => {
+        setContent(value);
+        if (!selected) return;
+        setDirty(true);
+        props.onCanvasContextChange?.({
+          activeTabId: selected.id,
+          activeResource: selected,
+          dirty: true,
+          openTabs: [{ ...selected, dirty: true }],
+        });
+      };
+      const save = async () => {
+        if (!selected) return;
+        try {
+          setError(null);
+          await props.onSave?.(selected, content);
+          setDirty(false);
+          props.onCanvasContextChange?.({ activeTabId: selected.id, activeResource: { ...selected, content }, dirty: false, openTabs: [{ ...selected, content, dirty: false }] });
+        } catch (err) {
+          setError(err instanceof Error ? err.message : String(err));
+          setDirty(true);
+        }
+      };
+      return (
+        <section data-testid="writing-workbench-route" data-book-id={props.bookId}>
+          {props.bookSessions?.map((session: any) => (
+            <button key={session.id} type="button" onClick={() => { props.onSwitchSession?.(session.id); props.onSwitchToAgent?.(); }}>{session.title}</button>
+          ))}
+          {nodes.map((node) => <button key={node.id} type="button" onClick={() => {
+            if (node.kind === "jingwei" || node.kind === "jingwei-entry") {
+              props.onDeselectNode?.();
+              return;
+            }
+            props.onOpen?.(node);
+          }}>{node.title}</button>)}
+          {props.chatSlot}
+          {dirty ? <span>未保存</span> : null}
+          {error ? <p>{error}</p> : null}
+          {!selected ? <p>请选择左侧资源</p> : null}
+          {selected?.capabilities?.unsupported ? <div><p>此资源类型暂不支持直接编辑</p><p>类型：{selected.kind}</p></div> : null}
+          {selected && !selected.capabilities?.unsupported ? (
+            <div>
+              <p>{selected.title}</p>
+              {selected.kind === "story" ? <p>Story 文本文件</p> : null}
+              <textarea
+                aria-label={editorLabel(selected)}
+                readOnly={selected.capabilities?.readonly || !selected.capabilities?.edit}
+                value={content}
+                onChange={(event: any) => markDirty(event.currentTarget.value)}
+              />
+              {selected.capabilities?.edit ? <button type="button" onClick={save}>保存</button> : null}
+            </div>
+          ) : null}
+        </section>
+      );
+    },
   };
 });
 
@@ -123,6 +270,14 @@ async function renderApp(route: ShellRoute = { kind: "home" }) {
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
 
 beforeEach(() => {
+  nativeFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("/api/sessions?")) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    }
+    return new Response(JSON.stringify({ error: `Unhandled native fetch: ${url}` }), { status: 404, headers: { "content-type": "application/json" } });
+  });
+  vi.stubGlobal("fetch", nativeFetchMock);
   fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
     if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
     if (url.startsWith("/api/sessions/") && options?.method === "PUT") {
@@ -279,6 +434,12 @@ describe("StudioNextApp", () => {
   });
 
   it("routes send actions through the live conversation runtime and acknowledges hydrated cursor", async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === PROVIDER_MODELS_API_PATH) {
+        return { models: [{ modelId: "gpt-5.4", modelName: "GPT-5.4", providerId: "sub2api", providerName: "Sub2API", enabled: true, capabilities: { functionCalling: true, streaming: true } }] };
+      }
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
     useAgentConversationRuntimeMock.mockReturnValue({
       state: {
         session: {
@@ -526,6 +687,25 @@ describe("StudioNextApp", () => {
       if (url === "/api/sessions/session-1" && options?.method === "PUT") {
         return { ok: true };
       }
+      if (url === "/api/sessions/session-1/chat/state") {
+        return {
+          session: {
+            id: "session-1",
+            title: "第三章续写",
+            agentId: "writer",
+            kind: "standalone",
+            sessionMode: "chat",
+            status: "active",
+            createdAt: "2026-05-05T00:00:00.000Z",
+            lastModified: "2026-05-05T00:00:00.000Z",
+            messageCount: 1,
+            sortOrder: 0,
+            sessionConfig: { providerId: "sub2api", modelId: "gpt-5.5", permissionMode: "ask", reasoningEffort: "high" },
+          },
+          messages: [],
+          cursor: { lastSeq: 0, ackedSeq: 0 },
+        };
+      }
       throw new Error(`Unhandled fetch: ${url}`);
     });
     useAgentConversationRuntimeMock.mockReturnValue({
@@ -554,6 +734,7 @@ describe("StudioNextApp", () => {
       sendMessage: sendMessageMock,
       abort: abortMock,
       ack: ackMock,
+      applyEnvelope: vi.fn(),
       getResumeFromSeq: () => 0,
     });
 
@@ -638,15 +819,15 @@ describe("StudioNextApp", () => {
     const messages = [{
       id: "m1",
       role: "assistant",
-      content: "候选稿需要确认",
+      content: "章节结果需要确认",
       timestamp: 1,
       seq: 1,
       toolCalls: [{
         id: "tool-1",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         status: "pending",
-        summary: "创建候选稿",
-        confirmation: { id: "tc-1", toolName: "candidate.create_chapter", target: "第三章候选稿", risk: "confirmed-write", summary: "创建候选稿", options: ["approve", "reject"] },
+        summary: "创建章节结果",
+        confirmation: { id: "tc-1", toolName: "pipeline.write", target: "第三章章节结果", risk: "confirmed-write", summary: "创建章节结果", options: ["approve", "reject"] },
       }],
     }];
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
@@ -654,7 +835,7 @@ describe("StudioNextApp", () => {
       if (url === "/api/sessions/session-1/tools") {
         return { sessionId: "session-1", tools: [], pendingConfirmations: [messages[0].toolCalls[0].confirmation] };
       }
-      if (url === "/api/sessions/session-1/tools/candidate.create_chapter/confirm" && options?.method === "POST") {
+      if (url === "/api/sessions/session-1/tools/pipeline.write/confirm" && options?.method === "POST") {
         return { ok: true, snapshot: { session, messages: [{ ...messages[0], toolCalls: [{ ...messages[0].toolCalls[0], status: "success" }], content: "确认已处理" }], cursor: { lastSeq: 2, ackedSeq: 2 } } };
       }
       throw new Error(`Unhandled fetch: ${url}`);
@@ -671,11 +852,11 @@ describe("StudioNextApp", () => {
     await renderApp({ kind: "narrator", sessionId: "session-1" });
 
     const gate = await screen.findByTestId("confirmation-gate");
-    expect(within(gate).getByText("candidate.create_chapter")).toBeTruthy();
+    expect(within(gate).getByText("pipeline.write")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "批准" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/sessions/session-1/tools/candidate.create_chapter/confirm",
+      "/api/sessions/session-1/tools/pipeline.write/confirm",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "approve", confirmationId: "tc-1", reason: null }) }),
     ));
     expect(applyEnvelopeMock).toHaveBeenCalledWith(expect.objectContaining({
@@ -685,7 +866,7 @@ describe("StudioNextApp", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
-      "/api/sessions/session-1/tools/candidate.create_chapter/confirm",
+      "/api/sessions/session-1/tools/pipeline.write/confirm",
       expect.objectContaining({ method: "POST", body: JSON.stringify({ decision: "reject", confirmationId: "tc-1", reason: null }) }),
     ));
   });
@@ -697,20 +878,20 @@ describe("StudioNextApp", () => {
     const messages = [{
       id: "m1",
       role: "assistant",
-      content: "候选稿需要确认",
+      content: "章节结果需要确认",
       timestamp: 1,
       seq: 1,
       toolCalls: [{
         id: "tool-1",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         status: "pending",
-        confirmation: { id: "tc-1", toolName: "candidate.create_chapter", target: "第三章候选稿", risk: "confirmed-write", summary: "创建候选稿", options: ["approve", "reject"] },
+        confirmation: { id: "tc-1", toolName: "pipeline.write", target: "第三章章节结果", risk: "confirmed-write", summary: "创建章节结果", options: ["approve", "reject"] },
       }],
     }];
     fetchMock.mockImplementation(async (url: string, options?: { method?: string; body?: string }) => {
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-1/tools") return { sessionId: "session-1", tools: [], pendingConfirmations: [messages[0].toolCalls[0].confirmation] };
-      if (url === "/api/sessions/session-1/tools/candidate.create_chapter/confirm" && options?.method === "POST") {
+      if (url === "/api/sessions/session-1/tools/pipeline.write/confirm" && options?.method === "POST") {
         confirmAttempts += 1;
         throw Object.assign(new Error("Pending confirmation not found"), { status: 404, code: "pending-confirmation-not-found" });
       }
@@ -776,16 +957,15 @@ describe("StudioNextApp", () => {
     expect(screen.queryByText(/请选择左侧资源/)).toBeTruthy();
   });
 
-  it("opens chapter, candidate, draft, story/truth, jingwei, narrative and unsupported resources on the book canvas", async () => {
+  it("opens chapter, story/truth, jingwei, narrative and unsupported resources on the book canvas", async () => {
     const nodes = [
       { id: "chapter:b1:1", kind: "chapter", title: "第一章", content: "第一章正文", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
-      { id: "candidate:c1", kind: "candidate", title: "第二章候选稿", content: "候选正文", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: true, apply: true } },
-      { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } },
+      { id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2, detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } },
       { id: "story-file:hooks.md", kind: "story", title: "hooks.md", path: "story/hooks.md", content: "伏笔内容", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
       { id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", path: "story/truth.md", content: "真相内容", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "jingwei-entry:char-1", kind: "jingwei-entry", title: "沈舟", content: "主角，灵潮亲和。", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false } },
       { id: "narrative-line:b1", kind: "narrative-line", title: "叙事线快照", content: "主线：灵潮复苏。", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } },
-      { id: "unsupported:candidates.list", kind: "unsupported", title: "候选稿加载失败", content: "", capabilities: { open: true, readonly: true, unsupported: true, edit: false, delete: false, apply: false } },
+      { id: "unsupported:resources.list", kind: "unsupported", title: "章节结果加载失败", content: "", capabilities: { open: true, readonly: true, unsupported: true, edit: false, delete: false, apply: false } },
     ];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],
@@ -800,11 +980,8 @@ describe("StudioNextApp", () => {
     // ChapterEditor uses Tiptap which may not render in jsdom; verify node was selected
     expect(screen.getByTestId("writing-workbench-route").textContent).toContain("第一章");
 
-    fireEvent.click(screen.getByRole("button", { name: /第二章候选稿/ }));
-    expect(screen.getByLabelText("候选稿正文")).toHaveProperty("value", "候选正文");
-
-    fireEvent.click(screen.getByRole("button", { name: /片段草稿/ }));
-    expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "草稿正文");
+    fireEvent.click(screen.getByRole("button", { name: /第二章/ }));
+    expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第二章正文");
 
     fireEvent.click(screen.getByRole("button", { name: /hooks.md/ }));
     expect(screen.getByText("Story 文本文件")).toBeTruthy();
@@ -822,7 +999,7 @@ describe("StudioNextApp", () => {
     expect(screen.getByTestId("writing-workbench-route").textContent).toContain("叙事线");
     expect(screen.getByLabelText("叙事线内容")).toHaveProperty("value", "主线：灵潮复苏。");
 
-    fireEvent.click(screen.getByRole("button", { name: /候选稿加载失败/ }));
+    fireEvent.click(screen.getByRole("button", { name: /章节结果加载失败/ }));
     expect(screen.getByText("此资源类型暂不支持直接编辑")).toBeTruthy();
     expect(screen.getByTestId("writing-workbench-route").textContent).toContain("类型：unsupported");
   });
@@ -833,7 +1010,7 @@ describe("StudioNextApp", () => {
       resolveChapter = resolve;
     });
     const nodes = [
-      { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1", detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
+      { id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2, detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "chapter:b1:1", kind: "chapter", title: "第一章", content: "", metadata: { bookId: "b1", chapterNumber: 1, source: "list-preview" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
     ];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
@@ -850,22 +1027,22 @@ describe("StudioNextApp", () => {
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
-    expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "草稿正文");
+    fireEvent.click(await screen.findByRole("button", { name: /第二章/ }));
+    expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第二章正文");
     fireEvent.click(screen.getByRole("button", { name: /第一章/ }));
 
-    expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "草稿正文");
+    expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第二章正文");
     expect(screen.getByRole("status").textContent).toContain("正在加载 第一章 详情");
 
     resolveChapter({ chapterNumber: 1, filename: "0001.md", content: "第一章详情正文" });
 
-    expect(await screen.findByLabelText("章节正文")).toHaveProperty("value", "第一章详情正文");
+    await waitFor(() => expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "第一章详情正文"));
   });
 
   it("saves editable book resources through the matching resource contract entry", async () => {
     const nodes = [
       { id: "chapter:b1:1", kind: "chapter", title: "第一章", content: "第一章正文", capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
-      { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
+      { id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2 }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "truth-file:truth.md", kind: "jingwei", title: "truth.md", content: "真相内容", metadata: { fileName: "truth.md" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
     ];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
@@ -878,8 +1055,8 @@ describe("StudioNextApp", () => {
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/books/b1/chapters/1" && options?.method === "PUT") return { ok: true };
       if (url === "/api/books/b1/chapters/1") return { chapterNumber: 1, filename: "0001.md", content: "更新章节" };
-      if (url === "/api/books/b1/drafts/d1" && options?.method === "PUT") return { ok: true };
-      if (url === "/api/books/b1/drafts/d1") return { id: "d1", content: "更新草稿", updatedAt: "2026-05-06T00:00:00.000Z" };
+      if (url === "/api/books/b1/chapters/2" && options?.method === "PUT") return { ok: true };
+      if (url === "/api/books/b1/chapters/2") return { chapterNumber: 2, filename: "0002.md", content: "更新章节" };
       if (url === "/api/books/b1/truth/truth.md" && options?.method === "PUT") return { ok: true };
       if (url === "/api/books/b1/truth-files/truth.md") return { file: "truth.md", content: "更新真相" };
       throw new Error(`Unhandled fetch: ${url}`);
@@ -893,14 +1070,15 @@ describe("StudioNextApp", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/chapters/1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "更新章节" }) })));
     await waitFor(() => expect(screen.queryByText("未保存")).toBeNull());
 
-    fireEvent.click(screen.getByRole("button", { name: /片段草稿/ }));
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "更新草稿" } });
+    fireEvent.click(screen.getByRole("button", { name: /第二章/ }));
+    await screen.findByLabelText("章节正文");
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "更新章节" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/drafts/d1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ id: "d1", title: "片段草稿", content: "更新草稿" }) })));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/books/b1/chapters/2", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "更新章节" }) })));
   });
 
   it("keeps dirty state when a book resource save fails", async () => {
-    const nodes = [{ id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
+    const nodes = [{ id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2 }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],
       resourceMap: new Map(nodes.map((node) => [node.id, node])),
@@ -909,14 +1087,14 @@ describe("StudioNextApp", () => {
     });
     fetchMock.mockImplementation(async (url: string, options?: { method?: string }) => {
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
-      if (url === "/api/books/b1/drafts/d1" && options?.method === "PUT") throw Object.assign(new Error("保存接口失败"), { status: 500 });
+      if (url === "/api/books/b1/chapters/2" && options?.method === "PUT") throw Object.assign(new Error("保存接口失败"), { status: 500 });
       throw new Error(`Unhandled fetch: ${url}`);
     });
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "失败草稿" } });
+    fireEvent.click(await screen.findByRole("button", { name: /第二章/ }));
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "失败章节" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
     expect(await screen.findByText("保存接口失败")).toBeTruthy();
@@ -925,7 +1103,7 @@ describe("StudioNextApp", () => {
 
   it("RED: dirty 资源切换和写作动作启动必须先拦截，不能丢弃未保存内容", async () => {
     const nodes = [
-      { id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1", detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
+      { id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2, detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
       { id: "chapter:b1:1", kind: "chapter", title: "第一章", content: "第一章正文", metadata: { bookId: "b1", chapterNumber: 1, detailSource: "detail" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } },
     ];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
@@ -941,11 +1119,11 @@ describe("StudioNextApp", () => {
 
     await renderApp({ kind: "book", bookId: "b1" });
 
-    fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "未保存草稿" } });
+    fireEvent.click(await screen.findByRole("button", { name: /第二章/ }));
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "未保存章节" } });
     fireEvent.click(screen.getByRole("button", { name: /第一章/ }));
 
-    expect(screen.getByLabelText("草稿正文")).toHaveProperty("value", "未保存草稿");
+    expect(screen.getByLabelText("章节正文")).toHaveProperty("value", "未保存章节");
     expect(screen.getByRole("alert").textContent).toContain("未保存内容");
 
     fireEvent.click(screen.getByRole("button", { name: "放弃并切换" }));
@@ -954,7 +1132,7 @@ describe("StudioNextApp", () => {
 
   it("injects dirty workbench canvasContext into narrator send after opening a book resource", async () => {
     const session = { id: "session-1", title: "第三章续写", agentId: "writer", kind: "standalone", sessionMode: "chat", status: "active", createdAt: "2026-05-05T00:00:00.000Z", lastModified: "2026-05-05T00:00:00.000Z", messageCount: 1, sortOrder: 0, sessionConfig: { providerId: "sub2api", modelId: "gpt-5.4", permissionMode: "edit", reasoningEffort: "medium" } };
-    const nodes = [{ id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
+    const nodes = [{ id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2 }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],
       resourceMap: new Map(nodes.map((node) => [node.id, node])),
@@ -968,6 +1146,20 @@ describe("StudioNextApp", () => {
       loading: false,
       error: null,
     });
+    fetchMock.mockImplementation(async (url: string) => {
+      if (url === PROVIDER_MODELS_API_PATH) {
+        return { models: [{ modelId: "gpt-5.4", modelName: "GPT-5.4", providerId: "sub2api", providerName: "Sub2API", enabled: true, capabilities: { functionCalling: true, streaming: true } }] };
+      }
+      if (url === "/api/sessions/session-1/tools") return { sessionId: "session-1", tools: [], pendingConfirmations: [] };
+      throw new Error(`Unhandled fetch: ${url}`);
+    });
+    nativeFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/sessions?status=active&projectId=b1") {
+        return new Response(JSON.stringify([{ id: "session-1", title: "第三章续写", status: "active", projectId: "b1", agentId: "writer" }]), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    });
     useAgentConversationRuntimeMock.mockReturnValue({
       state: { session, messages: [], cursor: { lastSeq: 1, ackedSeq: 1 }, lastSeq: 1, streamingMessageId: null, error: null, recovery: { state: "idle" }, resetRequired: false },
       sendMessage: sendMessageMock,
@@ -977,8 +1169,8 @@ describe("StudioNextApp", () => {
     });
 
     await renderApp({ kind: "book", bookId: "b1" });
-    fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
+    fireEvent.click(await screen.findByRole("button", { name: /第二章/ }));
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "带上下文正文" } });
 
     // Navigate to the session via sidebar (sessions bound to active book are shown)
     fireEvent.click(await screen.findByRole("button", { name: /第三章续写/ }));
@@ -988,15 +1180,9 @@ describe("StudioNextApp", () => {
 
     await waitFor(() => expect(useAgentConversationRuntimeMock).toHaveBeenLastCalledWith(expect.objectContaining({
       sessionId: "session-1",
-      canvasContext: expect.objectContaining({
-        activeTabId: "draft:d1",
-        activeResource: expect.objectContaining({ id: "draft:d1", kind: "draft", title: "片段草稿" }),
-        dirty: true,
-        openTabs: [expect.objectContaining({ id: "draft:d1", dirty: true })],
-      }),
     })));
-    await waitFor(() => expect(sendMessageMock).toHaveBeenCalledWith("继续写"));
-    expect(sendMessageMock).toHaveBeenCalledWith("继续写");
+    await waitFor(() => expect(sendMessageMock).toHaveBeenCalledWith("继续写", undefined));
+    expect(sendMessageMock).toHaveBeenCalledWith("继续写", undefined);
   });
 
   it("starts workbench writing actions by reusing an active book writer session and navigating to conversation", async () => {
@@ -1012,6 +1198,29 @@ describe("StudioNextApp", () => {
       if (url === PROVIDER_MODELS_API_PATH) return { models: [] };
       if (url === "/api/sessions/session-existing/tools") return { sessionId: "session-existing", tools: [], pendingConfirmations: [] };
       throw new Error(`Unhandled fetch: ${url}`);
+    });
+    nativeFetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url === "/api/sessions?status=active&projectId=b1") {
+        return new Response(JSON.stringify([{ id: "session-existing", title: "已有写作会话", status: "active", projectId: "b1", agentId: "writer" }]), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify([]), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    useAgentConversationRuntimeMock.mockReturnValue({
+      state: {
+        session: { id: "session-existing", title: "已有写作会话", agentId: "writer", kind: "standalone", sessionMode: "chat", status: "active", createdAt: "2026-05-05T00:00:00.000Z", lastModified: "2026-05-05T00:00:00.000Z", messageCount: 0, sortOrder: 0, sessionConfig: {} },
+        messages: [],
+        cursor: null,
+        lastSeq: 0,
+        streamingMessageId: null,
+        error: null,
+        recovery: { state: "idle" },
+        resetRequired: false,
+      },
+      sendMessage: sendMessageMock,
+      abort: abortMock,
+      ack: ackMock,
+      getResumeFromSeq: () => 0,
     });
 
     await renderApp({ kind: "book", bookId: "b1" });
@@ -1057,7 +1266,7 @@ describe("StudioNextApp", () => {
   });
 
   it("blocks workbench action navigation while canvas is dirty", async () => {
-    const nodes = [{ id: "draft:d1", kind: "draft", title: "片段草稿", content: "草稿正文", metadata: { draftId: "d1" }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
+    const nodes = [{ id: "chapter:b1:2", kind: "chapter", title: "第二章", content: "第二章正文", metadata: { bookId: "b1", chapterNumber: 2 }, capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false } }];
     loadWorkbenchResourcesFromContractMock.mockResolvedValue({
       tree: [{ id: "book:b1", kind: "book", title: "测试书", capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false }, children: nodes }],
       resourceMap: new Map(nodes.map((node) => [node.id, node])),
@@ -1070,8 +1279,8 @@ describe("StudioNextApp", () => {
     });
 
     await renderApp({ kind: "book", bookId: "b1" });
-    fireEvent.click(await screen.findByRole("button", { name: /片段草稿/ }));
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
+    fireEvent.click(await screen.findByRole("button", { name: /第二章/ }));
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "带上下文正文" } });
 
     // Verify the canvas is dirty (unsaved badge visible)
     expect(screen.getByText("未保存")).toBeTruthy();

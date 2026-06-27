@@ -32,7 +32,7 @@ const messages: ConversationSurfaceMessage[] = [
   {
     id: "m-assistant",
     role: "assistant",
-    content: "我先读取驾驶舱，再给出候选计划。",
+    content: "我先读取驾驶舱，再给出章节计划。",
     toolCalls: [
       {
         id: "tool-1",
@@ -84,23 +84,23 @@ describe("Conversation Surface", () => {
 
   it("工具卡接入 Tool Result Renderer Registry 并保留 artifact 打开动作", () => {
     // Tool result renderer registry renders through MessageItem/ToolCallCard
-    // ToolCallCard shows the tool name and status for candidate.create_chapter
+    // ToolCallCard shows the tool name and status for pipeline.write
     render(
       <MessageStream
         messages={[
           {
             id: "m-rendered-tool",
             role: "assistant",
-            content: "已创建候选稿。",
+            content: "已创建章节结果。",
             toolCalls: [
               {
                 id: "tool-rendered",
-                toolName: "candidate.create_chapter",
+                toolName: "pipeline.write",
                 status: "success",
                 result: {
-                  renderer: "candidate.created",
-                  data: { title: "第三章候选稿", wordCount: 3200 },
-                  artifact: { kind: "candidate", id: "candidate-3", title: "第三章候选稿" },
+                  renderer: "pipeline.chapter",
+                  data: { title: "第三章章节结果", wordCount: 3200 },
+                  artifact: { kind: "chapter", id: "chapter:3", title: "第三章章节结果" },
                 },
               },
             ],
@@ -110,7 +110,7 @@ describe("Conversation Surface", () => {
     );
 
     // ToolCallCard renders tool name in header
-    expect(screen.getByText("candidate.create_chapter")).toBeTruthy();
+    expect(screen.getByText("pipeline.write")).toBeTruthy();
   });
 
   it("工具卡保留可复用 ToolCallBlock 的折叠输出、图标和错误展示资产", () => {
@@ -204,23 +204,23 @@ describe("Conversation Surface", () => {
       <ToolCallCard
         toolCall={{
           id: "tool-raw",
-          toolName: "candidate.create_chapter",
+          toolName: "pipeline.write",
           status: "running",
-          summary: "正在创建候选稿",
+          summary: "正在创建章节结果",
           input: { chapterNumber: 3 },
-          result: { ok: true, data: { candidateId: "cand-3" } },
+          result: { ok: true, data: { chapterResultId: "cand-3" } },
         }}
       />,
     );
 
-    expect(screen.getByText("candidate.create_chapter")).toBeTruthy();
+    expect(screen.getByText("pipeline.write")).toBeTruthy();
     // Running status shown via spinner icon; raw data not visible until expanded
     // Click header to expand
-    fireEvent.click(screen.getByText("candidate.create_chapter").closest("button")!);
+    fireEvent.click(screen.getByText("pipeline.write").closest("button")!);
 
     const card = document.querySelector(".tool-card-running") as HTMLElement;
     expect(card.textContent).toContain("chapterNumber");
-    expect(card.textContent).toContain("candidateId");
+    expect(card.textContent).toContain("chapterResultId");
   });
 
   it("确认门展示 pending permission request 的目标、风险、来源和精确操作", () => {
@@ -228,12 +228,12 @@ describe("Conversation Surface", () => {
       <ConfirmationGate
         confirmation={{
           id: "confirm-facts",
-          title: "candidate.create_chapter",
-          summary: "将创建第 3 章候选稿",
+          title: "pipeline.write",
+          summary: "将创建第 3 章章节结果",
           target: "chapters/0003.md",
           risk: "confirmed-write",
           permissionSource: "sessionConfig.toolPolicy.ask",
-          operation: "创建候选稿，不覆盖正式章节",
+          operation: "创建章节结果，不覆盖正式章节",
           targetResources: [{ kind: "chapter", id: "chapter-3", bookId: "book-1", title: "第三章" }],
           source: { sessionId: "session-1", messageId: "message-1", toolUseId: "tool-1" },
           checkpoint: { required: true, checkpointId: "checkpoint-1", paths: ["chapters/0003.md"] },
@@ -265,7 +265,7 @@ describe("Conversation Surface", () => {
     const onReject = vi.fn();
     render(
       <ConfirmationGate
-        confirmation={{ id: "confirm-1", title: "创建候选稿", summary: "将创建第 3 章候选稿" }}
+        confirmation={{ id: "confirm-1", title: "创建章节结果", summary: "将创建第 3 章章节结果" }}
         onApprove={onApprove}
         onReject={onReject}
       />,
@@ -483,8 +483,8 @@ describe("Conversation Surface", () => {
         recoveryNotice={{ state: "failed", reason: "history-gap", lastSeq: 7, ackedSeq: 5 }}
         pendingConfirmation={{
           id: "confirm-lane",
-          title: "candidate.create_chapter",
-          summary: "将创建第 5 章候选稿",
+          title: "pipeline.write",
+          summary: "将创建第 5 章章节结果",
           target: "chapters/0005.md",
           risk: "confirmed-write",
           permissionSource: "sessionConfig.toolPolicy.ask",
@@ -502,7 +502,7 @@ describe("Conversation Surface", () => {
     expect(surface.textContent).toContain("history-gap");
     // Confirmation gate rendered inline
     expect(screen.getByTestId("confirmation-gate")).toBeTruthy();
-    expect(screen.getByTestId("confirmation-gate").textContent).toContain("candidate.create_chapter");
+    expect(screen.getByTestId("confirmation-gate").textContent).toContain("pipeline.write");
     // Hold-to-abort button present when running
     expect(screen.getByRole("button", { name: "中断（长按确认）" })).toBeTruthy();
   });

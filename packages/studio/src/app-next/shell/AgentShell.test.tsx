@@ -25,7 +25,7 @@ describe("AgentShell", () => {
 
     expect(screen.getByTestId("agent-shell")).toBeTruthy();
     expect(screen.getByTestId("shell-sidebar").textContent).toContain("第一本书");
-    expect(screen.getByTestId("shell-sidebar").textContent).toContain("主叙述者");
+    expect(screen.getByTestId("shell-sidebar").textContent).not.toContain("主叙述者");
     expect(screen.getByRole("button", { name: "第一本书" }).getAttribute("aria-current")).toBe("page");
     expect(screen.getByText("画布挂载点")).toBeTruthy();
   });
@@ -38,13 +38,10 @@ describe("AgentShell", () => {
       </AgentShell>,
     );
 
-    // Book-bound agent appears under the active book
-    fireEvent.click(screen.getByRole("button", { name: "主叙述者" }));
-    expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s1" });
-
-    // Standalone session appears in narrators section
+    // Only standalone sessions appear in the narrator rail
     fireEvent.click(screen.getByRole("button", { name: "独立叙述者" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "narrator", sessionId: "s2" });
+    expect(screen.queryByRole("button", { name: "主叙述者" })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "搜索" }));
     expect(onNavigate).toHaveBeenCalledWith({ kind: "search" });

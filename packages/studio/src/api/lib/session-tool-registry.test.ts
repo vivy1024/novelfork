@@ -23,6 +23,7 @@ const EXPECTED_BUILTIN_TOOL_NAMES = [
   "Grep",
   "EnterWorktree",
   "ExitWorktree",
+  "Snip",
   "AskUserQuestion",
   "EnterPlanMode",
   "ExitPlanMode",
@@ -45,6 +46,10 @@ const EXPECTED_BUILTIN_TOOL_NAMES = [
   "GetGoals",
   "AddGoal",
   "UpdateGoal",
+  "CtxInspect",
+  "Sleep",
+  "TaskGet",
+  "TaskStop",
 ];
 
 const WRITE_RISKS = new Set(["draft-write", "confirmed-write", "destructive"]);
@@ -110,10 +115,11 @@ describe("session tool registry", () => {
         "pgi.ask",
         "Read",
         "chapter.read",
+        "lore.read",
+        "memory.read",
         "jingwei.read",
         "narrative.read_line",
       ]));
-      expect(visibleTools.map((tool) => tool.name)).not.toContain("candidate.create_chapter");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("questionnaire.submit_response");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("pgi.record_answers");
       expect(visibleTools.map((tool) => tool.name)).not.toContain("guided.exit");
@@ -123,9 +129,10 @@ describe("session tool registry", () => {
     }
 
     expect(getEnabledSessionTools("edit").map((tool) => tool.name)).toEqual(expect.arrayContaining([
-      "candidate.create_chapter",
       "presets.write",
       "beat.write",
+      "lore.write",
+      "memory.events",
       "jingwei.write",
       "Bash",
       "Write",
@@ -136,14 +143,15 @@ describe("session tool registry", () => {
   it("looks up definitions and exposes provider-compatible schemas without studio-only fields", () => {
     registerPluginTools(NOVEL_SESSION_TOOL_DEFINITIONS);
 
-    expect(getSessionToolDefinition("cockpit.get_snapshot")).toMatchObject({
-      name: "cockpit.get_snapshot",
+    expect(getSessionToolDefinition("cockpit.snapshot")).toMatchObject({
+      name: "cockpit.snapshot",
       risk: "read",
       renderer: "cockpit.snapshot",
     });
     expect(getSessionToolDefinition("missing.tool")).toBeUndefined();
+    expect(getSessionToolDefinition("candidate.create_chapter")).toBeUndefined();
     expect(isSessionToolEnabledForMode("candidate.create_chapter", "read")).toBe(false);
-    expect(isSessionToolEnabledForMode("candidate.create_chapter", "edit")).toBe(true);
+    expect(isSessionToolEnabledForMode("candidate.create_chapter", "edit")).toBe(false);
 
     const providerTools = getProviderSessionToolDefinitions("read");
     // 用一个当前可见的只读小说工具（pgi.generate_questions 已 deprecated 隐藏）

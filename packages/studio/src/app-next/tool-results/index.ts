@@ -1,5 +1,4 @@
 export * from "./ArtifactOpenButton";
-export * from "./CandidateCreatedCard";
 export * from "./CockpitSnapshotCard";
 export * from "./GenericToolResultCard";
 export * from "./GuidedPlanCard";

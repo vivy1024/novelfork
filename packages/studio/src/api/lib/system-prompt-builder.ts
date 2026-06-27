@@ -48,7 +48,6 @@ import {
   TOOL_CHAPTER_READ,
   TOOL_CHAPTER_LIST,
   TOOL_CHAPTER_AUDIT,
-  TOOL_CANDIDATE_CREATE,
   TOOL_REWRITE_SEGMENT,
   TOOL_STYLE_IMPORT,
   TOOL_PRESETS_READ,
@@ -335,7 +334,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── 写作管线 ──
   if (has(TOOL_PIPELINE_WRITE)) {
     items.push(
-      `To write a full chapter use ${TOOL_PIPELINE_WRITE} (full pipeline: plan→generate→audit→revise→save). Do NOT use ${TOOL_CANDIDATE_CREATE} as a substitute — it only saves existing text, doesn't generate.`,
+      `To write a full chapter use ${TOOL_PIPELINE_WRITE} (full pipeline: plan→generate→audit→revise→save as a formal chapter result). Do not create candidate/draft writing objects.`,
       `When NOT to use ${TOOL_PIPELINE_WRITE}: user is just asking questions, viewing settings, or discussing direction — don't route every interaction to writing. "看看XX"/"告诉我XX" is a query, not a write request.`,
     );
   }
@@ -396,7 +395,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── 资源管理 ──
   if (has(TOOL_RESOURCE_MANAGE)) {
     items.push(
-      `To manage writing resources (candidates/drafts/chapters) use ${TOOL_RESOURCE_MANAGE}(action). action=list to list; accept/reject/archive/restore/delete to transition; create_draft to create a new draft.`,
+      `To manage formal chapter results use ${TOOL_RESOURCE_MANAGE}(action). action=list to list; archive/delete to manage chapter results.`,
     );
   }
 

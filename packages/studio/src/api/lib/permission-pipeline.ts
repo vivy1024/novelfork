@@ -159,6 +159,11 @@ function commandStartsWith(command: string, prefixes: readonly string[]): boolea
 }
 
 export function classifyBashCommand(command: string): BashCommandClassification {
+  // 危险模式优先全串判定，避免被 splitCommandSegments 拆碎后漏检
+  if (isDangerousCommand(command)) {
+    return { classification: "dangerous", risk: "destructive", reason: getDangerousReason(command) };
+  }
+
   // Split compound commands (&&, ||, ;, |) and classify the WORST segment
   const segments = splitCommandSegments(command);
 

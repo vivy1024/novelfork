@@ -1,5 +1,5 @@
 import type { ToolResultRenderer, ToolResultRendererContext } from "./types";
-import { asRecord, getToolResultData, getString, getNumber } from "./types";
+import { asRecord, getToolResultArtifact, getToolResultData, getString, getNumber } from "./types";
 import { ArtifactOpenButton } from "./ArtifactOpenButton";
 import { CheckCircle2, XCircle, AlertTriangle, Info, FileText, RefreshCw } from "lucide-react";
 
@@ -28,7 +28,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
   const auditSummary = getString(data.auditSummary);
   const revised = data.revised === true;
   const jingweiDelta = asRecord(data.jingweiDelta);
-  const candidateId = getString(data.candidateId);
+  const artifact = getToolResultArtifact(context.result);
 
   const criticalCount = auditIssues.filter((i) => i.severity === "critical").length;
   const warningCount = auditIssues.filter((i) => i.severity === "warning").length;
@@ -100,7 +100,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
           经纬变更：
           {createdEntries > 0 && <span className="text-emerald-600 dark:text-emerald-400"> +{createdEntries} 新增</span>}
           {updatedEntries > 0 && <span className="text-blue-600 dark:text-blue-400"> ~{updatedEntries} 更新</span>}
-          <span className="ml-1">（接受候选稿后自动应用）</span>
+          <span className="ml-1">（章节结算后进入叙事记忆回写）</span>
         </div>
       )}
 
@@ -115,14 +115,14 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
           <p className="font-medium">可选操作：</p>
           <ul className="list-disc list-inside space-y-0.5">
             <li>回复"修订"— 自动修复 critical 问题后重新审计</li>
-            <li>回复"忽略并接受"— 跳过审计直接接受候选稿</li>
+            <li>回复"忽略并结算"— 跳过审计提示并保留当前章节结果</li>
             <li>回复"重新生成"— 重新走完整管线生成</li>
           </ul>
         </div>
       )}
 
       {/* Open in canvas button */}
-      {candidateId && context.onOpenArtifact && (
+      {artifact && context.onOpenArtifact && (
         <ArtifactOpenButton
           result={context.result}
           onOpenArtifact={context.onOpenArtifact}

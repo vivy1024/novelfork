@@ -6,8 +6,8 @@ import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
 function node(overrides: Partial<WorkbenchResourceNode> = {}): WorkbenchResourceNode {
   return {
-    id: "draft:1",
-    kind: "draft",
+    id: "chapter:1",
+    kind: "chapter",
     title: "城门片段",
     content: "初始正文",
     capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
@@ -25,11 +25,11 @@ describe("WorkbenchCanvas", () => {
 
     expect(screen.getAllByRole("heading", { name: "城门片段" }).length).toBeGreaterThan(0);
     expect(screen.getByText("已保存")).toBeTruthy();
-    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "draft:1", dirty: false })));
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "chapter:1", dirty: false })));
 
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "修改正文" } });
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "修改正文" } });
     expect(screen.getByText("未保存")).toBeTruthy();
-    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "draft:1", dirty: true, contentPreview: "修改正文" })));
+    await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "chapter:1", dirty: true, contentPreview: "修改正文" })));
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(node(), "修改正文"));
@@ -73,13 +73,13 @@ describe("WorkbenchCanvas", () => {
   });
 
   it("保存失败时保持 dirty 并显示真实错误", async () => {
-    const onSave = vi.fn().mockRejectedValue(new Error("草稿保存失败"));
+    const onSave = vi.fn().mockRejectedValue(new Error("章节保存失败"));
     render(<WorkbenchCanvas node={node()} onSave={onSave} />);
 
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "保存失败正文" } });
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "保存失败正文" } });
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
 
-    expect((await screen.findByRole("alert")).textContent).toContain("保存失败：草稿保存失败");
+    expect((await screen.findByRole("alert")).textContent).toContain("保存失败：章节保存失败");
     expect(screen.getByText("未保存")).toBeTruthy();
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", false);
   });
@@ -89,18 +89,18 @@ describe("WorkbenchCanvas", () => {
     render(<WorkbenchCanvas node={node()} onSave={vi.fn()} onCanvasContextChange={onCanvasContextChange} />);
 
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      activeResourceId: "draft:1",
-      activeResource: expect.objectContaining({ kind: "draft", id: "draft:1", title: "城门片段" }),
-      activeTabId: "draft:1",
-      openTabs: [expect.objectContaining({ id: "draft:1", nodeId: "draft:1", kind: "draft-editor", title: "城门片段", dirty: false, source: "user" })],
+      activeResourceId: "chapter:1",
+      activeResource: expect.objectContaining({ kind: "chapter", id: "chapter:1", title: "城门片段" }),
+      activeTabId: "chapter:1",
+      openTabs: [expect.objectContaining({ id: "chapter:1", nodeId: "chapter:1", kind: "chapter-editor", title: "城门片段", dirty: false, source: "user" })],
       dirty: false,
     })));
 
-    fireEvent.change(screen.getByLabelText("草稿正文"), { target: { value: "带上下文正文" } });
+    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "带上下文正文" } });
 
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({
-      activeResource: expect.objectContaining({ kind: "draft", id: "draft:1", title: "城门片段" }),
-      openTabs: [expect.objectContaining({ id: "draft:1", dirty: true })],
+      activeResource: expect.objectContaining({ kind: "chapter", id: "chapter:1", title: "城门片段" }),
+      openTabs: [expect.objectContaining({ id: "chapter:1", dirty: true })],
       dirty: true,
       contentPreview: "带上下文正文",
     })));
@@ -110,14 +110,14 @@ describe("WorkbenchCanvas", () => {
     const onCanvasContextChange = vi.fn();
     render(
       <WorkbenchCanvas
-        node={node({ id: "tool-result:1", kind: "tool-result", title: "生成结果", content: JSON.stringify({ renderer: "candidate.created", data: { title: "候选稿" } }) })}
+        node={node({ id: "tool-result:1", kind: "tool-result", title: "生成结果", content: JSON.stringify({ renderer: "pipeline.chapter", data: { title: "正式章节" } }) })}
         onSave={vi.fn()}
         onCanvasContextChange={onCanvasContextChange}
       />,
     );
 
     expect(screen.getByText("工具结果")).toBeTruthy();
-    expect(screen.getByTestId("raw-resource-node").textContent).toContain("candidate.created");
+    expect(screen.getByTestId("raw-resource-node").textContent).toContain("pipeline.chapter");
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "tool-result:1", activeKind: "tool-result" })));
   });
 

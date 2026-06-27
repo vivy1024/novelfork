@@ -17,13 +17,13 @@ describe("subagent runtime", () => {
       systemPrompt: "你是一个小说写作代理。",
       modelId: "claude-sonnet-4",
       providerId: "anthropic",
-      tools: ["chapter.read", "candidate.create_chapter"],
+      tools: ["chapter.read", "pipeline.write"],
       maxSteps: 3,
     };
 
     const result = await runSubagent({
       config,
-      prompt: "写第三章候选稿",
+      prompt: "写第三章章节结果",
       generate,
     });
 

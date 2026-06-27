@@ -3,7 +3,7 @@
  * Ported from PR #96 (Te9ui1a) — prevents client/server type drift.
  */
 
-import type { JingweiEntryStatus, CanonicalBookStatus, CanonicalChapterStatus, CandidateStatus } from "@vivy1024/novelfork-core";
+import type { JingweiEntryStatus, CanonicalBookStatus, CanonicalChapterStatus } from "@vivy1024/novelfork-core";
 
 // --- Health ---
 
@@ -144,29 +144,6 @@ export interface AiResultMetadata {
   readonly [key: string]: unknown;
 }
 
-export interface GeneratedChapterCandidate {
-  readonly id: string;
-  readonly bookId: string;
-  readonly targetChapterId?: string;
-  readonly title: string;
-  readonly source: string;
-  readonly createdAt: string;
-  readonly status: CandidateStatus;
-  readonly metadata?: AiResultMetadata;
-  readonly content?: string | null;
-  readonly contentError?: string;
-}
-
-export interface DraftResource {
-  readonly id: string;
-  readonly bookId: string;
-  readonly title: string;
-  readonly content: string;
-  readonly updatedAt: string;
-  readonly wordCount: number;
-  readonly metadata?: AiResultMetadata;
-}
-
 export interface JingweiResourceCounts {
   readonly characters?: number;
   readonly locations?: number;
@@ -213,8 +190,6 @@ export interface PublishReportResource {
 export interface WorkspaceResourceSnapshot {
   readonly book: BookDetail;
   readonly chapters: readonly ChapterSummary[];
-  readonly generatedChapters?: readonly GeneratedChapterCandidate[];
-  readonly drafts?: readonly DraftResource[];
   readonly jingweiCounts?: JingweiResourceCounts;
   readonly jingweiEntries?: readonly JingweiEntryResource[];
   readonly storyFiles?: readonly TextFileResource[];
@@ -232,7 +207,7 @@ export interface ReviewActionPayload {
 
 // --- Runs ---
 
-export type RunAction = "draft" | "audit" | "revise" | "write-next" | "tool";
+export type RunAction = "write" | "audit" | "revise" | "write-next" | "tool";
 
 export type RunStatus = "queued" | "running" | "succeeded" | "failed";
 

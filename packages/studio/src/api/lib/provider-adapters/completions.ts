@@ -457,7 +457,13 @@ export class CompletionsAdapter implements RuntimeAdapter {
         && typeof (firstChoice as { message: { content?: unknown } }).message.content === "string"
           ? (firstChoice as { message: { content: string } }).message.content
           : "";
-      return { success: true, type: "tool_use", toolUses, ...(textContent ? { content: textContent } : {}), ...(usage ? { usage } : {}) };
+      const reasoningContent = firstChoice && typeof firstChoice === "object"
+        && "message" in firstChoice
+        && (firstChoice as { message?: unknown }).message
+        && typeof (firstChoice as { message: { reasoning_content?: unknown } }).message.reasoning_content === "string"
+          ? (firstChoice as { message: { reasoning_content: string } }).message.reasoning_content
+          : undefined;
+      return { success: true, type: "tool_use", toolUses, ...(textContent ? { content: textContent } : {}), ...(reasoningContent ? { reasoningContent } : {}), ...(usage ? { usage } : {}) };
     }
 
     const choices = payload && typeof payload === "object" && Array.isArray((payload as { choices?: unknown }).choices)

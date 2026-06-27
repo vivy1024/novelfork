@@ -63,6 +63,13 @@ export interface ConversationConfirmation {
   questions?: readonly ConversationConfirmationQuestion[];
 }
 
+const RISK_LABELS: Record<string, string> = {
+  read: "read",
+  "draft-write": "write",
+  "confirmed-write": "confirmed-write",
+  destructive: "destructive",
+};
+
 const RISK_COLORS: Record<string, string> = {
   read: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200",
   "draft-write": "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200",
@@ -121,7 +128,7 @@ export function ConfirmationGate({
             <h3 className="text-sm font-semibold text-foreground">{confirmation.title}</h3>
             {confirmation.risk && (
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${riskClass}`}>
-                {confirmation.risk}
+                {RISK_LABELS[confirmation.risk] ?? confirmation.risk}
               </span>
             )}
           </div>

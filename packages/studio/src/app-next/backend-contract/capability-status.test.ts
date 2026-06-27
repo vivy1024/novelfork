@@ -21,7 +21,7 @@ describe("capability status UI decision", () => {
     expect(decision.enabled).toBe(true);
     expect(decision.previewOnly).toBe(true);
     expect(decision.allowsFormalWrite).toBe(false);
-    expect(decision.allowedActions).toEqual(["preview", "copy", "convert-to-candidate", "convert-to-draft", "explicit-apply"]);
+    expect(decision.allowedActions).toEqual(["preview", "copy", "explicit-apply"]);
   });
 
   it("maps unsupported, planned and deprecated to disabled UI with visible explanation", () => {

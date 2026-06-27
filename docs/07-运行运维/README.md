@@ -1,3 +1,9 @@
+**版本**: v3.0.0
+**创建日期**: 2026-06-25
+**更新日期**: 2026-06-25
+**状态**: current
+**文档类型**: current
+
 # 07 - 运行运维
 
 NovelFork 运行时配置与运维参考。
@@ -17,7 +23,7 @@ NovelFork 运行时配置与运维参考。
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
-| `PORT` | `1422` | HTTP/WS 服务端口 |
+| `NOVELFORK_STUDIO_PORT` / `PORT` | `4567` | HTTP/WS 服务端口 |
 | `PROMPT_DUMP` | `false` | 开启提示词导出 |
 | `PROMPT_DUMP_DIR` | `./debug-prompts/` | 导出目录 |
 | `LOG_LEVEL` | `info` | 日志级别（debug/info/warn/error） |
@@ -52,9 +58,9 @@ NovelFork 运行时配置与运维参考。
 
 ```bash
 # 检查端口
-netstat -ano | findstr 1422
+netstat -ano | findstr 4567
 # 或修改端口
-set PORT=1423
+set NOVELFORK_STUDIO_PORT=4568
 novelfork.exe
 ```
 
@@ -102,8 +108,8 @@ rm ~/.novelfork/data.db
 |------|------|
 | 响应慢 | 减少启用的工具数，降低上下文长度 |
 | 内存高 | 关闭不用的 MCP 服务器 |
-| 磁盘占用大 | 定期清理候选稿（rejected 状态） |
-| 编译慢 | 确保 Bun 版本 >= 1.2 |
+| 磁盘占用大 | 定期清理归档章节和旧兼容目录 |
+| 编译慢 | 确保 Bun 版本 >= 1.3 |
 
 ## 备份策略
 

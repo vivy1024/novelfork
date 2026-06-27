@@ -17,7 +17,7 @@ const AGENT_NATIVE_HEADLESS_INSTRUCTIONS = `
 
 你正在非交互 headless 模式下运行。请注意：
 - 直接输出最终结果，不要等待用户确认或追问。
-- 生成的内容将进入候选区，不会覆盖正式章节。
+- 生成的内容将进入正式章节结果或预览边界，不创建 candidate/draft 主对象。
 - 如果需要用户决策的工具调用，系统会自动暂停并返回 pending 状态。
 `;
 

@@ -48,9 +48,10 @@ pnpm test
 pnpm typecheck
 ```
 
-如果你在做平台回正相关工作，请优先阅读：
-- `docs/02-核心架构/01-系统架构/03-平台纠偏说明.md`
-- `docs/04-开发指南/05-调研规划/01-平台迁移方案.md`
+如果你在做当前架构或文档相关工作，请优先阅读：
+- `docs/README.md`
+- `docs/01-codewiki/README.md`
+- `docs/04-架构与设计/README.md`
 
 ---
 

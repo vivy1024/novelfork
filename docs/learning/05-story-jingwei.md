@@ -1,64 +1,95 @@
 ---
 title: 故事经纬
-summary: 世界观与设定的结构化存储，精准控制 AI 能看到哪些信息
-tags: [经纬, 世界观, 设定, 可见性, AI上下文]
+summary: 静态 Lore 设定库，管理作者确认的世界规则、人物、地点与术语，并与叙事记忆分工
+tags: [经纬, Lore, 世界观, 设定, 叙事记忆]
 routes:
   - /next/books/:bookId
 ---
 
 # 故事经纬
 
-> 世界观与设定的结构化存储，精准控制 AI 能看到哪些信息。
+> 经纬现在是 **静态 Lore 设定库**：只放作者明确维护、希望 AI 长期遵守的设定；动态剧情变化交给叙事记忆。
 
 ## 核心概念
 
-**经纬（Jingwei）**：二级结构——分区 → 条目。16 个分类：角色、地点、势力、物品、规则、大纲、时间线等。
+**经纬（Jingwei / Lore）**：二级结构——分区 → 条目。适合保存作者确认的静态材料：人物、地点、势力、世界规则、物品、术语、作者备注等。
 
-资源树中的展示：
+**叙事记忆（Narrative Memory）**：保存动态叙事事实：人物关系变化、时间线推进、角色弧线、伏笔埋设/触发/兑现、章节后抽取事实、召回 diagnostics。
+
+二者分工：
+
+| 类型 | 放在哪里 | 工具 |
+|------|----------|------|
+| 世界规则、人物固定设定、地点、势力、术语 | 经纬 / Lore | `lore.read` / `lore.write` |
+| 章节后发生的事件、关系变化、伏笔状态、时间线推进 | 叙事记忆 | `memory.read` / `memory.events` / `memory.graph` |
+| 作者临时参考、素材摘录 | 经纬参考类条目 | `lore.read(scope=search)` |
+
+## 在资源树中的展示
 
 ```
-📁 经纬资料
-├── 故事经纬     ← 核心前提/世界观/力量体系/主角设定
-├── 卷大纲       ← 分卷结构规划
-├── 当前状态     ← 写作进度追踪
-└── 书籍规则     ← AI 必须遵守的规则约束
+📁 经纬资料 / Lore
+├── 人物设定
+├── 地点与势力
+├── 世界规则
+├── 术语与物品
+└── 作者备注
+
+📁 叙事记忆
+├── 动态事实
+├── 时间线
+├── 伏笔网络
+├── 角色弧线
+└── 关系图 / 矛盾地图
 ```
 
-**AI 上下文参与**：开启 `participatesInAi` 的条目在 AI 生成时自动注入上下文。
+> v3.0.0 起，原经纬中关系、伏笔、时间线、核心矛盾等动态条目已迁移为 `narrative_fact`，不再作为静态经纬分类维护。
 
-**可见性规则**：
-- `global`：全局可见，适合核心世界观
-- `tracked`：按章节范围可见，适合角色出场、秘密揭示
-- `nested`：继承父条目可见性
+## AI 上下文参与
+
+AI 写作前会按链路读取：
+
+```
+cockpit.snapshot → lore.read(scope=brief) → memory.read(purpose=write)
+  → pgi.ask → scene.spec
+  → lore.read(scope=category) + memory.read → pipeline.write
+```
+
+- `lore.read(scope=brief)`：读取静态设定核心摘要。
+- `lore.read(scope=category/search)`：按 scene.spec 中角色、地点、规则补读精确信息。
+- `memory.read(purpose=write)`：读取动态 ContextCard（时间线、伏笔、状态、事实等）。
+
+## Canon / Rules 写入门禁
+
+为了防止 AI 长对话中污染正史，v3.0.0 对静态 Lore 写入加了门禁：
+
+- `lore.read` 默认排除 `archived` / `draft` / `needs-review` 条目。
+- `lore.write` 写 `canon` 或 `rules` 必须提供 `reason`、`source`、`evidence`。
+- 动态事实不得直接写进 Lore；应通过 `memory.events` 创建 pending NarrativeEvents，由用户批准。
+- `jingwei.read/write` 仍保留为兼容别名，但新流程优先使用 `lore.*`。
 
 ## 推荐使用流程
 
-1. 建书时选择经纬模板（blank / basic / enhanced / 题材推荐）
-2. 先建分区结构，再逐步填充条目
-3. 为角色添加别名（各种称呼），提高 AI 识别率
-4. 用 tracked 规则控制剧情秘密的揭示时机
-5. 为核心角色分配较高 tokenBudget（500-1000），次要设定给 100-200
-
-## 最佳实践
-
-- 控制 global 条目数量，global 越多每次写作上下文越大
-- 未揭示的秘密用 `tracked + visibleAfterChapter` 防止 AI 剧透
-- 定期清理不再需要的条目，保持上下文精简
+1. 建书时先维护少量核心 Lore：世界规则、主角、主要势力、关键术语。
+2. 把“会随剧情变化”的内容放到叙事记忆：关系、伏笔状态、章节后事实、时间线。
+3. 对正史/规则条目保持精简，避免把剧情进展塞进 canon。
+4. 使用经纬审计检查不参与 AI 的未确认/归档/待审核条目。
+5. 写作时让 Agent 通过 `lore.read + memory.read` 组合读取上下文。
 
 ## 常见坑
 
-- **AI 写出未揭示的秘密** → 条目可见性误设为 global，改为 tracked
-- **AI 忽略某个设定** → 条目 participatesInAi 未开启
-- **上下文超限** → 太多条目参与 AI，减少 budget 或关闭非必要条目
-- **别名冲突** → 两个角色共享相同别名导致 AI 混淆，确保别名全局唯一
+- **把角色关系网放进经纬** → 关系会随剧情变化，应进入 Narrative Memory。
+- **把时间线当静态设定写** → 时间线推进属于动态记忆，应走 `memory.events`。
+- **AI 写出未确认设定** → 检查是否把 draft/needs-review 条目误参与 AI，或让 AI 绕过 evidence 门禁。
+- **经纬越写越臃肿** → 只保留长期稳定的静态事实，章节摘要与事件交给叙事记忆。
 
 ## Agent 查阅提示
 
-- Agent 通过 `jingwei.*` 工具读写经纬（list_sections / get_entry / update_entry 等）
-- 写作前自动遍历 participatesInAi=true 的条目 → 按当前章节号过滤可见性 → 按 tokenBudget 裁剪 → 注入 prompt
-- 条目的 aliases 字段用于正文中的实体识别，创建角色时主动填充常见称呼
-- 模板系统按题材推荐分区结构（玄幻：功法/灵宝/宗门/秘境；都市：公司/关系网/事件线）
+- 静态设定优先用 `lore.read(scope=brief/category/search)`。
+- 动态上下文优先用 `memory.read(purpose=write|audit|revise)`。
+- 写完章节后的摘要、角色变化、伏笔推进默认生成 `memory.events` pending 事件。
+- 不要把 `memory.events` 可表达的动态事实直接写进 `lore.write(canon/rules)`。
 
 ## 可跳转功能入口
 
-- 经纬管理: 在作品工作台中查看和编辑经纬条目。 (/next/books/:bookId)
+- 经纬管理：在作品工作台中查看和编辑静态 Lore 条目。 (/next/books/:bookId)
+- 叙事记忆：在写作工作台中查看 ContextCard 诊断、Pending Events 与完整记忆图谱。

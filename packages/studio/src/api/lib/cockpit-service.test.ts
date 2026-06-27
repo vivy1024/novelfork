@@ -89,12 +89,6 @@ async function createBook(root: string, bookId = "book-1") {
   await writeFile(join(bookDir, "story", "current_focus.md"), "# 当前聚焦\n\n推进主角拜入外门。\n", "utf-8");
   await writeFile(join(bookDir, "story", "pending_hooks.md"), "# 待处理伏笔\n\n- [ ] 第1章：青铜铃为何自鸣\n- [x] 第2章：师兄身份误导\n", "utf-8");
   await writeFile(join(bookDir, "story", "chapter_summaries.md"), "# 章节摘要\n\n- 第1章：主角入山，青铜铃异动。\n- 第2章：问心阵失败，师兄递来线索。\n", "utf-8");
-  await mkdir(join(bookDir, "generated-candidates"), { recursive: true });
-  await writeFile(join(bookDir, "generated-candidates", "index.json"), JSON.stringify([
-    { id: "candidate-old", bookId, title: "旧候选", source: "write-next", createdAt: "2026-05-01T10:00:00.000Z", updatedAt: "2026-05-01T10:00:00.000Z", status: "archived", contentFileName: "candidate-old.md" },
-    { id: "candidate-new", bookId, title: "第三章候选", source: "write-next", createdAt: "2026-05-02T10:00:00.000Z", updatedAt: "2026-05-02T10:30:00.000Z", status: "candidate", contentFileName: "candidate-new.md", metadata: { provider: "sub2api", model: "gpt-5.4" } },
-  ], null, 2), "utf-8");
-  await writeFile(join(bookDir, "generated-candidates", "candidate-new.md"), "候选正文", "utf-8");
   return bookDir;
 }
 
@@ -117,14 +111,15 @@ describe("cockpit-service", () => {
       expect(snapshot.progress.status).toBe("missing");
       expect(snapshot.currentFocus.status).toBe("missing");
       expect(snapshot.openHooks.items).toEqual([]);
-      expect(snapshot.recentCandidates.items).toEqual([]);
+      expect(snapshot.recentChapterResults.items).toEqual([]);
+      expect("recentCandidates" in snapshot).toBe(false);
       expect(snapshot.modelStatus).toMatchObject({ status: "missing", hasUsableModel: false });
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("builds a real cockpit snapshot from book files, candidates and provider runtime state", async () => {
+  it("builds a real cockpit snapshot from book files, chapter results and provider runtime state", async () => {
     const harness = await createHarness();
     try {
       await createBook(harness.root);
@@ -160,30 +155,30 @@ describe("cockpit-service", () => {
       expect(snapshot.riskCards.items).toEqual([
         expect.objectContaining({ kind: "audit-failure", chapterNumber: 2, level: "danger" }),
       ]);
-      expect(snapshot.recentCandidates.items).toEqual([
-        expect.objectContaining({ id: "candidate-new", title: "第三章候选", artifact: expect.objectContaining({ kind: "candidate", openInCanvas: true }) }),
+      expect(snapshot.recentChapterResults.items).toEqual([
+        expect.objectContaining({ id: "chapter:2", title: "问心", status: "audit-failed", artifact: expect.objectContaining({ kind: "chapter", openInCanvas: true }) }),
+        expect.objectContaining({ id: "chapter:1", title: "入山", status: "approved", artifact: expect.objectContaining({ kind: "chapter", openInCanvas: true }) }),
       ]);
+      expect("recentCandidates" in snapshot).toBe(false);
     } finally {
       await harness.cleanup();
     }
   });
 
-  it("lists open hooks and recent candidates with empty states when optional data is absent", async () => {
+  it("lists open hooks and recent chapter results with empty states when optional data is absent", async () => {
     const harness = await createHarness();
     try {
       await createBook(harness.root);
       await rm(join(harness.root, "books", "book-1", "story", "pending_hooks.md"), { force: true });
-      await rm(join(harness.root, "books", "book-1", "generated-candidates"), { recursive: true, force: true });
 
       await expect(harness.service.listOpenHooks({ bookId: "book-1", limit: 5 })).resolves.toMatchObject({
         status: "empty",
         items: [],
         reason: "经纬中暂无未回收伏笔。",
       });
-      await expect(harness.service.listRecentCandidates({ bookId: "book-1", limit: 5 })).resolves.toMatchObject({
-        status: "empty",
-        items: [],
-        reason: "暂无候选稿。",
+      await expect(harness.service.listRecentChapterResults({ bookId: "book-1", limit: 5 })).resolves.toMatchObject({
+        status: "available",
+        items: [expect.objectContaining({ id: "chapter:2" }), expect.objectContaining({ id: "chapter:1" })],
       });
     } finally {
       await harness.cleanup();
@@ -204,7 +199,8 @@ describe("cockpit-service", () => {
         reason: "经纬中暂无焦点/大纲数据。",
       });
       expect(snapshot.progress).toMatchObject({ status: "available", chapterCount: 2 });
-      expect(snapshot.recentCandidates.items).toHaveLength(1);
+      expect(snapshot.recentChapterResults.items).toHaveLength(2);
+      expect("recentCandidates" in snapshot).toBe(false);
     } finally {
       await harness.cleanup();
     }

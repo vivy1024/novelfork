@@ -58,8 +58,6 @@ const BUILTIN_TOOLS: readonly CapabilityRegistryEntry[] = [
   { id: "tool:cockpit.snapshot", name: "cockpit.snapshot", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "读取驾驶舱快照" },
   { id: "tool:chapter.read", name: "chapter.read", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "读取章节内容" },
   { id: "tool:chapter.save_checkpointed", name: "chapter.save_checkpointed", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "保存章节（带 checkpoint）" },
-  { id: "tool:candidate.create_chapter", name: "candidate.create_chapter", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "创建候选稿" },
-  { id: "tool:candidate.apply_to_chapter", name: "candidate.apply_to_chapter", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "应用候选稿到正式章节" },
   { id: "tool:guided.create_plan", name: "guided.create_plan", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "创建引导计划" },
   { id: "tool:guided.approve_plan", name: "guided.approve_plan", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "批准引导计划" },
   { id: "tool:audit.continuity", name: "audit.continuity", kind: "tool", source: "builtin", status: "current", scope: "global", enabled: true, description: "连续性审计" },
@@ -79,7 +77,7 @@ const PLANNED_MCP_TOOLS: readonly CapabilityRegistryEntry[] = [
 ];
 
 const WORKFLOW_RECIPES: readonly CapabilityRegistryEntry[] = [
-  { id: "workflow-recipe:write-next", name: "/novel:write-next", kind: "workflow-recipe", source: "core", status: "partial", scope: "global", enabled: true, description: "context → PGI → Guided Plan → approve → Writer candidate → canvas open" },
+  { id: "workflow-recipe:write-next", name: "/novel:write-next", kind: "workflow-recipe", source: "core", status: "partial", scope: "global", enabled: true, description: "context → PGI → Guided Plan → approve → Writer chapter result → canvas open" },
   { id: "workflow-recipe:audit-continuity", name: "/novel:audit", kind: "workflow-recipe", source: "core", status: "planned", scope: "global", enabled: false, description: "连续性审计工作流" },
 ];
 

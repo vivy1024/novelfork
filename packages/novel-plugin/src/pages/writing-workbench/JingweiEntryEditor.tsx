@@ -43,6 +43,7 @@ export interface RelatedEntryItem {
 export interface JingweiEntryEditorProps {
   entry: JingweiEntryData;
   sectionLabel?: string;
+  sourceLabel?: string;
   onSave: (entryId: string, payload: { title: string; contentMd: string; priorityTier?: JingweiPriorityTier }) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
   /** 关联条目列表（由父组件解析 ID → 标题后传入） */
@@ -72,6 +73,7 @@ function sourceBadgeVariant(src: string): "default" | "secondary" | "outline" {
 export function JingweiEntryEditor({
   entry,
   sectionLabel,
+  sourceLabel = "经纬资料",
   onSave,
   onDelete,
   relatedEntries,
@@ -179,7 +181,7 @@ export function JingweiEntryEditor({
   return (
     <section className="resource-viewer" data-resource-kind="jingwei-entry" data-testid="jingwei-entry-editor">
       <header className="resource-viewer__header flex items-center gap-2 mb-3">
-        <p className="text-xs text-muted-foreground">经纬资料</p>
+        <p className="text-xs text-muted-foreground">{sourceLabel}</p>
         {sectionLabel && <Badge variant="secondary" className="text-[10px]">{sectionLabel}</Badge>}
         {entry.updatedAt && (
           <span className="text-[10px] text-muted-foreground ml-auto">
@@ -194,7 +196,7 @@ export function JingweiEntryEditor({
           <FileText className="size-3 mr-1" />详情
         </Button>
         <Button variant={activeTab === "relations" ? "default" : "ghost"} size="xs" onClick={() => setActiveTab("relations")}>
-          <Link2 className="size-3 mr-1" />关系
+          <Link2 className="size-3 mr-1" />关联
           {entry.relatedEntryIds && entry.relatedEntryIds.length > 0 && (
             <Badge variant="secondary" className="ml-1 text-[9px] px-1 py-0">{entry.relatedEntryIds.length}</Badge>
           )}
@@ -207,7 +209,7 @@ export function JingweiEntryEditor({
         </Button>
       </div>
 
-      {/* ─── Tab: 关系 ──────────────────────────────────────────────── */}
+      {/* ─── Tab: 关联 ──────────────────────────────────────────────── */}
       {activeTab === "relations" && (
         <div className="py-4 px-1">
           {relatedEntries && relatedEntries.length > 0 ? (
@@ -231,7 +233,7 @@ export function JingweiEntryEditor({
             <div className="text-center py-8 text-muted-foreground">
               <Link2 className="size-8 mx-auto mb-2 opacity-30" />
               <p className="text-sm">暂无关联条目</p>
-              <p className="text-xs mt-1">可通过经纬条目编辑或 AI 写作自动建立关联</p>
+              <p className="text-xs mt-1">用于静态设定条目之间的引用跳转；剧情关系变化请在叙事记忆中查看</p>
             </div>
           )}
         </div>

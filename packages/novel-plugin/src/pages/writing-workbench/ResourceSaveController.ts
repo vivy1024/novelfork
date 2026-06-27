@@ -21,8 +21,18 @@ function pathFileName(path?: string): string | undefined {
   return path?.split("/").at(-1) ?? path?.split("\\").at(-1);
 }
 
-function assertContractSave(result: { ok: boolean }, fallback: string): void {
-  if (!result.ok) throw new Error(fallback);
+function assertContractSave(result: { ok: boolean; error?: unknown; code?: string }, fallback: string): void {
+  if (result.ok) return;
+  if (result.error && typeof result.error === "object") {
+    const record = result.error as Record<string, unknown>;
+    if (typeof record.message === "string") throw new Error(record.message);
+    const nested = record.error;
+    if (nested && typeof nested === "object" && typeof (nested as Record<string, unknown>).message === "string") {
+      throw new Error((nested as Record<string, string>).message);
+    }
+  }
+  if (typeof result.error === "string") throw new Error(result.error);
+  throw new Error(result.code ? `${fallback}：${result.code}` : fallback);
 }
 
 function chapterNumberFromNode(node: WorkbenchResourceNode): number | string | undefined {
@@ -96,6 +106,26 @@ async function saveJingweiEntryAndHydrate(resource: ResourceDomainClient, bookId
   };
 }
 
+async function saveFileTreeFile(bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
+  const filePath = metadataString(node, "filePath");
+  if (!filePath) throw new Error("文件缺少路径，无法保存");
+  const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: filePath, content }),
+  });
+  if (!res.ok) {
+    let message = `文件保存失败 (${res.status})`;
+    try {
+      const data = await res.json() as { error?: string; message?: string };
+      message = data.error ?? data.message ?? message;
+    } catch { /* ignore */ }
+    throw new Error(message);
+  }
+  // 文件树文件不需要 hydrate，直接返回更新后的节点
+  return { ...node, content };
+}
+
 export async function saveResourceAndHydrate(
   resource: ResourceDomainClient,
   fallbackBookId: string,
@@ -104,6 +134,11 @@ export async function saveResourceAndHydrate(
 ): Promise<WorkbenchResourceNode> {
   assertSaveable(node);
   const bookId = metadataString(node, "bookId") ?? fallbackBookId;
+
+  // 文件树文件（来自 IDE 资源管理器的 .py/.md/.txt 等）
+  if (node.metadata?.isFile === true && typeof node.metadata?.filePath === "string") {
+    return saveFileTreeFile(bookId, node, content);
+  }
 
   if (node.kind === "chapter") return saveChapterAndHydrate(resource, bookId, node, content);
   if (node.kind === "jingwei") return saveJingweiAndHydrate(resource, bookId, node, content);

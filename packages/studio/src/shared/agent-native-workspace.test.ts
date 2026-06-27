@@ -13,34 +13,34 @@ import type {
 import type { NarratorSessionChatMessage, ToolCall } from "./session-types";
 
 const canvasArtifactContract = {
-  id: "artifact-candidate-1",
-  kind: "candidate",
-  title: "第二章候选稿",
-  summary: "Agent 生成的下一章候选稿。",
+  id: "artifact-chapter-1",
+  kind: "chapter",
+  title: "第二章",
+  summary: "Agent 生成的正式章节结果。",
   resourceRef: {
-    kind: "candidate",
-    id: "candidate-1",
+    kind: "chapter",
+    id: "chapter:2",
     bookId: "book-1",
   },
-  renderer: "candidate.created",
+  renderer: "pipeline.chapter",
   openInCanvas: true,
 } satisfies CanvasArtifact;
 
 const openResourceTabContract = {
-  id: "tab-candidate-1",
-  nodeId: "candidate:candidate-1",
-  kind: "candidate-editor",
-  title: "第二章候选稿",
+  id: "tab-chapter-2",
+  nodeId: "chapter:2",
+  kind: "chapter-editor",
+  title: "第二章",
   dirty: false,
   source: "agent",
-  payloadRef: "candidate-1",
+  payloadRef: "chapter:2",
 } satisfies OpenResourceTab;
 
 const canvasContextContract = {
   activeTabId: openResourceTabContract.id,
   activeResource: {
-    kind: "candidate",
-    id: "candidate-1",
+    kind: "chapter",
+    id: "chapter:2",
     bookId: "book-1",
   },
   selection: {
@@ -55,9 +55,9 @@ const canvasContextContract = {
 const confirmationContract = {
   id: "confirm-guided-exit-1",
   toolName: "guided.exit",
-  target: "第二章候选稿生成计划",
+  target: "第二章正式章节生成计划",
   risk: "confirmed-write",
-  summary: "批准后创建候选稿，不覆盖正式章节。",
+  summary: "批准后生成正式章节结果。",
   options: ["approve", "reject", "open-in-canvas"],
   targetResource: {
     kind: "guided-plan",
@@ -81,9 +81,9 @@ const guidedQuestionContract = {
 } satisfies GuidedQuestion;
 
 const guidedPlanContract = {
-  title: "第二章候选稿计划",
+  title: "第二章正式章节计划",
   goal: "写下一章",
-  target: "chapter-candidate",
+  target: "chapter-result",
   contextSummary: "读取上一章摘要、当前焦点与待回收伏笔后形成计划。",
   contextSources: [
     {
@@ -99,14 +99,14 @@ const guidedPlanContract = {
   ],
   authorDecisions: ["本章先升级矛盾，不直接解决主线危机。"],
   proposedJingweiMutations: [],
-  proposedCandidate: {
+  proposedChapterResult: {
     chapterNumber: 2,
     title: "风雨将至",
     intent: "承接第一章结尾冲突并引出更大危机。",
     expectedLength: 3000,
   },
   risks: ["若直接回收伏笔，主线悬念会过早消失。"],
-  confirmationItems: ["确认生成候选稿而非覆盖正式正文。"],
+  confirmationItems: ["确认生成正式章节结果。"],
 } satisfies GuidedGenerationPlan;
 
 const guidedStateContract = {
@@ -273,7 +273,7 @@ describe("agent-native workspace shared contracts", () => {
   });
 
   it("describes canvas artifacts, guided plans, narrative snapshots and tool-result metadata", () => {
-    expect(canvasContextContract.openTabs?.[0]?.title).toBe("第二章候选稿");
+    expect(canvasContextContract.openTabs?.[0]?.title).toBe("第二章");
     expect(sessionToolExecutionResultContract).toMatchObject({
       ok: true,
       renderer: "guided.plan",

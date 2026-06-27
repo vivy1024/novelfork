@@ -83,16 +83,16 @@ describe("executeHeadless", () => {
     createSessionMock.mockResolvedValue(session);
 
     const events: AgentTurnEvent[] = [
-      { type: "assistant_message", content: "这是第三章的候选稿。", runtime: { providerId: "provider-1", providerName: "Test", modelId: "model-1" } },
+      { type: "assistant_message", content: "这是第三章的章节结果。", runtime: { providerId: "provider-1", providerName: "Test", modelId: "model-1" } },
       { type: "turn_completed" },
     ];
     runAgentTurnMock.mockResolvedValue(events);
 
-    const result = await executeHeadless({ prompt: "为当前书生成下一章候选稿" });
+    const result = await executeHeadless({ prompt: "为当前书生成下一章章节结果" });
 
     expect(result.success).toBe(true);
     expect(result.exitCode).toBe(0);
-    expect(result.finalMessage).toBe("这是第三章的候选稿。");
+    expect(result.finalMessage).toBe("这是第三章的章节结果。");
     expect(result.sessionId).toBe("session-1");
     expect(result.events).toHaveLength(2);
     expect(createSessionMock).toHaveBeenCalledOnce();
@@ -121,29 +121,29 @@ describe("executeHeadless", () => {
 
     const confirmationResult: SessionToolExecutionResult = {
       ok: false,
-      summary: "候选稿需要确认",
+      summary: "章节结果需要确认",
       error: "confirmation-required",
       confirmation: {
         id: "confirm-1",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         target: "chapter-3",
         risk: "confirmed-write",
-        summary: "创建第三章候选稿",
+        summary: "创建第三章章节结果",
         options: ["approve", "reject"],
       },
     };
 
     const events: AgentTurnEvent[] = [
-      { type: "tool_call", id: "tc-1", toolName: "candidate.create_chapter", input: { bookId: "b1" }, runtime: { providerId: "p1", providerName: "T", modelId: "m1" } },
-      { type: "confirmation_required", id: "tc-1", toolName: "candidate.create_chapter", result: confirmationResult },
+      { type: "tool_call", id: "tc-1", toolName: "pipeline.write", input: { bookId: "b1" }, runtime: { providerId: "p1", providerName: "T", modelId: "m1" } },
+      { type: "confirmation_required", id: "tc-1", toolName: "pipeline.write", result: confirmationResult },
     ];
     runAgentTurnMock.mockResolvedValue(events);
 
-    const result = await executeHeadless({ prompt: "生成候选稿" });
+    const result = await executeHeadless({ prompt: "生成章节结果" });
 
     expect(result.success).toBe(false);
     expect(result.exitCode).toBe(2);
-    expect(result.pendingConfirmation).toEqual({ toolName: "candidate.create_chapter", id: "tc-1" });
+    expect(result.pendingConfirmation).toEqual({ toolName: "pipeline.write", id: "tc-1" });
   });
 
   it("returns tool chain summary when a tool execution fails", async () => {

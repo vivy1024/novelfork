@@ -1,6 +1,16 @@
+**版本**: v3.0.0
+**创建日期**: 2026-06-25
+**更新日期**: 2026-06-25
+**状态**: current
+**文档类型**: current
+
 # 03 - 产品与流程
 
 NovelFork 小说创作的核心产品流程。
+
+## 直接子文档
+
+- [01-小说创作流程.md](./01-小说创作流程.md) — 从建书、设定、写作到正式章节结果/叙事记忆审批的用户流程
 
 ## 写作管线 v2
 
@@ -13,7 +23,10 @@ NovelFork 小说创作的核心产品流程。
 cockpit.snapshot        ← 驾驶舱快照（当前章节状态、进度、资源）
   │
   ▼
-jingwei.read(brief)     ← 读取设定摘要（按 token 预算裁剪）
+lore.read(brief)        ← 读取静态设定摘要（按 token 预算裁剪）
+  │
+  ▼
+memory.read(write)      ← 读取动态叙事记忆（ContextCards/时间线/伏笔/事实）
   │
   ▼
 pgi.ask                 ← PGI 追问（补充缺失信息）
@@ -25,13 +38,13 @@ AskUserQuestion         ← 等待用户回答（可跳过）
 scene.spec              ← 生成场景规格（目标/约束/节拍）
   │
   ▼
-jingwei.read(category)  ← 按规格精确读取相关设定
+lore.read(category) + memory.read  ← 按规格精确读取静态设定与动态上下文
   │
   ▼
 pipeline.write          ← 三段式生成正文
   │                       creative → observer → settler
   ▼
-候选稿                   ← 带元数据的草稿，等待用户裁决
+正式章节结果             ← 带元数据的稳定正文结果，进入画布审阅
 ```
 
 编排入口：`novel-plugin/src/handlers/pipeline-write-service.ts`
@@ -44,21 +57,38 @@ pipeline.write          ← 三段式生成正文
 | Observer | 观察者 | 审视叙事质量、节奏、AI 痕迹 |
 | Settler | 定稿者 | 综合两者意见，输出终稿 |
 
+## 经纬系统与叙事记忆的边界（v3.0.0 架构）
+
+NovelFork v3.0.0 将"静态设定"与"动态叙事记忆"彻底分离：
+
+| 维度 | 经纬（Lore） | 叙事记忆（Narrative Memory） |
+|------|-------------|---------------------------|
+| 定位 | 作者显式维护的静态设定库 | 动态叙事记忆系统 |
+| 内容 | 人物、地点、势力、规则、物品、术语、作者备注 | 动态关系、时间线、角色弧线、伏笔状态、召回 diagnostics |
+| 载体 | `jingwei_entry` | `narrative_fact` |
+| 读取工具 | `lore.read`（默认排除 archived/draft/needs-review） | `memory.read`（ContextCard 召回） |
+| 写入工具 | `lore.write`（canon/rules 强制 evidence） | `memory.events`（事件日志 + pending 审批） |
+| 图谱工具 | — | `memory.graph`（关系图/时间线/弧线/伏笔/矛盾） |
+
+> **迁移说明**：原经纬中 12 条动态设定（人物关系网、伏笔管理、时间线、核心矛盾等）已全量迁移为 `narrative_fact`，原经纬条目彻底归档。
+
 ## 经纬系统
 
 设定管理核心，位于 `novel-plugin/src/engine/jingwei/`。
 
-### 16 分类
+### 静态 Lore 分类
 
-角色 · 势力 · 地点 · 物品 · 技能体系 · 世界规则 · 历史 · 文化 · 经济 · 政治 · 科技 · 宗教 · 自然 · 事件 · 关系 · 其他
+角色 · 势力 · 地点 · 物品 · 技能体系 · 世界规则 · 历史 · 文化 · 经济 · 政治 · 科技 · 宗教 · 自然 · 作者备注 · 术语 · 其他
+
+> v3.0.0 起，动态关系、时间线、伏笔状态、章节后事实不再作为经纬/Lore 分类维护，统一进入 Narrative Memory。
 
 ### 三层模型
 
 | Layer | 说明 | 可变性 |
 |-------|------|--------|
-| Canon | 正典设定，不可被 AI 修改 | 只读 |
-| Dynamic | 剧情推进产生的动态设定 | 可写 |
-| Reference | 参考资料，不注入正文生成 | 只读 |
+| Canon | 作者确认的正典静态设定，AI 写入需 evidence | 受保护 |
+| Rules | 平台/写作/世界规则，AI 写入需 reason/source/evidence | 受保护 |
+| Reference | 参考资料、作者备注、非正文强约束材料 | 低优先 |
 
 ### 优先级分层（PriorityTier）
 
@@ -69,27 +99,69 @@ pipeline.write          ← 三段式生成正文
 | Reference | 低优先 | 仅搜索时展示 |
 | Auto | 系统管理 | 自动升降级 |
 
-### Canon 保护
+### Canon 保护（v3.0.0 evidence 门禁）
 
 Canon 层条目受写保护：
-- AI 工具调用 `jingwei.write` 不能修改 Canon 条目
-- 只有用户通过 UI 显式编辑才能变更
+- AI 工具调用 `lore.write` 写入 `canon` 和 `rules` 时强制要求带有 `reason/source/evidence`
+- `lore.read` 默认排除 `archived`/`draft`/`needs-review` 状态的条目
+- 只有用户通过 UI 显式编辑才能变更 Canon
 - 防止 AI 在长对话中"漂移"核心设定
+
+## 叙事记忆引擎（v3.0.0）
+
+动态叙事记忆系统，位于 `novel-plugin/src/engine/narrative-memory/`（20+ 模块）。
+
+### 8 通道本地检索
+
+| 通道 | 内容 |
+|------|------|
+| facts | 事实三元组 |
+| hard | 硬性约束 |
+| hooks | 伏笔状态 |
+| scene-spec | 场景规格 |
+| semantic | 语义相似（exact cosine，默认关闭） |
+| state | 运行时状态 |
+| style | 文风 |
+| timeline | 时间线 |
+
+### Wave 终局算法层
+
+本地纯 TS 实现，默认关闭，可通过 `waveConfig.enabled` 显式启用：
+- narrative tag graph
+- bell semantic gain
+- EPA
+- residual pyramid
+- spike routing
+- geodesic rerank
+
+### NarrativeEvent 事件日志
+
+章节结果结算后优先走事件日志和安全回写：
+- canon / world fact / 高风险事件默认 pending，避免 LLM 自动污染 canon
+- 用户通过 NarrativeMemoryPanel 一键 Approve/Reject
+
+### 3D 结晶叙事记忆空间
+
+纯 Canvas 2D 透视投影引擎，将 `narrative_fact` 可视化为 3D 水晶节点：
+- 3D 星尘宇宙背景（80 颗呼吸闪烁星尘）
+- 测地线粒子网络（Spike Routing 能量流 + 节点霓虹脉冲）
+- 3D Fact Carousel（滚轮/键盘阻尼旋转 + 双击翻牌查证据）
+- 入口：经纬面板 → "打开完整记忆图谱"按钮 → 主编辑器区域新 Tab 激活
 
 ## 资源管理
 
-### 候选稿生命周期
+### 正式章节结果生命周期
 
 ```
-生成 → pending（待审）
-  ├→ accepted（采纳）→ 写入章节正文
-  ├→ rejected（拒绝）→ 归档保留
-  └→ revision（修订）→ 重新进入管线
+pipeline.write → chapter:<number>（正式章节结果）
+  ├→ 画布审阅 / 手动编辑
+  ├→ 版本生成与对比
+  └→ memory.events 整理动态叙事事件
 ```
 
-- 每次 `pipeline.write` 产出一个候选稿
-- 候选稿独立存储，不直接覆盖章节
-- 用户可对比多个候选稿后选择采纳
+- 每次 `pipeline.write` 产出或更新正式章节结果
+- 不再创建 candidate/draft 主对象
+- 用户可通过多版本、重写或行内编辑继续调整章节
 
 ### 资源账本
 

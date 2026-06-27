@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "storyline" | "tool-result" | "tool" | "tool-group";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "file" | "storyline" | "tool-result" | "tool" | "tool-group";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;

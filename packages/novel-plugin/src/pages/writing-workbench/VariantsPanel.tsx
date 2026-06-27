@@ -21,12 +21,6 @@ interface VariantsResponse {
   readonly model?: string;
 }
 
-interface ApplyResponse {
-  readonly target: string;
-  readonly resourceId: string;
-  readonly status: string;
-}
-
 export interface VariantsPanelProps {
   readonly bookId: string;
   readonly currentChapter?: number;
@@ -47,7 +41,6 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
   const [variants, setVariants] = useState<readonly VariantItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [appliedIndex, setAppliedIndex] = useState<number | null>(null);
-  const [applyingIndex, setApplyingIndex] = useState<number | null>(null);
 
   async function handleGenerate() {
     if (!inputText.trim()) {
@@ -79,24 +72,17 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
     }
   }
 
-  async function handleApply(index: number) {
+  async function handleSelect(index: number) {
     const variant = variants[index];
     if (!variant) return;
-    setApplyingIndex(index);
     setError(null);
 
     try {
-      await postApi<ApplyResponse>(`/books/${bookId}/writing-modes/apply`, {
-        content: variant.content,
-        target: "candidate",
-        sourceMode: "variant",
-        chapterNumber: currentChapter ?? 1,
-      });
+      if (!navigator.clipboard?.writeText) throw new Error("clipboard-unavailable");
+      await navigator.clipboard.writeText(variant.content);
       setAppliedIndex(index);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "应用失败");
-    } finally {
-      setApplyingIndex(null);
+    } catch {
+      setError("已选中该版本，但浏览器剪贴板不可用，请手动复制正文。");
     }
   }
 
@@ -199,21 +185,16 @@ export function VariantsPanel({ bookId, currentChapter, selectedText, onClose }:
                   variant="outline"
                   size="sm"
                   className="h-6 text-[10px] px-2"
-                  onClick={() => void handleApply(idx)}
-                  disabled={applyingIndex !== null || appliedIndex === idx}
+                  onClick={() => void handleSelect(idx)}
+                  disabled={appliedIndex === idx}
                 >
                   {appliedIndex === idx ? (
                     <>
                       <Check className="size-3 mr-1" />
-                      已采用
-                    </>
-                  ) : applyingIndex === idx ? (
-                    <>
-                      <Loader2 className="size-3 animate-spin mr-1" />
-                      应用中…
+                      已选中
                     </>
                   ) : (
-                    "采用"
+                    "选中并复制"
                   )}
                 </Button>
               </div>

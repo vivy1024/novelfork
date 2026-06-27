@@ -66,7 +66,7 @@ const BUILTIN_RULES: ActivationRule[] = [
       "chapter.read", "chapter.list", "chapter.audit",
       "pipeline.write", "pipeline.revise",
       "scene.spec", "pgi.ask", "resource.manage",
-      "candidate.create_chapter", "beat.read", "beat.write",
+      "beat.read", "beat.write",
       "style.import", "outline.suggest_next",
       "character.check_consistency", "hooks.manage",
       "presets.read", "presets.write", "presets.check_compliance",
@@ -83,7 +83,7 @@ const BUILTIN_RULES: ActivationRule[] = [
       "chapter.read", "chapter.list", "chapter.audit",
       "pipeline.write", "pipeline.revise",
       "scene.spec", "pgi.ask", "resource.manage",
-      "candidate.create_chapter", "beat.read", "beat.write",
+      "beat.read", "beat.write",
     ],
     priority: -1, // low priority, can be overridden
   },

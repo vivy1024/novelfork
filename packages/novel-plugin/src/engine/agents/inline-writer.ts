@@ -10,7 +10,9 @@ export type InlineWriteMode =
   | "bridge"
   | "dialogue"
   | "variant"
-  | "outline-branch";
+  | "outline-branch"
+  | "polish"
+  | "rewrite";
 
 export interface InlineWriteContext {
   bookId: string;
@@ -219,5 +221,80 @@ export function parseBridgeResult(
     content,
     wordCount: content.length,
     mode: "bridge",
+  };
+}
+
+// ---- Polish ---------------------------------------------------------------
+
+export interface PolishInput extends InlineWriteInput {
+  mode: "polish";
+}
+
+export function buildPolishPrompt(
+  input: PolishInput,
+  context: InlineWriteContext,
+): string {
+  return [
+    "# 文本润色任务",
+    "你是一位中文网文写作助手。请对选中文本进行润色，优化文字表达，使其更加流畅优美，同时保持原意不变。",
+    CONTEXT_BLOCK(context),
+    `## 选中文本\n${input.selectedText}`,
+    input.direction ? `## 润色方向\n${input.direction}` : "",
+    "## 输出要求",
+    "- 直接输出润色后的文本，将替换原文",
+    "- 保持原意不变，仅优化表达方式",
+    "- 保持文风与原文一致",
+    "- 字数与原文接近（±20%）",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function parsePolishResult(
+  response: string,
+  _input?: PolishInput,
+): InlineWriteResult {
+  const content = response.trim();
+  return {
+    content,
+    wordCount: content.length,
+    mode: "polish",
+  };
+}
+
+// ---- Rewrite --------------------------------------------------------------
+
+export interface RewriteInput extends InlineWriteInput {
+  mode: "rewrite";
+}
+
+export function buildRewritePrompt(
+  input: RewriteInput,
+  context: InlineWriteContext,
+): string {
+  return [
+    "# 文本改写任务",
+    "你是一位中文网文写作助手。请对选中文本进行改写，用全新的表述方式传达相同含义，使文字更有表现力。",
+    CONTEXT_BLOCK(context),
+    `## 选中文本\n${input.selectedText}`,
+    input.direction ? `## 改写方向\n${input.direction}` : "",
+    "## 输出要求",
+    "- 直接输出改写后的文本，将替换原文",
+    "- 含义保持不变，但用全新的表达方式",
+    "- 保持文风与原文一致",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function parseRewriteResult(
+  response: string,
+  _input?: RewriteInput,
+): InlineWriteResult {
+  const content = response.trim();
+  return {
+    content,
+    wordCount: content.length,
+    mode: "rewrite",
   };
 }

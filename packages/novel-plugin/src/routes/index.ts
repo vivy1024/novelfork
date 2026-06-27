@@ -17,4 +17,5 @@ export { createPresetHitsRouter } from "./preset-hits.js";
 export { createChapterLinksRouter } from "./chapter-links.js";
 export { createWritingResourceRouter } from "./writing-resource.js";
 export { createOverviewRouter } from "./overview.js";
+export { createNarrativeMemoryRouter } from "./narrative-memory.js";
 export type { RouterContext } from "./context.js";

@@ -1,9 +1,9 @@
 /**
- * use-persisted-tabs — IndexedDB persistence for open tabs and drafts.
+ * use-persisted-tabs — IndexedDB persistence for open tabs and unsaved edits.
  *
  * Saves/restores:
  *   - Open tab list + active tab ID
- *   - Draft content per tab (dirty state)
+ *   - Unsaved content per tab (dirty state)
  *
  * Uses a simple IndexedDB wrapper (no external deps).
  * Gracefully degrades if IndexedDB is unavailable.
@@ -12,7 +12,7 @@
 const DB_NAME = "novelfork-studio";
 const DB_VERSION = 1;
 const TABS_STORE = "tabs";
-const DRAFTS_STORE = "drafts";
+const UNSAVED_EDITS_STORE = "unsaved-edits";
 const TABS_KEY = "session";
 
 interface PersistedTabsData {
@@ -20,7 +20,7 @@ interface PersistedTabsData {
   readonly activeTabId: string;
 }
 
-interface DraftEntry {
+interface UnsavedEditEntry {
   readonly tabId: string;
   readonly content: string;
   readonly savedAt: number;
@@ -36,8 +36,8 @@ function openDB(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(TABS_STORE)) {
         db.createObjectStore(TABS_STORE);
       }
-      if (!db.objectStoreNames.contains(DRAFTS_STORE)) {
-        db.createObjectStore(DRAFTS_STORE, { keyPath: "tabId" });
+      if (!db.objectStoreNames.contains(UNSAVED_EDITS_STORE)) {
+        db.createObjectStore(UNSAVED_EDITS_STORE, { keyPath: "tabId" });
       }
     };
     req.onsuccess = () => resolve(req.result);
@@ -73,12 +73,12 @@ async function idbPut(store: string, key: string, value: unknown): Promise<void>
   }
 }
 
-async function idbPutDraft(draft: DraftEntry): Promise<void> {
+async function idbPutUnsavedEdit(entry: UnsavedEditEntry): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(DRAFTS_STORE, "readwrite");
-      tx.objectStore(DRAFTS_STORE).put(draft);
+      const tx = db.transaction(UNSAVED_EDITS_STORE, "readwrite");
+      tx.objectStore(UNSAVED_EDITS_STORE).put(entry);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -87,13 +87,13 @@ async function idbPutDraft(draft: DraftEntry): Promise<void> {
   }
 }
 
-async function idbGetDraft(tabId: string): Promise<DraftEntry | undefined> {
+async function idbGetUnsavedEdit(tabId: string): Promise<UnsavedEditEntry | undefined> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(DRAFTS_STORE, "readonly");
-      const req = tx.objectStore(DRAFTS_STORE).get(tabId);
-      req.onsuccess = () => resolve(req.result as DraftEntry | undefined);
+      const tx = db.transaction(UNSAVED_EDITS_STORE, "readonly");
+      const req = tx.objectStore(UNSAVED_EDITS_STORE).get(tabId);
+      req.onsuccess = () => resolve(req.result as UnsavedEditEntry | undefined);
       req.onerror = () => reject(req.error);
     });
   } catch {
@@ -101,12 +101,12 @@ async function idbGetDraft(tabId: string): Promise<DraftEntry | undefined> {
   }
 }
 
-async function idbDeleteDraft(tabId: string): Promise<void> {
+async function idbDeleteUnsavedEdit(tabId: string): Promise<void> {
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
-      const tx = db.transaction(DRAFTS_STORE, "readwrite");
-      tx.objectStore(DRAFTS_STORE).delete(tabId);
+      const tx = db.transaction(UNSAVED_EDITS_STORE, "readwrite");
+      tx.objectStore(UNSAVED_EDITS_STORE).delete(tabId);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error);
     });
@@ -136,23 +136,23 @@ export async function restoreTabSession(): Promise<PersistedTabsData | undefined
 }
 
 /**
- * Save a draft for a specific tab.
+ * Save unsaved edits for a specific tab.
  */
-export async function saveDraft(tabId: string, content: string): Promise<void> {
-  await idbPutDraft({ tabId, content, savedAt: Date.now() });
+export async function saveUnsavedEdit(tabId: string, content: string): Promise<void> {
+  await idbPutUnsavedEdit({ tabId, content, savedAt: Date.now() });
 }
 
 /**
- * Load a draft for a specific tab.
+ * Load unsaved edits for a specific tab.
  */
-export async function loadDraft(tabId: string): Promise<string | undefined> {
-  const draft = await idbGetDraft(tabId);
-  return draft?.content;
+export async function loadUnsavedEdit(tabId: string): Promise<string | undefined> {
+  const entry = await idbGetUnsavedEdit(tabId);
+  return entry?.content;
 }
 
 /**
- * Remove a draft when tab is closed or content is saved.
+ * Remove unsaved edits when tab is closed or content is saved.
  */
-export async function clearDraft(tabId: string): Promise<void> {
-  await idbDeleteDraft(tabId);
+export async function clearUnsavedEdit(tabId: string): Promise<void> {
+  await idbDeleteUnsavedEdit(tabId);
 }

@@ -10,10 +10,9 @@ function events(): RuntimeEvent[] {
     { type: "message", session_id: sessionId, role: "user", content: "写下一章" },
     { type: "assistant_delta", session_id: sessionId, delta: "正" },
     { type: "message", session_id: sessionId, role: "assistant", content: "正在规划。", runtime: { providerId: "p", modelId: "m" } },
-    { type: "tool_use", session_id: sessionId, tool_use_id: "tool-1", tool_name: "candidate.create_chapter", input: { bookId: "book-1" } },
-    { type: "tool_result", session_id: sessionId, tool_use_id: "tool-1", tool_name: "candidate.create_chapter", result: { ok: true, summary: "候选稿已创建。", data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] }, artifact: { id: "candidate-1", kind: "candidate", title: "第一章候选", resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" } } } },
+    { type: "tool_use", session_id: sessionId, tool_use_id: "tool-1", tool_name: "pipeline.write", input: { bookId: "book-1" } },
+    { type: "tool_result", session_id: sessionId, tool_use_id: "tool-1", tool_name: "pipeline.write", result: { ok: true, summary: "章节结果已创建。", data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] }, artifact: { id: "chapter:1", kind: "chapter", title: "第一章", resourceRef: { kind: "chapter", id: "chapter:1", bookId: "book-1", chapterNumber: 1 } } } },
     { type: "checkpoint", session_id: sessionId, checkpoint_id: "checkpoint-1", paths: ["chapters/0001.md"], source_tool_use_id: "tool-1" },
-    { type: "candidate", session_id: sessionId, candidate_id: "candidate-1", source_tool_use_id: "tool-1", artifact: { id: "candidate-1", kind: "candidate", title: "第一章候选", resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" } } },
     { type: "permission_request", session_id: sessionId, confirmation_id: "confirm-1", tool_name: "chapter.overwrite", result: { ok: true, summary: "等待确认。", confirmation: { id: "confirm-1", toolName: "chapter.overwrite", target: "正式章节", risk: "confirmed-write", summary: "确认写入", options: ["approve", "reject"] } } },
     { type: "usage", session_id: sessionId, usage: { input_tokens: 10, output_tokens: 5 } },
     { type: "error", session_id: sessionId, code: "pending-confirmation", message: "等待用户确认。" },
@@ -33,16 +32,13 @@ describe("runtime stream-json emitter", () => {
       "tool_result",
       "checkpoint_created",
       "resource_updated",
-      "candidate_created",
-      "resource_updated",
       "permission_request",
       "usage_delta",
       "error",
       "result",
     ]);
     expect(streamEvents.find((event) => event.type === "checkpoint_created")).toMatchObject({ checkpoint_id: "checkpoint-1", paths: ["chapters/0001.md"] });
-    expect(streamEvents.find((event) => event.type === "candidate_created")).toMatchObject({ candidate_id: "candidate-1" });
-    expect(streamEvents.filter((event) => event.type === "resource_updated")).toHaveLength(2);
+    expect(streamEvents.filter((event) => event.type === "resource_updated")).toHaveLength(1);
   });
 
   it("serializes stream-json events as valid NDJSON lines", () => {

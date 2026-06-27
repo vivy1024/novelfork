@@ -300,6 +300,8 @@ export interface NarratorSessionChatMessage {
   content: string;
   /** Provider reasoning/thinking content (DeepSeek reasoning_content, Claude thinking) */
   reasoning_content?: string;
+  /** Provider reasoning signature for APIs that require signed thinking passback (e.g. Claude). */
+  reasoning_signature?: string;
   timestamp: number;
   seq?: number;
   toolCalls?: ToolCall[];

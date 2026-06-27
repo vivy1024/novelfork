@@ -49,7 +49,7 @@ describe("Studio Next layout primitives", () => {
   it("supports the three-column writing workspace layout", () => {
     render(
       <ResourceWorkspaceLayout
-        explorer={<div>作品 / 卷 / 已有章节 / 生成章节 / 草稿</div>}
+        explorer={<div>作品 / 卷 / 已有章节 / 生成章节 / 版本</div>}
         editor={<div>正文编辑器</div>}
         assistant={<div>叙述者会话</div>}
       />,

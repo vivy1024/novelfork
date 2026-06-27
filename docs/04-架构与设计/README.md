@@ -1,3 +1,9 @@
+**版本**: v3.0.0
+**创建日期**: 2026-06-25
+**更新日期**: 2026-06-25
+**状态**: current
+**文档类型**: current
+
 # 04 - 架构与设计
 
 NovelFork Studio 系统架构文档。
@@ -23,26 +29,49 @@ NovelFork Studio 系统架构文档。
 | `packages/studio` | Agent 运行时、HTTP/WS 服务、前端外壳 | 无小说代码 |
 | `packages/novel-plugin` | 写作引擎、经纬、路由、工作台 UI | 小说专属 |
 
+## Narrative Wave Memory（叙事浪潮记忆）
+
+叙事记忆位于 `packages/novel-plugin/src/engine/narrative-memory/`，只属于小说插件域，不向 `core` / `studio` 写入小说领域逻辑。
+
+当前阶段能力：
+
+| 层级 | 状态 | 说明 |
+|------|------|------|
+| MVP 多通道检索 | 已落地 | `scene-spec` / `hard` / `state` / `hooks` / `timeline` / `facts` / `style` 转为 `NarrativeContextCard`，进入 `buildNarrativeContext()`。 |
+| 预算与诊断 | 已落地 | channel-aware budget、full/normal/summary/brief 降级、dropped/degraded 记录、`narrative_retrieval_log`。 |
+| 写后事件日志 | 已落地 | `NarrativeEvent` + reducer；低风险 dynamic 可 applied，canon/world fact/高风险默认 pending。 |
+| Semantic exact cosine | 已落地，默认关闭 | `narrative_context_vector` 存储 embedding metadata；有 provider 且显式启用时做 exact cosine，无 provider 时 skipped。未引入 HNSW/ANN/vector DB。 |
+| Wave 算法层 | 已落地，默认关闭 | 本地纯 TS tag graph、bell semantic gain、EPA、residual pyramid、spike routing、geodesic rerank；无 native 数学依赖。 |
+| 可观察性 API | 已落地 | `/api/books/:bookId/narrative-memory/diagnostics/latest` 与 `/events/pending` 暴露最近检索诊断和 pending events。 |
+| UI 审批面板 | 已落地 | `NarrativeMemoryPanel` 显示最近 ContextCard 诊断与 pending events，可一键 Approve/Reject。 |
+
+默认依赖策略：
+
+- 不引入外部向量数据库、GraphDB、LangChain/LlamaIndex。
+- Semantic 通道需要调用方显式传入 embedding provider；缺失时跳过，不影响 MVP 检索。
+- Wave 算法层需要显式 `waveConfig.enabled = true`；关闭时行为回退到 MVP/Semantic 排序。
+- LLM 不直接查 SQL、不直接覆盖 canon；写后变化必须走 `NarrativeEvent` / reducer。
+
 ## Agent Runtime 模块树
 
+核心运行时位于 `packages/studio/src/api/lib/`：
+
 ```
-agent-runtime/
-├── session-chat-service.ts      (2846行) — WebSocket 传输 + 编排
-├── agent-turn-runtime.ts        (1107行) — 回合循环引擎
-├── session-tool-executor.ts     (4857行) — 90-case 工具分发
+api/lib/
+├── session-chat-service.ts      — WebSocket 传输 + 编排 + 持久化
+├── agent-turn-runtime.ts        — 回合循环引擎（generate → tool_use → tool_result）
+├── session-tool-executor.ts     — 工具分发中枢
 ├── permission-pipeline.ts       — 工具权限校验
 ├── yolo-mode.ts                 — YOLO 决策 + 安全反思
 ├── session-tool-policy.ts       — 工具策略（denied/permission/dirty）
 ├── session-tool-registry.ts     — 工具注册表
-├── tool-schemas.ts              — 工具 JSON Schema 定义
-├── turn-profiler.ts             — 回合性能分析
-├── context-manager.ts           — 上下文压缩管理
-├── compact-service.ts           — 对话压缩服务
+├── llm-runtime-service.ts       — 模型池、fallback、推理强度与适配器入口
+├── provider-adapters/           — Anthropic / OpenAI-compatible / Codex / Kiro 等协议适配
 ├── system-prompt-builder.ts     — 系统提示词组装
-├── harness-loader.ts            — Harness 模块加载
-├── provider-router.ts           — 模型路由
-└── streaming-handler.ts         — SSE/WS 流式处理
+└── compact/                     — 对话压缩与级联摘要
 ```
+
+小说领域工具 schema 位于 `packages/novel-plugin/src/tool-schemas.ts`，通过插件注册到通用运行时。
 
 ## 运行时三角
 
@@ -69,10 +98,10 @@ session-chat-service.ts
 | CodexAdapter | Codex CLI 协议 | 本地 Codex 实例 |
 | ClaudeCodeAdapter | Claude Code 协议 | Claude Code 集成 |
 
-适配器统一实现 `LLMClient` 接口（`core/src/llm/provider.ts`）：
-- `chatCompletion()` — 非流式
-- `chatWithTools()` — 带工具调用
-- `streamChat()` — 流式输出
+适配器统一实现 `RuntimeAdapter`（`packages/studio/src/api/lib/provider-adapters/index.ts`）：
+- `listModels()` — 拉取/归一化模型列表
+- `testModel()` — 最小请求连通性测试
+- `generate()` — 文本、流式与工具调用统一入口
 
 ## 数据流
 

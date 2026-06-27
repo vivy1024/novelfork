@@ -19,7 +19,7 @@ import { SESSIONS_API_PATH, appendApiQuery, buildSessionApiPath, buildSessionsAp
 import type { ContractClient } from "./contract-client";
 
 export interface SessionMemoryClientPayload {
-  readonly classification: "user-preference" | "project-fact" | "temporary-story-draft";
+  readonly classification: "user-preference" | "project-fact" | "temporary-story-fragment";
   readonly content: string;
   readonly projectId?: string;
   readonly source: { readonly kind: "message"; readonly messageId: string; readonly seq?: number } | { readonly kind: "project-resource"; readonly projectId: string; readonly path: string; readonly ref?: string };
@@ -233,12 +233,23 @@ function lastSeqFrom(cursor: SessionWebSocketRuntimeState["cursor"], messages: r
   return cursor?.lastSeq ?? Math.max(fallback, ...messages.map((message) => message.seq ?? 0));
 }
 
+function isValidSessionMessage(message: NarratorSessionChatMessage | null | undefined): message is NarratorSessionChatMessage {
+  return Boolean(message && typeof message.id === "string" && typeof message.role === "string");
+}
+
 export function reduceSessionServerEnvelope(
   state: SessionWebSocketRuntimeState,
   envelope: NarratorSessionChatServerEnvelope,
 ): SessionWebSocketRuntimeState {
   switch (envelope.type) {
     case "session:snapshot": {
+      if (!envelope.snapshot?.session || !Array.isArray(envelope.snapshot.messages)) {
+        return {
+          ...state,
+          error: { message: "会话快照格式无效：缺少 session 或 messages。", code: "invalid-session-snapshot", runtime: envelope },
+          recovery: { state: "failed", reason: "snapshot-load-failed" },
+        };
+      }
       const cursor = envelope.snapshot.cursor ?? null;
       const messages = envelope.snapshot.messages.map(normalizeSessionMessage);
       return {
@@ -254,6 +265,13 @@ export function reduceSessionServerEnvelope(
       };
     }
     case "session:state": {
+      if (!envelope.session) {
+        return {
+          ...state,
+          error: { message: "会话状态格式无效：缺少 session。", code: "invalid-session-state", runtime: envelope },
+          recovery: { state: "failed", reason: "websocket-error" },
+        };
+      }
       const cursor = envelope.cursor ?? state.cursor;
       return {
         ...state,
@@ -264,6 +282,13 @@ export function reduceSessionServerEnvelope(
       };
     }
     case "session:message": {
+      if (!isValidSessionMessage(envelope.message)) {
+        return {
+          ...state,
+          error: { message: "会话消息格式无效：缺少有效 message。", code: "invalid-session-message", runtime: envelope },
+          recovery: { state: "failed", reason: "websocket-error" },
+        };
+      }
       const messages = mergeSessionMessages(state.messages, [envelope.message]);
       const cursor = envelope.cursor ?? state.cursor;
       return {

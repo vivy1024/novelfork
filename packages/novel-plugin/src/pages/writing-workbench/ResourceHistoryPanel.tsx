@@ -27,10 +27,7 @@ function formatDate(value: string | number | undefined): string {
 }
 
 const statusLabel: Record<string, string> = {
-  draft: "草稿",
-  candidate: "候选",
   accepted: "正式",
-  rejected: "拒绝",
   archived: "归档",
 };
 

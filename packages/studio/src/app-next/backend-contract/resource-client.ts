@@ -3,11 +3,6 @@ import type { BookDetailResponse, BookListResponse, ChapterContentResponse, Save
 import { BOOK_CREATE_API_PATH, BOOKS_API_PATH, appendApiQuery, buildBookApiPath, buildWorktreeStatusApiPath } from "./api-paths";
 import type { ContractClient } from "./contract-client";
 
-export interface SaveDraftPayload {
-  readonly id?: string;
-  readonly [key: string]: unknown;
-}
-
 export interface SaveJingweiEntryPayload {
   readonly title?: string;
   readonly contentMd?: string;
@@ -56,41 +51,16 @@ export function createResourceClient(contract: ContractClient) {
       contract.post<T>(buildBookApiPath(bookId, "checkpoints", checkpointId, "rewind", "apply"), payload, { capability: { id: "resources.rewind.apply", status: "current" } }),
     listCheckpoints: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "checkpoints"), { capability: { id: "resources.checkpoints.list", status: "current" } }),
-    listCandidates: <T = unknown>(bookId: string) =>
-      contract.get<T>(buildBookApiPath(bookId, "candidates"), { capability: { id: "candidates.list", status: "current" } }),
-    acceptCandidate: <T = unknown>(bookId: string, candidateId: string, payload: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "accept"), payload, { capability: { id: "candidates.accept", status: "current" } }),
-    rejectCandidate: <T = unknown>(bookId: string, candidateId: string) =>
-      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "reject"), {}, { capability: { id: "candidates.reject", status: "current" } }),
-    archiveCandidate: <T = unknown>(bookId: string, candidateId: string) =>
-      contract.post<T>(buildBookApiPath(bookId, "candidates", candidateId, "archive"), {}, { capability: { id: "candidates.archive", status: "current" } }),
-    deleteCandidate: <T = unknown>(bookId: string, candidateId: string) =>
-      contract.delete<T>(buildBookApiPath(bookId, "candidates", candidateId), { capability: { id: "candidates.delete", status: "current" } }),
     listWritingResources: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "resources"), { capability: { id: "writing-resources.list", status: "current" } }),
     createWritingResource: <T = unknown>(bookId: string, payload: unknown) =>
       contract.post<T>(buildBookApiPath(bookId, "resources"), payload, { capability: { id: "writing-resources.create", status: "current" } }),
-    transitionWritingResource: <T = unknown>(bookId: string, resourceId: string, payload: unknown) =>
-      contract.post<T>(buildBookApiPath(bookId, "resources", resourceId, "transition"), payload, { capability: { id: "writing-resources.transition", status: "current" } }),
     deleteWritingResource: <T = unknown>(bookId: string, resourceId: string) =>
       contract.delete<T>(buildBookApiPath(bookId, "resources", resourceId), { capability: { id: "writing-resources.delete", status: "current" } }),
     getWritingResourceHistory: <T = unknown>(bookId: string, resourceId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "resources", resourceId, "history"), { capability: { id: "writing-resources.history", status: "current" } }),
     getWritingResourceDetail: <T = unknown>(bookId: string, resourceId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "resources", resourceId), { capability: { id: "writing-resources.detail", status: "current" } }),
-    listDrafts: <T = unknown>(bookId: string) =>
-      contract.get<T>(buildBookApiPath(bookId, "drafts"), { capability: { id: "drafts.list", status: "current" } }),
-    getDraft: <T = unknown>(bookId: string, draftId: string) =>
-      contract.get<T>(buildBookApiPath(bookId, "drafts", draftId), { capability: { id: "drafts.detail", status: "current" } }),
-    saveDraft: <T = unknown>(bookId: string, payload: SaveDraftPayload) => {
-      const draftId = payload && typeof payload === "object" && "id" in payload ? payload.id : undefined;
-      if (typeof draftId === "string" && draftId.length > 0) {
-        return contract.put<T>(buildBookApiPath(bookId, "drafts", draftId), payload, { capability: { id: "drafts.save", status: "current" } });
-      }
-      return contract.post<T>(buildBookApiPath(bookId, "drafts"), payload, { capability: { id: "drafts.save", status: "current" } });
-    },
-    deleteDraft: <T = unknown>(bookId: string, draftId: string) =>
-      contract.delete<T>(buildBookApiPath(bookId, "drafts", draftId), { capability: { id: "drafts.delete", status: "current" } }),
     listStoryFiles: <T = unknown>(bookId: string) =>
       contract.get<T>(buildBookApiPath(bookId, "story-files"), { capability: { id: "story-files.list", status: "current" } }),
     getStoryFile: <T = { file: string; content: string | null }>(bookId: string, fileName: string) =>

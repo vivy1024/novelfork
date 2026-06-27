@@ -132,6 +132,17 @@ describe("session WebSocket contract helper", () => {
     });
   });
 
+  it("keeps malformed snapshot, state, and message envelopes from crashing websocket reducer", () => {
+    const malformedSnapshot = reduceSessionServerEnvelope(createInitialSessionWebSocketState(), { type: "session:snapshot" } as never);
+    expect(malformedSnapshot.error).toMatchObject({ code: "invalid-session-snapshot" });
+
+    const malformedState = reduceSessionServerEnvelope(createInitialSessionWebSocketState(), { type: "session:state", cursor: { lastSeq: 1 } } as never);
+    expect(malformedState.error).toMatchObject({ code: "invalid-session-state" });
+
+    const malformedMessage = reduceSessionServerEnvelope(createInitialSessionWebSocketState(), { type: "session:message", sessionId: "session-1" } as never);
+    expect(malformedMessage.error).toMatchObject({ code: "invalid-session-message" });
+  });
+
   it("hydrates snapshot, accumulates stream chunks, and tracks resume seq", () => {
     const hydrated = reduceSessionServerEnvelope(createInitialSessionWebSocketState(), {
       type: "session:snapshot",

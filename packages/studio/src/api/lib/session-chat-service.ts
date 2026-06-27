@@ -1375,7 +1375,9 @@ async function appendModelContinuationAfterToolDecision(
         const toolUseMessage = appendMessageToState(loaded.state, {
           id: `confirmation-tool-use-${event.id}-${nextTimestamp}`,
           role: "assistant",
-          content: `请求调用工具 ${event.toolName}。`,
+          content: "",
+          reasoning_content: event.reasoningContent,
+          reasoning_signature: event.reasoningSignature,
           timestamp: nextTimestamp,
           runtime: event.runtime,
           toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input }],
@@ -2026,7 +2028,7 @@ function extractMessageToolResult(message: NarratorSessionChatMessage): SessionT
   return toolResult as unknown as SessionToolExecutionResult;
 }
 
-function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessage[]): AgentTurnItem[] {
+export function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessage[]): AgentTurnItem[] {
   const latestResultIndexByToolCallId = new Map<string, number>();
   messages.forEach((message, index) => {
     if (!extractMessageToolResult(message)) return;
@@ -2066,7 +2068,7 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
         });
       }
 
-      return toolCalls.flatMap((toolCall): AgentTurnItem[] => {
+      const toolCallItems = toolCalls.flatMap((toolCall): AgentTurnItem[] => {
         if (!toolCall.id) return [];
         return [{
           type: "tool_call",
@@ -2075,6 +2077,22 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
           input: normalizeRuntimeToolInput(toolCall.input),
         }];
       });
+
+      if (message.reasoning_content) {
+        return [
+          {
+            type: "message",
+            id: `${message.id}-reasoning`,
+            role: "assistant",
+            content: "",
+            reasoning_content: message.reasoning_content,
+            ...(message.reasoning_signature ? { reasoning_signature: message.reasoning_signature } : {}),
+          },
+          ...toolCallItems,
+        ];
+      }
+
+      return toolCallItems;
     }
 
     if (!message.content.trim() && !message.reasoning_content) return [];
@@ -2084,6 +2102,7 @@ function sessionMessagesToTurnItems(messages: readonly NarratorSessionChatMessag
       role: message.role,
       content: message.content,
       ...(message.reasoning_content ? { reasoning_content: message.reasoning_content } : {}),
+      ...(message.reasoning_signature ? { reasoning_signature: message.reasoning_signature } : {}),
       ...(message.metadata ? { metadata: message.metadata } : {}),
       ...(message.attachments?.length ? { attachments: message.attachments } : {}),
     }];
@@ -2367,36 +2386,7 @@ export async function handleSessionChatTransportMessage(
         bookContext = await buildAgentContext({ bookId: projectId, sceneText: effectiveContent, modelContextWindow });
       } catch { /* context build failure is non-fatal */ }
 
-      // P2: 预设 prompt 注入 + 节拍模板注入
-      try {
-        const { buildPresetInjections, getPreset, getBeatTemplate } = await import("@vivy1024/novelfork-novel-plugin/engine");
-        const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-        const { readFile: readFileAsync } = await import("node:fs/promises");
-        const { join: joinPath } = await import("node:path");
-        const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-        const bookJsonPath = joinPath(root, "books", projectId, "book.json");
-        const bookConfig = JSON.parse(await readFileAsync(bookJsonPath, "utf-8")) as { enabledPresetIds?: string[]; beatTemplateId?: string };
-
-        // 预设注入
-        if (bookConfig.enabledPresetIds?.length) {
-          const enabledPresets = bookConfig.enabledPresetIds.map((id: string) => getPreset(id)).filter(Boolean);
-          if (enabledPresets.length > 0) {
-            const presetBlock = buildPresetInjections(enabledPresets as any);
-            if (presetBlock.trim()) {
-              bookContext += `\n\n### 启用的写作预设\n${presetBlock}`;
-            }
-          }
-        }
-
-        // 节拍模板注入
-        if (bookConfig.beatTemplateId) {
-          const beatTemplate = getBeatTemplate(bookConfig.beatTemplateId);
-          if (beatTemplate) {
-            const beatNames = beatTemplate.beats.map((b: { name: string }) => b.name).join(" → ");
-            bookContext += `\n\n### 当前节拍模板：${beatTemplate.name}\n节拍序列：${beatNames}`;
-          }
-        }
-      } catch { /* preset/beat injection failure is non-fatal */ }
+      // 预设与节拍不得在会话 system/runtime context 中直拼；写作链路必须通过 Narrative Memory style channel 注入。
     }
 
     // Phase 4: 项目探索上下文（规则文件 + package.json）
@@ -2512,7 +2502,9 @@ export async function handleSessionChatTransportMessage(
           const toolUseMessage = appendMessageToState(loaded.state, {
             id: `${userMessage.id}-tool-use-${event.id}`,
             role: "assistant",
-            content: `请求调用工具 ${event.toolName}。`,
+            content: "",
+            reasoning_content: event.reasoningContent,
+            reasoning_signature: event.reasoningSignature,
             timestamp: timestamp + messagesToPersist.length,
             runtime: event.runtime,
             toolCalls: [{ id: event.id, toolName: event.toolName, input: event.input, status: "running" as const }],
@@ -2645,7 +2637,9 @@ export async function handleSessionChatTransportMessage(
         const toolUseMessage = appendMessageToState(loaded.state, {
           id: `${userMessage.id}-tool-use-${event.id}`,
           role: "assistant",
-          content: `请求调用工具 ${event.toolName}。`,
+          content: "",
+          reasoning_content: event.reasoningContent,
+          reasoning_signature: event.reasoningSignature,
           timestamp: timestamp + messagesToPersist.length,
           runtime: event.runtime,
           toolCalls: [
@@ -2963,24 +2957,23 @@ async function drainSessionQueue(sessionId: string): Promise<void> {
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
 
 ## Agent-native 写下一章链路
-当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → 后置更新。
+当用户请求「写下一章」「生成下一章」或 write next 时，必须按顺序推进：cockpit.snapshot → lore.read → memory.read → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → memory.events 后置确认。
 - pgi.ask 无问题时也要明确说明 skippedReason=no-questions，并继续形成本章作者指示。
 - 必须等待用户通过 AskUserQuestion 确认方向；用户拒绝或要求修改时不得调用 scene.spec / pipeline.write。
-- 批准后先用 scene.spec 生成结构化写作蓝图，再将其作为 sceneSpec 传给 pipeline.write；结果只进入候选稿并通过 artifact 在中间画布打开。
-- candidate.create_chapter 仅用于保存已有正文为候选稿，不是写下一章主链路；不得用它替代 pipeline.write 生成完整章节。
+- 批准后先用 scene.spec 生成结构化写作蓝图，再将其作为 sceneSpec 传给 pipeline.write；结果写入正式章节并通过 artifact 在中间画布打开。
+- 不得创建 candidate/draft 主对象；写作结果以正式章节或后续版本结算流程承载。
 - 任一步失败时停止后续写入，展示失败原因，并保留已完成的只读调查结果。
 
 ## 后置更新（每章写完后必须执行）
-pipeline.write 成功后，**必须**执行以下经纬更新，不可跳过：
-1. **存章节摘要**：jingwei.write(category="chapter-summaries", title="第X章摘要", contentMd="100字内概括本章核心事件、角色行动、状态变化")
-2. **更新角色状态**（如本章角色有重大变化）：jingwei.write(category="character", title="角色名", contentMd="更新后的当前状态")，用 scope=search 先查是否已有该角色条目，有则更新无则创建
-3. **标记伏笔进展**（如本章埋设/触发/兑现了伏笔）：jingwei.write(category="foreshadowing", title="伏笔管理", contentMd="追加本章伏笔变化")
-4. 以上完成后才回复用户"本章已完成"
+pipeline.write 成功后，**必须**把章节摘要、角色状态变化、关系变化、伏笔埋设/触发/兑现整理为 Pending NarrativeEvents / memory.events；不得直接写入 Lore canon。
+1. 静态设定变更（作者明确确认的世界规则、人物固定设定、平台规则）才使用 lore.write，并且 canon/rules 必须带 reason + source/evidence。
+2. 动态事实、章节后抽取事实、伏笔推进、时间线推进默认进入 Narrative Memory 待确认事件。
+3. 以上完成后才回复用户"本章已完成"
 
 ## 连续写章模式
 当用户说「连续写N章」「自动写到第X章」时：
 - 每章按上述完整流程执行（包括后置更新）
-- 每章之间用 jingwei.read(scope=brief) 刷新上下文
+- 每章之间用 lore.read(scope=brief) + memory.read(purpose=write) 刷新静态设定与动态上下文
 - 不需要每章都 AskUserQuestion——首章确认方向后，后续章按大纲自动推进
 - 遇到审计严重问题（critical）时暂停并报告，不继续`;
 

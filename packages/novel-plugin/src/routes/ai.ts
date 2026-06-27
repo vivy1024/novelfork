@@ -310,21 +310,16 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
     broadcastStudioEvent("style:start", { bookId: id });
     try {
-      if (!text || text.length < 500) {
-        return c.json({ error: `Reference text too short (${text?.length ?? 0} chars, minimum 500). Provide at least 2000 chars for reliable style extraction.` }, 400);
+      if (!text || text.length < 2000) {
+        return c.json({ error: `Reference text too short (${text?.length ?? 0} chars, minimum 2000). Provide at least 2000 chars for reliable style extraction.` }, 400);
       }
 
       const sessionLlm = await ctx.getSessionLlm(c);
       const config = await ctx.buildPipelineConfig(sessionLlm);
 
-      const bookDir = state.bookDir(id);
-      const storyDir = join(bookDir, "story");
-      await mkdir(storyDir, { recursive: true });
-
-      // 1. Statistical fingerprint
+      // 1. Statistical fingerprint — 只生成建议，不自动写入 style_profile/style_guide。
       const { analyzeStyle } = await import("../engine/index.js");
       const profile = analyzeStyle(text, sourceName ?? "unknown");
-      await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
 
       // 2. LLM qualitative extraction
       const styleGuideMessages: { role: "system" | "user"; content: string }[] = [
@@ -366,10 +361,17 @@ export function createAIRouter(ctx: RouterContext): Hono {
       ];
 
       const response = await chatCompletion(config.client, config.model, styleGuideMessages, { temperature: 0.3, maxTokens: 4096 });
-      await writeFile(join(storyDir, "style_guide.md"), response.content, "utf-8");
+      const suggestion = {
+        kind: "preset-suggestion" as const,
+        sourceName: sourceName ?? "unknown",
+        profile,
+        styleGuide: response.content,
+        nextActions: ["add-preset", "replace-preset", "manual-edit"],
+        note: "文风提取结果不会自动写入 style_profile.json 或 style_guide.md；需用户确认后保存为写作预设。",
+      };
 
-      broadcastStudioEvent("style:complete", { bookId: id });
-      return c.json({ ok: true, result: response.content });
+      broadcastStudioEvent("style:complete", { bookId: id, mode: "preset-suggestion" });
+      return c.json({ ok: true, suggestion, result: response.content });
     } catch (e) {
       broadcastStudioEvent("style:error", { bookId: id, error: String(e) });
       return c.json({ error: String(e) }, 500);

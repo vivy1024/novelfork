@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Hono } from "hono";
 import type { RouterContext } from "./context";
 import { createStorageRouter } from "./storage";
-import { createChapterCandidatesRouter } from "./chapter-candidates";
 import { createProviderAdapterRegistry, type RuntimeAdapter } from "../lib/provider-adapters";
 import { ProviderRuntimeStore, type RuntimeModelInput } from "../lib/provider-runtime-store";
 import { createProvidersRouter } from "./providers";
@@ -28,7 +27,7 @@ const coreMocks = vi.hoisted(() => {
       CREATE TABLE IF NOT EXISTS "book" (
         "id" TEXT PRIMARY KEY NOT NULL,
         "name" TEXT NOT NULL,
-        "bible_mode" TEXT NOT NULL DEFAULT 'static',
+        "jingwei_mode" TEXT NOT NULL DEFAULT 'static',
         "current_chapter" INTEGER NOT NULL DEFAULT 0,
         "created_at" INTEGER NOT NULL,
         "updated_at" INTEGER NOT NULL
@@ -326,50 +325,22 @@ describe("backend core contract regression", () => {
     expect(await json(missingChapter)).toMatchObject({ error: "Chapter not found" });
   });
 
-  it("protects candidate and draft success plus explicit 400/404 boundaries", async () => {
-    const app = createChapterCandidatesRouter(root, { now: () => new Date("2026-05-05T00:00:00.000Z"), createId: () => "cand-1" });
+  it("does not expose candidate and draft writing-mode routes", async () => {
+    const app = createWritingModesRouter(buildWritingContext(root, undefined));
 
-    const badCandidate = await app.request("http://localhost/api/books/book-1/candidates", {
+    const createCandidate = await app.request("http://localhost/api/books/book-1/candidates/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "缺 source", content: "正文" }),
+      body: JSON.stringify({ chapterIntent: "旧候选", content: "正文" }),
     });
-    expect(badCandidate.status).toBe(400);
-    expect(await json(badCandidate)).toMatchObject({ error: "Candidate source is required" });
+    expect(createCandidate.status).toBe(404);
 
-    const created = await app.request("http://localhost/api/books/book-1/candidates", {
+    const applyDraft = await app.request("http://localhost/api/books/book-1/writing-modes/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: "候选", content: "候选正文", source: "write-next" }),
+      body: JSON.stringify({ target: "draft", content: "正文" }),
     });
-    expect(created.status).toBe(200);
-
-    // Trigger file→SQLite migration so the accept route can find the candidate
-    const listAfterCreate = await app.request("http://localhost/api/books/book-1/candidates");
-    expect(listAfterCreate.status).toBe(200);
-
-    const invalidAccept = await app.request("http://localhost/api/books/book-1/candidates/cand-1/accept", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "overwrite" }),
-    });
-    expect(invalidAccept.status).toBe(400);
-    expect(await json(invalidAccept)).toMatchObject({ error: "Accept action must be merge, replace, or draft" });
-
-    const asDraft = await app.request("http://localhost/api/books/book-1/candidates/cand-1/accept", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "draft" }),
-    });
-    expect(asDraft.status).toBe(200);
-    const asDraftBody = await json(asDraft);
-    // to-draft transition changes the resource type/status in-place
-    expect(asDraftBody).toMatchObject({ candidate: { status: "draft" }, draft: { id: "cand-1", content: "候选正文" } });
-    await expect(readFile(join(root, "books", "book-1", "chapters", "0001-first.md"), "utf-8")).resolves.toBe("# 第一章\n\n正式正文");
-
-    const missingDraft = await app.request("http://localhost/api/books/book-1/drafts/missing");
-    expect(missingDraft.status).toBe(404);
-    expect(await json(missingDraft)).toMatchObject({ error: "Draft not found" });
+    expect(applyDraft.status).toBe(410);
   });
 
   it("protects session CRUD, binding filters, chat snapshot and missing-session 404", async () => {
@@ -436,16 +407,13 @@ describe("backend core contract regression", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target: "formal", content: "正文" }),
     });
-    expect(invalidApply.status).toBe(400);
+    expect(invalidApply.status).toBe(410);
 
     const applied = await applyApp.request("http://localhost/api/books/book-1/writing-modes/apply", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ target: "candidate", title: "续写候选", content: "候选正文", sourceMode: "inline-continuation", chapterNumber: 2, provider: "custom", model: "gpt-test" }),
     });
-    expect(applied.status).toBe(201);
-    const body = await json(applied);
-    expect(body).toMatchObject({ target: "candidate", status: "candidate", metadata: { bookId: "book-1", sourceMode: "inline-continuation", chapterNumber: 2, provider: "custom", model: "gpt-test" } });
-    expect(body.target).not.toBe("chapter-replace");
+    expect(applied.status).toBe(410);
   });
 });

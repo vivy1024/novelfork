@@ -2,7 +2,89 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v3.0.0 (2026-06-25) — 3D 结晶叙事记忆空间 + 经纬/记忆架构边界闭合
+
+### 🌌 3D 结晶叙事记忆空间 (3D Crystalline Narrative Orb)
+
+纯 Canvas 2D 实现的 3D 透视投影引擎，零 WebGL/Three.js 依赖，集显稳定 60 FPS。
+
+- **3D 星尘宇宙背景**：80 颗带呼吸闪烁的星尘，纯数学公式 `rotateY` + `project3D` 实现三维投影
+- **3D 测地线粒子网络**：`NarrativeFact` 化为 3D 水晶节点，节点间测地线连线持续流动向外喷射的发光能量粒子流（Spike Routing），粒子击中目标节点瞬间激发外发光霓虹脉冲，视觉化"记忆突触网络"被剧情激发的震撼全景
+- **3D 结晶卡片筒 (3D Fact Carousel)**：所有 `NarrativeFact` 排布在 3D 圆环上，支持鼠标滚轮、键盘左右键物理级阻尼旋转，双击焦点卡片触发 3D 翻牌动效查阅出处/证据文本与置信度
+- **新组件**：`packages/novel-plugin/src/pages/writing-workbench/jingwei/Crystalline3DView.tsx`
+
+### 🧠 叙事记忆引擎 (Narrative Memory Engine)
+
+新建 `packages/novel-plugin/src/engine/narrative-memory/` 目录（20+ 模块），实现完整的动态叙事记忆系统：
+
+- **ContextCard 召回**：`buildNarrativeContext()` 统一构建写作上下文，注入 hard/state/timeline/hooks/facts/style/semantic sections
+- **多通道本地检索**：8 个 channel（facts/hard/hooks/scene-spec/semantic/state/style/timeline），channel-aware budget 分配
+- **Wave 终局算法层**：本地纯 TS narrative tag graph、bell semantic gain、EPA、residual pyramid、spike routing、geodesic rerank；默认关闭，可通过 `waveConfig.enabled` 显式启用
+- **Semantic exact cosine 中期层**：`narrative_context_vector` 存储 embedding metadata，支持 provider 缺失 skipped、dimension mismatch 检测；默认关闭，不引入 HNSW/ANN/vector DB
+- **NarrativeEvent / reducer**：candidate accept 时优先走事件日志和安全回写；canon/world fact/高风险事件默认 pending，避免 LLM 自动污染 canon
+- **recall@budget benchmark**：内置 10 条小型故事 fixture，对比 priority-only / FTS-only / facts+FTS / semantic / wave
+
+### 📋 叙事记忆面板与图谱工作区
+
+- **NarrativeMemoryPanel**：实时拉取最近 AI 写作召回的 ContextCard 诊断日志、通道预算状态、Wave 摘要；提供未处理 Pending NarrativeEvents 的一键 Approve/Reject
+- **NarrativeMemoryGraphWorkspace**：修复原本处于 Dead Code 状态的完整记忆图谱工作区，通过侧栏"打开完整记忆图谱"按钮在主编辑器区域以新 Tab 激活
+- **新路由**：`/api/books/:bookId/narrative-memory/diagnostics/latest`、`/api/books/:bookId/narrative-memory/events/pending`
+
+### 🔱 经纬/叙事记忆架构边界闭合
+
+将原经纬中 12 条动态设定（人物关系网、伏笔管理、时间线、核心矛盾等）全量迁移为 SQLite 中的 `narrative_fact`，原经纬条目彻底归档。
+
+- **数据模型大迁移**：`narrative_fact` 成为动态叙事记忆的统一载体，经纬只承担作者显式维护的静态 Lore
+- **工具边界与防污染门禁**：`lore.read` 默认排除 `archived`/`draft`/`needs-review`；`lore.write` 写入 `canon` 和 `rules` 时强制要求 AI 带有 `reason/source/evidence`，从底层杜绝 AI 乱改正史
+- **新 handler**：`lore-memory-boundary-handlers.ts`（边界闭合）、`jingwei-audit-handler.ts`（经纬审计）
+- **经纬侧边栏动态分类过滤**：修复残留已迁移动态分类（关系、伏笔等）导致点击出现"暂无数据"空分类的 UX 缺陷
+- **经纬 AI 视角多章节交互式切换**：重构 `JingweiPanel.tsx` 注入预览模块，新增交互式章节输入框，实时刷新预览任何章节视角下的 AI Lore 注入状况
+
+### 🐛 写作体验 Bug 修复
+
+- **写作参数保存回读修复（2.1 遗留）**：修复书籍设置面板把 `GET /api/books/:id` 的 `{ book }` 包装响应误当顶层对象读取，导致每章字数切回来回退到默认 `2000` 的问题
+- **角色弧线追踪保存修复（2.1 遗留）**：补齐 `PUT /api/books/:id` → `storageWriteService.updateBook` 对 `arcTrackingMode` / `customSensitiveWords` / 基本信息字段的持久化，修复 UI 显示已保存但重新进入后变回关闭的问题
+- **保存状态真实性修复**：前端不再在 PUT 非 2xx 时显示“已保存”，避免假成功误导
+- **中文输入法拼音吞字与光标乱跳（高危 Bug）**：重构编辑器外部内容同步时机，编辑器 Focused 且微小改动时屏蔽外部 prop 强制复位，杜绝打字时拼音被吞和光标跳回行首
+- **中英文混合字数统计失真修复**：引入专业网文计数逻辑（中文字符数 + 英文单词数），契合网文作者千字结算的精准要求
+- **章节 TabKind 误拦截修复**：修复 `toTabKind` 中 `isFile` 误拦截正文章节导致 Tab 上展示为灰色普通文件图标；为叙事记忆虚拟节点首创粉色脑图图标（Brain）
+
+### ✂️ 极致剪枝：死代码与遗留兼容逻辑切除
+
+- **5 个死代码 Agent 物理删除**：`consolidator.ts`、`polisher.ts`、`persisted-plan.ts`、`planner.ts`、`composer.ts`
+- **4 个遗留测试用例清理**：`architect.test.ts`、`composer.test.ts`、`composer-lorebook.test.ts`、`planner.test.ts`
+- **V1 遗留规范文档清理**：删除 `.kiro/specs/` 下 28 个已完成且不再需要的 V1 规范文档
+
+### 🏗️ 工程闭环与构建验证
+
+- **全量类型检查**：`pnpm typecheck` 100% Pass，0 errors
+- **自动化单元测试**：15 门小说域核心测试 100% Passed，0 failures
+- **生产级全量打包构建**：`pnpm build` 成功，3D 结晶空间与所有新动效已内嵌至生产级静态资源
+
+### 📊 改动规模
+
+| 指标 | 数值 |
+|------|------|
+| 文件变更 | 114 文件 |
+| 新增行 | +2505 |
+| 删除行 | -9092 |
+| 新增模块 | narrative-memory/（20+ 文件）、Crystalline3DView、NarrativeMemoryPanel/GraphWorkspace |
+| 删除模块 | 5 个死 Agent + 4 个遗留测试 + 28 个 V1 规范 |
+
+---
+
 ## v2.2.0 (2026-06-22)
+
+### 🧠 Narrative Wave Memory 叙事记忆引擎
+
+- 新增 `packages/novel-plugin/src/engine/narrative-memory/`：统一 `NarrativeContextCard`、多通道本地检索、channel-aware budget、diagnostics、`buildNarrativeContext()`。
+- 已接入 `pipeline.write`：写作上下文可注入 hard/state/timeline/hooks/facts/style/semantic sections，并保留旧 `jingweiContext` 兼容路径。
+- 新增 `NarrativeEvent` / reducer：candidate accept 时优先走事件日志和安全回写；canon/world fact/高风险事件默认 pending，避免 LLM 自动污染 canon。
+- 新增 Semantic exact cosine 中期层：`narrative_context_vector` 存储 embedding metadata，支持 provider 缺失 skipped、dimension mismatch 检测、book/chapter/entity 预过滤；默认关闭，不引入 HNSW/ANN/vector DB。
+- 新增 Wave 终局算法层：本地纯 TS narrative tag graph、bell semantic gain、EPA、residual pyramid、spike routing、geodesic rerank；默认关闭，可通过 `waveConfig.enabled` 显式启用。
+- 新增 recall@budget benchmark：内置 10 条小型故事 fixture，对比 priority-only / FTS-only / facts+FTS / semantic / wave；无 embedding provider 时 semantic 项跳过。
+- 新增可观察性 API：`/api/books/:bookId/narrative-memory/diagnostics/latest` 查看最近检索诊断，`/api/books/:bookId/narrative-memory/events/pending` 查看待审 NarrativeEvents。
+- 边界说明：当前已提供后端 API 和算法/存储能力；pending events 的前端审批面板仍未完成，不能宣称为已落地 UI。
 
 ### 🧹 候选稿/草稿废除 + 资源管理器清理
 
@@ -881,9 +963,9 @@ Agent 运行时从 6.1/10 提升至 10/10，23 文件 +1941 行，9 个新模块
 
 ### 🏗️ 驾驶舱重构 — AI 写作质量控制台
 
-**核心变更**：驾驶舱从"信息堆砌长列表"重构为"经纬图谱为主 + 底部可展开面板"的 AI 写作质量控制台。
+**核心变更**：驾驶舱从"信息堆砌长列表"重构为"记忆图谱为主 + 底部可展开面板"的 AI 写作质量控制台。
 
-- **经纬图谱工作区**：画布默认显示 react-flow 关系图谱，支持 5 种视图模式（关系图谱/角色弧线/矛盾地图/列表/时间线）
+- **记忆图谱工作区**：画布默认显示 react-flow 关系图谱，支持 5 种视图模式（关系图谱/角色弧线/矛盾地图/列表/时间线）
 - **节点 lifecycle 状态色**：active=绿、dormant=灰、retired=红，点击节点就地编辑
 - **底部状态条**：一行显示章数/节拍/质量/AI味/警告数，点击展开对应面板
 - **可展开面板系统**：预设配置/节拍进度/质量监控/警告，支持关闭/最大化/拖拽调整高度

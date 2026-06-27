@@ -37,6 +37,10 @@ export interface JingweiWriteInput {
   status?: "draft" | "confirmed" | "needs-review";
   /** 变更原因（存入 revision history） */
   reason?: string;
+  /** 设定来源；canon/rules 写入时与 evidence 至少提供一项 */
+  source?: string;
+  /** 证据摘录；canon/rules 写入时与 source 至少提供一项 */
+  evidence?: string;
 }
 
 export interface JingweiWriteSuccess {
@@ -198,6 +202,34 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
   const rawInferred = inferCategory(rawCategory, title, contentMd);
   const category = normalizeCategoryLegacy(rawInferred);
+  const isRulesCategory = /(^|[-_])(rules?|rule|platform|book-rules)([-_]|$)|规则/.test(category) || /平台规则|书籍规则|规则/.test(title);
+  const dynamicMemoryCategories = new Set([
+    "timeline", "timelines",
+    "plot", "plots", "event", "events",
+    "relationship", "relationships",
+    "foreshadowing", "foreshadowings",
+    "chapter-summary", "chapter-summaries", "chapter_summary", "chapter_summaries",
+    "arc", "arcs", "character_arc", "character_arcs", "character-arc", "character-arcs",
+    "conflict", "conflicts", "diagnostics", "diagnostic",
+  ]);
+  const writesDynamicMemory = dynamicMemoryCategories.has(category);
+  const writesProtectedLore = layer === "canon" || isRulesCategory;
+  const reason = String(input.reason || "").trim();
+  const sourceOrEvidence = String(input.source || input.evidence || "").trim();
+  if (writesDynamicMemory && layer !== "reference") {
+    return {
+      ok: false,
+      error: "dynamic-memory-boundary",
+      summary: "时间线、关系变化、角色弧线、伏笔进展、矛盾诊断等动态叙事状态属于 memory.events / Narrative Memory，不应写入 Lore。若只是作者静态参考资料，请使用 layer=reference。",
+    };
+  }
+  if (writesProtectedLore && (!reason || !sourceOrEvidence)) {
+    return {
+      ok: false,
+      error: "lore-write-gate-required",
+      summary: "写入 canon 或 rules 类 Lore 静态设定时，必须提供 reason，并提供 source 或 evidence。动态事实请进入 memory.events / Narrative Memory 流程。",
+    };
+  }
 
   if (!title) {
     return { ok: false, error: "invalid-input", summary: "title 不能为空。" };

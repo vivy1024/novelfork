@@ -15,6 +15,14 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
+    fileParallelism: false,
+    minWorkers: 1,
+    maxWorkers: 1,
+    poolOptions: {
+      forks: {
+        execArgv: ["--max-old-space-size=8192"],
+      },
+    },
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: [
       "src/app-next/StudioApp.test.tsx",

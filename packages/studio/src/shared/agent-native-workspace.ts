@@ -29,8 +29,6 @@ export type SessionToolDefinition = {
 
 export type WorkspaceResourceViewKind =
   | "chapter-editor"
-  | "candidate-editor"
-  | "draft-editor"
   | "outline-editor"
   | "jingwei-category-view"
   | "jingwei-entry-editor"
@@ -45,8 +43,6 @@ export type WorkspaceResourceViewKind =
 export type WorkspaceArtifactKind =
   | "book"
   | "chapter"
-  | "candidate"
-  | "draft"
   | "outline"
   | "jingwei"
   | "story-file"
@@ -61,6 +57,7 @@ export type WorkspaceResourceRef = {
   readonly id: string;
   readonly bookId?: string;
   readonly title?: string;
+  readonly chapterNumber?: number;
   readonly path?: string;
 };
 
@@ -234,7 +231,7 @@ export type GuidedGenerationStatus =
   | "executing"
   | "completed";
 
-export type GuidedGenerationTarget = "book-foundation" | "chapter-candidate" | "jingwei-update" | "rewrite" | "audit";
+export type GuidedGenerationTarget = "book-foundation" | "chapter-result" | "jingwei-update" | "rewrite" | "audit";
 export type GuidedQuestionType = "single" | "multi" | "text" | "ranged-number" | "ai-suggest";
 export type GuidedQuestionSource = "questionnaire" | "pgi" | "agent";
 
@@ -248,7 +245,7 @@ export type GuidedContextSource = {
 };
 
 export type GuidedQuestionMapping = {
-  readonly target: "jingwei" | "writer-context" | "candidate-metadata";
+  readonly target: "jingwei" | "writer-context" | "chapter-result-metadata";
   readonly fieldPath?: string;
 };
 
@@ -283,7 +280,7 @@ export type GuidedGenerationPlan = {
   readonly contextSources: readonly GuidedContextSource[];
   readonly authorDecisions: readonly string[];
   readonly proposedJingweiMutations: readonly JingweiMutationPreview[];
-  readonly proposedCandidate?: {
+  readonly proposedChapterResult?: {
     readonly chapterNumber?: number;
     readonly title?: string;
     readonly intent: string;

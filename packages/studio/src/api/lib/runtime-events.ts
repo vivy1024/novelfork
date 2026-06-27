@@ -1,4 +1,4 @@
-import { normalizeToolConfirmationRequest, type CanvasArtifact, type SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
+import { normalizeToolConfirmationRequest, type SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
 import type { NarratorSessionChatMessage, ToolCall, TokenUsage } from "../../shared/session-types.js";
 import type { AgentTurnEvent } from "./agent-turn-runtime.js";
 import type { HeadlessChatCostEnvelope, HeadlessChatStreamEvent, HeadlessChatUsageEnvelope } from "./session-headless-chat-service.js";
@@ -9,8 +9,7 @@ export const RUNTIME_EVENT_TYPES = [
   "tool_use",
   "tool_result",
   "permission_request",
-  "checkpoint",
-  "candidate",
+    "checkpoint",
   "usage",
   "command_started",
   "command_completed",
@@ -106,15 +105,6 @@ export type RuntimeEvent =
     readonly turn_id?: string;
     readonly checkpoint_id: string;
     readonly paths: readonly string[];
-    readonly source_tool_use_id?: string;
-    readonly ephemeral?: boolean;
-  }
-  | {
-    readonly type: "candidate";
-    readonly session_id: string;
-    readonly turn_id?: string;
-    readonly candidate_id: string;
-    readonly artifact: CanvasArtifact;
     readonly source_tool_use_id?: string;
     readonly ephemeral?: boolean;
   }
@@ -230,18 +220,6 @@ function checkpointEventFromToolResult(event: Extract<AgentTurnEvent, { type: "t
   };
 }
 
-function candidateEventFromToolResult(event: Extract<AgentTurnEvent, { type: "tool_result" }>, context: RuntimeEventContext): RuntimeEvent | null {
-  const artifact = event.result.artifact;
-  if (!artifact || artifact.kind !== "candidate") return null;
-  return {
-    type: "candidate",
-    ...baseContext(context),
-    candidate_id: artifact.id,
-    artifact,
-    source_tool_use_id: event.id,
-  };
-}
-
 export function runtimeItemsFromSessionMessage(message: NarratorSessionChatMessage, context: Pick<RuntimeEventContext, "sessionId">): RuntimeItem[] {
   const items: RuntimeItem[] = [{
     type: "message",
@@ -287,8 +265,6 @@ export function runtimeEventsFromAgentTurnEvent(event: AgentTurnEvent, context: 
       const events: RuntimeEvent[] = [{ type: "tool_result", ...base, tool_use_id: event.id, tool_name: event.toolName, result: event.result, ...(event.runtime ? { runtime: event.runtime } : {}) }];
       const checkpointEvent = checkpointEventFromToolResult(event, context);
       if (checkpointEvent) events.push(checkpointEvent);
-      const candidateEvent = candidateEventFromToolResult(event, context);
-      if (candidateEvent) events.push(candidateEvent);
       return events;
     }
     case "confirmation_required": {
@@ -359,8 +335,6 @@ export function runtimeEventsFromHeadlessChatEvent(event: HeadlessChatStreamEven
       return [{ type: "tool_result", ...base, tool_use_id: event.tool_use_id, tool_name: event.tool_name, result: event.result, ...(event.runtime ? { runtime: event.runtime } : {}) }];
     case "checkpoint_created":
       return [{ type: "checkpoint", ...base, checkpoint_id: event.checkpoint_id, paths: event.paths, ...(event.source_tool_use_id ? { source_tool_use_id: event.source_tool_use_id } : {}) }];
-    case "candidate_created":
-      return [{ type: "candidate", ...base, candidate_id: event.candidate_id, artifact: event.artifact as Extract<RuntimeEvent, { type: "candidate" }>["artifact"], ...(event.source_tool_use_id ? { source_tool_use_id: event.source_tool_use_id } : {}) }];
     case "resource_updated":
       return [];
     case "permission_request": {

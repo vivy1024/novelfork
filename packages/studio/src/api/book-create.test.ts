@@ -3,7 +3,7 @@ import {
   buildStudioBookConfig,
   buildStudioProjectInitRecord,
   normalizeStudioPlatform,
-  normalizeStudioProjectCreateDraft,
+  normalizeStudioProjectCreateInput,
   normalizeStudioProjectInit,
   suggestStudioWorktreeName,
   waitForStudioBookReady,
@@ -21,9 +21,9 @@ describe("normalizeStudioPlatform", () => {
 
 describe("suggestStudioWorktreeName", () => {
   it("derives a stable worktree placeholder from the title", () => {
-    expect(suggestStudioWorktreeName("测试书")).toBe("draft-测试书");
-    expect(suggestStudioWorktreeName("My New Book!!!")).toBe("draft-my-new-book");
-    expect(suggestStudioWorktreeName("")).toBe("draft-main");
+    expect(suggestStudioWorktreeName("测试书")).toBe("work-测试书");
+    expect(suggestStudioWorktreeName("My New Book!!!")).toBe("work-my-new-book");
+    expect(suggestStudioWorktreeName("")).toBe("work-main");
   });
 });
 
@@ -34,14 +34,14 @@ describe("normalizeStudioProjectInit", () => {
       workflowMode: "outline-first",
       templatePreset: "genre-default",
       gitBranch: "main",
-      worktreeName: "draft-测试书",
+      worktreeName: "work-测试书",
     });
   });
 
   it("keeps only the repo fields relevant to the selected source", () => {
     expect(normalizeStudioProjectInit({
       repositorySource: "clone",
-      workflowMode: "draft-first",
+      workflowMode: "chapter-first",
       templatePreset: "web-serial",
       repositoryPath: " D:/novels ",
       cloneUrl: " https://example.com/repo.git ",
@@ -49,7 +49,7 @@ describe("normalizeStudioProjectInit", () => {
       worktreeName: " writer-room ",
     }, "Clone Book")).toEqual({
       repositorySource: "clone",
-      workflowMode: "draft-first",
+      workflowMode: "chapter-first",
       templatePreset: "web-serial",
       cloneUrl: "https://example.com/repo.git",
       gitBranch: "feature/story",
@@ -58,9 +58,9 @@ describe("normalizeStudioProjectInit", () => {
   });
 });
 
-describe("normalizeStudioProjectCreateDraft", () => {
+describe("normalizeStudioProjectCreateInput", () => {
   it("wraps project init into a formal project create object", () => {
-    expect(normalizeStudioProjectCreateDraft({
+    expect(normalizeStudioProjectCreateInput({
       title: "  仙路长明  ",
       projectInit: {
         repositorySource: "existing",
@@ -77,7 +77,7 @@ describe("normalizeStudioProjectCreateDraft", () => {
         workflowMode: "serial-ops",
         templatePreset: "web-serial",
         gitBranch: "main",
-        worktreeName: "draft-仙路长明",
+        worktreeName: "work-仙路长明",
       },
       initializationPlan: {
         phase: "project-create",
@@ -158,7 +158,7 @@ describe("buildStudioProjectInitRecord", () => {
           workflowMode: "serial-ops",
           templatePreset: "web-serial",
           gitBranch: " main ",
-          worktreeName: " drafting-room ",
+          worktreeName: " writer-room ",
         },
         initializationPlan: {
           phase: "project-create",
@@ -179,7 +179,7 @@ describe("buildStudioProjectInitRecord", () => {
       workflowMode: "serial-ops",
       templatePreset: "web-serial",
       gitBranch: "main",
-      worktreeName: "drafting-room",
+      worktreeName: "writer-room",
       initializationPlan: {
         phase: "project-create",
         nextStage: "book-create",
@@ -199,7 +199,7 @@ describe("buildStudioProjectInitRecord", () => {
           workflowMode: "outline-first",
           templatePreset: "genre-default",
           gitBranch: "main",
-          worktreeName: "draft-main",
+          worktreeName: "work-main",
         },
         initializationPlan: {
           phase: "project-create",

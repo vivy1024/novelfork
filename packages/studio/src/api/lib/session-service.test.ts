@@ -58,7 +58,7 @@ describe("session-service", () => {
       sessionConfig: {
         toolPolicy: {
           allow: ["cockpit.*"],
-          deny: ["candidate.create_chapter"],
+          deny: ["pipeline.revise"],
           ask: ["guided.exit"],
         },
       },
@@ -67,7 +67,7 @@ describe("session-service", () => {
     const persisted = await getSessionById(session.id);
     expect(persisted?.sessionConfig.toolPolicy).toEqual({
       allow: ["cockpit.*"],
-      deny: ["candidate.create_chapter"],
+      deny: ["pipeline.revise"],
       ask: ["guided.exit"],
     });
   });

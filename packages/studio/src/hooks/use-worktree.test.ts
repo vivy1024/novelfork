@@ -21,7 +21,7 @@ describe("classifyWorktrees", () => {
   it("treats the primary non-bare worktree and its subpaths as internal", () => {
     const result = classifyWorktrees([
       makeWorktree({ path: "D:/DESKTOP/novelfork" }),
-      makeWorktree({ path: "D:/DESKTOP/novelfork/.novelfork-worktrees/draft-main" }),
+      makeWorktree({ path: "D:/DESKTOP/novelfork/.novelfork-worktrees/work-main" }),
       makeWorktree({ path: "D:/DESKTOP/novelfork/.novelfork-worktrees/feature-x" }),
     ]);
     expect(result.every((w) => w.externalReason === undefined)).toBe(true);

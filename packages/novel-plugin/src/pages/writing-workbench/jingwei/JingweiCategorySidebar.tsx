@@ -50,12 +50,14 @@ function getCategoryIcon(schema: CategorySchema): LucideIcon {
   return ICON_MAP[schema.icon] ?? Star;
 }
 
+const DYNAMIC_MEMORY_CATEGORIES = new Set(["relationships", "conflicts", "foreshadowing", "timeline", "chapter-summaries"]);
+
 export function JingweiCategorySidebar({ selectedCategory, onSelectCategory, entryCounts, visibleCategories }: JingweiCategorySidebarProps) {
   return (
     <nav className="w-48 shrink-0 border-r border-border overflow-y-auto py-2 px-1" aria-label="经纬分类">
       <p className="px-2 pb-2 text-xs font-medium text-muted-foreground">分类</p>
       <ul className="space-y-0.5">
-        {CATEGORY_SCHEMAS.filter((schema) => !visibleCategories || visibleCategories.includes(schema.id)).map((schema) => {
+        {CATEGORY_SCHEMAS.filter((schema) => (!visibleCategories || visibleCategories.includes(schema.id)) && !DYNAMIC_MEMORY_CATEGORIES.has(schema.id)).map((schema) => {
           const Icon = getCategoryIcon(schema);
           const count = entryCounts[schema.id] ?? 0;
           const active = selectedCategory === schema.id;

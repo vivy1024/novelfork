@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core";
 
-import { createBookRepository } from "@vivy1024/novelfork-novel-plugin/engine";
+import { createBookRepository, createJingweiSettingRepository } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createJingweiRouter } from "@vivy1024/novelfork-novel-plugin/routes";
 
 const tempDirs: string[] = [];
@@ -142,36 +142,25 @@ describe("Jingwei API routes", () => {
       expect(invalidResponse.status).toBe(400);
       expect(await invalidResponse.json()).toMatchObject({ error: { code: "INVALID_BOOK_ID" } });
 
-      await postJson(router, "/api/books/book-1/jingwei/sections", {
-        id: "section-memory",
-        key: "core-memory",
-        name: "核心记忆",
-        description: "给 AI 常驻使用的小而硬书设",
-        order: 1,
-        defaultVisibility: "global",
-      });
-      await postJson(router, "/api/books/book-1/jingwei/entries", {
+      await createJingweiSettingRepository(storage).create({
         id: "entry-memory",
-        sectionId: "section-memory",
-        title: "小瓶规则",
-        contentMd: "小瓶可以催熟灵草。",
-        visibilityRule: { type: "global", visibleAfterChapter: 1 },
-        participatesInAi: true,
-      });
-      // 创建路由会把 visibility_rule_json 重置为 overhaul 默认值，需通过 PUT 显式设置可见性（与前端真实契约一致）
-      await router.request("http://localhost/api/books/book-1/jingwei/entries/entry-memory", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ visibilityRule: { type: "global", visibleAfterChapter: 1 } }),
+        bookId: "book-1",
+        category: "核心记忆",
+        name: "小瓶规则",
+        content: "小瓶可以催熟灵草。",
+        visibilityRuleJson: JSON.stringify({ type: "global", visibleAfterChapter: 1 }),
+        nestedRefsJson: "[]",
+        createdAt: new Date("2026-04-25T01:01:00.000Z"),
+        updatedAt: new Date("2026-04-25T01:01:00.000Z"),
       });
 
       const previewResponse = await postJson(router, "/api/books/book-1/jingwei/preview-context", { currentChapter: 2 });
       expect(previewResponse.status).toBe(200);
       expect(await previewResponse.json()).toMatchObject({
-        items: [{ entryId: "entry-memory", sectionName: "核心记忆", text: "【核心记忆】小瓶规则：小瓶可以催熟灵草。" }],
+        items: [{ id: "entry-memory", type: "setting", category: "核心记忆", name: "小瓶规则", content: "【设定-核心记忆】小瓶规则：小瓶可以催熟灵草。" }],
         totalTokens: expect.any(Number),
-        droppedEntryIds: [],
-        sectionStats: [{ sectionId: "section-memory", sectionName: "核心记忆", count: 1 }],
+        droppedIds: [],
+        mode: "dynamic",
       });
     } finally {
       storage.close();

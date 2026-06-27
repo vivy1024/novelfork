@@ -1,3 +1,9 @@
+**版本**: v3.0.0
+**创建日期**: 2026-06-25
+**更新日期**: 2026-06-25
+**状态**: current
+**文档类型**: current
+
 # 06 - API 与数据契约
 
 NovelFork HTTP/WebSocket API 及数据结构参考。
@@ -10,7 +16,7 @@ NovelFork HTTP/WebSocket API 及数据结构参考。
 |----------|------|
 | `/api/session` | 对话管理（CRUD/fork/compact/rollback） |
 | `/api/storage` | 书籍/章节/驾驶舱存储 |
-| `/api/chapter-candidates` | 候选稿管理 |
+| `/api/books/:id/resources` | 正式章节资源 |
 | `/api/providers` | 模型供应商配置 |
 | `/api/aggregations` | 模型聚合查询 |
 | `/api/proxy` | LLM 代理转发 |
@@ -32,8 +38,8 @@ NovelFork HTTP/WebSocket API 及数据结构参考。
 | 路径前缀 | 功能 |
 |----------|------|
 | `/api/novel/ai` | 审计/修订/检测/大纲 |
-| `/api/novel/bible` | 角色/事件/设定/弧/核心转折 |
-| `/api/novel/jingwei` | 分区/条目/关系图/上下文预览 |
+| `/api/novel/jingwei` | 静态 Lore 分区/条目/上下文预览/审计 |
+| `/api/books/:bookId/narrative-memory` | 动态叙事记忆、ContextCard diagnostics、pending events、facts、图谱 |
 | `/api/novel/writing-modes` | 行内/对话/变体/分支/导入 |
 | `/api/novel/writing-tools` | 伏笔/POV/节奏/健康/冲突图 |
 | `/api/novel/writing-resource` | 资源账本 |
@@ -44,7 +50,7 @@ NovelFork HTTP/WebSocket API 及数据结构参考。
 
 ## WebSocket 协议
 
-连接端点：`ws://localhost:1422/ws/session/:id`
+连接端点：`ws://localhost:4567/api/sessions/:id/chat`
 
 ### Envelope 类型
 

@@ -1,15 +1,16 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
-export type TabKind = "chapter" | "draft" | "candidate" | "jingwei-entry" | "file" | "tool" | "other";
+export type TabKind = "chapter" | "jingwei-entry" | "file" | "tool" | "other";
 
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab */
-export type TabView = "explorer" | "jingwei" | "tools" | "search";
+export type TabView = "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
 
 export interface TabState {
   id: string;
   nodeId: string;
   title: string;
   dirty: boolean;
+  pinned?: boolean;
   kind: TabKind;
   view: TabView;
 }
@@ -27,6 +28,7 @@ export interface UseIdeTabsReturn {
   closeRight: (tabId: string) => void;
   activateTab: (tabId: string) => void;
   setDirty: (tabId: string, dirty: boolean) => void;
+  togglePin: (tabId: string) => void;
   reorderTabs: (fromIndex: number, toIndex: number) => void;
   hasDirtyTabs: () => boolean;
 }
@@ -39,7 +41,7 @@ interface IdeTabsState {
   activeByView: Record<TabView, string | null>;
 }
 
-const EMPTY_ACTIVE: Record<TabView, string | null> = { explorer: null, jingwei: null, tools: null, search: null };
+const EMPTY_ACTIVE: Record<TabView, string | null> = { explorer: null, jingwei: null, tools: null, search: null, "narrative-memory": null };
 
 type IdeTabsAction =
   | { type: "LOAD"; state: IdeTabsState }
@@ -51,6 +53,7 @@ type IdeTabsAction =
   | { type: "CLOSE_RIGHT"; tabId: string; view: TabView }
   | { type: "ACTIVATE"; tabId: string; view: TabView }
   | { type: "SET_DIRTY"; tabId: string; dirty: boolean }
+  | { type: "TOGGLE_PIN"; tabId: string }
   | { type: "REORDER"; fromIndex: number; toIndex: number; view: TabView };
 
 function viewOf(state: IdeTabsState, tabId: string): TabView | null {
@@ -79,7 +82,7 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
       if (existing) {
         return { ...state, activeByView: { ...state.activeByView, [existing.view]: existing.id } };
       }
-      const newTab: TabState = { id: action.nodeId, nodeId: action.nodeId, title: action.title, dirty: false, kind: action.kind, view: action.view };
+      const newTab: TabState = { id: action.nodeId, nodeId: action.nodeId, title: action.title, dirty: false, pinned: false, kind: action.kind, view: action.view };
       return {
         tabs: [...state.tabs, newTab],
         activeByView: { ...state.activeByView, [action.view]: newTab.id },
@@ -97,17 +100,18 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
     }
 
     case "CLOSE_OTHERS": {
-      const next = state.tabs.filter((t) => t.view !== action.view || t.id === action.tabId);
+      const next = state.tabs.filter((t) => t.view !== action.view || t.id === action.tabId || t.pinned);
       return { tabs: next, activeByView: { ...state.activeByView, [action.view]: action.tabId } };
     }
 
     case "CLOSE_ALL": {
-      const next = state.tabs.filter((t) => t.view !== action.view);
-      return { tabs: next, activeByView: { ...state.activeByView, [action.view]: null } };
+      const next = state.tabs.filter((t) => t.view !== action.view || t.pinned);
+      const remainingViewTabs = next.filter((t) => t.view === action.view);
+      return { tabs: next, activeByView: { ...state.activeByView, [action.view]: remainingViewTabs[0]?.id ?? null } };
     }
 
     case "CLOSE_SAVED": {
-      const next = state.tabs.filter((t) => t.view !== action.view || t.dirty);
+      const next = state.tabs.filter((t) => t.view !== action.view || t.dirty || t.pinned);
       const viewTabs = next.filter((t) => t.view === action.view);
       const activeStillThere = viewTabs.some((t) => t.id === state.activeByView[action.view]);
       return {
@@ -121,7 +125,7 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
       const idx = viewTabs.findIndex((t) => t.id === action.tabId);
       if (idx === -1) return state;
       const keepIds = new Set(viewTabs.slice(0, idx + 1).map((t) => t.id));
-      const next = state.tabs.filter((t) => t.view !== action.view || keepIds.has(t.id));
+      const next = state.tabs.filter((t) => t.view !== action.view || keepIds.has(t.id) || t.pinned);
       const activeStillThere = next.some((t) => t.id === state.activeByView[action.view]);
       return {
         tabs: next,
@@ -134,6 +138,9 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
 
     case "SET_DIRTY":
       return { ...state, tabs: state.tabs.map((t) => (t.id === action.tabId ? { ...t, dirty: action.dirty } : t)) };
+
+    case "TOGGLE_PIN":
+      return { ...state, tabs: state.tabs.map((t) => (t.id === action.tabId ? { ...t, pinned: !t.pinned } : t)) };
 
     case "REORDER": {
       const { fromIndex, toIndex, view } = action;
@@ -171,7 +178,7 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
 // --- Persistence ---
 
 interface PersistedState {
-  tabs: { id: string; nodeId: string; title: string; kind?: TabKind; view?: TabView }[];
+  tabs: { id: string; nodeId: string; title: string; kind?: TabKind; view?: TabView; pinned?: boolean }[];
   activeByView?: Record<TabView, string | null>;
 }
 
@@ -187,7 +194,7 @@ function loadState(bookId: string): IdeTabsState {
     // 旧格式(无 activeByView)：清空,不迁移旧 tab 避免视图混乱
     if (!parsed.activeByView) return { tabs: [], activeByView: { ...EMPTY_ACTIVE } };
     const tabs: TabState[] = (parsed.tabs || []).map((t) => ({
-      id: t.id, nodeId: t.nodeId, title: t.title, dirty: false, kind: t.kind ?? "other", view: t.view ?? "explorer",
+      id: t.id, nodeId: t.nodeId, title: t.title, dirty: false, pinned: t.pinned === true, kind: t.kind ?? "other", view: t.view ?? "explorer",
     }));
     const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...(parsed.activeByView ?? {}) };
     // 校验每个视图的激活 tab 仍存在
@@ -206,7 +213,7 @@ function loadState(bookId: string): IdeTabsState {
 function saveState(bookId: string, state: IdeTabsState): void {
   try {
     const persisted: PersistedState = {
-      tabs: state.tabs.map((t) => ({ id: t.id, nodeId: t.nodeId, title: t.title, kind: t.kind, view: t.view })),
+      tabs: state.tabs.map((t) => ({ id: t.id, nodeId: t.nodeId, title: t.title, kind: t.kind, view: t.view, pinned: t.pinned })),
       activeByView: state.activeByView,
     };
     localStorage.setItem(getStorageKey(bookId), JSON.stringify(persisted));
@@ -244,10 +251,11 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
   const closeRight = useCallback((tabId: string) => dispatch({ type: "CLOSE_RIGHT", tabId, view: activeView }), [activeView]);
   const activateTab = useCallback((tabId: string) => dispatch({ type: "ACTIVATE", tabId, view: activeView }), [activeView]);
   const setDirty = useCallback((tabId: string, dirty: boolean) => dispatch({ type: "SET_DIRTY", tabId, dirty }), []);
+  const togglePin = useCallback((tabId: string) => dispatch({ type: "TOGGLE_PIN", tabId }), []);
   const reorderTabs = useCallback((fromIndex: number, toIndex: number) => dispatch({ type: "REORDER", fromIndex, toIndex, view: activeView }), [activeView]);
   const hasDirtyTabs = useCallback(() => state.tabs.some((t) => t.dirty), [state.tabs]);
 
-  const tabs = useMemo(() => state.tabs.filter((t) => t.view === activeView), [state.tabs, activeView]);
+  const tabs = useMemo(() => state.tabs.filter((t) => t.view === activeView).sort((a, b) => Number(b.pinned === true) - Number(a.pinned === true)), [state.tabs, activeView]);
   const activeTabId = state.activeByView[activeView];
 
   return {
@@ -261,6 +269,7 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
     closeRight,
     activateTab,
     setDirty,
+    togglePin,
     reorderTabs,
     hasDirtyTabs,
   };

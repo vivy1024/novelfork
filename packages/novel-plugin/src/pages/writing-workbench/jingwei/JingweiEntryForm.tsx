@@ -290,7 +290,7 @@ function StatusBadge({ status, onChange }: { status: string; onChange: (s: strin
     draft: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400",
     "needs-review": "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400",
   };
-  const labels: Record<string, string> = { confirmed: "已确认", draft: "草稿", "needs-review": "需审查" };
+  const labels: Record<string, string> = { confirmed: "已确认", draft: "未确认", "needs-review": "需审查" };
   const next: Record<string, string> = { confirmed: "draft", draft: "needs-review", "needs-review": "confirmed" };
 
   return (

@@ -30,7 +30,10 @@ export interface SceneSpecInput {
   chapterNumber: number;
   userDirectives: string;
   cockpitSnapshot?: Record<string, unknown>;
+  /** 兼容旧字段；新调用优先 loreBrief */
   jingweiBrief?: Record<string, unknown>;
+  loreBrief?: Record<string, unknown>;
+  memoryContext?: Record<string, unknown>;
 }
 
 export interface SceneSpecSuccess {
@@ -93,12 +96,23 @@ function buildSceneSpecUserPrompt(input: SceneSpecInput): string {
     }
   }
 
-  if (input.jingweiBrief) {
-    const brief = input.jingweiBrief;
-    const coreBrief = brief.coreBrief as Array<{ title?: string; sectionName?: string; summaryMd?: string }> | undefined;
+  const loreBrief = input.loreBrief ?? input.jingweiBrief;
+  if (loreBrief) {
+    const coreBrief = loreBrief.coreBrief as Array<{ title?: string; sectionName?: string; summaryMd?: string }> | undefined;
     if (Array.isArray(coreBrief) && coreBrief.length > 0) {
-      parts.push(`\n## 经纬核心包\n${coreBrief.slice(0, 8).map((item) => `- 【${item.sectionName ?? ""}】${item.title ?? ""}：${(item.summaryMd ?? "").slice(0, 80)}`).join("\n")}`);
+      parts.push(`\n## Lore 静态设定核心包\n${coreBrief.slice(0, 8).map((item) => `- 【${item.sectionName ?? ""}】${item.title ?? ""}：${(item.summaryMd ?? "").slice(0, 80)}`).join("\n")}`);
     }
+  }
+
+  if (input.memoryContext) {
+    const diagnostics = input.memoryContext.diagnostics as { warnings?: string[]; totalEstimatedTokens?: number } | undefined;
+    const sections = input.memoryContext.sections as Record<string, string> | undefined;
+    const memoryLines = Object.entries(sections ?? {})
+      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+      .slice(0, 6)
+      .map(([key, value]) => `### ${key}\n${value.slice(0, 600)}`);
+    if (memoryLines.length > 0) parts.push(`\n## Narrative Memory 动态上下文\n${memoryLines.join("\n")}`);
+    if (diagnostics?.warnings?.length) parts.push(`\n## 召回警告\n${diagnostics.warnings.slice(0, 5).map((item) => `- ${item}`).join("\n")}`);
   }
 
   parts.push(`\n请生成第${input.chapterNumber}章的 Scene Spec JSON。`);
@@ -137,9 +151,9 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function extractCharacters(jingweiBrief?: Record<string, unknown>): string[] {
-  if (!jingweiBrief) return [];
-  const coreBrief = jingweiBrief.coreBrief as Array<{ title?: string; sectionKey?: string; category?: string }> | undefined;
+function extractCharacters(loreBrief?: Record<string, unknown>): string[] {
+  if (!loreBrief) return [];
+  const coreBrief = loreBrief.coreBrief as Array<{ title?: string; sectionKey?: string; category?: string }> | undefined;
   if (!Array.isArray(coreBrief)) return [];
   return coreBrief
     .filter((item) => item.sectionKey === "character" || item.sectionKey === "characters" || item.sectionKey === "people" || item.category === "characters")
@@ -160,10 +174,23 @@ function extractOpenHooks(cockpitSnapshot?: Record<string, unknown>): string[] {
   return hooks.map((h) => h.description ?? h.title ?? "").filter(Boolean);
 }
 
+function extractMemoryConstraintLines(memoryContext?: Record<string, unknown>): string[] {
+  if (!memoryContext) return [];
+  const diagnostics = memoryContext.diagnostics as { warnings?: string[] } | undefined;
+  const sections = memoryContext.sections as Record<string, string> | undefined;
+  const sectionLines = Object.entries(sections ?? {})
+    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
+    .slice(0, 3)
+    .map(([key, value]) => `Narrative Memory/${key}：${value.trim().slice(0, 120)}`);
+  const warningLines = (diagnostics?.warnings ?? []).slice(0, 3).map((item) => `召回警告：${item}`);
+  return [...sectionLines, ...warningLines];
+}
+
 function buildFallbackSpec(input: SceneSpecInput): SceneSpec {
-  const characters = extractCharacters(input.jingweiBrief);
+  const characters = extractCharacters(input.loreBrief ?? input.jingweiBrief);
   const wordTarget = extractWordTarget(input.cockpitSnapshot);
   const openHooks = extractOpenHooks(input.cockpitSnapshot);
+  const memoryConstraints = extractMemoryConstraintLines(input.memoryContext);
 
   return {
     chapter: input.chapterNumber,
@@ -181,6 +208,7 @@ function buildFallbackSpec(input: SceneSpecInput): SceneSpec {
     constraints: [
       `用户指示：${input.userDirectives}`,
       `目标字数：${wordTarget}`,
+      ...memoryConstraints,
     ],
   };
 }

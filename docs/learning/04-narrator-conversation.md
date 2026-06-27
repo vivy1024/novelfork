@@ -56,7 +56,7 @@ routes:
 
 ## Agent 查阅提示
 
-- 叙述者工具集：Read/Write/Edit/Bash/Grep/Glob + 小说专属工具（jingwei/cockpit/candidate/pgi/guided 等）
+- 叙述者工具集：Read/Write/Edit/Bash/Grep/Glob + 小说专属工具（cockpit/lore/memory/pgi/scene.spec/pipeline.write 等）
 - 确认门触发条件：写入正式章节、修改经纬、删除资源、执行修订
 - 权限模式：ask-always（每次确认）/ auto-approve（自动批准低风险）
 - 消息操作：右键菜单支持回退（rollback API）/编辑重生成（edit-and-regenerate API）/分叉/删除

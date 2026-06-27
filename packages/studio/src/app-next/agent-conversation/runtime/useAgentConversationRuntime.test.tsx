@@ -172,4 +172,44 @@ describe("useAgentConversationRuntime", () => {
       { type: "session:ack", sessionId: "session-1", ack: 7 },
     ]);
   });
+
+  it("ignores unknown session envelopes from the backend instead of crashing", async () => {
+    const sockets: FakeRuntimeSocket[] = [];
+    const createWebSocket = vi.fn((url: string) => {
+      const socket = new FakeRuntimeSocket(url);
+      sockets.push(socket);
+      return socket;
+    });
+    const getChatState = vi.fn(async () => ok(makeSnapshot()));
+
+    const { result } = renderHook(() =>
+      useAgentConversationRuntime({
+        sessionId: "session-1",
+        client: { getChatState },
+        createWebSocket,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.session?.id).toBe("session-1"));
+
+    expect(() => act(() => sockets[0]?.emit({ type: "session:background-heartbeat", sessionId: "session-1" }))).not.toThrow();
+    expect(result.current.state.session?.id).toBe("session-1");
+  });
+
+  it("keeps malformed initial snapshots from crashing refresh hydration", async () => {
+    const createWebSocket = vi.fn((url: string) => new FakeRuntimeSocket(url));
+    const getChatState = vi.fn(async () => ok({ session: makeSession(), cursor: { lastSeq: 7, ackedSeq: 6 } } as unknown as NarratorSessionChatSnapshot));
+
+    const { result } = renderHook(() =>
+      useAgentConversationRuntime({
+        sessionId: "session-1",
+        client: { getChatState },
+        createWebSocket,
+      }),
+    );
+
+    await waitFor(() => expect(result.current.state.error?.code).toBe("invalid-session-snapshot"));
+    expect(result.current.state.session).toBeNull();
+    expect(createWebSocket).not.toHaveBeenCalled();
+  });
 });

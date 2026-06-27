@@ -57,7 +57,7 @@ export function createMcpToolBridge(config: McpToolBridgeConfig): McpToolBridge 
 
 // --- Hook Executor ---
 
-export type HookPoint = "before_turn" | "after_turn" | "before_tool" | "after_tool" | "before_candidate_apply" | "after_chapter_save";
+export type HookPoint = "before_turn" | "after_turn" | "before_tool" | "after_tool" | "before_chapter_result_write" | "after_chapter_save";
 
 export interface HookDefinition {
   readonly id: string;

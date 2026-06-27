@@ -15,7 +15,6 @@ src/
 │   │   ├── writing-tools.ts # 写作工具
 │   │   ├── bible.ts         # 故事经纬
 │   │   ├── jingwei.ts       # 经纬结构化
-│   │   ├── chapter-candidates.ts # 候选稿
 │   │   ├── providers.ts     # AI 供应商
 │   │   ├── compliance.ts    # 合规/发布检查
 │   │   └── ...
@@ -25,7 +24,6 @@ src/
 │   │   ├── story-file-service.ts   # story/truth 只读 service
 │   │   ├── storage-write-service.ts # storage 非破坏写入 service
 │   │   ├── storage-destructive-service.ts # storage 硬删除 service
-│   │   ├── candidate-destructive-service.ts # 候选/草稿硬删除 service
 │   │   ├── resource-checkpoint-service.ts # 正式资源写入前 checkpoint
 │   │   ├── resource-rewind-service.ts # checkpoint rewind preview/apply
 │   │   ├── provider-runtime-store.ts # Provider/runtime store 与脱敏视图
@@ -142,8 +140,7 @@ bun run typecheck
 |------|------|
 | 书籍 | `/api/books`, `/api/books/:id` |
 | 章节 | `/api/books/:id/chapters`, `/api/books/:id/chapters/:num` |
-| 候选稿 | `/api/books/:id/candidates` |
-| 草稿 | `/api/books/:id/drafts` |
+| 写作资源 | `/api/books/:id/resources`（正式章节资源） |
 | 写作模式 | `/api/books/:id/inline-write` 等 |
 | 写作工具 | `/api/books/:id/hooks`, `/api/progress` 等 |
 | 经纬 | `/api/books/:id/bible/*`, `/api/books/:id/jingwei/*` |

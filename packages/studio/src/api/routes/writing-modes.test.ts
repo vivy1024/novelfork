@@ -185,7 +185,7 @@ describe("writing-modes router", () => {
     expect(json.promptPreview).toContain("大纲分支扩展任务");
   });
 
-  it("POST /api/books/:bookId/writing-modes/apply — writes generated content to a candidate", async () => {
+  it("POST /api/books/:bookId/writing-modes/apply — returns 410 for removed candidate writes", async () => {
     const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
     const testRouter = createWritingModesRouter(buildCtx(root));
 
@@ -202,47 +202,26 @@ describe("writing-modes router", () => {
       metadata: { endpoint: "/api/books/book1/inline-write" },
     });
 
-    expect(status).toBe(201);
-    expect(json).toMatchObject({ target: "candidate", status: "candidate" });
-    expect(json.resourceId).toEqual(expect.any(String));
-    expect(json.metadata).toMatchObject({
-      bookId: "book1",
-      sourceMode: "inline-continuation",
-      chapterNumber: 3,
-      provider: "openai-compatible",
-      model: "gpt-5.4",
-      runId: "run-candidate-1",
-      requestId: "req-candidate-1",
-      endpoint: "/api/books/book1/inline-write",
-    });
-
-    const index = JSON.parse(await readFile(join(root, "books", "book1", "generated-candidates", "index.json"), "utf-8")) as Array<{ id: string; title: string; targetChapterId?: string; metadata?: Record<string, unknown> }>;
-    expect(index).toMatchObject([{ id: json.resourceId, title: "续写候选", targetChapterId: "3", metadata: expect.objectContaining({ provider: "openai-compatible", model: "gpt-5.4", runId: "run-candidate-1" }) }]);
-    await expect(readFile(join(root, "books", "book1", "generated-candidates", `${json.resourceId}.md`), "utf-8"))
-      .resolves.toBe("他推门而入，风雪随之涌进。");
+    expect(status).toBe(410);
+    expect(json).toMatchObject({ code: "WRITING_MODE_APPLY_REPOSITION_REQUIRED" });
   });
 
-  it("POST /api/books/:bookId/writing-modes/apply — writes generated content to a draft", async () => {
+  it("POST /api/books/:bookId/writing-modes/apply — returns 410 for removed draft writes", async () => {
     const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
     const testRouter = createWritingModesRouter(buildCtx(root));
 
     const { status, json } = await requestWithRouter(testRouter, "POST", "/api/books/book1/writing-modes/apply", {
       target: "draft",
-      title: "对话草稿",
+      title: "对话片段",
       content: "林月：\"你终于来了。\"",
       sourceMode: "dialogue-generator",
     });
 
-    expect(status).toBe(201);
-    expect(json).toMatchObject({ target: "draft", status: "draft" });
-    expect(json.resourceId).toEqual(expect.stringMatching(/^draft-/));
-    const drafts = JSON.parse(await readFile(join(root, "books", "book1", "drafts", "index.json"), "utf-8")) as Array<{ id: string; title: string; wordCount: number }>;
-    expect(drafts).toMatchObject([{ id: json.resourceId, title: "对话草稿", wordCount: 11 }]);
-    await expect(readFile(join(root, "books", "book1", "drafts", `${json.resourceId}.md`), "utf-8"))
-      .resolves.toBe("林月：\"你终于来了。\"");
+    expect(status).toBe(410);
+    expect(json).toMatchObject({ code: "WRITING_MODE_APPLY_REPOSITION_REQUIRED" });
   });
 
-  it("POST /api/books/:bookId/writing-modes/apply — converts chapter insert/replace into non-destructive candidates", async () => {
+  it("POST /api/books/:bookId/writing-modes/apply — returns 410 for removed chapter insert/replace candidate conversion", async () => {
     const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
     const chapterDir = join(root, "books", "book1", "chapters");
     await mkdir(chapterDir, { recursive: true });
@@ -257,13 +236,12 @@ describe("writing-modes router", () => {
       chapterNumber: 3,
     });
 
-    expect(status).toBe(201);
-    expect(json).toMatchObject({ target: "candidate", requestedTarget: "chapter-replace", status: "candidate" });
-    expect(json.metadata).toMatchObject({ nonDestructive: true, chapterNumber: 3 });
+    expect(status).toBe(410);
+    expect(json).toMatchObject({ code: "WRITING_MODE_APPLY_REPOSITION_REQUIRED" });
     await expect(readFile(join(chapterDir, "0003_old.md"), "utf-8")).resolves.toBe("旧正文");
   });
 
-  it("POST /api/books/:bookId/writing-modes/apply — rejects empty generated content", async () => {
+  it("POST /api/books/:bookId/writing-modes/apply — removed apply endpoint returns 410 before legacy validation", async () => {
     const root = await mkdtemp(join(tmpdir(), "novelfork-writing-modes-"));
     const testRouter = createWritingModesRouter(buildCtx(root));
 
@@ -272,8 +250,8 @@ describe("writing-modes router", () => {
       content: "   ",
     });
 
-    expect(status).toBe(400);
-    expect(json).toMatchObject({ error: "Generated content is required." });
+    expect(status).toBe(410);
+    expect(json).toMatchObject({ code: "WRITING_MODE_APPLY_REPOSITION_REQUIRED" });
   });
 
   it("POST /api/works/import", async () => {

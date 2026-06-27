@@ -9,7 +9,7 @@ import {
 } from "./workflow-recipe";
 
 describe("workflow recipe", () => {
-  it("provides a default /novel:write-next recipe with 6 steps", () => {
+  it("provides a default /novel:write-next recipe with 5 enabled steps and a disabled guided-plan legacy seam", () => {
     expect(DEFAULT_WRITE_NEXT_RECIPE.commandId).toBe("/novel:write-next");
     expect(DEFAULT_WRITE_NEXT_RECIPE.steps).toHaveLength(6);
     expect(DEFAULT_WRITE_NEXT_RECIPE.steps.map((s) => s.kind)).toEqual([
@@ -20,14 +20,25 @@ describe("workflow recipe", () => {
       "writer-generate",
       "canvas-open",
     ]);
-    expect(DEFAULT_WRITE_NEXT_RECIPE.candidateStrategy).toBe("create-candidate");
+    expect(getEnabledSteps(DEFAULT_WRITE_NEXT_RECIPE).map((s) => s.kind)).toEqual([
+      "context-load",
+      "pgi",
+      "approval-gate",
+      "writer-generate",
+      "canvas-open",
+    ]);
+    expect(DEFAULT_WRITE_NEXT_RECIPE.steps.find((s) => s.kind === "guided-plan")).toMatchObject({
+      enabled: false,
+      tools: ["scene.spec"],
+    });
+    expect(DEFAULT_WRITE_NEXT_RECIPE.resultStrategy).toBe("formal-chapter");
     expect(DEFAULT_WRITE_NEXT_RECIPE.requireFinalApproval).toBe(true);
   });
 
   it("provides a default /novel:audit recipe with 3 steps", () => {
     expect(DEFAULT_AUDIT_RECIPE.commandId).toBe("/novel:audit");
     expect(DEFAULT_AUDIT_RECIPE.steps).toHaveLength(3);
-    expect(DEFAULT_AUDIT_RECIPE.candidateStrategy).toBe("create-draft");
+    expect(DEFAULT_AUDIT_RECIPE.resultStrategy).toBe("version-result");
   });
 
   it("looks up recipes by commandId", () => {
@@ -45,7 +56,7 @@ describe("workflow recipe", () => {
     };
 
     const enabled = getEnabledSteps(modified);
-    expect(enabled).toHaveLength(5);
+    expect(enabled).toHaveLength(4);
     expect(enabled.find((s) => s.kind === "pgi")).toBeUndefined();
   });
 
@@ -73,7 +84,7 @@ describe("workflow recipe", () => {
       commandId: "/custom",
       description: "test",
       steps: [],
-      candidateStrategy: "create-candidate",
+      resultStrategy: "formal-chapter",
       requireFinalApproval: false,
       maxRetries: 0,
     };

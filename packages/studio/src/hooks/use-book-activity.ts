@@ -1,12 +1,10 @@
 import type { SSEMessage } from "./use-sse";
 
-const START_EVENTS = new Set(["write:start", "draft:start"]);
-const TERMINAL_EVENTS = new Set(["write:complete", "write:error", "draft:complete", "draft:error"]);
+const START_EVENTS = new Set(["write:start"]);
+const TERMINAL_EVENTS = new Set(["write:complete", "write:error"]);
 const BOOK_REFRESH_EVENTS = new Set([
   "write:complete",
   "write:error",
-  "draft:complete",
-  "draft:error",
   "rewrite:complete",
   "rewrite:error",
   "revise:complete",
@@ -21,8 +19,6 @@ const BOOK_COLLECTION_REFRESH_EVENTS = new Set([
   "book:error",
   "write:complete",
   "write:error",
-  "draft:complete",
-  "draft:error",
   "rewrite:complete",
   "rewrite:error",
   "revise:complete",
@@ -39,7 +35,6 @@ const DAEMON_STATUS_REFRESH_EVENTS = new Set([
 
 export interface BookActivity {
   readonly writing: boolean;
-  readonly drafting: boolean;
   readonly lastError: string | null;
 }
 
@@ -70,7 +65,6 @@ export function deriveActiveBookIds(messages: ReadonlyArray<SSEMessage>): Readon
 
 export function deriveBookActivity(messages: ReadonlyArray<SSEMessage>, bookId: string): BookActivity {
   let writing = false;
-  let drafting = false;
   let lastError: string | null = null;
 
   for (const message of messages) {
@@ -91,24 +85,12 @@ export function deriveBookActivity(messages: ReadonlyArray<SSEMessage>, bookId: 
         writing = false;
         lastError = typeof data?.error === "string" ? data.error : "Unknown error";
         break;
-      case "draft:start":
-        drafting = true;
-        lastError = null;
-        break;
-      case "draft:complete":
-        drafting = false;
-        lastError = null;
-        break;
-      case "draft:error":
-        drafting = false;
-        lastError = typeof data?.error === "string" ? data.error : "Unknown error";
-        break;
       default:
         break;
     }
   }
 
-  return { writing, drafting, lastError };
+  return { writing, lastError };
 }
 
 export function shouldRefetchBookView(message: SSEMessage, bookId: string): boolean {

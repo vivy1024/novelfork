@@ -14,8 +14,8 @@ import {
 } from "@vivy1024/novelfork-core";
 import {
   recordChapterCompletion,
-  createBibleConflictRepository,
-  createBibleCharacterArcRepository,
+  createJingweiConflictRepository,
+  createJingweiCharacterArcRepository,
 } from "@vivy1024/novelfork-novel-plugin/engine";
 import { createFilterReportRepository } from "@vivy1024/novelfork-novel-plugin/engine";
 
@@ -259,8 +259,8 @@ describe("writing tools routes", () => {
   });
 
   it("returns measured health facts and null for unavailable quality metrics", async () => {
-    storage.sqlite.prepare(`INSERT INTO "book" ("id", "name", "bible_mode", "current_chapter", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?)`).run("book-1", "写作工具测试书", "static", 0, Date.now(), Date.now());
-    await createBibleConflictRepository(storage).create({
+    storage.sqlite.prepare(`INSERT INTO "book" ("id", "name", "jingwei_mode", "current_chapter", "created_at", "updated_at") VALUES (?, ?, ?, ?, ?, ?)`).run("book-1", "写作工具测试书", "static", 0, Date.now(), Date.now());
+    await createJingweiConflictRepository(storage).create({
       id: "conflict-main",
       bookId: "book-1",
       name: "主线矛盾",

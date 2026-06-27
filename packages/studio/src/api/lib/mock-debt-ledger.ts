@@ -158,10 +158,10 @@ export const MOCK_DEBT_ITEMS = [
       "packages/studio/src/components/writing-modes/*.tsx",
       "packages/novel-plugin/src/pages/writing-workbench/WorkbenchWritingActions.tsx",
     ],
-    currentBehavior: "writing modes 生成端点仍可返回 mode: prompt-preview；真实生成结果可通过 Workspace 目标选择与确认流程调用安全 apply route 写入 candidate/draft，章节 insert/replace 会转为非破坏性候选稿；章节钩子插入会写入 pending_hooks.md。",
+    currentBehavior: "writing modes 生成端点仍可返回 mode: prompt-preview；旧 apply route 已移除，真实生成结果必须进入正式章节或多版本流程；章节钩子插入会写入 pending_hooks.md。",
     userRisk: "critical",
     status: "transparent-placeholder",
-    targetBehavior: "保持 prompt-preview 透明语义；章节钩子应用必须持续写入 pending_hooks.md 或结构化 hooks repository；真实生成结果必须先确认目标并写入 candidate/draft，正式章节 insert/replace 不得无确认直改正文。",
+    targetBehavior: "保持 prompt-preview 透明语义；章节钩子应用必须持续写入 pending_hooks.md 或结构化 hooks repository；真实生成结果必须先确认目标并写入正式章节或多版本结果，正式章节 insert/replace 不得无确认直改正文。",
     ownerSpec: OWNER_SPEC,
     verification: [
       "route/UI 测试覆盖 mode: prompt-preview 或真实生成路径",

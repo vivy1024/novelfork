@@ -79,6 +79,30 @@ describe("storage write service", () => {
     expect(state.saveBookConfig).toHaveBeenCalledWith("book-1", expect.objectContaining({ targetChapters: 120, language: "en" }));
   });
 
+  it("persists writing settings edited from the book settings panel", async () => {
+    const { service, state } = createService();
+
+    await expect(service.updateBook("book-1", {
+      chapterWordCount: 4200,
+      arcTrackingMode: "rule",
+      customSensitiveWords: "禁词A\n禁词B",
+    })).resolves.toMatchObject({
+      ok: true,
+      book: {
+        id: "book-1",
+        chapterWordCount: 4200,
+        arcTrackingMode: "rule",
+        customSensitiveWords: "禁词A\n禁词B",
+        updatedAt: "2026-05-05T12:00:00.000Z",
+      },
+    });
+    expect(state.saveBookConfig).toHaveBeenCalledWith("book-1", expect.objectContaining({
+      chapterWordCount: 4200,
+      arcTrackingMode: "rule",
+      customSensitiveWords: "禁词A\n禁词B",
+    }));
+  });
+
   it("creates a chapter file and keeps the index sorted", async () => {
     const { service } = createService();
     index = [buildChapter(2, { title: "第二章", wordCount: 20 })];
