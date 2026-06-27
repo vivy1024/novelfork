@@ -20,10 +20,6 @@ export type { AgentRoleConfig } from "./pipeline/agent-roles.js";
 // ─── Agents ──────────────────────────────────────────────────────────────────
 export { BaseAgent } from "./agents/base.js";
 export type { AgentContext } from "./agents/base.js";
-export { PlannerAgent } from "./agents/planner.js";
-export type { PlanChapterInput, PlanChapterOutput } from "./agents/planner.js";
-export { ComposerAgent } from "./agents/composer.js";
-export type { ComposeChapterInput, ComposeChapterOutput } from "./agents/composer.js";
 export { WriterAgent } from "./agents/writer.js";
 export type { WriteChapterInput, WriteChapterOutput, TokenUsage } from "./agents/writer.js";
 export { LengthNormalizerAgent } from "./agents/length-normalizer.js";
@@ -65,6 +61,10 @@ export {
   parseExpansionResult,
   buildBridgePrompt,
   parseBridgeResult,
+  buildPolishPrompt,
+  parsePolishResult,
+  buildRewritePrompt,
+  parseRewriteResult,
 } from "./agents/inline-writer.js";
 export type {
   InlineWriteMode,
@@ -77,6 +77,8 @@ export type {
   ExpansionResult,
   BridgePurpose,
   BridgeInput,
+  PolishInput,
+  RewriteInput,
 } from "./agents/inline-writer.js";
 export { buildDialoguePrompt, parseDialogueResult } from "./agents/dialogue-generator.js";
 export type { DialogueCharacter, DialogueInput, DialogueLine, DialogueResult } from "./agents/dialogue-generator.js";

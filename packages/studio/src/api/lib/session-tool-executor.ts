@@ -8,7 +8,6 @@ import {
   type ToolConfirmationAudit,
   type ToolConfirmationRequest,
 } from "../../shared/agent-native-workspace.js";
-import type { CandidateToolService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import type { NarrativeLineService } from "@vivy1024/novelfork-novel-plugin/handlers";
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
@@ -152,7 +151,6 @@ export type SessionToolHandler = (
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
   readonly cockpitService?: CockpitService;
-  readonly candidateService?: CandidateToolService;
   readonly narrativeService?: Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">>;
   /** 工作目录，用于 Bash/Read/Write/Edit 工具的路径边界 */
   readonly workDir?: string;
@@ -308,7 +306,7 @@ export async function executeSessionTool(
       ok: false,
       renderer: definition.renderer,
       error: "dirty-resource-blocked",
-      summary: `当前画布资源存在未保存编辑，请先保存、放弃或另存为候选后再执行 ${definition.name}。`,
+      summary: `当前画布资源存在未保存编辑，请先保存、放弃或另存为新文件后再执行 ${definition.name}。`,
       data: {
         status: "dirty-resource-blocked",
         activeTabId: input.canvasContext?.activeTabId,
@@ -601,11 +599,6 @@ export async function executeSessionTool(
  */
 function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
   switch (toolName) {
-    case "candidate.create_chapter":
-      return async ({ input, sessionConfig, onToolOutputStream }) => {
-        const service = await resolveCandidateService(options);
-        return service.createChapter({ ...input, ...(sessionConfig ? { sessionConfig } : {}), _onStreamChunk: onToolOutputStream });
-      };
     case "narrative.read_line":
       return async ({ input, definition }) => {
         const service = resolveNarrativeService(options);
@@ -702,18 +695,44 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
         const bookId = String(input.bookId);
         const snapshot = await options.cockpitService.getSnapshot({ bookId });
-        return { ok: true, renderer: definition.renderer, summary: `书籍 ${bookId} 全景快照（进度/伏笔/候选稿/健康度）。`, data: snapshot };
+        return { ok: true, renderer: definition.renderer, summary: `书籍 ${bookId} 全景快照（进度/伏笔/正式章节/健康度）。`, data: snapshot };
       };
+    case "lore.read":
     case "jingwei.read":
       return async ({ input, definition }) => {
-        const { handleJingweiRead } = await import("@vivy1024/novelfork-novel-plugin");
-        const result = await handleJingweiRead(input as any);
+        const { handleLoreRead } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleLoreRead(input as any);
         return { ...result, renderer: definition.renderer };
       };
+    case "jingwei.audit":
+      return async ({ input, definition }) => {
+        const { handleJingweiAudit } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleJingweiAudit(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "lore.write":
     case "jingwei.write":
       return async ({ input, definition }) => {
-        const { handleJingweiWrite } = await import("@vivy1024/novelfork-novel-plugin");
-        const result = await handleJingweiWrite(input as any);
+        const { handleLoreWrite } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleLoreWrite(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.read":
+      return async ({ input, definition }) => {
+        const { handleMemoryRead } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryRead(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.graph":
+      return async ({ input, definition }) => {
+        const { handleMemoryGraph } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryGraph(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.events":
+      return async ({ input, definition }) => {
+        const { handleMemoryEvents } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryEvents(input as any);
         return { ...result, renderer: definition.renderer };
       };
     case "pgi.ask":
@@ -743,10 +762,9 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           }
           const resourceId = String(input.resourceId ?? "");
           if (!resourceId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "action 非 list 时 resourceId 必填。" };
-          if (action === "archive") { const r = await service.transition(bookId, resourceId, { action: "archive" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
-          if (action === "restore") { const r = await service.transition(bookId, resourceId, { action: "restore" }); return { ok: true, renderer: definition.renderer, summary: `已恢复资源「${r.title}」。`, data: { resource: r } }; }
+          if (action === "archive") { const r = await service.update(bookId, resourceId, { status: "archived" }); return { ok: true, renderer: definition.renderer, summary: `已归档资源「${r.title}」。`, data: { resource: r } }; }
           if (action === "delete") { const r = await service.softDelete(bookId, resourceId); return { ok: true, renderer: definition.renderer, summary: `已删除资源「${r.title}」。`, data: { resource: r } }; }
-          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/archive/restore/delete。` };
+          return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未知 action: ${action}。支持 list/archive/delete。` };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "resource-manage-failed", summary: `资源管理失败: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -797,7 +815,7 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
           ok: true,
           renderer: definition.renderer,
           summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过"}${result.revised ? "，已自动修订" : ""}。`,
-          data: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount, auditPassed: result.auditResult.passed, revised: result.revised, candidateId: result.candidateId },
+          data: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount, auditPassed: result.auditResult.passed, revised: result.revised, chapterId: result.chapterId },
           artifact: result.artifact,
         };
       };
@@ -967,18 +985,10 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         }
 
         try {
-          const { resolveRuntimeStoragePath } = await import("./runtime-storage-paths.js");
-          const { writeFile, mkdir } = await import("node:fs/promises");
-          const { join } = await import("node:path");
           const { analyzeStyle } = await import("@vivy1024/novelfork-novel-plugin/engine");
 
-          const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
-          const storyDir = join(root, "books", bookId, "story");
-          await mkdir(storyDir, { recursive: true });
-
-          // 统计分析（纯文本，无 LLM）
+          // 统计分析（纯文本，无 LLM）。结果只作为预设建议，不自动写入 style_profile/style_guide。
           const profile = analyzeStyle(referenceText, sourceName);
-          await writeFile(join(storyDir, "style_profile.json"), JSON.stringify(profile, null, 2), "utf-8");
 
           // 生成文风指南（用 LLM）
           const { generateSessionReply } = await import("./llm-runtime-service.js");
@@ -1003,13 +1013,18 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
             guideText = `# 文风指南\n\n基于统计分析生成（无 LLM 定性描述）。\n\n- 平均句长: ${profile.avgSentenceLength} 字\n- 句长标准差: ${profile.sentenceLengthStdDev}\n- 段落平均长度: ${profile.avgParagraphLength} 字\n- 词汇多样性(TTR): ${profile.vocabularyDiversity}\n${sourceName ? `\n参考来源: ${sourceName}` : ""}`;
           }
 
-          await writeFile(join(storyDir, "style_guide.md"), guideText, "utf-8");
-
           return {
             ok: true,
             renderer: definition.renderer,
-            summary: `文风档案已生成。平均句长 ${profile.avgSentenceLength} 字，词汇多样性 ${profile.vocabularyDiversity}。${sourceName ? `参考: ${sourceName}` : ""}`,
-            data: { bookId, profile, guidePreview: guideText.slice(0, 500) },
+            summary: `已生成文风预设建议，平均句长 ${profile.avgSentenceLength} 字，词汇多样性 ${profile.vocabularyDiversity}。请用户选择新增、覆盖或手动编辑后再保存为预设。${sourceName ? `参考: ${sourceName}` : ""}`,
+            data: {
+              bookId,
+              kind: "preset-suggestion",
+              profile,
+              styleGuide: guideText,
+              guidePreview: guideText.slice(0, 500),
+              nextActions: ["add-preset", "replace-preset", "manual-edit"],
+            },
           };
         } catch (err) {
           return { ok: false, renderer: definition.renderer, error: "style-import-failed", summary: `文风导入失败: ${err instanceof Error ? err.message : String(err)}` };
@@ -4145,11 +4160,6 @@ function applyPipelineCommand(cmd: string, lines: string[]): string[] {
 
   // 未识别的命令，原样返回
   return lines;
-}
-
-async function resolveCandidateService(options: SessionToolExecutorOptions): Promise<CandidateToolService> {
-  if (options.candidateService) return options.candidateService;
-  throw new Error("candidate.create_chapter requires a configured CandidateToolService.");
 }
 
 function resolveNarrativeService(options: SessionToolExecutorOptions): Partial<Pick<NarrativeLineService, "getSnapshot" | "proposeChange" | "applyChange">> {

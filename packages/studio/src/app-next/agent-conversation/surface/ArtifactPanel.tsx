@@ -36,7 +36,7 @@ export interface ArtifactPanelProps {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.write", "jingwei_write", "jingwei.upsert_entry", "jingwei_upsert_entry", "candidate.create_chapter", "candidate_create_chapter"]);
+const WRITE_TOOL_NAMES = new Set(["Write", "Edit", "jingwei.write", "jingwei_write", "jingwei.upsert_entry", "jingwei_upsert_entry", "pipeline.write"]);
 
 // Bug 6 fix: jingwei category 校验
 const VALID_JINGWEI_CATEGORIES = new Set([
@@ -68,30 +68,34 @@ function parsePartialWriteInput(partialJson: string, toolName: string): { filePa
       const category = normalizeCategory(parsed.category);
       return { filePath: `jingwei/${category}/${parsed.title}.md`, content: parsed.contentMd };
     }
-    // candidate.create_chapter 格式
-    if (typeof parsed.content === "string" && (parsed.title || parsed.chapterNumber || toolName.includes("candidate"))) {
-      const title = parsed.title ?? (parsed.chapterNumber !== undefined && parsed.chapterNumber !== null ? `第${parsed.chapterNumber}章候选稿` : "章节候选稿");
-      return { filePath: `candidates/${title}.md`, content: parsed.content };
+    // pipeline.write 章节结果格式
+    if (typeof parsed.content === "string" && (parsed.title || parsed.chapterNumber || toolName === "pipeline.write")) {
+      const chapterNumber = Number.isFinite(Number(parsed.chapterNumber)) ? Number(parsed.chapterNumber) : 0;
+      const title = parsed.title ?? (chapterNumber > 0 ? `第${chapterNumber}章` : "章节结果");
+      const prefix = chapterNumber > 0 ? String(chapterNumber).padStart(4, "0") : "chapter";
+      return { filePath: `chapters/${prefix}_${title}.md`, content: parsed.content };
     }
   } catch {
     // 部分 JSON — 用正则提取
   }
 
-  // candidate.create_chapter 的部分 JSON 解析
-  if (toolName.includes("candidate")) {
+  // pipeline.write 的部分 JSON 解析
+  if (toolName === "pipeline.write") {
     const titleMatch = partialJson.match(/"title"\s*:\s*"([^"]+)"/);
     const chapterMatch = partialJson.match(/"chapterNumber"\s*:\s*(\d+)/);
     const contentMatch = partialJson.match(/"content"\s*:\s*"([\s\S]*)$/);
-    const title = titleMatch?.[1] ?? (chapterMatch?.[1] ? `第${chapterMatch[1]}章候选稿` : "章节候选稿");
+    const chapterNumber = chapterMatch?.[1] ? Number(chapterMatch[1]) : 0;
+    const title = titleMatch?.[1] ?? (chapterNumber > 0 ? `第${chapterNumber}章` : "章节结果");
+    const prefix = chapterNumber > 0 ? String(chapterNumber).padStart(4, "0") : "chapter";
     if (contentMatch) {
       let raw = contentMatch[1].replace(/["\s}]*$/, "");
       try {
-        return { filePath: `candidates/${title}.md`, content: JSON.parse(`"${raw}"`) };
+        return { filePath: `chapters/${prefix}_${title}.md`, content: JSON.parse(`"${raw}"`) };
       } catch {
-        return { filePath: `candidates/${title}.md`, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
+        return { filePath: `chapters/${prefix}_${title}.md`, content: raw.replace(/\\n/g, "\n").replace(/\\t/g, "\t").replace(/\\"/g, '"') };
       }
     }
-    return { filePath: `candidates/${title}.md`, content: "" };
+    return { filePath: `chapters/${prefix}_${title}.md`, content: "" };
   }
 
   // jingwei.upsert_entry 的部分 JSON 解析
@@ -229,9 +233,10 @@ export function useArtifactFiles(messages: readonly ConversationSurfaceMessage[]
           const input = tc.input as Record<string, unknown>;
           const filePath = (input.file_path as string) ?? "";
           const content = (input.content as string) ?? (input.new_string as string) ?? (input.contentMd as string) ?? "";
+          const chapterNumber = Number.isFinite(Number(input.chapterNumber)) ? Number(input.chapterNumber) : 0;
           const derivedPath = filePath
-            || (tc.toolName.includes("candidate") && (input.title || input.chapterNumber)
-              ? `candidates/${input.title ?? `第${input.chapterNumber}章候选稿`}.md`
+            || (tc.toolName === "pipeline.write" && (input.title || chapterNumber > 0)
+              ? `chapters/${chapterNumber > 0 ? String(chapterNumber).padStart(4, "0") : "chapter"}_${input.title ?? `第${chapterNumber}章`}.md`
               : "")
             || (input.title ? `jingwei/${normalizeCategory(input.category)}/${input.title}.md` : "");
           if (derivedPath) {

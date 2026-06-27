@@ -85,7 +85,7 @@ Agent 可以用 `beat.write(action=create)` 工具创建专属节拍。例如为
 - 预设存储：`book.json` 的 `enabledPresetIds` 字段
 - 节拍存储：`book.json` 的 `beatTemplateId` 字段
 - 自定义预设/节拍存储：`user_template` 表（SQLite）
-- 预设注入时机：候选稿生成时注入 system prompt
+- 预设注入时机：章节结果生成时注入 system prompt
 - 工具列表：`presets.read`、`presets.write`、`presets.write(action=create)`、`presets.check_compliance`、`beat.read`、`beat.write`、`beat.write(action=create)`
 
 ## 可跳转功能入口

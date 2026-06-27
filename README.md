@@ -18,14 +18,15 @@
 
 ## Navigation
 
-[中文文档](#快速开始) · [技术架构](docs/04-架构与设计/01-系统架构总览.md) · [写作管线](docs/04-架构与设计/03-Agent写作管线.md) · [GitHub Releases](https://github.com/vivy1024/novelfork/releases)
+[中文文档](#快速开始) · [技术文档](docs/README.md) · [CodeWiki](docs/01-codewiki/) · [GitHub Releases](https://github.com/vivy1024/novelfork/releases)
 
 ---
 
 ## Highlights
 
-- 🧠 **生产级 Agent Runtime** — max_output 自动恢复 + model fallback + 3 级 budget pressure + 6 档推理强度
-- 📚 **经纬系统** — 16 分类 + Canon/Dynamic/Reference 三层 + SQLite 全文索引 + PGI 追问
+- 🌌 **3D 结晶叙事记忆空间** — 纯 Canvas 2D 透视投影 · 测地线粒子网络 · 3D Fact Carousel · 零 WebGL 依赖
+- 🧠 **叙事记忆引擎** — 8 通道本地检索 · Wave 终局算法（EPA/spike routing/geodesic rerank）· Pending Events 审批
+- 📚 **经纬/记忆架构闭合** — 经纬只保留静态 Lore · 动态 Memory 负责关系/时间线/伏笔 · AI 写 canon 强制 evidence · 12 条动态设定迁移
 - ✍️ **写作管线 v2** — scene.spec 蓝图 → pipeline.write 生成 → 对抗式 3 视角审查 → S1-S4 门禁
 - 🖥️ **IDE 写作工作台** — 三栏布局 + Tab 拖拽 + Ctrl+F 搜索 + 经纬 TipTap 编辑器 + Minimap
 - 📊 **上下文管理** — 四字段 token 统一（对齐 Codex/Claude CLI）+ 分层压缩 + 有效窗口扣输出预留
@@ -41,6 +42,7 @@
 
 | 版本 | 日期 | 主题 | 亮点 |
 |------|------|------|------|
+| **v3.0.0** | 2026-06-25 | 3D 结晶叙事记忆空间 + 架构边界闭合 | 3D Crystalline Orb · 叙事记忆引擎（8 通道 + Wave 算法）· 经纬/记忆边界 · TipTap 吞字修复 · 5 死 Agent 删除 |
 | **v2.2.0** | 2026-06-22 | 候选稿废除 + 前端 Bug 修复 + 对话面板改进 | 候选稿/草稿清理 · 24 个前端 bug · 5 个对话面板修复 · 14 spec 归档 |
 | **v2.1.0** | 2026-06-22 | 上下文根因修复 + 推理强度 + IDE 打磨 | 四字段 token 统一 · 删除 413 救援 · 6 档推理强度 · 20 项 IDE · 自动重试接线 |
 | **v2.0.0** | 2026-06-21 | Bible→Jingwei 重命名 + IDE 工作台 | 5 个死 agent 删除 · bible 路由清理 · IDE 三栏布局 · Command Palette · Writing Resource 文件存储 |
@@ -90,16 +92,44 @@
 </td>
 <td width="50%" valign="top">
 
-### 📚 经纬系统
+### 📚 经纬 / Lore 系统
 
-结构化世界观管理，16 分类全覆盖。
+作者显式维护的静态设定库，与动态叙事记忆彻底分工。
 
-- Canon / Dynamic / Reference 三层数据分离
-- SQLite FTS5 全文索引 + normalizeCategory 容错
-- PGI 追问引擎（生成问题 → 用户确认方向）
-- 可见性模型（global/tracked/nested + 章节窗口）
+- 静态 Lore：人物、地点、势力、世界规则、物品、术语、作者备注
+- `lore.read` 默认排除 archived / draft / needs-review
+- `lore.write` 写 canon/rules 强制 reason + source + evidence
 - TipTap 富文本编辑器 + 预览/编辑切换
-- 关联条目 clickable chip 跳转 + 修改历史时间线
+- 经纬 AI 视角支持多章节交互式预览
+- 动态关系、时间线、伏笔状态统一迁移到 Narrative Memory
+
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+
+### 🌌 3D 结晶叙事记忆空间
+
+纯 Canvas 2D 透视投影，零 WebGL 依赖，集显稳定 60 FPS。
+
+- 3D 星尘宇宙背景（80 颗呼吸闪烁星尘）
+- 测地线粒子网络（Spike Routing 能量流 + 节点霓虹脉冲）
+- 3D Fact Carousel（滚轮/键盘阻尼旋转 + 双击翻牌查证据）
+- 叙事记忆面板（ContextCard 诊断 + Pending Events 审批）
+- 完整记忆图谱工作区（关系图/时间线/伏笔网络/矛盾地图）
+
+</td>
+<td width="50%" valign="top">
+
+### 🧠 叙事记忆引擎
+
+动态叙事记忆系统，写作前自动召回 ContextCard。
+
+- 8 通道本地检索（facts/hard/hooks/scene-spec/semantic/state/style/timeline）
+- Wave 终局算法（EPA + residual pyramid + spike routing + geodesic rerank）
+- Semantic exact cosine 中期层（默认关闭，不引入 vector DB）
+- NarrativeEvent 事件日志（canon/高风险事件默认 pending 防 LLM 污染）
+- recall@budget benchmark（10 条 fixture 对比 5 种召回策略）
 
 </td>
 </tr>
@@ -114,7 +144,7 @@ scene.spec 蓝图驱动，多 Agent 协作生成。
 - Writer: creative → observer → settler 三段式
 - 对抗式 3 视角审查（连续性/叙事/文本独立跑）
 - S1-S4 严重度门禁（S1 阻断 / S2 修订 / S3-4 警告）
-- AI BubbleMenu（选中文本续写/润色/改写/扩写）
+- 选中文本 AI 操作（续写/润色/改写/扩写，见章节编辑器 BubbleMenu）
 
 </td>
 <td width="50%" valign="top">
@@ -168,7 +198,7 @@ scene.spec 蓝图驱动，多 Agent 协作生成。
 
 | 依赖 | 版本 | 说明 |
 |------|------|------|
-| **Bun** | ≥ 1.2 | 运行时 & 包管理器 |
+| **Bun** | ≥ 1.3 | 运行时 & 包管理器 |
 | **OS** | Windows x64 | 主要支持平台 |
 | | macOS / Linux | 未经完整测试，理论可用 |
 | **浏览器** | Chrome / Edge | 访问本地 Web 工作台 |
@@ -215,7 +245,7 @@ cd packages/studio && bun run compile
 | 供应商 | 协议 | 推理强度 | 说明 |
 |--------|------|---------|------|
 | Anthropic | Anthropic 原生 | effort→budget_tokens | Claude Opus 4.8 / Fable 5 等 |
-| DeepSeek | Anthropic 兼容 | effort via output_config | v4-pro 等 |
+| DeepSeek | OpenAI/Anthropic 兼容 | reasoning_effort / output_config | v4-pro 等 |
 | OpenAI | Responses | reasoning.effort | GPT-5 等 |
 | Codex | Codex | reasoning.effort（已接） | ChatGPT 账号反代 |
 | 自定义 | Completions | reasoning_effort 顶层 | 任何 OpenAI 兼容 API |
@@ -227,11 +257,11 @@ cd packages/studio && bun run compile
 NovelFork 的写作管线 v2 是核心创作链路，由多个专业 Agent 协作完成：
 
 ```
-cockpit.snapshot ─→ jingwei.read(brief) ─→ pgi.ask ─→ AskUserQuestion
-                                                           │
-    ┌──────────────────────────────────────────────────────┘
+cockpit.snapshot ─→ lore.read(brief) ─→ memory.read(write) ─→ pgi.ask ─→ AskUserQuestion
+                                                                              │
+    ┌─────────────────────────────────────────────────────────────────────────┘
     ▼
-scene.spec ─→ jingwei.read(category) ─→ pipeline.write ─→ 候选稿
+scene.spec ─→ lore.read(category) + memory.read ─→ pipeline.write ─→ 正式章节结果 ─→ memory.events
                                               │
                                     ┌─────────┼─────────┐
                                     ▼         ▼         ▼
@@ -242,22 +272,25 @@ scene.spec ─→ jingwei.read(category) ─→ pipeline.write ─→ 候选稿
                                               │
                               S1 阻断 ← ─ ─ ─ ┼ ─ ─ ─ → S3/S4 通过
                               S2 触发修订      ▼
-                                         resource.manage(accept)
+                                      正式章节结果等待用户审阅
 ```
 
 ### 核心小说工具
 
 | 工具 | 功能 | 分类 |
 |------|------|------|
-| `cockpit.snapshot` | 进度/伏笔/候选稿全景快照 | 常驻 |
-| `jingwei.read` | 经纬读取（scope: brief/category/search） | 常驻 |
-| `jingwei.write` | 经纬写入（layer 分层 + Canon 保护） | 常驻 |
+| `cockpit.snapshot` | 进度/伏笔/章节结果全景快照 | 常驻 |
+| `lore.read` | 经纬读取（scope: brief/category/search） | 常驻 |
+| `lore.write` | 经纬写入（layer 分层 + Canon 保护） | 常驻 |
+| `memory.read` | 叙事记忆召回（ContextCard + 8 通道） | 常驻 |
+| `memory.graph` | 记忆图谱读取（关系/时间线/弧线/伏笔/矛盾） | 常驻 |
+| `memory.events` | Pending NarrativeEvents 管理 | 常驻 |
 | `pgi.ask` | PGI 追问（生成问题 → 用户确认方向） | 常驻 |
 | `scene.spec` | 结构化写作蓝图 | 常驻 |
 | `pipeline.write` | 生成管线（Writer → Audit → Revise） | 常驻 |
 | `chapter.read` | 读取章节正文 | 常驻 |
 | `chapter.audit` | 章节质量审计 | 常驻 |
-| `resource.manage` | 资源状态管理（accept/reject/archive…） | 常驻 |
+| `resource.manage` | 资源状态管理（list/archive/restore/delete） | 常驻 |
 | `presets.read/write` | 预设查看与配置 | 常驻 |
 | `beat.read/write` | 节拍查看与配置 | 常驻 |
 | `hooks.manage` | 伏笔生命周期管理 | 常驻 |
@@ -284,16 +317,25 @@ novelfork/
 │   │       └── session-chat-service.ts    # 会话运行时
 │   └── novel-plugin/         # 小说领域插件
 │       ├── engine/           # Agent / Jingwei / Pipeline / Filter
+│       │   ├── narrative-memory/         # 叙事记忆引擎（20+ 模块）
+│       │   │   ├── build-narrative-context.ts  # ContextCard 召回
+│       │   │   ├── channels/              # 8 通道本地检索
+│       │   │   └── wave/                  # Wave 终局算法（EPA/spike routing）
+│       │   └── jingwei/                   # 经纬静态 Lore
 │       ├── routes/           # HTTP API 路由
 │       ├── handlers/         # 业务服务层
 │       └── pages/            # 前端组件
-│           ├── writing-workbench/         # 写作工作台（38 组件）
+│           ├── writing-workbench/         # 写作工作台（40+ 组件）
 │           │   ├── ide/                   # IDE 布局（11 组件）
 │           │   │   ├── IdeWorkbench.tsx    # 三栏主布局
 │           │   │   ├── EditorTabs.tsx      # Tab 拖拽排序
 │           │   │   ├── command-palette.tsx  # 命令面板
 │           │   │   ├── SearchBar.tsx       # Ctrl+F 搜索
 │           │   │   └── SearchExtension.ts  # TipTap 搜索扩展
+│           │   ├── jingwei/
+│           │   │   └── Crystalline3DView.tsx  # 3D 结晶叙事记忆空间
+│           │   ├── NarrativeMemoryPanel.tsx     # 叙事记忆面板
+│           │   ├── NarrativeMemoryGraphWorkspace.tsx  # 完整记忆图谱工作区
 │           │   └── resource-viewers/       # 编辑器
 │           │       ├── ChapterEditor.tsx   # 章节编辑器（TipTap + BubbleMenu）
 │           │       └── EditorMinimap.tsx   # Minimap

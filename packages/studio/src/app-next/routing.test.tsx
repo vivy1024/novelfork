@@ -85,12 +85,11 @@ describe("Studio Next routing", () => {
     renderApp();
 
     const main = await screen.findByTestId("shell-main");
-    expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
-    expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
-    expect(within(main).getByRole("heading", { name: "模型健康" })).toBeTruthy();
+    expect(within(main).getByRole("heading", { name: "作者首页" })).toBeTruthy();
+    expect(within(main).getByText("作品数")).toBeTruthy();
+    expect(within(main).getByText("会话数")).toBeTruthy();
+    expect(within(main).getByRole("button", { name: "继续写作 → 灵潮纪元" })).toBeTruthy();
     expect(within(main).getByRole("button", { name: "新建作品" })).toBeTruthy();
-    expect(within(main).getByRole("button", { name: "新建会话" })).toBeTruthy();
-    expect(within(main).getByRole("button", { name: "打开设置" })).toBeTruthy();
   });
 
   it("shows an empty state when the home shell has no books, sessions, or provider data", async () => {
@@ -107,8 +106,10 @@ describe("Studio Next routing", () => {
 
     const main = await screen.findByTestId("shell-main");
     expect(within(main).getByText("还没有可用内容，先新建作品或新建会话。")).toBeTruthy();
+    expect(within(main).getByText("作品数")).toBeTruthy();
+    expect(within(main).getByText("0 本")).toBeTruthy();
+    expect(within(main).getByText("会话数")).toBeTruthy();
+    expect(within(main).getByText("0 条")).toBeTruthy();
     expect(within(main).getByRole("button", { name: "新建作品" })).toBeTruthy();
-    expect(within(main).getByRole("heading", { name: "最近作品" })).toBeTruthy();
-    expect(within(main).getByRole("heading", { name: "最近会话" })).toBeTruthy();
   });
 });

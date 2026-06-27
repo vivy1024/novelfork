@@ -51,8 +51,6 @@ import {
   type WorkbenchCanvasContext,
   type WorkbenchResourceNode,
   type WorkbenchResourcesResult,
-  type CandidateAcceptAction,
-  type DraftAcceptMode,
   type ResourceHistoryEntry,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 import { IdeWorkbench } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
@@ -1419,56 +1417,7 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
     onCanvasContextChange(context);
   }, [onCanvasContextChange]);
 
-  const candidateActions = useMemo(() => ({
-    onAccept: async (candidateId: string, action: CandidateAcceptAction) => {
-      await resourceClient.acceptCandidate(bookId, candidateId, { action });
-      reloadResources();
-    },
-    onReject: async (candidateId: string) => {
-      await resourceClient.rejectCandidate(bookId, candidateId);
-      reloadResources();
-    },
-    onArchive: async (candidateId: string) => {
-      await resourceClient.archiveCandidate(bookId, candidateId);
-      reloadResources();
-    },
-    onDelete: async (candidateId: string) => {
-      await resourceClient.deleteCandidate(bookId, candidateId);
-      reloadResources();
-    },
-  }), [bookId, reloadResources, resourceClient]);
-
-  const draftActions = useMemo(() => ({
-    onSubmitCandidate: async (draftId: string) => {
-      await resourceClient.transitionWritingResource(bookId, draftId, { action: "to-candidate" });
-      reloadResources();
-    },
-    onAccept: async (draftId: string, chapterNumber: number, mode: DraftAcceptMode) => {
-      await resourceClient.transitionWritingResource(bookId, draftId, { action: "accept", chapterNumber, mode });
-      reloadResources();
-    },
-    onDelete: async (draftId: string) => {
-      await resourceClient.deleteWritingResource(bookId, draftId);
-      reloadResources();
-    },
-  }), [bookId, reloadResources, resourceClient]);
-
   const chapterActions = useMemo(() => ({
-    onCreateDraft: async (resourceId: string) => {
-      // Fetch full resource content from API to pre-fill the draft
-      const detail = await resourceClient.getWritingResourceDetail<{ resource: { title: string; content: string } }>(bookId, resourceId);
-      const content = detail.ok ? detail.data.resource.content : "";
-      const title = detail.ok && detail.data.resource.title ? `${detail.data.resource.title} (编辑)` : "编辑草稿";
-      await resourceClient.createWritingResource(bookId, { type: "draft", status: "draft", title, content, parentId: resourceId });
-      reloadResources();
-    },
-    onCreateVariant: async (resourceId: string) => {
-      const detail = await resourceClient.getWritingResourceDetail<{ resource: { title: string; content: string } }>(bookId, resourceId);
-      const content = detail.ok ? detail.data.resource.content : "";
-      const title = detail.ok && detail.data.resource.title ? `${detail.data.resource.title} (变体)` : "变体候选稿";
-      await resourceClient.createWritingResource(bookId, { type: "candidate", status: "candidate", title, content, parentId: resourceId, source: "variant" });
-      reloadResources();
-    },
     onGetHistory: async (resourceId: string): Promise<ResourceHistoryEntry[]> => {
       const result = await resourceClient.getWritingResourceHistory<{ history: ResourceHistoryEntry[] }>(bookId, resourceId);
       if (result.ok) return result.data.history;
@@ -1518,8 +1467,6 @@ function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateTo
         onCanvasContextChange={handleCanvasContextChange}
         onCreateChapter={handleCreateChapter}
         onGuideComplete={reloadResources}
-        candidateActions={candidateActions}
-        draftActions={draftActions}
         chapterActions={chapterActions}
         chatSlot={bookSessionId ? <ConversationRouteLive sessionId={bookSessionId} canvasContext={undefined} embedded /> : undefined}
         onSwitchToAgent={bookSessionId ? () => onNavigateToConversation(bookSessionId) : undefined}

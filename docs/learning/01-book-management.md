@@ -30,7 +30,7 @@ routes:
 
 **新书引导向导**（NewBookGuide）：创建作品时 11 题三模式——预设选择 / 自定义填写 / 跳过随机。完成后自动生成初始经纬条目。
 
-**章节状态**：草稿 → 候选稿确认 → 正式章节。正式章节可继续编辑。
+**章节状态**：写作中 → 正式章节。正式章节可继续编辑。
 
 ## 推荐使用流程
 
@@ -54,7 +54,7 @@ routes:
 ## Agent 查阅提示
 
 - 作品 CRUD 通过 `/api/books` REST 接口
-- 章节通过 `candidate.create_chapter` 工具创建候选稿，用户确认后入库
+- 章节通过 `pipeline.write` 生成正式章节结果并入库
 - 资源树数据通过 `/api/books/:bookId/resources` 获取
 - 新书向导完成后触发经纬初始化流程，调用 AI 填充 story_bible
 

@@ -77,12 +77,12 @@ describe("session-memory-boundary-service", () => {
     }));
   });
 
-  it("does not automatically write temporary story drafts to long-term memory", async () => {
+  it("does not automatically write temporary story fragments to long-term memory", async () => {
     const writer: SessionMemoryWriter = vi.fn(async () => ({ ok: true as const, memoryId: "should-not-write" }));
     const service = createSessionMemoryBoundaryService({ writer, now: () => 1_779_206_400_000 });
 
     const result = await service.commitMemory(candidate({
-      classification: "temporary-story-draft",
+      classification: "temporary-story-fragment",
       content: "临时试写：主角在雨夜突然觉醒隐藏血脉。",
       projectId: "book-1",
       source: { kind: "message", messageId: "draft-1", seq: 3 },
@@ -93,7 +93,7 @@ describe("session-memory-boundary-service", () => {
       ok: true,
       action: "skipped",
       reason: "temporary_story_draft_not_long_term",
-      audit: expect.objectContaining({ classification: "temporary-story-draft", sessionId: "session-1" }),
+      audit: expect.objectContaining({ classification: "temporary-story-fragment", sessionId: "session-1" }),
     });
     expect(writer).not.toHaveBeenCalled();
   });
@@ -124,7 +124,7 @@ describe("session-memory-boundary-service", () => {
       ok: true,
       status: "readonly",
       writable: false,
-      categories: ["user-preference", "project-fact", "temporary-story-draft"],
+      categories: ["user-preference", "project-fact", "temporary-story-fragment"],
       reason: "memory_writer_not_configured",
     });
     await expect(service.commitMemory(candidate({ classification: "user-preference", confirmation: { mode: "explicit", confirmedBy: "author" } }))).resolves.toMatchObject({

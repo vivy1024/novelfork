@@ -51,19 +51,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
-  "candidate.create_chapter": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("当前书籍 ID。"),
-      chapterIntent: stringSchema("候选章节写作意图。注意：本工具只保存已有正文；完整写下一章请使用 pipeline.write。"),
-      chapterNumber: numberSchema("目标章节序号。"),
-      title: stringSchema("候选章节标题。"),
-      pgiInstructions: stringSchema("由 PGI 格式化得到的本章作者指示。"),
-      content: stringSchema("已有的完整章节候选稿正文。本工具不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章请调用 pipeline.write。"),
-    },
-    required: ["bookId", "chapterIntent", "content"],
-    additionalProperties: false,
-  },
   "narrative.read_line": {
     type: "object",
     properties: {
@@ -272,6 +259,16 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "sceneSpec"],
     additionalProperties: false,
   },
+  "jingwei.audit": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      entryIds: arraySchema("可选：仅审计指定经纬条目 ID。", { type: "string" }),
+      chapterNumber: numberSchema("可选：按指定章节检查可见性窗口。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
   "jingwei.write": {
     type: "object",
     properties: {
@@ -289,7 +286,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       entryId: stringSchema("条目 ID（delete 时可用，按 ID 精确删除）。"),
       mode: stringSchema("写入模式：overwrite（覆盖，默认）、append（追加到已有内容末尾）。"),
       confirmCanonEdit: booleanSchema("修改 Canon 条目时必须设为 true 以确认修改"),
-      reason: stringSchema("变更原因（可选，会记录到修改历史）"),
+      reason: stringSchema("变更原因；写入 canon 或 rules 类静态设定时必填。"),
+      source: stringSchema("设定来源；写入 canon 或 rules 类静态设定时需提供 source 或 evidence。"),
+      evidence: stringSchema("证据摘录；写入 canon 或 rules 类静态设定时需提供 source 或 evidence。"),
       status: { type: "string", enum: ["draft", "confirmed", "needs-review"], description: "条目状态（默认 confirmed）" },
     },
     required: ["bookId", "title"],
@@ -302,7 +301,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("目标章节序号。"),
       userDirectives: stringSchema("用户对本章的写作指示/方向描述。"),
       cockpitSnapshot: { type: "object", description: "驾驶舱快照（可选，用于提取进度、伏笔、风险等上下文）。" },
-      jingweiBrief: { type: "object", description: "经纬核心包摘要（可选，用于提取角色、地点、世界观等设定）。" },
+      jingweiBrief: { type: "object", description: "兼容旧字段：经纬/Lore 核心包摘要（可选）。新调用优先使用 loreBrief。" },
+      loreBrief: { type: "object", description: "lore.read 返回的静态设定核心包（可选，用于提取角色、地点、世界观等设定）。" },
+      memoryContext: { type: "object", description: "memory.read 返回的动态叙事记忆上下文（可选，用于时间线、伏笔、事实和角色状态约束）。" },
     },
     required: ["bookId", "chapterNumber", "userDirectives"],
     additionalProperties: false,
@@ -325,11 +326,56 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId"],
     additionalProperties: false,
   },
+  "memory.read": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      purpose: stringSchema("动态叙事记忆召回目的：write | revise | audit | outline | diagnose。"),
+      chapterNumber: numberSchema("目标章节序号（可选）。"),
+      entities: arraySchema("关注实体列表（可选）。", { type: "string" }),
+      sceneText: stringSchema("当前场景文本或写作意图（可选）。"),
+      budgetTokens: numberSchema("总 token 预算（可选）。"),
+      channels: arraySchema("召回通道（可选）：hard | state | timeline | hooks | facts | style。", { type: "string" }),
+    },
+    required: ["bookId", "purpose"],
+    additionalProperties: false,
+  },
+  "memory.graph": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      view: stringSchema("动态图谱视图：relationship | timeline | character_arc | foreshadowing | conflict | event_chain | wave。"),
+      focusEntity: stringSchema("聚焦实体（可选）。"),
+      chapterRange: arraySchema("章节范围 [from, to]（可选）。", { type: "number" }),
+    },
+    required: ["bookId", "view"],
+    additionalProperties: false,
+  },
+  "memory.events": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      action: stringSchema("Pending NarrativeEvents 操作：list | create | approve | reject。"),
+      eventId: stringSchema("approve/reject 时的事件 ID。"),
+      chapterNumber: numberSchema("create 时的章节序号。"),
+      eventType: stringSchema("create 时的事件类型，如 character_state_changed | relationship_changed | hook_planted | timeline_advanced。"),
+      subject: stringSchema("create 时的事件主体。"),
+      predicate: stringSchema("create 时的事件谓词/关系。"),
+      object: stringSchema("create 时的事件客体/状态。"),
+      evidenceText: stringSchema("create 时的证据文本。"),
+      confidence: numberSchema("create 时的置信度 0-1。"),
+      layer: stringSchema("create 时的事实层：dynamic | canon | reference，默认 dynamic。"),
+      reason: stringSchema("批准或拒绝原因（可选）。"),
+      limit: numberSchema("list 返回数量上限（可选）。"),
+    },
+    required: ["bookId", "action"],
+    additionalProperties: false,
+  },
   "resource.manage": {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      action: stringSchema("list（列出资源）/archive（归档）/restore（恢复归档）/delete（删除）。"),
+      action: stringSchema("list（列出正式章节结果）/archive（归档）/delete（删除）。"),
       resourceId: stringSchema("action 非 list 时必填：目标资源 ID。"),
       filter: { type: "object", description: "action=list 时可选过滤：{ type?: 'chapter', status?: 'accepted'|'archived' }。" },
     },
@@ -337,3 +383,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     additionalProperties: false,
   },
 };
+
+NOVEL_TOOL_SCHEMAS["lore.read"] = NOVEL_TOOL_SCHEMAS["jingwei.read"]!;
+NOVEL_TOOL_SCHEMAS["lore.write"] = NOVEL_TOOL_SCHEMAS["jingwei.write"]!;

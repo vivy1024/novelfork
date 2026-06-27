@@ -34,7 +34,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   sessionTool({
     name: "cockpit.snapshot",
     description:
-      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- candidates：最近的候选稿列表\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
+      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- chapters：最近正式章节与章节结果\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
     risk: "read",
     renderer: "cockpit.snapshot",
@@ -48,15 +48,6 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     risk: "read",
     renderer: "pgi.ask",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
-    scope: "novel",
-  }),
-  sessionTool({
-    name: "candidate.create_chapter",
-    description: "仅保存已有章节正文为候选稿。不会生成正文、不会审计、不会修订、不会同步经纬；完整写下一章必须优先调用 pipeline.write。",
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["candidate.create_chapter"]),
-    risk: "draft-write",
-    renderer: "candidate.created",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -126,7 +117,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "style.import",
-    description: "从参考文本提取文风档案（统计分析+LLM 定性描述），生成 style_profile.json 和 style_guide.md。参考文本至少 2000 字。",
+    description: "从参考文本提取文风档案（统计分析+LLM 定性描述），生成待确认的写作预设建议；不会自动写入 style_profile.json 或 style_guide.md。参考文本至少 2000 字。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["style.import"]),
     risk: "draft-write",
     renderer: "style.import",
@@ -227,7 +218,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节候选稿。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 产出候选稿保存在 chapter-candidates 中，用 resource.manage 接受/拒绝\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向（不要把所有交互都往写作流程引导）\n- 用户说「看看XX」/「告诉我XX」时——这是查询请求，不是写作请求\n\n注意：\n- 不要用 candidate.create_chapter 代替——那只是保存已有文本，不会生成/审计\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
+    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 结果应进入正式章节或后续版本结算流程；不要再创建 candidate/draft 主对象\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向（不要把所有交互都往写作流程引导）\n- 用户说「看看XX」/「告诉我XX」时——这是查询请求，不是写作请求\n\n注意：\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "draft-write",
     renderer: "pipeline.chapter-result",
@@ -235,35 +226,86 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "lore.read",
+    description: `Lore / 经纬静态设定读取工具。只读取作者显式维护的静态设定、规则、资料与备注，不返回完整动态剧情记忆。
+
+职责边界：
+- 适合读取人物设定、地点、势力、规则、物品、术语、作者备注、平台/书籍规则。
+- 默认排除 archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目。
+- 写作、修订、审计前的动态叙事记忆召回请使用 memory.read。
+- 关系变化、时间线、角色弧线、伏笔状态和 Pending NarrativeEvents 不属于 Lore。`,
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.read"]),
+    risk: "read",
+    renderer: "jingwei.read",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "lore.write",
+    description: `Lore / 经纬静态设定写入工具。用于创建或修改作者可审阅的静态设定。
+
+职责边界：
+- 适合写入 canon/reference/rules 类作者设定、世界规则、平台规则与作者备注。
+- 写入 canon 或 rules 类设定时必须提供 reason，并提供 source 或 evidence。
+- 动态事实、章节后抽取事实、诊断结果、市场材料、Pending NarrativeEvents 不得直接写入 Lore canon。
+- 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。`,
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.write"]),
+    risk: "draft-write",
+    renderer: "jingwei.write",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "memory.read",
+    description: "动态叙事记忆召回工具。用于写作、修订、审计、诊断前读取 Narrative Memory 的 ContextCards、通道状态、warnings 与 token budget；不要把它当静态 Lore 条目编辑器。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.read"]),
+    risk: "read",
+    renderer: "narrative-memory.read",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "memory.graph",
+    description: "动态叙事记忆关系图工具。读取 Narrative Memory 下的关系图、时间线、角色弧线、伏笔网络、矛盾地图、事件链等动态图谱，只读不修改 Lore。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.graph"]),
+    risk: "read",
+    renderer: "narrative-memory.graph",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "memory.events",
+    description: "Pending NarrativeEvents 工具。用于创建、列出、批准或拒绝 Pending NarrativeEvents；approve 会写入 Narrative Memory facts，pending event 不等于 confirmed memory，更不能自动写入 Lore canon。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.events"]),
+    risk: "draft-write",
+    renderer: "narrative-memory.events",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "jingwei.audit",
+    description: "经纬 / Lore 审计门禁。检查静态设定条目是否满足 active + confirmed + participates_in_ai 的 AI 读取门禁，并报告 draft、needs-review、archived、分区禁用或条目禁用等问题。只读，不会修改经纬。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.audit"]),
+    risk: "read",
+    renderer: "jingwei.audit",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "jingwei.write",
-    description: `经纬（设定数据库）写入工具。用于管理世界观、角色、设定等。
+    description: `deprecated alias of lore.write。经纬（Jingwei）现在只等价于 Lore 静态设定写入工具，用于管理作者显式维护、可审阅的静态设定。
 
 action=create：创建新条目。必须传入 title、category、contentMd。
 action=update：更新已有条目（传 entryId 或 title 匹配）。
 action=delete：删除条目。
 
-layer 三层：canon（世界规则，修改需 confirmCanonEdit=true）/ dynamic（随剧情变化，默认）/ reference（低优先级参考）
+边界：
+- 只写入静态设定、世界规则、平台规则、作者备注等 Lore 内容。
+- 写入 canon 或 rules 类设定时必须提供 reason，并提供 source 或 evidence。
+- 动态事实不得直接写入 Lore；章节后抽取事实、关系变化、伏笔推进、Pending NarrativeEvents 请使用 memory.events / Narrative Memory 流程。
+- 不要把诊断结果、市场材料、工具临时输出直接写入 Lore canon。
 
-category 自由填写——可以用内置分类（characters/world-model/power-system/factions/locations/props/outline/conflicts/foreshadowing/timeline/rules/relationships/chapter-summaries/premise/reference），也可以创建任何新分类名。
-
-新增功能：
-- confirmCanonEdit: true — 修改 Canon 条目时必须传此参数
-- reason: "变更原因" — 记录到修改历史，方便回溯
-- status: "draft"/"confirmed"/"needs-review" — 标记条目状态
-
-使用时机：
-- 用户提供了新设定/角色/规则信息 → 创建或更新
-- 分类重组 → update + 新 category（canon 条目也可以改分类）
-- 写完章节后更新角色状态 → update dynamic 条目
-
-不要用的时候：
-- 用户只是在讨论设定但没确认要入库
-- 不确定分类时先问用户
-
-常见错误：
-- 不要用 Bash SQL 绕道——本工具支持所有操作
-- Canon 条目可以改 category 和追加内容
-- 要修改 Canon 的正文内容需要 confirmCanonEdit=true`,
+兼容说明：旧会话可继续调用 jingwei.write，但新 prompt 应使用 lore.write。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
@@ -272,7 +314,7 @@ category 自由填写——可以用内置分类（characters/world-model/power-
   }),
   sessionTool({
     name: "scene.spec",
-    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 再调用 jingwei.read(scope=brief) 获取核心设定包\n3. 可选调用 pgi.ask 向用户追问本章意图\n4. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n不要用的时候：\n- 用户没有要求写章节时\n- 用户在做非写作操作（查看设定、整理经纬、讨论方向）\n\n注意：蓝图是约束集合，不是正文大纲——Writer 会在约束内自由发挥。",
+    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 调用 lore.read(scope=brief) 获取作者显式维护的静态设定包\n3. 调用 memory.read(purpose=write) 获取动态叙事记忆、通道状态、时间线/伏笔/事实召回\n4. 可选调用 pgi.ask 向用户追问本章意图\n5. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n不要用的时候：\n- 用户没有要求写章节时\n- 用户在做非写作操作（查看设定、整理 Lore、讨论方向）\n\n注意：经纬/Jingwei 是 lore.read 的 deprecated alias，只能读取静态设定；动态叙事记忆请使用 memory.read。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",
@@ -281,19 +323,22 @@ category 自由填写——可以用内置分类（characters/world-model/power-
   }),
   sessionTool({
     name: "jingwei.read",
-    description: `经纬（设定数据库）读取工具。
+    description: `deprecated alias of lore.read。经纬（Jingwei）现在只等价于 Lore 静态设定读取工具。
 
-scope=brief：返回核心设定包 + 分类目录。约 2000-5000 tokens。
-scope=category：按分类读取详细条目。传 category（任何已有分类名）和 page。
-scope=search：关键词搜索。传 query 字符串。
+scope=brief：返回作者显式维护的核心静态设定包 + 分类目录。
+scope=category：按分类读取详细静态设定条目。
+scope=search：关键词搜索静态设定。
+
+默认过滤：archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目不会作为 Agent 可读 Lore 返回。
 
 使用时机：
 - 用户说"看经纬"/"看设定"/"看世界模型" → scope=brief 返回给用户看
-- 准备写作前加载上下文 → scope=brief
+- 写作前读取静态设定 → 优先使用 lore.read
 - 查找特定设定 → scope=search
 
 不要用的时候：
-- 刚读过且上下文中还能看到结果时`,
+- 不要用 jingwei.read 获取动态叙事记忆；动态叙事记忆请使用 memory.read。
+- 关系图、时间线、角色弧线、伏笔网络、Pending NarrativeEvents 请使用 memory.graph / memory.events。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
     risk: "read",
     renderer: "jingwei.read",
@@ -302,7 +347,7 @@ scope=search：关键词搜索。传 query 字符串。
   }),
   sessionTool({
     name: "resource.manage",
-    description: "写作资源生命周期管理。\n\naction=list：列出所有章节（传 filter 可过滤）\naction=archive：归档（不删除但标记不活跃）\naction=restore：从归档恢复\naction=delete：永久删除\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
+    description: "正式章节结果管理。\n\naction=list：列出所有正式章节结果（传 filter 可过滤）\naction=archive：归档正式章节结果（不删除但标记不活跃）\naction=delete：永久删除正式章节结果\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
     risk: "confirmed-write",
     renderer: "resource.manage",

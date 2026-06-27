@@ -152,18 +152,21 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
       })
       .then((data) => {
         if (cancelled) return;
+        const book = (data && typeof data === "object" && "book" in data && data.book && typeof data.book === "object")
+          ? data.book as Record<string, unknown>
+          : data as Record<string, unknown>;
         setConfig({
-          title: data.title ?? "",
-          genre: data.genre ?? "",
-          platform: data.platform ?? "other",
-          language: data.language ?? "zh",
-          targetChapters: data.targetChapters ?? null,
-          chapterWordCount: data.chapterWordCount ?? 2000,
-          arcTrackingMode: data.arcTrackingMode ?? "off",
-          customSensitiveWords: data.customSensitiveWords ?? "",
-          beatTemplateId: data.beatTemplateId,
+          title: typeof book.title === "string" ? book.title : "",
+          genre: typeof book.genre === "string" ? book.genre : "",
+          platform: book.platform === "tomato" || book.platform === "feilu" || book.platform === "qidian" || book.platform === "other" ? book.platform : "other",
+          language: book.language === "en" ? "en" : "zh",
+          targetChapters: typeof book.targetChapters === "number" ? book.targetChapters : null,
+          chapterWordCount: typeof book.chapterWordCount === "number" ? book.chapterWordCount : 2000,
+          arcTrackingMode: book.arcTrackingMode === "rule" || book.arcTrackingMode === "llm" ? book.arcTrackingMode : "off",
+          customSensitiveWords: typeof book.customSensitiveWords === "string" ? book.customSensitiveWords : "",
+          beatTemplateId: typeof book.beatTemplateId === "string" ? book.beatTemplateId : undefined,
         });
-        setSelectedBeatId(data.beatTemplateId ?? null);
+        setSelectedBeatId(typeof book.beatTemplateId === "string" ? book.beatTemplateId : null);
         setConfigLoading(false);
       })
       .catch((err) => {
@@ -257,7 +260,10 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
           body: JSON.stringify(partial),
         });
         if (!res.ok) {
-          console.error("Failed to save book config:", await res.text());
+          const message = await res.text();
+          console.error("Failed to save book config:", message);
+          setSaveStatus("idle");
+          return;
         }
         setSaveStatus("saved");
         setTimeout(() => setSaveStatus("idle"), 1500);

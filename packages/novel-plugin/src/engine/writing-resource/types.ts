@@ -1,17 +1,5 @@
-export type WritingResourceType = "chapter" | "candidate" | "draft";
-export type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
-
-/**
- * 应用层统一资源类型。
- * 数据库保留 "candidate" 兼容旧数据，但应用层统一视为 "draft"。
- * type 不再有业务含义，status 是唯一的生命周期标记。
- */
-export type NormalizedResourceKind = "chapter" | "draft";
-
-/** 把数据库中的 type 统一为应用层 kind */
-export function normalizeResourceType(type: WritingResourceType): NormalizedResourceKind {
-  return type === "chapter" ? "chapter" : "draft";
-}
+export type WritingResourceType = "chapter";
+export type WritingResourceStatus = "accepted" | "archived";
 
 /** 判断 source 是否为 AI 生成 */
 export function isAiGenerated(source: string | null): boolean {

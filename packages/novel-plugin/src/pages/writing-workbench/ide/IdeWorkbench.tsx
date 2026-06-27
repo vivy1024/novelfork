@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, Brain,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -19,11 +19,12 @@ import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 import { createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
-import type { CandidateActionHandlers, DraftActionHandlers, ChapterActionHandlers } from "../WorkbenchCanvas";
+import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel } from "../panels/BookSettingsPanel";
+import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { useIdeKeybindings } from "./use-ide-keybindings";
 import { usePanelManager, type ViewId } from "./use-panel-manager";
 import { CommandPalette } from "./command-palette";
@@ -33,11 +34,9 @@ import { clearEditorState } from "./editor-state-cache";
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
-  if (node.metadata?.isFile) return "file";
+  if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
     case "chapter": return "chapter";
-    case "draft": return "draft";
-    case "candidate": return "candidate";
     case "jingwei-entry": return "jingwei-entry";
     case "tool": return "tool";
     default: return "other";
@@ -47,13 +46,57 @@ function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区） */
 function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
+  if (node.metadata?.isNarrativeMemoryEntry) return "narrative-memory";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "jingwei";
   return "explorer";
 }
 
+function isTextEditingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName.toLowerCase();
+  return tag === "input" || tag === "textarea" || target.isContentEditable || target.closest("[contenteditable='true'], .ProseMirror") !== null;
+}
+
+const DYNAMIC_MEMORY_CATEGORIES = new Set(["relationships", "conflicts", "foreshadowing", "timeline", "chapter-summaries"]);
+const DYNAMIC_MEMORY_PLACEHOLDER_TITLES = new Set(["人物关系", "情节脉络", "事件记录", "时间线", "章节摘要", "伏笔管理", "矛盾冲突"]);
+
+function isStaticLoreCategory(category: string): boolean {
+  return !DYNAMIC_MEMORY_CATEGORIES.has(category);
+}
+
+function isStaticLoreEntry(category: string, title: string): boolean {
+  return isStaticLoreCategory(category) && !DYNAMIC_MEMORY_PLACEHOLDER_TITLES.has(title.trim());
+}
+
+function isImageFilePath(path: string): boolean {
+  return /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
+}
+
+async function ensureOk(response: Response, fallback: string): Promise<Response> {
+  if (response.ok) return response;
+  let message = fallback;
+  try {
+    const payload = await response.json() as { error?: string; message?: string };
+    message = payload.error ?? payload.message ?? message;
+  } catch {
+    message = `${fallback} (${response.status})`;
+  }
+  throw new Error(message);
+}
+
+function copyDestinationFor(sourcePath: string, targetDir: string): string {
+  const sourceName = sourcePath.split(/[\\/]/).pop() ?? "copy";
+  const baseDestination = targetDir ? `${targetDir}/${sourceName}` : sourceName;
+  if (baseDestination !== sourcePath) return baseDestination;
+  const dot = sourceName.lastIndexOf(".");
+  const stem = dot > 0 ? sourceName.slice(0, dot) : sourceName;
+  const ext = dot > 0 ? sourceName.slice(dot) : "";
+  return targetDir ? `${targetDir}/${stem} copy${ext}` : `${stem} copy${ext}`;
+}
+
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView = "explorer" | "jingwei" | "tools" | "search";
+export type SidebarView = "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -66,8 +109,6 @@ export interface IdeWorkbenchProps {
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
   onGuideComplete?: () => void;
-  candidateActions?: CandidateActionHandlers;
-  draftActions?: DraftActionHandlers;
   chapterActions?: ChapterActionHandlers;
   chatSlot?: ReactNode;
   onSwitchToAgent?: () => void;
@@ -88,11 +129,12 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
   { id: "tools", icon: Wrench, label: "工具", title: "工具" },
+  { id: "narrative-memory", icon: Brain, label: "叙事记忆", title: "叙事记忆" },
 ];
 
 // ── 过滤逻辑 ──
 
-const CHAPTER_GROUP_IDS = new Set(["group:chapters", "group:candidates", "group:drafts", "group:archived"]);
+const CHAPTER_GROUP_IDS = new Set(["group:chapters", "group:archived"]);
 const JINGWEI_KINDS = new Set(["jingwei", "jingwei-section", "jingwei-entry"]);
 const TOOL_KINDS = new Set(["tool", "tool-group"]);
 
@@ -118,6 +160,7 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
     case "tools":
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
     case "search":
+    case "narrative-memory":
       return [];
   }
 }
@@ -132,8 +175,6 @@ export function IdeWorkbench({
   onSave,
   onCanvasContextChange,
   onGuideComplete,
-  candidateActions,
-  draftActions,
   chapterActions,
   chatSlot,
   onSwitchToAgent,
@@ -149,6 +190,7 @@ export function IdeWorkbench({
   const [chatVisible, setChatVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
+  const [fileClipboard, setFileClipboard] = useState<{ node: WorkbenchResourceNode; mode: "copy" | "cut" } | null>(null);
 
   // --- Command Palette state ---
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -165,27 +207,51 @@ export function IdeWorkbench({
   // --- Portal container for toolbar (WorkbenchCanvas → EditorTabs) ---
   const toolbarSlotRef = useRef<HTMLDivElement>(null);
 
-  // --- 经纬分类树（始终加载,面板始终 mount） ---
+  // --- Lore / 叙事记忆分类树（始终加载,面板始终 mount） ---
   const [jingweiSections, setJingweiSections] = useState<WorkbenchResourceNode[]>([]);
+  const [narrativeMemorySections, setNarrativeMemorySections] = useState<WorkbenchResourceNode[]>([]);
   useEffect(() => {
     if (!bookId) return;
     let cancelled = false;
     (async () => {
       try {
-        const entRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`).then(r => r.json());
+        const [entRes, factsRes] = await Promise.all([
+          fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`).then(r => r.json()),
+          fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).then(r => r.ok ? r.json() : { facts: [] }),
+        ]);
         if (cancelled) return;
         const entries: Array<{ id: string; title: string; category?: string; contentMd?: string; sectionId?: string }> = entRes?.entries ?? [];
+        const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
 
-        // 按统一分类分组（脏 category 经 normalizeCategory 归一）
+        // 按统一分类分组（脏 category 经 normalizeCategory 归一），静态 Lore 与动态叙事记忆分流展示
         const byCategory = new Map<string, typeof entries>();
         for (const e of entries) {
           const cat = normalizeCategory(e.category ?? "unclassified").category;
+          if (!isStaticLoreEntry(cat, e.title)) continue;
           if (!byCategory.has(cat)) byCategory.set(cat, []);
           byCategory.get(cat)!.push(e);
         }
 
-        // 只显示有条目的分类 + 保持 CATEGORY_META 顺序
+        const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
+          id: `jingwei-entry:${e.id}`,
+          kind: "jingwei-entry" as const,
+          title: e.title,
+          content: e.contentMd ?? "",
+          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+          metadata: { entryId: e.id, sectionId: e.sectionId, isJingweiEntry: true },
+        });
+        const toMemoryFactNode = (fact: typeof memoryFacts[number]): WorkbenchResourceNode => ({
+          id: `memory-fact:${fact.id}`,
+          kind: "file" as const,
+          title: fact.subject,
+          content: fact.object,
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { isNarrativeMemoryEntry: true, category: fact.category, sourceId: fact.sourceId, predicate: fact.predicate, evidenceText: fact.evidenceText },
+        });
+
+        // 只显示静态 Lore 分类 + 有条目的分类 + 保持 CATEGORY_META 顺序
         const nodes: WorkbenchResourceNode[] = CATEGORY_META
+          .filter(meta => isStaticLoreCategory(meta.id))
           .filter(meta => (byCategory.get(meta.id)?.length ?? 0) > 0)
           .map(meta => {
             const catEntries = byCategory.get(meta.id) ?? [];
@@ -195,19 +261,40 @@ export function IdeWorkbench({
               title: `${meta.name} (${catEntries.length})`,
               capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
               metadata: { category: meta.id },
-              children: catEntries.map(e => ({
-                id: `jingwei-entry:${e.id}`,
-                kind: "jingwei-entry" as const,
-                title: e.title,
-                content: e.contentMd ?? "",
-                capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-                metadata: { entryId: e.id, sectionId: e.sectionId, isJingweiEntry: true },
-              })),
+              children: catEntries.map(e => toEntryNode(e)),
             };
           });
+        const memoryCategoryLabels: Record<string, string> = {
+          relationship: "关系",
+          hook: "伏笔",
+          timeline: "时间线",
+          conflict: "矛盾冲突",
+          world_fact: "世界事实",
+          character_state: "角色状态",
+          location: "地点状态",
+        };
+        const factsByCategory = new Map<string, typeof memoryFacts>();
+        for (const fact of memoryFacts) {
+          if (!factsByCategory.has(fact.category)) factsByCategory.set(fact.category, []);
+          factsByCategory.get(fact.category)!.push(fact);
+        }
+        const memoryNodes: WorkbenchResourceNode[] = [...factsByCategory.entries()]
+          .sort(([a], [b]) => (memoryCategoryLabels[a] ?? a).localeCompare(memoryCategoryLabels[b] ?? b, "zh-CN"))
+          .map(([category, facts]) => ({
+            id: `memory-cat:${category}`,
+            kind: "group" as const,
+            title: `${memoryCategoryLabels[category] ?? category} (${facts.length})`,
+            capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+            metadata: { category, isNarrativeMemoryEntry: true },
+            children: facts.map((fact) => toMemoryFactNode(fact)),
+          }));
         setJingweiSections(nodes);
+        setNarrativeMemorySections(memoryNodes);
       } catch {
-        if (!cancelled) setJingweiSections([]);
+        if (!cancelled) {
+          setJingweiSections([]);
+          setNarrativeMemorySections([]);
+        }
       }
     })();
     return () => { cancelled = true; };
@@ -245,10 +332,11 @@ export function IdeWorkbench({
     // 文件树节点也加入，使点击文件能解析 activeNode
     fileTree.nodes.forEach(walk);
     jingweiSections.forEach(walk);
+    narrativeMemorySections.forEach(walk);
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, toolNodes]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -314,6 +402,11 @@ export function IdeWorkbench({
     // 文件树节点：先加载内容
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
+      if (isImageFilePath(filePath)) {
+        ideTabsRef.current.openTab(node.id, node.title, "file", "explorer");
+        onOpen(node);
+        return;
+      }
       fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`)
         .then(r => r.json())
         .then((data: { content?: string }) => {
@@ -489,7 +582,7 @@ export function IdeWorkbench({
       const idx = tabs.findIndex(t => t.id === activeTabId);
       activateTab(tabs[(idx - 1 + tabs.length) % tabs.length].id);
     },
-    switchView: (view: "explorer" | "jingwei" | "tools" | "search") => {
+    switchView: (view: SidebarView) => {
       setShowSettings(false);
       showPanel(view as ViewId);
       setSidebarVisible(true);
@@ -555,28 +648,30 @@ export function IdeWorkbench({
     const { type, node } = action;
     const filePath = node.metadata?.filePath;
     if (type === "delete" && typeof filePath === "string") {
-      if (!confirm(`确认删除 "${node.title}"？此操作不可撤销。`)) return;
+      const isDir = node.metadata?.isDirectory === true;
+      const warning = isDir ? "此文件夹及其所有内容将被递归删除，" : "";
+      if (!confirm(`确认删除 "${node.title}"？${warning}此操作不可撤销。`)) return;
       try {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/files/delete`, {
+        await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/delete`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ path: filePath }),
-        });
+        }), "删除文件失败");
         refreshFileTree();
       } catch (err) {
         alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     } else if (type === "rename" && typeof filePath === "string") {
-      const newName = prompt("新名称:", node.title);
+      const newName = action.newName ?? prompt("新名称:", node.title);
       if (!newName || newName === node.title) return;
       const dir = filePath.replace(/[/\\][^/\\]+$/, "");
       const newPath = dir ? `${dir}/${newName}` : newName;
       try {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/files/rename`, {
+        await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/rename`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ oldPath: filePath, newPath }),
-        });
+          body: JSON.stringify({ from: filePath, to: newPath }),
+        }), "重命名文件失败");
         refreshFileTree();
       } catch (err) {
         alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
@@ -588,47 +683,125 @@ export function IdeWorkbench({
         if (!title) return;
         const category = node.metadata?.category ?? node.id.replace("jingwei-section:", "");
         try {
-          await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
+          await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title, category, contentMd: "" }),
-          });
+          }), "创建经纬条目失败");
         } catch (err) {
           alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
         }
       }
     } else if (type === "create-file" && typeof filePath === "string") {
-      const name = prompt("文件名:");
+      const name = action.name ?? prompt("文件名:");
       if (!name) return;
       const dir = node.metadata?.isDirectory ? filePath : filePath.replace(/[/\\][^/\\]+$/, "");
       try {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
+        await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: `${dir}/${name}`, content: "" }),
-        });
+          body: JSON.stringify({ path: dir ? `${dir}/${name}` : name, content: "" }),
+        }), "创建文件失败");
         refreshFileTree();
       } catch (err) {
         alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     } else if (type === "create-folder" && typeof filePath === "string") {
-      const name = prompt("文件夹名:");
+      const name = action.name ?? prompt("文件夹名:");
       if (!name) return;
       const dir = node.metadata?.isDirectory ? filePath : filePath.replace(/[/\\][^/\\]+$/, "");
       try {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/files/mkdir`, {
+        await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/mkdir`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ path: `${dir}/${name}` }),
-        });
+          body: JSON.stringify({ path: dir ? `${dir}/${name}` : name }),
+        }), "创建文件夹失败");
+        refreshFileTree();
+      } catch (err) {
+        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+      }
+    } else if (type === "copy-path" && typeof filePath === "string") {
+      try {
+        await navigator.clipboard?.writeText(filePath);
+      } catch {
+        // Clipboard may be unavailable in non-secure contexts; ignore silently.
+      }
+    } else if (type === "copy" && typeof filePath === "string") {
+      setFileClipboard({ node, mode: "copy" });
+    } else if (type === "cut" && typeof filePath === "string") {
+      setFileClipboard({ node, mode: "cut" });
+    } else if (type === "paste" && fileClipboard && typeof fileClipboard.node.metadata?.filePath === "string") {
+      const targetPath = typeof filePath === "string" ? filePath : "";
+      const targetDir = node.metadata?.isDirectory ? targetPath : targetPath.replace(/[/\\][^/\\]+$/, "");
+      const sourcePath = fileClipboard.node.metadata.filePath;
+      const sourceName = sourcePath.split(/[\\/]/).pop() ?? fileClipboard.node.title;
+      const moveDestination = targetDir ? `${targetDir}/${sourceName}` : sourceName;
+      const destination = fileClipboard.mode === "copy" ? copyDestinationFor(sourcePath, targetDir) : moveDestination;
+      try {
+        if (fileClipboard.mode === "cut") {
+          await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/rename`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ from: sourcePath, to: destination }),
+          }), "移动文件失败");
+          setFileClipboard(null);
+        } else {
+          const readResponse = await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(sourcePath)}`), "读取源文件失败");
+          const read = await readResponse.json();
+          await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ path: destination, content: read.content ?? "" }),
+          }), "复制文件失败");
+        }
+        refreshFileTree();
+      } catch (err) {
+        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+      }
+    } else if (type === "move" && action.targetNode && typeof filePath === "string") {
+      const targetPath = action.targetNode.metadata?.filePath;
+      if (typeof targetPath !== "string") return;
+      const targetDir = action.targetNode.metadata?.isDirectory ? targetPath : targetPath.replace(/[/\\][^/\\]+$/, "");
+      const sourceName = filePath.split(/[\\/]/).pop() ?? node.title;
+      const destination = targetDir ? `${targetDir}/${sourceName}` : sourceName;
+      try {
+        await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/rename`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ from: filePath, to: destination }),
+        }), "移动文件失败");
         refreshFileTree();
       } catch (err) {
         alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
       }
     } else if (type === "open-side") {
       setSplitNodeId(node.id);
+    } else if (type === "generate-variant" || type === "scene-spec") {
+      // 章节专属操作：打开章节文件，用户通过编辑器工具栏操作
+      handleOpen(node);
     }
-  }, [bookId, refreshFileTree, setSplitNodeId]);
+  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!activeNode || isTextEditingTarget(event.target)) return;
+      const isModifier = event.ctrlKey || event.metaKey;
+      if (isModifier && event.key.toLowerCase() === "c") {
+        event.preventDefault();
+        void handleResourceAction({ type: "copy", node: activeNode });
+      } else if (isModifier && event.key.toLowerCase() === "x") {
+        event.preventDefault();
+        void handleResourceAction({ type: "cut", node: activeNode });
+      } else if (isModifier && event.key.toLowerCase() === "v") {
+        event.preventDefault();
+        void handleResourceAction({ type: "paste", node: activeNode });
+      } else if (event.key === "Escape") {
+        setFileClipboard(null);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [activeNode, handleResourceAction]);
 
   return (
     <TooltipProvider>
@@ -679,7 +852,7 @@ export function IdeWorkbench({
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}
               {panelsReady && getContainer("explorer") && createPortal(
                 fileTree.nodes.length > 0
-                  ? <WorkbenchResourceTree nodes={fileTree.nodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />
+                  ? <WorkbenchResourceTree nodes={fileTree.nodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
                   : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
                 getContainer("explorer")!
               )}
@@ -696,6 +869,10 @@ export function IdeWorkbench({
               {panelsReady && getContainer("search") && createPortal(
                 <SearchPanel nodes={fileTree.nodes} jingweiSections={jingweiSections} onOpen={handleOpen} />,
                 getContainer("search")!
+              )}
+              {panelsReady && getContainer("narrative-memory") && bookId && createPortal(
+                <NarrativeMemoryPanel bookId={bookId} memoryNodes={narrativeMemorySections} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
+                getContainer("narrative-memory")!
               )}
             </div>
           </Allotment.Pane>
@@ -717,6 +894,7 @@ export function IdeWorkbench({
                       onCloseAll={ideTabs.closeAll}
                       onCloseSaved={ideTabs.closeSaved}
                       onCloseRight={ideTabs.closeRight}
+                      onTogglePin={ideTabs.togglePin}
                       onReorder={ideTabs.reorderTabs}
                       actionsSlotRef={toolbarSlotRef}
                       onSplitRight={(tabId) => setSplitNodeId(tabId)}
@@ -741,8 +919,6 @@ export function IdeWorkbench({
                               onSave={onSave}
                               onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
                               onGuideComplete={onGuideComplete}
-                              candidateActions={candidateActions}
-                              draftActions={draftActions}
                               chapterActions={chapterActions}
                               jingweiActions={jingweiActions}
                               toolbarSlotRef={toolbarSlotRef}
@@ -760,8 +936,6 @@ export function IdeWorkbench({
                         onSave={onSave}
                         onCanvasContextChange={handleCanvasContextChange}
                         onGuideComplete={onGuideComplete}
-                        candidateActions={candidateActions}
-                        draftActions={draftActions}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         toolbarSlotRef={toolbarSlotRef}
@@ -799,8 +973,6 @@ export function IdeWorkbench({
                         bookId={bookId}
                         onSave={onSave}
                         onCanvasContextChange={() => {}}
-                        candidateActions={candidateActions}
-                        draftActions={draftActions}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
@@ -999,12 +1171,12 @@ const EMPTY_TIPS: { text: string }[] = [
   { text: "第一次使用？在「学习中心」查看完整教程，5 分钟上手" },
   { text: "新建书籍后，先录入核心设定到经纬系统，AI 写作会更准确" },
   { text: "试试说「帮我写下一章」，AI 会根据大纲和设定自动生成" },
-  { text: "写作管线支持多候选稿对比，选最满意的那版保留" },
+  { text: "写作管线会生成正式章节结果，可在章节编辑器里继续修订" },
   { text: "可以用预设控制写作风格——武侠、言情、悬疑各有模板" },
   { text: "写作卡壳？说「给我三个推进方向」让 AI 帮你打开思路" },
   { text: "直接粘贴大纲，AI 会帮你拆分成章节结构" },
-  { text: "经纬系统是 AI 的记忆核心——角色、世界观、时间线都在这管理" },
-  { text: "设定分 canon/dynamic/reference 三层，优先级不同，AI 调用时自动裁剪" },
+  { text: "经纬系统是静态设定库；时间线、关系变化和伏笔推进在叙事记忆里管理" },
+  { text: "静态 Lore 写入 canon/rules 需有来源；动态事实先进入待确认叙事事件" },
   { text: "用「检查一致性」让 AI 做 37 维连续性审查，找出逻辑漏洞" },
   { text: "节奏分析、POV 视角、伏笔追踪——写作工具栏里都有" },
   { text: "书籍健康度面板能一眼看出哪章需要修订" },
@@ -1031,8 +1203,6 @@ function ChatEmptyTip() {
 
 const KIND_LABEL: Record<string, string> = {
   chapter: "章节",
-  candidate: "候选稿",
-  draft: "草稿",
   "jingwei-entry": "经纬",
   jingwei: "经纬",
   tool: "工具",
@@ -1061,7 +1231,12 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
     return segments;
   }
 
-  // 章节/候选/草稿等：书 › 类型 › 标题
+  // 章节等：书 › 类型 › 标题
+  if (node.metadata?.isNarrativeMemoryEntry) {
+    segments.push("叙事记忆");
+    segments.push(node.title);
+    return segments;
+  }
   const kindLabel = KIND_LABEL[node.kind];
   if (kindLabel) segments.push(kindLabel);
   segments.push(node.title);
@@ -1073,6 +1248,7 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   jingwei: "经纬",
   tools: "工具",
   search: "搜索",
+  "narrative-memory": "叙事记忆",
 };
 
 function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {
@@ -1266,8 +1442,6 @@ function SearchPanel({ nodes, jingweiSections, onOpen }: {
 function nodeKindToGroup(kind: string): string {
   switch (kind) {
     case "chapter": return "章节";
-    case "candidate": return "候选稿";
-    case "draft": return "草稿";
     case "jingwei-entry": return "经纬条目";
     case "jingwei-section":
     case "jingwei": return "经纬";

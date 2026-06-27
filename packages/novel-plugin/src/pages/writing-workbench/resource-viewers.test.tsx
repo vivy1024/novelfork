@@ -11,8 +11,8 @@ import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
 function node(overrides: Partial<WorkbenchResourceNode> = {}): WorkbenchResourceNode {
   return {
-    id: "draft:1",
-    kind: "draft",
+    id: "chapter:1",
+    kind: "chapter",
     title: "城门片段",
     content: "风从城门洞里灌进来。",
     capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
@@ -24,7 +24,7 @@ afterEach(() => cleanup());
 
 describe("resource viewer registry", () => {
   it("注册 writing workbench 支持的最小 viewer", () => {
-    const kinds: ResourceViewerKind[] = ["chapter", "candidate", "draft", "story", "jingwei", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
+    const kinds: ResourceViewerKind[] = ["chapter", "story", "jingwei", "storyline", "jingwei-section", "jingwei-entry", "narrative-line", "tool-result", "generic"];
 
     for (const kind of kinds) {
       expect(resourceViewerRegistry[kind]).toBeTruthy();
@@ -32,7 +32,6 @@ describe("resource viewer registry", () => {
   });
 
   it("按资源 kind 选择 viewer，并为未知 kind 回退 generic", () => {
-    expect(getResourceViewer(node({ kind: "candidate" })).kind).toBe("candidate");
     expect(getResourceViewer(node({ kind: "jingwei" })).kind).toBe("jingwei");
     expect(getResourceViewer(node({ kind: "jingwei-entry" })).kind).toBe("jingwei-entry");
     expect(getResourceViewer(node({ kind: "narrative-line" })).kind).toBe("narrative-line");
@@ -43,30 +42,12 @@ describe("resource viewer registry", () => {
 });
 
 describe("ResourceViewer", () => {
-  it("渲染章节/候选稿/草稿正文，不提供假保存状态", () => {
+  it("渲染章节正文，不提供假保存状态", () => {
     render(<ResourceViewer node={node({ kind: "chapter", title: "第一章", content: "开篇正文" })} />);
     expect(screen.getByRole("heading", { name: "第一章" })).toBeTruthy();
     expect(screen.getByLabelText("章节正文")).toHaveProperty("readOnly", false);
     expect(screen.getByDisplayValue("开篇正文")).toBeTruthy();
     expect(screen.queryByText("已保存")).toBeNull();
-    cleanup();
-
-    render(
-      <ResourceViewer
-        node={node({
-          kind: "candidate",
-          title: "候选稿 A",
-          content: "候选内容",
-          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: true },
-        })}
-      />,
-    );
-    expect(screen.getByLabelText("候选稿正文")).toHaveProperty("readOnly", true);
-    expect(screen.getByText("可应用")).toBeTruthy();
-    cleanup();
-
-    render(<ResourceViewer node={node({ kind: "draft", title: "草稿 A", content: "草稿内容" })} />);
-    expect(screen.getByLabelText("草稿正文")).toHaveProperty("readOnly", false);
   });
 
   it("渲染 story/truth 文本文件为只读，并显示来源路径", () => {

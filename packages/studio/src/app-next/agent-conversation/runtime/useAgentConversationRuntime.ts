@@ -85,6 +85,10 @@ function isRuntimeSocketOpen(socket: AgentConversationRuntimeSocket): boolean {
   return typeof socket.readyState !== "number" || socket.readyState === WEB_SOCKET_OPEN;
 }
 
+function isValidSessionSnapshot(snapshot: NarratorSessionChatSnapshot | null | undefined): snapshot is NarratorSessionChatSnapshot {
+  return Boolean(snapshot?.session && Array.isArray(snapshot.messages));
+}
+
 export function useAgentConversationRuntime(options: UseAgentConversationRuntimeOptions = {}) {
   const {
     sessionId,
@@ -184,6 +188,10 @@ export function useAgentConversationRuntime(options: UseAgentConversationRuntime
         }
 
         const snapshot = result.data;
+        if (!isValidSessionSnapshot(snapshot)) {
+          dispatch({ type: "session:snapshot", snapshot, recovery: { state: "failed", reason: "snapshot-load-failed" } } as SessionServerEnvelope);
+          return;
+        }
         dispatch({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "initial-hydration" } });
         const resumeFromSeq = snapshot.cursor?.lastSeq ?? Math.max(0, ...snapshot.messages.map((message) => message.seq ?? 0));
         connectWebSocket(sessionId, resumeFromSeq, runtimeClient);

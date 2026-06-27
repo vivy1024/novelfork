@@ -11,7 +11,7 @@ export interface WritingActionDescriptor {
   id: string;
   label: string;
   entry: string;
-  outputBoundary: "candidate-artifact" | "async-start" | "draft-artifact" | "prompt-preview" | "analysis" | "gate";
+  outputBoundary: "chapter-artifact" | "async-start" | "prompt-preview" | "analysis" | "gate";
   writesFormalChapter: boolean;
   capability: BackendCapability;
   chain?: readonly string[];
@@ -20,8 +20,6 @@ export interface WritingActionDescriptor {
 export type NormalizedWritingActionResult =
   | WritingPromptPreviewResult
   | WritingGeneratedResult
-  | WritingCandidateResult
-  | WritingDraftWriteResult
   | WritingAsyncStartedResult
   | WritingGateBlockedResult
   | WritingConfirmationRequiredResult
@@ -37,8 +35,6 @@ interface BaseNormalizedWritingActionResult {
 export interface WritingPromptPreviewResult extends BaseNormalizedWritingActionResult {
   kind: "prompt-preview";
   promptPreview: string | null;
-  candidateArtifact: null;
-  draftArtifact: null;
   nextStep: "copy-or-explicit-apply";
 }
 
@@ -46,18 +42,6 @@ export interface WritingGeneratedResult extends BaseNormalizedWritingActionResul
   kind: "generated";
   generatedContent: string;
   nextStep: "explicit-apply-required";
-}
-
-export interface WritingCandidateResult extends BaseNormalizedWritingActionResult {
-  kind: "candidate";
-  candidateArtifact: { id: string; title?: string; raw?: unknown };
-  nextStep: "review-candidate";
-}
-
-export interface WritingDraftWriteResult extends BaseNormalizedWritingActionResult {
-  kind: "draft-write";
-  draftArtifact: { id?: string; file?: string; raw?: unknown };
-  nextStep: "review-draft";
 }
 
 export interface WritingAsyncStartedResult extends BaseNormalizedWritingActionResult {
@@ -96,8 +80,8 @@ const DESCRIPTORS: readonly WritingActionDescriptor[] = [
     id: "session-native.write-next",
     label: "Session-native 写下一章",
     entry: "cockpit.snapshot → pgi.ask → AskUserQuestion → pipeline.write",
-    outputBoundary: "candidate-artifact",
-    writesFormalChapter: false,
+    outputBoundary: "chapter-artifact",
+    writesFormalChapter: true,
     chain: ["cockpit.snapshot", "pgi.ask", "AskUserQuestion", "pipeline.write"],
     capability: normalizeCapability({ id: "session-native.write-next", status: "current" }),
   },
@@ -110,28 +94,12 @@ const DESCRIPTORS: readonly WritingActionDescriptor[] = [
     capability: normalizeCapability({ id: "ai.write-next", status: "current", metadata: { async: true } }),
   },
   {
-    id: "ai.draft.async",
-    label: "AI draft 异步动作",
-    entry: "POST /api/books/:id/draft",
-    outputBoundary: "async-start",
-    writesFormalChapter: false,
-    capability: normalizeCapability({ id: "ai.draft", status: "current", metadata: { async: true, notCrud: true } }),
-  },
-  {
     id: "writing-modes.preview",
     label: "Writing modes 预览",
     entry: "POST /api/books/:bookId/inline-write",
     outputBoundary: "prompt-preview",
     writesFormalChapter: false,
     capability: normalizeCapability({ id: "writing-modes.preview", status: "prompt-preview" }),
-  },
-  {
-    id: "writing-modes.apply",
-    label: "Writing modes 安全应用",
-    entry: "POST /api/books/:bookId/writing-modes/apply",
-    outputBoundary: "candidate-artifact",
-    writesFormalChapter: false,
-    capability: normalizeCapability({ id: "writing-modes.apply", status: "current", metadata: { formalTargetsBecomeCandidate: true } }),
   },
   {
     id: "hooks.generate",
@@ -145,7 +113,7 @@ const DESCRIPTORS: readonly WritingActionDescriptor[] = [
     id: "hooks.apply",
     label: "应用伏笔到 pending_hooks.md",
     entry: "POST /api/books/:bookId/hooks/apply",
-    outputBoundary: "draft-artifact",
+    outputBoundary: "analysis",
     writesFormalChapter: false,
     capability: normalizeCapability({ id: "hooks.apply", status: "current", metadata: { file: "pending_hooks.md" } }),
   },
@@ -179,7 +147,6 @@ export interface CreateWritingActionAdapterInput {
 export function createWritingActionAdapter(input: CreateWritingActionAdapterInput) {
   return {
     previewWritingMode: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.previewWritingMode(bookId, payload)),
-    applyWritingMode: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.applyWritingMode(bookId, payload)),
     generateHooks: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.generateHooks(bookId, payload)),
     applyHook: async (bookId: string, payload: unknown) => normalizeWritingActionResult(await input.writing.applyHook(bookId, payload)),
     auditChapter: async (bookId: string, chapterNumber: number) => normalizeWritingActionResult(await input.writing.auditChapter(bookId, chapterNumber)),
@@ -227,9 +194,6 @@ export function normalizeWritingActionResult(result: ContractResult<unknown>): N
 
   const data = result.data;
   const record = asRecord(data);
-  const nestedResult = asRecord(record?.result);
-  const toolData = asRecord(nestedResult?.data);
-
   if (record?.gate) {
     return { kind: "gate-blocked", gate: record.gate, error: record.error, formalChapterWrite: false, raw: result.raw, capability: result.capability, nextStep: "show-gate" };
   }
@@ -238,8 +202,6 @@ export function normalizeWritingActionResult(result: ContractResult<unknown>): N
     return {
       kind: "prompt-preview",
       promptPreview: stringOrNull(record.promptPreview ?? record.prompt),
-      candidateArtifact: null,
-      draftArtifact: null,
       formalChapterWrite: false,
       raw: result.raw,
       capability: result.capability,
@@ -269,23 +231,6 @@ export function normalizeWritingActionResult(result: ContractResult<unknown>): N
     };
   }
 
-  const toolCandidate = asRecord(toolData?.candidate);
-  if (toolCandidate && typeof toolCandidate.id === "string") {
-    return candidateResult({ id: toolCandidate.id, title: stringOrUndefined(toolCandidate.title), raw: toolCandidate }, result);
-  }
-
-  if (record?.target === "candidate" && typeof record.resourceId === "string") {
-    return candidateResult({ id: record.resourceId, title: stringOrUndefined(record.title), raw: record }, result);
-  }
-
-  if (record?.target === "draft" && typeof record.resourceId === "string") {
-    return draftResult({ id: record.resourceId, raw: record }, result);
-  }
-
-  if (record?.persisted === true && typeof record.file === "string") {
-    return draftResult({ id: stringOrUndefined(record.hookId), file: record.file, raw: record }, result);
-  }
-
   return {
     kind: "analysis",
     analysis: data,
@@ -296,36 +241,10 @@ export function normalizeWritingActionResult(result: ContractResult<unknown>): N
   };
 }
 
-function candidateResult(candidateArtifact: { id: string; title?: string; raw?: unknown }, result: ContractResult<unknown> & { ok: true }): WritingCandidateResult {
-  return {
-    kind: "candidate",
-    candidateArtifact,
-    formalChapterWrite: false,
-    raw: result.raw,
-    capability: result.capability,
-    nextStep: "review-candidate",
-  };
-}
-
-function draftResult(draftArtifact: { id?: string; file?: string; raw?: unknown }, result: ContractResult<unknown> & { ok: true }): WritingDraftWriteResult {
-  return {
-    kind: "draft-write",
-    draftArtifact,
-    formalChapterWrite: false,
-    raw: result.raw,
-    capability: result.capability,
-    nextStep: "review-draft",
-  };
-}
-
 function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
 }
 
 function stringOrNull(value: unknown): string | null {
   return typeof value === "string" ? value : null;
-}
-
-function stringOrUndefined(value: unknown): string | undefined {
-  return typeof value === "string" ? value : undefined;
 }

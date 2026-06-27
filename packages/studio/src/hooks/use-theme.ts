@@ -25,6 +25,7 @@ function applyThemeToDOM(resolved: "light" | "dark") {
 
 function loadStoredTheme(): Theme {
   try {
+    if (typeof localStorage?.getItem !== "function") return "light";
     const stored = localStorage.getItem(STORAGE_KEY);
     if (stored === "light" || stored === "dark" || stored === "auto") return stored;
   } catch { /* ignore */ }
@@ -51,7 +52,7 @@ export function useTheme(initialTheme?: Theme) {
 
   const setTheme = useCallback((newTheme: Theme) => {
     setThemeState(newTheme);
-    try { localStorage.setItem(STORAGE_KEY, newTheme); } catch { /* ignore */ }
+    try { if (typeof localStorage?.setItem === "function") localStorage.setItem(STORAGE_KEY, newTheme); } catch { /* ignore */ }
     applyThemeToDOM(resolveTheme(newTheme));
   }, []);
 

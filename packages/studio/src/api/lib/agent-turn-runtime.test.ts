@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+import { closeStorageDatabase } from "@vivy1024/novelfork-core";
 import type { SessionConfig } from "../../shared/session-types";
 import { runAgentTurn, type AgentTurnItem, type AgentTurnRuntimeInput } from "./agent-turn-runtime";
 
@@ -13,6 +18,19 @@ const sessionConfig: SessionConfig = {
 const baseMessages: AgentTurnItem[] = [
   { type: "message", role: "user", content: "写下一章" },
 ];
+
+let sessionStoreDir: string;
+
+beforeAll(async () => {
+  sessionStoreDir = await mkdtemp(join(tmpdir(), "novelfork-agent-turn-runtime-"));
+  process.env.NOVELFORK_SESSION_STORE_DIR = sessionStoreDir;
+});
+
+afterAll(async () => {
+  closeStorageDatabase();
+  delete process.env.NOVELFORK_SESSION_STORE_DIR;
+  await rm(sessionStoreDir, { recursive: true, force: true });
+});
 
 function input(overrides: Partial<AgentTurnRuntimeInput> = {}): AgentTurnRuntimeInput {
   return {
@@ -95,13 +113,13 @@ describe("agent turn runtime", () => {
       .mockResolvedValueOnce({
         success: true as const,
         type: "tool_use" as const,
-        toolUses: [{ id: "tool-failed", name: "candidate.create_chapter", input: { bookId: "book-1" } }],
+        toolUses: [{ id: "tool-failed", name: "pipeline.write", input: { bookId: "book-1" } }],
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       })
       .mockResolvedValueOnce({
         success: true as const,
         type: "message" as const,
-        content: "候选稿生成失败，我会说明无法继续。",
+        content: "章节结果生成失败，我会说明无法继续。",
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       });
 
@@ -113,13 +131,13 @@ describe("agent turn runtime", () => {
     expect(generate).toHaveBeenCalledTimes(2);
     expect(generate).toHaveBeenLastCalledWith(expect.objectContaining({
       messages: expect.arrayContaining([
-        expect.objectContaining({ type: "tool_result", toolCallId: "tool-failed", name: "candidate.create_chapter", content: expect.stringContaining("模型不可用。") }),
+        expect.objectContaining({ type: "tool_result", toolCallId: "tool-failed", name: "pipeline.write", content: expect.stringContaining("模型不可用。") }),
       ]),
     }));
     expect(events).toEqual([
-      { type: "tool_call", id: "tool-failed", toolName: "candidate.create_chapter", input: { bookId: "book-1" }, runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
-      { type: "tool_result", id: "tool-failed", toolName: "candidate.create_chapter", result: { ok: false, summary: "模型不可用。", error: "model-unavailable" }, runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
-      { type: "assistant_message", content: "候选稿生成失败，我会说明无法继续。", runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
+      { type: "tool_call", id: "tool-failed", toolName: "pipeline.write", input: { bookId: "book-1" }, runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
+      { type: "tool_result", id: "tool-failed", toolName: "pipeline.write", result: { ok: false, summary: "模型不可用。", error: "model-unavailable" }, runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
+      { type: "assistant_message", content: "章节结果生成失败，我会说明无法继续。", runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
       { type: "turn_completed" },
     ]);
   });
@@ -200,7 +218,7 @@ describe("agent turn runtime", () => {
     const generate = vi.fn(async () => ({
       success: true as const,
       type: "message" as const,
-      content: "候选思路已整理。",
+      content: "章节思路已整理。",
       metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
     }));
 
@@ -212,7 +230,7 @@ describe("agent turn runtime", () => {
       tools: [],
     }));
     expect(events).toEqual([
-      { type: "assistant_message", content: "候选思路已整理。", runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
+      { type: "assistant_message", content: "章节思路已整理。", runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" } },
       { type: "turn_completed" },
     ]);
   });
@@ -241,13 +259,13 @@ describe("agent turn runtime", () => {
     }));
     const tools = [
       { name: "cockpit.get_snapshot", description: "读取快照", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "read" as const, renderer: "cockpit.snapshot", enabledForModes: ["read", "plan", "ask", "edit", "allow"] as const, visibility: "author" as const },
-      { name: "candidate.create_chapter", description: "创建候选稿", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "candidate.created", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const },
+      { name: "pipeline.write", description: "创建章节结果", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "pipeline.chapter", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const },
     ];
 
     await runAgentTurn(input({
       generate,
       tools,
-      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["candidate.create_chapter"] } },
+      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["pipeline.write"] } },
     }));
 
     expect(generate).toHaveBeenCalledWith(expect.objectContaining({
@@ -259,8 +277,8 @@ describe("agent turn runtime", () => {
     const generate = vi.fn();
     const events = await runAgentTurn(input({
       generate,
-      tools: [{ name: "candidate.create_chapter", description: "创建候选稿", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "candidate.created", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const }],
-      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["candidate.*"] } },
+      tools: [{ name: "pipeline.write", description: "创建章节结果", inputSchema: { type: "object" as const, additionalProperties: false }, risk: "draft-write" as const, renderer: "pipeline.chapter", enabledForModes: ["ask", "edit", "allow"] as const, visibility: "author" as const }],
+      sessionConfig: { ...sessionConfig, toolPolicy: { deny: ["pipeline.*"] } },
     }));
 
     expect(generate).not.toHaveBeenCalled();
@@ -269,7 +287,7 @@ describe("agent turn runtime", () => {
         type: "turn_failed",
         reason: "policy-disabled",
         message: "当前 session 工具策略禁用了所有可发送给模型的工具。",
-        data: { deniedTools: ["candidate.create_chapter"] },
+        data: { deniedTools: ["pipeline.write"] },
       },
     ]);
   });

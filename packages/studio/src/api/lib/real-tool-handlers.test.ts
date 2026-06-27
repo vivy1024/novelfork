@@ -69,7 +69,7 @@ describe("real tool handlers", () => {
       const result = await executeFileReadTool({ path: "../../etc/passwd", workDir });
 
       expect(result.ok).toBe(false);
-      expect(result.error).toContain("outside");
+      expect(result.error).toContain("path-sandbox-violation");
     });
   });
 
@@ -92,7 +92,7 @@ describe("real tool handlers", () => {
       const result = await executeFileWriteTool({ path: "../escape.txt", content: "恶意", workDir });
 
       expect(result.ok).toBe(false);
-      expect(result.error).toContain("outside");
+      expect(result.error).toContain("path-sandbox-violation");
     });
   });
 

@@ -51,7 +51,7 @@ describe("session-runtime recovery", () => {
         seq: 6,
         toolCalls: [
           { id: "tool-1", toolName: "guided.exit", status: "pending" },
-          { id: "tool-2", toolName: "candidate.create_chapter", status: "running" },
+          { id: "tool-2", toolName: "pipeline.write", status: "running" },
           { id: "tool-3", toolName: "cockpit.get_snapshot", status: "success" },
         ],
       },
@@ -75,7 +75,7 @@ describe("session-runtime recovery", () => {
       availableFromSeq: 2,
       pendingMessageCount: 2,
       pendingToolCallCount: 2,
-      pendingToolCallSummary: ["guided.exit:pending", "candidate.create_chapter:running"],
+      pendingToolCallSummary: ["guided.exit:pending", "pipeline.write:running"],
       lastFailure: failure,
       updatedAt: "2026-05-05T00:00:04.000Z",
     });

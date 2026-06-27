@@ -77,6 +77,41 @@ describe("ws-envelope-reducer", () => {
     expect(state.recovery).toEqual({ state: "idle", reason: "initial-hydration" });
   });
 
+  it("keeps malformed snapshot envelopes from crashing the app", () => {
+    const state = reduceSessionEnvelope(createInitialAgentConversationRuntimeState(), {
+      type: "session:snapshot",
+    } as never);
+
+    expect(state.error).toMatchObject({ code: "invalid-session-snapshot" });
+    expect(state.recovery).toEqual({ state: "failed", reason: "snapshot-load-failed" });
+  });
+
+  it("keeps malformed state envelopes from crashing the app", () => {
+    const state = reduceSessionEnvelope(createInitialAgentConversationRuntimeState(), {
+      type: "session:state",
+      cursor: { lastSeq: 1 },
+    } as never);
+
+    expect(state.error).toMatchObject({ code: "invalid-session-state" });
+    expect(state.recovery).toEqual({ state: "failed", reason: "websocket-error" });
+  });
+
+  it("keeps malformed message envelopes from crashing the app", () => {
+    const hydrated = reduceSessionEnvelope(createInitialAgentConversationRuntimeState(), {
+      type: "session:snapshot",
+      snapshot: makeSnapshot(),
+    });
+
+    const state = reduceSessionEnvelope(hydrated, {
+      type: "session:message",
+      sessionId: "session-1",
+    } as never);
+
+    expect(state.session?.id).toBe("session-1");
+    expect(state.error).toMatchObject({ code: "invalid-session-message" });
+    expect(state.recovery).toEqual({ state: "failed", reason: "websocket-error" });
+  });
+
   it("updates session state without dropping existing messages", () => {
     const hydrated = reduceSessionEnvelope(createInitialAgentConversationRuntimeState(), {
       type: "session:snapshot",
@@ -150,6 +185,21 @@ describe("ws-envelope-reducer", () => {
 
     expect(state.error).toEqual({ message: "模型调用失败", code: "provider_failed", runtime: { providerId: "provider-a" } });
     expect(state.recovery).toEqual({ state: "failed", reason: "websocket-error" });
+  });
+
+  it("ignores unknown WebSocket envelopes without dropping runtime state", () => {
+    const hydrated = reduceSessionEnvelope(createInitialAgentConversationRuntimeState(), {
+      type: "session:snapshot",
+      snapshot: makeSnapshot(),
+    });
+
+    const state = reduceSessionEnvelope(hydrated, {
+      type: "session:background-heartbeat",
+      sessionId: "session-1",
+    } as never);
+
+    expect(state).toBe(hydrated);
+    expect(state.session?.id).toBe("session-1");
   });
 
   it("applies replay history and marks resetRequired gaps without fabricating messages", () => {

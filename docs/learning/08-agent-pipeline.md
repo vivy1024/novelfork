@@ -1,98 +1,80 @@
 ---
 title: Agent 写作管线
-summary: 统一工具层架构——PGI 追问、SceneSpec 蓝图、pipeline.write 全流程生成
-tags: [Agent, Pipeline, 工具层, 写作, 候选稿]
+summary: cockpit.snapshot、lore.read、memory.read、PGI、scene.spec、pipeline.write 的完整工具链
+tags: [Agent, Pipeline, 工具层, 写作, 正式章节, 叙事记忆]
 routes:
   - /next/narrators/:id
 ---
 
 # Agent 写作管线
 
-> 所有写作通过统一的 Agent 工具层完成——没有 PipelineRunner，没有独立的管线调度器。Agent 直接调用工具链完成从追问到生成的全流程。
+> NovelFork 的写作不是一个隐藏黑盒，而是 Agent 按固定工具链逐步完成：先调查上下文，再追问，再生成蓝图，最后写正式章节结果。
 
-## 架构概述
-
-NovelFork 的写作采用「工具层」模式：每个写作操作都是一个可被 Agent 调用的工具，Agent 按行为规范（system prompt）中定义的顺序串联它们。
+## 权威链路（v3.0.0）
 
 ```
-用户请求 → cockpit.snapshot → pgi.ask → AskUserQuestion → scene.spec → pipeline.write → 候选稿
+用户请求写下一章
+  → cockpit.snapshot
+  → lore.read(scope=brief)
+  → memory.read(purpose=write)
+  → pgi.ask
+  → AskUserQuestion
+  → scene.spec
+  → lore.read(scope=category) + memory.read
+  → pipeline.write(sceneSpec)
+  → 正式章节结果
+  → memory.events（章节后动态事实待确认）
 ```
 
 **核心原则**：
 
-- 没有独立的管线调度器。Agent 本身就是调度器。
-- 所有生成结果先进入候选区，用户确认后才写入正式章节。
-- 写作工具内部执行 Planner → Composer → Writer → Auditor → Reviser 五步，对外暴露为单一工具调用。
+- Agent 本身就是调度器；工具链顺序由系统提示词约束。
+- 写作结果进入正式章节结果，不创建 candidate/draft 主对象。
+- 静态设定从 `lore.*` 读取；动态事实从 `memory.*` 读取。
+- 写后变化先进入 `memory.events` pending 队列，由用户确认，避免 AI 自动污染 canon。
 
 ## 可用写作工具
 
 | 工具 | 用途 | 风险等级 |
 |------|------|---------|
-| `pipeline.write` | 完整写作管线：规划→上下文组装→生成→审计→修订→经纬同步→保存候选稿 | draft-write |
-| `pipeline.write` | 精简管线（v2）：接受 scene.spec 蓝图，执行 Writer→AuditRevise 两步 | draft-write |
+| `cockpit.snapshot` | 获取当前书籍、章节和资源状态快照 | read |
+| `lore.read` | 读取作者确认的静态 Lore（brief/category/search） | read |
+| `memory.read` | 读取动态叙事记忆 ContextCard | read |
+| `pgi.ask` | 生成写前追问，补齐本章意图 | read |
+| `scene.spec` | 生成结构化写作蓝图 | read |
+| `pipeline.write` | 按 sceneSpec 生成正式章节结果并进行质量机制处理 | draft-write |
+| `memory.events` | 写后整理章节摘要、关系变化、伏笔推进为 pending 事件 | draft-write |
 | `pipeline.revise` | 修订已有章节（polish/rewrite/rework/spot-fix/anti-detect） | draft-write |
-| `pipeline.import_chapters` | 从 .txt/.md 文件按标题分割并导入章节 | draft-write |
-| `rewrite.segment` | 对选定段落执行改写（续写/扩写/去AI味/风格改写） | read |
-| `candidate.create_chapter` | 仅保存已有正文为候选稿（不生成、不审计、不修订） | draft-write |
+| `rewrite.segment` | 对选中段落执行续写/扩写/去 AI 味/风格改写 | read/write |
 
-## 完整写作流程
+## `pipeline.write` 内部做什么？
 
-### 标准链路：pipeline.write
+对外看是一次工具调用，内部会执行：
 
-```
-1. cockpit.snapshot        → 了解书籍进度、伏笔、候选稿状态
-2. jingwei.read            → 读取经纬核心包和分类目录
-3. pgi.ask                 → 生成 2-5 个追问问题
-4. AskUserQuestion         → 向用户展示追问（整个流程只调用一次）
-5. scene.spec              → 根据用户回答生成结构化写作蓝图
-6. jingwei.read(category)  → 按蓝图中的角色/地点补读经纬细节
-7. pipeline.write → 执行完整管线
-```
+1. 组装 ContextCard：整合 sceneSpec、Lore、动态记忆、前文、风格/节拍等。
+2. WriterAgent 三段式生成：creative → observer → settler。
+3. 质量检查：长度治理、动态词频提示、AI 痕迹规则维度。
+4. ContinuityAuditor / adversarial audit：连续性、叙事、文本多视角审查。
+5. Severity Gate：S1 阻断、S2 修订、S3/S4 警告。
+6. 生成正式章节 artifact，供前端画布审阅。
 
-### 精简链路：scene.spec → pipeline.write
-
-适用于 Agent 已有结构化蓝图的场景，跳过内部 Planner/Composer，只执行 Writer + AuditRevise 两步。LLM 调用从 5 次降到 2 次。
+## 正式章节结果机制
 
 ```
-scene.spec → pipeline.write(sceneSpec) → 候选稿
+pipeline.write → chapterId → 画布展示 → 正式章节继续编辑
 ```
 
-### pipeline.write 内部流程
-
-工具内部自动执行五步，对外表现为一次工具调用：
-
-| 步骤 | Agent | 功能 |
-|------|-------|------|
-| 1 | PlannerAgent | 根据意图生成章节规划 |
-| 2 | ComposerAgent | 组装上下文包（经纬+前文+预设+PGI） |
-| 3 | WriterAgent | 生成正文（creative + settle） |
-| 4 | ContinuityAuditor | 37 维度审计 |
-| 5 | ReviserAgent | 自动修订严重问题（条件触发） |
-
-额外步骤：StateValidator 校验经纬一致性 → 构建 jingweiDelta → 保存为候选稿资源。
-
-## 候选稿机制
-
-所有 AI 生成内容先进入候选区（writing-resource 存储），不直接覆盖正式章节：
-
-```
-pipeline.write → candidateId → 画布展示 → 用户确认 → 正式入库
-```
-
-- `candidate.create_chapter` 只是底层保存工具——不生成正文、不审计、不修订
-- `pipeline.write` 是「写下一章」的正确入口
-- 候选稿附带 artifact 引用，可在画布中直接打开审阅
+- 正式章节结果附带 artifact，可在写作画布直接打开审阅。
+- 正式章节写入由用户裁决，不由 AI 自动覆盖。
 
 ## 上下文组装优先级
 
-系统按固定顺序注入写作上下文：
-
-1. 经纬条目（jingwei context）
-2. 前文摘要（recursive summaries）
-3. 驾驶舱快照（cockpit snapshot）
-4. PGI 用户回答（author directives）
-5. Scene Spec 蓝图（结构化约束）
-6. 预设规则注入（preset promptInjection）
+1. Scene Spec 蓝图（本章目标与硬约束）
+2. Lore / 经纬静态设定（canon/rules/reference）
+3. Narrative Memory 动态 ContextCard（facts/timeline/hooks/state/style/semantic）
+4. 前文摘要与驾驶舱快照
+5. PGI 用户回答与作者指示
+6. 低优先级风格/预设/节拍提示
 
 ## 错误处理
 
@@ -100,25 +82,24 @@ pipeline.write → candidateId → 画布展示 → 用户确认 → 正式入�
 |--------|------|------|
 | `book-not-found` | 书籍 ID 无效 | 检查 bookId |
 | `llm-config-missing` | API Key 未配置 | 前往设置配置供应商 |
-| `generation-failed` | LLM 调用失败 | 检查模型可用性 |
+| `generation-failed` | LLM 调用失败 | 检查模型、fallback 与重试规则 |
 | `timeout` | 生成超时 | 降低字数要求或换模型 |
-| `spec-invalid` | Scene Spec 格式错误 | 确保包含 characters/location/conflict/outcome |
+| `spec-invalid` | Scene Spec 格式错误 | 补齐角色、地点、冲突、结果等字段 |
 
 ## 常见坑
 
-- **用 candidate.create_chapter 写章节** → 错误用法。它只保存已有正文，不会生成内容。写下一章用 `pipeline.write`
-- **跳过 PGI 直接生成** → 质量下降。Agent 行为规范禁止跳过追问步骤
-- **审计后未自动修订** → autoRevise 默认开启，但只修复 critical 级别问题
-- **上下文溢出** → 经纬过大时自动截断，保留关键信息
+- **跳过 `lore.read` / `memory.read`** → 容易丢静态设定或动态事实。
+- **把写后事实写进 Lore** → 错误。章节摘要、关系变化、伏笔推进默认走 `memory.events`。
+- **PGI 无问题就停住** → 错误。应记录 `skippedReason=no-questions` 并继续 scene.spec。
 
 ## Agent 查阅提示
 
-- 管线入口：Agent 在对话中按 system prompt 规定的顺序调用工具
-- 核心工具：`pipeline.write` / `pipeline.write` / `pipeline.revise` / `rewrite.segment`
-- 候选稿保存后返回 `artifact` 对象，前端自动在画布中渲染
-- 智能重试：429/502/503 指数退避，最多 3 次
-- 安全原则：最小权限（默认只读）、可回退（候选区隔离）、透明（工具调用可见）、用户主权（随时中断）
+- 权威入口：对话中的工具链，不存在旧 `guided.*` 独立计划层。
+- 管线入口：`pipeline.write(sceneSpec)`。
+- 上下文入口：`lore.read + memory.read`。
+- 写后入口：`memory.events`。
+- 安全原则：正式章节结果边界、用户确认、canon evidence 门禁。
 
 ## 可跳转功能入口
 
-- 叙述者对话: 工具调用和候选稿审阅在对话中完成。 (/next/narrators/:id)
+- 叙述者对话：工具调用、PGI 追问、scene.spec 审阅和章节结果查看都在对话/工作台中完成。 (/next/narrators/:id)

@@ -48,7 +48,6 @@ export async function executeNovelInit(input: NovelInitInput): Promise<NovelInit
 
   try {
     await mkdir(join(bookPath, "chapters"), { recursive: true });
-    await mkdir(join(bookPath, "candidates"), { recursive: true });
 
     // Create jingwei directory with category subdirectories
     const jingweiDir = join(bookPath, "jingwei");

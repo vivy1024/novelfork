@@ -478,21 +478,6 @@ export class StateManager {
       // runtime directory missing
     }
 
-    // Also check story/drafts/ for discarded chapter files
-    const draftsDir = join(bookDir, "story", "drafts");
-    try {
-      const draftFiles = await readdir(draftsDir);
-      for (const file of draftFiles) {
-        const match = file.match(/^(\d+)_.*\.md$/);
-        if (!match) continue;
-        const num = parseInt(match[1]!, 10);
-        if (num > targetChapter) {
-          await unlink(join(draftsDir, file)).catch(() => {});
-        }
-      }
-    } catch {
-      // drafts directory missing
-    }
 
     // Drop any persisted sqlite acceleration index so discarded chapters
     // cannot leak back into retrieval after the markdown/state rollback.

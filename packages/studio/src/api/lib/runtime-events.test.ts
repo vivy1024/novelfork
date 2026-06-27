@@ -18,7 +18,6 @@ describe("canonical runtime events", () => {
       "tool_result",
       "permission_request",
       "checkpoint",
-      "candidate",
       "usage",
       "command_started",
       "command_completed",
@@ -32,16 +31,16 @@ describe("canonical runtime events", () => {
     const items = runtimeItemsFromSessionMessage({
       id: "msg-1",
       role: "assistant",
-      content: "已生成候选稿。",
+      content: "已生成章节结果。",
       timestamp: 1700000000000,
       seq: 7,
       runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       toolCalls: [{
         id: "tool-1",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         status: "success",
         input: { bookId: "book-1" },
-        result: { ok: true, summary: "候选稿已创建。" },
+        result: { ok: true, summary: "章节结果已创建。" },
       }],
     }, { sessionId: "session-1" });
 
@@ -51,7 +50,7 @@ describe("canonical runtime events", () => {
         id: "msg-1",
         session_id: "session-1",
         role: "assistant",
-        content: "已生成候选稿。",
+        content: "已生成章节结果。",
         seq: 7,
         timestamp: 1700000000000,
         runtime: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
@@ -61,10 +60,10 @@ describe("canonical runtime events", () => {
         id: "tool-1",
         session_id: "session-1",
         tool_use_id: "tool-1",
-        tool_name: "candidate.create_chapter",
+        tool_name: "pipeline.write",
         status: "success",
         input: { bookId: "book-1" },
-        result: { ok: true, summary: "候选稿已创建。" },
+        result: { ok: true, summary: "章节结果已创建。" },
       },
     ]);
   });
@@ -73,18 +72,18 @@ describe("canonical runtime events", () => {
     const runtime = { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex", usage: { input_tokens: 11, output_tokens: 13 } };
     const result = {
       ok: true,
-      summary: "候选稿已创建，checkpoint 已保存。",
+      summary: "章节结果已创建，checkpoint 已保存。",
       data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] },
       artifact: {
-        id: "candidate-1",
-        kind: "candidate",
-        title: "第 1 章候选稿",
-        resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" },
+        id: "chapter:book-1:1",
+        kind: "chapter",
+        title: "第 1 章",
+        resourceRef: { kind: "chapter", id: "chapter:1", bookId: "book-1" },
       },
     } as const;
     const confirmation = {
       id: "confirm-1",
-      toolName: "candidate.apply",
+      toolName: "chapters.save",
       target: "正式章节",
       risk: "confirmed-write" as const,
       summary: "确认写入正式章节",
@@ -92,33 +91,32 @@ describe("canonical runtime events", () => {
     };
 
     const agentEvents: AgentTurnEvent[] = [
-      { type: "streaming_chunk", content: "候选" },
+      { type: "streaming_chunk", content: "章节" },
       { type: "assistant_message", content: "已完成。", runtime },
-      { type: "tool_call", id: "tool-1", toolName: "candidate.create_chapter", input: { bookId: "book-1" }, runtime },
-      { type: "tool_result", id: "tool-1", toolName: "candidate.create_chapter", result, runtime },
-      { type: "confirmation_required", id: "confirm-1", toolName: "candidate.apply", sourceToolUseId: "tool-1", result: { ok: true, summary: "等待确认。", confirmation } },
+      { type: "tool_call", id: "tool-1", toolName: "pipeline.write", input: { bookId: "book-1" }, runtime },
+      { type: "tool_result", id: "tool-1", toolName: "pipeline.write", result, runtime },
+      { type: "confirmation_required", id: "confirm-1", toolName: "chapters.save", sourceToolUseId: "tool-1", result: { ok: true, summary: "等待确认。", confirmation } },
       { type: "turn_failed", reason: "model-unavailable", message: "模型不可用。", data: { providerId: "sub2api" } },
       { type: "turn_completed" },
     ];
 
     expect(agentEvents.flatMap((event) => runtimeEventsFromAgentTurnEvent(event, { sessionId: "session-1", turnId: "turn-1" }))).toEqual([
-      { type: "assistant_delta", session_id: "session-1", turn_id: "turn-1", delta: "候选" },
+      { type: "assistant_delta", session_id: "session-1", turn_id: "turn-1", delta: "章节" },
       { type: "message", session_id: "session-1", turn_id: "turn-1", role: "assistant", content: "已完成。", runtime },
       { type: "usage", session_id: "session-1", turn_id: "turn-1", usage: runtime.usage, runtime },
-      { type: "tool_use", session_id: "session-1", turn_id: "turn-1", tool_use_id: "tool-1", tool_name: "candidate.create_chapter", input: { bookId: "book-1" }, runtime },
-      { type: "tool_result", session_id: "session-1", turn_id: "turn-1", tool_use_id: "tool-1", tool_name: "candidate.create_chapter", result, runtime },
+      { type: "tool_use", session_id: "session-1", turn_id: "turn-1", tool_use_id: "tool-1", tool_name: "pipeline.write", input: { bookId: "book-1" }, runtime },
+      { type: "tool_result", session_id: "session-1", turn_id: "turn-1", tool_use_id: "tool-1", tool_name: "pipeline.write", result, runtime },
       { type: "checkpoint", session_id: "session-1", turn_id: "turn-1", checkpoint_id: "checkpoint-1", paths: ["chapters/0001.md"], source_tool_use_id: "tool-1" },
-      { type: "candidate", session_id: "session-1", turn_id: "turn-1", candidate_id: "candidate-1", artifact: result.artifact, source_tool_use_id: "tool-1" },
       {
         type: "permission_request",
         session_id: "session-1",
         turn_id: "turn-1",
         confirmation_id: "confirm-1",
-        tool_name: "candidate.apply",
+        tool_name: "chapters.save",
         confirmation: expect.objectContaining({
           id: "confirm-1",
-          toolName: "candidate.apply",
-          targetResources: [{ kind: "candidate.apply", id: "正式章节" }],
+          toolName: "chapters.save",
+          targetResources: [{ kind: "chapters.save", id: "正式章节" }],
           source: { sessionId: "session-1", turnId: "turn-1", toolUseId: "tool-1" },
           checkpoint: { required: true },
           operations: [
@@ -138,8 +136,8 @@ describe("canonical runtime events", () => {
       type: "permission_request",
       session_id: "session-1",
       confirmation_id: "confirm-1",
-      tool_name: "candidate.apply",
-      confirmation: { id: "confirm-1", toolName: "candidate.apply", target: "正式章节", risk: "confirmed-write", summary: "等待确认", options: ["approve", "reject"] },
+      tool_name: "chapters.save",
+      confirmation: { id: "confirm-1", toolName: "chapters.save", target: "正式章节", risk: "confirmed-write", summary: "等待确认", options: ["approve", "reject"] },
       source_tool_use_id: "tool-1",
       result: { ok: true, summary: "等待确认。" },
       ephemeral: false,
@@ -147,11 +145,11 @@ describe("canonical runtime events", () => {
       type: "permission_request",
       session_id: "session-1",
       confirmation_id: "confirm-1",
-      tool_name: "candidate.apply",
+      tool_name: "chapters.save",
       confirmation: expect.objectContaining({
         id: "confirm-1",
-        toolName: "candidate.apply",
-        targetResources: [{ kind: "candidate.apply", id: "正式章节" }],
+        toolName: "chapters.save",
+        targetResources: [{ kind: "chapters.save", id: "正式章节" }],
         source: { sessionId: "session-1", toolUseId: "tool-1" },
         checkpoint: { required: true },
         operations: [
@@ -187,13 +185,13 @@ describe("canonical runtime events", () => {
   });
 
   it("creates canonical result events for completed, pending and failed exits", () => {
-    expect(createRuntimeResultEvent({ sessionId: "session-1", success: false, stopReason: "pending_confirmation", exitCode: 2, pendingConfirmation: { id: "confirm-1", toolName: "candidate.apply" } })).toEqual({
+    expect(createRuntimeResultEvent({ sessionId: "session-1", success: false, stopReason: "pending_confirmation", exitCode: 2, pendingConfirmation: { id: "confirm-1", toolName: "chapters.save" } })).toEqual({
       type: "result",
       session_id: "session-1",
       success: false,
       stop_reason: "pending_confirmation",
       exit_code: 2,
-      pending_confirmation: { id: "confirm-1", toolName: "candidate.apply" },
+      pending_confirmation: { id: "confirm-1", toolName: "chapters.save" },
     });
   });
 });

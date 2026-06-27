@@ -14,7 +14,7 @@ import {
   type PublishReadinessChapterInput,
   type SensitiveWord,
   type SupportedPlatform,
-} from "@vivy1024/novelfork-core/compliance";
+} from "../engine/index.js";
 
 import type { RouterContext } from "./context.js";
 
@@ -179,9 +179,9 @@ function filterCustomWords(words: ReadonlyArray<SensitiveWord>, platform: Suppor
 function dictionarySummary(platform: SupportedPlatform, customWordCount: number) {
   const dictionary = loadDictionary(platform);
   const severityCounts = {
-    block: dictionary.filter((word) => word.severity === "block").length,
-    warn: dictionary.filter((word) => word.severity === "warn").length,
-    suggest: dictionary.filter((word) => word.severity === "suggest").length,
+    block: dictionary.filter((word: SensitiveWord) => word.severity === "block").length,
+    warn: dictionary.filter((word: SensitiveWord) => word.severity === "warn").length,
+    suggest: dictionary.filter((word: SensitiveWord) => word.severity === "suggest").length,
   };
   return {
     platform,

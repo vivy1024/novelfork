@@ -1,3 +1,9 @@
+**版本**: v3.0.0
+**创建日期**: 2026-06-25
+**更新日期**: 2026-06-25
+**状态**: current
+**文档类型**: current
+
 # 05 - 开发者指南
 
 NovelFork 开发环境与贡献指南。
@@ -41,7 +47,7 @@ bun run compile
 
 ### 1. 定义 Schema
 
-在 `packages/studio/src/api/agent-runtime/tool-schemas.ts` 添加：
+小说领域工具在 `packages/novel-plugin/src/tool-schemas.ts` 添加；通用工具则在 `packages/studio/src/api/lib/session-tool-registry.ts` / `session-tool-executor.ts` 按现有模式扩展：
 
 ```typescript
 export const myToolSchema: ToolSchema = {

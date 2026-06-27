@@ -32,6 +32,7 @@ vi.mock("./user-config-service.js", () => ({
 }));
 
 import { createLlmRuntimeService } from "./llm-runtime-service";
+import { sessionMessagesToTurnItems } from "./session-chat-service";
 
 const cockpitSnapshotTool: SessionToolDefinition = {
   name: "cockpit.get_snapshot",
@@ -104,6 +105,145 @@ describe("llm-runtime-service", () => {
       apiKey: "sk-live",
       modelId: "gpt-5-codex",
       messages: [{ role: "user", content: "继续写" }],
+    }));
+  });
+
+  it("preserves persisted tool-call reasoning when replaying session history", async () => {
+    const adapter = okAdapter("继续完成");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
+    await store.createProvider({
+      id: "deepseek",
+      name: "DeepSeek",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.deepseek.com/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "deepseek-reasoner", name: "DeepSeek Reasoner", contextWindow: 64000, maxOutputTokens: 8192, enabled: true, source: "manual" }],
+    });
+
+    const runtimeMessages = sessionMessagesToTurnItems([
+      {
+        id: "tool-use-1",
+        role: "assistant",
+        content: "",
+        reasoning_content: "需要先查找相关实现。",
+        reasoning_signature: "sig-1",
+        timestamp: 1,
+        toolCalls: [{ id: "call-1", toolName: "Grep", input: { pattern: "reasoning_content" } }],
+      },
+      { id: "m2", role: "user", content: "继续", timestamp: 2 },
+    ] as any);
+
+    expect(runtimeMessages).toEqual([
+      {
+        type: "message",
+        id: "tool-use-1-reasoning",
+        role: "assistant",
+        content: "",
+        reasoning_content: "需要先查找相关实现。",
+        reasoning_signature: "sig-1",
+      },
+      {
+        type: "tool_call",
+        id: "call-1",
+        name: "Grep",
+        input: { pattern: "reasoning_content" },
+      },
+      {
+        type: "message",
+        id: "m2",
+        role: "user",
+        content: "继续",
+      },
+    ]);
+
+    const service = createLlmRuntimeService({ store });
+    await service.generate({
+      sessionConfig: { providerId: "deepseek", modelId: "deepseek-reasoner", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: runtimeMessages,
+    });
+
+    expect(adapter.generate).toHaveBeenCalledWith(expect.objectContaining({
+      messages: [
+        {
+          role: "assistant",
+          content: "",
+          reasoning_content: "需要先查找相关实现。",
+          reasoning_signature: "sig-1",
+          toolCalls: [{ id: "call-1", name: "Grep", input: { pattern: "reasoning_content" } }],
+        },
+        { role: "user", content: "继续" },
+      ],
+    }));
+  });
+
+  it("strips persisted reasoning when falling back to another provider", async () => {
+    const adapter: RuntimeAdapter = {
+      listModels: vi.fn(async () => ({ success: true as const, models: [] })),
+      testModel: vi.fn(async () => ({ success: true as const, latency: 10 })),
+      generate: vi.fn()
+        .mockResolvedValueOnce({ success: false as const, code: "upstream-error" as const, error: "400 bad request" })
+        .mockResolvedValueOnce({ success: true as const, type: "message" as const, content: "fallback ok" }),
+    };
+    getAdapterForProtocolMock.mockReturnValue(adapter);
+    await store.createProvider({
+      id: "deepseek",
+      name: "DeepSeek",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.deepseek.com/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "deepseek-reasoner", name: "DeepSeek Reasoner", contextWindow: 64000, maxOutputTokens: 8192, enabled: true, source: "manual" }],
+    });
+    await store.createProvider({
+      id: "backup",
+      name: "Backup",
+      type: "custom",
+      enabled: true,
+      priority: 2,
+      apiKeyRequired: true,
+      baseUrl: "https://backup.example/v1",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-backup" },
+      models: [{ id: "deepseek-reasoner", name: "DeepSeek Reasoner", contextWindow: 64000, maxOutputTokens: 8192, enabled: true, source: "manual" }],
+    });
+
+    const messages = sessionMessagesToTurnItems([
+      {
+        id: "tool-use-1",
+        role: "assistant",
+        content: "",
+        reasoning_content: "需要先查找相关实现。",
+        reasoning_signature: "sig-1",
+        timestamp: 1,
+        toolCalls: [{ id: "call-1", toolName: "Grep", input: { pattern: "reasoning_content" } }],
+      },
+      { id: "m2", role: "user", content: "继续", timestamp: 2 },
+    ] as any);
+
+    const service = createLlmRuntimeService({ store });
+    const result = await service.generate({
+      sessionConfig: { providerId: "deepseek", modelId: "deepseek-reasoner", permissionMode: "edit", reasoningEffort: "medium" },
+      messages,
+    });
+
+    expect(result).toMatchObject({ success: true, type: "message", content: "fallback ok" });
+    expect(adapter.generate).toHaveBeenNthCalledWith(1, expect.objectContaining({
+      providerId: "deepseek",
+      messages: [expect.objectContaining({ reasoning_content: "需要先查找相关实现。", reasoning_signature: "sig-1" }), { role: "user", content: "继续" }],
+    }));
+    expect(adapter.generate).toHaveBeenNthCalledWith(2, expect.objectContaining({
+      providerId: "backup",
+      messages: [
+        { role: "assistant", content: "", toolCalls: [{ id: "call-1", name: "Grep", input: { pattern: "reasoning_content" } }] },
+        { role: "user", content: "继续" },
+      ],
     }));
   });
 

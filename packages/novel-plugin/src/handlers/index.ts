@@ -17,11 +17,25 @@ export {
 export { handleJingweiWrite } from "./jingwei-write-handler.js";
 export type { JingweiWriteInput, JingweiWriteResult, JingweiWriteSuccess, JingweiWriteFailure } from "./jingwei-write-handler.js";
 export { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
+export { handleJingweiAudit } from "./jingwei-audit-handler.js";
+export type { JingweiAuditFinding, JingweiAuditInput, JingweiAuditResult, JingweiAuditSeverity } from "./jingwei-audit-handler.js";
+export {
+  handleLoreRead,
+  handleLoreWrite,
+  handleMemoryRead,
+  handleMemoryGraph,
+  handleMemoryEvents,
+  type LoreReadInput,
+  type LoreWriteInput,
+  type MemoryReadInput,
+  type MemoryGraphInput,
+  type MemoryEventsInput,
+} from "./lore-memory-boundary-handlers.js";
 
 export { createCockpitService, CockpitService } from "./cockpit-service.js";
 export type {
   CockpitBookSummary,
-  CockpitCandidateItem,
+  CockpitChapterResultItem,
   CockpitChapterSummaryItem,
   CockpitCurrentFocusSummary,
   CockpitDataStatus,
@@ -33,13 +47,6 @@ export type {
   CockpitServiceOptions,
   CockpitSnapshot,
 } from "./cockpit-service.js";
-
-export { createCandidateToolService } from "./candidate-tool-service.js";
-export type {
-  CandidateGenerationInput,
-  CandidateToolService,
-  CandidateToolServiceOptions,
-} from "./candidate-tool-service.js";
 
 export { createNarrativeLineService, NarrativeLineService } from "./narrative-line-service.js";
 export type {

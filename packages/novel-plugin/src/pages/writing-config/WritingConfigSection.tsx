@@ -93,19 +93,22 @@ interface ToolItem {
 
 /** 可选工具池 — 仅写作过程中 agent 主动查询的辅助工具，可按需开关 */
 const OPTIONAL_TOOLS: readonly ToolItem[] = [
-  { id: "jingwei.read", label: "经纬" },
+  { id: "lore.read", label: "静态设定" },
+  { id: "memory.read", label: "叙事记忆" },
+  { id: "memory.graph", label: "记忆图谱" },
+  { id: "memory.events", label: "待确认事件" },
   { id: "chapter.read", label: "章节" },
   { id: "cockpit.snapshot", label: "快照" },
   { id: "hooks.manage", label: "伏笔" },
   { id: "character.check_consistency", label: "角色一致性" },
   { id: "presets.check_compliance", label: "合规检查" },
   { id: "narrative.read_line", label: "叙事线" },
-  { id: "hooks.manage", label: "钩子管理" },
 ];
 
 /** 默认启用的工具 ID（写作角色基线） */
 const ROLE_DEFAULTS: readonly string[] = [
-  "jingwei.read",
+  "lore.read",
+  "memory.read",
   "chapter.read",
   "cockpit.snapshot",
   "hooks.manage",

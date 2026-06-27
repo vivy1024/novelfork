@@ -8,8 +8,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronDown, ChevronUp } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
-import { CandidateActionsBar, type CandidateAcceptAction } from "./CandidateActionsBar";
-import { DraftActionsBar, type DraftAcceptMode } from "./DraftActionsBar";
+import { isChapterWorkflowNode } from "./chapter-workflow-node";
 import { ChapterActionsBar } from "./ChapterActionsBar";
 import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHistoryPanel";
 import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
@@ -24,6 +23,7 @@ import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
 
 // Lazy-loaded tool panels
+const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const DailyProgressCard = lazy(() => import("./DailyProgressCard").then(m => ({ default: m.DailyProgressCard })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
@@ -59,10 +59,6 @@ function toResourceViewKind(kind: WorkbenchResourceKind): WorkspaceResourceViewK
   switch (kind) {
     case "chapter":
       return "chapter-editor";
-    case "candidate":
-      return "candidate-editor";
-    case "draft":
-      return "draft-editor";
     case "story":
     case "jingwei":
       return "markdown-viewer";
@@ -97,8 +93,6 @@ function saveErrorMessage(error: unknown): string {
 
 const resourceTypeLabels: Partial<Record<WorkbenchResourceKind, string>> = {
   chapter: "章节",
-  candidate: "候选稿",
-  draft: "草稿",
   story: "大纲与设定",
   jingwei: "经纬资料",
   "jingwei-section": "经纬分区",
@@ -147,22 +141,7 @@ function ToolPanelView({ toolPanel, bookId, onJumpToChapter }: { toolPanel: Tool
   }
 }
 
-export interface CandidateActionHandlers {
-  onAccept: (candidateId: string, action: CandidateAcceptAction) => Promise<void>;
-  onReject: (candidateId: string) => Promise<void>;
-  onArchive: (candidateId: string) => Promise<void>;
-  onDelete: (candidateId: string) => Promise<void>;
-}
-
-export interface DraftActionHandlers {
-  onSubmitCandidate: (draftId: string) => Promise<void>;
-  onAccept: (draftId: string, chapterNumber: number, mode: DraftAcceptMode) => Promise<void>;
-  onDelete: (draftId: string) => Promise<void>;
-}
-
 export interface ChapterActionHandlers {
-  onCreateDraft: (resourceId: string) => Promise<void>;
-  onCreateVariant: (resourceId: string) => Promise<void>;
   onGetHistory: (resourceId: string) => Promise<ResourceHistoryEntry[]>;
   onDelete?: (resourceId: string) => Promise<void>;
 }
@@ -179,8 +158,6 @@ export interface WorkbenchCanvasProps {
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onGuideComplete?: () => void;
-  candidateActions?: CandidateActionHandlers;
-  draftActions?: DraftActionHandlers;
   chapterActions?: ChapterActionHandlers;
   jingweiActions?: JingweiActionHandlers;
   /** 外部容器 ref，操作按钮通过 portal 渲染到此处（IDE 模式用） */
@@ -191,7 +168,7 @@ export interface WorkbenchCanvasProps {
   onJumpToChapter?: (chapterNumber: number) => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, candidateActions, draftActions, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -315,6 +292,15 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
     );
   }
 
+  // Narrative Memory Graph — render NarrativeMemoryGraphWorkspace directly
+  if (node.id === "narrative-memory-graph" && bookId) {
+    return (
+      <div className="flex h-full flex-col min-h-0">
+        <Suspense fallback={<ToolPanelLoading />}><NarrativeMemoryGraphWorkspace bookId={bookId} /></Suspense>
+      </div>
+    );
+  }
+
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
   const needsHydration = resourceNeedsDetailHydration(node);
   const hydrateError = typeof node.metadata?.detailError === "string" ? node.metadata.detailError : null;
@@ -343,12 +329,12 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
       <Button size="sm" disabled={readonly || needsHydration || !dirty || saving} onClick={handleSave}>
         {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
       </Button>
-      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
+      {isChapterWorkflowNode(node) && (
         <Button size="sm" variant="ghost" className="gap-1" onClick={() => setVariantsOpen(true)} title="生成变体">
           <GitCompare className="size-3.5" />
         </Button>
       )}
-      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
+      {isChapterWorkflowNode(node) && bookId && (
         <Button size="sm" variant="ghost" className="gap-1" disabled={sceneSpecLoading}
           onClick={async () => {
             setSceneSpecLoading(true);
@@ -405,43 +391,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         </div>
       )}
 
-      {/* Candidate actions bar */}
-      {node.kind === "candidate" && candidateActions && (
-        <div className="shrink-0 border-b border-border px-4 py-2">
-          <CandidateActionsBar
-            candidateId={String(node.metadata?.candidateId ?? node.id.replace("candidate:", ""))}
-            bookId={String(node.metadata?.bookId ?? "")}
-            status={(node.metadata?.status as "candidate" | "accepted" | "rejected" | "archived") ?? "candidate"}
-            source={typeof node.metadata?.source === "string" ? node.metadata.source : undefined}
-            targetChapterId={typeof node.metadata?.targetChapterId === "string" ? node.metadata.targetChapterId : undefined}
-            createdAt={typeof node.metadata?.createdAt === "string" ? node.metadata.createdAt : undefined}
-            gateResult={node.metadata?.gateResult as import("./CandidateActionsBar").GateResultInfo | undefined}
-            needsHumanReview={node.metadata?.needsHumanReview === true}
-            onAccept={candidateActions.onAccept}
-            onReject={candidateActions.onReject}
-            onArchive={candidateActions.onArchive}
-            onDelete={candidateActions.onDelete}
-          />
-        </div>
-      )}
-
-      {/* Draft actions bar */}
-      {node.kind === "draft" && draftActions && (
-        <div className="shrink-0 border-b border-border px-4 py-2">
-          <DraftActionsBar
-            draftId={String(node.metadata?.draftId ?? node.id.replace("draft:", ""))}
-            chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
-            wordCount={typeof node.metadata?.wordCount === "number" ? node.metadata.wordCount : undefined}
-            updatedAt={typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined}
-            onSubmitCandidate={draftActions.onSubmitCandidate}
-            onAccept={draftActions.onAccept}
-            onDelete={draftActions.onDelete}
-          />
-        </div>
-      )}
-
       {/* Chapter actions bar */}
-      {node.kind === "chapter" && chapterActions && (
+      {node.metadata?.isChapter === true && chapterActions && (
         <div className="shrink-0 border-b border-border px-4 py-2">
           <ChapterActionsBar
             resourceId={String(node.metadata?.resourceId ?? node.id.replace("chapter:", ""))}
@@ -450,8 +401,6 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             wordCount={typeof node.metadata?.wordCount === "number" ? node.metadata.wordCount : undefined}
             status={typeof node.metadata?.status === "string" ? node.metadata.status : undefined}
             onDelete={chapterActions.onDelete}
-            onCreateDraft={chapterActions.onCreateDraft}
-            onCreateVariant={chapterActions.onCreateVariant}
             onToggleHistory={async (resourceId) => {
               if (historyEntries) { setHistoryEntries(null); return; }
               setHistoryLoading(true);
@@ -490,6 +439,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
               sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
               updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
             }}
+            sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "叙事记忆" : "经纬资料"}
             onSave={jingweiActions.onSave}
             onDelete={jingweiActions.onDelete}
           />
@@ -505,7 +455,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
               setDirty(nextContent !== normalizedBaseRef.current);
             }
             setSaveError(null);
-          }} onTabComplete={bookId && (node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") ? async (currentContent, cursorPosition) => {
+          }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
             const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
             try {
               const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
@@ -522,7 +472,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
       </div>
 
       {/* 变体面板（右侧抽屉） */}
-      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && (
+      {isChapterWorkflowNode(node) && (
         <Sheet open={variantsOpen} onOpenChange={setVariantsOpen}>
           <SheetContent side="right" className="w-[400px] sm:w-[480px] overflow-y-auto">
             <SheetHeader>
@@ -549,8 +499,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
         </Sheet>
       )}
 
-      {/* 章节体检工具栏（仅章节/候选/草稿类型显示） */}
-      {(node.kind === "chapter" || node.kind === "candidate" || node.kind === "draft") && bookId && (
+      {/* 章节体检工具栏（仅正式章节显示） */}
+      {isChapterWorkflowNode(node) && bookId && (
         <ChapterToolbar bookId={bookId} chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined} />
       )}
     </div>
@@ -720,7 +670,7 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
         </div>
       )}
 
-      {/* 主区域：驾驶舱概览（近期候选稿 + 待处理伏笔，与左侧经纬视图不重复） */}
+      {/* 主区域：驾驶舱概览（近期章节结果 + 待处理伏笔，与左侧经纬视图不重复） */}
       <div className="flex-1 min-h-0 overflow-y-auto">
         <CockpitOverview bookId={bookId} />
       </div>
@@ -732,7 +682,7 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
 }
 
 // ---------------------------------------------------------------------------
-// CockpitOverview — 驾驶舱主区：近期候选稿 + 待处理伏笔（真实接口，不与经纬视图重复）
+// CockpitOverview — 驾驶舱主区：近期章节结果 + 待处理伏笔（真实接口，不与经纬视图重复）
 // ---------------------------------------------------------------------------
 
 interface CockpitListItem {
@@ -744,7 +694,7 @@ interface CockpitListItem {
 }
 
 function CockpitOverview({ bookId }: { bookId: string }) {
-  const [candidates, setCandidates] = useState<CockpitListItem[]>([]);
+  const [chapterResults, setChapterResults] = useState<CockpitListItem[]>([]);
   const [hooks, setHooks] = useState<CockpitListItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -752,11 +702,11 @@ function CockpitOverview({ bookId }: { bookId: string }) {
     let active = true;
     setLoading(true);
     Promise.all([
-      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/recent-candidates?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/recent-chapter-results?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
       fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/open-hooks?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
-    ]).then(([cand, hk]) => {
+    ]).then(([chapters, hk]) => {
       if (!active) return;
-      setCandidates(Array.isArray(cand?.items) ? cand.items : []);
+      setChapterResults(Array.isArray(chapters?.items) ? chapters.items : []);
       setHooks(Array.isArray(hk?.items) ? hk.items : []);
       setLoading(false);
     });
@@ -769,20 +719,17 @@ function CockpitOverview({ bookId }: { bookId: string }) {
 
   return (
     <div className="grid grid-cols-1 gap-3 p-3 md:grid-cols-2">
-      {/* 近期候选稿 */}
+      {/* 近期章节结果 */}
       <section className="rounded-lg border border-border bg-card p-3">
-        <h3 className="mb-2 text-xs font-semibold text-foreground">近期候选稿</h3>
-        {candidates.length === 0 ? (
-          <p className="text-[11px] text-muted-foreground">暂无候选稿。让 AI 写一章后会出现在这里。</p>
+        <h3 className="mb-2 text-xs font-semibold text-foreground">近期章节结果</h3>
+        {chapterResults.length === 0 ? (
+          <p className="text-[11px] text-muted-foreground">暂无章节结果。让 AI 写一章后会出现在这里。</p>
         ) : (
-          <ul className="space-y-1">
-            {candidates.map((c) => (
-              <li key={c.id} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-xs hover:bg-muted/40">
-                <PenLineIcon />
-                <span className="truncate flex-1">{c.title || c.text?.slice(0, 40) || "未命名候选稿"}</span>
-                {typeof c.sourceChapter === "number" && c.sourceChapter > 0 && (
-                  <span className="text-[10px] text-muted-foreground">第 {c.sourceChapter} 章</span>
-                )}
+          <ul className="space-y-2">
+            {chapterResults.map(item => (
+              <li key={item.id} className="rounded-md bg-muted/40 p-2 text-xs">
+                <div className="font-medium text-foreground">{item.title || item.id}</div>
+                <div className="mt-1 text-[11px] text-muted-foreground">状态：{item.status || 'unknown'}</div>
               </li>
             ))}
           </ul>

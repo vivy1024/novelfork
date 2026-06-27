@@ -58,12 +58,12 @@ describe("createExecRouter", () => {
     executeHeadlessMock.mockResolvedValue(makeResult({
       success: false,
       exitCode: 2,
-      pendingConfirmation: { toolName: "candidate.create_chapter", id: "tc-1" },
+      pendingConfirmation: { toolName: "pipeline.write", id: "tc-1" },
     }));
     const app = makeApp();
     const res = await app.request("/api/exec", {
       method: "POST",
-      body: JSON.stringify({ prompt: "生成候选稿" }),
+      body: JSON.stringify({ prompt: "生成章节结果" }),
       headers: { "Content-Type": "application/json" },
     });
     expect(res.status).toBe(202);

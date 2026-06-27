@@ -11,16 +11,17 @@ describe("buildBudgetPressureNotice", () => {
 
   it("80%~92% 软提示", () => {
     const notice = buildBudgetPressureNotice(160_000, CW); // 80%
-    expect(notice).toContain("上下文已用 80%");
-    expect(notice).toContain("尽快收尾");
-    expect(notice).not.toContain("即将溢出");
+    expect(notice).toContain("上下文压力提醒");
+    expect(notice).toContain("已用 80%");
+    expect(notice).toContain("尽快完成当前任务");
+    expect(notice).not.toContain("即将耗尽");
   });
 
   it(">=92% 紧急提示", () => {
     const notice = buildBudgetPressureNotice(184_000, CW); // 92%
-    expect(notice).toContain("上下文已用 92%");
-    expect(notice).toContain("即将溢出");
-    expect(notice).toContain("立即完成");
+    expect(notice).toContain("上下文即将耗尽");
+    expect(notice).toContain("已用 92%");
+    expect(notice).toContain("立即总结当前任务结果");
   });
 
   it("缺省/非法参数返回空串", () => {
@@ -31,12 +32,12 @@ describe("buildBudgetPressureNotice", () => {
   });
 
   it("边界：恰好 80% 触发软提示，79% 不触发", () => {
-    expect(buildBudgetPressureNotice(Math.ceil(CW * 0.80), CW)).toContain("尽快收尾");
+    expect(buildBudgetPressureNotice(Math.ceil(CW * 0.80), CW)).toContain("尽快完成当前任务");
     expect(buildBudgetPressureNotice(Math.floor(CW * 0.79), CW)).toBe("");
   });
 
   it("超过 100% 也按紧急处理", () => {
     const notice = buildBudgetPressureNotice(250_000, CW); // 125%
-    expect(notice).toContain("即将溢出");
+    expect(notice).toContain("即将耗尽");
   });
 });

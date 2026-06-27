@@ -20,15 +20,22 @@ import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/
 import { evaluateGate } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
-import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import type { CanvasArtifact } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
+import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
+import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
+import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
+import type { BeatTemplate, Preset } from "../engine/presets/types.js";
+import { getBeatTemplate, getPreset } from "../engine/presets/index.js";
+import { registerBuiltinPresets } from "../engine/presets/builtin.js";
 
 export interface PipelineWriteInput {
   readonly bookId: string;
   readonly sceneSpec: SceneSpec;
+  readonly narrativeContext?: NarrativeContextPackage;
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
   readonly autoRevise?: boolean;
@@ -46,7 +53,7 @@ export interface PipelineWriteOutput {
   readonly chapterNumber: number;
   readonly auditResult: AuditResult;
   readonly revised: boolean;
-  readonly candidateId: string;
+  readonly chapterId: string;
   readonly artifact: CanvasArtifact;
   /** 长度治理：归一化后仍漂出 hard 区间时的警告（不阻断） */
   readonly lengthWarning?: string;
@@ -86,6 +93,67 @@ function countWords(text: string): number {
   return text.replace(/\s+/g, "").length;
 }
 
+type BookStyleConfig = Readonly<{
+  enabledPresetIds?: readonly string[];
+  beatTemplateId?: string;
+}>;
+
+function nonEmpty(value: string | undefined): string | undefined {
+  const text = value?.trim();
+  return text ? text : undefined;
+}
+
+function ensureBuiltinPresetStores(): void {
+  try {
+    registerBuiltinPresets();
+  } catch {
+    // Builtin preset registration is idempotent; failure should not block writing.
+  }
+}
+
+export function presetToStyleSnippet(preset: Preset): StyleSnippet | null {
+  const text = nonEmpty(preset.promptInjection);
+  if (!text) return null;
+  return {
+    id: preset.id,
+    title: preset.name,
+    text,
+    tags: ["preset", preset.category, ...(preset.tags ?? [])],
+  };
+}
+
+export function beatTemplateToStyleSnippet(template: BeatTemplate): StyleSnippet | null {
+  if (template.beats.length === 0) return null;
+  const body = template.beats.map((beat) => [
+    `- ${beat.index}. ${beat.name}`,
+    `  purpose: ${beat.purpose}`,
+    `  emotionalTone: ${beat.emotionalTone}`,
+    `  wordRatio: ${beat.wordRatio}`,
+    beat.networkNovelTip ? `  networkNovelTip: ${beat.networkNovelTip}` : "",
+  ].filter(Boolean).join("\n")).join("\n");
+  return {
+    id: template.id,
+    title: template.name,
+    text: `${template.description}\n${body}`.trim(),
+    tags: ["beat-template", "beat"],
+  };
+}
+
+export function resolveBookStyleChannelSnippets(config: BookStyleConfig): { readonly presets: readonly StyleSnippet[]; readonly beats: readonly StyleSnippet[] } {
+  ensureBuiltinPresetStores();
+  const presets = (config.enabledPresetIds ?? [])
+    .map((id) => getPreset(id))
+    .filter((preset): preset is Preset => Boolean(preset))
+    .map(presetToStyleSnippet)
+    .filter((snippet): snippet is StyleSnippet => Boolean(snippet));
+  const beatTemplate = config.beatTemplateId ? getBeatTemplate(config.beatTemplateId) : undefined;
+  const beatSnippet = beatTemplate ? beatTemplateToStyleSnippet(beatTemplate) : null;
+  return {
+    presets,
+    beats: beatSnippet ? [beatSnippet] : [],
+  };
+}
+
 /** 截断控制文档到合理预算（~800 字），避免长视野文档占用过多上下文 */
 function truncateDoc(text: string, maxChars = 800): string {
   const trimmed = (text ?? "").trim();
@@ -94,11 +162,57 @@ function truncateDoc(text: string, maxChars = 800): string {
   return trimmed.slice(0, maxChars).trimEnd() + "…";
 }
 
+type BuildPipelineContextPackageInput = Readonly<{
+  chapterNumber: number;
+  sceneSpec: SceneSpec;
+  authorIntentDoc?: string;
+  currentFocusDoc?: string;
+  narrativeContext?: NarrativeContextPackage;
+  jingweiContext?: string;
+  previousChapterTail?: string;
+}>;
+
+const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"], string> = {
+  hard: "Narrative Memory hard constraints：canon/硬规则/SceneSpec constraints，不可直接丢弃。",
+  state: "Narrative Memory state：当前角色、地点、组织、动态事实与场景状态。",
+  timeline: "Narrative Memory timeline：最近章节、前章尾部与时间线连续性。",
+  hooks: "Narrative Memory hooks：当前活跃/长期未推进伏笔。",
+  facts: "Narrative Memory facts：结构化叙事事实与一跳扩展。",
+  style: "Narrative Memory style：文风、预设、节拍与合规风格提示。",
+  semantic: "Narrative Memory semantic：语义记忆召回。",
+};
+
+function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
+  if (!narrativeContext) return [];
+  return (Object.entries(narrativeContext.sections) as [keyof NarrativeContextPackage["sections"], string][])
+    .filter(([, excerpt]) => excerpt.trim().length > 0)
+    .map(([section, excerpt]) => ({ source: `narrative-memory/${section}`, reason: NARRATIVE_SECTION_REASONS[section], excerpt }));
+}
+
+export function buildPipelineContextPackage(input: BuildPipelineContextPackageInput): ContextPackage {
+  return {
+    chapter: input.chapterNumber,
+    selectedContext: [
+      ...(input.authorIntentDoc ? [{ source: "story/author_intent.md", reason: "全书长视野创作意图（最高锚点，避免长篇跑偏主题）", excerpt: input.authorIntentDoc }] : []),
+      ...(input.currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: input.currentFocusDoc }] : []),
+      { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(input.sceneSpec) },
+      ...narrativeSectionContext(input.narrativeContext),
+      ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: input.jingweiContext }] : []),
+      ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: input.previousChapterTail }] : []),
+    ],
+  };
+}
+
+export function buildPipelineChapterResultMetadata(input: { readonly narrativeContext?: NarrativeContextPackage }): NarrativeRetrievalDiagnostics | undefined {
+  return input.narrativeContext?.diagnostics;
+}
+
 export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
   const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
 
   // Validate scene spec (H4)
@@ -127,6 +241,31 @@ export async function executePipelineWrite(
 
     logger?.info(`[pipeline.write] Starting for book=${bookId} chapter=${chapterNumber}`);
 
+    if (!narrativeContext) {
+      try {
+        const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+        const storage = getStorageDatabase();
+        const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
+        const styleSnippets = resolveBookStyleChannelSnippets(book as BookStyleConfig);
+        narrativeContext = await buildNarrativeContext({
+          storage,
+          bookId,
+          purpose: "write_chapter",
+          chapterNumber,
+          sceneSpec,
+          sceneText: sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...scene.characters].join(" ")).join("\n"),
+          entities: sceneSpec.scenes.flatMap((scene) => [...scene.characters, scene.location, ...scene.hooks_used, ...scene.hooks_planted]),
+          maxTokens: 16_000,
+          previousChapterTail,
+          runtimeSnapshot,
+          presets: styleSnippets.presets,
+          beats: styleSnippets.beats,
+        });
+      } catch (err) {
+        logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // 2. Writer — generate chapter from scene spec
     const writerCtx = buildAgentCtx(options, "writer", bookId);
     const writer = new WriterAgent(writerCtx);
@@ -143,18 +282,16 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] Failed to load control documents: ${err}`);
     }
 
-    // Build structured ContextPackage (修复：此前传字符串 + as any，导致 Writer 的
-    // buildGovernedMemoryEvidenceBlocks 对字符串调 .selectedContext.filter 崩溃)
-    const contextPackage: ContextPackage = {
-      chapter: chapterNumber,
-      selectedContext: [
-        ...(authorIntentDoc ? [{ source: "story/author_intent.md", reason: "全书长视野创作意图（最高锚点，避免长篇跑偏主题）", excerpt: authorIntentDoc }] : []),
-        ...(currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: currentFocusDoc }] : []),
-        { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(sceneSpec) },
-        ...(jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情", excerpt: jingweiContext }] : []),
-        ...(previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: previousChapterTail }] : []),
-      ],
-    };
+    // Build structured ContextPackage (优先 Narrative Memory，保留 legacy jingweiContext 兼容路径)
+    const contextPackage = buildPipelineContextPackage({
+      chapterNumber,
+      sceneSpec,
+      authorIntentDoc,
+      currentFocusDoc,
+      narrativeContext,
+      jingweiContext,
+      previousChapterTail,
+    });
 
     // Build structured RuleStack（此前传字符串 + as any，Writer 访问 .activeOverrides 会出错）
     const ruleStack: RuleStack = {
@@ -258,6 +395,14 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
     }
 
+    const narrativeEvents: NarrativeEvent[] = writeOutput.runtimeStateDelta
+      ? runtimeDeltaToNarrativeEvents({
+          bookId,
+          delta: writeOutput.runtimeStateDelta,
+          evidenceText: finalContent.slice(0, 1200),
+        })
+      : [];
+
     // 4.0. Knowledge boundary & timeline conflict checks (P2-2 / P3-1)
     let knowledgeWarnings: string[] = [];
     let timelineWarnings: string[] = [];
@@ -284,36 +429,44 @@ export async function executePipelineWrite(
       logger?.debug(`[pipeline.write] Runtime state check skipped: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // 4. Save as candidate
-    const candidateId = `pipeline-write-${randomUUID()}`;
+    // 4. Save as formal chapter result
+    const chapterId = `chapter:${chapterNumber}`;
     try {
       const { getStorageDatabase, resolveBookStorageDir } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
       const resourceService = createWritingResourceService({ storage, resolveBookDir: (bid: string) => resolveBookStorageDir(root, bid) });
-      await resourceService.create(bookId, {
-        id: candidateId,
-        type: "draft",
-        status: "candidate",
-        title: writeOutput.title,
-        content: finalContent,
-        chapterNumber,
-        source: "pipeline.write",
-        metadata: {
-          sceneSpec,
-          auditResult: { passed: auditResult.passed, issueCount: auditResult.issues.length },
-          gateResult: { counts: finalGate.counts, hasBlocking: finalGate.hasBlocking, hasRevisable: finalGate.hasRevisable },
-          revised,
-          reviseRounds,
-          ...(needsHumanReview ? { needsHumanReview: true } : {}),
-          ...(adversarialAudit ? { adversarialAudit: true } : {}),
-          ...(lengthWarning ? { lengthWarning } : {}),
-          ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
-          ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
-          generatedAt: new Date().toISOString(),
-        },
-      });
+      const metadata = {
+        sceneSpec,
+        ...(buildPipelineChapterResultMetadata({ narrativeContext }) ? { narrativeMemoryDiagnostics: buildPipelineChapterResultMetadata({ narrativeContext }) } : {}),
+        auditResult: { passed: auditResult.passed, issueCount: auditResult.issues.length },
+        gateResult: { counts: finalGate.counts, hasBlocking: finalGate.hasBlocking, hasRevisable: finalGate.hasRevisable },
+        revised,
+        reviseRounds,
+        ...(needsHumanReview ? { needsHumanReview: true } : {}),
+        ...(adversarialAudit ? { adversarialAudit: true } : {}),
+        ...(lengthWarning ? { lengthWarning } : {}),
+        ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
+        ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
+        ...(narrativeEvents.length > 0 ? { narrativeEvents } : {}),
+        generatedAt: new Date().toISOString(),
+      };
+      const existing = await resourceService.findAcceptedChapter(bookId, chapterNumber);
+      if (existing) {
+        await resourceService.update(bookId, existing.id, { title: writeOutput.title, content: finalContent, metadata });
+      } else {
+        await resourceService.create(bookId, {
+          id: chapterId,
+          type: "chapter",
+          status: "accepted",
+          title: writeOutput.title,
+          content: finalContent,
+          chapterNumber,
+          source: "pipeline.write",
+          metadata,
+        });
+      }
     } catch (err) {
-      logger?.warn(`[pipeline.write] Failed to save candidate: ${err}`);
+      logger?.warn(`[pipeline.write] Failed to save formal chapter: ${err}`);
     }
 
     const wordCount = countWords(finalContent);
@@ -326,15 +479,16 @@ export async function executePipelineWrite(
       chapterNumber,
       auditResult,
       revised,
-      candidateId,
+      chapterId,
       reviseRounds,
       ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
       artifact: {
-        id: candidateId,
-        kind: "candidate-chapter",
-        title: `${writeOutput.title}（候选稿）`,
+        id: chapterId,
+        kind: "chapter",
+        title: writeOutput.title,
         openInCanvas: true,
+        resourceRef: { kind: "chapter", id: chapterId, bookId, chapterNumber, title: writeOutput.title },
         metadata: { bookId, chapterNumber, source: "pipeline.write" },
       },
     };

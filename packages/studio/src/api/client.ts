@@ -32,18 +32,6 @@ export const api = {
     delete: (bookId: string, num: number) => fetchJson<{ ok: boolean }>(`/books/${bookId}/chapters/${num}`, { method: "DELETE" }),
   },
 
-  candidates: {
-    list: (bookId: string) => fetchJson<{ candidates: Array<{ id: string; title: string; source: string; status: string; createdAt: string; metadata?: Record<string, unknown> }> }>(`/books/${bookId}/candidates`),
-    accept: (bookId: string, candidateId: string, action: "merge" | "replace" | "draft") =>
-      postApi<{ candidate: Record<string, unknown>; draft?: Record<string, unknown> }>(`/books/${bookId}/candidates/${candidateId}/accept`, { action }),
-    reject: (bookId: string, candidateId: string) => postApi<{ candidate: Record<string, unknown> }>(`/books/${bookId}/candidates/${candidateId}/reject`),
-    delete: (bookId: string, candidateId: string) => fetchJson<{ ok: boolean }>(`/books/${bookId}/candidates/${candidateId}`, { method: "DELETE" }),
-  },
-
-  drafts: {
-    list: (bookId: string) => fetchJson<{ drafts: Array<{ id: string; title: string; wordCount: number; updatedAt: string }> }>(`/books/${bookId}/drafts`),
-    delete: (bookId: string, draftId: string) => fetchJson<{ ok: boolean }>(`/books/${bookId}/drafts/${draftId}`, { method: "DELETE" }),
-  },
 
   progress: {
     get: () => fetchJson<{ progress?: { today: { written: number; target: number; completed: boolean }; streak: number } }>("/progress"),

@@ -111,7 +111,7 @@ describe("domain contract clients", () => {
     const headless = await session.headlessChat({ prompt: "写下一章", outputFormat: "stream-json" });
     const memoryStatus = await session.getMemoryStatus("session/1");
     const memoryCommit = await session.commitMemory("session/1", {
-      classification: "temporary-story-draft",
+      classification: "temporary-story-fragment",
       content: "临时试写不进长期记忆。",
       source: { kind: "message", messageId: "m1", seq: 1 },
       createdBy: "assistant",
@@ -127,7 +127,7 @@ describe("domain contract clients", () => {
     expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/sessions/session%2F1/compact", expect.objectContaining({ method: "POST", body: JSON.stringify({ preserveRecentMessages: 4, instructions: "保留主线" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/sessions/headless-chat", expect.objectContaining({ method: "POST", body: JSON.stringify({ prompt: "写下一章", outputFormat: "stream-json" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/sessions/session%2F1/memory/status", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/sessions/session%2F1/memory", expect.objectContaining({ method: "POST", body: JSON.stringify({ classification: "temporary-story-draft", content: "临时试写不进长期记忆。", source: { kind: "message", messageId: "m1", seq: 1 }, createdBy: "assistant" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/sessions/session%2F1/memory", expect.objectContaining({ method: "POST", body: JSON.stringify({ classification: "temporary-story-fragment", content: "临时试写不进长期记忆。", source: { kind: "message", messageId: "m1", seq: 1 }, createdBy: "assistant" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/sessions/session%2F1/tools/guided.exit/confirm", expect.objectContaining({ method: "POST" }));
     expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/sessions/session%2F1", expect.objectContaining({ method: "DELETE" }));
     expect(created.ok && created.data).toMatchObject({ error: null, gate: { mode: "chat" } });
@@ -150,7 +150,7 @@ describe("domain contract clients", () => {
     expect(buildChatWebSocketUrl("s 3")).toBe("ws://localhost:3000/api/sessions/s%203/chat");
   });
 
-  it("wraps chapter, draft and candidate resources with non-destructive routes", async () => {
+  it("wraps formal chapter resources with non-destructive routes", async () => {
     const fetchMock = vi.fn(async (_path: RequestInfo | URL, init?: RequestInit) => new Response(JSON.stringify({ ok: true, gate: null, method: init?.method }), { status: 200 }));
     const resources = createResourceClient(createContractClient({ fetch: fetchMock }));
 
@@ -158,27 +158,13 @@ describe("domain contract clients", () => {
     await resources.saveChapter("book/1", 12, { content: "正式正文" });
     await resources.previewRewind("book/1", "checkpoint/1");
     await resources.applyRewind("book/1", "checkpoint/1", { expectedCurrentHashes: { "chapters/0001.md": "sha256:now" } });
-    await resources.listDrafts("book/1");
-    await resources.getDraft("book/1", "draft/1");
-    await resources.saveDraft("book/1", { title: "新草稿" });
-    await resources.saveDraft("book/1", { id: "draft/1", title: "旧草稿" });
-    await resources.deleteDraft("book/1", "draft/1");
-    await resources.listCandidates("book/1");
-    await resources.acceptCandidate("book/1", "cand/1", { action: "draft" });
     await resources.saveJingweiEntry("book/1", "entry/1", { title: "人物", contentMd: "正文" });
 
     expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(2, "/api/books/book%2F1/chapters/12", expect.objectContaining({ method: "PUT", body: JSON.stringify({ content: "正式正文" }) }));
     expect(fetchMock).toHaveBeenNthCalledWith(3, "/api/books/book%2F1/checkpoints/checkpoint%2F1/rewind/preview", expect.objectContaining({ method: "GET" }));
     expect(fetchMock).toHaveBeenNthCalledWith(4, "/api/books/book%2F1/checkpoints/checkpoint%2F1/rewind/apply", expect.objectContaining({ method: "POST", body: JSON.stringify({ expectedCurrentHashes: { "chapters/0001.md": "sha256:now" } }) }));
-    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(6, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(7, "/api/books/book%2F1/drafts", expect.objectContaining({ method: "POST" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(8, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "PUT" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(9, "/api/books/book%2F1/drafts/draft%2F1", expect.objectContaining({ method: "DELETE" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(10, "/api/books/book%2F1/candidates", expect.objectContaining({ method: "GET" }));
-    expect(fetchMock).toHaveBeenNthCalledWith(11, "/api/books/book%2F1/candidates/cand%2F1/accept", expect.objectContaining({ method: "POST", body: JSON.stringify({ action: "draft" }) }));
-    expect(fetchMock).toHaveBeenNthCalledWith(12, "/api/books/book%2F1/jingwei/entries/entry%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ title: "人物", contentMd: "正文" }) }));
+    expect(fetchMock).toHaveBeenNthCalledWith(5, "/api/books/book%2F1/jingwei/entries/entry%2F1", expect.objectContaining({ method: "PUT", body: JSON.stringify({ title: "人物", contentMd: "正文" }) }));
   });
 
   it("marks writing mode prompt preview as prompt-preview capability", async () => {
@@ -216,15 +202,5 @@ describe("domain contract clients", () => {
     if (result.ok) throw new Error("expected provider model test failure");
     expect(result.capability.status).toBe("current");
     expect(result.error).toEqual({ error: { code: "unsupported", message: "adapter 不支持" } });
-  });
-
-  it("covers async writing actions without fabricating synchronous chapter body", async () => {
-    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ status: "queued", resourceId: null, gate: null }), { status: 202 }));
-    const writing = createWritingActionClient(createContractClient({ fetch: fetchMock }));
-
-    const applied = await writing.applyWritingMode("book/1", { target: "candidate", generatedContent: "候选正文" });
-
-    expect(fetchMock).toHaveBeenNthCalledWith(1, "/api/books/book%2F1/writing-modes/apply", expect.objectContaining({ method: "POST" }));
-    expect(applied.capability.id).toBe("writing-modes.apply");
   });
 });

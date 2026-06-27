@@ -18,6 +18,10 @@ vi.mock("./llm-runtime-service.js", async (importOriginal) => {
   };
 });
 
+const validSceneSpec = {
+  scenes: [{ characters: ["沈舟"], location: "城门", conflict: "入城受阻", outcome: "获得线索" }],
+};
+
 function input(overrides: Partial<SessionToolExecutionInput> = {}): SessionToolExecutionInput {
   return {
     sessionId: "session-1",
@@ -74,13 +78,13 @@ describe("session tool executor", () => {
 
   it("blocks write-risk tools in read and plan modes", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
 
     for (const permissionMode of ["read", "plan"] as const) {
       await expect(executor.execute(input({
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         permissionMode,
-        input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
+        input: { bookId: "book-1", sceneSpec: validSceneSpec },
       }))).resolves.toMatchObject({
         ok: false,
         error: "permission-denied",
@@ -150,39 +154,39 @@ describe("session tool executor", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("adds draft-write audit metadata for candidate chapter creation", async () => {
+  it("adds write audit metadata for pipeline chapter creation", async () => {
     const executor = createSessionToolExecutor({
       handlers: {
-        "candidate.create_chapter": async () => ({ ok: true, renderer: "candidate.created", summary: "已创建候选稿。", data: { candidateId: "candidate-1" } }),
+        "pipeline.write": async () => ({ ok: true, renderer: "pipeline.chapter-result", summary: "已创建章节结果。", data: { chapterResultId: "chapter-result-1" } }),
       },
     });
 
     const result = await executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "edit",
-      input: { bookId: "book-1", chapterIntent: "写下一章", title: "第二章", content: "这是已有章节正文。" },
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
     }));
 
     expect(result).toMatchObject({
       ok: true,
       confirmationAudit: {
         sessionId: "session-1",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         risk: "draft-write",
-        targetResources: [{ kind: "candidate.create_chapter", id: "book-1", bookId: "book-1" }],
-        summary: "已创建候选稿。",
+        targetResources: [{ kind: "pipeline.write", id: "book-1", bookId: "book-1" }],
+        summary: "已创建章节结果。",
       },
     });
   });
 
   it("blocks write-risk tools when the active canvas resource is dirty", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
 
     const result = await executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "edit",
-      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
       canvasContext: {
         activeTabId: "chapter:book-1:2",
         activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1", title: "第二章 入城" },
@@ -192,7 +196,7 @@ describe("session tool executor", () => {
 
     expect(result).toMatchObject({
       ok: false,
-      renderer: "candidate.created",
+      renderer: "pipeline.chapter-result",
       error: "dirty-resource-blocked",
       data: {
         status: "dirty-resource-blocked",
@@ -206,67 +210,67 @@ describe("session tool executor", () => {
 
   it("applies session tool policy deny before executing handlers", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
 
     const result = await executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "allow",
       sessionConfig: {
         providerId: "sub2api",
         modelId: "gpt-5.4",
         permissionMode: "allow",
         reasoningEffort: "medium",
-        toolPolicy: { deny: ["candidate.create_chapter"] },
+        toolPolicy: { deny: ["pipeline.write"] },
       },
-      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
     }));
 
     expect(result).toMatchObject({
       ok: false,
-      renderer: "candidate.created",
+      renderer: "pipeline.chapter-result",
       error: "policy-denied",
       data: {
         status: "policy-denied",
         source: "sessionConfig.toolPolicy.deny",
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
       },
     });
-    expect(result.summary).toContain("工具策略禁止执行 candidate.create_chapter");
+    expect(result.summary).toContain("工具策略禁止执行 pipeline.write");
     expect(handler).not.toHaveBeenCalled();
   });
 
   it("applies session tool policy ask as a permission-required confirmation", async () => {
     const handler = vi.fn();
-    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+    const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
 
     const result = await executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "edit",
       sessionConfig: {
         providerId: "sub2api",
         modelId: "gpt-5.4",
         permissionMode: "edit",
         reasoningEffort: "medium",
-        toolPolicy: { ask: ["candidate.create_chapter"] },
+        toolPolicy: { ask: ["pipeline.write"] },
       },
-      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
     }));
 
     expect(result).toMatchObject({
       ok: true,
-      renderer: "candidate.created",
+      renderer: "pipeline.chapter-result",
       data: {
         status: "pending-confirmation",
         code: "permission-required",
         source: "sessionConfig.toolPolicy.ask",
       },
       confirmation: {
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         risk: "confirmed-write",
         target: "book-1",
       },
       confirmationAudit: {
-        toolName: "candidate.create_chapter",
+        toolName: "pipeline.write",
         risk: "draft-write",
       },
     });
@@ -274,29 +278,29 @@ describe("session tool executor", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it("lets session tool policy allow reduce ask-mode draft writes while preserving dirty-resource blocking", async () => {
-    const handler = vi.fn(async () => ({ ok: true, renderer: "candidate.created", summary: "候选稿已创建。", data: { candidateId: "candidate-1" } }));
-    const executor = createSessionToolExecutor({ handlers: { "candidate.create_chapter": handler } });
+  it("lets session tool policy allow ask-mode write tools while preserving dirty-resource blocking", async () => {
+    const handler = vi.fn(async () => ({ ok: true, renderer: "pipeline.chapter-result", summary: "章节结果已创建。", data: { chapterResultId: "chapter-result-1" } }));
+    const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
     const sessionConfig = {
       providerId: "sub2api",
       modelId: "gpt-5.4",
       permissionMode: "ask" as const,
       reasoningEffort: "medium" as const,
-      toolPolicy: { allow: ["candidate.create_chapter"] },
+      toolPolicy: { allow: ["pipeline.write"] },
     };
 
     await expect(executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "ask",
       sessionConfig,
-      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
-    }))).resolves.toMatchObject({ ok: true, data: { candidateId: "candidate-1" } });
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
+    }))).resolves.toMatchObject({ ok: true, data: { chapterResultId: "chapter-result-1" } });
 
     const dirtyResult = await executor.execute(input({
-      toolName: "candidate.create_chapter",
+      toolName: "pipeline.write",
       permissionMode: "ask",
       sessionConfig,
-      input: { bookId: "book-1", chapterIntent: "写下一章", content: "这是已有章节正文。" },
+      input: { bookId: "book-1", sceneSpec: validSceneSpec },
       canvasContext: { activeTabId: "chapter:book-1:2", activeResource: { kind: "chapter", id: "chapter:book-1:2", bookId: "book-1" }, dirty: true },
     }));
 
@@ -433,14 +437,13 @@ describe("session tool executor", () => {
     });
     const executor = createSessionToolExecutor({ cockpitService });
 
-    const snapshot = await executor.execute(input({ toolName: "cockpit.snapshot", input: { bookId: "book-1", includeModelStatus: true } }));
+    const snapshot = await executor.execute(input({ toolName: "cockpit.snapshot", input: { bookId: "book-1" } }));
 
     expect(snapshot).toMatchObject({
       ok: true,
       renderer: "cockpit.snapshot",
-      summary: "已读取驾驶舱快照。",
+      summary: "书籍 book-1 全景快照（进度/伏笔/正式章节/健康度）。",
       data: { status: "available", book: { id: "book-1" } },
-      artifact: { kind: "tool-result", renderer: "cockpit.snapshot", openInCanvas: true },
     });
   });
 });

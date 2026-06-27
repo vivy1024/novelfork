@@ -1,4 +1,4 @@
-export const SESSION_MEMORY_CATEGORIES = ["user-preference", "project-fact", "temporary-story-draft"] as const;
+export const SESSION_MEMORY_CATEGORIES = ["user-preference", "project-fact", "temporary-story-fragment"] as const;
 
 export type SessionMemoryClassification = (typeof SESSION_MEMORY_CATEGORIES)[number];
 export type SessionMemoryScope = "user" | "project";
@@ -155,7 +155,7 @@ export function createSessionMemoryBoundaryService(options: CreateSessionMemoryB
 
       const audit = buildAudit(candidate, classification, now());
 
-      if (classification === "temporary-story-draft") {
+      if (classification === "temporary-story-fragment") {
         return { ok: true, action: "skipped", reason: "temporary_story_draft_not_long_term", audit };
       }
 

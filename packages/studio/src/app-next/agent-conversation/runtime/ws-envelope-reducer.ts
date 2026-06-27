@@ -94,6 +94,10 @@ function lastSeqFrom(cursor: NarratorSessionChatCursor | null | undefined, messa
   return cursor?.lastSeq ?? Math.max(fallback, ...messages.map((message) => message.seq ?? 0));
 }
 
+function isValidSessionMessage(message: NarratorSessionChatMessage | null | undefined): message is NarratorSessionChatMessage {
+  return Boolean(message && typeof message.id === "string" && typeof message.role === "string");
+}
+
 export function reduceSessionEnvelope(
   state: AgentConversationRuntimeState,
   envelope: SessionServerEnvelope,
@@ -102,6 +106,13 @@ export function reduceSessionEnvelope(
     case "session:reset":
       return createInitialAgentConversationRuntimeState();
     case "session:snapshot": {
+      if (!envelope.snapshot?.session || !Array.isArray(envelope.snapshot.messages)) {
+        return {
+          ...state,
+          error: { message: "会话快照格式无效：缺少 session 或 messages。", code: "invalid-session-snapshot", runtime: envelope },
+          recovery: { state: "failed", reason: "snapshot-load-failed" },
+        };
+      }
       const cursor = envelope.cursor ?? envelope.snapshot.cursor ?? null;
       let messages = envelope.snapshot.messages.map(normalizeSessionMessage);
       // 加载快照时，如果 session 已 idle，把残留的 running 工具标记为 success
@@ -126,6 +137,13 @@ export function reduceSessionEnvelope(
       };
     }
     case "session:state": {
+      if (!envelope.session) {
+        return {
+          ...state,
+          error: { message: "会话状态格式无效：缺少 session。", code: "invalid-session-state", runtime: envelope },
+          recovery: { state: "failed", reason: "websocket-error" },
+        };
+      }
       const cursor = envelope.cursor ?? state.cursor;
       // When turn ends (idle) or is interrupted, mark all running tool calls as completed/cancelled
       const sessionNarratorState = (envelope.session as { narratorState?: string }).narratorState;
@@ -152,6 +170,14 @@ export function reduceSessionEnvelope(
       };
     }
     case "session:message": {
+      if (!isValidSessionMessage(envelope.message)) {
+        return {
+          ...state,
+          error: { message: "会话消息格式无效：缺少有效 message。", code: "invalid-session-message", runtime: envelope },
+          recovery: { state: "failed", reason: "websocket-error" },
+          waitingForResponse: false,
+        };
+      }
       // When the incoming message is a tool_call (has toolCalls) and there's a streaming
       // message with content, the streaming text is NOT included in the tool_call message.
       // We must "solidify" the streaming message (keep it as a real message) instead of
@@ -298,6 +324,8 @@ export function reduceSessionEnvelope(
         error: null,
         recovery: state.recovery.state === "failed" ? { state: "idle" } : state.recovery,
       };
+    default:
+      return state;
   }
 }
 

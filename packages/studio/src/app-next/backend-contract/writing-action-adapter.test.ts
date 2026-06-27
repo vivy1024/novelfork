@@ -20,14 +20,8 @@ function createFetch() {
     if (path === "/api/books/book%2F1/inline-write") {
       return json({ mode: "prompt-preview", promptPreview: "请继续写", reason: "no-session-llm" });
     }
-    if (path === "/api/books/book%2F1/writing-modes/apply") {
-      return json({ target: "candidate", requestedTarget: body.target, resourceId: "wm-candidate-1", status: "candidate", metadata: { nonDestructive: true } }, 201);
-    }
     if (path === "/api/books/book%2F1/write-next") {
       return json({ status: "writing", bookId: "book/1" }, 202);
-    }
-    if (path === "/api/books/book%2F1/draft") {
-      return json({ status: "drafting", bookId: "book/1" }, 202);
     }
     if (path === "/api/books/book%2F1/hooks/generate") {
       return json({ gate: { ok: false, reason: "model-not-configured" }, error: { code: "MODEL_NOT_CONFIGURED", message: "未配置模型" } }, 409);
@@ -44,7 +38,7 @@ function createFetch() {
     if (path === "/api/sessions/session%2F1/tools") {
       return json({
         pending: [
-          { id: "confirm-1", toolName: "guided.exit", target: "第二章候选稿", risk: "confirmed-write", summary: "等待确认", options: ["approve", "reject"], sessionId: "session/1" },
+          { id: "confirm-1", toolName: "guided.exit", target: "第二章正式章节结果", risk: "confirmed-write", summary: "等待确认", options: ["approve", "reject"], sessionId: "session/1" },
         ],
       });
     }
@@ -53,14 +47,14 @@ function createFetch() {
         ok: true,
         result: {
           ok: true,
-          renderer: "candidate.created",
-          summary: "已创建候选稿",
-          data: { status: "candidate", candidate: { id: "candidate-1", bookId: "book/1", title: "第二章候选稿" } },
-          artifact: { id: "candidate:book/1:candidate-1", kind: "chapter-candidate", title: "第二章候选稿" },
+          renderer: "pipeline.chapter",
+          summary: "已生成正式章节结果",
+          data: { status: "accepted", resource: { id: "chapter:2", bookId: "book/1", title: "第二章" } },
+          artifact: { id: "chapter:2", kind: "chapter", title: "第二章" },
         },
       });
     }
-    if (path === "/api/sessions/session%2F1/tools/candidate.create_chapter/confirm") {
+    if (path === "/api/sessions/session%2F1/tools/pipeline.write/confirm") {
       return json({ error: { code: "unsupported-model", message: "当前模型不支持工具调用" } }, 409);
     }
     return json({ error: `Unhandled path: ${path}` }, 404);
@@ -74,24 +68,22 @@ describe("writing action contract adapter", () => {
     expect(descriptors.map((descriptor) => descriptor.id)).toEqual([
       "session-native.write-next",
       "ai.write-next.async",
-      "ai.draft.async",
       "writing-modes.preview",
-      "writing-modes.apply",
       "hooks.generate",
       "hooks.apply",
       "ai.audit",
       "ai.detect",
     ]);
     expect(descriptors[0]).toMatchObject({
-      outputBoundary: "candidate-artifact",
-      chain: ["cockpit.get_snapshot", "pgi.generate_questions", "AskUserQuestion", "pipeline.generate_chapter"],
-      writesFormalChapter: false,
+      outputBoundary: "chapter-artifact",
+      chain: ["cockpit.snapshot", "pgi.ask", "AskUserQuestion", "pipeline.write"],
+      writesFormalChapter: true,
       capability: { status: "current" },
     });
     expect(descriptors.find((descriptor) => descriptor.id === "writing-modes.preview")).toMatchObject({ capability: { status: "prompt-preview" }, writesFormalChapter: false });
   });
 
-  it("normalizes prompt-preview and async responses without fabricating formal chapter content", async () => {
+  it("normalizes prompt-preview without fabricating formal chapter content", async () => {
     const fetchMock = createFetch();
     const adapter = createWritingActionAdapter({
       writing: createWritingActionClient(createContractClient({ fetch: fetchMock })),
@@ -99,17 +91,14 @@ describe("writing action contract adapter", () => {
     });
 
     const preview = await adapter.previewWritingMode("book/1", { mode: "continuation" });
-    const applied = await adapter.applyWritingMode("book/1", { target: "chapter-replace", content: "候选正文" });
 
-    expect(preview).toMatchObject({ kind: "prompt-preview", formalChapterWrite: false, candidateArtifact: null, draftArtifact: null, nextStep: "copy-or-explicit-apply" });
-    expect(applied).toMatchObject({ kind: "candidate", formalChapterWrite: false, candidateArtifact: { id: "wm-candidate-1" }, nextStep: "review-candidate" });
+    expect(preview).toMatchObject({ kind: "prompt-preview", formalChapterWrite: false, nextStep: "copy-or-explicit-apply" });
     expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
       "/api/books/book%2F1/inline-write",
-      "/api/books/book%2F1/writing-modes/apply",
     ]);
   });
 
-  it("routes session-native confirmation into candidate artifacts and preserves unsupported tool failures", async () => {
+  it("routes session-native confirmation into chapter-result artifacts and preserves unsupported tool failures", async () => {
     const fetchMock = createFetch();
     const adapter = createWritingActionAdapter({
       writing: createWritingActionClient(createContractClient({ fetch: fetchMock })),
@@ -118,10 +107,10 @@ describe("writing action contract adapter", () => {
 
     const pending = await adapter.listSessionNativeConfirmations("session/1");
     const approved = await adapter.confirmSessionNativeStep("session/1", "guided.exit", { confirmationId: "confirm-1", decision: "approved", reason: "可执行", decidedAt: "2026-05-04T00:00:00.000Z", sessionId: "session/1" });
-    const unsupported = await adapter.confirmSessionNativeStep("session/1", "candidate.create_chapter", { confirmationId: "confirm-2", decision: "approved", reason: "试生成", decidedAt: "2026-05-04T00:00:00.000Z", sessionId: "session/1" });
+    const unsupported = await adapter.confirmSessionNativeStep("session/1", "pipeline.write", { confirmationId: "confirm-2", decision: "approved", reason: "试生成", decidedAt: "2026-05-04T00:00:00.000Z", sessionId: "session/1" });
 
     expect(pending).toMatchObject({ kind: "confirmation-required", confirmations: [{ toolName: "guided.exit" }], formalChapterWrite: false });
-    expect(approved).toMatchObject({ kind: "candidate", formalChapterWrite: false, candidateArtifact: { id: "candidate-1" }, nextStep: "review-candidate" });
+    expect(approved).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: expect.objectContaining({ result: expect.objectContaining({ artifact: { id: "chapter:2", kind: "chapter", title: "第二章" } }) }), nextStep: "show-analysis" });
     expect(unsupported).toMatchObject({ kind: "unsupported", formalChapterWrite: false, error: { error: { code: "unsupported-model" } }, nextStep: "show-provider-or-tool-error" });
   });
 
@@ -137,7 +126,7 @@ describe("writing action contract adapter", () => {
     const detect = await adapter.detectChapter("book/1", 1);
 
     expect(hookGate).toMatchObject({ kind: "gate-blocked", formalChapterWrite: false, gate: { ok: false, reason: "model-not-configured" }, nextStep: "show-gate" });
-    expect(hookApply).toMatchObject({ kind: "draft-write", formalChapterWrite: false, draftArtifact: { file: "pending_hooks.md", id: "hook-1" } });
+    expect(hookApply).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { persisted: true, file: "pending_hooks.md", hookId: "hook-1" } });
     expect(audit).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { passed: false } });
     expect(detect).toMatchObject({ kind: "analysis", formalChapterWrite: false, analysis: { aiTasteScore: null, metrics: [{ name: "unknown", value: null }] } });
   });

@@ -44,12 +44,20 @@ function getSurroundingContext(editor: Editor, maxChars = 500): string {
   return `${before}[选中]${after}`;
 }
 
+/** Map frontend action names to backend inline-write mode names */
+const ACTION_TO_MODE: Record<AiAction, string> = {
+  continue: "continuation",
+  polish: "polish",
+  rewrite: "rewrite",
+  expand: "expansion",
+};
+
 async function callInlineWrite(bookId: string, action: AiAction, selectedText: string, context: string): Promise<string | null> {
   try {
     const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: action, selectedText, context, maxTokens: 300 }),
+      body: JSON.stringify({ mode: ACTION_TO_MODE[action], selectedText, context, maxTokens: 300 }),
     });
     if (!res.ok) return null;
     const data = await res.json() as { text?: string; content?: string };
@@ -107,6 +115,21 @@ function AIBubbleMenu({ editor, bookId }: { editor: Editor; bookId: string }) {
 }
 
 // ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function cleanWhitespace(str: string): string {
+  return (str || "").replace(/\r\n/g, "\n").trim();
+}
+
+function countWords(text: string): number {
+  if (!text) return 0;
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
+  const englishWords = text.replace(/[\u4e00-\u9fa5]/g, " ").match(/[a-zA-Z0-9_-]+/g)?.length ?? 0;
+  return chineseChars + englishWords;
+}
+
+// ---------------------------------------------------------------------------
 // ChapterEditor 组件
 // ---------------------------------------------------------------------------
 
@@ -157,9 +180,9 @@ export function ChapterEditor({
     onUpdate: ({ editor: ed }) => {
       if (isExternalUpdate.current) return;
 
-      // Update word count
+      // Update word count using professional mix counter
       const text = ed.getText();
-      setWordCount(text.length);
+      setWordCount(countWords(text));
 
       // Debounced save
       clearTimeout(saveTimer.current);
@@ -181,11 +204,15 @@ export function ChapterEditor({
   useEffect(() => {
     if (!editor) return;
     const currentMd = editor.storage.markdown.getMarkdown() as string;
-    if (content !== currentMd) {
+    if (cleanWhitespace(content) !== cleanWhitespace(currentMd)) {
+      // If user is editing, do not swallow composition/letters unless it's a huge external change (e.g. Git load)
+      if (editor.isFocused && Math.abs((content || "").length - currentMd.length) < 50) {
+        return;
+      }
       isExternalUpdate.current = true;
       editor.commands.setContent(content || "");
       isExternalUpdate.current = false;
-      setWordCount(editor.getText().length);
+      setWordCount(countWords(editor.getText()));
     }
   }, [editor, content]);
 
@@ -199,7 +226,7 @@ export function ChapterEditor({
   // Initial word count
   useEffect(() => {
     if (editor) {
-      setWordCount(editor.getText().length);
+      setWordCount(countWords(editor.getText()));
     }
   }, [editor]);
 
@@ -233,7 +260,7 @@ export function ChapterEditor({
   if (!editor) return null;
 
   return (
-    <div className="chapter-editor relative flex flex-col" onKeyDown={handleKeyDown}>
+    <div className="chapter-editor relative flex flex-col h-full min-h-0" onKeyDown={handleKeyDown}>
       {/* AI BubbleMenu — 选中文本后出现 */}
       {!readonly && bookId && editor && (
         <AIBubbleMenu editor={editor} bookId={bookId} />

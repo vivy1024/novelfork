@@ -20,11 +20,8 @@ describe("backend contract capability matrix", () => {
       "sessions.tools.confirm",
       "sessions.tools.policy",
       "chapters.detail",
-      "candidates.accept",
-      "drafts.crud",
       "narrative.line.snapshot",
       "session-native.write-next",
-      "writing-modes.apply",
       "providers.model.test",
     ];
 
@@ -42,9 +39,12 @@ describe("backend contract capability matrix", () => {
     expect(findBackendContractCapability("books.create-status")).toMatchObject({ status: "process-memory" });
     expect(findBackendContractCapability("ai.complete.chunked-buffer")).toMatchObject({ status: "chunked-buffer" });
     expect(findBackendContractCapability("writing-modes.preview")).toMatchObject({ status: "prompt-preview" });
+    expect(findBackendContractCapability("writing-modes.apply")).toMatchObject({ status: "deprecated" });
+    expect(findBackendContractCapability("candidates.accept")).toBeUndefined();
+    expect(findBackendContractCapability("drafts.crud")).toBeUndefined();
     expect(findBackendContractCapability("legacy.book-chat.process-memory")).toBeUndefined();
     expect(findBackendContractCapability("legacy.pipeline-runs.process-memory")).toMatchObject({ status: "process-memory" });
-    expect(findBackendContractCapability("legacy.monitor.unsupported")).toMatchObject({ status: "unsupported" });
+    expect(findBackendContractCapability("legacy.monitor.unsupported")).toBeUndefined();
     expect(findBackendContractCapability("legacy.ai-agent.unsupported")).toMatchObject({ status: "unsupported" });
     expect(findBackendContractCapability("legacy.ai-agent.deprecated")).toBeUndefined();
     expect(findBackendContractCapability("legacy.export.deprecated")).toMatchObject({ status: "deprecated" });

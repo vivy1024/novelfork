@@ -13,8 +13,6 @@ export type ContractResourceKind =
   | "book"
   | "group"
   | "chapter"
-  | "candidate"
-  | "draft"
   | "story"
   | "jingwei"
   | "jingwei-section"
@@ -160,6 +158,7 @@ export async function loadResourceTreeFromContract(
       },
       metadata: { book, nextChapter: bookResult.data.nextChapter },
       children: [
+        ...errors,
         group("group:chapters", "章节", resourceGroups.chapters),
         group("group:archived", "已归档", resourceGroups.archived),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
@@ -188,9 +187,13 @@ function compareResourceUpdatedDesc(a: WritingResource, b: WritingResource): num
   return b.updatedAt - a.updatedAt;
 }
 
+function chapterResourceId(chapterNumber: number): string {
+  return `chapter:${chapterNumber}`;
+}
+
 function toWritingResourceNode(resource: WritingResource): ContractResourceNode {
   const kind: ContractResourceKind = "chapter";
-  const id = `chapter:${resource.id}`;
+  const id = resource.chapterNumber ? chapterResourceId(resource.chapterNumber) : resource.id;
   const metadata = {
     ...resource.metadata,
     bookId: resource.bookId,
@@ -223,7 +226,7 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
 
 function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourceNode {
   return {
-    id: `chapter:${bookId}:${chapter.number}`,
+    id: chapterResourceId(chapter.number),
     kind: "chapter",
     title: chapter.title || `第 ${chapter.number} 章`,
     capabilities: {

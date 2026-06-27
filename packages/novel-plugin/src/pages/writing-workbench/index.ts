@@ -1,7 +1,5 @@
 export * from "./AiTasteReport";
 export * from "./ComplianceViolationCard";
-export * from "./CandidateActionsBar";
-export * from "./DraftActionsBar";
 export * from "./ChapterActionsBar";
 export * from "./ResourceHistoryPanel";
 export * from "./CheckpointPanel";

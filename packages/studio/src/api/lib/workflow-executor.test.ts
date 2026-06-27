@@ -23,10 +23,10 @@ describe("workflow executor", () => {
     const result = await executeWorkflow(DEFAULT_WRITE_NEXT_RECIPE, createContext(), { executeStep });
 
     expect(result.status).toBe("completed");
-    expect(result.steps).toHaveLength(6);
-    expect(result.completedStepCount).toBe(6);
-    expect(result.totalStepCount).toBe(6);
-    expect(executeStep).toHaveBeenCalledTimes(6);
+    expect(result.steps).toHaveLength(5);
+    expect(result.completedStepCount).toBe(5);
+    expect(result.totalStepCount).toBe(5);
+    expect(executeStep).toHaveBeenCalledTimes(5);
     expect(result.summary).toContain("写下一章 完成");
   });
 
@@ -41,9 +41,9 @@ describe("workflow executor", () => {
     const result = await executeWorkflow(DEFAULT_WRITE_NEXT_RECIPE, createContext(), { executeStep });
 
     expect(result.status).toBe("approval-pending");
-    // Should have executed context-load, pgi, guided-plan, then stopped at approval-gate
-    expect(result.steps).toHaveLength(4);
-    expect(result.steps[3].status).toBe("approval-pending");
+    // Should have executed context-load, pgi, then stopped at approval-gate
+    expect(result.steps).toHaveLength(3);
+    expect(result.steps[2].status).toBe("approval-pending");
     expect(result.summary).toContain("等待用户批准");
   });
 
@@ -102,8 +102,8 @@ describe("workflow executor", () => {
 
     await executeWorkflow(DEFAULT_WRITE_NEXT_RECIPE, createContext(), { executeStep, onStepStart, onStepComplete });
 
-    expect(onStepStart).toHaveBeenCalledTimes(6);
-    expect(onStepComplete).toHaveBeenCalledTimes(6);
+    expect(onStepStart).toHaveBeenCalledTimes(5);
+    expect(onStepComplete).toHaveBeenCalledTimes(5);
   });
 
   it("passes previous results to subsequent steps", async () => {
@@ -117,7 +117,7 @@ describe("workflow executor", () => {
 
     expect(contexts[0].previousResults).toHaveLength(0);
     expect(contexts[1].previousResults).toHaveLength(1);
-    expect(contexts[5].previousResults).toHaveLength(5);
+    expect(contexts[4].previousResults).toHaveLength(4);
   });
 
   it("catches exceptions from executeStep and treats as failure", async () => {

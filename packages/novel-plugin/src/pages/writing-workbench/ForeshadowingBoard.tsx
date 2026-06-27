@@ -334,7 +334,7 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
       <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
         <BookOpen className="w-8 h-8 mb-2 opacity-40" />
         <span className="text-sm">暂无伏笔条目</span>
-        <span className="text-xs mt-1">在经纬系统中添加 foreshadowing 分类条目后即可显示</span>
+        <span className="text-xs mt-1">在叙事记忆中产生或确认伏笔事件后即可显示</span>
       </div>
     );
   }

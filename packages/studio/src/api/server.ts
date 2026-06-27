@@ -68,7 +68,6 @@ import {
   createSnapshotsRouter,
   createAIRouter,
   createAIRelayRouter,
-  createChapterCandidatesRouter,
   createDaemonRouter,
   createMCPRouter,
   createPipelineRouter,
@@ -100,6 +99,7 @@ import {
   createWritingModesRouter,
   createWritingResourceRouter,
   createOverviewRouter,
+  createNarrativeMemoryRouter,
   createExecRouter,
   createProxyRouter,
   createAggregationsRouter,
@@ -345,8 +345,8 @@ export function createStudioServer(initialConfig: ProjectConfig, root: string) {
 
     // Unified writing resources — file-based storage（章节落盘到绑定目录）
     app.route("", createWritingResourceRouter({ resolveBookDir: (bid: string) => resolveBookStorageDir(root, bid) }));
+    app.route("", createNarrativeMemoryRouter());
     app.route("", createOverviewRouter());
-    app.route("", createChapterCandidatesRouter(root));
 
     // Snapshots routes (chapter version control)
     app.route("", createSnapshotsRouter(ctx));
@@ -978,8 +978,8 @@ export async function startStudioServer(
   try {
     const { migrateWritingResourcesToFiles } = await import("@vivy1024/novelfork-novel-plugin/engine");
     const migrationResult = await migrateWritingResourcesToFiles(getStorageDatabase(), (bid: string) => resolveBookStorageDir(root, bid));
-    if (migrationResult.chapters > 0 || migrationResult.drafts > 0) {
-      console.log(`[migration] SQLite → files: ${migrationResult.chapters} chapters, ${migrationResult.drafts} drafts`);
+    if (migrationResult.chapters > 0) {
+      console.log(`[migration] SQLite → files: ${migrationResult.chapters} chapters`);
     }
   } catch (error) {
     console.warn("[migration] writing_resource → files failed:", error);

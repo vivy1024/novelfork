@@ -1,5 +1,4 @@
-import { randomUUID } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
@@ -10,6 +9,8 @@ import {
   buildContinuationPrompt,
   buildExpansionPrompt,
   buildBridgePrompt,
+  buildPolishPrompt,
+  buildRewritePrompt,
   buildDialoguePrompt,
   buildVariantPrompts,
   buildBranchPrompt,
@@ -22,6 +23,8 @@ import {
   type ExpansionDirection,
   type BridgeInput,
   type BridgePurpose,
+  type PolishInput,
+  type RewriteInput,
   type DialogueInput,
   type DialogueCharacter,
   type VariantInput,
@@ -30,42 +33,24 @@ import {
 
 import type { RouterContext } from "./context.js";
 
-type WritingModeApplyTarget = "candidate" | "draft" | "chapter-insert" | "chapter-replace";
-
-interface CandidateRecord {
-  readonly id: string;
-  readonly bookId: string;
-  readonly targetChapterId?: string;
-  readonly title: string;
-  readonly source: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly status: "candidate";
-  readonly contentFileName: string;
-  readonly metadata?: Record<string, unknown>;
-}
-
-interface DraftRecord {
-  readonly id: string;
-  readonly bookId: string;
-  readonly title: string;
-  readonly createdAt: string;
-  readonly updatedAt: string;
-  readonly wordCount: number;
-  readonly fileName: string;
-  readonly metadata?: Record<string, unknown>;
-}
 
 export function createWritingModesRouter(ctx: RouterContext): Hono {
   const app = new Hono();
+
+  // Removed v1 apply endpoint: keep a tombstone response so stale clients do not
+  // silently fall through to 404 or attempt legacy candidate/draft writes.
+  app.post("/api/books/:bookId/writing-modes/apply", (c) => c.json({
+    code: "WRITING_MODE_APPLY_REPOSITION_REQUIRED",
+    error: "writing-modes/apply has been removed. Use formal chapter resources and dedicated writing actions instead.",
+  }, 410));
 
   // ---- POST /api/books/:bookId/inline-write ----
   app.post("/api/books/:bookId/inline-write", async (c) => {
     const body = await readJsonBody(c);
     const bookId = c.req.param("bookId");
     const mode = asString(body.mode);
-    if (!mode || !["continuation", "expansion", "bridge"].includes(mode)) {
-      return c.json({ error: "Invalid mode. Must be continuation, expansion, or bridge." }, 400);
+    if (!mode || !["continuation", "expansion", "bridge", "polish", "rewrite"].includes(mode)) {
+      return c.json({ error: "Invalid mode. Must be continuation, expansion, bridge, polish, or rewrite." }, 400);
     }
 
     const context: InlineWriteContext = {
@@ -91,7 +76,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
         expansionDirection: (asString(body.expansionDirection) as ExpansionDirection) ?? "sensory",
       };
       prompt = buildExpansionPrompt(input, context);
-    } else {
+    } else if (mode === "bridge") {
       const input: BridgeInput = {
         mode: "bridge",
         selectedText,
@@ -99,6 +84,12 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
         purpose: (asString(body.purpose) as BridgePurpose) ?? "scene-transition",
       };
       prompt = buildBridgePrompt(input, context);
+    } else if (mode === "polish") {
+      const input: PolishInput = { mode: "polish", selectedText, direction: asString(body.direction) };
+      prompt = buildPolishPrompt(input, context);
+    } else {
+      const input: RewriteInput = { mode: "rewrite", selectedText, direction: asString(body.direction) };
+      prompt = buildRewritePrompt(input, context);
     }
 
     const sessionLlm = await ctx.getSessionLlm(c);
@@ -107,7 +98,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     }
     const runtimeConfig = await ctx.buildPipelineConfig(sessionLlm);
     const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
-      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可直接进入作品候选区的正文内容，不要复述提示词。" },
+      { role: "system", content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文内容，不要复述提示词。" },
       { role: "user", content: prompt },
     ], { temperature: 0.7, maxTokens: 2048 });
 
@@ -136,7 +127,7 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const response = await chatCompletion(runtimeConfig.client, runtimeConfig.model, [
       {
         role: "system",
-        content: "你是 NovelFork 的小说创作执行模型。请只输出可直接进入作品候选区的正文、对话或大纲内容，不要复述提示词。",
+        content: "你是 NovelFork 的小说创作执行模型。请只输出可供用户复制、合并或明确应用到正式章节/多版本流程的正文、对话或大纲内容，不要复述提示词。",
       },
       { role: "user", content: prompt },
     ], { temperature, maxTokens });
@@ -337,74 +328,6 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     });
   });
 
-  // ---- POST /api/books/:bookId/writing-modes/apply ----
-  app.post("/api/books/:bookId/writing-modes/apply", async (c) => {
-    const bookId = c.req.param("bookId");
-    const body = await readJsonBody(c);
-    const requestedTarget = parseApplyTarget(body.target);
-    if (!requestedTarget) {
-      return c.json({ error: "Apply target must be candidate, draft, chapter-insert, or chapter-replace." }, 400);
-    }
-
-    const rawContent = asString(body.content) ?? "";
-    const content = rawContent.trim();
-    if (!content) return c.json({ error: "Generated content is required." }, 400);
-
-    const sourceMode = asString(body.sourceMode) ?? "writing-mode";
-    const chapterNumber = asNumber(body.chapterNumber);
-    const title = asString(body.title)?.trim() || defaultApplyTitle(requestedTarget, sourceMode);
-    const baseMetadata = buildAiResultMetadata(body, { bookId, sourceMode, ...(chapterNumber !== undefined ? { chapterNumber } : {}) });
-    const timestamp = new Date().toISOString();
-    const bookDir = join(ctx.root, "books", bookId);
-    await mkdir(bookDir, { recursive: true });
-
-    if (requestedTarget === "draft") {
-      const resourceId = buildSafeId("draft");
-      const record: DraftRecord = {
-        id: resourceId,
-        bookId,
-        title,
-        createdAt: timestamp,
-        updatedAt: timestamp,
-        wordCount: countWords(content),
-        fileName: `${resourceId}.md`,
-        metadata: baseMetadata,
-      };
-      await saveDraftRecord(bookDir, record, content);
-      return c.json({
-        target: "draft",
-        requestedTarget,
-        resourceId,
-        status: "draft",
-        metadata: baseMetadata,
-      }, 201);
-    }
-
-    const resourceId = buildSafeId("wm-candidate");
-    const nonDestructive = requestedTarget === "chapter-insert" || requestedTarget === "chapter-replace";
-    const metadata = { ...baseMetadata, nonDestructive };
-    const record: CandidateRecord = {
-      id: resourceId,
-      bookId,
-      ...(chapterNumber ? { targetChapterId: String(chapterNumber) } : {}),
-      title,
-      source: `writing-mode:${sourceMode}`,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      status: "candidate",
-      contentFileName: `${resourceId}.md`,
-      metadata,
-    };
-    await saveCandidateRecord(bookDir, record, content);
-    return c.json({
-      target: "candidate",
-      requestedTarget,
-      resourceId,
-      status: "candidate",
-      metadata,
-    }, 201);
-  });
-
   // ---- POST /api/works/import ----
   app.post("/api/works/import", async (c) => {
     const body = await readJsonBody(c);
@@ -469,30 +392,6 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     return c.json({ drift, bookId, base, current });
   });
 
-  // ---- POST /api/books/:bookId/candidates/create ----
-  app.post("/api/books/:bookId/candidates/create", async (c) => {
-    const bookId = c.req.param("bookId");
-    const body = await readJsonBody(c);
-    const chapterIntent = asString(body.chapterIntent);
-    if (!chapterIntent) {
-      return c.json({ error: "chapterIntent is required" }, 400);
-    }
-    const { createCandidateToolService } = await import("../handlers/candidate-tool-service.js");
-    const candidateService = createCandidateToolService({
-      root: ctx.root,
-    });
-    const result = await candidateService.createChapter({
-      bookId,
-      chapterIntent,
-      chapterNumber: asNumber(body.chapterNumber),
-      title: asString(body.title),
-      pgiInstructions: asString(body.pgiInstructions),
-      guidedPlanId: asString(body.guidedPlanId),
-      content: asString(body.content),
-    });
-    return c.json(result);
-  });
-
   return app;
 }
 
@@ -526,62 +425,4 @@ function asNumber(value: unknown): number | undefined {
 
 function clampNumber(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function buildAiResultMetadata(body: Record<string, unknown>, defaults: Record<string, unknown>): Record<string, unknown> {
-  const nested = isRecord(body.metadata) ? body.metadata : {};
-  const metadata: Record<string, unknown> = { ...nested, ...defaults };
-  for (const key of ["provider", "model", "runId", "requestId"] as const) {
-    const value = asString(body[key]);
-    if (value) metadata[key] = value;
-  }
-  return metadata;
-}
-
-function parseApplyTarget(value: unknown): WritingModeApplyTarget | undefined {
-  if (value === "candidate" || value === "draft" || value === "chapter-insert" || value === "chapter-replace") return value;
-  return undefined;
-}
-
-function defaultApplyTitle(target: WritingModeApplyTarget, sourceMode: string): string {
-  if (target === "draft") return `写作模式草稿：${sourceMode}`;
-  if (target === "chapter-insert") return `正文插入候选：${sourceMode}`;
-  if (target === "chapter-replace") return `正文替换候选：${sourceMode}`;
-  return `写作模式候选：${sourceMode}`;
-}
-
-function buildSafeId(prefix: string): string {
-  return `${prefix}-${randomUUID()}`;
-}
-
-async function saveCandidateRecord(bookDir: string, record: CandidateRecord, content: string): Promise<void> {
-  const dir = join(bookDir, "generated-candidates");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, record.contentFileName), content, "utf-8");
-  const candidates = await loadIndex<CandidateRecord>(join(dir, "index.json"));
-  await writeFile(join(dir, "index.json"), JSON.stringify([...candidates, record], null, 2), "utf-8");
-}
-
-async function saveDraftRecord(bookDir: string, record: DraftRecord, content: string): Promise<void> {
-  const dir = join(bookDir, "drafts");
-  await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, record.fileName), content, "utf-8");
-  const drafts = await loadIndex<DraftRecord>(join(dir, "index.json"));
-  await writeFile(join(dir, "index.json"), JSON.stringify([...drafts, record], null, 2), "utf-8");
-}
-
-async function loadIndex<T>(filePath: string): Promise<T[]> {
-  try {
-    return JSON.parse(await readFile(filePath, "utf-8")) as T[];
-  } catch {
-    return [];
-  }
-}
-
-function countWords(content: string): number {
-  return content.replace(/\s+/g, "").length;
 }

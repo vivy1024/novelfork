@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PROVIDER_MODELS_API_PATH, USER_SETTINGS_API_PATH } from "@/app-next/backend-contract";
 import { RuntimeControlPanel } from "./RuntimeControlPanel";
@@ -10,6 +10,31 @@ const putApiMock = vi.fn();
 vi.mock("@/hooks/use-api", () => ({
   fetchJson: (path: string) => fetchJsonMock(path),
   putApi: (path: string, body: unknown) => putApiMock(path, body),
+}));
+
+vi.mock("@/components/ui/simple-select", () => ({
+  SimpleSelect: ({ value, onValueChange, options, disabled, placeholder, className, "aria-label": ariaLabel }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    options: Array<{ value: string; label: string; disabled?: boolean }>;
+    disabled?: boolean;
+    placeholder?: string;
+    className?: string;
+    "aria-label"?: string;
+  }) => (
+    <select
+      aria-label={ariaLabel}
+      className={className}
+      disabled={disabled}
+      value={value}
+      onChange={(event) => onValueChange(event.currentTarget.value)}
+    >
+      {placeholder ? <option value="">{placeholder}</option> : null}
+      {options.filter((option) => option.value !== "").map((option) => (
+        <option key={option.value} value={option.value} disabled={option.disabled}>{option.label}</option>
+      ))}
+    </select>
+  ),
 }));
 
 const runtimeControls = {
@@ -70,9 +95,17 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-beforeEach(() => {
-  vi.useFakeTimers();
-});
+async function waitForPanelReady() {
+  expect(await screen.findByText("模型设置")).toBeTruthy();
+  await new Promise((resolve) => setTimeout(resolve, 120));
+}
+
+async function chooseSelectOption(label: string, optionName: string) {
+  const select = screen.getByLabelText(label) as HTMLSelectElement;
+  const option = Array.from(select.options).find((item) => item.textContent === optionName);
+  if (!option) throw new Error(`Missing option ${optionName} for ${label}`);
+  fireEvent.change(select, { target: { value: option.value } });
+}
 
 describe("RuntimeControlPanel", () => {
   it("uses the unified runtime model pool for model defaults", async () => {
@@ -80,20 +113,19 @@ describe("RuntimeControlPanel", () => {
 
     render(<RuntimeControlPanel />);
 
-    expect(await screen.findByRole("option", { name: "Sub2API · GPT-5 Codex（会话）" })).toBeTruthy();
+    await waitForPanelReady();
+
+    expect(screen.getByLabelText("默认会话模型").textContent).toContain("Sub2API · GPT-5 Codex（会话）");
     expect(fetchJsonMock).toHaveBeenCalledWith(PROVIDER_MODELS_API_PATH);
-    expect(await screen.findByRole("option", { name: "Sub2API · GPT-5 Codex（Explore）" })).toBeTruthy();
-    expect(await screen.findByRole("option", { name: "Sub2API · GPT-5 Codex（Plan）" })).toBeTruthy();
-    expect(await screen.findByText("Codex 推理强度")).toBeTruthy();
+    expect(screen.getByLabelText("Explore 子代理模型").textContent).toContain("Sub2API · GPT-5 Codex");
+    expect(screen.getByLabelText("Plan 子代理模型").textContent).toContain("Sub2API · GPT-5 Codex");
+    expect(screen.getByText("Codex 推理强度")).toBeTruthy();
 
-    fireEvent.change(screen.getByLabelText("默认会话模型"), { target: { value: "sub2api:gpt-5-codex" } });
-
-    // Auto-save triggers after 800ms debounce
-    vi.advanceTimersByTime(1000);
+    await chooseSelectOption("Codex 推理强度", "低");
 
     await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(USER_SETTINGS_API_PATH, expect.objectContaining({
-      modelDefaults: expect.objectContaining({ defaultSessionModel: "sub2api:gpt-5-codex" }),
-    })));
+      modelDefaults: expect.objectContaining({ codexReasoningEffort: "low" }),
+    })), { timeout: 2000 });
   });
 
   it("shows an empty model pool state and disables model selectors", async () => {
@@ -101,10 +133,12 @@ describe("RuntimeControlPanel", () => {
 
     render(<RuntimeControlPanel />);
 
-    expect(await screen.findByText("尚未配置可用模型")).toBeTruthy();
+    await waitForPanelReady();
+
+    expect(screen.getByText(/尚未配置可用模型/)).toBeTruthy();
     expect(screen.getByLabelText("默认会话模型")).toHaveProperty("disabled", true);
     expect(screen.getByLabelText("摘要模型")).toHaveProperty("disabled", true);
-    expect(screen.getByLabelText("子代理模型池")).toHaveProperty("disabled", true);
+    expect(screen.getByText(/无可用模型/)).toBeTruthy();
   });
 
   it("RED: 不用模型池第一项冒充未配置的默认模型", async () => {
@@ -134,23 +168,27 @@ describe("RuntimeControlPanel", () => {
 
     render(<RuntimeControlPanel />);
 
-    expect(await screen.findByLabelText("默认会话模型")).toHaveProperty("value", "");
-    expect(screen.queryByText("Sub2API · GPT-5 Codex")).toBeNull();
+    await waitForPanelReady();
+
+    expect((screen.getByLabelText("默认会话模型") as HTMLSelectElement).value).toBe("");
+    expect(screen.getByLabelText("默认会话模型").textContent).toContain("请选择模型");
     expect(screen.getByText(/默认会话模型未配置，请选择模型池中的可用模型/)).toBeTruthy();
   });
 
-  it("RED: Agent runtime 设置逐项展示来源和 planned 缺口", async () => {
+  it("does not mix Agent runtime controls into the model defaults panel", async () => {
     mockConfigAndModels();
 
     render(<RuntimeControlPanel />);
 
-    expect(await screen.findByText(`来源：${USER_SETTINGS_API_PATH}`)).toBeTruthy();
-    expect(screen.getByText("最大轮次")).toBeTruthy();
-    expect(screen.getByText("大窗口压缩阈值 %")).toBeTruthy();
-    expect(screen.getByText("WebFetch 代理")).toBeTruthy();
-    expect(screen.getByText("http://127.0.0.1:7890")).toBeTruthy();
-    expect(screen.getByText("首 token 超时")).toBeTruthy();
-    expect(screen.getByText(/计划中.*settings schema 尚无 first-token timeout 字段/)).toBeTruthy();
+    await waitForPanelReady();
+
+    expect(screen.getByText("模型设置")).toBeTruthy();
+    expect(screen.getByText("默认模型")).toBeTruthy();
+    expect(screen.getByText("Codex 推理强度")).toBeTruthy();
+    expect(screen.queryByText("最大轮次")).toBeNull();
+    expect(screen.queryByText("大窗口压缩阈值 %")).toBeNull();
+    expect(screen.queryByText("WebFetch 代理")).toBeNull();
+    expect(screen.queryByText("首 token 超时")).toBeNull();
   });
 
   it("RED: 保存运行控制后重新读取服务器配置作为最终事实", async () => {
@@ -190,11 +228,12 @@ describe("RuntimeControlPanel", () => {
 
     render(<RuntimeControlPanel />);
 
-    fireEvent.change(await screen.findByDisplayValue("中"), { target: { value: "high" } });
+    await waitForPanelReady();
 
-    // Auto-save triggers after 800ms debounce
-    vi.advanceTimersByTime(1000);
+    await chooseSelectOption("全局默认推理强度", "高");
 
-    await waitFor(() => expect(putApiMock).toHaveBeenCalled());
+    await waitFor(() => expect(putApiMock).toHaveBeenCalledWith(USER_SETTINGS_API_PATH, expect.objectContaining({
+      runtimeControls: expect.objectContaining({ defaultReasoningEffort: "high" }),
+    })), { timeout: 2000 });
   });
 });

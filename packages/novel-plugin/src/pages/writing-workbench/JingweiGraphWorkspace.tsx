@@ -1,11 +1,11 @@
 /**
- * JingweiGraphWorkspace — 经纬图谱工作区
+ * JingweiGraphWorkspace — 记忆图谱兼容工作区
  *
- * 画布默认视图。左侧分类侧栏 + 右侧图谱/列表/时间线 + 底部视图切换。
+ * 旧组件名保留用于兼容。左侧分类侧栏 + 右侧图谱/列表/时间线 + 底部视图切换。
  * 复用现有 JingweiCategorySidebar、JingweiGraphView、JingweiEntryList、JingweiProgressions。
  */
 import { useState, useCallback, useEffect, useMemo } from "react";
-import { Network, List, Clock, GitBranch, Swords, Loader2, User, AlertTriangle } from "lucide-react";
+import { Network, List, Clock, GitBranch, Swords, Loader2, User, AlertTriangle, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
 import { SimpleSelect } from "@/components/ui/simple-select";
@@ -13,6 +13,7 @@ import { JingweiCategorySidebar } from "./jingwei/JingweiCategorySidebar";
 import { JingweiGraphView } from "./jingwei/JingweiGraphView";
 import { JingweiEntryList } from "./jingwei/JingweiEntryList";
 import { JingweiProgressions } from "./jingwei/JingweiProgressions";
+import { Crystalline3DView } from "./jingwei/Crystalline3DView";
 import type { JingweiEntry } from "./jingwei/hooks/useJingweiEntries";
 import type { JingweiProgression } from "./jingwei/hooks/useJingweiProgressions";
 
@@ -109,7 +110,7 @@ function CharacterArcsView({ bookId, entries }: CharacterArcsViewProps) {
         <div className="text-center">
           <User className="mx-auto size-8 opacity-30 mb-2" />
           <p className="text-sm">暂无角色条目</p>
-          <p className="text-xs mt-1 opacity-60">在经纬图谱中添加角色类条目后，弧线视图将展示其变化轨迹</p>
+          <p className="text-xs mt-1 opacity-60">添加角色类 Lore 条目并记录演变后，角色弧线将展示其变化轨迹</p>
         </div>
       </div>
     );
@@ -304,7 +305,7 @@ function ConflictsMapView({ bookId, entries }: ConflictsMapViewProps) {
         <div className="text-center">
           <AlertTriangle className="mx-auto size-8 opacity-30 mb-2" />
           <p className="text-sm">暂无矛盾冲突</p>
-          <p className="text-xs mt-1 opacity-60">在经纬图谱中添加冲突类条目后，矛盾地图将展示对抗结构</p>
+          <p className="text-xs mt-1 opacity-60">添加冲突类 Lore 条目并记录叙事变化后，矛盾地图将展示对抗结构</p>
         </div>
       </div>
     );
@@ -357,14 +358,16 @@ function ConflictsMapView({ bookId, entries }: ConflictsMapViewProps) {
   );
 }
 
-export type GraphViewMode = "graph" | "arcs" | "conflicts" | "list" | "timeline";
+export type GraphViewMode = "3d-crystalline" | "graph" | "arcs" | "conflicts" | "list" | "timeline";
 
 export interface JingweiGraphWorkspaceProps {
   bookId: string;
   onSelectNode?: (nodeId: string) => void;
+  defaultViewMode?: GraphViewMode;
 }
 
 const VIEW_MODES: { id: GraphViewMode; icon: React.ReactNode; label: string }[] = [
+  { id: "3d-crystalline", icon: <Sparkles className="size-3 text-pink-400" />, label: "3D结晶" },
   { id: "graph", icon: <Network className="size-3" />, label: "图谱" },
   { id: "arcs", icon: <GitBranch className="size-3" />, label: "弧线" },
   { id: "conflicts", icon: <Swords className="size-3" />, label: "矛盾" },
@@ -372,9 +375,9 @@ const VIEW_MODES: { id: GraphViewMode; icon: React.ReactNode; label: string }[] 
   { id: "timeline", icon: <Clock className="size-3" />, label: "时间线" },
 ];
 
-export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWorkspaceProps) {
+export function JingweiGraphWorkspace({ bookId, onSelectNode, defaultViewMode = "graph" }: JingweiGraphWorkspaceProps) {
   const [selectedCategory, setSelectedCategory] = useState<string>("character");
-  const [viewMode, setViewMode] = useState<GraphViewMode>("graph");
+  const [viewMode, setViewMode] = useState<GraphViewMode>(defaultViewMode);
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [allEntries, setAllEntries] = useState<JingweiEntry[]>([]);
   const [loading, setLoading] = useState(false);
@@ -480,6 +483,9 @@ export function JingweiGraphWorkspace({ bookId, onSelectNode }: JingweiGraphWork
         {/* 视图内容 */}
         {!fetchError && (
         <div className="flex-1 min-h-0">
+          {viewMode === "3d-crystalline" && (
+            <Crystalline3DView bookId={bookId} />
+          )}
           {viewMode === "graph" && (
             <JingweiGraphView
               bookId={bookId}

@@ -67,3 +67,13 @@ codex-main/
 # CodeGraph 母库（可由 bun run codegraph 重生，避免 1.3MB git 噪音；CODEMAP.md 已提交）
 docs/codegraph/codegraph.json
 _filelist.txt
+
+# 临时文件
+patch.diff
+running.pid
+
+# 外部参考/本地验证产物
+.reference/
+artifacts/
+browser-error.png
+session-error-root.png

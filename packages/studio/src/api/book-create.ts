@@ -6,13 +6,13 @@ import type { NarratorSessionChatSnapshot, NarratorSessionRecord } from "../shar
 export const STUDIO_REPOSITORY_SOURCES = ["new", "existing", "clone"] as const;
 export type StudioRepositorySource = (typeof STUDIO_REPOSITORY_SOURCES)[number];
 
-export const STUDIO_WORKFLOW_MODES = ["outline-first", "draft-first", "serial-ops"] as const;
+export const STUDIO_WORKFLOW_MODES = ["outline-first", "chapter-first", "serial-ops"] as const;
 export type StudioWorkflowMode = (typeof STUDIO_WORKFLOW_MODES)[number];
 
 export const STUDIO_TEMPLATE_PRESETS = ["genre-default", "blank-slate", "web-serial"] as const;
 export type StudioTemplatePreset = (typeof STUDIO_TEMPLATE_PRESETS)[number];
 
-export interface StudioProjectInitDraft {
+export interface StudioProjectInitInput {
   readonly repositorySource: StudioRepositorySource;
   readonly workflowMode: StudioWorkflowMode;
   readonly templatePreset: StudioTemplatePreset;
@@ -29,9 +29,9 @@ export interface StudioProjectInitializationPlan {
   readonly blockingField?: "repositoryPath" | "cloneUrl";
 }
 
-export interface StudioProjectCreateDraft {
+export interface StudioProjectCreateInput {
   readonly title?: string;
-  readonly projectInit: StudioProjectInitDraft;
+  readonly projectInit: StudioProjectInitInput;
   readonly initializationPlan: StudioProjectInitializationPlan;
 }
 
@@ -49,7 +49,7 @@ export interface StudioCreateBookBody {
   readonly chapterWordCount?: number;
   readonly targetChapters?: number;
   readonly enabledPresetIds?: ReadonlyArray<string>;
-  readonly projectInit?: Partial<StudioProjectInitDraft>;
+  readonly projectInit?: Partial<StudioProjectInitInput>;
   readonly initializationPlan?: StudioProjectInitializationPlan;
   readonly jingweiTemplate?: JingweiTemplateSelection;
   readonly aiInitialization?: StudioAiInitializationOptions;
@@ -62,7 +62,7 @@ export interface StudioCreateBookResponse {
   readonly defaultSessionSnapshot: NarratorSessionChatSnapshot;
 }
 
-export interface StudioBookConfigDraft {
+export interface StudioBookConfigInput {
   readonly id: string;
   readonly title: string;
   readonly platform: Platform;
@@ -118,9 +118,9 @@ interface WaitForStudioBookReadyOptions {
 }
 
 const DEFAULT_PROJECT_INIT_BRANCH = "main";
-const DEFAULT_PROJECT_INIT_WORKTREE = "draft-main";
+const DEFAULT_PROJECT_INIT_WORKTREE = "work-main";
 
-const DEFAULT_PROJECT_INIT: StudioProjectInitDraft = {
+const DEFAULT_PROJECT_INIT: StudioProjectInitInput = {
   repositorySource: "new",
   workflowMode: "outline-first",
   templatePreset: "genre-default",
@@ -134,7 +134,7 @@ function trimOptionalValue(value?: string): string | undefined {
 }
 
 function buildStudioProjectInitializationPlan(
-  projectInit: StudioProjectInitDraft,
+  projectInit: StudioProjectInitInput,
 ): StudioProjectInitializationPlan {
   if (projectInit.repositorySource === "clone" && !projectInit.cloneUrl) {
     return {
@@ -162,7 +162,7 @@ function buildStudioProjectInitializationPlan(
 }
 
 function resolveStudioProjectInitializationPlan(
-  projectInit: StudioProjectInitDraft,
+  projectInit: StudioProjectInitInput,
   initializationPlan?: StudioProjectInitializationPlan,
 ): StudioProjectInitializationPlan {
   const normalizedPlan = buildStudioProjectInitializationPlan(projectInit);
@@ -202,13 +202,13 @@ export function suggestStudioWorktreeName(title?: string): string {
     .replace(/^-|-$/g, "")
     .slice(0, 24);
 
-  return normalized ? `draft-${normalized}` : DEFAULT_PROJECT_INIT_WORKTREE;
+  return normalized ? `work-${normalized}` : DEFAULT_PROJECT_INIT_WORKTREE;
 }
 
 export function normalizeStudioProjectInit(
-  projectInit?: Partial<StudioProjectInitDraft>,
+  projectInit?: Partial<StudioProjectInitInput>,
   title?: string,
-): StudioProjectInitDraft {
+): StudioProjectInitInput {
   const repositorySource = STUDIO_REPOSITORY_SOURCES.includes(projectInit?.repositorySource as StudioRepositorySource)
     ? (projectInit?.repositorySource as StudioRepositorySource)
     : DEFAULT_PROJECT_INIT.repositorySource;
@@ -236,11 +236,11 @@ export function normalizeStudioProjectInit(
   };
 }
 
-export function normalizeStudioProjectCreateDraft(
-  draft?: Partial<StudioProjectCreateDraft>,
-): StudioProjectCreateDraft {
-  const title = trimOptionalValue(draft?.title);
-  const projectInit = normalizeStudioProjectInit(draft?.projectInit, title);
+export function normalizeStudioProjectCreateInput(
+  input?: Partial<StudioProjectCreateInput>,
+): StudioProjectCreateInput {
+  const title = trimOptionalValue(input?.title);
+  const projectInit = normalizeStudioProjectInit(input?.projectInit, title);
 
   return {
     ...(title ? { title } : {}),
@@ -297,7 +297,7 @@ function normalizeEnabledPresetIds(enabledPresetIds?: ReadonlyArray<string>, gen
   return [...new Set(ids)];
 }
 
-export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigDraft {
+export function buildStudioBookConfig(body: StudioCreateBookBody, now: string): StudioBookConfigInput {
   const normalizedId = body.title
     .toLowerCase()
     .replace(/[^a-z0-9\u4e00-\u9fff]/g, "-")

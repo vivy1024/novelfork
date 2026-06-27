@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v2.2.0** | 2026-06-22 | 始终使用中文回复
+**v3.0.0** | 2026-06-25 | 始终使用中文回复
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
@@ -96,8 +96,8 @@
 
 ### 写作主链路（权威流程）
 ```
-cockpit.snapshot → jingwei.read(scope=brief) → pgi.ask → AskUserQuestion
-  → scene.spec → jingwei.read(scope=category) → pipeline.write → 候选稿
+cockpit.snapshot → lore.read(scope=brief) → memory.read(purpose=write) → pgi.ask → AskUserQuestion
+  → scene.spec → lore.read(scope=category) + memory.read → pipeline.write → 候选稿 → memory.events
 ```
 编排入口：`novel-plugin/src/handlers/pipeline-write-service.ts`（executePipelineWrite）。
 
@@ -112,8 +112,8 @@ cockpit.snapshot → jingwei.read(scope=brief) → pgi.ask → AskUserQuestion
 > 已删 4 个死 agent：chapter-analyzer/foundation-reviewer/consolidator/fanfic-canon-importer。
 
 ### Agent 工具（★=NOVEL_CORE_TOOLS 常驻；注册 session-tool-registry.ts，schema tool-schemas.ts）
-★jingwei.read(scope=brief/category/search) · ★jingwei.write · ★cockpit.snapshot · ★chapter.read · ★pipeline.write · ★scene.spec · ★pgi.ask · ★resource.manage
-其余按需：chapter.audit/list · candidate.create_chapter(纯保存) · pipeline.revise/import_chapters · rewrite.segment/apply · style.import · outline.suggest_next · character.check_consistency · hooks.manage · presets.read/write/check_compliance · beat.read/write
+★lore.read(scope=brief/category/search) · ★lore.write · ★memory.read · ★memory.graph · ★memory.events · ★cockpit.snapshot · ★chapter.read · ★pipeline.write · ★scene.spec · ★pgi.ask · ★resource.manage
+其余按需：jingwei.read/write(兼容别名) · chapter.audit/list · candidate.create_chapter(纯保存) · pipeline.revise/import_chapters · rewrite.segment/apply · style.import · outline.suggest_next · character.check_consistency · hooks.manage · presets.read/write/check_compliance · beat.read/write
 > 已弃用(默认隐藏 DEPRECATED_V1_TOOLS)：guided.* / questionnaire.* / pgi.generate_questions / jingwei.read_brief 等 v1 工具。
 
 ### 质量机制（v1.9.0 novel-quality-hardening）
@@ -125,8 +125,11 @@ cockpit.snapshot → jingwei.read(scope=brief) → pgi.ask → AskUserQuestion
 | 长度治理（归一化+warning不阻断） | handlers/pipeline-write-service.ts + engine/agents/length-normalizer.ts |
 | 动态词频/规则版AI痕迹(dim20-23) | engine/agents/writer.ts、ai-tells.ts |
 
-### 经纬系统（设定管理核心，engine/jingwei/）
-数据模型 types.ts（Layer=canon/dynamic/reference；PriorityTier=core/relevant/reference/auto；可见性=tracked/global/nested）· 分级注入 context/{token-budget,compose-context,context-policy} · 读模型 read-model/（brief/index/category/search，供 jingwei.read）· PGI 追问 pgi/pgi-engine.ts · 核心转折 core-shift/
+### Lore / 经纬系统（静态设定库，engine/jingwei/）
+经纬只承担作者显式维护的静态 Lore：人物、地点、势力、规则、物品、术语、作者备注。`jingwei.read/write` 保留为 `lore.read/write` 兼容别名；动态关系、时间线、角色弧线、伏笔状态、召回 diagnostics 属于 Narrative Memory。
+
+### Narrative Memory（动态叙事记忆，engine/narrative-memory/）
+`memory.read` 负责写作/修订/审计前的动态 ContextCard 召回；`memory.graph` 读取关系图、时间线、角色弧线、伏笔网络、矛盾地图；`memory.events` 管理 Pending NarrativeEvents。
 
 ### HTTP 路由（功能面）
 - **小说域** `novel-plugin/src/routes/`：ai(审计/修订/检测/大纲) · bible(角色/事件/设定/弧/核心转折) · jingwei(分区/条目/关系图/上下文预览) · writing-modes(行内/对话/变体/分支/导入) · writing-tools(伏笔/POV/节奏/健康/冲突图) · writing-resource(资源账本) · pipeline(管线状态) · compliance(合规) · filter(朱雀过滤) · context-manager(上下文用量)
@@ -232,7 +235,7 @@ brainstorming（探需求）
 
 | 指标 | 值 |
 |------|----|
-| 版本 | v2.2.0 |
+| 版本 | v3.0.0 |
 | 模型 | DeepSeek v4-pro（Anthropic 协议，thinking disabled）、Claude Opus 4.6 |
 | 已知问题 | 图片发送待验证；清空上下文会删聊天记录（待改为标记式） |
 
@@ -243,9 +246,9 @@ brainstorming（探需求）
 | 场景 | 文件 |
 |------|------|
 | 项目事实与完成标准 | `.kiro/steering/project-profile.md` |
-| 系统架构 | `docs/04-架构与设计/01-系统架构总览.md` |
-| Agent 写作管线 | `docs/04-架构与设计/03-Agent写作管线.md` |
-| 存储层开发 | `docs/05-开发者指南/02-存储层开发指引.md` |
+| 系统架构 | `docs/04-架构与设计/README.md` |
+| Agent 写作管线 | `docs/01-codewiki/modules/pipeline-write.md` |
+| 存储层开发 | `docs/01-codewiki/modules/chapter-storage.md` |
 | 小说创作流程 | `docs/03-产品与流程/01-小说创作流程.md` |
 | NarraFork 参考 | `.narrafork-reference/` |
 

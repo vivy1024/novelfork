@@ -11,7 +11,8 @@ describe("agent roles", () => {
   it("novelist role uses pipeline.write as the full-chapter path", () => {
     const novelist = AGENT_ROLES.novelist;
     expect(novelist.workflow).toContain("pipeline.write");
-    expect(novelist.outputSpec).toContain("candidate.create_chapter");
+    expect(novelist.outputSpec).toContain("candidate/draft 主入口已移除");
+    expect(novelist.outputSpec).not.toContain("candidate.create_chapter");
   });
 
   it("getAgentRole returns novelist for legacy agent IDs", () => {

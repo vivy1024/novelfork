@@ -32,7 +32,7 @@ const HEADLESS_CHAT_INSTRUCTIONS = `
 ## Headless stream-json 模式
 - 你正在非交互 headless chat 模式下运行。
 - 直接推进当前请求；需要用户批准的工具会由系统暂停为 permission_request。
-- AI 生成正文只能进入候选稿/草稿/预览边界，不得静默覆盖正式章节。`;
+- AI 生成正文只能写入正式章节结果或预览边界，不得创建 candidate/draft 主对象，也不得静默覆盖用户未确认的正式章节。`;
 
 const DEFAULT_MAX_STEPS = 6;
 const RECENT_MESSAGE_LIMIT = 80;

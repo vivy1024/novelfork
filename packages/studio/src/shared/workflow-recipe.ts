@@ -2,7 +2,7 @@
  * Workflow Recipe — configurable multi-step agent execution plan.
  *
  * 对标 Claude Code CLI 的 tool chain / workflow 概念。
- * 套路页可配置参与 agents、模型、工具、确认门和候选稿策略。
+ * 套路页可配置参与 agents、模型、工具、确认门和章节结果策略。
  * Runtime 执行 /novel:write-next 时读取当前 recipe 配置。
  */
 
@@ -39,8 +39,8 @@ export interface WorkflowRecipeConfig {
   readonly commandId: string;
   readonly description: string;
   readonly steps: readonly WorkflowStepConfig[];
-  /** 候选稿策略 */
-  readonly candidateStrategy: "create-candidate" | "create-draft" | "direct-write";
+  /** 写作结果策略 */
+  readonly resultStrategy: "formal-chapter" | "version-result" | "direct-write";
   /** 是否在最终写入前要求确认 */
   readonly requireFinalApproval: boolean;
   /** 最大重试次数 */
@@ -49,13 +49,13 @@ export interface WorkflowRecipeConfig {
 
 /**
  * 默认 /novel:write-next workflow recipe
- * context → PGI → Guided Plan → approve → Writer candidate → canvas open
+ * context → PGI → Guided Plan → approve → Writer chapter result → canvas open
  */
 export const DEFAULT_WRITE_NEXT_RECIPE: WorkflowRecipeConfig = {
   id: "write-next",
   name: "写下一章",
   commandId: "/novel:write-next",
-  description: "读取上下文 → PGI 追问 → 引导计划 → 用户批准 → 生成候选稿 → 画布打开",
+  description: "读取上下文 → PGI 追问 → 引导计划 → 用户批准 → 生成章节结果 → 画布打开",
   steps: [
     {
       id: "step-context",
@@ -95,21 +95,21 @@ export const DEFAULT_WRITE_NEXT_RECIPE: WorkflowRecipeConfig = {
     {
       id: "step-writer",
       kind: "writer-generate",
-      label: "生成候选稿",
+      label: "生成章节结果",
       enabled: true,
       agentId: "writer",
-      tools: ["candidate.create_chapter"],
+      tools: ["pipeline.write"],
       onFailure: "stop",
     },
     {
       id: "step-canvas",
       kind: "canvas-open",
-      label: "画布打开候选稿",
+      label: "画布打开章节结果",
       enabled: true,
       onFailure: "skip",
     },
   ],
-  candidateStrategy: "create-candidate",
+  resultStrategy: "formal-chapter",
   requireFinalApproval: true,
   maxRetries: 1,
 };
@@ -149,7 +149,7 @@ export const DEFAULT_AUDIT_RECIPE: WorkflowRecipeConfig = {
       onFailure: "skip",
     },
   ],
-  candidateStrategy: "create-draft",
+  resultStrategy: "version-result",
   requireFinalApproval: false,
   maxRetries: 0,
 };

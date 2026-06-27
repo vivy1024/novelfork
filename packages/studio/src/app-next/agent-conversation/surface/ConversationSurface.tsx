@@ -407,7 +407,7 @@ export function ConversationSurface({
     }
     prevMsgLenForFiles.current = messages.length;
     const WRITE_TOOLS = new Set([
-      "Write", "Edit", "candidate.create_chapter",
+      "Write", "Edit", "pipeline.write",
       "narrative.propose_change",
     ]);
     // Check recent messages for completed write tool calls

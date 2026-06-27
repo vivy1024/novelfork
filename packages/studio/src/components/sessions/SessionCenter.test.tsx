@@ -160,7 +160,7 @@ describe("SessionCenter", () => {
 
     const bookRow = await screen.findByTestId("session-center-row-session-book");
     expect(within(bookRow).getByText("Memory：只读（未接入写入器）")).toBeTruthy();
-    expect(within(bookRow).getByText("临时剧情草稿不会自动写入长期 memory；偏好/项目事实写入需审计来源。")).toBeTruthy();
+    expect(within(bookRow).getByText("临时剧情片段不会自动写入长期 memory；偏好/项目事实写入需审计来源。")).toBeTruthy();
     expect(sessionClient.getMemoryStatus).toHaveBeenCalledWith("session-book");
   });
 
@@ -225,7 +225,7 @@ function createSessionClientStub(): SessionCenterClient {
       sessionId,
       status: sessionId === "session-book" ? "readonly" : "writable",
       writable: sessionId !== "session-book",
-      categories: ["user-preference", "project-fact", "temporary-story-draft"],
+      categories: ["user-preference", "project-fact", "temporary-story-fragment"],
       ...(sessionId === "session-book" ? { reason: "memory_writer_not_configured" } : {}),
     })),
   };

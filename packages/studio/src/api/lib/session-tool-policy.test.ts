@@ -14,11 +14,11 @@ const readTool: SessionToolDefinition = {
 };
 
 const draftWriteTool: SessionToolDefinition = {
-  name: "candidate.create_chapter",
-  description: "创建候选稿",
+  name: "pipeline.revise",
+  description: "修订章节",
   inputSchema: { type: "object", additionalProperties: false },
   risk: "draft-write",
-  renderer: "candidate.created",
+  renderer: "pipeline.chapter",
   enabledForModes: ["ask", "edit", "allow"],
   visibility: "author",
 };
@@ -45,7 +45,7 @@ describe("session tool policy resolver", () => {
       toolName: draftWriteTool.name,
       risk: draftWriteTool.risk,
       permissionMode: "allow",
-      toolPolicy: { deny: ["candidate.*"] },
+      toolPolicy: { deny: ["pipeline.*"] },
     })).toMatchObject({
       visibleToModel: false,
       requiresConfirmation: false,
@@ -54,14 +54,14 @@ describe("session tool policy resolver", () => {
       reason: "policy-denied",
       checkpointRequired: false,
       source: "sessionConfig.toolPolicy.deny",
-      pattern: "candidate.*",
+      pattern: "pipeline.*",
     });
 
     expect(resolveSessionToolPolicy({
       toolName: draftWriteTool.name,
       risk: draftWriteTool.risk,
       permissionMode: "edit",
-      toolPolicy: { ask: ["candidate.create_chapter"] },
+      toolPolicy: { ask: ["pipeline.revise"] },
     })).toMatchObject({
       visibleToModel: true,
       requiresConfirmation: true,
@@ -118,20 +118,20 @@ describe("session tool policy resolver", () => {
 
     expect(filterSessionToolsForProvider(tools, undefined, { permissionMode: "read" })).toEqual({
       tools: [readTool],
-      deniedTools: ["candidate.create_chapter", "guided.exit"],
+      deniedTools: ["pipeline.revise", "guided.exit"],
       resolutions: [
         expect.objectContaining({ toolName: "cockpit.get_snapshot", visibleToModel: true, reason: "allowed" }),
-        expect.objectContaining({ toolName: "candidate.create_chapter", visibleToModel: false, reason: "permission-denied" }),
+        expect.objectContaining({ toolName: "pipeline.revise", visibleToModel: false, reason: "permission-denied" }),
         expect.objectContaining({ toolName: "guided.exit", visibleToModel: false, reason: "permission-denied" }),
       ],
     });
 
     expect(filterSessionToolsForProvider(tools, undefined, { permissionMode: "edit", canvasContext: dirtyCanvas })).toEqual({
       tools: [readTool],
-      deniedTools: ["candidate.create_chapter", "guided.exit"],
+      deniedTools: ["pipeline.revise", "guided.exit"],
       resolutions: [
         expect.objectContaining({ toolName: "cockpit.get_snapshot", visibleToModel: true, reason: "allowed" }),
-        expect.objectContaining({ toolName: "candidate.create_chapter", visibleToModel: false, reason: "dirty-resource-blocked" }),
+        expect.objectContaining({ toolName: "pipeline.revise", visibleToModel: false, reason: "dirty-resource-blocked" }),
         expect.objectContaining({ toolName: "guided.exit", visibleToModel: false, reason: "dirty-resource-blocked" }),
       ],
     });

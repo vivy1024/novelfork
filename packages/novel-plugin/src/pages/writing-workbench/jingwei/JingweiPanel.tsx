@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { Network, Eye, X, Upload } from "lucide-react";
+import { Eye, X, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -7,17 +7,11 @@ import { JingweiCategorySidebar } from "./JingweiCategorySidebar";
 import { JingweiEntryList } from "./JingweiEntryList";
 import { JingweiEntryTree } from "./JingweiEntryTree";
 import { JingweiEntryForm } from "./JingweiEntryForm";
-import { JingweiGraphView } from "./JingweiGraphView";
+
 import { useJingweiEntries } from "./hooks/useJingweiEntries";
-import { CATEGORY_SCHEMAS, type CategoryVisibility } from "./category-schemas";
+import type { CategoryVisibility } from "./category-schemas";
 import { PresetsPanel } from "../PresetsPanel";
 
-/** Check if a category has relation-type fields (eligible for graph view) */
-function categoryHasRelations(categoryId: string): boolean {
-  const schema = CATEGORY_SCHEMAS.find((s) => s.id === categoryId);
-  if (!schema) return false;
-  return schema.fields.some((f) => f.type === "relation");
-}
 
 interface JingweiPanelProps {
   bookId: string;
@@ -26,7 +20,6 @@ interface JingweiPanelProps {
 export function JingweiPanel({ bookId }: JingweiPanelProps) {
   const [selectedCategory, setSelectedCategory] = useState("characters");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
-  const [showGraph, setShowGraph] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; title: string; category: string; preview: string }> | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -67,12 +60,10 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
     return entries.some((e) => (e as { parentId?: string | null }).parentId);
   }, [entries]);
 
-  const hasRelations = categoryHasRelations(selectedCategory);
 
   function handleSelectCategory(categoryId: string) {
     setSelectedCategory(categoryId);
     setSelectedEntryId(null);
-    setShowGraph(false);
   }
 
   async function handleCreateEntry(title: string, parentId?: string) {
@@ -123,22 +114,23 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
     }, 300);
   }
 
-  async function handleFetchPreview() {
-    setShowPreview(!showPreview);
-    if (!showPreview) {
-      try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/injection-preview?chapterNumber=1`);
-        if (res.ok) {
-          const data = await res.json();
-          setPreviewContent(data.preview ?? data.context ?? JSON.stringify(data, null, 2));
-        } else {
-          setPreviewContent("加载预览失败");
-        }
-      } catch {
+  const [previewChapterNumber, setPreviewChapterNumber] = useState(1);
+
+  const handleFetchPreview = useCallback(async (chapterNum = previewChapterNumber) => {
+    setShowPreview(true);
+    setPreviewContent(null);
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/injection-preview?chapterNumber=${chapterNum}`);
+      if (res.ok) {
+        const data = await res.json();
+        setPreviewContent(data.preview ?? data.context ?? JSON.stringify(data, null, 2));
+      } else {
         setPreviewContent("加载预览失败");
       }
+    } catch {
+      setPreviewContent("加载预览失败");
     }
-  }
+  }, [bookId, previewChapterNumber]);
 
   return (
     <div className="flex h-full min-h-0 relative" data-testid="jingwei-panel">
@@ -160,21 +152,9 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col min-h-0 min-w-0">
-        {/* Toolbar: Graph toggle + injection preview */}
+        {/* Toolbar: injection preview */}
         <div className="shrink-0 flex items-center gap-2 border-b border-border px-3 py-1.5">
-          {hasRelations && (
-            <Button
-              variant={showGraph ? "secondary" : "ghost"}
-              size="sm"
-              className="h-6 text-xs gap-1"
-              onClick={() => setShowGraph(!showGraph)}
-            >
-              <Network className="size-3" />
-              {showGraph ? "返回列表" : "关系图谱"}
-            </Button>
-          )}
-          {showGraph && hasRelations && <span className="text-[9px] text-muted-foreground">实验性</span>}
-          <Button size="xs" variant="outline" onClick={handleFetchPreview} className="h-6 text-xs gap-1">
+          <Button size="xs" variant="outline" onClick={() => { if (showPreview) setShowPreview(false); else void handleFetchPreview(); }} className="h-6 text-xs gap-1">
             <Eye className="size-3" />AI 视角
           </Button>
           <Button size="xs" variant="outline" onClick={() => setShowImport(true)} className="h-6 text-xs gap-1">
@@ -196,10 +176,25 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
 
         {/* Injection preview panel */}
         {showPreview && (
-          <div className="shrink-0 border-b border-border px-3 py-2 max-h-48 overflow-y-auto bg-muted/30">
-            <div className="flex items-center justify-between mb-1">
-              <span className="text-[10px] font-medium text-muted-foreground">AI 注入预览（第1章视角）</span>
-              <Button size="xs" variant="ghost" onClick={() => setShowPreview(false)}><X className="size-3" /></Button>
+          <div className="shrink-0 border-b border-border px-3 py-2 max-h-48 overflow-y-auto bg-muted/30 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="text-[10px] font-medium text-muted-foreground">AI 注入预览</span>
+                <span className="text-[10px] text-muted-foreground">第</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={previewChapterNumber}
+                  onChange={(e) => {
+                    const num = Math.max(1, parseInt(e.target.value, 10) || 1);
+                    setPreviewChapterNumber(num);
+                    void handleFetchPreview(num);
+                  }}
+                  className="w-10 rounded border border-input bg-transparent px-1 text-center text-[10px] font-mono outline-none"
+                />
+                <span className="text-[10px] text-muted-foreground">章视角</span>
+              </div>
+              <Button size="xs" variant="ghost" onClick={() => setShowPreview(false)} className="h-5 w-5 p-0"><X className="size-3" /></Button>
             </div>
             <pre className="text-[10px] whitespace-pre-wrap font-mono text-muted-foreground">{previewContent ?? "加载中..."}</pre>
           </div>
@@ -225,16 +220,7 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
             <PresetsPanel bookId={bookId} />
           </div>
-        ) : showGraph && hasRelations ? (
-          <JingweiGraphView
-            bookId={bookId}
-            entries={entries}
-            category={selectedCategory}
-            onNodeClick={(entryId) => {
-              setSelectedEntryId(entryId);
-              setShowGraph(false);
-            }}
-          />
+
         ) : (
           <div className="flex-1 flex min-h-0">
             {hasHierarchy ? (

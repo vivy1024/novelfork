@@ -156,7 +156,12 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       const rows = storage.sqlite.prepare(`
         SELECT ${selectColumns}
         FROM "story_jingwei_entry"
-        WHERE "book_id" = ? AND "section_id" IN (${placeholders}) AND "deleted_at" IS NULL AND "participates_in_ai" = 1
+        WHERE "book_id" = ?
+          AND "section_id" IN (${placeholders})
+          AND "deleted_at" IS NULL
+          AND "participates_in_ai" = 1
+          AND COALESCE("status", 'confirmed') = 'confirmed'
+          AND COALESCE("lifecycle", 'active') NOT IN ('archived', 'draft', 'needs-review', 'inactive')
         ORDER BY "updated_at" DESC, "title" ASC
       `).all(bookId, ...sectionIds) as StoryJingweiEntryRow[];
       return rows.map(toEntry);

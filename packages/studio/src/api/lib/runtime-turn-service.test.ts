@@ -26,7 +26,7 @@ function input(overrides: Partial<AgentTurnRuntimeInput> = {}): AgentTurnRuntime
     generate: vi.fn(async () => ({
       success: true as const,
       type: "message" as const,
-      content: "下一章候选思路已整理。",
+      content: "下一章思路已整理。",
       metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex", usage: { input_tokens: 5, output_tokens: 7 } },
     })),
     executeTool: vi.fn(async () => ({ ok: true, summary: "ok" })),
@@ -41,24 +41,24 @@ describe("runtime turn service", () => {
     expect(result.agentEvents.map((event) => event.type)).toEqual(["assistant_message", "turn_completed"]);
     expect(result.runtimeEvents.map((event) => event.type)).toEqual(["message", "usage", "result"]);
     expect(result.runtimeEvents).toEqual([
-      expect.objectContaining({ type: "message", session_id: "session-1", turn_id: "turn-1", role: "assistant", content: "下一章候选思路已整理。" }),
+      expect.objectContaining({ type: "message", session_id: "session-1", turn_id: "turn-1", role: "assistant", content: "下一章思路已整理。" }),
       expect.objectContaining({ type: "usage", session_id: "session-1", turn_id: "turn-1", usage: { input_tokens: 5, output_tokens: 7 } }),
       expect.objectContaining({ type: "result", session_id: "session-1", turn_id: "turn-1", success: true, stop_reason: "completed", exit_code: 0 }),
     ]);
   });
 
-  it("uses canonical checkpoint and candidate events for tool outputs", async () => {
+  it("uses canonical checkpoint events for chapter result tool outputs", async () => {
     const generate = vi.fn()
       .mockResolvedValueOnce({
         success: true as const,
         type: "tool_use" as const,
-        toolUses: [{ id: "tool-1", name: "candidate.create_chapter", input: { bookId: "book-1" } }],
+        toolUses: [{ id: "tool-1", name: "pipeline.write", input: { bookId: "book-1" } }],
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       })
       .mockResolvedValueOnce({
         success: true as const,
         type: "message" as const,
-        content: "候选稿已生成。",
+        content: "章节结果已生成。",
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       });
 
@@ -66,13 +66,13 @@ describe("runtime turn service", () => {
       generate,
       executeTool: vi.fn(async () => ({
         ok: true,
-        summary: "候选稿已创建。",
+        summary: "章节结果已创建。",
         data: { checkpointId: "checkpoint-1", paths: ["chapters/0001.md"] },
         artifact: {
-          id: "candidate-1",
-          kind: "candidate",
-          title: "第 1 章候选稿",
-          resourceRef: { kind: "candidate", id: "candidate-1", bookId: "book-1" },
+          id: "chapter:1",
+          kind: "chapter",
+          title: "第 1 章章节结果",
+          resourceRef: { kind: "chapter", id: "chapter:1", bookId: "book-1", chapterNumber: 1 },
         },
       })),
     }), { turnId: "turn-2" });
@@ -81,7 +81,6 @@ describe("runtime turn service", () => {
       "tool_use",
       "tool_result",
       "checkpoint",
-      "candidate",
       "message",
       "result",
     ]);

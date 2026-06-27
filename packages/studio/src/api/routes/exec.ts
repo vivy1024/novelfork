@@ -2,7 +2,7 @@
  * Headless exec API route
  *
  * POST /api/exec — 非交互执行写作任务，复用 AgentTurnRuntime。
- * 参考 Codex CLI exec 模式设计，适配 NovelFork 确认门和候选区写入语义。
+ * 参考 Codex CLI exec 模式设计，适配 NovelFork 确认门和正式章节结果写入语义。
  */
 
 import { Hono } from "hono";

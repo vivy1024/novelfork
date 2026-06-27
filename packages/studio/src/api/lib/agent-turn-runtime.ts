@@ -54,7 +54,7 @@ export type AgentTurnEvent =
   | { readonly type: "assistant_message"; readonly content: string; readonly reasoningContent?: string; readonly runtime: NarratorSessionRuntimeMetadata }
   | { readonly type: "streaming_chunk"; readonly content: string }
   | { readonly type: "reasoning_chunk"; readonly content: string }
-  | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata }
+  | { readonly type: "tool_call"; readonly id: string; readonly toolName: string; readonly input: Record<string, unknown>; readonly runtime: NarratorSessionRuntimeMetadata; readonly reasoningContent?: string; readonly reasoningSignature?: string }
   | { readonly type: "tool_result"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly runtime?: NarratorSessionRuntimeMetadata }
   | { readonly type: "confirmation_required"; readonly id: string; readonly toolName: string; readonly result: SessionToolExecutionResult; readonly sourceToolUseId?: string }
   | { readonly type: "turn_completed" }
@@ -778,15 +778,23 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             if (retryReply.reasoningContent) {
               const retryPolicy = input.reasoningPolicy ?? "passback-on-tool-loop";
               if (retryPolicy !== "strip") {
-                messages.push({ type: "message", role: "assistant", content: "", reasoning_content: retryReply.reasoningContent });
+                messages.push({ type: "message", role: "assistant", content: "", reasoning_content: retryReply.reasoningContent, reasoning_signature: retryReply.reasoningSignature });
               }
             }
-            for (const toolUse of retryReply.toolUses) {
+            for (const [toolIndex, toolUse] of retryReply.toolUses.entries()) {
               if (executedToolSteps >= maxSteps) {
                 emit({ type: "turn_failed", reason: "tool-loop-limit", message: `工具循环超过 ${maxSteps} 步，已停止本轮调用。可在设置 → AI 代理 → 每条消息最大轮次中调高此限制。`, data: { maxSteps, recentToolCalls } });
                 return events;
               }
-              emit({ type: "tool_call", id: toolUse.id, toolName: toolUse.name, input: toolUse.input, runtime: retryReply.metadata });
+              emit({
+                type: "tool_call",
+                id: toolUse.id,
+                toolName: toolUse.name,
+                input: toolUse.input,
+                runtime: retryReply.metadata,
+                reasoningContent: toolIndex === 0 ? retryReply.reasoningContent : undefined,
+                reasoningSignature: toolIndex === 0 ? retryReply.reasoningSignature : undefined,
+              });
               messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
               recentToolCalls.push(toolUse.name);
 
@@ -827,8 +835,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
               });
 
               // jingwei.write 成功后注入缓存失效提示
-              if (toolUse.name === "jingwei.write" && toolResult.ok) {
-                systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+              if ((toolUse.name === "jingwei.write" || toolUse.name === "lore.write") && toolResult.ok) {
+                systemHints.push("Lore 静态设定已更新。如果后续步骤需要最新静态设定，请重新调用 lore.read(scope=brief)；动态叙事上下文请调用 memory.read。");
               }
 
               if (isPendingConfirmationResult(toolResult)) {
@@ -1000,13 +1008,15 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       log.info("Parallel tool execution", { count: reply.toolUses.length, sessionId: input.sessionId });
 
       // Emit all tool_call events first
-      for (const toolUse of reply.toolUses) {
+      for (const [toolIndex, toolUse] of reply.toolUses.entries()) {
         emit({
           type: "tool_call",
           id: toolUse.id,
           toolName: toolUse.name,
           input: toolUse.input,
           runtime: reply.metadata,
+          reasoningContent: toolIndex === 0 ? reply.reasoningContent : undefined,
+          reasoningSignature: toolIndex === 0 ? reply.reasoningSignature : undefined,
         });
         messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
         recentToolCalls.push(toolUse.name);
@@ -1076,8 +1086,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         });
 
         // jingwei.write 成功后注入缓存失效提示，避免后续回合使用过期经纬数据
-        if (toolUse.name === "jingwei.write" && toolResult.ok) {
-          systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+        if ((toolUse.name === "jingwei.write" || toolUse.name === "lore.write") && toolResult.ok) {
+          systemHints.push("Lore 静态设定已更新。如果后续步骤需要最新静态设定，请重新调用 lore.read(scope=brief)；动态叙事上下文请调用 memory.read。");
         }
 
         if (isPendingConfirmationResult(toolResult)) {
@@ -1142,7 +1152,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       }
     } else {
       // --- Sequential execution path (existing behavior) ---
-      for (const toolUse of reply.toolUses) {
+      for (const [toolIndex, toolUse] of reply.toolUses.entries()) {
         if (executedToolSteps >= maxSteps) {
           emit({
             type: "turn_failed",
@@ -1159,6 +1169,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           toolName: toolUse.name,
           input: toolUse.input,
           runtime: reply.metadata,
+          reasoningContent: toolIndex === 0 ? reply.reasoningContent : undefined,
+          reasoningSignature: toolIndex === 0 ? reply.reasoningSignature : undefined,
         });
         messages.push({ type: "tool_call", id: toolUse.id, name: toolUse.name, input: toolUse.input });
         recentToolCalls.push(toolUse.name);
@@ -1251,8 +1263,8 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         });
 
         // jingwei.write 成功后注入缓存失效提示，避免后续回合使用过期经纬数据
-        if (toolUse.name === "jingwei.write" && toolResult.ok) {
-          systemHints.push("经纬数据已更新。如果后续步骤需要最新设定，请重新调用 jingwei.read(scope=brief) 获取。");
+        if ((toolUse.name === "jingwei.write" || toolUse.name === "lore.write") && toolResult.ok) {
+          systemHints.push("Lore 静态设定已更新。如果后续步骤需要最新静态设定，请重新调用 lore.read(scope=brief)；动态叙事上下文请调用 memory.read。");
         }
 
         if (isPendingConfirmationResult(toolResult)) {
@@ -1352,7 +1364,7 @@ function withToolTimeout(
       resolve(result);
     };
 
-    const effectiveTimeoutMs = toolName === "candidate.create_chapter" ? Math.max(timeoutMs, 180000) : timeoutMs;
+    const effectiveTimeoutMs = timeoutMs;
     const timer = setTimeout(() => {
       done({
         ok: false,

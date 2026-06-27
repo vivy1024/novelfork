@@ -95,7 +95,7 @@ function buildCloneRepositoryDirectoryName(cloneUrl: string, studioRoot: string)
 }
 
 function buildWorktreeBranchName(worktreeName: string): string {
-  const normalizedName = worktreeName.trim() || "draft-main";
+  const normalizedName = worktreeName.trim() || "work-main";
   const slug = normalizedName
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, "-")
@@ -104,7 +104,7 @@ function buildWorktreeBranchName(worktreeName: string): string {
     .slice(0, 48);
   const hash = createHash("sha1").update(normalizedName).digest("hex").slice(0, 8);
 
-  return `worktree/${slug || "draft-main"}-${hash}`;
+  return `worktree/${slug || "work-main"}-${hash}`;
 }
 
 function stripBranchRef(branch: string): string {

@@ -23,7 +23,7 @@ const strings = {
 
   // Book Detail
   "book.writeNext": { zh: "写下一章", en: "Write Next" },
-  "book.draftOnly": { zh: "仅草稿", en: "Draft Only" },
+  "book.chapterResultsOnly": { zh: "仅章节结果", en: "Chapter Results Only" },
   "book.approveAll": { zh: "全部通过", en: "Approve All" },
   "book.analytics": { zh: "数据分析", en: "Analytics" },
   "book.noChapters": { zh: "暂无章节，点击「写下一章」开始", en: 'No chapters yet. Click "Write Next" to start.' },
@@ -98,9 +98,9 @@ const strings = {
   "book.confirmDelete": { zh: "确认删除此书及所有章节？", en: "Delete this book and all chapters?" },
   "book.settings": { zh: "书籍设置", en: "Book Settings" },
   "book.status": { zh: "状态", en: "Status" },
-  "book.drafting": { zh: "草稿中...", en: "Drafting..." },
+  "book.writing": { zh: "写作中...", en: "Writing..." },
   "book.pipelineWriting": { zh: "后台正在写作，本页会在完成后自动刷新。", en: "Background writing is running. This page will refresh automatically when it finishes." },
-  "book.pipelineDrafting": { zh: "后台正在生成草稿，本页会在完成后自动刷新。", en: "Background drafting is running. This page will refresh automatically when it finishes." },
+  "book.pipelineChapterWriting": { zh: "后台正在生成章节结果，本页会在完成后自动刷新。", en: "Background chapter generation is running. This page will refresh automatically when it finishes." },
   "book.pipelineFailed": { zh: "后台任务失败", en: "Background job failed" },
   "book.save": { zh: "保存", en: "Save" },
   "book.saving": { zh: "保存中...", en: "Saving..." },
@@ -227,7 +227,7 @@ const strings = {
   "truth.selectHint": { zh: "选择文件查看内容", en: "Select a file to view" },
 
   // Dashboard
-  "dash.subtitle": { zh: "管理你的文学宇宙和 AI 辅助草稿。", en: "Manage your literary universe and AI-assisted drafts." },
+  "dash.subtitle": { zh: "管理你的文学宇宙和 AI 辅助创作。", en: "Manage your literary universe and AI-assisted writing." },
 
   // Chapter Reader extras
   "reader.openingManuscript": { zh: "打开书稿中...", en: "Opening manuscript..." },
@@ -292,7 +292,7 @@ const strings = {
   "common.enterCommand": { zh: "输入指令...", en: "Enter command..." },
   "chapter.readyForReview": { zh: "待审核", en: "Ready for Review" },
   "chapter.approved": { zh: "已通过", en: "Approved" },
-  "chapter.drafted": { zh: "草稿", en: "Drafted" },
+  "chapter.chapterResult": { zh: "章节结果", en: "Chapter Result" },
   "chapter.needsRevision": { zh: "需修订", en: "Needs Revision" },
   "chapter.imported": { zh: "已导入", en: "Imported" },
   "chapter.auditFailed": { zh: "审计失败", en: "Audit Failed" },

@@ -1,5 +1,5 @@
 /**
- * JingweiGraphView — 经纬关系图谱视图
+ * JingweiGraphView — 静态条目关联视图（兼容旧组件名）
  * 使用 @xyflow/react 展示条目间的关系网络
  */
 import { useState, useMemo, useCallback, useEffect } from "react";

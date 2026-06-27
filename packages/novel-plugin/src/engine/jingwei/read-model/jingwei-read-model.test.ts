@@ -136,4 +136,31 @@ describe("Jingwei indexed read model", () => {
       storage.close();
     }
   });
+
+  it("filters inactive lore from brief, category, and search reads", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await entries.create(entry({ id: "optout", sectionId: "sec-people", title: "不参与AI", contentMd: "不应进入 Lore 召回。", participatesInAi: false, aliases: ["隐藏别名"] }));
+      await entries.create(entry({ id: "draft-entry", sectionId: "sec-people", title: "草稿设定", contentMd: "不应进入 Lore 召回。", aliases: ["草稿别名"] }));
+      await entries.create(entry({ id: "review-entry", sectionId: "sec-people", title: "待审设定", contentMd: "不应进入 Lore 召回。", aliases: ["待审别名"] }));
+      await entries.create(entry({ id: "archived-entry", sectionId: "sec-people", title: "归档设定", contentMd: "不应进入 Lore 召回。", aliases: ["归档别名"] }));
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = 'draft' WHERE id = 'draft-entry'`).run();
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = 'needs-review' WHERE id = 'review-entry'`).run();
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET lifecycle = 'archived' WHERE id = 'archived-entry'`).run();
+
+      const brief = await buildJingweiBrief({ storage, bookId: "book-1", chapterNumber: 12, sceneText: "隐藏别名 草稿别名 待审别名 归档别名", tokenBudget: 1000 });
+      const category = await readJingweiCategory({ storage, bookId: "book-1", category: "characters", limit: 20 });
+      const search = await searchJingwei({ storage, bookId: "book-1", query: "草稿别名", tokenBudget: 1000 });
+
+      const briefIds = brief.coreBrief.map((item) => item.entryId);
+      const categoryIds = category.items.map((item) => item.entryId);
+      expect(briefIds).not.toEqual(expect.arrayContaining(["optout", "draft-entry", "review-entry", "archived-entry"]));
+      expect(categoryIds).not.toEqual(expect.arrayContaining(["optout", "draft-entry", "review-entry", "archived-entry"]));
+      expect(search.returnedCount).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
 });

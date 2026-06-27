@@ -47,7 +47,7 @@ export function resourceNeedsDetailHydration(node: WorkbenchResourceNode): boole
   return false;
 }
 
-function messageFromContractResult(result: ContractResult<unknown>, fallback: string): string {
+export function messageFromContractResult(result: ContractResult<unknown>, fallback: string): string {
   if (result.ok) return fallback;
   const error = result.error;
   if (error && typeof error === "object") {

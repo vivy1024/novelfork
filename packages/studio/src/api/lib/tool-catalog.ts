@@ -13,7 +13,7 @@ export interface ToolCatalogEntry {
 }
 
 const CORE_TOOL_NAMES = [
-  "plan_chapter", "compose_chapter", "write_draft", "write_full_pipeline",
+  "plan_chapter", "compose_chapter", "write_chapter", "write_full_pipeline",
   "audit_chapter", "revise_chapter",
   "read_jingwei_files", "write_jingwei_file", "update_author_intent", "update_current_focus",
   "import_style", "import_canon",

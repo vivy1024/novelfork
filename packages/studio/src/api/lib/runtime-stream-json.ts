@@ -12,8 +12,7 @@ export type RuntimeStreamJsonEvent =
   | { readonly type: "tool_result"; readonly session_id: string; readonly tool_use_id: string; readonly tool_name: string; readonly result: SessionToolExecutionResult; readonly runtime?: unknown; readonly ephemeral: boolean }
   | { readonly type: "permission_request"; readonly session_id: string; readonly confirmation_id: string; readonly tool_name: string; readonly confirmation?: unknown; readonly result: SessionToolExecutionResult; readonly source_tool_use_id?: string; readonly ephemeral: boolean }
   | { readonly type: "checkpoint_created"; readonly session_id: string; readonly checkpoint_id: string; readonly paths: readonly string[]; readonly source_tool_use_id?: string; readonly ephemeral: boolean }
-  | { readonly type: "candidate_created"; readonly session_id: string; readonly candidate_id: string; readonly artifact: unknown; readonly source_tool_use_id?: string; readonly ephemeral: boolean }
-  | { readonly type: "resource_updated"; readonly session_id: string; readonly resource: unknown; readonly source_event: "checkpoint_created" | "candidate_created"; readonly source_id: string; readonly ephemeral: boolean }
+  | { readonly type: "resource_updated"; readonly session_id: string; readonly resource: unknown; readonly source_event: "checkpoint_created"; readonly source_id: string; readonly ephemeral: boolean }
   | { readonly type: "usage_delta"; readonly session_id: string; readonly usage: unknown; readonly runtime?: unknown; readonly ephemeral: boolean }
   | { readonly type: "command_started"; readonly session_id: string; readonly command_id: string; readonly command_name: string; readonly raw: string; readonly args: string; readonly ephemeral: boolean }
   | { readonly type: "command_completed"; readonly session_id: string; readonly command_id: string; readonly command_name: string; readonly raw: string; readonly args: string; readonly result: unknown; readonly ephemeral: boolean }
@@ -27,14 +26,6 @@ export interface RuntimeStreamJsonOptions {
 
 function ephemeralFor(event: RuntimeEvent, options: RuntimeStreamJsonOptions): boolean {
   return options.ephemeral ?? event.ephemeral ?? false;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function candidateResource(artifact: unknown): unknown | null {
-  return isRecord(artifact) && "resourceRef" in artifact ? artifact.resourceRef : null;
 }
 
 export function runtimeEventsToStreamJsonEvents(events: readonly RuntimeEvent[], options: RuntimeStreamJsonOptions = {}): RuntimeStreamJsonEvent[] {
@@ -67,12 +58,6 @@ export function runtimeEventsToStreamJsonEvents(events: readonly RuntimeEvent[],
           output.push({ type: "resource_updated", session_id: event.session_id, resource: { kind: "path", path }, source_event: "checkpoint_created", source_id: event.checkpoint_id, ephemeral });
         }
         break;
-      case "candidate": {
-        output.push({ type: "candidate_created", session_id: event.session_id, candidate_id: event.candidate_id, artifact: event.artifact, ...(event.source_tool_use_id ? { source_tool_use_id: event.source_tool_use_id } : {}), ephemeral });
-        const resource = candidateResource(event.artifact);
-        if (resource) output.push({ type: "resource_updated", session_id: event.session_id, resource, source_event: "candidate_created", source_id: event.candidate_id, ephemeral });
-        break;
-      }
       case "usage":
         output.push({ type: "usage_delta", session_id: event.session_id, usage: event.usage, ...(event.runtime ? { runtime: event.runtime } : {}), ephemeral });
         break;

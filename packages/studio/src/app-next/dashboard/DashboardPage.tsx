@@ -222,7 +222,7 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
             </div>
             <div className="rounded-lg bg-muted/30 p-3 space-y-1">
               <p className="text-xs font-medium">3. 开始写作</p>
-              <p className="text-[10px] text-muted-foreground">手动写作或让 AI 生成候选稿，你来审阅和决定</p>
+              <p className="text-[10px] text-muted-foreground">手动写作或让 AI 生成正式章节结果，你来审阅和决定</p>
             </div>
           </div>
         </div>

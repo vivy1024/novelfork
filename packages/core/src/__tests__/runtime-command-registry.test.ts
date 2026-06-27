@@ -39,12 +39,12 @@ describe("runtime command registry", () => {
       expect(command.aliases).toEqual(expect.any(Array));
       expect(command.usage).toContain(command.id);
       expect(command.description.length).toBeGreaterThan(0);
-      expect(command.scope).toMatch(/^(session|runtime|tooling|extension)$/);
+      expect(command.scope).toMatch(/^(session|runtime|tooling|extension|novel)$/);
       expect(command.inputSchema).toEqual(expect.objectContaining({ type: "object" }));
       expect(command.permissionImpact).toEqual(expect.objectContaining({ mode: expect.any(String) }));
       expect(command.runtimeHandler).toEqual(expect.any(String));
       expect(command.status).toMatch(/^(current|partial|planned|unsupported|reference-only)$/);
-      expect(command.source).toMatch(/^(builtin|claude-adapter|codex-adapter)$/);
+      expect(command.source).toMatch(/^(builtin|claude-adapter|codex-adapter|novel-agent-pack)$/);
     }
   });
 
@@ -55,6 +55,7 @@ describe("runtime command registry", () => {
     const help = formatRuntimeCommandHelp();
     expect(help).toContain("/help");
     expect(help).toContain("/tools");
-    expect(help).toContain("planned");
+    expect(help).toContain("partial");
+    expect(help).toContain("/novel:write-next");
   });
 });

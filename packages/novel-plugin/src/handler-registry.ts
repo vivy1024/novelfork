@@ -24,9 +24,6 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   // PGI tools
   { toolName: "pgi.ask", serviceKey: "direct", method: "handlePgiAsk" },
 
-  // Candidate tools
-  { toolName: "candidate.create_chapter", serviceKey: "candidate", method: "createChapter" },
-
   // Narrative tools
   { toolName: "narrative.read_line", serviceKey: "narrative", method: "readLine" },
   { toolName: "narrative.propose_change", serviceKey: "narrative", method: "proposeChange" },
@@ -35,8 +32,14 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
   { toolName: "chapter.list", serviceKey: "inline", method: "listChapters" },
   { toolName: "pipeline.write", serviceKey: "direct", method: "handlePipelineWrite" },
+  { toolName: "lore.write", serviceKey: "direct", method: "handleLoreWrite" },
+  { toolName: "lore.read", serviceKey: "direct", method: "handleLoreRead" },
   { toolName: "jingwei.write", serviceKey: "direct", method: "handleJingweiWrite" },
   { toolName: "jingwei.read", serviceKey: "direct", method: "handleJingweiRead" },
+  { toolName: "jingwei.audit", serviceKey: "direct", method: "handleJingweiAudit" },
+  { toolName: "memory.read", serviceKey: "direct", method: "handleMemoryRead" },
+  { toolName: "memory.graph", serviceKey: "direct", method: "handleMemoryGraph" },
+  { toolName: "memory.events", serviceKey: "direct", method: "handleMemoryEvents" },
 
   // Audit/quality tools
   { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },

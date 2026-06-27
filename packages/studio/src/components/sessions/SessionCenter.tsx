@@ -410,7 +410,7 @@ export function SessionCenter({ className, initialBinding = "all", initialStatus
                   {memoryStatus ? (
                     <div className="rounded-md border border-border bg-muted/30 px-2 py-1 text-xs text-muted-foreground">
                       <p>{memoryStatus.writable ? "Memory：可审计写入" : "Memory：只读（未接入写入器）"}</p>
-                      <p>临时剧情草稿不会自动写入长期 memory；偏好/项目事实写入需审计来源。</p>
+                      <p>临时剧情片段不会自动写入长期 memory；偏好/项目事实写入需审计来源。</p>
                     </div>
                   ) : null}
                 </div>

@@ -23,6 +23,7 @@ function storageKey(side: string): string {
 
 function readStored(side: string, fallback: number): number {
   try {
+    if (typeof localStorage?.getItem !== "function") return fallback;
     const raw = localStorage.getItem(storageKey(side));
     if (raw !== null) {
       const n = Number(raw);
@@ -69,6 +70,7 @@ export function useResizable({
   useEffect(() => {
     if (!isDragging) {
       try {
+        if (typeof localStorage?.setItem !== "function") return;
         localStorage.setItem(storageKey(side), String(Math.round(width)));
       } catch {
         // ignore

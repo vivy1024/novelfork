@@ -17,11 +17,36 @@ interface TreeEntry {
   children?: TreeEntry[];
 }
 
-const OPENABLE_EXT = new Set([".md", ".txt", ".json", ".markdown", ".yaml", ".yml"]);
+const OPENABLE_EXT = new Set([
+  // 文档
+  ".md", ".txt", ".json", ".markdown", ".yaml", ".yml", ".toml", ".ini", ".cfg", ".conf", ".log", ".csv",
+  // 代码
+  ".py", ".js", ".ts", ".jsx", ".tsx", ".html", ".css", ".scss", ".less",
+  ".java", ".c", ".cpp", ".h", ".hpp", ".cs", ".go", ".rs", ".rb", ".php",
+  ".sh", ".bash", ".zsh", ".bat", ".cmd", ".ps1", ".sql", ".xml", ".svg",
+  // 配置
+  ".env", ".gitignore", ".editorconfig", ".prettierrc", ".eslintrc",
+  // 图片
+  ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
+]);
+const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".bmp"]);
+const legacyDir = (...codes: number[]): string => String.fromCharCode(...codes);
+const REMOVED_LEGACY_OUTPUT_DIRS = new Set([
+  legacyDir(100, 114, 97, 102, 116, 115),
+  legacyDir(103, 101, 110, 101, 114, 97, 116, 101, 100, 45, 99, 97, 110, 100, 105, 100, 97, 116, 101, 115),
+]);
+
+function extensionOf(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot).toLowerCase() : "";
+}
 
 function isOpenable(name: string): boolean {
-  const dot = name.lastIndexOf(".");
-  return dot >= 0 && OPENABLE_EXT.has(name.slice(dot).toLowerCase());
+  return OPENABLE_EXT.has(extensionOf(name));
+}
+
+function isImageFile(name: string): boolean {
+  return IMAGE_EXT.has(extensionOf(name));
 }
 
 /** 判断文件是否在 chapters/ 目录下(特化为章节节点) */
@@ -43,9 +68,7 @@ function chapterDisplayName(name: string): string {
 /** 顶级目录中文显示名(底层路径不变,显示翻译) */
 const DIR_DISPLAY_NAMES: Record<string, string> = {
   chapters: "正文",
-  drafts: "草稿",
   story: "设定",
-  "generated-candidates": "候选稿",
   jingwei: "经纬文件",
 };
 
@@ -56,24 +79,26 @@ function isTitlePlaceholder(name: string): boolean {
   return /^第_?\d+_?章$/.test(match[1]);
 }
 
-function entryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
+export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
   if (entry.type === "directory") {
     const displayName = DIR_DISPLAY_NAMES[entry.name] ?? entry.name;
     // 目录内过滤掉纯标题占位文件
     const children = (entry.children ?? [])
+      .filter(c => !(c.type === "directory" && REMOVED_LEGACY_OUTPUT_DIRS.has(c.name)))
       .filter(c => !(c.type === "file" && isTitlePlaceholder(c.name)))
-      .map(c => entryToNode(c, bookId));
+      .map(c => mapBookFileEntryToNode(c, bookId));
     return {
       id: `file-dir:${entry.path}`,
       kind: "group",
       title: displayName,
       capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: true, apply: false },
-      metadata: { filePath: entry.path, bookId, isDirectory: true },
+      metadata: { filePath: entry.path, bookId, isDirectory: true, mtime: entry.mtime },
       children,
     };
   }
 
   const openable = isOpenable(entry.name);
+  const image = isImageFile(entry.name);
   const isChapter = isChapterFile(entry.path);
 
   // 章节文件:用章节 kind + 中文标题
@@ -84,20 +109,21 @@ function entryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
       title: chapterDisplayName(entry.name),
       path: entry.path,
       capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-      metadata: { filePath: entry.path, bookId, isFile: true, isChapter: true },
+      metadata: { filePath: entry.path, bookId, isFile: true, isChapter: true, mtime: entry.mtime, size: entry.size },
     };
   }
 
-  // 普通文件:可打开可编辑
+  // 普通文件:可打开可编辑,但不触发章节专属功能
   return {
     id: `file:${entry.path}`,
-    kind: "chapter" as WorkbenchResourceKind,
+    kind: "file" as WorkbenchResourceKind,
     title: entry.name,
     path: entry.path,
-    capabilities: { open: openable, readonly: false, unsupported: !openable, edit: openable, delete: true, apply: false },
-    metadata: { filePath: entry.path, bookId, isFile: true },
+    capabilities: { open: openable, readonly: image, unsupported: !openable, edit: openable && !image, delete: true, apply: false },
+    metadata: { filePath: entry.path, bookId, isFile: true, isImage: image, extension: extensionOf(entry.name), size: entry.size },
   };
 }
+
 
 export interface UseBookFileTreeResult {
   nodes: WorkbenchResourceNode[];
@@ -125,7 +151,9 @@ export function useBookFileTree(bookId: string | undefined, enabled: boolean): U
       .then((data: { tree?: TreeEntry[] }) => {
         if (cancelled) return;
         const tree = data.tree ?? [];
-        setNodes(tree.map(e => entryToNode(e, bookId)));
+        setNodes(tree
+          .filter(e => !(e.type === "directory" && REMOVED_LEGACY_OUTPUT_DIRS.has(e.name)))
+          .map(e => mapBookFileEntryToNode(e, bookId)));
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));

@@ -2,9 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createProviderAdapterRegistry } from "./index";
 
+const originalFetch = globalThis.fetch;
+function setFetchMock(fetchMock: typeof fetch): void {
+  globalThis.fetch = fetchMock;
+}
+
 describe("provider adapter registry", () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
+    globalThis.fetch = originalFetch;
   });
 
   it("calls the OpenAI-compatible models endpoint with provider credentials", async () => {
@@ -13,7 +18,7 @@ describe("provider adapter registry", () => {
         { id: "gpt-5-codex", context_window: 192000, max_output_tokens: 8192 },
       ],
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
+    setFetchMock(fetchMock as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.listModels({
@@ -48,7 +53,7 @@ describe("provider adapter registry", () => {
         data: [{ id: "gpt-5-codex", context_window: 192000, max_output_tokens: 8192 }],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
     });
-    vi.stubGlobal("fetch", fetchMock);
+    setFetchMock(fetchMock as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.listModels({
@@ -70,7 +75,7 @@ describe("provider adapter registry", () => {
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: "ok" } }],
     }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    vi.stubGlobal("fetch", fetchMock);
+    setFetchMock(fetchMock as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.testModel({
@@ -90,9 +95,9 @@ describe("provider adapter registry", () => {
   });
 
   it("generates OpenAI-compatible text from the upstream response", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    setFetchMock(vi.fn(async () => new Response(JSON.stringify({
       choices: [{ message: { content: "真实回复" } }],
-    }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    }), { status: 200, headers: { "Content-Type": "application/json" } })) as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.generate({
@@ -109,7 +114,7 @@ describe("provider adapter registry", () => {
 
   it("maps dotted session tool names to provider-safe OpenAI-compatible function names", async () => {
     let requestBody: Record<string, unknown> | undefined;
-    vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
+    setFetchMock(vi.fn(async (_url: string, init?: RequestInit) => {
       requestBody = JSON.parse(String(init?.body));
       return new Response(JSON.stringify({
         choices: [{
@@ -125,7 +130,7 @@ describe("provider adapter registry", () => {
           },
         }],
       }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }));
+    }) as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.generate({
@@ -170,9 +175,45 @@ describe("provider adapter registry", () => {
     });
   });
 
+  it("extracts reasoning_content from OpenAI-compatible tool call responses", async () => {
+    setFetchMock(vi.fn(async () => new Response(JSON.stringify({
+      choices: [{
+        message: {
+          reasoning_content: "需要先读取项目文件。",
+          tool_calls: [{
+            id: "call-1",
+            type: "function",
+            function: {
+              name: "Grep",
+              arguments: JSON.stringify({ pattern: "reasoning_content" }),
+            },
+          }],
+        },
+      }],
+    }), { status: 200, headers: { "Content-Type": "application/json" } })) as unknown as typeof fetch);
+    const adapter = createProviderAdapterRegistry().get("openai-compatible");
+
+    const result = await adapter.generate({
+      providerId: "deepseek",
+      providerName: "DeepSeek",
+      baseUrl: "https://api.deepseek.com/v1",
+      apiKey: "sk-test",
+      modelId: "deepseek-reasoner",
+      messages: [{ role: "user", content: "查一下" }],
+      tools: [{ name: "Grep", description: "搜索文件", inputSchema: { type: "object" } }],
+    });
+
+    expect(result).toEqual({
+      success: true,
+      type: "tool_use",
+      toolUses: [{ id: "call_call-1", name: "Grep", input: { pattern: "reasoning_content" } }],
+      reasoningContent: "需要先读取项目文件。",
+    });
+  });
+
   it("returns auth-missing before fetch when OpenAI-compatible credentials are absent", async () => {
     const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+    setFetchMock(fetchMock as unknown as typeof fetch);
     const adapter = createProviderAdapterRegistry().get("openai-compatible");
 
     const result = await adapter.testModel({

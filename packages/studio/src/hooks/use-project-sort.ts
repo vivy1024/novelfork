@@ -12,6 +12,7 @@ const STORAGE_KEY = "novelfork-project-sort-order";
  */
 function loadSortOrder(): Record<string, number> {
   try {
+    if (typeof localStorage?.getItem !== "function") return {};
     const stored = localStorage.getItem(STORAGE_KEY);
     return stored ? JSON.parse(stored) : {};
   } catch {
@@ -24,6 +25,7 @@ function loadSortOrder(): Record<string, number> {
  */
 function saveSortOrder(order: Record<string, number>): void {
   try {
+    if (typeof localStorage?.setItem !== "function") return;
     localStorage.setItem(STORAGE_KEY, JSON.stringify(order));
   } catch {
     // 静默失败

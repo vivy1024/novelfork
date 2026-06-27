@@ -102,7 +102,7 @@ describe("resource tree contract adapter", () => {
       "/api/books/book%2F1/jingwei-files",
       "/api/books/book%2F1/narrative-line",
     ]);
-    expect(flat.get("chapter:chapter-1")).toMatchObject({
+    expect(flat.get("chapter:1")).toMatchObject({
       kind: "chapter",
       title: "第一章 灵潮初起",
       capabilities: {
@@ -136,7 +136,7 @@ describe("resource tree contract adapter", () => {
       title: "写作资源加载失败",
     });
     // 回退到 bookResult.data.chapters 生成章节节点
-    expect(flat.has("chapter:book/1:1")).toBe(true);
+    expect(flat.has("chapter:1")).toBe(true);
     // 写作资源端点失败 → 1 条错误。
     expect(result.errors).toHaveLength(1);
   });

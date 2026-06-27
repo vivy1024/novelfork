@@ -42,7 +42,7 @@ describe("ConversationRoute", () => {
         title="第三章会话"
         initialMessages={messages}
         initialStatus={{ state: "ready", label: "就绪", modelLabel: "sub2api / gpt-5.4" }}
-        initialConfirmation={{ id: "confirm-1", title: "创建候选稿", summary: "将生成第三章候选" }}
+        initialConfirmation={{ id: "confirm-1", title: "创建章节结果", summary: "将生成第三章章节结果" }}
       />,
     );
 
@@ -51,7 +51,7 @@ describe("ConversationRoute", () => {
     expect(screen.getByText("第三章会话")).toBeTruthy();
     expect(screen.getByText("sub2api / gpt-5.4")).toBeTruthy();
     expect(screen.getByText("欢迎回到叙述者会话")).toBeTruthy();
-    expect(screen.getByText("将生成第三章候选")).toBeTruthy();
+    expect(screen.getByText("将生成第三章章节结果")).toBeTruthy();
   });
 
   it("发送消息时复用 runtime message envelope builder，不连接真实 WebSocket", () => {

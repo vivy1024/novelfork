@@ -433,7 +433,7 @@ describe("sessionRouter", () => {
       status: "readonly",
       writable: false,
       reason: "memory_writer_not_configured",
-      categories: ["user-preference", "project-fact", "temporary-story-draft"],
+      categories: ["user-preference", "project-fact", "temporary-story-fragment"],
     });
 
     const commitResponse = await sessionRouter.request(`http://localhost/${created.id}/memory`, {
@@ -563,10 +563,10 @@ describe("sessionRouter", () => {
       seq: 3,
     });
     expect(history.messages[1]).toMatchObject({
-      id: "history-message-2-assistant",
       role: "assistant",
       seq: 4,
     });
+    expect(history.messages[1].id).toMatch(/^history-message-2-mid-turn-/);
   });
 
   it("replaces chat state through the dedicated server-first endpoint", async () => {
@@ -660,15 +660,15 @@ describe("sessionRouter", () => {
     });
     expect(history.messages).toHaveLength(59);
     expect(history.messages[0]).toMatchObject({
-      id: "trimmed-message-1-assistant",
       seq: 2,
       role: "assistant",
     });
+    expect(history.messages[0].id).toMatch(/^trimmed-message-1-mid-turn-/);
     expect(history.messages.at(-1)).toMatchObject({
-      id: "trimmed-message-30-assistant",
       seq: 60,
       role: "assistant",
     });
+    expect(history.messages.at(-1)?.id).toMatch(/^trimmed-message-30-mid-turn-/);
   });
 
   it("lists pending tool confirmations from the session tools API", async () => {

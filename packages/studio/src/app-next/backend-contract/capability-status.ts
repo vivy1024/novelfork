@@ -22,7 +22,7 @@ export interface BackendCapability {
 }
 
 const CURRENT_ACTIONS = ["read", "write", "delete", "apply"];
-const PREVIEW_ACTIONS = ["preview", "copy", "convert-to-candidate", "convert-to-draft", "explicit-apply"];
+const PREVIEW_ACTIONS = ["preview", "copy", "explicit-apply"];
 
 export function getCapabilityUiDecision(status: CapabilityStatus): CapabilityUiDecision {
   switch (status) {

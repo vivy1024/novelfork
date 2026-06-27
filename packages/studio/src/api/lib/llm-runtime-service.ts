@@ -84,7 +84,7 @@ function providerRef(provider: RuntimeProviderRecord) {
   };
 }
 
-function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): RuntimeChatMessage[] {
+export function toRuntimeMessages(messages: readonly LlmRuntimeInputMessage[]): RuntimeChatMessage[] {
   const result: RuntimeChatMessage[] = [];
   let pendingReasoning: string | undefined;
   let pendingSignature: string | undefined;
@@ -312,16 +312,9 @@ export class LlmRuntimeService {
           };
         }
 
-        const runtimeMessages = toRuntimeMessages(input.messages);
-
-        // Debug: check reasoning presence before sending to adapter
-        const reasoningMsgs = runtimeMessages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content);
-        if (reasoningMsgs.length > 0 || runtimeMessages.some(m => m.role === "assistant" && (m as { toolCalls?: unknown[] }).toolCalls?.length)) {
-          log.info("LLM runtime messages", { runtimeMsgCount: runtimeMessages.length, withReasoning: reasoningMsgs.length, inputMessages: input.messages.length });
-          // Log the raw input messages to see if reasoning_content is present
-          const rawReasoning = input.messages.filter(m => "reasoning_content" in m && (m as { reasoning_content?: string }).reasoning_content);
-          log.info("LLM runtime raw input reasoning", { count: rawReasoning.length });
-        }
+        const rawRuntimeMessages = toRuntimeMessages(input.messages);
+        const shouldStripReasoning = provider.reasoningPolicy === "strip" || candidate.providerId !== providerId;
+        const runtimeMessages = shouldStripReasoning ? stripReasoningFromMessages(rawRuntimeMessages) : rawRuntimeMessages;
 
         // Prompt dump: save complete request body for debugging
         if (await isPromptDumpEnabled()) {
