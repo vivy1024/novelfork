@@ -13,6 +13,7 @@
 | `lore-memory-boundary` | 📋 待执行 | 经纬静态 Lore 与动态叙事记忆边界治理。 |
 | `narrative-wave-memory` | 📋 待执行 | 叙事浪潮记忆能力建设。 |
 | `writing-panel-triage` | 📋 待执行 | 写作面板问题整理与收口。 |
+| `memory-admin-tools` | 📋 待执行 | 补齐 memory 列表、搜索、更新、删除、导出、统计与批处理管理能力。 |
 
 ---
 
