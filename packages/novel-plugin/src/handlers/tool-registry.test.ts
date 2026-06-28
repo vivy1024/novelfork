@@ -17,10 +17,19 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("jingwei.write")?.description).toContain("动态事实不得直接写入 Lore");
   });
 
-  it("registers memory tools for dynamic retrieval, graph, and pending events", () => {
+  it("registers memory tools for dynamic retrieval, graph, pending events, and admin operations", () => {
     expect(tool("memory.read")?.description).toContain("动态叙事记忆");
     expect(tool("memory.graph")?.description).toContain("关系图");
     expect(tool("memory.events")?.description).toContain("Pending NarrativeEvents");
+
+    for (const name of ["memory.list", "memory.read_entry", "memory.search", "memory.dedup", "memory.export", "memory.stats"]) {
+      expect(tool(name)?.description).toContain("管理层");
+      expect(tool(name)?.risk).toBe("read");
+    }
+    for (const name of ["memory.update", "memory.delete", "memory.bulk_approve", "memory.bulk_delete"]) {
+      expect(tool(name)?.description).toContain("管理层");
+      expect(tool(name)?.risk).toBe("confirmed-write");
+    }
   });
 
   it("registers jingwei.audit as a read-only lore audit gate", () => {
