@@ -2,6 +2,15 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## Unreleased
+
+### 🧠 Narrative Memory 管理工具
+
+- 新增 `memory.list`、`memory.read_entry`、`memory.search`、`memory.dedup`、`memory.export`、`memory.stats` 六个只读管理工具，用于列出、读取、搜索、去重候选、导出和统计叙事记忆条目。
+- 新增 `memory.update`、`memory.delete`、`memory.bulk_approve`、`memory.bulk_delete` 四个 confirmed-write 管理工具，用于受控更新/硬删 fact/event、批量批准 pending events、批量删除显式筛选的 fact/event。
+- 保持 `memory.read` / `memory.graph` / `memory.events` 写作主链路语义不变；管理工具不新增 HTTP 路由、不引入软删除迁移、不重写前端 UI。
+- 增加写删安全校验：`memory.update` 禁止直接改 `event.status/appliedAt`，批删按 kind 校验 filter，LIKE 查询转义 `%/_` 防止通配符扩大范围。
+
 ## v3.0.0 (2026-06-25) — 3D 结晶叙事记忆空间 + 经纬/记忆架构边界闭合
 
 ### 🌌 3D 结晶叙事记忆空间 (3D Crystalline Narrative Orb)

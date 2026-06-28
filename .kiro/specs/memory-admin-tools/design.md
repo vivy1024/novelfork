@@ -103,7 +103,7 @@ packages/novel-plugin/src/handlers/lore-memory-boundary-handlers.test.ts
 - 输出：更新后的对象
 - 行为：
   - `fact`：允许更新 subject/predicate/object/category/layer/confidence/evidence/source chapters/validity
-  - `event`：允许更新 subject/predicate/object/evidence/confidence/status/risk/appliedAt
+  - `event`：允许更新 chapterNumber/eventType/subject/predicate/object/evidence/confidence/source/riskLevel；状态流转不得通过 `memory.update` 直接改 `status/appliedAt`，必须走 `memory.events` 或 `memory.bulk_approve` 的状态机语义
   - `log`、`vector`：默认拒绝
 
 #### `memory.delete`
@@ -155,7 +155,7 @@ packages/novel-plugin/src/handlers/lore-memory-boundary-handlers.test.ts
 ### Recommended implementation detail
 
 - `list/search/stats/export/dedup` 以 SQLite 查询 + 简单聚合实现。
-- `update/delete` 对 `fact` 使用直接 update/delete，对 `event` 使用 status update 或硬删。
+- `update/delete` 对 `fact` 使用直接 update/delete；对 `event` 仅允许非状态字段受控 update 或硬删，状态流转复用 `memory.events` / `bulk_approve`。
 - `bulk_approve` 复用 `updateNarrativeEventStatus` 与 `applyNarrativeEvents` 的既有模式。
 - `bulk_delete` 先枚举候选，再逐条执行，以便返回逐条结果。
 
