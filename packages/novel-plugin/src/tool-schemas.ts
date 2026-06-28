@@ -16,6 +16,10 @@ function stringSchema(description: string): Record<string, unknown> {
   return { type: "string", description };
 }
 
+function enumSchema(values: readonly string[], description: string): Record<string, unknown> {
+  return { type: "string", enum: values, description };
+}
+
 function numberSchema(description: string): Record<string, unknown> {
   return { type: "number", description };
 }
@@ -27,6 +31,25 @@ function booleanSchema(description: string): Record<string, unknown> {
 function arraySchema(description: string, items: Record<string, unknown> = { type: "object" }): Record<string, unknown> {
   return { type: "array", description, items };
 }
+
+const memoryKindSchema = enumSchema(["fact", "event", "log", "vector"], "条目类型：fact | event | log | vector。");
+const writableMemoryKindSchema = enumSchema(["fact", "event"], "条目类型：仅支持 fact | event。");
+const eventStatusSchema = enumSchema(["pending", "applied", "rejected"], "事件状态：pending | applied | rejected。");
+const factLayerSchema = enumSchema(["canon", "dynamic", "reference"], "事实层：canon | dynamic | reference。");
+const jsonFormatSchema = enumSchema(["json"], "导出格式：json（当前仅支持 json）。");
+const memoryFilterSchema = {
+  type: "object",
+  description: "过滤条件：ids/status/layer/category/chapterRange/query。不同 kind 只接受适用字段。",
+  properties: {
+    ids: arraySchema("条目 ID 列表。", { type: "string" }),
+    status: eventStatusSchema,
+    layer: factLayerSchema,
+    category: stringSchema("事实 category 或事件 eventType。"),
+    chapterRange: arraySchema("章节范围 [from, to]。", { type: "number" }),
+    query: stringSchema("关键词过滤。"),
+  },
+  additionalProperties: false,
+};
 
 /**
  * 小说领域工具的 inputSchema 定义
@@ -369,6 +392,119 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       limit: numberSchema("list 返回数量上限（可选）。"),
     },
     required: ["bookId", "action"],
+    additionalProperties: false,
+  },
+  "memory.list": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: memoryKindSchema,
+      status: eventStatusSchema,
+      layer: factLayerSchema,
+      category: stringSchema("事实 category 或事件 eventType 过滤。"),
+      chapterRange: arraySchema("章节范围 [from, to]（可选）。", { type: "number" }),
+      query: stringSchema("关键词过滤（可选）。"),
+      limit: numberSchema("返回数量上限（默认 50，最大 500）。"),
+      offset: numberSchema("分页偏移量（默认 0）。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "memory.read_entry": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: memoryKindSchema,
+      id: stringSchema("条目 ID。fact/event/log 使用 id，vector 使用 cardId。"),
+    },
+    required: ["bookId", "kind", "id"],
+    additionalProperties: false,
+  },
+  "memory.search": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      query: stringSchema("搜索关键词。"),
+      kind: memoryKindSchema,
+      status: eventStatusSchema,
+      limit: numberSchema("返回数量上限（默认 50，最大 500）。"),
+    },
+    required: ["bookId", "query"],
+    additionalProperties: false,
+  },
+  "memory.update": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: writableMemoryKindSchema,
+      id: stringSchema("条目 ID。"),
+      patch: { type: "object", description: "要更新的字段补丁。fact/event 只允许白名单字段。" },
+      reason: stringSchema("修改原因，必填，用于审计。"),
+    },
+    required: ["bookId", "kind", "id", "patch", "reason"],
+    additionalProperties: false,
+  },
+  "memory.delete": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: writableMemoryKindSchema,
+      id: stringSchema("条目 ID。"),
+      reason: stringSchema("删除原因，必填，用于审计。"),
+    },
+    required: ["bookId", "kind", "id", "reason"],
+    additionalProperties: false,
+  },
+  "memory.dedup": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: writableMemoryKindSchema,
+      limit: numberSchema("返回重复候选组上限。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "memory.export": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: memoryKindSchema,
+      format: jsonFormatSchema,
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "memory.stats": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+    },
+    required: ["bookId"],
+    additionalProperties: false,
+  },
+  "memory.bulk_approve": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      eventIds: arraySchema("要批准的事件 ID 列表。", { type: "string" }),
+      filter: memoryFilterSchema,
+      reason: stringSchema("批量批准原因，必填，用于审计。"),
+      limit: numberSchema("最多处理数量（默认 100，最大 200）。"),
+    },
+    required: ["bookId", "reason"],
+    additionalProperties: false,
+  },
+  "memory.bulk_delete": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      kind: writableMemoryKindSchema,
+      filter: memoryFilterSchema,
+      limit: numberSchema("最多删除数量（默认 50，最大 200）。"),
+      reason: stringSchema("批量删除原因，必填，用于审计。"),
+    },
+    required: ["bookId", "kind", "filter", "reason"],
     additionalProperties: false,
   },
   "resource.manage": {

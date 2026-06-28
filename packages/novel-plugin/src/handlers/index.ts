@@ -31,6 +31,29 @@ export {
   type MemoryGraphInput,
   type MemoryEventsInput,
 } from "./lore-memory-boundary-handlers.js";
+export {
+  handleMemoryBulkApprove,
+  handleMemoryBulkDelete,
+  handleMemoryDedup,
+  handleMemoryDelete,
+  handleMemoryExport,
+  handleMemoryList,
+  handleMemoryReadEntry,
+  handleMemorySearch,
+  handleMemoryStats,
+  handleMemoryUpdate,
+  type MemoryBulkApproveInput,
+  type MemoryBulkDeleteInput,
+  type MemoryDedupInput,
+  type MemoryDeleteInput,
+  type MemoryEntryKind,
+  type MemoryExportInput,
+  type MemoryListInput,
+  type MemoryReadEntryInput,
+  type MemorySearchInput,
+  type MemoryStatsInput,
+  type MemoryUpdateInput,
+} from "./memory-admin-handlers.js";
 
 export { createCockpitService, CockpitService } from "./cockpit-service.js";
 export type {

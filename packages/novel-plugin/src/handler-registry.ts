@@ -40,6 +40,16 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "memory.read", serviceKey: "direct", method: "handleMemoryRead" },
   { toolName: "memory.graph", serviceKey: "direct", method: "handleMemoryGraph" },
   { toolName: "memory.events", serviceKey: "direct", method: "handleMemoryEvents" },
+  { toolName: "memory.list", serviceKey: "direct", method: "handleMemoryList" },
+  { toolName: "memory.read_entry", serviceKey: "direct", method: "handleMemoryReadEntry" },
+  { toolName: "memory.search", serviceKey: "direct", method: "handleMemorySearch" },
+  { toolName: "memory.update", serviceKey: "direct", method: "handleMemoryUpdate" },
+  { toolName: "memory.delete", serviceKey: "direct", method: "handleMemoryDelete" },
+  { toolName: "memory.dedup", serviceKey: "direct", method: "handleMemoryDedup" },
+  { toolName: "memory.export", serviceKey: "direct", method: "handleMemoryExport" },
+  { toolName: "memory.stats", serviceKey: "direct", method: "handleMemoryStats" },
+  { toolName: "memory.bulk_approve", serviceKey: "direct", method: "handleMemoryBulkApprove" },
+  { toolName: "memory.bulk_delete", serviceKey: "direct", method: "handleMemoryBulkDelete" },
 
   // Audit/quality tools
   { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },
