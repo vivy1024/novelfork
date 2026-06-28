@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { EmptyState } from "../../components/feedback";
-import { modelTestStatusLabel, providerApiModeLabel, providerCompatibilityLabel, providerProtocolLabel, providerProtocolDescription } from "../../lib/display-labels";
+import { modelTestStatusLabel, providerProtocolLabel, providerProtocolDescription } from "../../lib/display-labels";
 import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderProtocol, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
 import { inferProtocol } from "@/shared/provider-catalog";
 import type { SessionReasoningEffort } from "@/shared/session-types";
@@ -15,7 +15,13 @@ import { SESSION_REASONING_EFFORT_OPTIONS } from "@/shared/session-types";
 import type { ApiProvider } from "../provider-types";
 
 const PROTOCOLS: ProviderProtocol[] = ["completions", "responses", "anthropic", "codex", "claude-code"];
-const THINKING_STRENGTHS: ProviderThinkingStrength[] = ["low", "medium", "high"];
+const THINKING_STRENGTHS: ProviderThinkingStrength[] = ["low", "medium", "high", "xhigh"];
+const THINKING_STRENGTH_LABELS: Record<ProviderThinkingStrength, string> = {
+  low: "低",
+  medium: "中",
+  high: "高",
+  xhigh: "最高",
+};
 
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
@@ -48,6 +54,8 @@ export function ApiProviderDetail({
   onUpdateModel,
   onUpdateProvider,
   onDelete,
+  draftMode = false,
+  onSaveDraft,
 }: {
   readonly provider: ApiProvider;
   readonly busy: string | null;
@@ -61,18 +69,28 @@ export function ApiProviderDetail({
   readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
   readonly onUpdateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<void>;
   readonly onDelete?: (providerId: string) => Promise<void>;
+  readonly draftMode?: boolean;
+  readonly onSaveDraft?: (provider: ManagedProvider) => Promise<void>;
 }) {
+  const [name, setName] = useState(provider.name);
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? provider.config.endpoint ?? "");
   const [apiKey, setApiKey] = useState("");
   const [proxy, setProxy] = useState((provider as { proxy?: string }).proxy ?? "");
   const [protocol, setProtocol] = useState<ProviderProtocol>(inferProtocol(provider));
+  const [thinkingStrength, setThinkingStrength] = useState<ProviderThinkingStrength>(provider.thinkingStrength ?? "medium");
+  const [accountId, setAccountId] = useState(provider.accountId ?? "");
+  const [useResponsesWebSocket, setUseResponsesWebSocket] = useState(Boolean(provider.useResponsesWebSocket));
   const [defaultReasoningEffort, setDefaultReasoningEffort] = useState<SessionReasoningEffort | undefined>(provider.defaultReasoningEffort);
 
   useEffect(() => {
+    setName(provider.name);
     setBaseUrl(provider.baseUrl ?? provider.config.endpoint ?? "");
     setApiKey("");
     setProxy((provider as { proxy?: string }).proxy ?? "");
     setProtocol(inferProtocol(provider));
+    setThinkingStrength(provider.thinkingStrength ?? "medium");
+    setAccountId(provider.accountId ?? "");
+    setUseResponsesWebSocket(Boolean(provider.useResponsesWebSocket));
     setDefaultReasoningEffort(provider.defaultReasoningEffort);
   }, [provider]);
 
@@ -80,29 +98,48 @@ export function ApiProviderDetail({
     const trimmedApiKey = apiKey.trim();
     const compatibility = protocolToCompatibility(protocol);
     const apiMode = protocolToApiMode(protocol);
-    await onUpdateProvider(provider.id, {
+    const nextProvider: ManagedProvider = {
+      ...provider,
+      name: name.trim() || provider.name,
       baseUrl: baseUrl.trim() || undefined,
       protocol,
       compatibility,
       apiMode,
       type: providerTypeFromCompatibility(compatibility),
+      thinkingStrength,
+      accountId: accountId.trim() || undefined,
+      useResponsesWebSocket,
       defaultReasoningEffort,
       ...(proxy.trim() ? { proxy: proxy.trim() } : { proxy: undefined }),
-      ...(trimmedApiKey ? { config: { apiKey: trimmedApiKey } } : {}),
-    });
+      config: {
+        ...provider.config,
+        ...(trimmedApiKey ? { apiKey: trimmedApiKey } : {}),
+      },
+    };
+    if (draftMode) {
+      await onSaveDraft?.(nextProvider);
+      return;
+    }
+    await onUpdateProvider(provider.id, nextProvider);
     setApiKey("");
   };
 
   const originalBaseUrl = provider.baseUrl ?? provider.config.endpoint ?? "";
   const originalProxy = (provider as { proxy?: string }).proxy ?? "";
   const originalProtocol = inferProtocol(provider);
-  const hasChanges = baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol || defaultReasoningEffort !== provider.defaultReasoningEffort;
+  const originalAccountId = provider.accountId ?? "";
+  const originalUseResponsesWebSocket = Boolean(provider.useResponsesWebSocket);
+  const hasChanges = draftMode || name !== provider.name || baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol || thinkingStrength !== (provider.thinkingStrength ?? "medium") || accountId !== originalAccountId || useResponsesWebSocket !== originalUseResponsesWebSocket || defaultReasoningEffort !== provider.defaultReasoningEffort;
 
   const resetForm = () => {
+    setName(provider.name);
     setBaseUrl(originalBaseUrl);
     setApiKey("");
     setProxy(originalProxy);
     setProtocol(originalProtocol);
+    setThinkingStrength(provider.thinkingStrength ?? "medium");
+    setAccountId(originalAccountId);
+    setUseResponsesWebSocket(originalUseResponsesWebSocket);
     setDefaultReasoningEffort(provider.defaultReasoningEffort);
   };
 
@@ -120,8 +157,10 @@ export function ApiProviderDetail({
       </div>
 
       <div>
-        <h2 className="text-lg font-semibold">{provider.name}</h2>
-        <p className="text-sm text-muted-foreground">API key 接入 · {provider.models.length} 个模型</p>
+        <h2 className="text-lg font-semibold">{draftMode ? `新建 ${providerProtocolLabel(protocol)} 供应商` : provider.name}</h2>
+        <p className="text-sm text-muted-foreground">
+          {draftMode ? "新建供应商，保存后才会创建并写入配置。" : `API key 接入 · ${provider.models.length} 个模型`}
+        </p>
       </div>
 
       {(feedback || error) && (
@@ -135,7 +174,7 @@ export function ApiProviderDetail({
         <div className="grid gap-3 md:grid-cols-2">
           <label className="text-sm">
             名称
-            <Input className="mt-1 w-full" defaultValue={provider.name} onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== provider.name) void onUpdateProvider(provider.id, { name: v }); }} />
+            <Input className="mt-1 w-full" value={name} onChange={(event) => setName(event.target.value)} />
           </label>
           <label className="text-sm">
             Base URL
@@ -160,7 +199,13 @@ export function ApiProviderDetail({
             <SimpleSelect
               className="mt-1"
               value={protocol}
-              onValueChange={(v) => setProtocol(v as ProviderProtocol)}
+              onValueChange={(v) => {
+                const next = v as ProviderProtocol;
+                setProtocol(next);
+                if (draftMode && !name.trim()) {
+                  setName(providerProtocolLabel(next));
+                }
+              }}
               options={PROTOCOLS.map((value) => ({ value, label: providerProtocolLabel(value) }))}
             />
             <span className="text-[10px] text-muted-foreground">
@@ -190,7 +235,7 @@ export function ApiProviderDetail({
               disabled={busy === `provider:${provider.id}`}
               onClick={() => void saveConnectionInfo()}
             >
-              保存变更
+              {draftMode ? "创建供应商" : "保存变更"}
             </Button>
             <Button
               variant="ghost"
@@ -212,27 +257,28 @@ export function ApiProviderDetail({
             <label className="text-sm">
               Codex 推理强度
               <SimpleSelect
+                aria-label="Codex 推理强度"
                 className="mt-1"
-                value={provider.thinkingStrength ?? "medium"}
-                onValueChange={(v) => void onUpdateProvider(provider.id, { thinkingStrength: v as ProviderThinkingStrength })}
-                options={THINKING_STRENGTHS.map((s) => ({ value: s, label: s === "low" ? "低" : s === "medium" ? "中" : "高" }))}
+                value={thinkingStrength}
+                onValueChange={(v) => setThinkingStrength(v as ProviderThinkingStrength)}
+                options={THINKING_STRENGTHS.map((s) => ({ value: s, label: THINKING_STRENGTH_LABELS[s] }))}
               />
             </label>
             <label className="text-sm">
               ChatGPT Account ID
               <Input
                 className="mt-1 w-full"
-                value={provider.accountId ?? ""}
+                value={accountId}
                 placeholder="可选，用于组织订阅"
-                onChange={(e) => void onUpdateProvider(provider.id, { accountId: e.target.value || undefined })}
+                onChange={(e) => setAccountId(e.target.value)}
               />
             </label>
           </div>
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 text-sm">
               <Switch
-                checked={provider.useResponsesWebSocket ?? false}
-                onCheckedChange={(v) => void onUpdateProvider(provider.id, { useResponsesWebSocket: v })}
+                checked={useResponsesWebSocket}
+                onCheckedChange={setUseResponsesWebSocket}
               />
               使用 Responses WebSocket
             </label>
@@ -249,7 +295,7 @@ export function ApiProviderDetail({
             <Button
               variant="outline"
               size="sm"
-              disabled={busy === `refresh:${provider.id}`}
+              disabled={draftMode || busy === `refresh:${provider.id}`}
               onClick={() => void onRefreshModels(provider.id)}
             >
               {busy === `refresh:${provider.id}` ? "获取中…" : "获取模型列表"}

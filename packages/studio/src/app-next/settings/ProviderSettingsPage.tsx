@@ -11,7 +11,7 @@ import type {
 } from "@/shared/provider-catalog";
 import { inferProtocol } from "@/shared/provider-catalog";
 import { ApiProviderDetail } from "./providers/ApiProviderDetail";
-import { ApiProvidersSection, type ApiProviderStatusSummary, type ProviderFormState } from "./providers/ApiProvidersSection";
+import { ApiProvidersSection, type ApiProviderStatusSummary } from "./providers/ApiProvidersSection";
 import { deriveProviderFixtureFacts } from "./SettingsTruthModel";
 
 interface ProviderRuntimeSummary {
@@ -83,16 +83,6 @@ interface ProviderSettingsPageProps {
   readonly client?: ProviderSettingsClient;
 }
 
-const INITIAL_FORM: ProviderFormState = {
-  name: "",
-  prefix: "",
-  apiKey: "",
-  baseUrl: "",
-  apiMode: "responses",
-  compatibility: "openai-compatible",
-  protocol: "completions",
-};
-
 function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
   return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
 }
@@ -103,7 +93,33 @@ function protocolToCompatibility(protocol: ProviderProtocol): ProviderCompatibil
 
 function normalizeProviderId(prefix: string, name: string): string {
   const raw = (prefix || name || "custom-provider").trim().toLowerCase();
-  return raw.replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "") || "custom-provider";
+  return raw.replace(/[^a-z0-9\u4e00-\u9fff-]+/g, "-").replace(/^-+|-+$/g, "") || "custom-provider";
+}
+
+function apiModeFromProtocol(protocol: ProviderProtocol) {
+  if (protocol === "responses") return "responses" as const;
+  if (protocol === "codex") return "codex" as const;
+  return "completions" as const;
+}
+
+function createProviderDraft(protocol: ProviderProtocol): ManagedProvider {
+  const compatibility = protocolToCompatibility(protocol);
+  return {
+    id: `draft-${protocol}`,
+    name: "新供应商",
+    type: providerTypeFromCompatibility(compatibility),
+    enabled: true,
+    priority: 0,
+    apiKeyRequired: true,
+    baseUrl: "",
+    prefix: "",
+    protocol,
+    compatibility,
+    apiMode: apiModeFromProtocol(protocol),
+    config: {},
+    models: [],
+    ...(protocol === "codex" ? { thinkingStrength: "medium" as const } : {}),
+  };
 }
 
 function applyProvider(providers: ManagedProvider[], provider: ManagedProvider): ManagedProvider[] {
@@ -261,8 +277,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   const [busy, setBusy] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState<ProviderFormState>(INITIAL_FORM);
-  const [showAddForm, setShowAddForm] = useState(false);
+  const [draftProvider, setDraftProvider] = useState<ManagedProvider | null>(null);
   const [showProtocolModal, setShowProtocolModal] = useState(false);
   const [contextDrafts, setContextDrafts] = useState<Record<string, string>>({});
   const [providerRuntimeSummary, setProviderRuntimeSummary] = useState<ProviderRuntimeSummary | null>(null);
@@ -335,32 +350,34 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
   const selectedApiProvider = providers.find((provider) => provider.id === selectedApiProviderId) ?? null;
 
-  const saveProvider = async (selectedProtocol?: ProviderProtocol) => {
-    const protocol = selectedProtocol ?? form.protocol;
-    const compatibility = protocolToCompatibility(protocol);
-    const id = form.prefix.trim() || form.name.trim().toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-").replace(/^-+|-+$/g, "") || `provider-${Date.now()}`;
-    setBusy("create-provider");
+  const saveDraftProvider = async (draft: ManagedProvider) => {
+    const compatibility = protocolToCompatibility(inferProtocol(draft));
+    const id = normalizeProviderId(draft.prefix ?? "", draft.name);
+    const { priority: _priority, ...draftWithoutPriority } = draft;
+    setBusy(`provider:${draft.id}`);
     setError(null);
     try {
       const result = await client.createProvider({
+        ...draftWithoutPriority,
         id,
-        name: form.name.trim() || "新供应商",
+        name: draft.name.trim() || "新供应商",
         type: providerTypeFromCompatibility(compatibility),
-        enabled: true,
-        apiKeyRequired: true,
-        baseUrl: "",
-        prefix: form.prefix.trim() || id,
-        protocol,
+        baseUrl: draft.baseUrl?.trim() || undefined,
+        prefix: draft.prefix?.trim() || id,
+        protocol: inferProtocol(draft),
         compatibility,
-        apiMode: protocol === "responses" ? "responses" : protocol === "codex" ? "codex" : "completions",
-        config: { apiKey: "" },
+        apiMode: apiModeFromProtocol(inferProtocol(draft)),
+        config: {
+          ...draft.config,
+          apiKey: draft.config.apiKey?.trim() ?? "",
+        },
         models: [],
       });
       setProviders((current) => applyProvider(current, result.provider));
+      setDraftProvider(null);
       setSelectedApiProviderId(result.provider.id);
-      setShowAddForm(false);
       setShowProtocolModal(false);
-      setForm(INITIAL_FORM);
+      setFeedback("供应商已创建。");
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -443,6 +460,26 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     return <div className="rounded-lg border border-border p-4 text-sm text-muted-foreground">正在加载 AI 供应商…</div>;
   }
 
+  if (draftProvider) {
+    return (
+      <ApiProviderDetail
+        provider={draftProvider}
+        busy={busy}
+        feedback={feedback}
+        error={error}
+        contextDrafts={{}}
+        setContextDrafts={setContextDrafts}
+        onBack={() => setDraftProvider(null)}
+        onRefreshModels={refreshModels}
+        onTestModel={testModel}
+        onUpdateModel={updateModel}
+        onUpdateProvider={updateProvider}
+        draftMode
+        onSaveDraft={saveDraftProvider}
+      />
+    );
+  }
+
   if (selectedApiProvider) {
     return (
       <ApiProviderDetail
@@ -512,20 +549,14 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         providers={filteredProviders}
         providerStatuses={providerStatuses}
         fixtureProviderIds={fixtureProviderIds}
-        showAddForm={showAddForm}
         showProtocolModal={showProtocolModal}
-        form={form}
-        busy={busy}
-        setForm={setForm}
         onToggleAddForm={() => setShowProtocolModal(true)}
         onOpenProtocolModal={() => setShowProtocolModal(true)}
         onCloseProtocolModal={() => setShowProtocolModal(false)}
         onSelectProtocol={(protocol) => {
           setShowProtocolModal(false);
-          setForm({ ...INITIAL_FORM, protocol });
-          setShowAddForm(true);
+          setDraftProvider(createProviderDraft(protocol));
         }}
-        onSaveProvider={() => void saveProvider()}
         onSelectProvider={setSelectedApiProviderId}
         onToggleProvider={toggleProvider}
         onDeleteProvider={async (providerId) => {
