@@ -125,6 +125,7 @@ export function getRequestLogs(): RequestLog[] {
 export interface RequestLogQuery {
   provider?: string;
   model?: string;
+  protocol?: string;
   from?: string;
   to?: string;
   status?: "success" | "error";
@@ -165,6 +166,16 @@ interface RequestLogRow {
   chapter_number: number | null;
 }
 
+function parseRequestProtocol(details: string | null): string | undefined {
+  if (!details?.trim()) return undefined;
+  try {
+    const parsed = JSON.parse(details) as { protocol?: unknown };
+    return typeof parsed.protocol === "string" ? parsed.protocol : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function rowToRequestLog(row: RequestLogRow): RequestLog {
   const tokens: RequestTokenUsage | undefined =
     row.input_tokens !== null || row.output_tokens !== null || row.total_tokens !== null
@@ -189,6 +200,7 @@ function rowToRequestLog(row: RequestLogRow): RequestLog {
     narrator: row.narrator ?? undefined,
     provider: row.provider ?? undefined,
     model: row.model ?? undefined,
+    protocol: parseRequestProtocol(row.details),
     tokens,
     ttftMs: row.ttft_ms ?? undefined,
     costUsd: row.cost_usd ?? undefined,

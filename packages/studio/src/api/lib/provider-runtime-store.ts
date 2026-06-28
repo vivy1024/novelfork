@@ -18,7 +18,7 @@ import type {
   RuntimePlatformId,
   RuntimeProviderView,
 } from "../../shared/provider-catalog.js";
-import { inferProtocol } from "../../shared/provider-catalog.js";
+import { inferProtocol, normalizeProviderForSettings } from "../../shared/provider-catalog.js";
 import { resolveRuntimeStoragePath } from "./runtime-storage-paths.js";
 
 export type {
@@ -118,13 +118,17 @@ function normalizeModel(model: RuntimeModelInput): RuntimeModelRecord {
 }
 
 function normalizeProvider(provider: CreateRuntimeProviderInput | RuntimeProviderRecord): RuntimeProviderRecord {
-  return {
+  const normalized = normalizeProviderForSettings({
     ...provider,
     enabled: provider.enabled ?? true,
     priority: provider.priority ?? 1,
     protocol: inferProtocol(provider),
     config: { ...(provider.config ?? {}) },
     models: (provider.models ?? []).map((model) => normalizeModel(model)),
+  });
+  return {
+    ...normalized,
+    models: normalized.models.map((model) => normalizeModel(model as RuntimeModelInput)),
   };
 }
 

@@ -3,7 +3,7 @@ import type { SessionReasoningEffort } from "./session-types.js";
 export type ProviderType = "anthropic" | "openai" | "deepseek" | "custom";
 export type ProviderCompatibility = "openai-compatible" | "anthropic-compatible";
 export type ProviderApiMode = "completions" | "responses" | "codex";
-export type ProviderThinkingStrength = "low" | "medium" | "high";
+export type ProviderThinkingStrength = "low" | "medium" | "high" | "xhigh";
 
 /**
  * Provider 协议类型 — 替代 compatibility + apiMode 的统一字段。
@@ -262,7 +262,10 @@ function inferCompatibility(provider: Pick<Provider, "type" | "compatibility">):
   return provider.type === "anthropic" ? "anthropic-compatible" : "openai-compatible";
 }
 
-function inferApiMode(provider: Pick<Provider, "type" | "apiMode">): ProviderApiMode {
+function inferApiMode(provider: Pick<Provider, "type" | "apiMode" | "protocol">): ProviderApiMode {
+  if (provider.protocol === "responses") return "responses";
+  if (provider.protocol === "codex") return "codex";
+  if (provider.protocol === "completions") return "completions";
   if (provider.apiMode) return provider.apiMode;
   return provider.type === "openai" ? "responses" : "completions";
 }

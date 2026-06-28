@@ -27,7 +27,7 @@ export function getAdapterForProtocol(protocol: ProviderProtocol): RuntimeAdapte
     case "claude-code":
       return claudeCodeAdapter;
     default:
-      return completionsAdapter;
+      throw new Error(`Unsupported provider protocol: ${String(protocol)}`);
   }
 }
 

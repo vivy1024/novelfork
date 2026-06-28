@@ -80,12 +80,44 @@ describe("provider-catalog", () => {
     });
   });
 
+  it("keeps protocol as the source of truth when legacy apiMode is stale", () => {
+    expect(normalizeProviderForSettings({
+      id: "openai-responses-proxy",
+      name: "OpenAI Responses Proxy",
+      type: "custom",
+      apiKeyRequired: true,
+      protocol: "responses",
+      apiMode: "completions",
+      compatibility: "openai-compatible",
+      models: [],
+    })).toMatchObject({
+      protocol: "responses",
+      apiMode: "responses",
+      compatibility: "openai-compatible",
+    });
+
+    expect(normalizeProviderForSettings({
+      id: "codex-proxy",
+      name: "Codex Proxy",
+      type: "custom",
+      apiKeyRequired: true,
+      protocol: "codex",
+      apiMode: "completions",
+      compatibility: "openai-compatible",
+      models: [],
+    })).toMatchObject({
+      protocol: "codex",
+      apiMode: "codex",
+      compatibility: "openai-compatible",
+    });
+  });
+
   it("maps Studio provider API modes to runtime transport formats", () => {
     expect(resolveProviderApiTransport({ apiMode: "completions" })).toMatchObject({ apiFormat: "chat" });
     expect(resolveProviderApiTransport({ apiMode: "responses" })).toMatchObject({ apiFormat: "responses" });
-    expect(resolveProviderApiTransport({ apiMode: "codex", thinkingStrength: "high" })).toMatchObject({
+    expect(resolveProviderApiTransport({ apiMode: "codex", thinkingStrength: "xhigh" })).toMatchObject({
       apiFormat: "codex",
-      thinkingStrength: "high",
+      thinkingStrength: "xhigh",
     });
   });
 });
