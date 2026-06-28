@@ -69,6 +69,43 @@ describe("llm-runtime-service", () => {
     await rm(runtimeDir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
   });
 
+  it("returns actual provider protocol in runtime metadata for usage history", async () => {
+    const adapter = okAdapter("responses ok");
+    getAdapterForProtocolMock.mockReturnValue(adapter);
+    await store.createProvider({
+      id: "responses-proxy",
+      name: "Responses Proxy",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://gateway.example/v1",
+      protocol: "responses",
+      apiMode: "completions",
+      compatibility: "openai-compatible",
+      config: { apiKey: "sk-live" },
+      models: [{ id: "gpt-5.5", name: "GPT-5.5", contextWindow: 272000, maxOutputTokens: 8192, enabled: true, source: "detected" }],
+    });
+
+    const service = createLlmRuntimeService({ store });
+
+    const result = await service.generate({
+      sessionConfig: { providerId: "responses-proxy", modelId: "gpt-5.5", permissionMode: "edit", reasoningEffort: "medium" },
+      messages: [{ id: "m1", role: "user", content: "hello", timestamp: 1 }],
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      metadata: {
+        providerId: "responses-proxy",
+        providerName: "Responses Proxy",
+        modelId: "gpt-5.5",
+        protocol: "responses",
+      },
+    });
+    expect(getAdapterForProtocolMock).toHaveBeenCalledWith("responses");
+  });
+
   it("validates the runtime model pool and calls the target adapter", async () => {
     const adapter = okAdapter("真实回复");
     getAdapterForProtocolMock.mockReturnValue(adapter);

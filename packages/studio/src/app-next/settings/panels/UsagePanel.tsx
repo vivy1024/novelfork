@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { RefreshCw, Filter, X, ArrowUp, ArrowDown, Calendar } from "lucide-react";
+import { providerProtocolLabel } from "../../lib/display-labels";
 
 // ── Types ──
 
@@ -33,6 +34,7 @@ interface RequestItem {
   timestamp: string;
   narrator: string | null;
   provider: string | null;
+  protocol: string | null;
   model: string | null;
   status: number;
   tokens: number | null;
@@ -352,6 +354,7 @@ export function UsagePanel() {
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">时间</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">叙述者</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">供应商</th>
+                        <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">协议</th>
                         <th className="text-left px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">模型</th>
                         <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">Tokens</th>
                         <th className="text-right px-3 py-2 font-medium text-muted-foreground whitespace-nowrap">TTFT</th>
@@ -369,6 +372,9 @@ export function UsagePanel() {
                             <div className="text-foreground truncate max-w-[140px]">{item.narrator ?? "—"}</div>
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{item.provider ?? "—"}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {item.protocol ? <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{providerProtocolLabel(item.protocol)}</span> : "—"}
+                          </td>
                           <td className="px-3 py-2 font-mono truncate max-w-[140px]">{item.model ?? "—"}</td>
                           <td className="px-3 py-2 text-right font-mono whitespace-nowrap">
                             <div className="flex items-center justify-end gap-1">

@@ -28,6 +28,7 @@ export interface RequestLog {
   narrator?: string;
   provider?: string;
   model?: string;
+  protocol?: string;
   tokens?: RequestTokenUsage;
   ttftMs?: number;
   costUsd?: number;

@@ -14,7 +14,7 @@ import { getAdapterForProtocol } from "./provider-adapters/registry.js";
 import { detectModelProvider } from "./provider-adapters/model-transforms.js";
 import { buildRuntimeModelPool } from "./runtime-model-pool.js";
 import { ProviderRuntimeStore, type RuntimeProviderRecord } from "./provider-runtime-store.js";
-import { inferProtocol } from "../../shared/provider-catalog.js";
+import { inferProtocol, type ProviderProtocol } from "../../shared/provider-catalog.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { log } from "./logger.js";
 import { isPromptDumpEnabled, dumpPrompt } from "./prompt-dump.js";
@@ -33,6 +33,7 @@ export interface LlmRuntimeMetadata {
   };
   readonly fallbackAttempts?: number;
   readonly stopReason?: string;
+  readonly protocol?: ProviderProtocol;
 }
 
 export type LlmRuntimeGenerateResult =
@@ -296,6 +297,7 @@ export class LlmRuntimeService {
         continue;
       }
 
+      const protocol = inferProtocol(provider);
       const adapter = getAdapter(provider);
 
       // Retry loop with exponential backoff for transient errors
@@ -308,7 +310,7 @@ export class LlmRuntimeService {
             success: false,
             code: "user-aborted" as LlmRuntimeFailureCode,
             error: "用户中断了请求",
-            metadata: { providerId: candidate.providerId, providerName: candidate.providerName, modelId: candidate.rawModelId },
+            metadata: { providerId: candidate.providerId, providerName: candidate.providerName, modelId: candidate.rawModelId, protocol },
           };
         }
 
@@ -362,6 +364,7 @@ export class LlmRuntimeService {
           providerId: candidate.providerId,
           providerName: candidate.providerName,
           modelId: candidate.rawModelId,
+          protocol,
           ...(result.success && result.usage ? { usage: result.usage } : {}),
           ...(attempt > 0 ? { fallbackAttempts: attempt } : {}),
           ...(result.success && result.stopReason ? { stopReason: result.stopReason } : {}),

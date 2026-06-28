@@ -1,4 +1,5 @@
 import type { AgentNativeMessageMetadata, AgentNativeToolMetadata, CanvasContext, SessionToolExecutionResult } from "./agent-native-workspace.js";
+import type { ProviderProtocol } from "./provider-catalog.js";
 import type { ToolAccessReasonKey } from "./tool-access-reasons.js";
 
 export const SESSION_PERMISSION_MODES = ["ask", "edit", "allow", "read", "plan"] as const;
@@ -290,6 +291,7 @@ export interface NarratorSessionRuntimeMetadata {
   providerId: string;
   providerName?: string;
   modelId: string;
+  protocol?: ProviderProtocol;
   usage?: TokenUsage;
   stopReason?: string;
 }

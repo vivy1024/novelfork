@@ -633,6 +633,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       narrator: input.sessionId,
       provider: reply.success ? (reply.metadata.providerName || reply.metadata.providerId) : (reply.metadata?.providerName || reply.metadata?.providerId),
       model: reply.success ? reply.metadata.modelId : reply.metadata?.modelId,
+      details: reply.metadata?.protocol ? JSON.stringify({ protocol: reply.metadata.protocol }) : undefined,
       tokens: normalizeTokenUsage(
         reply.success && reply.metadata.usage
           ? {
@@ -738,6 +739,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             narrator: input.sessionId,
             provider: retryReply.success ? (retryReply.metadata.providerName || retryReply.metadata.providerId) : (retryReply.metadata?.providerName || retryReply.metadata?.providerId),
             model: retryReply.success ? retryReply.metadata.modelId : retryReply.metadata?.modelId,
+            details: retryReply.metadata?.protocol ? JSON.stringify({ protocol: retryReply.metadata.protocol }) : undefined,
             tokens: normalizeTokenUsage(
               retryReply.success && retryReply.metadata.usage
                 ? {

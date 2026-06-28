@@ -18,6 +18,52 @@ describe("ProviderRuntimeStore", () => {
     await rm(runtimeDir, { recursive: true, force: true });
   });
 
+  it("keeps explicit protocol normalized with legacy apiMode across reloads", async () => {
+    const store = new ProviderRuntimeStore({ storagePath });
+
+    await store.createProvider({
+      id: "responses-proxy",
+      name: "Responses Proxy",
+      type: "custom",
+      enabled: true,
+      priority: 1,
+      apiKeyRequired: true,
+      baseUrl: "https://api.example.com/v1",
+      prefix: "responses-proxy",
+      protocol: "responses",
+      compatibility: "openai-compatible",
+      apiMode: "completions",
+      config: { apiKey: "sk-live" },
+      models: [],
+    });
+    await store.createProvider({
+      id: "codex-proxy",
+      name: "Codex Proxy",
+      type: "custom",
+      enabled: true,
+      priority: 2,
+      apiKeyRequired: true,
+      baseUrl: "https://codex.example/v1",
+      prefix: "codex-proxy",
+      protocol: "codex",
+      compatibility: "openai-compatible",
+      apiMode: "completions",
+      config: { apiKey: "sk-live" },
+      models: [],
+    });
+
+    const reloaded = new ProviderRuntimeStore({ storagePath });
+
+    await expect(reloaded.getProvider("responses-proxy")).resolves.toMatchObject({
+      protocol: "responses",
+      apiMode: "responses",
+    });
+    await expect(reloaded.getProvider("codex-proxy")).resolves.toMatchObject({
+      protocol: "codex",
+      apiMode: "codex",
+    });
+  });
+
   it("persists providers, model patches and platform accounts across store reinitialization", async () => {
     const store = new ProviderRuntimeStore({ storagePath });
 

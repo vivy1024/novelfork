@@ -172,6 +172,7 @@ function formatRequestItem(log: RequestLog, sessionTitleMap?: Map<string, string
     timestamp: log.timestamp,
     narrator: narratorTitle ?? log.narrator ?? null,
     provider: log.provider ?? null,
+    protocol: log.protocol ?? null,
     model: log.model ?? null,
     status: log.status,
     tokens: log.tokens?.total ?? null,
