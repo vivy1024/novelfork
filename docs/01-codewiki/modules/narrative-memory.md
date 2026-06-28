@@ -1,6 +1,6 @@
 **版本**: v3.0.0
 **创建日期**: 2026-06-26
-**更新日期**: 2026-06-26
+**更新日期**: 2026-06-27
 **状态**: current
 **文档类型**: current
 
@@ -18,6 +18,7 @@
 - `packages/novel-plugin/src/engine/narrative-memory/storage.ts`
 - `packages/novel-plugin/src/engine/narrative-memory/build-narrative-context.ts`
 - `packages/novel-plugin/src/handlers/lore-memory-boundary-handlers.ts`
+- `packages/novel-plugin/src/handlers/memory-admin-handlers.ts`
 - `packages/novel-plugin/src/routes/narrative-memory.ts`
 - `packages/novel-plugin/src/pages/writing-workbench/NarrativeMemoryPanel.tsx`
 
@@ -33,6 +34,15 @@
 
 - 输入：bookId、purpose、chapterNumber、entities、sceneText、budgetTokens、事件字段。
 - 输出：ContextCard 包、动态图谱、Pending Events、Narrative Facts。
+
+## 管理层工具
+
+Memory Admin Tools 直接面向 Narrative Memory 存储层治理，不改变 `memory.read` / `memory.graph` / `memory.events` 的主链路语义：
+
+- 只读：`memory.list`、`memory.read_entry`、`memory.search`、`memory.dedup`、`memory.export`、`memory.stats`。
+- 写删：`memory.update`、`memory.delete`、`memory.bulk_approve`、`memory.bulk_delete`，全部为 `confirmed-write` 风险。
+- 范围：可查看 fact/event/log/vector；更新和硬删除仅允许 fact/event，并保留工具调用审计摘要。
+- 边界：不新增 HTTP 路由，不引入软删除迁移，不把管理工具放进写作必经链路。
 
 ## 当前问题
 
