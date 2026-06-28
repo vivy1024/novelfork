@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { ProviderSettingsPage, type ProviderSettingsClient } from "./ProviderSettingsPage";
 
@@ -35,6 +35,12 @@ function createClient(): ProviderSettingsClient {
     deleteProvider: vi.fn(async () => ({ success: true })),
   };
 }
+
+beforeAll(() => {
+  if (!Element.prototype.scrollIntoView) {
+    Element.prototype.scrollIntoView = () => {};
+  }
+});
 
 afterEach(() => cleanup());
 
@@ -229,20 +235,53 @@ describe("ProviderSettingsPage", () => {
     expect(screen.getByText("暂无密钥供应商")).toBeTruthy();
   });
 
-  it("only enables AddProviderForm after required name field is present", async () => {
-    render(<ProviderSettingsPage client={createClient()} />);
+  it("selecting a protocol opens an unsaved provider draft and creates it only when saved", async () => {
+    const client = createClient();
+    render(<ProviderSettingsPage client={client} />);
 
     fireEvent.click(await screen.findByRole("button", { name: "+ 添加供应商" }));
-
-    // Protocol modal opens first
     expect(await screen.findByRole("dialog", { name: "选择协议类型" })).toBeTruthy();
-    // Click a protocol option to proceed to add form
-    fireEvent.click(screen.getByText("Completions 兼容"));
 
-    // After selecting protocol, add form appears
-    expect(await screen.findByRole("button", { name: "创建并配置" })).toBeTruthy();
-    expect((screen.getByRole("button", { name: "创建并配置" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByLabelText("供应商名称 *"), { target: { value: "Sub2API" } });
-    expect((screen.getByRole("button", { name: "创建并配置" }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByText("Responses 兼容"));
+
+    expect(await screen.findByRole("heading", { name: "新建 Responses 兼容 供应商" })).toBeTruthy();
+    expect(client.createProvider).not.toHaveBeenCalled();
+    expect(screen.getByText("新建供应商，保存后才会创建并写入配置。")) .toBeTruthy();
+    expect((screen.getByRole("button", { name: "获取模型列表" }) as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "My Responses" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.example.com/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-live" } });
+    fireEvent.click(screen.getByRole("button", { name: "创建供应商" }));
+
+    await waitFor(() => expect(client.createProvider).toHaveBeenCalledWith(expect.objectContaining({
+      id: "my-responses",
+      name: "My Responses",
+      protocol: "responses",
+      apiMode: "responses",
+      baseUrl: "https://api.example.com/v1",
+      config: { apiKey: "sk-live" },
+    })));
+  });
+
+  it("shows the Codex four-level reasoning strength picker", async () => {
+    const client = createClient();
+    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
+      providers: [{
+        ...openaiProvider,
+        id: "codex-proxy",
+        name: "Codex Proxy",
+        protocol: "codex" as const,
+        apiMode: "codex" as const,
+        thinkingStrength: "medium" as const,
+      }],
+    });
+    render(<ProviderSettingsPage client={client} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "查看 Codex Proxy API key 接入详情" }));
+
+    expect(await screen.findByRole("heading", { name: "Codex 配置" })).toBeTruthy();
+    fireEvent.click(screen.getByLabelText("Codex 推理强度"));
+    expect(await screen.findByText("最高")).toBeTruthy();
   });
 });
