@@ -735,6 +735,66 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const result = await handleMemoryEvents(input as any);
         return { ...result, renderer: definition.renderer };
       };
+    case "memory.list":
+      return async ({ input, definition }) => {
+        const { handleMemoryList } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryList(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.read_entry":
+      return async ({ input, definition }) => {
+        const { handleMemoryReadEntry } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryReadEntry(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.search":
+      return async ({ input, definition }) => {
+        const { handleMemorySearch } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemorySearch(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.dedup":
+      return async ({ input, definition }) => {
+        const { handleMemoryDedup } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryDedup(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.export":
+      return async ({ input, definition }) => {
+        const { handleMemoryExport } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryExport(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.stats":
+      return async ({ input, definition }) => {
+        const { handleMemoryStats } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryStats(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.update":
+      return async ({ input, definition }) => {
+        const { handleMemoryUpdate } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryUpdate(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.delete":
+      return async ({ input, definition }) => {
+        const { handleMemoryDelete } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryDelete(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.bulk_approve":
+      return async ({ input, definition }) => {
+        const { handleMemoryBulkApprove } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryBulkApprove(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
+    case "memory.bulk_delete":
+      return async ({ input, definition }) => {
+        const { handleMemoryBulkDelete } = await import("@vivy1024/novelfork-novel-plugin");
+        const result = await handleMemoryBulkDelete(input as any);
+        return { ...result, renderer: definition.renderer };
+      };
     case "pgi.ask":
       return async ({ input, definition }) => {
         const { handlePgiAsk } = await import("@vivy1024/novelfork-novel-plugin");

@@ -76,6 +76,38 @@ describe("session tool executor", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("executes read-risk memory admin tools through registered handlers", async () => {
+    const handler = vi.fn(async () => ({ ok: true, renderer: "narrative-memory.admin", summary: "已列出记忆。", data: { entries: [] } }));
+    const executor = createSessionToolExecutor({ handlers: { "memory.list": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "memory.list",
+      permissionMode: "read",
+      input: { bookId: "book-1" },
+    }));
+
+    expect(result).toMatchObject({ ok: true, renderer: "narrative-memory.admin", data: { entries: [] } });
+    expect(handler).toHaveBeenCalledOnce();
+  });
+
+  it("requires confirmation before executing confirmed-write memory admin tools", async () => {
+    const handler = vi.fn(async () => ({ ok: true, renderer: "narrative-memory.admin", summary: "已删除记忆。", data: {} }));
+    const executor = createSessionToolExecutor({ handlers: { "memory.delete": handler } });
+
+    const result = await executor.execute(input({
+      toolName: "memory.delete",
+      permissionMode: "edit",
+      input: { bookId: "book-1", kind: "fact", id: "fact-1", reason: "测试" },
+    }));
+
+    expect(result).toMatchObject({
+      ok: true,
+      data: { status: "pending-confirmation" },
+      confirmationAudit: { toolName: "memory.delete", risk: "confirmed-write" },
+    });
+    expect(handler).not.toHaveBeenCalled();
+  });
+
   it("blocks write-risk tools in read and plan modes", async () => {
     const handler = vi.fn();
     const executor = createSessionToolExecutor({ handlers: { "pipeline.write": handler } });
