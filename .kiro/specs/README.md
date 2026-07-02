@@ -6,7 +6,9 @@
 
 ## Active Specs
 
-当前无 active spec。
+| Spec | 状态 | 说明 |
+|------|------|------|
+| `narrative-memory-auto-settlement` | 🔥 设计中 | 正式章节确认后的叙事记忆自动结算：事件抽取、风险分流、事实沉淀与后台治理可见性。 |
 
 ---
 

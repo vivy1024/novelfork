@@ -108,3 +108,9 @@ export * from "./tools/index.js";
 
 // ─── Writing Resource ─────────────────────────────────────────────────────
 export * from "./writing-resource/index.js";
+
+// ─── Narrative Memory Settlement ──────────────────────────────────────────
+export { extractNarrativeEventsFromChapter } from "./narrative-memory/chapter-event-extractor.js";
+export type { ChapterEventExtractorInput, ChapterEventExtractionResult } from "./narrative-memory/chapter-event-extractor.js";
+export { decideSettlementRisk } from "./narrative-memory/settlement-risk-gate.js";
+export type { ChapterSettlementInput, ChapterSettlementResult, NarrativeEventDraft, SettlementRiskDecision } from "./narrative-memory/settlement-risk-gate.js";

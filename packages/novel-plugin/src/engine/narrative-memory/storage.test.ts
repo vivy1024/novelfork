@@ -10,6 +10,7 @@ import {
   insertNarrativeEvent,
   insertNarrativeFact,
   insertRetrievalLog,
+  listHighRiskPendingNarrativeEvents,
   queryNarrativeFacts,
   updateNarrativeEventStatus,
 } from "./storage.js";
@@ -124,6 +125,30 @@ describe("Narrative Memory storage", () => {
       });
       expect(updated?.status).toBe("applied");
       expect(updated?.appliedAt).toBe("2026-06-22T01:00:00.000Z");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("queries high-risk pending events before applying generic pending limits", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      insertNarrativeEvent(storage, event({ id: "high-old", subject: "世界规则", predicate: "改变", object: "灵根可逆转", riskLevel: "high", createdAt: "2026-06-22T00:00:00.000Z" }));
+      for (let index = 0; index < 55; index += 1) {
+        insertNarrativeEvent(storage, event({
+          id: `medium-${index}`,
+          subject: "韩立",
+          predicate: "状态",
+          object: `谨慎-${index}`,
+          riskLevel: "medium",
+          createdAt: `2026-06-22T01:${String(index).padStart(2, "0")}:00.000Z`,
+        }));
+      }
+
+      const highRisk = listHighRiskPendingNarrativeEvents(storage, { bookId: "book-1", limit: 50 });
+
+      expect(highRisk.map((item) => item.id)).toEqual(["high-old"]);
     } finally {
       storage.close();
     }

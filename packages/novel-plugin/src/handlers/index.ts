@@ -89,6 +89,9 @@ export { NOVEL_SESSION_TOOL_DEFINITIONS, NOVEL_TOOL_NAMES, NOVEL_AGENT_PRESETS }
 export { executeWritingModeTool } from "./writing-mode-tool.js";
 export type { WritingMode, WritingModeInput, WritingModeResult } from "./writing-mode-tool.js";
 
+export { settleConfirmedChapter } from "./chapter-settlement-service.js";
+export type { ChapterSettlementOptions } from "./chapter-settlement-service.js";
+
 export { executePipelineWrite } from "./pipeline-write-service.js";
 export type {
   PipelineWriteInput,

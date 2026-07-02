@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildPipelineChapterResultMetadata, buildPipelineContextPackage, beatTemplateToStyleSnippet, presetToStyleSnippet } from "./pipeline-write-service.js";
+import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, beatTemplateToStyleSnippet, presetToStyleSnippet } from "./pipeline-write-service.js";
 import type { BeatTemplate, Preset } from "../engine/presets/types.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
@@ -57,6 +57,53 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).not.toContain("candidateId");
     expect(source).not.toContain("candidate-chapter");
     expect(source).not.toContain("候选稿");
+  });
+
+  it("settles Narrative Memory only after the formal chapter resource is saved", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+
+    const saveIndex = source.indexOf("await resourceService.create(bookId");
+    const settlementIndex = source.indexOf("settleConfirmedChapter");
+
+    expect(saveIndex).toBeGreaterThan(-1);
+    expect(settlementIndex).toBeGreaterThan(saveIndex);
+    expect(source).toContain("narrativeSettlement");
+  });
+
+  it("checks high-risk pending events before writer generation", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+
+    const pendingCheckIndex = source.indexOf("listHighRiskPendingNarrativeEvents");
+    const writerIndex = source.indexOf("const writer = new WriterAgent");
+
+    expect(pendingCheckIndex).toBeGreaterThan(-1);
+    expect(writerIndex).toBeGreaterThan(-1);
+    expect(pendingCheckIndex).toBeLessThan(writerIndex);
+  });
+});
+
+describe("pipeline.write high-risk pending reminder", () => {
+  it("summarizes high-risk pending events with evidence and handling entry", () => {
+    const reminder = buildHighRiskPendingReminder([{
+      id: "event-1",
+      bookId: "book-1",
+      chapterNumber: 12,
+      eventType: "world_fact_introduced",
+      subject: "世界规则",
+      predicate: "改变",
+      object: "灵根可被后天逆转",
+      evidenceText: "韩立确认灵根可被后天逆转。",
+      confidence: 0.92,
+      source: "settle",
+      status: "pending",
+      riskLevel: "high",
+      createdAt: "2026-07-02T00:00:00.000Z",
+    }]);
+
+    expect(reminder).toContain("高风险 pending NarrativeEvents");
+    expect(reminder).toContain("event-1");
+    expect(reminder).toContain("灵根可被后天逆转");
+    expect(reminder).toContain("memory.events");
   });
 });
 
