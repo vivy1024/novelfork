@@ -626,6 +626,18 @@ export function listPendingNarrativeEvents(storage: StorageDatabase, input: List
   return rows.map(eventRowToRecord);
 }
 
+export function listHighRiskPendingNarrativeEvents(storage: StorageDatabase, input: ListPendingNarrativeEventsInput): NarrativeEvent[] {
+  ensureNarrativeMemorySchema(storage);
+  const parsed = ListPendingNarrativeEventsInputSchema.parse(input);
+  const rows = storage.sqlite.prepare<NarrativeEventRow>(`
+    ${EVENT_SELECT}
+    WHERE book_id = ? AND status = 'pending' AND risk_level = 'high'
+    ORDER BY chapter_number DESC, created_at DESC, id ASC
+    LIMIT ?
+  `).all(parsed.bookId, Math.max(1, Math.min(parsed.limit ?? 50, 200)));
+  return rows.map(eventRowToRecord);
+}
+
 export function queryNarrativeContextVectors(storage: StorageDatabase, input: QueryNarrativeContextVectorsInput): QueryNarrativeContextVectorsResult {
   ensureNarrativeMemorySchema(storage);
   const parsed = QueryNarrativeContextVectorsInputSchema.parse(input);

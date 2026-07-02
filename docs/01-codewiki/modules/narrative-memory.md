@@ -1,6 +1,6 @@
 **版本**: v3.0.0
 **创建日期**: 2026-06-26
-**更新日期**: 2026-06-27
+**更新日期**: 2026-07-02
 **状态**: current
 **文档类型**: current
 
@@ -14,6 +14,8 @@
 
 - `packages/novel-plugin/src/engine/narrative-memory/`
 - `packages/novel-plugin/src/engine/narrative-memory/events.ts`
+- `packages/novel-plugin/src/engine/narrative-memory/chapter-event-extractor.ts`
+- `packages/novel-plugin/src/engine/narrative-memory/settlement-risk-gate.ts`
 - `packages/novel-plugin/src/engine/narrative-memory/reducer.ts`
 - `packages/novel-plugin/src/engine/narrative-memory/storage.ts`
 - `packages/novel-plugin/src/engine/narrative-memory/build-narrative-context.ts`
@@ -27,6 +29,8 @@
 - `handleMemoryRead()`：按 write/revise/audit/outline/diagnose 召回 ContextCard。
 - `handleMemoryGraph()`：读取 relationship/timeline/character_arc/foreshadowing/conflict/event_chain/wave 视图。
 - `handleMemoryEvents()`：list/create/approve/reject Pending NarrativeEvents。
+- `extractNarrativeEventsFromChapter()`：从正式章节正文抽取动态叙事变化草案，支持 LLM JSON 抽取、结构化标记兜底、schema 校验、正文证据检查和同章去重。
+- `decideSettlementRisk()`：将 settlement 草案分流为 low/medium/high，低风险允许 auto apply，中高风险 pending。
 - `createNarrativeEvent()`：按类型、层级和 confidence 分类 risk/status。
 - `applyNarrativeEvents()`：将可应用事件转为 `narrative_fact`，高风险保持 pending。
 
@@ -53,5 +57,5 @@ Memory Admin Tools 直接面向 Narrative Memory 存储层治理，不改变 `me
 
 1. 动态事实不写经纬。
 2. LLM 只提出候选事件；reducer 决定 applied/pending。
-3. 正式章节结算或用户确认动作才触发事实回写。
+3. 正式章节结算或用户确认动作才触发事实回写；未确认正文、候选稿、手工编辑中间态不进入自动结算。
 4. 文风/表达偏好进入预设，不进入 Narrative Memory。

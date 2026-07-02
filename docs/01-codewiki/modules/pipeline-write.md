@@ -1,6 +1,6 @@
 **版本**: v3.0.0
 **创建日期**: 2026-06-26
-**更新日期**: 2026-06-26
+**更新日期**: 2026-07-02
 **状态**: current
 **文档类型**: current
 
@@ -13,6 +13,7 @@
 ## 真实代码路径
 
 - `packages/novel-plugin/src/handlers/pipeline-write-service.ts`
+- `packages/novel-plugin/src/handlers/chapter-settlement-service.ts`
 - `packages/novel-plugin/src/engine/agents/writer.ts`
 - `packages/novel-plugin/src/engine/agents/continuity.ts`
 - `packages/novel-plugin/src/engine/agents/reviser.ts`
@@ -28,7 +29,7 @@
 ## 输入 / 输出
 
 - 输入：bookId、chapterNumber、chapterIntent、上下文、PGI 指令、经纬和记忆召回结果。
-- 输出：章节正文、审计结果、修订结果、NarrativeEvents 或待确认事件。
+- 输出：章节正文、审计结果、修订结果、正式章节资源、Narrative Memory 结算摘要和高风险 pending 提醒。
 
 ## 当前问题
 
@@ -37,6 +38,7 @@
 ## 维护规则
 
 1. 写作前读取 Lore 和 Narrative Memory。
-2. 写作后涉及事实变化时生成 NarrativeEvent。
-3. 高风险事件 pending，不直接覆盖经纬。
-4. 正式章节是结果层，不删除。
+2. `pipeline.write` 保存/更新 accepted 正式章节后触发 Chapter Settlement；空正文或保存失败不写事实。
+3. Chapter Settlement 只从正式章节正文抽取 NarrativeEvent；生产路径使用 LLM 正文抽取 + runtime delta 结构化草案 + 规则兜底，低风险自动沉淀为 NarrativeFact，中高风险进入 pending。
+4. 下一次写作前检查 high-risk pending；默认先返回提醒和 memory.events 处理入口，只有用户明确 `continueWithHighRiskPending=true` 才继续写作。
+5. 正式章节是结果层，不删除。

@@ -278,6 +278,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
       previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
       autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
+      continueWithHighRiskPending: booleanSchema("存在 high-risk pending NarrativeEvents 时是否明确继续写作。默认 false，会先返回处理提醒。"),
     },
     required: ["bookId", "sceneSpec"],
     additionalProperties: false,

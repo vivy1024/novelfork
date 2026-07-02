@@ -25,8 +25,11 @@ import type { CanvasArtifact } from "@vivy1024/novelfork-studio/shared/agent-nat
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { createLLMChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
+import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
 import type { BeatTemplate, Preset } from "../engine/presets/types.js";
 import { getBeatTemplate, getPreset } from "../engine/presets/index.js";
@@ -39,6 +42,8 @@ export interface PipelineWriteInput {
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
   readonly autoRevise?: boolean;
+  /** 存在 high-risk pending NarrativeEvents 时仍明确继续写作。默认 false，会在写作前返回提醒。 */
+  readonly continueWithHighRiskPending?: boolean;
   /** 对抗式审查：3 视角独立审查 + 交叉合成（默认 false，回退单 agent） */
   readonly adversarialAudit?: boolean;
   /** 多轮自愈：审查→修订最多 N 轮（默认 1） */
@@ -61,11 +66,15 @@ export interface PipelineWriteOutput {
   readonly needsHumanReview?: boolean;
   /** 实际执行的修订轮数 */
   readonly reviseRounds?: number;
+  /** 正式章节确认后的 Narrative Memory 自动结算摘要 */
+  readonly narrativeSettlement?: ChapterSettlementResult;
+  /** 写作前发现的高风险 pending NarrativeEvents 提醒 */
+  readonly highRiskPendingReminder?: string;
 }
 
 export interface PipelineWriteError {
   readonly ok: false;
-  readonly code: "book-not-found" | "spec-invalid" | "generation-failed" | "timeout";
+  readonly code: "book-not-found" | "spec-invalid" | "generation-failed" | "timeout" | "high-risk-pending";
   readonly error: string;
 }
 
@@ -207,11 +216,22 @@ export function buildPipelineChapterResultMetadata(input: { readonly narrativeCo
   return input.narrativeContext?.diagnostics;
 }
 
+export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]): string {
+  const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
+  if (highRisk.length === 0) return "";
+  const items = highRisk.slice(0, 5).map((event) => [
+    `- ${event.id}｜第${event.chapterNumber}章｜${event.subject} ${event.predicate} ${event.object}`,
+    `  evidence: ${event.evidenceText}`,
+  ].join("\n")).join("\n");
+  const more = highRisk.length > 5 ? `\n...以及另外 ${highRisk.length - 5} 条高风险 pending。` : "";
+  return `检测到 ${highRisk.length} 条高风险 pending NarrativeEvents。请优先用 memory.events approve/reject 处理；如本次明确继续写作，系统不会自动修改正文或经纬 canon。\n${items}${more}`;
+}
+
 export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
-  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, continueWithHighRiskPending = false, adversarialAudit = false, maxReviseRounds = 1 } = input;
   let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
 
@@ -240,6 +260,22 @@ export async function executePipelineWrite(
     const lengthSpec = buildLengthSpec(sceneSpec.wordTarget ?? book.chapterWordCount);
 
     logger?.info(`[pipeline.write] Starting for book=${bookId} chapter=${chapterNumber}`);
+
+    let highRiskPendingReminder: string | undefined;
+    try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const pendingEvents = listHighRiskPendingNarrativeEvents(getStorageDatabase(), { bookId, limit: 50 });
+      const reminder = buildHighRiskPendingReminder(pendingEvents);
+      if (reminder) {
+        highRiskPendingReminder = reminder;
+        logger?.warn(`[pipeline.write] ${reminder.split("\n")[0]}`);
+        if (!continueWithHighRiskPending) {
+          return { ok: false, code: "high-risk-pending", error: reminder };
+        }
+      }
+    } catch (err) {
+      logger?.debug(`[pipeline.write] High-risk pending check skipped: ${err instanceof Error ? err.message : String(err)}`);
+    }
 
     if (!narrativeContext) {
       try {
@@ -431,6 +467,7 @@ export async function executePipelineWrite(
 
     // 4. Save as formal chapter result
     const chapterId = `chapter:${chapterNumber}`;
+    let narrativeSettlement: ChapterSettlementResult | undefined;
     try {
       const { getStorageDatabase, resolveBookStorageDir } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
@@ -447,6 +484,7 @@ export async function executePipelineWrite(
         ...(lengthWarning ? { lengthWarning } : {}),
         ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
         ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
+        ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
         ...(narrativeEvents.length > 0 ? { narrativeEvents } : {}),
         generatedAt: new Date().toISOString(),
       };
@@ -464,6 +502,41 @@ export async function executePipelineWrite(
           source: "pipeline.write",
           metadata,
         });
+      }
+
+      try {
+        const { settleConfirmedChapter } = await import("./chapter-settlement-service.js");
+        narrativeSettlement = await settleConfirmedChapter({
+          bookId,
+          chapterId,
+          chapterNumber,
+          title: writeOutput.title,
+          content: finalContent,
+          confirmedAt: new Date().toISOString(),
+        }, {
+          storage,
+          llmExtractor: async (settlementInput) => {
+            const llmExtractor = createLLMChapterEventExtractor(options.client, options.model);
+            const llmDrafts = await llmExtractor(settlementInput).catch((error) => {
+              logger?.warn(`[pipeline.write] LLM settlement extraction failed: ${error instanceof Error ? error.message : String(error)}`);
+              return [];
+            });
+            return [
+              ...llmDrafts,
+              ...narrativeEvents.map((event) => ({
+                eventType: event.eventType,
+                subject: event.subject,
+                predicate: event.predicate,
+                object: event.object,
+                evidenceText: event.evidenceText || finalContent.slice(0, 1200),
+                confidence: event.confidence,
+                source: "settle",
+              })),
+            ];
+          },
+        });
+      } catch (settlementError) {
+        logger?.warn(`[pipeline.write] Narrative Memory settlement failed: ${settlementError instanceof Error ? settlementError.message : String(settlementError)}`);
       }
     } catch (err) {
       logger?.warn(`[pipeline.write] Failed to save formal chapter: ${err}`);
@@ -483,6 +556,8 @@ export async function executePipelineWrite(
       reviseRounds,
       ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
+      ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
+      ...(narrativeSettlement ? { narrativeSettlement } : {}),
       artifact: {
         id: chapterId,
         kind: "chapter",

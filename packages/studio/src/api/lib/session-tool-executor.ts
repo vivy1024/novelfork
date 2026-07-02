@@ -864,18 +864,22 @@ function getNovelServiceHandler(toolName: string, options: SessionToolExecutorOp
         const root = process.env.NOVELFORK_PROJECT_ROOT || resolveRuntimeStoragePath();
 
         const result = await executePipelineWrite(
-          { bookId: String(input.bookId), sceneSpec: input.sceneSpec as any, jingweiContext: input.jingweiContext as string | undefined, previousChapterTail: input.previousChapterTail as string | undefined, autoRevise: input.autoRevise !== false, adversarialAudit: input.adversarialAudit === true, maxReviseRounds: typeof input.maxReviseRounds === "number" ? input.maxReviseRounds : 1 },
+          { bookId: String(input.bookId), sceneSpec: input.sceneSpec as any, jingweiContext: input.jingweiContext as string | undefined, previousChapterTail: input.previousChapterTail as string | undefined, autoRevise: input.autoRevise !== false, continueWithHighRiskPending: input.continueWithHighRiskPending === true, adversarialAudit: input.adversarialAudit === true, maxReviseRounds: typeof input.maxReviseRounds === "number" ? input.maxReviseRounds : 1 },
           { root, client, model: llmConfig.model, logger: undefined },
         );
 
         if (!result.ok) {
           return { ok: false, renderer: definition.renderer, error: result.code, summary: result.error };
         }
+        const settlementSummary = result.narrativeSettlement
+          ? ` Narrative Memory 结算：抽取 ${result.narrativeSettlement.extracted} 条，自动沉淀 ${result.narrativeSettlement.autoApplied} 条，pending ${result.narrativeSettlement.pending} 条。`
+          : "";
+        const highRiskReminder = result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : "";
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过"}${result.revised ? "，已自动修订" : ""}。`,
-          data: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount, auditPassed: result.auditResult.passed, revised: result.revised, chapterId: result.chapterId },
+          summary: `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "✓ 通过" : "✗ 未通过"}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${highRiskReminder}`,
+          data: { chapterNumber: result.chapterNumber, title: result.title, wordCount: result.wordCount, auditPassed: result.auditResult.passed, revised: result.revised, chapterId: result.chapterId, narrativeSettlement: result.narrativeSettlement, highRiskPendingReminder: result.highRiskPendingReminder },
           artifact: result.artifact,
         };
       };
