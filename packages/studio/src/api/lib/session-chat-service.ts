@@ -2397,12 +2397,11 @@ export async function handleSessionChatTransportMessage(
     } catch { /* project exploration failure is non-fatal */ }
 
     const routinePrompts = await loadRoutineGlobalPrompts();
-    const sessionTools = getEnabledSessionTools(loaded.session.sessionConfig.permissionMode, loaded.session.agentId, { disabledTools: loaded.session.sessionConfig.toolPolicy?.deny });
     const langConfig = await loadUserConfig();
     const sessionLanguage = langConfig.runtimeControls?.forceUserLanguage !== false ? (langConfig.preferences?.language || "zh") : undefined;
     const systemPromptSections = buildSystemPrompt({
       agentId: loaded.session.agentId ?? "default",
-      toolNames: sessionTools.map(t => t.name),
+      toolNames: filteredTools.map(t => t.name),
       identitySection: getIdentitySection(loaded.session.agentId),
       writeNextInstructions: AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS.trim(),
       goals: loaded.session.goals,
