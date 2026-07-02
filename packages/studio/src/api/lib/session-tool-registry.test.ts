@@ -8,6 +8,7 @@ import {
   getSessionToolDefinition,
   getSessionToolNames,
   isSessionToolEnabledForMode,
+  NOVEL_CORE_TOOLS,
   registerPluginAgentPresets,
   registerPluginTools,
 } from "./session-tool-registry.js";
@@ -147,6 +148,24 @@ describe("session tool registry", () => {
       "Bash",
       "Write",
       "Edit",
+    ]));
+  });
+
+  it("keeps narrative memory management tools in the novel core allowlist", () => {
+    expect([...NOVEL_CORE_TOOLS]).toEqual(expect.arrayContaining([
+      "memory.read",
+      "memory.graph",
+      "memory.events",
+      "memory.list",
+      "memory.read_entry",
+      "memory.search",
+      "memory.dedup",
+      "memory.export",
+      "memory.stats",
+      "memory.update",
+      "memory.delete",
+      "memory.bulk_approve",
+      "memory.bulk_delete",
     ]));
   });
 

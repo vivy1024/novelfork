@@ -275,7 +275,7 @@ export function getUsingToolsSection(toolNames: string[]): string {
   // ── ToolSearch（按需工具发现）──
   if (has(TOOL_TOOL_SEARCH)) {
     items.push(
-      `Not every tool is listed above. Less-common tools (presets.*, beat.*, style.import, rewrite.segment, pipeline.import_chapters, character.check_consistency, etc.) are discoverable via ${TOOL_TOOL_SEARCH}. Search by keyword, then call the returned tool DIRECTLY as a normal tool call using its name and inputSchema. Do NOT wrap it in ${TOOL_SKILL} — ${TOOL_SKILL} is only for named skills in available_skills, never for tool names like "presets.write".`,
+      `${TOOL_TOOL_SEARCH} can inspect the full registry for less-common tools (presets.*, beat.*, style.import, rewrite.segment, pipeline.import_chapters, character.check_consistency, etc.). Only tools exposed in the current provider tool list are callable in this turn; if ${TOOL_TOOL_SEARCH} returns a tool that is not callable, use an exposed alternative or report that the tool is not currently exposed. Do NOT wrap tool names in ${TOOL_SKILL} — ${TOOL_SKILL} is only for named skills in available_skills.`,
     );
   }
 

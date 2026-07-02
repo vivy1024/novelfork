@@ -612,6 +612,21 @@ export const NOVEL_CORE_TOOLS = new Set<string>([
   "pipeline.write",
   "scene.spec",
   "pgi.ask",
+  // Narrative Memory 主链路与管理工具必须常驻：ToolSearch 只能列出工具，
+  // 不能把未暴露给 provider 的 schema 动态加入当前轮次可调用工具列表。
+  "memory.read",
+  "memory.graph",
+  "memory.events",
+  "memory.list",
+  "memory.read_entry",
+  "memory.search",
+  "memory.dedup",
+  "memory.export",
+  "memory.stats",
+  "memory.update",
+  "memory.delete",
+  "memory.bulk_approve",
+  "memory.bulk_delete",
   // 资源管理（accept/reject 操作高频）
   "resource.manage",
   // 其余工具（chapter.audit, presets.*, beat.*）通过 ToolSearch 按需发现
