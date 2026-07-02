@@ -6,14 +6,7 @@
 
 ## Active Specs
 
-| Spec | 状态 | 说明 |
-|------|------|------|
-| `docs-rewrite-v3` | 🔥 当前执行 | 重写 docs 为够准、够短、可验证的文档中心；保留 `learning/` 与 `codegraph/`。 |
-| `ide-file-tree-and-tabs` | 📋 待执行 | IDE 文件树与标签页体验改进。 |
-| `lore-memory-boundary` | 📋 待执行 | 经纬静态 Lore 与动态叙事记忆边界治理。 |
-| `narrative-wave-memory` | 📋 待执行 | 叙事浪潮记忆能力建设。 |
-| `writing-panel-triage` | 📋 待执行 | 写作面板问题整理与收口。 |
-| `memory-admin-tools` | 📋 待执行 | 补齐 memory 列表、搜索、更新、删除、导出、统计与批处理管理能力。 |
+当前无 active spec。
 
 ---
 
@@ -21,6 +14,12 @@
 
 | Spec | 完成日期 | 成果 |
 |------|---------|------|
+| `docs-rewrite-v3` | 2026-06-25 | 文档中心重写与验收口径收束。 |
+| `ide-file-tree-and-tabs` | 2026-06-25 | IDE 文件树与标签页体验改进。 |
+| `lore-memory-boundary` | 2026-06-25 | 经纬静态 Lore 与动态叙事记忆边界治理。 |
+| `narrative-wave-memory` | 2026-06-25 | 叙事浪潮记忆能力建设。 |
+| `writing-panel-triage` | 2026-06-25 | 写作面板问题整理与收口。 |
+| `memory-admin-tools` | 2026-06-25 | 补齐 memory 列表、搜索、更新、删除、导出、统计与批处理管理能力。 |
 | `simplify-writing-model-codewiki` | 2026-06-21 | 候选稿/草稿主概念清理、正式章节结果流、CodeWiki 第一入口与维护规则。 |
 | `agent-tool-gaps` | 2026-05-31 | Agent 工具缺口补全：pipeline.revise / pipeline.import_chapters / rewrite.apply / style.import / style.get_profile。PipelineRunner 已删除，Agent 工具层为唯一执行层。 |
 
