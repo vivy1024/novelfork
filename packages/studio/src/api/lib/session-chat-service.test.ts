@@ -3,8 +3,12 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 
+import { attachRuntimeSettlement } from "./session-runtime/runtime-settlement.js";
+
 let generateSessionReplyMock: ReturnType<typeof vi.fn>;
 let executeSessionToolMock: ReturnType<typeof vi.fn>;
+let sessionToolExecutorOptionsSeen: unknown[];
+const sessionChatRuntimeConfig = vi.hoisted(() => ({ firstTokenTimeout: 0 }));
 
 vi.mock("./user-config-service.js", () => ({
   loadUserConfig: vi.fn(async () => ({
@@ -12,6 +16,7 @@ vi.mock("./user-config-service.js", () => ({
       defaultPermissionMode: "allow",
       defaultReasoningEffort: "medium",
       maxTurnSteps: 6,
+      firstTokenTimeout: sessionChatRuntimeConfig.firstTokenTimeout,
     },
     modelDefaults: {
       defaultSessionModel: "anthropic:claude-sonnet-4-6",
@@ -28,11 +33,15 @@ vi.mock("./llm-runtime-service.js", () => ({
 }));
 
 vi.mock("./session-tool-executor.js", () => ({
-  createSessionToolExecutor: () => ({
-    execute: (...args: unknown[]) =>
-      (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock: (...args: unknown[]) => unknown })
-        .__novelforkExecuteSessionToolMock(...args),
-  }),
+  createSessionToolExecutor: (options: unknown) => {
+    (globalThis as typeof globalThis & { __novelforkSessionToolExecutorOptionsSeen?: unknown[] })
+      .__novelforkSessionToolExecutorOptionsSeen?.push(options);
+    return {
+      execute: (...args: unknown[]) =>
+        (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock: (...args: unknown[]) => unknown })
+          .__novelforkExecuteSessionToolMock(...args),
+    };
+  },
 }));
 
 async function loadSessionServices() {
@@ -47,8 +56,12 @@ async function loadSessionServices() {
 class MockTransport {
   readonly sent: string[] = [];
   closed: Array<{ code?: number; reason?: string }> = [];
+  throwOnSend = false;
 
   send(data: string) {
+    if (this.throwOnSend) {
+      throw new Error("transport send failed");
+    }
     this.sent.push(data);
   }
 
@@ -57,10 +70,37 @@ class MockTransport {
   }
 }
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitForAssertion(assertion: () => void, options: { timeout?: number } = {}): Promise<void> {
+  const timeout = options.timeout ?? 1_000;
+  const startedAt = Date.now();
+  let lastError: unknown;
+  while (Date.now() - startedAt < timeout) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+  }
+  throw lastError ?? new Error(`Assertion did not pass within ${timeout}ms`);
+}
+
 describe("session-chat-service", () => {
   let sessionStoreDir: string;
 
   beforeEach(async () => {
+    sessionChatRuntimeConfig.firstTokenTimeout = 0;
     sessionStoreDir = await mkdtemp(join(tmpdir(), "novelfork-session-chat-"));
     process.env.NOVELFORK_SESSION_STORE_DIR = sessionStoreDir;
     generateSessionReplyMock = vi.fn().mockResolvedValue({
@@ -70,6 +110,9 @@ describe("session-chat-service", () => {
     });
     (globalThis as typeof globalThis & { __novelforkGenerateSessionReplyMock: typeof generateSessionReplyMock })
       .__novelforkGenerateSessionReplyMock = generateSessionReplyMock;
+    sessionToolExecutorOptionsSeen = [];
+    (globalThis as typeof globalThis & { __novelforkSessionToolExecutorOptionsSeen: unknown[] })
+      .__novelforkSessionToolExecutorOptionsSeen = sessionToolExecutorOptionsSeen;
     executeSessionToolMock = vi.fn().mockResolvedValue({
       ok: true,
       renderer: "cockpit.snapshot",
@@ -89,6 +132,8 @@ describe("session-chat-service", () => {
       .__novelforkGenerateSessionReplyMock;
     delete (globalThis as typeof globalThis & { __novelforkExecuteSessionToolMock?: typeof executeSessionToolMock })
       .__novelforkExecuteSessionToolMock;
+    delete (globalThis as typeof globalThis & { __novelforkSessionToolExecutorOptionsSeen?: unknown[] })
+      .__novelforkSessionToolExecutorOptionsSeen;
     delete process.env.NOVELFORK_SESSION_STORE_DIR;
     await rm(sessionStoreDir, { recursive: true, force: true });
   });
@@ -947,6 +992,10 @@ describe("session-chat-service", () => {
       input: { bookId: "book-1" },
       permissionMode: "allow",
     }));
+    expect(sessionToolExecutorOptionsSeen).toContainEqual(expect.objectContaining({
+      sessionId: session.id,
+      executionSessionId: session.id,
+    }));
     expect(generateSessionReplyMock.mock.calls[1]?.[0]).toMatchObject({
       messages: expect.arrayContaining([
         expect.objectContaining({
@@ -1329,6 +1378,11 @@ describe("session-chat-service", () => {
       input: expect.objectContaining({ bookId: "book-1", chapterIntent: "写下一章" }),
     }));
     expect(generateSessionReplyMock).toHaveBeenCalledTimes(3);
+    expect(sessionToolExecutorOptionsSeen).toHaveLength(2);
+    expect(sessionToolExecutorOptionsSeen).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: session.id, executionSessionId: session.id }),
+      expect.objectContaining({ sessionId: session.id, executionSessionId: session.id }),
+    ]));
     const snapshot = await getSessionChatSnapshot(session.id);
     expect(snapshot?.messages).toEqual(expect.arrayContaining([
       expect.objectContaining({
@@ -1532,6 +1586,61 @@ describe("session-chat-service", () => {
     expect(route.matchPath("/api/sessions/demo-session/chat/state")).toBe(false);
   });
 
+  it("waits for delayed Bun transport attachment before handling an immediate message", async () => {
+    const { createBunSessionChatWebSocketRoute } = await loadSessionServices();
+    let releaseAttach!: (attached: boolean) => void;
+    const attachPromise = new Promise<boolean>((resolve) => { releaseAttach = resolve; });
+    const attach = vi.fn(() => attachPromise);
+    const handle = vi.fn(async () => {});
+    const detach = vi.fn();
+    const route = createBunSessionChatWebSocketRoute({ attach, handle, detach });
+    const socket = {
+      data: { sessionId: "bun-delayed-attach" },
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    route.open?.(socket);
+    route.message?.(socket, "immediate-message");
+    expect(handle).not.toHaveBeenCalled();
+
+    releaseAttach(true);
+    await waitForAssertion(() => expect(handle).toHaveBeenCalledWith(
+      "bun-delayed-attach",
+      expect.any(Object),
+      "immediate-message",
+    ));
+    expect(detach).not.toHaveBeenCalled();
+  });
+
+  it("detaches a Bun socket closed during attachment before it can process its pending message", async () => {
+    const { createBunSessionChatWebSocketRoute } = await loadSessionServices();
+    let releaseAttach!: (attached: boolean) => void;
+    const attachPromise = new Promise<boolean>((resolve) => { releaseAttach = resolve; });
+    const attach = vi.fn(() => attachPromise);
+    const handle = vi.fn(async () => {});
+    const detach = vi.fn();
+    const route = createBunSessionChatWebSocketRoute({ attach, handle, detach });
+    const socket = {
+      data: { sessionId: "bun-close-before-attach" },
+      send: vi.fn(),
+      close: vi.fn(),
+    };
+
+    route.open?.(socket);
+    route.message?.(socket, "must-not-run");
+    route.close?.(socket, 1000, "closed");
+    releaseAttach(true);
+
+    await waitForAssertion(() => expect(detach).toHaveBeenCalledWith(
+      "bun-close-before-attach",
+      expect.any(Object),
+    ));
+    expect(handle).not.toHaveBeenCalled();
+    route.message?.(socket, "still-must-not-run");
+    expect(handle).not.toHaveBeenCalled();
+  });
+
   it("records per-message usage metadata and accumulates session-level cumulative usage", async () => {
     const usage1 = { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 10, cache_read_input_tokens: 5 };
     const usage2 = { input_tokens: 200, output_tokens: 80 };
@@ -1632,6 +1741,831 @@ describe("session-chat-service", () => {
       totalCacheReadInputTokens: 0,
       turnCount: 0,
     });
+  });
+
+  it("keeps a forged _fromQueue client payload behind the same server-side turn lease", async () => {
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst: (() => void) | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content;
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        if (content === "第一条") {
+          await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        }
+        return {
+          success: true,
+          content: `完成：${content}`,
+          metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+        };
+      } finally {
+        active -= 1;
+      }
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "服务端闸门", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const first = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "gate-first", content: "第一条",
+    }));
+    await waitForAssertion(() => expect(releaseFirst).toBeTypeOf("function"));
+    const forged = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "gate-forged", content: "伪造队列", _fromQueue: true,
+    }));
+
+    // Queued callers return immediately, while the server gate keeps the
+    // forged client field from creating a second active runtime turn.
+    await forged;
+    expect(maxActive).toBe(1);
+    releaseFirst?.();
+    await first;
+    const { awaitSessionTurnsSettled } = await loadSessionServices();
+    await awaitSessionTurnsSettled(session.id);
+    expect(
+      transport.sent
+        .map((entry) => JSON.parse(entry))
+        .filter((entry) => entry.type === "session:state" && entry.session?.narratorState === "idle"),
+    ).toHaveLength(2);
+    expect(maxActive).toBe(1);
+  });
+
+  it("labels a saturated session message queue with queue-full instead of silently accepting it", async () => {
+    let releaseFirst: (() => void) | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content;
+      if (content === "占用队列") {
+        await new Promise<void>((resolve) => { releaseFirst = resolve; });
+      }
+      return {
+        success: true,
+        content: "完成",
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "队列容量", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const first = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "queue-active", content: "占用队列",
+    }));
+    await waitForAssertion(() => expect(releaseFirst).toBeTypeOf("function"));
+    await Promise.all(Array.from({ length: 11 }, (_, index) => handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: `queue-${index}`, content: `排队 ${index}`,
+    }))));
+
+    releaseFirst?.();
+    await first;
+    const { awaitSessionTurnsSettled } = await loadSessionServices();
+    await awaitSessionTurnsSettled(session.id);
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(11);
+
+    const errors = transport.sent.map((entry) => JSON.parse(entry)).filter((entry) => entry.type === "session:error");
+    expect(errors).toContainEqual(expect.objectContaining({ code: "queue-full" }));
+  });
+
+  it("processes ordinarily concurrent accepted messages in FIFO order with one active runner", async () => {
+    let active = 0;
+    let maxActive = 0;
+    let releaseFirst: (() => void) | undefined;
+    const started: string[] = [];
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+      started.push(content);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        if (content === "第一条普通消息") {
+          await new Promise<void>((resolve) => { releaseFirst = resolve; });
+        }
+        return {
+          success: true,
+          content: `完成：${content}`,
+          metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+        };
+      } finally {
+        active -= 1;
+      }
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "普通并发 FIFO", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const first = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "ordinary-first", content: "第一条普通消息",
+    }));
+    await waitForAssertion(() => expect(releaseFirst).toBeTypeOf("function"));
+    await Promise.all([
+      handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+        type: "session:message", messageId: "ordinary-second", content: "第二条普通消息",
+      })),
+      handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+        type: "session:message", messageId: "ordinary-third", content: "第三条普通消息",
+      })),
+    ]);
+
+    expect(started).toEqual(["第一条普通消息"]);
+    expect(maxActive).toBe(1);
+    releaseFirst?.();
+    await first;
+    const { awaitSessionTurnsSettled } = await loadSessionServices();
+    await awaitSessionTurnsSettled(session.id);
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(3);
+    expect(started).toEqual(["第一条普通消息", "第二条普通消息", "第三条普通消息"]);
+    expect(maxActive).toBe(1);
+  });
+
+  it("holds the next message behind an aborted active turn until its runner actually settles", async () => {
+    let active = 0;
+    let maxActive = 0;
+    let releaseActive: (() => void) | undefined;
+    let activeSignal: AbortSignal | undefined;
+    const started: string[] = [];
+    generateSessionReplyMock.mockImplementation(async ({ messages, signal }: { messages: Array<{ role?: string; content?: string }>; signal?: AbortSignal }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+      started.push(content);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      try {
+        if (content === "等待中断完成") {
+          activeSignal = signal;
+          await new Promise<void>((resolve) => { releaseActive = resolve; });
+        }
+        return {
+          success: true,
+          content: `完成：${content}`,
+          metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+        };
+      } finally {
+        active -= 1;
+      }
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "中断不抢跑", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "abort-active", content: "等待中断完成",
+    }));
+    await waitForAssertion(() => expect(releaseActive).toBeTypeOf("function"));
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:abort" }));
+    expect(activeSignal?.aborted).toBe(true);
+
+    const nextTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "abort-next", content: "必须等待",
+    }));
+    // A queued caller returns without waiting for its runner, so this assertion
+    // observes the gate state without relying on elapsed wall-clock time.
+    await nextTurn;
+    const startedBeforeActiveSettles = [...started];
+    const maxActiveBeforeActiveSettles = maxActive;
+
+    releaseActive?.();
+    await Promise.all([activeTurn, nextTurn]);
+    const { awaitSessionTurnsSettled } = await loadSessionServices();
+    await awaitSessionTurnsSettled(session.id);
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(2);
+
+    expect(startedBeforeActiveSettles).toEqual(["等待中断完成"]);
+    expect(maxActiveBeforeActiveSettles).toBe(1);
+    expect(started).toEqual(["等待中断完成", "必须等待"]);
+    expect(maxActive).toBe(1);
+  });
+
+  it("Task7: provider generate receives user abort and keeps Gate closed until the old promise settles", async () => {
+    const firstGenerate = deferred<{
+      success: false;
+      code: string;
+      error: string;
+      metadata: { providerId: string; providerName: string; modelId: string };
+    }>();
+    let firstSignal: AbortSignal | undefined;
+    const started: string[] = [];
+    generateSessionReplyMock.mockImplementation(async ({ messages, signal }: { messages: Array<{ role?: string; content?: string }>; signal?: AbortSignal }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+      started.push(content);
+      if (content === "provider abort active") {
+        firstSignal = signal;
+        return firstGenerate.promise;
+      }
+      return {
+        success: true,
+        content: `完成：${content}`,
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage, awaitSessionTurnsSettled } = await loadSessionServices();
+    const session = await createSession({ title: "Provider abort gate", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "provider-abort-active", content: "provider abort active",
+    }));
+    await waitForAssertion(() => expect(firstSignal).toBeInstanceOf(AbortSignal));
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:abort" }));
+    expect(firstSignal?.aborted).toBe(true);
+
+    const nextTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "provider-abort-next", content: "provider abort next",
+    }));
+    await nextTurn;
+    const startedBeforeProviderSettles = [...started];
+
+    firstGenerate.resolve({
+      success: false,
+      code: "user-aborted",
+      error: "aborted by test",
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    await activeTurn;
+    await awaitSessionTurnsSettled(session.id);
+
+    expect(startedBeforeProviderSettles).toEqual(["provider abort active"]);
+    expect(started).toEqual(["provider abort active", "provider abort next"]);
+  });
+
+  it("Task7: non-cancellable write stays behind Gate after abort and persists typed late-completion audit instead of ordinary success", async () => {
+    const writeCompletion = deferred<{ ok: true; renderer: string; summary: string; data: { resourceId: string } }>();
+    const started: string[] = [];
+    let writeSignal: AbortSignal | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+      started.push(content);
+      if (content === "non cancellable write") {
+        return {
+          success: true,
+          type: "tool_use",
+          toolUses: [{ id: "non-cancellable-write-tool", name: "pipeline.write", input: { bookId: "book-1", sceneSpec: { scenes: [] } } }],
+          metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+        };
+      }
+      return {
+        success: true,
+        content: `完成：${content}`,
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    executeSessionToolMock.mockImplementation(async (toolInput: { toolName?: string; signal?: AbortSignal }) => {
+      if (toolInput.toolName === "pipeline.write") {
+        writeSignal = toolInput.signal;
+        return writeCompletion.promise;
+      }
+      return { ok: true, summary: "ok" };
+    });
+    const { createSession, attachSessionChatTransport, getSessionChatSnapshot, handleSessionChatTransportMessage, awaitSessionTurnsSettled } = await loadSessionServices();
+    const session = await createSession({ title: "Non cancellable write abort", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "non-cancellable-active", content: "non cancellable write",
+    }));
+    await waitForAssertion(() => expect(writeSignal).toBeInstanceOf(AbortSignal));
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:abort" }));
+    // pipeline.write is non-cancellable: its handler receives an isolated child
+    // signal so a user abort cannot interrupt an irreversible write mid-flight.
+    expect(writeSignal?.aborted).toBe(false);
+
+    const nextTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "non-cancellable-next", content: "must wait for write completion",
+    }));
+    await nextTurn;
+    const startedBeforeWriteSettles = [...started];
+
+    writeCompletion.resolve({ ok: true, renderer: "pipeline.chapter-result", summary: "真实写入完成", data: { resourceId: "chapter-result-1" } });
+    await activeTurn;
+    await awaitSessionTurnsSettled(session.id);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    const writeMessages = snapshot?.messages.filter((message) =>
+      message.toolCalls?.some((toolCall) => toolCall.id === "non-cancellable-write-tool" && toolCall.toolName === "pipeline.write"),
+    ) ?? [];
+    const auditType = writeMessages
+      .map((message) => (message.metadata as { toolResult?: { data?: { audit?: { type?: string } } } } | undefined)
+        ?.toolResult?.data?.audit?.type)
+      .find((type): type is string => typeof type === "string");
+    const ordinarySuccess = writeMessages.some((message) =>
+      message.toolCalls?.some((toolCall) => toolCall.status === "success"),
+    );
+
+    expect(startedBeforeWriteSettles).toEqual(["non cancellable write"]);
+    expect(auditType).toMatch(/deadline-exceeded-operation-(completed|failed)/);
+    expect(ordinarySuccess).toBe(false);
+    expect(started).toContain("must wait for write completion");
+  });
+
+  it("Task8: process-killable Bash keeps the Gate closed until the fake child really exits", async () => {
+    const fakeChildExit = deferred<{ ok: false; error: "stopped"; summary: string; data: { stopReason: "abort" } }>();
+    const started: string[] = [];
+    let bashSignal: AbortSignal | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+      started.push(content);
+      if (content === "bash process active") {
+        return {
+          success: true,
+          type: "tool_use",
+          toolUses: [{ id: "bash-process-tool", name: "Bash", input: { command: "fake-never-exits" } }],
+          metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+        };
+      }
+      return {
+        success: true,
+        content: `完成：${content}`,
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    executeSessionToolMock.mockImplementation(async (toolInput: { toolName?: string; signal?: AbortSignal }) => {
+      if (toolInput.toolName === "Bash") {
+        bashSignal = toolInput.signal;
+        return fakeChildExit.promise;
+      }
+      return { ok: true, summary: "ok" };
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage, awaitSessionTurnsSettled } = await loadSessionServices();
+    const session = await createSession({ title: "Bash process stop gate", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "bash-process-active", content: "bash process active",
+    }));
+    await waitForAssertion(() => expect(bashSignal).toBeInstanceOf(AbortSignal));
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:abort" }));
+    expect(bashSignal?.aborted).toBe(true);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "bash-process-next", content: "must wait for real bash exit",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(started).toEqual(["bash process active"]);
+
+    fakeChildExit.resolve({ ok: false, error: "stopped", summary: "fake child really exited", data: { stopReason: "abort" } });
+    await activeTurn;
+    await awaitSessionTurnsSettled(session.id);
+
+    expect(started).toEqual(["bash process active", "must wait for real bash exit"]);
+  });
+
+  it("notifies queued transports when a session turn gate is disposed", async () => {
+    let releaseActive: (() => void) | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content;
+      if (content === "正在执行") {
+        await new Promise<void>((resolve) => { releaseActive = resolve; });
+      }
+      return {
+        success: true,
+        content: `完成：${content}`,
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      handleSessionChatTransportMessage,
+      disposeSessionTurnGate,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "释放排队消息", agentId: "writer", sessionMode: "chat" });
+    const activeTransport = new MockTransport();
+    const queuedTransport = new MockTransport();
+    await attachSessionChatTransport(session.id, activeTransport);
+    await attachSessionChatTransport(session.id, queuedTransport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, activeTransport, JSON.stringify({
+      type: "session:message", messageId: "dispose-active", content: "正在执行",
+    }));
+    await waitForAssertion(() => expect(releaseActive).toBeTypeOf("function"));
+    await handleSessionChatTransportMessage(session.id, queuedTransport, JSON.stringify({
+      type: "session:message", messageId: "dispose-queued", content: "等待释放",
+    }));
+
+    const disposePromise = disposeSessionTurnGate(session.id);
+    releaseActive?.();
+    await Promise.all([activeTurn, disposePromise]);
+
+    const queuedErrors = queuedTransport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:error");
+    expect(queuedErrors).toContainEqual(expect.objectContaining({ code: "session-disposed" }));
+  });
+
+  it("settles a persistence mutation failure with one safe error and one idle terminal state", async () => {
+    const {
+      __testing,
+      createSession,
+      attachSessionChatTransport,
+      handleSessionChatTransportMessage,
+      awaitSessionTurnsSettled,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "持久化失败终态", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    const mutationFailure = vi.fn(() => {
+      throw new Error("session mutation denied");
+    });
+    __testing.setSessionStoreMutationHook(mutationFailure);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "persist-failure", content: "持久化会失败",
+    }));
+    await awaitSessionTurnsSettled(session.id);
+
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    const safeErrorIndex = envelopes.findIndex((entry) => entry.type === "session:error" && entry.code === "session-persist-failed");
+    const idleEnvelopes = envelopes.filter((entry) => entry.type === "session:state" && entry.session?.narratorState === "idle");
+    const idleIndex = envelopes.findIndex((entry) => entry === idleEnvelopes[0]);
+
+    // The active caller returns only after the visible terminal error and idle
+    // transition are emitted. A single bounded failure-record attempt is made.
+    expect(safeErrorIndex).toBeGreaterThanOrEqual(0);
+    expect(envelopes.filter((entry) => entry.type === "session:error")).toHaveLength(1);
+    expect(idleEnvelopes).toHaveLength(1);
+    expect(idleIndex).toBeGreaterThan(safeErrorIndex);
+    expect(mutationFailure).toHaveBeenCalledTimes(2);
+  });
+
+  it("drops a failed transport and prevents its queued turn from running", async () => {
+    let releaseActive: (() => void) | undefined;
+    generateSessionReplyMock.mockImplementation(async ({ messages }: { messages: Array<{ role?: string; content?: string }> }) => {
+      const content = [...messages].reverse().find((message) => message.role === "user")?.content;
+      if (content === "保持执行") {
+        await new Promise<void>((resolve) => { releaseActive = resolve; });
+      }
+      return {
+        success: true,
+        content: `完成：${content}`,
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const {
+      createSession,
+      attachSessionChatTransport,
+      broadcastSessionError,
+      getSessionChatSnapshot,
+      handleSessionChatTransportMessage,
+      awaitSessionTurnsSettled,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "断连队列取消", agentId: "writer", sessionMode: "chat" });
+    const activeTransport = new MockTransport();
+    const queuedTransport = new MockTransport();
+    await attachSessionChatTransport(session.id, activeTransport);
+    await attachSessionChatTransport(session.id, queuedTransport);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, activeTransport, JSON.stringify({
+      type: "session:message", messageId: "drop-active", content: "保持执行",
+    }));
+    await waitForAssertion(() => expect(releaseActive).toBeTypeOf("function"));
+    await handleSessionChatTransportMessage(session.id, queuedTransport, JSON.stringify({
+      type: "session:message", messageId: "drop-queued", content: "掉线后不得执行",
+    }));
+
+    queuedTransport.throwOnSend = true;
+    await broadcastSessionError(session.id, "模拟广播失败", "transport-test");
+    releaseActive?.();
+    await activeTurn;
+    await awaitSessionTurnsSettled(session.id);
+
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(1);
+    const snapshot = await getSessionChatSnapshot(session.id);
+    expect(snapshot?.messages.filter((message) => message.role === "user").map((message) => message.content))
+      .toEqual(["保持执行"]);
+  });
+
+  it("does not broadcast a synthetic failed/idle terminal state when a detached transport races a stale message", async () => {
+    const {
+      createSession,
+      attachSessionChatTransport,
+      detachSessionChatTransport,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "断连消息竞态", agentId: "writer", sessionMode: "chat" });
+    const detached = new MockTransport();
+    const surviving = new MockTransport();
+    await attachSessionChatTransport(session.id, detached);
+    await attachSessionChatTransport(session.id, surviving);
+    detached.sent.splice(0);
+    surviving.sent.splice(0);
+    detachSessionChatTransport(session.id, detached);
+
+    await handleSessionChatTransportMessage(session.id, detached, JSON.stringify({
+      type: "session:message", messageId: "stale-after-detach", content: "断连后迟到消息",
+    }));
+
+    expect(generateSessionReplyMock).not.toHaveBeenCalled();
+    expect(surviving.sent.map((entry) => JSON.parse(entry))).not.toContainEqual(expect.objectContaining({
+      type: "session:state",
+      session: expect.objectContaining({ narratorState: "idle", completionReason: "failed" }),
+    }));
+  });
+
+  it("does not mark a normally completed turn as interrupted", async () => {
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "正常结束", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "normal-completion", content: "正常完成",
+    }));
+
+    const idleState = transport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:state" && entry.session?.narratorState === "idle")
+      .at(-1);
+    expect(idleState?.session).toMatchObject({
+      narratorState: "idle",
+      completionReason: "completed",
+    });
+    expect(idleState?.session?.substatus).not.toBe("interrupted");
+  });
+
+  it("Task17 review: broadcasts first-token timeout as typed failed completion instead of completed", async () => {
+    sessionChatRuntimeConfig.firstTokenTimeout = 0.01;
+    let providerSignal: AbortSignal | undefined;
+    generateSessionReplyMock.mockImplementationOnce(async ({ signal }: { signal?: AbortSignal }) => {
+      providerSignal = signal;
+      await new Promise<void>((resolve) => {
+        if (signal?.aborted) {
+          resolve();
+          return;
+        }
+        signal?.addEventListener("abort", () => resolve(), { once: true });
+      });
+      return {
+        success: false,
+        code: "user-aborted",
+        error: "first token deadline reached",
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "首 token 超时", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "first-token-timeout", content: "等待首 token",
+    }));
+
+    expect(providerSignal?.aborted).toBe(true);
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    const terminalState = envelopes
+      .filter((entry) => entry.type === "session:state" && entry.session?.narratorState === "idle")
+      .at(-1);
+    expect(terminalState?.session).toMatchObject({
+      narratorState: "idle",
+      completionReason: "failed",
+      failureReason: "timeout",
+      recovery: { lastFailure: { reason: "timeout" } },
+    });
+    expect(envelopes.find((entry) => entry.type === "session:error")).toMatchObject({
+      type: "session:error",
+      code: "timeout",
+    });
+  });
+
+  it("Task17 review: first stream chunk clears the first-token deadline", async () => {
+    sessionChatRuntimeConfig.firstTokenTimeout = 0.01;
+    let providerSignal: AbortSignal | undefined;
+    generateSessionReplyMock.mockImplementationOnce(async ({
+      signal,
+      onStreamChunk,
+    }: {
+      signal?: AbortSignal;
+      onStreamChunk?: (chunk: string) => void;
+    }) => {
+      providerSignal = signal;
+      onStreamChunk?.("首 token");
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return {
+        success: true,
+        content: "首 token 后继续完成",
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      };
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "首 token 后长响应", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "first-token-clears-timeout", content: "流式返回",
+    }));
+
+    expect(providerSignal?.aborted).toBe(false);
+    const envelopes = transport.sent.map((entry) => JSON.parse(entry));
+    expect(envelopes).toContainEqual(expect.objectContaining({
+      type: "session:message",
+      message: expect.objectContaining({ role: "assistant", content: "首 token 后继续完成" }),
+    }));
+    expect(envelopes
+      .filter((entry) => entry.type === "session:state" && entry.session?.narratorState === "idle")
+      .at(-1)?.session).toMatchObject({ completionReason: "completed" });
+  });
+
+  it("broadcasts aborted only after the provider has really settled", async () => {
+    const providerSettlement = deferred<{
+      success: false;
+      code: string;
+      error: string;
+      metadata: { providerId: string; providerName: string; modelId: string };
+    }>();
+    let providerSignal: AbortSignal | undefined;
+    generateSessionReplyMock.mockImplementationOnce(async ({ signal }: { signal?: AbortSignal }) => {
+      providerSignal = signal;
+      return providerSettlement.promise;
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "真实中断终态", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    const activeTurn = handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "abort-completion", content: "等待真实终止",
+    }));
+    await waitForAssertion(() => expect(providerSignal).toBeInstanceOf(AbortSignal));
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({ type: "session:abort" }));
+
+    expect(transport.sent.map((entry) => JSON.parse(entry)).some((entry) =>
+      entry.type === "session:state" && entry.session?.completionReason === "aborted",
+    )).toBe(false);
+
+    providerSettlement.resolve({
+      success: false,
+      code: "user-aborted",
+      error: "aborted by test",
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    await activeTurn;
+
+    const terminalState = transport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:state" && entry.session?.completionReason === "aborted")
+      .at(-1);
+    expect(terminalState?.session).toMatchObject({
+      narratorState: "idle",
+      substatus: "interrupted",
+      completionReason: "aborted",
+    });
+  });
+
+  it("broadcasts a typed failed completion for provider failure", async () => {
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: false,
+      code: "provider-unavailable",
+      error: "provider offline",
+      metadata: { providerId: "anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "Provider 失败终态", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "provider-failure-state", content: "触发 provider failure",
+    }));
+
+    const terminalState = transport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:state" && entry.session?.completionReason === "failed")
+      .at(-1);
+    expect(terminalState?.session).toMatchObject({
+      narratorState: "idle",
+      completionReason: "failed",
+      failureReason: "provider-unavailable",
+      recovery: { lastFailure: { reason: "provider-unavailable" } },
+    });
+    expect(terminalState?.session?.substatus).not.toBe("interrupted");
+  });
+
+  it("broadcasts a typed failed completion when a tool throws", async () => {
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: true,
+      type: "tool_use",
+      toolUses: [{ id: "throwing-tool", name: "cockpit.snapshot", input: {} }],
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    executeSessionToolMock.mockRejectedValueOnce(new Error("tool exploded"));
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "工具失败终态", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "tool-failure-state", content: "触发 tool failure",
+    }));
+
+    const terminalState = transport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:state" && entry.session?.completionReason === "failed")
+      .at(-1);
+    expect(terminalState?.session).toMatchObject({
+      narratorState: "idle",
+      completionReason: "failed",
+      failureReason: "tool-execution-error",
+      recovery: { lastFailure: { reason: "tool-execution-error" } },
+    });
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a stop-timeout turn in stopping instead of broadcasting idle", async () => {
+    generateSessionReplyMock.mockResolvedValueOnce({
+      success: true,
+      type: "tool_use",
+      toolUses: [{ id: "stuck-bash", name: "Bash", input: { command: "fake-stuck-process" } }],
+      metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+    });
+    executeSessionToolMock.mockResolvedValueOnce({
+      ok: false,
+      error: "stop-timeout",
+      summary: "进程树尚未退出",
+      data: { status: "stopping" },
+    });
+    const { createSession, attachSessionChatTransport, handleSessionChatTransportMessage } = await loadSessionServices();
+    const session = await createSession({ title: "停止超时终态", agentId: "writer", sessionMode: "chat" });
+    const transport = new MockTransport();
+    await attachSessionChatTransport(session.id, transport);
+    transport.sent.splice(0);
+
+    await handleSessionChatTransportMessage(session.id, transport, JSON.stringify({
+      type: "session:message", messageId: "stop-timeout-state", content: "触发 stop timeout",
+    }));
+
+    const states = transport.sent
+      .map((entry) => JSON.parse(entry))
+      .filter((entry) => entry.type === "session:state");
+    expect(states.some((entry) => entry.session?.narratorState === "idle")).toBe(false);
+    expect(states.at(-1)?.session).toMatchObject({
+      narratorState: "working",
+      substatus: "stopping",
+      completionReason: "stopping",
+      failureReason: "stop-timeout",
+      recovery: { lastFailure: { reason: "stop-timeout" } },
+    });
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a real stopping settlement leased across transport disconnect before draining a surviving queued turn", async () => {
+    const runtimeSettled = deferred();
+    generateSessionReplyMock
+      .mockResolvedValueOnce({
+        success: true,
+        type: "tool_use",
+        toolUses: [{ id: "stuck-bash-disconnect", name: "Bash", input: { command: "fake-stuck-process" } }],
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      })
+      .mockResolvedValueOnce({
+        success: true,
+        content: "后续 turn 已安全启动",
+        metadata: { providerId: "anthropic", providerName: "Anthropic", modelId: "claude-sonnet-4-6" },
+      });
+    executeSessionToolMock.mockResolvedValueOnce(attachRuntimeSettlement({
+      ok: false,
+      error: "stop-timeout",
+      summary: "进程树尚未退出",
+      data: { status: "stopping" },
+    }, runtimeSettled.promise));
+    const {
+      createSession,
+      attachSessionChatTransport,
+      detachSessionChatTransport,
+      handleSessionChatTransportMessage,
+    } = await loadSessionServices();
+    const session = await createSession({ title: "停止超时断连竞态", agentId: "writer", sessionMode: "chat" });
+    const disconnected = new MockTransport();
+    const surviving = new MockTransport();
+    await attachSessionChatTransport(session.id, disconnected);
+    await attachSessionChatTransport(session.id, surviving);
+
+    await handleSessionChatTransportMessage(session.id, disconnected, JSON.stringify({
+      type: "session:message", messageId: "stopping-before-disconnect", content: "触发真实 stopping",
+    }));
+    detachSessionChatTransport(session.id, disconnected);
+    await handleSessionChatTransportMessage(session.id, surviving, JSON.stringify({
+      type: "session:message", messageId: "queued-after-disconnect", content: "排队等待",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(generateSessionReplyMock).toHaveBeenCalledTimes(1);
+
+    runtimeSettled.resolve();
+    await waitForAssertion(() => expect(generateSessionReplyMock).toHaveBeenCalledTimes(2));
+    expect(surviving.sent.map((entry) => JSON.parse(entry)).some((entry) => entry.message?.content === "后续 turn 已安全启动")).toBe(true);
   });
 
   it("accumulates usage across tool-use turns within a single conversation round", async () => {

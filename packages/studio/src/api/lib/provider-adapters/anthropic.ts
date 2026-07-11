@@ -701,29 +701,34 @@ export class AnthropicAdapter implements RuntimeAdapter {
     const inputWithReasoning = input.messages.filter(m => m.role === "assistant" && (m as { reasoning_content?: string }).reasoning_content).length;
     log.info("Anthropic generate request", { msgCount: anthropicMsgs.length, thinkingCount, toolUseCount, inputWithReasoning, totalMessages: input.messages.length });
 
-    // Extract system message — split by dynamic boundary for optimal prompt caching
-    const systemMessage = input.messages.find((m) => m.role === "system");
+    // Extract all system messages. The first is the cacheable main prompt;
+    // later messages are ordered runtime hints and must remain uncached.
+    const systemMessages = input.messages.filter((message) => message.role === "system");
+    const [systemMessage, ...runtimeSystemMessages] = systemMessages;
     if (systemMessage && "content" in systemMessage && systemMessage.content.trim()) {
       const BOUNDARY = "__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__";
       const boundaryIdx = systemMessage.content.indexOf(BOUNDARY);
+      const blocks: Array<Record<string, unknown>> = [];
       if (boundaryIdx !== -1) {
         // Split: static part gets cache_control, dynamic part does not
         const staticPart = systemMessage.content.slice(0, boundaryIdx).trim();
         const dynamicPart = systemMessage.content.slice(boundaryIdx + BOUNDARY.length).trim();
-        const blocks: Array<Record<string, unknown>> = [];
         if (staticPart) {
           blocks.push({ type: "text", text: staticPart, cache_control: { type: "ephemeral" } });
         }
         if (dynamicPart) {
           blocks.push({ type: "text", text: dynamicPart });
         }
-        body.system = blocks.length > 0 ? blocks : undefined;
       } else {
-        // No boundary marker — cache the whole thing (backward compat)
-        body.system = [
-          { type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } },
-        ];
+        // No boundary marker — cache the whole main prompt (backward compat)
+        blocks.push({ type: "text", text: systemMessage.content, cache_control: { type: "ephemeral" } });
       }
+      for (const runtimeSystemMessage of runtimeSystemMessages) {
+        if ("content" in runtimeSystemMessage && runtimeSystemMessage.content.trim()) {
+          blocks.push({ type: "text", text: runtimeSystemMessage.content });
+        }
+      }
+      body.system = blocks;
     }
 
     // Thinking / reasoning effort configuration (aligned with claude-code / NarraFork).

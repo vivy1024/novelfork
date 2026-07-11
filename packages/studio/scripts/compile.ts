@@ -92,7 +92,19 @@ async function main() {
     await evictLockedExe(versionedOutput);
   }
 
-  const compile = Bun.spawn(["bun", "build", "--compile", "--target=bun", entry, "--outfile", latestOutput], {
+  const compile = Bun.spawn([
+    "bun",
+    "build",
+    "--compile",
+    "--target=bun",
+    // playwright-core keeps BiDi and Electron as optional runtime branches. NovelFork
+    // only launches Chromium over CDP, so leave those unreachable modules external.
+    "--external=electron",
+    "--external=chromium-bidi/*",
+    entry,
+    "--outfile",
+    latestOutput,
+  ], {
     cwd: ROOT,
     stdout: "inherit",
     stderr: "inherit",

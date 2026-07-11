@@ -8,6 +8,7 @@ import { WebSocketServer, type RawData, type WebSocket as NodeWebSocket } from "
 import type {
   BunWebSocketConnection,
   BunWebSocketRegistrar,
+  BunWebSocketRoute,
   StartedHttpServer,
 } from "../start-http-server.js";
 
@@ -56,6 +57,14 @@ import {
   sanitizeSeq,
   serializeSessionRecoveryMetadata as serializeRecoveryMetadata,
 } from "./session-runtime/recovery.js";
+import {
+  SessionTurnGate,
+  SessionTurnGateDisposedError,
+  type TurnLease,
+} from "./session-runtime/turn-gate.js";
+import { getRuntimeSettlement } from "./session-runtime/runtime-settlement.js";
+import { trackSessionRuntimeFollowUp } from "./session-runtime/follow-up-tracker.js";
+import { isServerDraining } from "./session-runtime/shutdown-coordinator.js";
 import { generateSessionReply, type LlmRuntimeMetadata } from "./llm-runtime-service.js";
 import type { RuntimeToolStreamEvent } from "./provider-adapters/index.js";
 import { getSessionById, updateSession } from "./session-service.js";
@@ -330,7 +339,7 @@ async function maybeAutoCompact(
 
       // Task 13: 压缩成功后抑制下一轮的压缩警告，并广播压缩完成事件
       compactWarningSuppressed.add(sessionId);
-      broadcastToAll(state, serializeEnvelope({
+      broadcastToAll(sessionId, state, serializeEnvelope({
         type: "session:compacted",
         sessionId,
         data: { postCompactTokens: result.postCompactTokens },
@@ -388,9 +397,11 @@ async function resolveReasoningPolicy(providerId?: string): Promise<ProviderReas
 function shouldContinueAfterToolResult({ result }: { readonly toolName: string; readonly result: SessionToolExecutionResult }): boolean {
   // 确认门暂停 — 不继续（由 isPendingConfirmationResult 在 agent-turn-runtime 中处理）
   if (!result.ok && result.error === "pending-confirmation") return false;
+  // 这些结果没有可安全继续的运行时：异常执行是失败终态，停止超时仍有真实资源在 stopping。
+  if (result.error === "tool-execution-error" || result.error === "stop-timeout") return false;
   // 成功或确认被拒绝 — 继续
   if (result.ok || result.error === "confirmation-rejected") return true;
-  // 工具失败 — 继续（让模型决定下一步），agent-turn-runtime 内部已有重复检测
+  // 普通业务工具失败仍交给模型决定下一步，agent-turn-runtime 内部已有重复检测。
   return true;
 }
 
@@ -526,52 +537,104 @@ function accumulateUsage(cumulative: SessionCumulativeUsage, usage: TokenUsage |
     cumulative.lastOutputTokens = (usage.output_tokens ?? 0); // 写入但当前无消费方（前端/逻辑均未读取），保留供后续指标统计用
   }
 }
-const abortControllerBySessionId = new Map<string, AbortController>();
-
-// ─── Buffered Message Queue ───────────────────────────────────────────────────
-// Spec §1.3 mentions SQLite persistence for the queue. Current implementation is
-// in-memory only because: (1) queued messages have a very short lifespan (seconds
-// to minutes while agent is working), (2) on restart the agent turn itself is lost
-// so replaying queued messages would produce confusing results, (3) the background
-// task store already handles long-lived task persistence. If persistence becomes
-// needed, add a `queued_messages` table and drain on startup.
-interface QueuedMessage {
+interface SessionTurnMessageData {
   readonly content: string;
   readonly messageId: string;
   readonly canvasContext?: CanvasContext;
-  readonly transport: SessionChatTransport;
-  readonly queuedAt: number;
+  readonly attachments?: Array<{ type: "image"; mimeType: string; data: string; fileName?: string }>;
 }
 
-const sessionMessageQueue = new Map<string, QueuedMessage[]>();
-const sessionBusy = new Set<string>();
+interface SessionTurnItem {
+  readonly transport: SessionChatTransport;
+  readonly message: SessionTurnMessageData;
+}
+
+type TurnCompletionReason = "completed" | "aborted" | "failed" | "stopping";
+
+interface SessionTurnOutcome {
+  readonly completionReason: TurnCompletionReason;
+  readonly failure?: NarratorSessionRecoveryMetadata["lastFailure"];
+}
+
+function resolveTurnCompletionReason(
+  signal: AbortSignal,
+  failure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined,
+): TurnCompletionReason {
+  if (failure?.reason === "stop-timeout") return "stopping";
+  if (failure?.reason === "timeout") return "failed";
+  if (signal.aborted) return "aborted";
+  if (failure) return "failed";
+  return "completed";
+}
+
+const sessionTurnGate = new SessionTurnGate<SessionTurnItem>({
+  onRunError: ({ sessionId, error }) => {
+    // Runners own user-visible terminal envelopes. The gate observer is only a
+    // diagnostic fallback for a failure that escaped that terminal boundary.
+    const message = error instanceof Error ? error.message : "Session turn failed";
+    log.error("Session turn runner escaped terminal handling", { sessionId, error: message });
+  },
+});
 const compactWarningSuppressed = new Set<string>();
 
 export function isCompactWarningSuppressed(sessionId: string): boolean {
   return compactWarningSuppressed.has(sessionId);
 }
 
-const MAX_QUEUE_SIZE = 10;
-// ──────────────────────────────────────────────────────────────────────────────
-
 function abortSession(sessionId: string): void {
-  const controller = abortControllerBySessionId.get(sessionId);
-  if (controller) {
+  if (sessionTurnGate.requestAbort(sessionId)) {
     log.info("Session abort", { sessionId });
-    controller.abort();
-    abortControllerBySessionId.delete(sessionId);
   }
 }
 
-function createSessionAbortController(sessionId: string): AbortController {
-  abortSession(sessionId);
-  const controller = new AbortController();
-  abortControllerBySessionId.set(sessionId, controller);
-  return controller;
+/**
+ * Removes one disconnected transport and only its queued server-owned turns.
+ * The active lease is intentionally left to settle through the gate lifecycle.
+ */
+function dropSessionTransport(
+  sessionId: string,
+  state: SessionChatRuntimeState,
+  transport: SessionChatTransport,
+): void {
+  state.transports.delete(transport);
+  const cancellations = sessionTurnGate.cancelQueued(
+    sessionId,
+    (item) => item.transport === transport,
+    "transport-disconnected",
+  );
+
+  if (cancellations.length > 0) {
+    log.info("Disconnected transport queue cancelled", { sessionId, cancelledCount: cancellations.length });
+  }
+
+  if (state.transports.size === 0 && state.messages.length === 0 && !sessionTurnGate.hasActive(sessionId)) {
+    runtimeStateBySessionId.delete(sessionId);
+    destroySessionHub(sessionId);
+  }
 }
 
-function clearSessionAbortController(sessionId: string): void {
-  abortControllerBySessionId.delete(sessionId);
+function sendSessionEnvelopeToTransport(
+  sessionId: string,
+  state: SessionChatRuntimeState,
+  transport: SessionChatTransport,
+  envelope: NarratorSessionChatServerEnvelope,
+): boolean {
+  const delivered = sendEnvelope(transport, envelope);
+  if (!delivered) {
+    dropSessionTransport(sessionId, state, transport);
+  }
+  return delivered;
+}
+
+function sendRuntimeSessionEnvelope(
+  sessionId: string,
+  transport: SessionChatTransport,
+  envelope: NarratorSessionChatServerEnvelope,
+): boolean {
+  const state = runtimeStateBySessionId.get(sessionId);
+  return state
+    ? sendSessionEnvelopeToTransport(sessionId, state, transport, envelope)
+    : sendEnvelope(transport, envelope);
 }
 
 function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState, content: string): void {
@@ -589,17 +652,17 @@ function broadcastStreamChunk(sessionId: string, state: SessionChatRuntimeState,
     try {
       transport.send(payload);
     } catch {
-      state.transports.delete(transport);
+      dropSessionTransport(sessionId, state, transport);
     }
   }
 }
 
-function broadcastToAll(state: SessionChatRuntimeState, payload: string): void {
+function broadcastToAll(sessionId: string, state: SessionChatRuntimeState, payload: string): void {
   for (const transport of state.transports.keys()) {
     try {
       transport.send(payload);
     } catch {
-      state.transports.delete(transport);
+      dropSessionTransport(sessionId, state, transport);
     }
   }
 }
@@ -721,7 +784,7 @@ function broadcastMessageEnvelope(
     try {
       transport.send(payload);
     } catch {
-      state.transports.delete(transport);
+      dropSessionTransport(sessionId, state, transport);
     }
   }
 }
@@ -732,10 +795,12 @@ function broadcastStateEnvelope(
   recovery?: NarratorSessionRecoveryEnvelope,
 ): void {
   for (const [transport, transportState] of state.transports.entries()) {
-    const delivered = sendEnvelope(transport, createSessionChatStateEnvelope(session, state, transportState.ackedSeq, recovery));
-    if (!delivered) {
-      state.transports.delete(transport);
-    }
+    sendSessionEnvelopeToTransport(
+      session.id,
+      state,
+      transport,
+      createSessionChatStateEnvelope(session, state, transportState.ackedSeq, recovery),
+    );
   }
 }
 
@@ -1292,7 +1357,7 @@ async function appendModelContinuationAfterToolDecision(
       onToolEvent: (event: RuntimeToolStreamEvent) => {
         if (event.type === "tool_input_chunk") {
           const envelope = { type: "session:tool-input-chunk" as const, sessionId: loaded.session.id, toolCallId: event.id, partialInput: event.partialInput };
-          broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope(envelope as any));
         }
         // tool_started is handled via onEvent tool_call broadcast
       },
@@ -1310,7 +1375,7 @@ async function appendModelContinuationAfterToolDecision(
           onToolEvent: generateInput.onToolEvent,
           onRetry: () => {
             const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const };
-            broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
+            broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
           },
           signal: generateInput.signal,
           ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
@@ -1333,7 +1398,7 @@ async function appendModelContinuationAfterToolDecision(
         const onToolOutputStream = toolInput.toolCallId
           ? (chunk: string) => {
               const envelope = { type: "session:tool-stream" as const, sessionId: loaded.session.id, toolCallId: toolInput.toolCallId!, content: chunk };
-              broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+              broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope(envelope as any));
             }
           : undefined;
         const enrichedInput = { ...toolInput, onToolOutputStream };
@@ -1341,9 +1406,16 @@ async function appendModelContinuationAfterToolDecision(
         const sessionProjectId = (loaded.session as { projectId?: string }).projectId || undefined;
         const onSubstatus = (substatus: string) => {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting" };
-          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
         };
-        return createSessionToolExecutor({ ...sessionToolExecutorOptions, workDir: sessionWorkDir, projectId: sessionProjectId, onSubstatus }).execute(enrichedInput);
+        return createSessionToolExecutor({
+          ...sessionToolExecutorOptions,
+          workDir: sessionWorkDir,
+          projectId: sessionProjectId,
+          sessionId: loaded.session.id,
+          executionSessionId: loaded.session.id,
+          onSubstatus,
+        }).execute(enrichedInput);
       },
     });
     const runtimeEvents = runtimeTurn.agentEvents;
@@ -1699,14 +1771,16 @@ export async function replaceSessionChatState(
 
   for (const transport of loaded.state.transports.keys()) {
     const transportState = loaded.state.transports.get(transport);
-    sendEnvelope(
+    sendSessionEnvelopeToTransport(
+      sessionId,
+      loaded.state,
       transport,
       createSessionChatStateEnvelope(serverFirstSession, loaded.state, transportState?.ackedSeq ?? 0, {
         state: "resetting",
         reason: "server-reset",
       }),
     );
-    sendEnvelope(transport, {
+    sendSessionEnvelopeToTransport(sessionId, loaded.state, transport, {
       type: "session:snapshot",
       snapshot,
       recovery: {
@@ -1732,7 +1806,7 @@ export async function broadcastSessionError(
     try {
       transport.send(payload);
     } catch {
-      loaded.state.transports.delete(transport);
+      dropSessionTransport(sessionId, loaded.state, transport);
     }
   }
 }
@@ -1758,7 +1832,7 @@ export async function broadcastCompactProgress(
     try {
       transport.send(payload);
     } catch {
-      loaded.state.transports.delete(transport);
+      dropSessionTransport(sessionId, loaded.state, transport);
     }
   }
 }
@@ -1780,7 +1854,7 @@ export async function broadcastTodosUpdated(
     try {
       transport.send(payload);
     } catch {
-      loaded.state.transports.delete(transport);
+      dropSessionTransport(sessionId, loaded.state, transport);
     }
   }
 }
@@ -1807,7 +1881,7 @@ export function broadcastSafetyPause(sessionId: string, toolName: string, toolIn
       try {
         transport.send(payload);
       } catch {
-        loaded.transports.delete(transport);
+        dropSessionTransport(sessionId, loaded, transport);
       }
     }
   });
@@ -1836,8 +1910,8 @@ export async function attachSessionChatTransport(
 
   const session = buildServerFirstSession(loaded.session, loaded.state);
 
-  // If a turn is currently running (abortController exists), reflect working state
-  const isWorking = abortControllerBySessionId.has(sessionId) || sessionBusy.has(sessionId);
+  // Gate ownership is authoritative while the active runner has not settled.
+  const isWorking = sessionTurnGate.hasActive(sessionId);
   const sessionWithState = isWorking
     ? { ...session, narratorState: "working" as const, substatus: "thinking" as const }
     : session;
@@ -1852,7 +1926,7 @@ export async function attachSessionChatTransport(
   });
 
   if (!hasExplicitResume || ackedSeq === 0) {
-    sendEnvelope(transport, {
+    sendSessionEnvelopeToTransport(sessionId, loaded.state, transport, {
       type: "session:snapshot",
       snapshot: {
         session: sessionWithState,
@@ -1876,7 +1950,9 @@ export async function attachSessionChatTransport(
     recoveryState: resumeOutOfRange ? "resetting" : "idle",
   });
 
-  sendEnvelope(
+  sendSessionEnvelopeToTransport(
+    sessionId,
+    loaded.state,
     transport,
     createSessionChatStateEnvelope(
       sessionWithState,
@@ -1894,23 +1970,73 @@ export function detachSessionChatTransport(sessionId: string, transport: Session
     return;
   }
 
-  state.transports.delete(transport);
+  dropSessionTransport(sessionId, state, transport);
+}
 
-  // Remove queued messages belonging to the disconnected transport
-  const queue = sessionMessageQueue.get(sessionId);
-  if (queue) {
-    const filtered = queue.filter((msg) => msg.transport !== transport);
-    if (filtered.length === 0) {
-      sessionMessageQueue.delete(sessionId);
-    } else {
-      sessionMessageQueue.set(sessionId, filtered);
+/**
+ * Task 16's session-disposal path can call this seam to await active-turn
+ * settlement. Queued clients are notified without broadcasting their payload.
+ */
+export function awaitSessionTurnsSettled(sessionId: string): Promise<void> {
+  return sessionTurnGate.waitForIdle(sessionId);
+}
+
+export async function disposeSessionTurnGate(
+  sessionId: string,
+): Promise<Array<{ readonly reason: "session-disposed"; readonly sequence: number }>> {
+  const cancellations = await sessionTurnGate.dispose(sessionId, (cancelled) => {
+    const state = runtimeStateBySessionId.get(sessionId);
+    for (const cancellation of cancelled) {
+      const envelope = createSessionChatError(sessionId, "会话已释放，排队消息未执行。", { code: cancellation.reason });
+      if (state) {
+        sendSessionEnvelopeToTransport(sessionId, state, cancellation.item.transport, envelope);
+      } else {
+        sendEnvelope(cancellation.item.transport, envelope);
+      }
+    }
+  });
+  if (cancellations.length > 0) {
+    log.info("Session turn queue disposed", { sessionId, cancelledCount: cancellations.length });
+  }
+  return cancellations.map(({ reason, sequence }) => ({ reason: "session-disposed" as const, sequence }));
+}
+
+/** Final session-runtime cleanup, intentionally called after turn and resource settlement. */
+export async function cleanupDisposedSessionRuntime(sessionId: string): Promise<void> {
+  const errors: string[] = [];
+  const pendingDecision = pendingSafetyDecisions.get(sessionId);
+  if (pendingDecision) {
+    pendingSafetyDecisions.delete(sessionId);
+    try {
+      pendingDecision.resolve("reject");
+    } catch (error) {
+      errors.push(`decision: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
-  if (state.transports.size === 0 && state.messages.length === 0 && !abortControllerBySessionId.has(sessionId)) {
+  const state = runtimeStateBySessionId.get(sessionId);
+  if (state) {
+    for (const transport of [...state.transports.keys()]) {
+      try {
+        transport.close(1001, "Session disposed");
+      } catch (error) {
+        errors.push(`transport: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    state.transports.clear();
     runtimeStateBySessionId.delete(sessionId);
-    destroySessionHub(sessionId);
   }
+  compactWarningSuppressed.delete(sessionId);
+  clearSessionCheckpoints(sessionId);
+  destroySessionHub(sessionId);
+
+  if (errors.length > 0) {
+    throw new Error(errors.join("; "));
+  }
+}
+
+export function listLiveSessionRuntimeIds(): string[] {
+  return [...new Set([...runtimeStateBySessionId.keys(), ...pendingSafetyDecisions.keys()])];
 }
 
 const SESSION_TOOL_RESULT_CONTINUATION_INSTRUCTION = "工具已完成。请先总结已经获得的信息，判断是否足够进入下一步。如果信息足够，请继续执行下一步；不要重复读取同一资源。";
@@ -2220,6 +2346,55 @@ function createRuntimeContext(bookContext: string, canvasContext?: CanvasContext
   return parts.join("\n\n");
 }
 
+async function enqueueSessionTurn(
+  sessionId: string,
+  transport: SessionChatTransport,
+  message: SessionTurnMessageData,
+): Promise<void> {
+  if (isServerDraining()) {
+    sendRuntimeSessionEnvelope(sessionId, transport, createSessionChatError(
+      sessionId,
+      "服务器正在关闭，暂不接受新的会话任务。",
+      { code: "server-draining" },
+    ));
+    return;
+  }
+
+  let resolveCompletion!: () => void;
+  const completion = new Promise<void>((resolve) => {
+    resolveCompletion = resolve;
+  });
+
+  try {
+    const result = await sessionTurnGate.enqueue(sessionId, { transport, message }, async (lease, item) => {
+      try {
+        await runSessionChatTurn(sessionId, item.transport, item.message, lease);
+      } finally {
+        resolveCompletion();
+      }
+    });
+
+    if (result === "queue-full") {
+      sendRuntimeSessionEnvelope(sessionId, transport, createSessionChatError(sessionId, "消息队列已满，请等待当前任务完成", { code: "queue-full" }));
+      return;
+    }
+    if (result === "queued") {
+      log.info("Message queued", { sessionId });
+      return;
+    }
+
+    // Preserve the public active-turn behavior: callers awaiting the first
+    // accepted message observe its terminal envelopes, while queued callers return.
+    await completion;
+  } catch (error) {
+    if (error instanceof SessionTurnGateDisposedError) {
+      sendRuntimeSessionEnvelope(sessionId, transport, createSessionChatError(sessionId, "会话已释放，消息未执行。", { code: "session-disposed" }));
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function handleSessionChatTransportMessage(
   sessionId: string,
   transport: SessionChatTransport,
@@ -2234,7 +2409,7 @@ export async function handleSessionChatTransportMessage(
 
   const text = await normalizeMessageText(rawMessage);
   if (!text) {
-    sendEnvelope(transport, createSessionChatError(sessionId, "Empty message payload"));
+    sendSessionEnvelopeToTransport(sessionId, loaded.state, transport, createSessionChatError(sessionId, "Empty message payload"));
     return;
   }
 
@@ -2255,21 +2430,19 @@ export async function handleSessionChatTransportMessage(
 
   if (payload.type === "session:ack") {
     const session = buildServerFirstSession(loaded.session, loaded.state);
-    sendEnvelope(transport, createSessionChatStateEnvelope(session, loaded.state, transportState?.ackedSeq ?? loaded.state.persistedAckedSeq));
+    sendSessionEnvelopeToTransport(sessionId, loaded.state, transport, createSessionChatStateEnvelope(session, loaded.state, transportState?.ackedSeq ?? loaded.state.persistedAckedSeq));
     return;
   }
 
   if (payload.type === "session:abort") {
+    // Do not release the gate or discard queued work here. The active lease owns
+    // cleanup until its runner actually settles.
     abortSession(sessionId);
-    sessionMessageQueue.delete(sessionId);
-    sessionBusy.delete(sessionId);
     return;
   }
 
   if (payload.type === "session:continue") {
-    // Clear the interrupted checkpoint and feed a continuation message into normal flow
     clearSessionCheckpoints(sessionId);
-    // Clear the interrupted recovery state
     const currentRecovery = loaded.session.recovery;
     if (currentRecovery?.lastFailure?.reason === "interrupted") {
       void updateSession(sessionId, {
@@ -2277,13 +2450,10 @@ export async function handleSessionChatTransportMessage(
       });
     }
     log.info("Session continue", { sessionId });
-    // Re-enter as a normal message with continuation instruction
-    const continuePayload = JSON.stringify({
-      type: "session:message",
+    await enqueueSessionTurn(sessionId, transport, {
       content: "请继续执行之前被中断的任务。",
       messageId: `continue-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     });
-    await handleSessionChatTransportMessage(sessionId, transport, continuePayload);
     return;
   }
 
@@ -2299,33 +2469,128 @@ export async function handleSessionChatTransportMessage(
   if (!content) {
     log.info("Session continue (empty content)", { sessionId });
   }
-
-  // ─── Parse and persist image attachments ────────────────────────────────────
-  const rawAttachments = Array.isArray((payload as any).attachments) ? (payload as any).attachments as Array<{ type: "image"; mimeType: string; data: string; fileName?: string }> : undefined;
-  const persistedAttachments = rawAttachments?.length ? saveAttachmentsToDisk(rawAttachments) : undefined;
-
   const messageId = ("messageId" in payload ? payload.messageId?.trim() : "") || `session-msg-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const attachments = "attachments" in payload ? payload.attachments : undefined;
 
-  // ─── Buffered Message Queue: check if session is busy ───────────────────────
-  const isFromQueue = "_fromQueue" in payload && payload._fromQueue === true;
-  if (sessionBusy.has(sessionId) && !isFromQueue) {
-    const queue = sessionMessageQueue.get(sessionId) ?? [];
-    if (queue.length >= MAX_QUEUE_SIZE) {
-      sendEnvelope(transport, createSessionChatError(sessionId, "消息队列已满，请等待当前任务完成"));
+  await enqueueSessionTurn(sessionId, transport, {
+    content: effectiveContent,
+    messageId,
+    ...(canvasContext ? { canvasContext } : {}),
+    ...(attachments?.length ? { attachments } : {}),
+  });
+}
+
+async function persistSessionTurnFailureSafely(
+  sessionId: string,
+  session: NarratorSessionRecord,
+  state: SessionChatRuntimeState,
+  failure: NonNullable<NarratorSessionRecoveryMetadata["lastFailure"]>,
+): Promise<void> {
+  try {
+    // This deliberately does not call persistSessionChatProgress again: its
+    // primary transcript write just failed, so one bounded metadata attempt is
+    // safer than retrying the same failure path indefinitely.
+    const recovery = buildRecoveryMetadata(state, state.messages, failure);
+    state.recoveryJson = serializeRecoveryMetadata(recovery);
+    await updateSessionChatRecoveryJson(sessionId, state.recoveryJson);
+    await updateSession(sessionId, {
+      messageCount: state.messageCount,
+      recentMessages: [...state.messages],
+      recovery,
+      cumulativeUsage: state.cumulativeUsage,
+    });
+  } catch (error) {
+    log.error("Failed to persist session turn failure metadata", {
+      sessionId,
+      error: error instanceof Error ? error.message : "unknown",
+      sessionTitle: session.title,
+    });
+  }
+}
+
+async function runSessionChatTurn(
+  sessionId: string,
+  transport: SessionChatTransport,
+  message: SessionTurnMessageData,
+  lease: TurnLease,
+): Promise<void> {
+  const turnStartedAt = Date.now();
+  let loaded: Awaited<ReturnType<typeof loadSessionState>> = null;
+  let completionReason: TurnCompletionReason = "failed";
+  let terminalFailure: NarratorSessionRecoveryMetadata["lastFailure"] | undefined;
+  let turnEnteredRuntime = false;
+
+  try {
+    loaded = await loadSessionState(sessionId);
+    if (!loaded) {
+      sendEnvelope(transport, createSessionChatError(sessionId, "Session not found"));
       return;
     }
-    queue.push({ content: effectiveContent, messageId, canvasContext, transport, queuedAt: Date.now() });
-    sessionMessageQueue.set(sessionId, queue);
-    log.info("Message queued", { sessionId, queueLength: queue.length });
-    return;
-  }
 
-  if (!isFromQueue) {
-    sessionBusy.add(sessionId);
+    // A transport can disconnect after enqueue but before this queued runner
+    // reloads state. Never append its user message or invoke the runtime.
+    if (!loaded.state.transports.has(transport)) {
+      log.info("Skipping disconnected queued session turn", { sessionId });
+      return;
+    }
+
+    turnEnteredRuntime = true;
+    const outcome = await runLoadedSessionChatTurn(sessionId, transport, message, lease, loaded, turnStartedAt);
+    completionReason = outcome.completionReason;
+    terminalFailure = outcome.failure;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : "Session turn failed";
+    terminalFailure = {
+      reason: "persistence-failed",
+      message: "会话状态保存失败；本轮结果仅保留在当前连接中。",
+      at: new Date().toISOString(),
+    };
+    log.error("Session turn terminal handling failed", { sessionId, error: errorMessage });
+
+    if (loaded) {
+      await persistSessionTurnFailureSafely(sessionId, loaded.session, loaded.state, terminalFailure);
+      sendSessionEnvelopeToTransport(
+        sessionId,
+        loaded.state,
+        transport,
+        createSessionChatError(sessionId, terminalFailure.message, { code: "session-persist-failed" }),
+      );
+    } else {
+      sendEnvelope(transport, createSessionChatError(sessionId, "会话运行失败。", { code: "turn-failed" }));
+    }
+  } finally {
+    if (loaded && turnEnteredRuntime) {
+      const lastTurnDurationMs = Date.now() - turnStartedAt;
+      const recovery = buildRecoveryMetadata(loaded.state, loaded.state.messages, terminalFailure);
+      const terminalSession = {
+        ...buildServerFirstSession(loaded.session, loaded.state),
+        recovery,
+        narratorState: completionReason === "stopping" ? "working" as const : "idle" as const,
+        completionReason,
+        lastTurnDurationMs,
+        ...(completionReason === "aborted" ? { substatus: "interrupted" as const } : {}),
+        ...(completionReason === "stopping" ? { substatus: "stopping" as const } : {}),
+        ...(terminalFailure ? { failureReason: terminalFailure.reason } : {}),
+      };
+      broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: terminalSession, cursor: createCursor(loaded.state) }));
+      log.info("Session turn settled", { sessionId, completionReason, ...(terminalFailure ? { failureReason: terminalFailure.reason } : {}) });
+    }
   }
-  // 新一轮用户消息到达，清除压缩警告抑制
+}
+
+async function runLoadedSessionChatTurn(
+  sessionId: string,
+  transport: SessionChatTransport,
+  message: SessionTurnMessageData,
+  lease: TurnLease,
+  loaded: NonNullable<Awaited<ReturnType<typeof loadSessionState>>>,
+  turnStartedAt: number,
+): Promise<SessionTurnOutcome> {
+  const { content: effectiveContent, messageId, canvasContext, attachments } = message;
+  const persistedAttachments = attachments?.length ? saveAttachmentsToDisk(attachments) : undefined;
+  // New user messages clear compaction-warning suppression only when their turn
+  // begins, so cancelled queued items have no state side effects.
   compactWarningSuppressed.delete(sessionId);
-  // ────────────────────────────────────────────────────────────────────────────
 
   const timestamp = Date.now();
   const userMessage = appendMessageToState(loaded.state, {
@@ -2361,12 +2626,22 @@ export async function handleSessionChatTransportMessage(
   let errorEnvelope: NarratorSessionChatErrorEnvelope | undefined;
   const toolInputsById = new Map<string, Record<string, unknown>>();
   const realtimeBroadcastedIds = new Set<string>();
+  let firstTokenTimeoutHandle: ReturnType<typeof setTimeout> | undefined;
+  let firstTokenTimedOut = false;
+  let removeFirstTokenAbortListener = () => {};
+  const clearFirstTokenDeadline = () => {
+    if (firstTokenTimeoutHandle !== undefined) {
+      clearTimeout(firstTokenTimeoutHandle);
+      firstTokenTimeoutHandle = undefined;
+    }
+    removeFirstTokenAbortListener();
+    removeFirstTokenAbortListener = () => {};
+  };
 
   // 推送 working 状态给所有连接的客户端
-  const turnStartedAt = Date.now();
   const turnStartedAtIso = new Date(turnStartedAt).toISOString();
   const workingSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
-  broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: workingSession, cursor: createCursor(loaded.state) }));
+  broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: workingSession, cursor: createCursor(loaded.state) }));
 
   try {
     const projectId = (loaded.session as { projectId?: string }).projectId;
@@ -2425,16 +2700,28 @@ export async function handleSessionChatTransportMessage(
       }
     }
     const { items: compactedMessages } = await maybeAutoCompact(contextMessages, loaded.state, sessionId);
-    const abortController = createSessionAbortController(sessionId);
-    // Fix: firstTokenTimeout + silentToolCallThreshold — 从用户配置读取运行时控制
-    let combinedSignal: AbortSignal = abortController.signal;
+    // The gate creates the root controller. Its lease remains active until this
+    // runner settles, including after a client has requested abort.
+    let combinedSignal: AbortSignal = lease.signal;
     let silentToolCallThreshold: number | undefined;
     try {
       const timeoutConfig = await loadUserConfig();
       const timeoutSeconds = timeoutConfig.runtimeControls?.firstTokenTimeout ?? 0;
       if (timeoutSeconds > 0) {
-        const timeoutSignal = AbortSignal.timeout(timeoutSeconds * 1000);
-        combinedSignal = AbortSignal.any([abortController.signal, timeoutSignal]);
+        const timeoutController = new AbortController();
+        const onLeaseAbort = () => clearFirstTokenDeadline();
+        lease.signal.addEventListener("abort", onLeaseAbort, { once: true });
+        removeFirstTokenAbortListener = () => lease.signal.removeEventListener("abort", onLeaseAbort);
+        firstTokenTimeoutHandle = setTimeout(() => {
+          if (lease.signal.aborted) {
+            clearFirstTokenDeadline();
+            return;
+          }
+          firstTokenTimedOut = true;
+          clearFirstTokenDeadline();
+          timeoutController.abort(new DOMException("First token deadline reached", "TimeoutError"));
+        }, timeoutSeconds * 1000);
+        combinedSignal = AbortSignal.any([lease.signal, timeoutController.signal]);
       }
       const silentThreshold = timeoutConfig.runtimeControls?.silentToolCallThreshold;
       if (typeof silentThreshold === "number" && silentThreshold > 0) {
@@ -2471,15 +2758,20 @@ export async function handleSessionChatTransportMessage(
       reasoningPolicy,
       ...(silentToolCallThreshold ? { silentToolCallThreshold } : {}),
       onStreamChunk: (chunk: string) => {
+        if (firstTokenTimedOut) return;
+        clearFirstTokenDeadline();
         broadcastStreamChunk(sessionId, loaded.state, chunk);
       },
       onToolEvent: (event: RuntimeToolStreamEvent) => {
+        if (firstTokenTimedOut) return;
+        clearFirstTokenDeadline();
         if (event.type === "tool_input_chunk") {
           const envelope = { type: "session:tool-input-chunk" as const, sessionId, toolCallId: event.id, partialInput: event.partialInput };
-          broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope(envelope as any));
         }
       },
       onEvent: (event) => {
+        if (firstTokenTimedOut) return;
         if (event.type === "assistant_message") {
           // 实时推送工具链中间的 assistant 文字到前端（防止切换页面后丢失）
           const midTurnAssistantMessage = appendMessageToState(loaded.state, {
@@ -2496,7 +2788,7 @@ export async function handleSessionChatTransportMessage(
           realtimeBroadcastedIds.add(`assistant-${midTurnAssistantMessage.id}`);
         } else if (event.type === "tool_call") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "tool_calling" as const, toolName: event.toolName, turnStartedAt: turnStartedAtIso };
-          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
           // 实时推送 tool_call 消息到前端（不等 turn 结束）
           const toolUseMessage = appendMessageToState(loaded.state, {
             id: `${userMessage.id}-tool-use-${event.id}`,
@@ -2514,7 +2806,7 @@ export async function handleSessionChatTransportMessage(
           realtimeBroadcastedIds.add(`tool-call-${event.id}`);
         } else if (event.type === "tool_result") {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "thinking" as const, turnStartedAt: turnStartedAtIso };
-          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
 
           // 回写原始 tool_call 消息的 status（解决页面刷新后残留 running 的问题）
           const completedStatus = buildToolResultStatus(event.result);
@@ -2560,7 +2852,7 @@ export async function handleSessionChatTransportMessage(
           onToolEvent: generateInput.onToolEvent,
           onRetry: (_attempt, _max) => {
             const retrySession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: "retrying" as const, turnStartedAt: turnStartedAtIso };
-            broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
+            broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: retrySession, cursor: createCursor(loaded.state) }));
           },
           signal: generateInput.signal,
           ...(generateInput.maxOutputTokensOverride ? { maxOutputTokensOverride: generateInput.maxOutputTokensOverride } : {}),
@@ -2568,6 +2860,7 @@ export async function handleSessionChatTransportMessage(
           providerDefaultReasoningEffort: provider?.defaultReasoningEffort,
           globalDefaultReasoningEffort: userConfig.runtimeControls.defaultReasoningEffort,
         });
+        clearFirstTokenDeadline();
         // Record provider health
         const providerId = (result as any).metadata?.providerId ?? generateInput.sessionConfig.providerId ?? "unknown";
         const modelId = (result as any).metadata?.modelId ?? generateInput.sessionConfig.modelId ?? "unknown";
@@ -2583,7 +2876,7 @@ export async function handleSessionChatTransportMessage(
         const onToolOutputStream = toolInput.toolCallId
           ? (chunk: string) => {
               const envelope = { type: "session:tool-stream" as const, sessionId: loaded.session.id, toolCallId: toolInput.toolCallId!, content: chunk };
-              broadcastToAll(loaded.state, serializeEnvelope(envelope as any));
+              broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope(envelope as any));
             }
           : undefined;
         const enrichedInput = { ...toolInput, onToolOutputStream };
@@ -2591,14 +2884,42 @@ export async function handleSessionChatTransportMessage(
         const sessionProjectId = (loaded.session as { projectId?: string }).projectId || undefined;
         const onSubstatus = (substatus: string) => {
           const statusSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "working" as const, substatus: substatus as "reflecting", turnStartedAt: turnStartedAtIso };
-          broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
+          broadcastToAll(loaded.session.id, loaded.state, serializeEnvelope({ type: "session:state", session: statusSession, cursor: createCursor(loaded.state) }));
         };
-        return createSessionToolExecutor({ ...sessionToolExecutorOptions, workDir: sessionWorkDir, projectId: sessionProjectId, onSubstatus }).execute(enrichedInput);
+        return createSessionToolExecutor({
+          ...sessionToolExecutorOptions,
+          workDir: sessionWorkDir,
+          projectId: sessionProjectId,
+          sessionId: loaded.session.id,
+          executionSessionId: loaded.session.id,
+          onSubstatus,
+        }).execute(enrichedInput);
       },
     });
-    const runtimeEvents = runtimeTurn.agentEvents;
-    canonicalEvents = runtimeTurn.runtimeEvents;
-    clearSessionAbortController(sessionId);
+    clearFirstTokenDeadline();
+    const runtimeEvents = firstTokenTimedOut ? [] : runtimeTurn.agentEvents;
+    canonicalEvents = firstTokenTimedOut ? [] : runtimeTurn.runtimeEvents;
+    if (firstTokenTimedOut) {
+      const timeoutMessage = "API 响应超时。可在设置 → AI 代理 → 首 token 超时中调整超时时间，或检查网络连接。";
+      failure = {
+        reason: "timeout",
+        message: timeoutMessage,
+        at: new Date().toISOString(),
+      };
+      errorEnvelope = createSessionChatError(sessionId, timeoutMessage, {
+        code: "timeout",
+        runtime: {
+          providerId: loaded.session.sessionConfig.providerId,
+          modelId: loaded.session.sessionConfig.modelId,
+        },
+      });
+    }
+    for (const event of runtimeEvents) {
+      if (event.type !== "tool_result" || event.result.error !== "stop-timeout") continue;
+      // A stop-timeout is not terminal proof. Unknown handlers are retained
+      // indefinitely rather than allowing an unsafe overlapping turn.
+      lease.retainUntil(getRuntimeSettlement(event.result) ?? new Promise<never>(() => undefined));
+    }
 
     let assistantIndex = 0;
     // Count how many assistant_messages were already broadcast via onEvent (mid-turn)
@@ -2725,46 +3046,47 @@ export async function handleSessionChatTransportMessage(
     }
   } catch (error) {
     let message = error instanceof Error ? error.message : "LLM runtime request failed";
+    const isTimeout = firstTokenTimedOut
+      || (error instanceof Error && (error.name === "TimeoutError" || message.includes("timeout")));
 
-    // 区分首 token 超时和其他错误
-    if (error instanceof Error && (error.name === "TimeoutError" || message.includes("timeout"))) {
-      message = `API 响应超时。可在设置 → AI 代理 → 首 token 超时中调整超时时间，或检查网络连接。`;
+    if (isTimeout) {
+      message = "API 响应超时。可在设置 → AI 代理 → 首 token 超时中调整超时时间，或检查网络连接。";
     } else if (error instanceof Error && message.includes("aborted")) {
       message = "已中断。";
     }
+    const failureReason = isTimeout ? "timeout" : "provider-unavailable";
     failure = {
-      reason: "provider-unavailable",
+      reason: failureReason,
       message,
       at: new Date().toISOString(),
     };
     errorEnvelope = createSessionChatError(sessionId, message, {
-      code: "provider-unavailable",
+      code: failureReason,
       runtime: {
         providerId: loaded.session.sessionConfig.providerId,
         modelId: loaded.session.sessionConfig.modelId,
       },
     });
+  } finally {
+    clearFirstTokenDeadline();
+    // Per-turn streaming/tool correlation state must never survive terminal handling.
+    toolInputsById.clear();
+    realtimeBroadcastedIds.clear();
   }
 
   const transcriptMessagesToPersist = attachRuntimeTranscriptToMessages(messagesToPersist, canonicalEvents);
   const updatedSession = await persistSessionChatProgress(sessionId, loaded.session, loaded.state, transcriptMessagesToPersist, failure);
   if (errorEnvelope) {
-    sendEnvelope(transport, errorEnvelope);
+    sendSessionEnvelopeToTransport(sessionId, loaded.state, transport, errorEnvelope);
   }
 
   if (updatedSession) {
     broadcastStateEnvelope(buildServerFirstSession(updatedSession, loaded.state), loaded.state);
   }
 
-  // 推送 idle 状态（turn 结束）
-  const lastTurnDurationMs = Date.now() - turnStartedAt;
-  const wasAborted = abortControllerBySessionId.get(sessionId) === undefined && failure?.reason !== "provider-unavailable";
-  const idleSubstatus = (failure && !wasAborted) ? undefined : (wasAborted && !failure ? "interrupted" as const : undefined);
-  const idleSession = { ...buildServerFirstSession(loaded.session, loaded.state), narratorState: "idle" as const, lastTurnDurationMs, ...(idleSubstatus ? { substatus: idleSubstatus } : {}) };
-  broadcastToAll(loaded.state, serializeEnvelope({ type: "session:state", session: idleSession, cursor: createCursor(loaded.state) }));
 
-  // --- TurnComplete hooks (fire-and-forget) ---
-  void (async () => {
+  // --- TurnComplete hooks (owner-scoped follow-up) ---
+  trackSessionRuntimeFollowUp(sessionId, "turn-complete-hooks", (async () => {
     try {
       const { executeHook, getMatchingHooks, convertRoutineHooks } = await import("./hook-executor.js");
       const config = await loadUserConfig();
@@ -2777,10 +3099,10 @@ export async function handleSessionChatTransportMessage(
         await executeHook(hook, { toolName: "", workDir });
       }
     } catch { /* TurnComplete hook failure is non-fatal */ }
-  })();
+  })());
 
-  // --- Turn Memory Extraction (fire-and-forget) ---
-  void (async () => {
+  // --- Turn Memory Extraction (owner-scoped follow-up) ---
+  trackSessionRuntimeFollowUp(sessionId, "turn-memory-extraction", (async () => {
     try {
       const { extractAndPersistTurnMemories } = await import("./turn-memory-extractor.js");
       const lastAssistant = loaded.state.messages
@@ -2792,10 +3114,10 @@ export async function handleSessionChatTransportMessage(
         await extractAndPersistTurnMemories(content, { workDir });
       }
     } catch { /* memory extraction failure is non-fatal */ }
-  })();
+  })());
 
-  // --- Auto-update context.md (fire-and-forget) ---
-  void (async () => {
+  // --- Auto-update context.md (owner-scoped follow-up) ---
+  trackSessionRuntimeFollowUp(sessionId, "context-memory-update", (async () => {
     try {
       const { writeFile, mkdir } = await import("node:fs/promises");
       const { join } = await import("node:path");
@@ -2850,10 +3172,10 @@ export async function handleSessionChatTransportMessage(
 
       await writeFile(join(memDir, "context.md"), contextContent, "utf-8");
     } catch { /* context.md update failure is non-fatal */ }
-  })();
+  })());
 
-  // --- Webhook notification (fire-and-forget) ---
-  void (async () => {
+  // --- Webhook notification (owner-scoped follow-up) ---
+  trackSessionRuntimeFollowUp(sessionId, "webhook-notification", (async () => {
     try {
       const config = await loadUserConfig();
       const notifications = (config.preferences as unknown as Record<string, unknown>)?.notifications as
@@ -2878,12 +3200,12 @@ export async function handleSessionChatTransportMessage(
         await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {});
       }
     } catch { /* webhook notification failure is non-fatal */ }
-  })();
+  })());
 
   // 翻译思考内容：异步翻译 assistant 消息中的 thinking/reasoning block
   const assistantMessages = messagesToPersist.filter((m) => m.role === "assistant");
   if (assistantMessages.length > 0) {
-    void (async () => {
+    trackSessionRuntimeFollowUp(sessionId, "thinking-translation", (async () => {
       try {
         const config = await loadUserConfig();
         if (!config.runtimeControls?.translateThinking) return;
@@ -2901,7 +3223,7 @@ export async function handleSessionChatTransportMessage(
           }
         }
       } catch { /* thinking translation failure is non-fatal */ }
-    })();
+    })());
   }
 
   // 自动命名：第一轮对话且标题为默认值时，异步生成标题
@@ -2912,45 +3234,17 @@ export async function handleSessionChatTransportMessage(
     && userMessageCount <= 1
     && (currentTitle === "Untitled Session" || currentTitle.startsWith("Headless:"));
   if (needsAutoTitle) {
-    void generateSessionTitle(loaded.state.messages).then((title) => {
+    trackSessionRuntimeFollowUp(sessionId, "auto-title", generateSessionTitle(loaded.state.messages).then(async (title) => {
       if (title && title !== "Untitled Session") {
-        void updateSession(sessionId, { title });
+        await updateSession(sessionId, { title });
       }
-    }).catch(() => { /* auto-title failure is non-fatal */ });
+    }).catch(() => { /* auto-title failure is non-fatal */ }));
   }
 
-  // ─── Buffered Message Queue: drain after turn completes ─────────────────────
-  void drainSessionQueue(sessionId).catch((err) => {
-    log.error("Drain queue unhandled error", { sessionId, error: err instanceof Error ? err.message : "unknown" });
-    sessionBusy.delete(sessionId);
-  });
-}
-
-async function drainSessionQueue(sessionId: string): Promise<void> {
-  const queue = sessionMessageQueue.get(sessionId);
-  if (!queue || queue.length === 0) {
-    sessionBusy.delete(sessionId);
-    return;
-  }
-
-  const next = queue.shift()!;
-  if (queue.length === 0) {
-    sessionMessageQueue.delete(sessionId);
-  }
-
-  log.info("Message dequeued", { sessionId, queueLength: queue.length });
-
-  // NOTE: Do NOT clear sessionBusy here — we stay busy while processing the queued message.
-  // The drain will be called again at the end of handleSessionChatTransportMessage.
-  // We use a special internal flag to bypass the busy check on re-entry.
-  try {
-    const syntheticPayload = JSON.stringify({ type: "session:message", content: next.content, messageId: next.messageId, _fromQueue: true });
-    await handleSessionChatTransportMessage(sessionId, next.transport, syntheticPayload);
-  } catch (error) {
-    log.error("Drain queue error", { sessionId, error: error instanceof Error ? error.message : "unknown" });
-    // On error, release the busy lock so the session isn't permanently stuck
-    sessionBusy.delete(sessionId);
-  }
+  return {
+    completionReason: resolveTurnCompletionReason(lease.signal, failure),
+    ...(failure ? { failure } : {}),
+  };
 }
 
 const AGENT_NATIVE_WRITE_NEXT_INSTRUCTIONS = `
@@ -3021,72 +3315,138 @@ function formatCanvasContextForPrompt(canvasContext: CanvasContext): string {
   return lines.join("\n");
 }
 
-export function setupSessionChatWebSocket(server: StartedHttpServer): void {
-  if (isBunWebSocketRegistrar(server)) {
-    const sockets = new WeakMap<BunWebSocketConnection, SessionChatTransport>();
+interface BunSessionChatRouteBindings {
+  readonly attach: (
+    sessionId: string,
+    transport: SessionChatTransport,
+    options: AttachSessionChatTransportOptions,
+  ) => Promise<boolean>;
+  readonly handle: (
+    sessionId: string,
+    transport: SessionChatTransport,
+    message: string | Uint8Array,
+  ) => Promise<void>;
+  readonly detach: (sessionId: string, transport: SessionChatTransport) => void;
+}
 
-    server.registerWebSocketRoute({
-      path: SESSION_CHAT_WS_PATH,
-      matchPath(pathname) {
-        return SESSION_CHAT_PATHNAME_REGEX.test(pathname);
-      },
-      upgrade(request, bunServer) {
-        const url = new URL(request.url);
-        const parsed = parseSessionChatUrl(url);
-        if (!parsed) return false;
-        return bunServer.upgrade(request, {
-          data: {
-            routePath: SESSION_CHAT_WS_PATH,
-            sessionId: parsed.sessionId,
-            resumeFromSeq: parsed.resumeFromSeq,
-          },
-        });
-      },
-      open(socket) {
-        const data = socket.data ?? {};
-        const sessionId = typeof data.sessionId === "string" ? data.sessionId : null;
-        if (!sessionId) {
-          socket.close(4000, "missing sessionId");
-          return;
-        }
-        const resumeFromSeq = typeof data.resumeFromSeq === "number" ? data.resumeFromSeq : undefined;
-        const transport: SessionChatTransport = {
-          send: (payload: string) => socket.send(payload),
-          close: (code?: number, reason?: string) => socket.close(code, reason),
-        };
-        sockets.set(socket, transport);
-        void (async () => {
-          const attached = await attachSessionChatTransport(sessionId, transport, { resumeFromSeq });
-          if (!attached) {
+interface BunSessionChatSocketBinding {
+  readonly sessionId: string;
+  readonly transport: SessionChatTransport;
+  readonly attachPromise: Promise<boolean>;
+  closed: boolean;
+}
+
+/**
+ * Bun may emit a message before asynchronous session attachment completes.
+ * Keep the binding private to the socket and await its attachment so that the
+ * message reaches the same live transport registered in runtime state.
+ */
+export function createBunSessionChatWebSocketRoute(
+  bindings: BunSessionChatRouteBindings = {
+    attach: attachSessionChatTransport,
+    handle: handleSessionChatTransportMessage,
+    detach: detachSessionChatTransport,
+  },
+): BunWebSocketRoute {
+  const sockets = new WeakMap<BunWebSocketConnection, BunSessionChatSocketBinding>();
+
+  const closeBinding = (socket: BunWebSocketConnection): void => {
+    const binding = sockets.get(socket);
+    if (!binding) return;
+
+    binding.closed = true;
+    sockets.delete(socket);
+    void binding.attachPromise.then((attached) => {
+      if (attached) {
+        bindings.detach(binding.sessionId, binding.transport);
+      }
+    });
+  };
+
+  return {
+    path: SESSION_CHAT_WS_PATH,
+    matchPath(pathname) {
+      return SESSION_CHAT_PATHNAME_REGEX.test(pathname);
+    },
+    upgrade(request, bunServer) {
+      const url = new URL(request.url);
+      const parsed = parseSessionChatUrl(url);
+      if (!parsed) return false;
+      return bunServer.upgrade(request, {
+        data: {
+          routePath: SESSION_CHAT_WS_PATH,
+          sessionId: parsed.sessionId,
+          resumeFromSeq: parsed.resumeFromSeq,
+        },
+      });
+    },
+    open(socket) {
+      const data = socket.data ?? {};
+      const sessionId = typeof data.sessionId === "string" ? data.sessionId : null;
+      if (!sessionId) {
+        socket.close(4000, "missing sessionId");
+        return;
+      }
+
+      const resumeFromSeq = typeof data.resumeFromSeq === "number" ? data.resumeFromSeq : undefined;
+      const transport: SessionChatTransport = {
+        send: (payload: string) => socket.send(payload),
+        close: (code?: number, reason?: string) => socket.close(code, reason),
+      };
+      let resolveAttach!: (attached: boolean) => void;
+      const attachPromise = new Promise<boolean>((resolve) => { resolveAttach = resolve; });
+      const binding: BunSessionChatSocketBinding = {
+        sessionId,
+        transport,
+        attachPromise,
+        closed: false,
+      };
+      sockets.set(socket, binding);
+
+      void (async () => {
+        let attached = false;
+        try {
+          attached = await bindings.attach(sessionId, transport, { resumeFromSeq });
+        } catch (error) {
+          log.warn("Bun session transport attachment failed", {
+            sessionId,
+            error: error instanceof Error ? error.message : "unknown",
+          });
+        } finally {
+          if (!attached && sockets.get(socket) === binding) {
             sockets.delete(socket);
           }
-        })();
-      },
-      message(socket, message) {
-        const transport = sockets.get(socket);
-        if (!transport) return;
-        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
-        if (!sessionId) return;
-        void handleSessionChatTransportMessage(sessionId, transport, message);
-      },
-      close(socket) {
-        const transport = sockets.get(socket);
-        sockets.delete(socket);
-        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
-        if (transport && sessionId) {
-          detachSessionChatTransport(sessionId, transport);
+          resolveAttach(attached);
         }
-      },
-      error(socket) {
-        const transport = sockets.get(socket);
-        sockets.delete(socket);
-        const sessionId = typeof socket.data?.sessionId === "string" ? socket.data.sessionId : null;
-        if (transport && sessionId) {
-          detachSessionChatTransport(sessionId, transport);
-        }
-      },
-    });
+      })();
+    },
+    message(socket, message) {
+      const binding = sockets.get(socket);
+      if (!binding) return;
 
+      void (async () => {
+        const attached = await binding.attachPromise;
+        if (!attached || binding.closed || sockets.get(socket) !== binding) return;
+        await bindings.handle(binding.sessionId, binding.transport, message);
+      })().catch((error) => {
+        log.error("Bun session transport message handling failed", {
+          sessionId: binding.sessionId,
+          error: error instanceof Error ? error.message : "unknown",
+        });
+      });
+    },
+    close(socket) {
+      closeBinding(socket);
+    },
+    error(socket) {
+      closeBinding(socket);
+    },
+  };
+}
+
+export function setupSessionChatWebSocket(server: StartedHttpServer): void {
+  if (isBunWebSocketRegistrar(server)) {
+    server.registerWebSocketRoute(createBunSessionChatWebSocketRoute());
     return;
   }
 

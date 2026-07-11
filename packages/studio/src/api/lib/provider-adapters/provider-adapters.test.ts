@@ -227,6 +227,73 @@ describe("provider adapter registry", () => {
     expect(result).toMatchObject({ success: false, code: "auth-missing" });
   });
 
+  it("preserves all runtime system blocks after the first prompt cache boundary in the final Anthropic request body", async () => {
+    let requestBody: Record<string, unknown> | undefined;
+    setFetchMock(vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        content: [{ type: "text", text: "ok" }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch);
+
+    const result = await createProviderAdapterRegistry().get("anthropic-compatible").generate({
+      providerId: "anthropic",
+      providerName: "Anthropic",
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-ant-test",
+      modelId: "claude-sonnet-4-6",
+      messages: [
+        { role: "system", content: "静态规则\n__SYSTEM_PROMPT_DYNAMIC_BOUNDARY__\n动态会话上下文" },
+        { role: "system", content: "运行时提示一：当前画布" },
+        { role: "system", content: "运行时提示二：资源状态" },
+        { role: "user", content: "继续" },
+      ],
+    });
+
+    expect(result).toMatchObject({ success: true, type: "message", content: "ok" });
+    expect(requestBody?.system).toEqual([
+      { type: "text", text: "静态规则", cache_control: { type: "ephemeral" } },
+      { type: "text", text: "动态会话上下文" },
+      { type: "text", text: "运行时提示一：当前画布" },
+      { type: "text", text: "运行时提示二：资源状态" },
+    ]);
+    expect(requestBody?.messages).toEqual([{ role: "user", content: "继续" }]);
+  });
+
+  it.each([
+    { providerId: "openai", modelId: "gpt-5", label: "OpenAI-compatible" },
+    { providerId: "deepseek", modelId: "deepseek-chat", label: "DeepSeek" },
+  ])("preserves ordered runtime system hints in the final $label request body", async ({ providerId, modelId }) => {
+    let requestBody: Record<string, unknown> | undefined;
+    setFetchMock(vi.fn(async (_url: string, init?: RequestInit) => {
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: "ok" } }],
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    }) as unknown as typeof fetch);
+
+    await createProviderAdapterRegistry().get("openai-compatible").generate({
+      providerId,
+      providerName: providerId,
+      baseUrl: "https://api.example.com/v1",
+      apiKey: "sk-test",
+      modelId,
+      messages: [
+        { role: "system", content: "主提示" },
+        { role: "system", content: "运行时提示一" },
+        { role: "system", content: "运行时提示二" },
+        { role: "user", content: "继续" },
+      ],
+    });
+
+    expect(requestBody?.messages).toEqual([
+      { role: "system", content: "主提示" },
+      { role: "system", content: "运行时提示一" },
+      { role: "system", content: "运行时提示二" },
+      { role: "user", content: "继续" },
+    ]);
+  });
+
   it("does not fake success for unimplemented platform and Anthropic adapters", async () => {
     const registry = createProviderAdapterRegistry();
 

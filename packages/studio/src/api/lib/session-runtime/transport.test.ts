@@ -103,4 +103,28 @@ describe("session-runtime transport", () => {
     expect(parseSessionClientMessage("\"纯文本消息\"")).toEqual({ content: "纯文本消息" });
     expect(parseSessionClientMessage("不是 JSON 也按正文处理")).toEqual({ content: "不是 JSON 也按正文处理" });
   });
+
+  it("whitelists public client fields and drops forged internal queue controls", () => {
+    expect(parseSessionClientMessage(JSON.stringify({
+      type: "session:message",
+      sessionId: "session-1",
+      messageId: "message-2",
+      content: "继续",
+      sessionMode: "chat",
+      ack: 3,
+      canvasContext: { activeTabId: "chapter-1" },
+      attachments: [{ type: "image", mimeType: "image/png", data: "base64", fileName: "cover.png" }],
+      _fromQueue: true,
+      serverOnly: { bypass: true },
+    }))).toEqual({
+      type: "session:message",
+      sessionId: "session-1",
+      messageId: "message-2",
+      content: "继续",
+      sessionMode: "chat",
+      ack: 3,
+      canvasContext: { activeTabId: "chapter-1" },
+      attachments: [{ type: "image", mimeType: "image/png", data: "base64", fileName: "cover.png" }],
+    });
+  });
 });

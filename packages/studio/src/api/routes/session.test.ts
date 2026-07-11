@@ -868,4 +868,90 @@ describe("sessionRouter", () => {
     const postRejectToolsBody = await postRejectToolsResponse.json();
     expect(postRejectToolsBody.pendingConfirmations).toEqual([]);
   });
+
+  it("awaits one runtime disposal before deleting history and soft-deletes Browser/Bash/Agent/capture child-first", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "级联删除会话", agentId: "writer", sessionMode: "chat" }),
+    });
+    const created = await createResponse.json();
+    await sessionRouter.request(`http://localhost/${created.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ id: "delete-history", role: "user", content: "删除前历史", timestamp: 1 }] }),
+    });
+
+    const { createOwnedRuntimeResource, getSessionRuntimeResourceRegistry } = await import("../lib/session-runtime/resource-registry.js");
+    const registry = getSessionRuntimeResourceRegistry();
+    const disposalOrder: string[] = [];
+    const resource = (kind: "browser" | "bash" | "agent" | "capture-pipeline", parentResourceId?: string) => createOwnedRuntimeResource({
+      controlOwnerSessionId: created.id,
+      executionSessionId: created.id,
+      ...(parentResourceId ? { parentResourceId } : {}),
+      kind,
+      value: {},
+      dispose: async () => {
+        disposalOrder.push(kind);
+        expect((await sessionRouter.request(`http://localhost/${created.id}`)).status).toBe(200);
+        expect((await sessionRouter.request(`http://localhost/${created.id}/chat/state`)).status).toBe(200);
+        return { status: "stopped" as const };
+      },
+    });
+    const agent = resource("agent");
+    const browser = resource("browser", agent.id);
+    const bash = resource("bash", agent.id);
+    const capture = resource("capture-pipeline", browser.id);
+    for (const item of [agent, browser, bash, capture]) registry.register(item);
+
+    const response = await sessionRouter.request(`http://localhost/${created.id}`, { method: "DELETE" });
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body).toMatchObject({ success: true, runtimeDispose: { status: "clean", sessionId: created.id } });
+    expect(disposalOrder).toEqual(["capture-pipeline", "browser", "bash", "agent"]);
+    expect(registry.listOwned(created.id).filter((item) => item.status === "running" || item.status === "stopping")).toEqual([]);
+    expect((await sessionRouter.request(`http://localhost/${created.id}`)).status).toBe(404);
+    expect((await sessionRouter.request(`http://localhost/${created.id}/chat/state`)).status).toBe(404);
+  });
+
+  it("returns an explicit diagnostic error and preserves the session when runtime disposal is unclean", async () => {
+    const createResponse = await sessionRouter.request("http://localhost/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "释放失败会话", agentId: "writer", sessionMode: "chat" }),
+    });
+    const created = await createResponse.json();
+    await sessionRouter.request(`http://localhost/${created.id}/chat/state`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ messages: [{ id: "keep-history", role: "user", content: "必须保留", timestamp: 1 }] }),
+    });
+
+    const { createOwnedRuntimeResource, getSessionRuntimeResourceRegistry } = await import("../lib/session-runtime/resource-registry.js");
+    const registry = getSessionRuntimeResourceRegistry();
+    const dispose = vi.fn(async () => ({ status: "failed" as const, error: "stop-timeout: process tree remains alive" }));
+    const stuck = createOwnedRuntimeResource({
+      controlOwnerSessionId: created.id,
+      executionSessionId: created.id,
+      kind: "bash" as const,
+      value: {},
+      dispose,
+    });
+    registry.register(stuck);
+
+    const response = await sessionRouter.request(`http://localhost/${created.id}`, { method: "DELETE" });
+    const body = await response.json();
+
+    expect(response.status).toBe(409);
+    expect(body).toMatchObject({
+      error: "session-runtime-dispose-unclean",
+      runtimeDispose: { status: "unclean", stuckResourceIds: [stuck.id] },
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect((await sessionRouter.request(`http://localhost/${created.id}`)).status).toBe(200);
+    const preservedState = await sessionRouter.request(`http://localhost/${created.id}/chat/state`);
+    expect(preservedState.status).toBe(200);
+    expect((await preservedState.json()).messages).toEqual(expect.arrayContaining([expect.objectContaining({ id: "keep-history" })]));
+  });
 });

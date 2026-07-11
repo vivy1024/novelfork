@@ -72,6 +72,50 @@ describe("session-service", () => {
     });
   });
 
+  it("rolls back history and the session tombstone together when persistence deletion fails, then exposes retryable diagnostics", async () => {
+    const { createSession, deleteSessionWithRuntimeReport, getSessionById, __testing } = await loadSessionService();
+    const { loadSessionChatHistory, saveSessionChatHistory } = await import("./session-history-store.js");
+    const session = await createSession({ title: "Atomic Delete", agentId: "writer" });
+    await saveSessionChatHistory(session.id, [{
+      id: "delete-atomic-message",
+      role: "user",
+      content: "must survive rollback",
+      timestamp: 1,
+      seq: 1,
+    }]);
+    __testing.setSessionDeleteTransactionHook(() => {
+      throw new Error("injected delete failure");
+    });
+
+    const failed = await deleteSessionWithRuntimeReport(session.id);
+
+    expect(failed).toMatchObject({
+      deleted: false,
+      error: "persistence-delete-failed",
+      diagnostic: expect.stringContaining("injected delete failure"),
+    });
+    expect(await getSessionById(session.id)).not.toBeNull();
+    expect(await loadSessionChatHistory(session.id)).toEqual([
+      expect.objectContaining({ id: "delete-atomic-message", content: "must survive rollback" }),
+    ]);
+
+    __testing.setSessionDeleteTransactionHook(undefined);
+    await expect(deleteSessionWithRuntimeReport(session.id)).resolves.toMatchObject({ deleted: true });
+  });
+
+  it("shares one atomic delete operation across concurrent callers", async () => {
+    const { createSession, deleteSessionWithRuntimeReport } = await loadSessionService();
+    const session = await createSession({ title: "Concurrent Delete", agentId: "writer" });
+
+    const firstDelete = deleteSessionWithRuntimeReport(session.id);
+    const secondDelete = deleteSessionWithRuntimeReport(session.id);
+    expect(secondDelete).toBe(firstDelete);
+    const [first, second] = await Promise.all([firstDelete, secondDelete]);
+
+    expect(first).toMatchObject({ deleted: true });
+    expect(second).toEqual(first);
+  });
+
   it("persists concurrent session updates through SQLite without sessions.json", async () => {
     const { createSession, getSessionById, updateSession } = await loadSessionService();
     const session = await createSession({

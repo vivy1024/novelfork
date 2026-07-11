@@ -304,6 +304,9 @@ importers:
       novel:
         specifier: 1.0.2
         version: 1.0.2(@babel/core@7.29.0)(@babel/template@7.28.6)(@tiptap/extension-code-block@2.27.2(@tiptap/core@2.27.2(@tiptap/pm@2.27.2))(@tiptap/pm@2.27.2))(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(highlight.js@10.7.3)(immer@11.1.8)(lowlight@1.20.0)(react-dom@19.0.0(react@19.0.0))(react@19.0.0)
+      playwright-core:
+        specifier: 1.59.1
+        version: 1.59.1
       react:
         specifier: 19.0.0
         version: 19.0.0

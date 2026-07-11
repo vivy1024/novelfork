@@ -32,6 +32,16 @@ afterAll(async () => {
   await rm(sessionStoreDir, { recursive: true, force: true });
 });
 
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
 function input(overrides: Partial<AgentTurnRuntimeInput> = {}): AgentTurnRuntimeInput {
   return {
     sessionId: "session-1",
@@ -376,7 +386,8 @@ describe("agent turn runtime", () => {
   });
 
   it("executes multiple read-only tools in parallel", async () => {
-    const executionOrder: string[] = [];
+    let active = 0;
+    let maxActive = 0;
     const generate = vi.fn()
       .mockResolvedValueOnce({
         success: true as const,
@@ -395,14 +406,17 @@ describe("agent turn runtime", () => {
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       });
     const executeTool = vi.fn(async (toolInput: { toolName: string }) => {
-      executionOrder.push(toolInput.toolName);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
       return { ok: true, summary: `${toolInput.toolName} 完成。` };
     });
 
     const events = await runAgentTurn(input({ generate, executeTool }));
 
-    // All 3 tools should have been called
     expect(executeTool).toHaveBeenCalledTimes(3);
+    expect(maxActive).toBe(3);
     // Events should include all tool_call and tool_result events
     const toolCallEvents = events.filter(e => e.type === "tool_call");
     const toolResultEvents = events.filter(e => e.type === "tool_result");
@@ -411,6 +425,133 @@ describe("agent turn runtime", () => {
     // Final message
     expect(events.at(-2)).toMatchObject({ type: "assistant_message", content: "已读取所有文件。" });
     expect(events.at(-1)).toMatchObject({ type: "turn_completed" });
+  });
+
+  it("serializes hooks.manage write actions from the same model tool batch", async () => {
+    let persistedUpdates = 0;
+    const generate = vi.fn()
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "tool_use" as const,
+        toolUses: [
+          { id: "hook-plant", name: "hooks.manage", input: { action: "plant", hook: { id: "hook-1" } } },
+          { id: "hook-payoff", name: "hooks.manage", input: { action: "payoff", hookId: "hook-1" } },
+          { id: "hook-delete", name: "hooks.manage", input: { action: "delete", hookId: "hook-1" } },
+        ],
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      })
+      .mockResolvedValueOnce({
+        success: true as const,
+        type: "message" as const,
+        content: "伏笔已更新。",
+        metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+      });
+    const executeTool = vi.fn(async () => {
+      const snapshot = persistedUpdates;
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      persistedUpdates = snapshot + 1;
+      return { ok: true, summary: "已完成。" };
+    });
+
+    await runAgentTurn(input({ generate, executeTool }));
+
+    expect(persistedUpdates).toBe(3);
+    expect(executeTool.mock.calls.map(([toolInput]) => (toolInput as { input: { action: string } }).input.action)).toEqual([
+      "plant",
+      "payoff",
+      "delete",
+    ]);
+  });
+
+  it("does not emit a successful tool result after its abort signal wins the tool race", async () => {
+    const controller = new AbortController();
+    const toolStarted = deferred<void>();
+    let resolveLateTool: ((value: { ok: true; summary: string }) => void) | undefined;
+    const generate = vi.fn(async () => ({
+      success: true as const,
+      type: "tool_use" as const,
+      toolUses: [{ id: "late-tool", name: "Read", input: { path: "late.txt" } }],
+      metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+    }));
+    const executeTool = vi.fn(() => new Promise<{ ok: true; summary: string }>((resolve) => {
+      resolveLateTool = resolve;
+      controller.abort();
+      toolStarted.resolve();
+    }));
+
+    let turnSettled = false;
+    const turnPromise = runAgentTurn(input({ generate, executeTool, signal: controller.signal })).then((events) => {
+      turnSettled = true;
+      return events;
+    });
+    await toolStarted.promise;
+    await Promise.resolve();
+    expect(controller.signal.aborted).toBe(true);
+    expect(turnSettled).toBe(false);
+
+    resolveLateTool?.({ ok: true, summary: "不应作为成功广播的迟到结果" });
+    const events = await turnPromise;
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(events).not.toContainEqual(expect.objectContaining({
+      type: "tool_result",
+      id: "late-tool",
+      result: expect.objectContaining({ ok: true }),
+    }));
+  });
+
+  it("Task7: cooperative tool receives the turn signal and late success after abort is not emitted", async () => {
+    const controller = new AbortController();
+    const lateTool = deferred<{ ok: true; summary: string }>();
+    const toolStarted = deferred<void>();
+    let toolSignal: AbortSignal | undefined;
+    const generate = vi.fn(async () => ({
+      success: true as const,
+      type: "tool_use" as const,
+      toolUses: [{ id: "cooperative-late-tool", name: "Read", input: { file_path: "/tmp/late.txt" } }],
+      metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
+    }));
+    const executeTool = vi.fn((toolInput: { signal?: AbortSignal }) => {
+      toolSignal = toolInput.signal;
+      controller.abort();
+      toolStarted.resolve();
+      return lateTool.promise;
+    });
+
+    let turnSettled = false;
+    const turnPromise = runAgentTurn(input({
+      generate,
+      executeTool,
+      signal: controller.signal,
+      sessionConfig: { ...sessionConfig, turnCheckpointEnabled: false },
+    })).then((events) => {
+      turnSettled = true;
+      return events;
+    });
+    await toolStarted.promise;
+    await Promise.resolve();
+
+    expect(toolSignal).toBeInstanceOf(AbortSignal);
+    expect(toolSignal).not.toBe(controller.signal);
+    expect(toolSignal?.aborted).toBe(true);
+    expect(turnSettled).toBe(false);
+
+    lateTool.resolve({ ok: true, summary: "迟到成功不得广播" });
+    const events = await turnPromise;
+
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(executeTool).toHaveBeenCalledTimes(1);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "tool_result",
+      id: "cooperative-late-tool",
+      result: expect.objectContaining({ ok: false, error: "tool-aborted" }),
+    }));
+    expect(events).not.toContainEqual(expect.objectContaining({
+      type: "tool_result",
+      id: "cooperative-late-tool",
+      result: expect.objectContaining({ ok: true, summary: "迟到成功不得广播" }),
+    }));
   });
 
   it("recovers from context overflow by truncating and retrying", async () => {
@@ -469,7 +610,10 @@ describe("agent turn runtime", () => {
     expect(events.at(-1)).toMatchObject({ type: "turn_failed" });
   });
 
-  it("falls back to sequential execution when tools include write operations", async () => {
+  it("runs a mixed read/write batch serially in model order", async () => {
+    const executionOrder: string[] = [];
+    let active = 0;
+    let maxActive = 0;
     const generate = vi.fn()
       .mockResolvedValueOnce({
         success: true as const,
@@ -486,12 +630,20 @@ describe("agent turn runtime", () => {
         content: "完成。",
         metadata: { providerId: "sub2api", providerName: "Sub2API", modelId: "gpt-5-codex" },
       });
-    const executeTool = vi.fn(async () => ({ ok: true, summary: "ok" }));
+    const executeTool = vi.fn(async (toolInput: { toolName: string }) => {
+      executionOrder.push(`${toolInput.toolName}:start`);
+      active += 1;
+      maxActive = Math.max(maxActive, active);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      active -= 1;
+      executionOrder.push(`${toolInput.toolName}:end`);
+      return { ok: true, summary: "ok" };
+    });
 
     const events = await runAgentTurn(input({ generate, executeTool }));
 
-    // Should still work (sequential path)
-    expect(executeTool).toHaveBeenCalledTimes(2);
+    expect(maxActive).toBe(1);
+    expect(executionOrder).toEqual(["Read:start", "Read:end", "Write:start", "Write:end"]);
     expect(events.at(-1)).toMatchObject({ type: "turn_completed" });
   });
 });
