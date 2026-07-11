@@ -29,6 +29,8 @@ export interface SubagentGenerateInput {
   readonly providerId: string;
   readonly messages: readonly SubagentMessage[];
   readonly tools?: readonly string[];
+  /** Parent/turn cancellation propagated into the provider generation. */
+  readonly signal?: AbortSignal;
 }
 
 export interface SubagentMessage {
@@ -115,7 +117,14 @@ export async function* runSubagentStream(input: RunSubagentInput): AsyncGenerato
       providerId: config.providerId,
       messages,
       tools: config.tools,
+      ...(signal ? { signal } : {}),
     });
+
+    // Providers may resolve after their abort listener fires. Do not turn that
+    // late response into a completed child result or parent-visible side effect.
+    if (signal?.aborted) {
+      return { ok: false, stopReason: "aborted", toolResults, transcript, error: "Aborted" };
+    }
 
     if (!result.success) {
       const errorEvent: SubagentTranscriptEvent = { type: "error", agentId: config.id, timestamp: Date.now(), content: "Generation failed" };

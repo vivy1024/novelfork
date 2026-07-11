@@ -12,6 +12,23 @@ import type { NarrativeLineService } from "@vivy1024/novelfork-novel-plugin/hand
 import { getSessionToolDefinition } from "./session-tool-registry.js";
 import { resolveSessionToolPolicy, type SessionToolPolicyResolution } from "./session-tool-policy.js";
 import { executeBashTool, executeFileReadTool, executeFileWriteTool, executeFileEditTool } from "./real-tool-handlers.js";
+import { DEFAULT_PROCESS_TREE_STOP_DEADLINE_MS } from "./session-runtime/process-tree-controller.js";
+import { BackgroundAgentMailbox, type MailboxMessage } from "./session-runtime/agent-mailbox.js";
+import {
+  createOwnedRuntimeResource,
+  createRuntimeResourceId,
+  getSessionRuntimeResourceRegistry,
+  type OwnedRuntimeResource,
+  type ResourceTerminalState,
+  type SessionRuntimeResourceRegistry,
+} from "./session-runtime/resource-registry.js";
+import {
+  createBackgroundTask,
+  deleteBackgroundTask,
+  updateBackgroundTask,
+  type CreateBackgroundTaskInput,
+  type UpdateBackgroundTaskInput,
+} from "./background-task-store.js";
 import { validateToolPermission, classifyBashCommand, isPathWithinWorkDir, checkCommandAgainstLists, checkPathAgainstDirectoryLists } from "./permission-pipeline.js";
 import { getYoloDecision, performSafetyReflection } from "./yolo-mode.js";
 import { log } from "./logger.js";
@@ -82,63 +99,78 @@ interface BrowserPageLike {
   keyboard: { press(key: string): Promise<void>; type(text: string): Promise<void> };
 }
 
-// --- Browser session management ---
+// --- Browser/capture-pipeline values owned by SessionRuntimeResourceRegistry ---
 interface BrowserSession {
-  id: string;
   browser: { close(): Promise<void> };
   page: BrowserPageLike;
   createdAt: number;
 }
-const browserSessions = new Map<string, BrowserSession>();
+
+type BrowserResource = OwnedRuntimeResource<BrowserSession>;
+
+interface CapturePipeline {
+  label: string;
+  captures: Map<string, string>;
+  counter: number;
+}
+
+type CapturePipelineResource = OwnedRuntimeResource<CapturePipeline>;
+
+function resolveRuntimeResourceContext(options: SessionToolExecutorOptions, inputSessionId: string): {
+  registry: SessionRuntimeResourceRegistry;
+  controlOwnerSessionId: string;
+  executionSessionId: string;
+} {
+  return {
+    registry: options.resourceRegistry ?? getSessionRuntimeResourceRegistry(),
+    controlOwnerSessionId: (options.controlOwnerSessionId ?? inputSessionId).trim(),
+    executionSessionId: (options.executionSessionId ?? options.sessionId ?? inputSessionId).trim(),
+  };
+}
+
+function getActiveCapturePipeline(
+  registry: SessionRuntimeResourceRegistry,
+  controlOwnerSessionId: string,
+  executionSessionId: string,
+): CapturePipelineResource | undefined {
+  return registry.listOwned<CapturePipeline>(controlOwnerSessionId, "capture-pipeline")
+    .find((resource) => resource.executionSessionId === executionSessionId && resource.status === "running");
+}
 
 // --- User-Agent constant ---
 const NOVELFORK_USER_AGENT = "NovelFork";
 
-// --- Session-level in-memory state for Pipelines ---
-const sessionPipelines = new Map<string, { label: string; captures: Map<string, string>; counter: number }>();
-
-// --- Background agents state (for Agent/Await tools) ---
+// --- Background Agent/Bash values owned by SessionRuntimeResourceRegistry ---
 interface BackgroundAgentTask {
-  id: string;
   promise: Promise<string>;
+  settlementPromise: Promise<void>;
   result?: string;
-  status: "running" | "completed" | "failed";
   startedAt: number;
   completedAt?: number;
   subagentType: string;
   prompt: string;
-  abortController?: AbortController;
-  pendingMessages: string[];
+  abortController: AbortController;
+  mailbox: BackgroundAgentMailbox;
+  requestedStopReason?: string;
+  persistenceSyncError?: string;
 }
-const backgroundAgents = new Map<string, BackgroundAgentTask>();
+
+type BackgroundAgentResource = OwnedRuntimeResource<BackgroundAgentTask>;
 
 interface BackgroundBashTask {
-  id: string;
   command: string;
   promise: Promise<SessionToolExecutionResult>;
+  settlementPromise: Promise<void>;
   result?: SessionToolExecutionResult;
-  status: "running" | "completed" | "failed";
   completedAt?: number;
+  abortController: AbortController;
+  requestedStopReason?: string;
+  persistenceSyncError?: string;
   /** Accumulated stdout for partial output on timeout */
   stdoutBuffer: string;
 }
-const backgroundTasks = new Map<string, BackgroundBashTask>();
 
-/** 清理已完成超过 30 分钟的后台任务，防止 Map 无限增长 */
-const BACKGROUND_TASK_TTL_MS = 30 * 60 * 1000;
-function gcBackgroundMaps(): void {
-  const now = Date.now();
-  for (const [id, task] of backgroundAgents) {
-    if (task.completedAt && now - task.completedAt > BACKGROUND_TASK_TTL_MS) {
-      backgroundAgents.delete(id);
-    }
-  }
-  for (const [id, task] of backgroundTasks) {
-    if (task.completedAt && now - task.completedAt > BACKGROUND_TASK_TTL_MS) {
-      backgroundTasks.delete(id);
-    }
-  }
-}
+type BackgroundBashResource = OwnedRuntimeResource<BackgroundBashTask>;
 
 export type SessionToolHandlerContext = SessionToolExecutionInput & {
   readonly definition: SessionToolDefinition;
@@ -148,6 +180,110 @@ export type SessionToolHandler = (
   context: SessionToolHandlerContext,
 ) => Promise<SessionToolExecutionResult> | SessionToolExecutionResult;
 
+export interface BackgroundTaskPersistence {
+  create(input: CreateBackgroundTaskInput): unknown;
+  update(id: string, controlOwnerSessionId: string, updates: UpdateBackgroundTaskInput): unknown;
+  delete(id: string, controlOwnerSessionId: string): unknown;
+}
+
+const defaultBackgroundTaskPersistence: BackgroundTaskPersistence = {
+  create: createBackgroundTask,
+  update: updateBackgroundTask,
+  delete: deleteBackgroundTask,
+};
+
+function updateBackgroundTaskWithRetry(
+  persistence: BackgroundTaskPersistence,
+  id: string,
+  controlOwnerSessionId: string,
+  updates: UpdateBackgroundTaskInput,
+  maxAttempts = 3,
+): { ok: true } | { ok: false; error: string } {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      persistence.update(id, controlOwnerSessionId, updates);
+      return { ok: true };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  return { ok: false, error: lastError instanceof Error ? lastError.message : String(lastError) };
+}
+
+function serializeBackgroundTaskValue(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return JSON.stringify({ serializationError: true });
+  }
+}
+
+function summarizeAgentMailbox(mailbox: BackgroundAgentMailbox): {
+  messages: MailboxMessage[];
+  queued: MailboxMessage[];
+  delivered: MailboxMessage[];
+  undelivered: MailboxMessage[];
+} {
+  const messages = mailbox.snapshot();
+  return {
+    messages,
+    queued: messages.filter((message) => message.status === "queued"),
+    delivered: messages.filter((message) => message.status === "delivered"),
+    undelivered: messages.filter((message) => message.status === "undelivered"),
+  };
+}
+
+function projectBackgroundAgentTerminal(
+  resource: BackgroundAgentResource,
+  outcome: "completed" | "failed",
+): { status: ResourceTerminalState["status"]; terminalReason: string } {
+  if (resource.status === "stopping" || resource.value.requestedStopReason) {
+    return { status: "stopped", terminalReason: resource.value.requestedStopReason ?? "task-stop" };
+  }
+  return outcome === "completed"
+    ? { status: "completed", terminalReason: "completed" }
+    : { status: "failed", terminalReason: "execution-error" };
+}
+
+function projectBackgroundBashTerminal(
+  resource: BackgroundBashResource,
+  result: SessionToolExecutionResult,
+): { status: ResourceTerminalState["status"]; terminalReason: string } {
+  if (resource.status === "stopping") {
+    const failedToExecute = result.error === "background-task-failed" || result.error === "spawn-failed";
+    return failedToExecute
+      ? { status: "failed", terminalReason: result.error }
+      : {
+          status: "stopped",
+          terminalReason: result.error === "stop-timeout"
+            ? "stop-timeout"
+            : resource.value.requestedStopReason ?? result.error ?? "stopped",
+        };
+  }
+  if (result.ok) {
+    return { status: "completed", terminalReason: "completed" };
+  }
+  if (result.error === "stopped" || result.error === "stop-timeout") {
+    return { status: "stopped", terminalReason: result.error };
+  }
+  return { status: "failed", terminalReason: result.error ?? "execution-error" };
+}
+
+function waitForRuntimeSettlement(promise: Promise<unknown>, deadlineMs: number): Promise<"settled" | "deadline"> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (outcome: "settled" | "deadline") => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(outcome);
+    };
+    const timer = setTimeout(() => finish("deadline"), deadlineMs);
+    void promise.then(() => finish("settled"), () => finish("settled"));
+  });
+}
+
 export type SessionToolExecutorOptions = {
   readonly handlers?: Readonly<Record<string, SessionToolHandler>>;
   readonly cockpitService?: CockpitService;
@@ -156,8 +292,20 @@ export type SessionToolExecutorOptions = {
   readonly workDir?: string;
   /** 当前会话绑定的书籍 ID，用于自动将 books/{projectId}/ 加入目录白名单 */
   readonly projectId?: string;
-  /** 当前 session ID，用于插件 handler 上下文 */
+  /** 当前 execution session ID，用于插件 handler 上下文。 */
   readonly sessionId?: string;
+  /** 控制该 executor 创建资源的 owner session；默认使用工具输入 sessionId。 */
+  readonly controlOwnerSessionId?: string;
+  /** 资源实际执行 session；默认使用 options.sessionId 或工具输入 sessionId。 */
+  readonly executionSessionId?: string;
+  /** 父 Runtime resource，用于级联释放。 */
+  readonly parentResourceId?: string;
+  /** 可注入测试 registry；生产默认使用进程级 owner-aware registry。 */
+  readonly resourceRegistry?: SessionRuntimeResourceRegistry;
+  /** 可注入持久镜像；生产默认写入 background-task-store。 */
+  readonly backgroundTaskPersistence?: BackgroundTaskPersistence;
+  /** Registry/Agent 真实停止的有界等待；测试可缩短，生产使用进程树停止 deadline。 */
+  readonly resourceStopDeadlineMs?: number;
   readonly now?: () => number;
   readonly createConfirmationId?: (input: SessionToolExecutionInput, definition: SessionToolDefinition) => string;
   /** 编辑后自动验证开关 */
@@ -520,8 +668,14 @@ export async function executeSessionTool(
 
   try {
     let result = await handler({ ...input, definition });
-    // Pipeline 拦截：如果当前 session 有活跃 pipeline，捕获成功结果
-    const pipeline = sessionPipelines.get(input.sessionId);
+    // Capture only the active pipeline for this exact owner + execution session.
+    const runtimeContext = resolveRuntimeResourceContext(options, input.sessionId);
+    const pipelineResource = getActiveCapturePipeline(
+      runtimeContext.registry,
+      runtimeContext.controlOwnerSessionId,
+      runtimeContext.executionSessionId,
+    );
+    const pipeline = pipelineResource?.value;
     if (pipeline && result.ok && definition.name !== "StartPipeline" && definition.name !== "EndPipeline") {
       pipeline.counter += 1;
       const alias = `p${pipeline.counter}`;
@@ -2010,6 +2164,31 @@ function buildSessionAllowedPaths(options: SessionToolExecutorOptions): string[]
   return paths;
 }
 
+export function createPluginRegistryFallbackHandler(
+  toolName: string,
+  pluginHandler: NonNullable<ReturnType<typeof pluginRegistry.getToolHandler>>,
+  options: SessionToolExecutorOptions,
+): SessionToolHandler {
+  return async ({ input, definition, sessionId }) => {
+    const executionSessionId = sessionId.trim();
+    if (!executionSessionId) {
+      return {
+        ok: false,
+        renderer: definition.renderer,
+        error: "missing-session-context",
+        summary: `插件工具 ${toolName} 缺少 session 上下文。`,
+      };
+    }
+    const result = await pluginHandler.execute(input, {
+      sessionId: executionSessionId,
+      bookId: typeof input.bookId === "string" ? input.bookId : undefined,
+      storage: null,
+      root: options.workDir ?? process.cwd(),
+    });
+    return { ok: true, renderer: definition.renderer, summary: `${toolName} 执行完成`, data: result };
+  };
+}
+
 function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions): SessionToolHandler | undefined {
   // MCP 工具路由：mcp__<serverName>__<toolName> 格式的工具名
   if (toolName.startsWith("mcp__")) {
@@ -2049,15 +2228,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
   // 尝试通过 PluginRegistry 查找 handler（fallback 到插件注册的 handler）
   const pluginHandler = pluginRegistry.getToolHandler(toolName);
   if (pluginHandler) {
-    return async ({ input, definition }) => {
-      const result = await pluginHandler.execute(input, {
-        sessionId: options.sessionId ?? "",
-        bookId: typeof input.bookId === "string" ? input.bookId : undefined,
-        storage: null, // Storage not available in session executor context; plugin handlers must handle null gracefully
-        root: options.workDir ?? process.cwd(),
-      });
-      return { ok: true, renderer: definition.renderer, summary: `${toolName} 执行完成`, data: result };
-    };
+    return createPluginRegistryFallbackHandler(toolName, pluginHandler, options);
   }
 
   // Pre-compute session-specific allowed paths for directory access checks
@@ -2066,9 +2237,175 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
   switch (toolName) {
     // --- Claude Code / Codex 级开发工具 ---
     case "Bash":
-      return async ({ input, permissionMode, definition, onToolOutputStream }) => {
+      return async ({ input, permissionMode, definition, onToolOutputStream, signal, sessionId }) => {
         const workDir = typeof input.workDir === "string" ? input.workDir : (options.workDir ?? process.cwd());
         const command = String(input.command);
+
+        const executeForegroundBash = (timeoutMs: number | undefined) => executeBashTool({
+          command,
+          workDir,
+          timeoutMs,
+          signal,
+          onStdoutChunk: onToolOutputStream,
+        });
+        const startBackgroundBash = async (timeoutMs: number | undefined): Promise<SessionToolExecutionResult> => {
+          const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+          const persistence = options.backgroundTaskPersistence ?? defaultBackgroundTaskPersistence;
+          const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+          const executionSessionId = (options.executionSessionId ?? options.sessionId ?? sessionId).trim();
+          const abortController = new AbortController();
+          if (signal?.aborted) abortController.abort(signal.reason);
+          const task: BackgroundBashTask = {
+            command,
+            promise: null as never,
+            settlementPromise: null as never,
+            abortController,
+            stdoutBuffer: "",
+          };
+          let resource!: BackgroundBashResource;
+          resource = createOwnedRuntimeResource({
+            controlOwnerSessionId,
+            executionSessionId,
+            parentResourceId: options.parentResourceId,
+            kind: "bash",
+            value: task,
+            dispose: async (reason): Promise<ResourceTerminalState> => {
+              task.requestedStopReason = reason;
+              if (!abortController.signal.aborted) {
+                abortController.abort(reason === "task-stop" ? "task-stop" : "abort");
+              }
+              await task.settlementPromise;
+              const result = task.result ?? await task.promise;
+              if (["completed", "failed", "stopped", "interrupted"].includes(resource.status)) {
+                return result.error === "stop-timeout"
+                  ? { status: resource.status as ResourceTerminalState["status"], error: "stop-timeout" }
+                  : { status: resource.status as ResourceTerminalState["status"] };
+              }
+              return projectBackgroundBashTerminal(resource, result);
+            },
+          });
+
+          try {
+            resourceRegistry.register(resource);
+          } catch (error) {
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "resource-registration-failed",
+              summary: `后台 Bash 资源注册失败：${error instanceof Error ? error.message : String(error)}`,
+            };
+          }
+
+          const taskPromise = executeBashTool({
+            command,
+            workDir,
+            timeoutMs,
+            signal: abortController.signal,
+            onStdoutChunk: (chunk) => {
+              task.stdoutBuffer += chunk;
+              onToolOutputStream?.(chunk);
+            },
+          }).catch((error) => ({
+            ok: false as const,
+            error: "background-task-failed",
+            summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
+          }));
+          task.promise = taskPromise;
+
+          try {
+            persistence.create({
+              id: resource.id,
+              controlOwnerSessionId,
+              sessionId: executionSessionId,
+              type: "bash",
+              status: "running",
+              configJson: serializeBackgroundTaskValue({ command, workDir, timeoutMs, parentResourceId: options.parentResourceId }),
+            });
+          } catch (error) {
+            task.requestedStopReason = "background-task-persist-failed";
+            if (!abortController.signal.aborted) abortController.abort("abort");
+            const processResult = await taskPromise;
+            task.result = processResult;
+            task.completedAt = Date.now();
+            task.settlementPromise = Promise.resolve();
+
+            const compensationErrors: Array<{ category: "persistence-record" | "registry-resource"; error: string }> = [];
+            try {
+              persistence.delete(resource.id, controlOwnerSessionId);
+            } catch (compensationError) {
+              compensationErrors.push({
+                category: "persistence-record",
+                error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+              });
+            }
+            try {
+              const rolledBack = resourceRegistry.rollbackRegistration(controlOwnerSessionId, resource.id);
+              if (!rolledBack && resourceRegistry.getOwned(controlOwnerSessionId, "bash", resource.id)) {
+                compensationErrors.push({ category: "registry-resource", error: "registry rollback returned false" });
+              }
+            } catch (compensationError) {
+              compensationErrors.push({
+                category: "registry-resource",
+                error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+              });
+            }
+            const residuals = [...new Set(compensationErrors.map((item) => item.category))];
+            log.error("Background Bash persistence create failed", {
+              sessionId: controlOwnerSessionId,
+              resourceKind: "bash",
+              resourceId: resource.id,
+              completionReason: "background-task-persist-failed",
+              rollbackIncomplete: residuals.length > 0,
+            });
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "background-task-persist-failed",
+              summary: `后台 Bash 持久化失败：${error instanceof Error ? error.message : String(error)}`,
+              data: {
+                taskId: resource.id,
+                status: "stopped",
+                rollbackIncomplete: residuals.length > 0,
+                residuals,
+                compensationErrors,
+                processResult,
+              },
+            };
+          }
+
+          task.settlementPromise = taskPromise.then((result) => {
+            task.result = result;
+            task.completedAt = Date.now();
+            const terminal = projectBackgroundBashTerminal(resource, result);
+            const sync = updateBackgroundTaskWithRetry(persistence, resource.id, controlOwnerSessionId, {
+              status: terminal.status,
+              resultJson: serializeBackgroundTaskValue(result),
+              error: result.ok ? null : result.error ?? "execution-error",
+              completedAt: new Date(task.completedAt).toISOString(),
+              terminalReason: terminal.terminalReason,
+              terminalMetaJson: serializeBackgroundTaskValue({
+                stopReason: task.requestedStopReason,
+                resultError: result.error,
+              }),
+            });
+            if (!sync.ok) {
+              task.persistenceSyncError = sync.error;
+              log.error("Background Bash persistence terminal update failed", {
+                sessionId: controlOwnerSessionId,
+                resourceKind: "bash",
+                resourceId: resource.id,
+                completionReason: terminal.terminalReason,
+              });
+            }
+            resourceRegistry.transition(resource.id, ["running", "stopping"], terminal.status);
+          });
+          return {
+            ok: true,
+            renderer: definition.renderer,
+            summary: `命令已在后台启动，task ID: ${resource.id}`,
+            data: { taskId: resource.id, command, status: "running" },
+          };
+        };
 
         // Phase 4.2: Check command against user-configured allow/block lists
         let commandAllowlist: string[] = [];
@@ -2094,20 +2431,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         if (listCheck.allowed) {
           const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
           if (input.run_in_background === true) {
-            const taskId = `bg-${Date.now()}`;
-            const task: BackgroundBashTask = { id: taskId, command, promise: null as any, status: "running", stdoutBuffer: "" };
-            const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: (chunk) => { task.stdoutBuffer += chunk; onToolOutputStream?.(chunk); } }).catch(error => ({
-              ok: false as const,
-              error: "background-task-failed",
-              summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
-            }));
-            task.promise = taskPromise;
-            taskPromise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
-            gcBackgroundMaps();
-            backgroundTasks.set(taskId, task);
-            return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
+            return startBackgroundBash(timeoutMs);
           }
-          return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+          return executeForegroundBash(timeoutMs);
         }
 
         // 对标 Claude Code: 在执行前通过 permission-pipeline 做命令级权限检查
@@ -2130,20 +2456,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         const timeoutMs = typeof input.timeoutMs === "number" ? input.timeoutMs : undefined;
         if (input.run_in_background === true) {
-          const taskId = `bg-${Date.now()}`;
-          const task: BackgroundBashTask = { id: taskId, command, promise: null as any, status: "running", stdoutBuffer: "" };
-          const taskPromise = executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: (chunk) => { task.stdoutBuffer += chunk; onToolOutputStream?.(chunk); } }).catch(error => ({
-            ok: false as const,
-            error: "background-task-failed",
-            summary: `后台任务失败：${error instanceof Error ? error.message : String(error)}`,
-          }));
-          task.promise = taskPromise;
-          taskPromise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = r.ok === false && r.error === "background-task-failed" ? "failed" : "completed"; });
-          gcBackgroundMaps();
-          backgroundTasks.set(taskId, task);
-          return { ok: true, renderer: definition.renderer, summary: `命令已在后台启动，task ID: ${taskId}`, data: { taskId, command } };
+          return startBackgroundBash(timeoutMs);
         }
-        return executeBashTool({ command, workDir, timeoutMs, onStdoutChunk: onToolOutputStream });
+        return executeForegroundBash(timeoutMs);
       };
     case "Read":
       return async ({ input, definition }) => {
@@ -2939,11 +3254,36 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
 
         return { ok: false, renderer: definition.renderer, error: "invalid-mode", summary: `不支持的 mode: ${mode}` };
       };
-    // --- Pipeline (session-level in-memory) ---
+    // --- Tool result capture pipeline (Registry-owned, execution-session isolated) ---
     case "StartPipeline":
       return async ({ input, sessionId, definition }) => {
         const label = typeof input.label === "string" ? input.label : "pipeline";
-        sessionPipelines.set(sessionId, { label, captures: new Map(), counter: 0 });
+        const { registry, controlOwnerSessionId, executionSessionId } = resolveRuntimeResourceContext(options, sessionId);
+        const active = getActiveCapturePipeline(registry, controlOwnerSessionId, executionSessionId);
+        if (active) {
+          const resetReport = await registry.disposeResourceTree(controlOwnerSessionId, active.id, "task-stop");
+          if (!resetReport.ok) {
+            return { ok: false, renderer: definition.renderer, error: "pipeline-dispose-failed", summary: "已有管道会话清理失败。" };
+          }
+        }
+        const pipeline = createOwnedRuntimeResource<CapturePipeline>({
+          controlOwnerSessionId,
+          executionSessionId,
+          parentResourceId: options.parentResourceId,
+          kind: "capture-pipeline",
+          value: { label, captures: new Map(), counter: 0 },
+          dispose: async () => ({ status: "stopped" }),
+        });
+        try {
+          registry.register(pipeline);
+        } catch (error) {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "pipeline-registration-failed",
+            summary: `管道模式开启失败：${error instanceof Error ? error.message : String(error)}`,
+          };
+        }
         return {
           ok: true,
           renderer: definition.renderer,
@@ -2953,14 +3293,18 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       };
     case "EndPipeline":
       return async ({ input, sessionId, definition }) => {
-        const pipeline = sessionPipelines.get(sessionId);
-        if (!pipeline) {
+        const { registry, controlOwnerSessionId, executionSessionId } = resolveRuntimeResourceContext(options, sessionId);
+        const pipelineResource = getActiveCapturePipeline(registry, controlOwnerSessionId, executionSessionId);
+        if (!pipelineResource) {
           return { ok: false, renderer: definition.renderer, error: "no-pipeline", summary: "当前没有活跃的管道会话。" };
         }
         const rule = typeof input.rule === "string" ? input.rule.trim() : "";
-        sessionPipelines.delete(sessionId);
-
+        const pipeline = pipelineResource.value;
         const filteredResult = executePipelineRule(rule, pipeline.captures);
+        const report = await registry.disposeResourceTree(controlOwnerSessionId, pipelineResource.id, "task-stop");
+        if (!report.ok) {
+          return { ok: false, renderer: definition.renderer, error: "pipeline-dispose-failed", summary: "管道会话结束失败。" };
+        }
         const header = `管道结束，共 ${pipeline.captures.size} 个捕获。${rule ? ` 规则: ${rule}` : ""}`;
         return {
           ok: true,
@@ -3192,8 +3536,9 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
       };
     // --- Browser: Playwright-based browser automation with system Chrome fallback ---
     case "Browser":
-      return async ({ input, definition }) => {
+      return async ({ input, sessionId: inputSessionId, definition }) => {
         const action = typeof input.action === "string" ? input.action : "";
+        const { registry, controlOwnerSessionId, executionSessionId } = resolveRuntimeResourceContext(options, inputSessionId);
 
         // --- Helper: find system Chrome/Edge executable ---
         const findSystemBrowser = async (): Promise<string | null> => {
@@ -3262,56 +3607,78 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
           if (!url) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "launch 需要 url。" };
 
           try {
-            let pw: { chromium: { launch: (opts?: Record<string, unknown>) => Promise<unknown> } };
+            type PlaywrightModule = { chromium: { launch: (opts?: Record<string, unknown>) => Promise<unknown> } };
+            const normalizePlaywrightModule = (loaded: unknown): PlaywrightModule => {
+              const namespace = loaded as Partial<PlaywrightModule> & { default?: Partial<PlaywrightModule> };
+              const resolved = namespace.chromium ? namespace : namespace.default;
+              if (!resolved?.chromium) throw new Error("Playwright chromium export is unavailable");
+              return resolved as PlaywrightModule;
+            };
+            let pw: PlaywrightModule;
             try {
-              // @ts-ignore — dynamic import, may not have type declarations
-              pw = await import("playwright-core");
+              pw = normalizePlaywrightModule(await import("playwright-core"));
             } catch {
-              try {
-                // @ts-ignore — dynamic import fallback
-                pw = await import("playwright");
-              } catch {
-                // Fallback: no Playwright available, use system Chrome for basic screenshot-only mode
-                const chromePath = await findSystemBrowser();
-                if (!chromePath) {
-                  return { ok: false, renderer: definition.renderer, error: "missing-dependency", summary: "需要安装 playwright-core/playwright 或系统 Chrome/Edge。当前仅支持 screenshot action（无需 session）。" };
-                }
-                return { ok: false, renderer: definition.renderer, error: "no-playwright", summary: "Playwright 未安装，无法创建交互式浏览器会话。可直接使用 screenshot action（无需 session_id）进行截图。" };
+              // Fallback: no Playwright available, use system Chrome for basic screenshot-only mode
+              const chromePath = await findSystemBrowser();
+              if (!chromePath) {
+                return { ok: false, renderer: definition.renderer, error: "missing-dependency", summary: "需要安装 playwright-core 或系统 Chrome/Edge。当前仅支持 screenshot action（无需 session）。" };
               }
+              return { ok: false, renderer: definition.renderer, error: "no-playwright", summary: "playwright-core 未安装，无法创建交互式浏览器会话。可直接使用 screenshot action（无需 session_id）进行截图。" };
             }
             const headless = input.headless !== false;
             const browser = await pw.chromium.launch({ headless, channel: "chrome" }) as { newPage: () => Promise<BrowserPageLike>; close: () => Promise<void> };
-            const page = await browser.newPage();
-            await page.goto(url, { timeout: 30000 });
-            const sessionId = crypto.randomUUID().slice(0, 8);
-            browserSessions.set(sessionId, { id: sessionId, browser, page, createdAt: Date.now() });
-            const title = await page.title();
-            return {
-              ok: true,
-              renderer: definition.renderer,
-              summary: `浏览器已打开：${title} (${url})`,
-              data: { session_id: sessionId, title, url },
-            };
+            try {
+              const page = await browser.newPage();
+              await page.goto(url, { timeout: 30000 });
+              const title = await page.title();
+              const createdAt = Date.now();
+              const browserResource = createOwnedRuntimeResource<BrowserSession>({
+                controlOwnerSessionId,
+                executionSessionId,
+                parentResourceId: options.parentResourceId,
+                kind: "browser",
+                createdAt,
+                value: { browser, page, createdAt },
+                dispose: async () => {
+                  await browser.close();
+                  return { status: "stopped" };
+                },
+              });
+              registry.register(browserResource);
+              return {
+                ok: true,
+                renderer: definition.renderer,
+                summary: `浏览器已打开：${title} (${url})`,
+                data: { session_id: browserResource.id, title, url },
+              };
+            } catch (setupError) {
+              try {
+                await browser.close();
+              } catch (closeError) {
+                throw new AggregateError([setupError, closeError], "Browser setup and compensation close failed");
+              }
+              throw setupError;
+            }
           } catch (error) {
             return { ok: false, renderer: definition.renderer, error: "launch-failed", summary: `浏览器启动失败：${error instanceof Error ? error.message : String(error)}` };
           }
         }
 
         if (action === "list_sessions") {
-          const sessions = [...browserSessions.entries()].map(([id, s]) => ({
-            id,
-            createdAt: s.createdAt,
-          }));
+          const sessions = registry.listOwned<BrowserSession>(controlOwnerSessionId, "browser")
+            .filter((resource) => resource.status === "running")
+            .map((resource) => ({ id: resource.id, createdAt: resource.value.createdAt }));
           return { ok: true, renderer: definition.renderer, summary: `${sessions.length} 个浏览器会话`, data: { sessions } };
         }
 
-        // All other actions require session_id
+        // All other actions require session_id and owner-aware Registry lookup.
         const sessionId = typeof input.session_id === "string" ? input.session_id : "";
         if (!sessionId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "需要 session_id。" };
-        const session = browserSessions.get(sessionId);
-        if (!session) return { ok: false, renderer: definition.renderer, error: "session-not-found", summary: `浏览器会话 ${sessionId} 不存在。` };
-        const page = session.page;
-        const browser = session.browser;
+        const session = registry.getOwned<BrowserSession>(controlOwnerSessionId, "browser", sessionId);
+        if (!session || session.status !== "running") {
+          return { ok: false, renderer: definition.renderer, error: "not-found", summary: `浏览器会话 ${sessionId} 不存在。` };
+        }
+        const page = session.value.page;
 
         try {
           switch (action) {
@@ -3405,8 +3772,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               return { ok: true, renderer: definition.renderer, summary: `${selector}[${attribute}] = ${attrValue}`, data: { selector, attribute, value: attrValue } };
             }
             case "close": {
-              await browser.close();
-              browserSessions.delete(sessionId);
+              const report = await registry.disposeResourceTree(controlOwnerSessionId, sessionId, "task-stop");
+              const terminal = report.resources.find((resource) => resource.id === sessionId);
+              if (!report.ok || !terminal || terminal.status === "failed") {
+                const detail = terminal?.error ? `：${terminal.error}` : "";
+                return { ok: false, renderer: definition.renderer, error: "browser-error", summary: `浏览器会话 ${sessionId} 关闭失败${detail}` };
+              }
               return { ok: true, renderer: definition.renderer, summary: `浏览器会话 ${sessionId} 已关闭`, data: { session_id: sessionId } };
             }
             default:
@@ -3494,31 +3865,77 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
         }
         const subagentType = typeof input.subagent_type === "string" ? input.subagent_type : "general";
         const runInBackground = input.run_in_background === true;
-        const agentId = crypto.randomUUID().slice(0, 8);
+        const agentId = createRuntimeResourceId();
+        const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+        const persistence = options.backgroundTaskPersistence ?? defaultBackgroundTaskPersistence;
+        const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+        const resourceStopDeadlineMs = options.resourceStopDeadlineMs ?? DEFAULT_PROCESS_TREE_STOP_DEADLINE_MS;
+        let backgroundTask: BackgroundAgentTask | undefined;
+        let backgroundResource: BackgroundAgentResource | undefined;
+        let backgroundTaskPersisted = false;
+        let requestedStopReason: string | undefined;
+        let childSessionPublished = false;
+        let childSessionId: string | undefined;
+        let childSessionCleanupRequested = false;
+        let childSessionCleanupCompleted = false;
+        let childSessionCleanupError: string | undefined;
+        let publishChildSession!: (executionSessionId: string) => void;
+        let rejectChildSession!: (error: unknown) => void;
+        const childSessionReady = new Promise<string>((resolve, reject) => {
+          publishChildSession = (executionSessionId) => {
+            if (childSessionPublished) return;
+            childSessionPublished = true;
+            resolve(executionSessionId);
+          };
+          rejectChildSession = (error) => {
+            if (childSessionPublished) return;
+            childSessionPublished = true;
+            reject(error);
+          };
+        });
+        let releaseBackgroundLaunch = () => {};
+        const backgroundLaunchGate = runInBackground
+          ? new Promise<void>((resolve) => { releaseBackgroundLaunch = resolve; })
+          : Promise.resolve();
 
         const { executeRuntimeTurn } = await import("./runtime-turn-service.js");
         const { generateSessionReply } = await import("./llm-runtime-service.js");
         const { getEnabledSessionTools } = await import("./session-tool-registry.js");
-        const { createSession, getSessionById } = await import("./session-service.js");
+        const { createSession, deleteSession, getSessionById } = await import("./session-service.js");
         const { loadUserConfig } = await import("./user-config-service.js");
-        const { getSessionChatSnapshot } = await import("./session-chat-service.js");
+        const cleanupChildSession = async () => {
+          childSessionCleanupRequested = true;
+          if (!childSessionId || childSessionCleanupCompleted) return;
+          try {
+            const deleted = await deleteSession(childSessionId);
+            if (!deleted) {
+              throw new Error(`deleteSession returned false for child session ${childSessionId}`);
+            }
+            childSessionCleanupCompleted = true;
+            childSessionCleanupError = undefined;
+          } catch (error) {
+            childSessionCleanupError = error instanceof Error ? error.message : String(error);
+            throw error;
+          }
+        };
+        const acceptCreatedChildSession = async <T extends { id: string }>(session: T): Promise<T> => {
+          childSessionId = session.id;
+          if (childSessionCleanupRequested || subSignal.aborted) {
+            await cleanupChildSession();
+            throw new Error("子代理在 Runtime turn 启动前已被中断。");
+          }
+          return session;
+        };
 
         // 创建子代理专用的 AbortController
         const subAbortController = new AbortController();
         const subSignal = subAbortController.signal;
-
-        // For foreground agents: parent abort converts to background (not kill).
-        // For background agents: parent abort propagates to kill the child.
-        if (parentSignal && runInBackground) {
-          if (parentSignal.aborted) {
-            subAbortController.abort(parentSignal.reason);
-          } else {
-            const propagateAbort = () => subAbortController.abort(parentSignal.reason);
-            parentSignal.addEventListener("abort", propagateAbort, { once: true });
-            subSignal.addEventListener("abort", () => parentSignal.removeEventListener("abort", propagateAbort), { once: true });
+        const awaitBackgroundLaunch = async () => {
+          await backgroundLaunchGate;
+          if (subSignal.aborted) {
+            throw new Error("子代理在 Runtime turn 启动前已被中断。");
           }
-        }
-        // For foreground: parentSignal abort is handled in the race below (convert to background)
+        };
 
         // --- 查找自定义子代理类型（在 executeSubagent 之前验证） ---
         const BUILTIN_SUBAGENT_TYPES = ["explore", "plan", "general", "fork"];
@@ -3532,6 +3949,68 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: `未找到自定义子代理类型 "${subagentType}"。可用内置类型: explore, plan, general, fork` };
           }
         }
+
+        // Every child, foreground or background, observes the parent signal.
+        // The listener stays installed until the child settles so an abort cannot
+        // be misreported as a successful foreground-to-background conversion.
+        let resourceTreeDisposalPromise: Promise<unknown> | undefined;
+        const requestSubagentStop = (reason: string) => {
+          requestedStopReason ??= reason;
+          if (backgroundTask) backgroundTask.requestedStopReason ??= reason;
+          // Abort the root turn before beginning child-first disposal.
+          if (!subSignal.aborted) subAbortController.abort(reason);
+          const transitioned = backgroundResource
+            ? resourceRegistry.transition(backgroundResource.id, ["running"], "stopping")
+            : false;
+          if (transitioned && backgroundTaskPersisted && backgroundResource) {
+            try {
+              persistence.update(backgroundResource.id, controlOwnerSessionId, {
+                status: "stopping",
+                terminalReason: reason,
+                terminalMetaJson: serializeBackgroundTaskValue({ requestedAt: new Date().toISOString() }),
+              });
+            } catch {
+              log.error("Background Agent persistence stopping update failed", {
+                sessionId: controlOwnerSessionId,
+                resourceKind: "agent",
+                resourceId: backgroundResource.id,
+                completionReason: reason,
+              });
+            }
+          }
+          if (reason === "parent-abort" && backgroundResource && !resourceTreeDisposalPromise) {
+            resourceTreeDisposalPromise = resourceRegistry.disposeResourceTree(
+              controlOwnerSessionId,
+              backgroundResource.id,
+              "task-stop",
+            );
+          }
+        };
+        const removeParentAbortListener = (() => {
+          if (!parentSignal) return () => {};
+          const propagateAbort = () => requestSubagentStop("parent-abort");
+          if (parentSignal.aborted) {
+            propagateAbort();
+            return () => {};
+          }
+          parentSignal.addEventListener("abort", propagateAbort, { once: true });
+          return () => parentSignal.removeEventListener("abort", propagateAbort);
+        })();
+        const appendMailboxMessages = (
+          messages: readonly import("./agent-turn-runtime.js").AgentTurnItem[],
+        ): readonly import("./agent-turn-runtime.js").AgentTurnItem[] => {
+          const delivered = backgroundTask?.mailbox.drainForNextGenerate() ?? [];
+          if (delivered.length === 0) return messages;
+          return [
+            ...messages,
+            ...delivered.map((message) => ({
+              type: "message" as const,
+              role: "user" as const,
+              content: message.content,
+              metadata: { mailboxMessageId: message.id },
+            })),
+          ];
+        };
 
         const executeSubagent = async (): Promise<string> => {
           // 检查是否已被中断
@@ -3548,7 +4027,7 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
             const resolvedModelId = parentConfig?.modelId ?? "gpt-4o";
             const subPermissionMode = parentSession?.sessionConfig.permissionMode ?? "edit" as const;
 
-            const subSession = await createSession({
+            const subSession = await acceptCreatedChildSession(await createSession({
               title: description || `fork子代理: ${(prompt || description).slice(0, 30)}`,
               agentId: "subagent",
               sessionMode: "chat",
@@ -3556,9 +4035,12 @@ function getDefaultHandler(toolName: string, options: SessionToolExecutorOptions
               worktree: parentSession?.worktree,
               parentSessionId: sessionId,
               sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
-            });
+            }));
+            publishChildSession(subSession.id);
+            await awaitBackgroundLaunch();
 
             // Get parent messages for cache sharing — limit to last 20 to avoid excessive token usage
+            const { getSessionChatSnapshot } = await import("./session-chat-service.js");
             const parentSnapshot = await getSessionChatSnapshot(sessionId);
             const parentMessages = parentSnapshot?.messages ?? [];
             const recentParentMessages = parentMessages.slice(-20);
@@ -3609,7 +4091,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
               generate: async (generateInput) => {
                 const result = await generateSessionReply({
                   sessionConfig: subSession.sessionConfig,
-                  messages: generateInput.messages,
+                  messages: appendMailboxMessages(generateInput.messages),
                   tools: generateInput.tools,
                   onStreamChunk: generateInput.onStreamChunk,
                   signal: generateInput.signal,
@@ -3617,7 +4099,15 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
                 return result as any;
               },
               executeTool: async (toolInput) => {
-                const executor = createSessionToolExecutor({ workDir });
+                const executor = createSessionToolExecutor({
+                  workDir,
+                  sessionId: subSession.id,
+                  controlOwnerSessionId,
+                  executionSessionId: subSession.id,
+                  parentResourceId: runInBackground ? agentId : undefined,
+                  resourceRegistry,
+                  backgroundTaskPersistence: persistence,
+                });
                 return executor.execute({ ...toolInput, signal: subSignal });
               },
             });
@@ -3652,7 +4142,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           // --- 根据 subagent_type 确定权限模式 ---
           const subPermissionMode = subagentType === "explore" ? "read" as const : (parentSession?.sessionConfig.permissionMode ?? "edit" as const);
 
-          const subSession = await createSession({
+          const subSession = await acceptCreatedChildSession(await createSession({
             title: description || `${subagentType}子代理: ${(prompt || description).slice(0, 30)}`,
             agentId: "subagent",
             sessionMode: "chat",
@@ -3660,7 +4150,9 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             worktree: parentSession?.worktree,
             parentSessionId: sessionId,
             sessionConfig: { permissionMode: subPermissionMode, providerId: resolvedProviderId, modelId: resolvedModelId },
-          });
+          }));
+          publishChildSession(subSession.id);
+          await awaitBackgroundLaunch();
 
           // --- 根据 subagent_type 过滤工具集 ---
           // explore: 只读工具；plan: 读写工具；general: 全部（排除递归工具）；custom: 按配置
@@ -3727,7 +4219,7 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
             generate: async (generateInput) => {
               const result = await generateSessionReply({
                 sessionConfig: subSession.sessionConfig,
-                messages: generateInput.messages,
+                messages: appendMailboxMessages(generateInput.messages),
                 tools: generateInput.tools,
                 onStreamChunk: generateInput.onStreamChunk,
                 signal: generateInput.signal,
@@ -3735,7 +4227,15 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
               return result as any;
             },
             executeTool: async (toolInput) => {
-              const executor = createSessionToolExecutor({ workDir });
+              const executor = createSessionToolExecutor({
+                workDir,
+                sessionId: subSession.id,
+                controlOwnerSessionId,
+                executionSessionId: subSession.id,
+                parentResourceId: runInBackground ? agentId : undefined,
+                resourceRegistry,
+                backgroundTaskPersistence: persistence,
+              });
               return executor.execute({ ...toolInput, signal: subSignal });
             },
           });
@@ -3747,21 +4247,325 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           return assistantMessages.join("\n\n") || "子代理未返回文本结果。";
         };
 
-        // --- Background 模式：立即返回 ---
+        // --- Background 模式：注册真实 owner/execution resource 后返回 ---
         if (runInBackground) {
+          const turnPromise = executeSubagent();
+          void turnPromise.catch((error) => rejectChildSession(error));
+          let executionSessionId: string;
+          try {
+            executionSessionId = await new Promise<string>((resolve, reject) => {
+              let settled = false;
+              const finish = (callback: () => void) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                subSignal.removeEventListener("abort", onAbort);
+                callback();
+              };
+              const onAbort = () => finish(() => reject(new Error("parent-abort")));
+              const timer = setTimeout(
+                () => finish(() => reject(new Error("child-session-ready-timeout"))),
+                resourceStopDeadlineMs,
+              );
+              subSignal.addEventListener("abort", onAbort, { once: true });
+              if (subSignal.aborted) onAbort();
+              void childSessionReady.then(
+                (id) => finish(() => resolve(id)),
+                (error) => finish(() => reject(error)),
+              );
+            });
+          } catch (error) {
+            if (!subSignal.aborted) requestSubagentStop("child-session-ready-timeout");
+            childSessionCleanupRequested = true;
+            releaseBackgroundLaunch();
+            const monitorLateChildSessionCompensation = () => {
+              if (!childSessionCleanupError) return;
+              log.error("Background Agent late child session compensation failed", {
+                sessionId: controlOwnerSessionId,
+                resourceKind: "agent",
+                resourceId: agentId,
+                completionReason: requestedStopReason ?? "child-session-ready-timeout",
+                rollbackIncomplete: true,
+                residuals: ["child-session"],
+                compensationErrors: [{ category: "child-session", error: childSessionCleanupError }],
+              });
+            };
+            void turnPromise.then(
+              monitorLateChildSessionCompensation,
+              monitorLateChildSessionCompensation,
+            );
+            removeParentAbortListener();
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: subSignal.aborted ? "agent-aborted" : "agent-failed",
+              summary: `后台子代理启动失败：${error instanceof Error ? error.message : String(error)}`,
+              data: {
+                agentId,
+                status: "stopping",
+                rollbackIncomplete: true,
+                residuals: ["pending-child-session-creation"],
+                compensationErrors: [{
+                  category: "pending-child-session-creation",
+                  error: "createSession has not settled; background compensation monitor started",
+                }],
+              },
+            };
+          }
+
           const task: BackgroundAgentTask = {
-            id: agentId,
-            promise: executeSubagent(),
-            status: "running",
+            promise: turnPromise,
+            settlementPromise: null as never,
             startedAt: Date.now(),
             subagentType,
             prompt: (prompt || description).slice(0, 100),
             abortController: subAbortController,
-            pendingMessages: [],
+            mailbox: new BackgroundAgentMailbox(),
+            requestedStopReason,
           };
-          task.promise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = "completed"; }).catch(e => { task.result = String(e); task.completedAt = Date.now(); task.status = "failed"; });
-          gcBackgroundMaps();
-          backgroundAgents.set(agentId, task);
+          backgroundTask = task;
+          const resource: BackgroundAgentResource = createOwnedRuntimeResource({
+            id: agentId,
+            controlOwnerSessionId,
+            executionSessionId,
+            parentResourceId: options.parentResourceId,
+            kind: "agent",
+            value: task,
+            dispose: async (reason): Promise<ResourceTerminalState> => {
+              requestSubagentStop(task.requestedStopReason ?? reason);
+              try {
+                await task.promise;
+              } catch {
+                // The settlement handler below records the real failed/stopped terminal.
+              }
+              if (["completed", "failed", "stopped", "interrupted"].includes(resource.status)) {
+                return { status: resource.status as ResourceTerminalState["status"] };
+              }
+              return projectBackgroundAgentTerminal(resource, subSignal.aborted ? "failed" : "completed");
+            },
+          });
+
+          const disposeAgentDescendantsBeforeTerminal = async () => {
+            if (resourceTreeDisposalPromise) {
+              await resourceTreeDisposalPromise;
+              return;
+            }
+            const report = await resourceRegistry.disposeResourceDescendants(
+              controlOwnerSessionId,
+              agentId,
+              "session-dispose",
+            );
+            if (!report.ok) {
+              log.error("Background Agent descendant disposal incomplete", {
+                sessionId: controlOwnerSessionId,
+                resourceKind: "agent",
+                resourceId: agentId,
+                completionReason: requestedStopReason ?? "natural-settlement",
+                rollbackIncomplete: true,
+                residuals: report.resources
+                  .filter((item) => item.status === "failed" || item.error !== undefined)
+                  .map((item) => item.id),
+              });
+            }
+            // A parent abort may have won while descendants were settling. Its
+            // full-tree promise is safe to await because the Agent root disposer
+            // waits only task.promise, never this settlementPromise.
+            if (resourceTreeDisposalPromise) await resourceTreeDisposalPromise;
+          };
+
+          const observeSettlement = (
+            persist?: (terminal: { status: ResourceTerminalState["status"]; terminalReason: string }, error?: string) => void,
+          ): Promise<void> => task.promise
+            .then(async (result) => {
+              task.result = result;
+              task.completedAt = Date.now();
+              task.mailbox.markUndeliveredOnTerminal();
+              await disposeAgentDescendantsBeforeTerminal();
+              const terminal = projectBackgroundAgentTerminal(resource, "completed");
+              resourceRegistry.transition(agentId, ["running", "stopping"], terminal.status);
+              persist?.(terminal);
+            }, async (error) => {
+              task.result = error instanceof Error ? error.message : String(error);
+              task.completedAt = Date.now();
+              task.mailbox.markUndeliveredOnTerminal();
+              await disposeAgentDescendantsBeforeTerminal();
+              const terminal = projectBackgroundAgentTerminal(resource, "failed");
+              resourceRegistry.transition(agentId, ["running", "stopping"], terminal.status);
+              persist?.(terminal, task.result);
+            })
+            .finally(removeParentAbortListener);
+
+          const compensateBackgroundAgentSetup = async () => {
+            type CompensationCategory = "child-session" | "persistence-record" | "registry-resource";
+            const compensationErrors: Array<{ category: CompensationCategory; error: string }> = [];
+            try {
+              await cleanupChildSession();
+            } catch (compensationError) {
+              compensationErrors.push({
+                category: "child-session",
+                error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+              });
+            }
+            try {
+              persistence.delete(agentId, controlOwnerSessionId);
+            } catch (compensationError) {
+              compensationErrors.push({
+                category: "persistence-record",
+                error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+              });
+            }
+            try {
+              const rolledBack = resourceRegistry.rollbackRegistration(controlOwnerSessionId, agentId);
+              if (!rolledBack && resourceRegistry.getOwned(controlOwnerSessionId, "agent", agentId)) {
+                compensationErrors.push({ category: "registry-resource", error: "registry rollback returned false" });
+              }
+            } catch (compensationError) {
+              compensationErrors.push({
+                category: "registry-resource",
+                error: compensationError instanceof Error ? compensationError.message : String(compensationError),
+              });
+            }
+            return {
+              rollbackIncomplete: compensationErrors.length > 0,
+              residuals: [...new Set(compensationErrors.map((item) => item.category))],
+              compensationErrors,
+            };
+          };
+
+          try {
+            resourceRegistry.register(resource);
+          } catch (error) {
+            requestSubagentStop("resource-registration-failed");
+            releaseBackgroundLaunch();
+            const cleanupPromise = turnPromise
+              .then((result) => {
+                task.result = result;
+                task.completedAt = Date.now();
+                task.mailbox.markUndeliveredOnTerminal();
+              }, (turnError) => {
+                task.result = turnError instanceof Error ? turnError.message : String(turnError);
+                task.completedAt = Date.now();
+                task.mailbox.markUndeliveredOnTerminal();
+              })
+              .finally(removeParentAbortListener);
+            task.settlementPromise = cleanupPromise;
+            const stopOutcome = await waitForRuntimeSettlement(task.settlementPromise, resourceStopDeadlineMs);
+            const compensation = await compensateBackgroundAgentSetup();
+            if (stopOutcome === "deadline") {
+              return {
+                ok: false,
+                renderer: definition.renderer,
+                error: "stop-timeout",
+                summary: `后台 Agent 资源注册失败，且子代理未在 ${resourceStopDeadlineMs}ms 内进入真实终态。`,
+                data: { agentId, status: "stopping", cause: "resource-registration-failed", ...compensation },
+              };
+            }
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "resource-registration-failed",
+              summary: `后台 Agent 资源注册失败：${error instanceof Error ? error.message : String(error)}`,
+              data: { agentId, status: "stopped", ...compensation },
+            };
+          }
+
+          backgroundResource = resource;
+          if (requestedStopReason) {
+            task.requestedStopReason ??= requestedStopReason;
+            resourceRegistry.transition(agentId, ["running"], "stopping");
+          }
+
+          const persistTerminal = (terminal: { status: ResourceTerminalState["status"]; terminalReason: string }, error?: string) => {
+            const sync = updateBackgroundTaskWithRetry(persistence, agentId, controlOwnerSessionId, {
+              status: terminal.status,
+              resultJson: serializeBackgroundTaskValue({ result: task.result, mailbox: summarizeAgentMailbox(task.mailbox) }),
+              error: error ?? null,
+              completedAt: new Date(task.completedAt ?? Date.now()).toISOString(),
+              terminalReason: terminal.terminalReason,
+              terminalMetaJson: serializeBackgroundTaskValue({
+                subagentType,
+                executionSessionId,
+              }),
+            });
+            if (!sync.ok) {
+              task.persistenceSyncError = sync.error;
+              log.error("Background Agent persistence terminal update failed", {
+                sessionId: controlOwnerSessionId,
+                resourceKind: "agent",
+                resourceId: agentId,
+                completionReason: terminal.terminalReason,
+              });
+            }
+          };
+
+          try {
+            persistence.create({
+              id: agentId,
+              controlOwnerSessionId,
+              sessionId: executionSessionId,
+              type: "agent",
+              status: resource.status === "stopping" ? "stopping" : "running",
+              configJson: serializeBackgroundTaskValue({
+                subagentType,
+                prompt: task.prompt,
+                parentResourceId: options.parentResourceId,
+              }),
+            });
+            backgroundTaskPersisted = true;
+          } catch (error) {
+            requestSubagentStop("background-task-persist-failed");
+            task.settlementPromise = observeSettlement();
+            releaseBackgroundLaunch();
+            const stopOutcome = await waitForRuntimeSettlement(task.settlementPromise, resourceStopDeadlineMs);
+            const compensation = await compensateBackgroundAgentSetup();
+            log.error("Background Agent persistence create failed", {
+              sessionId: controlOwnerSessionId,
+              resourceKind: "agent",
+              resourceId: agentId,
+              completionReason: stopOutcome === "deadline" ? "stop-timeout" : task.requestedStopReason,
+              rollbackIncomplete: compensation.rollbackIncomplete,
+              residuals: compensation.residuals,
+            });
+            if (stopOutcome === "deadline") {
+              return {
+                ok: false,
+                renderer: definition.renderer,
+                error: "stop-timeout",
+                summary: `后台 Agent 持久化失败，且子代理未在 ${resourceStopDeadlineMs}ms 内进入真实终态。`,
+                data: { agentId, status: resource.status, cause: "background-task-persist-failed", ...compensation },
+              };
+            }
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "background-task-persist-failed",
+              summary: `后台 Agent 持久化失败：${error instanceof Error ? error.message : String(error)}`,
+              data: { agentId, status: resource.status, ...compensation },
+            };
+          }
+
+          task.settlementPromise = observeSettlement(persistTerminal);
+          releaseBackgroundLaunch();
+          if (resource.status === "stopping") {
+            const stopOutcome = await waitForRuntimeSettlement(task.settlementPromise, resourceStopDeadlineMs);
+            if (stopOutcome === "deadline") {
+              return {
+                ok: false,
+                renderer: definition.renderer,
+                error: "stop-timeout",
+                summary: `后台 Agent 在启动期间收到取消，但未在 ${resourceStopDeadlineMs}ms 内进入真实终态。`,
+                data: { agentId, status: resource.status },
+              };
+            }
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "agent-aborted",
+              summary: "后台子代理在启动期间被中断。",
+              data: { agentId, status: resource.status },
+            };
+          }
+          void task.settlementPromise;
           return {
             ok: true,
             renderer: definition.renderer,
@@ -3770,161 +4574,209 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
           };
         }
 
-        // --- Foreground 模式：带自动后台化超时 + abort 转后台 ---
-        const AUTO_BACKGROUND_MS = 120_000;
+        // Foreground cancellation propagates into the child, then waits for the
+        // actual child turn and every resource owned by its execution session to
+        // settle. Foreground Agents have no persistent task root, so execution-
+        // session disposal is their lifecycle boundary.
+        let foregroundResult: SessionToolExecutionResult;
+        try {
+          const result = await executeSubagent();
+          foregroundResult = subSignal.aborted
+            ? { ok: false, renderer: definition.renderer, error: "agent-aborted", summary: "子代理已被中断。" }
+            : {
+                ok: true,
+                renderer: definition.renderer,
+                summary: result,
+                data: { agentId, subagentType, result },
+              };
+        } catch (error) {
+          foregroundResult = subSignal.aborted
+            ? { ok: false, renderer: definition.renderer, error: "agent-aborted", summary: "子代理已被中断。" }
+            : { ok: false, renderer: definition.renderer, error: "agent-failed", summary: `子代理执行失败：${error instanceof Error ? error.message : String(error)}` };
+        }
 
         try {
-          const turnPromise = executeSubagent();
-          const timeoutPromise = new Promise<"timeout">((resolve) =>
-            setTimeout(() => resolve("timeout"), AUTO_BACKGROUND_MS)
-          );
-
-          // Parent abort converts foreground agent to background (not kill)
-          const abortPromise = parentSignal && !parentSignal.aborted
-            ? new Promise<"aborted">((resolve) => {
-                parentSignal.addEventListener("abort", () => resolve("aborted"), { once: true });
-              })
-            : new Promise<never>(() => {});
-
-          const raceResult = await Promise.race([turnPromise, timeoutPromise, abortPromise]);
-
-          if (raceResult === "aborted" || raceResult === "timeout") {
-            // Convert to background task — do NOT abort the child
-            const task: BackgroundAgentTask = {
-              id: agentId,
-              promise: turnPromise,
-              status: "running",
-              startedAt: raceResult === "timeout" ? Date.now() - AUTO_BACKGROUND_MS : Date.now(),
-              subagentType,
-              prompt: (prompt || description).slice(0, 100),
-              abortController: subAbortController,
-              pendingMessages: [],
-            };
-            task.promise.then(r => { task.result = r; task.completedAt = Date.now(); task.status = "completed"; }).catch(e => { task.result = String(e); task.completedAt = Date.now(); task.status = "failed"; });
-            gcBackgroundMaps();
-            backgroundAgents.set(agentId, task);
-
-            const reason = raceResult === "timeout"
-              ? `子代理执行超过 ${AUTO_BACKGROUND_MS / 1000}s，已自动转为后台任务。`
-              : `父级中断，子代理已转为后台继续执行。`;
-            return {
-              ok: true,
-              renderer: definition.renderer,
-              summary: `${reason} ID: ${agentId}。使用 Await 工具获取结果。`,
-              data: { agentId, subagentType, status: raceResult === "timeout" ? "auto-backgrounded" : "backgrounded" },
-            };
+          if (childSessionId) {
+            const cleanup = await resourceRegistry.disposeExecutionSession(
+              controlOwnerSessionId,
+              childSessionId,
+              subSignal.aborted ? "task-stop" : "session-dispose",
+            );
+            if (!cleanup.ok) {
+              return {
+                ok: false,
+                renderer: definition.renderer,
+                error: "agent-cleanup-failed",
+                summary: "前台子代理已结束，但其运行时子资源未能全部释放。",
+                data: {
+                  agentId,
+                  subagentType,
+                  resources: cleanup.resources,
+                },
+              };
+            }
           }
-
-          // 在超时前完成
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: raceResult,
-            data: { agentId, subagentType, result: raceResult },
-          };
-        } catch (error) {
-          if (subSignal.aborted) {
-            return { ok: false, renderer: definition.renderer, error: "agent-aborted", summary: "子代理已被中断。" };
-          }
-          return { ok: false, renderer: definition.renderer, error: "agent-failed", summary: `子代理执行失败：${error instanceof Error ? error.message : String(error)}` };
+          return foregroundResult;
+        } finally {
+          removeParentAbortListener();
         }
       };
     // --- Await: 等待后台子代理完成 ---
     case "Await":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, signal, sessionId }) => {
         const id = typeof input.id === "string" ? input.id : "";
         if (!id) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 不能为空。" };
         const awaitType = typeof input.type === "string" ? input.type : "agent";
+        const waitForTask = <T>(promise: Promise<T>, timeout: number): Promise<
+          { readonly type: "result"; readonly value: T }
+          | { readonly type: "timeout" }
+          | { readonly type: "aborted" }
+          | { readonly type: "failed"; readonly error: unknown }
+        > => new Promise((resolve) => {
+          let done = false;
+          const finish = (result: { readonly type: "result"; readonly value: T } | { readonly type: "timeout" } | { readonly type: "aborted" } | { readonly type: "failed"; readonly error: unknown }) => {
+            if (done) return;
+            done = true;
+            clearTimeout(timer);
+            signal?.removeEventListener("abort", onAbort);
+            resolve(result);
+          };
+          const onAbort = () => finish({ type: "aborted" });
+          const timer = setTimeout(() => finish({ type: "timeout" }), timeout);
+          if (signal?.aborted) {
+            onAbort();
+            return;
+          }
+          signal?.addEventListener("abort", onAbort, { once: true });
+          promise.then((value) => finish({ type: "result", value }), (error) => finish({ type: "failed", error }));
+        });
 
-        // Handle bash background tasks
+        // Handle owner-scoped Bash resources. Await timeout/abort only ends
+        // this wait; it never mutates the underlying resource status.
         if (awaitType === "bash") {
-          const bashTask = backgroundTasks.get(id);
-          if (!bashTask) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台 Bash 任务 ${id} 不存在。` };
-          if (bashTask.status === "completed" || bashTask.status === "failed") {
-            const result = bashTask.result;
-            return { ok: bashTask.status === "completed", renderer: definition.renderer, summary: result?.summary ?? "无结果", data: { id, status: bashTask.status, result } };
+          const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+          const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+          const bashResource = resourceRegistry.getOwned<BackgroundBashTask>(controlOwnerSessionId, "bash", id);
+          if (!bashResource) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台 Bash 任务 ${id} 不存在。` };
+          const bashTask = bashResource.value;
+          const terminalBashResult = (status: typeof bashResource.status) => ({
+            ok: status === "completed" && !bashTask.persistenceSyncError,
+            renderer: definition.renderer,
+            ...(bashTask.persistenceSyncError
+              ? { error: "persistence-sync-failed" }
+              : status === "completed" ? {} : { error: bashTask.result?.error ?? "bash-failed" }),
+            summary: bashTask.persistenceSyncError
+              ? `Bash 任务已进入 ${status}，但终态持久化同步失败：${bashTask.persistenceSyncError}`
+              : bashTask.result?.summary ?? "无结果",
+            data: {
+              id,
+              status,
+              result: bashTask.result,
+              persistenceSynchronized: !bashTask.persistenceSyncError,
+            },
+          });
+          if (bashResource.status !== "running" && bashResource.status !== "stopping") {
+            return terminalBashResult(bashResource.status);
           }
           const timeout = typeof input.timeout === "number" ? input.timeout : 30000;
-          try {
-            const result = await Promise.race([
-              bashTask.promise,
-              new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout)),
-            ]);
-            return { ok: result.ok !== false, renderer: definition.renderer, summary: result.summary ?? "完成", data: { id, status: "completed", result } };
-          } catch (error) {
-            if (error instanceof Error && error.message === "timeout") {
-              const partialOutput = bashTask.stdoutBuffer ? bashTask.stdoutBuffer.slice(-2000) : "";
-              return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${id} 仍在运行中（超时 ${timeout}ms）。${partialOutput ? "\n\n已有输出（末尾）:\n" + partialOutput : "\n\n暂无输出。"}`, data: { id, status: "running", partialOutput } };
-            }
-            return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
+          const wait = await waitForTask(bashTask.settlementPromise, timeout);
+          if (wait.type === "result") {
+            const terminalStatus = resourceRegistry.getOwned<BackgroundBashTask>(controlOwnerSessionId, "bash", id)?.status
+              ?? (bashTask.result ? projectBackgroundBashTerminal(bashResource, bashTask.result).status : "failed");
+            return terminalBashResult(terminalStatus);
           }
+          if (wait.type === "aborted") {
+            return { ok: false, renderer: definition.renderer, error: "await-aborted", summary: `等待 Bash 任务 ${id} 已中断；任务仍保持 ${bashResource.status}。`, data: { id, status: bashResource.status } };
+          }
+          if (wait.type === "timeout") {
+            const partialOutput = bashTask.stdoutBuffer ? bashTask.stdoutBuffer.slice(-2000) : "";
+            return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${id} 仍处于 ${bashResource.status}（等待超时 ${timeout}ms）。${partialOutput ? "\n\n已有输出（末尾）:\n" + partialOutput : "\n\n暂无输出。"}`, data: { id, status: bashResource.status, partialOutput } };
+          }
+          return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(wait.error) };
         }
 
-        // Handle agent background tasks
-        const task = backgroundAgents.get(id);
-        if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台任务 ${id} 不存在。` };
+        // Handle owner-scoped Agent resources.
+        const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+        const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+        const agentResource = resourceRegistry.getOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent", id);
+        if (!agentResource) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `后台任务 ${id} 不存在。` };
+        const task = agentResource.value;
+        const terminalResult = (status: typeof agentResource.status) => ({
+          ok: status === "completed" && !task.persistenceSyncError,
+          renderer: definition.renderer,
+          ...(task.persistenceSyncError
+            ? { error: "persistence-sync-failed" }
+            : status === "completed" ? {} : { error: status === "stopped" ? "agent-stopped" : "agent-failed" }),
+          summary: task.persistenceSyncError
+            ? `子代理已进入 ${status}，但终态持久化同步失败：${task.persistenceSyncError}`
+            : task.result ?? "无结果",
+          data: {
+            id,
+            status,
+            result: task.result,
+            persistenceSynchronized: !task.persistenceSyncError,
+            subagentType: task.subagentType,
+            elapsedMs: Date.now() - task.startedAt,
+            mailbox: summarizeAgentMailbox(task.mailbox),
+          },
+        });
 
-        // 已完成或已失败：直接返回
-        if (task.status === "completed" || task.status === "failed") {
-          const elapsed = Date.now() - task.startedAt;
-          return {
-            ok: task.status === "completed",
-            renderer: definition.renderer,
-            summary: task.result ?? "无结果",
-            data: { id, status: task.status, result: task.result, subagentType: task.subagentType, elapsedMs: elapsed },
-          };
+        if (agentResource.status !== "running" && agentResource.status !== "stopping") {
+          return terminalResult(agentResource.status);
         }
 
-        // 仍在运行：等待指定超时
         const timeout = typeof input.timeout === "number" ? input.timeout : 30000;
         const elapsed = Date.now() - task.startedAt;
-
-        try {
-          const result = await Promise.race([
-            task.promise,
-            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), timeout)),
-          ]);
-          const totalElapsed = Date.now() - task.startedAt;
-          return {
-            ok: true,
-            renderer: definition.renderer,
-            summary: String(result),
-            data: { id, status: "completed", result, subagentType: task.subagentType, elapsedMs: totalElapsed },
-          };
-        } catch (error) {
-          if (error instanceof Error && error.message === "timeout") {
-            return {
-              ok: true,
-              renderer: definition.renderer,
-              summary: `子代理 ${id}（${task.subagentType}）仍在运行中（已运行 ${Math.round(elapsed / 1000)}s，等待超时 ${timeout}ms）。`,
-              data: { id, status: "running", subagentType: task.subagentType, elapsedMs: elapsed, prompt: task.prompt },
-            };
-          }
-          return { ok: false, renderer: definition.renderer, error: "await-failed", summary: String(error) };
+        const wait = await waitForTask(task.settlementPromise, timeout);
+        if (wait.type === "result" || wait.type === "failed") {
+          const terminalStatus = resourceRegistry.getOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent", id)?.status
+            ?? projectBackgroundAgentTerminal(agentResource, wait.type === "result" ? "completed" : "failed").status;
+          return terminalResult(terminalStatus);
         }
-      };
-    // --- Send: 向子代理发送消息 ---
-    case "Send":
-      return async ({ input, definition }) => {
-        const id = typeof input.id === "string" ? input.id : "";
-        const message = typeof input.message === "string" ? input.message : "";
-        if (!id || !message) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 和 message 不能为空。" };
-        const task = backgroundAgents.get(id);
-        if (!task) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `子代理 ${id} 不存在。` };
-        task.pendingMessages.push(message);
-        if (task.status === "completed" || task.status === "failed") {
+        if (wait.type === "aborted") {
           return {
-            ok: true,
+            ok: false,
             renderer: definition.renderer,
-            summary: `消息已记录给子代理 ${id}（子代理已${task.status === "completed" ? "完成" : "失败"}，消息将在下次交互时生效）。`,
-            data: { id, message, status: task.status, pendingCount: task.pendingMessages.length },
+            error: "await-aborted",
+            summary: `等待子代理 ${id} 已中断；任务仍保持 ${agentResource.status}。`,
+            data: { id, status: agentResource.status, subagentType: task.subagentType, elapsedMs: Date.now() - task.startedAt, mailbox: summarizeAgentMailbox(task.mailbox) },
           };
         }
         return {
           ok: true,
           renderer: definition.renderer,
-          summary: `消息已发送给子代理 ${id}`,
-          data: { id, message, status: task.status, pendingCount: task.pendingMessages.length },
+          summary: `子代理 ${id}（${task.subagentType}）仍处于 ${agentResource.status}（已运行 ${Math.round(elapsed / 1000)}s，等待超时 ${timeout}ms）。`,
+          data: { id, status: agentResource.status, subagentType: task.subagentType, elapsedMs: elapsed, prompt: task.prompt, mailbox: summarizeAgentMailbox(task.mailbox) },
+        };
+      };
+    // --- Send: 向子代理发送消息 ---
+    case "Send":
+      return async ({ input, definition, sessionId }) => {
+        const id = typeof input.id === "string" ? input.id : "";
+        const message = typeof input.message === "string" ? input.message : "";
+        if (!id || !message) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "id 和 message 不能为空。" };
+        const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+        const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+        const resource = resourceRegistry.getOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent", id);
+        if (!resource) return { ok: false, renderer: definition.renderer, error: "not-found", summary: `子代理 ${id} 不存在。` };
+        if (resource.status !== "running") {
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: "not-running",
+            summary: `子代理 ${id} 不在运行中（状态: ${resource.status}）。`,
+            data: { id, status: resource.status, mailbox: summarizeAgentMailbox(resource.value.mailbox) },
+          };
+        }
+        const queued = resource.value.mailbox.enqueue(message);
+        if (queued.status !== "queued") {
+          return { ok: false, renderer: definition.renderer, error: "not-running", summary: `子代理 ${id} 已结束，消息未入队。` };
+        }
+        return {
+          ok: true,
+          renderer: definition.renderer,
+          summary: `消息已排队给子代理 ${id}，将在下一次 generate 前注入。`,
+          data: { id, messageId: queued.id, status: "queued", mailbox: summarizeAgentMailbox(resource.value.mailbox) },
         };
       };
     // --- ToolSearch: 动态工具搜索 ---
@@ -3984,44 +4836,238 @@ All tools (Shell, Read, Write, Edit, Glob, Grep) already use this as their defau
       };
     // --- TaskGet: 获取后台任务状态 ---
     case "TaskGet":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, sessionId }) => {
+        const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+        const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
         const taskId = typeof input.taskId === "string" ? input.taskId : undefined;
         if (taskId) {
-          const bashTask = backgroundTasks.get(taskId);
-          const agentTask = backgroundAgents.get(taskId);
-          if (bashTask) {
-            return { ok: true, renderer: definition.renderer, summary: `Bash 任务 ${taskId}: ${bashTask.status}`, data: { id: taskId, type: "bash", status: bashTask.status, command: bashTask.command?.slice(0, 200), output: bashTask.stdoutBuffer?.slice(-2000) } };
+          const bashResource = resourceRegistry.getOwned<BackgroundBashTask>(controlOwnerSessionId, "bash", taskId);
+          const agentResource = resourceRegistry.getOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent", taskId);
+          if (bashResource) {
+            const bashTask = bashResource.value;
+            return {
+              ok: !bashTask.persistenceSyncError,
+              renderer: definition.renderer,
+              ...(bashTask.persistenceSyncError ? { error: "persistence-sync-failed" } : {}),
+              summary: bashTask.persistenceSyncError
+                ? `Bash 任务 ${taskId}: ${bashResource.status}，但终态持久化同步失败。`
+                : `Bash 任务 ${taskId}: ${bashResource.status}`,
+              data: {
+                id: taskId,
+                type: "bash",
+                status: bashResource.status,
+                persistenceSynchronized: !bashTask.persistenceSyncError,
+                command: bashTask.command.slice(0, 200),
+                output: bashTask.stdoutBuffer.slice(-2000),
+                result: bashTask.result,
+              },
+            };
           }
-          if (agentTask) {
-            return { ok: true, renderer: definition.renderer, summary: `Agent 任务 ${taskId}: ${agentTask.status}`, data: { id: taskId, type: "agent", status: agentTask.status, subagentType: agentTask.subagentType, result: agentTask.result?.slice(0, 2000) } };
+          if (agentResource) {
+            const agentTask = agentResource.value;
+            return {
+              ok: !agentTask.persistenceSyncError,
+              renderer: definition.renderer,
+              ...(agentTask.persistenceSyncError ? { error: "persistence-sync-failed" } : {}),
+              summary: agentTask.persistenceSyncError
+                ? `Agent 任务 ${taskId}: ${agentResource.status}，但终态持久化同步失败。`
+                : `Agent 任务 ${taskId}: ${agentResource.status}`,
+              data: {
+                id: taskId,
+                type: "agent",
+                status: agentResource.status,
+                persistenceSynchronized: !agentTask.persistenceSyncError,
+                subagentType: agentTask.subagentType,
+                result: agentTask.result?.slice(0, 2000),
+                mailbox: summarizeAgentMailbox(agentTask.mailbox),
+              },
+            };
           }
           return { ok: false, renderer: definition.renderer, error: "not-found", summary: `任务 ${taskId} 不存在。` };
         }
-        const bashTasks = [...backgroundTasks.entries()].map(([id, t]) => ({ id, type: "bash" as const, status: t.status, command: t.command?.slice(0, 80) }));
-        const agentTasks = [...backgroundAgents.entries()].map(([id, t]) => ({ id, type: "agent" as const, status: t.status, subagentType: t.subagentType }));
+        const bashTasks = resourceRegistry.listOwned<BackgroundBashTask>(controlOwnerSessionId, "bash").map((resource) => ({
+          id: resource.id,
+          type: "bash" as const,
+          status: resource.status,
+          command: resource.value.command.slice(0, 80),
+        }));
+        const agentTasks = resourceRegistry.listOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent").map((resource) => ({
+          id: resource.id,
+          type: "agent" as const,
+          status: resource.status,
+          subagentType: resource.value.subagentType,
+          mailbox: summarizeAgentMailbox(resource.value.mailbox),
+        }));
         const allTasks = [...bashTasks, ...agentTasks];
         return { ok: true, renderer: definition.renderer, summary: `${allTasks.length} 个后台任务`, data: { tasks: allTasks } };
       };
     // --- TaskStop: 停止后台任务 ---
     case "TaskStop":
-      return async ({ input, definition }) => {
+      return async ({ input, definition, sessionId }) => {
         const taskId = String(input.taskId ?? "");
         if (!taskId) return { ok: false, renderer: definition.renderer, error: "invalid-input", summary: "taskId 不能为空。" };
-        const bashTask = backgroundTasks.get(taskId);
-        const agentTask = backgroundAgents.get(taskId);
-        if (bashTask) {
-          if (bashTask.status !== "running") return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Bash 任务 ${taskId} 不在运行中（状态: ${bashTask.status}）。` };
-          bashTask.status = "failed";
-          bashTask.completedAt = Date.now();
-          return { ok: true, renderer: definition.renderer, summary: `已停止 Bash 任务 ${taskId}。` };
+        const controlOwnerSessionId = (options.controlOwnerSessionId ?? sessionId).trim();
+        const resourceRegistry = options.resourceRegistry ?? getSessionRuntimeResourceRegistry();
+        const persistence = options.backgroundTaskPersistence ?? defaultBackgroundTaskPersistence;
+        const stopDeadlineMs = options.resourceStopDeadlineMs ?? DEFAULT_PROCESS_TREE_STOP_DEADLINE_MS;
+        const bashResource = resourceRegistry.getOwned<BackgroundBashTask>(controlOwnerSessionId, "bash", taskId);
+        const agentResource = resourceRegistry.getOwned<BackgroundAgentTask>(controlOwnerSessionId, "agent", taskId);
+        const disposeWithinDeadline = async () => {
+          const disposePromise = resourceRegistry.disposeResourceTree(controlOwnerSessionId, taskId, "task-stop");
+          return new Promise<
+            { type: "disposed"; report: Awaited<typeof disposePromise> }
+            | { type: "deadline" }
+          >((resolve) => {
+            let settled = false;
+            const finish = (value: { type: "disposed"; report: Awaited<typeof disposePromise> } | { type: "deadline" }) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(value);
+            };
+            const timer = setTimeout(() => finish({ type: "deadline" }), stopDeadlineMs);
+            void disposePromise.then((report) => finish({ type: "disposed", report }));
+          });
+        };
+
+        if (bashResource) {
+          if (!resourceRegistry.transition(taskId, ["running"], "stopping")) {
+            return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Bash 任务 ${taskId} 不在运行中（状态: ${bashResource.status}）。` };
+          }
+          bashResource.value.requestedStopReason = "task-stop";
+          try {
+            persistence.update(taskId, controlOwnerSessionId, {
+              status: "stopping",
+              terminalReason: "task-stop",
+              terminalMetaJson: serializeBackgroundTaskValue({ requestedAt: new Date().toISOString() }),
+            });
+          } catch {
+            log.error("Background Bash persistence stopping update failed", {
+              sessionId: controlOwnerSessionId,
+              resourceKind: "bash",
+              resourceId: taskId,
+              completionReason: "task-stop",
+            });
+          }
+
+          const outcome = await disposeWithinDeadline();
+          if (outcome.type === "deadline") {
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "stop-timeout",
+              summary: `Bash 任务 ${taskId} 未在 ${stopDeadlineMs}ms 内进入真实终态；Registry 仍保持 ${bashResource.status}。`,
+              data: { id: taskId, status: bashResource.status, result: bashResource.value.result },
+            };
+          }
+
+          const terminal = outcome.report.resources.find((item) => item.id === taskId);
+          if (terminal?.status === "stopped" && outcome.report.ok) {
+            return {
+              ok: !bashResource.value.persistenceSyncError,
+              renderer: definition.renderer,
+              ...(bashResource.value.persistenceSyncError ? { error: "persistence-sync-failed" } : {}),
+              summary: bashResource.value.persistenceSyncError
+                ? `Bash 任务 ${taskId} 已停止，但终态持久化同步失败：${bashResource.value.persistenceSyncError}`
+                : `Bash 任务 ${taskId} 已停止。`,
+              data: {
+                id: taskId,
+                status: "stopped",
+                result: bashResource.value.result,
+                persistenceSynchronized: !bashResource.value.persistenceSyncError,
+              },
+            };
+          }
+          if (terminal?.error === "stop-timeout") {
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "stop-timeout",
+              summary: bashResource.value.result?.summary ?? `Bash 任务 ${taskId} 停止超时。`,
+              data: { id: taskId, status: terminal.status, result: bashResource.value.result },
+            };
+          }
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: outcome.report.ok ? "execution-error" : "resource-dispose-failed",
+            summary: `Bash 任务 ${taskId} 停止未完整收口（状态: ${terminal?.status ?? bashResource.status}）。`,
+            data: { id: taskId, status: terminal?.status ?? bashResource.status, report: outcome.report, result: bashResource.value.result },
+          };
         }
-        if (agentTask) {
-          if (agentTask.status !== "running") return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Agent 任务 ${taskId} 不在运行中（状态: ${agentTask.status}）。` };
-          agentTask.abortController?.abort();
-          agentTask.status = "failed";
-          agentTask.completedAt = Date.now();
-          return { ok: true, renderer: definition.renderer, summary: `已停止 Agent 任务 ${taskId}。` };
+
+        if (agentResource) {
+          if (!resourceRegistry.transition(taskId, ["running"], "stopping")) {
+            return { ok: false, renderer: definition.renderer, error: "not-running", summary: `Agent 任务 ${taskId} 不在运行中（状态: ${agentResource.status}）。` };
+          }
+          agentResource.value.requestedStopReason ??= "task-stop";
+          if (!agentResource.value.abortController.signal.aborted) {
+            agentResource.value.abortController.abort("task-stop");
+          }
+          try {
+            persistence.update(taskId, controlOwnerSessionId, {
+              status: "stopping",
+              terminalReason: "task-stop",
+              terminalMetaJson: serializeBackgroundTaskValue({ requestedAt: new Date().toISOString() }),
+            });
+          } catch {
+            log.error("Background Agent persistence stopping update failed", {
+              sessionId: controlOwnerSessionId,
+              resourceKind: "agent",
+              resourceId: taskId,
+              completionReason: "task-stop",
+            });
+          }
+
+          const outcome = await disposeWithinDeadline();
+          if (outcome.type === "deadline") {
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "stop-timeout",
+              summary: `Agent 任务 ${taskId} 未在 ${stopDeadlineMs}ms 内进入真实终态；Registry 仍保持 ${agentResource.status}。`,
+              data: { id: taskId, status: agentResource.status, mailbox: summarizeAgentMailbox(agentResource.value.mailbox) },
+            };
+          }
+
+          const settlementOutcome = await waitForRuntimeSettlement(agentResource.value.settlementPromise, stopDeadlineMs);
+          if (settlementOutcome === "deadline") {
+            return {
+              ok: false,
+              renderer: definition.renderer,
+              error: "stop-timeout",
+              summary: `Agent 任务 ${taskId} 的 Runtime settlement 未在 ${stopDeadlineMs}ms 内完成。`,
+              data: { id: taskId, status: agentResource.status, mailbox: summarizeAgentMailbox(agentResource.value.mailbox) },
+            };
+          }
+
+          const terminal = outcome.report.resources.find((item) => item.id === taskId);
+          if (terminal?.status === "stopped" && outcome.report.ok) {
+            return {
+              ok: !agentResource.value.persistenceSyncError,
+              renderer: definition.renderer,
+              ...(agentResource.value.persistenceSyncError ? { error: "persistence-sync-failed" } : {}),
+              summary: agentResource.value.persistenceSyncError
+                ? `Agent 任务 ${taskId} 已停止，但终态持久化同步失败：${agentResource.value.persistenceSyncError}`
+                : `Agent 任务 ${taskId} 已停止。`,
+              data: {
+                id: taskId,
+                status: "stopped",
+                result: agentResource.value.result,
+                persistenceSynchronized: !agentResource.value.persistenceSyncError,
+                mailbox: summarizeAgentMailbox(agentResource.value.mailbox),
+              },
+            };
+          }
+          return {
+            ok: false,
+            renderer: definition.renderer,
+            error: outcome.report.ok ? "execution-error" : "resource-dispose-failed",
+            summary: `Agent 任务 ${taskId} 停止未完整收口（状态: ${terminal?.status ?? agentResource.status}）。`,
+            data: { id: taskId, status: terminal?.status ?? agentResource.status, report: outcome.report, mailbox: summarizeAgentMailbox(agentResource.value.mailbox) },
+          };
         }
+
         return { ok: false, renderer: definition.renderer, error: "not-found", summary: `任务 ${taskId} 不存在。` };
       };
     default:

@@ -1,5 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+import { closeStorageDatabase } from "@vivy1024/novelfork-core";
 import type { SessionConfig } from "../../shared/session-types";
 import { runAgentTurn, type AgentGenerateInput, type AgentTurnItem, type AgentTurnRuntimeInput, type AgentTurnEvent } from "./agent-turn-runtime";
 import { createProviderAdapterRegistry } from "./provider-adapters";
@@ -14,6 +19,19 @@ const sessionConfig: SessionConfig = {
 const baseMessages: AgentTurnItem[] = [
   { type: "message", role: "user", content: "写下一章" },
 ];
+
+let sessionStoreDir: string;
+
+beforeAll(async () => {
+  sessionStoreDir = await mkdtemp(join(tmpdir(), "novelfork-streaming-"));
+  process.env.NOVELFORK_SESSION_STORE_DIR = sessionStoreDir;
+});
+
+afterAll(async () => {
+  closeStorageDatabase();
+  delete process.env.NOVELFORK_SESSION_STORE_DIR;
+  await rm(sessionStoreDir, { recursive: true, force: true });
+});
 
 function input(overrides: Partial<AgentTurnRuntimeInput> = {}): AgentTurnRuntimeInput {
   return {

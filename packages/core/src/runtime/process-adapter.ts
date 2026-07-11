@@ -149,16 +149,37 @@ export async function execCommandStreaming(command: string, options: StreamingEx
       cwd: options.cwd,
       env: { ...process.env, ...options.env },
       stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
 
     let stdoutBuf = "";
     let stderrBuf = "";
     let timedOut = false;
 
+    const terminateProcessTree = () => {
+      if (process.platform === "win32" && child.pid) {
+        const killer = spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+          stdio: "ignore",
+          windowsHide: true,
+        });
+        killer.once("error", () => child.kill("SIGTERM"));
+        return;
+      }
+      if (child.pid) {
+        try {
+          process.kill(-child.pid, "SIGTERM");
+          return;
+        } catch {
+          // Fall back to terminating the shell process itself.
+        }
+      }
+      child.kill("SIGTERM");
+    };
+
     const timer = options.timeout && options.timeout > 0
       ? setTimeout(() => {
           timedOut = true;
-          child.kill("SIGTERM");
+          terminateProcessTree();
         }, options.timeout)
       : null;
 

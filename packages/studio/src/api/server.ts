@@ -14,13 +14,12 @@ import {
   type ProjectConfig,
   type LogSink,
   type LogEntry,
-  type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import {
   seedQuestionnaireTemplates,
   type PipelineConfig,
 } from "@vivy1024/novelfork-novel-plugin/engine";
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { createRuntimeJsonLineSink } from "./lib/runtime-log-sink.js";
 import { isSafeBookId } from "./safety.js";
@@ -28,7 +27,11 @@ import { ApiError, buildApiErrorResponse } from "./errors.js";
 import { readSessionFromCookie } from "./auth.js";
 import { createFilesystemStaticProvider, type StaticProvider, type StaticProviderDescription } from "./static-provider.js";
 import { startHttpServer } from "./start-http-server.js";
-import { setupSessionChatWebSocket, recoverInterruptedSessions } from "./lib/session-chat-service.js";
+import {
+  setupSessionChatWebSocket,
+  recoverInterruptedSessions,
+  listLiveSessionRuntimeIds,
+} from "./lib/session-chat-service.js";
 import { RunStore } from "./lib/run-store.js";
 import { ProviderRuntimeStore } from "./lib/provider-runtime-store.js";
 import { setGlobalProxyUrl, setPerProviderProxy } from "./lib/provider-adapters/index.js";
@@ -53,7 +56,7 @@ import {
   buildWorktreePollutionDiagnostics,
   checkSessionStoreConsistency,
   cleanupOrphanSessionHistoryFiles,
-  clearUncleanShutdownMarkerSync,
+  clearUncleanShutdownMarker,
   ignoreExternalWorktreePollution,
   loadIgnoredExternalWorktreePaths,
   prepareUncleanShutdownMarker,
@@ -122,6 +125,19 @@ import { NOVEL_PLUGIN_MANIFEST, NOVEL_AGENT_PRESET_LIST } from "@vivy1024/novelf
 import {
   handleChapterRead,
 } from "@vivy1024/novelfork-novel-plugin";
+import { listSessions } from "./lib/session-service.js";
+import { recoverInterruptedBackgroundTasks } from "./lib/background-task-store.js";
+import { getSessionRuntimeResourceRegistry } from "./lib/session-runtime/resource-registry.js";
+import {
+  createShutdownCoordinator,
+  createShutdownSignalHandler,
+  disposeSessionRuntime,
+  enterServerDraining,
+  type ShutdownCoordinator,
+  type ShutdownReport,
+  type ShutdownSignal,
+} from "./lib/session-runtime/shutdown-coordinator.js";
+import type { StartedHttpServer } from "./start-http-server.js";
 
 // --- Studio event bus for SSE ---
 
@@ -636,25 +652,52 @@ function describeStaticProvider(staticProvider: StaticProvider | undefined, stat
     : { source: "embedded", assetCount: 0 });
 }
 
-const registeredRunningMarkerPaths = new Set<string>();
-let runningMarkerCleanupRegistered = false;
+let processShutdownHandlerInstalled = false;
+let activeProcessShutdownHandler: ((signal: ShutdownSignal) => Promise<ShutdownReport>) | undefined;
 
-function registerRunningMarkerCleanup(markerPath: string): void {
-  registeredRunningMarkerPaths.add(markerPath);
-  if (runningMarkerCleanupRegistered) {
+function registerProcessShutdownCoordinator(coordinator: ShutdownCoordinator): void {
+  activeProcessShutdownHandler = createShutdownSignalHandler(coordinator);
+  if (processShutdownHandlerInstalled) return;
+  processShutdownHandlerInstalled = true;
+
+  const handle = async (signal: ShutdownSignal): Promise<void> => {
+    const handler = activeProcessShutdownHandler;
+    if (!handler) return;
+    const report = await handler(signal);
+    if (report.status === "unclean") {
+      console.error("[shutdown] unclean; process remains draining", {
+        signal,
+        stuckResourceIds: report.stuckResourceIds,
+        errors: report.errors,
+      });
+    }
+  };
+
+  process.once("SIGINT", async () => { await handle("SIGINT"); });
+  process.once("SIGTERM", async () => { await handle("SIGTERM"); });
+  process.once("beforeExit", async () => { await handle("beforeExit"); });
+}
+
+async function closeStartedHttpServer(server: StartedHttpServer | undefined): Promise<void> {
+  if (!server) return;
+  if ("runtime" in server && server.runtime === "bun") {
+    await server.close();
     return;
   }
+  await new Promise<void>((resolve, reject) => {
+    server.close((error?: Error) => error ? reject(error) : resolve());
+  });
+}
 
-  runningMarkerCleanupRegistered = true;
-  const cleanup = () => {
-    for (const registeredMarkerPath of registeredRunningMarkerPaths) {
-      clearUncleanShutdownMarkerSync(registeredMarkerPath);
-    }
-    registeredRunningMarkerPaths.clear();
-  };
-  process.once("SIGINT", cleanup);
-  process.once("SIGTERM", cleanup);
-  process.once("beforeExit", cleanup);
+async function preserveShutdownMarker(markerPath: string, report: ShutdownReport): Promise<void> {
+  await writeFile(markerPath, `${JSON.stringify({
+    pid: process.pid,
+    shutdownStatus: report.status,
+    signal: report.signal,
+    stuckResourceIds: report.stuckResourceIds,
+    errors: report.errors,
+    updatedAt: new Date().toISOString(),
+  }, null, 2)}\n`, "utf-8");
 }
 
 function getSessionStoreDiagnosticDir(): string {
@@ -663,27 +706,6 @@ function getSessionStoreDiagnosticDir(): string {
 
 function getSessionStoreDatabasePath(): string {
   return join(getSessionStoreDiagnosticDir(), "novelfork.db");
-}
-
-const registeredStorageDatabases = new Set<StorageDatabase>();
-let storageDatabaseShutdownRegistered = false;
-
-function registerStorageDatabaseShutdown(storageDatabase: StorageDatabase): void {
-  registeredStorageDatabases.add(storageDatabase);
-  if (storageDatabaseShutdownRegistered) {
-    return;
-  }
-
-  storageDatabaseShutdownRegistered = true;
-  const cleanup = () => {
-    for (const registeredStorageDatabase of registeredStorageDatabases) {
-      registeredStorageDatabase.close();
-    }
-    registeredStorageDatabases.clear();
-  };
-  process.once("SIGINT", cleanup);
-  process.once("SIGTERM", cleanup);
-  process.once("beforeExit", cleanup);
 }
 
 async function buildProviderDiagnosticEntries(config: ProjectConfig, providerStore: ProviderRuntimeStore) {
@@ -713,7 +735,6 @@ async function collectStartupDiagnostics(root: string, config: ProjectConfig, pr
   const markerPath = join(root, "running.pid");
 
   diagnostics.push(await prepareUncleanShutdownMarker(markerPath));
-  registerRunningMarkerCleanup(markerPath);
   diagnostics.push(await checkSessionStoreConsistency(getSessionStoreDiagnosticDir()));
 
   try {
@@ -865,7 +886,6 @@ export async function startStudioServer(
     storageDatabase.close();
     throw error;
   }
-  registerStorageDatabaseShutdown(storageDatabase);
 
   // Initialize persistent FTS5 search index (separate database file alongside the main one)
   const searchDbPath = join(sessionStoreDir, "novelfork-search.db");
@@ -1060,6 +1080,34 @@ export async function startStudioServer(
       `[startup] WebSocket routes registered: /api/admin/resources/ws, /api/sessions/:id/chat`,
     );
   }
+
+  const shutdownMarkerPath = join(root, "running.pid");
+  registerProcessShutdownCoordinator(createShutdownCoordinator({
+    stopDeadlineMs: 20_000,
+    enterDraining: enterServerDraining,
+    async listSessionIds() {
+      const persisted = await listSessions({});
+      return [...new Set([...persisted.map((session) => session.id), ...listLiveSessionRuntimeIds()])];
+    },
+    disposeSessionRuntime,
+    disposeRemainingResources: () => getSessionRuntimeResourceRegistry().disposeAll("shutdown"),
+    persistTerminalStates: async () => {
+      recoverInterruptedBackgroundTasks();
+    },
+    marker: {
+      preserve: (report) => preserveShutdownMarker(shutdownMarkerPath, report),
+      clear: () => clearUncleanShutdownMarker(shutdownMarkerPath),
+    },
+    server: {
+      close: () => closeStartedHttpServer(startedServer),
+    },
+    database: {
+      close: () => storageDatabase.close(),
+    },
+    exit(code, signal) {
+      if (signal !== "beforeExit") process.exit(code);
+    },
+  }));
 
   // --- 启动时恢复被中断的会话（非阻塞） ---
   void recoverInterruptedSessions();

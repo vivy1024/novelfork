@@ -2,7 +2,17 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
-## Unreleased
+## v3.1.0 (2026-07-11) — Session Runtime 隔离与取消
+
+### Session Runtime 隔离与取消（阶段 A）
+
+- 新增服务端私有 `SessionTurnGate`：同一 session 严格单活跃回合、FIFO 排队、容量拒绝和 dispose 清队列，客户端无法再用 `_fromQueue` 绕过 busy 状态。
+- 新增 owner-aware `SessionRuntimeResourceRegistry`，统一管理 Browser、后台 Agent、后台 Bash 和工具输出捕获 Pipeline；跨 session 查询统一 not-found，父子资源可级联释放。
+- 引入工具取消能力矩阵与 linked abort scope，provider、工具、Await 和子代理共享真实取消信号；Bash timeout/TaskStop 会终止进程树并等待终态，不再把仅发出 kill 当成 stopped。
+- 后台 Agent 增加 mailbox 的 queued/delivered/undelivered 状态；插件 handler 获得真实 parent/sub execution session 上下文。
+- turn 完成原因改为 `completed | aborted | failed | stopping` 显式状态；新增 `ShutdownCoordinator`，clean/unclean 关闭路径不再提前清 marker、关闭数据库或报告成功。
+- Anthropic adapter 保留并按序转换全部 runtime system hints，同时保持 prompt cache boundary 语义。
+- 增加真实 WebSocket、Chromium、Anthropic-compatible HTTP 集成验证；Windows 单文件编译显式排除 Playwright 的 BiDi/Electron 可选分支。
 
 ### 🧠 Narrative Memory 管理工具
 

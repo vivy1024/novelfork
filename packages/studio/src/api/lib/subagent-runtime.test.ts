@@ -1,6 +1,32 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { runSubagent, runSubagentStream, type SubagentConfig, type SubagentResult } from "./subagent-runtime";
+import { runSubagent, runSubagentStream, type SubagentConfig, type SubagentGenerateResult, type SubagentResult } from "./subagent-runtime";
+
+function deferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((promiseResolve, promiseReject) => {
+    resolve = promiseResolve;
+    reject = promiseReject;
+  });
+  return { promise, resolve, reject };
+}
+
+async function waitForAssertion(assertion: () => void, options: { timeout?: number } = {}): Promise<void> {
+  const timeout = options.timeout ?? 1_000;
+  const startedAt = Date.now();
+  let lastError: unknown;
+  while (Date.now() - startedAt < timeout) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+  }
+  throw lastError ?? new Error(`Assertion did not pass within ${timeout}ms`);
+}
 
 describe("subagent runtime", () => {
   it("executes a subagent with independent system prompt and model", async () => {
@@ -112,6 +138,48 @@ describe("subagent runtime", () => {
 
     expect(result.ok).toBe(false);
     expect(result.stopReason).toBe("aborted");
+  });
+
+  it("Task7: subagent generate should receive the parent abort signal and stay blocked behind the pending promise", async () => {
+    const controller = new AbortController();
+    const pendingGenerate = deferred<SubagentGenerateResult>();
+    let generateSignal: AbortSignal | undefined;
+
+    const generate = vi.fn(async ({ signal }: { signal?: AbortSignal }) => {
+      generateSignal = signal;
+      return pendingGenerate.promise;
+    });
+
+    const config: SubagentConfig = {
+      id: "task7-subagent-abort",
+      name: "Abort",
+      systemPrompt: "你是一个子代理。",
+      modelId: "m",
+      providerId: "p",
+      tools: [],
+      maxSteps: 3,
+    };
+
+    const resultPromise = runSubagent({
+      config,
+      prompt: "等待子代理生成",
+      generate,
+      signal: controller.signal,
+    });
+
+    await waitForAssertion(() => expect(generate).toHaveBeenCalledTimes(1));
+    controller.abort();
+    pendingGenerate.resolve({
+      success: true,
+      type: "message",
+      content: "晚到的完成",
+      metadata: { modelId: "m", providerId: "p" },
+    });
+
+    const result = await resultPromise;
+
+    expect(generateSignal).toBe(controller.signal);
+    expect(result).toMatchObject({ ok: false, stopReason: "aborted" });
   });
 
   it("streams events via AsyncGenerator (对标 Claude runAgent generator)", async () => {

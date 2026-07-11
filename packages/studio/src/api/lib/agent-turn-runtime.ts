@@ -22,6 +22,9 @@ import { pruneToolOutput } from "./compact/tool-output-pruner.js";
 import { getBudgetPressureMessage } from "./compact/budget-pressure.js";
 import { getContextTokensFromUsage, getEffectiveContextWindow } from "./token-utils.js";
 import { createContentReplacementState, applyContentReplacement } from "./content-replacement.js";
+import { AbortScope } from "./session-runtime/abort-scope.js";
+import { capabilityFor, timeoutMsFor } from "./session-runtime/tool-cancellation-policy.js";
+import { canRunToolInParallel } from "./session-runtime/tool-parallel-policy.js";
 
 export type AgentTurnItem =
   | { readonly type: "message"; readonly role: "system" | "user" | "assistant"; readonly content: string; readonly reasoning_content?: string; readonly reasoning_signature?: string; readonly id?: string; readonly metadata?: Record<string, unknown>; readonly attachments?: Array<{ type: "image"; mimeType: string; filePath: string; fileName?: string }> }
@@ -806,7 +809,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
               const toolResult = duplicateResult
                 ? createDuplicateToolResult(duplicateResult)
                 : await withToolTimeout(
-                    input.executeTool({
+                    (toolSignal) => input.executeTool({
                       sessionId: input.sessionId,
                       toolName: toolUse.name,
                       toolCallId: toolUse.id,
@@ -814,10 +817,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                       permissionMode: input.permissionMode,
                       sessionConfig: input.sessionConfig,
                       ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-                      ...(input.signal ? { signal: input.signal } : {}),
+                      signal: toolSignal,
                     }),
-                    input.toolTimeoutMs ?? 120000,
+                    input.toolTimeoutMs,
                     toolUse.name,
+                    toolUse.input,
                     input.signal,
                   );
               const toolDurationMs = Date.now() - toolStartedAt;
@@ -981,18 +985,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
       log.info("Tool use reply without reasoning", { policy, hasRC: !!reply.reasoningContent });
     }
 
-    // Determine if all tools in this batch are read-only (parallelizable)
-    const PARALLEL_SAFE_TOOLS = new Set([
-      "Read", "Glob", "Grep", "WebSearch", "WebFetch",
-      "GetGoals", "LearningGuide", "Recall",
-      // Novel domain read-only / analysis tools
-      "jingwei.read", "chapter.read", "cockpit.snapshot",
-      "chapter.list", "chapter.audit", "presets.read", "beat.read",
-      "outline.suggest_next", "character.check_consistency",
-      "hooks.manage", "presets.check_compliance",
-    ]);
-
-    const allParallelSafe = reply.toolUses.length > 1 && reply.toolUses.every(tu => PARALLEL_SAFE_TOOLS.has(tu.name));
+    // A batch is parallel only when every call is input-aware read-only and
+    // cooperatively cancellable. One unsafe call keeps the model's full order.
+    const allParallelSafe = reply.toolUses.length > 1 && reply.toolUses.every((toolUse) =>
+      canRunToolInParallel(toolUse.name, toolUse.input),
+    );
 
     if (allParallelSafe) {
       // --- Parallel execution path ---
@@ -1035,7 +1032,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
             toolResult = duplicateResult
               ? createDuplicateToolResult(duplicateResult)
               : await withToolTimeout(
-                  input.executeTool({
+                  (toolSignal) => input.executeTool({
                     sessionId: input.sessionId,
                     toolName: toolUse.name,
                     toolCallId: toolUse.id,
@@ -1043,10 +1040,11 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                     permissionMode: input.permissionMode,
                     sessionConfig: input.sessionConfig,
                     ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-                    ...(input.signal ? { signal: input.signal } : {}),
+                    signal: toolSignal,
                   }),
-                  input.toolTimeoutMs ?? 120000,
+                  input.toolTimeoutMs,
                   toolUse.name,
+                  toolUse.input,
                   input.signal,
                 );
           } catch (err) {
@@ -1058,9 +1056,13 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
         }),
       );
 
-      // Process results sequentially to maintain event order
+      // Process results sequentially to maintain event order. Cooperative late
+      // results stay suppressed after abort, while a non-cancellable operation
+      // must still publish its typed side-effect audit after real settlement.
       for (let { toolUse, toolResult, toolDurationMs, signature, isDuplicate } of parallelResults) {
-        if (input.signal?.aborted) {
+        const isDeadlineAudit = toolResult.error === "deadline-exceeded-operation-completed"
+          || toolResult.error === "deadline-exceeded-operation-failed";
+        if (input.signal?.aborted && !isDeadlineAudit) {
           emit({ type: "turn_completed" });
           return events;
         }
@@ -1199,7 +1201,7 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
           toolResult = duplicateResult
             ? createDuplicateToolResult(duplicateResult)
             : await withToolTimeout(
-                input.executeTool({
+                (toolSignal) => input.executeTool({
                   sessionId: input.sessionId,
                   toolName: toolUse.name,
                   toolCallId: toolUse.id,
@@ -1207,12 +1209,14 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
                   permissionMode: input.permissionMode,
                   sessionConfig: input.sessionConfig,
                   ...(input.canvasContext ? { canvasContext: input.canvasContext } : {}),
-                  ...(input.signal ? { signal: input.signal } : {}),
+                  signal: toolSignal,
                 }),
-                input.toolTimeoutMs ?? 120000,
+                input.toolTimeoutMs,
                 toolUse.name,
+                toolUse.input,
                 input.signal,
-              );        } catch (err) {
+              );
+        } catch (err) {
           log.error("Tool execution error", { sessionId: input.sessionId, toolName: toolUse.name, error: err instanceof Error ? err.message : String(err) });
           toolResult = { ok: false, error: "tool-execution-error", summary: `工具 ${toolUse.name} 执行异常: ${err instanceof Error ? err.message : String(err)}` };
         }
@@ -1350,49 +1354,81 @@ export async function runAgentTurn(input: AgentTurnRuntimeInput): Promise<AgentT
   }
 }
 
-function withToolTimeout(
-  promise: Promise<SessionToolExecutionResult>,
-  timeoutMs: number,
+async function withToolTimeout(
+  execute: (signal: AbortSignal) => Promise<SessionToolExecutionResult>,
+  requestedTimeoutMs: number | undefined,
   toolName: string,
-  signal?: AbortSignal,
+  toolInput: Record<string, unknown>,
+  rootSignal?: AbortSignal,
 ): Promise<SessionToolExecutionResult> {
-  return new Promise((resolve) => {
-    let resolved = false;
-    const done = (result: SessionToolExecutionResult) => {
-      if (resolved) return;
-      resolved = true;
-      clearTimeout(timer);
-      signal?.removeEventListener("abort", onAbort);
-      resolve(result);
-    };
-
-    const effectiveTimeoutMs = timeoutMs;
-    const timer = setTimeout(() => {
-      done({
-        ok: false,
-        error: "tool-timeout",
-        summary: `工具 ${toolName} 执行超时（${Math.round(effectiveTimeoutMs / 1000)}s）。`,
-      });
-    }, effectiveTimeoutMs);
-
-    const onAbort = () => {
-      done({
-        ok: false,
-        error: "tool-aborted",
-        summary: `工具 ${toolName} 已被用户中断。`,
-      });
-    };
-    if (signal?.aborted) { done({ ok: false, error: "tool-aborted", summary: `工具 ${toolName} 已被用户中断。` }); return; }
-    signal?.addEventListener("abort", onAbort, { once: true });
-
-    promise.then((result) => {
-      done(result);
-    }).catch((error) => {
-      done({
-        ok: false,
-        error: "tool-execution-error",
-        summary: `工具 ${toolName} 执行异常：${error instanceof Error ? error.message : String(error)}`,
-      });
-    });
+  const capability = capabilityFor(toolName, toolInput);
+  const scope = new AbortScope({
+    capability,
+    rootSignal,
+    // A non-cancellable tool still observes the deadline, but the scope waits
+    // for real settlement and audits the outcome instead of claiming it stopped.
+    timeoutMs: requestedTimeoutMs ?? timeoutMsFor(toolName, toolInput),
   });
+  const outcome = await scope.execute(execute);
+
+  if (outcome.terminal === "completed") {
+    return outcome.value ?? {
+      ok: false,
+      error: "tool-execution-error",
+      summary: `工具 ${toolName} 未返回执行结果。`,
+    };
+  }
+  if (outcome.terminal === "abort") {
+    return {
+      ok: false,
+      error: "tool-aborted",
+      summary: `工具 ${toolName} 已被用户中断。`,
+      data: { cancellation: { reason: "abort" } },
+    };
+  }
+  if (outcome.terminal === "timeout") {
+    return {
+      ok: false,
+      error: "tool-timeout",
+      summary: `工具 ${toolName} 执行超时。`,
+      data: { cancellation: { reason: "timeout" } },
+    };
+  }
+  if (outcome.terminal === "stopped" || outcome.terminal === "stop-timeout") {
+    return outcome.value ?? {
+      ok: false,
+      error: outcome.terminal,
+      summary: `工具 ${toolName} ${outcome.terminal === "stopped" ? "已停止" : "停止超时"}。`,
+    };
+  }
+  if (
+    outcome.terminal === "deadline-exceeded-operation-completed"
+    || outcome.terminal === "deadline-exceeded-operation-failed"
+  ) {
+    const originalResult = outcome.terminal === "deadline-exceeded-operation-completed"
+      ? outcome.value
+      : outcome.error instanceof Error
+        ? { error: outcome.error.message }
+        : outcome.error;
+    return {
+      ok: false,
+      error: outcome.terminal,
+      summary: outcome.terminal === "deadline-exceeded-operation-completed"
+        ? `工具 ${toolName} 在取消/截止后完成；已记录副作用审计。`
+        : `工具 ${toolName} 在取消/截止后失败；已记录副作用审计。`,
+      data: {
+        audit: {
+          type: outcome.terminal,
+          cause: outcome.cause,
+          originalResult,
+        },
+      },
+    };
+  }
+
+  return {
+    ok: false,
+    error: "tool-execution-error",
+    summary: `工具 ${toolName} 执行异常：${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`,
+  };
 }

@@ -1,6 +1,6 @@
 # NovelFork Studio
 
-**v3.0.0** | 2026-06-25 | 始终使用中文回复
+**v3.1.0** | 2026-07-11 | 始终使用中文回复
 
 **项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
 **开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
@@ -235,7 +235,7 @@ brainstorming（探需求）
 
 | 指标 | 值 |
 |------|----|
-| 版本 | v3.0.0 |
+| 版本 | v3.1.0 |
 | 模型 | DeepSeek v4-pro（Anthropic 协议，thinking disabled）、Claude Opus 4.6 |
 | 已知问题 | 图片发送待验证；清空上下文会删聊天记录（待改为标记式） |
 

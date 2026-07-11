@@ -16,12 +16,16 @@ import {
   type SessionGoal,
   type UpdateNarratorSessionInput,
 } from "../../shared/session-types.js";
-import { deleteSessionChatHistory, markSessionChatHistoryDeleted } from "./session-history-store.js";
+import { markSessionChatHistoryDeleted } from "./session-history-store.js";
 import { getSessionStorageDatabase } from "./session-storage.js";
 import { normalizeSessionToolPolicy } from "./session-tool-policy.js";
 import { loadUserConfig } from "./user-config-service.js";
 import { loadGlobalRoutines } from "./routines-service.js";
 import type { SessionToolPolicy } from "../../shared/session-types.js";
+import {
+  disposeSessionRuntime,
+  type SessionRuntimeDisposeReport,
+} from "./session-runtime/shutdown-coordinator.js";
 
 export type SessionListBinding = "standalone" | "book" | "chapter";
 export type SessionListSort = "manual" | "recent" | "lastModified-desc";
@@ -40,6 +44,8 @@ export interface ListSessionsOptions {
 
 export let sessionStoreMutationQueue: Promise<void> = Promise.resolve();
 let sessionStoreMutationHook: (() => Promise<void> | void) | undefined;
+let sessionDeleteTransactionHook: (() => void) | undefined;
+const sessionDeletePromises = new Map<string, Promise<DeleteSessionResult>>();
 
 function getSessionRepo() {
   return createSessionRepository(getSessionStorageDatabase());
@@ -340,24 +346,101 @@ export async function updateSession(id: string, updates: UpdateNarratorSessionIn
   return stored ? toNarratorSessionRecord(stored) : null;
 }
 
-export async function deleteSession(id: string): Promise<boolean> {
-  markSessionChatHistoryDeleted(id);
+export type DeleteSessionResult =
+  | { readonly deleted: true; readonly runtimeDispose: SessionRuntimeDisposeReport }
+  | { readonly deleted: false; readonly error: "not-found" }
+  | { readonly deleted: false; readonly error: "session-runtime-dispose-unclean"; readonly runtimeDispose: SessionRuntimeDisposeReport }
+  | { readonly deleted: false; readonly error: "persistence-delete-failed"; readonly runtimeDispose: SessionRuntimeDisposeReport; readonly diagnostic: string };
+
+function deleteDiagnostic(error: unknown): string {
+  if (error instanceof Error) return error.message || error.name;
+  if (typeof error === "string") return error;
+  try {
+    return JSON.stringify(error) || String(error);
+  } catch {
+    return "unserializable persistence delete failure";
+  }
+}
+
+async function runDeleteSessionWithRuntimeReport(id: string): Promise<DeleteSessionResult> {
   const current = await getSessionById(id);
   if (!current) {
-    return false;
+    return { deleted: false, error: "not-found" };
   }
 
-  await deleteSessionChatHistory(id);
-  return getSessionRepo().softDelete(id);
+  const runtimeDispose = await disposeSessionRuntime(id);
+  if (runtimeDispose.status !== "clean") {
+    return { deleted: false, error: "session-runtime-dispose-unclean", runtimeDispose };
+  }
+
+  try {
+    const storage = getSessionStorageDatabase();
+    const deleteTransaction = storage.sqlite.transaction((sessionId: string, deletedAt: number) => {
+      const tombstone = storage.sqlite.prepare(`
+        UPDATE "session"
+        SET "deleted_at" = ?, "updated_at" = ?
+        WHERE "id" = ? AND "deleted_at" IS NULL
+      `).run(deletedAt, deletedAt, sessionId);
+      if (tombstone.changes === 0) return false;
+
+      storage.sqlite.prepare(`DELETE FROM "session_message" WHERE "session_id" = ?`).run(sessionId);
+      sessionDeleteTransactionHook?.();
+      return true;
+    });
+    const deleted = deleteTransaction(id, Date.now());
+    if (!deleted) {
+      return {
+        deleted: false,
+        error: "persistence-delete-failed",
+        runtimeDispose,
+        diagnostic: "session tombstone was not written",
+      };
+    }
+    markSessionChatHistoryDeleted(id);
+    return { deleted: true, runtimeDispose };
+  } catch (error) {
+    return {
+      deleted: false,
+      error: "persistence-delete-failed",
+      runtimeDispose,
+      diagnostic: deleteDiagnostic(error),
+    };
+  }
+}
+
+/** Single owner of the public delete transaction: runtime first, persistence second. */
+export function deleteSessionWithRuntimeReport(id: string): Promise<DeleteSessionResult> {
+  const existing = sessionDeletePromises.get(id);
+  if (existing) return existing;
+
+  const attempt = runDeleteSessionWithRuntimeReport(id);
+  let operation!: Promise<DeleteSessionResult>;
+  operation = attempt.finally(() => {
+    if (sessionDeletePromises.get(id) === operation) sessionDeletePromises.delete(id);
+  });
+  sessionDeletePromises.set(id, operation);
+  return operation;
+}
+
+export async function deleteSession(id: string): Promise<boolean> {
+  const result = await deleteSessionWithRuntimeReport(id);
+  if (result.deleted) return true;
+  if (result.error === "not-found") return false;
+  throw new Error(result.error);
 }
 
 export const __testing = {
   setSessionStoreMutationHook(hook?: () => Promise<void> | void) {
     sessionStoreMutationHook = hook;
   },
+  setSessionDeleteTransactionHook(hook?: () => void) {
+    sessionDeleteTransactionHook = hook;
+  },
   resetSessionStoreMutationQueue() {
     sessionStoreMutationQueue = Promise.resolve();
     sessionStoreMutationHook = undefined;
+    sessionDeleteTransactionHook = undefined;
+    sessionDeletePromises.clear();
     closeStorageDatabase();
   },
 };

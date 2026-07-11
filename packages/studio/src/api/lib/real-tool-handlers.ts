@@ -5,7 +5,7 @@
  * All operations are bounded to the work directory and subject to dangerous pattern detection.
  */
 
-import { spawn, execSync } from "node:child_process";
+import { spawn, type ChildProcess, type SpawnOptions } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { mkdir, readFile, writeFile, access } from "node:fs/promises";
 import { dirname, extname, join, resolve, relative } from "node:path";
@@ -13,6 +13,11 @@ import { constants as fsConstants } from "node:fs";
 
 import type { SessionToolExecutionResult } from "../../shared/agent-native-workspace.js";
 import { validatePath, hasSuspiciousTraversal } from "./security/path-sandbox.js";
+import {
+  ProcessTreeController,
+  type ProcessTreeStopReason,
+} from "./session-runtime/process-tree-controller.js";
+import { attachRuntimeSettlement } from "./session-runtime/runtime-settlement.js";
 
 // --- Staleness check & dedup state (FR-1.3 / FR-1.4) ---
 
@@ -78,18 +83,6 @@ const DANGEROUS_PATTERNS = [
 
 function isDangerousCommand(command: string): boolean {
   return DANGEROUS_PATTERNS.some((pattern) => pattern.test(command));
-}
-
-// --- Process tree kill (Windows: taskkill /T, Unix: kill process group) ---
-
-function killProcessTree(pid: number): void {
-  if (process.platform === "win32") {
-    try {
-      execSync(`taskkill /F /T /PID ${pid}`, { stdio: "ignore" });
-    } catch { /* process might already be dead */ }
-  } else {
-    try { process.kill(-pid, "SIGKILL"); } catch {}
-  }
 }
 
 // --- Output truncation threshold ---
@@ -169,6 +162,12 @@ export interface BashToolInput {
   readonly command: string;
   readonly workDir: string;
   readonly timeoutMs?: number;
+  /** Root/turn/task cancellation for the spawned process tree. */
+  readonly signal?: AbortSignal;
+  /** Per-phase process-tree grace; defaults to 5 seconds before and after force kill. */
+  readonly stopTimeoutMs?: number;
+  /** Minimal test seam for deterministic exit-before-close process lifecycle tests. */
+  readonly spawnProcess?: (file: string, args: string[], options: SpawnOptions) => ChildProcess;
   /** 实时流式输出回调：每次 stdout/stderr 产生数据时调用 */
   readonly onStdoutChunk?: (chunk: string) => void;
 }
@@ -231,49 +230,72 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
     const stderr: Buffer[] = [];
 
     // 对标 Claude: spawn 而非 exec，detached 用于进程组管理
-    const child = spawn(shellPath, shellArgs, {
-      cwd: workDir,
-      env: {
-        ...process.env,
-        ...sandboxEnv,
-        NOVELFORK: "1",
-        GIT_EDITOR: "true",
-      },
-      stdio: ["pipe", "pipe", "pipe"],
-      windowsHide: true,
-      detached: process.platform !== "win32", // 对标 Claude: detached for process group kill
-    });
-
-    // FR-5.2: Graceful shutdown — SIGTERM first, then SIGKILL after 5s
-    const timeout = setTimeout(() => {
-      const pid = child.pid;
-      if (!pid) { child.kill("SIGKILL"); return; }
-
-      // First attempt: SIGTERM for graceful shutdown
-      try {
-        if (process.platform === "win32") {
-          // Windows: taskkill with /T kills process tree
-          killProcessTree(pid);
-        } else {
-          process.kill(-pid, "SIGTERM");
-        }
-      } catch { child.kill("SIGTERM"); }
-
-      // Second attempt after 5s: SIGKILL if still alive
-      setTimeout(() => {
-        try {
-          if (pid) killProcessTree(pid);
-          else child.kill("SIGKILL");
-        } catch { /* already dead */ }
-      }, 5000);
-
+    let child: ChildProcess;
+    try {
+      child = (input.spawnProcess ?? spawn)(shellPath, shellArgs, {
+        cwd: workDir,
+        env: {
+          ...process.env,
+          ...sandboxEnv,
+          NOVELFORK: "1",
+          GIT_EDITOR: "true",
+        },
+        stdio: ["pipe", "pipe", "pipe"],
+        windowsHide: true,
+        detached: process.platform !== "win32", // 对标 Claude: detached for process group kill
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       resolveResult({
         ok: false,
-        error: "timeout",
-        summary: `命令超时（${timeoutMs}ms）`,
-        data: { command, timeoutMs },
+        error: "spawn-failed",
+        summary: `命令启动失败：${message}`,
+        data: { command, error: message },
       });
-    }, timeoutMs);
+      return;
+    }
+
+    const processTree = new ProcessTreeController(child, {
+      stopTimeoutMs: input.stopTimeoutMs,
+    });
+    let settled = false;
+
+    const stopReasonFromSignal = (): ProcessTreeStopReason => {
+      if (input.signal?.reason === "timeout") return "timeout";
+      if (input.signal?.reason === "task-stop") return "task-stop";
+      return "abort";
+    };
+    const requestStop = (reason: ProcessTreeStopReason) => {
+      if (reason !== "timeout") clearTimeout(timeout);
+      void processTree.requestStop(reason).then((stopResult) => {
+        if (stopResult.terminal !== "stop-timeout" || settled) return;
+        settled = true;
+        cleanupProcessLifecycle();
+        const result = attachRuntimeSettlement({
+          ok: false,
+          error: "stop-timeout",
+          summary: "进程树未在停止期限内退出；Runtime 将继续等待真实终态。",
+          data: {
+            status: "stopping",
+            stdout: Buffer.concat(stdout as unknown as Uint8Array[]).toString("utf-8"),
+            stderr: Buffer.concat(stderr as unknown as Uint8Array[]).toString("utf-8"),
+            command,
+            stopReason: reason,
+            stopState: "stop-timeout",
+          },
+        } satisfies BashToolResult, processTree.waitForExit());
+        resolveResult(result);
+      });
+    };
+    const onAbort = () => requestStop(stopReasonFromSignal());
+    const timeout = setTimeout(() => requestStop("timeout"), timeoutMs);
+    input.signal?.addEventListener("abort", onAbort, { once: true });
+    if (input.signal?.aborted) onAbort();
+
+    const cleanupProcessLifecycle = () => {
+      clearTimeout(timeout);
+      input.signal?.removeEventListener("abort", onAbort);
+    };
 
     child.stdout?.on("data", (chunk) => {
       stdout.push(chunk);
@@ -291,18 +313,26 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
       }
     });
 
+    let spawnError: Error | undefined;
     child.on("error", (error) => {
-      clearTimeout(timeout);
-      resolveResult({
-        ok: false,
-        error: "spawn-failed",
-        summary: `命令启动失败：${error.message}`,
-        data: { command, error: error.message },
-      });
+      // Node emits close after a spawn error. Keep close authoritative so no
+      // listener can resolve twice and all stdio lifecycle events are drained.
+      spawnError ??= error;
     });
 
-    child.on("exit", (code, signal) => {
-      clearTimeout(timeout);
+    void processTree.waitForExit().then(async ({ code, signal }) => {
+      if (settled) return;
+      settled = true;
+      cleanupProcessLifecycle();
+      if (spawnError) {
+        resolveResult({
+          ok: false,
+          error: "spawn-failed",
+          summary: `命令启动失败：${spawnError.message}`,
+          data: { command, error: spawnError.message },
+        });
+        return;
+      }
       const rawStdout = Buffer.concat(stdout as unknown as Uint8Array[]).toString("utf-8");
       const stderrStr = Buffer.concat(stderr as unknown as Uint8Array[]).toString("utf-8");
       const exitCode = code ?? (signal ? 128 : 1);
@@ -324,6 +354,36 @@ export async function executeBashTool(input: BashToolInput): Promise<BashToolRes
         const head = stdoutStr.slice(0, 5000);
         const tail = stdoutStr.slice(-5000);
         stdoutStr = `${head}\n\n... [输出过长，已截断 ${stdoutStr.length - 10000} 字符] ...\n\n${tail}`;
+      }
+
+      const stopReason = processTree.requestedStopReason;
+      if (stopReason) {
+        const stopResult = await processTree.requestStop(stopReason);
+        const stopState = stopResult.terminal;
+        const error = stopState === "stop-timeout"
+          ? "stop-timeout"
+          : stopReason === "timeout"
+            ? "timeout"
+            : "stopped";
+        resolveResult({
+          ok: false,
+          error,
+          summary: error === "stop-timeout"
+            ? "进程树未在停止期限内退出；已等待真实退出后完成结算。"
+            : error === "timeout"
+              ? `命令超时（${timeoutMs}ms）`
+              : "命令进程树已停止。",
+          data: {
+            exitCode,
+            stdout: stdoutStr,
+            stderr: stderrStr,
+            command,
+            stopReason,
+            stopState,
+          },
+          newWorkDir,
+        });
+        return;
       }
 
       if (exitCode !== 0) {

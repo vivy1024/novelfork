@@ -18,7 +18,7 @@ import {
 } from "../lib/session-chat-service.js";
 import {
   createSession,
-  deleteSession,
+  deleteSessionWithRuntimeReport,
   getSessionById,
   listSessions,
   updateSession,
@@ -674,11 +674,17 @@ app.put("/:id", async (c) => {
 
 app.delete("/:id", async (c) => {
   const id = c.req.param("id");
-  const deleted = await deleteSession(id);
-  if (!deleted) {
-    return c.json({ error: "Session not found" }, 404);
+  const result = await deleteSessionWithRuntimeReport(id);
+  if (!result.deleted) {
+    if (result.error === "not-found") {
+      return c.json({ error: "Session not found" }, 404);
+    }
+    if (result.error === "session-runtime-dispose-unclean") {
+      return c.json({ error: result.error, runtimeDispose: result.runtimeDispose }, 409);
+    }
+    return c.json({ error: result.error, runtimeDispose: result.runtimeDispose, diagnostic: result.diagnostic }, 500);
   }
-  return c.json({ success: true });
+  return c.json({ success: true, runtimeDispose: result.runtimeDispose });
 });
 
 export default app;

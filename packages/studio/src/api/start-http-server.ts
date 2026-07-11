@@ -33,6 +33,7 @@ export interface BunWebSocketRoute {
 export interface BunWebSocketRegistrar {
   readonly runtime: "bun";
   registerWebSocketRoute(route: BunWebSocketRoute): void;
+  close(): Promise<void>;
 }
 
 export type StartedHttpServer = Server | BunWebSocketRegistrar;
@@ -123,7 +124,7 @@ export async function startHttpServer(options: {
     const maxAttempts = 10;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       try {
-        bunRuntime.serve({
+        const bunServer = bunRuntime.serve({
           port,
           ...(options.hostname ? { hostname: options.hostname } : {}),
           idleTimeout: 60, // 60 秒，确保文件夹选择器等长时间操作不被断开
@@ -178,6 +179,10 @@ export async function startHttpServer(options: {
               return;
             }
             webSocketRoutes.push(route);
+          },
+          async close() {
+            const stoppable = bunServer as { stop?: (closeActiveConnections?: boolean) => void | Promise<void> } | undefined;
+            await stoppable?.stop?.(true);
           },
         };
       } catch (error: unknown) {

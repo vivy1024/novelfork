@@ -22,4 +22,11 @@ describe("compile script contract", () => {
     expect(packageJson.scripts?.["bun:embed-assets"]).toBeUndefined();
     expect(existsSync(join(repoRoot, "scripts", "generate-embedded-assets.mjs"))).toBe(false);
   });
+
+  it("externalizes Playwright branches that are optional for Chromium automation", async () => {
+    const compileScript = await readFile(join(repoRoot, "packages", "studio", "scripts", "compile.ts"), "utf-8");
+
+    expect(compileScript).toContain('"--external=electron"');
+    expect(compileScript).toContain('"--external=chromium-bidi/*"');
+  });
 });

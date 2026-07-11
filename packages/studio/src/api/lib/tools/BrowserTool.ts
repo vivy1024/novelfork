@@ -119,15 +119,14 @@ export const BrowserTool: ToolDefinition = {
       return { success: false, error: "Permission denied: browser tool requires 'browser' permission" };
     }
 
-    // 懒加载 playwright（可选依赖）
+    // 懒加载已声明的 playwright-core 运行时依赖。
     let playwright: any;
     try {
-      // @ts-ignore - playwright is an optional dependency loaded at runtime
-      playwright = await import(/* webpackIgnore: true */ "playwright");
+      playwright = await import("playwright-core");
     } catch {
       return {
         success: false,
-        error: "Playwright 未安装。请运行: bun add playwright",
+        error: "playwright-core 未安装，无法使用浏览器工具。",
       };
     }
 
