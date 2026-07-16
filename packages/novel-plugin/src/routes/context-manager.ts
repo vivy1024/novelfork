@@ -2,12 +2,22 @@
  * Context Manager Router — real-time context management with compression
  */
 
+import { estimateTokenCount } from "@vivy1024/novelfork-core";
 import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
-import { countTokens } from "@vivy1024/novelfork-studio/api/lib/token-counter";
-import { loadUserConfig } from "@vivy1024/novelfork-studio/api/lib/user-config-service";
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+
+const DEFAULT_CONTEXT_GOVERNANCE = {
+  compressionThresholdPercent: 99,
+  truncateTargetPercent: 95,
+  compressionThresholdSource: "default.contextCompressionThresholdPercent",
+  truncateTargetSource: "default.contextTruncateTargetPercent",
+} as const;
+
+function normalizePercent(value: number, fallback: number): number {
+  return Number.isFinite(value) ? Math.min(100, Math.max(0, value)) : fallback;
+}
 
 export function createContextManagerRouter(ctx: RouterContext): Hono {
   const app = new Hono();
@@ -16,10 +26,24 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
   const CONTEXT_MAX_TOKENS = 100000; // Claude 3.5 context window
 
   const getRuntimeThresholds = async () => {
-    const config = await loadUserConfig();
+    const governance = await ctx.getContextGovernance?.() ?? DEFAULT_CONTEXT_GOVERNANCE;
+    const compressionThresholdPercent = normalizePercent(
+      governance.compressionThresholdPercent,
+      DEFAULT_CONTEXT_GOVERNANCE.compressionThresholdPercent,
+    );
+    const truncateTargetPercent = normalizePercent(
+      governance.truncateTargetPercent,
+      DEFAULT_CONTEXT_GOVERNANCE.truncateTargetPercent,
+    );
     return {
-      compressionRatio: config.runtimeControls.contextCompressionThresholdPercent / 100,
-      truncateRatio: config.runtimeControls.contextTruncateTargetPercent / 100,
+      compressionRatio: compressionThresholdPercent / 100,
+      truncateRatio: truncateTargetPercent / 100,
+      compressionThresholdPercent,
+      truncateTargetPercent,
+      compressionThresholdSource: governance.compressionThresholdSource
+        ?? DEFAULT_CONTEXT_GOVERNANCE.compressionThresholdSource,
+      truncateTargetSource: governance.truncateTargetSource
+        ?? DEFAULT_CONTEXT_GOVERNANCE.truncateTargetSource,
     };
   };
 
@@ -53,8 +77,7 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         try {
           const content = await readFile(join(storyDir, filename), "utf-8");
           if (content.trim()) {
-            const result = countTokens(content);
-            totalTokens += result.tokens;
+            totalTokens += estimateTokenCount(content);
             messageCount++;
           }
         } catch {
@@ -62,7 +85,12 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         }
       }
 
-      const { compressionRatio, truncateRatio } = await getRuntimeThresholds();
+      const {
+        compressionRatio,
+        compressionThresholdPercent,
+        truncateTargetPercent,
+        compressionThresholdSource,
+      } = await getRuntimeThresholds();
       const percentage = (totalTokens / CONTEXT_MAX_TOKENS) * 100;
       const canCompress = totalTokens > CONTEXT_MAX_TOKENS * compressionRatio;
 
@@ -73,12 +101,12 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         messages: messageCount,
         canCompress,
         governance: {
-          source: "runtimeControls.contextCompressionThresholdPercent",
-          compressionThresholdPercent: Math.round(compressionRatio * 100),
-          truncateTargetPercent: Math.round(truncateRatio * 100),
+          source: compressionThresholdSource,
+          compressionThresholdPercent,
+          truncateTargetPercent,
           compressionReason: canCompress
-            ? `当前上下文已达到 runtimeControls.contextCompressionThresholdPercent=${Math.round(compressionRatio * 100)}% 的压缩阈值`
-            : `当前上下文未达到 runtimeControls.contextCompressionThresholdPercent=${Math.round(compressionRatio * 100)}% 的压缩阈值`,
+            ? `当前上下文已达到 ${compressionThresholdSource}=${compressionThresholdPercent}% 的压缩阈值`
+            : `当前上下文未达到 ${compressionThresholdSource}=${compressionThresholdPercent}% 的压缩阈值`,
         },
       });
     } catch (e) {
@@ -138,7 +166,12 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
   app.post("/api/context/:bookId/truncate", async (c) => {
     const bookId = c.req.param("bookId");
     const body = await c.req.json<{ maxTokens?: number }>().catch(() => ({ maxTokens: undefined }));
-    const { compressionRatio, truncateRatio } = await getRuntimeThresholds();
+    const {
+      truncateRatio,
+      compressionThresholdPercent,
+      truncateTargetPercent,
+      truncateTargetSource,
+    } = await getRuntimeThresholds();
     const targetTokens = body.maxTokens ?? CONTEXT_MAX_TOKENS * truncateRatio;
 
     try {
@@ -149,11 +182,11 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
       const summariesPath = join(storyDir, "chapter_summaries.md");
       try {
         const content = await readFile(summariesPath, "utf-8");
-        const result = countTokens(content);
+        const estimatedTokens = estimateTokenCount(content);
 
-        if (result.tokens > targetTokens) {
+        if (estimatedTokens > targetTokens) {
           // Keep only last N characters to fit target
-          const ratio = targetTokens / result.tokens;
+          const ratio = targetTokens / estimatedTokens;
           const keepChars = Math.floor(content.length * ratio);
           const truncated = content.slice(-keepChars);
 
@@ -167,10 +200,10 @@ export function createContextManagerRouter(ctx: RouterContext): Hono {
         status: "truncated",
         targetTokens,
         governance: {
-          source: "runtimeControls.contextTruncateTargetPercent",
-          compressionThresholdPercent: Math.round(compressionRatio * 100),
-          truncateTargetPercent: Math.round(truncateRatio * 100),
-          truncateReason: `本次截断目标来自 runtimeControls.contextTruncateTargetPercent=${Math.round(truncateRatio * 100)}%`,
+          source: truncateTargetSource,
+          compressionThresholdPercent,
+          truncateTargetPercent,
+          truncateReason: `本次截断目标来自 ${truncateTargetSource}=${truncateTargetPercent}%`,
         },
       });
     } catch (e) {

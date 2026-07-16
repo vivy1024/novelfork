@@ -99,6 +99,20 @@ export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logg
 export { loadProjectConfig, GLOBAL_CONFIG_DIR, GLOBAL_ENV_PATH, isApiKeyOptionalForEndpoint } from "./utils/config-loader.js";
 export { computeAnalytics, type AnalyticsData, type TokenStats } from "./utils/analytics.js";
 export {
+  requireModelForAiAction,
+  type AiAction,
+  type AiGateResult,
+  type ProviderRuntimeStatus,
+} from "./utils/ai-model-gate.js";
+export {
+  ApiError,
+  buildStructuredErrorEnvelope,
+  type StructuredErrorEnvelope,
+  type StructuredErrorEnvelopeOptions,
+} from "./utils/http-error.js";
+export { isSafeBookId } from "./utils/resource-identifiers.js";
+export { estimateTokenCount } from "./utils/token-estimator.js";
+export {
   collectStaleHookDebt,
   evaluateHookAdmission,
   classifyHookDisposition,
@@ -153,4 +167,4 @@ export { executeRuntimeCommandInput, type RuntimeCommandCompactResult, type Runt
 
 // Plugins
 export { NovelForkPlugin, PluginManager } from "./plugins/index.js";
-export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig, PluginToolDefinition, PluginAgentPreset, PluginRouteDefinition, PluginPromptExtension, PluginUISection } from "./plugins/index.js";
+export type { PluginManifest, PluginState, PluginTool, PluginHook, PluginContext, PluginMetadata, PluginManagerConfig, PluginToolDefinition, PluginAgentPreset, PluginRouteDefinition, PluginPromptExtension, PluginUISection, CorePluginActivationSnapshot, PluginManagerLifecycleListener } from "./plugins/index.js";

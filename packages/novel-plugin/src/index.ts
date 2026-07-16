@@ -31,11 +31,17 @@ export {
   handleMemoryBulkApprove,
   handleMemoryBulkDelete,
   handlePgiAsk,
+  handlePresetsRead,
+  handlePresetsWrite,
+  handlePresetsCheckCompliance,
+  handleBeatRead,
+  handleBeatWrite,
   handleSceneSpec,
 } from "./handlers/index.js";
 export type {
   ChapterReadInput,
   ChapterReadResult,
+  TrustedChapterReadOptions,
   JingweiReadBriefInput,
   JingweiReadBriefResponse,
   JingweiReadCategoryInput,
@@ -76,6 +82,12 @@ export type {
   PgiAskFailure,
   PgiAskQuestionItem,
   AskUserQuestionInputItem,
+  PresetsReadInput,
+  PresetsWriteInput,
+  PresetsCheckComplianceInput,
+  BeatReadInput,
+  BeatWriteInput,
+  TrustedPresetBeatOptions,
   SceneSpecInput,
   SceneSpecResult,
   SceneSpec,
@@ -177,5 +189,9 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
   ],
   systemPromptExtensions: [],
 };
+
+export { NOVEL_RUNTIME_CONTRIBUTION, NOVEL_RUNTIME_SYSTEM_PROMPT } from "./runtime-contribution.js";
+export { NOVEL_LEARNING_CONTRIBUTION } from "./learning-contribution.js";
+export type { NovelBookRuntimeBinding } from "./runtime-contribution.js";
 
 export default NOVEL_PLUGIN_MANIFEST;

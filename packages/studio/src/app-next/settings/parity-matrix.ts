@@ -56,7 +56,7 @@ export const CLAUDE_CODE_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-source", label: "Claude commands registry", reference: "claude/restored-cli-src/src/commands.ts#getCommands loads bundled, skill dir, workflow, plugin, dynamic skills and built-ins", checkedAt: "2026-05-07" },
       { source: "local-source", label: "Claude command type", reference: "claude/restored-cli-src/src/types/command.ts supports prompt/local/local-jsx commands, aliases, availability, hidden/sensitive/immediate flags", checkedAt: "2026-05-07" },
-      { source: "novelfork-code", label: "NovelFork slash registry", reference: "packages/studio/src/app-next/agent-conversation/slash-command-registry.ts static DEFAULT_COMMANDS", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NarraFork native command surface", reference: "packages/narrafork-runtime-private/frontend/components/narrator/NarratorPanel.tsx", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     uiClaimAllowed: false,
@@ -69,7 +69,7 @@ export const CLAUDE_CODE_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-source", label: "Claude permission modes", reference: "claude/restored-cli-src/src/types/permissions.ts EXTERNAL_PERMISSION_MODES acceptEdits/bypassPermissions/default/dontAsk/plan plus internal auto/bubble", checkedAt: "2026-05-07" },
       { source: "local-source", label: "Claude permission pipeline", reference: "claude/restored-cli-src/src/utils/permissions/permissions.ts has rule sources, deny/ask/allow precedence, tool.checkPermissions, hooks, classifier, sandbox and headless fallback", checkedAt: "2026-05-07" },
-      { source: "novelfork-code", label: "NovelFork permission mode/toolPolicy", reference: "packages/studio/src/shared/session-types.ts + packages/studio/src/api/lib/session-tool-policy.ts + session-tool-executor.ts", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NarraFork Runtime permission pipeline", reference: "packages/narrafork-runtime-private/server/services/narrator-permission.ts + server/lib/agent/tool-executor.ts", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     uiClaimAllowed: false,
@@ -82,7 +82,7 @@ export const CLAUDE_CODE_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-source", label: "Claude session storage", reference: "claude/restored-cli-src/src/utils/sessionStorage.ts JSONL transcript, parentUuid chain, project dir, sidecar metadata, progress filtering", checkedAt: "2026-05-07" },
       { source: "local-source", label: "Claude session restore", reference: "claude/restored-cli-src/src/utils/sessionRestore.ts restores file history, attribution, todos, context collapse, agent/worktree state", checkedAt: "2026-05-07" },
-      { source: "novelfork-code", label: "NovelFork session lifecycle", reference: "packages/studio/src/api/lib/session-lifecycle-service.ts", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NarraFork Runtime narrator lifecycle", reference: "packages/narrafork-runtime-private/server/services/narrator-service.ts + server/services/narrator-session.ts", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     uiClaimAllowed: false,
@@ -95,7 +95,7 @@ export const CLAUDE_CODE_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-source", label: "Claude usage API", reference: "claude/restored-cli-src/src/services/api/usage.ts fetches OAuth utilization/rate limits", checkedAt: "2026-05-07" },
       { source: "local-source", label: "Claude bootstrap usage state", reference: "claude/restored-cli-src/src/bootstrap/state.ts tracks model usage, cost and token counters", checkedAt: "2026-05-07" },
-      { source: "novelfork-code", label: "NovelFork headless chat", reference: "packages/studio/src/api/lib/session-headless-chat-service.ts NDJSON events + unknown cost + cumulative token envelope", checkedAt: "2026-05-07" },
+      { source: "novelfork-code", label: "NarraFork Runtime narrator stream", reference: "packages/narrafork-runtime-private/server/services/narrator-session.ts + server/lib/agent/loop.ts", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     uiClaimAllowed: false,
@@ -135,7 +135,7 @@ export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
     upstreamEvidence: [
       { source: "local-cli", label: "codex exec --help", reference: "exec supports --json, --output-schema, --output-last-message, resume", checkedAt: "2026-05-06" },
       { source: "official-docs", label: "Codex non-interactive mode", reference: "https://developers.openai.com/codex/noninteractive", checkedAt: "2026-05-06" },
-      { source: "novelfork-code", label: "NovelFork headless chat", reference: "packages/studio/src/api/routes/session.ts headless-chat + packages/cli chat/exec", checkedAt: "2026-05-06" },
+      { source: "novelfork-code", label: "NarraFork Runtime narrator execution", reference: "packages/narrafork-runtime-private/server/services/narrator-session.ts + server/routes/novelfork-product-books.ts", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     surface: "POST /api/sessions/headless-chat、novelfork chat/exec stream-json",
@@ -185,12 +185,12 @@ export const CODEX_CLI_PARITY_MATRIX: readonly ParityMatrixEntry[] = [
       { source: "local-cli", label: "codex --help", reference: "--ask-for-approval untrusted|on-failure|on-request|never; local 0.80.0 still lists on-failure", checkedAt: "2026-05-06" },
       { source: "official-docs", label: "Codex CLI reference approvals", reference: "https://developers.openai.com/codex/cli/reference#global-flags", checkedAt: "2026-05-06" },
       { source: "official-docs", label: "Codex config reference granular approvals", reference: "https://developers.openai.com/codex/config-reference#approval_policy", checkedAt: "2026-05-06" },
-      { source: "novelfork-code", label: "NovelFork permissionMode/toolPolicy", reference: "packages/studio/src/app-next/agent-conversation/surface + session-tool-policy", checkedAt: "2026-05-06" },
+      { source: "novelfork-code", label: "NarraFork native permission pipeline", reference: "packages/narrafork-runtime-private/frontend/components/narrator/NarratorPanel.tsx + server Runtime permission pipeline", checkedAt: "2026-07-13" },
     ],
     novelForkStatus: "partial",
     uiClaimAllowed: false,
     surface: "SessionConfig permissionMode + toolPolicy ask/allow/deny",
-    verification: "ConversationSurface/session route/tool policy tests + Task 12 matrix guard",
+    verification: "NarraFork native NarratorPanel permission pipeline + parity matrix guard",
     notes: "Codex official policy is untrusted/on-request/never plus granular approval toggles;本机 0.80.0 help 仍列 on-failure。NovelFork permissionMode/toolPolicy 能表达 ask/allow/deny 和 pending confirmation，但没有 Codex execpolicy、sandbox escalation approval 或 granular approval_policy 的完整模型。",
   },
   {

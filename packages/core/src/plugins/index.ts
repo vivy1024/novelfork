@@ -18,3 +18,33 @@ export type {
   PluginUISection,
 } from "./types.js";
 export type { PluginManagerConfig } from "./plugin-manager.js";
+export type { CorePluginActivationSnapshot, PluginManagerLifecycleListener } from "./plugin-lifecycle.js";
+export { RuntimePluginHost } from "./runtime-plugin-host.js";
+export type {
+  PortableJsonPrimitive,
+  PortableJsonValue,
+  PortableJsonSchema,
+  RuntimeResourceBinding,
+  RuntimeTextGenerationMessage,
+  RuntimeTextGenerationRequest,
+  RuntimeTextGenerationResult,
+  RuntimeTextGenerator,
+  RuntimeResolveContext,
+  ToolExecutionContext,
+  RuntimeToolRisk,
+  RuntimeToolDefinition,
+  RuntimeToolResult,
+  RuntimeToolHandler,
+  RuntimeToolContribution,
+  RuntimeRouteContribution,
+  RuntimePageContribution,
+  RuntimeAgentPresetContribution,
+  RuntimePromptExtension,
+  RuntimeLearningLocalizedText,
+  RuntimeLearningCategoryContribution,
+  RuntimeLearningActionContribution,
+  RuntimeLearningDocumentContribution,
+  RuntimeLearningContribution,
+  RuntimePluginContribution,
+  ResolvedRuntimeContributions,
+} from "./runtime-contract.js";

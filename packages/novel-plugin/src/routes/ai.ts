@@ -30,11 +30,7 @@ import {
   type AuthorMaterialPersistenceInfo,
   type AuthorWebCaptureInput,
   type AuthorWebCaptureResult,
-} from "@vivy1024/novelfork-studio/shared/author-materials";
-import {
-  logObservedAiError,
-  logObservedAiSuccess,
-} from "@vivy1024/novelfork-studio/api/lib/ai-request-observer";
+} from "./author-materials.js";
 import type { RouterContext } from "./context.js";
 
 type EventHandler = (event: string, data: unknown) => void;
@@ -482,7 +478,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       ];
 
       const response = await chatCompletion(config.client, config.model, messages);
-      logObservedAiSuccess(pipelineLogger, {
+      ctx.aiRequestObserver?.logSuccess(pipelineLogger, {
         endpoint: "/api/ai/transform",
         requestKind: `transform:${mode}`,
         narrator: "studio.ai.transform",
@@ -498,7 +494,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       });
       return c.json({ result: response.content, mode });
     } catch (e) {
-      logObservedAiError(pipelineLogger, {
+      ctx.aiRequestObserver?.logError(pipelineLogger, {
         endpoint: "/api/ai/transform",
         requestKind: `transform:${mode}`,
         narrator: "studio.ai.transform",
@@ -738,7 +734,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
         content = codeBlockMatch[1]!.trim();
       }
 
-      logObservedAiSuccess(pipelineLogger, {
+      ctx.aiRequestObserver?.logSuccess(pipelineLogger, {
         endpoint: "/api/ai/outline",
         requestKind: `outline:${body.action}`,
         narrator: "studio.ai.outline",
@@ -754,7 +750,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
       const parsed = JSON.parse(content) as { nodes: unknown[]; message?: string };
       return c.json(parsed);
     } catch (e) {
-      logObservedAiError(pipelineLogger, {
+      ctx.aiRequestObserver?.logError(pipelineLogger, {
         endpoint: "/api/ai/outline",
         requestKind: `outline:${body.action}`,
         narrator: "studio.ai.outline",
@@ -790,7 +786,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
         const response = await chatCompletion(config.client, config.model, messages);
         const fullText = response.content;
-        logObservedAiSuccess(config.logger, {
+        ctx.aiRequestObserver?.logSuccess(config.logger, {
           endpoint: "/api/ai/complete",
           requestKind: "inline-complete",
           narrator: "studio.ai.complete",
@@ -819,7 +815,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
           data: JSON.stringify({ text: "", done: true, streamSource: "chunked-buffer" }),
         });
       } catch (e) {
-        logObservedAiError(config.logger, {
+        ctx.aiRequestObserver?.logError(config.logger, {
           endpoint: "/api/ai/complete",
           requestKind: "inline-complete",
           narrator: "studio.ai.complete",

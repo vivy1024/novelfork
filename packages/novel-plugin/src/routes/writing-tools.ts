@@ -3,14 +3,18 @@ import { join } from "node:path";
 
 import { Hono } from "hono";
 import {
+  buildStructuredErrorEnvelope,
   createKvRepository,
   getStorageDatabase,
+  requireModelForAiAction,
   type StyleProfile,
 } from "@vivy1024/novelfork-core";
 import {
   analyzeDialogue,
-  analyzeRhythm,
-  analyzeSensitiveWords,
+    analyzeRhythm,
+    analyzeBookRhythm,
+    analyzeSensitiveWords,
+
   buildConflictMap,
   buildPovDashboard,
   detectToneDrift,
@@ -20,12 +24,6 @@ import {
   type DialogueChapterType,
   type ProgressConfig,
 } from "../engine/index.js";
-import { analyzeRhythm as analyzeBookRhythm } from "@vivy1024/novelfork-studio/api/lib/rhythm-analyzer";
-
-import { requireModelForAiAction } from "@vivy1024/novelfork-studio/api/lib/ai-gate";
-import { buildStructuredErrorEnvelope } from "@vivy1024/novelfork-studio/api/errors";
-import { ProviderRuntimeStore } from "@vivy1024/novelfork-studio/api/lib/provider-runtime-store";
-import { buildRuntimeProviderStatus } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
 import type { RouterContext } from "./context.js";
 
 const PROGRESS_CONFIG_KEY = "writing-tools:progress-config";
@@ -72,8 +70,10 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
   app.post("/api/books/:bookId/hooks/generate", async (c) => {
     const body = await readJsonBody(c);
     const sessionLlm = await ctx.getSessionLlm(c);
-    const providerStore = ctx.providerStore ?? new ProviderRuntimeStore();
-    const gate = requireModelForAiAction("ai-writing", await buildRuntimeProviderStatus(providerStore));
+    const gate = requireModelForAiAction(
+      "ai-writing",
+      await ctx.getRuntimeModelStatus?.() ?? { hasUsableModel: false },
+    );
     if (!gate.ok && !sessionLlm) {
       return c.json({
         ...buildStructuredErrorEnvelope({

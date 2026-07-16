@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { ChapterMeta, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
+import type { ChapterMeta, StorageDatabase } from "@vivy1024/novelfork-core";
 import {
   getStorageDatabase,
 } from "@vivy1024/novelfork-core";
@@ -13,7 +13,7 @@ import {
   createJingweiSettingRepository,
 } from "../engine/jingwei/index.js";
 
-import type { ResourceCheckpointResult, CreateResourceCheckpointInput } from "@vivy1024/novelfork-studio/api/lib/resource-checkpoint-service";
+import type { CreateResourceCheckpointInput, ResourceCheckpointResult } from "./resource-checkpoint-service.js";
 
 import type {
   ConflictThread,
@@ -26,14 +26,19 @@ import type {
   NarrativeWarning,
   PayoffLink,
   StoryBeat,
-} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
+} from "./narrative-line-types.js";
 
 export interface NarrativeLineCheckpointService {
   readonly createCheckpoint: (input: CreateResourceCheckpointInput) => Promise<ResourceCheckpointResult>;
 }
 
+export interface NarrativeLineState {
+  readonly loadChapterIndex: (bookId: string) => Promise<ReadonlyArray<ChapterMeta>>;
+  readonly bookDir: (bookId: string) => string;
+}
+
 export interface NarrativeLineServiceOptions {
-  readonly state: StateManager;
+  readonly state: NarrativeLineState;
   readonly storage?: StorageDatabase;
   readonly now?: () => Date;
   readonly checkpoint?: NarrativeLineCheckpointService;
@@ -133,7 +138,7 @@ export function createNarrativeLineService(options: NarrativeLineServiceOptions)
 }
 
 export class NarrativeLineService {
-  private readonly state: StateManager;
+  private readonly state: NarrativeLineState;
   private readonly storage?: StorageDatabase;
   private readonly now: () => Date;
   private readonly checkpoint?: NarrativeLineCheckpointService;

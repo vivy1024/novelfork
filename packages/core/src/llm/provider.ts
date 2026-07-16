@@ -70,11 +70,22 @@ export interface LLMMessage {
 }
 
 export interface LLMClient {
-  readonly provider: "openai" | "anthropic";
+  readonly provider: "openai" | "anthropic" | "host";
   readonly apiFormat: "chat" | "responses";
   readonly stream: boolean;
   readonly _openai?: OpenAI;
   readonly _anthropic?: Anthropic;
+  /** Optional host transport used by Runtime-backed domain agents. */
+  readonly completion?: (
+    model: string,
+    messages: ReadonlyArray<LLMMessage>,
+    options: {
+      readonly temperature: number;
+      readonly maxTokens: number;
+      readonly webSearch?: boolean;
+      readonly onStreamProgress?: OnStreamProgress;
+    },
+  ) => Promise<LLMResponse>;
   readonly defaults: {
     readonly temperature: number;
     readonly maxTokens: number;
@@ -281,6 +292,17 @@ export async function chatCompletion(
   const errorCtx = { baseUrl: client._openai?.baseURL ?? "(anthropic)", model };
 
   try {
+    if (client.completion) {
+      return await client.completion(model, messages, {
+        temperature: resolved.temperature,
+        maxTokens: resolved.maxTokens,
+        webSearch: options?.webSearch,
+        onStreamProgress,
+      });
+    }
+    if (client.provider === "host") {
+      throw new Error("Host LLM client is missing its completion transport.");
+    }
     if (client.provider === "anthropic") {
       return client.stream
         ? await chatCompletionAnthropic(client._anthropic!, model, messages, resolved, client.defaults.thinkingBudget, onStreamProgress)

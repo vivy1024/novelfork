@@ -4,10 +4,14 @@ import { createRoot } from "react-dom/client";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./app-next/router";
 import { StudioNextApp } from "./app-next";
+import { RuntimeAuthGate } from "./app-next/p0/RuntimeAuthGate";
+import { installRuntimeAuthenticatedFetch } from "./app-next/runtime/auth";
 import { initTheme } from "./hooks/use-theme";
 
-// Apply stored theme immediately to prevent flash
+// Apply stored theme immediately to prevent flash and route every retained
+// NovelFork same-origin API call through Runtime authentication.
 initTheme();
+installRuntimeAuthenticatedFetch();
 
 // TanStack Router 接管 URL 监听与导航。
 // StudioNextApp 作为 defaultComponent 渲染，内部通过 useRouterState/useNavigate 与 router 交互。
@@ -15,6 +19,8 @@ initTheme();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RouterProvider router={router} defaultComponent={StudioNextApp} />
+    <RuntimeAuthGate>
+      <RouterProvider router={router} defaultComponent={StudioNextApp} />
+    </RuntimeAuthGate>
   </StrictMode>,
 );

@@ -38,7 +38,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
   const updatedEntries = Array.isArray(jingweiDelta?.updated) ? jingweiDelta.updated.length : 0;
 
   return (
-    <div className="rounded-lg border border-border bg-card p-3 space-y-3 text-sm">
+    <div data-testid="tool-result-pipeline" className="rounded-lg border border-border bg-card p-3 space-y-3 text-sm">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">

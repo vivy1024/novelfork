@@ -1,4 +1,4 @@
-export { estimateTokenCount as estimateTokens } from "@vivy1024/novelfork-studio/api/lib/token-utils";
+export { estimateTokenCount as estimateTokens } from "@vivy1024/novelfork-core";
 import type { JingweiLegacyContextItem } from "../types.js";
 
 export interface TokenBudgetResult<TItem extends JingweiLegacyContextItem = JingweiLegacyContextItem> {

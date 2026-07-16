@@ -120,6 +120,8 @@ export interface IdeWorkbenchProps {
   issues?: readonly EditorIssue[];
   /** 问题条目点击回调（如跳转到对应行） */
   onIssueClick?: (issue: EditorIssue) => void;
+  /** Runtime facade only provides semantic workspace resources, not legacy file APIs. */
+  runtimeProductMode?: boolean;
 }
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
@@ -169,6 +171,7 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
 
 export function IdeWorkbench({
   bookId,
+  repositoryPath,
   nodes,
   selectedNode,
   onOpen,
@@ -184,6 +187,7 @@ export function IdeWorkbench({
   onCreateSession,
   issues,
   onIssueClick,
+  runtimeProductMode = false,
 }: IdeWorkbenchProps) {
   // --- Layout state ---
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -300,9 +304,11 @@ export function IdeWorkbench({
     return () => { cancelled = true; };
   }, [bookId]);
 
-  // --- 资源管理器：真实文件树（始终加载） ---
-  const fileTree = useBookFileTree(bookId, true);
+  // Runtime facade exposes a semantic, bound resource tree. In that mode the
+  // existing IDE shell renders supplied nodes and does not issue legacy file API calls.
+  const fileTree = useBookFileTree(bookId, !runtimeProductMode);
   const refreshFileTree = fileTree.refresh;
+  const explorerNodes = runtimeProductMode ? nodes : fileTree.nodes;
 
   // 有正文章节 → 自动跳过建书引导
   useEffect(() => {
@@ -851,8 +857,8 @@ export function IdeWorkbench({
               <div ref={hostRef} className="flex-1 relative" />
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}
               {panelsReady && getContainer("explorer") && createPortal(
-                fileTree.nodes.length > 0
-                  ? <WorkbenchResourceTree nodes={fileTree.nodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
+                explorerNodes.length > 0
+                  ? <WorkbenchResourceTree nodes={explorerNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
                   : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
                 getContainer("explorer")!
               )}
@@ -916,6 +922,7 @@ export function IdeWorkbench({
                               node={tabId === ideTabs.activeTabId ? activeNode : tabNode}
                               nodes={nodes}
                               bookId={bookId}
+                              repositoryPath={repositoryPath}
                               onSave={onSave}
                               onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
                               onGuideComplete={onGuideComplete}
@@ -933,6 +940,7 @@ export function IdeWorkbench({
                         node={null}
                         nodes={nodes}
                         bookId={bookId}
+                        repositoryPath={repositoryPath}
                         onSave={onSave}
                         onCanvasContextChange={handleCanvasContextChange}
                         onGuideComplete={onGuideComplete}
@@ -971,6 +979,7 @@ export function IdeWorkbench({
                         node={splitNode}
                         nodes={nodes}
                         bookId={bookId}
+                        repositoryPath={repositoryPath}
                         onSave={onSave}
                         onCanvasContextChange={() => {}}
                         chapterActions={chapterActions}

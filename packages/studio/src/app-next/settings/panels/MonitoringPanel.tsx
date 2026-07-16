@@ -1,173 +1,120 @@
-import { useState, useEffect } from "react";
-import { fetchJson } from "../../../hooks/use-api";
-import { Activity, Cpu, HardDrive, MemoryStick } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Boxes, Cable, RefreshCw, ServerCog } from "lucide-react";
 
-interface SystemMetrics {
-  cpu: {
-    usage: number;
-    cores: number;
-  };
-  memory: {
-    total: number;
-    used: number;
-    free: number;
-    usagePercent: number;
-  };
-  disk: {
-    total: number;
-    used: number;
-    free: number;
-    usagePercent: number;
-  };
-  timestamp: number;
-}
+import {
+  createGatewayClient,
+  createSettingsClient,
+  type GatewayStatus,
+  type RuntimeSettings,
+} from "@/app-next/runtime-admin";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const k = 1024;
-  const sizes = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(2)} ${sizes[i]}`;
+const settingsClient = createSettingsClient();
+const gatewayClient = createGatewayClient();
+
+function objectSummary(value: unknown): string {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return "Runtime 未返回配置";
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length === 0) return "使用 Runtime 默认配置";
+  return entries
+    .slice(0, 6)
+    .map(([key, nested]) => `${key}: ${typeof nested === "object" ? "已配置" : String(nested)}`)
+    .join(" · ");
 }
 
 export function MonitoringPanel() {
-  const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
+  const [settings, setSettings] = useState<RuntimeSettings | null>(null);
+  const [gateway, setGateway] = useState<GatewayStatus | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    async function loadMetrics() {
-      try {
-        const data = await fetchJson<SystemMetrics>("/settings/metrics");
-        setMetrics(data);
-        setLoading(false);
-      } catch {
-        setLoading(false);
-      }
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [nextSettings, nextGateway] = await Promise.all([
+        settingsClient.get(),
+        gatewayClient.status(),
+      ]);
+      setSettings(nextSettings);
+      setGateway(nextGateway);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setLoading(false);
     }
-
-    loadMetrics();
-    const interval = setInterval(loadMetrics, 5000);
-
-    return () => clearInterval(interval);
   }, []);
 
-  if (loading) {
-    return <div className="text-muted-foreground">加载中...</div>;
-  }
-
-  if (!metrics) {
-    return <div className="text-muted-foreground">无法获取系统指标</div>;
-  }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">系统监控</h2>
-        <p className="text-sm text-muted-foreground">
-          实时查看系统资源使用情况
-        </p>
+    <div className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-semibold text-foreground">运行资源</h2>
+          <p className="text-sm text-muted-foreground">展示 Runtime 已公开的容器、章节与消息网关状态，不伪造 CPU、内存或磁盘指标。</p>
+        </div>
+        <Button type="button" variant="outline" onClick={() => void load()} disabled={loading}>
+          <RefreshCw className={loading ? "animate-spin" : ""} data-icon="inline-start" />
+          刷新
+        </Button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* CPU 使用率 */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-blue-500/10">
-              <Cpu className="w-5 h-5 text-blue-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">CPU</h3>
-              <p className="text-xs text-muted-foreground">{metrics.cpu.cores} 核心</p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">使用率</span>
-              <span className="font-mono text-foreground">{metrics.cpu.usage}%</span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className="bg-blue-500 h-2 rounded-full transition-all"
-                style={{ width: `${metrics.cpu.usage}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      {error ? (
+        <Alert>
+          <AlertTitle>运行资源读取失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-        {/* 内存使用率 */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-green-500/10">
-              <MemoryStick className="w-5 h-5 text-green-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">内存</h3>
-              <p className="text-xs text-muted-foreground">
-                {formatBytes(metrics.memory.total)} 总计
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">已用</span>
-              <span className="font-mono text-foreground">
-                {formatBytes(metrics.memory.used)} ({metrics.memory.usagePercent}%)
-              </span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className="bg-green-500 h-2 rounded-full transition-all"
-                style={{ width: `${metrics.memory.usagePercent}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      <Alert>
+        <AlertTitle>资源指标边界</AlertTitle>
+        <AlertDescription>
+          当前 Runtime 没有面向 Studio 的 CPU、内存和磁盘实时指标契约；存储占用请前往“存储空间”。此页面只显示现有原生 API 能确认的资源状态。
+        </AlertDescription>
+      </Alert>
 
-        {/* 磁盘使用率 */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-purple-500/10">
-              <HardDrive className="w-5 h-5 text-purple-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">磁盘</h3>
-              <p className="text-xs text-muted-foreground">
-                {formatBytes(metrics.disk.total)} 总计
-              </p>
-            </div>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between text-sm">
-              <span className="text-muted-foreground">已用</span>
-              <span className="font-mono text-foreground">
-                {formatBytes(metrics.disk.used)} ({metrics.disk.usagePercent}%)
-              </span>
-            </div>
-            <div className="w-full bg-secondary rounded-full h-2">
-              <div
-                className="bg-purple-500 h-2 rounded-full transition-all"
-                style={{ width: `${metrics.disk.usagePercent}%` }}
-              />
-            </div>
-          </div>
+      {loading ? (
+        <div className="grid gap-4 md:grid-cols-3">
+          {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 rounded-xl" />)}
         </div>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-3">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Cable className="size-4 text-muted-foreground" />消息网关</CardTitle>
+              <CardDescription>来自 Runtime 消息网关状态接口。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2 text-sm">
+              <div className="flex items-center justify-between"><span className="text-muted-foreground">服务状态</span><Badge variant={gateway?.started ? "default" : "secondary"}>{gateway?.started ? "已启动" : "未启动"}</Badge></div>
+              <div className="flex items-center justify-between"><span className="text-muted-foreground">已连接平台</span><span className="font-mono">{gateway?.platforms.length ?? 0}</span></div>
+              {(gateway?.platforms ?? []).length > 0 ? <p className="text-xs text-muted-foreground">{gateway?.platforms.join("、")}</p> : null}
+            </CardContent>
+          </Card>
 
-        {/* 更新时间 */}
-        <div className="rounded-lg border border-border p-4">
-          <div className="flex items-center gap-3 mb-4">
-            <div className="p-2 rounded-lg bg-orange-500/10">
-              <Activity className="w-5 h-5 text-orange-500" />
-            </div>
-            <div>
-              <h3 className="font-semibold text-foreground">监控状态</h3>
-              <p className="text-xs text-muted-foreground">每 5 秒更新</p>
-            </div>
-          </div>
-          <div className="text-sm text-muted-foreground">
-            最后更新：{new Date(metrics.timestamp).toLocaleTimeString()}
-          </div>
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><Boxes className="size-4 text-muted-foreground" />章节容器</CardTitle>
+              <CardDescription>读取 Runtime `settings.containers`，不在此执行容器清理。</CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">{objectSummary(settings?.containers)}</CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2"><ServerCog className="size-4 text-muted-foreground" />章节运行配置</CardTitle>
+              <CardDescription>读取 Runtime `settings.chapters`。</CardDescription>
+            </CardHeader>
+            <CardContent className="text-sm text-muted-foreground">{objectSummary(settings?.chapters)}</CardContent>
+          </Card>
         </div>
-      </div>
+      )}
     </div>
   );
 }

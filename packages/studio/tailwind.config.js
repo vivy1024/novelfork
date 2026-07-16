@@ -4,8 +4,9 @@ export default {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx}",
+    // novel-plugin owns Studio-rendered UI; core is backend/domain-only and its
+    // regex/string literals must not be interpreted as Tailwind candidates.
     "../novel-plugin/src/**/*.{js,ts,jsx,tsx}",
-    "../core/src/**/*.{js,ts,jsx,tsx}",
   ],
   theme: {
     extend: {

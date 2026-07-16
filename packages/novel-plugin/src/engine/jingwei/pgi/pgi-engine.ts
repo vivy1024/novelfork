@@ -1,6 +1,7 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
 import { createJingweiCharacterArcRepository } from "../repositories/character-arc-repo.js";
+import { createJingweiEventRepository } from "../repositories/event-repo.js";
 
 export interface PGIQuestion {
   id: string;
@@ -24,14 +25,6 @@ export interface GeneratePGIQuestionsResult {
   heuristicsTriggered: string[];
 }
 
-interface JingweiEventRow {
-  id: string;
-  name: string;
-  chapter_start: number | null;
-  chapter_end: number | null;
-  foreshadow_state: string | null;
-}
-
 export async function generatePGIQuestions(storage: StorageDatabase, input: GeneratePGIQuestionsInput): Promise<GeneratePGIQuestionsResult> {
   const questions: PGIQuestion[] = [];
   const heuristics = new Set<string>();
@@ -51,14 +44,14 @@ export async function generatePGIQuestions(storage: StorageDatabase, input: Gene
 
   // 规则 2：伏笔到期
   if (questions.length < 5) {
-    const events = storage.sqlite.prepare(`
-      SELECT "id", "name", "chapter_start", "chapter_end", "foreshadow_state"
-      FROM "bible_event"
-      WHERE "book_id" = ? AND "deleted_at" IS NULL AND "foreshadow_state" = 'buried'
-      ORDER BY COALESCE("chapter_end", "chapter_start", 0) ASC
-    `).all(input.bookId) as JingweiEventRow[];
+    const events = (await createJingweiEventRepository(storage).listByBook(input.bookId))
+      .filter((event) => event.foreshadowState === "buried")
+      .sort((left, right) => (
+        (left.chapterEnd ?? left.chapterStart ?? Number.MAX_SAFE_INTEGER)
+        - (right.chapterEnd ?? right.chapterStart ?? Number.MAX_SAFE_INTEGER)
+      ));
     for (const event of events) {
-      const plannedAt = event.chapter_end ?? event.chapter_start;
+      const plannedAt = event.chapterEnd ?? event.chapterStart;
       if (!plannedAt || Math.abs(input.chapter - plannedAt) > 3) continue;
       heuristics.add("foreshadow-due");
       questions.push({

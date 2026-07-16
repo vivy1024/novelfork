@@ -8,9 +8,14 @@ describe("Agent Shell route parsing", () => {
     expect(parseShellRoute("/next/narrators/s-1")).toEqual({ kind: "narrator", sessionId: "s-1" });
     expect(parseShellRoute("/next/books/book-1")).toEqual({ kind: "book", bookId: "book-1" });
     expect(parseShellRoute("/next/sessions")).toEqual({ kind: "sessions" });
+    expect(parseShellRoute("/next/sessions/new")).toEqual({ kind: "sessions", create: true });
     expect(parseShellRoute("/next/search")).toEqual({ kind: "search" });
     expect(parseShellRoute("/next/routines")).toEqual({ kind: "routines" });
+    expect(parseShellRoute("/next/knowledge")).toEqual({ kind: "knowledge" });
+    expect(parseShellRoute("/next/scheduled-tasks")).toEqual({ kind: "scheduled-tasks" });
+    expect(parseShellRoute("/next/groups")).toEqual({ kind: "groups" });
     expect(parseShellRoute("/next/settings")).toEqual({ kind: "settings" });
+    expect(parseShellRoute("/next/learn")).toEqual({ kind: "learn" });
   });
 
   it("normalizes slashes, query strings, hashes, and encoded ids", () => {
@@ -28,9 +33,14 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "narrator", sessionId: "session 1" })).toBe("/next/narrators/session%201");
     expect(toShellPath({ kind: "book", bookId: "book/part" })).toBe("/next/books/book%2Fpart");
     expect(toShellPath({ kind: "sessions" })).toBe("/next/sessions");
+    expect(toShellPath({ kind: "sessions", create: true })).toBe("/next/sessions/new");
     expect(toShellPath({ kind: "search" })).toBe("/next/search");
     expect(toShellPath({ kind: "routines" })).toBe("/next/routines");
+    expect(toShellPath({ kind: "knowledge" })).toBe("/next/knowledge");
+    expect(toShellPath({ kind: "scheduled-tasks" })).toBe("/next/scheduled-tasks");
+    expect(toShellPath({ kind: "groups" })).toBe("/next/groups");
     expect(toShellPath({ kind: "settings" })).toBe("/next/settings");
+    expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
   });
 
   it("marks sidebar nav items active from route kind and params", () => {

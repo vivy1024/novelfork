@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-core",
-  "version": "3.0.0",
+  "version": "3.2.0",
   "description": "NovelFork core engine — multi-agent novel writing pipeline for Chinese web novels",
   "keywords": [
     "ai-novel-writing",
@@ -52,6 +52,10 @@
     "./plugins": {
       "types": "./dist/plugins/index.d.ts",
       "import": "./dist/plugins/index.js"
+    },
+    "./runtime-contracts": {
+      "types": "./src/runtime-contracts/index.ts",
+      "import": "./dist/runtime-contracts/index.js"
     }
   },
   "files": [

@@ -1,398 +1,129 @@
-# NovelFork Studio
+# NovelFork 开发约定
 
-**v3.0.0** | 2026-06-25 | 始终使用中文回复
+NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在 NarraFork 宿主内维护该仓库时的长期开发约定。
 
-**项目**: NovelFork — 网文小说 AI 辅助创作工作台（TypeScript + Bun + React 19 + Hono + SQLite + AI Agents）
-**开发者**: 薛小川 | GitHub `vivy1024` — ❌ 禁止虚构
-**仓库**: `vivy1024/novelfork`
+## 指令优先级
 
----
-
-## 工作流程（必须遵守）
-
-### 遇到 Bug / 错误
-
-```
-1. 调查（不猜）
-   - 读报错信息 → 读相关源码 → curl/日志实测复现
-   - 确认根因后才动手修
-   
-2. 修复
-   - 一次修对，不让用户当测试员
-   - 修完用 Browser/curl 验证，不是 typecheck 通过就算完
-   
-3. 验证
-   - 前端：Browser 截图
-   - 后端：curl 实测
-   - 编译产物：启动 exe 验证
+```text
+当前用户指令
+  > NarraFork 宿主系统与开发者规则
+  > 当前 Dynamic Spec 任务
+  > 用户明确指定的当前 Kiro Spec
+  > 本文件
+  > 历史计划、历史 Spec、历史记忆与上游参考文档
 ```
 
-### 实现新功能
+- 当前用户指令始终可以覆盖历史架构与计划。
+- 始终使用简体中文回复。
+- 根 `package.json`、根 `main.ts` 和当前源码是启动、构建及运行行为的事实来源。
 
-```
-1. 先读现有代码（不猜架构）
-   - 读相关文件，理解当前实现
-   - 找到正确的改动点
-   
-2. 实现
-   - 用 subagent 执行具体编码
-   - 主上下文负责规划和审查
-   
-3. 验证
-   - 编译通过 + 实际运行验证
-   - 前端改动必须 Browser 截图
+## 架构边界
+
+```text
+packages/studio/                    NovelFork 现有产品前端与通用工作台
+packages/novel-plugin/              小说领域：写作、章节、Lore、Narrative Memory、工作台
+packages/core/                      通用基础设施
+packages/narrafork-runtime-private/ 私有 NarraFork Agent Runtime
 ```
 
-### 发版
-
-```
-验证通过 → bump 版本 → 更新 CHANGELOG → commit → tag → push → compile → GitHub Release
-```
-
----
-
-## 铁律（违反 = 任务未完成）
-
-1. **不猜。** 信息不足时读代码/文档/日志，不靠假设写修复。
-2. **不让用户当测试员。** 自己验证通过再交付。
-3. **前端改动必须 Browser 截图。** typecheck ≠ 完成。
-4. **一次修对。** 同一个 bug 不允许反复试错超过 2 次，第 2 次失败必须停下来彻底调查。
-5. **停下来问。** 遇到不确定的，问用户，不要猜着做。
-6. **求是五步（思想底色）。** 任何任务默认遵循：先调查事实 → 找主要矛盾（先打最关键的）→ 集中力量打主攻（不分散）→ 实践检验（跑起来看，不靠推测）→ 完成后自我批评（诚实复盘，错了就改）。
-7. **记录纪律。** 决策和踩坑通过 Engram MCP 持久化（`mem_save`），会话结束写 `mem_session_summary`。防失误靠纪律，不靠临时记忆。
-
----
-
-## 版本管理
-
-| 规则 | 说明 |
-|------|------|
-| 语义化版本 | 新功能 → minor；bugfix → patch；破坏性 → major |
-| 即时发版 | 每完成一个用户可感知的功能/修复，立即发版 |
-| 标记位置 | `CLAUDE.md`、`package.json`（根+各包）、`CHANGELOG.md`、Git tag |
-| 发布产物 | `dist/novelfork-vX.Y.Z-windows-x64.exe` + SHA256 上传 GitHub Release |
-| 提交格式 | `type(scope): description` |
-
----
+- NovelFork 的产品前端和写作工作台保持为产品界面。
+- NarraFork Runtime 提供 Agent、权限、工具循环、会话持久化和实时通信等后端能力。
+- 小说领域逻辑归属 `packages/novel-plugin/`；`core`、`studio` 与 Runtime 通用层仅提供通用契约和宿主能力。
+- Runtime 通过受控产品契约及可信书籍绑定访问小说数据；前端或模型不应直接构造书籍路径、项目或 narrator 标识。
+- `packages/narrafork-runtime-private/CLAUDE.md` 是迁入上游源码的维护参考。宿主工具语义、当前产品决策和本文件优先于该参考文档。
 
-## 仓库结构
+## 标准开发流程
 
-| 目录 | 角色 |
-|------|------|
-| `packages/studio/` | 通用 Agent 工作台（React 19 + Hono + Vite） |
-| `packages/core/` | 通用基础设施（storage/llm/state/hooks） |
-| `packages/novel-plugin/` | 小说领域插件（engine/routes/handlers/pages） |
-| `packages/cli/` | CLI 工具 |
+### 1. 理解任务
 
-**插件化边界**：小说功能只能在 `novel-plugin/` 中。`core/` 和 `studio/` 不允许出现小说领域代码。
+1. 读取当前用户目标和相关源码、报错、日志或接口。
+2. 确认影响范围、数据边界和现有实现模式。
+3. 对多文件、行为变化或存在技术选择的任务，使用 NarraFork 原生 Plan Mode；简单明确的改动可直接处理。
 
----
+### 2. 实现
 
-## 功能地图（权威功能索引 — 看这里，别盲目 grep）
+1. 选择当前任务需要的最小改动。
+2. 沿用现有模块边界、类型约定和错误处理方式。
+3. 需要独立调查、复杂执行或隔离上下文时再使用 subagent；不把 subagent、Skill 或计划流程当成固定步骤。
+4. 不以 mock、假数据或临时旁路代替真实能力。
 
-> 代码索引：`bun run codegraph` → `docs/codegraph/CODEMAP.md`（811文件/4006符号导航图）。
-> 防漂移：`bun run docs:drift`（检查文档引用的文件/工具是否还存在）。
-> **定位用法**：先查本表/CODEMAP 找"功能在哪个文件"，再 Read，不要从零 grep。
-
-### 写作主链路（权威流程）
-```
-cockpit.snapshot → lore.read(scope=brief) → memory.read(purpose=write) → pgi.ask → AskUserQuestion
-  → scene.spec → lore.read(scope=category) + memory.read → pipeline.write → 候选稿 → memory.events
-```
-编排入口：`novel-plugin/src/handlers/pipeline-write-service.ts`（executePipelineWrite）。
-
-### 写作 Agent（继承 engine/agents/base.ts）
-| Agent | 职责 | 文件 |
-|------|------|------|
-| WriterAgent | 章节正文生成（含 creative→observer→settler 三段 + 动态词频提示 + 写后校验） | engine/agents/writer.ts |
-| ContinuityAuditor | 37 维一致性审查（输出 critical/warning/info） | engine/agents/continuity.ts |
-| ReviserAgent | 按审计 issue 定点修订（spot-fix） | engine/agents/reviser.ts |
-| ArchitectAgent/PlannerAgent/ComposerAgent | 架构/章节意图/上下文包（v1 旧管线 + 导入用） | engine/agents/{architect,planner,composer}.ts |
-| LengthNormalizerAgent/StateValidatorAgent/RadarAgent | 长度归一化/状态校验/选题雷达 | engine/agents/ |
-> 已删 4 个死 agent：chapter-analyzer/foundation-reviewer/consolidator/fanfic-canon-importer。
-
-### Agent 工具（★=NOVEL_CORE_TOOLS 常驻；注册 session-tool-registry.ts，schema tool-schemas.ts）
-★lore.read(scope=brief/category/search) · ★lore.write · ★memory.read · ★memory.graph · ★memory.events · ★cockpit.snapshot · ★chapter.read · ★pipeline.write · ★scene.spec · ★pgi.ask · ★resource.manage
-其余按需：jingwei.read/write(兼容别名) · chapter.audit/list · candidate.create_chapter(纯保存) · pipeline.revise/import_chapters · rewrite.segment/apply · style.import · outline.suggest_next · character.check_consistency · hooks.manage · presets.read/write/check_compliance · beat.read/write
-> 已弃用(默认隐藏 DEPRECATED_V1_TOOLS)：guided.* / questionnaire.* / pgi.generate_questions / jingwei.read_brief 等 v1 工具。
+### 3. 验证
 
-### 质量机制（v1.9.0 novel-quality-hardening）
-| 机制 | 文件 |
-|------|------|
-| 对抗式审查（3视角A连续性/B叙事/C文本，独立跑+纯函数合成） | engine/agents/adversarial-audit.ts |
-| 严重度门禁 S1-S4（S1阻断/S2修订/S3-4警告） | engine/agents/severity-gate.ts |
-| 资源账本验算/知识边界/时间线（applyRuntimeStateDelta + findKnowledgeViolations/findTimelineConflicts） | core/src/state/state-reducer.ts |
-| 长度治理（归一化+warning不阻断） | handlers/pipeline-write-service.ts + engine/agents/length-normalizer.ts |
-| 动态词频/规则版AI痕迹(dim20-23) | engine/agents/writer.ts、ai-tells.ts |
-
-### Lore / 经纬系统（静态设定库，engine/jingwei/）
-经纬只承担作者显式维护的静态 Lore：人物、地点、势力、规则、物品、术语、作者备注。`jingwei.read/write` 保留为 `lore.read/write` 兼容别名；动态关系、时间线、角色弧线、伏笔状态、召回 diagnostics 属于 Narrative Memory。
+- 后端改动：通过真实 HTTP/API 调用、运行日志或目标测试验证。
+- 前端改动：启动实际应用并使用 Browser 验证；必要时保留截图证据。
+- 构建或打包改动：运行对应构建并启动产物验证。
+- 类型检查和静态阅读是辅助证据；用户可见功能应有实际运行证据。
 
-### Narrative Memory（动态叙事记忆，engine/narrative-memory/）
-`memory.read` 负责写作/修订/审计前的动态 ContextCard 召回；`memory.graph` 读取关系图、时间线、角色弧线、伏笔网络、矛盾地图；`memory.events` 管理 Pending NarrativeEvents。
+### 4. 交付
 
-### HTTP 路由（功能面）
-- **小说域** `novel-plugin/src/routes/`：ai(审计/修订/检测/大纲) · bible(角色/事件/设定/弧/核心转折) · jingwei(分区/条目/关系图/上下文预览) · writing-modes(行内/对话/变体/分支/导入) · writing-tools(伏笔/POV/节奏/健康/冲突图) · writing-resource(资源账本) · pipeline(管线状态) · compliance(合规) · filter(朱雀过滤) · context-manager(上下文用量)
-- **通用** `studio/src/api/routes/`：session(对话/fork/compact/回滚) · storage(书籍/章节/驾驶舱) · chapter-candidates(候选稿) · providers/aggregations/proxy(模型) · mcp · git/worktree/workbench/terminals/exec · routines(hooks/skills/commands) · presets/lorebook/snapshots/search · settings(含更新检查) · admin/auth
+交付时简要说明：
 
-### 前端 UI
-- **通用框架** `studio/src/app-next/`：AgentShell/Sidebar 外壳 · agent-conversation 叙述者对话(Composer/工具结果卡/权限/计划模式/Git/终端/Artifact) · settings/panels 设置 · routines 标签页 · sessions/books/dashboard/search/learn/workflow/chapter-graph
-- **小说工作台** `novel-plugin/src/pages/writing-workbench/`（38组件）：WorkbenchCanvas/CockpitWorkspace/ResourceTree 容器 · InlineWritePanel/VariantsPanel/PresetsPanel/BeatProgressBar/StyleDriftPanel/AiTasteReport 写作 · JingweiGraphWorkspace/JingweiEntryEditor 经纬 · BookHealthSummary/CharacterArcsPanel/CompliancePanel 质量 · ChapterActionsBar/CandidateActionsBar/ExportPanel 操作
+- 实际修改的文件和行为；
+- 实际执行的验证；
+- 已知限制或未完成项。
 
-### core 基础设施（core/src/）
-存储 storage/{db,schema,migrations-runner,embedded-migrations} · LLM llm/provider.ts(LLMClient/chatCompletion/chatWithTools) · 状态机 state/{manager,state-reducer,runtime-state-store} · 记忆 state/{memory-db,lorebook-retriever,bloat-guardian} · 模型 models/runtime-state.ts(hooks/resource/knowledge/timeline schema)
+## Skill 使用原则
 
-### studio 运行时三角（每次 AI 对话的执行中枢）
-```
-session-chat-service.ts (2846行) — WebSocket 传输 + 运行时状态 + 编排回合 + 持久化 + 广播(流式/错误/compact/安全暂停)
-  └→ agent-turn-runtime.ts (1107行) — 回合循环：generate → tool_use → tool_result → 重复；appendSystemPrompt/budget pressure/file dedup/对抗审查接入
-      └→ session-tool-executor.ts (4857行) — 90-case 工具分发中枢
-           入口校验 → policy解析(denied/permission/dirty-resource) → YOLO决策(auto-approve/reflect安全反思/ask-user) → handler
-```
-权限/安全：permission-pipeline.ts(validateToolPermission)、yolo-mode.ts(getYoloDecision/performSafetyReflection)、session-tool-policy.ts。
-注：executor 有模块级 Map(browserSessions/sessionPipelines/backgroundAgents)按 id 隔离——改并发逻辑时注意。
+NarraFork 宿主的 Skill 机制是方法论补充，不是另一套任务或审批系统。宿主规则和当前任务始终优先。
 
----
+- 顶层对话由宿主处理 `arming-thought`；它只用于建立事实优先的工作方式，不创建额外任务或计划。
+- 信息不足、需要一手事实时使用 `investigation-first`；已有明确源码、日志或验收证据时不重复调用。
+- 存在多个冲突目标、根因或优先级不清时使用 `contradiction-analysis`；资源和注意力分散时使用 `concentrate-forces`。
+- 方案需要真实运行验证或迭代时使用 `practice-cognition`；阶段验收、评审或收到明确反馈时使用简短的 `criticism-self-criticism`。
+- 只有确有对应场景时使用 `overall-planning`、`mass-line`、`protracted-strategy` 或 `spark-prairie-fire`。
+- UI 实现才使用 `shadcn`；寻找可复用组件时使用 `shadcn-component-discovery`；完成自定义 UI 后使用 `shadcn-component-review`。
+- 用户引用某个 slash command 或明确点名 Skill 时，调用对应 Skill。
+- 一次选择最少且最相关的 Skill。Skill 不能改变用户目标、扩大范围、替代真实验证，或自动创建任务、记忆、提交和发布。
 
-## 编译与运行
+## 任务与规划
 
-```bash
-# 开发
-bun run dev
+- 对非平凡执行工作，使用 `spec://tasks.json` 记录当前任务；保持一个明确的 `doing` 主任务。
+- 任务应包含目标、范围和可验证完成条件。
+- `spec://index.md` 可记录当前有效的事实和简短设计说明。
+- Kiro requirements/design/tasks 仅在用户明确指定为当前工作时作为执行规格。
+- `.narrafork/plan-*.md`、历史 Kiro Spec、Engram 与 `.narrafork/memory/` 用于查阅背景，不自动构成待办事项。
+- `spec://behavior_fence` 仅在用户明确要求记录持久行为约束时修改。
 
-# 编译 exe
-cd packages/studio && bun run compile
+## Runtime 接入原则
 
-# 产物
-dist/novelfork-vX.Y.Z-windows-x64.exe
-```
+- Runtime 负责 narrator、消息、工具调用、权限、WebSocket 恢复和运行时状态。
+- NovelFork 继续管理书籍、章节、Lore、Narrative Memory 与写作业务数据。
+- 复用 Runtime 的 Agent Loop、Permission、Prompt、Compact、WebSocket 和 Tool Executor；不要平行实现第二套通用 Agent 引擎。
+- 书籍与 Runtime 的关联必须经由服务端可信绑定解析，并在读取、执行和写入时遵守访问控制。
+- Runtime 接入不自动触发前端替换、数据迁移、旧功能删除或发布；这些工作需要独立任务。
 
----
+## 代码质量与安全
 
-## Skill 体系（三层）
+- 先读取事实再作判断，避免基于假设修改行为。
+- 保持用户已有的工作区改动；未经授权不还原、删除或覆盖。
+- 使用宿主提供的代码图谱、文件搜索和编辑工具；工具名称和参数以当前宿主实际提供的版本为准。
+- 数据库结构变更遵循目标 package 的 schema 与迁移生成流程；不手改生成迁移，不删除数据库文件。
+- 不提交密钥、Token、`.env` 或用户数据。
 
-**总原则**：求是是底色（怎么想），工作流是主干（怎么做），专项能力按需调用（产出什么）。
-匹配到场景就调用，不需要用户打 `/命令`。
+## Git 与发布
 
-### 第一层：求是（思想底色，不调用，已内化为铁律）
+- 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送或其他破坏性操作，除非用户明确授权。
+- 只有在用户明确要求时才创建 commit、push、tag 或 Release。
+- 发布前按照当前 package scripts 完成与改动相称的构建和验证。
 
-求是体系不是可调用工具，而是分析问题的默认方式，已写进上方「铁律」。
-做任何事都遵循：**先调查事实 → 找主要矛盾 → 集中力量打主攻 → 实践检验 → 完成后自我批评**。
-唯一保留可显式调用的是 `investigation-first`——当问题复杂、需要正式走调查流程时。
+## 持久记忆
 
-### 第二层：工作流主干（spec 驱动，你设计的核心路径）
+Engram 用于保存对后续工作有长期价值的信息，例如：
 
-这是 1645 个 commit 走出来的真实路径，照走：
+- 已验证的 bug 根因和修复；
+- 已确认的架构或产品决策；
+- 影响安全、数据一致性或实现路径的稳定约束。
 
-```
-brainstorming（探需求）
-  → spec 三件套（requirements / design / tasks）
-  → executing-plans / kiro-spec-adapter（执行）
-  → subagent-driven-development / dispatching-parallel-agents（并行）
-  → requesting-code-review（审查）→ receiving-code-review（改）
-  → verification-before-completion（验证）
-  → /ship（发版）
-```
+临时调查、未验证方案和普通操作不需要持久化。需要修订既有记录时，更新对应事实，避免形成相互矛盾的重复结论。
 
-| 场景 | 调用 |
-|------|------|
-| 新功能探索需求 | `brainstorming` |
-| 有 spec 三件套要执行 | `executing-plans` / `kiro-spec-adapter` |
-| 写 tasks.md | `writing-plans` |
-| 多个独立任务可并行 | `subagent-driven-development` / `dispatching-parallel-agents` |
-| 代码写完要审查 | `requesting-code-review` |
-| 收到 review 反馈 | `receiving-code-review` |
-| Bug 调查（复杂时走流程） | `systematic-debugging` / `investigation-first` |
-| 功能做完要验收 | `feature-closure-gate` / `verification-before-completion` |
+## 常用事实来源
 
-### 第三层：专项能力（按需调用）
-
-**设计物料**：`canvas-design`（封面、宣传图、工作室 VI）
-
-> 出实现方案前（ExitPlanMode 前）默认先跑 `brainstorming`；代码写完默认 `requesting-code-review`；发版默认 `finishing-a-development-branch`。
-
-### 记录纪律（防失误的根本 —— 定义"何时记"）
-
-通过 Engram MCP 持久化记忆，跨会话自动召回。
-
-| 时机 | 动作 |
-|------|------|
-| 会话开始 | `mem_session_start` → `mem_context(project="novelfork")` → 告诉用户上次进度 |
-| 选了方案 A 不选 B | `mem_save(project="novelfork", type="decision", ...)` |
-| 踩坑 / bug 根因 / 某方法失败 | `mem_save(project="novelfork", type="bugfix", ...)` |
-| 每个 spec / 批次完成 | 强制自检（criticism-self-criticism 精神）+ `/review` |
-| 会话结束 | `mem_session_summary` → `mem_session_end(id="novelfork-session")` |
-
-### 不用 skill 的场景
-
-- 简单问答（直接回答）
-- 单文件小改动（直接改）
-- 读代码/解释代码（直接读）
-
----
-
-## 当前状态
-
-| 指标 | 值 |
-|------|----|
-| 版本 | v3.0.0 |
-| 模型 | DeepSeek v4-pro（Anthropic 协议，thinking disabled）、Claude Opus 4.6 |
-| 已知问题 | 图片发送待验证；清空上下文会删聊天记录（待改为标记式） |
-
----
-
-## 按需加载参考
-
-| 场景 | 文件 |
-|------|------|
-| 项目事实与完成标准 | `.kiro/steering/project-profile.md` |
-| 系统架构 | `docs/04-架构与设计/README.md` |
-| Agent 写作管线 | `docs/01-codewiki/modules/pipeline-write.md` |
-| 存储层开发 | `docs/01-codewiki/modules/chapter-storage.md` |
-| 小说创作流程 | `docs/03-产品与流程/01-小说创作流程.md` |
-| NarraFork 参考 | `.narrafork-reference/` |
-
----
-
-## 兄弟项目
-
-| 项目 | 路径 | 何时看 |
-|------|------|--------|
-| Sub2API | `D:\DESKTOP\sub2api` | API 报错、代理问题 |
-| 文字修仙 | `D:\DESKTOP\文字修仙` | 修仙世界观、Electron 桌面壳 |
-| OpenClaw | `D:\DESKTOP\openclaw` | 小说原文、GraphRAG、agent 架构参考 |
-
----
-
-## MCP 工具使用指南
-
-本工作区连接了 3 个 MCP 服务，以下是使用规范。
-
-### 1. Engram（持久化记忆）
-
-**用途**：跨会话记住决策、bug 根因、架构变更，下次开会话自动召回。
-
-**项目名**：统一使用 `novelfork`（Engram 识别 `D:\DESKTOP\novelfork` 为 git root）。所有调用都必须显式传 `project="novelfork"`。
-
-**常用操作**：
-
-```
-# 会话开始（每次新对话第一件事）
-mem_session_start(id="novelfork-session", directory="D:\\DESKTOP\\novelfork")
-mem_context(project="novelfork")
-
-# 保存记忆（踩坑/决策/发现时立即调用）
-mem_save(
-  project="novelfork",
-  session_id="novelfork-session",
-  title="简短可搜标题",
-  type="bugfix|decision|architecture|pattern|discovery",
-  content="**What**: ...\n**Why**: ...\n**Where**: ...\n**Learned**: ..."
-)
-
-# 搜索历史记忆
-mem_search(project="novelfork", query="关键词")
-
-# 会话结束
-mem_session_summary(session_id="novelfork-session", content="## Goal\n...")
-mem_session_end(id="novelfork-session", summary="一句话总结")
-```
-
-**注意事项**：
-- `mem_save` 的 content 用 `**What/Why/Where/Learned**` 结构化格式
-- 重要 bug 修复和架构决策**必须**存，不是可选的
-
-### 2. Codebase Memory（代码知识图谱）
-
-**用途**：代码结构分析、调用链追踪、影响范围评估。比 grep 更智能。
-
-**项目名**：`D-DESKTOP-novelfork`（已索引 11k+ 节点）
-
-**常用操作**：
-
-```
-# 搜索函数/类（替代 grep 找定义）
-search_graph(project="D-DESKTOP-novelfork", query="pipeline write")
-
-# 调用链追踪（找谁调用了某函数 / 某函数调用了谁）
-trace_paths(project="D-DESKTOP-novelfork", function_name="executePipelineWrite", direction="inbound", depth=3)
-
-# 架构概览
-get_architecture(project="D-DESKTOP-novelfork")
-
-# 变更影响分析（改了代码后看影响范围）
-detect_changes(project="D-DESKTOP-novelfork", since="HEAD~5")
-
-# 带图谱增强的 grep
-enhanced_grep(project="D-DESKTOP-novelfork", pattern="jingwei", mode="compact")
-
-# Cypher 复杂查询
-cypher_query(project="D-DESKTOP-novelfork", query="MATCH (f:Function) WHERE f.complexity > 15 RETURN f.qualified_name")
-```
-
-**何时用 Codebase Memory vs 普通 Grep**：
-- 找定义、找调用者、追踪数据流 → Codebase Memory
-- 找字符串出现位置、简单文本匹配 → 普通 Grep
-- 理解模块边界、架构全貌 → `get_architecture`
-
-**重新索引**：代码大改后需要更新索引：
-```
-index_repository(repo_path="D:/DESKTOP/novelfork", mode="fast")
-```
-
-### 3. GitHub MCP
-
-**用途**：直接操作 GitHub 仓库，不需要走 `gh` CLI。
-
-**常用操作**：
-
-```
-# 查看 issues
-list_issues(owner="vivy1024", repo="novelfork", state="open")
-
-# 创建 PR
-create_pull_request(owner="vivy1024", repo="novelfork", title="...", head="feature-branch", base="master")
-
-# 查看 PR 状态
-get_pull_request(owner="vivy1024", repo="novelfork", pull_number=N)
-
-# 发版仍用 gh CLI（GitHub MCP 没有 release API）：
-# gh release create vX.Y.Z --title "..." --notes "..."
-```
-
----
-
-## MCP 使用时机速查
-
-| 场景 | 用什么 |
-|------|--------|
-| 新会话开始 | Engram: `mem_session_start` → `mem_context(project="novelfork")` |
-| 修完 bug | Engram: `mem_save(project="novelfork", type="bugfix")` |
-| 做了架构决策 | Engram: `mem_save(project="novelfork", type="decision")` |
-| 找函数定义 | Codebase Memory: `search_graph` |
-| 找谁调用了某方法 | Codebase Memory: `trace_paths(direction="inbound")` |
-| 改完代码看影响 | Codebase Memory: `detect_changes` |
-| 代码大改后 | Codebase Memory: `index_repository(mode="fast")` |
-| 查 GitHub issues | GitHub MCP: `list_issues` |
-| 发版 | `gh` CLI（GitHub MCP 不支持 release）|
-| 会话结束 | Engram: `mem_session_summary` → `mem_session_end` |
-
----
-
-## 风险分级
-
-| 风险 | 示例 | 处理 |
-|------|------|------|
-| 🟢 | 读文件、搜索、跑测试 | 直接执行 |
-| 🟡 | 编辑代码、装依赖 | 执行后报告 |
-| 🔴 | 删文件、push、改 CI | **先确认** |
-
----
-
-## 严格禁止
-
-- ❌ 虚构结果
-- ❌ force push 到 master
-- ❌ 密码/Token 入仓库
-- ❌ mock/假数据冒充真实功能
-- ❌ 创建临时文档代替修复问题
+| 问题 | 首选来源 |
+|---|---|
+| 当前目标与验收 | 当前用户指令、当前 Dynamic Spec 任务 |
+| 运行、构建与打包命令 | 根 `package.json` |
+| 产品与包边界 | 本文件与当前源码 |
+| 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md` |
+| 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
+| Runtime 行为 | `packages/narrafork-runtime-private/` 的当前源码 |
+| 历史背景 | Kiro、Engram 与历史计划，且须与当前指令核对 |

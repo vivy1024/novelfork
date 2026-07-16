@@ -1,538 +1,626 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
-import { Separator } from "@/components/ui/separator";
-import { fetchJson, putApi } from "@/hooks/use-api";
-import { USER_SETTINGS_API_PATH } from "@/app-next/backend-contract";
-import type { CommandBlockRule, RetryRule, RuntimeControlSettings, ToolAccessSettings, UserConfig } from "@/types/settings";
-import { Plus, Trash2, X } from "lucide-react";
+import {
+  createSettingsClient,
+  createUserPreferencesClient,
+  type AddRetryRuleInput,
+  type RuntimeRetryRule,
+  type RuntimeSettings,
+  type RuntimeUserPreferences,
+  type UserPreferencesPatch,
+} from "../../runtime-admin";
+import { useLocalBooleanPreference } from "../local-preferences";
+import { SettingsGroup, SettingsPage, SettingsSaveBar, SettingsSwitchRow } from "../components/SettingsPage";
+import { asRecord, type RuntimePermissionMode } from "../runtime-settings-utils";
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const settingsClient = createSettingsClient();
+const preferencesClient = createUserPreferencesClient();
 
-function clamp(value: number, min: number, max: number) {
-  return Math.min(max, Math.max(min, value));
+type DangerReflectionLevel = "off" | "light" | "standard" | "strict";
+
+interface AgentDraft {
+  defaultPermissionMode: RuntimePermissionMode;
+  defaultStartInPlanMode: boolean;
+  maxTurns: number;
+  legacyEncoding: boolean;
+  freshShellEnv: boolean;
+  translateReasoning: boolean;
+  requestDumpEnabled: boolean;
+  requestDumpErrorsOnly: boolean;
+  defaultRelaxedPlan: boolean;
+  defaultPruneEnabled: boolean;
+  planModeAllowInlinePlan: boolean;
+  planReflectionAutoApprove: boolean;
+  planReflectionAllowAutoCompact: boolean;
+  questionReflectionEnabled: boolean;
+  questionReflectionTimeoutMs: number;
+  dangerReflectionLevel: DangerReflectionLevel;
+  dangerReflectionEnabled: boolean;
+  dangerSkipReadOnlyConfirmations: boolean;
+  autoContinuationMode: "always" | "blockStop" | "protectedOnly" | "off";
+  maxTransientRetries: number;
+  silentToolCallThreshold: number;
+  behaviorFenceInterval: number;
+  tasksReminderInterval: number;
+  behaviorFenceAttachTasks: boolean;
+  retryBackoffCeilMs: number;
+  firstTokenTimeoutMs: number;
+  contextThresholds: {
+    standard: { pruneStart: number; compactStart: number };
+    large: { pruneStart: number; compactStart: number };
+  };
+  autoCompactKeepPairs: number;
+  autoCompactPruneThreshold: number;
+  minPruneRatio: number;
+  queueDuringCompaction: boolean;
+  whitelistDirs: Array<{ path: string; accessLevel?: string; enabled?: boolean }>;
+  blacklistDirs: Array<{ path: string; denyLevel?: string; enabled?: boolean }>;
+  commandWhitelist: Array<{ pattern: string; enabled?: boolean }>;
+  commandBlacklist: Array<{ pattern: string; denyPrompt?: string; enabled?: boolean }>;
+  customRetryRules: RuntimeRetryRule[];
 }
 
-function parseNum(raw: string, fallback: number, min: number, max: number) {
-  if (raw.trim() === "") return fallback;
-  const n = Number(raw);
-  return Number.isFinite(n) ? clamp(n, min, max) : fallback;
+function bool(record: Record<string, unknown>, key: string, fallback = false) {
+  return typeof record[key] === "boolean" ? record[key] as boolean : fallback;
 }
 
-// ---------------------------------------------------------------------------
-// Layout primitives
-// ---------------------------------------------------------------------------
-
-function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
-  return (
-    <div className="space-y-3">
-      <div>
-        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
-        {description && <p className="text-xs text-muted-foreground mt-0.5">{description}</p>}
-      </div>
-      <div className="space-y-3 rounded-lg border border-border p-4">{children}</div>
-    </div>
-  );
+function num(record: Record<string, unknown>, key: string, fallback: number) {
+  return typeof record[key] === "number" ? record[key] as number : fallback;
 }
 
-function FieldRow({ label, description, children }: { label: string; description?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex items-center justify-between gap-4">
-      <div className="min-w-0 flex-1">
-        <span className="text-sm">{label}</span>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      </div>
-      <div className="shrink-0">{children}</div>
-    </div>
-  );
+function draftFromSettings(settings: RuntimeSettings): AgentDraft {
+  const agent = asRecord(settings.agent);
+  return {
+    defaultPermissionMode: (typeof agent.defaultPermissionMode === "string" ? agent.defaultPermissionMode : "default") as RuntimePermissionMode,
+    defaultStartInPlanMode: bool(agent, "defaultStartInPlanMode"),
+    maxTurns: num(agent, "maxTurns", 1000),
+    legacyEncoding: bool(agent, "legacyEncoding"),
+    freshShellEnv: bool(agent, "freshShellEnv"),
+    translateReasoning: bool(agent, "translateReasoning"),
+    requestDumpEnabled: bool(agent, "requestDumpEnabled"),
+    requestDumpErrorsOnly: bool(agent, "requestDumpErrorsOnly"),
+    defaultRelaxedPlan: bool(agent, "defaultRelaxedPlan"),
+    defaultPruneEnabled: bool(agent, "defaultPruneEnabled"),
+    planModeAllowInlinePlan: bool(agent, "planModeAllowInlinePlan", true),
+    planReflectionAutoApprove: bool(agent, "planReflectionAutoApprove"),
+    planReflectionAllowAutoCompact: bool(agent, "planReflectionAllowAutoCompact"),
+    questionReflectionEnabled: bool(agent, "questionReflectionEnabled"),
+    questionReflectionTimeoutMs: num(agent, "questionReflectionTimeoutMs", 300_000),
+    dangerReflectionLevel: (typeof agent.dangerReflectionLevel === "string" ? agent.dangerReflectionLevel : "standard") as DangerReflectionLevel,
+    dangerReflectionEnabled: bool(agent, "dangerReflectionEnabled", true),
+    dangerSkipReadOnlyConfirmations: bool(agent, "dangerSkipReadOnlyConfirmations"),
+    autoContinuationMode: (typeof agent.autoContinuationMode === "string" ? agent.autoContinuationMode : "always") as AgentDraft["autoContinuationMode"],
+    maxTransientRetries: num(agent, "maxTransientRetries", 10),
+    silentToolCallThreshold: num(agent, "silentToolCallThreshold", 20),
+    behaviorFenceInterval: num(agent, "behaviorFenceInterval", -1),
+    tasksReminderInterval: num(agent, "tasksReminderInterval", 15),
+    behaviorFenceAttachTasks: bool(agent, "behaviorFenceAttachTasks", true),
+    retryBackoffCeilMs: num(agent, "retryBackoffCeilMs", 20_000),
+    firstTokenTimeoutMs: num(agent, "firstTokenTimeoutMs", 300_000),
+    contextThresholds: asRecord(agent.contextThresholds).standard && asRecord(agent.contextThresholds).large
+      ? {
+          standard: {
+            pruneStart: num(asRecord(asRecord(agent.contextThresholds).standard), "pruneStart", 95),
+            compactStart: num(asRecord(asRecord(agent.contextThresholds).standard), "compactStart", 99),
+          },
+          large: {
+            pruneStart: num(asRecord(asRecord(agent.contextThresholds).large), "pruneStart", 95),
+            compactStart: num(asRecord(asRecord(agent.contextThresholds).large), "compactStart", 99),
+          },
+        }
+      : { standard: { pruneStart: 95, compactStart: 99 }, large: { pruneStart: 95, compactStart: 99 } },
+    autoCompactKeepPairs: num(agent, "autoCompactKeepPairs", 2),
+    autoCompactPruneThreshold: num(agent, "autoCompactPruneThreshold", 80),
+    minPruneRatio: num(agent, "minPruneRatio", 30),
+    queueDuringCompaction: bool(agent, "queueDuringCompaction"),
+    whitelistDirs: Array.isArray(agent.whitelistDirs) ? agent.whitelistDirs.map((item) => ({ ...asRecord(item) })) as AgentDraft["whitelistDirs"] : [],
+    blacklistDirs: Array.isArray(agent.blacklistDirs) ? agent.blacklistDirs.map((item) => ({ ...asRecord(item) })) as AgentDraft["blacklistDirs"] : [],
+    commandWhitelist: Array.isArray(agent.commandWhitelist) ? agent.commandWhitelist.map((item) => ({ ...asRecord(item) })) as AgentDraft["commandWhitelist"] : [],
+    commandBlacklist: Array.isArray(agent.commandBlacklist) ? agent.commandBlacklist.map((item) => ({ ...asRecord(item) })) as AgentDraft["commandBlacklist"] : [],
+    customRetryRules: Array.isArray(agent.customRetryRules)
+      ? agent.customRetryRules.map((rule) => ({ ...asRecord(rule) })) as unknown as RuntimeRetryRule[]
+      : [],
+  };
 }
 
-function ListSection({ title, description, items, onAdd, onRemove, placeholder }: {
-  title: string;
-  description: string;
-  items: string[];
-  onAdd: (value: string) => void;
-  onRemove: (index: number) => void;
-  placeholder: string;
+function normalizeInterval(value: number): number {
+  if (value < 0) return -1;
+  return value < 5 ? 5 : Math.min(1000, Math.trunc(value));
+}
+
+function normalizeAccessLevel(value: string | undefined): "readOnly" | "readWrite" | "full" {
+  if (value === "full") return "full";
+  if (value === "write" || value === "readWrite") return "readWrite";
+  return "readOnly";
+}
+
+function normalizeDenyLevel(value: string | undefined): "denyWrite" | "denyAll" {
+  return value === "write" || value === "denyWrite" ? "denyWrite" : "denyAll";
+}
+
+function sanitizedDraft(draft: AgentDraft): AgentDraft {
+  return {
+    ...draft,
+    maxTurns: Math.min(1000, Math.max(1, Math.trunc(draft.maxTurns))),
+    questionReflectionTimeoutMs: Math.min(3_600_000, Math.max(10_000, Math.trunc(draft.questionReflectionTimeoutMs))),
+    maxTransientRetries: Math.min(100, Math.max(-1, Math.trunc(draft.maxTransientRetries))),
+    silentToolCallThreshold: Math.min(1000, Math.max(-1, Math.trunc(draft.silentToolCallThreshold))),
+    behaviorFenceInterval: normalizeInterval(draft.behaviorFenceInterval),
+    tasksReminderInterval: normalizeInterval(draft.tasksReminderInterval),
+    retryBackoffCeilMs: Math.min(300_000, Math.max(1_000, Math.trunc(draft.retryBackoffCeilMs))),
+    firstTokenTimeoutMs: Math.min(600_000, Math.max(0, Math.trunc(draft.firstTokenTimeoutMs))),
+    autoCompactKeepPairs: Math.min(25, Math.max(1, Math.trunc(draft.autoCompactKeepPairs))),
+    autoCompactPruneThreshold: Math.min(100, Math.max(0, Math.trunc(draft.autoCompactPruneThreshold))),
+    minPruneRatio: Math.min(100, Math.max(0, Math.trunc(draft.minPruneRatio))),
+    planReflectionAllowAutoCompact: draft.planReflectionAutoApprove && draft.planReflectionAllowAutoCompact,
+    contextThresholds: {
+      standard: {
+        pruneStart: Math.min(100, Math.max(50, draft.contextThresholds.standard.pruneStart)),
+        compactStart: Math.min(100, Math.max(50, draft.contextThresholds.standard.compactStart)),
+      },
+      large: {
+        pruneStart: Math.min(100, Math.max(10, draft.contextThresholds.large.pruneStart)),
+        compactStart: Math.min(100, Math.max(10, draft.contextThresholds.large.compactStart)),
+      },
+    },
+    whitelistDirs: draft.whitelistDirs
+      .filter((item) => item.path.trim())
+      .map((item) => ({ path: item.path.trim(), accessLevel: normalizeAccessLevel(item.accessLevel), enabled: item.enabled !== false })),
+    blacklistDirs: draft.blacklistDirs
+      .filter((item) => item.path.trim())
+      .map((item) => ({ path: item.path.trim(), denyLevel: normalizeDenyLevel(item.denyLevel), enabled: item.enabled !== false })),
+    commandWhitelist: draft.commandWhitelist
+      .filter((item) => item.pattern.trim())
+      .map((item) => ({ pattern: item.pattern.trim(), enabled: item.enabled !== false })),
+    commandBlacklist: draft.commandBlacklist
+      .filter((item) => item.pattern.trim())
+      .map((item) => ({ pattern: item.pattern.trim(), denyPrompt: item.denyPrompt?.trim() || undefined, enabled: item.enabled !== false })),
+  };
+}
+
+function ToggleRow({ label, description, checked, disabled, onChange }: {
+  readonly label: string;
+  readonly description: string;
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly onChange: (value: boolean) => void;
 }) {
-  const [draft, setDraft] = useState("");
   return (
-    <div className="space-y-2">
-      <div>
-        <span className="text-sm">{title}</span>
-        <p className="text-xs text-muted-foreground">{description}</p>
-      </div>
-      {items.length > 0 && (
-        <div className="space-y-1">
-          {items.map((item, i) => (
-            <div key={`${item}-${i}`} className="flex items-center gap-2 rounded border border-border px-2 py-1 text-xs font-mono">
-              <span className="flex-1 truncate">{item}</span>
-              <button type="button" onClick={() => onRemove(i)} className="text-muted-foreground hover:text-destructive">
-                <X className="size-3" />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="flex gap-2">
-        <Input
-          className="flex-1 text-xs"
-          placeholder={placeholder}
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim()) {
-              onAdd(draft.trim());
-              setDraft("");
-            }
-          }}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={!draft.trim()}
-          onClick={() => { onAdd(draft.trim()); setDraft(""); }}
-        >
-          <Plus className="size-3" />
-        </Button>
-      </div>
-    </div>
+    <SettingsSwitchRow
+      label={label}
+      description={description}
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={onChange}
+    />
   );
 }
-
-// ---------------------------------------------------------------------------
-// Main panel
-// ---------------------------------------------------------------------------
 
 export function AgentSettingsPanel() {
-  const [config, setConfig] = useState<RuntimeControlSettings | null>(null);
-  const savedRef = useRef<RuntimeControlSettings | null>(null);
+  const [draft, setDraft] = useState<AgentDraft | null>(null);
+  const [savedDraft, setSavedDraft] = useState<AgentDraft | null>(null);
+  const [preferences, setPreferences] = useState<RuntimeUserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingPreference, setSavingPreference] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryDraft, setRetryDraft] = useState<AddRetryRuleInput>({});
+  const [dumpWarningOpen, setDumpWarningOpen] = useState(false);
+  const [expandReasoning, setExpandReasoning] = useLocalBooleanPreference("narrafork_expand_reasoning");
 
   useEffect(() => {
-    let cancelled = false;
-    fetchJson<UserConfig>(USER_SETTINGS_API_PATH)
-      .then((data) => {
-        if (cancelled) return;
-        // Normalize: ensure arrays exist (old configs may lack new fields)
-        const rc = data.runtimeControls as RuntimeControlSettings & Record<string, unknown>;
-        if (!rc.retryRules) rc.retryRules = [];
-        if (!rc.toolAccess) rc.toolAccess = { allowlist: [], blocklist: [], mcpStrategy: "inherit", directoryAllowlist: [], directoryBlocklist: [], commandAllowlist: [], commandBlocklist: [] } as ToolAccessSettings;
-        const ta = rc.toolAccess as ToolAccessSettings & Record<string, unknown>;
-        if (!ta.directoryAllowlist) ta.directoryAllowlist = [];
-        if (!ta.directoryBlocklist) ta.directoryBlocklist = [];
-        if (!ta.commandAllowlist) ta.commandAllowlist = [];
-        if (!ta.commandBlocklist) ta.commandBlocklist = [];
-        setConfig(rc as RuntimeControlSettings);
-        savedRef.current = JSON.parse(JSON.stringify(rc));
+    let active = true;
+    settingsClient.get()
+      .then((settings) => {
+        if (!active) return;
+        const nextDraft = draftFromSettings(settings);
+        setDraft(nextDraft);
+        setSavedDraft(nextDraft);
       })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    preferencesClient.get()
+      .then((nextPreferences) => {
+        if (active) setPreferences(nextPreferences);
+      })
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => { active = false; };
   }, []);
 
-  const isDirty = config && savedRef.current && JSON.stringify(config) !== JSON.stringify(savedRef.current);
+  async function savePreference<K extends keyof UserPreferencesPatch>(key: K, value: UserPreferencesPatch[K]) {
+    if (!preferences) return;
+    const previous = preferences;
+    setPreferences({ ...preferences, [key]: value });
+    setSavingPreference(String(key));
+    setError(null);
+    try {
+      setPreferences(await preferencesClient.patch({ [key]: value } as UserPreferencesPatch));
+    } catch (reason) {
+      setPreferences(previous);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSavingPreference(null);
+    }
+  }
 
   async function handleSave() {
-    if (!config) return;
+    if (!draft) return;
+    const next = sanitizedDraft(draft);
     setSaving(true);
     setError(null);
     try {
-      const updated = await putApi<UserConfig>(USER_SETTINGS_API_PATH, { runtimeControls: config });
-      if (updated?.runtimeControls) {
-        setConfig(updated.runtimeControls);
-        savedRef.current = JSON.parse(JSON.stringify(updated.runtimeControls));
-      } else {
-        savedRef.current = JSON.parse(JSON.stringify(config));
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const updated = await settingsClient.patch({
+        agent: {
+          defaultPermissionMode: next.defaultPermissionMode,
+          defaultStartInPlanMode: next.defaultStartInPlanMode,
+          maxTurns: next.maxTurns,
+          legacyEncoding: next.legacyEncoding,
+          freshShellEnv: next.freshShellEnv,
+          translateReasoning: next.translateReasoning,
+          requestDumpEnabled: next.requestDumpEnabled,
+          requestDumpErrorsOnly: next.requestDumpErrorsOnly,
+          defaultRelaxedPlan: next.defaultRelaxedPlan,
+          defaultPruneEnabled: next.defaultPruneEnabled,
+          planModeAllowInlinePlan: next.planModeAllowInlinePlan,
+          planReflectionAutoApprove: next.planReflectionAutoApprove,
+          planReflectionAllowAutoCompact: next.planReflectionAllowAutoCompact,
+          questionReflectionEnabled: next.questionReflectionEnabled,
+          questionReflectionTimeoutMs: next.questionReflectionTimeoutMs,
+          dangerReflectionLevel: next.dangerReflectionLevel,
+          dangerReflectionEnabled: next.dangerReflectionEnabled,
+          dangerSkipReadOnlyConfirmations: next.dangerSkipReadOnlyConfirmations,
+          autoContinuationMode: next.autoContinuationMode,
+          maxTransientRetries: next.maxTransientRetries,
+          silentToolCallThreshold: next.silentToolCallThreshold,
+          behaviorFenceInterval: next.behaviorFenceInterval,
+          tasksReminderInterval: next.tasksReminderInterval,
+          behaviorFenceAttachTasks: next.behaviorFenceAttachTasks,
+          retryBackoffCeilMs: next.retryBackoffCeilMs,
+          firstTokenTimeoutMs: next.firstTokenTimeoutMs,
+          contextThresholds: next.contextThresholds,
+          autoCompactKeepPairs: next.autoCompactKeepPairs,
+          autoCompactPruneThreshold: next.autoCompactPruneThreshold,
+          minPruneRatio: next.minPruneRatio,
+          queueDuringCompaction: next.queueDuringCompaction,
+          whitelistDirs: next.whitelistDirs,
+          blacklistDirs: next.blacklistDirs,
+          commandWhitelist: next.commandWhitelist,
+          commandBlacklist: next.commandBlacklist,
+          customRetryRules: next.customRetryRules,
+        },
+      });
+      const saved = draftFromSettings(updated);
+      setDraft(saved);
+      setSavedDraft(saved);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setSaving(false);
     }
   }
 
-  function patch(partial: Partial<RuntimeControlSettings>) {
-    setConfig((c) => c ? { ...c, ...partial } : c);
-  }
-
-  function patchToolAccess(partial: Partial<ToolAccessSettings>) {
-    setConfig((c) => c ? { ...c, toolAccess: { ...c.toolAccess, ...partial } } : c);
+  async function addRetryRule() {
+    if (!draft || (!retryDraft.domain && !retryDraft.statusCode && !retryDraft.keyword)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const rule = await settingsClient.addRetryRule(retryDraft);
+      setDraft({ ...draft, customRetryRules: [...draft.customRetryRules, rule] });
+      setRetryDraft({});
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取 Agent 配置…</p>;
-  if (!config) return <p className="py-8 text-center text-sm text-destructive">加载失败：{error}</p>;
+  if (!draft) return <p className="py-8 text-center text-sm text-destructive">Agent 配置加载失败。</p>;
+
+  const dirty = Boolean(savedDraft && JSON.stringify(draft) !== JSON.stringify(savedDraft));
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold mb-1 text-foreground">AI 代理</h2>
-        <p className="text-sm text-muted-foreground">Agent 运行时行为、权限、上下文管理和安全策略。</p>
-      </div>
+    <SettingsPage
+      title="AI 代理"
+      description="沿用 NarraFork 原版字段分组，并只提交 Runtime 当前校验器接受的值。"
+    >
+      {error ? <Alert><AlertTitle>Agent 设置操作失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
 
-      {/* ── 基础设置 ── */}
-      <Section title="基础设置">
-        <FieldRow label="默认权限模式">
-          <SimpleSelect
-            value={config.defaultPermissionMode ?? "edit"}
-            onValueChange={(v) => patch({ defaultPermissionMode: v as RuntimeControlSettings["defaultPermissionMode"] })}
-            options={[
-              { value: "allow", label: "全部允许" },
-              { value: "edit", label: "编辑模式" },
-              { value: "ask", label: "逐项询问" },
-              { value: "read", label: "只读" },
-              { value: "plan", label: "计划模式" },
-            ]}
-            className="w-32"
-            aria-label="默认权限模式"
-          />
-        </FieldRow>
-        <FieldRow label="每条消息最大轮次" description="每条用户消息的 Agent 循环最大轮次数">
-          <Input
-            type="number"
-            className="w-20"
-            min={1}
-            max={1000}
-            value={config.maxTurnSteps}
-            onChange={(e) => patch({ maxTurnSteps: parseNum(e.target.value, 200, 1, 1000) })}
-          />
-        </FieldRow>
-        <FieldRow label="旧编码支持" description="自动检测并保留非 UTF-8 文件编码（如 GBK、Shift_JIS）">
-          <Switch checked={config.legacyEncoding} onCheckedChange={(v) => patch({ legacyEncoding: v })} />
-        </FieldRow>
-        <FieldRow label="刷新 Shell 环境" description="每次执行 Bash 工具时通过 login shell 加载最新的环境变量">
-          <Switch checked={config.refreshShellEnv} onCheckedChange={(v) => patch({ refreshShellEnv: v })} />
-        </FieldRow>
-        <FieldRow label="翻译思考内容" description="推理块完成后通过摘要模型翻译为用户语言">
-          <Switch checked={config.translateThinking} onCheckedChange={(v) => patch({ translateThinking: v })} />
-        </FieldRow>
-        <FieldRow label="Dump 每条 API 请求" description="持久化原始请求与响应数据到请求历史">
-          <Switch checked={config.dumpApiRequests} onCheckedChange={(v) => patch({ dumpApiRequests: v })} />
-        </FieldRow>
-        <FieldRow label="仅保留报错请求 dump" description="只有报错请求保存到请求历史，成功请求不落库">
-          <Switch checked={config.dumpOnlyErrors} onCheckedChange={(v) => patch({ dumpOnlyErrors: v })} />
-        </FieldRow>
-        <FieldRow label="默认展开推理内容" description="自动展开消息中的推理/思考块">
-          <Switch checked={config.expandReasoning} onCheckedChange={(v) => patch({ expandReasoning: v })} />
-        </FieldRow>
-      </Section>
-
-      {/* ── 计划与审批 ── */}
-      <Section title="计划与审批">
-        <FieldRow label="新叙述者默认进入计划模式" description="为新建叙述者默认启用计划模式">
-          <Switch checked={config.defaultPlanMode} onCheckedChange={(v) => patch({ defaultPlanMode: v })} />
-        </FieldRow>
-        <FieldRow label="默认宽松规划" description="规划时工具仍然可用，不会被禁用">
-          <Switch checked={config.relaxedPlanning} onCheckedChange={(v) => patch({ relaxedPlanning: v })} />
-        </FieldRow>
-        <FieldRow label="全局默认自动批准计划" description="ExitPlanMode 计划反思确认后跳过人工审批">
-          <Switch checked={config.autoApprovePlan} onCheckedChange={(v) => patch({ autoApprovePlan: v })} />
-        </FieldRow>
-      </Section>
-
-      {/* ── 安全防护 ── */}
-      <Section title="安全防护">
-        <FieldRow label="全局默认启用危险反思" description="全部允许模式下对高风险操作进行二次反思确认">
-          <Switch checked={config.dangerReflection} onCheckedChange={(v) => patch({ dangerReflection: v })} />
-        </FieldRow>
-        <FieldRow label="跳过只读危险反思确认" description="已确认只读的操作不再触发额外安全暂停">
-          <Switch checked={config.yoloSkipReadonlyConfirmation} onCheckedChange={(v) => patch({ yoloSkipReadonlyConfirmation: v })} />
-        </FieldRow>
-      </Section>
-
-      {/* ── 重试与超时 ── */}
-      <Section title="重试与超时">
-        <FieldRow label="可恢复错误最大重试次数" description="遇到临时性 API 错误时的最大重试次数。-1=无限重试">
-          <Input
-            type="number"
-            className="w-20"
-            min={-1}
-            max={50}
-            value={config.recovery.maxRetryAttempts}
-            onChange={(e) => patch({ recovery: { ...config.recovery, maxRetryAttempts: parseNum(e.target.value, 5, -1, 50) } })}
-          />
-        </FieldRow>
-        <FieldRow label="沉默工具调用阈值" description="连续多少次无文本输出后要求 AI 说明进度。-1=关闭">
-          <Input
-            type="number"
-            className="w-20"
-            min={-1}
-            max={200}
-            value={config.silentToolCallThreshold}
-            onChange={(e) => patch({ silentToolCallThreshold: parseNum(e.target.value, 25, -1, 200) })}
-          />
-        </FieldRow>
-        <FieldRow label="重试退避时间上限（秒）" description="指数退避的最大等待时间">
-          <Input
-            type="number"
-            className="w-20"
-            min={1}
-            max={120}
-            value={Math.round(config.recovery.maxRetryDelayMs / 1000)}
-            onChange={(e) => patch({ recovery: { ...config.recovery, maxRetryDelayMs: parseNum(e.target.value, 30, 1, 120) * 1000 } })}
-          />
-        </FieldRow>
-        <FieldRow label="首 token 超时时间（秒）" description="API 请求发起后若在此秒数内没有收到实质事件则中断重试。0=禁用">
-          <Input
-            type="number"
-            className="w-20"
-            min={0}
-            max={300}
-            value={config.firstTokenTimeout}
-            onChange={(e) => patch({ firstTokenTimeout: parseNum(e.target.value, 0, 0, 300) })}
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ── 自定义可重试错误规则 ── */}
-      <Section title="自定义可重试错误规则" description="将特定 API 错误标记为可重试，匹配的错误将自动重试而非直接失败。">
-        {(config.retryRules ?? []).map((rule, idx) => (
-          <div key={rule.id} className="flex items-center gap-2 rounded border border-border px-3 py-2">
-            <Switch
-              checked={rule.enabled}
-              onCheckedChange={(v) => {
-                const rules = [...config.retryRules];
-                rules[idx] = { ...rule, enabled: v };
-                patch({ retryRules: rules });
-              }}
-              aria-label="启用规则"
+      <SettingsGroup title="基础运行" description="权限值与 Runtime 完全一致，不使用旧的 allow/edit/ask 映射。">
+        <div className="flex flex-col gap-4">
+          <label className="grid gap-2 text-sm sm:grid-cols-[1fr_260px] sm:items-center">
+            <span className="font-medium">默认权限模式</span>
+            <SimpleSelect
+              aria-label="默认权限模式"
+              value={draft.defaultPermissionMode}
+              onValueChange={(value) => setDraft({ ...draft, defaultPermissionMode: value as RuntimePermissionMode })}
+              options={[
+                { value: "default", label: "default · 默认询问" },
+                { value: "acceptEdits", label: "acceptEdits · 接受编辑" },
+                { value: "bypassPermissions", label: "bypassPermissions · 绕过权限" },
+                { value: "readOnly", label: "readOnly · 只读" },
+                { value: "dontAsk", label: "dontAsk · 不询问" },
+              ]}
             />
-            <Input
-              type="text"
-              className="w-20 text-xs"
-              placeholder="状态码"
-              value={rule.httpStatus}
-              onChange={(e) => {
-                const rules = [...config.retryRules];
-                rules[idx] = { ...rule, httpStatus: e.target.value };
-                patch({ retryRules: rules });
-              }}
-            />
-            <Input
-              className="flex-1 text-xs"
-              placeholder="内容关键词匹配"
-              value={rule.contentKeyword}
-              onChange={(e) => {
-                const rules = [...config.retryRules];
-                rules[idx] = { ...rule, contentKeyword: e.target.value };
-                patch({ retryRules: rules });
-              }}
-            />
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-destructive"
-              onClick={() => patch({ retryRules: config.retryRules.filter((_, i) => i !== idx) })}
-            >
-              <Trash2 className="size-3.5" />
-            </button>
+          </label>
+          <label className="grid gap-2 text-sm sm:grid-cols-[1fr_180px] sm:items-center">
+            <span>
+              <span className="font-medium">最大轮次</span>
+              <span className="block text-xs text-muted-foreground">每次 Agent 运行最多 1–1000 轮。</span>
+            </span>
+            <Input aria-label="Agent 最大轮次" type="number" min={1} max={1000} value={draft.maxTurns} onChange={(event) => setDraft({ ...draft, maxTurns: Math.min(1000, Math.max(1, Number(event.currentTarget.value) || 1)) })} />
+          </label>
+          <ToggleRow label="默认进入计划模式" description="新叙述者创建时启用 plan trait。" checked={draft.defaultStartInPlanMode} onChange={(value) => setDraft({ ...draft, defaultStartInPlanMode: value })} />
+          <ToggleRow label="旧编码支持" description="读取和写入时检测 GBK、Shift_JIS 等非 UTF-8 编码。" checked={draft.legacyEncoding} onChange={(value) => setDraft({ ...draft, legacyEncoding: value })} />
+          <ToggleRow label="刷新 Shell 环境" description="Bash 工具使用 login shell 读取最新环境变量。" checked={draft.freshShellEnv} onChange={(value) => setDraft({ ...draft, freshShellEnv: value })} />
+          <ToggleRow label="翻译推理内容" description="通过摘要模型将推理块翻译为用户语言。" checked={draft.translateReasoning} onChange={(value) => setDraft({ ...draft, translateReasoning: value })} />
+          <ToggleRow label="记录原始请求" description="将供应商原始请求与响应写入使用记录，可能包含敏感内容。" checked={draft.requestDumpEnabled} onChange={(value) => {
+            if (value && !draft.requestDumpEnabled) setDumpWarningOpen(true);
+            else setDraft({ ...draft, requestDumpEnabled: value, requestDumpErrorsOnly: value ? draft.requestDumpErrorsOnly : false });
+          }} />
+          <ToggleRow label="仅记录失败请求" description="启用原始请求记录时，只持久化失败调用。" checked={draft.requestDumpErrorsOnly} disabled={!draft.requestDumpEnabled} onChange={(value) => setDraft({ ...draft, requestDumpErrorsOnly: value })} />
+          <ToggleRow label="默认展开推理内容" description="浏览器本地偏好，不写入 Runtime。" checked={expandReasoning} onChange={setExpandReasoning} />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="计划与危险反思" description="使用 Runtime 的 plan 和 danger reflection 字段，不提供虚假的 YOLO 开关。">
+        <div className="flex flex-col gap-4">
+          <ToggleRow label="默认宽松计划" description="新叙述者的计划模式默认允许更多工具。" checked={draft.defaultRelaxedPlan} onChange={(value) => setDraft({ ...draft, defaultRelaxedPlan: value })} />
+          <ToggleRow label="默认启用上下文裁剪" description="新叙述者按 Runtime 阈值自动裁剪低价值上下文。" checked={draft.defaultPruneEnabled} onChange={(value) => setDraft({ ...draft, defaultPruneEnabled: value })} />
+          <ToggleRow label="允许内联计划" description="ExitPlanMode 可直接提交 inline_plan。" checked={draft.planModeAllowInlinePlan} onChange={(value) => setDraft({ ...draft, planModeAllowInlinePlan: value })} />
+          <ToggleRow label="计划反思自动批准" description="在可编辑权限模式中，计划反思可自动批准。" checked={draft.planReflectionAutoApprove} onChange={(value) => setDraft({ ...draft, planReflectionAutoApprove: value })} />
+          <ToggleRow label="计划反思允许自动 Compact" description="计划反思需要压缩上下文时可自动执行 Compact。" checked={draft.planReflectionAllowAutoCompact} disabled={!draft.planReflectionAutoApprove} onChange={(value) => setDraft({ ...draft, planReflectionAllowAutoCompact: value })} />
+          <ToggleRow label="问题反思" description="AskUserQuestion 可在超时前请求 Agent 自行反思回答。" checked={draft.questionReflectionEnabled} onChange={(value) => setDraft({ ...draft, questionReflectionEnabled: value })} />
+          <NumberField label="问题反思超时（秒）" value={Math.round(draft.questionReflectionTimeoutMs / 1000)} min={10} max={3600} onChange={(value) => setDraft({ ...draft, questionReflectionTimeoutMs: value * 1000 })} />
+          <label className="grid gap-2 text-sm sm:grid-cols-[1fr_220px] sm:items-center">
+            <span className="font-medium">危险反思级别</span>
+            <SimpleSelect aria-label="危险反思级别" value={draft.dangerReflectionLevel} onValueChange={(value) => setDraft({ ...draft, dangerReflectionLevel: value as DangerReflectionLevel, dangerReflectionEnabled: value !== "off" })} options={[
+              { value: "off", label: "关闭" },
+              { value: "light", label: "轻量" },
+              { value: "standard", label: "标准" },
+              { value: "strict", label: "严格" },
+            ]} />
+          </label>
+          <ToggleRow label="启用危险反思" description="绕过权限模式下对高风险操作执行二次确认。" checked={draft.dangerReflectionEnabled} onChange={(value) => setDraft({ ...draft, dangerReflectionEnabled: value, dangerReflectionLevel: value ? (draft.dangerReflectionLevel === "off" ? "standard" : draft.dangerReflectionLevel) : "off" })} />
+          <ToggleRow label="跳过只读危险确认" description="已确认只读的操作不触发额外安全暂停。" checked={draft.dangerSkipReadOnlyConfirmations} onChange={(value) => setDraft({ ...draft, dangerSkipReadOnlyConfirmations: value })} />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="自动续跑与系统提醒" description="与 NarraFork 原生 Agent 设置使用相同的 continuation、sidecar 和提醒字段。">
+        <div className="flex flex-col gap-4">
+          <label className="grid gap-2 text-sm sm:grid-cols-[1fr_240px] sm:items-center">
+            <span className="font-medium">自动续跑模式</span>
+            <SimpleSelect aria-label="自动续跑模式" value={draft.autoContinuationMode} onValueChange={(value) => setDraft({ ...draft, autoContinuationMode: value as AgentDraft["autoContinuationMode"] })} options={[
+              { value: "always", label: "始终续跑" },
+              { value: "blockStop", label: "阻塞停止时续跑" },
+              { value: "protectedOnly", label: "仅受保护任务" },
+              { value: "off", label: "关闭" },
+            ]} />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <NumberField label="静默工具调用阈值" value={draft.silentToolCallThreshold} min={-1} max={1000} onChange={(value) => setDraft({ ...draft, silentToolCallThreshold: value })} />
+            <NumberField label="行为围栏间隔" value={draft.behaviorFenceInterval} min={-1} max={1000} onChange={(value) => setDraft({ ...draft, behaviorFenceInterval: value })} />
+            <NumberField label="任务提醒间隔" value={draft.tasksReminderInterval} min={-1} max={1000} onChange={(value) => setDraft({ ...draft, tasksReminderInterval: value })} />
           </div>
-        ))}
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => patch({ retryRules: [...config.retryRules, { id: `rule-${Date.now().toString(36)}`, enabled: true, httpStatus: "", contentKeyword: "" }] })}
-        >
-          <Plus className="size-3 mr-1" /> 添加规则
-        </Button>
-      </Section>
+          <ToggleRow label="行为围栏附带任务" description="注入行为围栏时同时附带当前 Dynamic Spec 任务。" checked={draft.behaviorFenceAttachTasks} onChange={(value) => setDraft({ ...draft, behaviorFenceAttachTasks: value })} />
+        </div>
+      </SettingsGroup>
 
-      {/* ── 上下文窗口阈值 ── */}
-      <Section title="上下文窗口阈值" description="配置裁剪和压缩的触发时机，按模型上下文窗口大小分两档。">
-        <FieldRow label="自动压缩保留轮数" description="压缩后保留的最近 user/assistant 对话轮数">
-          <Input
-            type="number"
-            className="w-20"
-            min={1}
-            max={20}
-            value={config.compressionKeepTurns}
-            onChange={(e) => patch({ compressionKeepTurns: parseNum(e.target.value, 4, 1, 20) })}
-          />
-        </FieldRow>
-        <FieldRow label="最大裁剪比例 (%)" description="已裁剪消息比例达到此值时强制启动压缩">
-          <Input
-            type="number"
-            className="w-20"
-            min={20}
-            max={95}
-            value={config.maxTruncateRatio}
-            onChange={(e) => patch({ maxTruncateRatio: parseNum(e.target.value, 80, 20, 95) })}
-          />
-        </FieldRow>
-        <Separator />
-        <p className="text-xs font-medium text-muted-foreground">标准窗口 (≤600k)</p>
-        <FieldRow label="开始裁剪 (%)" description="上下文占用达到此值时开始渐进式裁剪">
-          <Input
-            type="number"
-            className="w-20"
-            min={50}
-            max={95}
-            value={config.contextTruncateTargetPercent}
-            onChange={(e) => patch({ contextTruncateTargetPercent: parseNum(e.target.value, 70, 50, 95) })}
-          />
-        </FieldRow>
-        <FieldRow label="开始压缩 (%)" description="上下文占用达到此值时触发压缩">
-          <Input
-            type="number"
-            className="w-20"
-            min={50}
-            max={95}
-            value={config.contextCompressionThresholdPercent}
-            onChange={(e) => patch({ contextCompressionThresholdPercent: parseNum(e.target.value, 80, 50, 95) })}
-          />
-        </FieldRow>
-        <Separator />
-        <p className="text-xs font-medium text-muted-foreground">大窗口 (&gt;600k)</p>
-        <FieldRow label="开始裁剪 (%)" description="大窗口模型的裁剪起始阈值">
-          <Input
-            type="number"
-            className="w-20"
-            min={20}
-            max={95}
-            value={config.largeWindowTruncateTargetPercent}
-            onChange={(e) => patch({ largeWindowTruncateTargetPercent: parseNum(e.target.value, 50, 20, 95) })}
-          />
-        </FieldRow>
-        <FieldRow label="开始压缩 (%)" description="大窗口模型的压缩起始阈值">
-          <Input
-            type="number"
-            className="w-20"
-            min={30}
-            max={95}
-            value={config.largeWindowCompressionThresholdPercent}
-            onChange={(e) => patch({ largeWindowCompressionThresholdPercent: parseNum(e.target.value, 60, 30, 95) })}
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ── 会话行为 ── */}
-      <Section title="会话行为">
-        <FieldRow label="会话滚动时自动加载更早消息" description="滚动到顶部时自动加载历史消息">
-          <Switch checked={config.scrollAutoLoadHistory} onCheckedChange={(v) => patch({ scrollAutoLoadHistory: v })} />
-        </FieldRow>
-        <FieldRow label="要求使用用户语言回复" description="指示 AI 使用与界面相同的语言进行回复">
-          <Switch checked={config.forceUserLanguage} onCheckedChange={(v) => patch({ forceUserLanguage: v })} />
-        </FieldRow>
-        <FieldRow label="发送方式" description="聊天输入框中发送消息的方式">
-          <SimpleSelect
-            value={config.sendMode}
-            onValueChange={(v) => patch({ sendMode: v as "enter" | "ctrl-enter" })}
-            options={[
-              { value: "enter", label: "Enter 发送" },
-              { value: "ctrl-enter", label: "Ctrl+Enter 发送" },
-            ]}
-            className="w-40"
-            aria-label="发送方式"
-          />
-        </FieldRow>
-      </Section>
-
-      {/* ── 调试 ── */}
-      <Section title="调试">
-        <FieldRow label="显示每轮对话的 Token 用量" description="每轮对话结束后显示输入/输出 Token 数量">
-          <Switch checked={config.showTokenUsage} onCheckedChange={(v) => patch({ showTokenUsage: v })} />
-        </FieldRow>
-        <FieldRow label="显示实时 AI 输出速率" description="在标题栏显示实时字符/秒指示器">
-          <Switch checked={config.showOutputRate} onCheckedChange={(v) => patch({ showOutputRate: v })} />
-        </FieldRow>
-      </Section>
-
-      {/* ── 全局白/黑名单 ── */}
-      <Section title="全局白/黑名单" description="控制所有会话的目录和命令访问权限。">
-        <ListSection
-          title="全局白名单目录"
-          description="对所有叙述者自动放行的目录"
-          items={config.toolAccess.directoryAllowlist}
-          onAdd={(v) => patchToolAccess({ directoryAllowlist: [...config.toolAccess.directoryAllowlist, v] })}
-          onRemove={(i) => patchToolAccess({ directoryAllowlist: config.toolAccess.directoryAllowlist.filter((_, idx) => idx !== i) })}
-          placeholder="输入绝对路径，回车添加"
-        />
-        <Separator />
-        <ListSection
-          title="全局黑名单目录"
-          description="对所有叙述者禁止访问的目录，优先级高于白名单"
-          items={config.toolAccess.directoryBlocklist}
-          onAdd={(v) => patchToolAccess({ directoryBlocklist: [...config.toolAccess.directoryBlocklist, v] })}
-          onRemove={(i) => patchToolAccess({ directoryBlocklist: config.toolAccess.directoryBlocklist.filter((_, idx) => idx !== i) })}
-          placeholder="输入绝对路径，回车添加"
-        />
-        <Separator />
-        <ListSection
-          title="全局命令白名单"
-          description="所有叙述者自动放行的命令，支持通配符（如 npm*、docker*）"
-          items={config.toolAccess.commandAllowlist}
-          onAdd={(v) => patchToolAccess({ commandAllowlist: [...config.toolAccess.commandAllowlist, v] })}
-          onRemove={(i) => patchToolAccess({ commandAllowlist: config.toolAccess.commandAllowlist.filter((_, idx) => idx !== i) })}
-          placeholder="输入命令模式，回车添加"
-        />
-        <Separator />
-        <div className="space-y-2">
-          <div>
-            <span className="text-sm">全局命令黑名单</span>
-            <p className="text-xs text-muted-foreground">所有叙述者自动拒绝的命令，优先于白名单。支持可选的拒绝提示词。</p>
+      <SettingsGroup title="上下文裁剪与 Compact" description="百分比阈值、保留消息对数和 Compact 排队策略直接写入 Runtime Agent 设置。">
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <NumberField label="标准上下文开始裁剪（%）" value={draft.contextThresholds.standard.pruneStart} min={50} max={100} onChange={(value) => setDraft({ ...draft, contextThresholds: { ...draft.contextThresholds, standard: { ...draft.contextThresholds.standard, pruneStart: value } } })} />
+            <NumberField label="标准上下文开始 Compact（%）" value={draft.contextThresholds.standard.compactStart} min={50} max={100} onChange={(value) => setDraft({ ...draft, contextThresholds: { ...draft.contextThresholds, standard: { ...draft.contextThresholds.standard, compactStart: value } } })} />
+            <NumberField label="大上下文开始裁剪（%）" value={draft.contextThresholds.large.pruneStart} min={10} max={100} onChange={(value) => setDraft({ ...draft, contextThresholds: { ...draft.contextThresholds, large: { ...draft.contextThresholds.large, pruneStart: value } } })} />
+            <NumberField label="大上下文开始 Compact（%）" value={draft.contextThresholds.large.compactStart} min={10} max={100} onChange={(value) => setDraft({ ...draft, contextThresholds: { ...draft.contextThresholds, large: { ...draft.contextThresholds.large, compactStart: value } } })} />
+            <NumberField label="自动 Compact 保留消息对" value={draft.autoCompactKeepPairs} min={1} max={25} onChange={(value) => setDraft({ ...draft, autoCompactKeepPairs: value })} />
+            <NumberField label="自动 Compact 裁剪阈值（%）" value={draft.autoCompactPruneThreshold} min={0} max={100} onChange={(value) => setDraft({ ...draft, autoCompactPruneThreshold: value })} />
+            <NumberField label="最小裁剪比例（%）" value={draft.minPruneRatio} min={0} max={100} onChange={(value) => setDraft({ ...draft, minPruneRatio: value })} />
           </div>
-          {(config.toolAccess.commandBlocklist ?? []).map((rule, i) => (
-            <div key={`cmd-block-${i}`} className="flex items-center gap-2 rounded border border-border px-2 py-1">
-              <Input
-                className="flex-1 text-xs"
-                placeholder="命令模式"
-                value={rule.pattern}
-                onChange={(e) => {
-                  const list = [...config.toolAccess.commandBlocklist];
-                  list[i] = { ...rule, pattern: e.target.value };
-                  patchToolAccess({ commandBlocklist: list });
-                }}
-              />
-              <Input
-                className="flex-1 text-xs"
-                placeholder="拒绝提示词（可选）"
-                value={rule.rejectHint ?? ""}
-                onChange={(e) => {
-                  const list = [...config.toolAccess.commandBlocklist];
-                  list[i] = { ...rule, rejectHint: e.target.value || undefined };
-                  patchToolAccess({ commandBlocklist: list });
-                }}
-              />
-              <button
-                type="button"
-                className="text-muted-foreground hover:text-destructive"
-                onClick={() => patchToolAccess({ commandBlocklist: config.toolAccess.commandBlocklist.filter((_, idx) => idx !== i) })}
-              >
-                <X className="size-3" />
-              </button>
+          <ToggleRow label="Compact 期间允许消息排队" description="Compact 执行期间将新消息加入 Runtime 队列，而不是立即拒绝。" checked={draft.queueDuringCompaction} onChange={(value) => setDraft({ ...draft, queueDuringCompaction: value })} />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="全局目录与命令规则" description="与 NarraFork 原生安全规则字段一致；空规则不会提交到 Runtime。">
+        <div className="grid gap-6 lg:grid-cols-2">
+          <PathRuleEditor title="目录白名单" items={draft.whitelistDirs} mode="allow" onChange={(items) => setDraft({ ...draft, whitelistDirs: items })} />
+          <PathRuleEditor title="目录黑名单" items={draft.blacklistDirs} mode="deny" onChange={(items) => setDraft({ ...draft, blacklistDirs: items })} />
+          <CommandRuleEditor title="命令白名单" items={draft.commandWhitelist} mode="allow" onChange={(items) => setDraft({ ...draft, commandWhitelist: items })} />
+          <CommandRuleEditor title="命令黑名单" items={draft.commandBlacklist} mode="deny" onChange={(items) => setDraft({ ...draft, commandBlacklist: items })} />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="重试与超时" description="可恢复错误、退避上限和首 Token 超时均来自 Runtime 校验器。">
+        <div className="grid gap-4 sm:grid-cols-3">
+          <NumberField label="最大瞬时重试" value={draft.maxTransientRetries} min={-1} max={100} onChange={(value) => setDraft({ ...draft, maxTransientRetries: value })} />
+          <NumberField label="退避上限（秒）" value={Math.round(draft.retryBackoffCeilMs / 1000)} min={1} max={300} onChange={(value) => setDraft({ ...draft, retryBackoffCeilMs: value * 1000 })} />
+          <NumberField label="首 Token 超时（秒）" value={Math.round(draft.firstTokenTimeoutMs / 1000)} min={0} max={600} onChange={(value) => setDraft({ ...draft, firstTokenTimeoutMs: value * 1000 })} />
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup title="自定义可重试错误" description="新规则通过 Runtime 重试规则接口创建；启用和删除随下一次 Agent 设置保存。">
+        <div className="flex flex-col gap-4">
+          {draft.customRetryRules.map((rule, index) => (
+            <div key={rule.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
+              <Switch aria-label={`启用重试规则 ${rule.id}`} checked={rule.enabled !== false} onCheckedChange={(value) => {
+                const rules = [...draft.customRetryRules];
+                rules[index] = { ...rule, enabled: value };
+                setDraft({ ...draft, customRetryRules: rules });
+              }} />
+              <div className="min-w-0 flex-1 text-xs text-muted-foreground">
+                <p className="font-mono text-foreground">{rule.domain || "任意域名"} · {rule.statusCode || "任意状态码"} · {rule.keyword || "任意关键词"}</p>
+                {rule.note ? <p>{rule.note}</p> : null}
+              </div>
+              <Button type="button" size="icon-sm" variant="ghost" aria-label={`删除重试规则 ${rule.id}`} onClick={() => setDraft({ ...draft, customRetryRules: draft.customRetryRules.filter((candidate) => candidate.id !== rule.id) })}>
+                <Trash2 />
+              </Button>
             </div>
           ))}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => patchToolAccess({ commandBlocklist: [...config.toolAccess.commandBlocklist, { pattern: "" }] })}
-          >
-            <Plus className="size-3 mr-1" /> 添加
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Input aria-label="重试规则域名" placeholder="域名关键词" value={retryDraft.domain ?? ""} onChange={(event) => setRetryDraft({ ...retryDraft, domain: event.currentTarget.value || undefined })} />
+            <Input aria-label="重试规则状态码" type="number" min={100} max={599} placeholder="状态码" value={retryDraft.statusCode ?? ""} onChange={(event) => setRetryDraft({ ...retryDraft, statusCode: event.currentTarget.value ? Number(event.currentTarget.value) : undefined })} />
+            <Input aria-label="重试规则关键词" placeholder="错误关键词" value={retryDraft.keyword ?? ""} onChange={(event) => setRetryDraft({ ...retryDraft, keyword: event.currentTarget.value || undefined })} />
+            <Input aria-label="重试规则备注" placeholder="备注" value={retryDraft.note ?? ""} onChange={(event) => setRetryDraft({ ...retryDraft, note: event.currentTarget.value || undefined })} />
+          </div>
+          <Button type="button" variant="outline" onClick={addRetryRule} disabled={saving || (!retryDraft.domain && !retryDraft.statusCode && !retryDraft.keyword)}>
+            <Plus data-icon="inline-start" />
+            创建重试规则
           </Button>
         </div>
-      </Section>
+      </SettingsGroup>
 
-      {/* ── Error ── */}
-      {error && <p className="text-sm text-destructive">错误：{error}</p>}
+      {preferences ? (
+        <SettingsGroup title="会话与输出" description="这些偏好按原版归属于 AI 代理，并即时保存到当前 Runtime 账户。">
+          <ToggleRow label="自动加载更早消息" description="滚动到会话顶部时自动读取更早的消息。" checked={preferences.autoLoadOlderMessages} onChange={(value) => void savePreference("autoLoadOlderMessages", value)} />
+          <ToggleRow label="按用户语言回复" description="要求 Agent 尽量使用用户当前语言回复。" checked={preferences.replyInUserLanguage} onChange={(value) => void savePreference("replyInUserLanguage", value)} />
+          <ToggleRow label="显示 Token 用量" description="在回复后展示输入和输出 Token。" checked={preferences.showTokenUsage} onChange={(value) => void savePreference("showTokenUsage", value)} />
+          <ToggleRow label="显示输出统计" description="显示输出速度和相关运行统计。" checked={preferences.showOutputStats} onChange={(value) => void savePreference("showOutputStats", value)} />
+          {savingPreference ? <p className="text-xs text-muted-foreground">正在保存 {savingPreference}…</p> : null}
+        </SettingsGroup>
+      ) : null}
 
-      {/* ── Dirty bar ── */}
-      {isDirty && (
-        <div className="sticky bottom-0 flex items-center justify-end gap-2 border-t border-border bg-background px-4 py-3 -mx-4">
-          <Button variant="outline" size="sm" onClick={() => { setConfig(savedRef.current); }}>取消变更</Button>
-          <Button size="sm" onClick={handleSave} disabled={saving}>
-            {saving ? "保存中..." : "保存变更"}
-          </Button>
+      <SettingsSaveBar
+        dirty={dirty}
+        saving={saving}
+        saveLabel="保存 Agent 设置"
+        onDiscard={() => { if (savedDraft) setDraft(savedDraft); }}
+        onSave={() => void handleSave()}
+      />
+
+      <Dialog open={dumpWarningOpen} onOpenChange={setDumpWarningOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>开启原始请求转储？</DialogTitle>
+            <DialogDescription>
+              原始请求与响应可能包含提示词、小说正文和供应商凭据。仅在排查问题时开启，并优先使用“仅记录失败请求”。
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDumpWarningOpen(false)}>取消</Button>
+            <Button type="button" onClick={() => {
+              setDraft({ ...draft, requestDumpEnabled: true });
+              setDumpWarningOpen(false);
+            }}>确认开启</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </SettingsPage>
+  );
+}
+
+function PathRuleEditor({
+  title,
+  items,
+  mode,
+  onChange,
+}: {
+  title: string;
+  items: Array<{ path: string; accessLevel?: string; denyLevel?: string; enabled?: boolean }>;
+  mode: "allow" | "deny";
+  onChange: (items: Array<{ path: string; accessLevel?: string; denyLevel?: string; enabled?: boolean }>) => void;
+}) {
+  const update = (index: number, patch: Record<string, string | boolean>) =>
+    onChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, ...patch } : item)));
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label>{title}</Label>
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...items, mode === "allow" ? { path: "", accessLevel: "readOnly", enabled: true } : { path: "", denyLevel: "denyAll", enabled: true }])}>添加规则</Button>
+      </div>
+      {items.length === 0 ? <p className="text-sm text-muted-foreground">暂无规则</p> : items.map((item, index) => (
+        <div key={`${title}-${index}`} className="grid gap-2 rounded-md border p-3 sm:grid-cols-[minmax(0,1fr)_9rem_auto_auto]">
+          <Input aria-label={`${title}路径 ${index + 1}`} value={item.path} placeholder="绝对路径或 glob" onChange={(event) => update(index, { path: event.target.value })} />
+          <SimpleSelect
+            aria-label={`${title}级别 ${index + 1}`}
+            value={mode === "allow" ? normalizeAccessLevel(item.accessLevel) : normalizeDenyLevel(item.denyLevel)}
+            onValueChange={(value) => update(index, mode === "allow" ? { accessLevel: value } : { denyLevel: value })}
+            options={mode === "allow"
+              ? [{ value: "readOnly", label: "只读" }, { value: "readWrite", label: "读写" }, { value: "full", label: "完整访问" }]
+              : [{ value: "denyAll", label: "全部拒绝" }, { value: "denyWrite", label: "仅拒绝写入" }]}
+          />
+          <Switch aria-label={`${title}启用 ${index + 1}`} checked={item.enabled !== false} onCheckedChange={(value) => update(index, { enabled: value })} />
+          <Button type="button" variant="ghost" size="sm" onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}>删除</Button>
         </div>
-      )}
+      ))}
     </div>
+  );
+}
+
+function CommandRuleEditor({
+  title,
+  items,
+  mode,
+  onChange,
+}: {
+  title: string;
+  items: Array<{ pattern: string; denyPrompt?: string; enabled?: boolean }>;
+  mode: "allow" | "deny";
+  onChange: (items: Array<{ pattern: string; denyPrompt?: string; enabled?: boolean }>) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <Label>{title}</Label>
+        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...items, { pattern: "", ...(mode === "deny" ? { denyPrompt: "" } : {}), enabled: true }])}>添加规则</Button>
+      </div>
+      {items.length === 0 ? <p className="text-sm text-muted-foreground">暂无规则</p> : items.map((item, index) => (
+        <div key={`${title}-${index}`} className="flex flex-col gap-2 rounded-md border p-3">
+          <div className="flex items-center gap-2">
+            <Input aria-label={`${title}模式 ${index + 1}`} value={item.pattern} placeholder="命令或正则模式" onChange={(event) => onChange(items.map((current, itemIndex) => itemIndex === index ? { ...current, pattern: event.target.value } : current))} />
+            <Switch aria-label={`${title}启用 ${index + 1}`} checked={item.enabled !== false} onCheckedChange={(value) => onChange(items.map((current, itemIndex) => itemIndex === index ? { ...current, enabled: value } : current))} />
+            <Button type="button" variant="ghost" size="sm" onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}>删除</Button>
+          </div>
+          {mode === "deny" ? <Input aria-label={`${title}提示 ${index + 1}`} value={item.denyPrompt ?? ""} placeholder="拒绝原因（可选）" onChange={(event) => onChange(items.map((current, itemIndex) => itemIndex === index ? { ...current, denyPrompt: event.target.value } : current))} /> : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  description,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  readonly label: string;
+  readonly description?: string;
+  readonly value: number;
+  readonly min: number;
+  readonly max: number;
+  readonly onChange: (value: number) => void;
+}) {
+  const inputId = `agent-number-${label.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fa5]+/g, "-")}`;
+  return (
+    <Field>
+      <FieldLabel htmlFor={inputId}>{label}</FieldLabel>
+      <Input
+        id={inputId}
+        aria-label={label}
+        type="number"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(event) => onChange(Math.min(max, Math.max(min, Number(event.currentTarget.value) || 0)))}
+      />
+      {description ? <FieldDescription>{description}</FieldDescription> : null}
+    </Field>
   );
 }

@@ -33,6 +33,7 @@ export const BookConfigSchema = z.object({
   parentBookId: z.string().optional(),
   fanficMode: FanficModeSchema.optional(),
   enabledPresetIds: z.array(z.string()).optional(),
+  beatTemplateId: z.string().optional(),
   customPresetOverrides: z.record(z.string(), z.unknown()).optional(),
   arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
   customSensitiveWords: z.string().optional(),

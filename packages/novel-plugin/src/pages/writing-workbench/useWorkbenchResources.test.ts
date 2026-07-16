@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
 import type { ContractResourceNode } from "@/app-next/backend-contract/resource-tree-adapter";
-import { buildWorkbenchResourceTree, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
+import { buildWorkbenchResourceTree, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
 const current = (id: string) => normalizeCapability({ id, status: "current" });
 const unsupported = (id: string) => normalizeCapability({ id, status: "unsupported" });
@@ -78,9 +78,20 @@ describe("buildWorkbenchResourceTree", () => {
     expect(result.current.openableNodes.map((node) => node.id)).toContain("chapter:book-1:1");
   });
 
+  it("在工具分区注册协作与版本面板", () => {
+    const flat = flattenWorkbenchResourceTree([createToolSectionNodes()]);
+
+    expect(flat.get("tool:collaboration-version")).toMatchObject({
+      title: "协作与版本",
+      metadata: { toolPanel: "collaboration-version" },
+      capabilities: expect.objectContaining({ open: true, readonly: true }),
+    });
+  });
+
   it("loadWorkbenchResourcesFromContract 通过 resource contract adapter 加载真实资源树", async () => {
     const resource = {
       getBook: vi.fn(async () => ok({ book: { id: "book-1", title: "灵潮纪元" }, chapters: [{ number: 1, title: "第一章", status: "draft", fileName: "001.md" }], nextChapter: 2 })),
+      listWritingResources: vi.fn(async () => ok({ resources: [{ id: "chapter-resource-1", bookId: "book-1", type: "chapter", status: "accepted", title: "第一章", content: "正文", chapterNumber: 1, wordCount: 2, parentId: null, version: 1, source: null, metadata: {}, createdAt: 1, updatedAt: 1, acceptedAt: 1, deletedAt: null }] })),
       listStoryFiles: vi.fn(async () => ok({ files: [{ name: "hooks.md", label: "hooks.md", preview: "伏笔" }] })),
       listJingweiFiles: vi.fn(async () => ok({ files: [{ name: "truth.md", label: "truth.md", preview: "真相" }] })),
       listJingweiSections: vi.fn(async () => ok({ sections: [] })),
@@ -91,7 +102,7 @@ describe("buildWorkbenchResourceTree", () => {
     const result = await loadWorkbenchResourcesFromContract(resource as any, "book-1");
 
     expect(resource.getBook).toHaveBeenCalledWith("book-1");
-    expect(result.resourceMap.get("chapter:book-1:1")).toMatchObject({ kind: "chapter", title: "第一章" });
+    expect(result.resourceMap.get("chapter:1")).toMatchObject({ kind: "chapter", title: "第一章" });
     expect(result.errors).toEqual([]);
   });
 });

@@ -16,8 +16,7 @@
     "baseUrl": ".",
     "paths": {
       "@vivy1024/novelfork-core": ["../core/src/index.ts"],
-      "@vivy1024/novelfork-core/*": ["../core/src/*"],
-      "@vivy1024/novelfork-studio/shared/*": ["../studio/src/shared/*"]
+      "@vivy1024/novelfork-core/*": ["../core/src/*"]
     }
   },
   "include": ["src"],

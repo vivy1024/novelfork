@@ -47,7 +47,7 @@ describe("backend contract verification", () => {
     ]);
   });
 
-  it("flags direct app-next API strings outside the centralized backend-contract layer", () => {
+  it("treats backend-contract, Runtime product, and Runtime admin clients as centralized API layers", () => {
     const findings = findUnregisteredAppNextApiStrings([
       {
         path: "src/app-next/shell/ShellRoute.tsx",
@@ -57,6 +57,18 @@ describe("backend contract verification", () => {
         path: "src/app-next/backend-contract/resource-client.ts",
         content: "contract.get(\"/api/books\");\n",
       },
+      {
+        path: "src/app-next/runtime/auth.ts",
+        content: "export const currentUser = \"/api/auth/me\";\n",
+      },
+      {
+        path: "src/app-next/runtime-admin/account-profile.ts",
+        content: "request(\"/api/auth/me\");\n",
+      },
+      {
+        path: "src/app-next/p0/RuntimeAuthGate.tsx",
+        content: "runtimeJson(\"/api/auth/me\");\n",
+      },
     ]);
 
     expect(findings).toEqual([
@@ -65,6 +77,12 @@ describe("backend contract verification", () => {
         apiString: "/api/books",
         line: 1,
         column: 39,
+      },
+      {
+        path: "src/app-next/p0/RuntimeAuthGate.tsx",
+        apiString: "/api/auth/me",
+        line: 1,
+        column: 14,
       },
     ]);
   });
@@ -79,17 +97,8 @@ describe("backend contract verification", () => {
     // 守卫仍会拦截任何**新增**的越界文件（不在此白名单内即失败）。
     const KNOWN_DEBT_FILES = new Set([
       "src/app-next/StudioNextApp.tsx",
-      "src/app-next/agent-conversation/slash-command-registry.ts",
-      "src/app-next/agent-conversation/surface/ConversationSurface.tsx",
-      "src/app-next/agent-conversation/surface/FileChangesPanel.tsx",
-      "src/app-next/agent-conversation/surface/GitPanel.tsx",
-      "src/app-next/agent-conversation/surface/MessageItem.tsx",
-      "src/app-next/agent-conversation/surface/NarratorStatusBar.tsx",
-      "src/app-next/agent-conversation/surface/TodosSummaryBar.tsx",
       "src/app-next/books/BookManagementPage.tsx",
       "src/app-next/components/DirectoryPickerDialog.tsx",
-      "src/app-next/routines/RoutinesNextPage.tsx",
-      "src/app-next/settings/providers/ApiProviderDetail.tsx",
     ]);
 
     const findings = findUnregisteredAppNextApiStrings(sources).filter(

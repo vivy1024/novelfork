@@ -1,0 +1,723 @@
+{
+  "version": "1.0.0",
+  "featureFlags": {
+    "runtimeNarratorParity": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_RUNTIME_NARRATOR_PARITY"
+    },
+    "learningCenter": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_LEARNING_CENTER"
+    },
+    "runtimeAdminAdvanced": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_RUNTIME_ADMIN_ADVANCED"
+    },
+    "knowledgeBase": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_KNOWLEDGE_BASE"
+    },
+    "scheduledTasks": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_SCHEDULED_TASKS"
+    },
+    "groupChat": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_GROUP_CHAT"
+    },
+    "globalSearch": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_GLOBAL_SEARCH"
+    },
+    "singleRuntimeEntry": {
+      "default": false,
+      "env": "NARRAFORK_FEATURE_SINGLE_RUNTIME_ENTRY"
+    }
+  },
+  "capabilities": [
+    {
+      "id": "bootstrap.current",
+      "domain": "bootstrap",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET /api/novelfork/bootstrap",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBooksRoutes.bootstrap",
+      "studioConsumer": "createRuntimeProductClient.getBootstrap -> GET /api/novelfork/bootstrap",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-route-inventory.test.ts",
+          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Bootstrap is the fail-closed source for books, narrators, model readiness, and declared capabilities."
+    },
+    {
+      "id": "books.create",
+      "domain": "books",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/novelfork/books",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBookService.create",
+      "studioConsumer": "createRuntimeProductClient.createBook -> POST /api/novelfork/books",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Creation requires an Idempotency-Key and exposes the durable provision operation."
+    },
+    {
+      "id": "books.status",
+      "domain": "books",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET /api/novelfork/books/:bookId/status",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBookService.status",
+      "studioConsumer": "createRuntimeProductClient.getBookStatus -> GET /api/novelfork/books/:bookId/status",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Status returns the same durable operation shape as create and retry."
+    },
+    {
+      "id": "books.retry",
+      "domain": "books",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/novelfork/books/:bookId/retry",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBookService.retry",
+      "studioConsumer": "createRuntimeProductClient.retryBookProvision -> POST /api/novelfork/books/:bookId/retry",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Retry is product-scoped but remains disabled until the root feature gate is enabled."
+    },
+    {
+      "id": "books.claim",
+      "domain": "books",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/novelfork/books/:bookId/claim",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBookService.claim",
+      "studioConsumer": "BookManagementPage -> createRuntimeProductClient.claimLegacyBook",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/books/BookManagementPage.tsx",
+          "packages/studio/src/app-next/books/BookManagementPage.test.tsx",
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Administrators can claim an unbound controlled-root book by bookId; the browser never supplies a filesystem path."
+    },
+    {
+      "id": "books.repair",
+      "domain": "books",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/novelfork/books/:bookId/repair",
+      "runtimeWs": null,
+      "productGateway": "novelForkProductBookService.repair",
+      "studioConsumer": "BookManagementPage -> createRuntimeProductClient.repairBookBinding",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/books/BookManagementPage.tsx",
+          "packages/studio/src/app-next/books/BookManagementPage.test.tsx",
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Studio exposes owner/admin repair through the trusted product endpoint and refreshes bootstrap after the durable operation completes."
+    },
+    {
+      "id": "workspace.read",
+      "domain": "workspace",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/workspace",
+      "runtimeWs": null,
+      "productGateway": "bookWorkspaceRoutes.getWorkspace",
+      "studioConsumer": "createRuntimeProductClient.getWorkspace -> GET /api/books/:bookId/workspace",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Workspace reads are book-scoped and resolve through the trusted binding."
+    },
+    {
+      "id": "workspace.create",
+      "domain": "workspace",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/books/:bookId/workspace/chapters",
+      "runtimeWs": null,
+      "productGateway": "bookWorkspaceRoutes.createChapter",
+      "studioConsumer": "createRuntimeProductClient.createWorkspaceChapter -> POST /api/books/:bookId/workspace/chapters",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Only a title is accepted; clients cannot construct a filesystem path."
+    },
+    {
+      "id": "workspace.save",
+      "domain": "workspace",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "PUT /api/books/:bookId/workspace/resources/:resourceId",
+      "runtimeWs": null,
+      "productGateway": "bookWorkspaceRoutes.saveResource",
+      "studioConsumer": "createRuntimeProductClient.saveWorkspaceResource -> PUT /api/books/:bookId/workspace/resources/:resourceId",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "Resource IDs are semantic and resolved within the server-owned book root."
+    },
+    {
+      "id": "narrator.list",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/narrators",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.list",
+      "studioConsumer": "createRuntimeProductClient.listNarrators -> GET /api/books/:bookId/narrators",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts"
+        ]
+      },
+      "notes": "The Studio client invokes the trusted book-scoped narrator collection and validates the wrapped narrator list."
+    },
+    {
+      "id": "narrator.snapshot",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/narrators/:narratorId",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.snapshot",
+      "studioConsumer": "createRuntimeProductClient.getNarratorSnapshot -> GET /api/books/:bookId/narrators/:narratorId",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Snapshot supplies narrator metadata, messages, and the message version used for catch-up."
+    },
+    {
+      "id": "narrator.history-manifest",
+      "domain": "narrator",
+      "phase": "phase-2",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/narrators/:narratorId/chunk-manifest",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.chunkManifest",
+      "studioConsumer": "native NarratorPanel ChunkedMessageList manifest window",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+        ],
+        "studio": [
+          "packages/narrafork-runtime-private/frontend/components/narrator/ChunkedMessageList.tsx",
+          "packages/narrafork-runtime-private/frontend/components/narrator/chunk-manifest-utils.ts",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "The mounted native panel consumes bounded manifest windows, virtualizes full history, and resolves message deep links without a second Studio state engine."
+    },
+    {
+      "id": "narrator.history-range",
+      "domain": "narrator",
+      "phase": "phase-2",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/narrators/:narratorId/chunks",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.chunks",
+      "studioConsumer": "useNativeNarratorRuntime.loadPreviousMessages",
+      "featureFlag": "runtimeNarratorParity",
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/services/narrator-messages.ts",
+          "packages/narrafork-runtime-private/tests/server/services/narrator-message-queries.test.ts"
+        ],
+        "studio": [
+          "packages/narrafork-runtime-private/frontend/components/narrator/ChunkedMessageList.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
+        ]
+      },
+      "notes": "The snapshot opens on a 20-message tail and older pages merge into the single RuntimeConversationViewModel."
+    },
+    {
+      "id": "narrator.message-location",
+      "domain": "narrator",
+      "phase": "phase-2",
+      "status": "verified",
+      "runtimeHttp": "GET /api/books/:bookId/narrators/:narratorId/message-location/:messageId",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.messageLocation",
+      "studioConsumer": "useNativeNarratorRuntime.loadMessageTarget",
+      "featureFlag": "runtimeNarratorParity",
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/services/narrator-messages.ts",
+          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorConversationRoute.tsx",
+          "packages/narrafork-runtime-private/frontend/components/narrator/MessageBubble.tsx"
+        ]
+      },
+      "notes": "Book-bound message location fails closed across narrators and supports #msg deep links."
+    },
+    {
+      "id": "narrator.send",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/books/:bookId/narrators/:narratorId/messages",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.sendMessage",
+      "studioConsumer": "createRuntimeProductClient.sendNarratorMessage -> POST /api/books/:bookId/narrators/:narratorId/messages",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
+        ]
+      },
+      "notes": "The Studio adapter sends only through a book-scoped narrator identity."
+    },
+    {
+      "id": "narrator.interrupt",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/books/:bookId/narrators/:narratorId/interrupt",
+      "runtimeWs": null,
+      "productGateway": "bookNarratorGatewayRoutes.interrupt",
+      "studioConsumer": "createRuntimeProductClient.interruptNarrator -> POST /api/books/:bookId/narrators/:narratorId/interrupt",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/product-contract.ts",
+          "packages/studio/src/app-next/runtime/product-contract.test.ts",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
+        ]
+      },
+      "notes": "Interrupt uses the trusted book/narrator binding before touching Runtime execution."
+    },
+    {
+      "id": "narrator.permission",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/books/:bookId/narrators/:narratorId/permissions/:requestId",
+      "runtimeWs": "permission_request -> permission_decision -> permission_resolved",
+      "productGateway": "bookNarratorGatewayRoutes.resolvePermission",
+      "studioConsumer": "useNativeNarratorRuntime.decideQuestion -> WS permission_decision",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Unrecognized permission payloads fail closed and remain visible as unsupported requests."
+    },
+    {
+      "id": "narrator.compact",
+      "domain": "narrator",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "POST /api/books/:bookId/narrators/:narratorId/compact",
+      "runtimeWs": "compacting -> compact_done | compact_failed",
+      "productGateway": "bookNarratorGatewayRoutes.compact",
+      "studioConsumer": "native NarratorPanel compact menu and compact event rendering",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
+        ],
+        "studio": [
+          "packages/narrafork-runtime-private/frontend/components/narrator/CompactMenuSub.tsx",
+          "packages/narrafork-runtime-private/frontend/components/narrator/NarratorPanel.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
+        ]
+      },
+      "notes": "The full native NarratorPanel exposes compact actions and renders compacting, success and failure states inside both Studio layouts."
+    },
+    {
+      "id": "ws.subscribe",
+      "domain": "websocket",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "client subscribe narratorIds + kind + cursor + version",
+      "productGateway": "WS /ws/narrator",
+      "studioConsumer": "useNativeNarratorRuntime sends WS subscribe",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts",
+          "packages/narrafork-runtime-private/server/websocket/ws-handler.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Subscription carries the latest trusted snapshot cursor and version."
+    },
+    {
+      "id": "ws.catch-up",
+      "domain": "websocket",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "server catch_up",
+      "productGateway": "narrator-ws sendCatchUpForAnchor",
+      "studioConsumer": "reduceNativeNarratorEvent handles catch_up",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts",
+          "packages/narrafork-runtime-private/server/websocket/catch-up-buffer.test.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Catch-up merges top-level and orphan child messages without discarding Runtime metadata."
+    },
+    {
+      "id": "ws.sync",
+      "domain": "websocket",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "client sync_check -> server sync_ok | catch_up | full_reload",
+      "productGateway": "narrator-ws sync_check",
+      "studioConsumer": "native narrator-ws-manager explicit sync_check and useNarratorWS recovery",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts",
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
+        ],
+        "studio": [
+          "packages/narrafork-runtime-private/frontend/lib/narrator-ws-manager.ts",
+          "packages/narrafork-runtime-private/frontend/hooks/useNarratorWS.ts",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx"
+        ]
+      },
+      "notes": "The mounted native panel sends explicit focus/reconnect sync checks and handles sync_ok, catch-up and full-reload recovery."
+    },
+    {
+      "id": "ws.full-reload",
+      "domain": "websocket",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "server full_reload",
+      "productGateway": "narrator-ws full_reload fallback",
+      "studioConsumer": "useNativeNarratorRuntime refreshes snapshot on full_reload",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts",
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Overflow or an unresolvable anchor falls back to a trusted HTTP snapshot refresh."
+    },
+    {
+      "id": "studio.events.handled",
+      "domain": "studio-events",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "message, stream_event, status, tool_output, tool_completed, permission, catch_up, compact, error",
+      "productGateway": "NativeNarratorEvent",
+      "studioConsumer": "reduceNativeNarratorEvent explicit handled-event switch",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Known Runtime events map to visible conversation, tool, permission, status, compact, or error state."
+    },
+    {
+      "id": "studio.events.metadata",
+      "domain": "studio-events",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": null,
+      "runtimeWs": "all valid Runtime narrator events",
+      "productGateway": "NativeNarratorEvent metadata retention",
+      "studioConsumer": "NativeNarratorRuntimeState.eventMetadata",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.tsx",
+          "packages/studio/src/app-next/runtime/RuntimeNarratorPanelMount.test.tsx"
+        ]
+      },
+      "notes": "Unhandled valid events are retained in a bounded metadata list instead of being silently discarded."
+    },
+    {
+      "id": "settings.current",
+      "domain": "settings",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET/PATCH /api/settings plus current settings actions",
+      "runtimeWs": null,
+      "productGateway": "settingsRoutes",
+      "studioConsumer": "createSettingsClient -> /api/settings",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/settings.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime-admin/settings.ts",
+          "packages/studio/src/app-next/runtime-admin/settings-routines.test.ts"
+        ]
+      },
+      "notes": "Current settings use the native Runtime admin API and explicit partial patches."
+    },
+    {
+      "id": "routines.current",
+      "domain": "routines",
+      "phase": "phase-0",
+      "status": "verified",
+      "runtimeHttp": "GET/POST/PUT /api/routines",
+      "runtimeWs": null,
+      "productGateway": "routineRoutes",
+      "studioConsumer": "createRoutinesClient -> /api/routines",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/routines.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/runtime-admin/routines.ts",
+          "packages/studio/src/app-next/runtime-admin/settings-routines.test.ts"
+        ]
+      },
+      "notes": "Current global/project routine status and global prompt operations are wired to Runtime."
+    },
+    {
+      "id": "learning.deferred",
+      "domain": "learning",
+      "phase": "post-phase-0",
+      "status": "verified",
+      "runtimeHttp": "/api/learning",
+      "runtimeWs": null,
+      "productGateway": "learningRoutes",
+      "studioConsumer": "LearnPage -> /api/learning catalog, document and search",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/learning.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/learn/LearnPage.tsx",
+          "packages/studio/src/app-next/learn/LearnPage.test.tsx"
+        ]
+      },
+      "notes": "Studio exposes the Runtime learning catalog, document deep links, localized content, search, loading and retry states."
+    },
+    {
+      "id": "knowledge.deferred",
+      "domain": "knowledge",
+      "phase": "post-phase-0",
+      "status": "verified",
+      "runtimeHttp": "/api/knowledge and /api/knowledge/packs",
+      "runtimeWs": null,
+      "productGateway": "knowledgeRoutes and knowledgePackRoutes",
+      "studioConsumer": "KnowledgeBasePage and knowledgeClient -> /api/knowledge",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/knowledge.ts",
+          "packages/narrafork-runtime-private/server/routes/knowledge-packs.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/knowledge/KnowledgeBasePage.tsx",
+          "packages/studio/src/app-next/runtime-admin/knowledge.ts",
+          "packages/studio/src/app-next/knowledge/KnowledgeBasePage.test.tsx",
+          "packages/studio/src/app-next/knowledge/knowledge-client.test.ts"
+        ]
+      },
+      "notes": "Studio consumes authenticated Runtime knowledge collections and entries with search, detail, create, metadata update, revision and delete flows."
+    },
+    {
+      "id": "scheduled.deferred",
+      "domain": "scheduled-tasks",
+      "phase": "post-phase-0",
+      "status": "verified",
+      "runtimeHttp": "/api/scheduled-tasks",
+      "runtimeWs": null,
+      "productGateway": "scheduledTaskRoutes",
+      "studioConsumer": "ScheduledTasksPage and scheduledTasksClient -> /api/scheduled-tasks",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/scheduled-tasks.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/scheduled-tasks/ScheduledTasksPage.tsx",
+          "packages/studio/src/app-next/runtime-admin/scheduled-tasks.ts",
+          "packages/studio/src/app-next/scheduled-tasks/ScheduledTasksPage.test.tsx",
+          "packages/studio/src/app-next/scheduled-tasks/client.test.ts"
+        ]
+      },
+      "notes": "Studio supports Runtime scheduled-task list, create, edit, toggle, immediate run, paginated run history and delete."
+    },
+    {
+      "id": "group.deferred",
+      "domain": "groups",
+      "phase": "post-phase-0",
+      "status": "verified",
+      "runtimeHttp": "/api/chat-groups",
+      "runtimeWs": null,
+      "productGateway": "chatGroupRoutes",
+      "studioConsumer": "GroupChatPage and chatGroupsClient -> /api/chat-groups",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/chat-groups.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/groups/GroupChatPage.tsx",
+          "packages/studio/src/app-next/runtime-admin/chat-groups.ts",
+          "packages/studio/src/app-next/groups/GroupChatPage.test.tsx",
+          "packages/studio/src/app-next/groups/chat-groups-client.test.ts"
+        ]
+      },
+      "notes": "Studio lists accessible Runtime groups and supports detail, members, paginated messages, creation, member add and normal or urgent posts."
+    },
+    {
+      "id": "global-search.deferred",
+      "domain": "global-search",
+      "phase": "post-phase-0",
+      "status": "verified",
+      "runtimeHttp": "/api/search",
+      "runtimeWs": null,
+      "productGateway": "searchRoutes",
+      "studioConsumer": "SearchPage -> POST /api/search",
+      "featureFlag": null,
+      "evidence": {
+        "runtime": [
+          "packages/narrafork-runtime-private/server/routes/search.ts"
+        ],
+        "studio": [
+          "packages/studio/src/app-next/search/SearchPage.tsx",
+          "packages/studio/src/app-next/app-next-api-contracts.test.ts"
+        ]
+      },
+      "notes": "Studio global search consumes the Runtime search contract with debouncing, result typing, loading, empty and error states."
+    }
+  ]
+}

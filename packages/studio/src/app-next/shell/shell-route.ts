@@ -5,10 +5,13 @@ export type ShellRoute =
   | { readonly kind: "narrator"; readonly sessionId: string }
   | { readonly kind: "books" }
   | { readonly kind: "book"; readonly bookId: string }
-  | { readonly kind: "sessions" }
+  | { readonly kind: "sessions"; readonly create?: boolean }
   | { readonly kind: "search" }
   | { readonly kind: "routines" }
-  | { readonly kind: "settings" }
+  | { readonly kind: "knowledge" }
+  | { readonly kind: "scheduled-tasks" }
+  | { readonly kind: "groups" }
+  | { readonly kind: "settings"; readonly section?: string }
   | { readonly kind: "learn" };
 
 export type ShellRouteKind = ShellRoute["kind"];
@@ -29,6 +32,27 @@ export interface ShellSessionItem {
   readonly unread?: boolean;
   readonly working?: boolean;
   readonly pinned?: boolean;
+}
+
+export interface ShellRecentTabItem {
+  readonly type: "chapter" | "narrator" | "project" | "workspace" | "subagent" | "group";
+  readonly id: string;
+  readonly narratorId?: string;
+  readonly title: string;
+  readonly status?: string;
+  readonly substatus?: readonly string[];
+  readonly lastVisitedAt: number;
+  readonly pinned?: boolean;
+}
+
+export function recentTabNarratorId(tab: ShellRecentTabItem): string | null {
+  if (tab.type === "chapter") return tab.narratorId ?? null;
+  if (tab.type === "narrator" || tab.type === "subagent") return tab.id;
+  return null;
+}
+
+export function recentTabKey(tab: Pick<ShellRecentTabItem, "type" | "id">): string {
+  return `${tab.type}:${tab.id}`;
 }
 
 export type ShellNavItem =
@@ -64,10 +88,13 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   if (section === "narrators" && id) return { kind: "narrator", sessionId: decodeSegment(id) };
   if (section === "books" && !id) return { kind: "books" };
   if (section === "books" && id) return { kind: "book", bookId: decodeSegment(id) };
-  if (section === "sessions") return { kind: "sessions" };
+  if (section === "sessions") return { kind: "sessions", ...(id === "new" ? { create: true } : {}) };
   if (section === "search") return { kind: "search" };
   if (section === "routines") return { kind: "routines" };
-  if (section === "settings") return { kind: "settings" };
+  if (section === "knowledge") return { kind: "knowledge" };
+  if (section === "scheduled-tasks") return { kind: "scheduled-tasks" };
+  if (section === "groups") return { kind: "groups" };
+  if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
   if (section === "learn") return { kind: "learn" };
   return { kind: "home" };
 }
@@ -81,13 +108,21 @@ export function toShellPath(route: ShellRoute): string {
     case "book":
       return `${STUDIO_NEXT_BASE_PATH}/books/${encodeSegment(route.bookId)}`;
     case "sessions":
-      return `${STUDIO_NEXT_BASE_PATH}/sessions`;
+      return route.create ? `${STUDIO_NEXT_BASE_PATH}/sessions/new` : `${STUDIO_NEXT_BASE_PATH}/sessions`;
     case "search":
       return `${STUDIO_NEXT_BASE_PATH}/search`;
     case "routines":
       return `${STUDIO_NEXT_BASE_PATH}/routines`;
+    case "knowledge":
+      return `${STUDIO_NEXT_BASE_PATH}/knowledge`;
+    case "scheduled-tasks":
+      return `${STUDIO_NEXT_BASE_PATH}/scheduled-tasks`;
+    case "groups":
+      return `${STUDIO_NEXT_BASE_PATH}/groups`;
     case "settings":
-      return `${STUDIO_NEXT_BASE_PATH}/settings`;
+      return route.section
+        ? `${STUDIO_NEXT_BASE_PATH}/settings/${encodeSegment(route.section)}`
+        : `${STUDIO_NEXT_BASE_PATH}/settings`;
     case "learn":
       return `${STUDIO_NEXT_BASE_PATH}/learn`;
     case "home":
@@ -112,6 +147,9 @@ export function getShellNavItems({
       .map((session) => ({ id: `narrator:${session.id}`, label: session.title, group: "narrators" as const, route: { kind: "narrator" as const, sessionId: session.id }, unread: session.unread, working: session.working, pinned: session.pinned })),
     { id: "search", label: "搜索", group: "global", route: { kind: "search" } },
     { id: "routines", label: "套路", group: "global", route: { kind: "routines" } },
+    { id: "knowledge", label: "知识库", group: "global", route: { kind: "knowledge" } },
+    { id: "scheduled-tasks", label: "定时任务", group: "global", route: { kind: "scheduled-tasks" } },
+    { id: "groups", label: "群聊", group: "global", route: { kind: "groups" } },
     { id: "learn", label: "学习", group: "global", route: { kind: "learn" } },
     { id: "settings", label: "设置", group: "global", route: { kind: "settings" } },
   ];

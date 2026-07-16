@@ -1,37 +1,35 @@
-import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
-import { useDesktopNotification } from "./notifications/useDesktopNotification";
+import { Component, lazy, Suspense, useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
 
 import {
   createFetchJsonContractClient,
-  createProviderClient,
   createResourceClient,
-  createSessionClient,
   type ContractResult,
   type ResourceDomainClient,
 } from "./backend-contract";
-import {
-  ConversationRoute,
-  useAgentConversationRuntime,
-  type ConversationRouteMessage,
-  type ConversationRouteStatus,
-} from "./agent-conversation";
-import type { ConversationConfirmation, ConversationSessionConfigPatch, SessionDetailData } from "./agent-conversation/surface";
-import type { RuntimeModelPoolEntry } from "../shared/provider-catalog";
-import type { CanvasContext, ToolConfirmationRequest } from "../shared/agent-native-workspace";
-import type { NarratorSessionChatMessage, NarratorSessionChatSnapshot, NarratorSessionRecord, SessionCumulativeUsage, SessionPermissionMode, TokenUsage, UpdateNarratorSessionInput } from "../shared/session-types";
 import { type StudioNextRoute } from "./entry";
 const SearchPage = lazy(() => import("./search/SearchPage").then((m) => ({ default: m.SearchPage })));
 const RoutinesNextPage = lazy(() => import("./routines/RoutinesNextPage").then((m) => ({ default: m.RoutinesNextPage })));
 const SessionCenterPage = lazy(() => import("./sessions/SessionCenterPage").then((m) => ({ default: m.SessionCenterPage })));
 const LearnPageLazy = lazy(() => import("./learn/LearnPage").then((m) => ({ default: m.LearnPage })));
 const BookManagementPageLazy = lazy(() => import("./books/BookManagementPage").then((m) => ({ default: m.BookManagementPage })));
-import { SettingsLayout, type SettingsSectionItem } from "./components/layouts";
+const KnowledgeBasePageLazy = lazy(() => import("./knowledge/KnowledgeBasePage").then((m) => ({ default: m.KnowledgeBasePage })));
+const ScheduledTasksPageLazy = lazy(() => import("./scheduled-tasks/ScheduledTasksPage").then((m) => ({ default: m.ScheduledTasksPage })));
+const GroupChatPageLazy = lazy(() => import("./groups/GroupChatPage").then((m) => ({ default: m.GroupChatPage })));
+const RuntimeNarratorConversationLoaderLazy = lazy(() => import("./runtime/RuntimeNarratorConversationRoute").then((m) => ({ default: m.RuntimeNarratorConversationLoader })));
+const RuntimeWritingWorkbenchRouteLazy = lazy(() => import("./runtime/RuntimeWritingWorkbenchRoute").then((m) => ({ default: m.RuntimeWritingWorkbenchRoute })));
+import { SettingsLayout } from "./components/layouts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
+import { createAccountProfileClient } from "./runtime-admin";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
-import { AgentShell, toShellPath, parseShellRoute, useShellData, useShellDataStore, type ShellBookItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
+import { isSettingsSectionId, resolveSettingsSectionId, SETTINGS_SECTIONS } from "./settings/sections";
+import { AgentShell, recentTabKey, recentTabNarratorId, toShellPath, parseShellRoute, useShellDataStore, type ShellBookItem, type ShellRecentTabItem, type ShellRoute, type ShellSessionItem, type ShellDataProviderSummary, type ShellDataProviderStatus } from "./shell";
+import { createRuntimeProductClient, type RuntimeProductClient } from "./runtime/product-contract";
+import { clearRuntimeAuthentication } from "./runtime/auth";
+import { createRuntimeNarratorClient, type RuntimeNarratorClient } from "./runtime/runtime-narrator-client";
+import { useRuntimeShellData } from "./runtime/useRuntimeShellData";
 import { FirstRunDialog } from "../components/onboarding/FirstRunDialog";
 import { GettingStartedChecklist, type GettingStartedStatus } from "../components/onboarding/GettingStartedChecklist";
 import { GuidedTour } from "../components/onboarding/GuidedTour";
@@ -40,40 +38,11 @@ import { useApi } from "../hooks/use-api";
 import { ToastContainer } from "../components/ui/toast";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DirectoryPickerDialog } from "./components/DirectoryPickerDialog";
-import { notify } from "@/lib/notify";
-
-import {
-  applyResourceDetailToNode,
-  loadResourceDetailState,
-  resourceNeedsDetailHydration,
-  saveResourceAndHydrate,
-  loadWorkbenchResourcesFromContract,
-  type WorkbenchCanvasContext,
-  type WorkbenchResourceNode,
-  type WorkbenchResourcesResult,
-  type ResourceHistoryEntry,
-} from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
-import { IdeWorkbench } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
+import type { WorkbenchCanvasContext } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
 interface StudioNextAppProps {
   readonly initialRoute?: StudioNextRoute; // kept for API compat; ignored when router is active
 }
-
-const SETTINGS_SECTIONS: readonly SettingsSectionItem[] = [
-  { id: "profile", label: "个人资料", group: "个人设置" },
-  { id: "models", label: "模型", group: "个人设置" },
-  { id: "agents", label: "AI 代理", group: "个人设置" },
-  { id: "notifications", label: "通知", group: "个人设置" },
-  { id: "appearance", label: "外观与界面", group: "个人设置" },
-  { id: "providers", label: "AI 供应商", group: "实例管理" },
-  { id: "proxy", label: "代理管理", group: "实例管理" },
-  { id: "server", label: "服务器与系统", group: "实例管理" },
-  { id: "storage", label: "存储空间", group: "运行资源与审计" },
-  { id: "resources", label: "运行资源", group: "运行资源与审计" },
-  { id: "usage", label: "使用历史", group: "运行资源与审计" },
-  { id: "runtime", label: "运行时环境", group: "运行资源与审计" },
-  { id: "about", label: "关于", group: "关于与项目" },
-];
 
 function ShellPlaceholder({ title, description }: { readonly title: string; readonly description: string }) {
   return (
@@ -155,9 +124,11 @@ interface HomeRouteLiveProps {
   readonly loading: boolean;
   readonly error: string | null;
   readonly onNavigate: (route: ShellRoute) => void;
+  readonly runtimeProductMode?: boolean;
+  readonly onCreateRuntimeBook?: (title: string) => Promise<string>;
 }
 
-function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loading, error, onNavigate }: HomeRouteLiveProps) {
+function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loading, error, onNavigate, runtimeProductMode = false, onCreateRuntimeBook }: HomeRouteLiveProps) {
   const shellDataStore = useShellDataStore();
   const resourceClient = useMemo(() => createDefaultResourceClient(), []);
   const [createBookOpen, setCreateBookOpen] = useState(false);
@@ -170,7 +141,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
   const recentBook = books[0] ?? null;
 
   // Onboarding checklist state
-  const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>("/onboarding/status");
+  const { data: onboardingData, refetch: refetchOnboarding } = useApi<{ status: GettingStartedStatus }>(runtimeProductMode ? null : "/onboarding/status");
   const onboardingStatus = onboardingData?.status ?? null;
   const runtimeStatus = providerRuntimeStatus(providerStatus);
 
@@ -185,21 +156,30 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
       } : undefined;
 
       const title = newBookTitle.trim() || "未命名作品";
-      const result = await resourceClient.createBook({
-        title,
-        language: "zh",
-        ...(projectInit ? { projectInit } : {}),
-      });
-      if (!result.ok) throw new Error(contractErrorMessage(result, "创建作品失败"));
-      if (!result.data.bookId) throw new Error("创建作品失败：响应缺少 bookId");
+      const bookId = runtimeProductMode
+        ? await (() => {
+            if (!onCreateRuntimeBook) throw new Error("Runtime 创建作品入口不可用");
+            if (projectInit) throw new Error("Runtime 书籍由受控根目录创建，暂不接受浏览器提供的仓库路径");
+            return onCreateRuntimeBook(title);
+          })()
+        : await (async () => {
+            const result = await resourceClient.createBook({
+              title,
+              language: "zh",
+              ...(projectInit ? { projectInit } : {}),
+            });
+            if (!result.ok) throw new Error(contractErrorMessage(result, "创建作品失败"));
+            if (!result.data.bookId) throw new Error("创建作品失败：响应缺少 bookId");
+            shellDataStore.invalidate("books");
+            return result.data.bookId;
+          })();
       // Clear guide-completed flag so the new book shows the guide
-      try { localStorage.removeItem(`novelfork:guide-completed:${result.data.bookId}`); } catch { /* ignore */ }
-      shellDataStore.invalidate("books");
+      try { localStorage.removeItem(`novelfork:guide-completed:${bookId}`); } catch { /* ignore */ }
       setCreateBookOpen(false);
       setNewBookTitle("");
       setNewBookRepoSource("none");
       setNewBookRepoPath("");
-      onNavigate({ kind: "book", bookId: result.data.bookId });
+      onNavigate({ kind: "book", bookId });
     } catch (caught) {
       setCreateBookError(caught instanceof Error ? caught.message : String(caught));
     } finally {
@@ -289,6 +269,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
           </DialogHeader>
           <form className="space-y-4" onSubmit={handleCreateBook}>
 
+            {!runtimeProductMode && <>
             {/* 仓库绑定（优先） */}
             <div className="space-y-2">
               <span className="text-sm font-medium">项目仓库</span>
@@ -315,6 +296,7 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
                 </div>
               )}
             </div>
+            </>}
 
             {/* 书名（可选） */}
             <label className="block space-y-1">
@@ -331,12 +313,12 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
         </DialogContent>
       </Dialog>
 
-      <DirectoryPickerDialog
+      {!runtimeProductMode && <DirectoryPickerDialog
         open={showDirPicker}
         onClose={() => setShowDirPicker(false)}
         onSelect={(path) => { setNewBookRepoPath(path); setShowDirPicker(false); }}
         initialPath={newBookRepoPath || undefined}
-      />
+      />}
 
       {loading ? <p className="text-sm text-muted-foreground">正在加载作者首页数据…</p> : null}
 
@@ -351,14 +333,6 @@ function HomeRouteLive({ books, sessions, providerSummary, providerStatus, loadi
 
 function createDefaultResourceClient(): ResourceDomainClient {
   return createResourceClient(createFetchJsonContractClient());
-}
-
-function createDefaultSessionClient() {
-  return createSessionClient(createFetchJsonContractClient());
-}
-
-function createDefaultContractClient() {
-  return createFetchJsonContractClient();
 }
 
 function contractErrorMessage(result: ContractResult<unknown>, fallback: string): string {
@@ -376,1113 +350,57 @@ function contractErrorMessage(result: ContractResult<unknown>, fallback: string)
   return result.code ? `${fallback}：${result.code}` : fallback;
 }
 
-type SessionToolStatePayload = {
-  readonly pending?: readonly ToolConfirmationRequest[];
-  readonly pendingConfirmations?: readonly ToolConfirmationRequest[];
-};
 
-type SessionDomainClient = ReturnType<typeof createSessionClient>;
-type WorkbenchSessionClient = {
-  readonly listActiveSessions: (options?: { projectId?: string }) => Promise<{ ok: true; data: any[] } | { ok: false; error: string }>;
-  readonly createSession: (payload: any) => Promise<any>;
-};
+const settingsAccountClient = createAccountProfileClient();
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function summaryLength(value: unknown): number {
-  return isRecord(value) && typeof value.summary === "string" ? value.summary.length : 0;
-}
-
-type SessionToolConfirmationPayload = {
-  readonly ok?: boolean;
-  readonly snapshot?: NarratorSessionChatSnapshot;
-};
-
-function pendingConfirmationsFromPayload(payload: SessionToolStatePayload): readonly ToolConfirmationRequest[] {
-  return payload.pendingConfirmations ?? payload.pending ?? [];
-}
-
-function isChatSnapshot(value: unknown): value is NarratorSessionChatSnapshot {
-  if (!value || typeof value !== "object") return false;
-  const record = value as Partial<NarratorSessionChatSnapshot>;
-  return Boolean(record.session && Array.isArray(record.messages) && record.cursor);
-}
-
-function snapshotFromConfirmationPayload(payload: SessionToolConfirmationPayload): NarratorSessionChatSnapshot | null {
-  return isChatSnapshot(payload.snapshot) ? payload.snapshot : null;
-}
-
-function toConversationConfirmation(
-  confirmation: ToolConfirmationRequest,
-  options: { readonly busy: boolean; readonly error: string | null },
-): ConversationConfirmation {
-  const details = [confirmation.summary, `目标：${confirmation.target}`, `风险：${confirmation.risk}`].filter((value): value is string => typeof value === "string" && value.length > 0);
-  const questions = extractQuestionsFromConfirmation(confirmation);
-  return {
-    id: confirmation.id,
-    title: confirmation.toolName,
-    toolName: confirmation.toolName,
-    summary: details.join(" / "),
-    target: confirmation.target,
-    targetResources: confirmation.targetResources,
-    risk: confirmation.risk,
-    permissionSource: confirmation.source ? "runtime permission_request" : "pending confirmation API",
-    source: confirmation.source,
-    checkpoint: confirmation.checkpoint,
-    diff: confirmation.diff,
-    operations: confirmation.operations,
-    operation: confirmation.summary,
-    busy: options.busy,
-    ...(questions.length > 0 ? { questions } : {}),
-    ...(options.error ? { error: options.error } : {}),
-  };
-}
-
-function extractQuestionsFromConfirmation(confirmation: ToolConfirmationRequest): ConversationConfirmation["questions"] & readonly unknown[] {
-  // 优先从顶层 questions 字段读取（AskUserQuestion 直接传递），其次从 diff.questions
-  const raw = (confirmation as any).questions;
-  const diff = confirmation.diff as Record<string, unknown> | undefined;
-  const source: readonly Record<string, unknown>[] | undefined =
-    Array.isArray(raw) ? raw :
-    (diff && Array.isArray(diff.questions)) ? diff.questions as readonly Record<string, unknown>[] :
-    undefined;
-  if (!source || source.length === 0) return [];
-  return source.map((q, i) => ({
-    id: String(q.id ?? `q-${i}`),
-    prompt: String(q.prompt ?? q.question ?? ""),
-    type: (q.type as "text" | "single" | "multi" | "ranged-number" | "ai-suggest") ?? "text",
-    ...(Array.isArray(q.options) ? { options: (q.options as unknown[]).map((o: unknown) =>
-      typeof o === "string" ? { label: o } : (o && typeof o === "object" ? { label: String((o as any).label ?? o), ...((o as any).description ? { description: String((o as any).description) } : {}) } : { label: String(o) })
-    ) } : {}),
-    ...(typeof q.header === "string" ? { header: q.header } : {}),
-    ...(typeof q.reason === "string" ? { reason: q.reason } : {}),
-    ...(typeof q.required === "boolean" ? { required: q.required } : {}),
-    ...(typeof q.aiSuggestion === "string" ? { aiSuggestion: q.aiSuggestion } : {}),
-  }));
-}
-
-interface SessionCompactCommandPayload {
-  readonly ok: true;
-  readonly summary: string;
-  readonly compactedMessageCount: number;
-  readonly budget: { readonly estimatedTokensBefore: number; readonly estimatedTokensAfter: number };
-}
-
-function ConversationRouteLive({ sessionId, canvasContext, embedded }: { readonly sessionId: string; readonly canvasContext?: CanvasContext; readonly embedded?: boolean }) {
-  const runtime = useAgentConversationRuntime({ sessionId, canvasContext });
-  const routerNavigate = useNavigate();
-  const contractClient = useMemo(() => createDefaultContractClient(), []);
-  const providerClient = useMemo(() => createProviderClient(contractClient), [contractClient]);
-  const resourceClient = useMemo(() => createResourceClient(contractClient), [contractClient]);
-  const sessionClient = useMemo(() => createSessionClient(contractClient), [contractClient]);
-  const [modelOptions, setModelOptions] = useState<NonNullable<ConversationRouteStatus["modelOptions"]>>([]);
-  const [availableTools, setAvailableTools] = useState<Array<{ name: string; description?: string }>>([]);
-  const [modelPoolLoading, setModelPoolLoading] = useState(true);
-  const [modelPoolError, setModelPoolError] = useState<string | null>(null);
-  const [pendingConfirmations, setPendingConfirmations] = useState<readonly ToolConfirmationRequest[]>([]);
-  const [confirmationError, setConfirmationError] = useState<string | null>(null);
-  const [confirmingId, setConfirmingId] = useState<string | null>(null);
-  const [workspaceFact, setWorkspaceFact] = useState<ConversationRouteStatus["workspace"] | undefined>(undefined);
-  const [compactThresholdPercent, setCompactThresholdPercent] = useState(80);
-  const shellDataStore = useShellDataStore();
-  const status = toConversationStatus(runtime.state, sessionId, modelOptions, modelPoolError, workspaceFact, compactThresholdPercent);
-  const ackedSeqRef = useRef<number | null>(null);
-  const confirmingIdRef = useRef<string | null>(null);
-  const resumeFromSeq = runtime.getResumeFromSeq();
-  const missingSession = Boolean(runtime.state.error && !runtime.state.session);
-  const modelPoolEmpty = runtime.state.session ? !modelPoolLoading && modelOptions.length === 0 && !modelPoolError : false;
-  const pendingConfirmation = pendingConfirmations[0]
-    ? toConversationConfirmation(pendingConfirmations[0], { busy: confirmingId === pendingConfirmations[0].id, error: confirmationError })
-    : null;
-
-  useEffect(() => {
-    if (resumeFromSeq <= 0 || ackedSeqRef.current === resumeFromSeq) return;
-    runtime.ack(resumeFromSeq);
-    ackedSeqRef.current = resumeFromSeq;
-  }, [resumeFromSeq, runtime]);
-
-  // Desktop notification preferences (browserNotifications master switch + per-event toggles).
-  // Loaded from /settings/user, refreshed on window focus so panel edits take effect.
-  const { notifyIfHidden } = useDesktopNotification();
-  const notificationPrefsRef = useRef<{ browserNotifications: boolean; events: { taskComplete: boolean; error: boolean } }>({
-    browserNotifications: false,
-    events: { taskComplete: true, error: true },
-  });
-  useEffect(() => {
-    let active = true;
-    const loadPrefs = () => {
-      void fetch("/api/settings/user").then((res) => res.ok ? res.json() : null).then((data) => {
-        if (!active || !data) return;
-        const n = (data.preferences as { notifications?: { browserNotifications?: boolean; events?: { taskComplete?: boolean; error?: boolean } } } | undefined)?.notifications;
-        if (!n) return;
-        notificationPrefsRef.current = {
-          browserNotifications: n.browserNotifications ?? false,
-          events: { taskComplete: n.events?.taskComplete ?? true, error: n.events?.error ?? true },
-        };
-      }).catch(() => { /* keep defaults */ });
-    };
-    loadPrefs();
-    window.addEventListener("focus", loadPrefs);
-    return () => { active = false; window.removeEventListener("focus", loadPrefs); };
-  }, []);
-
-  // 错误发生时触发 toast 通知
-  useEffect(() => {
-    if (runtime.state.error) {
-      notify.error(runtime.state.error.message, {
-        description: runtime.state.error.code ? `错误代码: ${runtime.state.error.code}` : undefined,
-        id: "session-error",
-        duration: 8000,
-      });
-      // 标签隐藏时额外发桌面通知，受用户偏好门控
-      const prefs = notificationPrefsRef.current;
-      if (prefs.browserNotifications && prefs.events.error) {
-        notifyIfHidden("叙述者遇到错误", runtime.state.error.message);
-      }
-    }
-  }, [runtime.state.error, notifyIfHidden]);
-
-  useEffect(() => {
-    const worktree = runtime.state.session?.worktree?.trim();
-    if (!worktree) {
-      setWorkspaceFact(undefined);
-      return;
-    }
-    let active = true;
-    setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: "正在读取 Git 状态" } });
-    void resourceClient.getWorktreeStatus(worktree).then((result) => {
-      if (!active) return;
-      if (!result.ok) {
-        setWorkspaceFact({ path: worktree, git: { status: "unavailable", reason: contractErrorMessage(result, "Git 状态不可读") } });
-        return;
-      }
-      const status = result.data.status;
-      const modified = Array.isArray(status.modified) ? status.modified.length : 0;
-      const added = Array.isArray(status.added) ? status.added.length : 0;
-      const deleted = Array.isArray(status.deleted) ? status.deleted.length : 0;
-      const untracked = Array.isArray(status.untracked) ? status.untracked.length : 0;
-      const total = modified + added + deleted + untracked;
-      setWorkspaceFact({
-        path: worktree,
-        git: total > 0
-          ? { status: "dirty", summary: `modified ${modified} / added ${added} / deleted ${deleted} / untracked ${untracked}` }
-          : { status: "clean", summary: "干净" },
-      });
-    });
-    return () => {
-      active = false;
-    };
-  }, [resourceClient, runtime.state.session?.worktree]);
+function SettingsRouteLive({
+  section,
+  onNavigate,
+}: {
+  readonly section?: string;
+  readonly onNavigate: (route: ShellRoute) => void;
+}) {
+  const requestedSection = resolveSettingsSectionId(section);
+  const [role, setRole] = useState<"admin" | "user" | null>(null);
 
   useEffect(() => {
     let active = true;
-    setModelPoolLoading(true);
-    setModelPoolError(null);
-
-    void providerClient.listModels().then((result) => {
-      if (!active) return;
-      if (result.ok) {
-        setModelOptions(toConversationModelOptions(result.data.models));
-        setModelPoolLoading(false);
-        return;
-      }
-      setModelOptions([]);
-      setModelPoolError(contractErrorMessage(result, "模型池加载失败"));
-      setModelPoolLoading(false);
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [providerClient]);
-
-  // Fetch available tools for SessionDetailPanel checkbox list
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/tools/list").then((r) => r.ok ? r.json() : null).then((data) => {
-      if (!active || !data) return;
-      const tools = (data.tools ?? []) as Array<{ name: string; description?: string }>;
-      setAvailableTools(tools.map((t) => ({ name: t.name, description: t.description })));
-    }).catch(() => { /* ignore */ });
-    return () => { active = false; };
-  }, []);
-
-  // Load user runtime config for context thresholds and auto-compact
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/settings/user").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (!active || !data) return;
-      const rc = data.runtimeControls;
-      if (rc?.contextCompressionThresholdPercent) setCompactThresholdPercent(rc.contextCompressionThresholdPercent);
-      // autoCompact is handled server-side; no client state needed
-    }).catch(() => { /* use defaults */ });
-    return () => { active = false; };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    if (!runtime.state.session) {
-      setPendingConfirmations([]);
-      setConfirmationError(null);
-      return () => {
-        active = false;
-      };
-    }
-
-    void sessionClient.listPendingTools<SessionToolStatePayload>(sessionId).then((result) => {
-      if (!active) return;
-      if (result.ok) {
-        setPendingConfirmations(pendingConfirmationsFromPayload(result.data));
-        setConfirmationError(null);
-        return;
-      }
-      setPendingConfirmations([]);
-      setConfirmationError(contractErrorMessage(result, "工具确认状态加载失败"));
-    });
-
-    return () => {
-      active = false;
-    };
-  }, [runtime.state.lastSeq, runtime.state.session, sessionClient, sessionId]);
-
-
-  // Auto-compact 已在后端 maybeAutoCompact（agent turn 前）处理，
-  // 前端不再通过 useEffect 发 HTTP 请求触发自动压缩。
-  // 这避免了：1) React 重渲染导致重复触发 2) HTTP 请求阻塞后续操作
-  // 手动压缩仍通过 Context Ring 按钮 → compactSessionForCommand → POST /compact 触发。
-
-  // Fetch runtime settings for SessionDetailPanel (runtimeConfig + accessRules)
-  const [runtimeSettings, setRuntimeSettings] = useState<{
-    runtimeConfig?: { relaxedPlanning?: boolean; yoloSkipReadonlyConfirmation?: boolean; smartOutputCheck?: boolean; translateThinking?: boolean };
-    accessRules?: { allowDirs?: Array<{ path: string; permission: string }>; denyDirs?: Array<{ path: string }>; allowCommands?: string[]; denyCommands?: string[] };
-    subagentModels?: { explore?: string; plan?: string; general?: string };
-  }>({});
-  useEffect(() => {
-    let active = true;
-    void fetch("/api/settings").then((res) => res.ok ? res.json() : null).then((data) => {
-      if (!active || !data) return;
-      const rc = data.runtimeControls ?? {};
-      const ta = rc.toolAccess ?? {};
-      const md = data.modelDefaults ?? {};
-      setRuntimeSettings({
-        runtimeConfig: {
-          relaxedPlanning: rc.relaxedPlanning ?? false,
-          yoloSkipReadonlyConfirmation: rc.yoloSkipReadonlyConfirmation ?? false,
-          smartOutputCheck: rc.smartOutputCheck ?? false,
-          translateThinking: rc.translateThinking ?? false,
-        },
-        accessRules: {
-          allowDirs: (ta.directoryAllowlist ?? []).map((p: string) => ({ path: p, permission: "rw" })),
-          denyDirs: (ta.directoryBlocklist ?? []).map((p: string) => ({ path: p })),
-          allowCommands: ta.commandAllowlist ?? [],
-          denyCommands: ta.commandBlocklist ?? [],
-        },
-        subagentModels: {
-          explore: md.exploreSubagentModel || undefined,
-          plan: md.planSubagentModel || undefined,
-          general: md.generalSubagentModel || undefined,
-        },
-      });
-    }).catch(() => { /* use defaults */ });
-    return () => { active = false; };
-  }, []);
-
-  // Callback: update access rules via PUT /api/settings
-  const handleUpdateAccessRules = useCallback(async (patch: { directoryAllowlist?: string[]; directoryBlocklist?: string[]; commandAllowlist?: string[]; commandBlocklist?: string[] }) => {
-    const body: Record<string, unknown> = { runtimeControls: { toolAccess: {} } };
-    const toolAccess = (body.runtimeControls as Record<string, unknown>).toolAccess as Record<string, unknown>;
-    if (patch.directoryAllowlist !== undefined) toolAccess.directoryAllowlist = patch.directoryAllowlist;
-    if (patch.directoryBlocklist !== undefined) toolAccess.directoryBlocklist = patch.directoryBlocklist;
-    if (patch.commandAllowlist !== undefined) toolAccess.commandAllowlist = patch.commandAllowlist;
-    if (patch.commandBlocklist !== undefined) toolAccess.commandBlocklist = patch.commandBlocklist;
-    const resp = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (resp.ok) {
-      // Refresh settings
-      const data = await resp.json();
-      const rc = data.runtimeControls ?? {};
-      const ta = rc.toolAccess ?? {};
-      setRuntimeSettings((prev) => ({
-        ...prev,
-        accessRules: {
-          allowDirs: (ta.directoryAllowlist ?? []).map((p: string) => ({ path: p, permission: "rw" })),
-          denyDirs: (ta.directoryBlocklist ?? []).map((p: string) => ({ path: p })),
-          allowCommands: ta.commandAllowlist ?? prev.accessRules?.allowCommands ?? [],
-          denyCommands: ta.commandBlocklist ?? prev.accessRules?.denyCommands ?? [],
-        },
-      }));
-    }
-  }, []);
-
-  // Callback: update session config (for SessionDetailPanel tri-state controls)
-  const handleUpdateSessionConfigFromDetail = useCallback(async (patch: Record<string, unknown>) => {
-    await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionConfig: patch }),
-    });
-  }, [sessionId]);
-
-  // Callback: update subagent model defaults via PUT /api/settings
-  const handleUpdateSubagentModels = useCallback(async (patch: { explore?: string; plan?: string; general?: string }) => {
-    const modelDefaults: Record<string, string> = {};
-    if (patch.explore !== undefined) modelDefaults.exploreSubagentModel = patch.explore;
-    if (patch.plan !== undefined) modelDefaults.planSubagentModel = patch.plan;
-    if (patch.general !== undefined) modelDefaults.generalSubagentModel = patch.general;
-    const resp = await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ modelDefaults }),
-    });
-    if (resp.ok) {
-      setRuntimeSettings((prev) => ({
-        ...prev,
-        subagentModels: { ...prev.subagentModels, ...patch },
-      }));
-    }
-  }, []);
-
-  const prevNarratorStateRef = useRef<string | undefined>(undefined);
-  useEffect(() => {
-    const currentState = status.narratorState ?? (status.state === "running" ? "working" : "idle");
-    const prevState = prevNarratorStateRef.current;
-    prevNarratorStateRef.current = currentState;
-    if (prevState === "working" && currentState === "idle") {
-      const prefs = notificationPrefsRef.current;
-      if (prefs.browserNotifications && prefs.events.taskComplete) {
-        notifyIfHidden("叙述者已完成任务", runtime.state.session?.title ?? sessionId);
-      }
-    }
-  }, [status.narratorState, status.state, notifyIfHidden, runtime.state.session?.title, sessionId]);
-
-  const applyConfirmationSnapshot = useCallback((snapshot: NarratorSessionChatSnapshot) => {
-    runtime.applyEnvelope({ type: "session:snapshot", snapshot, recovery: { state: "idle", reason: "confirmation-refresh" } });
-  }, [runtime]);
-
-  const refreshSnapshot = useCallback(async (): Promise<boolean> => {
-    const snapshotResult = await sessionClient.getChatState<NarratorSessionChatSnapshot>(sessionId);
-    if (!snapshotResult.ok) {
-      setConfirmationError(contractErrorMessage(snapshotResult, "确认后刷新会话快照失败"));
-      return false;
-    }
-    applyConfirmationSnapshot(snapshotResult.data);
-    return true;
-  }, [applyConfirmationSnapshot, sessionClient, sessionId]);
-
-  const refreshPendingConfirmations = useCallback(async () => {
-    const result = await sessionClient.listPendingTools<SessionToolStatePayload>(sessionId);
-    if (result.ok) {
-      setPendingConfirmations(pendingConfirmationsFromPayload(result.data));
-      return;
-    }
-    setConfirmationError(contractErrorMessage(result, "工具确认状态刷新失败"));
-  }, [sessionClient, sessionId]);
-
-  const handleConfirmationDecision = useCallback(async (confirmationId: string, decision: "approve" | "reject", answers?: Record<string, unknown>) => {
-    if (confirmingIdRef.current) return;
-    const confirmation = pendingConfirmations.find((candidate) => candidate.id === confirmationId);
-    if (!confirmation) {
-      setConfirmationError("待确认工具已不存在，请刷新会话快照。");
-      return;
-    }
-
-    confirmingIdRef.current = confirmationId;
-    setConfirmingId(confirmationId);
-    setConfirmationError(null);
-    try {
-      const result = await sessionClient.confirmTool<SessionToolConfirmationPayload>(sessionId, confirmation.toolName, {
-        decision,
-        confirmationId,
-        reason: null,
-        ...(answers ? { answers } : {}),
-      });
-      if (!result.ok) {
-        setConfirmationError(contractErrorMessage(result, "工具确认失败"));
-        return;
-      }
-
-      const returnedSnapshot = snapshotFromConfirmationPayload(result.data);
-      if (returnedSnapshot) {
-        applyConfirmationSnapshot(returnedSnapshot);
-      } else {
-        await refreshSnapshot();
-      }
-      await refreshPendingConfirmations();
-    } finally {
-      confirmingIdRef.current = null;
-      setConfirmingId(null);
-    }
-  }, [applyConfirmationSnapshot, pendingConfirmations, refreshPendingConfirmations, refreshSnapshot, sessionClient, sessionId]);
-
-  const updateSessionConfig = useCallback(async (patch: ConversationSessionConfigPatch) => {
-    const payload: UpdateNarratorSessionInput = { sessionConfig: patch };
-    const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, payload);
-    if (!result.ok) throw new Error(contractErrorMessage(result, "会话配置更新失败"));
-    shellDataStore.upsertSession(result.data);
-    shellDataStore.invalidate("sessions");
-    const refreshed = await sessionClient.getChatState<NarratorSessionChatSnapshot>(sessionId);
-    if (!refreshed.ok) throw new Error(contractErrorMessage(refreshed, "会话配置更新后刷新状态失败"));
-    runtime.applyEnvelope({ type: "session:snapshot", snapshot: refreshed.data, recovery: { state: "idle", reason: "session-config-refetch" } });
-  }, [runtime, sessionClient, sessionId, shellDataStore]);
-
-  const compactSessionForCommand = useCallback(async (instructions?: string): Promise<SessionCompactCommandPayload> => {
-    const result = await sessionClient.compactSession<SessionCompactCommandPayload>(sessionId, { instructions });
-    if (!result.ok || !result.data?.ok) throw new Error(contractErrorMessage(result, "上下文压缩失败"));
-    await refreshSnapshot();
-    return result.data;
-  }, [refreshSnapshot, sessionClient, sessionId]);
-
-  const novelHeaderSlot = null;
-
-  return (
-    <>
-      {modelPoolEmpty && (
-        <div className="mx-4 my-2 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 px-4 py-3 text-sm text-amber-800 dark:text-amber-200">
-          <strong>⚠️ 未配置 AI 模型</strong>
-          <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
-            请前往 <a href="/next/settings" className="underline font-medium">设置 → 供应商</a> 配置至少一个 AI 模型（如 Claude、GPT），否则写作功能无法使用。
-          </p>
-        </div>
-      )}
-      <ConversationRoute
-      sessionId={sessionId}
-      title={runtime.state.session?.title ?? sessionId}
-      sessionMode={runtime.state.session?.sessionMode}
-      initialAck={runtime.getResumeFromSeq()}
-      initialMessages={toConversationMessages(runtime.state.messages, runtime.state.streamingMessageId, runtime.state.turnActive)}
-      headerSlot={novelHeaderSlot}
-      embedded={embedded}
-      initialStatus={status}
-      initialConfirmation={pendingConfirmation}
-      initialRecoveryNotice={runtime.state.recovery}
-      initialError={runtime.state.error}
-      onRetryError={() => {
-        runtime.clearError();
-      }}
-      onDismissError={() => {
-        runtime.clearError();
-      }}
-      onAutoRetryError={async (errorCode) => {
-        // 从错误码创建重试规则，保存到 runtimeControls.retryRules
-        try {
-          const existing = await fetch("/api/settings").then(r => r.ok ? r.json() : null);
-          const rules = existing?.runtimeControls?.retryRules ?? [];
-          const ruleId = `auto-${errorCode}-${Date.now()}`;
-          // 用错误码做 httpStatus 或 contentKeyword 匹配
-          const isHttpCode = /^\d{3}$/.test(errorCode);
-          const newRule = {
-            id: ruleId,
-            enabled: true,
-            httpStatus: isHttpCode ? errorCode : "",
-            contentKeyword: isHttpCode ? "" : errorCode,
-          };
-          await fetch("/api/settings", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ runtimeControls: { retryRules: [...rules, newRule] } }),
-          });
-          runtime.clearError();
-          notify.success("已添加自动重试规则", { description: `后续匹配「${errorCode}」的错误将自动重试` });
-        } catch {
-          runtime.clearError();
-          notify.error("保存重试规则失败");
-        }
-      }}
-      sendDisabledReason={missingSession ? "会话缺失或快照不可用，请返回会话列表或新建会话。" : modelPoolEmpty ? "模型池为空，请先到设置页启用模型" : undefined}
-      settingsHref={missingSession ? "/next" : modelPoolEmpty ? "/next/settings" : undefined}
-      footerActions={missingSession ? <MissingSessionActions /> : null}
-      sessionDetail={(() => { const base = buildSessionDetail(runtime.state.session, runtime.state.messages); return base ? { ...base, ...runtimeSettings } : undefined; })()}
-      onSendMessage={runtime.sendMessage}
-      onAbortSession={runtime.abort}
-      onUpdateSessionConfig={updateSessionConfig}
-      onCompactSession={compactSessionForCommand}
-      onTruncateToMessage={async (messageId) => {
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/truncate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ messageId }),
-        });
-        // Reload chat state after truncation
-        const snapshot = await sessionClient.getChatState(sessionId);
-        if (snapshot.ok && snapshot.data) {
-          runtime.applyEnvelope({ type: "session:snapshot", snapshot: snapshot.data, recovery: { state: "idle" } });
-        }
-      }}
-      onDeleteMessage={async (messageId) => {
-        await fetch(`/api/sessions/${encodeURIComponent(sessionId)}/messages/${encodeURIComponent(messageId)}`, {
-          method: "DELETE",
-        });
-        // Reload chat state after deletion
-        const snapshot = await sessionClient.getChatState(sessionId);
-        if (snapshot.ok && snapshot.data) {
-          runtime.applyEnvelope({ type: "session:snapshot", snapshot: snapshot.data, recovery: { state: "idle" } });
-        }
-      }}
-      onApproveConfirmation={(confirmationId, answers) => void handleConfirmationDecision(confirmationId, "approve", answers)}
-      onRejectConfirmation={(confirmationId) => void handleConfirmationDecision(confirmationId, "reject")}
-      onEditTitle={(newTitle) => { void sessionClient.updateSession(sessionId, { title: newTitle }); }}
-      onGenerateTitle={() => {
-        const userMessages = runtime.state.messages.filter(m => m.role === "user");
-        const firstMsg = userMessages[0]?.content?.trim();
-        if (!firstMsg) {
-          void sessionClient.updateSession(sessionId, { title: `会话 ${new Date().toLocaleDateString("zh-CN")}` });
-          return;
-        }
-        // 提取第一句话作为标题（句号/问号/感叹号截断，最多 40 字）
-        const match = firstMsg.match(/^(.{1,40})[。？！\n]/);
-        const title = match ? match[1] : firstMsg.slice(0, 40);
-        void sessionClient.updateSession(sessionId, { title: title.trim() });
-      }}
-      onArchive={async () => {
-        if (!confirm("确认归档此会话？归档后可在会话中心恢复。")) return;
-        await sessionClient.updateSession(sessionId, { status: "archived" });
-        routerNavigate({ to: "/next/sessions" });
-      }}
-      onForkSession={async (title) => {
-        const result = await sessionClient.forkSession(sessionId, { title: title || `Fork of ${runtime.state.session?.title ?? sessionId}` });
-        if (result.ok && result.data) {
-          const data = result.data as { session?: { id?: string }; id?: string };
-          const forkedId = data.session?.id ?? data.id ?? null;
-          if (forkedId) routerNavigate({ to: `/next/narrators/${encodeURIComponent(forkedId)}` });
-        }
-      }}
-      onUpdateWorkDir={async (path) => {
-        const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { worktree: path });
-        if (!result.ok) throw new Error("工作目录更新失败");
-        shellDataStore.upsertSession(result.data);
-        await refreshSnapshot();
-      }}
-      onUpdateSessionConfigFromDetail={handleUpdateSessionConfigFromDetail}
-      onUpdateAccessRules={handleUpdateAccessRules}
-      onUpdateSubagentModels={handleUpdateSubagentModels}
-      modelOptions={modelOptions.map((m) => ({ value: `${m.providerId}:${m.modelId}`, label: `${m.providerLabel ?? m.providerId}:${m.modelLabel ?? m.modelId}` }))}
-      availableTools={availableTools}
-      onPin={async () => {
-        const current = runtime.state.session?.pinned ?? false;
-        const result = await sessionClient.updateSession<NarratorSessionRecord>(sessionId, { pinned: !current });
-        if (result.ok) {
-          shellDataStore.upsertSession(result.data);
-          await refreshSnapshot();
-        }
-      }}
-      isPinned={runtime.state.session?.pinned ?? false}
-      onAttach={async (files) => {
-        for (const file of Array.from(files)) {
-          const formData = new FormData();
-          formData.append("file", file);
-          await fetch("/api/upload", { method: "POST", body: formData });
-        }
-      }}
-      hasPreviousMessages={runtime.state.messages.length > 0 && (runtime.state.messages[0]?.seq ?? 0) > 1}
-      onLoadPreviousMessages={async () => {
-        const earliestSeq = runtime.state.messages[0]?.seq ?? 0;
-        if (earliestSeq <= 1) return [];
-        const result = await sessionClient.getChatHistory(sessionId, Math.max(0, earliestSeq - 50));
-        if (!result.ok || !result.data?.messages) return [];
-        return toConversationMessages(result.data.messages);
-      }}
-    />
-    </>
-  );
-}
-
-function MissingSessionActions() {
-  return (
-    <nav aria-label="缺失会话操作" className="conversation-route__missing-actions">
-      <a href="/next/sessions">返回会话列表</a>
-      <a href="/next">首页</a>
-    </nav>
-  );
-}
-
-function toConversationModelOptions(models: readonly RuntimeModelPoolEntry[]): NonNullable<ConversationRouteStatus["modelOptions"]> {
-  return models
-    .filter((model) => model.enabled !== false)
-    .map((model) => ({
-      providerId: model.providerId,
-      providerLabel: model.providerName,
-      modelId: model.modelId.startsWith(`${model.providerId}:`) ? model.modelId.slice(model.providerId.length + 1) : model.modelId,
-      modelLabel: model.modelName,
-      supportsTools: model.capabilities.functionCalling,
-      supportsReasoning: (model.capabilities as { reasoning?: boolean }).reasoning,
-      contextWindow: model.contextWindow,
-      protocol: model.protocol,
-    }));
-}
-
-function toConversationMessages(messages: readonly NarratorSessionChatMessage[], streamingMessageId?: string | null, isSessionWorking?: boolean): ConversationRouteMessage[] {
-  const lastAssistantIndex = messages.length - 1 - [...messages].reverse().findIndex((m) => m.role === "assistant");
-  return messages.map((message, index) => ({
-    id: message.id,
-    role: message.role,
-    content: message.content,
-    isStreaming: message.id === streamingMessageId || (!!isSessionWorking && message.role === "assistant" && index === lastAssistantIndex && index === messages.length - 1 && !message.toolCalls?.length),
-    metadata: message.metadata,
-    timestamp: message.timestamp,
-    // Map reasoning_content (string from backend) → thinking (ConversationThinkingBlock[])
-    thinking: message.reasoning_content
-      ? [{ content: message.reasoning_content }]
-      : undefined,
-    // Map image attachments — convert filePath to serving URL
-    attachments: message.attachments?.length
-      ? message.attachments.map((att) => {
-          const filename = att.filePath.split(/[/\\]/).pop() || "";
-          return { type: "image" as const, mimeType: att.mimeType, url: `/api/upload/files/${encodeURIComponent(filename)}`, fileName: att.fileName };
-        })
-      : undefined,
-    toolCalls: message.toolCalls?.map((toolCall, tcIndex) => ({
-      id: toolCall.id ?? `${message.id}:tool:${tcIndex}`,
-      toolName: toolCall.toolName,
-      status: toolCall.status,
-      summary: toolCall.summary,
-      input: toolCall.input,
-      output: toolCall.output ?? (typeof toolCall.result === "object" && toolCall.result !== null && "data" in toolCall.result && typeof (toolCall.result as Record<string, unknown>).data === "string" ? (toolCall.result as Record<string, unknown>).data as string : undefined),
-      result: toolCall.result,
-      durationMs: toolCall.duration,
-    })),
-  }));
-}
-
-function usageBucketFromCumulative(cumulativeUsage?: SessionCumulativeUsage) {
-  if (!cumulativeUsage) return undefined;
-  const promptTokens = cumulativeUsage.totalInputTokens + cumulativeUsage.totalCacheCreationInputTokens + cumulativeUsage.totalCacheReadInputTokens;
-  const completionTokens = cumulativeUsage.totalOutputTokens;
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
-
-function usageBucketFromRuntime(usage?: TokenUsage) {
-  if (!usage) return undefined;
-  const promptTokens = usage.input_tokens + (usage.cache_creation_input_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0);
-  const completionTokens = usage.output_tokens;
-  return {
-    promptTokens,
-    completionTokens,
-    totalTokens: promptTokens + completionTokens,
-  };
-}
-
-function latestTurnUsage(messages: readonly NarratorSessionChatMessage[]) {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const usage = usageBucketFromRuntime(messages[index]?.runtime?.usage);
-    if (usage) return usage;
-  }
-  return undefined;
-}
-
-function usageFromSessionState(session: ReturnType<typeof useAgentConversationRuntime>["state"]["session"], messages: readonly NarratorSessionChatMessage[]): ConversationRouteStatus["usage"] {
-  const currentTurn = latestTurnUsage(messages);
-  const cumulative = usageBucketFromCumulative(session?.cumulativeUsage);
-  if (!currentTurn && !cumulative) return undefined;
-  return {
-    ...(currentTurn ? { currentTurn } : {}),
-    ...(cumulative ? { cumulative } : {}),
-    cost: { status: "unknown" },
-  };
-}
-
-function buildSessionDetail(session: NarratorSessionRecord | null | undefined, messages: readonly NarratorSessionChatMessage[]): SessionDetailData | undefined {
-  if (!session) return undefined;
-  return {
-    sessionId: session.id,
-    narratorType: session.parentSessionId ? "subagent" : "primary",
-    createdAt: session.createdAt,
-    updatedAt: session.lastModified,
-    lastMessageAt: messages.length > 0 ? new Date(messages[messages.length - 1]!.timestamp).toISOString() : undefined,
-    workDir: session.worktree,
-    chapterId: session.chapterId,
-    parentSessionId: session.parentSessionId,
-    inheritMode: session.forkMode ?? "fresh",
-    customTraits: (session as unknown as Record<string, unknown>).customTraits as string | undefined,
-    disabledTools: session.sessionConfig?.toolPolicy?.deny ?? [],
-    sessionConfig: {
-      mode: session.sessionConfig?.mode,
-      toolPolicy: session.sessionConfig?.toolPolicy,
-    },
-    stats: {
-      messageCount: session.messageCount,
-      totalInput: session.cumulativeUsage?.totalInputTokens,
-      totalOutput: session.cumulativeUsage?.totalOutputTokens,
-      cacheRead: session.cumulativeUsage?.totalCacheReadInputTokens,
-    },
-  };
-}
-
-function bindingLabel(session: ReturnType<typeof useAgentConversationRuntime>["state"]["session"]): string | undefined {
-  if (!session) return undefined;
-  if (session.projectId && session.chapterId) return `${session.projectId} / 章节 ${session.chapterId}`;
-  if (session.projectId) return `书籍 ${session.projectId}`;
-  if (session.worktree) return `工作目录 ${session.worktree}`;
-  return "standalone";
-}
-
-function permissionModeDisabledReasons(session: ReturnType<typeof useAgentConversationRuntime>["state"]["session"]): Partial<Record<SessionPermissionMode, string>> | undefined {
-  if (session?.sessionMode !== "plan") return undefined;
-  return {
-    allow: "规划会话不允许全部允许",
-    edit: "规划会话不允许直接编辑",
-  };
-}
-
-function hasRunningToolCall(messages: ReturnType<typeof useAgentConversationRuntime>["state"]["messages"]): boolean {
-  return messages.some((message) => message.toolCalls?.some((toolCall) => toolCall.status === "running"));
-}
-
-function toConversationStatus(
-  state: ReturnType<typeof useAgentConversationRuntime>["state"],
-  sessionId: string,
-  modelOptions: ConversationRouteStatus["modelOptions"] = [],
-  modelPoolError: string | null = null,
-  workspaceFact?: ConversationRouteStatus["workspace"],
-  compactThresholdPercent: number = 80,
-): ConversationRouteStatus {
-  const sessionConfig = state.session?.sessionConfig;
-  const providerId = sessionConfig?.providerId || undefined;
-  const modelId = sessionConfig?.modelId || undefined;
-  const selectedModel = modelOptions?.find((option) => option.providerId === providerId && option.modelId === modelId);
-  const narratorState = (state.session as { narratorState?: string } | null)?.narratorState;
-  // 状态判断以后端广播为主，但补充前端可观测的活跃信号防止闪烁
-  // turnActive 是唯一的真相来源：用户发消息时 true，后端推送 idle 时 false，中间不变
-  const isWorking = state.turnActive;
-  const runtimeState = state.error ? "error" : isWorking || state.streamingMessageId || state.waitingForResponse ? "running" : state.session ? "ready" : "loading";
-  const turnStartedAt = (state.session as { turnStartedAt?: string } | null)?.turnStartedAt;
-  const lastTurnDurationMs = (state.session as { lastTurnDurationMs?: number } | null)?.lastTurnDurationMs;
-  const serverSubstatus = (state.session as { substatus?: string } | null)?.substatus;
-  const toolName = (state.session as { toolName?: string } | null)?.toolName;
-
-  // Context usage estimation — always provide contextUsage so ContextRing is always visible
-  const maxTokens = selectedModel?.contextWindow;
-  // Prefer API-reported lastInputTokens (precise) over local character-based estimation.
-  // lastInputTokens represents the actual context window usage from the last LLM request.
-  const apiReportedTokens = (state.session as { cumulativeUsage?: { lastInputTokens?: number } } | null)?.cumulativeUsage?.lastInputTokens;
-  // Find the last message that has runtime.usage (= when API last reported)
-  const lastApiMessageIndex = [...state.messages].reverse().findIndex(m => m.runtime?.usage);
-  const lastApiIdx = lastApiMessageIndex >= 0 ? state.messages.length - 1 - lastApiMessageIndex : -1;
-  const messagesAfterLastApi = lastApiIdx >= 0
-    ? state.messages.slice(lastApiIdx + 1)  // +1 排除有 usage 的那条
-    : [];
-  // Estimate tokens for messages added AFTER the last API call
-  const newMessageTokens = messagesAfterLastApi.reduce((sum, m) => {
-    let chars = m.content?.length ?? 0;
-    if (m.toolCalls) {
-      for (const tc of m.toolCalls) {
-        chars += tc.summary?.length ?? 0;
-        chars += JSON.stringify(tc.input ?? {}).length;
-        if (tc.result) chars += JSON.stringify(tc.result).length;
-      }
-    }
-    return sum + chars;
-  }, 0);
-  const estimatedNewTokens = Math.ceil(newMessageTokens / 4);
-
-  const usedTokens = apiReportedTokens && apiReportedTokens > 0
-    ? apiReportedTokens + estimatedNewTokens
-    : state.messages.length > 0
-      ? Math.ceil(state.messages.reduce((sum, m) => {
-          let chars = m.content?.length ?? 0;
-          if (m.toolCalls) {
-            for (const tc of m.toolCalls) {
-              chars += tc.summary?.length ?? 0;
-              chars += summaryLength(tc.result);
-              chars += JSON.stringify(tc.input ?? {}).length;
-            }
-          }
-          return sum + chars;
-        }, 0) / 4)
-      : 0;
-  // contextWindow 未配置时（detected 模型返回 0），不 fallback 虚假值，
-  // 而是不显示 ring 并在前端提醒用户到设置页配置上下文窗口。
-  const contextWindowConfigured = maxTokens && maxTokens > 0;
-  const contextUsage = contextWindowConfigured ? {
-    usedTokens,
-    maxTokens,
-    compactThreshold: Math.round(maxTokens * (compactThresholdPercent / 100)),
-  } : undefined;
-
-  return {
-    state: runtimeState,
-    narratorState: isWorking ? "working" : narratorState === "idle" ? "idle" : undefined,
-    substatus: isWorking && serverSubstatus ? serverSubstatus as ConversationRouteStatus["substatus"] : (!isWorking && serverSubstatus === "interrupted" ? "interrupted" : undefined),
-    streamingStartedAt: isWorking && turnStartedAt ? new Date(turnStartedAt).getTime() : undefined,
-    lastTurnDurationMs: !isWorking && lastTurnDurationMs ? lastTurnDurationMs : undefined,
-    toolName: isWorking ? toolName : undefined,
-    label: state.error?.message ?? (modelPoolError ?? (isWorking ? "生成中" : state.session ? "就绪" : `加载会话 ${sessionId}`)),
-    providerId,
-    providerLabel: selectedModel?.providerLabel ?? providerId,
-    modelId,
-    modelLabel: selectedModel?.modelLabel ?? modelId,
-    permissionMode: sessionConfig?.permissionMode,
-    reasoningEffort: sessionConfig?.reasoningEffort,
-    serviceTier: sessionConfig?.serviceTier,
-    apiMode: selectedModel?.protocol === "codex" ? "codex" : selectedModel?.protocol === "responses" ? "responses" : undefined,
-    usage: usageFromSessionState(state.session, state.messages),
-    contextUsage,
-    messageCount: state.session?.messageCount,
-    binding: state.session ? { label: bindingLabel(state.session) ?? "standalone", ...(state.session.worktree ? { worktree: state.session.worktree } : {}), ...(state.session.projectId ? { projectId: state.session.projectId } : {}) } : undefined,
-    workspace: workspaceFact,
-    modelOptions,
-    toolPolicySummary: sessionConfig?.toolPolicy,
-    unsupportedToolsReason: selectedModel?.supportsTools === false ? "当前模型不支持工具调用" : undefined,
-    reasoningUnsupportedReason: selectedModel?.supportsReasoning === false ? "当前 provider 不支持 reasoning effort 调整" : undefined,
-    permissionModeDisabledReasons: permissionModeDisabledReasons(state.session),
-    sessionConfigLoaded: Boolean(sessionConfig),
-  };
-}
-
-function replaceResourceNode(nodes: readonly WorkbenchResourceNode[], nextNode: WorkbenchResourceNode): WorkbenchResourceNode[] {
-  return nodes.map((node) => {
-    if (node.id === nextNode.id) return nextNode;
-    if (node.children?.length) return { ...node, children: replaceResourceNode(node.children, nextNode) };
-    return node;
-  });
-}
-
-function withSavedResource(resources: WorkbenchResourcesResult, nextNode: WorkbenchResourceNode): WorkbenchResourcesResult {
-  const resourceMap = new Map(resources.resourceMap);
-  resourceMap.set(nextNode.id, nextNode);
-  return {
-    ...resources,
-    tree: replaceResourceNode(resources.tree, nextNode),
-    openableNodes: resources.openableNodes.map((node) => (node.id === nextNode.id ? nextNode : node)),
-    resourceMap,
-  };
-}
-
-function deriveChaptersFromTree(tree: readonly WorkbenchResourceNode[]) {
-  const chapters: { id: string; number: number; title: string; status: "active" | "dormant" | "merged" | "abandoned" | "frozen" }[] = [];
-  const walk = (nodes: readonly WorkbenchResourceNode[]) => {
-    for (const node of nodes) {
-      if (node.kind === "chapter") {
-        const num = (node.metadata as { chapterNumber?: number })?.chapterNumber ?? chapters.length + 1;
-        chapters.push({ id: node.id, number: num, title: node.title ?? `第${num}章`, status: "active" });
-      }
-      if (node.children?.length) walk(node.children);
-    }
-  };
-  walk(tree);
-  return chapters.sort((a, b) => a.number - b.number);
-}
-
-function deriveChapterEdgesFromTree(tree: readonly WorkbenchResourceNode[]) {
-  const chapters = deriveChaptersFromTree(tree);
-  return chapters.slice(1).map((ch, i) => ({ id: `edge-${chapters[i]!.id}-${ch.id}`, source: chapters[i]!.id, target: ch.id, type: "dependency" as const }));
-}
-
-function WritingWorkbenchRouteLive({ bookId, onCanvasContextChange, onNavigateToConversation }: { readonly bookId: string; readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void; readonly onNavigateToConversation: (sessionId: string) => void }) {
-  const resourceClient = useMemo(() => createDefaultResourceClient(), []);
-  const rawSessionClient = useMemo<SessionDomainClient>(() => createDefaultSessionClient(), []);
-  const shellDataStore = useShellDataStore();
-  const sessionClient = useMemo<WorkbenchSessionClient>(() => ({
-    listActiveSessions: async (options) => {
-      const result = await rawSessionClient.listActiveSessions<any[]>({ ...options, status: "active" });
-      if (result.ok) return { ok: true, data: Array.isArray(result.data) ? result.data : [] };
-      return { ok: false, error: contractErrorMessage(result, "会话列表加载失败") };
-    },
-    createSession: async (payload) => {
-      const result = await rawSessionClient.createSession(payload);
-      if (result.ok) {
-        shellDataStore.upsertSession(result.data);
-        shellDataStore.invalidate("sessions");
-      }
-      return result;
-    },
-  }), [rawSessionClient, shellDataStore]);
-  const [resources, setResources] = useState<WorkbenchResourcesResult>({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
-  const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
-  const [pendingDetailNode, setPendingDetailNode] = useState<WorkbenchResourceNode | null>(null);
-  const [detailError, setDetailError] = useState<{ readonly node: WorkbenchResourceNode; readonly message: string } | null>(null);
-  const [switchGuard, setSwitchGuard] = useState<{ readonly target: WorkbenchResourceNode; readonly message: string } | null>(null);
-  const [localCanvasContext, setLocalCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
-  const detailRequestSeq = useRef(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const reloadResources = useCallback(() => {
-    setLoading(true);
-    setError(null);
-    void loadWorkbenchResourcesFromContract(resourceClient, bookId).then(
-      (nextResources) => {
-        setResources(nextResources);
-        setSelectedNode((current) => (current ? nextResources.resourceMap.get(current.id) ?? null : null));
-        setLoading(false);
-      },
-      (cause: unknown) => {
-        setResources({ tree: [], resourceMap: new Map(), openableNodes: [], errors: [] });
-        setSelectedNode(null);
-        setPendingDetailNode(null);
-        setDetailError(null);
-        setSwitchGuard(null);
-        setLocalCanvasContext(null);
-        setError(cause instanceof Error ? cause.message : String(cause));
-        setLoading(false);
-      },
+    void settingsAccountClient.get().then(
+      (profile) => { if (active) setRole(profile.role); },
+      () => { if (active) setRole("user"); },
     );
-  }, [bookId, resourceClient]);
+    return () => { active = false; };
+  }, []);
 
-  useEffect(() => { reloadResources(); }, [reloadResources]);
+  const visibleSections = useMemo(
+    () => SETTINGS_SECTIONS.filter((item) => !item.adminOnly || role === "admin"),
+    [role],
+  );
+  const activeSectionId = visibleSections.some((item) => item.id === requestedSection)
+    ? requestedSection
+    : "profile";
+  const setActiveSectionId = (nextSection: string) => {
+    const resolved = visibleSections.some((item) => item.id === nextSection) && isSettingsSectionId(nextSection)
+      ? nextSection
+      : "profile";
+    onNavigate({ kind: "settings", section: resolved });
+  };
 
-  // Load repository path + book session ID from sessions bound to this book
-  const [repositoryPath, setRepositoryPath] = useState<string | undefined>(undefined);
-  const [bookSessionId, setBookSessionId] = useState<string | null>(null);
-  const [bookSessions, setBookSessions] = useState<readonly { id: string; title: string }[]>([]);
   useEffect(() => {
-    void fetch(`/api/sessions?status=active&projectId=${encodeURIComponent(bookId)}`)
-      .then(res => res.ok ? res.json() : null)
-      .then((data: unknown) => {
-        const sessions = Array.isArray(data) ? data : [];
-        const withWorktree = sessions.find((s: { worktree?: string }) => s.worktree);
-        if (withWorktree?.worktree) setRepositoryPath(withWorktree.worktree);
-        setBookSessions(sessions.map((s: { id: string; title: string }) => ({ id: s.id, title: s.title })));
-        if (sessions.length > 0 && sessions[0]?.id) {
-          setBookSessionId(sessions[0].id);
-        }
-      })
-      .catch(() => { /* non-critical */ });
-  }, [bookId]);
-
-  const handleCreateBookSession = useCallback(async () => {
-    try {
-      const res = await fetch("/api/sessions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: `对话 ${new Date().toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit" })}`, projectId: bookId, sessionMode: "chat" }),
-      });
-      if (!res.ok) return;
-      const session = await res.json() as { id: string; title: string };
-      setBookSessions((prev) => [{ id: session.id, title: session.title }, ...prev]);
-      setBookSessionId(session.id);
-    } catch { /* non-critical */ }
-  }, [bookId]);
-
-  const openResourceNode = useCallback(
-    (node: WorkbenchResourceNode) => {
-      setError(null);
-      setDetailError(null);
-      setSwitchGuard(null);
-      const requestSeq = detailRequestSeq.current + 1;
-      detailRequestSeq.current = requestSeq;
-
-      if (!resourceNeedsDetailHydration(node)) {
-        setPendingDetailNode(null);
-        setSelectedNode(node);
-        return;
-      }
-
-      setPendingDetailNode(node);
-      void loadResourceDetailState(resourceClient, bookId, node).then((detail) => {
-        if (detailRequestSeq.current !== requestSeq) return;
-        setPendingDetailNode(null);
-        if (detail.status === "ready") {
-          setSelectedNode(applyResourceDetailToNode(node, detail));
-          return;
-        }
-        if (detail.status === "error") {
-          setDetailError({ node, message: detail.message });
-        }
-      });
-    },
-    [bookId, resourceClient],
-  );
-
-  const handleOpen = useCallback(
-    (node: WorkbenchResourceNode) => {
-      if (localCanvasContext?.dirty && selectedNode && selectedNode.id !== node.id) {
-        setSwitchGuard({ target: node, message: "当前画布有未保存内容，请先保存或放弃后再切换资源。" });
-        return;
-      }
-      openResourceNode(node);
-    },
-    [localCanvasContext?.dirty, openResourceNode, selectedNode],
-  );
-
-  const handleSave = useCallback(
-    async (node: WorkbenchResourceNode, content: string) => {
-      const savedNode = await saveResourceAndHydrate(resourceClient, bookId, node, content);
-      setResources((current) => withSavedResource(current, savedNode));
-      setSelectedNode((current) => (current?.id === savedNode.id ? savedNode : current));
-    },
-    [bookId, resourceClient],
-  );
-
-  const handleCanvasContextChange = useCallback((context: WorkbenchCanvasContext) => {
-    setLocalCanvasContext(context);
-    onCanvasContextChange(context);
-  }, [onCanvasContextChange]);
-
-  const chapterActions = useMemo(() => ({
-    onGetHistory: async (resourceId: string): Promise<ResourceHistoryEntry[]> => {
-      const result = await resourceClient.getWritingResourceHistory<{ history: ResourceHistoryEntry[] }>(bookId, resourceId);
-      if (result.ok) return result.data.history;
-      throw new Error("加载历史失败");
-    },
-    onDelete: async (resourceId: string) => {
-      await resourceClient.deleteWritingResource(bookId, resourceId);
-      reloadResources();
-    },
-  }), [bookId, reloadResources, resourceClient]);
-
-  const handleCreateChapter = useCallback(async () => {
-    try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: "" }),
-      });
-      if (res.ok) reloadResources();
-    } catch { /* non-fatal */ }
-  }, [bookId, reloadResources]);
+    if (role && requestedSection !== activeSectionId) {
+      onNavigate({ kind: "settings", section: activeSectionId });
+    }
+  }, [activeSectionId, onNavigate, requestedSection, role]);
 
   return (
-    <>
-      {loading ? <p role="status">资源加载中…</p> : null}
-      {pendingDetailNode ? <p role="status">正在加载 {pendingDetailNode.title} 详情…</p> : null}
-      {error ? <p role="alert">资源加载失败：{error}</p> : null}
-      {detailError ? (
-        <p role="alert">
-          {detailError.node.title} 详情加载失败：{detailError.message}
-          <Button type="button" variant="outline" size="sm" onClick={() => handleOpen(detailError.node)}>重试</Button>
-        </p>
-      ) : null}
-      {switchGuard ? (
-        <p role="alert">
-          {switchGuard.message}
-          <Button type="button" variant="outline" size="sm" onClick={() => openResourceNode(switchGuard.target)}>放弃并切换</Button>
-        </p>
-      ) : null}
-      <IdeWorkbench
-        bookId={bookId}
-        nodes={resources.tree}
-        selectedNode={selectedNode}
-        onOpen={handleOpen}
-        onDeselectNode={() => setSelectedNode(null)}
-        onSave={handleSave}
-        onCanvasContextChange={handleCanvasContextChange}
-        onCreateChapter={handleCreateChapter}
-        onGuideComplete={reloadResources}
-        chapterActions={chapterActions}
-        chatSlot={bookSessionId ? <ConversationRouteLive sessionId={bookSessionId} canvasContext={undefined} embedded /> : undefined}
-        onSwitchToAgent={bookSessionId ? () => onNavigateToConversation(bookSessionId) : undefined}
-        bookSessions={bookSessions}
-        activeSessionId={bookSessionId}
-        onSwitchSession={(id) => setBookSessionId(id)}
-        onCreateSession={handleCreateBookSession}
-      />
-    </>
-  );
-}
-
-function SettingsRouteLive() {
-  const [activeSectionId, setActiveSectionId] = useState("models");
-  return (
-    <SettingsLayout title="设置" sections={SETTINGS_SECTIONS} activeSectionId={activeSectionId} onSectionChange={setActiveSectionId}>
+    <SettingsLayout
+      title="设置"
+      sections={visibleSections}
+      activeSectionId={activeSectionId}
+      onSectionChange={setActiveSectionId}
+      mobileDetailOpen={section !== undefined}
+      onMobileBack={() => onNavigate({ kind: "settings" })}
+    >
       {activeSectionId === "providers"
         ? <ProviderSettingsPage />
         : <SettingsSectionContent sectionId={activeSectionId} onSectionChange={setActiveSectionId} />}
@@ -1492,7 +410,6 @@ function SettingsRouteLive() {
 
 function RouteMountPoint({
   route,
-  canvasContext,
   onCanvasContextChange,
   onNavigateToConversation,
   onNavigate,
@@ -1502,9 +419,13 @@ function RouteMountPoint({
   providerStatus,
   loading,
   error,
+  runtimeClient,
+  narratorClient,
+  onCreateRuntimeBook,
+  reloadRuntimeShell,
+  selectedBook,
 }: {
   readonly route: ShellRoute;
-  readonly canvasContext?: CanvasContext;
   readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void;
   readonly onNavigateToConversation: (sessionId: string) => void;
   readonly onNavigate: (route: ShellRoute) => void;
@@ -1514,26 +435,77 @@ function RouteMountPoint({
   readonly providerStatus: ShellDataProviderStatus | null;
   readonly loading: boolean;
   readonly error: string | null;
+  readonly runtimeClient: RuntimeProductClient;
+  readonly narratorClient: RuntimeNarratorClient;
+  readonly onCreateRuntimeBook: (title: string) => Promise<string>;
+  readonly reloadRuntimeShell: () => Promise<void>;
+  readonly selectedBook: ShellBookItem | null;
 }) {
   switch (route.kind) {
     case "narrator":
-      return <ConversationRouteLive sessionId={route.sessionId} canvasContext={canvasContext} />;
+      return (
+        <LazyErrorBoundary fallbackLabel="叙述者会话">
+          <Suspense fallback={<LazyFallback />}>
+            <RuntimeNarratorConversationLoaderLazy
+              narratorId={route.sessionId}
+              client={runtimeClient}
+              narratorClient={narratorClient}
+              onOpened={reloadRuntimeShell}
+              onInvalidNarrator={() => onNavigate({ kind: "sessions" })}
+            />
+          </Suspense>
+        </LazyErrorBoundary>
+      );
     case "book":
-      return <WritingWorkbenchRouteLive bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} />;
+      return <LazyErrorBoundary fallbackLabel="写作工作台"><Suspense fallback={<LazyFallback />}><RuntimeWritingWorkbenchRouteLazy bookId={route.bookId} onCanvasContextChange={onCanvasContextChange} onNavigateToConversation={onNavigateToConversation} client={runtimeClient} /></Suspense></LazyErrorBoundary>;
     case "books":
-      return <LazyErrorBoundary fallbackLabel="作品管理"><Suspense fallback={<LazyFallback />}><BookManagementPageLazy onNavigateToBook={(bookId) => onNavigate({ kind: "book", bookId })} onCreateBook={() => onNavigate({ kind: "home" })} /></Suspense></LazyErrorBoundary>;
+      return (
+        <LazyErrorBoundary fallbackLabel="作品管理">
+          <Suspense fallback={<LazyFallback />}>
+            <BookManagementPageLazy
+              books={books}
+              loading={loading}
+              error={error}
+              onNavigateToBook={(bookId) => onNavigate({ kind: "book", bookId })}
+              onCreateBook={() => onNavigate({ kind: "home" })}
+              onClaimLegacyBook={async (bookId) => {
+                const operation = await runtimeClient.claimLegacyBook(bookId);
+                await reloadRuntimeShell();
+                return operation;
+              }}
+              onRepairBook={async (bookId) => {
+                const operation = await runtimeClient.repairBookBinding(bookId);
+                await reloadRuntimeShell();
+                return operation;
+              }}
+            />
+          </Suspense>
+        </LazyErrorBoundary>
+      );
     case "sessions":
-      return <LazyErrorBoundary fallbackLabel="会话中心"><Suspense fallback={<LazyFallback />}><SessionCenterPage /></Suspense></LazyErrorBoundary>;
+      return <LazyErrorBoundary fallbackLabel="叙述者中心"><Suspense fallback={<LazyFallback />}><SessionCenterPage client={narratorClient} initialCreateOpen={route.create === true} onOpenNarrator={onNavigateToConversation} onChanged={reloadRuntimeShell} /></Suspense></LazyErrorBoundary>;
     case "search":
-      return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage onNavigateToBook={(bookId) => onNavigate({ kind: "book", bookId })} /></Suspense></LazyErrorBoundary>;
+      return <LazyErrorBoundary fallbackLabel="搜索"><Suspense fallback={<LazyFallback />}><SearchPage /></Suspense></LazyErrorBoundary>;
     case "routines":
-      return <LazyErrorBoundary fallbackLabel="套路页"><Suspense fallback={<LazyFallback />}><RoutinesNextPage /></Suspense></LazyErrorBoundary>;
+      return (
+        <LazyErrorBoundary fallbackLabel="套路页">
+          <Suspense fallback={<LazyFallback />}>
+            <RoutinesNextPage bookId={selectedBook?.id} bookTitle={selectedBook?.title} />
+          </Suspense>
+        </LazyErrorBoundary>
+      );
+    case "knowledge":
+      return <LazyErrorBoundary fallbackLabel="知识库"><Suspense fallback={<LazyFallback />}><KnowledgeBasePageLazy /></Suspense></LazyErrorBoundary>;
+    case "scheduled-tasks":
+      return <LazyErrorBoundary fallbackLabel="定时任务"><Suspense fallback={<LazyFallback />}><ScheduledTasksPageLazy /></Suspense></LazyErrorBoundary>;
+    case "groups":
+      return <LazyErrorBoundary fallbackLabel="群聊"><Suspense fallback={<LazyFallback />}><GroupChatPageLazy /></Suspense></LazyErrorBoundary>;
     case "learn":
       return <LazyErrorBoundary fallbackLabel="学习中心"><Suspense fallback={<LazyFallback />}><LearnPageLazy /></Suspense></LazyErrorBoundary>;
     case "settings":
-      return <SettingsRouteLive />;
+      return <SettingsRouteLive section={route.section} onNavigate={onNavigate} />;
     case "home":
-      return <HomeRouteLive books={books} sessions={sessions} providerSummary={providerSummary} providerStatus={providerStatus} loading={loading} error={error} onNavigate={onNavigate} />;
+      return <HomeRouteLive books={books} sessions={sessions} providerSummary={providerSummary} providerStatus={providerStatus} loading={loading} error={error} onNavigate={onNavigate} runtimeProductMode onCreateRuntimeBook={onCreateRuntimeBook} />;
     default:
       return <ShellPlaceholder title="Agent Shell" description="选择左侧叙事线、叙述者或全局入口开始。" />;
   }
@@ -1542,20 +514,36 @@ function RouteMountPoint({
 export function StudioNextApp(_props: StudioNextAppProps) {
   const routerState = useRouterState();
   const activeRoute: ShellRoute = parseShellRoute(routerState.location.pathname);
-  const [canvasContext, setCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
-  const { books, sessions, providerSummary, providerStatus, loading, error } = useShellData();
+  const [, setCanvasContext] = useState<WorkbenchCanvasContext | null>(null);
+  const runtimeClient = useMemo(() => createRuntimeProductClient(), []);
+  const narratorClient = useMemo(() => createRuntimeNarratorClient(), []);
+  const activeNarratorId = activeRoute.kind === "narrator" ? activeRoute.sessionId : undefined;
+  const {
+    books,
+    sessions,
+    recentTabs = [],
+    providerSummary,
+    providerStatus,
+    loading,
+    error: runtimeShellError,
+    reload: reloadRuntimeShell,
+  } = useRuntimeShellData(runtimeClient, narratorClient, activeNarratorId);
+  const error = runtimeShellError?.message ?? null;
   const routerNavigate = useNavigate();
+  const [selectedBookId, setSelectedBookId] = useState<string | null>(null);
 
-  // Apply appearance preferences on app startup (font size, font family, OLED black)
   useEffect(() => {
-    fetch("/api/settings/user").then(r => r.ok ? r.json() : null).then((data: { preferences?: { fontSize?: number; fontFamily?: string; oledBlack?: boolean } } | null) => {
-      if (!data?.preferences) return;
-      const { fontSize, fontFamily, oledBlack } = data.preferences;
-      if (fontSize) document.documentElement.style.fontSize = `${fontSize}px`;
-      if (fontFamily) document.documentElement.style.fontFamily = fontFamily;
-      if (oledBlack) document.documentElement.classList.add("oled-black");
-    }).catch(() => { /* non-fatal */ });
-  }, []);
+    setSelectedBookId((current) => {
+      if (activeRoute.kind === "book") return activeRoute.bookId;
+      if (current && books.some((book) => book.id === current)) return current;
+      return books[0]?.id ?? null;
+    });
+  }, [activeRoute, books]);
+
+  const selectedBook = useMemo(
+    () => books.find((book) => book.id === selectedBookId) ?? null,
+    [books, selectedBookId],
+  );
 
   // 首次运行检测：没有 localStorage 标记 且 没有已有数据时才显示
   const [showFirstRun, setShowFirstRun] = useState(() => {
@@ -1585,16 +573,75 @@ export function StudioNextApp(_props: StudioNextAppProps) {
     navigate({ kind: "narrator", sessionId });
   }, [navigate]);
 
+  const createRuntimeBook = useCallback(async (title: string): Promise<string> => {
+    const idempotencyKey = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `runtime-book-${Date.now()}`;
+    const operation = await runtimeClient.createBook({ title }, idempotencyKey);
+    if (operation.state !== "ready") {
+      throw new Error(operation.error ?? `书籍初始化尚未完成（${operation.state}）`);
+    }
+    await reloadRuntimeShell();
+    return operation.bookId;
+  }, [reloadRuntimeShell, runtimeClient]);
+
+  const removeRecentTab = useCallback(async (tab: ShellRecentTabItem) => {
+    await narratorClient.removeRecentTab(tab);
+    if (activeRoute.kind === "narrator" && recentTabNarratorId(tab) === activeRoute.sessionId) {
+      navigate({ kind: "sessions" });
+    }
+    await reloadRuntimeShell();
+  }, [activeRoute, narratorClient, navigate, reloadRuntimeShell]);
+
+  const clearInactiveRecentTabs = useCallback(async () => {
+    const activeTab = activeRoute.kind === "narrator"
+      ? recentTabs.find((tab) => recentTabNarratorId(tab) === activeRoute.sessionId)
+      : undefined;
+    await narratorClient.clearRecentTabs(
+      "inactive_narrators",
+      activeTab ? recentTabKey(activeTab) : undefined,
+    );
+    await reloadRuntimeShell();
+  }, [activeRoute, narratorClient, recentTabs, reloadRuntimeShell]);
+
+  const setRecentTabPinned = useCallback(async (tab: ShellRecentTabItem, pinned: boolean) => {
+    await narratorClient.setRecentTabPinned(tab, pinned);
+    await reloadRuntimeShell();
+  }, [narratorClient, reloadRuntimeShell]);
+
+  const moveRecentTab = useCallback(async (tab: ShellRecentTabItem, target: ShellRecentTabItem) => {
+    const sourceKey = recentTabKey(tab);
+    const targetKey = recentTabKey(target);
+    const sourceIndex = recentTabs.findIndex((candidate) => recentTabKey(candidate) === sourceKey);
+    if (sourceIndex < 0 || sourceKey === targetKey) return;
+
+    const next = [...recentTabs];
+    const [moved] = next.splice(sourceIndex, 1);
+    const targetIndex = next.findIndex((candidate) => recentTabKey(candidate) === targetKey);
+    if (!moved || targetIndex < 0) return;
+    next.splice(targetIndex, 0, moved);
+    const toIndex = next.findIndex((candidate) => recentTabKey(candidate) === sourceKey);
+    if (toIndex < 0) return;
+
+    await narratorClient.moveRecentTab(tab, { toIndex });
+    await reloadRuntimeShell();
+  }, [narratorClient, recentTabs, reloadRuntimeShell]);
+
   return (
-    <AgentShell route={activeRoute} books={books} sessions={sessions} onNavigate={navigate} onDeleteBook={async (bookId) => {
-      try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
-        if (res.ok) { navigate({ kind: "home" }); window.location.reload(); }
-      } catch { /* ignore */ }
-    }}>
+    <AgentShell
+      route={activeRoute}
+      books={books}
+      sessions={sessions}
+      recentTabs={recentTabs}
+      onNavigate={navigate}
+      onRemoveRecentTab={(tab) => { void removeRecentTab(tab); }}
+      onPinRecentTab={(tab, pinned) => { void setRecentTabPinned(tab, pinned); }}
+      onMoveRecentTab={(tab, target) => { void moveRecentTab(tab, target); }}
+      onClearInactiveRecentTabs={() => { void clearInactiveRecentTabs(); }}
+      onLogout={() => clearRuntimeAuthentication("logout")}
+    >
       <RouteMountPoint
         route={activeRoute}
-        canvasContext={canvasContext ?? undefined}
         onCanvasContextChange={setCanvasContext}
         onNavigateToConversation={navigateToConversation}
         onNavigate={navigate}
@@ -1604,6 +651,11 @@ export function StudioNextApp(_props: StudioNextAppProps) {
         providerStatus={providerStatus}
         loading={loading}
         error={error}
+        runtimeClient={runtimeClient}
+        narratorClient={narratorClient}
+        onCreateRuntimeBook={createRuntimeBook}
+        reloadRuntimeShell={reloadRuntimeShell}
+        selectedBook={selectedBook}
       />
       <FirstRunDialog
         open={shouldShowFirstRun}

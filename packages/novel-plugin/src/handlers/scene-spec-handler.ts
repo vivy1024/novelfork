@@ -2,8 +2,10 @@
  * scene.spec handler — 生成结构化写作蓝图（Scene Spec）。
  *
  * 包含角色、地点、冲突、情绪、结果等约束，是调用 pipeline.write 的硬前置条件。
- * 优先使用 LLM 生成智能蓝图；LLM 不可用时 fallback 到从输入推断。
+ * 优先使用宿主注入的文本生成能力；宿主未提供时 fallback 到从输入推断。
  */
+
+import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -34,6 +36,8 @@ export interface SceneSpecInput {
   jingweiBrief?: Record<string, unknown>;
   loreBrief?: Record<string, unknown>;
   memoryContext?: Record<string, unknown>;
+  /** 宿主注入的受控文本生成器 */
+  generateText?: RuntimeTextGenerator;
 }
 
 export interface SceneSpecSuccess {
@@ -238,42 +242,27 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   let sceneSpec: SceneSpec | null = null;
   let usedLLM = false;
 
-  // 尝试 LLM 生成
+  // 尝试可信文本生成
   try {
-    const { createLLMClient, chatCompletion } = await import("@vivy1024/novelfork-core");
-
-    // 从环境变量获取 LLM 配置
-    const apiKey = process.env.NOVELFORK_LLM_API_KEY;
-    const model = process.env.NOVELFORK_LLM_MODEL ?? "deepseek-chat";
-    const baseUrl = process.env.NOVELFORK_LLM_BASE_URL ?? "https://api.deepseek.com/v1";
-    const provider = process.env.NOVELFORK_LLM_PROVIDER ?? "openai";
-
-    if (apiKey) {
-      const client = createLLMClient({
-        provider: provider as "openai" | "anthropic",
-        baseUrl,
-        apiKey,
-        model,
+    const generator = input.generateText;
+    if (generator) {
+      const userPrompt = buildSceneSpecUserPrompt(input);
+      const response = await generator({
+        messages: [
+          { role: "system", content: SCENE_SPEC_SYSTEM_PROMPT },
+          { role: "user", content: userPrompt },
+        ],
         temperature: 0.7,
         maxTokens: 2000,
-        thinkingBudget: 0,
-        apiFormat: "chat",
-        stream: false,
       });
 
-      const userPrompt = buildSceneSpecUserPrompt(input);
-      const response = await chatCompletion(client, model, [
-        { role: "system", content: SCENE_SPEC_SYSTEM_PROMPT },
-        { role: "user", content: userPrompt },
-      ], { temperature: 0.7, maxTokens: 2000 });
-
-      if (response?.content) {
-        sceneSpec = parseSceneSpecFromLLM(response.content, chapterNumber, wordTarget);
+      if (response?.text) {
+        sceneSpec = parseSceneSpecFromLLM(response.text, chapterNumber, wordTarget);
         if (sceneSpec) usedLLM = true;
       }
     }
   } catch {
-    // LLM 不可用，fallback 到占位逻辑
+    // 文本生成失败，fallback 到占位逻辑
   }
 
   // Fallback：从输入推断

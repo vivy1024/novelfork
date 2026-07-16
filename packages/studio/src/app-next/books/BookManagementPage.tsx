@@ -1,136 +1,192 @@
-import { useState, useEffect, useCallback } from "react";
-import { BookOpen, Plus, Trash2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { useState } from "react";
+import { BookOpen, Plus, RefreshCw, ShieldCheck } from "lucide-react";
 
-export interface BookCardData {
-  id: string;
-  title: string;
-  genre?: string;
-  chapterCount?: number;
-  targetChapters?: number;
-  wordCount?: number;
-  status?: string;
-}
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { RuntimeBookProvisionOperation, RuntimeBookSummary } from "../runtime/product-contract";
+
+type ManagedBook = Pick<RuntimeBookSummary, "id" | "title" | "status">;
 
 export interface BookManagementPageProps {
-  onNavigateToBook: (bookId: string) => void;
-  onCreateBook: () => void;
+  readonly books: readonly ManagedBook[];
+  readonly loading: boolean;
+  readonly error: string | null;
+  readonly onNavigateToBook: (bookId: string) => void;
+  readonly onCreateBook: () => void;
+  readonly onClaimLegacyBook: (bookId: string) => Promise<RuntimeBookProvisionOperation>;
+  readonly onRepairBook: (bookId: string) => Promise<RuntimeBookProvisionOperation>;
 }
 
-export function BookManagementPage({ onNavigateToBook, onCreateBook }: BookManagementPageProps) {
-  const [books, setBooks] = useState<BookCardData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+export function BookManagementPage({
+  books,
+  loading,
+  error,
+  onNavigateToBook,
+  onCreateBook,
+  onClaimLegacyBook,
+  onRepairBook,
+}: BookManagementPageProps) {
+  const [claimOpen, setClaimOpen] = useState(false);
+  const [legacyBookId, setLegacyBookId] = useState("");
+  const [actionBookId, setActionBookId] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
-  const loadBooks = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const claimLegacyBook = async () => {
+    const bookId = legacyBookId.trim();
+    if (!bookId) return;
+    setActionBookId(bookId);
+    setActionError(null);
     try {
-      const res = await fetch("/api/books");
-      if (!res.ok) throw new Error(`加载失败: ${res.status}`);
-      const data = await res.json();
-      setBooks(Array.isArray(data.books) ? data.books : Array.isArray(data) ? data : []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "加载书籍列表失败");
+      const operation = await onClaimLegacyBook(bookId);
+      setActionMessage(`旧作品 ${operation.bookId} 已接管，当前状态：${operation.state}`);
+      setLegacyBookId("");
+      setClaimOpen(false);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "接管旧作品失败");
     } finally {
-      setLoading(false);
+      setActionBookId(null);
     }
-  }, []);
+  };
 
-  useEffect(() => { void loadBooks(); }, [loadBooks]);
-
-  const handleDelete = useCallback(async (bookId: string, title: string) => {
-    if (!confirm(`确认删除「${title}」？此操作不可撤销。`)) return;
+  const repairBook = async (bookId: string) => {
+    setActionBookId(bookId);
+    setActionError(null);
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}`, { method: "DELETE" });
-      if (res.ok) {
-        setBooks((prev) => prev.filter((b) => b.id !== bookId));
-      } else {
-        alert("删除失败");
-      }
-    } catch {
-      alert("删除失败");
+      const operation = await onRepairBook(bookId);
+      setActionMessage(`作品 ${operation.bookId} 的 Runtime 绑定已校验，当前状态：${operation.state}`);
+    } catch (caught) {
+      setActionError(caught instanceof Error ? caught.message : "修复作品绑定失败");
+    } finally {
+      setActionBookId(null);
     }
-  }, []);
+  };
 
   return (
-    <div className="flex h-full flex-col p-6" data-testid="book-management-page">
-      {/* Header */}
-      <header className="mb-6 flex items-center justify-between">
+    <div className="flex h-full flex-col gap-6 overflow-auto p-6" data-testid="book-management-page">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <BookOpen className="size-6 text-primary" />
-          <h1 className="text-2xl font-bold">我的作品</h1>
-        </div>
-        <Button onClick={onCreateBook} className="gap-2">
-          <Plus className="size-4" />
-          新建作品
-        </Button>
-      </header>
-
-      {/* Content */}
-      {loading && <p className="text-sm text-muted-foreground">加载中…</p>}
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-
-      {!loading && !error && books.length === 0 && (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center">
-            <BookOpen className="mx-auto size-12 text-muted-foreground/30" />
-            <p className="mt-4 text-lg text-muted-foreground">还没有作品</p>
-            <p className="mt-1 text-sm text-muted-foreground">点击"新建作品"开始你的创作之旅</p>
-            <Button onClick={onCreateBook} className="mt-4 gap-2">
-              <Plus className="size-4" />
-              新建作品
-            </Button>
+          <div>
+            <h1 className="text-2xl font-bold">我的作品</h1>
+            <p className="text-sm text-muted-foreground">作品身份与叙述者绑定由 Runtime 服务端可信维护。</p>
           </div>
         </div>
-      )}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="outline" onClick={() => setClaimOpen(true)}>
+            <ShieldCheck data-icon="inline-start" />
+            接管旧作品
+          </Button>
+          <Button onClick={onCreateBook}>
+            <Plus data-icon="inline-start" />
+            新建作品
+          </Button>
+        </div>
+      </header>
 
-      {!loading && books.length > 0 && (
+      {error ? (
+        <Alert className="border-destructive/30">
+          <AlertTitle className="text-destructive">作品列表加载失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+      {actionError ? (
+        <Alert className="border-destructive/30">
+          <AlertTitle className="text-destructive">Runtime 操作失败</AlertTitle>
+          <AlertDescription>{actionError}</AlertDescription>
+        </Alert>
+      ) : null}
+      {actionMessage ? (
+        <Alert>
+          <AlertTitle>Runtime 操作完成</AlertTitle>
+          <AlertDescription>{actionMessage}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3" aria-label="正在加载作品">
+          {Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-40 rounded-xl" />)}
+        </div>
+      ) : books.length === 0 ? (
+        <Card className="mx-auto w-full max-w-lg text-center">
+          <CardHeader>
+            <CardTitle>还没有可用作品</CardTitle>
+            <CardDescription>新建作品，或由管理员接管受控书籍根目录中的旧作品。</CardDescription>
+          </CardHeader>
+          <CardContent className="flex justify-center gap-2">
+            <Button onClick={onCreateBook}>新建作品</Button>
+            <Button variant="outline" onClick={() => setClaimOpen(true)}>接管旧作品</Button>
+          </CardContent>
+        </Card>
+      ) : (
         <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {books.map((book) => (
-            <article
-              key={book.id}
-              className="group relative flex flex-col rounded-xl border border-border bg-card p-4 shadow-sm transition hover:border-primary/30 hover:shadow-md cursor-pointer"
-              onClick={() => onNavigateToBook(book.id)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") onNavigateToBook(book.id); }}
-            >
-              <div className="flex items-start justify-between">
-                <h2 className="text-base font-semibold truncate pr-2">{book.title || "未命名作品"}</h2>
-                {book.genre && (
-                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
-                    {book.genre}
-                  </span>
-                )}
-              </div>
-              <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-                {book.chapterCount !== undefined && (
-                  <span>{book.chapterCount} 章</span>
-                )}
-                {book.wordCount !== undefined && (
-                  <span>{book.wordCount >= 10000 ? `${(book.wordCount / 10000).toFixed(1)} 万字` : `${book.wordCount} 字`}</span>
-                )}
-                {book.status && (
-                  <span className={`rounded-full px-1.5 py-0.5 ${book.status === "completed" ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400" : "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"}`}>
-                    {book.status === "completed" ? "已完成" : "活跃"}
-                  </span>
-                )}
-              </div>
-              {/* Delete button */}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="absolute bottom-2 right-2 text-muted-foreground opacity-0 transition group-hover:opacity-100 hover:text-destructive"
-                onClick={(e) => { e.stopPropagation(); void handleDelete(book.id, book.title); }}
-                title="删除作品"
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </article>
+            <Card key={book.id} className="transition-shadow hover:shadow-md">
+              <CardHeader>
+                <div className="flex items-start justify-between gap-2">
+                  <CardTitle className="truncate">{book.title}</CardTitle>
+                  <Badge variant={book.status === "ready" ? "default" : "secondary"}>{book.status ?? "ready"}</Badge>
+                </div>
+                <CardDescription className="truncate">{book.id}</CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-wrap gap-2">
+                <Button onClick={() => onNavigateToBook(book.id)}>打开工作台</Button>
+                <Button
+                  variant="outline"
+                  disabled={actionBookId === book.id}
+                  onClick={() => void repairBook(book.id)}
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  {actionBookId === book.id ? "校验中…" : "修复绑定"}
+                </Button>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
+
+      <Dialog open={claimOpen} onOpenChange={setClaimOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>接管旧作品</DialogTitle>
+            <DialogDescription>
+              仅管理员可接管已存在于 Runtime 受控书籍根目录、但尚未绑定的作品。浏览器不会提交文件路径。
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field data-invalid={Boolean(actionError)}>
+              <FieldLabel htmlFor="legacy-book-id">Book ID</FieldLabel>
+              <Input
+                id="legacy-book-id"
+                value={legacyBookId}
+                onChange={(event) => setLegacyBookId(event.target.value)}
+                placeholder="例如：my-legacy-book"
+                aria-invalid={Boolean(actionError)}
+              />
+              <FieldDescription>必须是受控根目录中的单一路径段。</FieldDescription>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setClaimOpen(false)}>取消</Button>
+            <Button disabled={!legacyBookId.trim() || actionBookId !== null} onClick={() => void claimLegacyBook()}>
+              {actionBookId ? "接管中…" : "确认接管"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
