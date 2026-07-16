@@ -1,714 +1,1964 @@
-import { useState, useEffect } from "react";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
-import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy, arrayMove } from "@dnd-kit/sortable";
-import { CSS } from "@dnd-kit/utilities";
-import { GripVertical } from "lucide-react";
+import { invalidateNarratorCommands } from "@frontend/lib/query-client";
+import {
+	Bot,
+	Boxes,
+	Braces,
+	Command,
+	FileText,
+	Pencil,
+	Plus,
+	RefreshCw,
+	Settings2,
+	ShieldAlert,
+	ShieldCheck,
+	Sparkles,
+	Trash2,
+	Workflow,
+	Wrench,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
-import { listRuntimeCommands, type RuntimeCommandDefinition, type RuntimeCommandSource, type RuntimeCommandStatus } from "@vivy1024/novelfork-core/registry/command-registry";
-
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardAction,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import {
+	Dialog,
+	DialogContent,
+	DialogDescription,
+	DialogFooter,
+	DialogHeader,
+	DialogTitle,
+} from "@/components/ui/dialog";
+import {
+	Empty,
+	EmptyContent,
+	EmptyDescription,
+	EmptyHeader,
+	EmptyMedia,
+	EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { CommandsTab } from "../../components/Routines/CommandsTab";
-import { MCPToolsTab } from "../../components/Routines/MCPToolsTab";
-import { PermissionsTab } from "../../components/Routines/PermissionsTab";
-import { PromptsTab } from "../../components/Routines/PromptsTab";
-import { SkillsTab } from "../../components/Routines/SkillsTab";
-import { SubAgentsTab } from "../../components/Routines/SubAgentsTab";
-import { ROUTINES_SCOPE_META, useRoutinesEditor } from "../../components/Routines/use-routines-editor";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import {
+	createRuntimeProductClient,
+	type RuntimeBookHook,
+	type RuntimeBookSkill,
+	type RuntimeBookSkillSummary,
+} from "../runtime/product-contract";
+import {
+	type CustomSubagent,
+	type CustomSubagentInput,
+	type CustomSubagentToolAccess,
+	createCustomSubagentsClient,
+	createHooksClient,
+	createRoutinesClient,
+	createSkillsClient,
+	type HookEvent,
+	type HookProxyMode,
+	type HookType,
+	type ProjectRoutineAction,
+	type ProjectRoutineStatus,
+	type RoutineStatus,
+	type RuntimeHook,
+	type Skill,
+	type SkillInput,
+	type SkillSummary,
+} from "../runtime-admin";
+import { CommandsSection } from "./CommandsSection";
 import { MCPServerPanel } from "./MCPServerPanel";
-import type { RoutineHook, RoutineHookKind, Routines as RoutinesConfig } from "../../types/routines";
-import { InlineError } from "../components/feedback";
-import { getPluginUISections } from "../plugin-ui/register-plugins";
-import { getPluginSection } from "../plugin-ui/section-registry";
+import { RulesSection } from "./RulesSection";
+import { ToolPermissionsSection } from "./ToolPermissionsSection";
 
-interface RoutinesNextPageProps {
-  readonly projectRoot?: string;
+const routinesClient = createRoutinesClient();
+const skillsClient = createSkillsClient();
+const subagentsClient = createCustomSubagentsClient();
+const hooksClient = createHooksClient();
+const productClient = createRuntimeProductClient();
+
+export interface RoutinesNextPageProps {
+	readonly bookId?: string;
+	readonly bookTitle?: string;
 }
 
-type RoutineSectionId =
-  | "commands"
-  | "tools"
-  | "permissions"
-  | "globalSkills"
-  | "projectSkills"
-  | "subAgents"
-  | "globalPrompts"
-  | "systemPrompts"
-  | "mcpTools"
-  | "rules"
-  | "hooks";
+type SectionId =
+	| "builtIn"
+	| "commands"
+	| "optionalTools"
+	| "permissions"
+	| "globalSkills"
+	| "projectSkills"
+	| "subagents"
+	| "mcp"
+	| "rules"
+	| "hooks";
 
-interface RoutineSectionDefinition {
-  readonly id: RoutineSectionId;
-  readonly label: string;
-  readonly description: string;
-  readonly reuse: string;
-  readonly getCount: (routines: RoutinesConfig) => number;
-  readonly status?: string;
-}
+const BUILTIN_ROUTINE_TYPES = ["command", "skill"] as const;
+const OPTIONAL_TOOL_TYPES = ["tool"] as const;
 
-const ROUTINE_SECTIONS: readonly RoutineSectionDefinition[] = [
-  {
-    id: "commands",
-    label: "命令",
-    description: "用户级斜杠命令、空态和添加命令入口。",
-    reuse: "复用 CommandsTab / commands 数据",
-    getCount: (routines) => routines.commands.length,
-  },
-  {
-    id: "permissions",
-    label: "工具权限",
-    description: "内置工具、MCP 工具权限、Bash 命令允许/拒绝规则来源。",
-    reuse: "复用 PermissionsTab / permissions 数据",
-    getCount: (routines) => routines.permissions.length,
-  },
-  {
-    id: "globalSkills",
-    label: "全局技能",
-    description: "全局技能扫描、刷新和创建入口。",
-    reuse: "拆分 SkillsTab globalSkills",
-    getCount: (routines) => routines.globalSkills.length,
-  },
-  {
-    id: "projectSkills",
-    label: "项目技能",
-    description: "当前项目技能列表和项目级创建入口。",
-    reuse: "拆分 SkillsTab projectSkills",
-    getCount: (routines) => routines.projectSkills.length,
-  },
-  {
-    id: "subAgents",
-    label: "自定义子代理",
-    description: "专用提示词、类型、工具权限和创建入口。",
-    reuse: "复用 SubAgentsTab / subAgents 数据",
-    getCount: (routines) => routines.subAgents.length,
-  },
-  {
-    id: "globalPrompts",
-    label: "全局提示词",
-    description: "全局提示词资产和编辑入口。",
-    reuse: "拆分 PromptsTab globalPrompts",
-    getCount: (routines) => routines.globalPrompts.length,
-  },
-  {
-    id: "systemPrompts",
-    label: "系统提示词",
-    description: "系统提示词资产和编辑入口。",
-    reuse: "拆分 PromptsTab systemPrompts",
-    getCount: (routines) => routines.systemPrompts.length,
-  },
-  {
-    id: "mcpTools",
-    label: "MCP 工具",
-    description: "服务器级管理入口：导入 JSON、添加服务器、连接状态、工具数量。",
-    reuse: "迁移 MCPToolsTab 数据，后续升级服务器级管理",
-    getCount: (routines) => routines.mcpTools.length,
-  },
-  {
-    id: "rules",
-    label: "规则文件",
-    description: "全局 CLAUDE.md 和项目 CLAUDE.md 规则编辑（自动注入 Agent 上下文）。",
-    reuse: "读写 ~/.novelfork/CLAUDE.md 和 {project}/CLAUDE.md",
-    getCount: () => 0,
-  },
-  {
-    id: "hooks",
-    label: "钩子",
-    description: "Shell / Webhook / LLM 生命周期钩子入口。",
-    reuse: "复用 Routines hooks 数据并直接编辑生命周期钩子",
-    getCount: (routines) => routines.hooks.length,
-  },
+const SECTIONS: ReadonlyArray<{
+	readonly id: SectionId;
+	readonly label: string;
+	readonly icon: typeof Workflow;
+}> = [
+	{ id: "builtIn", label: "内置套路", icon: Workflow },
+	{ id: "commands", label: "自定义命令", icon: Command },
+	{ id: "optionalTools", label: "可选工具", icon: Wrench },
+	{ id: "permissions", label: "工具权限", icon: ShieldCheck },
+	{ id: "globalSkills", label: "全局技能", icon: Sparkles },
+	{ id: "projectSkills", label: "作品技能", icon: Boxes },
+	{ id: "subagents", label: "自定义子代理", icon: Bot },
+	{ id: "mcp", label: "MCP", icon: Braces },
+	{ id: "rules", label: "规则与提示词", icon: FileText },
+	{ id: "hooks", label: "Hooks", icon: Settings2 },
 ];
 
-function readStoredProjectRoot(): string | undefined {
-  if (typeof window === "undefined" || typeof window.localStorage?.getItem !== "function") return undefined;
-  try {
-    return window.localStorage.getItem("novelfork-workspace") ?? undefined;
-  } catch {
-    return undefined;
-  }
+export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
+	const [activeSection, setActiveSection] = useState<SectionId>("builtIn");
+
+	return (
+		<section aria-label="套路" className="flex h-full min-h-0 w-full flex-col">
+			<header className="flex shrink-0 flex-col gap-4 border-b bg-background px-4 py-4">
+				<div>
+					<h1 className="text-xl font-semibold">套路</h1>
+					<p className="text-sm text-muted-foreground">
+						通过原生 Runtime API 管理套路、技能、子代理、MCP
+						服务器、规则和钩子。
+					</p>
+				</div>
+				<div
+					role="tablist"
+					aria-label="套路分区"
+					className="flex flex-wrap gap-1"
+				>
+					{SECTIONS.map((section) => {
+						const Icon = section.icon;
+						const selected = section.id === activeSection;
+						return (
+							<Button
+								key={section.id}
+								type="button"
+								role="tab"
+								aria-selected={selected}
+								variant={selected ? "secondary" : "ghost"}
+								size="sm"
+								onClick={() => setActiveSection(section.id)}
+							>
+								<Icon data-icon="inline-start" />
+								{section.label}
+							</Button>
+						);
+					})}
+				</div>
+			</header>
+
+			<div className="min-h-0 flex-1 overflow-y-auto p-4" role="tabpanel">
+				{activeSection === "builtIn" && (
+					<RoutineCatalogSection
+						bookId={bookId}
+						bookTitle={bookTitle}
+						types={BUILTIN_ROUTINE_TYPES}
+						title="内置套路"
+						description="管理 Runtime 预置命令与技能套路，并为当前作品设置安全的书籍级 override。"
+						emptyIcon={Workflow}
+					/>
+				)}
+				{activeSection === "commands" && <CommandsSection />}
+				{activeSection === "optionalTools" && (
+					<RoutineCatalogSection
+						bookId={bookId}
+						bookTitle={bookTitle}
+						types={OPTIONAL_TOOL_TYPES}
+						title="可选工具"
+						description="控制 Runtime 可选工具的全局状态与当前作品 override。"
+						emptyIcon={Wrench}
+					/>
+				)}
+				{activeSection === "permissions" && <ToolPermissionsSection />}
+				{activeSection === "globalSkills" && <SkillsSection scope="global" />}
+				{activeSection === "projectSkills" && (
+					<SkillsSection scope="book" bookId={bookId} bookTitle={bookTitle} />
+				)}
+				{activeSection === "subagents" && <CustomSubagentsSection />}
+				{activeSection === "mcp" && (
+					<MCPServerPanel bookId={bookId} bookTitle={bookTitle} />
+				)}
+				{activeSection === "rules" && (
+					<RulesSection bookId={bookId} bookTitle={bookTitle} />
+				)}
+				{activeSection === "hooks" && (
+					<HooksSection bookId={bookId} bookTitle={bookTitle} />
+				)}
+			</div>
+		</section>
+	);
 }
 
-export function RoutinesNextPage({ projectRoot: projectRootProp }: RoutinesNextPageProps) {
-  const projectRoot = projectRootProp ?? readStoredProjectRoot();
-  const [activeSectionId, setActiveSectionId] = useState<string>("commands");
-  const pluginSections = getPluginUISections("routines");
-  const {
-    error,
-    handleReset,
-    handleSave,
-    hasProjectScope,
-    isReadOnly,
-    loading,
-    routines,
-    saved,
-    saving,
-    setRoutines,
-    setViewScope,
-    viewScope,
-  } = useRoutinesEditor({ projectRoot });
-
-  if (loading) {
-    return <div className="rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground">正在加载 Routines 配置…</div>;
-  }
-
-  return (
-    <section aria-label="新套路页" className="flex h-full w-full flex-col min-h-0">
-      {/* 标题行 — sticky */}
-      <div className="shrink-0 border-b border-border bg-background px-4 pt-4 pb-3 space-y-3">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-xl font-semibold">套路</h2>
-            <p className="text-sm text-muted-foreground">管理技能、命令和 MCP 工具。</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant={viewScope === "merged" ? "default" : "outline"}
-              size="sm"
-              disabled={!hasProjectScope}
-              onClick={() => setViewScope("merged")}
-            >
-              {ROUTINES_SCOPE_META.merged.label}
-            </Button>
-            <Button
-              variant={viewScope === "global" ? "default" : "outline"}
-              size="sm"
-              onClick={() => setViewScope("global")}
-            >
-              {ROUTINES_SCOPE_META.global.label}
-            </Button>
-            <Button
-              variant={viewScope === "project" ? "default" : "outline"}
-              size="sm"
-              disabled={!hasProjectScope}
-              onClick={() => setViewScope("project")}
-            >
-              {ROUTINES_SCOPE_META.project.label}
-            </Button>
-            <span className="mx-1 h-5 w-px bg-border" />
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving || isReadOnly}
-              onClick={handleSave}
-            >
-              {saving ? "保存中…" : saved ? "已保存" : "保存"}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={saving || isReadOnly}
-              onClick={handleReset}
-            >
-              重置
-            </Button>
-          </div>
-        </div>
-
-        {error && <InlineError message={error} />}
-
-        {/* 水平 tab */}
-        <div role="tablist" aria-label="套路分区" className="flex flex-wrap gap-1">
-        {ROUTINE_SECTIONS.map((section) => {
-          const isSelected = section.id === activeSectionId;
-          return (
-            <Button
-              key={section.id}
-              role="tab"
-              variant="ghost"
-              size="sm"
-              aria-selected={isSelected}
-              className={isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground"}
-              onClick={() => setActiveSectionId(section.id)}
-              type="button"
-            >
-              {section.label}
-            </Button>
-          );
-        })}
-        {pluginSections.map((section) => {
-          const isSelected = section.id === activeSectionId;
-          return (
-            <Button
-              key={section.id}
-              role="tab"
-              variant="ghost"
-              size="sm"
-              aria-selected={isSelected}
-              className={isSelected ? "border-b-2 border-primary text-primary font-medium" : "text-muted-foreground"}
-              onClick={() => setActiveSectionId(section.id)}
-              type="button"
-            >
-              {section.label}
-            </Button>
-          );
-        })}
-      </div>
-      </div>
-
-      {/* tab 内容 — 可滚动区域 */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-4" role="tabpanel">
-        {pluginSections.some((s) => s.id === activeSectionId) ? (
-          <PluginSectionRenderer sectionId={activeSectionId} />
-        ) : (
-          <>
-            <fieldset className={isReadOnly ? "opacity-70" : ""} disabled={isReadOnly}>
-              <RoutineSectionEditor
-                routines={routines}
-                sectionId={activeSectionId as RoutineSectionId}
-                setRoutines={setRoutines}
-              />
-            </fieldset>
-            {isReadOnly && <p className="mt-3 text-xs text-muted-foreground">只读视图，切换到全局或项目 scope 后可编辑。</p>}
-          </>
-        )}
-      </div>
-    </section>
-  );
+function errorMessage(error: unknown, adminOnly = false): string {
+	const status =
+		typeof error === "object" && error !== null && "status" in error
+			? Number((error as { status?: unknown }).status)
+			: undefined;
+	const message = error instanceof Error ? error.message : String(error);
+	if (adminOnly && status === 403) {
+		return `403 禁止访问 — 钩子管理需要 Runtime 管理员权限。${message}`;
+	}
+	return status ? `${status} — ${message}` : message;
 }
 
-function PluginSectionRenderer({ sectionId }: { readonly sectionId: string }) {
-  const sections = getPluginUISections("routines");
-  const section = sections.find((s) => s.id === sectionId);
-  const [books, setBooks] = useState<Array<{ id: string; title: string }>>([]);
-  const [selectedBookId, setSelectedBookId] = useState<string | undefined>(undefined);
-
-  const requiresBook = section?.requiresBook ?? false;
-
-  useEffect(() => {
-    if (!requiresBook) return;
-    let cancelled = false;
-    void fetch("/api/books")
-      .then((r) => (r.ok ? r.json() : { books: [] }))
-      .then((data) => {
-        if (cancelled) return;
-        const list: Array<{ id: string; title: string }> = (data.books ?? []).map((b: { id: string; title?: string }) => ({ id: b.id, title: b.title ?? b.id }));
-        setBooks(list);
-        if (list.length > 0) setSelectedBookId((prev) => prev ?? list[0]!.id);
-      })
-      .catch(() => { /* non-fatal */ });
-    return () => { cancelled = true; };
-  }, [requiresBook]);
-
-  if (!section) {
-    return <p className="text-sm text-muted-foreground">未找到该插件分区。</p>;
-  }
-
-  const Component = getPluginSection(section.componentKey);
-  if (!Component) {
-    return <p className="text-sm text-muted-foreground">插件组件未注册：{section.componentKey}</p>;
-  }
-
-  if (requiresBook) {
-    if (books.length === 0) {
-      return <p className="text-sm text-muted-foreground">暂无作品。请先在「作品管理」创建作品后再配置。</p>;
-    }
-    return (
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground">作品：</span>
-          <SimpleSelect
-            value={selectedBookId ?? ""}
-            onValueChange={(v) => setSelectedBookId(v)}
-            options={books.map((b) => ({ value: b.id, label: b.title }))}
-            className="w-56"
-            aria-label="选择作品"
-          />
-        </div>
-        {selectedBookId && <Component bookId={selectedBookId} />}
-      </div>
-    );
-  }
-
-  return <Component />;
+function requireBookId(bookId?: string): string {
+	if (!bookId) throw new Error("请先选择作品。");
+	return bookId;
 }
 
-function RoutineSectionEditor({
-  routines,
-  sectionId,
-  setRoutines,
+function ErrorAlert({
+	message,
+	title = "Runtime 请求失败",
 }: {
-  readonly routines: RoutinesConfig;
-  readonly sectionId: RoutineSectionId;
-  readonly setRoutines: (routines: RoutinesConfig) => void;
+	readonly message: string;
+	readonly title?: string;
 }) {
-  switch (sectionId) {
-    case "commands":
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">自定义命令功能暂未开放</p>
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">根据用户反馈决定是否开放自定义斜杠命令。如有需求请在 GitHub Issues 中反馈。</p>
-          </div>
-          <RuntimeCommandRegistryPanel
-            commands={listRuntimeCommands()}
-            disabledCommands={routines.disabledCommands}
-            onToggleCommand={(commandId) => {
-              const disabled = routines.disabledCommands.includes(commandId)
-                ? routines.disabledCommands.filter((id) => id !== commandId)
-                : [...routines.disabledCommands, commandId];
-              setRoutines({ ...routines, disabledCommands: disabled });
-            }}
-          />
-          <CommandsTab commands={routines.commands} onChange={(commands) => setRoutines({ ...routines, commands })} />
-        </div>
-      );
-    case "permissions":
-      return <PermissionsTab permissions={routines.permissions} onChange={(permissions) => setRoutines({ ...routines, permissions })} />;
-    case "globalSkills":
-    case "projectSkills": {
-      const skillTab = sectionId === "globalSkills" ? "global" : "project";
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
-            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">
-              {sectionId === "globalSkills" ? "全局技能" : "项目技能"}
-            </p>
-            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-              {sectionId === "globalSkills"
-                ? "技能是可复用的指令片段。启用后以 [技能:名称] 形式注入到 system prompt，指导 agent 的行为。对所有项目生效。"
-                : "项目技能仅在当前项目内生效，适合存放项目专属的指令规范。"}
-            </p>
-          </div>
-          <SkillsTab
-          globalSkills={routines.globalSkills}
-          projectSkills={routines.projectSkills}
-          defaultTab={skillTab}
-          lockedTab={skillTab}
-          onGlobalChange={(globalSkills) => setRoutines({ ...routines, globalSkills })}
-          onProjectChange={(projectSkills) => setRoutines({ ...routines, projectSkills })}
-        />
-        </div>
-      );
-    }
-    case "subAgents":
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-amber-50 dark:bg-amber-950/20 p-4">
-            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">自定义子代理功能暂未开放</p>
-            <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">NovelFork 的写作管线（规划→编排→写作→审计→修订）使用内置 Agent 类型。如需自定义子代理请在 GitHub Issues 中反馈。</p>
-          </div>
-          <SubAgentsTab subAgents={routines.subAgents} onChange={(subAgents) => setRoutines({ ...routines, subAgents })} />
-        </div>
-      );
-    case "globalPrompts":
-    case "systemPrompts": {
-      const promptTab = sectionId === "globalPrompts" ? "global" : "system";
-      return (
-        <PromptsTab
-          globalPrompts={routines.globalPrompts}
-          systemPrompts={routines.systemPrompts}
-          defaultTab={promptTab}
-          lockedTab={promptTab}
-          onGlobalChange={(globalPrompts) => setRoutines({ ...routines, globalPrompts })}
-          onSystemChange={(systemPrompts) => setRoutines({ ...routines, systemPrompts })}
-        />
-      );
-    }
-    case "mcpTools":
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
-            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">MCP 服务器管理</p>
-            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">添加 MCP 服务器后，其提供的工具会自动注入到 Agent 可用工具列表。支持 stdio（本地进程）和 SSE（远程 HTTP）两种连接方式。</p>
-          </div>
-          <MCPServerPanel />
-          <MCPToolsTab mcpTools={routines.mcpTools} onChange={(mcpTools) => setRoutines({ ...routines, mcpTools })} />
-        </div>
-      );
-    case "rules":
-      return <RulesFilesEditor />;
-    case "hooks":
-      return (
-        <div className="space-y-4">
-          <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
-            <p className="text-sm font-medium text-blue-800 dark:text-blue-200">生命周期钩子</p>
-            <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">Shell 钩子已接入运行时：在工具执行前/后或每轮对话结束后运行本地命令（PreToolUse 命令 exit code 2 可阻止工具执行）。Webhook / LLM 类型尚未接线，配置后不会触发。</p>
-          </div>
-          <HooksTab hooks={routines.hooks} onChange={(hooks) => setRoutines({ ...routines, hooks })} />
-        </div>
-      );
-  }
+	return (
+		<Alert>
+			<AlertTitle>{title}</AlertTitle>
+			<AlertDescription>{message}</AlertDescription>
+		</Alert>
+	);
 }
 
-const COMMAND_STATUS_LABELS: Record<RuntimeCommandStatus, string> = {
-  current: "当前可用",
-  partial: "部分接入",
-  planned: "计划中",
-  unsupported: "不支持",
-  "reference-only": "仅参考",
-};
-
-const COMMAND_SOURCE_LABELS: Record<RuntimeCommandSource, string> = {
-  builtin: "内置",
-  "claude-adapter": "Claude Adapter",
-  "codex-adapter": "Codex Adapter",
-  "novel-agent-pack": "Novel Agent Pack",
-};
-
-function RuntimeCommandRegistryPanel({ commands, disabledCommands, onToggleCommand }: {
-  readonly commands: readonly RuntimeCommandDefinition[];
-  readonly disabledCommands: readonly string[];
-  readonly onToggleCommand?: (commandId: string) => void;
-}) {
-  // 只显示可用命令（current/partial），隐藏 planned/unsupported
-  const availableCommands = commands.filter((cmd) => cmd.status === "current" || cmd.status === "partial");
-  const plannedCount = commands.length - availableCommands.length;
-
-  return (
-    <section className="rounded-xl border border-border bg-muted/20 p-4" aria-label="可用命令">
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h4 className="font-semibold">可用命令</h4>
-          <p className="mt-1 text-sm text-muted-foreground">在对话中输入 / 触发。禁用后命令不可执行。</p>
-        </div>
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">{availableCommands.length} 个可用{plannedCount > 0 ? ` · ${plannedCount} 个计划中` : ""}</span>
-      </div>
-      <div className="grid gap-2 md:grid-cols-2">
-        {availableCommands.map((command) => {
-          const isDisabled = disabledCommands.includes(command.id);
-          return (
-            <article key={command.id} className={`rounded-lg border border-border bg-background p-3 ${isDisabled ? "opacity-50" : ""}`}>
-              <div className="flex flex-wrap items-center gap-2">
-                <code className="text-sm font-mono">{command.id}</code>
-                {command.status === "partial" && <span className="rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-medium text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">部分可用</span>}
-                {isDisabled && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-medium text-red-800 dark:bg-red-900 dark:text-red-200">已禁用</span>}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{command.description}</p>
-              {onToggleCommand && (
-                <Button
-                  variant="outline"
-                  size="xs"
-                  className="mt-2"
-                  onClick={() => onToggleCommand(command.id)}
-                >
-                  {isDisabled ? "启用" : "禁用"}
-                </Button>
-              )}
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
+function LoadingCards() {
+	return (
+		<div className="grid gap-3 md:grid-cols-2">
+			{[0, 1, 2, 3].map((item) => (
+				<Card key={item}>
+					<CardHeader>
+						<Skeleton className="h-5 w-40" />
+						<Skeleton className="h-4 w-full" />
+					</CardHeader>
+					<CardContent>
+						<Skeleton className="h-8 w-full" />
+					</CardContent>
+				</Card>
+			))}
+		</div>
+	);
 }
 
-const HOOK_KIND_LABELS: Record<RoutineHookKind, string> = {
-  shell: "Shell",
-  webhook: "Webhook（暂未接线）",
-  llm: "LLM 提示词（暂未接线）",
+function SectionHeading({
+	title,
+	description,
+	action,
+}: {
+	readonly title: string;
+	readonly description: string;
+	readonly action?: React.ReactNode;
+}) {
+	return (
+		<div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+			<div>
+				<h2 className="text-lg font-semibold">{title}</h2>
+				<p className="text-sm text-muted-foreground">{description}</p>
+			</div>
+			{action}
+		</div>
+	);
+}
+
+function RoutineCatalogSection({
+	bookId,
+	bookTitle,
+	types,
+	title,
+	description,
+	emptyIcon: EmptyIcon,
+}: {
+	readonly bookId?: string;
+	readonly bookTitle?: string;
+	readonly types: readonly RoutineStatus["type"][];
+	readonly title: string;
+	readonly description: string;
+	readonly emptyIcon: typeof Workflow;
+}) {
+	const [globalRoutines, setGlobalRoutines] = useState<
+		readonly RoutineStatus[]
+	>([]);
+	const [projectRoutines, setProjectRoutines] = useState<
+		readonly ProjectRoutineStatus[]
+	>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [pendingId, setPendingId] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			const [globalResult, bookResult] = await Promise.all([
+				routinesClient.listGlobal(),
+				bookId
+					? productClient.listBookRoutines(bookId)
+					: Promise.resolve({ routines: [] as const }),
+			]);
+			setGlobalRoutines(
+				globalResult.routines.filter((routine) => types.includes(routine.type)),
+			);
+			setProjectRoutines(
+				bookResult.routines.filter((routine) => types.includes(routine.type)),
+			);
+		} catch (loadError) {
+			setError(errorMessage(loadError));
+		} finally {
+			setLoading(false);
+		}
+	}, [bookId, types]);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	const grouped = useMemo(() => {
+		const result = new Map<string, RoutineStatus[]>();
+		for (const routine of globalRoutines) {
+			const items = result.get(routine.category) ?? [];
+			items.push(routine);
+			result.set(routine.category, items);
+		}
+		return [...result.entries()];
+	}, [globalRoutines]);
+
+	const projectById = useMemo(
+		() => new Map(projectRoutines.map((routine) => [routine.id, routine])),
+		[projectRoutines],
+	);
+
+	async function toggleGlobal(routine: RoutineStatus, enabled: boolean) {
+		setPendingId(`global:${routine.id}`);
+		setError(null);
+		try {
+			await routinesClient.toggleGlobal(routine.id, enabled);
+			await invalidateNarratorCommands();
+			await load();
+		} catch (toggleError) {
+			setError(errorMessage(toggleError));
+		} finally {
+			setPendingId(null);
+		}
+	}
+
+	async function toggleBook(
+		routine: RoutineStatus,
+		action: ProjectRoutineAction,
+	) {
+		if (!bookId) return;
+		setPendingId(`book:${routine.id}`);
+		setError(null);
+		try {
+			await productClient.toggleBookRoutine(bookId, routine.id, action);
+			await invalidateNarratorCommands();
+			await load();
+		} catch (toggleError) {
+			setError(errorMessage(toggleError));
+		} finally {
+			setPendingId(null);
+		}
+	}
+
+	return (
+		<div className="flex flex-col gap-4">
+			<SectionHeading
+				title={title}
+				description={description}
+				action={
+					<Button
+						type="button"
+						variant="outline"
+						size="sm"
+						onClick={() => void load()}
+						disabled={loading}
+					>
+						<RefreshCw data-icon="inline-start" />
+						刷新
+					</Button>
+				}
+			/>
+			{!bookId && (
+				<Alert>
+					<AlertTitle>未选择作品</AlertTitle>
+					<AlertDescription>
+						在左侧作品选择器中选择一本书后，可通过书籍绑定网关管理作品级
+						override；前端不会接收 Runtime 内部项目标识。
+					</AlertDescription>
+				</Alert>
+			)}
+			{error && <ErrorAlert message={error} />}
+			{loading ? (
+				<LoadingCards />
+			) : globalRoutines.length === 0 ? (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<EmptyIcon />
+						</EmptyMedia>
+						<EmptyTitle>暂无{title}</EmptyTitle>
+						<EmptyDescription>Runtime 返回了空的套路注册表。</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<div className="flex flex-col gap-5">
+					{grouped.map(([category, routines]) => (
+						<section
+							key={category}
+							aria-label={category}
+							className="flex flex-col gap-2"
+						>
+							<div className="flex items-center gap-2">
+								<h3 className="font-medium">{category}</h3>
+								<Badge variant="outline">{routines.length}</Badge>
+							</div>
+							<div className="grid gap-3 md:grid-cols-2">
+								{routines.map((routine) => {
+									const projectRoutine = projectById.get(routine.id);
+									return (
+										<Card key={routine.id}>
+											<CardHeader>
+												<CardTitle>{routine.name}</CardTitle>
+												<CardDescription>
+													{routine.descriptionZh || routine.descriptionEn}
+												</CardDescription>
+												<CardAction>
+													<Switch
+														aria-label={`切换全局状态：${routine.name}`}
+														checked={routine.enabled}
+														disabled={pendingId === `global:${routine.id}`}
+														onCheckedChange={(enabled) =>
+															void toggleGlobal(routine, enabled)
+														}
+													/>
+												</CardAction>
+											</CardHeader>
+											<CardContent className="flex flex-col gap-3">
+												<div className="flex flex-wrap items-center gap-2">
+													<Badge variant="secondary">
+														{routineTypeLabel(routine.type)}
+													</Badge>
+													<Badge variant="outline">
+														全局{routine.enabled ? "已启用" : "已禁用"}
+													</Badge>
+												</div>
+												{bookId && projectRoutine && (
+													<div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+														<div>
+															<div className="text-sm font-medium">
+																作品覆盖
+															</div>
+															<div className="text-xs text-muted-foreground">
+																{bookTitle || bookId} · 实际状态：
+																{projectRoutine.enabled ? "已启用" : "已禁用"}
+															</div>
+														</div>
+														<fieldset
+															className="flex flex-wrap gap-1"
+															aria-label={`作品覆盖：${routine.name}`}
+														>
+															<Button
+																type="button"
+																size="xs"
+																variant={
+																	projectRoutine.override === "global"
+																		? "secondary"
+																		: "outline"
+																}
+																disabled={pendingId === `book:${routine.id}`}
+																aria-label={`使用全局设置：${routine.name}`}
+																onClick={() =>
+																	void toggleBook(routine, "reset")
+																}
+															>
+																使用全局
+															</Button>
+															<Button
+																type="button"
+																size="xs"
+																variant={
+																	projectRoutine.override === "enabled"
+																		? "secondary"
+																		: "outline"
+																}
+																disabled={pendingId === `book:${routine.id}`}
+																aria-label={`启用作品套路：${routine.name}`}
+																onClick={() =>
+																	void toggleBook(routine, "enable")
+																}
+															>
+																已启用
+															</Button>
+															<Button
+																type="button"
+																size="xs"
+																variant={
+																	projectRoutine.override === "disabled"
+																		? "secondary"
+																		: "outline"
+																}
+																disabled={pendingId === `book:${routine.id}`}
+																aria-label={`禁用作品套路：${routine.name}`}
+																onClick={() =>
+																	void toggleBook(routine, "disable")
+																}
+															>
+																已禁用
+															</Button>
+														</fieldset>
+													</div>
+												)}
+											</CardContent>
+										</Card>
+									);
+								})}
+							</div>
+						</section>
+					))}
+				</div>
+			)}
+		</div>
+	);
+}
+
+function routineTypeLabel(type: RoutineStatus["type"]): string {
+	if (type === "command") return "命令";
+	if (type === "skill") return "技能";
+	return "工具";
+}
+
+function skillScopeLabel(scope: SkillScope): string {
+	return scope === "global" ? "全局" : "作品";
+}
+
+function subagentToolAccessLabel(access: CustomSubagentToolAccess): string {
+	if (access === "readOnly") return "只读";
+	if (access === "general") return "通用";
+	return "自定义";
+}
+
+function hookTypeLabel(type: HookType): string {
+	return type === "command" ? "命令" : "HTTP";
+}
+
+function proxyModeLabel(mode: HookProxyMode): string {
+	if (mode === "default") return "默认";
+	if (mode === "direct") return "直连";
+	if (mode === "system") return "系统代理";
+	return "自定义";
+}
+
+type SkillScope = "global" | "book";
+
+interface SkillFormState {
+	name: string;
+	description: string;
+	content: string;
+}
+
+const EMPTY_SKILL_FORM: SkillFormState = {
+	name: "",
+	description: "",
+	content: "",
 };
 
-/**
- * 运行时真正识别的生命周期事件（见 hook-executor.ts ROUTINE_EVENT_MAP）。
- * 仅 kind=shell 的钩子会在这些事件触发：
- * - PreToolUse：工具执行前（命令 exit code 2 可阻止工具执行）
- * - PostToolUse：工具执行后
- * - TurnComplete：每轮对话结束后
- */
-const HOOK_EVENT_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "PreToolUse", label: "工具执行前" },
-  { value: "PostToolUse", label: "工具执行后" },
-  { value: "TurnComplete", label: "每轮对话结束后" },
+function SkillsSection({
+	scope,
+	bookId,
+	bookTitle,
+}: {
+	readonly scope: SkillScope;
+	readonly bookId?: string;
+	readonly bookTitle?: string;
+}) {
+	const [skills, setSkills] = useState<
+		readonly (SkillSummary | RuntimeBookSkillSummary)[]
+	>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [pendingName, setPendingName] = useState<string | null>(null);
+	const [editor, setEditor] = useState<
+		{ mode: "create" } | { mode: "edit"; currentName: string } | null
+	>(null);
+	const [form, setForm] = useState<SkillFormState>(EMPTY_SKILL_FORM);
+	const [deleteName, setDeleteName] = useState<string | null>(null);
+
+	const supported = scope === "global" || Boolean(bookId);
+	const scopeKey = scope === "global" ? "global" : `book:${bookId ?? ""}`;
+
+	const load = useCallback(async () => {
+		if (!supported) {
+			setSkills([]);
+			setLoading(false);
+			return;
+		}
+		setLoading(true);
+		setError(null);
+		try {
+			const result =
+				scope === "global"
+					? await skillsClient.listGlobal()
+					: bookId
+						? await productClient.listBookSkills(bookId)
+						: [];
+			setSkills(result);
+		} catch (loadError) {
+			setError(errorMessage(loadError));
+		} finally {
+			setLoading(false);
+		}
+	}, [bookId, scope, supported]);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	// A book switch changes the trusted Runtime scope. Never leave an editor,
+	// delete confirmation, or in-flight label from the previous book visible.
+	useEffect(() => {
+		if (scopeKey === "") return;
+		setEditor(null);
+		setForm(EMPTY_SKILL_FORM);
+		setDeleteName(null);
+		setPendingName(null);
+		setError(null);
+	}, [scopeKey]);
+
+	async function openEdit(name: string) {
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingName(name);
+		setError(null);
+		try {
+			const skill: Skill | RuntimeBookSkill =
+				scope === "global"
+					? await skillsClient.getGlobal(name)
+					: await productClient.getBookSkill(requireBookId(bookId), name);
+			setForm({
+				name: skill.name,
+				description: skill.description,
+				content: skill.content,
+			});
+			setEditor({ mode: "edit", currentName: name });
+		} catch (editError) {
+			setError(errorMessage(editError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	async function saveSkill() {
+		if (!editor) return;
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingName(editor.mode === "edit" ? editor.currentName : form.name);
+		setError(null);
+		const input: SkillInput = {
+			name: form.name.trim(),
+			description: form.description.trim(),
+			content: form.content,
+		};
+		try {
+			if (scope === "global") {
+				if (editor.mode === "create") await skillsClient.createGlobal(input);
+				else await skillsClient.updateGlobal(editor.currentName, input);
+			} else if (editor.mode === "create") {
+				await productClient.createBookSkill(requireBookId(bookId), input);
+			} else {
+				await productClient.updateBookSkill(
+					requireBookId(bookId),
+					editor.currentName,
+					input,
+				);
+			}
+			setEditor(null);
+			setForm(EMPTY_SKILL_FORM);
+			await invalidateNarratorCommands();
+			await load();
+		} catch (saveError) {
+			setError(errorMessage(saveError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	async function deleteSkill() {
+		if (!deleteName) return;
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingName(deleteName);
+		setError(null);
+		try {
+			if (scope === "global") await skillsClient.deleteGlobal(deleteName);
+			else
+				await productClient.deleteBookSkill(requireBookId(bookId), deleteName);
+			setDeleteName(null);
+			await invalidateNarratorCommands();
+			await load();
+		} catch (deleteError) {
+			setError(errorMessage(deleteError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	async function toggleGlobalSkill(name: string, enabled: boolean) {
+		setPendingName(name);
+		setError(null);
+		try {
+			await skillsClient.toggleGlobal(name, enabled);
+			await invalidateNarratorCommands();
+			await load();
+		} catch (toggleError) {
+			setError(errorMessage(toggleError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	if (!supported) {
+		return (
+			<div className="flex flex-col gap-4">
+				<SectionHeading
+					title="作品技能"
+					description="作品技能通过可信书籍绑定解析 Runtime 项目，不接收文件系统路径或内部项目标识。"
+				/>
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Boxes />
+						</EmptyMedia>
+						<EmptyTitle>未选择作品</EmptyTitle>
+						<EmptyDescription>
+							在侧栏选择作品后，可通过 Runtime 产品契约管理作品技能。
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			</div>
+		);
+	}
+
+	const title = scope === "global" ? "全局技能" : "作品技能";
+	return (
+		<div className="flex flex-col gap-4">
+			<SectionHeading
+				title={title}
+				description={
+					scope === "global"
+						? "可在多个项目间复用的 Runtime 技能。"
+						: `作用于当前作品 ${bookTitle || bookId} 的技能；内部 Runtime 项目由服务端绑定解析。`
+				}
+				action={
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => {
+							setForm(EMPTY_SKILL_FORM);
+							setEditor({ mode: "create" });
+						}}
+					>
+						<Plus data-icon="inline-start" />
+						创建技能
+					</Button>
+				}
+			/>
+			{scope === "book" && (
+				<Alert>
+					<AlertTitle>作品技能安全边界</AlertTitle>
+					<AlertDescription>
+						Studio 只发送 bookId；Runtime 校验书籍 owner/binding
+						后在受控作品目录内执行技能 CRUD。当前没有独立的作品技能启停接口。
+					</AlertDescription>
+				</Alert>
+			)}
+			{error && <ErrorAlert message={error} />}
+			{loading ? (
+				<LoadingCards />
+			) : skills.length === 0 ? (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Sparkles />
+						</EmptyMedia>
+						<EmptyTitle>暂无{skillScopeLabel(scope)}技能</EmptyTitle>
+						<EmptyDescription>
+							通过 Runtime {skillScopeLabel(scope)}技能路由创建第一个技能。
+						</EmptyDescription>
+					</EmptyHeader>
+					<EmptyContent>
+						<Button type="button" onClick={() => setEditor({ mode: "create" })}>
+							<Plus data-icon="inline-start" />
+							创建技能
+						</Button>
+					</EmptyContent>
+				</Empty>
+			) : (
+				<div className="grid gap-3 md:grid-cols-2">
+					{skills.map((skill) => (
+						<Card key={skill.name}>
+							<CardHeader>
+								<CardTitle>{skill.name}</CardTitle>
+								<CardDescription>{skill.description}</CardDescription>
+								{scope === "global" && (
+									<CardAction>
+										<Switch
+											aria-label={`切换全局技能：${skill.name}`}
+											checked={!skill.disabled}
+											disabled={pendingName === skill.name}
+											onCheckedChange={(enabled) =>
+												void toggleGlobalSkill(skill.name, enabled)
+											}
+										/>
+									</CardAction>
+								)}
+							</CardHeader>
+							<CardContent className="flex flex-col gap-3">
+								<div className="flex flex-wrap gap-2">
+									<Badge variant="outline">
+										{scope === "global" ? skill.location : "作品"}
+									</Badge>
+									<Badge variant={skill.disabled ? "destructive" : "secondary"}>
+										{skill.disabled ? "已禁用" : "已启用"}
+									</Badge>
+									<Badge variant="outline">{skill.files.length} 个文件</Badge>
+								</div>
+								<div className="flex gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										disabled={pendingName === skill.name}
+										onClick={() => void openEdit(skill.name)}
+									>
+										<Pencil data-icon="inline-start" />
+										编辑
+									</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										disabled={pendingName === skill.name}
+										onClick={() => setDeleteName(skill.name)}
+									>
+										<Trash2 data-icon="inline-start" />
+										删除
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					))}
+				</div>
+			)}
+
+			<SkillEditorDialog
+				open={editor !== null}
+				mode={editor?.mode ?? "create"}
+				form={form}
+				saving={pendingName !== null && editor !== null}
+				onFormChange={setForm}
+				onOpenChange={(open) => {
+					if (!open) {
+						setEditor(null);
+						setForm(EMPTY_SKILL_FORM);
+					}
+				}}
+				onSave={() => void saveSkill()}
+			/>
+			<DeleteConfirmDialog
+				open={deleteName !== null}
+				title="删除技能"
+				description={`确定通过 Runtime ${skillScopeLabel(scope)}技能路由删除“${deleteName ?? "此技能"}”吗？`}
+				deleting={deleteName !== null && pendingName === deleteName}
+				onOpenChange={(open) => {
+					if (!open) setDeleteName(null);
+				}}
+				onConfirm={() => void deleteSkill()}
+			/>
+		</div>
+	);
+}
+
+function SkillEditorDialog({
+	open,
+	mode,
+	form,
+	saving,
+	onFormChange,
+	onOpenChange,
+	onSave,
+}: {
+	readonly open: boolean;
+	readonly mode: "create" | "edit";
+	readonly form: SkillFormState;
+	readonly saving: boolean;
+	readonly onFormChange: (form: SkillFormState) => void;
+	readonly onOpenChange: (open: boolean) => void;
+	readonly onSave: () => void;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>
+						{mode === "create" ? "创建技能" : "编辑技能"}
+					</DialogTitle>
+					<DialogDescription>
+						技能内容将通过所选的原生 Runtime 技能路由保存。
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="skill-name">名称</Label>
+						<Input
+							id="skill-name"
+							value={form.name}
+							onChange={(event) =>
+								onFormChange({ ...form, name: event.target.value })
+							}
+						/>
+					</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="skill-description">描述</Label>
+						<Input
+							id="skill-description"
+							value={form.description}
+							onChange={(event) =>
+								onFormChange({ ...form, description: event.target.value })
+							}
+						/>
+					</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="skill-content">内容</Label>
+						<Textarea
+							id="skill-content"
+							className="min-h-64 font-mono"
+							value={form.content}
+							onChange={(event) =>
+								onFormChange({ ...form, content: event.target.value })
+							}
+						/>
+					</div>
+				</div>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+					>
+						取消
+					</Button>
+					<Button
+						type="button"
+						disabled={saving || !form.name.trim() || !form.description.trim()}
+						onClick={onSave}
+					>
+						{saving ? "保存中…" : mode === "create" ? "创建" : "保存修改"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+interface SubagentFormState {
+	name: string;
+	description: string;
+	toolAccess: CustomSubagentToolAccess;
+	customTools: string;
+	defaultModel: string;
+	prompt: string;
+}
+
+const EMPTY_SUBAGENT_FORM: SubagentFormState = {
+	name: "",
+	description: "",
+	toolAccess: "readOnly",
+	customTools: "",
+	defaultModel: "",
+	prompt: "",
+};
+
+function CustomSubagentsSection() {
+	const [subagents, setSubagents] = useState<readonly CustomSubagent[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [pendingName, setPendingName] = useState<string | null>(null);
+	const [editor, setEditor] = useState<
+		{ mode: "create" } | { mode: "edit"; currentName: string } | null
+	>(null);
+	const [form, setForm] = useState<SubagentFormState>(EMPTY_SUBAGENT_FORM);
+	const [deleteName, setDeleteName] = useState<string | null>(null);
+
+	const load = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			setSubagents(await subagentsClient.list());
+		} catch (loadError) {
+			setError(errorMessage(loadError));
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		void load();
+	}, [load]);
+
+	function openEdit(subagent: CustomSubagent) {
+		setForm({
+			name: subagent.name,
+			description: subagent.description,
+			toolAccess: subagent.toolAccess,
+			customTools: subagent.customTools.join(", "),
+			defaultModel: subagent.defaultModel,
+			prompt: subagent.prompt,
+		});
+		setEditor({ mode: "edit", currentName: subagent.name });
+	}
+
+	async function saveSubagent() {
+		if (!editor) return;
+		const input: CustomSubagentInput = {
+			name: form.name.trim(),
+			description: form.description.trim(),
+			toolAccess: form.toolAccess,
+			customTools: form.customTools
+				.split(",")
+				.map((tool) => tool.trim())
+				.filter(Boolean),
+			defaultModel: form.defaultModel.trim(),
+			prompt: form.prompt,
+		};
+		setPendingName(editor.mode === "edit" ? editor.currentName : input.name);
+		setError(null);
+		try {
+			if (editor.mode === "create") await subagentsClient.create(input);
+			else await subagentsClient.update(editor.currentName, input);
+			setEditor(null);
+			setForm(EMPTY_SUBAGENT_FORM);
+			await load();
+		} catch (saveError) {
+			setError(errorMessage(saveError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	async function deleteSubagent() {
+		if (!deleteName) return;
+		setPendingName(deleteName);
+		setError(null);
+		try {
+			await subagentsClient.delete(deleteName);
+			setDeleteName(null);
+			await load();
+		} catch (deleteError) {
+			setError(errorMessage(deleteError));
+		} finally {
+			setPendingName(null);
+		}
+	}
+
+	return (
+		<div className="flex flex-col gap-4">
+			<SectionHeading
+				title="自定义子代理"
+				description="创建具有明确模型、提示词和工具访问设置的专用 Runtime 子代理。"
+				action={
+					<Button
+						type="button"
+						size="sm"
+						onClick={() => {
+							setForm(EMPTY_SUBAGENT_FORM);
+							setEditor({ mode: "create" });
+						}}
+					>
+						<Plus data-icon="inline-start" />
+						创建子代理
+					</Button>
+				}
+			/>
+			{error && <ErrorAlert message={error} />}
+			{loading ? (
+				<LoadingCards />
+			) : subagents.length === 0 ? (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<Bot />
+						</EmptyMedia>
+						<EmptyTitle>暂无自定义子代理</EmptyTitle>
+						<EmptyDescription>
+							通过 Runtime 自定义子代理路由创建子代理。
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<div className="grid gap-3 md:grid-cols-2">
+					{subagents.map((subagent) => (
+						<Card key={subagent.name}>
+							<CardHeader>
+								<CardTitle>{subagent.name}</CardTitle>
+								<CardDescription>{subagent.description}</CardDescription>
+							</CardHeader>
+							<CardContent className="flex flex-col gap-3">
+								<div className="flex flex-wrap gap-2">
+									<Badge variant="secondary">
+										{subagentToolAccessLabel(subagent.toolAccess)}
+									</Badge>
+									<Badge variant="outline">
+										{subagent.defaultModel || "默认模型"}
+									</Badge>
+									{subagent.customTools.map((tool) => (
+										<Badge key={tool} variant="outline">
+											{tool}
+										</Badge>
+									))}
+								</div>
+								<p className="line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">
+									{subagent.prompt}
+								</p>
+								<div className="flex gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										disabled={pendingName === subagent.name}
+										onClick={() => openEdit(subagent)}
+									>
+										<Pencil data-icon="inline-start" />
+										编辑
+									</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										disabled={pendingName === subagent.name}
+										onClick={() => setDeleteName(subagent.name)}
+									>
+										<Trash2 data-icon="inline-start" />
+										删除
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					))}
+				</div>
+			)}
+
+			<SubagentEditorDialog
+				open={editor !== null}
+				mode={editor?.mode ?? "create"}
+				form={form}
+				saving={editor !== null && pendingName !== null}
+				onFormChange={setForm}
+				onOpenChange={(open) => {
+					if (!open) {
+						setEditor(null);
+						setForm(EMPTY_SUBAGENT_FORM);
+					}
+				}}
+				onSave={() => void saveSubagent()}
+			/>
+			<DeleteConfirmDialog
+				open={deleteName !== null}
+				title="删除自定义子代理"
+				description={`确定从 Runtime 中删除“${deleteName ?? "此子代理"}”吗？`}
+				deleting={deleteName !== null && pendingName === deleteName}
+				onOpenChange={(open) => {
+					if (!open) setDeleteName(null);
+				}}
+				onConfirm={() => void deleteSubagent()}
+			/>
+		</div>
+	);
+}
+
+function SubagentEditorDialog({
+	open,
+	mode,
+	form,
+	saving,
+	onFormChange,
+	onOpenChange,
+	onSave,
+}: {
+	readonly open: boolean;
+	readonly mode: "create" | "edit";
+	readonly form: SubagentFormState;
+	readonly saving: boolean;
+	readonly onFormChange: (form: SubagentFormState) => void;
+	readonly onOpenChange: (open: boolean) => void;
+	readonly onSave: () => void;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>
+						{mode === "create" ? "创建自定义子代理" : "编辑自定义子代理"}
+					</DialogTitle>
+					<DialogDescription>
+						所有字段都直接映射到 Runtime 自定义子代理契约。
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="grid gap-4 sm:grid-cols-2">
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="subagent-name">名称</Label>
+							<Input
+								id="subagent-name"
+								value={form.name}
+								onChange={(event) =>
+									onFormChange({ ...form, name: event.target.value })
+								}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="subagent-model">默认模型</Label>
+							<Input
+								id="subagent-model"
+								value={form.defaultModel}
+								onChange={(event) =>
+									onFormChange({ ...form, defaultModel: event.target.value })
+								}
+								placeholder="留空时使用 Runtime 默认模型"
+							/>
+						</div>
+					</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="subagent-description">描述</Label>
+						<Input
+							id="subagent-description"
+							value={form.description}
+							onChange={(event) =>
+								onFormChange({ ...form, description: event.target.value })
+							}
+						/>
+					</div>
+					<div className="grid gap-4 sm:grid-cols-2">
+						<div className="flex flex-col gap-2">
+							<Label>工具访问</Label>
+							<SimpleSelect
+								aria-label="工具访问"
+								value={form.toolAccess}
+								onValueChange={(value) =>
+									onFormChange({
+										...form,
+										toolAccess: value as CustomSubagentToolAccess,
+									})
+								}
+								options={[
+									{ value: "readOnly", label: "只读" },
+									{ value: "general", label: "通用" },
+									{ value: "custom", label: "自定义" },
+								]}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="subagent-custom-tools">自定义工具</Label>
+							<Input
+								id="subagent-custom-tools"
+								value={form.customTools}
+								disabled={form.toolAccess !== "custom"}
+								onChange={(event) =>
+									onFormChange({ ...form, customTools: event.target.value })
+								}
+								placeholder="Read, Grep, WebFetch"
+							/>
+						</div>
+					</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="subagent-prompt">提示词</Label>
+						<Textarea
+							id="subagent-prompt"
+							className="min-h-64 font-mono"
+							value={form.prompt}
+							onChange={(event) =>
+								onFormChange({ ...form, prompt: event.target.value })
+							}
+						/>
+					</div>
+				</div>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+					>
+						取消
+					</Button>
+					<Button
+						type="button"
+						disabled={
+							saving ||
+							!form.name.trim() ||
+							!form.description.trim() ||
+							!form.prompt.trim()
+						}
+						onClick={onSave}
+					>
+						{saving ? "保存中…" : mode === "create" ? "创建" : "保存修改"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
+}
+
+interface HookFormState {
+	event: HookEvent;
+	matcher: string;
+	type: HookType;
+	command: string;
+	url: string;
+	headers: string;
+	proxyMode: HookProxyMode;
+	proxyUrl: string;
+	timeout: string;
+	enabled: boolean;
+	sortOrder: string;
+}
+
+const EMPTY_HOOK_FORM: HookFormState = {
+	event: "PreToolUse",
+	matcher: "",
+	type: "command",
+	command: "",
+	url: "",
+	headers: "",
+	proxyMode: "default",
+	proxyUrl: "",
+	timeout: "30",
+	enabled: true,
+	sortOrder: "0",
+};
+
+const HOOK_EVENTS: readonly HookEvent[] = [
+	"PreToolUse",
+	"PostToolUse",
+	"Stop",
+	"Attention",
+	"AttentionResolved",
 ];
 
-function createHookDraft(): RoutineHook {
-  return {
-    id: `hook-${Date.now()}`,
-    name: "新建钩子",
-    event: "TurnComplete",
-    kind: "shell",
-    target: "",
-    enabled: true,
-  };
+function parseRecord(
+	value: string,
+): Readonly<Record<string, string>> | undefined {
+	if (!value.trim()) return undefined;
+	const parsed = JSON.parse(value) as unknown;
+	if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+		throw new Error("请求头必须是 JSON 对象。");
+	}
+	const result: Record<string, string> = {};
+	for (const [key, item] of Object.entries(parsed)) {
+		if (typeof item !== "string") throw new Error("请求头的值必须是字符串。");
+		result[key] = item;
+	}
+	return result;
 }
 
-function HooksTab({ hooks, onChange }: { readonly hooks: RoutineHook[]; readonly onChange: (hooks: RoutineHook[]) => void }) {
-  const updateHook = (id: string, updates: Partial<RoutineHook>) => {
-    onChange(hooks.map((hook) => (hook.id === id ? { ...hook, ...updates } : hook)));
-  };
+type HookScope = "global" | "book";
+type DisplayHook = RuntimeHook | RuntimeBookHook;
 
-  const addHook = () => onChange([...hooks, createHookDraft()]);
-  const removeHook = (id: string) => onChange(hooks.filter((hook) => hook.id !== id));
+function HooksSection({
+	bookId,
+	bookTitle,
+}: {
+	readonly bookId?: string;
+	readonly bookTitle?: string;
+}) {
+	const [scope, setScope] = useState<HookScope>(() =>
+		bookId ? "book" : "global",
+	);
+	const [hooks, setHooks] = useState<readonly DisplayHook[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [pendingId, setPendingId] = useState<string | null>(null);
+	const [editor, setEditor] = useState<
+		{ mode: "create" } | { mode: "edit"; id: string } | null
+	>(null);
+	const [form, setForm] = useState<HookFormState>(EMPTY_HOOK_FORM);
+	const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+	const load = useCallback(async () => {
+		if (scope === "book" && !bookId) {
+			setHooks([]);
+			setError(null);
+			setLoading(false);
+			return;
+		}
+		setLoading(true);
+		setError(null);
+		try {
+			setHooks(
+				scope === "global"
+					? await hooksClient.listGlobal()
+					: bookId
+						? await productClient.listBookHooks(bookId)
+						: [],
+			);
+		} catch (loadError) {
+			setError(errorMessage(loadError, true));
+		} finally {
+			setLoading(false);
+		}
+	}, [bookId, scope]);
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      const oldIndex = hooks.findIndex((h) => h.id === active.id);
-      const newIndex = hooks.findIndex((h) => h.id === over.id);
-      onChange(arrayMove(hooks, oldIndex, newIndex));
-    }
-  };
+	useEffect(() => {
+		void load();
+	}, [load]);
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-muted/20 p-4">
-        <div>
-          <h4 className="font-semibold">生命周期钩子</h4>
-          <p className="mt-1 text-sm text-muted-foreground">
-            为 Shell、Webhook 或 LLM 提示词配置真实生命周期触发点，保存后写入当前 Routines 作用域。
-          </p>
-        </div>
-        <Button variant="outline" size="sm" onClick={addHook}>
-          创建钩子
-        </Button>
-      </div>
+	// Keep the UI scope aligned with the selected book and discard stale
+	// mutations when the trusted book binding changes or disappears.
+	useEffect(() => {
+		if (!bookId && scope === "book") setScope("global");
+		setEditor(null);
+		setForm(EMPTY_HOOK_FORM);
+		setDeleteId(null);
+		setPendingId(null);
+		setError(null);
+	}, [bookId, scope]);
 
-      <div className="grid gap-3 md:grid-cols-3">
-        <HookTypeCard title="Shell" description="在工具执行前/后或每轮结束时运行本地命令，继承当前权限模式。已接入运行时。" />
-        <HookTypeCard title="Webhook" description="向外部服务发送事件载荷。暂未接线，配置后不会触发。" />
-        <HookTypeCard title="LLM 提示词" description="以当前上下文触发模型提示词。暂未接线，配置后不会触发。" />
-      </div>
+	function openEdit(hook: DisplayHook) {
+		setForm({
+			event: hook.event,
+			matcher: hook.matcher,
+			type: hook.type,
+			command: hook.command ?? "",
+			url: hook.url ?? "",
+			headers: hook.headers ? JSON.stringify(hook.headers, null, 2) : "",
+			proxyMode: hook.proxyMode ?? "default",
+			proxyUrl: hook.proxyUrl ?? "",
+			timeout: String(hook.timeout),
+			enabled: hook.enabled,
+			sortOrder: String(hook.sortOrder),
+		});
+		setEditor({ mode: "edit", id: hook.id });
+	}
 
-      {hooks.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border bg-background p-4 text-sm text-muted-foreground">暂无生命周期钩子，点击"创建钩子"添加第一条。</div>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-          <SortableContext items={hooks.map((h) => h.id)} strategy={verticalListSortingStrategy}>
-            <div className="space-y-3">
-              {hooks.map((hook) => (
-                <SortableHookItem key={hook.id} hook={hook} onUpdate={updateHook} onRemove={removeHook} />
-              ))}
-            </div>
-          </SortableContext>
-        </DndContext>
-      )}
-    </div>
-  );
+	async function saveHook() {
+		if (!editor) return;
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingId(editor.mode === "edit" ? editor.id : "create");
+		setError(null);
+		try {
+			const headers = parseRecord(form.headers);
+			const common = {
+				event: form.event,
+				matcher: form.matcher,
+				headers,
+				proxyMode: form.proxyMode,
+				proxyUrl:
+					form.proxyMode === "custom" ? form.proxyUrl.trim() : undefined,
+				timeout: Number(form.timeout) || 30,
+				enabled: form.enabled,
+				sortOrder: Number(form.sortOrder) || 0,
+			};
+			if (editor.mode === "create") {
+				const input =
+					form.type === "command"
+						? {
+								...common,
+								type: "command" as const,
+								command: form.command.trim(),
+							}
+						: { ...common, type: "http" as const, url: form.url.trim() };
+				if (scope === "global") await hooksClient.create(input);
+				else await productClient.createBookHook(requireBookId(bookId), input);
+			} else {
+				const input =
+					form.type === "command"
+						? {
+								...common,
+								type: "command" as const,
+								command: form.command.trim(),
+								url: null,
+							}
+						: {
+								...common,
+								type: "http" as const,
+								url: form.url.trim(),
+								command: null,
+							};
+				if (scope === "global") await hooksClient.update(editor.id, input);
+				else
+					await productClient.updateBookHook(
+						requireBookId(bookId),
+						editor.id,
+						input,
+					);
+			}
+			setEditor(null);
+			setForm(EMPTY_HOOK_FORM);
+			await load();
+		} catch (saveError) {
+			setError(errorMessage(saveError, true));
+		} finally {
+			setPendingId(null);
+		}
+	}
+
+	async function toggleHook(hook: DisplayHook, enabled: boolean) {
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingId(hook.id);
+		setError(null);
+		try {
+			if (scope === "global") await hooksClient.update(hook.id, { enabled });
+			else
+				await productClient.updateBookHook(requireBookId(bookId), hook.id, {
+					enabled,
+				});
+			await load();
+		} catch (toggleError) {
+			setError(errorMessage(toggleError, true));
+		} finally {
+			setPendingId(null);
+		}
+	}
+
+	async function deleteHook() {
+		if (!deleteId) return;
+		if (scope === "book" && !bookId) {
+			setError("请先选择作品。");
+			return;
+		}
+		setPendingId(deleteId);
+		setError(null);
+		try {
+			if (scope === "global") await hooksClient.delete(deleteId);
+			else await productClient.deleteBookHook(requireBookId(bookId), deleteId);
+			setDeleteId(null);
+			await load();
+		} catch (deleteError) {
+			setError(errorMessage(deleteError, true));
+		} finally {
+			setPendingId(null);
+		}
+	}
+
+	return (
+		<div className="flex flex-col gap-4">
+			<SectionHeading
+				title="Hooks"
+				description={
+					scope === "global"
+						? "由管理员管理的全局 Runtime Hooks。"
+						: `由管理员通过书籍绑定网关管理当前作品 ${bookTitle || bookId} 的 Hooks。`
+				}
+				action={
+					<div className="flex flex-wrap gap-2">
+						<SimpleSelect
+							aria-label="钩子作用域"
+							value={scope}
+							onValueChange={(value) => {
+								setScope(value as HookScope);
+								setEditor(null);
+								setDeleteId(null);
+							}}
+							options={[
+								{ value: "global", label: "全局" },
+								{
+									value: "book",
+									label: bookId
+										? `当前作品 · ${bookTitle || bookId}`
+										: "当前作品（未选择）",
+									disabled: !bookId,
+								},
+							]}
+						/>
+						<Button
+							type="button"
+							size="sm"
+							disabled={scope === "book" && !bookId}
+							onClick={() => {
+								setForm(EMPTY_HOOK_FORM);
+								setEditor({ mode: "create" });
+							}}
+						>
+							<Plus data-icon="inline-start" />
+							创建 Hook
+						</Button>
+					</div>
+				}
+			/>
+			<Alert>
+				<AlertTitle>需要 Runtime 管理员权限</AlertTitle>
+				<AlertDescription>
+					Hook
+					路由仅限管理员使用。作品作用域只发送书籍标识，服务端验证绑定并注入内部项目标识。支持
+					PreToolUse、PostToolUse、Stop、Attention、AttentionResolved 与
+					command/http。
+				</AlertDescription>
+			</Alert>
+			{error && <ErrorAlert title="钩子请求失败" message={error} />}
+			{loading ? (
+				<LoadingCards />
+			) : hooks.length === 0 ? (
+				<Empty className="border">
+					<EmptyHeader>
+						<EmptyMedia variant="icon">
+							<ShieldAlert />
+						</EmptyMedia>
+						<EmptyTitle>暂无钩子</EmptyTitle>
+						<EmptyDescription>
+							当前 Runtime 作用域未返回任何钩子。
+						</EmptyDescription>
+					</EmptyHeader>
+				</Empty>
+			) : (
+				<div className="grid gap-3 md:grid-cols-2">
+					{hooks.map((hook) => (
+						<Card key={hook.id}>
+							<CardHeader>
+								<CardTitle>{hook.event}</CardTitle>
+								<CardDescription>
+									{hook.matcher || "匹配所有事件"}
+								</CardDescription>
+								<CardAction>
+									<Switch
+										aria-label={`切换钩子：${hook.id}`}
+										checked={hook.enabled}
+										disabled={pendingId === hook.id}
+										onCheckedChange={(enabled) =>
+											void toggleHook(hook, enabled)
+										}
+									/>
+								</CardAction>
+							</CardHeader>
+							<CardContent className="flex flex-col gap-3">
+								<div className="flex flex-wrap gap-2">
+									<Badge variant="secondary">{hookTypeLabel(hook.type)}</Badge>
+									<Badge variant="outline">超时 {hook.timeout}s</Badge>
+									<Badge variant="outline">顺序 {hook.sortOrder}</Badge>
+								</div>
+								<code className="break-all rounded-lg bg-muted p-3 text-xs">
+									{hook.type === "command" ? hook.command : hook.url}
+								</code>
+								<div className="flex gap-2">
+									<Button
+										type="button"
+										variant="outline"
+										size="sm"
+										onClick={() => openEdit(hook)}
+									>
+										<Pencil data-icon="inline-start" />
+										编辑
+									</Button>
+									<Button
+										type="button"
+										variant="destructive"
+										size="sm"
+										onClick={() => setDeleteId(hook.id)}
+									>
+										<Trash2 data-icon="inline-start" />
+										删除
+									</Button>
+								</div>
+							</CardContent>
+						</Card>
+					))}
+				</div>
+			)}
+
+			<HookEditorDialog
+				open={editor !== null}
+				mode={editor?.mode ?? "create"}
+				form={form}
+				saving={editor !== null && pendingId !== null}
+				onFormChange={setForm}
+				onOpenChange={(open) => {
+					if (!open) {
+						setEditor(null);
+						setForm(EMPTY_HOOK_FORM);
+					}
+				}}
+				onSave={() => void saveHook()}
+			/>
+			<DeleteConfirmDialog
+				open={deleteId !== null}
+				title="删除钩子"
+				description="确定通过 Runtime 管理员路由删除此钩子吗？"
+				deleting={deleteId !== null && pendingId === deleteId}
+				onOpenChange={(open) => {
+					if (!open) setDeleteId(null);
+				}}
+				onConfirm={() => void deleteHook()}
+			/>
+		</div>
+	);
 }
 
-function SortableHookItem({ hook, onUpdate, onRemove }: { hook: RoutineHook; onUpdate: (id: string, updates: Partial<RoutineHook>) => void; onRemove: (id: string) => void }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: hook.id });
-  const style = { transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? 0.5 : 1 };
-
-  return (
-    <div ref={setNodeRef} style={style} className="grid gap-3 rounded-xl border border-border bg-background p-4 md:grid-cols-[auto_1fr_1fr_1fr_auto]">
-      <div className="flex items-center cursor-grab active:cursor-grabbing" {...attributes} {...listeners}>
-        <GripVertical className="size-4 text-muted-foreground" />
-      </div>
-      <label className="text-sm">
-        钩子名称
-        <Input className="mt-1 w-full" value={hook.name} onChange={(event) => onUpdate(hook.id, { name: event.target.value })} />
-      </label>
-      <label className="text-sm">
-        触发节点
-        <SimpleSelect
-          className="mt-1"
-          value={hook.event}
-          onValueChange={(v) => onUpdate(hook.id, { event: v })}
-          options={HOOK_EVENT_PRESETS.map((preset) => ({ value: preset.value, label: `${preset.label}（${preset.value}）` }))}
-        />
-      </label>
-      <label className="text-sm">
-        执行方式
-        <SimpleSelect
-          className="mt-1"
-          value={hook.kind}
-          onValueChange={(v) => onUpdate(hook.id, { kind: v as RoutineHookKind })}
-          options={(Object.keys(HOOK_KIND_LABELS) as RoutineHookKind[]).map((kind) => ({ value: kind, label: HOOK_KIND_LABELS[kind] }))}
-        />
-      </label>
-      <div className="flex items-end gap-2">
-        <Button variant="outline" size="sm" onClick={() => onUpdate(hook.id, { enabled: !hook.enabled })}>
-          {hook.enabled ? "停用" : "启用"}
-        </Button>
-        <Button variant="destructive" size="sm" onClick={() => onRemove(hook.id)}>
-          删除
-        </Button>
-      </div>
-      <label className="text-sm md:col-span-5">
-        执行目标
-        <Input className="mt-1 w-full" value={hook.target} onChange={(event) => onUpdate(hook.id, { target: event.target.value })} placeholder="命令、Webhook URL 或 LLM 提示词" />
-      </label>
-    </div>
-  );
+function HookEditorDialog({
+	open,
+	mode,
+	form,
+	saving,
+	onFormChange,
+	onOpenChange,
+	onSave,
+}: {
+	readonly open: boolean;
+	readonly mode: "create" | "edit";
+	readonly form: HookFormState;
+	readonly saving: boolean;
+	readonly onFormChange: (form: HookFormState) => void;
+	readonly onOpenChange: (open: boolean) => void;
+	readonly onSave: () => void;
+}) {
+	const validTarget =
+		form.type === "command" ? form.command.trim() : form.url.trim();
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+				<DialogHeader>
+					<DialogTitle>
+						{mode === "create" ? "创建钩子" : "编辑钩子"}
+					</DialogTitle>
+					<DialogDescription>
+						配置准确的 Runtime 钩子事件以及命令或 HTTP 目标。
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-4">
+					<div className="grid gap-4 sm:grid-cols-2">
+						<div className="flex flex-col gap-2">
+							<Label>事件</Label>
+							<SimpleSelect
+								aria-label="钩子事件"
+								value={form.event}
+								onValueChange={(value) =>
+									onFormChange({ ...form, event: value as HookEvent })
+								}
+								options={HOOK_EVENTS.map((event) => ({
+									value: event,
+									label: event,
+								}))}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label>类型</Label>
+							<SimpleSelect
+								aria-label="钩子类型"
+								value={form.type}
+								onValueChange={(value) =>
+									onFormChange({ ...form, type: value as HookType })
+								}
+								options={[
+									{ value: "command", label: "命令" },
+									{ value: "http", label: "HTTP" },
+								]}
+							/>
+						</div>
+					</div>
+					<div className="flex flex-col gap-2">
+						<Label htmlFor="hook-matcher">匹配器</Label>
+						<Input
+							id="hook-matcher"
+							value={form.matcher}
+							onChange={(event) =>
+								onFormChange({ ...form, matcher: event.target.value })
+							}
+							placeholder="可选的工具或事件匹配器"
+						/>
+					</div>
+					{form.type === "command" ? (
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="hook-command">命令</Label>
+							<Textarea
+								id="hook-command"
+								className="min-h-28 font-mono"
+								value={form.command}
+								onChange={(event) =>
+									onFormChange({ ...form, command: event.target.value })
+								}
+							/>
+						</div>
+					) : (
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="hook-url">URL</Label>
+							<Input
+								id="hook-url"
+								value={form.url}
+								onChange={(event) =>
+									onFormChange({ ...form, url: event.target.value })
+								}
+								placeholder="https://example.com/hook"
+							/>
+						</div>
+					)}
+					{form.type === "http" && (
+						<>
+							<div className="flex flex-col gap-2">
+								<Label htmlFor="hook-headers">请求头 JSON</Label>
+								<Textarea
+									id="hook-headers"
+									className="min-h-24 font-mono"
+									value={form.headers}
+									onChange={(event) =>
+										onFormChange({ ...form, headers: event.target.value })
+									}
+									placeholder='{"Authorization":"Bearer …"}'
+								/>
+							</div>
+							<div className="grid gap-4 sm:grid-cols-2">
+								<div className="flex flex-col gap-2">
+									<Label>代理模式</Label>
+									<SimpleSelect
+										aria-label="代理模式"
+										value={form.proxyMode}
+										onValueChange={(value) =>
+											onFormChange({
+												...form,
+												proxyMode: value as HookProxyMode,
+											})
+										}
+										options={["default", "direct", "system", "custom"].map(
+											(value) => ({
+												value,
+												label: proxyModeLabel(value as HookProxyMode),
+											}),
+										)}
+									/>
+								</div>
+								<div className="flex flex-col gap-2">
+									<Label htmlFor="hook-proxy-url">自定义代理 URL</Label>
+									<Input
+										id="hook-proxy-url"
+										disabled={form.proxyMode !== "custom"}
+										value={form.proxyUrl}
+										onChange={(event) =>
+											onFormChange({ ...form, proxyUrl: event.target.value })
+										}
+									/>
+								</div>
+							</div>
+						</>
+					)}
+					<div className="grid gap-4 sm:grid-cols-3">
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="hook-timeout">超时秒数</Label>
+							<Input
+								id="hook-timeout"
+								type="number"
+								min="1"
+								max="600"
+								value={form.timeout}
+								onChange={(event) =>
+									onFormChange({ ...form, timeout: event.target.value })
+								}
+							/>
+						</div>
+						<div className="flex flex-col gap-2">
+							<Label htmlFor="hook-order">排序顺序</Label>
+							<Input
+								id="hook-order"
+								type="number"
+								value={form.sortOrder}
+								onChange={(event) =>
+									onFormChange({ ...form, sortOrder: event.target.value })
+								}
+							/>
+						</div>
+						<div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+							<Label>已启用</Label>
+							<Switch
+								aria-label="钩子已启用"
+								checked={form.enabled}
+								onCheckedChange={(enabled) =>
+									onFormChange({ ...form, enabled })
+								}
+							/>
+						</div>
+					</div>
+				</div>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+					>
+						取消
+					</Button>
+					<Button
+						type="button"
+						disabled={saving || !validTarget}
+						onClick={onSave}
+					>
+						{saving ? "保存中…" : mode === "create" ? "创建" : "保存修改"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 }
 
-function HookTypeCard({ title, description }: { readonly title: string; readonly description: string }) {
-  return (
-    <div className="rounded-xl border border-border bg-background p-3">
-      <div className="font-semibold">{title}</div>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
-  );
+function DeleteConfirmDialog({
+	open,
+	title,
+	description,
+	deleting,
+	onOpenChange,
+	onConfirm,
+}: {
+	readonly open: boolean;
+	readonly title: string;
+	readonly description: string;
+	readonly deleting: boolean;
+	readonly onOpenChange: (open: boolean) => void;
+	readonly onConfirm: () => void;
+}) {
+	return (
+		<Dialog open={open} onOpenChange={onOpenChange}>
+			<DialogContent>
+				<DialogHeader>
+					<DialogTitle>{title}</DialogTitle>
+					<DialogDescription>{description}</DialogDescription>
+				</DialogHeader>
+				<DialogFooter>
+					<Button
+						type="button"
+						variant="outline"
+						onClick={() => onOpenChange(false)}
+					>
+						取消
+					</Button>
+					<Button
+						type="button"
+						variant="destructive"
+						disabled={deleting}
+						onClick={onConfirm}
+					>
+						{deleting ? "删除中…" : "删除"}
+					</Button>
+				</DialogFooter>
+			</DialogContent>
+		</Dialog>
+	);
 }
-
-function RulesFilesEditor() {
-  const [globalRules, setGlobalRules] = useState("");
-  const [projectRules, setProjectRules] = useState("");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    void (async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/settings/rules");
-        if (res.ok) {
-          const data = await res.json();
-          setGlobalRules(data.globalRules ?? "");
-          setProjectRules(data.projectRules ?? "");
-        }
-      } catch { /* non-fatal */ }
-      setLoading(false);
-    })();
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await fetch("/api/settings/rules", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ globalRules, projectRules }),
-      });
-    } catch { /* non-fatal */ }
-    setSaving(false);
-  };
-
-  if (loading) return <p className="text-xs text-muted-foreground">加载中...</p>;
-
-  return (
-    <div className="space-y-6">
-      <div className="rounded-lg border border-border bg-blue-50 dark:bg-blue-950/20 p-4">
-        <p className="text-sm font-medium text-blue-800 dark:text-blue-200">规则文件</p>
-        <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-          规则文件的内容会自动注入到 Agent 的系统提示词中。支持 Markdown 格式。
-          全局规则对所有会话生效，项目规则仅对绑定了工作目录的会话生效。
-        </p>
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">全局规则 (~/.novelfork/CLAUDE.md)</label>
-        <textarea
-          className="w-full h-40 rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-y"
-          value={globalRules}
-          onChange={(e) => setGlobalRules(e.target.value)}
-          placeholder={"# 全局规则\n\n在这里写对所有会话生效的规则..."}
-        />
-      </div>
-
-      <div className="space-y-2">
-        <label className="text-sm font-medium">项目规则 (CLAUDE.md)</label>
-        <textarea
-          className="w-full h-40 rounded-md border border-border bg-background px-3 py-2 text-sm font-mono resize-y"
-          value={projectRules}
-          onChange={(e) => setProjectRules(e.target.value)}
-          placeholder={"# 项目规则\n\n在这里写当前项目专属的规则..."}
-        />
-        <p className="text-xs text-muted-foreground">项目规则文件位于当前工作目录的 CLAUDE.md</p>
-      </div>
-
-      <Button onClick={handleSave} disabled={saving} size="sm">
-        {saving ? "保存中..." : "保存规则"}
-      </Button>
-    </div>
-  );
-}
-
