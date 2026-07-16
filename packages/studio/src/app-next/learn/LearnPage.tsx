@@ -1,441 +1,434 @@
-import { useState, useEffect, useCallback, useRef } from "react";
-import { BookOpen, Search, ChevronDown, ChevronRight, Sparkles, Settings, Wrench, Rocket, GraduationCap } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpen,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  FolderOpen,
+  Lightbulb,
+  LoaderCircle,
+  Search,
+  Sparkles,
+} from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { fetchJson } from "@/hooks/use-api";
+import {
+  filterLearningDocs,
+  groupLearningDocs,
+  LEARNING_LANG,
+  learningClient,
+  type LearningCategory,
+  type LearningDoc,
+  type LearningDocSummary,
+  type LearningIndex,
+  toStudioActionHref,
+} from "./client";
 
-// ── Types ──
+export { filterLearningDocs, groupLearningDocs, toStudioActionHref } from "./client";
 
-interface LearningDocEntry {
-  id: string;
-  title: string;
-  summary: string;
-  tags: string[];
+interface LearningLocationState {
+  docId: string | null;
+  query: string;
 }
 
-interface CategoryGroup {
-  category: string;
-  docs: LearningDocEntry[];
+function readLearningLocation(): LearningLocationState {
+  if (typeof window === "undefined") return { docId: null, query: "" };
+  const search = new URLSearchParams(window.location.search);
+  return { docId: search.get("doc"), query: search.get("q") ?? "" };
 }
 
-interface DocContent {
-  id: string;
-  title: string;
-  summary: string;
-  tags: string[];
-  category: string;
-  content: string;
+function writeLearningLocation(
+  docId: string | null,
+  query: string,
+  mode: "replace" | "push" = "replace",
+): void {
+  if (typeof window === "undefined") return;
+  const url = new URL(window.location.href);
+  if (docId) url.searchParams.set("doc", docId);
+  else url.searchParams.delete("doc");
+  if (query) url.searchParams.set("q", query);
+  else url.searchParams.delete("q");
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  if (mode === "push") window.history.pushState(window.history.state, "", nextUrl);
+  else window.history.replaceState(window.history.state, "", nextUrl);
 }
 
-// ── Category Icons ──
-
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
-  "从这里开始": <Rocket className="size-3.5" />,
-  "AI 写作": <Sparkles className="size-3.5" />,
-  "工具与分析": <Wrench className="size-3.5" />,
-  "设置与配置": <Settings className="size-3.5" />,
-  "高级功能": <GraduationCap className="size-3.5" />,
-};
-
-// ── Main Component ──
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error && error.message ? error.message : fallback;
+}
 
 export function LearnPage() {
-  const [categories, setCategories] = useState<CategoryGroup[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState<string | null>(null);
-  const [docContent, setDocContent] = useState<DocContent | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<LearningDocEntry[] | null>(null);
+  const initialLocation = useMemo(readLearningLocation, []);
+  const [index, setIndex] = useState<LearningIndex | null>(null);
+  const [selectedDocId, setSelectedDocId] = useState<string | null>(initialLocation.docId);
+  const [searchQuery, setSearchQuery] = useState(initialLocation.query);
+  const [indexLoading, setIndexLoading] = useState(true);
+  const [indexError, setIndexError] = useState<string | null>(null);
+  const [indexRequestVersion, setIndexRequestVersion] = useState(0);
+  const [docContent, setDocContent] = useState<LearningDoc | null>(null);
   const [docLoading, setDocLoading] = useState(false);
-  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [docRequestVersion, setDocRequestVersion] = useState(0);
+  const [collapsedCategoryIds, setCollapsedCategoryIds] = useState<Set<string>>(() => new Set());
+  const docCacheRef = useRef(new Map<string, LearningDoc>());
 
-  // Load catalog from API
   useEffect(() => {
-    fetchJson<{ categories: CategoryGroup[] }>("/learn/docs")
-      .then((data) => {
-        if (data.categories?.length) setCategories(data.categories);
-      })
-      .catch(() => {});
+    const syncFromLocation = () => {
+      const next = readLearningLocation();
+      setSelectedDocId(next.docId);
+      setSearchQuery(next.query);
+    };
+    window.addEventListener("popstate", syncFromLocation);
+    return () => window.removeEventListener("popstate", syncFromLocation);
   }, []);
 
-  // Load doc content when selected
   useEffect(() => {
-    if (!selectedDocId) { setDocContent(null); return; }
+    const controller = new AbortController();
+    setIndexLoading(true);
+    setIndexError(null);
+    learningClient.getIndex(LEARNING_LANG, controller.signal)
+      .then((data) => setIndex({ categories: data.categories ?? [], docs: data.docs ?? [] }))
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setIndex(null);
+        setIndexError(errorMessage(error, "学习目录加载失败"));
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIndexLoading(false);
+      });
+    return () => controller.abort();
+  }, [indexRequestVersion]);
+
+  const filteredDocs = useMemo(
+    () => filterLearningDocs(index?.docs ?? [], searchQuery),
+    [index?.docs, searchQuery],
+  );
+  const categoryGroups = useMemo(
+    () => groupLearningDocs(index?.categories ?? [], filteredDocs),
+    [filteredDocs, index?.categories],
+  );
+  const selectedSummary = filteredDocs.find((doc) => doc.id === selectedDocId) ?? filteredDocs[0];
+  const effectiveDocId = selectedSummary?.id;
+
+  useEffect(() => {
+    if (!index || !selectedDocId || index.docs.some((doc) => doc.id === selectedDocId)) return;
+    setSelectedDocId(null);
+    writeLearningLocation(null, searchQuery);
+  }, [index, searchQuery, selectedDocId]);
+
+  useEffect(() => {
+    if (!effectiveDocId) {
+      setDocContent(null);
+      setDocError(null);
+      setDocLoading(false);
+      return;
+    }
+
+    const cached = docCacheRef.current.get(effectiveDocId);
+    if (cached && docRequestVersion === 0) {
+      setDocContent(cached);
+      setDocError(null);
+      setDocLoading(false);
+      return;
+    }
+
+    const controller = new AbortController();
+    setDocContent(null);
+    setDocError(null);
     setDocLoading(true);
-    fetchJson<DocContent>(`/learn/doc/${selectedDocId}`)
-      .then(setDocContent)
-      .catch(() => setDocContent(null))
-      .finally(() => setDocLoading(false));
-  }, [selectedDocId]);
+    learningClient.getDoc(effectiveDocId, LEARNING_LANG, controller.signal)
+      .then((doc) => {
+        docCacheRef.current.set(effectiveDocId, doc);
+        setDocContent(doc);
+      })
+      .catch((error) => {
+        if (!controller.signal.aborted) {
+          setDocError(errorMessage(error, "文档加载失败"));
+        }
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setDocLoading(false);
+      });
+    return () => controller.abort();
+  }, [docRequestVersion, effectiveDocId]);
 
-  // Search with debounce
-  useEffect(() => {
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (!searchQuery.trim()) { setSearchResults(null); return; }
-    searchTimerRef.current = setTimeout(() => {
-      fetchJson<{ results: LearningDocEntry[] }>(`/learn/search?q=${encodeURIComponent(searchQuery)}`)
-        .then((data) => setSearchResults(data.results))
-        .catch(() => setSearchResults([]));
-    }, 300);
-    return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
-  }, [searchQuery]);
-
-  const toggleCategory = useCallback((cat: string) => {
-    setCollapsedCategories(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat);
-      else next.add(cat);
+  const toggleCategory = useCallback((categoryId: string) => {
+    setCollapsedCategoryIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(categoryId)) next.delete(categoryId);
+      else next.add(categoryId);
       return next;
     });
   }, []);
 
+  const selectDoc = useCallback((id: string) => {
+    writeLearningLocation(id, searchQuery, "push");
+    setSelectedDocId(id);
+    setDocRequestVersion(0);
+  }, [searchQuery]);
+
+  const updateSearch = useCallback((value: string) => {
+    setSearchQuery(value);
+    setSelectedDocId(null);
+    setDocRequestVersion(0);
+    writeLearningLocation(null, value);
+  }, []);
+
   return (
-    <div className="flex flex-1 h-full w-full min-h-0 overflow-hidden bg-background">
-      {/* 左侧文档列表 */}
-      <aside className="w-[400px] shrink-0 border-r border-border overflow-y-auto bg-muted/30">
-        {/* 头部 */}
-        <div className="sticky top-0 z-10 bg-muted/30 backdrop-blur-sm border-b border-border/50 p-4 space-y-3">
+    <div className="flex h-full min-h-0 w-full flex-1 overflow-hidden bg-background">
+      <aside className="w-[min(400px,38vw)] min-w-[300px] shrink-0 overflow-y-auto border-r border-border bg-muted/30">
+        <div className="sticky top-0 z-10 space-y-3 border-b border-border/60 bg-background/90 p-4 backdrop-blur-sm">
           <div className="flex items-center gap-2">
-            <BookOpen className="size-4 text-primary" />
-            <span className="text-sm font-semibold">学习中心</span>
-            <span className="text-[10px] text-muted-foreground ml-auto">
-              {categories.reduce((sum, g) => sum + g.docs.length, 0)} 篇文档
+            <BookOpen className="size-4 text-primary" aria-hidden="true" />
+            <h1 className="text-sm font-semibold">学习中心</h1>
+            <span className="ml-auto text-[10px] text-muted-foreground">
+              {index?.docs.length ?? 0} 篇文档
             </span>
           </div>
-          <div className="relative">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3.5 text-muted-foreground" />
+          <p className="text-[11px] leading-4 text-muted-foreground">
+            这里汇总 NarraFork 除叙事线以外的主要功能文档、使用流程与最佳实践。
+          </p>
+          <label className="relative block">
+            <span className="sr-only">搜索学习文档</span>
+            <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
-              placeholder="搜索文档..."
+              type="search"
+              placeholder="搜索功能、流程或最佳实践..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-8 text-xs h-8"
+              onChange={(event) => updateSearch(event.currentTarget.value)}
+              className="h-8 pl-8 text-xs"
             />
-          </div>
+          </label>
         </div>
 
-        {/* 列表内容 */}
-        <div className="p-3 space-y-1">
-          {searchResults !== null ? (
-            /* 搜索结果 */
-            <div className="space-y-1">
-              <p className="text-[10px] text-muted-foreground px-2 py-1">
-                搜索结果 ({searchResults.length})
-              </p>
-              {searchResults.map((doc) => (
-                <DocCard
-                  key={doc.id}
-                  doc={doc}
-                  active={selectedDocId === doc.id}
-                  onClick={() => setSelectedDocId(doc.id)}
-                />
-              ))}
-              {searchResults.length === 0 && (
-                <p className="text-xs text-muted-foreground px-2 py-8 text-center">没有匹配的文档</p>
-              )}
-            </div>
+        <nav className="space-y-2 p-3" aria-label="学习文档">
+          {indexLoading ? (
+            <StatusMessage icon={<LoaderCircle className="size-4 animate-spin" />} text="正在加载学习目录..." />
+          ) : indexError ? (
+            <ErrorState
+              message={`学习目录加载失败：${indexError}`}
+              onRetry={() => setIndexRequestVersion((version) => version + 1)}
+            />
+          ) : filteredDocs.length === 0 ? (
+            <StatusMessage text={searchQuery.trim() ? "没有找到匹配的学习文档。" : "学习目录暂时为空。"} />
           ) : (
-            /* 分类列表 */
-            <div className="space-y-2">
-              {categories.map((group) => {
-                const collapsed = collapsedCategories.has(group.category);
-                return (
-                  <div key={group.category}>
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(group.category)}
-                      className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors"
-                    >
-                      {collapsed ? <ChevronRight className="size-3" /> : <ChevronDown className="size-3" />}
-                      {CATEGORY_ICONS[group.category]}
-                      <span>{group.category}</span>
-                      <span className="ml-auto text-[10px] opacity-60">{group.docs.length}</span>
-                    </button>
-                    {!collapsed && (
-                      <div className="mt-1 space-y-0.5 ml-2">
-                        {group.docs.map((doc) => (
-                          <DocCard
-                            key={doc.id}
-                            doc={doc}
-                            active={selectedDocId === doc.id}
-                            onClick={() => setSelectedDocId(doc.id)}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+            categoryGroups.map(({ category, docs }) => {
+              const hasActiveDoc = docs.some((doc) => doc.id === effectiveDocId);
+              const opened = hasActiveDoc || !collapsedCategoryIds.has(category.id);
+              return (
+                <CategoryTree
+                  key={category.id}
+                  category={category}
+                  docs={docs}
+                  opened={opened}
+                  activeDocId={effectiveDocId}
+                  onToggle={() => toggleCategory(category.id)}
+                  onSelectDoc={selectDoc}
+                />
+              );
+            })
           )}
-        </div>
+        </nav>
       </aside>
 
-      {/* 右侧内容区 */}
-      <main className="flex-1 overflow-y-auto">
-        {!selectedDocId ? (
-          <WelcomeView categories={categories} onSelect={setSelectedDocId} />
+      <main className="min-w-0 flex-1 overflow-y-auto">
+        {indexLoading ? (
+          <StatusMessage className="h-full" icon={<LoaderCircle className="size-5 animate-spin" />} text="加载学习目录..." />
+        ) : indexError ? (
+          <ErrorState
+            className="h-full"
+            message="无法加载 Runtime 学习目录。"
+            onRetry={() => setIndexRequestVersion((version) => version + 1)}
+          />
+        ) : !effectiveDocId ? (
+          <EmptyContent hasQuery={Boolean(searchQuery.trim())} />
         ) : docLoading ? (
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">加载文档...</div>
+          <StatusMessage className="h-full" icon={<LoaderCircle className="size-5 animate-spin" />} text="加载文档..." />
+        ) : docError ? (
+          <ErrorState
+            className="h-full"
+            message={`文档加载失败：${docError}`}
+            onRetry={() => setDocRequestVersion((version) => version + 1)}
+          />
         ) : docContent ? (
           <DocContentView doc={docContent} />
         ) : (
-          <div className="flex items-center justify-center h-full text-sm text-muted-foreground">文档加载失败</div>
+          <EmptyContent />
         )}
       </main>
     </div>
   );
 }
 
-// ── Sub Components ──
+function CategoryTree({
+  category,
+  docs,
+  opened,
+  activeDocId,
+  onToggle,
+  onSelectDoc,
+}: {
+  category: LearningCategory;
+  docs: LearningDocSummary[];
+  opened: boolean;
+  activeDocId?: string;
+  onToggle: () => void;
+  onSelectDoc: (id: string) => void;
+}) {
+  return (
+    <section>
+      <button
+        type="button"
+        aria-expanded={opened}
+        onClick={onToggle}
+        className="flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+      >
+        {opened ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        <FolderOpen className="size-3.5 text-primary/80" aria-hidden="true" />
+        <span className="min-w-0 flex-1">
+          <span className="block truncate font-semibold text-foreground">{category.label}</span>
+          {category.description ? <span className="block truncate text-[10px] font-normal">{category.description}</span> : null}
+        </span>
+        <span className="text-[10px] opacity-70">{docs.length}</span>
+      </button>
+      {opened ? (
+        <div className="ml-4 mt-1 space-y-0.5 border-l border-dashed border-border pl-2">
+          {docs.map((doc) => (
+            <DocCard
+              key={doc.id}
+              doc={doc}
+              active={doc.id === activeDocId}
+              onClick={() => onSelectDoc(doc.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
-function DocCard({ doc, active, onClick }: { doc: LearningDocEntry; active: boolean; onClick: () => void }) {
+function DocCard({ doc, active, onClick }: { doc: LearningDocSummary; active: boolean; onClick: () => void }) {
   return (
     <button
       type="button"
+      aria-current={active ? "page" : undefined}
       onClick={onClick}
-      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors ${
-        active
-          ? "border-l-2 border-primary bg-primary/5"
-          : "hover:bg-muted/50"
+      className={`w-full rounded-md border-l-2 px-3 py-2.5 text-left transition-colors ${
+        active ? "border-primary bg-primary/10" : "border-transparent hover:bg-muted/60"
       }`}
     >
-      <div className="text-xs font-medium text-foreground line-clamp-1">{doc.title}</div>
-      {doc.summary && (
-        <div className="text-[11px] text-muted-foreground line-clamp-1 mt-0.5">{doc.summary}</div>
-      )}
-      {doc.tags.length > 0 && (
-        <div className="flex flex-wrap gap-1 mt-1.5">
-          {doc.tags.slice(0, 4).map((tag) => (
-            <span key={tag} className="text-[10px] rounded-full bg-primary/10 px-2 py-0.5 text-primary/80">
-              {tag}
-            </span>
+      <span className="block truncate text-xs font-semibold text-foreground">{doc.title}</span>
+      {doc.summary ? <span className="mt-0.5 block line-clamp-2 text-[11px] text-muted-foreground">{doc.summary}</span> : null}
+      {doc.tags.length ? (
+        <span className="mt-1.5 flex flex-wrap gap-1">
+          {doc.tags.slice(0, 3).map((tag) => (
+            <span key={tag} className="rounded-full border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground">{tag}</span>
           ))}
-          {doc.tags.length > 4 && (
-            <span className="text-[10px] text-muted-foreground">+{doc.tags.length - 4}</span>
-          )}
-        </div>
-      )}
+        </span>
+      ) : null}
     </button>
   );
 }
 
-function WelcomeView({ categories, onSelect }: { categories: CategoryGroup[]; onSelect: (id: string) => void }) {
+function DocContentView({ doc }: { doc: LearningDoc }) {
   return (
-    <div className="p-8 max-w-3xl mx-auto space-y-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold">学习中心</h1>
-        <p className="text-sm text-muted-foreground">
-          了解 NovelFork 的功能和最佳实践。从左侧选择文档开始阅读，或点击下方分类快速浏览。
-        </p>
-      </div>
-
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {categories.map((group) => (
-          <div key={group.category} className="rounded-lg border border-border p-4 space-y-3 hover:border-primary/30 transition-colors">
-            <div className="flex items-center gap-2">
-              {CATEGORY_ICONS[group.category]}
-              <h3 className="text-sm font-semibold">{group.category}</h3>
-            </div>
-            <div className="space-y-1">
-              {group.docs.map((doc) => (
-                <button
-                  key={doc.id}
-                  type="button"
-                  onClick={() => onSelect(doc.id)}
-                  className="w-full flex items-center justify-between text-left px-2 py-1.5 rounded hover:bg-muted text-xs group"
-                >
-                  <span className="text-foreground line-clamp-1">{doc.title}</span>
-                  <ChevronRight className="size-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </button>
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function DocContentView({ doc }: { doc: DocContent }) {
-  return (
-    <div className="p-8 max-w-3xl mx-auto space-y-6">
-      {/* Tags */}
-      {doc.tags.length > 0 && (
+    <div className="mx-auto max-w-4xl space-y-7 p-8 lg:p-10">
+      <header className="space-y-3">
         <div className="flex flex-wrap gap-1.5">
           {doc.tags.map((tag) => (
-            <span key={tag} className="text-[10px] rounded-full bg-primary/10 px-2 py-0.5 text-primary/80">
-              {tag}
-            </span>
+            <span key={tag} className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] text-primary">{tag}</span>
           ))}
         </div>
-      )}
+        <h2 className="text-2xl font-semibold tracking-tight">{doc.title}</h2>
+        <p className="max-w-3xl text-sm leading-6 text-muted-foreground">{doc.summary}</p>
+      </header>
 
-      {/* Content */}
-      <article className="prose prose-sm dark:prose-invert max-w-none">
-        <MarkdownContent content={doc.content} />
-      </article>
+      {doc.actions.length ? (
+        <section className="space-y-3 rounded-lg border border-primary/20 bg-primary/5 p-4">
+          <h3 className="text-sm font-semibold">可直接跳转的功能入口</h3>
+          <div className="flex flex-wrap gap-2">
+            {doc.actions.map((action) => (
+              <a
+                key={`${action.href}:${action.label}`}
+                href={toStudioActionHref(action.href)}
+                title={action.description}
+                className="rounded-md border border-border bg-background px-3 py-2 text-xs font-medium transition-colors hover:bg-muted"
+              >
+                {action.label} <span aria-hidden="true">→</span>
+              </a>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      <div className="border-t border-border" />
+      {doc.sections.map((section) => (
+        <section key={section.title} className="space-y-2">
+          <h3 className="text-lg font-semibold">{section.title}</h3>
+          <p className="whitespace-pre-wrap text-sm leading-7 text-foreground">{section.body}</p>
+        </section>
+      ))}
+
+      <LearningList icon={<CheckCircle2 className="size-4" />} title="推荐使用流程" items={doc.workflow} ordered />
+      <LearningList icon={<Lightbulb className="size-4" />} title="最佳实践" items={doc.bestPractices} />
+      <LearningList icon={<AlertTriangle className="size-4" />} title="常见坑" items={doc.pitfalls} tone="warning" />
     </div>
   );
 }
 
-// ── Markdown Renderer ──
-
-function MarkdownContent({ content }: { content: string }) {
-  const lines = content.split("\n");
-  const elements: React.ReactNode[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-
-    // 代码块
-    if (line.startsWith("```")) {
-      const lang = line.slice(3).trim();
-      const codeLines: string[] = [];
-      i++;
-      while (i < lines.length && !lines[i].startsWith("```")) {
-        codeLines.push(lines[i]);
-        i++;
-      }
-      i++; // skip closing ```
-      elements.push(
-        <pre key={`code-${i}`} className="rounded-lg bg-muted p-3 text-xs font-mono overflow-x-auto">
-          <code>{codeLines.join("\n")}</code>
-        </pre>
-      );
-      continue;
-    }
-
-    // 表格（| 开头的行）
-    if (line.trimStart().startsWith("|")) {
-      const tableLines: string[] = [];
-      while (i < lines.length && lines[i].trimStart().startsWith("|")) {
-        tableLines.push(lines[i]);
-        i++;
-      }
-      elements.push(<MarkdownTable key={`table-${i}`} lines={tableLines} />);
-      continue;
-    }
-
-    // 标题
-    if (line.startsWith("# ")) {
-      elements.push(<h1 key={`h1-${i}`} className="text-2xl font-bold mt-6 mb-3">{line.slice(2)}</h1>);
-    } else if (line.startsWith("## ")) {
-      elements.push(<h2 key={`h2-${i}`} className="text-lg font-semibold mt-5 mb-2">{line.slice(3)}</h2>);
-    } else if (line.startsWith("### ")) {
-      elements.push(<h3 key={`h3-${i}`} className="text-base font-semibold mt-4 mb-2">{line.slice(4)}</h3>);
-    } else if (line.startsWith("#### ")) {
-      elements.push(<h4 key={`h4-${i}`} className="text-sm font-semibold mt-3 mb-1">{line.slice(5)}</h4>);
-    }
-    // 列表
-    else if (line.match(/^[-*]\s/)) {
-      elements.push(<li key={`li-${i}`} className="text-sm text-foreground ml-4 list-disc">{renderInline(line.slice(2))}</li>);
-    }
-    // 有序列表
-    else if (line.match(/^\d+\.\s/)) {
-      const text = line.replace(/^\d+\.\s/, "");
-      elements.push(<li key={`oli-${i}`} className="text-sm text-foreground ml-4 list-decimal">{renderInline(text)}</li>);
-    }
-    // 引用
-    else if (line.startsWith("> ")) {
-      elements.push(
-        <blockquote key={`bq-${i}`} className="border-l-2 border-primary/30 pl-3 text-sm text-muted-foreground italic my-2">
-          {renderInline(line.slice(2))}
-        </blockquote>
-      );
-    }
-    // 分隔线
-    else if (line.match(/^---+$/)) {
-      elements.push(<hr key={`hr-${i}`} className="my-4 border-border" />);
-    }
-    // 空行
-    else if (line.trim() === "") {
-      // skip
-    }
-    // 普通段落
-    else {
-      elements.push(<p key={`p-${i}`} className="text-sm text-foreground leading-relaxed my-1">{renderInline(line)}</p>);
-    }
-
-    i++;
-  }
-
-  return <>{elements}</>;
-}
-
-// ── Inline formatting ──
-
-function renderInline(text: string): React.ReactNode {
-  // 简单处理 **bold**、`code`、*italic*
-  const parts: React.ReactNode[] = [];
-  let remaining = text;
-  let key = 0;
-
-  while (remaining.length > 0) {
-    // Bold
-    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
-    // Code
-    const codeMatch = remaining.match(/`([^`]+)`/);
-
-    type MatchEntry = { index: number; length: number; node: React.ReactNode };
-    const candidates: MatchEntry[] = [];
-
-    if (boldMatch && boldMatch.index !== undefined) {
-      candidates.push({ index: boldMatch.index, length: boldMatch[0].length, node: <strong key={`b-${key++}`}>{boldMatch[1]}</strong> });
-    }
-    if (codeMatch && codeMatch.index !== undefined) {
-      candidates.push({ index: codeMatch.index, length: codeMatch[0].length, node: <code key={`c-${key++}`} className="text-[11px] bg-muted px-1 py-0.5 rounded text-foreground">{codeMatch[1]}</code> });
-    }
-
-    const firstMatch = candidates.sort((a, b) => a.index - b.index)[0] ?? null;
-
-    if (firstMatch) {
-      if (firstMatch.index > 0) {
-        parts.push(remaining.slice(0, firstMatch.index));
-      }
-      parts.push(firstMatch.node);
-      remaining = remaining.slice(firstMatch.index + firstMatch.length);
-    } else {
-      parts.push(remaining);
-      break;
-    }
-  }
-
-  return parts.length === 1 && typeof parts[0] === "string" ? parts[0] : <>{parts}</>;
-}
-
-// ── Table renderer ──
-
-function MarkdownTable({ lines }: { lines: string[] }) {
-  if (lines.length < 2) return null;
-
-  const parseRow = (line: string) =>
-    line.split("|").slice(1, -1).map(cell => cell.trim());
-
-  const headers = parseRow(lines[0]);
-  // Skip separator line (line[1] is usually |---|---|)
-  const startIdx = lines[1]?.match(/^[\s|:-]+$/) ? 2 : 1;
-  const rows = lines.slice(startIdx).map(parseRow);
-
+function LearningList({
+  icon,
+  title,
+  items,
+  ordered = false,
+  tone = "default",
+}: {
+  icon: ReactNode;
+  title: string;
+  items: string[];
+  ordered?: boolean;
+  tone?: "default" | "warning";
+}) {
+  if (!items.length) return null;
+  const List = ordered ? "ol" : "ul";
   return (
-    <div className="overflow-x-auto my-3">
-      <table className="w-full text-xs border-collapse">
-        <thead>
-          <tr className="border-b border-border">
-            {headers.map((h, i) => (
-              <th key={i} className="text-left px-3 py-2 font-semibold text-foreground">{h}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, ri) => (
-            <tr key={ri} className="border-b border-border/50 hover:bg-muted/30">
-              {row.map((cell, ci) => (
-                <td key={ci} className="px-3 py-1.5 text-foreground">{renderInline(cell)}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+    <section className={`space-y-3 rounded-lg border p-4 ${tone === "warning" ? "border-amber-500/25 bg-amber-500/5" : "border-border bg-muted/20"}`}>
+      <h3 className="flex items-center gap-2 text-sm font-semibold">{icon}{title}</h3>
+      <List className={`space-y-2 pl-5 text-sm leading-6 ${ordered ? "list-decimal" : "list-disc"}`}>
+        {items.map((item, index) => <li key={`${title}-${index}`}>{item}</li>)}
+      </List>
+    </section>
+  );
+}
+
+function StatusMessage({ icon, text, className = "" }: { icon?: ReactNode; text: string; className?: string }) {
+  return (
+    <div className={`flex items-center justify-center gap-2 px-4 py-10 text-center text-xs text-muted-foreground ${className}`} role="status">
+      {icon}{text}
+    </div>
+  );
+}
+
+function ErrorState({ message, onRetry, className = "" }: { message: string; onRetry: () => void; className?: string }) {
+  return (
+    <div className={`flex flex-col items-center justify-center gap-3 px-6 py-10 text-center ${className}`} role="alert">
+      <AlertTriangle className="size-5 text-destructive" aria-hidden="true" />
+      <p className="text-xs text-destructive">{message}</p>
+      <Button size="sm" variant="outline" onClick={onRetry}>重试</Button>
+    </div>
+  );
+}
+
+function EmptyContent({ hasQuery = false }: { hasQuery?: boolean }) {
+  return (
+    <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+      <div className="rounded-full bg-muted p-3"><Sparkles className="size-5 text-muted-foreground" /></div>
+      <h2 className="text-sm font-semibold">{hasQuery ? "没有匹配的学习文档" : "请选择一篇学习文档"}</h2>
+      <p className="max-w-sm text-xs leading-5 text-muted-foreground">
+        {hasQuery ? "尝试搜索其他功能、流程或最佳实践。" : "学习目录为空时，请确认 Runtime 已提供学习内容。"}
+      </p>
     </div>
   );
 }

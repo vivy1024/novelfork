@@ -79,7 +79,12 @@ export const BACKEND_CONTRACT_VERIFICATION_COMMANDS: readonly BackendContractVer
 
 const APP_NEXT_API_PATTERN = /["'`]((?:\/api\/)[^"'`\s)]+)/g;
 const BACKEND_CONTRACT_SEGMENT_PATTERN = /(^|[\\/])backend-contract([\\/]|$)/;
+const RUNTIME_CONTRACT_SEGMENT_PATTERN = /(^|[\\/])runtime(?:-admin)?([\\/]|$)/;
 const BACKEND_CONTRACT_API_HELPERS_PATTERN = /(^|[\\/])api-paths\.ts$/;
+
+function isCentralizedAppNextContractPath(normalizedPath: string): boolean {
+  return BACKEND_CONTRACT_SEGMENT_PATTERN.test(normalizedPath) || RUNTIME_CONTRACT_SEGMENT_PATTERN.test(normalizedPath);
+}
 
 export function buildBackendContractVerificationReport(
   runs: readonly BackendContractVerificationRun[] = [],
@@ -113,7 +118,7 @@ export function findUnregisteredAppNextApiStrings(
 
   for (const source of sources) {
     const normalizedPath = source.path.replaceAll("\\", "/");
-    if (BACKEND_CONTRACT_SEGMENT_PATTERN.test(normalizedPath)) continue;
+    if (isCentralizedAppNextContractPath(normalizedPath)) continue;
 
     findings.push(...findApiStrings(source, normalizedPath));
   }

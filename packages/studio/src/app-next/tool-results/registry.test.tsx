@@ -6,16 +6,17 @@ import { GenericToolResultRenderer, renderToolResult, resolveToolResultRendererK
 afterEach(() => cleanup());
 
 describe("tool-results registry", () => {
-  it("预留 cockpit/questionnaire/pgi/guided/narrative renderer key", () => {
-    expect(resolveToolResultRendererKey({ toolName: "cockpit.get_snapshot", result: { data: {} } })).toBe("cockpit");
-    expect(resolveToolResultRendererKey({ toolName: "questionnaire.start", result: { data: {} } })).toBe("questionnaire");
-    expect(resolveToolResultRendererKey({ toolName: "pgi.generate_questions", result: { data: {} } })).toBe("pgi");
-    expect(resolveToolResultRendererKey({ toolName: "guided.exit", result: { data: {} } })).toBe("guided");
-    expect(resolveToolResultRendererKey({ toolName: "narrative.audit", result: { data: {} } })).toBe("narrative");
+  it("只为已验证兼容的 Runtime renderer 启用专用卡", () => {
+    expect(resolveToolResultRendererKey({ toolName: "cockpit.snapshot", result: { data: {} } })).toBe("cockpit");
+    expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
+    expect(resolveToolResultRendererKey({ toolName: "pipeline.revise", result: { data: {} } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { data: {} } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
   });
 
-  it("result.renderer 优先于 toolName 推断", () => {
-    expect(resolveToolResultRendererKey({ toolName: "custom.wrapper", result: { renderer: "guided.plan" } })).toBe("guided");
+  it("result.renderer 优先于 toolName 且不会按前缀误匹配", () => {
+    expect(resolveToolResultRendererKey({ toolName: "custom.wrapper", result: { renderer: "pipeline.chapter-result" } })).toBe("pipeline");
+    expect(resolveToolResultRendererKey({ toolName: "pipeline.revise", result: { renderer: "pipeline.revise" } })).toBe("generic");
   });
 
   it("unknown fallback 保留 raw data", () => {
@@ -35,11 +36,8 @@ describe("tool-results registry", () => {
   });
 
   it.each([
-    ["tool-result-cockpit", "cockpit.get_snapshot", { renderer: "cockpit.snapshot", data: { bookTitle: "灵潮纪元", currentFocus: "第三章", risk: "低" } }, "当前焦点：第三章"],
-    ["tool-result-questionnaire", "questionnaire.start", { renderer: "questionnaire.template", data: { title: "生成前问卷", questions: ["主角此章目标？"] } }, "主角此章目标？"],
-    ["tool-result-pgi", "pgi.generate_questions", { renderer: "pgi.questions", data: { questions: ["伏笔是否回收？"], answers: ["先不回收"] } }, "伏笔是否回收？"],
-    ["tool-result-guided", "guided.exit", { renderer: "guided.plan", data: { title: "第三章计划", steps: ["铺垫冲突", "进入章节结果"] } }, "铺垫冲突"],
-    ["tool-result-narrative", "narrative.audit", { renderer: "narrative.line", data: { title: "叙事线快照", arcs: ["城门冲突"] } }, "城门冲突"],
+    ["tool-result-cockpit", "cockpit.snapshot", { renderer: "cockpit.snapshot", data: { bookTitle: "灵潮纪元", currentFocus: "第三章", risk: "低" } }, "当前焦点：第三章"],
+    ["tool-result-pipeline", "pipeline.write", { renderer: "pipeline.chapter-result", data: { title: "第三章", chapterNumber: 3, auditPassed: true } }, "第3章 第三章"],
   ])("渲染 %s smoke card", (testId, toolName, result, expectedText) => {
     render(<>{renderToolResult({ toolName, result })}</>);
 

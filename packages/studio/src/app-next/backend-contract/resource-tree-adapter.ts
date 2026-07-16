@@ -13,6 +13,8 @@ export type ContractResourceKind =
   | "book"
   | "group"
   | "chapter"
+  | "candidate"
+  | "draft"
   | "story"
   | "jingwei"
   | "jingwei-section"
@@ -45,8 +47,8 @@ export interface ContractResourceTreeLoadResult {
   errors: ContractResourceNode[];
 }
 
-type WritingResourceType = "chapter";
-type WritingResourceStatus = "accepted" | "archived";
+type WritingResourceType = "chapter" | "candidate" | "draft";
+type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
 interface WritingResource {
   readonly id: string;
   readonly bookId: string;
@@ -142,6 +144,8 @@ export async function loadResourceTreeFromContract(
 
   const resourceGroups = writingResources ? buildWritingResourceGroups(writingResources.resources) : {
     chapters: bookResult.data.chapters.map((chapter) => toChapterNode(book.id, chapter)),
+    candidates: [],
+    drafts: [],
     archived: [],
   };
 
@@ -160,6 +164,8 @@ export async function loadResourceTreeFromContract(
       children: [
         ...errors,
         group("group:chapters", "章节", resourceGroups.chapters),
+        group("group:candidates", "候选稿", resourceGroups.candidates),
+        group("group:drafts", "草稿", resourceGroups.drafts),
         group("group:archived", "已归档", resourceGroups.archived),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         jingweiPanelEntryNode(),
@@ -172,11 +178,31 @@ export async function loadResourceTreeFromContract(
   return { ok: true, tree, errors };
 }
 
-function buildWritingResourceGroups(resources: readonly WritingResource[]): { chapters: ContractResourceNode[]; archived: ContractResourceNode[] } {
+function buildWritingResourceGroups(resources: readonly WritingResource[]): {
+  chapters: ContractResourceNode[];
+  candidates: ContractResourceNode[];
+  drafts: ContractResourceNode[];
+  archived: ContractResourceNode[];
+} {
   const active = resources.filter((resource) => resource.deletedAt === null);
-  const chapters = active.filter((resource) => resource.status === "accepted").sort(compareResourceChapter).map(toWritingResourceNode);
-  const archived = active.filter((resource) => resource.status === "archived").sort(compareResourceUpdatedDesc).map(toWritingResourceNode);
-  return { chapters, archived };
+  return {
+    chapters: active
+      .filter((resource) => resource.type === "chapter" && resource.status === "accepted")
+      .sort(compareResourceChapter)
+      .map(toWritingResourceNode),
+    candidates: active
+      .filter((resource) => resource.type === "candidate" && resource.status === "candidate")
+      .sort(compareResourceUpdatedDesc)
+      .map(toWritingResourceNode),
+    drafts: active
+      .filter((resource) => resource.type === "draft" && resource.status === "draft")
+      .sort(compareResourceUpdatedDesc)
+      .map(toWritingResourceNode),
+    archived: active
+      .filter((resource) => resource.status === "archived" || resource.status === "rejected")
+      .sort(compareResourceUpdatedDesc)
+      .map(toWritingResourceNode),
+  };
 }
 
 function compareResourceChapter(a: WritingResource, b: WritingResource): number {
@@ -192,13 +218,18 @@ function chapterResourceId(chapterNumber: number): string {
 }
 
 function toWritingResourceNode(resource: WritingResource): ContractResourceNode {
-  const kind: ContractResourceKind = "chapter";
-  const id = resource.chapterNumber ? chapterResourceId(resource.chapterNumber) : resource.id;
+  const kind: ContractResourceKind = resource.type;
+  const id = resource.type === "chapter" && resource.status === "accepted" && resource.chapterNumber
+    ? chapterResourceId(resource.chapterNumber)
+    : `${resource.type}:${resource.id}`;
   const metadata = {
     ...resource.metadata,
     bookId: resource.bookId,
     resourceId: resource.id,
+    candidateId: resource.type === "candidate" ? resource.id : undefined,
+    draftId: resource.type === "draft" ? resource.id : undefined,
     chapterNumber: resource.chapterNumber ?? undefined,
+    isChapter: resource.type === "chapter",
     status: resource.status,
     source: resource.source ?? undefined,
     wordCount: resource.wordCount,
@@ -216,9 +247,15 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
     content: resource.content,
     capabilities: {
       read: CURRENT_READ("writing-resources.read"),
-      edit: resource.status === "accepted" ? CURRENT_EDIT("writing-resources.update") : UNSUPPORTED("writing-resources.edit"),
-      delete: UNSUPPORTED("writing-resources.delete"),
-      apply: CURRENT_APPLY("writing-resources.variant"),
+      edit: resource.status === "draft" || resource.status === "accepted"
+        ? CURRENT_EDIT("writing-resources.update")
+        : UNSUPPORTED("writing-resources.edit"),
+      delete: resource.status === "accepted"
+        ? UNSUPPORTED("writing-resources.delete")
+        : CURRENT_DELETE("writing-resources.delete"),
+      apply: resource.status === "candidate" || resource.status === "draft"
+        ? CURRENT_APPLY("writing-resources.transition")
+        : CURRENT_APPLY("writing-resources.variant"),
     },
     metadata,
   };
@@ -235,7 +272,7 @@ function toChapterNode(bookId: string, chapter: ChapterSummary): ContractResourc
       delete: CURRENT_DELETE("chapters.delete"),
       apply: UNSUPPORTED("chapters.apply"),
     },
-    metadata: { bookId, chapterNumber: chapter.number, status: chapter.status, fileName: chapter.fileName, source: "list-preview" },
+    metadata: { bookId, chapterNumber: chapter.number, isChapter: true, status: chapter.status, fileName: chapter.fileName, source: "list-preview" },
   };
 }
 

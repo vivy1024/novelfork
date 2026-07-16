@@ -1,5 +1,5 @@
-export type WritingResourceType = "chapter";
-export type WritingResourceStatus = "accepted" | "archived";
+export type WritingResourceType = "chapter" | "candidate" | "draft";
+export type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
 
 /** 判断 source 是否为 AI 生成 */
 export function isAiGenerated(source: string | null): boolean {

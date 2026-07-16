@@ -1,588 +1,844 @@
-import { useEffect, useState } from "react";
-import { Play, Plus } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeft,
+  Eye,
+  EyeOff,
+  Play,
+  Plus,
+  RefreshCw,
+  Save,
+  Trash2,
+} from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldError,
+  FieldGroup,
+  FieldLabel,
+  FieldSeparator,
+  FieldTitle,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { EmptyState } from "../../components/feedback";
-import { modelTestStatusLabel, providerProtocolLabel, providerProtocolDescription } from "../../lib/display-labels";
-import type { ManagedProvider, Model, ProviderApiMode, ProviderCompatibility, ProviderProtocol, ProviderThinkingStrength, ProviderType } from "@/shared/provider-catalog";
-import { inferProtocol } from "@/shared/provider-catalog";
-import type { SessionReasoningEffort } from "@/shared/session-types";
-import { SESSION_REASONING_EFFORT_OPTIONS } from "@/shared/session-types";
-import type { ApiProvider } from "../provider-types";
+import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
+import type { RuntimeCustomModelSettings } from "../../runtime-admin";
+import {
+  isMaskedSecret,
+  normalizeProviderProxy,
+  providerApiTypeLabel,
+  providerArrayLabel,
+  providerSecrets,
+  toRuntimeModelValue,
+  type RuntimeAgentModelState,
+  type RuntimeCustomApiProtocol,
+  type RuntimeEditableProvider,
+  type RuntimeModelOption,
+  type RuntimeProviderArrayKey,
+} from "../runtime-settings-utils";
 
-const PROTOCOLS: ProviderProtocol[] = ["completions", "responses", "anthropic", "codex", "claude-code"];
-const THINKING_STRENGTHS: ProviderThinkingStrength[] = ["low", "medium", "high", "xhigh"];
-const THINKING_STRENGTH_LABELS: Record<ProviderThinkingStrength, string> = {
-  low: "低",
-  medium: "中",
-  high: "高",
-  xhigh: "最高",
-};
-
-function providerTypeFromCompatibility(compatibility: ProviderCompatibility): ProviderType {
-  return compatibility === "anthropic-compatible" ? "anthropic" : "custom";
+interface ApiProviderDetailProps {
+  readonly arrayKey: RuntimeProviderArrayKey;
+  readonly provider: RuntimeEditableProvider;
+  readonly modelOptions: readonly RuntimeModelOption[];
+  readonly agentModels: RuntimeAgentModelState;
+  readonly draftMode?: boolean;
+  readonly busy?: boolean;
+  readonly refreshing?: boolean;
+  readonly error?: string | null;
+  readonly onBack: () => void;
+  readonly onSave: (provider: RuntimeEditableProvider) => Promise<void>;
+  readonly onDelete?: (providerId: string) => Promise<void>;
+  readonly onRefreshModels: () => Promise<void>;
+  readonly onUpdateAgentModels: (state: RuntimeAgentModelState) => Promise<void>;
+  readonly onTestModel: (model: string, prompt: string) => Promise<string>;
 }
 
-function protocolToCompatibility(protocol: ProviderProtocol): ProviderCompatibility {
-  return protocol === "anthropic" || protocol === "claude-code" ? "anthropic-compatible" : "openai-compatible";
+const CUSTOM_PROTOCOL_OPTIONS: Array<{ value: RuntimeCustomApiProtocol; label: string }> = [
+  { value: "anthropic-official", label: "Anthropic 官方" },
+  { value: "anthropic-compatible", label: "Anthropic 兼容" },
+  { value: "responses-compatible", label: "Responses 兼容" },
+  { value: "completions-compatible", label: "Chat Completions 兼容" },
+  { value: "codex-native", label: "Codex Native" },
+];
+
+const PROVIDER_REASONING_OPTIONS = [
+  { value: "", label: "继承 Agent 默认" },
+  { value: "none", label: "关闭思考" },
+  { value: "low", label: "低" },
+  { value: "medium", label: "中" },
+  { value: "high", label: "高" },
+  { value: "max", label: "最高" },
+] as const;
+
+const PROXY_MODE_OPTIONS = [
+  { value: "default", label: "继承统一代理" },
+  { value: "system", label: "跟随系统环境变量" },
+  { value: "direct", label: "直接连接" },
+  { value: "custom", label: "自定义代理" },
+] as const;
+
+const USER_AGENT_OPTIONS = [
+  { value: "narrafork", label: "NarraFork" },
+  { value: "claude-code", label: "Claude Code" },
+  { value: "codex", label: "Codex CLI" },
+  { value: "custom", label: "自定义 User-Agent" },
+] as const;
+
+function headersText(headers: Readonly<Record<string, string>> | undefined): string {
+  return Object.keys(headers ?? {}).length > 0 ? JSON.stringify(headers, null, 2) : "";
 }
 
-function protocolToApiMode(protocol: ProviderProtocol): ProviderApiMode {
-  if (protocol === "responses") return "responses";
-  if (protocol === "codex") return "codex";
-  return "completions";
-}
-
-function hasConfiguredApiKey(provider: ApiProvider): boolean {
-  return Boolean(provider.config.apiKey || (provider.config as { apiKeyConfigured?: unknown }).apiKeyConfigured);
+function parseHeaders(value: string): Readonly<Record<string, string>> {
+  if (!value.trim()) return {};
+  const parsed: unknown = JSON.parse(value);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("额外请求头必须是 JSON 对象。");
+  }
+  const entries = Object.entries(parsed);
+  if (entries.some(([, headerValue]) => typeof headerValue !== "string")) {
+    throw new Error("额外请求头的所有值都必须是字符串。");
+  }
+  return Object.fromEntries(entries) as Readonly<Record<string, string>>;
 }
 
 export function ApiProviderDetail({
+  arrayKey,
   provider,
-  busy,
-  feedback,
-  error,
-  contextDrafts,
-  setContextDrafts,
-  onBack,
-  onRefreshModels,
-  onTestModel,
-  onUpdateModel,
-  onUpdateProvider,
-  onDelete,
+  modelOptions,
+  agentModels,
   draftMode = false,
-  onSaveDraft,
-}: {
-  readonly provider: ApiProvider;
-  readonly busy: string | null;
-  readonly feedback: string | null;
-  readonly error: string | null;
-  readonly contextDrafts: Record<string, string>;
-  readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
-  readonly onBack: () => void;
-  readonly onRefreshModels: (providerId: string) => Promise<void>;
-  readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
-  readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
-  readonly onUpdateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<void>;
-  readonly onDelete?: (providerId: string) => Promise<void>;
-  readonly draftMode?: boolean;
-  readonly onSaveDraft?: (provider: ManagedProvider) => Promise<void>;
-}) {
-  const [name, setName] = useState(provider.name);
-  const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? provider.config.endpoint ?? "");
-  const [apiKey, setApiKey] = useState("");
-  const [proxy, setProxy] = useState((provider as { proxy?: string }).proxy ?? "");
-  const [protocol, setProtocol] = useState<ProviderProtocol>(inferProtocol(provider));
-  const [thinkingStrength, setThinkingStrength] = useState<ProviderThinkingStrength>(provider.thinkingStrength ?? "medium");
-  const [accountId, setAccountId] = useState(provider.accountId ?? "");
-  const [useResponsesWebSocket, setUseResponsesWebSocket] = useState(Boolean(provider.useResponsesWebSocket));
-  const [defaultReasoningEffort, setDefaultReasoningEffort] = useState<SessionReasoningEffort | undefined>(provider.defaultReasoningEffort);
+  busy = false,
+  refreshing = false,
+  error,
+  onBack,
+  onSave,
+  onDelete,
+  onRefreshModels,
+  onUpdateAgentModels,
+  onTestModel,
+}: ApiProviderDetailProps) {
+  const [draft, setDraft] = useState<RuntimeEditableProvider>(provider);
+  const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
+  const [headersInput, setHeadersInput] = useState(headersText(provider.extraHeaders));
+  const [headersError, setHeadersError] = useState<string | null>(null);
+  const [testPrompt, setTestPrompt] = useState("请用一句话确认连接正常。");
+  const [testResult, setTestResult] = useState<string | null>(null);
+  const [testError, setTestError] = useState<string | null>(null);
+  const [testingModel, setTestingModel] = useState<string | null>(null);
+  const [customModelId, setCustomModelId] = useState("");
+  const [customModelLabel, setCustomModelLabel] = useState("");
+  const [modelError, setModelError] = useState<string | null>(null);
 
   useEffect(() => {
-    setName(provider.name);
-    setBaseUrl(provider.baseUrl ?? provider.config.endpoint ?? "");
-    setApiKey("");
-    setProxy((provider as { proxy?: string }).proxy ?? "");
-    setProtocol(inferProtocol(provider));
-    setThinkingStrength(provider.thinkingStrength ?? "medium");
-    setAccountId(provider.accountId ?? "");
-    setUseResponsesWebSocket(Boolean(provider.useResponsesWebSocket));
-    setDefaultReasoningEffort(provider.defaultReasoningEffort);
-  }, [provider]);
+    setDraft(provider);
+    setSecretInputs({});
+    setHeadersInput(headersText(provider.extraHeaders));
+    setHeadersError(null);
+    setTestResult(null);
+    setTestError(null);
+    setModelError(null);
+  }, [arrayKey, provider]);
 
-  const saveConnectionInfo = async () => {
-    const trimmedApiKey = apiKey.trim();
-    const compatibility = protocolToCompatibility(protocol);
-    const apiMode = protocolToApiMode(protocol);
-    const nextProvider: ManagedProvider = {
-      ...provider,
-      name: name.trim() || provider.name,
-      baseUrl: baseUrl.trim() || undefined,
-      protocol,
-      compatibility,
-      apiMode,
-      type: providerTypeFromCompatibility(compatibility),
-      thinkingStrength,
-      accountId: accountId.trim() || undefined,
-      useResponsesWebSocket,
-      defaultReasoningEffort,
-      ...(proxy.trim() ? { proxy: proxy.trim() } : { proxy: undefined }),
-      config: {
-        ...provider.config,
-        ...(trimmedApiKey ? { apiKey: trimmedApiKey } : {}),
-      },
-    };
-    if (draftMode) {
-      await onSaveDraft?.(nextProvider);
+  const defaultModelValue = useMemo(
+    () => toRuntimeModelValue(draft.prefix, draft.defaultModel),
+    [draft.defaultModel, draft.prefix],
+  );
+  const secrets = providerSecrets(arrayKey, provider);
+  const customModels = useMemo(
+    () => new Map(agentModels.customModels.map((model) => [model.value, model])),
+    [agentModels.customModels],
+  );
+
+  function updateDraft(updates: Partial<RuntimeEditableProvider>) {
+    setDraft((current) => ({ ...current, ...updates }));
+  }
+
+  async function handleSave() {
+    setHeadersError(null);
+    let extraHeaders: Readonly<Record<string, string>>;
+    try {
+      extraHeaders = parseHeaders(headersInput);
+    } catch (reason) {
+      setHeadersError(reason instanceof Error ? reason.message : String(reason));
       return;
     }
-    await onUpdateProvider(provider.id, nextProvider);
-    setApiKey("");
-  };
+    const next: Record<string, unknown> = { ...draft, extraHeaders };
+    for (const secret of secrets) {
+      const replacement = secretInputs[secret.key]?.trim();
+      next[secret.key] = replacement || secret.value;
+    }
+    try {
+      await onSave(next as unknown as RuntimeEditableProvider);
+    } catch {
+      // The parent owns the Runtime error alert.
+    }
+  }
 
-  const originalBaseUrl = provider.baseUrl ?? provider.config.endpoint ?? "";
-  const originalProxy = (provider as { proxy?: string }).proxy ?? "";
-  const originalProtocol = inferProtocol(provider);
-  const originalAccountId = provider.accountId ?? "";
-  const originalUseResponsesWebSocket = Boolean(provider.useResponsesWebSocket);
-  const hasChanges = draftMode || name !== provider.name || baseUrl !== originalBaseUrl || apiKey.trim() !== "" || proxy !== originalProxy || protocol !== originalProtocol || thinkingStrength !== (provider.thinkingStrength ?? "medium") || accountId !== originalAccountId || useResponsesWebSocket !== originalUseResponsesWebSocket || defaultReasoningEffort !== provider.defaultReasoningEffort;
+  async function handleDelete() {
+    if (!onDelete) return;
+    try {
+      await onDelete(draft.id);
+    } catch {
+      // The parent owns the Runtime error alert.
+    }
+  }
 
-  const resetForm = () => {
-    setName(provider.name);
-    setBaseUrl(originalBaseUrl);
-    setApiKey("");
-    setProxy(originalProxy);
-    setProtocol(originalProtocol);
-    setThinkingStrength(provider.thinkingStrength ?? "medium");
-    setAccountId(originalAccountId);
-    setUseResponsesWebSocket(originalUseResponsesWebSocket);
-    setDefaultReasoningEffort(provider.defaultReasoningEffort);
-  };
+  async function handleTest(model: string) {
+    if (!model || !testPrompt.trim()) return;
+    setTestingModel(model);
+    setTestResult(null);
+    setTestError(null);
+    try {
+      const text = await onTestModel(model, testPrompt.trim());
+      setTestResult(`${model}：${text || "模型已响应，但未返回文本。"}`);
+    } catch (reason) {
+      setTestError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setTestingModel(null);
+    }
+  }
+
+  async function patchAgentModels(next: RuntimeAgentModelState) {
+    setModelError(null);
+    try {
+      await onUpdateAgentModels(next);
+    } catch (reason) {
+      setModelError(reason instanceof Error ? reason.message : String(reason));
+    }
+  }
+
+  async function addCustomModel() {
+    const inputId = customModelId.trim();
+    const bareId = inputId.startsWith(`${draft.prefix}:`)
+      ? inputId.slice(draft.prefix.length + 1)
+      : inputId;
+    if (!bareId) return;
+    const value = toRuntimeModelValue(draft.prefix, bareId);
+    if (modelOptions.some((model) => model.value === value)) {
+      setModelError(`${value} 已存在于当前库存。`);
+      return;
+    }
+    const nextModel: RuntimeCustomModelSettings = {
+      value,
+      label: customModelLabel.trim() || bareId,
+      provider: draft.prefix,
+    };
+    await patchAgentModels({
+      ...agentModels,
+      customModels: [...agentModels.customModels, nextModel],
+    });
+    setCustomModelId("");
+    setCustomModelLabel("");
+  }
+
+  const proxyMode = draft.proxy?.mode ?? "default";
+  const isCodex = draft.protocol === "codex-native";
 
   return (
-    <section aria-label={`${provider.name} API key 接入详情`} className="space-y-4">
-      <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" className="flex items-center gap-1" onClick={onBack}>
-          ← 返回供应商列表
-        </Button>
-        {onDelete && (
-          <Button variant="destructive" size="sm" onClick={() => { if (confirm(`确认删除供应商「${provider.name}」？此操作不可撤销。`)) void onDelete(provider.id); }}>
+    <section aria-label={`${draft.name} 供应商详情`} className="flex flex-col gap-6">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <Button type="button" variant="ghost" size="sm" onClick={onBack}>
+            <ArrowLeft data-icon="inline-start" />
+            返回供应商列表
+          </Button>
+          <h2 className="mt-2 text-lg font-semibold text-foreground">
+            {draftMode ? `新建${providerArrayLabel(arrayKey)}` : draft.name}
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            只编辑 Runtime `customApiProviders` canonical 数组；派生缓存不会单独提交。
+          </p>
+        </div>
+        {!draftMode && onDelete ? (
+          <Button type="button" variant="destructive" onClick={() => void handleDelete()} disabled={busy}>
+            <Trash2 data-icon="inline-start" />
             删除供应商
           </Button>
-        )}
+        ) : null}
       </div>
 
-      <div>
-        <h2 className="text-lg font-semibold">{draftMode ? `新建 ${providerProtocolLabel(protocol)} 供应商` : provider.name}</h2>
-        <p className="text-sm text-muted-foreground">
-          {draftMode ? "新建供应商，保存后才会创建并写入配置。" : `API key 接入 · ${provider.models.length} 个模型`}
-        </p>
-      </div>
+      {error ? (
+        <Alert>
+          <AlertTitle>供应商操作失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      {(feedback || error) && (
-        <div className={error ? "rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm" : "rounded-lg border border-emerald-500/40 bg-emerald-500/5 p-3 text-sm"}>
-          {error ?? feedback}
-        </div>
-      )}
-
-      <section className="space-y-3 rounded-lg border border-border p-4">
-        <h3 className="text-base font-semibold">API 接入信息</h3>
-        <div className="grid gap-3 md:grid-cols-2">
-          <label className="text-sm">
-            名称
-            <Input className="mt-1 w-full" value={name} onChange={(event) => setName(event.target.value)} />
-          </label>
-          <label className="text-sm">
-            Base URL
-            <Input className="mt-1 w-full" value={baseUrl} onChange={(event) => setBaseUrl(event.target.value)} placeholder="https://api.deepseek.com/v1" />
-          </label>
-          <label className="text-sm">
-            API Key
-            <Input
-              type="password"
-              className="mt-1 w-full"
-              value={apiKey}
-              placeholder={hasConfiguredApiKey(provider) ? "已配置，留空不变" : "请输入 API Key"}
-              onChange={(event) => setApiKey(event.target.value)}
-            />
-          </label>
-          <label className="text-sm">
-            HTTPS 代理
-            <Input className="mt-1 w-full" value={proxy} onChange={(event) => setProxy(event.target.value)} placeholder="http://127.0.0.1:7890 或 socks5://proxy:1080" />
-          </label>
-          <label className="text-sm">
-            协议类型
-            <SimpleSelect
-              className="mt-1"
-              value={protocol}
-              onValueChange={(v) => {
-                const next = v as ProviderProtocol;
-                setProtocol(next);
-                if (draftMode && !name.trim()) {
-                  setName(providerProtocolLabel(next));
-                }
-              }}
-              options={PROTOCOLS.map((value) => ({ value, label: providerProtocolLabel(value) }))}
-            />
-            <span className="text-[10px] text-muted-foreground">
-              {providerProtocolDescription(protocol)}
-            </span>
-          </label>
-          <label className="text-sm">
-            默认推理强度
-            <SimpleSelect
-              className="mt-1"
-              value={defaultReasoningEffort ?? ""}
-              onValueChange={(v) => setDefaultReasoningEffort(v ? v as SessionReasoningEffort : undefined)}
-              options={[
-                { value: "", label: "（继承全局默认）" },
-                ...SESSION_REASONING_EFFORT_OPTIONS.map((opt) => ({ value: opt.value, label: `${opt.label}（${opt.description}）` })),
-              ]}
-            />
-            <span className="text-[10px] text-muted-foreground">
-              覆盖该供应商的默认推理强度，优先于全局默认
-            </span>
-          </label>
-        </div>
-        {hasChanges && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="default"
-              disabled={busy === `provider:${provider.id}`}
-              onClick={() => void saveConnectionInfo()}
-            >
-              {draftMode ? "创建供应商" : "保存变更"}
-            </Button>
-            <Button
-              variant="ghost"
-              disabled={busy === `provider:${provider.id}`}
-              onClick={resetForm}
-            >
-              取消
-            </Button>
-          </div>
-        )}
-      </section>
-
-      {/* Codex 模式专属配置 */}
-      {protocol === "codex" && (
-        <section className="space-y-3 rounded-lg border border-border p-4">
-          <h3 className="text-base font-semibold">Codex 配置</h3>
-          <p className="text-xs text-muted-foreground">从 Codex 反代出来的供应商支持思考强度、Fast Mode 和 WebSocket。</p>
-          <div className="grid gap-3 md:grid-cols-2">
-            <label className="text-sm">
-              Codex 推理强度
-              <SimpleSelect
-                aria-label="Codex 推理强度"
-                className="mt-1"
-                value={thinkingStrength}
-                onValueChange={(v) => setThinkingStrength(v as ProviderThinkingStrength)}
-                options={THINKING_STRENGTHS.map((s) => ({ value: s, label: THINKING_STRENGTH_LABELS[s] }))}
-              />
-            </label>
-            <label className="text-sm">
-              ChatGPT Account ID
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-2">
+            标准 API 接入
+            <Badge variant="outline">{providerApiTypeLabel(arrayKey, draft)}</Badge>
+          </CardTitle>
+          <CardDescription>
+            掩码密钥不会写入输入框；留空会原样保留 Runtime 中的真实密钥。
+          </CardDescription>
+        </CardHeader>
+        <form
+          className="contents"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+        >
+          <CardContent>
+            <FieldGroup className="sm:grid sm:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="provider-name">名称</FieldLabel>
               <Input
-                className="mt-1 w-full"
-                value={accountId}
-                placeholder="可选，用于组织订阅"
-                onChange={(e) => setAccountId(e.target.value)}
+                id="provider-name"
+                aria-label="名称"
+                value={draft.name}
+                onChange={(event) => updateDraft({ name: event.currentTarget.value })}
               />
-            </label>
-          </div>
-          <div className="flex items-center gap-4">
-            <label className="flex items-center gap-2 text-sm">
-              <Switch
-                checked={useResponsesWebSocket}
-                onCheckedChange={setUseResponsesWebSocket}
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="provider-prefix">模型前缀</FieldLabel>
+              <Input
+                id="provider-prefix"
+                aria-label="模型前缀"
+                value={draft.prefix}
+                onChange={(event) => updateDraft({ prefix: event.currentTarget.value.replace(/:/g, "") })}
+                placeholder="my-provider"
               />
-              使用 Responses WebSocket
-            </label>
-          </div>
-          <p className="text-[10px] text-muted-foreground">WebSocket 为实验性功能，不可用时自动回退 HTTP。</p>
-        </section>
-      )}
+              <FieldDescription>生成 provider:model 标识，必须与其他标准 API 供应商不同。</FieldDescription>
+            </Field>
 
-      <section className="space-y-3 rounded-lg border border-border p-4">
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold">模型列表</h3>
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">{provider.models.filter(m => m.enabled !== false).length} 个模型可用</span>
+            <Field>
+              <FieldLabel>API 类型 / 协议</FieldLabel>
+              <SimpleSelect
+                aria-label="API 类型 / 协议"
+                value={draft.protocol}
+                onValueChange={(value) => updateDraft({ protocol: value as RuntimeCustomApiProtocol })}
+                options={CUSTOM_PROTOCOL_OPTIONS}
+              />
+            </Field>
+            <Field orientation="horizontal" className="rounded-lg border p-3">
+              <FieldContent>
+                <FieldTitle>启用供应商</FieldTitle>
+                <FieldDescription>关闭后保留配置，但不参与模型选择。</FieldDescription>
+              </FieldContent>
+              <Switch
+                aria-label="启用供应商"
+                checked={!draft.disabled}
+                onCheckedChange={(enabled) => updateDraft({ disabled: !enabled })}
+              />
+            </Field>
+
+            <Field className="sm:col-span-2">
+              <FieldLabel htmlFor="provider-base-url">Base URL</FieldLabel>
+              <Input
+                id="provider-base-url"
+                aria-label="Base URL"
+                value={draft.baseUrl}
+                onChange={(event) => updateDraft({ baseUrl: event.currentTarget.value })}
+                placeholder="https://api.example.com/v1"
+              />
+            </Field>
+
+            {secrets.map((secret) => (
+              <Field key={secret.key} className="sm:col-span-2">
+                <FieldLabel htmlFor={`provider-secret-${secret.key}`}>{secret.label}</FieldLabel>
+                <Input
+                  id={`provider-secret-${secret.key}`}
+                  aria-label={secret.label}
+                  type="password"
+                  autoComplete="off"
+                  value={secretInputs[secret.key] ?? ""}
+                  onChange={(event) => {
+                    const value = event.currentTarget.value;
+                    setSecretInputs((current) => ({
+                      ...current,
+                      [secret.key]: value,
+                    }));
+                  }}
+                  placeholder={secret.value ? "已配置，留空保持不变" : `请输入${secret.label}`}
+                />
+                <FieldDescription>
+                  {secret.value
+                    ? isMaskedSecret(secret.value)
+                      ? `Runtime 返回掩码：${secret.value}`
+                      : "Runtime 已返回已配置状态；为安全起见不显示原值。"
+                    : "当前未配置。"}
+                </FieldDescription>
+              </Field>
+            ))}
+
+            <Field>
+              <FieldLabel htmlFor="provider-default-model">默认模型</FieldLabel>
+              <Input
+                id="provider-default-model"
+                aria-label="默认模型"
+                value={draft.defaultModel}
+                onChange={(event) => updateDraft({ defaultModel: event.currentTarget.value })}
+                placeholder="model-id"
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="provider-context-window">供应商默认上下文窗口</FieldLabel>
+              <Input
+                id="provider-context-window"
+                aria-label="供应商默认上下文窗口"
+                type="number"
+                min={1}
+                value={draft.defaultContextWindow ?? ""}
+                onChange={(event) => updateDraft({
+                  defaultContextWindow: event.currentTarget.value
+                    ? Math.max(1, Number(event.currentTarget.value))
+                    : undefined,
+                })}
+                placeholder="可选"
+              />
+            </Field>
+
+            <FieldSeparator className="sm:col-span-2">网络与推理</FieldSeparator>
+
+            <Field>
+              <FieldLabel>代理策略</FieldLabel>
+              <SimpleSelect
+                aria-label="供应商代理策略"
+                value={proxyMode}
+                onValueChange={(mode) => updateDraft({
+                  proxy: normalizeProviderProxy(
+                    mode as "default" | "system" | "direct" | "custom",
+                    draft.proxy?.url,
+                  ),
+                })}
+                options={[...PROXY_MODE_OPTIONS]}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>供应商默认推理强度</FieldLabel>
+              <SimpleSelect
+                aria-label="供应商默认推理强度"
+                value={draft.defaultReasoningEffort ?? ""}
+                onValueChange={(value) => updateDraft({
+                  defaultReasoningEffort: value
+                    ? value as NonNullable<RuntimeEditableProvider["defaultReasoningEffort"]>
+                    : null,
+                })}
+                options={[...PROVIDER_REASONING_OPTIONS]}
+              />
+            </Field>
+
+            {proxyMode === "custom" ? (
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="provider-proxy-url">代理 URL</FieldLabel>
+                <Input
+                  id="provider-proxy-url"
+                  aria-label="供应商代理 URL"
+                  value={draft.proxy?.url ?? ""}
+                  onChange={(event) => updateDraft({
+                    proxy: normalizeProviderProxy("custom", event.currentTarget.value),
+                  })}
+                  placeholder="http://127.0.0.1:7890"
+                />
+              </Field>
+            ) : null}
+
+            <Field orientation="horizontal" className="rounded-lg border p-3 sm:col-span-2">
+              <FieldContent>
+                <FieldTitle>验证 TLS 证书</FieldTitle>
+                <FieldDescription>关闭后允许 MITM 代理或自签名证书；仅在你信任目标网络时使用。</FieldDescription>
+              </FieldContent>
+              <Switch
+                aria-label="验证 TLS 证书"
+                checked={draft.tlsRejectUnauthorized !== false}
+                onCheckedChange={(checked) => updateDraft({ tlsRejectUnauthorized: checked })}
+              />
+            </Field>
+
+            <FieldSeparator className="sm:col-span-2">客户端指纹与请求头</FieldSeparator>
+
+            <Field>
+              <FieldLabel>User-Agent 指纹</FieldLabel>
+              <SimpleSelect
+                aria-label="User-Agent 指纹"
+                value={draft.userAgentMode ?? "narrafork"}
+                onValueChange={(value) => updateDraft({
+                  userAgentMode: value as NonNullable<RuntimeEditableProvider["userAgentMode"]>,
+                })}
+                options={[...USER_AGENT_OPTIONS]}
+              />
+            </Field>
+            <Field orientation="horizontal" className="rounded-lg border p-3">
+              <FieldContent>
+                <FieldTitle>模拟 Codex 稳定请求头</FieldTitle>
+                <FieldDescription>发送 originator、installation/session/thread 等 Codex CLI 风格指纹。</FieldDescription>
+              </FieldContent>
+              <Switch
+                aria-label="模拟 Codex 稳定请求头"
+                checked={draft.emulateCodexHeaders === true}
+                onCheckedChange={(checked) => updateDraft({ emulateCodexHeaders: checked })}
+              />
+            </Field>
+
+            {draft.userAgentMode === "custom" ? (
+              <Field className="sm:col-span-2">
+                <FieldLabel htmlFor="provider-custom-user-agent">自定义 User-Agent</FieldLabel>
+                <Input
+                  id="provider-custom-user-agent"
+                  aria-label="自定义 User-Agent"
+                  value={draft.customUserAgent ?? ""}
+                  onChange={(event) => updateDraft({ customUserAgent: event.currentTarget.value })}
+                />
+              </Field>
+            ) : null}
+
+            <Field className="sm:col-span-2" data-invalid={Boolean(headersError)}>
+              <FieldLabel htmlFor="provider-extra-headers">额外请求头 JSON</FieldLabel>
+              <Textarea
+                id="provider-extra-headers"
+                aria-label="额外请求头 JSON"
+                aria-invalid={Boolean(headersError)}
+                value={headersInput}
+                onChange={(event) => {
+                  setHeadersInput(event.currentTarget.value);
+                  setHeadersError(null);
+                }}
+                placeholder={'{\n  "X-Provider-Header": "value"\n}'}
+              />
+              <FieldDescription>只接受字符串键值对；保存时原样写入 canonical provider。</FieldDescription>
+              <FieldError>{headersError}</FieldError>
+            </Field>
+
+            {isCodex ? (
+              <>
+                <FieldSeparator className="sm:col-span-2">Codex Native</FieldSeparator>
+                <Field className="sm:col-span-2">
+                  <FieldLabel htmlFor="provider-codex-account-id">ChatGPT Account ID</FieldLabel>
+                  <Input
+                    id="provider-codex-account-id"
+                    aria-label="ChatGPT Account ID"
+                    value={draft.codexAccountId ?? ""}
+                    onChange={(event) => updateDraft({ codexAccountId: event.currentTarget.value })}
+                    placeholder="可选"
+                  />
+                </Field>
+                <ProviderSwitch
+                  label="使用 Responses WebSocket"
+                  description="连接不可用时由 Runtime 回退到 HTTP。"
+                  checked={draft.codexWebSocket === true}
+                  onCheckedChange={(checked) => updateDraft({ codexWebSocket: checked })}
+                />
+                <ProviderSwitch
+                  label="允许 Codex Web Search"
+                  description="允许把原生 web_search 工具发送给模型。"
+                  checked={draft.codexWebSearch !== false}
+                  onCheckedChange={(checked) => updateDraft({ codexWebSearch: checked })}
+                />
+                <ProviderSwitch
+                  label="允许 Codex Image Generation"
+                  description="允许把原生 image_generation 工具发送给模型。"
+                  checked={draft.codexImageGeneration !== false}
+                  onCheckedChange={(checked) => updateDraft({ codexImageGeneration: checked })}
+                />
+              </>
+            ) : null}
+          </FieldGroup>
+          </CardContent>
+          <CardFooter className="justify-end">
             <Button
+              type="submit"
+              disabled={busy || !draft.name.trim() || !draft.prefix.trim()}
+            >
+              <Save data-icon="inline-start" />
+              {busy ? "保存中…" : draftMode ? "创建供应商" : "保存变更"}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>模型库存</CardTitle>
+          <CardDescription>
+            完整展示 Runtime 缓存与 `agent.customModels`；隐藏、上下文窗口和自定义模型都写入 `agent`。
+          </CardDescription>
+          <CardAction>
+            <Button
+              type="button"
               variant="outline"
               size="sm"
-              disabled={draftMode || busy === `refresh:${provider.id}`}
-              onClick={() => void onRefreshModels(provider.id)}
+              onClick={() => void onRefreshModels()}
+              disabled={draftMode || refreshing || busy || !provider.apiKey}
             >
-              {busy === `refresh:${provider.id}` ? "获取中…" : "获取模型列表"}
+              <RefreshCw data-icon="inline-start" />
+              {refreshing ? "刷新中…" : "刷新模型库存"}
             </Button>
-          </div>
-        </div>
-        {/* 批量操作 */}
-        {provider.models.length > 0 && (
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                for (const model of provider.models) {
-                  if (model.enabled !== false) void onUpdateModel(provider.id, model, { enabled: false });
-                }
-              }}
-            >
-              全部禁用
-            </Button>
-            <Button
-              variant="outline"
-              size="xs"
-              onClick={() => {
-                for (const model of provider.models) {
-                  if (model.enabled === false) void onUpdateModel(provider.id, model, { enabled: true });
-                }
-              }}
-            >
-              全部启用
-            </Button>
-          </div>
-        )}
+          </CardAction>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-4">
+          <Field>
+            <FieldLabel htmlFor="provider-test-prompt">模型测试提示词</FieldLabel>
+            <Input
+              id="provider-test-prompt"
+              aria-label="供应商测试提示词"
+              value={testPrompt}
+              onChange={(event) => setTestPrompt(event.currentTarget.value)}
+            />
+          </Field>
 
-        <ModelList
-          provider={provider}
-          busy={busy}
-          contextDrafts={contextDrafts}
-          setContextDrafts={setContextDrafts}
-          onTestModel={onTestModel}
-          onUpdateModel={onUpdateModel}
-          onUpdateProvider={onUpdateProvider}
-        />
-      </section>
+          {testResult ? (
+            <Alert>
+              <AlertTitle>模型响应</AlertTitle>
+              <AlertDescription>{testResult}</AlertDescription>
+            </Alert>
+          ) : null}
+          {testError ? (
+            <Alert>
+              <AlertTitle>模型测试失败</AlertTitle>
+              <AlertDescription>{testError}</AlertDescription>
+            </Alert>
+          ) : null}
+          {modelError ? (
+            <Alert>
+              <AlertTitle>模型设置更新失败</AlertTitle>
+              <AlertDescription>{modelError}</AlertDescription>
+            </Alert>
+          ) : null}
+
+          {modelOptions.length === 0 ? (
+            <Alert>
+              <AlertTitle>{draftMode ? "先创建供应商" : "当前供应商没有缓存模型"}</AlertTitle>
+              <AlertDescription>
+                {draftMode
+                  ? "保存 canonical 供应商后，才能刷新库存、测试连接或写入自定义模型。"
+                  : "可刷新真实模型库存，或在下方添加自定义模型。"}
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {modelOptions.map((model) => (
+                <ModelInventoryRow
+                  key={model.value}
+                  model={model}
+                  customModel={customModels.get(model.value)}
+                  contextWindowOverride={agentModels.modelContextWindows[model.value]}
+                  testing={testingModel === model.value}
+                  busy={busy}
+                  onToggleHidden={() => void patchAgentModels({
+                    ...agentModels,
+                    hiddenModels: model.hidden
+                      ? agentModels.hiddenModels.filter((value) => value !== model.value)
+                      : [...new Set([...agentModels.hiddenModels, model.value])],
+                  })}
+                  onContextWindowChange={(size) => {
+                    const next = { ...agentModels.modelContextWindows };
+                    if (size == null) delete next[model.value];
+                    else next[model.value] = size;
+                    void patchAgentModels({ ...agentModels, modelContextWindows: next });
+                  }}
+                  onCustomLabelChange={(label) => void patchAgentModels({
+                    ...agentModels,
+                    customModels: agentModels.customModels.map((entry) =>
+                      entry.value === model.value ? { ...entry, label } : entry,
+                    ),
+                  })}
+                  onDeleteCustom={() => {
+                    const nextWindows = { ...agentModels.modelContextWindows };
+                    delete nextWindows[model.value];
+                    void patchAgentModels({
+                      hiddenModels: agentModels.hiddenModels.filter((value) => value !== model.value),
+                      customModels: agentModels.customModels.filter((entry) => entry.value !== model.value),
+                      modelContextWindows: nextWindows,
+                    });
+                  }}
+                  onTest={() => void handleTest(model.value)}
+                />
+              ))}
+            </div>
+          )}
+
+          <FieldSeparator>添加自定义模型</FieldSeparator>
+          <FieldGroup className="sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] sm:items-end">
+            <Field data-disabled={draftMode || undefined}>
+              <FieldLabel htmlFor="custom-model-id">模型 ID</FieldLabel>
+              <Input
+                id="custom-model-id"
+                aria-label="自定义模型 ID"
+                value={customModelId}
+                disabled={draftMode || busy}
+                onChange={(event) => setCustomModelId(event.currentTarget.value)}
+                placeholder="writer-model-1"
+              />
+            </Field>
+            <Field data-disabled={draftMode || undefined}>
+              <FieldLabel htmlFor="custom-model-label">显示名称</FieldLabel>
+              <Input
+                id="custom-model-label"
+                aria-label="自定义模型名称"
+                value={customModelLabel}
+                disabled={draftMode || busy}
+                onChange={(event) => setCustomModelLabel(event.currentTarget.value)}
+                placeholder="可选，默认使用模型 ID"
+              />
+            </Field>
+            <Button type="button" variant="outline" onClick={() => void addCustomModel()} disabled={draftMode || busy || !customModelId.trim()}>
+              <Plus data-icon="inline-start" />
+              添加模型
+            </Button>
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="justify-end">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void handleTest(defaultModelValue)}
+            disabled={Boolean(testingModel) || draftMode || !defaultModelValue || !testPrompt.trim()}
+          >
+            <Play data-icon="inline-start" />
+            {testingModel === defaultModelValue ? "测试中…" : "测试默认模型"}
+          </Button>
+        </CardFooter>
+      </Card>
     </section>
   );
 }
 
-function ModelList({
-  provider,
-  busy,
-  contextDrafts,
-  setContextDrafts,
-  onTestModel,
-  onUpdateModel,
-  onUpdateProvider,
+function ProviderSwitch({
+  label,
+  description,
+  checked,
+  onCheckedChange,
 }: {
-  readonly provider: ApiProvider;
-  readonly busy: string | null;
-  readonly contextDrafts: Record<string, string>;
-  readonly setContextDrafts: (updater: (current: Record<string, string>) => Record<string, string>) => void;
-  readonly onTestModel: (providerId: string, modelId: string) => Promise<void>;
-  readonly onUpdateModel: (providerId: string, model: Model, updates: Partial<Model>) => Promise<void>;
-  readonly onUpdateProvider: (providerId: string, updates: Partial<ManagedProvider>) => Promise<void>;
+  readonly label: string;
+  readonly description: string;
+  readonly checked: boolean;
+  readonly onCheckedChange: (checked: boolean) => void;
 }) {
-  const [customModelId, setCustomModelId] = useState("");
-  const [customModelName, setCustomModelName] = useState("");
-  const [testingModel, setTestingModel] = useState<Model | null>(null);
-  const [testPrompt, setTestPrompt] = useState("Please introduce yourself in one sentence. / 请用一句话介绍你自己。");
-  const [testResult, setTestResult] = useState<{ reply?: string; error?: string; latency?: number } | null>(null);
-  const [testRunning, setTestRunning] = useState(false);
-
-  const addCustomModel = () => {
-    if (!customModelId.trim()) return;
-    const newModel: Model = {
-      id: customModelId.trim(),
-      name: customModelName.trim() || customModelId.trim(),
-      enabled: true,
-      contextWindow: 128000,
-      maxOutputTokens: 4096,
-      lastTestStatus: "untested",
-    };
-    void onUpdateProvider(provider.id, {
-      models: [...provider.models, newModel],
-    });
-    setCustomModelId("");
-    setCustomModelName("");
-  };
-
-  const openTestDialog = (model: Model) => {
-    setTestingModel(model);
-    setTestResult(null);
-    setTestRunning(false);
-  };
-
-  const runTest = async () => {
-    if (!testingModel || testRunning) return;
-    setTestRunning(true);
-    setTestResult(null);
-    const start = Date.now();
-    try {
-      const res = await fetch(`/api/providers/${encodeURIComponent(provider.id)}/models/${encodeURIComponent(testingModel.id)}/test`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: testPrompt }),
-      });
-      const data = await res.json();
-      const latency = Date.now() - start;
-      if (data.success || data.reply) {
-        setTestResult({ reply: data.reply ?? data.message ?? "测试成功（无回复内容）", latency: data.latency ?? latency });
-      } else {
-        setTestResult({ error: data.error ?? "测试失败", latency });
-      }
-      // Also trigger the standard test to update model status
-      void onTestModel(provider.id, testingModel.id);
-    } catch (e) {
-      setTestResult({ error: e instanceof Error ? e.message : "网络错误", latency: Date.now() - start });
-    } finally {
-      setTestRunning(false);
-    }
-  };
-
-  if (!provider.models.length) {
-    return (
-      <div className="space-y-3">
-        <EmptyState title="暂无模型" description={'点击"获取模型列表"从 API 拉取，或手动添加。'} />
-        <CustomModelInput
-          modelId={customModelId}
-          modelName={customModelName}
-          onModelIdChange={setCustomModelId}
-          onModelNameChange={setCustomModelName}
-          onAdd={addCustomModel}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-3">
-      <div className="divide-y divide-border rounded-lg border border-border">
-        {provider.models.map((model) => {
-          const key = `${provider.id}:${model.id}`;
-          const isBusy = busy === `test:${provider.id}:${model.id}` || busy === `model:${provider.id}:${model.id}`;
-          const isEnabled = model.enabled !== false;
-          const testStatus = model.lastTestStatus;
-          const testColor = testStatus === "success" ? "text-green-500" : testStatus === "error" ? "text-red-500" : "text-muted-foreground";
-
-          return (
-            <div key={model.id} className="flex items-center gap-3 px-3 py-2.5">
-              {/* 启用圆点 */}
-              <button
-                type="button"
-                className={`size-3 shrink-0 rounded-full transition ${isEnabled ? "bg-green-500" : "bg-gray-300 dark:bg-gray-600"}`}
-                title={isEnabled ? "已启用，点击禁用" : "已禁用，点击启用"}
-                onClick={() => void onUpdateModel(provider.id, model, { enabled: !isEnabled })}
-              />
-
-              {/* 模型 ID + 名称 */}
-              <div className="min-w-0 flex-1">
-                <span className="text-sm font-medium">{model.name || model.id}</span>
-                {model.name && model.name !== model.id && (
-                  <span className="ml-2 text-xs text-muted-foreground">{model.id}</span>
-                )}
-                {testStatus && testStatus !== "untested" && (
-                  <span className={`ml-2 text-xs ${testColor}`}>
-                    {modelTestStatusLabel(testStatus)}{model.lastTestLatency ? ` ${model.lastTestLatency}ms` : ""}
-                  </span>
-                )}
-              </div>
-
-              {/* Context window */}
-              <div className="flex items-center gap-1.5">
-                <Input
-                  className="w-32 text-right text-xs"
-                  value={contextDrafts[key] ?? String(model.contextWindow)}
-                  onChange={(event) => setContextDrafts((current) => ({ ...current, [key]: event.target.value }))}
-                  onBlur={() => {
-                    const val = Number(contextDrafts[key]);
-                    if (val && val !== model.contextWindow) void onUpdateModel(provider.id, model, { contextWindow: val });
-                  }}
-                />
-                <span className="text-[10px] text-muted-foreground whitespace-nowrap">tokens</span>
-                {(!model.contextWindow || model.contextWindow <= 0) && (
-                  <span className="text-[10px] text-amber-500 whitespace-nowrap" title="上下文窗口未配置，对话时无法正确管理上下文用量">⚠ 需配置</span>
-                )}
-              </div>
-
-              {/* 测试按钮 */}
-              <button
-                type="button"
-                className={`rounded p-1.5 transition hover:bg-muted disabled:opacity-40 ${testColor}`}
-                disabled={isBusy}
-                title="测试模型"
-                onClick={() => openTestDialog(model)}
-              >
-                <Play className="size-4" fill="currentColor" />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* 自定义模型添加 */}
-      <CustomModelInput
-        modelId={customModelId}
-        modelName={customModelName}
-        onModelIdChange={setCustomModelId}
-        onModelNameChange={setCustomModelName}
-        onAdd={addCustomModel}
-      />
-
-      {/* 测试模型对话框 */}
-      <Dialog open={testingModel !== null} onOpenChange={(open) => { if (!open) setTestingModel(null); }}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>测试模型</DialogTitle>
-            <DialogDescription>
-              模型：<code className="rounded bg-muted px-1.5 py-0.5 text-xs font-mono">{provider.prefix || provider.name}:{testingModel?.id}</code>
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div>
-              <label className="text-sm font-medium">测试问题</label>
-              <textarea
-                className="mt-1 w-full rounded-md border border-border bg-background px-3 py-2 text-sm min-h-[80px] resize-y focus:outline-none focus:ring-2 focus:ring-ring"
-                value={testPrompt}
-                onChange={(e) => setTestPrompt(e.target.value)}
-              />
-            </div>
-            <Button
-              className="w-full"
-              disabled={testRunning || !testPrompt.trim()}
-              onClick={() => void runTest()}
-            >
-              {testRunning ? "测试中…" : "发送测试"}
-            </Button>
-            {testResult && (
-              <div className={`rounded-lg border p-3 text-sm ${testResult.error ? "border-destructive/40 bg-destructive/5" : "border-emerald-500/40 bg-emerald-500/5"}`}>
-                {testResult.latency != null && (
-                  <p className="text-xs text-muted-foreground mb-1">延迟：{testResult.latency}ms</p>
-                )}
-                {testResult.error ? (
-                  <p className="text-destructive">{testResult.error}</p>
-                ) : (
-                  <p className="whitespace-pre-wrap">{testResult.reply}</p>
-                )}
-              </div>
-            )}
-          </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+    <Field orientation="horizontal" className="rounded-lg border p-3">
+      <FieldContent>
+        <FieldTitle>{label}</FieldTitle>
+        <FieldDescription>{description}</FieldDescription>
+      </FieldContent>
+      <Switch aria-label={label} checked={checked} onCheckedChange={onCheckedChange} />
+    </Field>
   );
 }
 
-function CustomModelInput({
-  modelId,
-  modelName,
-  onModelIdChange,
-  onModelNameChange,
-  onAdd,
+function ModelInventoryRow({
+  model,
+  customModel,
+  contextWindowOverride,
+  testing,
+  busy,
+  onToggleHidden,
+  onContextWindowChange,
+  onCustomLabelChange,
+  onDeleteCustom,
+  onTest,
 }: {
-  modelId: string;
-  modelName: string;
-  onModelIdChange: (v: string) => void;
-  onModelNameChange: (v: string) => void;
-  onAdd: () => void;
+  readonly model: RuntimeModelOption;
+  readonly customModel?: RuntimeCustomModelSettings;
+  readonly contextWindowOverride?: number;
+  readonly testing: boolean;
+  readonly busy: boolean;
+  readonly onToggleHidden: () => void;
+  readonly onContextWindowChange: (size: number | null) => void;
+  readonly onCustomLabelChange: (label: string) => void;
+  readonly onDeleteCustom: () => void;
+  readonly onTest: () => void;
 }) {
+  const [contextValue, setContextValue] = useState(contextWindowOverride == null ? "" : String(contextWindowOverride));
+  const [labelValue, setLabelValue] = useState(customModel?.label ?? model.label);
+
+  useEffect(() => {
+    setContextValue(contextWindowOverride == null ? "" : String(contextWindowOverride));
+  }, [contextWindowOverride]);
+  useEffect(() => {
+    setLabelValue(customModel?.label ?? model.label);
+  }, [customModel?.label, model.label]);
+
   return (
-    <div className="flex items-center gap-2">
-      <Input
-        className="flex-1 text-xs"
-        value={modelId}
-        onChange={(e) => onModelIdChange(e.target.value)}
-        placeholder="模型 ID（如 deepseek-chat）"
-        onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
-      />
-      <Input
-        className="w-40 text-xs"
-        value={modelName}
-        onChange={(e) => onModelNameChange(e.target.value)}
-        placeholder="显示名称（可选）"
-        onKeyDown={(e) => { if (e.key === "Enter") onAdd(); }}
-      />
-      <Button variant="outline" size="icon-sm" onClick={onAdd} disabled={!modelId.trim()} title="添加自定义模型">
-        <Plus className="size-4" />
-      </Button>
+    <div data-hidden={model.hidden} className="flex flex-col gap-3 rounded-lg border p-3 data-[hidden=true]:opacity-60">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 flex-1 truncate font-mono text-xs">{model.value}</span>
+        {model.custom ? <Badge variant="secondary">自定义</Badge> : <Badge variant="outline">Runtime 缓存</Badge>}
+        {model.hidden ? <Badge variant="secondary">已隐藏</Badge> : null}
+      </div>
+      <FieldGroup className="sm:grid sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-end">
+        <Field data-disabled={!model.custom}>
+          <FieldLabel htmlFor={`model-label-${model.providerId}-${model.modelId}`}>显示名称</FieldLabel>
+          <Input
+            id={`model-label-${model.providerId}-${model.modelId}`}
+            aria-label={`模型显示名称 ${model.value}`}
+            value={labelValue}
+            disabled={!model.custom || busy}
+            onChange={(event) => setLabelValue(event.currentTarget.value)}
+            onBlur={() => {
+              const next = labelValue.trim() || model.modelId;
+              setLabelValue(next);
+              if (customModel && next !== customModel.label) onCustomLabelChange(next);
+            }}
+          />
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`model-context-${model.providerId}-${model.modelId}`}>上下文窗口</FieldLabel>
+          <Input
+            id={`model-context-${model.providerId}-${model.modelId}`}
+            aria-label={`模型上下文窗口 ${model.value}`}
+            type="number"
+            min={1}
+            value={contextValue}
+            disabled={busy}
+            placeholder={model.contextWindow ? String(model.contextWindow) : "未覆盖"}
+            onChange={(event) => setContextValue(event.currentTarget.value)}
+            onBlur={() => {
+              const trimmed = contextValue.trim();
+              if (!trimmed) {
+                if (contextWindowOverride != null) onContextWindowChange(null);
+                return;
+              }
+              const next = Math.max(1, Math.floor(Number(trimmed) || 1));
+              setContextValue(String(next));
+              if (next !== contextWindowOverride) onContextWindowChange(next);
+            }}
+          />
+        </Field>
+        <div className="flex flex-wrap justify-end gap-1">
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`${model.hidden ? "显示" : "隐藏"}模型 ${model.value}`}
+            onClick={onToggleHidden}
+            disabled={busy}
+          >
+            {model.hidden ? <EyeOff /> : <Eye />}
+          </Button>
+          <Button
+            type="button"
+            size="icon-sm"
+            variant="ghost"
+            aria-label={`测试模型 ${model.value}`}
+            onClick={onTest}
+            disabled={busy || testing}
+          >
+            <Play />
+          </Button>
+          {model.custom ? (
+            <Button
+              type="button"
+              size="icon-sm"
+              variant="ghost"
+              aria-label={`删除自定义模型 ${model.value}`}
+              onClick={onDeleteCustom}
+              disabled={busy}
+            >
+              <Trash2 />
+            </Button>
+          ) : null}
+        </div>
+      </FieldGroup>
     </div>
   );
 }

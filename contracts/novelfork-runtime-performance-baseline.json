@@ -1,0 +1,35 @@
+{
+  "benchmark": "novelfork-runtime-product-parity-phase-0",
+  "environment": {
+    "platform": "win32",
+    "os": "10.0.22631",
+    "runtime": "Windows 11 Home China",
+    "cpu": "AMD Ryzen 7 8845H w/ Radeon 780M Graphics"
+  },
+  "fixture": {
+    "iterations": 30,
+    "warmup": 3,
+    "books": [10, 100],
+    "messages": [100, 1000],
+    "chapters": [100],
+    "contentSize": 500
+  },
+  "results": [
+    { "name": "bootstrap-contract-and-100-books", "iterations": 30, "p50Ms": 0.104, "p95Ms": 0.175, "maxMs": 0.25 },
+    { "name": "bootstrap-contract-and-10-books", "iterations": 30, "p50Ms": 0.011, "p95Ms": 0.016, "maxMs": 0.02 },
+    { "name": "narrator-snapshot-1000-messages", "iterations": 30, "p50Ms": 0.285, "p95Ms": 0.347, "maxMs": 0.353 },
+    { "name": "workspace-snapshot-100-chapters", "iterations": 30, "p50Ms": 0.093, "p95Ms": 0.111, "maxMs": 0.121 },
+    { "name": "ws-version-match-sync-ok", "iterations": 30, "p50Ms": 0, "p95Ms": 0.001, "maxMs": 0.008 },
+    { "name": "ws-catch-up-100-messages", "iterations": 30, "p50Ms": 0.013, "p95Ms": 0.018, "maxMs": 0.018 },
+    { "name": "feature-flag-contract-snapshot", "iterations": 30, "p50Ms": 0.001, "p95Ms": 0.004, "maxMs": 0.01 }
+  ],
+  "studioResults": [
+    { "name": "map-100-books-and-100-narrators", "hz": 25172.31, "minMs": 0.0309, "maxMs": 0.7878, "meanMs": 0.0397, "p99Ms": 0.0786, "samples": 12587 },
+    { "name": "reduce-1000-message-tool-stream-events", "hz": 205.09, "minMs": 3.8225, "maxMs": 7.5754, "meanMs": 4.8758, "p99Ms": 7.0817, "samples": 103 },
+    { "name": "retain-unknown-event-metadata", "hz": 6163.62, "minMs": 0.1091, "maxMs": 1.0429, "meanMs": 0.1622, "p99Ms": 0.6596, "samples": 3082 }
+  ],
+  "limitations": [
+    "Phase 0 records deterministic serialization and contract-shaping baselines; it does not claim end-to-end database or network latency.",
+    "No absolute CI timing threshold is enforced until a controlled runner and relative regression budget are approved."
+  ]
+}

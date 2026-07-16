@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-novel-plugin",
-  "version": "3.0.0",
+  "version": "3.2.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
@@ -29,7 +29,6 @@
     "@tiptap/react": "2.27.2",
     "@tiptap/starter-kit": "2.27.2",
     "@vivy1024/novelfork-core": "workspace:*",
-    "@vivy1024/novelfork-studio": "workspace:*",
     "@xyflow/react": "12.10.2",
     "allotment": "1.20.5",
     "hono": "4.7.0",

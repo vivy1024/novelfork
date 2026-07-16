@@ -21,7 +21,6 @@ import { evaluateGate } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { join } from "node:path";
-import type { CanvasArtifact } from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
@@ -34,6 +33,26 @@ import type { StyleSnippet } from "../engine/narrative-memory/channels/style-cha
 import type { BeatTemplate, Preset } from "../engine/presets/types.js";
 import { getBeatTemplate, getPreset } from "../engine/presets/index.js";
 import { registerBuiltinPresets } from "../engine/presets/builtin.js";
+
+export interface PipelineCanvasArtifact {
+  readonly id: string;
+  readonly kind: string;
+  readonly title: string;
+  readonly summary?: string;
+  readonly resourceRef?: {
+    readonly kind: string;
+    readonly id: string;
+    readonly bookId?: string;
+    readonly title?: string;
+    readonly chapterNumber?: number;
+    readonly path?: string;
+  };
+  readonly payloadRef?: string;
+  readonly renderer?: string;
+  readonly openInCanvas?: boolean;
+  readonly createdAt?: string;
+  readonly metadata?: Record<string, unknown>;
+}
 
 export interface PipelineWriteInput {
   readonly bookId: string;
@@ -59,7 +78,7 @@ export interface PipelineWriteOutput {
   readonly auditResult: AuditResult;
   readonly revised: boolean;
   readonly chapterId: string;
-  readonly artifact: CanvasArtifact;
+  readonly artifact: PipelineCanvasArtifact;
   /** 长度治理：归一化后仍漂出 hard 区间时的警告（不阻断） */
   readonly lengthWarning?: string;
   /** 多轮自愈达上限仍有 critical → 需人工复核（Human Review Gate） */

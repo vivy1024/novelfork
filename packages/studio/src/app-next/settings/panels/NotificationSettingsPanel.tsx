@@ -1,330 +1,276 @@
-import { useState, useCallback, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Save, Upload } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Play } from "lucide-react";
-import { fetchJson, putApi } from "@/hooks/use-api";
-import { notify } from "@/lib/notify";
+import { Switch } from "@/components/ui/switch";
+import {
+  createNotificationSoundsClient,
+  createUserPreferencesClient,
+  type RuntimeUserPreferences,
+  type UserPreferencesPatch,
+} from "../../runtime-admin";
 
-interface NotificationConfig {
-  browserNotifications: boolean;
-  soundEnabled: boolean;
-  soundSource: "builtin" | "custom";
-  soundPreset: string;
-  events: {
-    permissionRequest: boolean;
-    taskComplete: boolean;
-    error: boolean;
-    backgroundComplete: boolean;
-  };
-  soundVolume: number;
-  dingtalk: {
-    enabled: boolean;
-    webhookUrl: string;
-  };
-  feishu: {
-    enabled: boolean;
-    webhookUrl: string;
-  };
-}
+const preferencesClient = createUserPreferencesClient();
+const soundsClient = createNotificationSoundsClient();
 
-const DEFAULT_CONFIG: NotificationConfig = {
-  browserNotifications: false,
-  soundEnabled: false,
-  soundSource: "builtin",
-  soundPreset: "gentle",
-  events: {
-    permissionRequest: true,
-    taskComplete: true,
-    error: true,
-    backgroundComplete: true,
-  },
-  soundVolume: 70,
-  dingtalk: {
-    enabled: false,
-    webhookUrl: "",
-  },
-  feishu: {
-    enabled: false,
-    webhookUrl: "",
-  },
-};
-
-function SwitchRow({ label, description, checked, onChange, disabled }: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
-  disabled?: boolean;
+function SwitchRow({ label, description, checked, onChange }: {
+  readonly label: string;
+  readonly description: string;
+  readonly checked: boolean;
+  readonly onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <span className="text-sm">{label}</span>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
+    <div className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <p className="text-sm font-medium">{label}</p>
+        <p className="text-xs text-muted-foreground">{description}</p>
       </div>
-      <Switch checked={checked} onCheckedChange={onChange} disabled={disabled} />
+      <Switch aria-label={label} checked={checked} onCheckedChange={onChange} />
     </div>
   );
 }
 
-function getPermissionStatus(): NotificationPermission | "unsupported" {
-  if (typeof window === "undefined" || !("Notification" in window)) return "unsupported";
-  return Notification.permission;
-}
-
 export function NotificationSettingsPanel() {
-  const [config, setConfig] = useState<NotificationConfig>(DEFAULT_CONFIG);
-  const [permissionStatus, setPermissionStatus] = useState<NotificationPermission | "unsupported">(getPermissionStatus);
-  const [testSent, setTestSent] = useState(false);
+  const [preferences, setPreferences] = useState<RuntimeUserPreferences | null>(null);
+  const savedRef = useRef<RuntimeUserPreferences | null>(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  // Load from backend
   useEffect(() => {
-    fetchJson<{ preferences?: { notifications?: Partial<NotificationConfig> } }>("/settings/user")
+    let active = true;
+    preferencesClient.get()
       .then((data) => {
-        if (data.preferences?.notifications) {
-          setConfig((prev) => ({ ...prev, ...data.preferences!.notifications }));
-        }
+        if (!active) return;
+        setPreferences(data);
+        savedRef.current = data;
       })
-      .catch(() => {});
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
-  // Save helper
-  const save = useCallback(async (patch: Partial<NotificationConfig>) => {
-    const updated = { ...config, ...patch };
-    setConfig(updated);
+  async function patchPreferences(patch: UserPreferencesPatch) {
+    if (!preferences) return;
     setSaving(true);
+    setError(null);
+    setPreferences({ ...preferences, ...patch });
     try {
-      await putApi("/settings/user", { preferences: { notifications: updated } });
-      notify.success("已保存");
-    } catch { /* non-critical */ }
-    finally { setSaving(false); }
-  }, [config]);
-
-  const handleRequestPermission = useCallback(async () => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    const result = await Notification.requestPermission();
-    setPermissionStatus(result);
-    if (result === "granted") {
-      setConfig((prev) => ({ ...prev, browserNotifications: true }));
+      const updated = await preferencesClient.patch(patch);
+      setPreferences(updated);
+      savedRef.current = updated;
+    } catch (reason) {
+      setPreferences(savedRef.current);
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setSaving(false);
     }
-  }, []);
+  }
 
-  const handleTestNotification = useCallback(() => {
-    if (permissionStatus !== "granted") return;
-    new Notification("NovelFork", {
-      body: "测试通知 — 通知功能工作正常。",
-      icon: "/favicon.ico",
-    });
-    setTestSent(true);
-    setTimeout(() => setTestSent(false), 3000);
-  }, [permissionStatus]);
+  async function saveWebhook(kind: "dingtalk" | "feishu") {
+    if (!preferences || !savedRef.current) return;
+    const patch: UserPreferencesPatch = kind === "dingtalk"
+      ? {
+          ...(preferences.notifyDingtalkWebhook !== savedRef.current.notifyDingtalkWebhook
+            ? { notifyDingtalkWebhook: preferences.notifyDingtalkWebhook }
+            : {}),
+          ...(preferences.notifyDingtalkSecret !== savedRef.current.notifyDingtalkSecret
+            ? { notifyDingtalkSecret: preferences.notifyDingtalkSecret }
+            : {}),
+        }
+      : {
+          ...(preferences.notifyFeishuWebhook !== savedRef.current.notifyFeishuWebhook
+            ? { notifyFeishuWebhook: preferences.notifyFeishuWebhook }
+            : {}),
+          ...(preferences.notifyFeishuSecret !== savedRef.current.notifyFeishuSecret
+            ? { notifyFeishuSecret: preferences.notifyFeishuSecret }
+            : {}),
+        };
+    if (Object.keys(patch).length > 0) await patchPreferences(patch);
+  }
 
-  const handleBrowserToggle = useCallback((value: boolean) => {
-    if (value && permissionStatus !== "granted") {
-      void handleRequestPermission();
-      return;
+  async function uploadCustomSound(file: File) {
+    setUploading(true);
+    setError(null);
+    try {
+      const uploaded = await soundsClient.upload(file);
+      await patchPreferences({
+        notifySoundType: "custom",
+        notifySoundFileId: uploaded.id,
+      });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setUploading(false);
     }
-    setConfig((prev) => ({ ...prev, browserNotifications: value }));
-  }, [handleRequestPermission, permissionStatus]);
+  }
 
-  const updateEvent = useCallback((key: keyof NotificationConfig["events"], value: boolean) => {
-    setConfig((prev) => ({
-      ...prev,
-      events: { ...prev.events, [key]: value },
-    }));
-  }, []);
-
-  const permissionLabel = (() => {
-    switch (permissionStatus) {
-      case "granted": return "已授权";
-      case "denied": return "已拒绝（需在浏览器设置中手动开启）";
-      case "default": return "未请求";
-      case "unsupported": return "当前环境不支持";
-    }
-  })();
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取通知偏好…</p>;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-lg font-semibold mb-2 text-foreground">通知</h2>
-        <p className="text-sm text-muted-foreground">配置浏览器通知和声音提醒，及时了解任务进度。</p>
+        <h2 className="text-lg font-semibold text-foreground">通知</h2>
+        <p className="text-sm text-muted-foreground">只配置 Runtime 已支持的完成、等待、PWA、声音、钉钉和飞书通知。</p>
       </div>
 
-      {/* 权限状态 */}
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">通知权限</h3>
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm text-muted-foreground">浏览器通知权限</span>
-            <p className="text-xs text-muted-foreground">{permissionLabel}</p>
-          </div>
-          {permissionStatus === "default" && (
-            <Button type="button" variant="outline" size="sm" onClick={() => void handleRequestPermission()}>
-              请求权限
-            </Button>
-          )}
-        </div>
-      </div>
+      {error ? (
+        <Alert>
+          <AlertTitle>通知设置保存失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      {/* 通知开关 */}
-      <div className="space-y-4 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">通知方式</h3>
+      {preferences ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>触发时机</CardTitle>
+              <CardDescription>Runtime 当前只提供任务完成和等待用户操作两类事件。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <SwitchRow label="任务完成" description="Agent 完成当前任务时发送通知。" checked={preferences.notifyOnDone} onChange={(value) => void patchPreferences({ notifyOnDone: value })} />
+              <SwitchRow label="等待用户操作" description="Agent 等待批准、回答或其他用户输入时发送通知。" checked={preferences.notifyOnWaiting} onChange={(value) => void patchPreferences({ notifyOnWaiting: value })} />
+              <SwitchRow label="PWA / 系统通知" description="允许 Runtime 通过已安装的 Web 应用发送系统通知。" checked={preferences.notifyPwaEnabled} onChange={(value) => void patchPreferences({ notifyPwaEnabled: value })} />
+            </CardContent>
+          </Card>
 
-        <SwitchRow
-          label="浏览器通知"
-          description="在系统通知中心显示消息"
-          checked={config.browserNotifications}
-          onChange={handleBrowserToggle}
-          disabled={permissionStatus === "denied" || permissionStatus === "unsupported"}
-        />
-
-        <SwitchRow
-          label="声音提醒"
-          description="播放提示音（暂未接线）"
-          checked={config.soundEnabled}
-          onChange={(value) => setConfig((prev) => ({ ...prev, soundEnabled: value }))}
-          disabled
-        />
-
-        {config.soundEnabled && (
-          <div className="space-y-3 pl-4 border-l-2 border-border">
-            <div className="flex items-center gap-3">
-              <SimpleSelect
-                value={config.soundSource}
-                onValueChange={(v) => setConfig((prev) => ({ ...prev, soundSource: v as "builtin" | "custom" }))}
-                options={[
-                  { value: "builtin", label: "内置音效" },
-                  { value: "custom", label: "自选文件" },
-                ]}
-                className="w-32"
-                aria-label="音效来源"
-              />
-              {config.soundSource === "builtin" && (
+          <Card>
+            <CardHeader>
+              <CardTitle>声音</CardTitle>
+              <CardDescription>可使用 Runtime 内置提示音或上传自定义声音文件。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-4">
+              <SwitchRow label="声音提醒" description="通知触发时播放提示音。" checked={preferences.notifySoundEnabled} onChange={(value) => void patchPreferences({ notifySoundEnabled: value })} />
+              <label className="grid gap-2 text-sm sm:grid-cols-[1fr_220px] sm:items-center">
+                <span className="font-medium">声音来源</span>
                 <SimpleSelect
-                  value={config.soundPreset}
-                  onValueChange={(v) => setConfig((prev) => ({ ...prev, soundPreset: v }))}
+                  aria-label="声音来源"
+                  value={preferences.notifySoundType}
+                  onValueChange={(value) => void patchPreferences({ notifySoundType: value as "builtin" | "custom" })}
                   options={[
-                    { value: "gentle", label: "柔和" },
-                    { value: "chime", label: "清脆" },
-                    { value: "bell", label: "铃声" },
-                    { value: "pop", label: "气泡" },
+                    { value: "builtin", label: "Runtime 内置" },
+                    { value: "custom", label: "自定义文件" },
                   ]}
-                  className="w-24"
-                  aria-label="音效预设"
                 />
+              </label>
+              {preferences.notifySoundType === "builtin" ? (
+                <label className="grid gap-2 text-sm sm:grid-cols-[1fr_220px] sm:items-center">
+                  <span className="font-medium">内置提示音</span>
+                  <SimpleSelect
+                    aria-label="内置提示音"
+                    value={preferences.notifySoundBuiltin}
+                    onValueChange={(value) => void patchPreferences({ notifySoundBuiltin: value })}
+                    options={[
+                      { value: "gentle", label: "柔和" },
+                      { value: "chime", label: "清脆" },
+                      { value: "bell", label: "铃声" },
+                      { value: "pop", label: "气泡" },
+                    ]}
+                  />
+                </label>
+              ) : (
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="font-medium">自定义声音文件</span>
+                  <Input
+                    aria-label="上传自定义声音"
+                    type="file"
+                    accept="audio/*"
+                    disabled={uploading}
+                    onChange={(event) => {
+                      const file = event.currentTarget.files?.[0];
+                      if (file) void uploadCustomSound(file);
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    {preferences.notifySoundFileId ? `Runtime 文件 ID：${preferences.notifySoundFileId}` : "尚未上传"}
+                  </span>
+                </label>
               )}
-              <Button type="button" variant="outline" size="sm" className="gap-1">
-                <Play className="size-3" />
-                试听
-              </Button>
-            </div>
-            <label className="block space-y-1">
-              <span className="text-xs text-muted-foreground">音量 ({config.soundVolume}%)</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={config.soundVolume}
-                onChange={(e) => setConfig((prev) => ({ ...prev, soundVolume: Number(e.currentTarget.value) }))}
-                className="w-full accent-primary"
-              />
-            </label>
-          </div>
-        )}
-      </div>
+            </CardContent>
+            {uploading ? (
+              <CardFooter>
+                <Upload data-icon="inline-start" />
+                正在上传声音文件…
+              </CardFooter>
+            ) : null}
+          </Card>
 
-      {/* 事件类型 */}
-      <div className="space-y-4 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">通知事件</h3>
-        <p className="text-xs text-muted-foreground">选择哪些事件触发桌面通知（需开启上方"浏览器通知"并授权）。当前已接线：任务完成、错误。</p>
+          <WebhookCard
+            title="钉钉通知"
+            description="通过钉钉机器人 Webhook 接收 Runtime 通知。"
+            enabled={preferences.notifyDingtalkEnabled}
+            webhook={preferences.notifyDingtalkWebhook}
+            secret={preferences.notifyDingtalkSecret}
+            saving={saving}
+            onEnabledChange={(value) => void patchPreferences({ notifyDingtalkEnabled: value })}
+            onWebhookChange={(value) => setPreferences({ ...preferences, notifyDingtalkWebhook: value })}
+            onSecretChange={(value) => setPreferences({ ...preferences, notifyDingtalkSecret: value })}
+            onSave={() => void saveWebhook("dingtalk")}
+          />
 
-        <SwitchRow
-          label="权限请求"
-          description="Agent 请求工具执行权限时通知（后端事件源未实现，暂未接线）"
-          checked={config.events.permissionRequest}
-          onChange={(value) => updateEvent("permissionRequest", value)}
-          disabled
-        />
-
-        <SwitchRow
-          label="任务完成"
-          description="写作任务或 Agent 任务完成时通知"
-          checked={config.events.taskComplete}
-          onChange={(value) => updateEvent("taskComplete", value)}
-        />
-
-        <SwitchRow
-          label="错误"
-          description="发生错误或异常时通知"
-          checked={config.events.error}
-          onChange={(value) => updateEvent("error", value)}
-        />
-
-        <SwitchRow
-          label="后台任务完成"
-          description="后台运行的长时间任务完成时通知（暂未接线）"
-          checked={config.events.backgroundComplete}
-          onChange={(value) => updateEvent("backgroundComplete", value)}
-          disabled
-        />
-      </div>
-
-      {/* 钉钉/飞书 */}
-      <div className="space-y-4 rounded-lg border border-border p-4">
-        <h3 className="text-sm font-semibold text-foreground">IM 通知</h3>
-
-        <SwitchRow
-          label="钉钉通知"
-          description="通过 Webhook 发送通知到钉钉群"
-          checked={config.dingtalk.enabled}
-          onChange={(value) => setConfig((prev) => ({ ...prev, dingtalk: { ...prev.dingtalk, enabled: value } }))}
-        />
-        {config.dingtalk.enabled && (
-          <div className="pl-4 border-l-2 border-border">
-            <Input
-              placeholder="钉钉 Webhook URL"
-              value={config.dingtalk.webhookUrl}
-              onChange={(e) => setConfig((prev) => ({ ...prev, dingtalk: { ...prev.dingtalk, webhookUrl: e.target.value } }))}
-              className="text-xs"
-            />
-          </div>
-        )}
-
-        <SwitchRow
-          label="飞书通知"
-          description="通过 Webhook 发送通知到飞书群"
-          checked={config.feishu.enabled}
-          onChange={(value) => setConfig((prev) => ({ ...prev, feishu: { ...prev.feishu, enabled: value } }))}
-        />
-        {config.feishu.enabled && (
-          <div className="pl-4 border-l-2 border-border">
-            <Input
-              placeholder="飞书 Webhook URL"
-              value={config.feishu.webhookUrl}
-              onChange={(e) => setConfig((prev) => ({ ...prev, feishu: { ...prev.feishu, webhookUrl: e.target.value } }))}
-              className="text-xs"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 测试按钮 */}
-      <div className="flex gap-2">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={handleTestNotification}
-          disabled={permissionStatus !== "granted"}
-        >
-          {testSent ? "已发送" : "测试通知"}
-        </Button>
-        {permissionStatus !== "granted" && (
-          <span className="self-center text-xs text-muted-foreground">需先授权浏览器通知权限</span>
-        )}
-      </div>
+          <WebhookCard
+            title="飞书通知"
+            description="通过飞书机器人 Webhook 接收 Runtime 通知。"
+            enabled={preferences.notifyFeishuEnabled}
+            webhook={preferences.notifyFeishuWebhook}
+            secret={preferences.notifyFeishuSecret}
+            saving={saving}
+            onEnabledChange={(value) => void patchPreferences({ notifyFeishuEnabled: value })}
+            onWebhookChange={(value) => setPreferences({ ...preferences, notifyFeishuWebhook: value })}
+            onSecretChange={(value) => setPreferences({ ...preferences, notifyFeishuSecret: value })}
+            onSave={() => void saveWebhook("feishu")}
+          />
+        </>
+      ) : null}
     </div>
+  );
+}
+
+function WebhookCard({ title, description, enabled, webhook, secret, saving, onEnabledChange, onWebhookChange, onSecretChange, onSave }: {
+  readonly title: string;
+  readonly description: string;
+  readonly enabled: boolean;
+  readonly webhook: string;
+  readonly secret: string;
+  readonly saving: boolean;
+  readonly onEnabledChange: (enabled: boolean) => void;
+  readonly onWebhookChange: (value: string) => void;
+  readonly onSecretChange: (value: string) => void;
+  readonly onSave: () => void;
+}) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-4">
+        <SwitchRow label={`启用${title}`} description="开关变化只 PATCH 启用字段，不会重发已掩码的凭据。" checked={enabled} onChange={onEnabledChange} />
+        <label className="flex flex-col gap-2 text-sm">
+          <span className="font-medium">Webhook URL</span>
+          <Input aria-label={`${title} Webhook`} value={webhook} onChange={(event) => onWebhookChange(event.currentTarget.value)} placeholder="https://…" />
+        </label>
+        <label className="flex flex-col gap-2 text-sm">
+          <span className="font-medium">签名密钥</span>
+          <Input aria-label={`${title}签名密钥`} type="password" value={secret} onChange={(event) => onSecretChange(event.currentTarget.value)} placeholder="可选" />
+        </label>
+      </CardContent>
+      <CardFooter className="justify-end">
+        <Button type="button" variant="outline" onClick={onSave} disabled={saving}>
+          <Save data-icon="inline-start" />
+          保存凭据
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }

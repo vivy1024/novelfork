@@ -84,6 +84,12 @@ export abstract class BaseAgent {
     messages: ReadonlyArray<LLMMessage>,
     options?: { readonly temperature?: number; readonly maxTokens?: number },
   ): Promise<LLMResponse> {
+    // Runtime host transports own provider capabilities and must not be bypassed
+    // by the legacy Tavily/OpenAI branches in this domain layer.
+    if (this.ctx.client.provider === "host") {
+      return this.chat(messages, options);
+    }
+
     // OpenAI has native search — use it directly
     if (this.ctx.client.provider === "openai") {
       const startedAt = Date.now();

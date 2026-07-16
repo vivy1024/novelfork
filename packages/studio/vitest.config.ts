@@ -5,6 +5,10 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   resolve: {
     alias: {
+      "react": resolve(__dirname, "node_modules/react"),
+      "react-dom": resolve(__dirname, "node_modules/react-dom"),
+      "@frontend": resolve(__dirname, "../narrafork-runtime-private/frontend"),
+      "@shared": resolve(__dirname, "../narrafork-runtime-private/shared"),
       "@vivy1024/novelfork-core/registry/command-registry": resolve(__dirname, "../core/src/registry/command-registry.ts"),
       "@vivy1024/novelfork-core/registry/command-executor": resolve(__dirname, "../core/src/registry/command-executor.ts"),
       // 可选浏览器依赖在测试中用空 stub 替身（运行时仍走真实动态 import + try/catch 降级）

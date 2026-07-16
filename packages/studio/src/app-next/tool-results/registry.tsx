@@ -24,21 +24,22 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   pipeline: PipelineChapterResultCard,
 };
 
-const TOOL_PREFIX_TO_RENDERER: Record<string, (typeof RESERVED_TOOL_RESULT_RENDERERS)[number]> = {
+const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDERERS)[number]> = {
   cockpit: "cockpit",
+  "cockpit.snapshot": "cockpit",
   questionnaire: "questionnaire",
   pgi: "pgi",
   guided: "guided",
   narrative: "narrative",
   workflow: "workflow",
   pipeline: "pipeline",
+  "pipeline.chapter-result": "pipeline",
+  "pipeline.write": "pipeline",
 };
 
 function rendererFromValue(value: unknown): string | null {
   if (typeof value !== "string") return null;
-  const [prefix] = value.split(".");
-  if (prefix && prefix in TOOL_PREFIX_TO_RENDERER) return TOOL_PREFIX_TO_RENDERER[prefix];
-  return prefix || null;
+  return EXACT_RUNTIME_RENDERERS[value] ?? null;
 }
 
 export function resolveToolResultRendererKey(context: ToolResultRendererContext): string {
@@ -63,7 +64,7 @@ export function getToolResultRenderer(key: string): ToolResultRenderer {
 export function renderToolResult(context: ToolResultRendererContext): ReactNode {
   const key = resolveToolResultRendererKey(context);
   const renderer = getToolResultRenderer(key);
-  return renderer(context);
+  return renderer(context) ?? GenericToolResultRenderer(context);
 }
 
 export { GenericToolResultRenderer };

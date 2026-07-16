@@ -32,6 +32,7 @@ const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ defa
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
+const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
 const BeatProgressBar = lazy(() => import("./BeatProgressBar").then(m => ({ default: m.BeatProgressBar })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
@@ -116,7 +117,7 @@ function ToolPanelLoading() {
   return <div className="flex items-center justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
 }
 
-function ToolPanelView({ toolPanel, bookId, onJumpToChapter }: { toolPanel: ToolPanelId; bookId: string; onJumpToChapter?: (chapterNumber: number) => void }) {
+function ToolPanelView({ toolPanel, bookId, repositoryPath, onJumpToChapter }: { toolPanel: ToolPanelId; bookId: string; repositoryPath?: string; onJumpToChapter?: (chapterNumber: number) => void }) {
   switch (toolPanel) {
     case "quality":
       return <QualityPanel bookId={bookId} />;
@@ -136,6 +137,8 @@ function ToolPanelView({ toolPanel, bookId, onJumpToChapter }: { toolPanel: Tool
       return <Suspense fallback={<ToolPanelLoading />}><RuntimeStatePanel bookId={bookId} /></Suspense>;
     case "coreshift":
       return <Suspense fallback={<ToolPanelLoading />}><CoreShiftPanel bookId={bookId} /></Suspense>;
+    case "collaboration-version":
+      return <Suspense fallback={<ToolPanelLoading />}><CollaborationVersionPanel bookId={bookId} repositoryPath={repositoryPath} /></Suspense>;
     default:
       return <div className="p-4 text-muted-foreground">未知工具面板</div>;
   }
@@ -155,6 +158,7 @@ export interface WorkbenchCanvasProps {
   node: WorkbenchResourceNode | null;
   nodes?: readonly WorkbenchResourceNode[];
   bookId?: string;
+  repositoryPath?: string;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onGuideComplete?: () => void;
@@ -168,7 +172,7 @@ export interface WorkbenchCanvasProps {
   onJumpToChapter?: (chapterNumber: number) => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -276,7 +280,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, onSave, onCanvasCont
             <h2 className="text-sm font-semibold">{node.title}</h2>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <ToolPanelView toolPanel={toolPanel} bookId={bookId} onJumpToChapter={onJumpToChapter} />
+            <ToolPanelView toolPanel={toolPanel} bookId={bookId} repositoryPath={repositoryPath} onJumpToChapter={onJumpToChapter} />
           </div>
         </div>
       );

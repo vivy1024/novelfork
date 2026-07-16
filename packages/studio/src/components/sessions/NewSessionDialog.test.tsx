@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 import { NewSessionDialog } from "./NewSessionDialog";
 
@@ -9,9 +9,15 @@ vi.mock("@/hooks/use-api", () => ({
   fetchJson: (path: string) => fetchJsonMock(path),
 }));
 
-function mockRuntimeModels(models = [{ modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" }]) {
+function mockRuntimeModels(models = [{ modelId: "sub2api:gpt-5.6", modelName: "GPT-5.6", providerName: "Sub2API" }]) {
   fetchJsonMock.mockResolvedValue({ models });
 }
+
+beforeAll(() => {
+  (window.HTMLElement.prototype as unknown as { scrollIntoView: () => void }).scrollIntoView = vi.fn();
+  (window.HTMLElement.prototype as unknown as { hasPointerCapture: () => boolean }).hasPointerCapture = vi.fn(() => false);
+  (window.HTMLElement.prototype as unknown as { releasePointerCapture: () => void }).releasePointerCapture = vi.fn();
+});
 
 afterEach(() => {
   cleanup();
@@ -19,148 +25,69 @@ afterEach(() => {
 });
 
 describe("NewSessionDialog", () => {
-  it("creates a session with novelist agent and default title", async () => {
+  it("creates a canonical Runtime narrator with default settings", async () => {
     mockRuntimeModels();
     const onCreate = vi.fn();
-    const onOpenChange = vi.fn();
 
-    render(
-      <NewSessionDialog
-        open
-        onOpenChange={onOpenChange}
-        onCreate={onCreate}
-      />,
-    );
+    render(<NewSessionDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
 
-    expect(await screen.findByText("Sub2API · GPT-5 Codex")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
+    expect((await screen.findAllByText("Sub2API · GPT-5.6")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "novelist",
       title: "小说创作会话",
-      sessionMode: "chat",
-      sessionConfig: {
-        providerId: "sub2api",
-        modelId: "gpt-5-codex",
-        permissionMode: "edit",
-      },
-    });
-
-    expect(onOpenChange).toHaveBeenCalledWith(false);
-  });
-
-  it("allows overriding title and agent id before submit", async () => {
-    mockRuntimeModels();
-    const onCreate = vi.fn();
-
-    render(
-      <NewSessionDialog
-        open
-        onOpenChange={() => {}}
-        onCreate={onCreate}
-      />,
-    );
-
-    await screen.findByText("Sub2API · GPT-5 Codex");
-
-    fireEvent.change(screen.getByLabelText("Agent ID"), { target: { value: "custom-agent" } });
-    fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "自定义会话" } });
-    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
-
-    expect(onCreate).toHaveBeenCalledWith({
-      agentId: "custom-agent",
-      title: "自定义会话",
-      sessionMode: "chat",
-      sessionConfig: {
-        providerId: "sub2api",
-        modelId: "gpt-5-codex",
-        permissionMode: "ask",
-      },
+      model: "sub2api:gpt-5.6",
+      permissionMode: "acceptEdits",
+      startInPlanMode: false,
     });
   });
 
-  it("lets authors choose the permission mode during session creation", async () => {
-    mockRuntimeModels();
-    const onCreate = vi.fn();
-
-    render(
-      <NewSessionDialog
-        open
-        onOpenChange={() => {}}
-        onCreate={onCreate}
-      />,
-    );
-
-    await screen.findByText("Sub2API · GPT-5 Codex");
-
-    fireEvent.click(screen.getByRole("button", { name: /全部允许/ }));
-    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
-
-    expect(onCreate).toHaveBeenCalledWith({
-      agentId: "novelist",
-      title: "小说创作会话",
-      sessionMode: "chat",
-      sessionConfig: {
-        providerId: "sub2api",
-        modelId: "gpt-5-codex",
-        permissionMode: "allow",
-      },
-    });
-  });
-
-  it("captures workspace, model, permission and plan mode before creating", async () => {
+  it("captures title, plan mode, permission, reasoning, and cwd", async () => {
     mockRuntimeModels([
-      { modelId: "sub2api:gpt-5-codex", modelName: "GPT-5 Codex", providerName: "Sub2API" },
+      { modelId: "sub2api:gpt-5.6", modelName: "GPT-5.6", providerName: "Sub2API" },
       { modelId: "anthropic:claude-sonnet-4-6", modelName: "Claude Sonnet 4.6", providerName: "Anthropic" },
     ]);
     const onCreate = vi.fn();
 
-    render(
-      <NewSessionDialog
-        open
-        onOpenChange={() => {}}
-        onCreate={onCreate}
-      />,
-    );
+    render(<NewSessionDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
+    await screen.findAllByText("Sub2API · GPT-5.6");
 
-    await screen.findByText("Sub2API · GPT-5 Codex");
+    fireEvent.change(screen.getByLabelText("叙述者标题"), { target: { value: "世界观规划室" } });
+    fireEvent.change(screen.getByLabelText("工作目录"), { target: { value: "D:\\novels\\world" } });
 
-    fireEvent.change(screen.getByLabelText("会话标题"), { target: { value: "世界观规划室" } });
-    fireEvent.change(screen.getByLabelText("工作目录"), { target: { value: "D:\\novels\\lingchao" } });
-    fireEvent.click(screen.getByRole("button", { name: "计划模式" }));
-    const permissionRegion = screen.getByText("权限模式").closest("div")?.parentElement;
-    if (!permissionRegion) throw new Error("权限模式区域缺失");
-    fireEvent.click(within(permissionRegion).getByRole("button", { name: /只读/ }));
-    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
+    fireEvent.pointerDown(screen.getByLabelText("启动模式"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "计划模式" }));
+    fireEvent.pointerDown(screen.getByLabelText("权限模式"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "只读" }));
+    fireEvent.pointerDown(screen.getByLabelText("推理强度"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "极高" }));
+    fireEvent.pointerDown(screen.getByLabelText("运行时模型"), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(await screen.findByRole("option", { name: "Anthropic · Claude Sonnet 4.6" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
 
     expect(onCreate).toHaveBeenCalledWith({
-      agentId: "novelist",
       title: "世界观规划室",
-      worktree: "D:\\novels\\lingchao",
-      sessionMode: "plan",
-      sessionConfig: {
-        providerId: "sub2api",
-        modelId: "gpt-5-codex",
-        permissionMode: "read",
-      },
+      model: "anthropic:claude-sonnet-4-6",
+      permissionMode: "readOnly",
+      reasoningEffort: "xhigh",
+      startInPlanMode: true,
+      cwd: "D:\\novels\\world",
     });
   });
 
-  it("blocks creation when the unified runtime model pool is empty", async () => {
+  it("allows creation with the Runtime default when the model pool is empty", async () => {
     mockRuntimeModels([]);
     const onCreate = vi.fn();
 
-    render(
-      <NewSessionDialog
-        open
-        onOpenChange={() => {}}
-        onCreate={onCreate}
-      />,
-    );
+    render(<NewSessionDialog open onOpenChange={vi.fn()} onCreate={onCreate} />);
 
-    expect(await screen.findByText("尚未配置可用模型")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "创建会话" })).toHaveProperty("disabled", true);
-    fireEvent.click(screen.getByRole("button", { name: "创建会话" }));
-    expect(onCreate).not.toHaveBeenCalled();
+    expect(await screen.findByText("将跟随 Runtime 默认模型；可在设置中稍后配置。")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "创建叙述者" }));
+    expect(onCreate).toHaveBeenCalledWith({
+      title: "小说创作会话",
+      permissionMode: "acceptEdits",
+      startInPlanMode: false,
+    });
   });
 });

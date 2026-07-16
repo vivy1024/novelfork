@@ -1,219 +1,252 @@
-import { useState, useEffect } from "react";
-import { fetchJson, putApi } from "../../../hooks/use-api";
-import { useTheme, type Theme } from "../../../hooks/use-theme";
-import { DEFAULT_USER_CONFIG, type UserPreferences } from "../../../types/settings";
-import { Sun, Moon, Monitor, Type } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { SimpleSelect } from "@/components/ui/simple-select";
-import { Switch } from "@/components/ui/switch";
-import { notify } from "@/lib/notify";
+import { useEffect, useMemo, useState } from "react";
+import { Monitor, Moon, Sun } from "lucide-react";
 
-function SwitchRow({ label, description, checked, onChange }: {
-  label: string;
-  description?: string;
-  checked: boolean;
-  onChange: (value: boolean) => void;
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+import { useTheme, type Theme } from "@/hooks/use-theme";
+import { SettingsGroup, SettingsPage, SettingsSwitchRow } from "../components/SettingsPage";
+import { useLocalBooleanPreference, useNarratorMessageRendererMode, useScreenWakeLock } from "../local-preferences";
+import {
+  createUserPreferencesClient,
+  type RuntimeUserPreferences,
+  type UserPreferencesPatch,
+} from "../../runtime-admin";
+
+const preferencesClient = createUserPreferencesClient();
+
+const TERMINAL_THEME_OPTIONS = [
+  { value: "auto", label: "跟随界面" },
+  { value: "tokyoNight", label: "Tokyo Night" },
+  { value: "tokyoNightLight", label: "Tokyo Night Light" },
+  { value: "catppuccin", label: "Catppuccin Mocha" },
+  { value: "dracula", label: "Dracula" },
+  { value: "nord", label: "Nord" },
+  { value: "solarized", label: "Solarized Dark" },
+] as const;
+
+function SwitchRow({ label, description, checked, disabled, onChange }: {
+  readonly label: string;
+  readonly description: string;
+  readonly checked: boolean;
+  readonly disabled?: boolean;
+  readonly onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="flex items-center justify-between">
-      <div>
-        <span className="text-sm">{label}</span>
-        {description && <p className="text-xs text-muted-foreground">{description}</p>}
-      </div>
-      <Switch checked={checked} onCheckedChange={onChange} />
-    </div>
+    <SettingsSwitchRow
+      label={label}
+      description={description}
+      checked={checked}
+      disabled={disabled}
+      onCheckedChange={onChange}
+    />
   );
 }
 
 export function AppearancePanel() {
-  const [preferences, setPreferences] = useState<UserPreferences>(DEFAULT_USER_CONFIG.preferences);
+  const [preferences, setPreferences] = useState<RuntimeUserPreferences | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const { setTheme } = useTheme();
+  const [savingField, setSavingField] = useState<string | null>(null);
+  const [localFontSize, setLocalFontSize] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { theme, setTheme } = useTheme();
+  const [oledMode, setOledMode] = useLocalBooleanPreference("narrafork_oled");
+  const [fullscreen, setFullscreen] = useLocalBooleanPreference("narrafork_fullscreen");
+  const [wakeLock, setWakeLock] = useLocalBooleanPreference("narrafork_wakelock");
+  const [advancedAnimation, setAdvancedAnimation] = useLocalBooleanPreference("narrafork_advanced_anim");
+  const [rendererMode, setRendererMode] = useNarratorMessageRendererMode();
+  useScreenWakeLock(wakeLock);
 
   useEffect(() => {
-    fetchJson<{ preferences: UserPreferences }>("/settings/user")
+    document.documentElement.classList.toggle("oled", oledMode);
+    document.documentElement.dataset.advancedAnimation = String(advancedAnimation);
+  }, [advancedAnimation, oledMode]);
+
+  useEffect(() => {
+    let active = true;
+    preferencesClient.get()
       .then((data) => {
-        const merged = { ...DEFAULT_USER_CONFIG.preferences, ...data.preferences };
-        setPreferences(merged);
-        // Apply stored theme on load
-        if (merged.theme) setTheme(merged.theme as Theme);
-        // Apply font settings to DOM on load
-        if (merged.fontSize) document.documentElement.style.fontSize = `${merged.fontSize}px`;
-        if (merged.fontFamily) document.documentElement.style.fontFamily = merged.fontFamily;
-        // Apply OLED black mode
-        document.documentElement.classList.toggle("oled-black", !!merged.oledBlack);
-        setLoading(false);
+        if (active) setPreferences(data);
       })
-      .catch(() => setLoading(false));
-  }, [setTheme]);
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
 
-  const save = async (patch: Partial<UserPreferences>) => {
-    setPreferences((prev) => ({ ...prev, ...patch }));
-    setSaving(true);
-    setSaved(false);
+  async function savePreference<K extends keyof UserPreferencesPatch>(key: K, value: UserPreferencesPatch[K]) {
+    if (!preferences) return;
+    const previous = preferences;
+    setPreferences({ ...preferences, [key]: value });
+    setSavingField(String(key));
+    setError(null);
     try {
-      await putApi("/settings/user", { preferences: patch });
-      // Apply font settings to DOM immediately
-      if (patch.fontSize) {
-        document.documentElement.style.fontSize = `${patch.fontSize}px`;
-      }
-      if (patch.fontFamily) {
-        document.documentElement.style.fontFamily = patch.fontFamily;
-      }
-      if (typeof patch.oledBlack === "boolean") {
-        document.documentElement.classList.toggle("oled-black", patch.oledBlack);
-      }
-      notify.success("已保存");
-      setSaved(true);
-      setTimeout(() => setSaved(false), 1500);
+      setPreferences(await preferencesClient.patch({ [key]: value } as UserPreferencesPatch));
+    } catch (reason) {
+      setPreferences(previous);
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
-      setSaving(false);
-    }
-  };
-
-  async function handleThemeChange(newTheme: "light" | "dark" | "auto") {
-    setPreferences((prev) => ({ ...prev, theme: newTheme }));
-    setTheme(newTheme); // Apply immediately to DOM
-    setSaving(true);
-    try {
-      await putApi("/settings/theme", { theme: newTheme });
-    } finally {
-      setSaving(false);
+      setSavingField(null);
     }
   }
 
-  if (loading) {
-    return <div className="text-muted-foreground">加载中...</div>;
+  function toggleFullscreen(value: boolean) {
+    setFullscreen(value);
+    if (value) void document.documentElement.requestFullscreen?.().catch(() => undefined);
+    else if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => undefined);
   }
 
-  const themeOptions = [
-    { value: "light" as const, icon: Sun, label: "浅色" },
-    { value: "dark" as const, icon: Moon, label: "深色" },
-    { value: "auto" as const, icon: Monitor, label: "跟随系统" },
+  const terminalThemeOptions = useMemo(() => {
+    if (!preferences || TERMINAL_THEME_OPTIONS.some((option) => option.value === preferences.terminalTheme)) {
+      return [...TERMINAL_THEME_OPTIONS];
+    }
+    return [
+      { value: preferences.terminalTheme, label: `${preferences.terminalTheme}（当前历史值）` },
+      ...TERMINAL_THEME_OPTIONS,
+    ];
+  }, [preferences]);
+
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取显示偏好…</p>;
+
+  const themes: Array<{ value: Theme; label: string; icon: typeof Sun }> = [
+    { value: "light", label: "浅色", icon: Sun },
+    { value: "dark", label: "深色", icon: Moon },
+    { value: "auto", label: "跟随系统", icon: Monitor },
   ];
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold mb-2 text-foreground">外观</h2>
-        <p className="text-sm text-muted-foreground">
-          自定义应用的外观和主题
-        </p>
-      </div>
+    <SettingsPage
+      title="外观与界面"
+      description="本地显示偏好保存在当前浏览器；排版、终端和输入行为通过 Runtime 账户同步。"
+    >
+      {error ? (
+        <Alert>
+          <AlertTitle>偏好保存失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      <div className="rounded-lg border border-border p-4 space-y-6">
-        {/* 主题选择 */}
-        <div>
-          <label className="text-sm font-medium mb-3 block text-foreground">
-            主题模式
-          </label>
-          <div className="grid grid-cols-3 gap-3">
-            {themeOptions.map(({ value, icon: Icon, label }) => (
-              <Button
-                key={value}
-                variant="outline"
-                onClick={() => handleThemeChange(value)}
-                className={`flex flex-col items-center gap-2 p-4 h-auto rounded-lg border-2 transition-colors ${
-                  preferences.theme === value
-                    ? "border-primary bg-primary/5"
-                    : "border-border hover:border-primary/50"
-                }`}
-              >
-                <Icon className="w-6 h-6" />
-                <span className="text-sm font-medium">{label}</span>
-              </Button>
-            ))}
-          </div>
+      <SettingsGroup title="主题" description="浏览器本地设置，不会发送到 Runtime。">
+        <div className="grid gap-2 sm:grid-cols-3">
+          {themes.map(({ value, label, icon: Icon }) => (
+            <Button
+              key={value}
+              type="button"
+              variant={theme === value ? "default" : "outline"}
+              onClick={() => setTheme(value)}
+              aria-pressed={theme === value}
+            >
+              <Icon data-icon="inline-start" />
+              {label}
+            </Button>
+          ))}
         </div>
+        <SwitchRow label="OLED 纯黑模式" description="深色主题下使用纯黑背景，适合 OLED 屏幕。" checked={oledMode} onChange={setOledMode} />
+      </SettingsGroup>
 
-        {/* 字体大小 */}
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium mb-3 text-foreground">
-            <Type className="w-4 h-4" />
-            字体大小
-          </label>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min="12"
-              max="20"
-              value={preferences.fontSize}
-              onChange={(e) => save({ fontSize: Number(e.target.value) })}
-              className="flex-1"
-            />
-            <span className="text-sm font-mono text-muted-foreground w-12 text-right">
-              {preferences.fontSize}px
-            </span>
+      <SettingsGroup title="显示" description="使用 NarraFork 原版浏览器本地键，不写入 Runtime 用户偏好。">
+        <SwitchRow label="忽略安全区并全屏" description="请求浏览器全屏并使用完整显示区域。" checked={fullscreen} onChange={toggleFullscreen} />
+        <SwitchRow label="保持屏幕唤醒" description="页面可见时通过 Screen Wake Lock 阻止屏幕休眠。" checked={wakeLock} onChange={setWakeLock} />
+        <SwitchRow label="高级动画" description="启用 NarraFork 的高级界面动画。" checked={advancedAnimation} onChange={setAdvancedAnimation} />
+        <Field orientation="responsive">
+          <div>
+            <FieldLabel>Narrator 消息渲染器</FieldLabel>
+            <FieldDescription>选择 React 或 Pixi 渲染路径。</FieldDescription>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">
-            调整界面文字大小（12-20px）
-          </p>
-        </div>
-
-        {/* 字体族 */}
-        <div>
-          <label className="text-sm font-medium mb-2 block text-foreground">
-            字体族
-          </label>
           <SimpleSelect
-            value={preferences.fontFamily}
-            onValueChange={(v) => save({ fontFamily: v })}
-            aria-label="字体族"
-            options={[
-              { value: "system-ui, -apple-system, sans-serif", label: "系统默认" },
-              { value: "'Segoe UI', Tahoma, Geneva, Verdana, sans-serif", label: "Segoe UI" },
-              { value: "'Helvetica Neue', Helvetica, Arial, sans-serif", label: "Helvetica" },
-              { value: "'PingFang SC', 'Microsoft YaHei', sans-serif", label: "苹方 / 微软雅黑" },
-            ]}
+            aria-label="Narrator 消息渲染器"
+            value={rendererMode}
+            onValueChange={(value) => setRendererMode(value === "pixi" ? "pixi" : "react")}
+            options={[{ value: "react", label: "React" }, { value: "pixi", label: "Pixi" }]}
           />
-        </div>
+        </Field>
+      </SettingsGroup>
 
-        {/* 显示 */}
-        <div className="border-t border-border pt-4">
-          <h3 className="text-sm font-semibold mb-3">显示</h3>
-          <div className="space-y-3">
-            <SwitchRow
-              label="OLED 纯黑"
-              description="深色模式下使用纯黑背景，适配 AMOLED 屏幕"
-              checked={preferences.oledBlack}
-              onChange={(v) => save({ oledBlack: v })}
-            />
-            <SwitchRow
-              label="高级动画"
-              description="为消息和卡片启用 blur-in 动画"
-              checked={preferences.advancedAnimations}
-              onChange={(v) => save({ advancedAnimations: v })}
-            />
-          </div>
-        </div>
+      {preferences ? (
+        <>
+          <SettingsGroup title="自动换行" description="控制 Markdown、代码和差异视图中的长行展示。">
+            <SwitchRow label="Markdown 自动换行" description="长段落在阅读区域内自动换行。" checked={preferences.wordWrapMarkdown} onChange={(value) => void savePreference("wordWrapMarkdown", value)} />
+            <SwitchRow label="代码自动换行" description="代码块超出宽度时自动折行。" checked={preferences.wordWrapCode} onChange={(value) => void savePreference("wordWrapCode", value)} />
+            <SwitchRow label="Diff 自动换行" description="差异视图中的长行自动折行。" checked={preferences.wordWrapDiff} onChange={(value) => void savePreference("wordWrapDiff", value)} />
+          </SettingsGroup>
 
-        {/* 语言 */}
-        <div className="border-t border-border pt-4">
-          <h3 className="text-sm font-semibold mb-3">语言</h3>
-          <SimpleSelect
-            value={preferences.language}
-            onValueChange={(v) => save({ language: v })}
-            aria-label="语言"
-            options={[
-              { value: "zh", label: "简体中文" },
-              { value: "en", label: "English" },
-            ]}
-          />
-        </div>
+          <SettingsGroup title="最近标签" description="由 Runtime 用户偏好同步到同一账户的其他设备。">
+            <SwitchRow label="将子代理加入最近标签" description="子代理会话也显示在最近访问列表中。" checked={preferences.addSubagentToRecentTabs ?? true} onChange={(value) => void savePreference("addSubagentToRecentTabs", value)} />
+          </SettingsGroup>
 
-        {saving && (
-          <div className="text-xs text-muted-foreground">
-            保存中...
-          </div>
-        )}
-        {saved && (
-          <div className="text-xs text-emerald-600">
-            ✓ 已保存
-          </div>
-        )}
-      </div>
-    </div>
+          <SettingsGroup title="终端" description="使用 NarraFork 原版终端主题键和 8–32 像素字号。">
+            <Field orientation="responsive">
+              <FieldLabel>终端主题</FieldLabel>
+              <SimpleSelect
+                aria-label="终端主题"
+                value={preferences.terminalTheme}
+                onValueChange={(value) => void savePreference("terminalTheme", value)}
+                options={terminalThemeOptions}
+              />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="terminal-font-size">终端字号</FieldLabel>
+              <Input
+                id="terminal-font-size"
+                aria-label="终端字号"
+                type="range"
+                min={8}
+                max={32}
+                step={1}
+                value={localFontSize ?? preferences.terminalFontSize}
+                onChange={(event) => setLocalFontSize(Number(event.currentTarget.value))}
+                onPointerUp={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  setLocalFontSize(null);
+                  void savePreference("terminalFontSize", value);
+                }}
+                onKeyUp={(event) => {
+                  const value = Number(event.currentTarget.value);
+                  setLocalFontSize(null);
+                  void savePreference("terminalFontSize", value);
+                }}
+              />
+              <FieldDescription>当前 {localFontSize ?? preferences.terminalFontSize}px</FieldDescription>
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup title="语言" description="界面语言通过 Runtime 用户偏好同步。">
+            <Field orientation="responsive">
+              <FieldLabel>界面语言</FieldLabel>
+              <SimpleSelect
+                aria-label="界面语言"
+                value={preferences.language}
+                onValueChange={(value) => void savePreference("language", value)}
+                options={[
+                  { value: "zh-CN", label: "简体中文" },
+                  { value: "en", label: "English" },
+                ]}
+              />
+            </Field>
+          </SettingsGroup>
+
+          <SettingsGroup title="输入" description="Shift+Enter 始终插入换行；下列选项控制 Enter 与 Ctrl/Cmd+Enter。">
+            <Field orientation="responsive">
+              <div>
+                <FieldLabel>Enter 键行为</FieldLabel>
+                <FieldDescription>选择在当前轮次、当前工具调用后发送，或立即中断。</FieldDescription>
+              </div>
+              <SimpleSelect aria-label="Enter 键行为" value={preferences.enterQueueMode ?? "turn"} onValueChange={(value) => void savePreference("enterQueueMode", value as "turn" | "tool" | "interrupt")} options={[{ value: "turn", label: "当前轮次后" }, { value: "tool", label: "当前工具后" }, { value: "interrupt", label: "立即中断" }]} />
+            </Field>
+            <Field orientation="responsive">
+              <FieldLabel>Ctrl+Enter 键行为</FieldLabel>
+              <SimpleSelect aria-label="Ctrl+Enter 键行为" value={preferences.ctrlEnterQueueMode ?? "tool"} onValueChange={(value) => void savePreference("ctrlEnterQueueMode", value as "turn" | "tool" | "interrupt")} options={[{ value: "turn", label: "当前轮次后" }, { value: "tool", label: "当前工具后" }, { value: "interrupt", label: "立即中断" }]} />
+            </Field>
+          </SettingsGroup>
+        </>
+      ) : null}
+
+      {savingField ? <p className="text-xs text-muted-foreground">正在保存 {savingField}…</p> : null}
+    </SettingsPage>
   );
 }

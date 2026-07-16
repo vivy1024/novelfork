@@ -5,6 +5,17 @@
  */
 
 export { createAIRouter } from "./ai.js";
+export {
+  AUTHOR_REVIEW_FILES,
+  buildRadarReviewMarkdown,
+  buildWebCaptureReviewMarkdown,
+  type AuthorMaterialFile,
+  type AuthorMaterialPersistenceInfo,
+  type AuthorMaterialRadarRecommendation,
+  type AuthorMaterialRadarResult,
+  type AuthorWebCaptureInput,
+  type AuthorWebCaptureResult,
+} from "./author-materials.js";
 export { createJingweiRouter, type CreateJingweiRouterOptions } from "./jingwei.js";
 export { createWritingModesRouter } from "./writing-modes.js";
 export { createPipelineRouter, createPipelineRun, updatePipelineStage, completePipelineRun } from "./pipeline.js";
@@ -18,4 +29,12 @@ export { createChapterLinksRouter } from "./chapter-links.js";
 export { createWritingResourceRouter } from "./writing-resource.js";
 export { createOverviewRouter } from "./overview.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
-export type { RouterContext } from "./context.js";
+export type {
+  AiObservationScope,
+  AiObservationSuccess,
+  AiRequestObserver,
+  ContextGovernance,
+  RouterContext,
+  RuntimeModelStatus,
+  SessionLlmOverrides,
+} from "./context.js";

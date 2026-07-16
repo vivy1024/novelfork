@@ -51,6 +51,52 @@ const memoryFilterSchema = {
   additionalProperties: false,
 };
 
+const lineRangeSchema = {
+  type: "object",
+  properties: {
+    start: numberSchema("起始行号（从 1 开始）。"),
+    end: numberSchema("结束行号（包含）。"),
+  },
+  required: ["start", "end"],
+  additionalProperties: false,
+};
+
+const chapterRangeSchema = {
+  type: "object",
+  properties: {
+    from: numberSchema("起始章节号（包含）。"),
+    to: numberSchema("结束章节号（包含）。"),
+  },
+  additionalProperties: false,
+};
+
+const sceneSpecSchema = {
+  type: "object",
+  description: "由 scene.spec 生成的结构化写作蓝图。",
+  properties: {
+    chapter: numberSchema("目标章节号。"),
+    title: stringSchema("章节标题。"),
+    wordTarget: numberSchema("目标字数。"),
+    scenes: arraySchema("场景列表。", {
+      type: "object",
+      properties: {
+        characters: arraySchema("出场角色。", { type: "string" }),
+        location: stringSchema("具体地点。"),
+        conflict: stringSchema("核心冲突。"),
+        mood: stringSchema("情绪基调。"),
+        outcome: stringSchema("场景结果。"),
+        hooks_used: arraySchema("回收的伏笔。", { type: "string" }),
+        hooks_planted: arraySchema("新增的伏笔。", { type: "string" }),
+      },
+      required: ["characters", "location", "conflict", "outcome"],
+      additionalProperties: false,
+    }),
+    constraints: arraySchema("写作约束。", { type: "string" }),
+  },
+  required: ["chapter", "title", "wordTarget", "scenes", "constraints"],
+  additionalProperties: false,
+};
+
 /**
  * 小说领域工具的 inputSchema 定义
  */
@@ -104,6 +150,15 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
+  "chapter.write": {
+    type: "object",
+    properties: {
+      chapterNumber: numberSchema("要写入的已存在章节序号。"),
+      content: stringSchema("完整章节正文；会覆盖该章节当前内容。"),
+    },
+    required: ["chapterNumber", "content"],
+    additionalProperties: false,
+  },
   "chapter.list": {
     type: "object",
     properties: {
@@ -118,8 +173,17 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
       content: stringSchema("章节正文（可选，不传则自动读取已保存章节）。"),
-      sceneSpec: { type: "object", description: "Scene Spec 蓝图（可选，用于检查约束满足度）。" },
-      canonEntries: arraySchema("Canon 层条目列表（可选，用于 H2 canon violation 检查）。"),
+      sceneSpec: sceneSpecSchema,
+      canonEntries: arraySchema("Canon 层条目列表（可选，用于 H2 canon violation 检查）。", {
+        type: "object",
+        properties: {
+          title: stringSchema("Canon 条目标题。"),
+          contentMd: stringSchema("Canon 条目内容。"),
+          category: stringSchema("Canon 类别。"),
+        },
+        required: ["title", "contentMd"],
+        additionalProperties: false,
+      }),
       povCharacter: stringSchema("当前 POV 角色名（可选，用于 H7 POV violation 检查）。"),
       wordTarget: numberSchema("目标字数（可选，用于 S1 字数范围检查）。"),
       checks: arraySchema("要执行的检查项（可选，默认全部）。可选值: continuity, rhythm, ai_taste, hooks, character, canon, pov", { type: "string" }),
@@ -132,7 +196,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
-      selection: { type: "object", description: "选中行号范围 { start: number, end: number }。" },
+      selection: lineRangeSchema,
       mode: stringSchema("改写模式：continue | expand | reduce_ai | restyle。"),
       styleHint: stringSchema("restyle 模式的风格提示（可选）。"),
       sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
@@ -145,7 +209,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
-      lineRange: { type: "object", description: "行号范围 { start: number, end: number }。" },
+      lineRange: lineRangeSchema,
       newText: stringSchema("替换内容。"),
       mode: stringSchema("写入模式：replace（替换选中行，默认）、insert_after（在选中行后插入）。"),
     },
@@ -177,11 +241,12 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      filePath: stringSchema("服务器上的文件路径（.txt/.md）。"),
+      content: stringSchema("要导入的 .txt/.md 文本内容；不得传服务器文件路径。"),
+      sourceName: stringSchema("导入来源名称（可选）。"),
       splitPattern: stringSchema("章节分割正则（可选，默认匹配「第X章」「Chapter X」等）。"),
       maxChapters: numberSchema("最大导入章数（可选，默认 500）。"),
     },
-    required: ["bookId", "filePath"],
+    required: ["bookId", "content"],
     additionalProperties: false,
   },
   "outline.suggest_next": {
@@ -198,7 +263,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       characterName: stringSchema("角色名（可选，不传则检查所有角色）。"),
-      chapterRange: { type: "object", description: "章节范围 { from: number, to: number }（可选，默认最近 5 章）。" },
+      chapterRange: chapterRangeSchema,
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -229,7 +294,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。scope=enabled 时必填。"),
-      scope: stringSchema("enabled=当前书籍已启用规则（含 promptInjection 全文）；available=全部可用预设（含 enabled 标记）。默认 enabled。"),
+      scope: enumSchema(["enabled", "available"], "enabled=当前书籍已启用规则（含 promptInjection 全文）；available=全部可用预设（含 enabled 标记）。默认 enabled。"),
       category: stringSchema("scope=available 时可按分类过滤（可选）。"),
     },
     required: [],
@@ -239,10 +304,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      action: stringSchema("enable（启用）/disable（禁用）/set（覆盖启用列表）/create（创建自定义预设）。"),
+      action: enumSchema(["enable", "disable", "set", "create"], "enable（启用）/disable（禁用）/set（覆盖启用列表）/create（创建自定义预设）。"),
       enabledPresetIds: arraySchema("enable/disable/set 时操作的预设 ID 列表。", { type: "string" }),
       name: stringSchema("action=create 时必填：预设名。"),
-      category: stringSchema("action=create 时必填：分类（tone/genre/setting-base/logic-risk/anti-ai/literary）。"),
+      category: enumSchema(["genre", "tone", "setting-base", "logic-risk", "bundle", "anti-ai", "literary"], "action=create 时必填：预设分类。"),
       promptInjection: stringSchema("action=create 时必填：注入到写作提示词的规则全文。"),
       description: stringSchema("action=create 时可选：描述。"),
     },
@@ -261,11 +326,22 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      action: stringSchema("select（切换到已有模板）/create（创建自定义节拍模板）。"),
+      action: enumSchema(["select", "create"], "select（切换到已有模板）/create（创建自定义节拍模板）。"),
       templateId: stringSchema("action=select 时必填：模板 ID（如 opening-hooks、three-act、save-the-cat、heros-journey、chapter-ending-hooks）。"),
       name: stringSchema("action=create 时必填：节拍模板名。"),
       description: stringSchema("action=create 时必填：描述。"),
-      beats: arraySchema("action=create 时必填：节拍序列，每项含 name/emotionalTone/wordRatio/purpose?/networkNovelTip?。"),
+      beats: arraySchema("action=create 时必填：节拍序列。", {
+        type: "object",
+        properties: {
+          name: stringSchema("节拍名。"),
+          emotionalTone: stringSchema("情绪基调。"),
+          wordRatio: numberSchema("建议字数占比。"),
+          purpose: stringSchema("节拍目的。"),
+          networkNovelTip: stringSchema("网文写作提示。"),
+        },
+        required: ["name", "emotionalTone"],
+        additionalProperties: false,
+      }),
     },
     required: ["action"],
     additionalProperties: false,
@@ -274,11 +350,13 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      sceneSpec: { type: "object", description: "由 scene.spec 工具生成的结构化写作蓝图。必须包含 scenes 数组，每个 scene 有 characters/location/conflict/outcome。" },
+      sceneSpec: sceneSpecSchema,
       jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
       previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
       autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
       continueWithHighRiskPending: booleanSchema("存在 high-risk pending NarrativeEvents 时是否明确继续写作。默认 false，会先返回处理提醒。"),
+      adversarialAudit: booleanSchema("是否启用多视角对抗式审计。"),
+      maxReviseRounds: numberSchema("最大自动修订轮数。"),
     },
     required: ["bookId", "sceneSpec"],
     additionalProperties: false,
@@ -514,7 +592,15 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       action: stringSchema("list（列出正式章节结果）/archive（归档）/delete（删除）。"),
       resourceId: stringSchema("action 非 list 时必填：目标资源 ID。"),
-      filter: { type: "object", description: "action=list 时可选过滤：{ type?: 'chapter', status?: 'accepted'|'archived' }。" },
+      filter: {
+        type: "object",
+        description: "action=list 时可选过滤。",
+        properties: {
+          type: { type: "string", enum: ["chapter"] },
+          status: { type: "string", enum: ["accepted", "archived"] },
+        },
+        additionalProperties: false,
+      },
     },
     required: ["bookId", "action"],
     additionalProperties: false,

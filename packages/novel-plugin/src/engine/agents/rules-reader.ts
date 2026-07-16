@@ -5,12 +5,19 @@ import { parseGenreProfile, type ParsedGenreProfile } from "@vivy1024/novelfork-
 import { parseBookRules, type ParsedBookRules } from "@vivy1024/novelfork-core";
 import { BookConfigSchema } from "@vivy1024/novelfork-core";
 
-const BUILTIN_GENRES_DIR = join(
-  typeof __dirname !== "undefined"
-    ? __dirname
-    : dirname(fileURLToPath(import.meta.url)),
-  "../../genres",
-);
+function resolveBuiltinGenresDir(): string {
+  try {
+    const coreEntry = fileURLToPath(import.meta.resolve("@vivy1024/novelfork-core"));
+    return join(dirname(coreEntry), "../genres");
+  } catch {
+    const moduleDir = typeof __dirname !== "undefined"
+      ? __dirname
+      : dirname(fileURLToPath(import.meta.url));
+    return join(moduleDir, "../../../../core/genres");
+  }
+}
+
+const BUILTIN_GENRES_DIR = resolveBuiltinGenresDir();
 
 async function tryReadFile(path: string): Promise<string | null> {
   try {

@@ -1,192 +1,208 @@
-import { useState, useEffect, useRef } from "react";
-import { fetchJson, putApi } from "../../../hooks/use-api";
-import type { UserProfile } from "../../../types/settings";
-import { User, Mail, GitBranch, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
+import { GitBranch, Save, Trash2, Upload } from "lucide-react";
+
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import {
+  createAccountProfileClient,
+  type AccountProfile,
+} from "../../runtime-admin";
+
+const profileClient = createAccountProfileClient();
 
 export function ProfilePanel() {
-  const [profile, setProfile] = useState<UserProfile>({
-    name: "",
-    email: "",
-    gitName: "",
-    gitEmail: "",
-  });
+  const [profile, setProfile] = useState<AccountProfile | null>(null);
+  const [gitUsername, setGitUsername] = useState("");
+  const [gitEmail, setGitEmail] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetchJson<{ profile: UserProfile }>("/settings/user")
+    let active = true;
+    profileClient.get()
       .then((data) => {
-        setProfile(data.profile);
-        if (data.profile.avatar) setAvatarPreview(data.profile.avatar);
-        setLoading(false);
+        if (!active) return;
+        setProfile(data);
+        setGitUsername(data.gitUsername ?? "");
+        setGitEmail(data.gitEmail ?? "");
       })
-      .catch(() => setLoading(false));
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, []);
 
-  async function handleSave() {
-    setSaving(true);
+  useEffect(() => {
+    if (!profile?.avatarImageId) {
+      setAvatarUrl(null);
+      return;
+    }
+    let active = true;
+    let objectUrl: string | null = null;
+    void profileClient.getAvatarBlob(profile.id, profile.avatarImageId).then((blob) => {
+      if (!active) return;
+      objectUrl = URL.createObjectURL(blob);
+      setAvatarUrl(objectUrl);
+    }).catch(() => {
+      if (active) setAvatarUrl(null);
+    });
+    return () => {
+      active = false;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [profile?.avatarImageId, profile?.id]);
+
+  async function handleAvatarUpload(file: File | undefined) {
+    if (!profile || !file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      setError("头像仅支持 PNG、JPEG 或 WebP。");
+      return;
+    }
+    setAvatarBusy(true);
+    setError(null);
     try {
-      await putApi("/settings/user", { profile });
+      const result = await profileClient.uploadAvatar(file);
+      setProfile({ ...profile, avatarImageId: result.avatarImageId });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleAvatarDelete() {
+    if (!profile?.avatarImageId) return;
+    setAvatarBusy(true);
+    setError(null);
+    try {
+      await profileClient.deleteAvatar();
+      setProfile({ ...profile, avatarImageId: null });
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
+
+  async function handleSave() {
+    if (!profile) return;
+    const patch: { gitUsername?: string; gitEmail?: string } = {};
+    if (gitUsername !== (profile.gitUsername ?? "")) patch.gitUsername = gitUsername;
+    if (gitEmail !== (profile.gitEmail ?? "")) patch.gitEmail = gitEmail;
+    if (Object.keys(patch).length === 0) return;
+
+    setSaving(true);
+    setSaved(false);
+    setError(null);
+    try {
+      await profileClient.patch(patch);
+      setProfile({ ...profile, gitUsername: gitUsername || null, gitEmail: gitEmail || null });
+      setSaved(true);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setSaving(false);
     }
   }
 
-  function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (file.size > 2 * 1024 * 1024) {
-      alert("头像文件不能超过 2MB");
-      return;
-    }
-    // 压缩为 128x128 JPEG 以避免 config JSON 膨胀
-    const img = new Image();
-    const objectUrl = URL.createObjectURL(file);
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const canvas = document.createElement("canvas");
-      const size = 128;
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      // 居中裁剪
-      const minDim = Math.min(img.width, img.height);
-      const sx = (img.width - minDim) / 2;
-      const sy = (img.height - minDim) / 2;
-      ctx.drawImage(img, sx, sy, minDim, minDim, 0, 0, size, size);
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-      setAvatarPreview(dataUrl);
-      setProfile((p) => ({ ...p, avatar: dataUrl }));
-    };
-    img.src = objectUrl;
-  }
-
-  if (loading) {
-    return <div className="text-muted-foreground">加载中...</div>;
-  }
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取账户资料…</p>;
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <div>
-        <h2 className="text-lg font-semibold mb-1 text-foreground">个人资料</h2>
-        <p className="text-sm text-muted-foreground">
-          配置您的个人信息和 Git 提交信息
-        </p>
+        <h2 className="text-lg font-semibold text-foreground">个人资料</h2>
+        <p className="text-sm text-muted-foreground">账户身份由 NarraFork Runtime 管理；此处管理头像和 Git 提交身份。</p>
       </div>
 
-      <div className="rounded-lg border border-border p-4 space-y-4">
-        {/* 头像 */}
-        <div className="flex items-center gap-4 pb-4 border-b border-border">
-          <div className="relative">
-            {avatarPreview ? (
-              <img
-                src={avatarPreview}
-                alt="头像"
-                className="h-16 w-16 rounded-full object-cover border border-border"
-              />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
-                {profile.name ? profile.name.charAt(0).toUpperCase() : "U"}
+      {error ? (
+        <Alert>
+          <AlertTitle>资料读取或保存失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {profile ? (
+        <>
+          <Card>
+            <CardHeader>
+              <CardTitle>Runtime 账户</CardTitle>
+              <CardDescription>头像可通过 Runtime 上传或删除；用户名和角色为只读字段。</CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-5">
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex size-20 items-center justify-center overflow-hidden rounded-full border bg-muted text-2xl font-semibold" aria-label="当前头像">
+                  {avatarUrl ? <img src={avatarUrl} alt={`${profile.username} 的头像`} className="size-full object-cover" /> : profile.username.slice(0, 1).toUpperCase()}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm font-medium hover:bg-accent">
+                    <Upload className="size-4" />
+                    {avatarBusy ? "处理中…" : "上传头像"}
+                    <input aria-label="上传头像文件" className="sr-only" type="file" accept="image/png,image/jpeg,image/webp" disabled={avatarBusy} onChange={(event) => void handleAvatarUpload(event.currentTarget.files?.[0])} />
+                  </label>
+                  {profile.avatarImageId ? <Button type="button" variant="outline" onClick={handleAvatarDelete} disabled={avatarBusy}><Trash2 data-icon="inline-start" />删除头像</Button> : null}
+                </div>
               </div>
-            )}
-          </div>
-          <div>
-            <p className="text-sm font-medium">{profile.name || "未设置姓名"}</p>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleAvatarChange}
-            />
-            <Button
-              variant="outline"
-              size="xs"
-              className="mt-1 gap-1"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <Upload className="size-3" />
-              上传头像
-            </Button>
-          </div>
-        </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="font-medium">用户名</span>
+                  <Input aria-label="用户名" value={profile.username} readOnly />
+                </label>
+                <label className="flex flex-col gap-2 text-sm">
+                  <span className="font-medium">角色</span>
+                  <Input aria-label="角色" value={profile.role === "admin" ? "管理员" : "用户"} readOnly />
+                </label>
+              </div>
+            </CardContent>
+          </Card>
 
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium mb-2 text-foreground">
-            <User className="w-4 h-4" />
-            姓名
-          </label>
-          <Input
-            type="text"
-            value={profile.name}
-            onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-            className="w-full"
-            placeholder="您的姓名"
-          />
-        </div>
-
-        <div>
-          <label className="flex items-center gap-2 text-sm font-medium mb-2 text-foreground">
-            <Mail className="w-4 h-4" />
-            邮箱
-          </label>
-          <Input
-            type="email"
-            value={profile.email}
-            onChange={(e) => setProfile({ ...profile, email: e.target.value })}
-            className="w-full"
-            placeholder="your@email.com"
-          />
-        </div>
-
-        <div className="pt-4 border-t border-border">
-          <h3 className="flex items-center gap-2 text-sm font-semibold mb-3 text-foreground">
-            <GitBranch className="w-4 h-4" />
-            Git 配置
-          </h3>
-          <div className="space-y-4">
-            <div>
-              <label className="text-sm font-medium mb-2 block text-foreground">
-                Git 用户名
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitBranch data-icon="inline-start" />
+                Git 提交身份
+              </CardTitle>
+              <CardDescription>用于 NovelFork 创建的 Git 提交；留空会清除 Runtime 中对应字段。</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-4 sm:grid-cols-2">
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium">Git 用户名</span>
+                <Input
+                  aria-label="Git 用户名"
+                  value={gitUsername}
+                  onChange={(event) => setGitUsername(event.currentTarget.value)}
+                  placeholder="例如 Vivy"
+                />
               </label>
-              <Input
-                type="text"
-                value={profile.gitName || ""}
-                onChange={(e) => setProfile({ ...profile, gitName: e.target.value })}
-                className="w-full"
-                placeholder="用于 Git 提交的用户名"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium mb-2 block text-foreground">
-                Git 邮箱
+              <label className="flex flex-col gap-2 text-sm">
+                <span className="font-medium">Git 邮箱</span>
+                <Input
+                  aria-label="Git 邮箱"
+                  type="email"
+                  value={gitEmail}
+                  onChange={(event) => setGitEmail(event.currentTarget.value)}
+                  placeholder="name@example.com"
+                />
               </label>
-              <Input
-                type="email"
-                value={profile.gitEmail || ""}
-                onChange={(e) => setProfile({ ...profile, gitEmail: e.target.value })}
-                className="w-full"
-                placeholder="用于 Git 提交的邮箱"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="pt-4">
-          <Button
-            variant="default"
-            onClick={handleSave}
-            disabled={saving}
-          >
-            {saving ? "保存中..." : "保存"}
-          </Button>
-        </div>
-      </div>
+            </CardContent>
+            <CardFooter className="justify-between gap-3">
+              <span className="text-xs text-muted-foreground">{saved ? "已保存到 Runtime" : "仅发送发生变化的字段"}</span>
+              <Button onClick={handleSave} disabled={saving || (gitUsername === (profile.gitUsername ?? "") && gitEmail === (profile.gitEmail ?? ""))}>
+                <Save data-icon="inline-start" />
+                {saving ? "保存中…" : "保存 Git 身份"}
+              </Button>
+            </CardFooter>
+          </Card>
+        </>
+      ) : null}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import { normalizeCapability, type BackendCapability, type CapabilityStatus } from "./capability-status";
 
+export type ContractFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+
 export interface ContractClientOptions {
-  fetch?: typeof fetch;
+  fetch?: ContractFetch;
   baseUrl?: string;
 }
 

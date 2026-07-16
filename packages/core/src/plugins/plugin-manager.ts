@@ -22,6 +22,7 @@ import type {
 import type { ToolRegistry } from "../registry/tool-registry.js";
 import type { HookManager } from "../hooks/hook-manager.js";
 import type { Logger } from "../utils/logger.js";
+import type { CorePluginActivationSnapshot, PluginManagerLifecycleListener } from "./plugin-lifecycle.js";
 
 /**
  * Plugin manager configuration
@@ -39,6 +40,8 @@ export interface PluginManagerConfig {
   logger: Logger;
   /** Enable hot reload */
   hotReload?: boolean;
+  /** Neutral projection callbacks for embedding runtimes such as Studio. */
+  lifecycleListener?: PluginManagerLifecycleListener;
 }
 
 /**
@@ -49,6 +52,7 @@ export class PluginManager {
   private instances = new Map<string, NovelForkPlugin>();
   private config: PluginManagerConfig;
   private userConfigs = new Map<string, Record<string, unknown>>();
+  private registeredTools = new Map<string, ReturnType<NovelForkPlugin["getTools"]>>();
   private registeredHooks = new Map<string, ReturnType<NovelForkPlugin["getHooks"]>>();
 
   constructor(config: PluginManagerConfig) {
@@ -220,12 +224,17 @@ export class PluginManager {
       return;
     }
 
+    let tools: ReturnType<NovelForkPlugin["getTools"]> = [];
+    let hooks: ReturnType<NovelForkPlugin["getHooks"]> = [];
+    let projectionStarted = false;
+
     try {
-      // Activate plugin
+      // The plugin must be running before Core capabilities are collected.
       await instance.activate();
 
-      // Register tools
-      const tools = instance.getTools();
+      tools = instance.getTools();
+      const registeredTools: ReturnType<NovelForkPlugin["getTools"]> = [];
+      this.registeredTools.set(pluginName, registeredTools);
       for (const tool of tools) {
         this.config.toolRegistry.register({
           ...tool,
@@ -234,31 +243,87 @@ export class PluginManager {
             source: "plugin",
           },
         });
+        registeredTools.push(tool);
       }
-      metadata.toolsCount = tools.length;
 
-      // Register hooks
-      const hooks = instance.getHooks();
+      hooks = instance.getHooks();
+      const registeredHooks: ReturnType<NovelForkPlugin["getHooks"]> = [];
+      this.registeredHooks.set(pluginName, registeredHooks);
       for (const hook of hooks) {
         this.config.hookManager.register(hook.stage, hook.handler);
+        registeredHooks.push(hook);
       }
-      this.registeredHooks.set(pluginName, hooks);
-      metadata.hooksCount = hooks.length;
 
+      const lifecycleListener = this.config.lifecycleListener;
+      if (lifecycleListener) {
+        projectionStarted = true;
+        const snapshot: CorePluginActivationSnapshot = {
+          pluginName,
+          manifest: metadata.manifest,
+          tools,
+        };
+        await lifecycleListener.onActivationPrepared(snapshot);
+      }
+
+      metadata.toolsCount = tools.length;
+      metadata.hooksCount = hooks.length;
+      metadata.error = undefined;
       metadata.state = "active";
       this.config.logger.info(
-        `Activated plugin: ${pluginName} (${tools.length} tools, ${hooks.length} hooks)`
+        `Activated plugin: ${pluginName} (${tools.length} tools, ${hooks.length} hooks)`,
       );
-    } catch (e) {
-      metadata.state = "error";
-      metadata.error = e instanceof Error ? e.message : String(e);
-      this.config.logger.error(`Failed to activate plugin ${pluginName}: ${e}`);
-      throw e;
+    } catch (error) {
+      metadata.error = error instanceof Error ? error.message : String(error);
+      const rollbackErrors: unknown[] = [];
+
+      if (projectionStarted && this.config.lifecycleListener) {
+        try {
+          await this.config.lifecycleListener.onDeactivating(pluginName);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+
+      this.unregisterCoreCapabilities(pluginName, rollbackErrors);
+      try {
+        await instance.deactivate();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+
+      metadata.toolsCount = 0;
+      metadata.hooksCount = 0;
+      metadata.state = rollbackErrors.length === 0 ? "initialized" : "error";
+      this.config.logger.error(`Failed to activate plugin ${pluginName}: ${error}`);
+      throw error;
     }
   }
 
+  private unregisterCoreCapabilities(pluginName: string, errors: unknown[]): void {
+    const tools = this.registeredTools.get(pluginName) ?? [];
+    for (const tool of [...tools].reverse()) {
+      try {
+        this.config.toolRegistry.unregister(tool.definition.name);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    this.registeredTools.delete(pluginName);
+
+    const hooks = this.registeredHooks.get(pluginName) ?? [];
+    for (const hook of [...hooks].reverse()) {
+      try {
+        this.config.hookManager.unregister(hook.stage, hook.handler);
+      } catch (error) {
+        errors.push(error);
+      }
+    }
+    this.registeredHooks.delete(pluginName);
+  }
+
   /**
-   * Deactivate a plugin - unregister tools and hooks
+   * Deactivate a plugin - hide projection, remove Core capabilities, then stop plugin.
+   * A failed cleanup remains retryable with the host projection hidden.
    */
   async deactivate(pluginName: string): Promise<void> {
     const metadata = this.plugins.get(pluginName);
@@ -268,34 +333,46 @@ export class PluginManager {
       throw new Error(`Plugin not found: ${pluginName}`);
     }
 
-    if (metadata.state !== "active") {
+    if (metadata.state !== "active" && metadata.state !== "deactivation-error") {
       this.config.logger.warn(`Plugin ${pluginName} not active`);
       return;
     }
 
+    let projectionHidden = false;
     try {
-      // Deactivate plugin
+      if (this.config.lifecycleListener) {
+        await this.config.lifecycleListener.onDeactivating(pluginName);
+      }
+      projectionHidden = true;
+
+      const cleanupErrors: unknown[] = [];
+      this.unregisterCoreCapabilities(pluginName, cleanupErrors);
+      if (cleanupErrors.length > 0) {
+        throw cleanupErrors[0];
+      }
+
       await instance.deactivate();
-
-      // Unregister tools
-      const tools = instance.getTools();
-      for (const tool of tools) {
-        this.config.toolRegistry.unregister(tool.definition.name);
-      }
-
-      const hooks = this.registeredHooks.get(pluginName) ?? [];
-      for (const hook of hooks) {
-        this.config.hookManager.unregister(hook.stage, hook.handler);
-      }
-      this.registeredHooks.delete(pluginName);
-
       metadata.state = "terminated";
       metadata.toolsCount = 0;
       metadata.hooksCount = 0;
+      metadata.enabled = false;
+      metadata.error = undefined;
+      try {
+        await this.config.lifecycleListener?.onDeactivated?.(pluginName);
+      } catch (notificationError) {
+        this.config.logger.error(`Plugin ${pluginName} terminated notification failed: ${notificationError}`);
+      }
       this.config.logger.info(`Deactivated plugin: ${pluginName}`);
-    } catch (e) {
-      this.config.logger.error(`Failed to deactivate plugin ${pluginName}: ${e}`);
-      throw e;
+    } catch (error) {
+      if (projectionHidden) {
+        metadata.state = "deactivation-error";
+        metadata.enabled = false;
+      } else {
+        metadata.state = "active";
+      }
+      metadata.error = error instanceof Error ? error.message : String(error);
+      this.config.logger.error(`Failed to deactivate plugin ${pluginName}: ${error}`);
+      throw error;
     }
   }
 
@@ -366,11 +443,13 @@ export class PluginManager {
       throw new Error(`Plugin not found: ${pluginName}`);
     }
 
-    metadata.enabled = false;
-
-    if (metadata.state === "active") {
+    if (metadata.state === "active" || metadata.state === "deactivation-error") {
       await this.deactivate(pluginName);
+      metadata.enabled = false;
+      return;
     }
+
+    metadata.enabled = false;
   }
 
   /**

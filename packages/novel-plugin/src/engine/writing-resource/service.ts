@@ -1,10 +1,14 @@
+import { randomUUID } from "node:crypto";
+
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
+import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
   UpdateWritingResourceInput,
   WritingResource,
+  WritingResourceStatus,
 } from "./types.js";
 import { persistNarrativeEvents } from "../narrative-memory/events.js";
 import { applyNarrativeEvents, type ApplyNarrativeEventsResult } from "../narrative-memory/reducer.js";
@@ -15,6 +19,7 @@ export type WritingResourceService = {
   readonly getById: (bookId: string, id: string) => Promise<WritingResource | null>;
   readonly create: (bookId: string, input: CreateServiceInput) => Promise<WritingResource>;
   readonly update: (bookId: string, id: string, input: UpdateWritingResourceInput) => Promise<WritingResource>;
+  readonly transition: (bookId: string, id: string, action: WritingResourceTransitionAction) => Promise<WritingResource>;
   readonly softDelete: (bookId: string, id: string) => Promise<WritingResource>;
   readonly getHistory: (bookId: string, id: string) => Promise<WritingResource[]>;
   readonly findAcceptedChapter: (bookId: string, chapterNumber: number) => Promise<WritingResource | null>;
@@ -26,90 +31,218 @@ export type CreateServiceInput = Omit<CreateWritingResourceInput, "id" | "bookId
   readonly updatedAt?: number;
 };
 
+export type WritingResourceTransitionAction =
+  | { readonly action: "accept"; readonly chapterNumber: number; readonly mode: "replace" | "merge" | "new" }
+  | { readonly action: "reject" }
+  | { readonly action: "archive" }
+  | { readonly action: "to-draft" }
+  | { readonly action: "to-candidate" }
+  | { readonly action: "restore" };
 
+const VALID_TRANSITIONS: Record<WritingResourceStatus, readonly WritingResourceTransitionAction["action"][]> = {
+  draft: ["accept", "to-candidate"],
+  candidate: ["accept", "reject", "archive", "to-draft"],
+  accepted: [],
+  rejected: ["to-draft"],
+  archived: ["restore"],
+};
+
+/**
+ * Hybrid resource service used by the Runtime domain adapter.
+ *
+ * - Existing writing_resource rows remain readable and writable in place.
+ * - Books that already use v3 chapter files continue to use those files.
+ * - Lists merge both stores without migrating, resetting, or fabricating data.
+ */
 export function createWritingResourceService(input: {
   readonly storage: StorageDatabase;
   readonly now?: () => number;
   readonly resolveBookDir?: (bookId: string) => string;
+  readonly repository?: WritingResourceRepository;
 }): WritingResourceService {
   const now = input.now ?? (() => Date.now());
-  if (!input.resolveBookDir) {
-    throw new Error("resolveBookDir is required: formal chapters are stored on the file system.");
+  const repository = input.repository ?? createWritingResourceRepository(input.storage);
+  const fileStore = input.resolveBookDir ? createWritingResourceFileStore(input.resolveBookDir) : undefined;
+
+  async function list(bookId: string, filter: ListWritingResourcesFilter = {}): Promise<WritingResource[]> {
+    const databaseResources = repository.list(bookId, filter);
+    const fileResources = fileStore
+      ? await fileStore.list(bookId, filter).catch(() => [])
+      : [];
+    return mergeResources(databaseResources, fileResources, filter);
   }
-  const store = createFileSystemResourceStore(createWritingResourceFileStore(input.resolveBookDir));
+
+  async function getById(bookId: string, id: string): Promise<WritingResource | null> {
+    const databaseResource = repository.getById(bookId, id);
+    if (databaseResource) return databaseResource;
+    return fileStore ? fileStore.getById(bookId, id) : null;
+  }
+
+  async function findAcceptedChapter(bookId: string, chapterNumber: number): Promise<WritingResource | null> {
+    const databaseResource = repository.findAcceptedChapter(bookId, chapterNumber);
+    const fileResource = fileStore
+      ? await fileStore.findAcceptedChapter(bookId, chapterNumber).catch(() => null)
+      : null;
+    if (!databaseResource) return fileResource;
+    if (!fileResource) return databaseResource;
+    return fileResource.updatedAt > databaseResource.updatedAt ? fileResource : databaseResource;
+  }
 
   return {
-    list: (bookId, filter) => store.list(bookId, filter),
-    getById: (bookId, id) => store.getById(bookId, id),
-    findAcceptedChapter: (bookId, num) => store.findAcceptedChapter(bookId, num),
-    getHistory: (bookId, id) => store.getHistory(bookId, id),
+    list,
+    getById,
+    findAcceptedChapter,
 
     async create(bookId, resource) {
-      const prepared = await prepareCreateInput(bookId, resource, store, now);
-      return store.create(bookId, prepared);
+      const chapterNumber = resource.chapterNumber ?? await nextChapterNumber(list, bookId);
+      const useDatabase = repository.hasAny(bookId)
+        || !fileStore
+        || resource.type !== "chapter"
+        || resource.status !== "accepted";
+      const timestamp = resource.updatedAt ?? now();
+      const requestedId = resource.id?.trim();
+      const id = useDatabase
+        ? requestedId && !repository.hasId(requestedId) ? requestedId : `wr-${randomUUID()}`
+        : requestedId || `chapter:${chapterNumber}`;
+      const prepared: CreateWritingResourceInput = {
+        ...resource,
+        id,
+        bookId,
+        chapterNumber,
+        createdAt: resource.createdAt ?? timestamp,
+        updatedAt: timestamp,
+        acceptedAt: resource.acceptedAt ?? (resource.status === "accepted" ? timestamp : null),
+      };
+      return useDatabase
+        ? repository.create(prepared)
+        : fileStore!.create(bookId, prepared);
     },
 
     async update(bookId, id, patch) {
-      const updated = await store.update(bookId, id, { ...patch, updatedAt: patch.updatedAt ?? now() });
+      const databaseResource = repository.getById(bookId, id);
+      if (databaseResource) {
+        const updated = repository.update(bookId, id, { ...patch, updatedAt: patch.updatedAt ?? now() });
+        if (!updated) throw new Error(`Writing resource not found: ${id}`);
+        return updated;
+      }
+      if (fileStore) {
+        const updated = await fileStore.update(bookId, id, { ...patch, updatedAt: patch.updatedAt ?? now() });
+        if (updated) return updated;
+      }
+      throw new Error(`Writing resource not found: ${id}`);
+    },
+
+    async transition(bookId, id, action) {
+      const resource = repository.getById(bookId, id);
+      if (!resource || resource.deletedAt !== null) throw new Error(`Writing resource not found: ${id}`);
+      if (!VALID_TRANSITIONS[resource.status].includes(action.action)) {
+        throw new Error(`Invalid writing resource transition: ${resource.status} -> ${action.action}`);
+      }
+      const timestamp = now();
+      if (action.action === "accept") {
+        if (!Number.isInteger(action.chapterNumber) || action.chapterNumber <= 0) {
+          throw new Error("Accept action requires a positive integer chapterNumber.");
+        }
+        const existing = await findAcceptedChapter(bookId, action.chapterNumber);
+        if (action.mode === "new" && existing) {
+          throw new Error(`Chapter ${action.chapterNumber} already exists.`);
+        }
+
+        let content = resource.content;
+        let version = 1;
+        let parentId = resource.parentId;
+        if (existing) {
+          if (action.mode === "merge") content = `${existing.content.trim()}\n\n${resource.content.trim()}`;
+          version = existing.version + 1;
+          parentId = existing.id;
+          if (repository.getById(bookId, existing.id)) {
+            repository.update(bookId, existing.id, { status: "archived", updatedAt: timestamp });
+          } else if (fileStore) {
+            await fileStore.softDelete(bookId, existing.id);
+          }
+        }
+
+        const accepted = repository.update(bookId, id, {
+          type: "chapter",
+          status: "accepted",
+          chapterNumber: action.chapterNumber,
+          content,
+          parentId,
+          version,
+          updatedAt: timestamp,
+          acceptedAt: timestamp,
+        });
+        if (!accepted) throw new Error(`Writing resource not found: ${id}`);
+        return accepted;
+      }
+      if (action.action === "to-draft") {
+        const updated = repository.update(bookId, id, { type: "draft", status: "draft", updatedAt: timestamp });
+        if (!updated) throw new Error(`Writing resource not found: ${id}`);
+        return updated;
+      }
+      if (action.action === "to-candidate") {
+        const updated = repository.update(bookId, id, { type: "candidate", status: "candidate", updatedAt: timestamp });
+        if (!updated) throw new Error(`Writing resource not found: ${id}`);
+        return updated;
+      }
+      if (action.action === "restore") {
+        const updated = repository.update(bookId, id, { type: "candidate", status: "candidate", updatedAt: timestamp });
+        if (!updated) throw new Error(`Writing resource not found: ${id}`);
+        return updated;
+      }
+      const targetStatus = action.action === "reject" ? "rejected" : "archived";
+      const updated = repository.update(bookId, id, { status: targetStatus, updatedAt: timestamp });
       if (!updated) throw new Error(`Writing resource not found: ${id}`);
       return updated;
     },
 
-
     async softDelete(bookId, id) {
-      const deleted = await store.softDelete(bookId, id);
-      if (!deleted) throw new Error(`Writing resource not found: ${id}`);
-      return deleted;
+      if (repository.getById(bookId, id)) {
+        const deleted = repository.softDelete(bookId, id, now());
+        if (!deleted) throw new Error(`Writing resource not found: ${id}`);
+        return deleted;
+      }
+      if (fileStore) {
+        const deleted = await fileStore.softDelete(bookId, id);
+        if (deleted) return deleted;
+      }
+      throw new Error(`Writing resource not found: ${id}`);
+    },
+
+    async getHistory(bookId, id) {
+      if (repository.getById(bookId, id)) return repository.getHistory(bookId, id);
+      return fileStore ? fileStore.getHistory(bookId, id) : [];
     },
   };
 }
 
-type WritingResourceStore = {
-  list(bookId: string, filter?: ListWritingResourcesFilter): Promise<WritingResource[]>;
-  getById(bookId: string, id: string): Promise<WritingResource | null>;
-  create(bookId: string, input: CreateWritingResourceInput): Promise<WritingResource>;
-  update(bookId: string, id: string, input: UpdateWritingResourceInput): Promise<WritingResource | null>;
-  softDelete(bookId: string, id: string): Promise<WritingResource | null>;
-  findAcceptedChapter(bookId: string, chapterNumber: number): Promise<WritingResource | null>;
-  getHistory(bookId: string, id: string): Promise<WritingResource[]>;
-};
-
-function createFileSystemResourceStore(fileStore: WritingResourceFileStore): WritingResourceStore {
-  return {
-    list: (bookId, filter) => fileStore.list(bookId, filter),
-    getById: (bookId, id) => fileStore.getById(bookId, id),
-    create: (bookId, input) => fileStore.create(bookId, input),
-    update: (bookId, id, input) => fileStore.update(bookId, id, input),
-    softDelete: (bookId, id) => fileStore.softDelete(bookId, id),
-    findAcceptedChapter: (bookId, chapterNumber) => fileStore.findAcceptedChapter(bookId, chapterNumber),
-    getHistory: (bookId, id) => fileStore.getHistory(bookId, id),
-  };
-}
-
-
-async function prepareCreateInput(
+async function nextChapterNumber(
+  list: (bookId: string, filter?: ListWritingResourcesFilter) => Promise<WritingResource[]>,
   bookId: string,
-  resource: CreateServiceInput,
-  store: WritingResourceStore,
-  now: () => number,
-): Promise<CreateWritingResourceInput> {
-  const chapterNumber = resource.chapterNumber ?? ((await nextChapterNumber(store, bookId)));
-  return {
-    ...resource,
-    id: resource.id ?? `chapter:${chapterNumber}`,
-    bookId,
-    type: "chapter",
-    status: "accepted",
-    chapterNumber,
-    createdAt: resource.createdAt ?? now(),
-    updatedAt: resource.updatedAt ?? now(),
-    acceptedAt: resource.acceptedAt ?? now(),
-  };
+): Promise<number> {
+  const existing = await list(bookId, { type: "chapter" });
+  return existing.reduce((max, entry) => Math.max(max, entry.chapterNumber ?? 0), 0) + 1;
 }
 
-async function nextChapterNumber(store: WritingResourceStore, bookId: string): Promise<number> {
-  const existing = await store.list(bookId, { type: "chapter" });
-  return existing.reduce((max, entry) => Math.max(max, entry.chapterNumber ?? 0), 0) + 1;
+function mergeResources(
+  databaseResources: readonly WritingResource[],
+  fileResources: readonly WritingResource[],
+  filter: ListWritingResourcesFilter,
+): WritingResource[] {
+  const merged = new Map<string, WritingResource>();
+  for (const resource of [...databaseResources, ...fileResources]) {
+    const key = resource.status === "accepted" && resource.type === "chapter" && resource.deletedAt === null && resource.chapterNumber
+      ? `accepted-chapter:${resource.chapterNumber}`
+      : `resource:${resource.id}`;
+    const existing = merged.get(key);
+    if (!existing || resource.updatedAt > existing.updatedAt) merged.set(key, resource);
+  }
+  return Array.from(merged.values())
+    .filter((resource) => filter.includeDeleted || resource.deletedAt === null)
+    .filter((resource) => !filter.type || resource.type === filter.type)
+    .filter((resource) => !filter.status || resource.status === filter.status)
+    .filter((resource) => typeof filter.chapterNumber !== "number" || resource.chapterNumber === filter.chapterNumber)
+    .sort((left, right) => (left.chapterNumber ?? 999999) - (right.chapterNumber ?? 999999) || right.updatedAt - left.updatedAt);
 }
 
 export async function applyNarrativeEventsForChapterResult(

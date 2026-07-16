@@ -7,30 +7,98 @@
  */
 import { NOVEL_TOOL_SCHEMAS } from "../tool-schemas.js";
 import type { ToolInputSchema } from "../tool-schemas.js";
-import type {
-  JsonObjectSchema,
-  SessionToolDefinition,
-} from "@vivy1024/novelfork-studio/shared/agent-native-workspace";
-import type { SessionPermissionMode } from "@vivy1024/novelfork-studio/shared/session-types";
 
-const ALL_SESSION_PERMISSION_MODES: readonly SessionPermissionMode[] = ["ask", "edit", "allow", "read", "plan"];
-const WRITE_SESSION_PERMISSION_MODES: readonly SessionPermissionMode[] = ["ask", "edit", "allow"];
+/** Portable equivalents of Studio's session-tool contracts. Keep this catalog Studio-free. */
+export type NovelRuntimeToolRisk = "read" | "draft-write" | "confirmed-write" | "destructive";
+export type NovelSessionPermissionMode = "ask" | "edit" | "allow" | "read" | "plan";
+export type NovelSessionToolVisibility = "author" | "advanced";
+export type NovelSessionToolScope = "universal" | "novel" | "all";
+export type NovelRuntimeStatus = "ready" | "unavailable";
 
-/** Convert ToolInputSchema from novel-plugin to JsonObjectSchema used by session tools */
-function toJsonObjectSchema(schema: ToolInputSchema): JsonObjectSchema {
-  return schema as unknown as JsonObjectSchema;
+export interface NovelSessionToolDefinition {
+  readonly name: string;
+  readonly description: string;
+  readonly inputSchema: ToolInputSchema;
+  readonly risk: NovelRuntimeToolRisk;
+  readonly renderer: string;
+  readonly enabledForModes: readonly NovelSessionPermissionMode[];
+  readonly visibility: NovelSessionToolVisibility;
+  readonly scope?: NovelSessionToolScope;
+}
+
+export interface NovelRuntimeToolCatalogEntry extends NovelSessionToolDefinition {
+  /** Whether this tool can be safely contributed to the portable Runtime today. */
+  readonly runtimeStatus: NovelRuntimeStatus;
+}
+
+export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
+  "cockpit.snapshot",
+  "pgi.ask",
+  "narrative.read_line",
+  "narrative.propose_change",
+  "chapter.read",
+  "chapter.write",
+  "chapter.list",
+  "chapter.audit",
+  "rewrite.segment",
+  "rewrite.apply",
+  "style.import",
+  "pipeline.revise",
+  "pipeline.import_chapters",
+  "outline.suggest_next",
+  "character.check_consistency",
+  "hooks.manage",
+  "presets.read",
+  "presets.write",
+  "beat.read",
+  "beat.write",
+  "presets.check_compliance",
+  "pipeline.write",
+  "lore.read",
+  "lore.write",
+  "memory.read",
+  "memory.graph",
+  "memory.events",
+  "memory.list",
+  "memory.read_entry",
+  "memory.search",
+  "memory.dedup",
+  "memory.export",
+  "memory.stats",
+  "memory.update",
+  "memory.delete",
+  "memory.bulk_approve",
+  "memory.bulk_delete",
+  "jingwei.audit",
+  "jingwei.write",
+  "jingwei.read",
+  "resource.manage",
+  "scene.spec",
+] as const;
+
+const READY_RUNTIME_TOOL_NAMES = new Set<string>(NOVEL_READY_RUNTIME_TOOL_NAMES);
+const ALL_SESSION_PERMISSION_MODES: readonly NovelSessionPermissionMode[] = ["ask", "edit", "allow", "read", "plan"];
+const WRITE_SESSION_PERMISSION_MODES: readonly NovelSessionPermissionMode[] = ["ask", "edit", "allow"];
+
+/** Preserve the Studio-compatible object-schema shape without importing Studio. */
+function toJsonObjectSchema(schema: ToolInputSchema): ToolInputSchema {
+  return schema;
 }
 
 function sessionTool(
-  definition: Omit<SessionToolDefinition, "visibility"> & Partial<Pick<SessionToolDefinition, "visibility">>,
-): SessionToolDefinition {
-  return { visibility: "author", ...definition };
+  definition: Omit<NovelSessionToolDefinition, "visibility"> & Partial<Pick<NovelSessionToolDefinition, "visibility">>,
+): NovelRuntimeToolCatalogEntry {
+  return {
+    visibility: "author",
+    runtimeStatus: READY_RUNTIME_TOOL_NAMES.has(definition.name) ? "ready" : "unavailable",
+    ...definition,
+  };
 }
 
 /**
  * 小说领域工具定义 — session-level metadata wrapping novel-plugin schemas
  */
-export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = [
+export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[] = [
   sessionTool({
     name: "cockpit.snapshot",
     description:
@@ -79,6 +147,15 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     scope: "novel",
   }),
   sessionTool({
+    name: "chapter.write",
+    description: "受控覆盖指定的已存在章节正文。只能按章节序号写入当前可信书籍，不能创建任意文件或改写其他书籍；Runtime 会在真正写入前请求用户批准。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.write"]),
+    risk: "confirmed-write",
+    renderer: "chapter.content",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
     name: "chapter.list",
     description: "列出书籍的所有章节（序号、标题、字数、状态）。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["chapter.list"]),
@@ -108,9 +185,9 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
   }),
   sessionTool({
     name: "rewrite.apply",
-    description: "将改写结果写回章节文件指定行号范围。支持 replace（替换）和 insert_after（行后插入）两种模式。",
+    description: "将改写结果写回当前可信书籍中已存在章节的指定行号范围。支持 replace（替换）和 insert_after（行后插入）两种模式。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["rewrite.apply"]),
-    risk: "draft-write",
+    risk: "confirmed-write",
     renderer: "tool.rewrite-apply",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -128,16 +205,16 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     name: "pipeline.revise",
     description: "修订已有章节。支持 5 种模式：polish（润色）、rewrite（重写）、rework（大改）、spot-fix（定点修复）、anti-detect（去AI味）。不填章节号则修订最新章。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.revise"]),
-    risk: "draft-write",
+    risk: "confirmed-write",
     renderer: "pipeline.revise",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
     name: "pipeline.import_chapters",
-    description: "整书导入工具。从 .txt/.md 文件中按章节标题分割并导入所有章节到指定书籍。自动生成文风统计。文件路径需为服务器本地路径。",
+    description: "整书导入工具。接收显式 .txt/.md 文本内容，按章节标题分割并追加导入当前可信书籍，同时生成文风统计；不接受服务器文件路径。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.import_chapters"]),
-    risk: "draft-write",
+    risk: "confirmed-write",
     renderer: "pipeline.import_chapters",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -164,7 +241,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     name: "hooks.manage",
     description: "伏笔统一管理：埋设、兑现、检查到期、列出所有伏笔。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["hooks.manage"]),
-    risk: "draft-write",
+    risk: "confirmed-write",
     renderer: "hooks.manage",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -220,7 +297,7 @@ export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly SessionToolDefinition[] = 
     name: "pipeline.write",
     description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n2. 传入蓝图后自动生成正文 → 37 维一致性审计 → 定点修订\n3. 结果应进入正式章节或后续版本结算流程；不要再创建 candidate/draft 主对象\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向（不要把所有交互都往写作流程引导）\n- 用户说「看看XX」/「告诉我XX」时——这是查询请求，不是写作请求\n\n注意：\n- 长度由蓝图中的 targetWordCount 控制（默认 3000-5000 字）\n- 如果审计发现 S1 级问题会自动修订，S3-S4 仅警告",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
-    risk: "draft-write",
+    risk: "confirmed-write",
     renderer: "pipeline.chapter-result",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
@@ -449,7 +526,10 @@ scope=search：关键词搜索静态设定。
 /**
  * 小说工具名列表 — 供 novel-plugin manifest 引用
  */
-export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_SESSION_TOOL_DEFINITIONS.map((t) => t.name);
+/** Studio compatibility export; the portable catalog above remains authoritative. */
+export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly NovelSessionToolDefinition[] = NOVEL_RUNTIME_TOOL_CATALOG;
+
+export const NOVEL_TOOL_NAMES: readonly string[] = NOVEL_RUNTIME_TOOL_CATALOG.map((t) => t.name);
 
 /**
  * 小说 Agent 角色预设 — 与 AGENT_ROLES 保持一致

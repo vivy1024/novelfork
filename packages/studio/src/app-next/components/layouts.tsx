@@ -1,9 +1,10 @@
 import type { ReactNode, ComponentType } from "react";
 
-import { BookOpen, Home, MessageSquareText, Search, Settings, Wrench } from "lucide-react";
+import { ArrowLeft, BookOpen, ChevronRight, Home, MessageSquareText, Search, Settings, Wrench } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import studioPackageJson from "../../../package.json";
 import type { StudioNextRoute } from "../entry";
 
@@ -47,7 +48,7 @@ export function NextShell({ activeRoute, onRouteChange, children }: NextShellPro
         </Button>
 
         {/* 导航 */}
-        <nav aria-label="Studio Next 主导航" className="flex-1 space-y-0.5 px-2">
+        <nav aria-label="Studio Next 主导航" className="flex flex-1 flex-col gap-0.5 px-2">
           {ROUTES.map((item) => (
             <Button
               key={item.key}
@@ -120,49 +121,86 @@ interface SettingsLayoutProps {
   readonly sections: readonly SettingsSectionItem[];
   readonly activeSectionId: string;
   readonly onSectionChange: (sectionId: string) => void;
+  readonly mobileDetailOpen?: boolean;
+  readonly onMobileBack?: () => void;
   readonly children: ReactNode;
 }
 
-export function SettingsLayout({ title: _title, sections, activeSectionId, onSectionChange, children }: SettingsLayoutProps) {
+export function SettingsLayout({
+  title,
+  sections,
+  activeSectionId,
+  onSectionChange,
+  mobileDetailOpen = true,
+  onMobileBack,
+  children,
+}: SettingsLayoutProps) {
   const groupedSections = sections.reduce<Array<{ group: string; sections: SettingsSectionItem[] }>>((groups, section) => {
     const group = section.group ?? "设置分区";
     const existing = groups.find((item) => item.group === group);
-    if (existing) {
-      existing.sections.push(section);
-    } else {
-      groups.push({ group, sections: [section] });
-    }
+    if (existing) existing.sections.push(section);
+    else groups.push({ group, sections: [section] });
     return groups;
   }, []);
+  const activeSection = sections.find((section) => section.id === activeSectionId);
 
   return (
-    <div className="flex h-full w-full min-h-0 gap-3 p-4">
-      <nav aria-label="设置分区" className="w-56 shrink-0 overflow-y-auto rounded-lg border border-border bg-card p-2">
-        <div className="space-y-2">
-          {groupedSections.map(({ group, sections: groupSections }) => (
-            <div key={group} className="space-y-0.5">
-              <div className="px-2 text-[10px] font-semibold text-muted-foreground">{group}</div>
-              {groupSections.map((section) => (
-                <Button
-                  key={section.id}
-                  variant="ghost"
-                  size="sm"
-                  aria-current={section.id === activeSectionId ? "page" : undefined}
-                  className={cn(
-                    "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition",
-                    section.id === activeSectionId ? "bg-primary text-primary-foreground" : "hover:bg-muted",
-                  )}
-                  onClick={() => onSectionChange(section.id)}
-                >
-                  {section.icon && <section.icon className="h-4 w-4 shrink-0" />}
-                  <span>{section.label}</span>
-                </Button>
-              ))}
-            </div>
-          ))}
+    <div data-slot="settings-layout" className="flex h-full min-h-0 w-full bg-background" data-testid="settings-layout">
+      <aside
+        className={cn(
+          "h-full min-h-0 w-full shrink-0 border-border bg-card md:block md:w-[220px] md:border-r",
+          mobileDetailOpen ? "hidden" : "block",
+        )}
+      >
+        <div className="border-b border-border px-4 py-3 md:hidden">
+          <h1 className="text-lg font-semibold">{title}</h1>
         </div>
-      </nav>
-      <div className="flex-1 min-w-0 overflow-y-auto rounded-lg border border-border bg-card p-4">{children}</div>
+        <ScrollArea className="h-[calc(100%-53px)] md:h-full">
+          <nav aria-label="设置分区" className="flex flex-col gap-5 p-3">
+            {groupedSections.map(({ group, sections: groupSections }) => (
+              <section key={group} aria-labelledby={`settings-group-${group}`} className="flex flex-col gap-1">
+                <h2 id={`settings-group-${group}`} className="px-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  {group}
+                </h2>
+                <div className="flex flex-col gap-0.5">
+                  {groupSections.map((section) => (
+                    <Button
+                      key={section.id}
+                      variant="ghost"
+                      size="sm"
+                      aria-current={section.id === activeSectionId ? "page" : undefined}
+                      className={cn(
+                        "w-full justify-start gap-2 px-2 font-normal",
+                        section.id === activeSectionId && "bg-primary/10 font-medium text-primary hover:bg-primary/10 hover:text-primary",
+                      )}
+                      onClick={() => onSectionChange(section.id)}
+                    >
+                      {section.icon ? <section.icon data-icon="inline-start" /> : null}
+                      <span className="truncate">{section.label}</span>
+                      <ChevronRight className="ml-auto md:hidden" aria-hidden="true" />
+                    </Button>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </nav>
+        </ScrollArea>
+      </aside>
+
+      <section
+        aria-label="设置详情"
+        className={cn("h-full min-h-0 min-w-0 flex-1 flex-col", mobileDetailOpen ? "flex" : "hidden md:flex")}
+      >
+        <div className="flex items-center gap-2 border-b border-border bg-background px-3 py-2 md:hidden">
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="返回设置列表" onClick={onMobileBack}>
+            <ArrowLeft />
+          </Button>
+          <h1 className="min-w-0 flex-1 truncate text-base font-semibold">{activeSection?.label ?? title}</h1>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="mx-auto w-full max-w-6xl px-4 pb-24 pt-5 sm:px-6 sm:pt-6 lg:px-8">{children}</div>
+        </ScrollArea>
+      </section>
     </div>
   );
 }

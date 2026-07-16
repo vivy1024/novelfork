@@ -71,24 +71,12 @@ const retiredFrontendPaths = [
   "src/components/tool-components.ts",
 ] as const;
 
-const retiredRoutePaths = [
-  "src/api/routes/hooks-countdown.ts",
-  "src/api/routes/poison-detector.ts",
-] as const;
-
-const retiredChatRoutePaths = [
-  "src/api/routes/chat.ts",
-  "src/api/routes/chat.test.ts",
-  "src/components/ChatPanel.tsx",
-  "src/components/ChatPanel.test.tsx",
-] as const;
-
 function readStudioTsconfig(): { exclude?: string[] } {
   return JSON.parse(readFileSync(join(process.cwd(), "tsconfig.json"), "utf-8")) as { exclude?: string[] };
 }
 
-function readStudioServerTsconfig(): { exclude?: string[] } {
-  return JSON.parse(readFileSync(join(process.cwd(), "tsconfig.server.json"), "utf-8")) as { exclude?: string[] };
+function readStudioManifest(): Record<string, unknown> {
+  return JSON.parse(readFileSync(join(process.cwd(), "package.json"), "utf-8")) as Record<string, unknown>;
 }
 
 describe("legacy source retirement", () => {
@@ -100,51 +88,27 @@ describe("legacy source retirement", () => {
     expect(retiredFrontendPaths.filter((path) => exclude.has(path) || exclude.has(`${path}/**`))).toEqual([]);
   });
 
-  it("keeps unmounted legacy route files deleted and removed from route exports and typecheck excludes", () => {
-    const tsconfig = readStudioTsconfig();
-    const serverTsconfig = readStudioServerTsconfig();
-    const clientExclude = new Set(tsconfig.exclude ?? []);
-    const serverExclude = new Set(serverTsconfig.exclude ?? []);
-    const routeIndexSource = readFileSync(join(process.cwd(), "src", "api", "routes", "index.ts"), "utf-8");
-    const serverSource = readFileSync(join(process.cwd(), "src", "api", "server.ts"), "utf-8");
-
-    expect(retiredRoutePaths.filter((path) => existsSync(join(process.cwd(), path)))).toEqual([]);
-    expect(retiredRoutePaths.filter((path) => clientExclude.has(path) || serverExclude.has(path))).toEqual([]);
-    expect(routeIndexSource).not.toContain("poison-detector");
-    expect(routeIndexSource).not.toContain("hooks-countdown");
-    expect(serverSource).not.toContain("createPoisonDetectorRouter");
-    expect(serverSource).not.toContain("createHooksCountdownRouter");
+  it("retires the complete Studio backend instead of preserving an unmounted second runtime", () => {
+    expect(existsSync(join(process.cwd(), "src", "api"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "tsconfig.server.json"))).toBe(false);
+    expect(existsSync(join(process.cwd(), "scripts", "compile.ts"))).toBe(false);
   });
 
-  it("keeps retired lightweight book chat route deleted from source, exports, server mount, and debt ledgers", () => {
-    const routeIndexSource = readFileSync(join(process.cwd(), "src", "api", "routes", "index.ts"), "utf-8");
-    const serverSource = readFileSync(join(process.cwd(), "src", "api", "server.ts"), "utf-8");
-    const matrixSource = readFileSync(join(process.cwd(), "src", "api", "backend-contract-matrix.ts"), "utf-8");
-    const mockDebtSource = readFileSync(join(process.cwd(), "src", "api", "lib", "mock-debt-ledger.ts"), "utf-8");
-
-    expect(retiredChatRoutePaths.filter((path) => existsSync(join(process.cwd(), path)))).toEqual([]);
-    expect(routeIndexSource).not.toContain("createChatRouter");
-    expect(serverSource).not.toContain("createChatRouter");
-    expect(serverSource).not.toContain("/api/chat");
-    expect(matrixSource).not.toContain("legacy.book-chat.process-memory");
-    expect(matrixSource).not.toContain("routes/chat.ts");
-    expect(mockDebtSource).not.toContain("book-chat-history");
-    expect(mockDebtSource).not.toContain("routes/chat.ts");
+  it("keeps Studio as a private frontend-only package", () => {
+    const manifest = readStudioManifest();
+    const scripts = manifest.scripts as Record<string, string>;
+    expect(manifest.private).toBe(true);
+    expect(manifest.main).toBeUndefined();
+    expect(manifest.exports).toBeUndefined();
+    expect(scripts["build:server"]).toBeUndefined();
+    expect(scripts.compile).toBeUndefined();
+    expect(scripts.build).toBe("vite build");
   });
 
-  it("keeps the retired direct /api/agent loop removed while preserving /api/agent/config", () => {
-    // ai.ts 已迁移到 novel-plugin（refactor(plugin): Batch 3）。校验迁移后的源仍不含被退役的 agent loop。
-    const aiRouteSource = readFileSync(
-      join(process.cwd(), "..", "novel-plugin", "src", "routes", "ai.ts"),
-      "utf-8",
-    );
-    const serverSource = readFileSync(join(process.cwd(), "src", "api", "server.ts"), "utf-8");
-    const matrixSource = readFileSync(join(process.cwd(), "src", "api", "backend-contract-matrix.ts"), "utf-8");
-
-    expect(aiRouteSource).not.toContain('app.post("/api/agent"');
-    expect(aiRouteSource).not.toContain("runAgentLoop");
-    expect(serverSource).toContain('app.route("/api/agent/config", createAgentConfigRouter())');
-    expect(matrixSource).toContain('id: "legacy.ai-agent.unsupported"');
-    expect(matrixSource).not.toContain('id: "legacy.ai-agent.deprecated"');
+  it("preserves the Runtime product contract and workspace routes", () => {
+    const contractSource = readFileSync(join(process.cwd(), "src", "app-next", "runtime", "product-contract.ts"), "utf-8");
+    expect(contractSource).toContain('RUNTIME_BOOTSTRAP_PATH = "/api/novelfork/bootstrap"');
+    expect(contractSource).toContain("buildBookScopedNarratorPath");
+    expect(contractSource).toContain("buildBookWorkspacePath");
   });
 });

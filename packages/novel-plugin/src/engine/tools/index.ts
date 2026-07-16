@@ -6,6 +6,20 @@ export type { DailyProgress, ProgressConfig, WritingLog } from "./progress/progr
 export { getDailyProgress, getProgressTrend, recordChapterCompletion } from "./progress/daily-tracker.js";
 export type { HistogramBucket, RhythmAnalysis, RhythmIssue, SentenceRange } from "./analysis/rhythm-types.js";
 export { analyzeRhythm } from "./analysis/rhythm-analyzer.js";
+export {
+  analyzeRhythm as analyzeBookRhythm,
+  analyzeTension as analyzeBookTension,
+  detectClimaxPoints as detectBookClimaxPoints,
+  detectPattern as detectBookRhythmPattern,
+  detectWarnings as detectBookRhythmWarnings,
+} from "./analysis/book-rhythm-analyzer.js";
+export type {
+  ChapterTension as BookChapterTension,
+  RhythmAnalysis as BookRhythmAnalysis,
+  RhythmPattern as BookRhythmPattern,
+  RhythmWarning as BookRhythmWarning,
+  TensionMetrics as BookTensionMetrics,
+} from "./analysis/book-rhythm-analyzer.js";
 export type { DialogueAnalysis, DialogueChapterType } from "./analysis/dialogue-types.js";
 export { analyzeDialogue } from "./analysis/dialogue-analyzer.js";
 export type { BookHealthSummary, ChapterAuditLog } from "./health/health-types.js";

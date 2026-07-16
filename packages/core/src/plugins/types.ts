@@ -136,7 +136,8 @@ export type PluginState =
   | "initialized"  // Plugin initialized
   | "active"       // Plugin running
   | "error"        // Plugin failed
-  | "terminated";  // Plugin stopped
+  | "terminated"   // Plugin stopped
+  | "deactivation-error"; // Projection hidden, cleanup can be retried
 
 /**
  * Plugin tool registration

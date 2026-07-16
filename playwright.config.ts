@@ -20,13 +20,20 @@ export default defineConfig({
   },
   webServer: [
     {
-      command: `bun run main.ts --root="${e2eProjectRoot}" --port=${apiPort}`,
-      url: `http://127.0.0.1:${apiPort}/api/books`,
+      command: "bun run main.ts",
+      url: `http://localhost:${apiPort}/api/health`,
       timeout: 120_000,
       reuseExistingServer: false,
       env: {
+        PORT: String(apiPort),
+        HOME: e2eProjectRoot,
+        USERPROFILE: e2eProjectRoot,
+        NOVELFORK_PROJECT_ROOT: e2eProjectRoot,
+        NOVELFORK_BOOKS_ROOT: `${e2eProjectRoot}/books`,
+        NARRAFORK_HOME: e2eRuntimeDir,
         NOVELFORK_RUNTIME_DIR: e2eRuntimeDir,
         NOVELFORK_SESSION_STORE_DIR: e2eSessionStoreDir,
+        NOVELFORK_STORAGE_DB_PATH: `${e2eProjectRoot}/novelfork.db`,
         NOVELFORK_NO_BROWSER: "1",
       },
       stdout: "pipe",
@@ -38,7 +45,7 @@ export default defineConfig({
       timeout: 120_000,
       reuseExistingServer: false,
       env: {
-        NOVELFORK_STUDIO_PORT: String(apiPort),
+        NOVELFORK_RUNTIME_PORT: String(apiPort),
       },
       stdout: "pipe",
       stderr: "pipe",

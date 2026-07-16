@@ -1,287 +1,360 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { RuntimeSettings } from "../runtime-admin";
 import { ProviderSettingsPage, type ProviderSettingsClient } from "./ProviderSettingsPage";
 
-const openaiProvider = {
-  id: "openai",
-  name: "OpenAI",
-  type: "openai" as const,
-  enabled: true,
-  priority: 1,
-  apiKeyRequired: true,
-  baseUrl: "https://api.openai.com/v1",
-  prefix: "openai",
-  compatibility: "openai-compatible" as const,
-  apiMode: "responses" as const,
-  config: { apiKey: "test-key" },
-  models: [
-    { id: "gpt-4o", name: "GPT-4o", enabled: true, contextWindow: 128000, maxOutputTokens: 4096, lastTestStatus: "untested" as const },
-  ],
-};
+vi.mock("@/components/ui/simple-select", () => ({
+  SimpleSelect: ({ value, onValueChange, options, placeholder, disabled, "aria-label": ariaLabel }: {
+    value: string;
+    onValueChange: (value: string) => void;
+    options: ReadonlyArray<{ value: string; label: string }>;
+    placeholder?: string;
+    disabled?: boolean;
+    "aria-label"?: string;
+  }) => (
+    <select
+      aria-label={ariaLabel}
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onValueChange(event.currentTarget.value)}
+    >
+      {placeholder && !options.some((option) => option.value === "") ? <option value="">{placeholder}</option> : null}
+      {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+    </select>
+  ),
+}));
 
-function createClient(): ProviderSettingsClient {
+const openaiModels = Array.from({ length: 15 }, (_, index) => ({
+  id: `gpt-inventory-${index + 1}`,
+  owned_by: "fixture",
+}));
+
+function createSettings(): RuntimeSettings {
   return {
-    listProviders: vi.fn(async () => ({ providers: [openaiProvider] })),
-    createProvider: vi.fn(async (provider) => ({ provider: { ...provider, priority: 2, models: [] } })),
-    updateProvider: vi.fn(async (providerId, updates) => ({ provider: { ...openaiProvider, id: providerId, ...updates, config: { ...openaiProvider.config, ...updates.config } } })),
-    refreshModels: vi.fn(async (providerId) => ({
-      provider: { ...openaiProvider, id: providerId, models: [
-        { id: "gpt-5-codex", name: "GPT-5 Codex", enabled: true, contextWindow: 192000, maxOutputTokens: 8192, lastTestStatus: "untested" as const, lastRefreshedAt: "2026-04-27T00:00:00.000Z" },
-      ] },
-    })),
-    testModel: vi.fn(async () => ({ success: true, latency: 12, model: { id: "gpt-4o", name: "GPT-4o", enabled: true, contextWindow: 128000, maxOutputTokens: 4096, lastTestStatus: "success" as const, lastTestLatency: 12 } })),
-    updateModel: vi.fn(async (_providerId, _modelId, updates) => ({ model: { ...openaiProvider.models[0], ...updates } })),
-    deleteProvider: vi.fn(async () => ({ success: true })),
+    server: { port: 7778, host: "localhost", openBrowser: "browser" },
+    agent: {
+      defaultModel: "kiro:claude-sonnet-4.5",
+      hiddenModels: ["openai:gpt-inventory-2"],
+      customModels: [{ value: "openai:writer-custom", label: "Writer Custom", provider: "openai" }],
+      modelContextWindows: {
+        "openai:gpt-inventory-1": 256000,
+        "openai:writer-custom": 128000,
+      },
+      disabledProviders: [],
+    },
+    customApiProviders: [
+      {
+        id: "openai-main",
+        name: "Canonical Responses",
+        prefix: "openai",
+        apiKey: "********1234",
+        baseUrl: "https://custom.example/v1",
+        defaultModel: "gpt-inventory-1",
+        defaultContextWindow: 200000,
+        protocol: "responses-compatible",
+        proxy: { mode: "custom", url: "http://127.0.0.1:7890" },
+        tlsRejectUnauthorized: false,
+        defaultReasoningEffort: "high",
+        userAgentMode: "custom",
+        customUserAgent: "NovelFork-Test/1.0",
+        extraHeaders: { "X-Test": "enabled" },
+        emulateCodexHeaders: true,
+        codexAccountId: "account-1",
+        codexWebSocket: true,
+        codexWebSearch: false,
+        codexImageGeneration: true,
+        disabled: false,
+      },
+      {
+        id: "anthropic-main",
+        name: "Canonical Anthropic",
+        prefix: "anthropic-main",
+        apiKey: "********5678",
+        baseUrl: "https://anthropic.example/v1",
+        defaultModel: "claude-sonnet-4-5",
+        protocol: "anthropic-official",
+        disabled: false,
+      },
+    ],
+    openaiProviders: [{
+      id: "openai-main",
+      name: "OpenAI 派生缓存（不应展示）",
+      prefix: "openai",
+      apiKey: "********1234",
+      baseUrl: "https://custom.example/v1",
+      defaultModel: "gpt-inventory-1",
+      apiMode: "responses",
+    }],
+    anthropicProviders: [{
+      id: "anthropic-main",
+      name: "Anthropic 派生缓存（不应展示）",
+      prefix: "anthropic-main",
+      apiKey: "********5678",
+      baseUrl: "https://anthropic.example/v1",
+      defaultModel: "claude-sonnet-4-5",
+      officialApi: true,
+    }],
+    nugProviders: [{
+      id: "nug-1",
+      name: "NUG 本地",
+      prefix: "nug",
+      apiKey: "********9999",
+      baseUrl: "http://127.0.0.1:7790",
+      defaultModel: "kiro:sonnet",
+    }],
+    clineProviders: [{
+      id: "cline-1",
+      name: "Cline OAuth",
+      prefix: "cline",
+      accessToken: "********abcd",
+      baseUrl: "https://openrouter.ai/api/v1",
+      defaultModel: "anthropic/claude",
+    }],
+    kiro: {},
+    codex: { defaultReasoningEffort: "medium" },
+    codexAvailable: true,
+    kiroModels: [{ id: "claude-sonnet-4.5", name: "Claude Sonnet 4.5" }],
+    codexModels: [{ id: "gpt-5-codex", name: "GPT-5 Codex" }],
+    openaiModelsGrouped: [{
+      providerId: "openai-main",
+      providerName: "OpenAI 派生缓存（不应展示）",
+      models: openaiModels,
+    }],
+    anthropicModelsGrouped: [{
+      providerId: "anthropic-main",
+      providerName: "Anthropic 派生缓存（不应展示）",
+      models: [{ id: "claude-sonnet-4-5", display_name: "Claude Sonnet 4.5" }],
+    }],
+    nugModelsGrouped: [{
+      providerId: "nug-1",
+      providerName: "NUG 本地",
+      models: [{ id: "kiro:sonnet" }],
+    }],
+    clineModelsGrouped: [{
+      providerId: "cline-1",
+      providerName: "Cline OAuth",
+      models: [{ id: "anthropic/claude" }],
+    }],
   };
 }
 
-beforeAll(() => {
-  if (!Element.prototype.scrollIntoView) {
-    Element.prototype.scrollIntoView = () => {};
-  }
-});
+function createClient() {
+  let settings = createSettings();
+  const client: ProviderSettingsClient = {
+    get: vi.fn(async () => settings),
+    patch: vi.fn(async (patch) => {
+      settings = {
+        ...settings,
+        ...patch,
+        agent: patch.agent ? { ...settings.agent, ...patch.agent } : settings.agent,
+      } as RuntimeSettings;
+      return settings;
+    }),
+    testModel: vi.fn(async () => ({ text: "连接正常", requestUrls: [] })),
+    refreshProviderModels: vi.fn(async ({ providerId }) => {
+      if (providerId === "openai-main") {
+        settings = {
+          ...settings,
+          openaiModelsGrouped: [{
+            providerId: "openai-main",
+            providerName: "OpenAI 派生缓存（不应展示）",
+            models: [...openaiModels, { id: "gpt-after-refresh" }],
+          }],
+        };
+      }
+      return { models: [{ id: `${providerId}-refreshed` }], fromCache: false };
+    }),
+  };
+  return { client, getSettings: () => settings };
+}
 
 afterEach(() => cleanup());
 
 describe("ProviderSettingsPage", () => {
-  it("loads providers and renders API key providers", async () => {
-    const client = createClient();
+  it("只展示和计数 canonical 标准 API，隐藏平台账户池及派生数组", async () => {
+    const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
     expect(await screen.findByRole("heading", { name: "AI 供应商" })).toBeTruthy();
-    await waitFor(() => expect(client.listProviders).toHaveBeenCalledTimes(1));
-    expect(screen.getByRole("heading", { name: "运行态总览" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "API 供应商" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "标准 API 供应商" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "完整标准 API 模型库存" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "编辑与测试 Canonical Responses" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "编辑与测试 Canonical Anthropic" })).toBeTruthy();
+    expect(screen.queryByText("OpenAI 派生缓存（不应展示）")).toBeNull();
+    expect(screen.queryByText("Anthropic 派生缓存（不应展示）")).toBeNull();
+    expect(screen.queryByText("NUG 本地")).toBeNull();
+    expect(screen.queryByText("Cline OAuth")).toBeNull();
+    expect(screen.queryByText("kiro:claude-sonnet-4.5")).toBeNull();
+    expect(screen.queryByText("codex:gpt-5-codex")).toBeNull();
+    expect(screen.getByText("openai:gpt-inventory-15")).toBeTruthy();
+    expect(screen.getByText("openai:gpt-inventory-2")).toBeTruthy();
+
+    const providerSummary = screen.getAllByText("标准 API 供应商")
+      .find((element) => element.getAttribute("data-slot") === "card-description")
+      ?.closest('[data-slot="card"]');
+    expect(providerSummary).toBeTruthy();
+    expect(within(providerSummary as HTMLElement).getByText("2")).toBeTruthy();
+    expect(client.get).toHaveBeenCalledTimes(1);
   });
 
-  it("API key provider 区分可配置/已配置/已验证/可调用四态", async () => {
-    const client = createClient();
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
-      providers: [{
-        ...openaiProvider,
-        models: [{ ...openaiProvider.models[0], lastTestStatus: "success" as const }],
-      }],
-    });
+  it("详情保留完整标准 API 字段，保存时只 PATCH customApiProviders", async () => {
+    const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    const openaiCard = await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" });
+    fireEvent.click(await screen.findByRole("button", { name: "编辑与测试 Canonical Responses" }));
+    expect((screen.getByLabelText("API Key") as HTMLInputElement).value).toBe("");
+    expect(screen.getByText(/Runtime 返回掩码：\*{8}1234/)).toBeTruthy();
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://custom.example/v1");
+    expect((screen.getByLabelText("默认模型") as HTMLInputElement).value).toBe("gpt-inventory-1");
+    expect((screen.getByLabelText("供应商默认上下文窗口") as HTMLInputElement).value).toBe("200000");
+    expect((screen.getByLabelText("供应商代理策略") as HTMLSelectElement).value).toBe("custom");
+    expect((screen.getByLabelText("供应商代理 URL") as HTMLInputElement).value).toBe("http://127.0.0.1:7890");
+    expect(screen.getByLabelText("验证 TLS 证书").getAttribute("aria-checked")).toBe("false");
+    expect((screen.getByLabelText("供应商默认推理强度") as HTMLSelectElement).value).toBe("high");
+    expect((screen.getByLabelText("User-Agent 指纹") as HTMLSelectElement).value).toBe("custom");
+    expect((screen.getByLabelText("自定义 User-Agent") as HTMLInputElement).value).toBe("NovelFork-Test/1.0");
+    expect((screen.getByLabelText("额外请求头 JSON") as HTMLTextAreaElement).value).toContain('"X-Test": "enabled"');
 
-    expect(openaiCard.textContent).toContain("可配置");
-    expect(openaiCard.textContent).toContain("已配置");
-    expect(openaiCard.textContent).toContain("已验证");
-    expect(openaiCard.textContent).toContain("可调用");
-  });
-
-  it("RED: provider 列表支持搜索、异常过滤并能隐藏 E2E 测试夹具", async () => {
-    const client = createClient();
-    const e2eProvider = {
-      ...openaiProvider,
-      id: "e2e-provider-task11",
-      name: "E2E Provider Task11",
-      prefix: "e2e-task11",
-      models: [{ ...openaiProvider.models[0], id: "e2e-model-a", name: "E2E Model A", lastTestStatus: "success" as const }],
-    };
-    const brokenProvider = {
-      ...openaiProvider,
-      id: "broken-gateway",
-      name: "Broken Gateway",
-      baseUrl: "",
-      config: {},
-      models: [{ ...openaiProvider.models[0], id: "broken-model", name: "Broken Model", lastTestStatus: "error" as const, lastTestError: "网关 502" }],
-    };
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [openaiProvider, e2eProvider, brokenProvider] });
-
-    render(<ProviderSettingsPage client={client} />);
-
-    const fixtureCard = await screen.findByRole("button", { name: "查看 E2E Provider Task11 API key 接入详情" });
-    expect(screen.getByLabelText("搜索供应商或模型")).toBeTruthy();
-    expect(screen.getByLabelText("只看异常项")).toBeTruthy();
-    expect(screen.getByLabelText("隐藏测试夹具")).toBeTruthy();
-    expect(fixtureCard.textContent).toContain("测试夹具");
-    expect(fixtureCard.textContent).toContain("开发数据");
-
-    fireEvent.click(screen.getByLabelText("隐藏测试夹具"));
-    expect(screen.queryByRole("button", { name: "查看 E2E Provider Task11 API key 接入详情" })).toBeNull();
-
-    fireEvent.change(screen.getByLabelText("搜索供应商或模型"), { target: { value: "broken" } });
-    fireEvent.click(screen.getByLabelText("只看异常项"));
-    expect(screen.getByRole("button", { name: "查看 Broken Gateway API key 接入详情" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "查看 OpenAI API key 接入详情" })).toBeNull();
-  });
-
-  it("运行态总览拆分 total / available / callable 模型统计口径", async () => {
-    const client = createClient();
-    client.getProviderSummary = vi.fn(async () => ({
-      summary: {
-        providerCount: 3,
-        enabledProviderCount: 2,
-        physicalModelCount: 9,
-        availableModelCount: 4,
-        totalCatalogModelCount: 5,
-        callableModelCount: 1,
-        issueCount: 2,
-      },
-    }));
-    render(<ProviderSettingsPage client={client} />);
-
-    await screen.findByRole("heading", { name: "运行态总览" });
-
-    expect(screen.getByText("1")).toBeTruthy();
-    expect(screen.getByText("可调用模型")).toBeTruthy();
-    expect(screen.getByText("可用 4 / 共 5 个模型")).toBeTruthy();
-    expect(screen.getByText("已启用 2 / 共 3 个")).toBeTruthy();
-  });
-
-  it("API key provider 缺配置或测试失败时显示 degraded/error 与真实恢复动作", async () => {
-    const client = createClient();
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
-      providers: [{
-        ...openaiProvider,
-        baseUrl: "",
-        config: {},
-        models: [{ ...openaiProvider.models[0], lastTestStatus: "error" as const, lastTestError: "网关 502" }],
-      }],
-    });
-    render(<ProviderSettingsPage client={client} />);
-
-    const openaiCard = await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" });
-
-    expect(openaiCard.textContent).toContain("异常");
-    expect(openaiCard.textContent).toContain("可配置");
-    expect(openaiCard.textContent).toContain("未配置");
-    expect(openaiCard.textContent).toContain("未验证");
-    expect(openaiCard.textContent).toContain("缺少 Base URL");
-    expect(openaiCard.textContent).toContain("缺少 API Key");
-    expect(openaiCard.textContent).toContain("测试失败");
-    expect(openaiCard.textContent).toContain("不可调用");
-    expect(openaiCard.textContent).toContain("添加密钥");
-    expect(openaiCard.textContent).toContain("刷新模型");
-    expect(openaiCard.textContent).toContain("测试模型");
-  });
-
-  it("模型能力标签只来自真实 inventory，未知能力显示 unknown", async () => {
-    const client = createClient();
-    client.listGroupedModels = vi.fn(async () => ({
-      groups: [{
-        providerId: "openai",
-        providerName: "OpenAI",
-        enabled: true,
-        health: "partial",
-        models: [
-          { ...openaiProvider.models[0], capabilities: ["大上下文", "工具调用"] },
-          { id: "unknown-model", name: "Unknown Model", enabled: true, contextWindow: 32000, maxOutputTokens: 4096, lastTestStatus: "untested" as const },
-        ],
-      }],
-    }));
-    render(<ProviderSettingsPage client={client} />);
-
-    // Wait for load to complete
-    await screen.findByRole("heading", { name: "AI 供应商" });
-    // The grouped models API is called but ModelInventorySection is not rendered inline;
-    // verify the API call was made
-    await waitFor(() => expect(client.listGroupedModels).toHaveBeenCalledTimes(1));
-  });
-
-  it("opens OpenAI API provider detail with editable API fields, model list and refresh action", async () => {
-    const client = createClient();
-    render(<ProviderSettingsPage client={client} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" }));
-
-    expect(await screen.findByRole("heading", { name: "API 接入信息" })).toBeTruthy();
-    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("https://api.openai.com/v1");
-    expect(screen.getByLabelText("API Key").getAttribute("type")).toBe("password");
-    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.alt.example/v1" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://gateway.example/v1" } });
     fireEvent.click(screen.getByRole("button", { name: "保存变更" }));
-    await waitFor(() => expect(client.updateProvider).toHaveBeenCalledWith("openai", expect.objectContaining({ baseUrl: "https://api.alt.example/v1" })));
-    expect(screen.getByRole("heading", { name: "模型列表" })).toBeTruthy();
-    expect(screen.getByText("GPT-4o")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "获取模型列表" })).toBeTruthy();
-    expect(screen.queryByText("账号管理")).toBeNull();
-  });
 
-  it("shows saved API key state when provider views are sanitized", async () => {
-    const client = createClient();
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
-      providers: [{ ...openaiProvider, config: { apiKeyConfigured: true } as never }],
+    await waitFor(() => expect(client.patch).toHaveBeenCalledTimes(1));
+    const patch = (client.patch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(Object.keys(patch)).toEqual(["customApiProviders"]);
+    expect(patch).toEqual({
+      customApiProviders: expect.arrayContaining([expect.objectContaining({
+        id: "openai-main",
+        baseUrl: "https://gateway.example/v1",
+        apiKey: "********1234",
+        proxy: { mode: "custom", url: "http://127.0.0.1:7890" },
+        tlsRejectUnauthorized: false,
+        defaultReasoningEffort: "high",
+        userAgentMode: "custom",
+        customUserAgent: "NovelFork-Test/1.0",
+        extraHeaders: { "X-Test": "enabled" },
+        emulateCodexHeaders: true,
+      })]),
     });
-    render(<ProviderSettingsPage client={client} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" }));
-
-    expect((await screen.findByLabelText("API Key")).getAttribute("placeholder")).toBe("已配置，留空不变");
   });
 
-  it("refreshes models in API provider detail view", async () => {
-    const client = createClient();
+  it("支持五类 canonical 协议并保留 Codex Native flags", async () => {
+    const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看 OpenAI API key 接入详情" }));
-    await screen.findByRole("button", { name: "获取模型列表" });
-    fireEvent.click(screen.getByRole("button", { name: "获取模型列表" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑与测试 Canonical Responses" }));
+    const protocol = screen.getByLabelText("API 类型 / 协议");
+    expect(within(protocol).getByRole("option", { name: "Anthropic 官方" })).toBeTruthy();
+    expect(within(protocol).getByRole("option", { name: "Anthropic 兼容" })).toBeTruthy();
+    expect(within(protocol).getByRole("option", { name: "Responses 兼容" })).toBeTruthy();
+    expect(within(protocol).getByRole("option", { name: "Chat Completions 兼容" })).toBeTruthy();
+    expect(within(protocol).getByRole("option", { name: "Codex Native" })).toBeTruthy();
 
-    await waitFor(() => expect(client.refreshModels).toHaveBeenCalledWith("openai"));
+    fireEvent.change(protocol, { target: { value: "codex-native" } });
+    expect((screen.getByLabelText("ChatGPT Account ID") as HTMLInputElement).value).toBe("account-1");
+    expect(screen.getByLabelText("使用 Responses WebSocket").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("允许 Codex Web Search").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("允许 Codex Image Generation").getAttribute("aria-checked")).toBe("true");
   });
 
-  it("shows empty API key provider state", async () => {
-    const client = createClient();
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({ providers: [] });
+  it("创建供应商时只写 canonical 数组", async () => {
+    const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    await screen.findByRole("heading", { name: "AI 供应商" });
-    expect(screen.getAllByText(/0 个供应商/).length).toBeGreaterThan(0);
-    expect(screen.getByText("暂无密钥供应商")).toBeTruthy();
-  });
-
-  it("selecting a protocol opens an unsaved provider draft and creates it only when saved", async () => {
-    const client = createClient();
-    render(<ProviderSettingsPage client={client} />);
-
-    fireEvent.click(await screen.findByRole("button", { name: "+ 添加供应商" }));
-    expect(await screen.findByRole("dialog", { name: "选择协议类型" })).toBeTruthy();
-
-    fireEvent.click(screen.getByText("Responses 兼容"));
-
-    expect(await screen.findByRole("heading", { name: "新建 Responses 兼容 供应商" })).toBeTruthy();
-    expect(client.createProvider).not.toHaveBeenCalled();
-    expect(screen.getByText("新建供应商，保存后才会创建并写入配置。")) .toBeTruthy();
-    expect((screen.getByRole("button", { name: "获取模型列表" }) as HTMLButtonElement).disabled).toBe(true);
-
-    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "My Responses" } });
-    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://api.example.com/v1" } });
-    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-live" } });
+    fireEvent.click(await screen.findByRole("button", { name: "添加标准 API 供应商" }));
+    expect((screen.getByLabelText("自定义模型 ID") as HTMLInputElement).disabled).toBe(true);
+    expect(screen.getByLabelText("API Key").closest("form")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("名称"), { target: { value: "Novel Responses" } });
+    fireEvent.change(screen.getByLabelText("模型前缀"), { target: { value: "novel-responses" } });
+    fireEvent.change(screen.getByLabelText("Base URL"), { target: { value: "https://novel.example/v1" } });
+    fireEvent.change(screen.getByLabelText("API Key"), { target: { value: "sk-new" } });
+    fireEvent.change(screen.getByLabelText("默认模型"), { target: { value: "writer-1" } });
     fireEvent.click(screen.getByRole("button", { name: "创建供应商" }));
 
-    await waitFor(() => expect(client.createProvider).toHaveBeenCalledWith(expect.objectContaining({
-      id: "my-responses",
-      name: "My Responses",
-      protocol: "responses",
-      apiMode: "responses",
-      baseUrl: "https://api.example.com/v1",
-      config: { apiKey: "sk-live" },
-    })));
+    await waitFor(() => expect(client.patch).toHaveBeenCalledTimes(1));
+    const patch = (client.patch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(Object.keys(patch)).toEqual(["customApiProviders"]);
+    expect(patch.customApiProviders).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: "novel-responses",
+      name: "Novel Responses",
+      prefix: "novel-responses",
+      protocol: "responses-compatible",
+      apiKey: "sk-new",
+    })]));
+    expect(patch).not.toHaveProperty("openaiProviders");
+    expect(patch).not.toHaveProperty("anthropicProviders");
   });
 
-  it("shows the Codex four-level reasoning strength picker", async () => {
-    const client = createClient();
-    (client.listProviders as ReturnType<typeof vi.fn>).mockResolvedValue({
-      providers: [{
-        ...openaiProvider,
-        id: "codex-proxy",
-        name: "Codex Proxy",
-        protocol: "codex" as const,
-        apiMode: "codex" as const,
-        thinkingStrength: "medium" as const,
-      }],
-    });
+  it("按协议接入真实 provider refresh，并重新读取完整库存", async () => {
+    const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "查看 Codex Proxy API key 接入详情" }));
+    fireEvent.click(await screen.findByRole("button", { name: "编辑与测试 Canonical Responses" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新模型库存" }));
+    await waitFor(() => expect(client.refreshProviderModels).toHaveBeenCalledWith({
+      providerId: "openai-main",
+      protocol: "responses-compatible",
+    }));
+    await waitFor(() => expect(client.get).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText("openai:gpt-after-refresh")).toBeTruthy();
 
-    expect(await screen.findByRole("heading", { name: "Codex 配置" })).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Codex 推理强度"));
-    expect(await screen.findByText("最高")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "返回供应商列表" }));
+    fireEvent.click(screen.getByRole("button", { name: "编辑与测试 Canonical Anthropic" }));
+    fireEvent.click(screen.getByRole("button", { name: "刷新模型库存" }));
+    await waitFor(() => expect(client.refreshProviderModels).toHaveBeenLastCalledWith({
+      providerId: "anthropic-main",
+      protocol: "anthropic-official",
+    }));
+  });
+
+  it("可编辑 hiddenModels、modelContextWindows 与 customModels", async () => {
+    const { client } = createClient();
+    render(<ProviderSettingsPage client={client} />);
+    fireEvent.click(await screen.findByRole("button", { name: "编辑与测试 Canonical Responses" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "隐藏模型 openai:gpt-inventory-1" }));
+    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({
+      agent: expect.objectContaining({
+        hiddenModels: expect.arrayContaining(["openai:gpt-inventory-1", "openai:gpt-inventory-2"]),
+      }),
+    })));
+
+    const contextInput = screen.getByLabelText("模型上下文窗口 openai:gpt-inventory-3");
+    fireEvent.change(contextInput, { target: { value: "320000" } });
+    fireEvent.blur(contextInput);
+    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({
+      agent: expect.objectContaining({
+        modelContextWindows: expect.objectContaining({ "openai:gpt-inventory-3": 320000 }),
+      }),
+    })));
+
+    fireEvent.change(screen.getByLabelText("自定义模型 ID"), { target: { value: "writer-new" } });
+    fireEvent.change(screen.getByLabelText("自定义模型名称"), { target: { value: "Writer New" } });
+    fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
+    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({
+      agent: expect.objectContaining({
+        customModels: expect.arrayContaining([{ value: "openai:writer-new", label: "Writer New", provider: "openai" }]),
+      }),
+    })));
+    expect(await screen.findByText("openai:writer-new")).toBeTruthy();
+  });
+
+  it("库存和详情测试都通过 /api/settings/test-model client boundary", async () => {
+    const { client } = createClient();
+    render(<ProviderSettingsPage client={client} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "测试模型 openai:gpt-inventory-1" }));
+    await waitFor(() => expect(client.testModel).toHaveBeenCalledWith({
+      model: "openai:gpt-inventory-1",
+      prompt: "请用一句话确认 NovelFork 模型连接正常。",
+    }));
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑与测试 Canonical Responses" }));
+    fireEvent.click(screen.getByRole("button", { name: "测试默认模型" }));
+    await waitFor(() => expect(client.testModel).toHaveBeenLastCalledWith({
+      model: "openai:gpt-inventory-1",
+      prompt: "请用一句话确认连接正常。",
+    }));
+    expect(await screen.findByText(/连接正常/)).toBeTruthy();
   });
 });

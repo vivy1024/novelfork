@@ -29,6 +29,18 @@ export interface UpdateUserTemplateInput {
   bundleJson?: string;
 }
 
+const selectColumns = `
+  "id",
+  "book_id" AS "bookId",
+  "name",
+  "genre",
+  "description",
+  "bundle_json" AS "bundleJson",
+  "created_at" AS "createdAt",
+  "updated_at" AS "updatedAt",
+  "deleted_at" AS "deletedAt"
+`;
+
 export function createUserTemplateRepository(storage: StorageDatabase) {
   return {
     list(bookId?: string): UserTemplateRecord[] {
@@ -36,13 +48,13 @@ export function createUserTemplateRepository(storage: StorageDatabase) {
         if (bookId) {
           return storage.sqlite
             .prepare<UserTemplateRecord>(
-              `SELECT * FROM "user_template" WHERE "deleted_at" IS NULL AND "book_id" = ? ORDER BY "created_at" DESC`,
+              `SELECT ${selectColumns} FROM "user_template" WHERE "deleted_at" IS NULL AND "book_id" = ? ORDER BY "created_at" DESC`,
             )
             .all(bookId);
         }
         return storage.sqlite
           .prepare<UserTemplateRecord>(
-            `SELECT * FROM "user_template" WHERE "deleted_at" IS NULL ORDER BY "created_at" DESC`,
+            `SELECT ${selectColumns} FROM "user_template" WHERE "deleted_at" IS NULL ORDER BY "created_at" DESC`,
           )
           .all();
       } catch (error) {
@@ -54,7 +66,7 @@ export function createUserTemplateRepository(storage: StorageDatabase) {
       try {
         return storage.sqlite
           .prepare<UserTemplateRecord>(
-            `SELECT * FROM "user_template" WHERE "id" = ? AND "deleted_at" IS NULL`,
+            `SELECT ${selectColumns} FROM "user_template" WHERE "id" = ? AND "deleted_at" IS NULL`,
           )
           .get(id);
       } catch (error) {

@@ -1,59 +1,89 @@
-import { RuntimeControlPanel } from "./panels/RuntimeControlPanel";
-import { useState, useEffect, useRef } from "react";
-import { useApi, fetchJson, putApi } from "../../hooks/use-api";
-import { ProfilePanel } from "./panels/ProfilePanel";
-import { AppearancePanel } from "./panels/AppearancePanel";
-import { MonitoringPanel } from "./panels/MonitoringPanel";
-import { DataPanel } from "./panels/DataPanel";
+import { useEffect, useState } from "react";
+import { AlertTriangle, KeyRound } from "lucide-react";
 
-import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
-import { UsagePanel } from "./panels/UsagePanel";
-import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
-import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
-import { AgentRuntimeHardeningPanel } from "./panels/AgentRuntimeHardeningPanel";
-import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
-import { ProxySettingsPanel } from "./panels/ProxySettingsPanel";
-import { AboutPanel } from "./panels/AboutPanel";
-import { InlineError } from "../components/feedback";
-import { Row } from "../components/shared";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, AlertTriangle, RefreshCw, Loader2, CheckCircle, AlertCircle, ShieldAlert } from "lucide-react";
-import type { ServerSettings, UpdateSettings } from "../../types/settings";
 import {
-  deriveModelSettingsFacts,
-  settingsFactDisplayValue,
-  settingsFactSourceLabel,
-  settingsFactStatusLabel,
-  type SettingsFact,
-} from "./SettingsTruthModel";
+  Field,
+  FieldContent,
+  FieldDescription,
+  FieldLabel,
+  FieldTitle,
+} from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+import { Switch } from "@/components/ui/switch";
+import {
+  createSettingsClient,
+  type RuntimeServerSettings,
+  type RuntimeSettings,
+  type RuntimeTlsSettings,
+} from "../runtime-admin";
+import { AgentRuntimeHardeningPanel } from "./panels/AgentRuntimeHardeningPanel";
+import { ChaptersContainersPanel } from "./panels/ChaptersContainersPanel";
+import { GatewayPanel } from "./panels/GatewayPanel";
+import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
+import { AppearancePanel } from "./panels/AppearancePanel";
+import { AuthenticationPanel } from "./panels/AuthenticationPanel";
+import { DataPanel } from "./panels/DataPanel";
+import { DevicesPanel } from "./panels/DevicesPanel";
+import { MonitoringPanel } from "./panels/MonitoringPanel";
+import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
+import { ProfilePanel } from "./panels/ProfilePanel";
+import { SecurityPanel } from "./panels/SecurityPanel";
+import { SearchSettingsPanel } from "./panels/SearchSettingsPanel";
+import { ProxySettingsPanel } from "./panels/ProxySettingsPanel";
+import { RuntimeControlPanel } from "./panels/RuntimeControlPanel";
+import { RuntimeEnvironmentPanel } from "./panels/RuntimeEnvironmentPanel";
+import { StorageDiagnosticsPanel } from "./panels/StorageDiagnosticsPanel";
+import { TerminalsPanel } from "./panels/TerminalsPanel";
+import { UsagePanel } from "./panels/UsagePanel";
+import { UsersPanel } from "./panels/UsersPanel";
+import { AboutPanel } from "./panels/AboutPanel";
+import { SettingsGroup, SettingsPage, SettingsSaveBar, SettingsSwitchRow } from "./components/SettingsPage";
+import { asRecord } from "./runtime-settings-utils";
 
 interface SettingsSectionContentProps {
   readonly sectionId: string;
   readonly onSectionChange?: (sectionId: string) => void;
 }
 
-export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsSectionContentProps) {
+export function SettingsSectionContent({ sectionId }: SettingsSectionContentProps) {
   switch (sectionId) {
     case "profile":
       return <ProfilePanel />;
+    case "security":
+      return <SecurityPanel />;
     case "models":
+    case "history":
+    case "config":
       return <RuntimeControlPanel />;
     case "agents":
       return <AgentSettingsPanel />;
     case "agent-hardening":
       return <AgentRuntimeHardeningPanel />;
-
     case "notifications":
       return <NotificationSettingsPanel />;
     case "appearance":
       return <AppearancePanel />;
+    case "gateway":
+      return <GatewayPanel />;
+    case "search":
+      return <SearchSettingsPanel />;
+    case "chapters":
+      return <ChaptersContainersPanel />;
+    case "terminals":
+      return <TerminalsPanel />;
+    case "users":
+      return <UsersPanel />;
+    case "devices":
+      return <DevicesPanel />;
     case "proxy":
       return <ProxySettingsPanel />;
     case "server":
       return <ServerSection />;
+    case "authentication":
+      return <AuthenticationPanel />;
     case "storage":
       return <StorageDiagnosticsPanel />;
     case "data":
@@ -64,468 +94,304 @@ export function SettingsSectionContent({ sectionId, onSectionChange }: SettingsS
       return <RuntimeEnvironmentPanel />;
     case "resources":
       return <MonitoringPanel />;
-    case "history":
-    case "config":
-      return <ModelsSection onSectionChange={onSectionChange} />;
     case "about":
       return <AboutPanel />;
     default:
-      return <ModelsSection onSectionChange={onSectionChange} />;
+      return <RuntimeControlPanel />;
   }
 }
 
-/* ── Models: read-only display + link to providers ── */
+interface UpdateDraft {
+  serverUrl: string;
+  product: string;
+  channel: "stable" | "beta";
+  checkIntervalMinutes: number;
+  autoDownload: boolean;
+}
 
-interface UserConfig {
-  modelDefaults?: {
-    defaultSessionModel?: string;
-    summaryModel?: string;
-    exploreSubagentModel?: string;
-    planSubagentModel?: string;
-    subagentModelPool?: string[];
-    codexReasoningEffort?: string;
+interface ServerDraft {
+  port: number;
+  host: string;
+  defaultProjectDir: string;
+  openBrowser: "off" | "browser" | "app";
+  tls: RuntimeTlsSettings;
+  update: UpdateDraft;
+}
+
+const settingsClient = createSettingsClient();
+
+function serverDraft(settings: RuntimeSettings): ServerDraft {
+  const server = settings.server ?? { port: 7778, host: "localhost", openBrowser: "browser" };
+  const update = asRecord(settings.update);
+  return {
+    port: server.port,
+    host: server.host,
+    defaultProjectDir: settings.paths?.defaultProjectDir ?? "",
+    openBrowser: server.openBrowser,
+    tls: server.tls ?? { enabled: false, certFile: "", keyFile: "" },
+    update: {
+      serverUrl: typeof update.serverUrl === "string" ? update.serverUrl : "",
+      product: typeof update.product === "string" ? update.product : "narrafork",
+      channel: update.channel === "beta" ? "beta" : "stable",
+      checkIntervalMinutes: typeof update.checkIntervalMinutes === "number" ? update.checkIntervalMinutes : 60,
+      autoDownload: update.autoDownload === true,
+    },
   };
-  runtimeControls?: {
-    defaultReasoningEffort?: string;
-  };
 }
 
-function ModelsSection({ onSectionChange }: { onSectionChange?: (id: string) => void }) {
-  const { data, loading, error } = useApi<UserConfig>("/settings/user");
-  const facts = deriveModelSettingsFacts(data);
-  const modelFacts = facts.filter((fact) => fact.id === "model.defaultSessionModel" || fact.id === "model.summaryModel");
-  const subagentFacts = facts.filter((fact) => fact.id.startsWith("model.") && fact.id !== "model.defaultSessionModel" && fact.id !== "model.summaryModel" && fact.id !== "model.codexReasoningEffort");
-  const reasoningFacts = facts.filter((fact) => fact.id.startsWith("runtime.") || fact.id === "model.codexReasoningEffort");
-
-  return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold mb-2 text-foreground">模型</h2>
-        <p className="text-sm text-muted-foreground">默认模型、摘要模型、子代理偏好和推理强度。模型启用与测试在 AI 供应商中管理。</p>
-      </div>
-      {loading && <p className="text-muted-foreground">加载中...</p>}
-      {error && <InlineError message={error} />}
-      <div className="space-y-3 rounded-lg border border-border p-4">
-        {modelFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
-        <div className="border-t border-border pt-3">
-          <h3 className="text-sm font-semibold mb-2 text-foreground">子代理模型池</h3>
-          {subagentFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
-        </div>
-        <div className="border-t border-border pt-3">
-          <h3 className="text-sm font-semibold mb-2 text-foreground">推理强度</h3>
-          {reasoningFacts.map((fact) => <FactRow key={fact.id} fact={fact} />)}
-        </div>
-        <div className="pt-3">
-          <Button onClick={() => onSectionChange?.("providers")} type="button">
-            打开 AI 供应商
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function FactRow({ fact }: { readonly fact: SettingsFact<unknown> }) {
-  return (
-    <div className="space-y-1 py-1.5 text-sm" data-setting-fact-id={fact.id}>
-      <div className="flex items-center justify-between gap-3">
-        <span className="text-muted-foreground">{fact.label}</span>
-        <span className="font-mono text-foreground">{settingsFactDisplayValue(fact)}</span>
-      </div>
-      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
-        <span>来源：{settingsFactSourceLabel(fact.source)}</span>
-        <span>状态：{settingsFactStatusLabel(fact.status)}</span>
-        {fact.readApi && <span>读取：{fact.readApi}</span>}
-        {fact.writeApi && <span>写入：{fact.writeApi}</span>}
-        {fact.reason && <span>原因：{fact.reason}</span>}
-      </div>
-    </div>
-  );
-}
-
-/* ── Server ── */
-
-type UpdateCheckPhase = "idle" | "checking" | "up-to-date" | "available" | "error";
-
-interface UpdateCheckResult {
-  currentVersion: string;
-  latestVersion: string | null;
-  updateAvailable: boolean;
-  releaseUrl: string | null;
-  error?: string;
+function validateServerDraft(draft: ServerDraft): string | null {
+  if (!draft.host.trim()) return "监听地址不能为空。";
+  if (!draft.defaultProjectDir.trim()) return "默认项目目录不能为空。";
+  if (!draft.update.product.trim()) return "更新产品标识不能为空。";
+  if (draft.update.serverUrl.trim()) {
+    try {
+      new URL(draft.update.serverUrl.trim());
+    } catch {
+      return "更新服务器必须是有效的 URL。";
+    }
+  }
+  if (draft.tls.enabled && (!draft.tls.certFile.trim() || !draft.tls.keyFile.trim())) {
+    return "启用 HTTPS 时必须填写证书文件和私钥文件。";
+  }
+  return null;
 }
 
 function ServerSection() {
-  const { data: metricsData, loading: metricsLoading, error: metricsError } = useApi<Record<string, unknown>>("/settings/metrics");
-  const [server, setServer] = useState<ServerSettings>({
-    port: 4567,
-    host: "127.0.0.1",
-    defaultProjectDir: "",
-    browserOpenMode: "app",
-    tlsEnabled: false,
-    tlsCertPath: "",
-    tlsKeyPath: "",
-    autoCheckUpdate: true,
-  });
-  const [update, setUpdate] = useState<UpdateSettings>({
-    serverUrl: "https://novelfork-update.vivy1024.cc",
-    channel: "stable",
-    autoCheck: true,
-    autoDownload: false,
-    lastCheckAt: null,
-    skippedVersion: null,
-  });
+  const [draft, setDraft] = useState<ServerDraft | null>(null);
+  const [savedDraft, setSavedDraft] = useState<ServerDraft | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [generatingTls, setGeneratingTls] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+  const [restartUrl, setRestartUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-
-  // cleanup: 清理 savedTimerRef
-  useEffect(() => {
-    return () => { clearTimeout(savedTimerRef.current); };
-  }, []);
-
-  // Update check state
-  const [updatePhase, setUpdatePhase] = useState<UpdateCheckPhase>("idle");
-  const [updateInfo, setUpdateInfo] = useState<UpdateCheckResult | null>(null);
-  const [updateError, setUpdateError] = useState<string | null>(null);
 
   useEffect(() => {
-    const ctrl = new AbortController();
-    fetchJson<{ server?: ServerSettings; update?: UpdateSettings }>("/settings/user", { signal: ctrl.signal })
-      .then((data) => {
-        if (ctrl.signal.aborted) return;
-        if (data.server) setServer(data.server);
-        if (data.update) setUpdate(data.update);
+    let active = true;
+    settingsClient.get()
+      .then((settings) => {
+        if (!active) return;
+        const nextDraft = serverDraft(settings);
+        setDraft(nextDraft);
+        setSavedDraft(nextDraft);
       })
-      .catch((err) => {
-        if (ctrl.signal.aborted) return;
-        setError(err instanceof Error ? err.message : "加载失败");
+      .catch((reason) => {
+        if (active) setError(reason instanceof Error ? reason.message : String(reason));
       })
       .finally(() => {
-        if (!ctrl.signal.aborted) setLoading(false);
+        if (active) setLoading(false);
       });
-    return () => ctrl.abort();
+    return () => { active = false; };
   }, []);
 
   async function handleSave() {
+    if (!draft) return;
+    const validationError = validateServerDraft(draft);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+    const server: RuntimeServerSettings = {
+      port: draft.port,
+      host: draft.host.trim(),
+      openBrowser: draft.openBrowser,
+      tls: {
+        ...draft.tls,
+        certFile: draft.tls.certFile.trim(),
+        keyFile: draft.tls.keyFile.trim(),
+        ...(draft.tls.caFile?.trim() ? { caFile: draft.tls.caFile.trim() } : {}),
+      },
+    };
     setSaving(true);
     setError(null);
+    setRestartUrl(null);
     try {
-      await putApi("/settings/user", { server, update });
-      clearTimeout(savedTimerRef.current);
-      setSaved(true);
-      savedTimerRef.current = setTimeout(() => setSaved(false), 2000);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "保存失败");
+      const updated = await settingsClient.patch({
+        server,
+        paths: { defaultProjectDir: draft.defaultProjectDir.trim() },
+        update: {
+          serverUrl: draft.update.serverUrl.trim() || undefined,
+          product: draft.update.product.trim(),
+          channel: draft.update.channel,
+          checkIntervalMinutes: draft.update.checkIntervalMinutes,
+          autoDownload: draft.update.autoDownload,
+        },
+      });
+      const nextDraft = serverDraft(updated);
+      setDraft(nextDraft);
+      setSavedDraft(nextDraft);
+      if (updated.serverRestarting) setRestartUrl(updated.newUrl ?? null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleCheckUpdate() {
-    setUpdatePhase("checking");
-    setUpdateError(null);
+  async function handleGenerateTls() {
+    if (!draft) return;
+    setGeneratingTls(true);
+    setError(null);
     try {
-      const result = await fetchJson<UpdateCheckResult>("/settings/check-update");
-      setUpdateInfo(result);
-      if (result.error) {
-        setUpdatePhase("error");
-        setUpdateError(result.error);
-      } else if (result.updateAvailable) {
-        setUpdatePhase("available");
-      } else {
-        setUpdatePhase("up-to-date");
-      }
-    } catch (err) {
-      setUpdatePhase("error");
-      setUpdateError(err instanceof Error ? err.message : "检查更新失败");
+      const result = await settingsClient.generateTls();
+      setDraft({
+        ...draft,
+        tls: {
+          enabled: true,
+          certFile: result.certPath,
+          keyFile: result.keyPath,
+        },
+      });
+      setRestartUrl(result.newUrl);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setGeneratingTls(false);
     }
   }
 
+  async function handleCheckUpdate() {
+    setCheckingUpdate(true);
+    setError(null);
+    setUpdateStatus(null);
+    try {
+      const result = await settingsClient.checkUpdate();
+      setUpdateStatus(result.updateAvailable
+        ? `发现新版本 ${result.latestVersion ?? ""}（当前 ${result.currentVersion}）`
+        : `当前已是最新版本 ${result.currentVersion}`);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setCheckingUpdate(false);
+    }
+  }
+
+  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">正在读取服务器设置…</p>;
+  if (!draft) return <p className="py-8 text-center text-sm text-destructive">服务器设置加载失败。</p>;
+
+  const dirty = savedDraft !== null && JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-lg font-semibold mb-1 text-foreground">服务器与系统</h2>
-        <p className="text-sm text-muted-foreground">运行时信息、系统依赖与服务器配置。</p>
-      </div>
+    <SettingsPage
+      title="服务器与更新"
+      description="直接读写 Runtime 设置中的 server、paths、tls 和 update 字段。"
+    >
+      <Alert>
+        <AlertTitle className="flex items-center gap-2"><AlertTriangle data-icon="inline-start" />保存后可能重启 Runtime</AlertTitle>
+        <AlertDescription>监听地址、端口或 TLS 有变化时，Runtime 会安排服务器重启；请准备使用新的 URL 重新连接。</AlertDescription>
+      </Alert>
 
-      {/* 服务器配置表单 */}
-      {loading && <p className="text-muted-foreground">加载中...</p>}
-      {error && <InlineError message={error} />}
+      {error ? <Alert><AlertTitle>服务器设置操作失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
+      {restartUrl ? <Alert><AlertTitle>Runtime 正在重启</AlertTitle><AlertDescription>新的访问地址：{restartUrl}</AlertDescription></Alert> : null}
 
-      {!loading && (
-        <div className="space-y-4 rounded-lg border border-border p-4">
-          <h3 className="text-sm font-semibold">服务器配置</h3>
-
-          <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-            <AlertTriangle className="size-3.5 shrink-0" />
-            <span>修改端口、监听地址或 TLS 设置后需要重启生效</span>
-          </div>
-
-          {/* 端口 */}
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">服务器端口</label>
-            <Input
-              type="number"
-              min={1}
-              max={65535}
-              value={server.port}
-              onChange={(e) => setServer((s) => ({ ...s, port: parseInt(e.target.value, 10) || 4567 }))}
-              className="w-32 text-sm font-mono"
-            />
-          </div>
-
-          {/* 监听地址 */}
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">监听地址</label>
-            <SimpleSelect
-              value={server.host}
-              onValueChange={(v) => setServer((s) => ({ ...s, host: v }))}
-              options={[
-                { value: "127.0.0.1", label: "127.0.0.1（仅本机）" },
-                { value: "0.0.0.0", label: "0.0.0.0（允许局域网）" },
-              ]}
-              className="w-56"
-            />
-          </div>
-
-          {/* 默认项目目录 */}
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">默认项目目录</label>
-            <Input
-              placeholder="留空则使用 exe 所在目录"
-              value={server.defaultProjectDir}
-              onChange={(e) => setServer((s) => ({ ...s, defaultProjectDir: e.target.value }))}
-              className="text-sm font-mono"
-            />
-          </div>
-
-          {/* 浏览器打开方式 */}
-          <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">启动时打开浏览器</label>
-            <SimpleSelect
-              value={server.browserOpenMode}
-              onValueChange={(v) => setServer((s) => ({ ...s, browserOpenMode: v as ServerSettings["browserOpenMode"] }))}
-              options={[
-                { value: "app", label: "应用窗口（推荐）" },
-                { value: "browser", label: "浏览器标签页" },
-                { value: "none", label: "不打开" },
-              ]}
-              className="w-56"
-            />
-          </div>
-
-          {/* TLS */}
-          <div className="space-y-3 border-t border-border pt-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium">启用 TLS/HTTPS</span>
-                <p className="text-xs text-muted-foreground">启用后通过 HTTPS 访问工作台</p>
-              </div>
-              <Switch
-                checked={server.tlsEnabled}
-                onCheckedChange={(checked) => setServer((s) => ({ ...s, tlsEnabled: checked }))}
-              />
-            </div>
-            {server.tlsEnabled && (
-              <div className="space-y-3 pl-1">
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">证书路径</label>
-                  <Input
-                    placeholder="/path/to/cert.pem"
-                    value={server.tlsCertPath}
-                    onChange={(e) => setServer((s) => ({ ...s, tlsCertPath: e.target.value }))}
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <label className="text-xs text-muted-foreground">密钥路径</label>
-                  <Input
-                    placeholder="/path/to/key.pem"
-                    value={server.tlsKeyPath}
-                    onChange={(e) => setServer((s) => ({ ...s, tlsKeyPath: e.target.value }))}
-                    className="text-xs font-mono"
-                  />
-                </div>
-                <Button variant="outline" size="sm" className="gap-1.5" disabled title="功能开发中">
-                  <ShieldAlert className="size-3.5" />
-                  生成自签名证书
-                </Button>
-                <div className="flex items-center gap-2 rounded-md bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-400">
-                  <AlertTriangle className="size-3.5 shrink-0" />
-                  <span>自签名证书会导致浏览器显示安全警告。首次访问时需手动信任此证书。</span>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 更新 */}
-          <div className="space-y-3 border-t border-border pt-3">
-            <h3 className="text-sm font-semibold">更新</h3>
-
-            {/* 更新服务器地址 */}
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">更新服务器地址</label>
-              <Input
-                placeholder="更新服务器的 URL（例如 https://updates.example.com）"
-                value={update.serverUrl}
-                onChange={(e) => setUpdate((u) => ({ ...u, serverUrl: e.target.value }))}
-                className="text-sm font-mono"
-              />
-            </div>
-
-            {/* 更新通道 */}
-            <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">更新通道</label>
-              <div className="inline-flex rounded-md border border-border overflow-hidden">
-                <button
-                  type="button"
-                  className={`px-3 py-1.5 text-xs font-medium transition-colors ${update.channel === "stable" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                  onClick={() => setUpdate((u) => ({ ...u, channel: "stable" }))}
-                >
-                  稳定版
-                </button>
-                <button
-                  type="button"
-                  className={`px-3 py-1.5 text-xs font-medium border-l border-border transition-colors ${update.channel === "beta" ? "bg-primary text-primary-foreground" : "bg-background text-muted-foreground hover:bg-muted"}`}
-                  onClick={() => setUpdate((u) => ({ ...u, channel: "beta" }))}
-                >
-                  测试版
-                </button>
-              </div>
-            </div>
-
-            {/* 自动下载更新 */}
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="text-sm font-medium">自动下载更新</span>
-                <p className="text-xs text-muted-foreground">有可用更新时自动下载</p>
-              </div>
-              <Switch
-                checked={update.autoDownload}
-                onCheckedChange={(checked) => setUpdate((u) => ({ ...u, autoDownload: checked }))}
-              />
-            </div>
-
-            {/* 检查更新 */}
-            <div className="flex items-center gap-3 flex-wrap">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={handleCheckUpdate}
-                disabled={updatePhase === "checking"}
-                className="gap-1.5"
-              >
-                {updatePhase === "checking" ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
-                检查更新
-              </Button>
-
-              {updatePhase === "up-to-date" && (
-                <span className="flex items-center gap-1 text-xs text-green-600">
-                  <CheckCircle className="size-3.5" />
-                  已是最新版本
-                </span>
-              )}
-
-              {updatePhase === "available" && updateInfo && (
-                <span className="flex items-center gap-1 text-xs text-orange-600">
-                  <AlertCircle className="size-3.5" />
-                  新版本可用：v{updateInfo.latestVersion}
-                  {updateInfo.releaseUrl && (
-                    <a href={updateInfo.releaseUrl} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline ml-1">
-                      查看详情
-                    </a>
-                  )}
-                </span>
-              )}
-
-              {updatePhase === "error" && updateError && (
-                <span className="flex items-center gap-1 text-xs text-red-600">
-                  <AlertCircle className="size-3.5" />
-                  {updateError}
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* 保存按钮 */}
-          <div className="pt-2">
-            <Button onClick={handleSave} disabled={saving} className="gap-1.5">
-              <Save className="size-3.5" />
-              {saving ? "保存中..." : saved ? "已保存" : "保存配置"}
-            </Button>
-          </div>
+      <SettingsGroup title="监听与启动" description="端口和监听地址会触发 Runtime 重启；打开方式在下次启动时生效。">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="runtime-server-port">端口</FieldLabel>
+            <Input id="runtime-server-port" aria-label="服务器端口" type="number" min={1} max={65535} value={draft.port} onChange={(event) => setDraft({ ...draft, port: Math.min(65535, Math.max(1, Number(event.currentTarget.value) || 7778)) })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-server-host">监听地址</FieldLabel>
+            <Input id="runtime-server-host" aria-label="监听地址" value={draft.host} onChange={(event) => setDraft({ ...draft, host: event.currentTarget.value })} placeholder="localhost 或 0.0.0.0" />
+          </Field>
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="runtime-default-project-dir">默认项目目录</FieldLabel>
+            <Input id="runtime-default-project-dir" aria-label="默认项目目录" value={draft.defaultProjectDir} onChange={(event) => setDraft({ ...draft, defaultProjectDir: event.currentTarget.value })} placeholder="Runtime 创建项目时使用的绝对路径" />
+            <FieldDescription>不能为空；仅保存目录字符串，不会在浏览器端创建或修改目录。</FieldDescription>
+          </Field>
+          <Field className="sm:col-span-2">
+            <FieldLabel>启动时打开</FieldLabel>
+            <SimpleSelect aria-label="启动时打开" value={draft.openBrowser} onValueChange={(value) => setDraft({ ...draft, openBrowser: value as ServerDraft["openBrowser"] })} options={[
+              { value: "off", label: "不自动打开" },
+              { value: "browser", label: "浏览器标签页" },
+              { value: "app", label: "应用窗口" },
+            ]} />
+          </Field>
         </div>
-      )}
+      </SettingsGroup>
 
-      {/* 运行时信息（只读） */}
-      {metricsLoading && <p className="text-muted-foreground">加载中...</p>}
-      {metricsError && <InlineError message={metricsError} />}
+      <SettingsGroup title="TLS / HTTPS" description="可使用已有 PEM 文件，或让 Runtime 生成自签名证书。">
+        <SettingsSwitchRow
+          label="启用 HTTPS"
+          description="启用时证书和私钥路径必须真实存在。"
+          checked={draft.tls.enabled}
+          onCheckedChange={(enabled) => setDraft({ ...draft, tls: { ...draft.tls, enabled } })}
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor="runtime-tls-cert">证书文件</FieldLabel>
+            <Input id="runtime-tls-cert" aria-label="TLS 证书文件" value={draft.tls.certFile} onChange={(event) => setDraft({ ...draft, tls: { ...draft.tls, certFile: event.currentTarget.value } })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-tls-key">私钥文件</FieldLabel>
+            <Input id="runtime-tls-key" aria-label="TLS 私钥文件" value={draft.tls.keyFile} onChange={(event) => setDraft({ ...draft, tls: { ...draft.tls, keyFile: event.currentTarget.value } })} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-tls-passphrase">私钥密码</FieldLabel>
+            <Input id="runtime-tls-passphrase" aria-label="TLS 私钥密码" type="password" autoComplete="off" value={draft.tls.passphrase ?? ""} onChange={(event) => setDraft({ ...draft, tls: { ...draft.tls, passphrase: event.currentTarget.value || undefined } })} placeholder="可选；掩码值会由 Runtime 保留" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-tls-ca">CA 文件</FieldLabel>
+            <Input id="runtime-tls-ca" aria-label="TLS CA 文件" value={draft.tls.caFile ?? ""} onChange={(event) => setDraft({ ...draft, tls: { ...draft.tls, caFile: event.currentTarget.value || undefined } })} placeholder="可选" />
+          </Field>
+        </div>
+        <div className="flex justify-end">
+          <Button type="button" variant="outline" onClick={handleGenerateTls} disabled={generatingTls}>
+            <KeyRound data-icon="inline-start" />
+            {generatingTls ? "正在生成…" : "生成自签名证书"}
+          </Button>
+        </div>
+      </SettingsGroup>
 
-      {metricsData && (
-        <>
-          {/* 服务器信息 */}
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">运行时信息</h3>
-            {typeof metricsData.bunVersion === "string" && <Row label="Bun 版本" value={metricsData.bunVersion} />}
-            {typeof metricsData.port === "number" && <Row label="当前端口" value={String(metricsData.port)} />}
-            {typeof metricsData.host === "string" && <Row label="当前监听地址" value={metricsData.host} />}
-            {typeof metricsData.dbPath === "string" && <Row label="数据库路径" value={metricsData.dbPath} />}
-            {typeof metricsData.platform === "string" && <Row label="平台" value={metricsData.platform} />}
-            {typeof metricsData.uptime === "number" && <Row label="运行时间" value={formatUptime(metricsData.uptime as number)} />}
-          </div>
+      <SettingsGroup title="Runtime 更新" description="只保存更新源、产品标识、通道、检查间隔和自动下载设置。">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field className="sm:col-span-2">
+            <FieldLabel htmlFor="runtime-update-server">更新服务器</FieldLabel>
+            <Input id="runtime-update-server" aria-label="更新服务器" value={draft.update.serverUrl} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, serverUrl: event.currentTarget.value } })} placeholder="https://updates.example.com" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-update-product">产品标识</FieldLabel>
+            <Input id="runtime-update-product" aria-label="更新产品标识" value={draft.update.product} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, product: event.currentTarget.value } })} />
+          </Field>
+          <Field>
+            <FieldLabel>更新通道</FieldLabel>
+            <SimpleSelect aria-label="更新通道" value={draft.update.channel} onValueChange={(value) => setDraft({ ...draft, update: { ...draft.update, channel: value as "stable" | "beta" } })} options={[
+              { value: "stable", label: "稳定版" },
+              { value: "beta", label: "测试版" },
+            ]} />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="runtime-update-interval">检查间隔（分钟）</FieldLabel>
+            <Input id="runtime-update-interval" aria-label="更新检查间隔" type="number" min={0} value={draft.update.checkIntervalMinutes} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, checkIntervalMinutes: Math.max(0, Number(event.currentTarget.value) || 0) } })} />
+            <FieldDescription>0 表示禁用自动检查。</FieldDescription>
+          </Field>
+          <Field orientation="horizontal">
+            <FieldContent>
+              <FieldTitle>自动下载</FieldTitle>
+              <FieldDescription>检测到更新后自动下载。</FieldDescription>
+            </FieldContent>
+            <Switch aria-label="自动下载更新" checked={draft.update.autoDownload} onCheckedChange={(value) => setDraft({ ...draft, update: { ...draft.update, autoDownload: value } })} />
+          </Field>
+        </div>
+        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+          <p className="text-sm text-muted-foreground">{updateStatus ?? "可直接通过 Runtime 更新接口检查当前产品版本。"}</p>
+          <Button type="button" variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate}>
+            {checkingUpdate ? "检查中…" : "立即检查更新"}
+          </Button>
+        </div>
+      </SettingsGroup>
 
-          {/* 系统依赖 */}
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">系统依赖</h3>
-            {typeof metricsData.packageManager === "string" && (
-              <p className="text-xs text-muted-foreground mb-2">检测到的包管理器：<span className="font-mono text-foreground">{metricsData.packageManager}</span></p>
-            )}
-            <SystemDependencyRow name="git" description="版本控制（核心功能）" required version={typeof metricsData.gitVersion === "string" ? metricsData.gitVersion : undefined} />
-            <SystemDependencyRow name="rg" description="AI 工具快速代码搜索" version={typeof metricsData.rgVersion === "string" ? metricsData.rgVersion : undefined} />
-            <SystemDependencyRow name="node" description="Node.js 运行时" version={typeof metricsData.nodeVersion === "string" ? metricsData.nodeVersion : undefined} />
-          </div>
-        </>
-      )}
-    </div>
+      <SettingsSaveBar
+        dirty={dirty}
+        saving={saving}
+        saveLabel="保存服务器设置"
+        onDiscard={() => {
+          if (savedDraft) setDraft(savedDraft);
+          setError(null);
+        }}
+        onSave={() => void handleSave()}
+      />
+    </SettingsPage>
   );
 }
-
-function SystemDependencyRow({ name, description, required, version }: {
-  name: string;
-  description: string;
-  required?: boolean;
-  version?: string;
-}) {
-  const installed = Boolean(version);
-  return (
-    <div className="flex items-center justify-between py-1">
-      <div className="flex items-center gap-2">
-        <span className={`inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] ${installed ? "bg-emerald-500/20 text-emerald-600" : "bg-destructive/20 text-destructive"}`}>
-          {installed ? "✓" : "×"}
-        </span>
-        <div>
-          <span className="text-sm font-mono">{name}</span>
-          {version && <span className="text-xs text-muted-foreground ml-2">{version}</span>}
-          <p className="text-xs text-muted-foreground">{description}</p>
-        </div>
-      </div>
-      <span className={`text-[10px] rounded px-1.5 py-0.5 ${required ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-        {required ? "必需" : "可选"}
-      </span>
-    </div>
-  );
-}
-
-function formatUptime(seconds: number): string {
-  if (seconds < 60) return `${seconds}秒`;
-  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`;
-  const hours = Math.floor(seconds / 3600);
-  const mins = Math.floor((seconds % 3600) / 60);
-  return `${hours}小时${mins}分钟`;
-}
-
-
-

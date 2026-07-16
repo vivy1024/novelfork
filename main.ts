@@ -1,77 +1,48 @@
-import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
-import { startStudioServer } from "./packages/studio/src/api/server.ts";
-import { createEmbeddedStaticProvider, createFilesystemStaticProvider } from "./packages/studio/src/api/static-provider.ts";
-import { openStudioWindow } from "./packages/studio/src/api/desktop-window.ts";
+import { homedir } from "node:os";
+import { resolve } from "node:path";
 
-function parseArg(name: string): string | undefined {
-  const prefix = `${name}=`;
-  return process.argv.find((arg) => arg.startsWith(prefix))?.slice(prefix.length);
-}
+// Root main.ts is the stable NovelFork executable entry. Configure product-owned
+// paths before the complete NarraFork Runtime backend evaluates. The product
+// keeps its NovelFork domain database, Runtime database, lock, and settings
+// separate from the standalone NarraFork host by default.
+const novelForkHome = resolve(homedir(), ".novelfork");
+const defaultRuntimeDir = resolve(novelForkHome, ".runtime");
+const projectRoot = process.env.NOVELFORK_PROJECT_ROOT ?? novelForkHome;
+const runtimeDir = process.env.NOVELFORK_RUNTIME_DIR ?? process.env.NARRAFORK_HOME ?? defaultRuntimeDir;
 
-function defaultProjectRoot(): string {
-  const exeDir = dirname(process.execPath);
-  const parentDir = dirname(exeDir);
-  if (basename(exeDir).toLowerCase() === "dist" && existsSync(join(parentDir, "novelfork.json"))) {
-    return parentDir;
+process.env.NOVELFORK_PROJECT_ROOT ??= projectRoot;
+process.env.NOVELFORK_BOOKS_ROOT ??= resolve(projectRoot, "books");
+process.env.NOVELFORK_RUNTIME_DIR ??= runtimeDir;
+process.env.NARRAFORK_HOME ??= runtimeDir;
+process.env.NOVELFORK_SESSION_STORE_DIR ??= resolve(runtimeDir, "sessions");
+process.env.NOVELFORK_STORAGE_DB_PATH ??= resolve(novelForkHome, "novelfork.db");
+
+// Preserve NovelFork's historical public listener port. Explicit PORT and
+// --port=XXXX values remain supported by the Runtime server.
+process.env.PORT ??= "4567";
+
+// Keep the specifier literal so Bun includes the complete Runtime dependency graph
+// in the root executable without maintaining a second Runtime implementation package.
+await import("./packages/narrafork-runtime-private/server/index.ts");
+
+// Open the product UI only after the Runtime has bound its actual listener. Reading
+// the registered address matters when --port is overridden or the Runtime has to
+// move to the next available port during startup.
+if (process.env.NOVELFORK_NO_BROWSER !== "1") {
+  const { getRuntimeAddress } = await import(
+    "./packages/narrafork-runtime-private/server/lib/server-restart.ts"
+  );
+  const { openStudioWindow } = await import("./packages/studio/src/desktop-window.ts");
+  const address = getRuntimeAddress();
+  const host =
+    address.host === "0.0.0.0" || address.host === "::" ? "localhost" : address.host;
+  const browserHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  const studioUrl = `${address.protocol}://${browserHost}:${address.port}`;
+  const launchPlan = openStudioWindow(studioUrl);
+
+  if (launchPlan.kind === "app") {
+    console.log(`[desktop-window] Opened NovelFork app window at ${studioUrl}`);
+  } else if (launchPlan.kind === "browser") {
+    console.log(`[desktop-window] Opened NovelFork in the system browser at ${studioUrl}`);
   }
-  return process.cwd();
-}
-
-const projectRoot = resolve(
-  parseArg("--root")
-    ?? process.env.NOVELFORK_PROJECT_ROOT
-    ?? defaultProjectRoot(),
-);
-const port = parseInt(
-  parseArg("--port")
-    ?? process.env.NOVELFORK_STUDIO_PORT
-    ?? "4567",
-  10,
-);
-
-const staticDir = resolve("packages/studio/dist");
-const hasStatic = existsSync(join(staticDir, "index.html"));
-
-let staticProvider;
-let usingEmbeddedAssets = false;
-
-try {
-  const embeddedAssets = await import("./packages/studio/src/api/embedded-assets.generated.ts");
-  if (embeddedAssets.embeddedIndexHtml) {
-    staticProvider = createEmbeddedStaticProvider({
-      indexHtml: embeddedAssets.embeddedIndexHtml,
-      files: embeddedAssets.embeddedAssets,
-    });
-    usingEmbeddedAssets = true;
-  }
-} catch {
-  // generated module missing; fall back to filesystem assets
-}
-
-if (!staticProvider && hasStatic) {
-  staticProvider = createFilesystemStaticProvider(staticDir);
-}
-
-if (!staticProvider) {
-  console.warn("[bun:main] No embedded assets or packages/studio/dist/index.html found; starting API without frontend assets.");
-  console.warn("[bun:main] Run 'pnpm --dir packages/studio compile' to build the single-exe artifact.");
-} else if (usingEmbeddedAssets) {
-  console.log("[bun:main] Using embedded Studio assets.");
-}
-
-const serverUrl = `http://localhost:${port}`;
-
-await startStudioServer(projectRoot, port, {
-  staticDir: hasStatic ? staticDir : undefined,
-  staticProvider,
-  staticMode: usingEmbeddedAssets ? "embedded" : hasStatic ? "filesystem" : "missing",
-  foregroundDiagnostics: process.env.NOVELFORK_STARTUP_VERBOSE === "1",
-});
-
-const launchPlan = openStudioWindow(serverUrl);
-if (launchPlan.kind === "app") {
-  console.log(`NovelFork app window opened via ${launchPlan.command}`);
-} else if (launchPlan.kind === "browser") {
-  console.log(`NovelFork opened in default browser via ${launchPlan.command}`);
 }

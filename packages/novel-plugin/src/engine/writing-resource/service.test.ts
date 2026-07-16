@@ -30,7 +30,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("writing resource file-system service", () => {
+describe("writing resource hybrid service", () => {
   it("creates accepted chapters on disk and preserves chapter lookup", async () => {
     const storage = await createStorage();
     const bookDir = await createBookDir();
@@ -55,10 +55,21 @@ describe("writing resource file-system service", () => {
     }
   });
 
-  it("requires explicit file-system book resolution", async () => {
+  it("supports database-backed candidate resources without a file-system resolver", async () => {
     const storage = await createStorage();
     try {
-      expect(() => createWritingResourceService({ storage, now: () => 1_700_000_000_000 })).toThrow("resolveBookDir is required");
+      const service = createWritingResourceService({ storage, now: () => 1_700_000_000_000 });
+      const created = await service.create("book-1", {
+        type: "candidate",
+        status: "candidate",
+        title: "候选稿",
+        content: "数据库中的候选正文。",
+      });
+
+      expect(created).toEqual(expect.objectContaining({ bookId: "book-1", type: "candidate", status: "candidate" }));
+      await expect(service.list("book-1")).resolves.toEqual([
+        expect.objectContaining({ id: created.id, title: "候选稿" }),
+      ]);
     } finally {
       storage.close();
     }

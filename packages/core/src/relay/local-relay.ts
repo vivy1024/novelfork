@@ -6,7 +6,6 @@
  * "not implemented" errors. Detection and style analysis still work.
  */
 
-import { randomUUID } from "node:crypto";
 import type { AuditResult } from "../models/agent-types.js";
 import type { StyleProfile } from "../models/style-profile.js";
 import type { AIRelay, WriteSnapshot, RunResult } from "./relay.js";
@@ -16,33 +15,6 @@ import type { LLMRelayConfig, RunHandle, RunState, RunStatus } from "./types.js"
 interface DetectionResult {
   score: number;
   [key: string]: unknown;
-}
-
-let _detectAIContent: any;
-async function getDetectAIContent() {
-  if (!_detectAIContent) {
-    try {
-      // @ts-expect-error — novel-plugin is loaded at runtime, not a compile-time dep of core
-      const mod = await import("@vivy1024/novelfork-novel-plugin/engine");
-      _detectAIContent = mod.detectAIContent;
-    } catch {
-      throw new Error("detectAIContent not available — novel-plugin not installed");
-    }
-  }
-  return _detectAIContent;
-}
-let _analyzeStyle: any;
-async function getAnalyzeStyle() {
-  if (!_analyzeStyle) {
-    try {
-      // @ts-expect-error — novel-plugin is loaded at runtime, not a compile-time dep of core
-      const mod = await import("@vivy1024/novelfork-novel-plugin/engine");
-      _analyzeStyle = mod.analyzeStyle;
-    } catch {
-      throw new Error("analyzeStyle not available — novel-plugin not installed");
-    }
-  }
-  return _analyzeStyle;
 }
 
 // ---------------------------------------------------------------------------
@@ -113,22 +85,17 @@ export class LocalAIRelay implements AIRelay {
   }
 
   async detect(
-    content: string,
+    _content: string,
     _llm: LLMRelayConfig,
   ): Promise<DetectionResult> {
-    const detectFn = await getDetectAIContent();
-    return detectFn(
-      { provider: "gptzero", apiUrl: "https://api.gptzero.me/v2/predict/text", apiKeyEnv: "GPTZERO_API_KEY", threshold: 0.5, enabled: false, autoRewrite: false, maxRetries: 3 },
-      content,
-    );
+    throw new Error("detect via LocalAIRelay is no longer available in core. Use the Studio ai-relay route or novel-plugin AI route instead.");
   }
 
   async analyzeStyle(
-    text: string,
+    _text: string,
     _llm: LLMRelayConfig,
   ): Promise<StyleProfile> {
-    const styleFn = await getAnalyzeStyle();
-    return styleFn(text);
+    throw new Error("analyzeStyle via LocalAIRelay is no longer available in core. Use the Studio ai-relay route or novel-plugin style tools instead.");
   }
 
   // -----------------------------------------------------------------------

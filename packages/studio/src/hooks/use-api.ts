@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { getRuntimeToken, clearRuntimeAuthentication } from "../app-next/runtime/auth";
 
 const BASE = "/api";
 const API_INVALIDATE_EVENT = "novelfork:api-invalidate";
@@ -106,7 +107,17 @@ export async function fetchJson<T>(
   }
 
   const fetchImpl = deps?.fetchImpl ?? fetch;
-  const res = await fetchImpl(url, init);
+  const headers = new Headers(init.headers);
+  const token = getRuntimeToken();
+  if (token && !headers.has("authorization")) {
+    headers.set("authorization", `Bearer ${token}`);
+  }
+
+  const res = await fetchImpl(url, { ...init, headers });
+
+  if (res.status === 401) {
+    clearRuntimeAuthentication("unauthorized");
+  }
 
   if (!res.ok) {
     const error = await readErrorDetails(res);

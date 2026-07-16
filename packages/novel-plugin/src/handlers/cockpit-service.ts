@@ -1,8 +1,5 @@
-import type { BookConfig, ChapterMeta, StateManager } from "@vivy1024/novelfork-core";
+import type { BookConfig, ChapterMeta } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
-
-import { buildRuntimeModelPool } from "@vivy1024/novelfork-studio/api/lib/runtime-model-pool";
-import { ProviderRuntimeStore } from "@vivy1024/novelfork-studio/api/lib/provider-runtime-store";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
 
@@ -109,9 +106,17 @@ export interface CockpitSnapshot {
   readonly modelStatus?: CockpitModelStatus;
 }
 
+export type CockpitModelStatusResolver = () => Promise<CockpitModelStatus>;
+
+export interface CockpitState {
+  readonly loadBookConfig: (bookId: string) => Promise<BookConfig>;
+  readonly loadChapterIndex: (bookId: string) => Promise<ReadonlyArray<ChapterMeta>>;
+  readonly bookDir: (bookId: string) => string;
+}
+
 export interface CockpitServiceOptions {
-  readonly state: StateManager;
-  readonly providerStore?: ProviderRuntimeStore;
+  readonly state: CockpitState;
+  readonly modelStatusResolver?: CockpitModelStatusResolver;
   readonly now?: () => Date;
 }
 
@@ -122,13 +127,13 @@ export function createCockpitService(options: CockpitServiceOptions) {
 }
 
 export class CockpitService {
-  private readonly state: StateManager;
-  private readonly providerStore: ProviderRuntimeStore;
+  private readonly state: CockpitState;
+  private readonly modelStatusResolver: CockpitModelStatusResolver | undefined;
   private readonly now: () => Date;
 
   constructor(options: CockpitServiceOptions) {
     this.state = options.state;
-    this.providerStore = options.providerStore ?? new ProviderRuntimeStore();
+    this.modelStatusResolver = options.modelStatusResolver;
     this.now = options.now ?? (() => new Date());
   }
 
@@ -317,18 +322,14 @@ export class CockpitService {
   }
 
   private async getModelStatus(): Promise<CockpitModelStatus> {
-    const pool = await buildRuntimeModelPool(this.providerStore);
-    const first = pool[0];
-    if (!first) {
-      return { status: "missing", hasUsableModel: false, reason: "未配置可用模型。" };
+    if (!this.modelStatusResolver) {
+      return {
+        status: "unsupported",
+        hasUsableModel: false,
+        reason: "模型状态必须由 Runtime 宿主提供。",
+      };
     }
-    return {
-      status: "available",
-      hasUsableModel: true,
-      defaultProvider: first.providerId,
-      defaultModel: first.modelId.slice(`${first.providerId}:`.length),
-      supportsToolUse: first.capabilities.functionCalling,
-    };
+    return this.modelStatusResolver();
   }
 }
 

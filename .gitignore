@@ -77,3 +77,8 @@ running.pid
 artifacts/
 browser-error.png
 session-error-root.png
+
+# Studio runtime plugin host source (not a user plugin directory)
+!packages/studio/src/api/lib/plugins/
+!packages/studio/src/api/lib/plugins/**
+/packages/.narrafork-runtime-import/

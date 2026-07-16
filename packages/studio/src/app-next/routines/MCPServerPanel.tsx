@@ -1,71 +1,81 @@
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Cable,
+  CircleStop,
+  FlaskConical,
   Pencil,
-  Play,
+  PlugZap,
   Plus,
   RefreshCw,
   Server,
-  Square,
   Trash2,
+  Upload,
   Wrench,
 } from "lucide-react";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
-import { postApi, putApi, useApi } from "../../hooks/use-api";
-import { describeToolAccessReason, type ToolAccessReasonKey } from "../../shared/tool-access-reasons";
-import { runtimePolicySourceLabel } from "../lib/display-labels";
 
-interface MCPServerTool {
-  name: string;
-  description: string;
-  access?: "allow" | "prompt" | "deny";
-  source?: string;
-  reason?: string;
-  reasonKey?: ToolAccessReasonKey;
-}
+import {
+  createMcpClient,
+  type McpBehavior,
+  type McpExternalTool,
+  type McpServerInput,
+  type McpServerPatch,
+  type McpServerStatus,
+  type McpTestResult,
+  type McpTransport,
+} from "../runtime-admin";
+import {
+  createRuntimeProductClient,
+  type RuntimeBookMcpServerOverride,
+} from "../runtime/product-contract";
 
-interface MCPServer {
-  id: string;
-  name: string;
-  transport: "stdio" | "sse";
-  command?: string;
-  args?: string[];
-  url?: string;
-  env?: Record<string, string>;
-  status: "disconnected" | "connecting" | "connected" | "reconnecting" | "failed";
-  tools: MCPServerTool[];
-  toolCount: number;
-  error?: string;
-}
-
-interface MCPRegistryResponse {
-  summary: {
-    totalServers: number;
-    connectedServers: number;
-    enabledTools: number;
-    discoveredTools: number;
-    allowTools?: number;
-    promptTools?: number;
-    denyTools?: number;
-    policySource?: string;
-    mcpStrategy?: "allow" | "ask" | "deny" | "inherit";
-  };
-  servers: MCPServer[];
-}
+const mcpClient = createMcpClient();
+const productClient = createRuntimeProductClient();
 
 interface ServerFormState {
   name: string;
-  transport: "stdio" | "sse";
+  transport: McpTransport;
   command: string;
   args: string;
-  url: string;
+  cwd: string;
   env: string;
+  url: string;
+  headers: string;
+  enabled: boolean;
+  defaultBehavior: McpBehavior | "inherit";
 }
 
 const EMPTY_FORM: ServerFormState = {
@@ -73,434 +83,804 @@ const EMPTY_FORM: ServerFormState = {
   transport: "stdio",
   command: "",
   args: "",
-  url: "",
+  cwd: "",
   env: "",
+  url: "",
+  headers: "",
+  enabled: true,
+  defaultBehavior: "inherit",
 };
 
-function toFormState(server?: MCPServer): ServerFormState {
-  if (!server) {
-    return { ...EMPTY_FORM };
-  }
+function toForm(server?: McpServerStatus): ServerFormState {
+  if (!server) return EMPTY_FORM;
   return {
     name: server.name,
     transport: server.transport,
     command: server.command ?? "",
-    args: (server.args ?? []).join(", "),
-    url: server.url ?? "",
+    args: (server.args ?? []).join("\n"),
+    cwd: server.cwd ?? "",
     env: server.env ? JSON.stringify(server.env, null, 2) : "",
+    url: server.url ?? "",
+    headers: server.headers ? JSON.stringify(server.headers, null, 2) : "",
+    enabled: server.enabled,
+    defaultBehavior: server.defaultBehavior ?? "inherit",
   };
 }
 
-function isMCPConfigBundle(value: unknown): value is { mcpServers: Partial<MCPServer>[] } {
-  return typeof value === "object" && value !== null && Array.isArray((value as { mcpServers?: unknown }).mcpServers);
+function parseStringRecord(value: string, label: string): Readonly<Record<string, string>> | undefined {
+  if (!value.trim()) return undefined;
+  const parsed = JSON.parse(value) as unknown;
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`${label} 必须是 JSON 对象。`);
+  }
+  const result: Record<string, string> = {};
+  for (const [key, item] of Object.entries(parsed)) {
+    if (typeof item !== "string") throw new Error(`${label} 的值必须是字符串。`);
+    result[key] = item;
+  }
+  return result;
 }
 
-function parseFormPayload(form: ServerFormState) {
-  const args = form.args
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
-
+function toInput(form: ServerFormState): McpServerInput {
+  const remote = form.transport !== "stdio";
   return {
     name: form.name.trim(),
     transport: form.transport,
-    command: form.transport === "stdio" ? form.command.trim() : undefined,
-    args: form.transport === "stdio" ? args : undefined,
-    url: form.transport === "sse" ? form.url.trim() : undefined,
-    env: form.env.trim() ? JSON.parse(form.env) : undefined,
+    command: remote ? undefined : form.command.trim(),
+    args: remote ? undefined : form.args.split(/\r?\n|,/).map((item) => item.trim()).filter(Boolean),
+    cwd: remote || !form.cwd.trim() ? undefined : form.cwd.trim(),
+    env: parseStringRecord(form.env, "环境变量"),
+    url: remote ? form.url.trim() : undefined,
+    headers: remote ? parseStringRecord(form.headers, "请求头") : undefined,
+    enabled: form.enabled,
+    defaultBehavior: form.defaultBehavior === "inherit" ? undefined : form.defaultBehavior,
   };
 }
 
-function renderStatusLabel(status: MCPServer["status"]) {
+function toPatch(form: ServerFormState): McpServerPatch {
+  return {
+    ...toInput(form),
+    defaultBehavior: form.defaultBehavior === "inherit" ? null : form.defaultBehavior,
+  };
+}
+
+function errorMessage(error: unknown): string {
+  const status = typeof error === "object" && error !== null && "status" in error
+    ? Number((error as { status?: unknown }).status)
+    : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  return status ? `${status} — ${message}` : message;
+}
+
+function statusLabel(status: McpServerStatus["status"]): string {
   if (status === "connected") return "已连接";
   if (status === "connecting") return "连接中";
-  if (status === "reconnecting") return "重连中";
-  if (status === "failed") return "失败";
+  if (status === "error") return "错误";
   return "未连接";
 }
 
-function renderAccessLabel(access: MCPServerTool["access"]): string {
-  if (access === "allow") return "直接允许";
-  if (access === "prompt") return "需确认";
-  if (access === "deny") return "拒绝";
-  return "未配置";
+function behaviorLabel(behavior: McpBehavior | undefined): string {
+  if (behavior === "readOnly") return "只读";
+  if (behavior === "readWrite") return "读写";
+  if (behavior === "ask") return "询问";
+  if (behavior === "deny") return "拒绝";
+  return "Runtime 默认设置";
 }
 
-function renderMcpStrategyLabel(strategy: MCPRegistryResponse["summary"]["mcpStrategy"]): string {
-  if (strategy === "allow") return "直接允许";
-  if (strategy === "ask") return "执行前确认";
-  if (strategy === "deny") return "默认拒绝";
-  return "继承系统设置";
-}
-
-export function MCPServerPanel() {
-  const { data, refetch } = useApi<MCPRegistryResponse>("/mcp/registry");
-  const [editorMode, setEditorMode] = useState<"create" | "edit" | "import" | null>(null);
-  const [editingServerId, setEditingServerId] = useState<string | null>(null);
-  const [formData, setFormData] = useState<ServerFormState>({ ...EMPTY_FORM });
+export function MCPServerPanel({
+  bookId,
+  bookTitle,
+}: {
+  readonly bookId?: string;
+  readonly bookTitle?: string;
+}) {
+  const [servers, setServers] = useState<readonly McpServerStatus[]>([]);
+  const [tools, setTools] = useState<readonly McpExternalTool[]>([]);
+  const [bookOverrides, setBookOverrides] = useState<readonly RuntimeBookMcpServerOverride[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+  const [editor, setEditor] = useState<
+    { mode: "create" } | { mode: "edit"; id: string } | null
+  >(null);
+  const [form, setForm] = useState<ServerFormState>(EMPTY_FORM);
+  const [testResult, setTestResult] = useState<McpTestResult | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
   const [importJson, setImportJson] = useState("");
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const servers = data?.servers ?? [];
-  const summary = data?.summary ?? {
-    totalServers: 0,
-    connectedServers: 0,
-    enabledTools: 0,
-    discoveredTools: 0,
-    allowTools: 0,
-    promptTools: 0,
-    denyTools: 0,
-  };
-
-  const connectedRatio = useMemo(() => {
-    if (summary.totalServers === 0) return "0%";
-    return `${Math.round((summary.connectedServers / summary.totalServers) * 100)}%`;
-  }, [summary.connectedServers, summary.totalServers]);
-
-  function openCreateForm() {
-    setEditorMode("create");
-    setEditingServerId(null);
-    setFormData({ ...EMPTY_FORM });
-  }
-
-  function openImportForm() {
-    setEditorMode("import");
-    setEditingServerId(null);
-    setImportJson(JSON.stringify({ mcpServers: [] }, null, 2));
-  }
-
-  function openEditForm(server: MCPServer) {
-    setEditorMode("edit");
-    setEditingServerId(server.id);
-    setFormData(toFormState(server));
-  }
-
-  function closeEditor() {
-    setEditorMode(null);
-    setEditingServerId(null);
-    setFormData({ ...EMPTY_FORM });
-    setImportJson("");
-  }
-
-  async function handleStart(id: string) {
-    await postApi(`/mcp/servers/${id}/start`, {});
-    refetch();
-  }
-
-  async function handleStop(id: string) {
-    await postApi(`/mcp/servers/${id}/stop`, {});
-    refetch();
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("确定删除此 MCP Server？")) return;
-    await postApi(`/mcp/servers/${id}/delete`, {});
-    refetch();
-  }
-
-  async function handleSave() {
-    const payload = parseFormPayload(formData);
-
-    if (editorMode === "edit" && editingServerId) {
-      await putApi(`/mcp/servers/${editingServerId}`, payload);
-    } else {
-      await postApi("/mcp/servers", payload);
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [serverResult, toolResult, bookResult] = await Promise.all([
+        mcpClient.list(),
+        mcpClient.tools(),
+        bookId ? productClient.listBookMcpOverrides(bookId) : Promise.resolve({ serverOverrides: [] }),
+      ]);
+      setServers(serverResult.servers);
+      setTools(toolResult.tools);
+      setBookOverrides(bookResult.serverOverrides);
+    } catch (loadError) {
+      setError(errorMessage(loadError));
+    } finally {
+      setLoading(false);
     }
+  }, [bookId]);
 
-    closeEditor();
-    refetch();
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const connectedCount = useMemo(
+    () => servers.filter((server) => server.status === "connected").length,
+    [servers],
+  );
+  const bookOverrideByServer = useMemo(
+    () => new Map(bookOverrides.map((override) => [override.serverId, override] as const)),
+    [bookOverrides],
+  );
+
+  function openCreate() {
+    setForm(EMPTY_FORM);
+    setTestResult(null);
+    setEditor({ mode: "create" });
   }
 
-  async function handleImportJson() {
-    const parsed = JSON.parse(importJson) as unknown;
-    const entries = Array.isArray(parsed)
-      ? parsed as Partial<MCPServer>[]
-      : isMCPConfigBundle(parsed)
-        ? parsed.mcpServers
-        : [parsed as Partial<MCPServer>];
+  function openEdit(server: McpServerStatus) {
+    setForm(toForm(server));
+    setTestResult(null);
+    setEditor({ mode: "edit", id: server.id });
+  }
 
-    for (const entry of entries) {
-      await postApi("/mcp/servers", {
-        name: entry.name,
-        transport: entry.transport ?? "stdio",
-        command: entry.transport === "sse" ? undefined : entry.command,
-        args: entry.transport === "sse" ? undefined : entry.args,
-        url: entry.transport === "sse" ? entry.url : undefined,
-        env: entry.env,
+  async function saveServer() {
+    if (!editor) return;
+    setPendingId(editor.mode === "edit" ? editor.id : "create");
+    setError(null);
+    try {
+      if (editor.mode === "create") await mcpClient.create(toInput(form));
+      else await mcpClient.patch(editor.id, toPatch(form));
+      setEditor(null);
+      setForm(EMPTY_FORM);
+      setTestResult(null);
+      await load();
+    } catch (saveError) {
+      setError(errorMessage(saveError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function testServer() {
+    setPendingId(editor?.mode === "edit" ? editor.id : "test");
+    setError(null);
+    setTestResult(null);
+    try {
+      setTestResult(await mcpClient.test(toInput(form)));
+    } catch (testError) {
+      setError(errorMessage(testError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function connect(server: McpServerStatus) {
+    setPendingId(server.id);
+    setError(null);
+    try {
+      await mcpClient.connect(server.id);
+      await load();
+    } catch (connectError) {
+      setError(errorMessage(connectError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function disconnect(server: McpServerStatus) {
+    setPendingId(server.id);
+    setError(null);
+    try {
+      await mcpClient.disconnect(server.id);
+      await load();
+    } catch (disconnectError) {
+      setError(errorMessage(disconnectError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function toggleEnabled(server: McpServerStatus, enabled: boolean) {
+    setPendingId(server.id);
+    setError(null);
+    try {
+      await mcpClient.patch(server.id, { enabled });
+      await load();
+    } catch (patchError) {
+      setError(errorMessage(patchError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function updateToolBehavior(
+    server: McpServerStatus,
+    toolName: string,
+    behavior: McpBehavior | "inherit",
+  ) {
+    const pendingKey = `tool:${server.id}:${toolName}`;
+    setPendingId(pendingKey);
+    setError(null);
+    try {
+      await mcpClient.patch(server.id, {
+        toolPermissionPatch: {
+          toolName,
+          behavior: behavior === "inherit" ? null : behavior,
+        },
       });
+      await load();
+    } catch (patchError) {
+      setError(errorMessage(patchError));
+    } finally {
+      setPendingId(null);
     }
+  }
 
-    closeEditor();
-    refetch();
+  async function updateBookServerBehavior(
+    server: McpServerStatus,
+    behavior: McpBehavior | "inherit",
+  ) {
+    if (!bookId) return;
+    const pendingKey = `book-server:${server.id}`;
+    setPendingId(pendingKey);
+    setError(null);
+    try {
+      const result = await productClient.putBookMcpOverride(bookId, server.id, {
+        defaultBehavior: behavior === "inherit" ? null : behavior,
+      });
+      setBookOverrides(result.serverOverrides);
+    } catch (patchError) {
+      setError(errorMessage(patchError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function updateBookToolBehavior(
+    server: McpServerStatus,
+    toolName: string,
+    behavior: McpBehavior | "inherit",
+  ) {
+    if (!bookId) return;
+    const pendingKey = `book-tool:${server.id}:${toolName}`;
+    setPendingId(pendingKey);
+    setError(null);
+    try {
+      const result = await productClient.putBookMcpOverride(bookId, server.id, {
+        toolPermissionPatch: {
+          toolName,
+          behavior: behavior === "inherit" ? null : behavior,
+        },
+      });
+      setBookOverrides(result.serverOverrides);
+    } catch (patchError) {
+      setError(errorMessage(patchError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function deleteServer() {
+    if (!deleteId) return;
+    setPendingId(deleteId);
+    setError(null);
+    try {
+      await mcpClient.delete(deleteId);
+      setDeleteId(null);
+      await load();
+    } catch (deleteError) {
+      setError(errorMessage(deleteError));
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  async function importServers() {
+    setPendingId("import");
+    setError(null);
+    try {
+      const parsed = JSON.parse(importJson) as unknown;
+      await mcpClient.import(parsed);
+      setImportOpen(false);
+      setImportJson("");
+      await load();
+    } catch (importError) {
+      setError(errorMessage(importError));
+    } finally {
+      setPendingId(null);
+    }
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-col gap-4 rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm backdrop-blur-sm lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground">NovelFork Studio</p>
-          <div className="space-y-1">
-            <h1 className="text-3xl font-semibold tracking-tight text-foreground">MCP Server 管理</h1>
-            <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-              在工作流配置台统一管理 Model Context Protocol 的本地/远程服务连接，并把 transport、连接状态、工具数量与编辑能力收口到统一注册表视图。
-            </p>
-          </div>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold">MCP 服务器</h2>
+          <p className="text-sm text-muted-foreground">
+            使用原生 Runtime MCP 客户端管理 stdio、streamable-http 和 SSE 传输的服务器生命周期。
+          </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={refetch}>
-            <RefreshCw className="size-4" />
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={() => void load()} disabled={loading}>
+            <RefreshCw data-icon="inline-start" />
             刷新
           </Button>
-          <Button variant="outline" onClick={openImportForm}>
+          <Button type="button" variant="outline" size="sm" onClick={() => { setImportJson(""); setImportOpen(true); }}>
+            <Upload data-icon="inline-start" />
             导入 JSON
           </Button>
-          <Button onClick={openCreateForm}>
-            <Plus className="size-4" />
-            添加 Server
+          <Button type="button" size="sm" onClick={openCreate}>
+            <Plus data-icon="inline-start" />
+            添加服务器
           </Button>
         </div>
-      </header>
-
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <SummaryCard title="已注册 Server" value={String(summary.totalServers)} description="当前已写入 novelfork.json 的 MCP 服务数" />
-        <SummaryCard title="已连接" value={String(summary.connectedServers)} description={`连接占比 ${connectedRatio}`} />
-        <SummaryCard title="已发现工具" value={String(summary.discoveredTools)} description={`允许 ${summary.allowTools ?? 0} / 确认 ${summary.promptTools ?? 0} / 拒绝 ${summary.denyTools ?? 0}`} />
-        <SummaryCard title="已启用工具" value={String(summary.enabledTools)} description="当前进入系统注册视图的工具数量" />
       </div>
 
-      <Card className="border-dashed bg-muted/20">
-        <CardHeader>
-          <CardTitle className="text-base">治理总览</CardTitle>
-          <CardDescription>让 MCP 注册表直接映射 Settings 的权限策略，而不是只显示连接与工具数量。</CardDescription>
-        </CardHeader>
-        <CardContent className="grid gap-3 text-sm text-muted-foreground md:grid-cols-3">
-          <div>策略来源：{runtimePolicySourceLabel(summary.policySource)}</div>
-          <div>MCP 默认策略：{renderMcpStrategyLabel(summary.mcpStrategy)}</div>
-          <div>调用执行链：遵循设置中心的重试、追踪与记录配置</div>
-        </CardContent>
-      </Card>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SummaryCard label="已注册服务器" value={servers.length} />
+        <SummaryCard label="已连接服务器" value={connectedCount} />
+        <SummaryCard label="外部工具" value={tools.length} />
+      </div>
 
-      <Card className="border-amber-500/20 bg-amber-500/10">
-        <CardHeader>
-          <CardTitle className="text-base text-amber-900">MCP 权限与风险说明</CardTitle>
-          <CardDescription className="text-amber-900/80">
-            stdio MCP 会启动本地进程，SSE MCP 会连接远端服务；工具参数、环境变量和返回值可能包含本地路径、账号上下文或敏感素材。所有调用必须遵循 MCP 策略、允许列表、阻止列表与会话权限模式。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="text-sm text-amber-900/90">
-          返回作者模式路径：使用页面顶部"切回作者模式"；切回后 MCP Server 管理和原始工具注册表会从侧边栏与命令面板隐藏。
-        </CardContent>
-      </Card>
-
-      {editorMode === "import" && (
-        <Card className="border-dashed bg-muted/20">
-          <CardHeader>
-            <CardTitle>导入 MCP JSON</CardTitle>
-            <CardDescription>支持粘贴 {"{ mcpServers: [...] }"}、Server 数组或单个 Server 配置，保存后逐个写入现有 MCP API。</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="mcp-import-json">MCP JSON</Label>
-              <Textarea
-                id="mcp-import-json"
-                aria-label="MCP JSON"
-                value={importJson}
-                onChange={(event) => setImportJson(event.target.value)}
-                className="min-h-40 w-full font-mono text-sm"
-                placeholder='{"mcpServers":[{"name":"memory","transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}]}'
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button onClick={() => void handleImportJson()}>保存导入</Button>
-              <Button variant="outline" onClick={closeEditor}>取消</Button>
-            </div>
-          </CardContent>
-        </Card>
+      <Alert>
+        <AlertTitle>连接说明</AlertTitle>
+        <AlertDescription>
+          连接和断开操作使用原生 Runtime 生命周期接口；测试操作只验证草稿，不会保存配置。
+        </AlertDescription>
+      </Alert>
+      {error && (
+        <Alert>
+          <AlertTitle>MCP 请求失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       )}
 
-      {(editorMode === "create" || editorMode === "edit") && (
-        <Card className="border-dashed bg-muted/20">
-          <CardHeader>
-            <CardTitle>{editorMode === "edit" ? "编辑 MCP Server" : "添加 MCP Server"}</CardTitle>
-            <CardDescription>
-              {editorMode === "edit" ? "修改 transport、命令/URL 与环境变量。保存后需要重新连接。" : "添加本地 stdio 或远程 SSE MCP 服务。"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="mcp-server-name">名称</Label>
-                <Input id="mcp-server-name" aria-label="名称" value={formData.name} onChange={(event) => setFormData((current) => ({ ...current, name: event.target.value }))} placeholder="my-mcp-server" />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="mcp-server-transport">传输方式</Label>
-                <SimpleSelect
-                  value={formData.transport}
-                  onValueChange={(v) => setFormData((current) => ({ ...current, transport: v as "stdio" | "sse" }))}
-                  aria-label="传输方式"
-                  options={[
-                    { value: "stdio", label: "stdio（本地进程）" },
-                    { value: "sse", label: "SSE（远程 HTTP）" },
-                  ]}
-                />
-              </div>
-            </div>
-
-            {formData.transport === "stdio" ? (
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="mcp-server-command">命令</Label>
-                  <Input id="mcp-server-command" aria-label="命令" value={formData.command} onChange={(event) => setFormData((current) => ({ ...current, command: event.target.value }))} placeholder="npx" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="mcp-server-args">参数（逗号分隔）</Label>
-                  <Input id="mcp-server-args" aria-label="参数（逗号分隔）" value={formData.args} onChange={(event) => setFormData((current) => ({ ...current, args: event.target.value }))} placeholder="-y, @modelcontextprotocol/server-filesystem, ." />
-                </div>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="mcp-server-url">URL</Label>
-                <Input id="mcp-server-url" aria-label="URL" value={formData.url} onChange={(event) => setFormData((current) => ({ ...current, url: event.target.value }))} placeholder="http://localhost:3001/sse" />
-              </div>
-            )}
-
-            <div className="space-y-2">
-              <Label htmlFor="mcp-server-env">环境变量（JSON）</Label>
-              <Textarea
-                id="mcp-server-env"
-                aria-label="环境变量（JSON）"
-                value={formData.env}
-                onChange={(event) => setFormData((current) => ({ ...current, env: event.target.value }))}
-                className="min-h-28 w-full text-sm"
-                placeholder='{"API_KEY": "xxx"}'
-              />
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={() => void handleSave()}>{editorMode === "edit" ? "保存修改" : "添加"}</Button>
-              <Button variant="outline" onClick={closeEditor}>取消</Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {servers.length === 0 ? (
-        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-border bg-muted/20 p-12 text-center">
-          <Server className="size-10 text-muted-foreground" />
-          <div className="space-y-1">
-            <p className="text-lg font-semibold">暂无 MCP Server</p>
-            <p className="text-sm text-muted-foreground">点击右上角添加，接入本地或远程 MCP 工具服务。</p>
-          </div>
-          <Button onClick={openCreateForm}>
-            <Plus className="size-4" />
-            添加 Server
-          </Button>
+      {loading ? (
+        <div className="grid gap-3 md:grid-cols-2">
+          {[0, 1].map((item) => (
+            <Card key={item}>
+              <CardHeader><Skeleton className="h-5 w-40" /><Skeleton className="h-4 w-full" /></CardHeader>
+              <CardContent><Skeleton className="h-28 w-full" /></CardContent>
+            </Card>
+          ))}
         </div>
+      ) : servers.length === 0 ? (
+        <Empty className="border">
+          <EmptyHeader>
+            <EmptyMedia variant="icon"><Server /></EmptyMedia>
+            <EmptyTitle>暂无 MCP 服务器</EmptyTitle>
+            <EmptyDescription>添加或导入 Runtime MCP 服务器。</EmptyDescription>
+          </EmptyHeader>
+          <EmptyContent>
+            <Button type="button" onClick={openCreate}><Plus data-icon="inline-start" />添加服务器</Button>
+          </EmptyContent>
+        </Empty>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid gap-3">
           {servers.map((server) => (
             <Card key={server.id}>
-              <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
-                <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <CardTitle className="text-lg">{server.name}</CardTitle>
-                    <Badge variant="outline">{server.transport.toUpperCase()}</Badge>
-                    <Badge variant={server.status === "connected" ? "secondary" : "outline"}>{renderStatusLabel(server.status)}</Badge>
-                    <Badge variant="outline">{server.toolCount} 个工具</Badge>
-                  </div>
-                  <CardDescription>
-                    {server.transport === "sse" ? server.url : `${server.command ?? ""} ${(server.args ?? []).join(" ")}`}
-                  </CardDescription>
+              <CardHeader>
+                <CardTitle className="flex flex-wrap items-center gap-2">
+                  {server.name}
+                  <Badge variant="outline">{server.transport}</Badge>
+                  <Badge variant={server.status === "connected" ? "secondary" : server.status === "error" ? "destructive" : "outline"}>
+                    {statusLabel(server.status)}
+                  </Badge>
+                </CardTitle>
+                <CardDescription>
+                  {server.transport === "stdio"
+                    ? [server.command, ...(server.args ?? [])].filter(Boolean).join(" ")
+                    : server.url}
+                </CardDescription>
+                <CardAction>
+                  <Switch
+                    aria-label={`启用 MCP 服务器：${server.name}`}
+                    checked={server.enabled}
+                    disabled={pendingId === server.id}
+                    onCheckedChange={(enabled) => void toggleEnabled(server, enabled)}
+                  />
+                </CardAction>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-4">
+                {server.error && (
+                  <Alert><AlertTitle>服务器错误</AlertTitle><AlertDescription>{server.error}</AlertDescription></Alert>
+                )}
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="outline">{behaviorLabel(server.defaultBehavior)}</Badge>
+                  <Badge variant="outline">{server.tools.length} 个工具</Badge>
+                  {server.cwd && <Badge variant="outline">工作目录 {server.cwd}</Badge>}
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => openEditForm(server)}>
-                    <Pencil className="size-4" />
+                  <Button type="button" variant="outline" size="sm" onClick={() => openEdit(server)}>
+                    <Pencil data-icon="inline-start" />
                     编辑
                   </Button>
-                  {server.status === "disconnected" || server.status === "failed" ? (
-                    <Button onClick={() => void handleStart(server.id)}>
-                      <Play className="size-4" />
-                      {server.status === "failed" ? "重连" : "连接"}
-                    </Button>
-                  ) : (
-                    <Button variant="secondary" onClick={() => void handleStop(server.id)}>
-                      <Square className="size-4" />
+                  {server.status === "connected" ? (
+                    <Button type="button" variant="secondary" size="sm" disabled={pendingId === server.id} onClick={() => void disconnect(server)}>
+                      <CircleStop data-icon="inline-start" />
                       断开
                     </Button>
+                  ) : (
+                    <Button type="button" size="sm" disabled={pendingId === server.id} onClick={() => void connect(server)}>
+                      <Cable data-icon="inline-start" />
+                      连接
+                    </Button>
                   )}
-                  <Button variant="outline" onClick={() => void handleDelete(server.id)}>
-                    <Trash2 className="size-4" />
+                  <Button type="button" variant="destructive" size="sm" onClick={() => setDeleteId(server.id)}>
+                    <Trash2 data-icon="inline-start" />
                     删除
                   </Button>
                 </div>
-              </CardHeader>
-              <CardContent className="grid gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
-                <div className="space-y-3">
-                  {server.error && (
-                    <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-sm text-destructive">
-                      {server.error}
-                    </div>
-                  )}
-                  <div className="rounded-xl border border-border/70 p-3">
-                    <div className="mb-2 flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-                      <Wrench className="size-3.5" />
-                      工具注册表
-                    </div>
-                    <div className="space-y-2">
-                      {server.tools.length > 0 ? (
-                        server.tools.map((tool) => (
-                          <div key={tool.name} className="rounded-lg bg-muted/40 p-2 text-xs">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="font-mono text-foreground">{tool.name}</span>
-                              {tool.access ? (
-                                <Badge variant={tool.access === "allow" ? "secondary" : tool.access === "prompt" ? "outline" : "destructive"}>
-                                  {renderAccessLabel(tool.access)}
-                                </Badge>
-                              ) : null}
-                            </div>
-                            <div className="mt-1 text-muted-foreground">— {tool.description}</div>
-                            {tool.source ? <div className="mt-1 text-muted-foreground">来源：{runtimePolicySourceLabel(tool.source)}</div> : null}
-                            {(tool.reasonKey || tool.reason) ? (
-                              <div className="mt-1 text-muted-foreground">治理解释：{describeToolAccessReason(tool.reasonKey, tool.reason)}</div>
-                            ) : null}
-                            {tool.reason ? <div className="mt-1 text-muted-foreground">原因：{tool.reason}</div> : null}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="text-sm text-muted-foreground">尚未发现工具；连接后会把已发现工具汇总到这里。</p>
-                      )}
-                    </div>
-                  </div>
+                <div className="flex flex-col gap-2 rounded-lg border p-3">
+                  <div className="flex items-center gap-2 font-medium"><Wrench />已发现工具</div>
+                  {server.tools.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">尚未发现工具。连接或测试服务器后可刷新发现结果。</p>
+                  ) : server.tools.map((tool) => {
+                    const permission = server.toolPermissions?.find((item) => item.toolName === tool.name);
+                    const behavior = permission?.enabled === false
+                      ? "inherit"
+                      : permission?.behavior ?? "inherit";
+                    const pendingKey = `tool:${server.id}:${tool.name}`;
+                    return (
+                      <div
+                        key={tool.name}
+                        className="grid gap-3 rounded-lg bg-muted p-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center"
+                      >
+                        <div className="flex min-w-0 flex-col gap-1">
+                          <div className="truncate font-mono text-xs">{tool.name}</div>
+                          {tool.description && (
+                            <div className="text-xs text-muted-foreground">{tool.description}</div>
+                          )}
+                        </div>
+                        <SimpleSelect
+                          aria-label={`工具权限：${server.name}/${tool.name}`}
+                          value={behavior}
+                          disabled={pendingId === pendingKey}
+                          onValueChange={(value) => void updateToolBehavior(
+                            server,
+                            tool.name,
+                            value as McpBehavior | "inherit",
+                          )}
+                          options={[
+                            { value: "inherit", label: "继承服务器设置" },
+                            { value: "readOnly", label: "只读" },
+                            { value: "readWrite", label: "读写" },
+                            { value: "ask", label: "询问" },
+                            { value: "deny", label: "拒绝" },
+                          ]}
+                        />
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="rounded-xl border border-dashed border-border/70 p-4 text-sm text-muted-foreground">
-                  <div className="mb-3 flex items-center gap-2 text-foreground">
-                    <Server className="size-4 text-primary" />
-                    注册表摘要
-                  </div>
-                  <ul className="space-y-2">
-                    <li>传输方式：{server.transport.toUpperCase()}</li>
-                    <li>连接状态：{renderStatusLabel(server.status)}</li>
-                    <li>已发现工具：{server.toolCount}</li>
-                    <li>连接入口：{server.transport === "sse" ? (server.url ?? "未配置") : (server.command ?? "未配置")}</li>
-                    <li>调用执行链：遵循 Settings 的重试 / trace / dump 配置</li>
-                  </ul>
-                </div>
+                {bookId && (
+                  <BookMcpOverridePanel
+                    bookTitle={bookTitle}
+                    server={server}
+                    override={bookOverrideByServer.get(server.id)}
+                    pendingId={pendingId}
+                    onServerBehaviorChange={(behavior) => void updateBookServerBehavior(server, behavior)}
+                    onToolBehaviorChange={(toolName, behavior) => void updateBookToolBehavior(server, toolName, behavior)}
+                  />
+                )}
               </CardContent>
             </Card>
           ))}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Runtime MCP 工具注册表</CardTitle>
+          <CardDescription>由原生 Runtime MCP 工具客户端返回的工具。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {tools.length === 0 ? (
+            <p className="text-sm text-muted-foreground">当前未注册外部 MCP 工具。</p>
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2">
+              {tools.map((tool) => (
+                <div key={`${tool.serverId}:${tool.name}`} className="rounded-lg border p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-xs">{tool.name}</span>
+                    <Badge variant="outline">{tool.serverName}</Badge>
+                  </div>
+                  {tool.description && <p className="mt-1 text-xs text-muted-foreground">{tool.description}</p>}
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <ServerEditorDialog
+        open={editor !== null}
+        mode={editor?.mode ?? "create"}
+        form={form}
+        testResult={testResult}
+        pending={editor !== null && pendingId !== null}
+        onFormChange={setForm}
+        onOpenChange={(open) => { if (!open) { setEditor(null); setForm(EMPTY_FORM); setTestResult(null); } }}
+        onTest={() => void testServer()}
+        onSave={() => void saveServer()}
+      />
+
+      <Dialog open={importOpen} onOpenChange={setImportOpen}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>导入 MCP JSON</DialogTitle>
+            <DialogDescription>解析后的 JSON 将通过 Runtime MCP 导入客户端一次性提交。</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="mcp-import-json">MCP JSON</Label>
+            <Textarea
+              id="mcp-import-json"
+              className="min-h-72 font-mono"
+              value={importJson}
+              onChange={(event) => setImportJson(event.target.value)}
+              placeholder='{"mcpServers":{"memory":{"transport":"stdio","command":"npx","args":["-y","@modelcontextprotocol/server-memory"]}}}'
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setImportOpen(false)}>取消</Button>
+            <Button type="button" disabled={pendingId === "import" || !importJson.trim()} onClick={() => void importServers()}>
+              {pendingId === "import" ? "导入中…" : "导入"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteId !== null} onOpenChange={(open) => { if (!open) setDeleteId(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>删除 MCP 服务器</DialogTitle>
+            <DialogDescription>确定通过原生 Runtime MCP 客户端删除此服务器吗？</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setDeleteId(null)}>取消</Button>
+            <Button type="button" variant="destructive" disabled={deleteId !== null && pendingId === deleteId} onClick={() => void deleteServer()}>
+              {deleteId !== null && pendingId === deleteId ? "删除中…" : "删除"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function BookMcpOverridePanel({
+  bookTitle,
+  server,
+  override,
+  pendingId,
+  onServerBehaviorChange,
+  onToolBehaviorChange,
+}: {
+  readonly bookTitle?: string;
+  readonly server: McpServerStatus;
+  readonly override?: RuntimeBookMcpServerOverride;
+  readonly pendingId: string | null;
+  readonly onServerBehaviorChange: (behavior: McpBehavior | "inherit") => void;
+  readonly onToolBehaviorChange: (toolName: string, behavior: McpBehavior | "inherit") => void;
+}) {
+  const serverBehavior = override?.defaultBehavior ?? "inherit";
+  return (
+    <div className="flex flex-col gap-3 rounded-lg border border-primary/30 bg-primary/5 p-3">
+      <div>
+        <div className="font-medium">作品权限覆盖{bookTitle ? ` · ${bookTitle}` : ""}</div>
+        <p className="text-xs text-muted-foreground">
+          仅影响当前作品。选择继承会向 Runtime 发送 null，并真实删除对应作品 override。
+        </p>
+      </div>
+      <div className="grid gap-3 rounded-lg bg-background p-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center">
+        <div className="flex flex-col gap-1">
+          <span className="text-sm font-medium">服务器默认行为</span>
+          <span className="text-xs text-muted-foreground">全局当前值：{behaviorLabel(server.defaultBehavior)}</span>
+        </div>
+        <SimpleSelect
+          aria-label={`作品服务器权限：${server.name}`}
+          value={serverBehavior}
+          disabled={pendingId === `book-server:${server.id}`}
+          onValueChange={(value) => onServerBehaviorChange(value as McpBehavior | "inherit")}
+          options={[
+            { value: "inherit", label: "继承全局设置" },
+            { value: "readOnly", label: "只读" },
+            { value: "readWrite", label: "读写" },
+            { value: "ask", label: "询问" },
+            { value: "deny", label: "拒绝" },
+          ]}
+        />
+      </div>
+      {server.tools.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {server.tools.map((tool) => {
+            const permission = override?.toolPermissions?.find((item) => item.toolName === tool.name);
+            const behavior = permission?.enabled === false
+              ? "inherit"
+              : permission?.behavior ?? "inherit";
+            const pendingKey = `book-tool:${server.id}:${tool.name}`;
+            return (
+              <div
+                key={tool.name}
+                className="grid gap-3 rounded-lg bg-background p-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center"
+              >
+                <div className="flex min-w-0 flex-col gap-1">
+                  <span className="truncate font-mono text-xs">{tool.name}</span>
+                  <span className="text-xs text-muted-foreground">
+                    继承时使用作品服务器覆盖；若作品也未覆盖，则使用全局逐工具或服务器设置。
+                  </span>
+                </div>
+                <SimpleSelect
+                  aria-label={`作品工具权限：${server.name}/${tool.name}`}
+                  value={behavior}
+                  disabled={pendingId === pendingKey}
+                  onValueChange={(value) => onToolBehaviorChange(
+                    tool.name,
+                    value as McpBehavior | "inherit",
+                  )}
+                  options={[
+                    { value: "inherit", label: "继承上层设置" },
+                    { value: "readOnly", label: "只读" },
+                    { value: "readWrite", label: "读写" },
+                    { value: "ask", label: "询问" },
+                    { value: "deny", label: "拒绝" },
+                  ]}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-function SummaryCard({ title, value, description }: { title: string; value: string; description: string }) {
+function ServerEditorDialog({
+  open,
+  mode,
+  form,
+  testResult,
+  pending,
+  onFormChange,
+  onOpenChange,
+  onTest,
+  onSave,
+}: {
+  readonly open: boolean;
+  readonly mode: "create" | "edit";
+  readonly form: ServerFormState;
+  readonly testResult: McpTestResult | null;
+  readonly pending: boolean;
+  readonly onFormChange: (form: ServerFormState) => void;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onTest: () => void;
+  readonly onSave: () => void;
+}) {
+  const remote = form.transport !== "stdio";
+  const validTarget = remote ? form.url.trim() : form.command.trim();
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>{mode === "create" ? "添加 MCP 服务器" : "编辑 MCP 服务器"}</DialogTitle>
+          <DialogDescription>配置原生 Runtime MCP 服务器，并可在保存前测试草稿。</DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-server-name">名称</Label>
+              <Input id="mcp-server-name" value={form.name} onChange={(event) => onFormChange({ ...form, name: event.target.value })} />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label>传输方式</Label>
+              <SimpleSelect
+                aria-label="MCP 传输方式"
+                value={form.transport}
+                onValueChange={(value) => onFormChange({ ...form, transport: value as McpTransport })}
+                options={[
+                  { value: "stdio", label: "stdio" },
+                  { value: "streamable-http", label: "streamable-http" },
+                  { value: "sse", label: "sse" },
+                ]}
+              />
+            </div>
+          </div>
+          {remote ? (
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-server-url">URL</Label>
+              <Input id="mcp-server-url" value={form.url} onChange={(event) => onFormChange({ ...form, url: event.target.value })} placeholder="https://example.com/mcp" />
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="mcp-server-command">命令</Label>
+                  <Input id="mcp-server-command" value={form.command} onChange={(event) => onFormChange({ ...form, command: event.target.value })} placeholder="npx" />
+                </div>
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="mcp-server-cwd">工作目录</Label>
+                  <Input id="mcp-server-cwd" value={form.cwd} onChange={(event) => onFormChange({ ...form, cwd: event.target.value })} />
+                </div>
+              </div>
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="mcp-server-args">参数（每行一个或使用逗号分隔）</Label>
+                <Textarea id="mcp-server-args" className="min-h-24 font-mono" value={form.args} onChange={(event) => onFormChange({ ...form, args: event.target.value })} />
+              </div>
+            </>
+          )}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-server-env">环境变量 JSON</Label>
+              <Textarea id="mcp-server-env" className="min-h-28 font-mono" value={form.env} onChange={(event) => onFormChange({ ...form, env: event.target.value })} placeholder='{"API_KEY":"…"}' />
+            </div>
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="mcp-server-headers">请求头 JSON</Label>
+              <Textarea id="mcp-server-headers" disabled={!remote} className="min-h-28 font-mono" value={form.headers} onChange={(event) => onFormChange({ ...form, headers: event.target.value })} placeholder='{"Authorization":"Bearer …"}' />
+            </div>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-2">
+              <Label>默认工具行为</Label>
+              <SimpleSelect
+                aria-label="默认工具行为"
+                value={form.defaultBehavior}
+                onValueChange={(value) => onFormChange({ ...form, defaultBehavior: value as ServerFormState["defaultBehavior"] })}
+                options={[
+                  { value: "inherit", label: "Runtime 默认设置" },
+                  { value: "readOnly", label: "只读" },
+                  { value: "readWrite", label: "读写" },
+                  { value: "ask", label: "询问" },
+                  { value: "deny", label: "拒绝" },
+                ]}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-3 rounded-lg border p-3">
+              <Label>已启用</Label>
+              <Switch aria-label="MCP 服务器已启用" checked={form.enabled} onCheckedChange={(enabled) => onFormChange({ ...form, enabled })} />
+            </div>
+          </div>
+          {testResult && (
+            <Alert>
+              <AlertTitle>{testResult.ok ? "连接测试成功" : "连接测试失败"}</AlertTitle>
+              <AlertDescription>
+                {testResult.ok ? `${testResult.tools?.length ?? 0} 个工具已发现。` : testResult.error ?? "Runtime 返回了失败的测试结果。"}
+              </AlertDescription>
+            </Alert>
+          )}
+        </div>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button type="button" variant="secondary" disabled={pending || !validTarget} onClick={onTest}>
+            <FlaskConical data-icon="inline-start" />
+            测试
+          </Button>
+          <Button type="button" disabled={pending || !form.name.trim() || !validTarget} onClick={onSave}>
+            <PlugZap data-icon="inline-start" />
+            {pending ? "保存中…" : mode === "create" ? "添加服务器" : "保存修改"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function SummaryCard({ label, value }: { readonly label: string; readonly value: number }) {
   return (
     <Card size="sm">
       <CardHeader>
-        <CardDescription>{title}</CardDescription>
-        <CardTitle className="text-3xl">{value}</CardTitle>
+        <CardDescription>{label}</CardDescription>
+        <CardTitle className="text-2xl">{value}</CardTitle>
       </CardHeader>
-      <CardContent className="pt-0 text-xs text-muted-foreground">{description}</CardContent>
     </Card>
   );
 }

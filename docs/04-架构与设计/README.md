@@ -1,6 +1,6 @@
 **版本**: v3.0.0
 **创建日期**: 2026-06-25
-**更新日期**: 2026-06-25
+**更新日期**: 2026-07-09
 **状态**: current
 **文档类型**: current
 
@@ -25,9 +25,11 @@ NovelFork Studio 系统架构文档。
 
 | 包 | 职责 | 边界 |
 |----|------|------|
-| `packages/core` | 存储、LLM 客户端、状态机、数据模型 | 无领域代码 |
-| `packages/studio` | Agent 运行时、HTTP/WS 服务、前端外壳 | 无小说代码 |
-| `packages/novel-plugin` | 写作引擎、经纬、路由、工作台 UI | 小说专属 |
+| `packages/core` | 存储、LLM 客户端、状态机、数据模型 | 无领域代码；不得依赖 `studio` / `novel-plugin` |
+| `packages/studio` | Agent 运行时、HTTP/WS 服务、前端外壳 | 通用工作台，可通过插件注册调用小说能力 |
+| `packages/novel-plugin` | 写作引擎、经纬、路由、工作台 UI | 小说专属，可依赖 `core` |
+
+依赖方向必须保持单向：`studio → core`、`studio → novel-plugin`、`novel-plugin → core`。`core → studio` 与 `core → novel-plugin` 属于架构违规，由 `bun run architecture:check` 阻断。
 
 ## Narrative Wave Memory（叙事浪潮记忆）
 

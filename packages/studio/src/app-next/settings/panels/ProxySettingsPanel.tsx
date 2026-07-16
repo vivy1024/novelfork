@@ -1,187 +1,372 @@
-import { useState, useEffect } from "react";
-import { fetchJson, putApi } from "../../../hooks/use-api";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Save, CheckCircle, AlertCircle } from "lucide-react";
-import type { ProxySettings } from "../../../types/settings";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Check, Save } from "lucide-react";
 
-interface ProxyCard {
-  id: string;
-  label: string;
-  description: string;
-  value: string;
-  type: "platform" | "provider" | "tool";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Empty, EmptyDescription, EmptyHeader, EmptyTitle } from "@/components/ui/empty";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  createProxyOverridesClient,
+  type RuntimeHookProxyTarget,
+  type RuntimeProviderProxyTarget,
+  type RuntimeProxyOverride,
+  type RuntimeProxyOverridesSnapshot,
+} from "../../runtime-admin/proxy-overrides";
+import type { RuntimeProxySettings } from "../../runtime-admin/settings";
+
+const proxyClient = createProxyOverridesClient();
+const PROXY_URL_PATTERN = /^(https?|socks4|socks5h?):\/\/\S+$/i;
+
+const MODE_OPTIONS = [
+  { value: "default", label: "继承统一策略" },
+  { value: "system", label: "跟随系统环境变量" },
+  { value: "direct", label: "直接连接" },
+  { value: "custom", label: "自定义代理" },
+] as const;
+
+const OUTBOUND_MODE_OPTIONS = MODE_OPTIONS.filter((option) => option.value !== "default");
+
+const PLATFORM_LABELS: Readonly<Record<string, string>> = {
+  telegram: "Telegram",
+  discord: "Discord",
+  slack: "Slack",
+  feishu: "Feishu / Lark",
+  webhook: "Webhook",
+  weixin: "微信",
+  qqbot: "QQ Bot",
+};
+
+function errorMessage(reason: unknown): string {
+  return reason instanceof Error ? reason.message : String(reason);
+}
+
+function validProxy(value: RuntimeProxyOverride | RuntimeProxySettings): boolean {
+  return value.mode !== "custom" || PROXY_URL_PATTERN.test(value.url?.trim() ?? "");
+}
+
+function overrideKey(target: RuntimeProviderProxyTarget | RuntimeHookProxyTarget): string {
+  if ("scope" in target) return `hook:${target.id}`;
+  return target.kind === "builtin"
+    ? `provider:${target.key}`
+    : `provider:${target.section}:${target.id}`;
+}
+
+interface OverrideRowProps {
+  readonly name: string;
+  readonly badge?: string;
+  readonly value: RuntimeProxyOverride;
+  readonly saving: boolean;
+  readonly saved: boolean;
+  readonly onChange: (value: RuntimeProxyOverride) => void;
+  readonly onSave: () => void;
+}
+
+function OverrideRow({ name, badge, value, saving, saved, onChange, onSave }: OverrideRowProps) {
+  const valid = validProxy(value);
+  return (
+    <div data-slot="proxy-override-row" className="flex flex-col gap-4 rounded-lg border p-4">
+      <div data-slot="proxy-override-row-header" className="flex flex-wrap items-center gap-2">
+        <span className="min-w-0 truncate text-sm font-medium">{name}</span>
+        {badge ? <Badge variant="secondary">{badge}</Badge> : null}
+      </div>
+      <FieldGroup>
+        <Field orientation="responsive" data-disabled={saving}>
+          <FieldLabel>代理策略</FieldLabel>
+          <SimpleSelect
+            aria-label={`${name} 代理策略`}
+            value={value.mode}
+            onValueChange={(mode) => onChange(
+              mode === "custom"
+                ? { mode: "custom", url: value.url ?? "" }
+                : { mode: mode as Exclude<RuntimeProxyOverride["mode"], "custom"> },
+            )}
+            options={[...MODE_OPTIONS]}
+            disabled={saving}
+          />
+        </Field>
+        {value.mode === "custom" ? (
+          <Field data-invalid={!valid} data-disabled={saving}>
+            <FieldLabel>代理 URL</FieldLabel>
+            <Input
+              aria-label={`${name} 代理 URL`}
+              aria-invalid={!valid}
+              autoComplete="off"
+              value={value.url ?? ""}
+              onChange={(event) => onChange({ mode: "custom", url: event.currentTarget.value })}
+              placeholder="http://127.0.0.1:7890"
+              disabled={saving}
+            />
+            <FieldDescription>支持 http、https、socks4、socks5 和 socks5h。</FieldDescription>
+          </Field>
+        ) : null}
+      </FieldGroup>
+      <div className="flex justify-end">
+        <Button type="button" size="sm" variant="outline" onClick={onSave} disabled={saving || !valid}>
+          {saved ? <Check data-icon="inline-start" /> : <Save data-icon="inline-start" />}
+          {saving ? "保存中…" : saved ? "已保存" : "保存覆盖"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+interface OverrideGroupProps {
+  readonly title: string;
+  readonly description: string;
+  readonly emptyDescription: string;
+  readonly children: React.ReactNode;
+  readonly empty: boolean;
+}
+
+function OverrideGroup({ title, description, emptyDescription, children, empty }: OverrideGroupProps) {
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {empty ? (
+          <Empty>
+            <EmptyHeader>
+              <EmptyTitle>暂无可配置项</EmptyTitle>
+              <EmptyDescription>{emptyDescription}</EmptyDescription>
+            </EmptyHeader>
+          </Empty>
+        ) : (
+          <div data-slot="proxy-override-list" className="flex flex-col gap-4">{children}</div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export function ProxySettingsPanel() {
-  const [proxy, setProxy] = useState<ProxySettings>({ providers: {}, webFetch: "", platforms: {} });
+  const [snapshot, setSnapshot] = useState<RuntimeProxyOverridesSnapshot | null>(null);
+  const [outbound, setOutbound] = useState<RuntimeProxySettings>({ mode: "system" });
+  const [drafts, setDrafts] = useState<Readonly<Record<string, RuntimeProxyOverride>>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState<string | null>(null);
-  const [saved, setSaved] = useState<string | null>(null);
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savedKey, setSavedKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchJson<{ proxy: ProxySettings }>("/settings/user")
-      .then((data) => {
-        if (data.proxy) setProxy(data.proxy);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await proxyClient.get();
+      const nextDrafts: Record<string, RuntimeProxyOverride> = {};
+      for (const provider of next.providers) nextDrafts[overrideKey(provider)] = provider.proxy;
+      for (const gateway of next.gateways) nextDrafts[`gateway:${gateway.platform}`] = gateway.proxy;
+      for (const hook of next.hooks) nextDrafts[overrideKey(hook)] = hook.proxy;
+      setSnapshot(next);
+      setOutbound(next.outbound);
+      setDrafts(nextDrafts);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
-  async function saveField(field: string, value: string) {
-    setSaving(field);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const setDraft = useCallback((key: string, value: RuntimeProxyOverride) => {
+    setSavedKey(null);
+    setDrafts((current) => ({ ...current, [key]: value }));
+  }, []);
+
+  async function runSave(key: string, operation: () => Promise<unknown>) {
+    setSavingKey(key);
+    setSavedKey(null);
+    setError(null);
     try {
-      if (field === "webFetch") {
-        await putApi("/settings/user", { proxy: { webFetch: value } });
-      } else if (field.startsWith("platform:")) {
-        const key = field.replace("platform:", "");
-        await putApi("/settings/user", { proxy: { platforms: { ...proxy.platforms, [key]: value } } });
-      } else if (field.startsWith("provider:")) {
-        const key = field.replace("provider:", "");
-        await putApi("/settings/user", { proxy: { providers: { ...proxy.providers, [key]: value } } });
-      }
-      setSaved(field);
-      setTimeout(() => setSaved(null), 2000);
-    } catch { /* ignore */ }
-    finally { setSaving(null); }
+      await operation();
+      setSavedKey(key);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setSavingKey(null);
+    }
   }
 
-  if (loading) return <p className="py-8 text-center text-sm text-muted-foreground">加载代理配置...</p>;
+  const providerRows = useMemo(
+    () => (snapshot?.providers ?? []).filter((provider) =>
+      provider.kind === "provider" && provider.section === "customApiProviders",
+    ),
+    [snapshot],
+  );
+  const gatewayRows = useMemo(() => snapshot?.gateways ?? [], [snapshot]);
+  const hookRows = useMemo(() => snapshot?.hooks ?? [], [snapshot]);
 
-  const cards: ProxyCard[] = [
-    { id: "platform:ai", label: "AI 供应商", description: "用于所有 AI API 请求的代理", value: proxy.platforms?.ai ?? "", type: "platform" },
-    { id: "webFetch", label: "WebFetch", description: "用于网页抓取和 HTTP 请求的代理", value: proxy.webFetch ?? "", type: "tool" },
-  ];
-
-  // 动态添加已配置的供应商代理
-  for (const [providerId, proxyUrl] of Object.entries(proxy.providers ?? {})) {
-    cards.push({
-      id: `provider:${providerId}`,
-      label: providerId,
-      description: `供应商 ${providerId} 的独立代理`,
-      value: proxyUrl,
-      type: "provider",
-    });
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4" aria-label="正在读取代理设置">
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-64 w-full" />
+        <Skeleton className="h-48 w-full" />
+      </div>
+    );
   }
+
+  if (!snapshot) {
+    return (
+      <Alert>
+        <AlertTitle>代理设置加载失败</AlertTitle>
+        <AlertDescription>{error ?? "Runtime 未返回代理设置。"}</AlertDescription>
+      </Alert>
+    );
+  }
+
+  const outboundValid = validProxy(outbound);
 
   return (
-    <div className="space-y-6">
+    <div data-slot="proxy-settings-panel" className="flex flex-col gap-6">
       <div>
-        <h2 className="text-lg font-semibold mb-1 text-foreground">代理管理</h2>
-        <p className="text-sm text-muted-foreground">集中管理所有供应商和服务的网络代理配置。</p>
+        <h2 className="text-lg font-semibold text-foreground">代理管理</h2>
+        <p className="text-sm text-muted-foreground">
+          管理 Runtime 统一出站策略，以及 canonical 标准 API Provider、Gateway 平台和 HTTP Hook 的独立覆盖。
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
-        {cards.map((card) => (
-          <ProxyCardItem
-            key={card.id}
-            card={card}
-            saving={saving === card.id}
-            saved={saved === card.id}
-            onChange={(value) => {
-              if (card.id === "webFetch") {
-                setProxy((p) => ({ ...p, webFetch: value }));
-              } else if (card.id.startsWith("platform:")) {
-                const key = card.id.replace("platform:", "");
-                setProxy((p) => ({ ...p, platforms: { ...p.platforms, [key]: value } }));
-              } else if (card.id.startsWith("provider:")) {
-                const key = card.id.replace("provider:", "");
-                setProxy((p) => ({ ...p, providers: { ...p.providers, [key]: value } }));
-              }
-            }}
-            onSave={(value) => saveField(card.id, value)}
-          />
-        ))}
-      </div>
+      {error ? (
+        <Alert>
+          <AlertTitle>代理设置操作失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      ) : null}
 
-      {/* 添加供应商代理 */}
-      <AddProviderProxy
-        existingIds={Object.keys(proxy.providers ?? {})}
-        onAdd={(providerId, url) => {
-          setProxy((p) => ({ ...p, providers: { ...p.providers, [providerId]: url } }));
-          void saveField(`provider:${providerId}`, url);
-        }}
-      />
-    </div>
-  );
-}
+      <Card>
+        <CardHeader>
+          <CardTitle>统一出站代理</CardTitle>
+          <CardDescription>未设置独立覆盖的 Provider、WebFetch、Gateway 与 Hook 均继承此策略。</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <FieldGroup>
+            <Field orientation="responsive" data-disabled={savingKey === "outbound"}>
+              <FieldLabel>代理模式</FieldLabel>
+              <SimpleSelect
+                aria-label="统一代理模式"
+                value={outbound.mode}
+                onValueChange={(mode) => {
+                  setSavedKey(null);
+                  setOutbound(
+                    mode === "custom"
+                      ? { mode: "custom", url: outbound.url ?? "" }
+                      : { mode: mode as "system" | "direct" },
+                  );
+                }}
+                options={[...OUTBOUND_MODE_OPTIONS]}
+                disabled={savingKey === "outbound"}
+              />
+            </Field>
+            {outbound.mode === "custom" ? (
+              <Field data-invalid={!outboundValid} data-disabled={savingKey === "outbound"}>
+                <FieldLabel htmlFor="outbound-proxy-url">代理 URL</FieldLabel>
+                <Input
+                  id="outbound-proxy-url"
+                  aria-invalid={!outboundValid}
+                  autoComplete="off"
+                  value={outbound.url ?? ""}
+                  onChange={(event) => {
+                    setSavedKey(null);
+                    setOutbound({ mode: "custom", url: event.currentTarget.value });
+                  }}
+                  placeholder="http://127.0.0.1:7890"
+                  disabled={savingKey === "outbound"}
+                />
+                <FieldDescription>支持 http、https、socks4、socks5 和 socks5h。</FieldDescription>
+              </Field>
+            ) : null}
+          </FieldGroup>
+        </CardContent>
+        <CardFooter className="justify-end">
+          <Button
+            type="button"
+            onClick={() => void runSave("outbound", () => proxyClient.updateOutbound(outbound))}
+            disabled={savingKey === "outbound" || !outboundValid}
+          >
+            {savedKey === "outbound" ? <Check data-icon="inline-start" /> : <Save data-icon="inline-start" />}
+            {savingKey === "outbound" ? "保存中…" : savedKey === "outbound" ? "已保存" : "保存统一策略"}
+          </Button>
+        </CardFooter>
+      </Card>
 
-function ProxyCardItem({ card, saving, saved, onChange, onSave }: {
-  card: ProxyCard;
-  saving: boolean;
-  saved: boolean;
-  onChange: (value: string) => void;
-  onSave: (value: string) => void;
-}) {
-  const isValidUrl = !card.value.trim() || /^(https?|socks5?):\/\/.+/.test(card.value.trim());
-  const statusBadge = card.value.trim()
-    ? <span className="inline-flex items-center gap-1 rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[10px] text-emerald-600"><CheckCircle className="size-2.5" />已配置</span>
-    : <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground"><AlertCircle className="size-2.5" />未配置</span>;
+      <OverrideGroup
+        title="AI Provider 覆盖"
+        description="只显示并覆盖 customApiProviders canonical 标准 API；内置账户池、NUG、Cline 与派生缓存不会出现。"
+        emptyDescription="Runtime 尚未配置 canonical 标准 API Provider。"
+        empty={providerRows.length === 0}
+      >
+        {providerRows.map((provider) => {
+          const key = overrideKey(provider);
+          return (
+            <OverrideRow
+              key={key}
+              name={provider.name}
+              badge={provider.kind === "provider" ? provider.badge : "内置"}
+              value={drafts[key] ?? { mode: "default" }}
+              saving={savingKey === key}
+              saved={savedKey === key}
+              onChange={(value) => setDraft(key, value)}
+              onSave={() => void runSave(key, () => proxyClient.updateProvider(provider, drafts[key] ?? provider.proxy))}
+            />
+          );
+        })}
+      </OverrideGroup>
 
-  return (
-    <div className="rounded-lg border border-border p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div>
-          <h4 className="text-sm font-semibold">{card.label}</h4>
-          <p className="text-xs text-muted-foreground">{card.description}</p>
-        </div>
-        {statusBadge}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          placeholder="http://127.0.0.1:7890"
-          value={card.value}
-          onChange={(e) => onChange(e.target.value)}
-          className={`flex-1 text-xs font-mono ${!isValidUrl ? "border-destructive" : ""}`}
-        />
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => onSave(card.value)}
-          disabled={saving || (!isValidUrl && card.value.trim() !== "")}
-          className="gap-1"
-        >
-          <Save className="size-3" />
-          {saving ? "..." : saved ? "已保存" : "保存"}
-        </Button>
-      </div>
-      {!isValidUrl && <p className="text-[10px] text-destructive">格式无效，需以 http://、https:// 或 socks5:// 开头</p>}
-    </div>
-  );
-}
+      <OverrideGroup
+        title="Gateway 覆盖"
+        description="保存后通过 Runtime 真实偏好 API 更新平台配置，并请求重载对应 Gateway。"
+        emptyDescription="当前用户尚未配置 Gateway 平台。"
+        empty={gatewayRows.length === 0}
+      >
+        {gatewayRows.map((gateway) => {
+          const key = `gateway:${gateway.platform}`;
+          return (
+            <OverrideRow
+              key={key}
+              name={PLATFORM_LABELS[gateway.platform] ?? gateway.platform}
+              badge="Gateway"
+              value={drafts[key] ?? { mode: "default" }}
+              saving={savingKey === key}
+              saved={savedKey === key}
+              onChange={(value) => setDraft(key, value)}
+              onSave={() => void runSave(key, () => proxyClient.updateGateway(gateway.platform, drafts[key] ?? gateway.proxy))}
+            />
+          );
+        })}
+      </OverrideGroup>
 
-function AddProviderProxy({ existingIds, onAdd }: { existingIds: string[]; onAdd: (id: string, url: string) => void }) {
-  const [providerId, setProviderId] = useState("");
-  const [url, setUrl] = useState("");
-
-  const handleAdd = () => {
-    if (!providerId.trim() || existingIds.includes(providerId.trim())) return;
-    onAdd(providerId.trim(), url.trim());
-    setProviderId("");
-    setUrl("");
-  };
-
-  return (
-    <div className="rounded-lg border border-border p-4 space-y-3">
-      <h4 className="text-sm font-semibold">添加供应商代理</h4>
-      <p className="text-xs text-muted-foreground">为特定供应商配置独立的代理地址。</p>
-      <div className="flex gap-2">
-        <Input
-          placeholder="供应商 ID"
-          value={providerId}
-          onChange={(e) => setProviderId(e.target.value)}
-          className="w-32 text-xs"
-        />
-        <Input
-          placeholder="代理地址 (http://...)"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          className="flex-1 text-xs font-mono"
-        />
-        <Button variant="outline" size="sm" onClick={handleAdd} disabled={!providerId.trim()}>
-          添加
-        </Button>
-      </div>
+      <OverrideGroup
+        title="HTTP Hook 覆盖"
+        description="只更新 Hook 的 proxyMode 与 proxyUrl，不回传 headers 等敏感配置。"
+        emptyDescription="Runtime 中没有 HTTP Hook。"
+        empty={hookRows.length === 0}
+      >
+        {hookRows.map((hook) => {
+          const key = overrideKey(hook);
+          return (
+            <OverrideRow
+              key={key}
+              name={hook.name}
+              badge={hook.scope === "project" ? "项目" : "全局"}
+              value={drafts[key] ?? { mode: "default" }}
+              saving={savingKey === key}
+              saved={savedKey === key}
+              onChange={(value) => setDraft(key, value)}
+              onSave={() => void runSave(key, () => proxyClient.updateHook(hook.id, drafts[key] ?? hook.proxy))}
+            />
+          );
+        })}
+      </OverrideGroup>
     </div>
   );
 }
