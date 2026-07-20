@@ -56,6 +56,10 @@
     "./runtime-contracts": {
       "types": "./src/runtime-contracts/index.ts",
       "import": "./dist/runtime-contracts/index.js"
+    },
+    "./i18n": {
+      "types": "./src/i18n/index.ts",
+      "import": "./dist/i18n/index.js"
     }
   },
   "files": [
@@ -89,7 +93,7 @@
     "eventsource": "2.0.2",
     "js-yaml": "4.1.1",
     "openai": "4.80.0",
-    "zod": "3.24.0"
+    "zod": "4.3.6"
   },
   "devDependencies": {
     "@types/eventsource": "1.1.15",

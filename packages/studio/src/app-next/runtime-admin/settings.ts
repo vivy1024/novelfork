@@ -127,13 +127,15 @@ export type RuntimeCustomApiProtocol =
   | "anthropic-compatible"
   | "codex-native"
   | "responses-compatible"
-  | "completions-compatible";
+  | "completions-compatible"
+  | "gemini-compatible";
 
 export interface RuntimeCustomApiProviderSettings extends RuntimeProviderSettings {
   readonly apiKey: MaskedSecret;
   readonly baseUrl: string;
   readonly defaultModel: string;
   readonly protocol: RuntimeCustomApiProtocol;
+  readonly geminiTransport?: "generate-content" | "interactions";
   readonly defaultReasoningEffort?: "none" | "low" | "medium" | "high" | "max" | null;
   readonly proxy?: RuntimeProviderProxySettings;
   readonly tlsRejectUnauthorized?: boolean;
@@ -214,8 +216,10 @@ export interface RuntimeSettings extends RuntimeSettingsSection {
   readonly openaiProviders?: readonly RuntimeOpenAiProviderSettings[];
   /** Runtime-derived Anthropic-family cache; never PATCH this collection from Studio. */
   readonly anthropicProviders?: readonly RuntimeAnthropicProviderSettings[];
-  readonly nugProviders?: readonly RuntimeProviderSettings[];
-  readonly clineProviders?: readonly RuntimeProviderSettings[];
+  /** Runtime-derived Gemini-family cache; never PATCH this collection from Studio. */
+  readonly geminiProviders?: readonly RuntimeProviderSettings[];
+  readonly nugProviders?: readonly RuntimeNugProviderSettings[];
+  readonly clineProviders?: readonly RuntimeClineProviderSettings[];
   readonly mcpServers?: readonly RuntimeSettingsSection[];
   readonly update?: RuntimeUpdateSettings;
   readonly vnet?: RuntimeSettingsSection;
@@ -227,6 +231,7 @@ export interface RuntimeSettings extends RuntimeSettingsSection {
   readonly anthropicModelsGrouped?: unknown;
   readonly nugModelsGrouped?: unknown;
   readonly clineModelsGrouped?: unknown;
+  readonly geminiModelsGrouped?: unknown;
   readonly customApiQuotas?: unknown;
   readonly codexAvailable?: boolean;
   readonly codexModels?: unknown;

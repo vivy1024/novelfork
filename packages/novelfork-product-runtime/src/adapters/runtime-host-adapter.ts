@@ -1,0 +1,267 @@
+import {
+	type RuntimeToolRisk,
+	type ToolContext,
+	type ToolDefinition,
+	type ToolResult,
+	type ResolvedRuntimeContributions,
+	type RuntimeResolveContext,
+} from "@vivy1024/narrafork-runtime-bridge";
+import {
+	RuntimePluginHost,
+	type PortableJsonValue,
+	type RuntimeResolveContext as PluginRuntimeResolveContext,
+	type RuntimeResourceBinding as PluginRuntimeResourceBinding,
+	type RuntimeToolContribution,
+	type ToolExecutionContext as PluginToolExecutionContext,
+} from "@vivy1024/novelfork-core/plugins";
+import { NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
+import { z } from "zod/v4";
+
+const FORBIDDEN_MODEL_FIELDS = new Set(["bookId", "sessionId", "bookRoot"]);
+
+function findForbiddenModelField(value: unknown, path = "$input"): string | null {
+	if (Array.isArray(value)) {
+		for (let index = 0; index < value.length; index += 1) {
+			const nested = findForbiddenModelField(value[index], `${path}[${index}]`);
+			if (nested) return nested;
+		}
+		return null;
+	}
+	if (!value || typeof value !== "object") return null;
+	for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+		const childPath = `${path}.${key}`;
+		if (FORBIDDEN_MODEL_FIELDS.has(key)) return childPath;
+		const nested = findForbiddenModelField(child, childPath);
+		if (nested) return nested;
+	}
+	return null;
+}
+
+/** Clone JSON Schema objects into closed-world input schemas for model-originated values. */
+function closeSchemaObjects(value: unknown): unknown {
+	if (Array.isArray(value)) return value.map(closeSchemaObjects);
+	if (!value || typeof value !== "object") return value;
+	const source = value as Record<string, unknown>;
+	const normalized: Record<string, unknown> = {};
+	for (const [key, child] of Object.entries(source)) {
+		normalized[key] = closeSchemaObjects(child);
+	}
+	if (source.type === "object") normalized.additionalProperties = false;
+	return normalized;
+}
+
+function isPortableJsonValue(value: unknown, ancestors = new WeakSet<object>()): value is PortableJsonValue {
+	if (value === null || typeof value === "string" || typeof value === "boolean") return true;
+	if (typeof value === "number") return Number.isFinite(value);
+	if (!value || typeof value !== "object") return false;
+	if (ancestors.has(value)) return false;
+	ancestors.add(value);
+	try {
+		return Array.isArray(value)
+			? value.every((entry) => isPortableJsonValue(entry, ancestors))
+			: Object.values(value).every((entry) => isPortableJsonValue(entry, ancestors));
+	} finally {
+		ancestors.delete(value);
+	}
+}
+
+/** Convert the Runtime bridge's broad binding payload into the portable plugin contract. */
+function toPluginRuntimeResolveContext(
+	context: RuntimeResolveContext,
+): PluginRuntimeResolveContext | null {
+	const resourceBindings: Record<string, PluginRuntimeResourceBinding> = {};
+	for (const [id, binding] of Object.entries(context.resourceBindings)) {
+		if (
+			!binding ||
+			typeof binding !== "object" ||
+			Array.isArray(binding) ||
+			typeof binding.kind !== "string" ||
+			typeof binding.root !== "string" ||
+			!isPortableJsonValue(binding)
+		) {
+			return null;
+		}
+		resourceBindings[id] = binding as PluginRuntimeResourceBinding;
+	}
+	return {
+		runtimeProjectId: context.runtimeProjectId,
+		projectRoot: context.projectRoot,
+		projectType: context.projectType,
+		enabledPluginIds: context.enabledPluginIds,
+		...(context.sessionId ? { sessionId: context.sessionId } : {}),
+		resourceBindings,
+	};
+}
+
+export interface NovelRuntimeBindingResolver {
+	resolveForNarrator(narratorId: string): Promise<RuntimeResolveContext | null>;
+}
+
+function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
+	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write") return risk;
+	// An incomplete or future contribution must not silently become a read tool.
+	return "confirmed-write";
+}
+
+function errorResult(
+	error: string,
+	summary: string,
+	toolName: string,
+	metadata: Record<string, unknown> = {},
+): ToolResult {
+	return {
+		output: JSON.stringify({ ok: false, error, summary }),
+		isError: true,
+		metadata: {
+			runtimePluginId: NOVEL_RUNTIME_CONTRIBUTION.id,
+			toolName,
+			...metadata,
+		},
+	};
+}
+
+/**
+ * Private Runtime trust boundary for portable NovelFork contributions.
+ *
+ * Tool input is always parsed from the contribution's JSON Schema before a
+ * handler runs. Resource bindings and session identity come exclusively from
+ * the trusted narrator binding resolver, never from model tool input.
+ */
+export class NovelRuntimeHostAdapter {
+	readonly host = new RuntimePluginHost();
+	private readonly validators = new WeakMap<object, z.ZodType>();
+
+	constructor(private readonly bindings: NovelRuntimeBindingResolver) {
+		this.host.register(NOVEL_RUNTIME_CONTRIBUTION);
+	}
+
+	async resolve(narratorId: string): Promise<RuntimeResolveContext | null> {
+		return this.bindings.resolveForNarrator(narratorId);
+	}
+
+	async resolveContribution(narratorId: string): Promise<ResolvedRuntimeContributions | null> {
+		const context = await this.resolve(narratorId);
+		const pluginContext = context ? toPluginRuntimeResolveContext(context) : null;
+		return pluginContext ? this.host.resolve(pluginContext) : null;
+	}
+
+	async resolveToolNames(narratorId: string): Promise<string[]> {
+		const resolved = await this.resolveContribution(narratorId);
+		return resolved ? resolved.tools.map((tool) => tool.definition.name) : [];
+	}
+
+	async promptExtensions(narratorId: string): Promise<readonly string[]> {
+		const resolved = await this.resolveContribution(narratorId);
+		return resolved ? resolved.promptExtensions.map((extension) => extension.content) : [];
+	}
+
+	toolDefinitions(): ToolDefinition[] {
+		return (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => this.toToolDefinition(tool));
+	}
+
+	async execute(
+		toolName: string,
+		input: Readonly<Record<string, unknown>>,
+		execution: string | Pick<ToolContext, "narratorId" | "model" | "generateText" | "emitOutput">,
+	): Promise<ToolResult> {
+		const narratorId = typeof execution === "string" ? execution : execution.narratorId;
+		const context = await this.resolve(narratorId);
+		const pluginContext = context ? toPluginRuntimeResolveContext(context) : null;
+		if (!context || !pluginContext) {
+			return errorResult("missing-resource-binding", "缺少可信书籍绑定。", toolName);
+		}
+
+		const resolved = this.host.resolve(pluginContext);
+		const tool = resolved.tools.find((candidate) => candidate.definition.name === toolName);
+		if (!tool) {
+			return errorResult("runtime-tool-not-visible", "当前可信绑定下工具不可见。", toolName, {
+				runtimeProjectId: context.runtimeProjectId,
+			});
+		}
+
+		const parsed = this.parseModelInput(tool, input, toolName);
+		if (!parsed.success) {
+			return errorResult("invalid-tool-input", parsed.summary, toolName, {
+				runtimeProjectId: context.runtimeProjectId,
+			});
+		}
+
+		const runtimeRisk = toRuntimeRisk(tool.definition.risk);
+		const runtimeMetadata = {
+			runtimeProjectId: context.runtimeProjectId,
+			runtimeRisk,
+			...(tool.definition.renderer ? { runtimeRenderer: tool.definition.renderer } : {}),
+		};
+		try {
+			const hostExecution = typeof execution === "string" ? undefined : execution;
+			const toolContext: PluginToolExecutionContext = {
+				...pluginContext,
+				sessionId: narratorId,
+				...(hostExecution?.model ? { model: hostExecution.model } : {}),
+				...(hostExecution?.generateText ? { generateText: hostExecution.generateText } : {}),
+				...(hostExecution?.emitOutput ? { emitOutput: hostExecution.emitOutput } : {}),
+			};
+			const result = await tool.handler(parsed.data, toolContext);
+			return {
+				output: JSON.stringify(result),
+				isError: !result.ok,
+				title: result.summary,
+				metadata: {
+					runtimePluginId: NOVEL_RUNTIME_CONTRIBUTION.id,
+					toolName,
+					...runtimeMetadata,
+				},
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return errorResult("runtime-tool-error", message, toolName, runtimeMetadata);
+		}
+	}
+
+	private toToolDefinition(tool: RuntimeToolContribution): ToolDefinition {
+		const { definition } = tool;
+		return {
+			name: definition.name,
+			description: definition.description,
+			parameters: this.validatorFor(definition.inputSchema),
+			rawJsonSchema: definition.inputSchema as Record<string, unknown>,
+			execute: (args, ctx) => this.execute(definition.name, args, ctx),
+			metadata: {
+				runtimePluginId: NOVEL_RUNTIME_CONTRIBUTION.id,
+				runtimeRisk: toRuntimeRisk(definition.risk),
+				...(definition.renderer ? { runtimeRenderer: definition.renderer } : {}),
+			},
+		};
+	}
+
+	private parseModelInput(
+		tool: RuntimeToolContribution,
+		input: Readonly<Record<string, unknown>>,
+		toolName: string,
+	): { success: true; data: Record<string, unknown> } | { success: false; summary: string } {
+		const forbiddenPath = findForbiddenModelField(input);
+		if (forbiddenPath) {
+			return { success: false, summary: `工具参数不得包含宿主字段：${forbiddenPath}。` };
+		}
+
+		try {
+			const parsed = this.validatorFor(tool.definition.inputSchema).safeParse(input);
+			if (parsed.success) return { success: true, data: parsed.data as Record<string, unknown> };
+			return { success: false, summary: `工具参数无效：${parsed.error.message}` };
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			return { success: false, summary: `工具参数 schema 无效：${message}` };
+		}
+	}
+
+	private validatorFor(inputSchema: object): z.ZodType {
+		const existing = this.validators.get(inputSchema);
+		if (existing) return existing;
+		// Contributions may omit additionalProperties. The private host always
+		// treats every model-originated object as closed-world to prevent host-field
+		// or typo smuggling through nested input structures.
+		const validator = z.fromJSONSchema(closeSchemaObjects(inputSchema) as never);
+		this.validators.set(inputSchema, validator);
+		return validator;
+	}
+}

@@ -1,7 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "module": "ESNext",
     "moduleResolution": "bundler",
     "jsx": "react-jsx",
@@ -18,11 +18,8 @@
       "@vivy1024/novelfork-core": ["../core/src/index.ts"],
       "@vivy1024/novelfork-core/compliance": ["../core/src/compliance/index.ts"],
       "@vivy1024/novelfork-core/*": ["../core/src/*"],
-      "@frontend": ["../narrafork-runtime-private/frontend/index.ts"],
-      "@frontend/components/narrator/NovelForkNarratorPanelHost": ["./src/types/native-narrator-panel.d.ts"],
-      "@frontend/*": ["../narrafork-runtime-private/frontend/*"],
-      "@shared": ["../narrafork-runtime-private/shared/index.ts"],
-      "@shared/*": ["../narrafork-runtime-private/shared/*"],
+      "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": ["../narrafork-runtime-bridge/src/frontend/narrator-panel.ts"],
+      "@vivy1024/narrafork-runtime-bridge/frontend/query-client": ["../narrafork-runtime-bridge/src/frontend/query-client.ts"],
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": ["../novel-plugin/src/pages/writing-workbench/index.ts"],
       "@vivy1024/novelfork-novel-plugin/pages/writing-config": ["../novel-plugin/src/pages/writing-config/index.ts"],
       "@vivy1024/novelfork-novel-plugin/pages": ["../novel-plugin/src/pages/index.ts"]

@@ -1,4 +1,5 @@
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
@@ -144,11 +145,14 @@ function matchesFocus(event: Record<string, unknown>, focusEntity?: string): boo
   return [event.subject, event.object].some((value) => typeof value === "string" && value.includes(focusEntity));
 }
 
-export async function handleMemoryGraph(input: MemoryGraphInput): Promise<ToolResult> {
+export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = String(input.bookId || "").trim();
   if (!bookId) return { ok: false, error: "invalid-input", summary: "bookId 必填。" };
+  if (!["relationship", "timeline", "character_arc", "foreshadowing", "conflict", "event_chain", "wave"].includes(input.view)) {
+    return { ok: false, error: "invalid-view", summary: "view 必须是 relationship | timeline | character_arc | foreshadowing | conflict | event_chain | wave。" };
+  }
 
-  const storage = getStorageDatabase();
+  const storage = storageOverride ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
   const entities = input.focusEntity ? [input.focusEntity] : undefined;
   const eventTypeFilter = graphEventTypes(input.view);
@@ -194,11 +198,11 @@ function getPendingEventByBook(storage: ReturnType<typeof getStorageDatabase>, b
   return row as NarrativeEvent | undefined;
 }
 
-export async function handleMemoryEvents(input: MemoryEventsInput): Promise<ToolResult> {
+export async function handleMemoryEvents(input: MemoryEventsInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = String(input.bookId || "").trim();
   if (!bookId) return { ok: false, error: "invalid-input", summary: "bookId 必填。" };
 
-  const storage = getStorageDatabase();
+  const storage = storageOverride ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
   const action = input.action ?? "list";
 

@@ -14,8 +14,8 @@ const mocks = vi.hoisted(() => ({
   }>,
 }));
 
-vi.mock("@frontend/components/narrator/NovelForkNarratorPanelHost", () => ({
-  NovelForkNarratorPanelHost: (props: {
+vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel", () => ({
+  EmbeddedNarratorDockHost: (props: {
     narratorId: string;
     compact?: boolean;
     highlightMessageId?: string;

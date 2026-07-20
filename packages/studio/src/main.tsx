@@ -6,6 +6,7 @@ import { router } from "./app-next/router";
 import { StudioNextApp } from "./app-next";
 import { RuntimeAuthGate } from "./app-next/p0/RuntimeAuthGate";
 import { installRuntimeAuthenticatedFetch } from "./app-next/runtime/auth";
+import { RuntimeLocaleDocumentSync } from "./app-next/runtime/locale";
 import { initTheme } from "./hooks/use-theme";
 
 // Apply stored theme immediately to prevent flash and route every retained
@@ -20,6 +21,7 @@ installRuntimeAuthenticatedFetch();
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RuntimeAuthGate>
+      <RuntimeLocaleDocumentSync />
       <RouterProvider router={router} defaultComponent={StudioNextApp} />
     </RuntimeAuthGate>
   </StrictMode>,

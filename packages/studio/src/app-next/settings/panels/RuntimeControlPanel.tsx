@@ -147,7 +147,7 @@ export function RuntimeControlPanel() {
       || aggregation.models.length > 20,
     );
     if (invalidAggregation) {
-      setError("每个模型聚合都必须包含名称和 1–20 个标准 API 模型。");
+      setError("每个模型聚合都必须包含名称和 1–20 个供应商模型。");
       return;
     }
     setSaving(true);
@@ -216,7 +216,7 @@ export function RuntimeControlPanel() {
   return (
     <SettingsPage
       title="模型设置"
-      description="新模型选项仅来自用户配置的标准 API；平台账户池不会进入新选择器，已有历史字符串继续保留。"
+      description="新模型选项仅来自已配置的供应商；已有模型配置会继续保留。"
     >
       {error ? (
         <Alert>
@@ -227,14 +227,14 @@ export function RuntimeControlPanel() {
 
       {unlistedModelValues.length > 0 ? (
         <Alert>
-          <AlertTitle>检测到未列入标准 API 库的当前模型</AlertTitle>
+          <AlertTitle>检测到当前库存之外的模型</AlertTitle>
           <AlertDescription>
-            {unlistedModelValues.join("、")} 会继续保留，直到你主动切换为标准 API 模型；它们不会再作为新选项提供。
+            {unlistedModelValues.join("、")} 会继续保留，直到你主动切换为当前供应商模型；它们不会再作为新选项提供。
           </AlertDescription>
         </Alert>
       ) : null}
 
-      <SettingsGroup title="模型选择" description="这里只 PATCH Runtime `agent` 中明确支持的通用模型字段。">
+      <SettingsGroup title="模型选择" description="选择写作、摘要和工作助手使用的模型。">
         {modelOptions.length === 0 ? (
           <Alert>
             <AlertTitle>没有动态模型库存</AlertTitle>
@@ -245,13 +245,13 @@ export function RuntimeControlPanel() {
         <ModelSelect label="摘要模型" value={draft.summaryModel} options={optionsWithCurrent(draft.summaryModel)} onChange={(value) => setDraft({ ...draft, summaryModel: value })} />
       </SettingsGroup>
 
-      <SettingsGroup title="子代理模型" description="Runtime 当前支持 explore、plan 和 search 三个默认模型字段。">
+      <SettingsGroup title="子代理模型" description="为不同类型的工作助手选择默认模型。">
         <ModelSelect label="Explore 子代理模型" value={draft.subagentModels.explore} options={optionsWithCurrent(draft.subagentModels.explore, true)} onChange={(value) => setDraft({ ...draft, subagentModels: { ...draft.subagentModels, explore: value } })} />
         <ModelSelect label="Plan 子代理模型" value={draft.subagentModels.plan} options={optionsWithCurrent(draft.subagentModels.plan, true)} onChange={(value) => setDraft({ ...draft, subagentModels: { ...draft.subagentModels, plan: value } })} />
         <ModelSelect label="Search 子代理模型" value={draft.subagentModels.search} options={optionsWithCurrent(draft.subagentModels.search, true)} onChange={(value) => setDraft({ ...draft, subagentModels: { ...draft.subagentModels, search: value } })} />
       </SettingsGroup>
 
-      <SettingsGroup title="子代理允许模型" description="留空表示不额外限制；新增项只能从当前标准 API 模型库存选择。">
+      <SettingsGroup title="子代理允许模型" description="留空表示不额外限制；新增项只能从当前供应商模型库存选择。">
         <div className="grid gap-4 lg:grid-cols-2">
           {(["explore", "plan", "general", "search"] as const).map((kind) => (
             <ModelMultiSelect
@@ -300,20 +300,20 @@ export function RuntimeControlPanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="推理与思考强度" description="保留 Runtime 的通用推理能力；Anthropic thinking 与 Codex Native 均按各自协议解释。">
+      <SettingsGroup title="推理与思考强度" description="根据所选供应商协议调整模型的推理与思考强度。">
         <Field>
-          <FieldLabel>Agent 默认推理强度</FieldLabel>
-          <SimpleSelect aria-label="Agent 默认推理强度" value={draft.defaultReasoningEffort} onValueChange={(value) => setDraft({ ...draft, defaultReasoningEffort: value as RuntimeAgentReasoningEffort | "" })} options={AGENT_REASONING_OPTIONS} />
-          <FieldDescription>作为所有标准 API 的最低优先级默认值。</FieldDescription>
+          <FieldLabel>默认推理强度</FieldLabel>
+          <SimpleSelect aria-label="默认推理强度" value={draft.defaultReasoningEffort} onValueChange={(value) => setDraft({ ...draft, defaultReasoningEffort: value as RuntimeAgentReasoningEffort | "" })} options={AGENT_REASONING_OPTIONS} />
+          <FieldDescription>作为各供应商模型的最低优先级默认值。</FieldDescription>
         </Field>
         <Field>
           <FieldLabel>Codex Native 默认推理强度</FieldLabel>
           <SimpleSelect aria-label="Codex Native 默认推理强度" value={draft.codexReasoningEffort} onValueChange={(value) => setDraft({ ...draft, codexReasoningEffort: value as RuntimeReasoningEffort | "" })} options={CODEX_REASONING_OPTIONS} />
-          <FieldDescription>仅配置 Codex Native 协议行为，不展示或启用 Codex 内置账户池。</FieldDescription>
+          <FieldDescription>仅应用于使用 Codex Native 协议的供应商。</FieldDescription>
         </Field>
       </SettingsGroup>
 
-      <SettingsGroup title="模型连接测试" description="通过 Runtime `POST /api/settings/test-model` 发起一次真实调用。">
+      <SettingsGroup title="模型连接测试" description="向所选模型发送一次真实测试请求。">
         <ModelSelect label="测试模型" value={testModel} options={optionsWithCurrent(testModel)} onChange={setTestModel} />
         <Field>
           <FieldLabel htmlFor="runtime-test-prompt">测试提示词</FieldLabel>
@@ -372,7 +372,7 @@ function ModelMultiSelect({
           onChange([...values, value]);
         }}
         options={availableOptions}
-        placeholder={atLimit ? `最多 ${maxItems} 个模型` : "添加标准 API 模型"}
+        placeholder={atLimit ? `最多 ${maxItems} 个模型` : "添加供应商模型"}
         disabled={atLimit || availableOptions.length === 0}
       />
       {values.length > 0 ? (

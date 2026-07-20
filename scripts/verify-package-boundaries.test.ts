@@ -43,6 +43,71 @@ describe("checkPackageBoundaries", () => {
     expect(violations.some((item) => item.specifier.includes("runtime-private"))).toBe(true);
   });
 
+  test("拒绝 vendored Runtime 导入 NovelFork 产品包或保留产品依赖", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "packages", "narrafork-runtime-private", "server"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "narrafork-runtime-private", "server", "index.ts"),
+      'import { createStorageDatabase } from "@vivy1024/novelfork-core";\n',
+    );
+    await writeFile(
+      join(root, "packages", "narrafork-runtime-private", "package.json"),
+      JSON.stringify({
+        name: "@test/runtime-private",
+        dependencies: { "@vivy1024/narrafork-runtime-bridge": "workspace:*" },
+      }),
+    );
+
+    const violations = await checkPackageBoundaries({ repoRoot: root, corePacklistFiles: ["dist/index.js"] });
+    expect(violations).toContainEqual(expect.objectContaining({
+      ruleName: "runtime-no-novelfork-product-imports",
+      specifier: "@vivy1024/novelfork-core",
+    }));
+    expect(violations).toContainEqual(expect.objectContaining({
+      ruleName: "runtime-no-novelfork-product-dependencies",
+      specifier: "@vivy1024/narrafork-runtime-bridge",
+    }));
+  });
+
+  test("拒绝产品包绕过 Runtime bridge 进行深层导入", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "packages", "novelfork-product-runtime", "src"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "novelfork-product-runtime", "src", "adapter.ts"),
+      'import { db } from "@server/db";\nexport { db };\n',
+    );
+
+    const violations = await checkPackageBoundaries({ repoRoot: root, corePacklistFiles: ["dist/index.js"] });
+    expect(violations).toContainEqual(expect.objectContaining({
+      ruleName: "product-runtime-no-private-runtime-deep-imports",
+      specifier: "@server/db",
+    }));
+  });
+
+  test("拒绝 Runtime schema、可执行 migration 和旧迁移入口保留产品持久化", async () => {
+    const root = await fixture();
+    await mkdir(join(root, "packages", "narrafork-runtime-private", "server", "db"), { recursive: true });
+    await mkdir(join(root, "packages", "narrafork-runtime-private", "server", "scripts"), { recursive: true });
+    await mkdir(join(root, "packages", "narrafork-runtime-private", "drizzle"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "narrafork-runtime-private", "server", "db", "schema.ts"),
+      "export const bookRuntimeBindings = true;\n",
+    );
+    await writeFile(
+      join(root, "packages", "narrafork-runtime-private", "drizzle", "0000.sql"),
+      "CREATE TABLE book_provision_operations (id text);\n",
+    );
+    await writeFile(
+      join(root, "packages", "narrafork-runtime-private", "server", "scripts", "migrate-legacy-sessions.ts"),
+      "export {};\n",
+    );
+
+    const violations = await checkPackageBoundaries({ repoRoot: root, corePacklistFiles: ["dist/index.js"] });
+    expect(violations.some((item) => item.ruleName === "runtime-no-novelfork-product-persistence" && item.specifier === "bookRuntimeBindings")).toBe(true);
+    expect(violations.some((item) => item.ruleName === "runtime-no-novelfork-product-persistence" && item.specifier === "book_provision_operations")).toBe(true);
+    expect(violations.some((item) => item.ruleName === "runtime-no-novelfork-product-persistence" && item.specifier === "migrate-legacy-sessions.ts")).toBe(true);
+  });
+
   test("拒绝 runtime-contracts 源码和公开产物混入 Bun、SQLite、PTY 实现", async () => {
     const root = await fixture();
     await mkdir(join(root, "packages", "core", "src", "runtime-contracts"), { recursive: true });

@@ -1,4 +1,4 @@
-import { invalidateNarratorCommands } from "@frontend/lib/query-client";
+import { invalidateNarratorCommands } from "../runtime/narrator-command-cache";
 import {
 	Bot,
 	Boxes,
@@ -61,6 +61,7 @@ import {
 	type CustomSubagent,
 	type CustomSubagentInput,
 	type CustomSubagentToolAccess,
+	createAccountProfileClient,
 	createCustomSubagentsClient,
 	createHooksClient,
 	createRoutinesClient,
@@ -82,6 +83,7 @@ import { RulesSection } from "./RulesSection";
 import { ToolPermissionsSection } from "./ToolPermissionsSection";
 
 const routinesClient = createRoutinesClient();
+const accountClient = createAccountProfileClient();
 const skillsClient = createSkillsClient();
 const subagentsClient = createCustomSubagentsClient();
 const hooksClient = createHooksClient();
@@ -125,7 +127,32 @@ const SECTIONS: ReadonlyArray<{
 ];
 
 export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
-	const [activeSection, setActiveSection] = useState<SectionId>("builtIn");
+	// The current registry contains optional tools only. Start on the section that
+	// can render available routines while retaining the built-in tab for future
+	// command/skill routines.
+	const [activeSection, setActiveSection] = useState<SectionId>("optionalTools");
+	const [canManageGlobalRoutines, setCanManageGlobalRoutines] = useState(false);
+	const [globalRoutineRoleResolved, setGlobalRoutineRoleResolved] = useState(false);
+
+	useEffect(() => {
+		let active = true;
+		void accountClient.get().then(
+			(profile) => {
+				if (!active) return;
+				setCanManageGlobalRoutines(profile.role === "admin");
+				setGlobalRoutineRoleResolved(true);
+			},
+			() => {
+				if (!active) return;
+				// A failed role lookup must not leave a global mutator enabled.
+				setCanManageGlobalRoutines(false);
+				setGlobalRoutineRoleResolved(true);
+			},
+		);
+		return () => {
+			active = false;
+		};
+	}, []);
 
 	return (
 		<section aria-label="套路" className="flex h-full min-h-0 w-full flex-col">
@@ -168,6 +195,8 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 					<RoutineCatalogSection
 						bookId={bookId}
 						bookTitle={bookTitle}
+						canManageGlobalRoutines={canManageGlobalRoutines}
+						globalRoutineRoleResolved={globalRoutineRoleResolved}
 						types={BUILTIN_ROUTINE_TYPES}
 						title="内置套路"
 						description="管理 Runtime 预置命令与技能套路，并为当前作品设置安全的书籍级 override。"
@@ -179,6 +208,8 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 					<RoutineCatalogSection
 						bookId={bookId}
 						bookTitle={bookTitle}
+						canManageGlobalRoutines={canManageGlobalRoutines}
+						globalRoutineRoleResolved={globalRoutineRoleResolved}
 						types={OPTIONAL_TOOL_TYPES}
 						title="可选工具"
 						description="控制 Runtime 可选工具的全局状态与当前作品 override。"
@@ -278,6 +309,8 @@ function SectionHeading({
 function RoutineCatalogSection({
 	bookId,
 	bookTitle,
+	canManageGlobalRoutines,
+	globalRoutineRoleResolved,
 	types,
 	title,
 	description,
@@ -285,6 +318,8 @@ function RoutineCatalogSection({
 }: {
 	readonly bookId?: string;
 	readonly bookTitle?: string;
+	readonly canManageGlobalRoutines: boolean;
+	readonly globalRoutineRoleResolved: boolean;
 	readonly types: readonly RoutineStatus["type"][];
 	readonly title: string;
 	readonly description: string;
@@ -343,6 +378,7 @@ function RoutineCatalogSection({
 	);
 
 	async function toggleGlobal(routine: RoutineStatus, enabled: boolean) {
+		if (!canManageGlobalRoutines) return;
 		setPendingId(`global:${routine.id}`);
 		setError(null);
 		try {
@@ -401,6 +437,14 @@ function RoutineCatalogSection({
 					</AlertDescription>
 				</Alert>
 			)}
+			{globalRoutineRoleResolved && !canManageGlobalRoutines && (
+				<Alert>
+					<AlertTitle>全局套路需要管理员权限</AlertTitle>
+					<AlertDescription>
+						你仍可查看全局状态；当前作品的覆盖设置遵循书籍访问权限单独处理。
+					</AlertDescription>
+				</Alert>
+			)}
 			{error && <ErrorAlert message={error} />}
 			{loading ? (
 				<LoadingCards />
@@ -440,7 +484,10 @@ function RoutineCatalogSection({
 													<Switch
 														aria-label={`切换全局状态：${routine.name}`}
 														checked={routine.enabled}
-														disabled={pendingId === `global:${routine.id}`}
+														disabled={
+															!canManageGlobalRoutines ||
+															pendingId === `global:${routine.id}`
+														}
 														onCheckedChange={(enabled) =>
 															void toggleGlobal(routine, enabled)
 														}

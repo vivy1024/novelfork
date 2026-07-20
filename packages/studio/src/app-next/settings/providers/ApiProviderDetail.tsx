@@ -65,6 +65,7 @@ const CUSTOM_PROTOCOL_OPTIONS: Array<{ value: RuntimeCustomApiProtocol; label: s
   { value: "anthropic-compatible", label: "Anthropic 兼容" },
   { value: "responses-compatible", label: "Responses 兼容" },
   { value: "completions-compatible", label: "Chat Completions 兼容" },
+  { value: "gemini-compatible", label: "Gemini 兼容" },
   { value: "codex-native", label: "Codex Native" },
 ];
 
@@ -85,7 +86,7 @@ const PROXY_MODE_OPTIONS = [
 ] as const;
 
 const USER_AGENT_OPTIONS = [
-  { value: "narrafork", label: "NarraFork" },
+  { value: "narrafork", label: "默认客户端" },
   { value: "claude-code", label: "Claude Code" },
   { value: "codex", label: "Codex CLI" },
   { value: "custom", label: "自定义 User-Agent" },
@@ -160,14 +161,14 @@ export function ApiProviderDetail({
     setDraft((current) => ({ ...current, ...updates }));
   }
 
-  async function handleSave() {
+  async function handleSave(): Promise<boolean> {
     setHeadersError(null);
     let extraHeaders: Readonly<Record<string, string>>;
     try {
       extraHeaders = parseHeaders(headersInput);
     } catch (reason) {
       setHeadersError(reason instanceof Error ? reason.message : String(reason));
-      return;
+      return false;
     }
     const next: Record<string, unknown> = { ...draft, extraHeaders };
     for (const secret of secrets) {
@@ -176,9 +177,20 @@ export function ApiProviderDetail({
     }
     try {
       await onSave(next as unknown as RuntimeEditableProvider);
+      return true;
     } catch {
       // The parent owns the Runtime error alert.
+      return false;
     }
+  }
+
+  async function handleRefreshModels() {
+    if (draftMode) return;
+    const hasUnsavedChanges = JSON.stringify(draft) !== JSON.stringify(provider)
+      || headersInput !== headersText(provider.extraHeaders)
+      || Object.values(secretInputs).some((value) => value.trim());
+    if (hasUnsavedChanges && !(await handleSave())) return;
+    await onRefreshModels();
   }
 
   async function handleDelete() {
@@ -240,6 +252,7 @@ export function ApiProviderDetail({
 
   const proxyMode = draft.proxy?.mode ?? "default";
   const isCodex = draft.protocol === "codex-native";
+  const isGemini = draft.protocol === "gemini-compatible";
 
   return (
     <section aria-label={`${draft.name} 供应商详情`} className="flex flex-col gap-6">
@@ -253,7 +266,7 @@ export function ApiProviderDetail({
             {draftMode ? `新建${providerArrayLabel(arrayKey)}` : draft.name}
           </h2>
           <p className="text-sm text-muted-foreground">
-            只编辑 Runtime `customApiProviders` canonical 数组；派生缓存不会单独提交。
+            这里只编辑供应商连接配置；模型库存会在连接详情中管理。
           </p>
         </div>
         {!draftMode && onDelete ? (
@@ -278,7 +291,7 @@ export function ApiProviderDetail({
             <Badge variant="outline">{providerApiTypeLabel(arrayKey, draft)}</Badge>
           </CardTitle>
           <CardDescription>
-            掩码密钥不会写入输入框；留空会原样保留 Runtime 中的真实密钥。
+            已配置的密钥不会显示原值；留空会保留现有密钥。
           </CardDescription>
         </CardHeader>
         <form
@@ -316,10 +329,32 @@ export function ApiProviderDetail({
               <SimpleSelect
                 aria-label="API 类型 / 协议"
                 value={draft.protocol}
-                onValueChange={(value) => updateDraft({ protocol: value as RuntimeCustomApiProtocol })}
+                onValueChange={(value) => updateDraft({
+                  protocol: value as RuntimeCustomApiProtocol,
+                  ...(value === "gemini-compatible" && !draft.geminiTransport
+                    ? { geminiTransport: "generate-content" as const }
+                    : {}),
+                })}
                 options={CUSTOM_PROTOCOL_OPTIONS}
               />
             </Field>
+            {isGemini ? (
+              <Field>
+                <FieldLabel>Gemini 请求协议</FieldLabel>
+                <SimpleSelect
+                  aria-label="Gemini 请求协议"
+                  value={draft.geminiTransport ?? "generate-content"}
+                  onValueChange={(value) => updateDraft({
+                    geminiTransport: value as "generate-content" | "interactions",
+                  })}
+                  options={[
+                    { value: "generate-content", label: "Generate Content（v1beta）" },
+                    { value: "interactions", label: "Interactions（预览协议）" },
+                  ]}
+                />
+                <FieldDescription>选择上游 Gemini 服务实际支持的请求协议。</FieldDescription>
+              </Field>
+            ) : null}
             <Field orientation="horizontal" className="rounded-lg border p-3">
               <FieldContent>
                 <FieldTitle>启用供应商</FieldTitle>
@@ -339,7 +374,10 @@ export function ApiProviderDetail({
                 aria-label="Base URL"
                 value={draft.baseUrl}
                 onChange={(event) => updateDraft({ baseUrl: event.currentTarget.value })}
-                placeholder="https://api.example.com/v1"
+                placeholder={isGemini
+                  ? "https://generativelanguage.googleapis.com/v1beta"
+                  : "https://api.example.com/v1"
+                }
               />
             </Field>
 
@@ -364,8 +402,8 @@ export function ApiProviderDetail({
                 <FieldDescription>
                   {secret.value
                     ? isMaskedSecret(secret.value)
-                      ? `Runtime 返回掩码：${secret.value}`
-                      : "Runtime 已返回已配置状态；为安全起见不显示原值。"
+                      ? `已配置密钥：${secret.value}`
+                      : "已配置密钥；为安全起见不显示原值。"
                     : "当前未配置。"}
                 </FieldDescription>
               </Field>
@@ -505,7 +543,7 @@ export function ApiProviderDetail({
                 }}
                 placeholder={'{\n  "X-Provider-Header": "value"\n}'}
               />
-              <FieldDescription>只接受字符串键值对；保存时原样写入 canonical provider。</FieldDescription>
+              <FieldDescription>只接受字符串键值对，保存后会随连接配置一并使用。</FieldDescription>
               <FieldError>{headersError}</FieldError>
             </Field>
 
@@ -524,7 +562,7 @@ export function ApiProviderDetail({
                 </Field>
                 <ProviderSwitch
                   label="使用 Responses WebSocket"
-                  description="连接不可用时由 Runtime 回退到 HTTP。"
+                  description="连接不可用时自动回退到 HTTP。"
                   checked={draft.codexWebSocket === true}
                   onCheckedChange={(checked) => updateDraft({ codexWebSocket: checked })}
                 />
@@ -560,14 +598,14 @@ export function ApiProviderDetail({
         <CardHeader>
           <CardTitle>模型库存</CardTitle>
           <CardDescription>
-            完整展示 Runtime 缓存与 `agent.customModels`；隐藏、上下文窗口和自定义模型都写入 `agent`。
+            展示当前连接的全部模型；隐藏、上下文窗口和自定义模型设置会保存到本地配置。
           </CardDescription>
           <CardAction>
             <Button
               type="button"
               variant="outline"
               size="sm"
-              onClick={() => void onRefreshModels()}
+              onClick={() => void handleRefreshModels()}
               disabled={draftMode || refreshing || busy || !provider.apiKey}
             >
               <RefreshCw data-icon="inline-start" />
@@ -610,7 +648,7 @@ export function ApiProviderDetail({
               <AlertTitle>{draftMode ? "先创建供应商" : "当前供应商没有缓存模型"}</AlertTitle>
               <AlertDescription>
                 {draftMode
-                  ? "保存 canonical 供应商后，才能刷新库存、测试连接或写入自定义模型。"
+                  ? "先保存供应商，才能刷新库存、测试连接或添加自定义模型。"
                   : "可刷新真实模型库存，或在下方添加自定义模型。"}
               </AlertDescription>
             </Alert>
@@ -725,7 +763,7 @@ function ProviderSwitch({
   );
 }
 
-function ModelInventoryRow({
+export function ModelInventoryRow({
   model,
   customModel,
   contextWindowOverride,
@@ -762,7 +800,7 @@ function ModelInventoryRow({
     <div data-hidden={model.hidden} className="flex flex-col gap-3 rounded-lg border p-3 data-[hidden=true]:opacity-60">
       <div className="flex flex-wrap items-center gap-2">
         <span className="min-w-0 flex-1 truncate font-mono text-xs">{model.value}</span>
-        {model.custom ? <Badge variant="secondary">自定义</Badge> : <Badge variant="outline">Runtime 缓存</Badge>}
+        {model.custom ? <Badge variant="secondary">自定义</Badge> : <Badge variant="outline">已发现</Badge>}
         {model.hidden ? <Badge variant="secondary">已隐藏</Badge> : null}
       </div>
       <FieldGroup className="sm:grid sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-end">

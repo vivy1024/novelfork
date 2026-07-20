@@ -15,7 +15,7 @@ import {
   type RuntimeCommandSource,
   type RuntimeCommandStatus,
 } from "@vivy1024/novelfork-core/registry/command-registry";
-import { invalidateNarratorCommands } from "@frontend/lib/query-client";
+import { invalidateNarratorCommands } from "../runtime/narrator-command-cache";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";

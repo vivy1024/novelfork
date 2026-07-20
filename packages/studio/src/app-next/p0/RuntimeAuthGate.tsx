@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { Button, buttonVariants } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { refreshRuntimeLocale, resetRuntimeLocale } from "../runtime/locale";
 import {
   RUNTIME_AUTH_API_PATHS,
   RuntimeHttpError,
@@ -149,7 +150,7 @@ function RuntimeLoginPage({ authStatus, onAuthenticated }: { readonly authStatus
         finish(await runtimeJson<RuntimeSessionResponse>(RUNTIME_AUTH_API_PATHS.register, {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ username: username.trim(), password, language: "zh" }),
+          body: JSON.stringify({ username: username.trim(), password, language: "zh-CN" }),
         }, { invalidateOn401: false }));
         return;
       }
@@ -206,7 +207,7 @@ function RuntimeLoginPage({ authStatus, onAuthenticated }: { readonly authStatus
       <section className="w-full max-w-md rounded-xl border border-border bg-card p-6 shadow-sm">
         <p className="text-xs font-medium text-muted-foreground">NovelFork</p>
         <h1 className="mt-1 text-2xl font-semibold">{mfa ? "二次验证" : mode === "login" ? "登录" : "创建账户"}</h1>
-        <p className="mt-2 text-sm text-muted-foreground">使用 NarraFork Runtime 账户继续小说创作。</p>
+        <p className="mt-2 text-sm text-muted-foreground">登录后继续小说创作。</p>
         {!authStatus.hasUsers && (
           <div className="mt-4 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm" role="status">
             首次使用请创建账户；第一个账户将自动成为管理员。
@@ -319,6 +320,7 @@ export function RuntimeAuthGate({ children }: { readonly children: ReactNode }) 
           // SSO is optional. A provider/configuration failure must not block
           // password registration or login for the local Runtime account.
         }
+        resetRuntimeLocale();
         setStatus("unauthenticated");
         return;
       }
@@ -338,12 +340,18 @@ export function RuntimeAuthGate({ children }: { readonly children: ReactNode }) 
   useEffect(() => {
     void check();
     return subscribeRuntimeAuthInvalidation(() => {
+      resetRuntimeLocale();
       // Logout and expired-token events must refresh the public status as well;
       // otherwise the first-run "create account" state would remain cached
       // after the first user has been created.
       void check();
     });
   }, [check]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    void refreshRuntimeLocale().catch(() => undefined);
+  }, [status]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

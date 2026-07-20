@@ -38,6 +38,11 @@ const PRIVATE_RUNTIME_PACKAGES = [
   "runtime-core-private",
 ] as const;
 
+const PRODUCT_RUNTIME_PACKAGES = [
+  "@vivy1024/novelfork-product-runtime",
+  "@product/novelfork",
+] as const;
+
 export const boundaryRules: readonly BoundaryRule[] = [
   {
     name: "core-no-upper-layer-or-private-runtime-imports",
@@ -61,6 +66,47 @@ export const boundaryRules: readonly BoundaryRule[] = [
     forbiddenPackages: ["@vivy1024/novelfork-studio"],
     forbiddenDirs: ["packages/studio"],
     message: "novel-plugin must not import Studio. Move shared contracts to core/novel-plugin and host capabilities to a Runtime product adapter.",
+  },
+  {
+    name: "runtime-no-novelfork-product-imports",
+    fromDir: "packages/narrafork-runtime-private/server",
+    forbiddenPackages: [
+      "@vivy1024/novelfork-core",
+      "@vivy1024/novelfork-novel-plugin",
+      "@vivy1024/narrafork-runtime-bridge",
+      ...PRODUCT_RUNTIME_PACKAGES,
+    ],
+    forbiddenDirs: [
+      "packages/core",
+      "packages/novel-plugin",
+      "packages/narrafork-runtime-bridge",
+      "packages/novelfork-product-runtime",
+    ],
+    message: "The vendored Runtime server must remain product-agnostic. Put NovelFork behavior in the product package and access Runtime capabilities only through the external bridge.",
+  },
+  {
+    name: "runtime-shared-no-novelfork-product-imports",
+    fromDir: "packages/narrafork-runtime-private/shared",
+    forbiddenPackages: [
+      "@vivy1024/novelfork-core",
+      "@vivy1024/novelfork-novel-plugin",
+      "@vivy1024/narrafork-runtime-bridge",
+      ...PRODUCT_RUNTIME_PACKAGES,
+    ],
+    forbiddenDirs: [
+      "packages/core",
+      "packages/novel-plugin",
+      "packages/narrafork-runtime-bridge",
+      "packages/novelfork-product-runtime",
+    ],
+    message: "Runtime shared contracts must remain product-agnostic. Product behavior belongs outside the vendored Runtime tree.",
+  },
+  {
+    name: "product-runtime-no-private-runtime-deep-imports",
+    fromDir: "packages/novelfork-product-runtime/src",
+    forbiddenPackages: ["@server", "@shared", ...PRIVATE_RUNTIME_PACKAGES],
+    forbiddenDirs: ["packages/narrafork-runtime-private", "packages/runtime-core-private"],
+    message: "NovelFork product code must access the private Runtime only through @vivy1024/narrafork-runtime-bridge.",
   },
 ];
 
@@ -95,7 +141,7 @@ function isRuntimeContractPath(coreRelativePath: string): boolean {
 }
 
 async function collectSourceFiles(dir: string): Promise<string[]> {
-  const entries = await readdir(dir, { withFileTypes: true });
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
   const files: string[] = [];
   for (const entry of entries) {
     const fullPath = path.join(dir, entry.name);
@@ -179,6 +225,69 @@ async function checkRule(repoRoot: string, rule: BoundaryRule): Promise<Violatio
   return violations;
 }
 
+const runtimeProductPersistenceIdentifiers = [
+  "bookRuntimeBindings",
+  "bookProvisionOperations",
+  "novelforkLegacySessionImports",
+  "book_runtime_bindings",
+  "book_provision_operations",
+  "novelfork_legacy_session_imports",
+] as const;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+async function checkRuntimeProductPersistenceBoundary(repoRoot: string): Promise<Violation[]> {
+  const runtimeRoot = path.join(repoRoot, "packages", "narrafork-runtime-private");
+  const explicitFiles = [
+    path.join(runtimeRoot, "server", "db", "schema.ts"),
+    path.join(runtimeRoot, "server", "db", "relations.ts"),
+  ];
+  const migrationDir = path.join(runtimeRoot, "drizzle");
+  const migrationEntries = await readdir(migrationDir, { withFileTypes: true }).catch(() => []);
+  const executableMigrations = migrationEntries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".sql"))
+    .map((entry) => path.join(migrationDir, entry.name));
+  const violations: Violation[] = [];
+
+  // Drizzle's meta snapshots intentionally remain historical generation input.
+  // This guard checks only Runtime source and executable SQL so new Runtime
+  // installations never recreate NovelFork-owned tables.
+  for (const file of [...explicitFiles, ...executableMigrations]) {
+    const source = await readFile(file, "utf8").catch(() => null);
+    if (source === null) continue;
+    for (const identifier of runtimeProductPersistenceIdentifiers) {
+      const pattern = new RegExp(escapeRegex(identifier), "g");
+      for (const match of source.matchAll(pattern)) {
+        if (match.index === undefined) continue;
+        violations.push({
+          file: normalizePath(path.relative(repoRoot, file)),
+          line: lineNumberAt(source, match.index),
+          kind: "Runtime product persistence reference",
+          specifier: identifier,
+          ruleName: "runtime-no-novelfork-product-persistence",
+          message: "NovelFork bindings, provisioning records, and legacy-session ledgers belong to the product database, not the Runtime schema, relations, or executable migrations.",
+        });
+      }
+    }
+  }
+
+  const retiredLegacyMigration = path.join(runtimeRoot, "server", "scripts", "migrate-legacy-sessions.ts");
+  if (await readFile(retiredLegacyMigration, "utf8").then(() => true).catch(() => false)) {
+    violations.push({
+      file: normalizePath(path.relative(repoRoot, retiredLegacyMigration)),
+      line: 1,
+      kind: "Runtime product migration entrypoint",
+      specifier: "migrate-legacy-sessions.ts",
+      ruleName: "runtime-no-novelfork-product-persistence",
+      message: "Legacy NovelFork session migration belongs to the product package, not the Runtime source tree.",
+    });
+  }
+
+  return violations;
+}
+
 interface WorkspaceManifest {
   readonly dir: string;
   readonly name: string;
@@ -210,6 +319,30 @@ async function readWorkspaceManifests(repoRoot: string): Promise<WorkspaceManife
     });
   }
   return manifests;
+}
+
+async function checkRuntimeManifestDependencies(repoRoot: string): Promise<Violation[]> {
+  const manifests = await readWorkspaceManifests(repoRoot);
+  const runtime = manifests.find((manifest) => manifest.dir === "packages/narrafork-runtime-private");
+  if (!runtime) return [];
+  // The legacy Runtime frontend still carries its temporary NovelFork UI
+  // dependencies until the separately-approved Studio migration completes.
+  // The server/shared boundary above is already strict; this manifest gate
+  // prevents only reverse bridge/product package dependencies today.
+  const forbidden = [
+    "@vivy1024/narrafork-runtime-bridge",
+    ...PRODUCT_RUNTIME_PACKAGES,
+  ];
+  return runtime.dependencies
+    .filter((dependency) => forbidden.includes(dependency))
+    .map((dependency) => ({
+      file: `${runtime.dir}/package.json`,
+      line: 1,
+      kind: "Runtime product dependency",
+      specifier: dependency,
+      ruleName: "runtime-no-novelfork-product-dependencies",
+      message: "The vendored Runtime manifest must not depend on NovelFork product packages or the reverse-direction Runtime bridge.",
+    }));
 }
 
 function canonicalCycle(cycle: readonly string[]): string {
@@ -345,12 +478,26 @@ async function checkPrivateImplementations(
 
 export async function checkPackageBoundaries(options: BoundaryCheckOptions = {}): Promise<Violation[]> {
   const repoRoot = path.resolve(options.repoRoot ?? process.cwd());
-  const [importViolations, implementationViolations, workspaceCycleViolations] = await Promise.all([
+  const [
+    importViolations,
+    implementationViolations,
+    workspaceCycleViolations,
+    runtimePersistenceViolations,
+    runtimeManifestViolations,
+  ] = await Promise.all([
     Promise.all(boundaryRules.map((rule) => checkRule(repoRoot, rule))).then((groups) => groups.flat()),
     checkPrivateImplementations(repoRoot, options.corePacklistFiles),
     checkWorkspaceDependencyCycles(repoRoot),
+    checkRuntimeProductPersistenceBoundary(repoRoot),
+    checkRuntimeManifestDependencies(repoRoot),
   ]);
-  return [...importViolations, ...implementationViolations, ...workspaceCycleViolations];
+  return [
+    ...importViolations,
+    ...implementationViolations,
+    ...workspaceCycleViolations,
+    ...runtimePersistenceViolations,
+    ...runtimeManifestViolations,
+  ];
 }
 
 export async function main(): Promise<void> {

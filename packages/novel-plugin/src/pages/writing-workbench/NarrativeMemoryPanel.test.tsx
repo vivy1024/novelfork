@@ -23,4 +23,24 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).not.toContain("市场雷达");
     expect(html).not.toContain("选段写作");
   });
+
+  it("shows book-scoped stats and pending event review actions", () => {
+    const html = renderToStaticMarkup(
+      <NarrativeMemoryPanelShell
+        diagnostics={null}
+        stats={{ total: 3, byKind: { fact: 2, event: 1 }, pendingEvents: 1 }}
+        empty={false}
+        error={null}
+        events={[{ id: "event-1", eventType: "hook_planted", entity: "小瓶", risk: "high", confidence: 0.9, chapterNumber: 8, evidence: "正文证据" }]}
+        onApprove={() => undefined}
+        onReject={() => undefined}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(html).toContain("共 3 条");
+    expect(html).toContain("批准并写入动态事实");
+    expect(html).toContain("拒绝");
+    expect(html).toContain("正文证据");
+  });
 });

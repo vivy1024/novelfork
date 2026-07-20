@@ -47,9 +47,9 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-route-inventory.test.ts",
-          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/routes/product-route-inventory.test.ts",
+          "packages/novelfork-product-runtime/src/routes/product-gateway.test.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -70,8 +70,8 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/services/book-provision.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -92,7 +92,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -113,8 +113,8 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/services/book-provision.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -135,8 +135,8 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/services/book-provision.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/books/BookManagementPage.tsx",
@@ -159,8 +159,8 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/services/book-provision.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/services/book-provision.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/books/BookManagementPage.tsx",
@@ -183,7 +183,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -204,7 +204,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -225,7 +225,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -246,7 +246,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -267,7 +267,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -289,8 +289,8 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
-          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts",
+          "packages/novelfork-product-runtime/src/routes/product-gateway.test.ts"
         ],
         "studio": [
           "packages/narrafork-runtime-private/frontend/components/narrator/ChunkedMessageList.tsx",
@@ -336,7 +336,7 @@
       "evidence": {
         "runtime": [
           "packages/narrafork-runtime-private/server/services/narrator-messages.ts",
-          "packages/narrafork-runtime-private/tests/server/routes/novelfork-product-gateway.test.ts"
+          "packages/novelfork-product-runtime/src/routes/product-gateway.test.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/RuntimeNarratorConversationRoute.tsx",
@@ -357,7 +357,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -379,7 +379,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts"
+          "packages/novelfork-product-runtime/src/routes/books.ts"
         ],
         "studio": [
           "packages/studio/src/app-next/runtime/product-contract.ts",
@@ -401,7 +401,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/novelfork-product-runtime/src/routes/books.ts",
           "packages/narrafork-runtime-private/server/websocket/narrator-ws.ts"
         ],
         "studio": [
@@ -423,7 +423,7 @@
       "featureFlag": null,
       "evidence": {
         "runtime": [
-          "packages/narrafork-runtime-private/server/product-integrations/novelfork/routes/books.ts",
+          "packages/novelfork-product-runtime/src/routes/books.ts",
           "packages/narrafork-runtime-private/server/websocket/narrator-ws-types.ts"
         ],
         "studio": [

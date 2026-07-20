@@ -1,3 +1,6 @@
 packages:
   - "packages/*"
   - "!packages/desktop"
+
+onlyBuiltDependencies:
+  - better-sqlite3

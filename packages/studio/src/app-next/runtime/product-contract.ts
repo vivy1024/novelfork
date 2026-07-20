@@ -1,7 +1,19 @@
-import type { RuntimeHook, CreateHookInput, UpdateHookInput } from "../runtime-admin/hooks";
+import type {
+  RuntimeHook,
+  CreateHookInput,
+  UpdateHookInput,
+} from "../runtime-admin/hooks";
 import type { McpBehavior, McpToolPermissionPatch } from "../runtime-admin/mcp";
-import type { ProjectRoutineAction, ProjectRoutineStatus } from "../runtime-admin/routines";
-import type { Skill, SkillInput, SkillSummary, SkillUpdateInput } from "../runtime-admin/skills";
+import type {
+  ProjectRoutineAction,
+  ProjectRoutineStatus,
+} from "../runtime-admin/routines";
+import type {
+  Skill,
+  SkillInput,
+  SkillSummary,
+  SkillUpdateInput,
+} from "../runtime-admin/skills";
 import type { OkResponse } from "../runtime-admin/client";
 import { runtimeJson, type RuntimeFetchOptions } from "./auth";
 
@@ -20,8 +32,11 @@ export const RUNTIME_PRODUCT_FEATURE_NAMES = [
   "singleRuntimeEntry",
 ] as const;
 
-export type RuntimeProductFeatureName = (typeof RUNTIME_PRODUCT_FEATURE_NAMES)[number];
-export type RuntimeProductFeatures = { readonly [Name in RuntimeProductFeatureName]: boolean };
+export type RuntimeProductFeatureName =
+  (typeof RUNTIME_PRODUCT_FEATURE_NAMES)[number];
+export type RuntimeProductFeatures = {
+  readonly [Name in RuntimeProductFeatureName]: boolean;
+};
 
 export const RUNTIME_BOOK_PROVISION_STATES = [
   "reserved",
@@ -33,14 +48,28 @@ export const RUNTIME_BOOK_PROVISION_STATES = [
   "compensation-required",
 ] as const;
 
-export type RuntimeBookProvisionState = (typeof RUNTIME_BOOK_PROVISION_STATES)[number];
+export type RuntimeBookProvisionState =
+  (typeof RUNTIME_BOOK_PROVISION_STATES)[number];
 
-/** The only P0 book-create input. Product bootstrap owns every other default. */
-export interface RuntimeCreateBookInput {
-  readonly title: string;
+export type RuntimeWorkspaceSource = "none" | "new" | "existing";
+
+export interface RuntimeProjectInit {
+  readonly source: RuntimeWorkspaceSource;
+  readonly workspaceRoot?: string;
+  readonly managedByNovelFork?: boolean;
 }
 
-/** Durable product-bootstrap operation returned by create, status, and retry. */
+export interface RuntimeCreateBookInput {
+  readonly title: string;
+  readonly projectInit?: RuntimeProjectInit;
+}
+
+export interface RuntimeImportBookInput {
+  readonly sourcePath: string;
+  readonly bookId?: string;
+}
+
+/** Durable product-bootstrap operation returned by create, import, status, and retry. */
 export interface RuntimeBookProvisionOperation {
   readonly id: string;
   readonly bookId: string;
@@ -53,8 +82,12 @@ export interface RuntimeBookProvisionOperation {
   readonly updatedAt?: string;
 }
 
-export function isRuntimeBookProvisionTerminal(state: RuntimeBookProvisionState): boolean {
-  return state === "ready" || state === "failed" || state === "compensation-required";
+export function isRuntimeBookProvisionTerminal(
+  state: RuntimeBookProvisionState,
+): boolean {
+  return (
+    state === "ready" || state === "failed" || state === "compensation-required"
+  );
 }
 
 export interface RuntimeBookSummary {
@@ -83,6 +116,10 @@ export interface RuntimeNarratorSummary {
   readonly lastMessageAt?: string | null;
   readonly errorMessage?: string | null;
   readonly capabilities: RuntimeEntityCapabilities;
+}
+
+export interface RuntimeCreateNarratorInput {
+  readonly title: string;
 }
 
 export interface RuntimeModelStatus {
@@ -196,7 +233,9 @@ export interface RuntimeProductClientOptions {
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
-  return value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : null;
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 function asString(value: unknown): string | undefined {
@@ -210,7 +249,10 @@ function asBoolean(value: unknown): boolean | undefined {
 function mapProductFeatures(value: unknown): RuntimeProductFeatures {
   const record = asRecord(value);
   return Object.fromEntries(
-    RUNTIME_PRODUCT_FEATURE_NAMES.map((name) => [name, asBoolean(record?.[name]) ?? false]),
+    RUNTIME_PRODUCT_FEATURE_NAMES.map((name) => [
+      name,
+      asBoolean(record?.[name]) ?? false,
+    ]),
   ) as unknown as RuntimeProductFeatures;
 }
 
@@ -220,11 +262,21 @@ function mapEntityCapabilities(value: unknown): RuntimeEntityCapabilities {
     // Runtime capabilities are an authorization contract. A missing read grant
     // must never turn a newly introduced entity into an implicitly readable one.
     read: asBoolean(record?.read) ?? false,
-    ...(asBoolean(record?.create) !== undefined ? { create: asBoolean(record?.create) } : {}),
-    ...(asBoolean(record?.update) !== undefined ? { update: asBoolean(record?.update) } : {}),
-    ...(asBoolean(record?.delete) !== undefined ? { delete: asBoolean(record?.delete) } : {}),
-    ...(asBoolean(record?.send) !== undefined ? { send: asBoolean(record?.send) } : {}),
-    ...(asBoolean(record?.interrupt) !== undefined ? { interrupt: asBoolean(record?.interrupt) } : {}),
+    ...(asBoolean(record?.create) !== undefined
+      ? { create: asBoolean(record?.create) }
+      : {}),
+    ...(asBoolean(record?.update) !== undefined
+      ? { update: asBoolean(record?.update) }
+      : {}),
+    ...(asBoolean(record?.delete) !== undefined
+      ? { delete: asBoolean(record?.delete) }
+      : {}),
+    ...(asBoolean(record?.send) !== undefined
+      ? { send: asBoolean(record?.send) }
+      : {}),
+    ...(asBoolean(record?.interrupt) !== undefined
+      ? { interrupt: asBoolean(record?.interrupt) }
+      : {}),
   };
 }
 
@@ -237,9 +289,15 @@ function mapBook(value: unknown): RuntimeBookSummary | null {
     id,
     title,
     ...(asString(record?.status) ? { status: asString(record?.status) } : {}),
-    ...(typeof record?.totalChapters === "number" ? { totalChapters: record.totalChapters } : {}),
-    ...(typeof record?.totalWords === "number" ? { totalWords: record.totalWords } : {}),
-    ...(asString(record?.updatedAt) ? { updatedAt: asString(record?.updatedAt) } : {}),
+    ...(typeof record?.totalChapters === "number"
+      ? { totalChapters: record.totalChapters }
+      : {}),
+    ...(typeof record?.totalWords === "number"
+      ? { totalWords: record.totalWords }
+      : {}),
+    ...(asString(record?.updatedAt)
+      ? { updatedAt: asString(record?.updatedAt) }
+      : {}),
     capabilities: mapEntityCapabilities(record?.capabilities),
   };
 }
@@ -258,19 +316,46 @@ function mapNarrator(value: unknown): RuntimeNarratorSummary | null {
     id,
     bookId,
     title,
-    ...(nullableString("model") !== undefined ? { model: nullableString("model") } : {}),
-    ...(nullableString("reasoningEffort") !== undefined ? { reasoningEffort: nullableString("reasoningEffort") } : {}),
-    ...(nullableString("permissionMode") !== undefined ? { permissionMode: nullableString("permissionMode") } : {}),
-    ...(typeof record?.planMode === "boolean" ? { planMode: record.planMode } : {}),
-    ...(nullableString("cwd") !== undefined ? { cwd: nullableString("cwd") } : {}),
+    ...(nullableString("model") !== undefined
+      ? { model: nullableString("model") }
+      : {}),
+    ...(nullableString("reasoningEffort") !== undefined
+      ? { reasoningEffort: nullableString("reasoningEffort") }
+      : {}),
+    ...(nullableString("permissionMode") !== undefined
+      ? { permissionMode: nullableString("permissionMode") }
+      : {}),
+    ...(typeof record?.planMode === "boolean"
+      ? { planMode: record.planMode }
+      : {}),
+    ...(nullableString("cwd") !== undefined
+      ? { cwd: nullableString("cwd") }
+      : {}),
     ...(asString(record?.status) ? { status: asString(record?.status) } : {}),
-    ...(typeof record?.messageCount === "number" ? { messageCount: record.messageCount } : {}),
-    ...(asString(record?.createdAt) ? { createdAt: asString(record?.createdAt) } : {}),
-    ...(asString(record?.updatedAt) ? { updatedAt: asString(record?.updatedAt) } : {}),
-    ...(nullableString("lastMessageAt") !== undefined ? { lastMessageAt: nullableString("lastMessageAt") } : {}),
-    ...(nullableString("errorMessage") !== undefined ? { errorMessage: nullableString("errorMessage") } : {}),
+    ...(typeof record?.messageCount === "number"
+      ? { messageCount: record.messageCount }
+      : {}),
+    ...(asString(record?.createdAt)
+      ? { createdAt: asString(record?.createdAt) }
+      : {}),
+    ...(asString(record?.updatedAt)
+      ? { updatedAt: asString(record?.updatedAt) }
+      : {}),
+    ...(nullableString("lastMessageAt") !== undefined
+      ? { lastMessageAt: nullableString("lastMessageAt") }
+      : {}),
+    ...(nullableString("errorMessage") !== undefined
+      ? { errorMessage: nullableString("errorMessage") }
+      : {}),
     capabilities: mapEntityCapabilities(record?.capabilities),
   };
+}
+
+function mapNarratorResponse(value: unknown): RuntimeNarratorSummary {
+  const record = asRecord(value);
+  const narrator = mapNarrator(record?.narrator ?? value);
+  if (!narrator) throw new Error("Runtime narrator response is invalid");
+  return narrator;
 }
 
 function mapWorkspaceResource(value: unknown): RuntimeWorkspaceResource | null {
@@ -281,14 +366,18 @@ function mapWorkspaceResource(value: unknown): RuntimeWorkspaceResource | null {
   if (!id || !kind || !title) return null;
 
   const children = Array.isArray(record?.children)
-    ? record.children.map(mapWorkspaceResource).filter((child): child is RuntimeWorkspaceResource => child !== null)
+    ? record.children
+        .map(mapWorkspaceResource)
+        .filter((child): child is RuntimeWorkspaceResource => child !== null)
     : undefined;
   const metadata = asRecord(record?.metadata);
   return {
     id,
     kind,
     title,
-    ...(typeof record?.content === "string" || record?.content === null ? { content: record.content } : {}),
+    ...(typeof record?.content === "string" || record?.content === null
+      ? { content: record.content }
+      : {}),
     ...(asString(record?.path) ? { path: asString(record?.path) } : {}),
     ...(metadata ? { metadata } : {}),
     capabilities: mapEntityCapabilities(record?.capabilities),
@@ -296,34 +385,50 @@ function mapWorkspaceResource(value: unknown): RuntimeWorkspaceResource | null {
   };
 }
 
-export function mapRuntimeWorkspaceSnapshot(value: unknown): RuntimeWorkspaceSnapshot {
+export function mapRuntimeWorkspaceSnapshot(
+  value: unknown,
+): RuntimeWorkspaceSnapshot {
   const root = asRecord(value);
   if (!root) throw new Error("Runtime workspace response must be an object");
   const book = mapBook(root.book);
-  if (!book || !Array.isArray(root.resources)) throw new Error("Runtime workspace response is invalid");
+  if (!book || !Array.isArray(root.resources))
+    throw new Error("Runtime workspace response is invalid");
   return {
     book,
     resources: root.resources
       .map(mapWorkspaceResource)
-      .filter((resource): resource is RuntimeWorkspaceResource => resource !== null),
+      .filter(
+        (resource): resource is RuntimeWorkspaceResource => resource !== null,
+      ),
     capabilities: mapEntityCapabilities(root.capabilities),
   };
 }
 
-export function mapRuntimeWorkspaceResourceMutation(value: unknown): RuntimeWorkspaceResourceMutation {
+export function mapRuntimeWorkspaceResourceMutation(
+  value: unknown,
+): RuntimeWorkspaceResourceMutation {
   const root = asRecord(value);
-  if (!root) throw new Error("Runtime workspace mutation response must be an object");
+  if (!root)
+    throw new Error("Runtime workspace mutation response must be an object");
   const resource = mapWorkspaceResource(root.resource);
-  if (!resource) throw new Error("Runtime workspace mutation resource is invalid");
+  if (!resource)
+    throw new Error("Runtime workspace mutation resource is invalid");
   return { resource };
 }
 
-function mapBookProvisionOperation(value: unknown): RuntimeBookProvisionOperation {
+function mapBookProvisionOperation(
+  value: unknown,
+): RuntimeBookProvisionOperation {
   const operation = asRecord(value);
   const id = asString(operation?.id);
   const bookId = asString(operation?.bookId);
   const state = asString(operation?.state);
-  if (!id || !bookId || !state || !RUNTIME_BOOK_PROVISION_STATES.includes(state as RuntimeBookProvisionState)) {
+  if (
+    !id ||
+    !bookId ||
+    !state ||
+    !RUNTIME_BOOK_PROVISION_STATES.includes(state as RuntimeBookProvisionState)
+  ) {
     throw new Error("Runtime book provision operation is invalid");
   }
   const nullableString = (field: string): string | null | undefined => {
@@ -334,12 +439,24 @@ function mapBookProvisionOperation(value: unknown): RuntimeBookProvisionOperatio
     id,
     bookId,
     state: state as RuntimeBookProvisionState,
-    ...(nullableString("runtimeProjectId") !== undefined ? { runtimeProjectId: nullableString("runtimeProjectId") } : {}),
-    ...(nullableString("runtimeChapterId") !== undefined ? { runtimeChapterId: nullableString("runtimeChapterId") } : {}),
-    ...(nullableString("narratorId") !== undefined ? { narratorId: nullableString("narratorId") } : {}),
-    ...(nullableString("error") !== undefined ? { error: nullableString("error") } : {}),
-    ...(asString(operation?.createdAt) ? { createdAt: asString(operation?.createdAt) } : {}),
-    ...(asString(operation?.updatedAt) ? { updatedAt: asString(operation?.updatedAt) } : {}),
+    ...(nullableString("runtimeProjectId") !== undefined
+      ? { runtimeProjectId: nullableString("runtimeProjectId") }
+      : {}),
+    ...(nullableString("runtimeChapterId") !== undefined
+      ? { runtimeChapterId: nullableString("runtimeChapterId") }
+      : {}),
+    ...(nullableString("narratorId") !== undefined
+      ? { narratorId: nullableString("narratorId") }
+      : {}),
+    ...(nullableString("error") !== undefined
+      ? { error: nullableString("error") }
+      : {}),
+    ...(asString(operation?.createdAt)
+      ? { createdAt: asString(operation?.createdAt) }
+      : {}),
+    ...(asString(operation?.updatedAt)
+      ? { updatedAt: asString(operation?.updatedAt) }
+      : {}),
   };
 }
 
@@ -356,19 +473,30 @@ export function mapRuntimeBootstrap(value: unknown): RuntimeBootstrap {
   const capabilities = asRecord(root.capabilities);
 
   const modelContract = model ?? asRecord(root.modelReadiness);
-  const contractVersion = root.contractVersion === RUNTIME_PRODUCT_CONTRACT_VERSION
-    ? RUNTIME_PRODUCT_CONTRACT_VERSION
-    : null;
+  const contractVersion =
+    root.contractVersion === RUNTIME_PRODUCT_CONTRACT_VERSION
+      ? RUNTIME_PRODUCT_CONTRACT_VERSION
+      : null;
   return {
     contractVersion,
     // Do not trust flags from a missing or newer contract: they are descriptive
     // metadata, and an incompatible schema must leave every value disabled.
     features: mapProductFeatures(contractVersion ? root.features : null),
-    books: booksRaw.map(mapBook).filter((book): book is RuntimeBookSummary => book !== null),
-    narrators: narratorsRaw.map(mapNarrator).filter((narrator): narrator is RuntimeNarratorSummary => narrator !== null),
+    books: booksRaw
+      .map(mapBook)
+      .filter((book): book is RuntimeBookSummary => book !== null),
+    narrators: narratorsRaw
+      .map(mapNarrator)
+      .filter(
+        (narrator): narrator is RuntimeNarratorSummary => narrator !== null,
+      ),
     model: {
-      setupRequired: asBoolean(modelContract?.setupRequired) ?? (asString(modelContract?.status) !== "ready"),
-      ...(asString(modelContract?.label) ? { label: asString(modelContract?.label) } : {}),
+      setupRequired:
+        asBoolean(modelContract?.setupRequired) ??
+        asString(modelContract?.status) !== "ready",
+      ...(asString(modelContract?.label)
+        ? { label: asString(modelContract?.label) }
+        : {}),
     },
     capabilities: {
       books: mapEntityCapabilities(capabilities?.books),
@@ -378,7 +506,11 @@ export function mapRuntimeBootstrap(value: unknown): RuntimeBootstrap {
   };
 }
 
-export function buildBookScopedNarratorPath(bookId: string, narratorId?: string, ...segments: readonly string[]): string {
+export function buildBookScopedNarratorPath(
+  bookId: string,
+  narratorId?: string,
+  ...segments: readonly string[]
+): string {
   const encodedBookId = encodeURIComponent(bookId);
   const path = ["/api/books", encodedBookId, "narrators"];
   if (narratorId) path.push(encodeURIComponent(narratorId));
@@ -394,17 +526,27 @@ export function buildWorkspaceChapterPath(bookId: string): string {
   return `${buildBookWorkspacePath(bookId)}/chapters`;
 }
 
-export function buildWorkspaceResourcePath(bookId: string, resourceId: string): string {
+export function buildWorkspaceResourcePath(
+  bookId: string,
+  resourceId: string,
+): string {
   return `${buildBookWorkspacePath(bookId)}/resources/${encodeURIComponent(resourceId)}`;
 }
 
-export function buildBookProductPath(bookId: string, ...segments: readonly string[]): string {
+export function buildBookProductPath(
+  bookId: string,
+  ...segments: readonly string[]
+): string {
   return ["/api/books", bookId, ...segments]
-    .map((segment, index) => index === 0 ? segment : encodeURIComponent(segment))
+    .map((segment, index) =>
+      index === 0 ? segment : encodeURIComponent(segment),
+    )
     .join("/");
 }
 
-function withoutProjectId<Input extends object>(input: Input): Omit<Input, "projectId"> {
+function withoutProjectId<Input extends object>(
+  input: Input,
+): Omit<Input, "projectId"> {
   const body = { ...input } as Record<string, unknown>;
   delete body.projectId;
   return body as Omit<Input, "projectId">;
@@ -421,119 +563,298 @@ function unwrapNarrators(value: unknown): readonly unknown[] {
  * request the legacy `/api/narrators/:id` surface: every narrator identity is
  * always bound to its book in the URL.
  */
-export function createRuntimeProductClient(options: RuntimeProductClientOptions = {}) {
+export function createRuntimeProductClient(
+  options: RuntimeProductClientOptions = {},
+) {
   const fetchOptions = options.fetch;
   return {
-    getBootstrap: async (): Promise<RuntimeBootstrap> => mapRuntimeBootstrap(await runtimeJson<unknown>(RUNTIME_BOOTSTRAP_PATH, {}, fetchOptions)),
-    createBook: async (input: RuntimeCreateBookInput, idempotencyKey: string): Promise<RuntimeBookProvisionOperation> => {
+    getBootstrap: async (): Promise<RuntimeBootstrap> =>
+      mapRuntimeBootstrap(
+        await runtimeJson<unknown>(RUNTIME_BOOTSTRAP_PATH, {}, fetchOptions),
+      ),
+    createBook: async (
+      input: RuntimeCreateBookInput,
+      idempotencyKey: string,
+    ): Promise<RuntimeBookProvisionOperation> => {
       const title = input.title.trim();
       const key = idempotencyKey.trim();
       if (!title) throw new Error("作品标题不能为空");
       if (!key) throw new Error("创建作品需要 Idempotency-Key");
-      return mapBookProvisionOperation(await runtimeJson<unknown>(RUNTIME_PRODUCT_BOOKS_PATH, {
-        method: "POST",
-        headers: { "content-type": "application/json", "Idempotency-Key": key },
-        body: JSON.stringify({ title }),
-      }, fetchOptions));
+      const projectInit = input.projectInit;
+      if (projectInit?.source === "existing" && !projectInit.workspaceRoot?.trim()) {
+        throw new Error("已有 workspace 需要选择目录");
+      }
+      return mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          RUNTIME_PRODUCT_BOOKS_PATH,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "Idempotency-Key": key,
+            },
+            body: JSON.stringify({ title, ...(projectInit ? { projectInit } : {}) }),
+          },
+          fetchOptions,
+        ),
+      );
     },
-    getBookStatus: async (bookId: string): Promise<RuntimeBookProvisionOperation> =>
-      mapBookProvisionOperation(await runtimeJson<unknown>(`${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(bookId)}/status`, {}, fetchOptions)),
-    retryBookProvision: async (bookId: string): Promise<RuntimeBookProvisionOperation> =>
-      mapBookProvisionOperation(await runtimeJson<unknown>(`${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(bookId)}/retry`, { method: "POST" }, fetchOptions)),
-    claimLegacyBook: async (bookId: string): Promise<RuntimeBookProvisionOperation> => {
+    importBook: async (
+      input: RuntimeImportBookInput,
+      idempotencyKey: string,
+    ): Promise<RuntimeBookProvisionOperation> => {
+      const sourcePath = input.sourcePath.trim();
+      const key = idempotencyKey.trim();
+      if (!sourcePath) throw new Error("请选择作品目录");
+      if (!key) throw new Error("导入作品需要 Idempotency-Key");
+      return mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          `${RUNTIME_PRODUCT_BOOKS_PATH}/import`,
+          {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "Idempotency-Key": key,
+            },
+            body: JSON.stringify({
+              sourcePath,
+              ...(input.bookId?.trim() ? { bookId: input.bookId.trim() } : {}),
+            }),
+          },
+          fetchOptions,
+        ),
+      );
+    },
+    deleteBook: async (bookId: string, deleteWorkspace = false): Promise<OkResponse> => {
+      const normalizedBookId = bookId.trim();
+      if (!normalizedBookId) throw new Error("删除作品需要 bookId");
+      return runtimeJson<OkResponse>(
+        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}${deleteWorkspace ? "?deleteWorkspace=true" : ""}`,
+        { method: "DELETE" },
+        fetchOptions,
+      );
+    },
+    getBookStatus: async (
+      bookId: string,
+    ): Promise<RuntimeBookProvisionOperation> =>
+      mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(bookId)}/status`,
+          {},
+          fetchOptions,
+        ),
+      ),
+    retryBookProvision: async (
+      bookId: string,
+    ): Promise<RuntimeBookProvisionOperation> =>
+      mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(bookId)}/retry`,
+          { method: "POST" },
+          fetchOptions,
+        ),
+      ),
+    claimLegacyBook: async (
+      bookId: string,
+    ): Promise<RuntimeBookProvisionOperation> => {
       const normalizedBookId = bookId.trim();
       if (!normalizedBookId) throw new Error("接管旧作品需要 bookId");
-      return mapBookProvisionOperation(await runtimeJson<unknown>(
-        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/claim`,
-        { method: "POST" },
-        fetchOptions,
-      ));
+      return mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/claim`,
+          { method: "POST" },
+          fetchOptions,
+        ),
+      );
     },
-    repairBookBinding: async (bookId: string): Promise<RuntimeBookProvisionOperation> => {
+    repairBookBinding: async (
+      bookId: string,
+    ): Promise<RuntimeBookProvisionOperation> => {
       const normalizedBookId = bookId.trim();
       if (!normalizedBookId) throw new Error("修复作品绑定需要 bookId");
-      return mapBookProvisionOperation(await runtimeJson<unknown>(
-        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/repair`,
-        { method: "POST" },
-        fetchOptions,
-      ));
+      return mapBookProvisionOperation(
+        await runtimeJson<unknown>(
+          `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/repair`,
+          { method: "POST" },
+          fetchOptions,
+        ),
+      );
     },
-    listBookRoutines: (bookId: string): Promise<{ readonly routines: readonly ProjectRoutineStatus[] }> =>
+    listBookRoutines: (
+      bookId: string,
+    ): Promise<{ readonly routines: readonly ProjectRoutineStatus[] }> =>
       runtimeJson(buildBookProductPath(bookId, "routines"), {}, fetchOptions),
-    toggleBookRoutine: (bookId: string, routineId: string, action: ProjectRoutineAction): Promise<OkResponse> =>
-      runtimeJson(buildBookProductPath(bookId, "routines", routineId), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action }),
-      }, fetchOptions),
+    toggleBookRoutine: (
+      bookId: string,
+      routineId: string,
+      action: ProjectRoutineAction,
+    ): Promise<OkResponse> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "routines", routineId),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action }),
+        },
+        fetchOptions,
+      ),
     listBookRules: (bookId: string): Promise<RuntimeBookPromptResult> =>
       runtimeJson(buildBookProductPath(bookId, "rules"), {}, fetchOptions),
-    putBookRules: (bookId: string, content: string, filePath?: string): Promise<{ readonly ok: true; readonly filePath: string }> =>
-      runtimeJson(buildBookProductPath(bookId, "rules"), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content, ...(filePath !== undefined ? { filePath } : {}) }),
-      }, fetchOptions),
-    listBookMcpOverrides: (bookId: string): Promise<RuntimeBookMcpOverridesResult> =>
+    putBookRules: (
+      bookId: string,
+      content: string,
+      filePath?: string,
+    ): Promise<{ readonly ok: true; readonly filePath: string }> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "rules"),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            content,
+            ...(filePath !== undefined ? { filePath } : {}),
+          }),
+        },
+        fetchOptions,
+      ),
+    listBookMcpOverrides: (
+      bookId: string,
+    ): Promise<RuntimeBookMcpOverridesResult> =>
       runtimeJson(buildBookProductPath(bookId, "mcp"), {}, fetchOptions),
     putBookMcpOverride: (
       bookId: string,
       serverId: string,
       patch: RuntimeBookMcpOverridePatch,
     ): Promise<RuntimeBookMcpOverridesResult> =>
-      runtimeJson(buildBookProductPath(bookId, "mcp", "servers", serverId), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(patch),
-      }, fetchOptions),
-    listBookSkills: (bookId: string): Promise<readonly RuntimeBookSkillSummary[]> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "mcp", "servers", serverId),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(patch),
+        },
+        fetchOptions,
+      ),
+    listBookSkills: (
+      bookId: string,
+    ): Promise<readonly RuntimeBookSkillSummary[]> =>
       runtimeJson(buildBookProductPath(bookId, "skills"), {}, fetchOptions),
     getBookSkill: (bookId: string, name: string): Promise<RuntimeBookSkill> =>
-      runtimeJson(buildBookProductPath(bookId, "skills", name), {}, fetchOptions),
-    createBookSkill: (bookId: string, input: RuntimeBookSkillInput): Promise<RuntimeBookSkill> =>
-      runtimeJson(buildBookProductPath(bookId, "skills"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(withoutProjectId(input)),
-      }, fetchOptions),
+      runtimeJson(
+        buildBookProductPath(bookId, "skills", name),
+        {},
+        fetchOptions,
+      ),
+    createBookSkill: (
+      bookId: string,
+      input: RuntimeBookSkillInput,
+    ): Promise<RuntimeBookSkill> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "skills"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(withoutProjectId(input)),
+        },
+        fetchOptions,
+      ),
     updateBookSkill: (
       bookId: string,
       currentName: string,
       input: RuntimeBookSkillUpdateInput,
     ): Promise<RuntimeBookSkill> =>
-      runtimeJson(buildBookProductPath(bookId, "skills", currentName), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(withoutProjectId(input)),
-      }, fetchOptions),
+      runtimeJson(
+        buildBookProductPath(bookId, "skills", currentName),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(withoutProjectId(input)),
+        },
+        fetchOptions,
+      ),
     deleteBookSkill: (bookId: string, name: string): Promise<OkResponse> =>
-      runtimeJson(buildBookProductPath(bookId, "skills", name), { method: "DELETE" }, fetchOptions),
+      runtimeJson(
+        buildBookProductPath(bookId, "skills", name),
+        { method: "DELETE" },
+        fetchOptions,
+      ),
     listBookHooks: (bookId: string): Promise<readonly RuntimeBookHook[]> =>
       runtimeJson(buildBookProductPath(bookId, "hooks"), {}, fetchOptions),
-    createBookHook: (bookId: string, input: RuntimeBookHookCreateInput): Promise<RuntimeBookHook> =>
-      runtimeJson(buildBookProductPath(bookId, "hooks"), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(withoutProjectId(input)),
-      }, fetchOptions),
+    createBookHook: (
+      bookId: string,
+      input: RuntimeBookHookCreateInput,
+    ): Promise<RuntimeBookHook> =>
+      runtimeJson(
+        buildBookProductPath(bookId, "hooks"),
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(withoutProjectId(input)),
+        },
+        fetchOptions,
+      ),
     updateBookHook: (
       bookId: string,
       hookId: string,
       input: RuntimeBookHookUpdateInput,
     ): Promise<RuntimeBookHook> =>
-      runtimeJson(buildBookProductPath(bookId, "hooks", hookId), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(withoutProjectId(input)),
-      }, fetchOptions),
+      runtimeJson(
+        buildBookProductPath(bookId, "hooks", hookId),
+        {
+          method: "PUT",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify(withoutProjectId(input)),
+        },
+        fetchOptions,
+      ),
     deleteBookHook: (bookId: string, hookId: string): Promise<OkResponse> =>
-      runtimeJson(buildBookProductPath(bookId, "hooks", hookId), { method: "DELETE" }, fetchOptions),
-    listNarrators: async (bookId: string): Promise<readonly RuntimeNarratorSummary[]> =>
-      unwrapNarrators(await runtimeJson<unknown>(buildBookScopedNarratorPath(bookId), {}, fetchOptions))
+      runtimeJson(
+        buildBookProductPath(bookId, "hooks", hookId),
+        { method: "DELETE" },
+        fetchOptions,
+      ),
+    listNarrators: async (
+      bookId: string,
+    ): Promise<readonly RuntimeNarratorSummary[]> =>
+      unwrapNarrators(
+        await runtimeJson<unknown>(
+          buildBookScopedNarratorPath(bookId),
+          {},
+          fetchOptions,
+        ),
+      )
         .map(mapNarrator)
-        .filter((narrator): narrator is RuntimeNarratorSummary => narrator !== null),
+        .filter(
+          (narrator): narrator is RuntimeNarratorSummary => narrator !== null,
+        ),
+    createNarrator: async (
+      bookId: string,
+      input: RuntimeCreateNarratorInput,
+    ): Promise<RuntimeNarratorSummary> => {
+      const title = input.title.trim();
+      if (!title || title.length > 200) {
+        throw new Error("叙述者标题必须为 1 到 200 个字符");
+      }
+      return mapNarratorResponse(
+        await runtimeJson<unknown>(
+          buildBookScopedNarratorPath(bookId),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ title }),
+          },
+          fetchOptions,
+        ),
+      );
+    },
     getWorkspace: async (bookId: string): Promise<RuntimeWorkspaceSnapshot> =>
-      mapRuntimeWorkspaceSnapshot(await runtimeJson<unknown>(buildBookWorkspacePath(bookId), {}, fetchOptions)),
+      mapRuntimeWorkspaceSnapshot(
+        await runtimeJson<unknown>(
+          buildBookWorkspacePath(bookId),
+          {},
+          fetchOptions,
+        ),
+      ),
     createWorkspaceChapter: async (
       bookId: string,
       input: RuntimeWorkspaceChapterCreateInput = {},
@@ -542,11 +863,17 @@ export function createRuntimeProductClient(options: RuntimeProductClientOptions 
       if (input.title !== undefined && (!title || title.length > 200)) {
         throw new Error("章节标题必须为 1 到 200 个字符");
       }
-      return mapRuntimeWorkspaceResourceMutation(await runtimeJson<unknown>(buildWorkspaceChapterPath(bookId), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(title ? { title } : {}),
-      }, fetchOptions));
+      return mapRuntimeWorkspaceResourceMutation(
+        await runtimeJson<unknown>(
+          buildWorkspaceChapterPath(bookId),
+          {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(title ? { title } : {}),
+          },
+          fetchOptions,
+        ),
+      );
     },
     saveWorkspaceResource: async (
       bookId: string,
@@ -556,13 +883,21 @@ export function createRuntimeProductClient(options: RuntimeProductClientOptions 
       if (typeof content !== "string" || content.length > 2_000_000) {
         throw new Error("章节正文必须为长度不超过 2000000 的字符串");
       }
-      return mapRuntimeWorkspaceResourceMutation(await runtimeJson<unknown>(buildWorkspaceResourcePath(bookId, resourceId), {
-        method: "PUT",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ content }),
-      }, fetchOptions));
+      return mapRuntimeWorkspaceResourceMutation(
+        await runtimeJson<unknown>(
+          buildWorkspaceResourcePath(bookId, resourceId),
+          {
+            method: "PUT",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ content }),
+          },
+          fetchOptions,
+        ),
+      );
     },
   };
 }
 
-export type RuntimeProductClient = ReturnType<typeof createRuntimeProductClient>;
+export type RuntimeProductClient = ReturnType<
+  typeof createRuntimeProductClient
+>;

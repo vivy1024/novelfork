@@ -47,6 +47,7 @@
     "@tiptap/react": "2.27.2",
     "@tiptap/starter-kit": "2.27.2",
     "@types/react-grid-layout": "2.1.0",
+    "@vivy1024/narrafork-runtime-bridge": "workspace:*",
     "@vivy1024/novelfork-core": "workspace:*",
     "@vivy1024/novelfork-novel-plugin": "workspace:*",
     "@xterm/addon-fit": "0.11.0",

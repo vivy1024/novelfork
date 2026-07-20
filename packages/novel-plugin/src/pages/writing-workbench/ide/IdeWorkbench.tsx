@@ -122,6 +122,8 @@ export interface IdeWorkbenchProps {
   onIssueClick?: (issue: EditorIssue) => void;
   /** Runtime facade only provides semantic workspace resources, not legacy file APIs. */
   runtimeProductMode?: boolean;
+  /** Authenticated product fetch for book-scoped auxiliary panels. */
+  runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
 }
 
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
@@ -188,6 +190,7 @@ export function IdeWorkbench({
   issues,
   onIssueClick,
   runtimeProductMode = false,
+  runtimeFetch,
 }: IdeWorkbenchProps) {
   // --- Layout state ---
   const [sidebarVisible, setSidebarVisible] = useState(true);
@@ -219,9 +222,14 @@ export function IdeWorkbench({
     let cancelled = false;
     (async () => {
       try {
+        const fetchJson = runtimeFetch ?? (async (input: string, init?: RequestInit) => {
+          const response = await fetch(input, init);
+          if (!response.ok) throw new Error(`请求失败：${response.status}`);
+          return response.json();
+        });
         const [entRes, factsRes] = await Promise.all([
-          fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`).then(r => r.json()),
-          fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).then(r => r.ok ? r.json() : { facts: [] }),
+          fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`),
+          fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).catch(() => ({ facts: [] })),
         ]);
         if (cancelled) return;
         const entries: Array<{ id: string; title: string; category?: string; contentMd?: string; sectionId?: string }> = entRes?.entries ?? [];
@@ -302,13 +310,14 @@ export function IdeWorkbench({
       }
     })();
     return () => { cancelled = true; };
-  }, [bookId]);
+  }, [bookId, runtimeFetch]);
 
-  // Runtime facade exposes a semantic, bound resource tree. In that mode the
-  // existing IDE shell renders supplied nodes and does not issue legacy file API calls.
-  const fileTree = useBookFileTree(bookId, !runtimeProductMode);
+  // Runtime books use the same bound, server-authorized IDE filesystem gateway
+  // as standalone books. The semantic workspace resources remain available to
+  // auxiliary panels, but never replace the visible directory tree.
+  const fileTree = useBookFileTree(bookId, Boolean(bookId));
   const refreshFileTree = fileTree.refresh;
-  const explorerNodes = runtimeProductMode ? nodes : fileTree.nodes;
+  const explorerNodes = fileTree.nodes;
 
   // 有正文章节 → 自动跳过建书引导
   useEffect(() => {

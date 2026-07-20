@@ -2,6 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const runtimeMocks = vi.hoisted(() => ({
+  account: {
+    get: vi.fn(),
+  },
   routines: {
     listGlobal: vi.fn(),
     toggleGlobal: vi.fn(),
@@ -75,6 +78,7 @@ vi.mock("../runtime-admin", async () => {
   const actual = await vi.importActual<typeof import("../runtime-admin")>("../runtime-admin");
   return {
     ...actual,
+    createAccountProfileClient: () => runtimeMocks.account,
     createRoutinesClient: () => runtimeMocks.routines,
     createSkillsClient: () => runtimeMocks.skills,
     createCustomSubagentsClient: () => runtimeMocks.subagents,
@@ -90,7 +94,7 @@ vi.mock("../runtime/product-contract", async () => {
   return { ...actual, createRuntimeProductClient: () => productMocks };
 });
 
-vi.mock("@frontend/lib/query-client", () => ({
+vi.mock("../runtime/narrator-command-cache", () => ({
   invalidateNarratorCommands: cacheMocks.invalidateNarratorCommands,
 }));
 
@@ -248,6 +252,7 @@ beforeEach(() => {
     },
   };
 
+  runtimeMocks.account.get.mockResolvedValue({ role: "admin" });
   runtimeMocks.routines.listGlobal.mockResolvedValue({ routines: globalRoutines });
   runtimeMocks.routines.toggleGlobal.mockResolvedValue({ ok: true });
   runtimeMocks.routines.getGlobalPrompt.mockResolvedValue({
@@ -345,23 +350,37 @@ function openTab(name: string) {
 }
 
 describe("RoutinesNextPage Runtime integration", () => {
-  it("uses only global routines when no book is selected", async () => {
+  it("starts on optional tools and uses only global routines when no book is selected", async () => {
     render(<RoutinesNextPage />);
 
     await waitFor(() => expect(runtimeMocks.routines.listGlobal).toHaveBeenCalled());
     expect(productMocks.listBookRoutines).not.toHaveBeenCalled();
     expect(screen.getByText("未选择作品")).toBeTruthy();
     expect(screen.queryByText(/project-123/)).toBeNull();
-
-    openTab("可选工具");
     expect(await screen.findByText("Terminal")).toBeTruthy();
+    expect(within(routineTabs()).getByRole("tab", { name: "可选工具" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("keeps global routine changes read-only for non-admin users", async () => {
+    runtimeMocks.account.get.mockResolvedValueOnce({ role: "user" });
+    render(<RoutinesNextPage />);
+
+    const terminalSwitch = await screen.findByRole("switch", { name: "切换全局状态：Terminal" });
+    await waitFor(() => expect(terminalSwitch).toHaveProperty("disabled", true));
+    expect(screen.getByText("全局套路需要管理员权限")).toBeTruthy();
+
+    fireEvent.click(terminalSwitch);
+    expect(runtimeMocks.routines.toggleGlobal).not.toHaveBeenCalled();
   });
 
   it("manages built-in routines and optional tools through book-scoped product methods", async () => {
     render(<RoutinesNextPage bookId="book/a" bookTitle="长夜" />);
 
     await waitFor(() => expect(productMocks.listBookRoutines).toHaveBeenCalledWith("book/a"));
-    fireEvent.click(screen.getByRole("switch", { name: "切换全局状态：Review" }));
+    openTab("内置套路");
+    const reviewSwitch = await screen.findByRole("switch", { name: "切换全局状态：Review" });
+    await waitFor(() => expect(reviewSwitch).toHaveProperty("disabled", false));
+    fireEvent.click(reviewSwitch);
     await waitFor(() => expect(runtimeMocks.routines.toggleGlobal).toHaveBeenCalledWith("review", true));
 
     fireEvent.click(screen.getByRole("button", { name: "禁用作品套路：Review" }));

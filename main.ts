@@ -9,6 +9,12 @@ const novelForkHome = resolve(homedir(), ".novelfork");
 const defaultRuntimeDir = resolve(novelForkHome, ".runtime");
 const projectRoot = process.env.NOVELFORK_PROJECT_ROOT ?? novelForkHome;
 const runtimeDir = process.env.NOVELFORK_RUNTIME_DIR ?? process.env.NARRAFORK_HOME ?? defaultRuntimeDir;
+const runtimeMigrationsDir = resolve(
+  import.meta.dir,
+  "packages",
+  "narrafork-runtime-overlay",
+  "runtime-migrations",
+);
 
 process.env.NOVELFORK_PROJECT_ROOT ??= projectRoot;
 process.env.NOVELFORK_BOOKS_ROOT ??= resolve(projectRoot, "books");
@@ -16,10 +22,20 @@ process.env.NOVELFORK_RUNTIME_DIR ??= runtimeDir;
 process.env.NARRAFORK_HOME ??= runtimeDir;
 process.env.NOVELFORK_SESSION_STORE_DIR ??= resolve(runtimeDir, "sessions");
 process.env.NOVELFORK_STORAGE_DB_PATH ??= resolve(novelForkHome, "novelfork.db");
+process.env.NARRAFORK_MIGRATIONS_DIR ??= runtimeMigrationsDir;
 
 // Preserve NovelFork's historical public listener port. Explicit PORT and
 // --port=XXXX values remain supported by the Runtime server.
 process.env.PORT ??= "4567";
+
+// Register the product adapter before the Runtime server graph evaluates. The
+// Runtime package itself remains usable without this registration via its Null
+// integration, while the NovelFork executable opts into product behavior here.
+const { registerRuntimeProductIntegration } = await import(
+  "./packages/narrafork-runtime-private/server/lib/product-host/index.ts"
+);
+const { novelForkProductIntegration } = await import("./packages/novelfork-product-runtime/src/index.ts");
+registerRuntimeProductIntegration(novelForkProductIntegration);
 
 // Keep the specifier literal so Bun includes the complete Runtime dependency graph
 // in the root executable without maintaining a second Runtime implementation package.

@@ -163,7 +163,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps) {
             <td className="border border-border px-3 py-1.5 align-top">{children}</td>
           ),
           del: ({ children }) => <del className="text-muted-foreground">{children}</del>,
-          input: ({ type, checked, disabled, ...rest }) => {
+          input: ({ type, checked, disabled, ref: _ref, ...rest }) => {
             if (type === "checkbox") {
               // GFM task list checkbox — render read-only visual checkbox.
               return (

@@ -3,14 +3,14 @@ import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 const runtimeRoot = join(process.cwd(), "src", "app-next", "runtime");
-const nativeHostPath = join(
+const embeddedHostPath = join(
 	process.cwd(),
 	"..",
 	"narrafork-runtime-private",
 	"frontend",
 	"components",
 	"narrator",
-	"NovelForkNarratorPanelHost.tsx",
+	"EmbeddedNarratorDockHost.tsx",
 );
 
 const currentProductRoutes = [
@@ -55,12 +55,12 @@ describe("NovelFork Runtime product capability matrix", () => {
 		for (const file of files) {
 			const source = await readFile(file, "utf8");
 			if (
-				source.includes(
-					'from "@frontend/components/narrator/NovelForkNarratorPanelHost"',
-				) ||
-				source.includes(
-					'import("@frontend/components/narrator/NovelForkNarratorPanelHost")',
-				)
+					source.includes(
+						'from "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel"',
+					) ||
+					source.includes(
+						'import("@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel")',
+					)
 			) {
 				nativeHostImportOwners.push(
 					relative(appNextRoot, file).replaceAll("\\", "/"),
@@ -90,7 +90,7 @@ describe("NovelFork Runtime product capability matrix", () => {
 			),
 			"utf8",
 		);
-		const hostSource = await readFile(nativeHostPath, "utf8");
+		const hostSource = await readFile(embeddedHostPath, "utf8");
 
 		expect(nativeHostImportOwners).toEqual([
 			"runtime/RuntimeNarratorPanelMount.tsx",
@@ -107,9 +107,9 @@ describe("NovelFork Runtime product capability matrix", () => {
 		expect(workbenchSource).toContain("RuntimeNarratorPanelMount");
 		expect(workbenchSource).toContain("compact");
 		expect(p0Source).toContain("RuntimeNarratorPanelMount");
-		expect(routeSource).not.toContain("NovelForkNarratorPanelHost");
-		expect(workbenchSource).not.toContain("NovelForkNarratorPanelHost");
-		expect(p0Source).not.toContain("NovelForkNarratorPanelHost");
+		expect(routeSource).not.toContain("EmbeddedNarratorDockHost");
+		expect(workbenchSource).not.toContain("EmbeddedNarratorDockHost");
+		expect(p0Source).not.toContain("EmbeddedNarratorDockHost");
 		expect(hostSource).toContain(
 			'import { NarratorDock } from "./dock/NarratorDock"',
 		);
@@ -118,6 +118,35 @@ describe("NovelFork Runtime product capability matrix", () => {
 		);
 		expect(hostSource).toContain("<NarratorDockProvider");
 		expect(hostSource).toContain('<NarratorDock device="desktop" />');
+	});
+
+	it("keeps Runtime UI source aliases out of Studio TypeScript while retaining build aliases", async () => {
+		const tsconfigSource = await readFile(join(process.cwd(), "tsconfig.json"), "utf8");
+		const viteConfigSource = await readFile(join(process.cwd(), "vite.config.ts"), "utf8");
+		const vitestConfigSource = await readFile(join(process.cwd(), "vitest.config.ts"), "utf8");
+		const commandCacheSource = await readFile(
+			join(runtimeRoot, "narrator-command-cache.ts"),
+			"utf8",
+		);
+
+		expect(tsconfigSource).not.toContain('"@frontend"');
+		expect(tsconfigSource).not.toContain('"@shared"');
+		expect(tsconfigSource).toContain(
+			'"@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel"',
+		);
+		expect(tsconfigSource).toContain(
+			'"@vivy1024/narrafork-runtime-bridge/frontend/query-client"',
+		);
+		expect(viteConfigSource).toContain(
+			'"@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel"',
+		);
+		expect(vitestConfigSource).toContain(
+			'"@vivy1024/narrafork-runtime-bridge/frontend/query-client"',
+		);
+		expect(commandCacheSource).toContain(
+			'from "@vivy1024/narrafork-runtime-bridge/frontend/query-client"',
+		);
+		expect(commandCacheSource).not.toContain("@frontend/");
 	});
 
 	it("removes the parallel ConversationSurface implementation from Studio", async () => {

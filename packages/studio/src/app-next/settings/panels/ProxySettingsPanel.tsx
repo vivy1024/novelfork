@@ -199,7 +199,7 @@ export function ProxySettingsPanel() {
 
   const providerRows = useMemo(
     () => (snapshot?.providers ?? []).filter((provider) =>
-      provider.kind === "provider" && provider.section === "customApiProviders",
+      provider.kind === "provider" && (provider.section === "customApiProviders" || provider.section === "nugProviders"),
     ),
     [snapshot],
   );
@@ -301,8 +301,8 @@ export function ProxySettingsPanel() {
 
       <OverrideGroup
         title="AI Provider 覆盖"
-        description="只显示并覆盖 customApiProviders canonical 标准 API；内置账户池、NUG、Cline 与派生缓存不会出现。"
-        emptyDescription="Runtime 尚未配置 canonical 标准 API Provider。"
+        description="显示并覆盖标准 API 连接与 NUG 反代服务；内置账户池、Cline 与派生缓存不会出现。"
+        emptyDescription="Runtime 尚未配置标准 API 连接或 NUG 反代服务。"
         empty={providerRows.length === 0}
       >
         {providerRows.map((provider) => {

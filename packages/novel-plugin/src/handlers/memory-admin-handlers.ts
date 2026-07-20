@@ -506,16 +506,16 @@ function isWritableKind(kind: MemoryEntryKind): kind is Extract<MemoryEntryKind,
   return kind === "fact" || kind === "event";
 }
 
-function getStorage(): StorageDatabase {
-  const storage = getStorageDatabase();
-  ensureNarrativeMemorySchema(storage);
-  return storage;
+function getStorage(storage?: StorageDatabase): StorageDatabase {
+  const resolved = storage ?? getStorageDatabase();
+  ensureNarrativeMemorySchema(resolved);
+  return resolved;
 }
 
-export async function handleMemoryList(input: MemoryListInput): Promise<ToolResult> {
+export async function handleMemoryList(input: MemoryListInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = requireBookId(input);
   if (isToolResult(bookId)) return bookId;
-  const storage = getStorage();
+  const storage = getStorage(storageOverride);
   const kind = parseKind(input.kind, false);
   if (isToolResult(kind)) return kind;
   const limit = clampLimit(input.limit, 50, 500);
@@ -531,27 +531,27 @@ export async function handleMemoryList(input: MemoryListInput): Promise<ToolResu
   return ok(`已列出 ${entries.length} 条记忆条目。`, { entries, page: { limit, offset, returned: entries.length } });
 }
 
-export async function handleMemoryReadEntry(input: MemoryReadEntryInput): Promise<ToolResult> {
+export async function handleMemoryReadEntry(input: MemoryReadEntryInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = requireBookId(input);
   if (isToolResult(bookId)) return bookId;
   const kind = parseKind(input.kind);
   if (isToolResult(kind) || !kind) return kind || fail("invalid-kind", "kind 必填。");
   const id = String(input.id ?? "").trim();
   if (!id) return fail("invalid-input", "id 必填。");
-  const storage = getStorage();
+  const storage = getStorage(storageOverride);
   const record = getEntry(storage, bookId, kind, id);
   if (!record) return fail("not-found", `未找到 ${kind}:${id}。`);
   return ok(`已读取 ${kind}:${id}。`, { entry: { ...record, kind, id } });
 }
 
-export async function handleMemorySearch(input: MemorySearchInput): Promise<ToolResult> {
+export async function handleMemorySearch(input: MemorySearchInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = requireBookId(input);
   if (isToolResult(bookId)) return bookId;
   const query = String(input.query ?? "").trim();
   if (!query) return fail("invalid-input", "query 必填。");
   const kind = parseKind(input.kind, false);
   if (isToolResult(kind)) return kind;
-  const storage = getStorage();
+  const storage = getStorage(storageOverride);
   const limit = clampLimit(input.limit, 50, 500);
   const kinds: MemoryEntryKind[] = kind ? [kind] : ["fact", "event", "log", "vector"];
   const entries = kinds.flatMap((item) => {
@@ -568,10 +568,10 @@ export async function handleMemorySearch(input: MemorySearchInput): Promise<Tool
   return ok(`搜索到 ${entries.length} 条记忆。`, { entries, query });
 }
 
-export async function handleMemoryStats(input: MemoryStatsInput): Promise<ToolResult> {
+export async function handleMemoryStats(input: MemoryStatsInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = requireBookId(input);
   if (isToolResult(bookId)) return bookId;
-  const storage = getStorage();
+  const storage = getStorage(storageOverride);
   const factRows = storage.sqlite.prepare(`SELECT layer, category, updated_at AS updatedAt FROM narrative_fact WHERE book_id = ?`).all(bookId) as any[];
   const eventRows = storage.sqlite.prepare(`SELECT status, created_at AS createdAt, applied_at AS appliedAt FROM narrative_event WHERE book_id = ?`).all(bookId) as any[];
   const logRows = storage.sqlite.prepare(`SELECT created_at AS createdAt FROM narrative_retrieval_log WHERE book_id = ?`).all(bookId) as any[];

@@ -31,6 +31,7 @@ describe("NovelFork shadcn settings registry", () => {
 
   it("preserves legacy route entry points and fails closed for unknown sections", () => {
     expect(isSettingsSectionId("providers")).toBe(true);
+    expect(resolveSettingsSectionId("agent")).toBe("agents");
     expect(resolveSettingsSectionId("custom-subagents")).toBe("agents");
     expect(resolveSettingsSectionId("mcp")).toBe("agents");
     expect(resolveSettingsSectionId("data")).toBe("storage");

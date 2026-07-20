@@ -9,6 +9,7 @@ export * from "./hooks";
 export * from "./mcp";
 export * from "./notification-sounds";
 export * from "./provider-models";
+export * from "./platform-providers";
 export * from "./proxy-overrides";
 export * from "./routines";
 export * from "./runtime-maintenance";

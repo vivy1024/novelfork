@@ -337,11 +337,11 @@ export function AgentSettingsPanel() {
   return (
     <SettingsPage
       title="AI 代理"
-      description="沿用 NarraFork 原版字段分组，并只提交 Runtime 当前校验器接受的值。"
+      description="配置工作助手的权限、计划、上下文和运行行为。"
     >
       {error ? <Alert><AlertTitle>Agent 设置操作失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert> : null}
 
-      <SettingsGroup title="基础运行" description="权限值与 Runtime 完全一致，不使用旧的 allow/edit/ask 映射。">
+      <SettingsGroup title="基础运行" description="设置默认权限、运行轮次和请求记录方式。">
         <div className="flex flex-col gap-4">
           <label className="grid gap-2 text-sm sm:grid-cols-[1fr_260px] sm:items-center">
             <span className="font-medium">默认权限模式</span>
@@ -374,14 +374,14 @@ export function AgentSettingsPanel() {
             else setDraft({ ...draft, requestDumpEnabled: value, requestDumpErrorsOnly: value ? draft.requestDumpErrorsOnly : false });
           }} />
           <ToggleRow label="仅记录失败请求" description="启用原始请求记录时，只持久化失败调用。" checked={draft.requestDumpErrorsOnly} disabled={!draft.requestDumpEnabled} onChange={(value) => setDraft({ ...draft, requestDumpErrorsOnly: value })} />
-          <ToggleRow label="默认展开推理内容" description="浏览器本地偏好，不写入 Runtime。" checked={expandReasoning} onChange={setExpandReasoning} />
+          <ToggleRow label="默认展开推理内容" description="打开会话时默认展开模型推理内容。" checked={expandReasoning} onChange={setExpandReasoning} />
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="计划与危险反思" description="使用 Runtime 的 plan 和 danger reflection 字段，不提供虚假的 YOLO 开关。">
+      <SettingsGroup title="计划与危险反思" description="控制计划模式、上下文裁剪和高风险操作确认。">
         <div className="flex flex-col gap-4">
           <ToggleRow label="默认宽松计划" description="新叙述者的计划模式默认允许更多工具。" checked={draft.defaultRelaxedPlan} onChange={(value) => setDraft({ ...draft, defaultRelaxedPlan: value })} />
-          <ToggleRow label="默认启用上下文裁剪" description="新叙述者按 Runtime 阈值自动裁剪低价值上下文。" checked={draft.defaultPruneEnabled} onChange={(value) => setDraft({ ...draft, defaultPruneEnabled: value })} />
+          <ToggleRow label="默认启用上下文裁剪" description="新叙述者会自动裁剪低价值上下文。" checked={draft.defaultPruneEnabled} onChange={(value) => setDraft({ ...draft, defaultPruneEnabled: value })} />
           <ToggleRow label="允许内联计划" description="ExitPlanMode 可直接提交 inline_plan。" checked={draft.planModeAllowInlinePlan} onChange={(value) => setDraft({ ...draft, planModeAllowInlinePlan: value })} />
           <ToggleRow label="计划反思自动批准" description="在可编辑权限模式中，计划反思可自动批准。" checked={draft.planReflectionAutoApprove} onChange={(value) => setDraft({ ...draft, planReflectionAutoApprove: value })} />
           <ToggleRow label="计划反思允许自动 Compact" description="计划反思需要压缩上下文时可自动执行 Compact。" checked={draft.planReflectionAllowAutoCompact} disabled={!draft.planReflectionAutoApprove} onChange={(value) => setDraft({ ...draft, planReflectionAllowAutoCompact: value })} />
@@ -401,7 +401,7 @@ export function AgentSettingsPanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="自动续跑与系统提醒" description="与 NarraFork 原生 Agent 设置使用相同的 continuation、sidecar 和提醒字段。">
+      <SettingsGroup title="自动续跑与系统提醒" description="配置任务续跑、行为围栏和提醒频率。">
         <div className="flex flex-col gap-4">
           <label className="grid gap-2 text-sm sm:grid-cols-[1fr_240px] sm:items-center">
             <span className="font-medium">自动续跑模式</span>
@@ -421,7 +421,7 @@ export function AgentSettingsPanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="上下文裁剪与 Compact" description="百分比阈值、保留消息对数和 Compact 排队策略直接写入 Runtime Agent 设置。">
+      <SettingsGroup title="上下文裁剪与 Compact" description="调整上下文阈值、保留消息数量和 Compact 排队策略。">
         <div className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <NumberField label="标准上下文开始裁剪（%）" value={draft.contextThresholds.standard.pruneStart} min={50} max={100} onChange={(value) => setDraft({ ...draft, contextThresholds: { ...draft.contextThresholds, standard: { ...draft.contextThresholds.standard, pruneStart: value } } })} />
@@ -432,11 +432,11 @@ export function AgentSettingsPanel() {
             <NumberField label="自动 Compact 裁剪阈值（%）" value={draft.autoCompactPruneThreshold} min={0} max={100} onChange={(value) => setDraft({ ...draft, autoCompactPruneThreshold: value })} />
             <NumberField label="最小裁剪比例（%）" value={draft.minPruneRatio} min={0} max={100} onChange={(value) => setDraft({ ...draft, minPruneRatio: value })} />
           </div>
-          <ToggleRow label="Compact 期间允许消息排队" description="Compact 执行期间将新消息加入 Runtime 队列，而不是立即拒绝。" checked={draft.queueDuringCompaction} onChange={(value) => setDraft({ ...draft, queueDuringCompaction: value })} />
+          <ToggleRow label="Compact 期间允许消息排队" description="Compact 执行期间将新消息加入队列，而不是立即拒绝。" checked={draft.queueDuringCompaction} onChange={(value) => setDraft({ ...draft, queueDuringCompaction: value })} />
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="全局目录与命令规则" description="与 NarraFork 原生安全规则字段一致；空规则不会提交到 Runtime。">
+      <SettingsGroup title="全局目录与命令规则" description="设置工作助手可访问的目录和可执行的命令。">
         <div className="grid gap-6 lg:grid-cols-2">
           <PathRuleEditor title="目录白名单" items={draft.whitelistDirs} mode="allow" onChange={(items) => setDraft({ ...draft, whitelistDirs: items })} />
           <PathRuleEditor title="目录黑名单" items={draft.blacklistDirs} mode="deny" onChange={(items) => setDraft({ ...draft, blacklistDirs: items })} />
@@ -445,7 +445,7 @@ export function AgentSettingsPanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="重试与超时" description="可恢复错误、退避上限和首 Token 超时均来自 Runtime 校验器。">
+      <SettingsGroup title="重试与超时" description="设置可恢复错误的重试次数、退避上限和首 Token 超时。">
         <div className="grid gap-4 sm:grid-cols-3">
           <NumberField label="最大瞬时重试" value={draft.maxTransientRetries} min={-1} max={100} onChange={(value) => setDraft({ ...draft, maxTransientRetries: value })} />
           <NumberField label="退避上限（秒）" value={Math.round(draft.retryBackoffCeilMs / 1000)} min={1} max={300} onChange={(value) => setDraft({ ...draft, retryBackoffCeilMs: value * 1000 })} />
@@ -453,7 +453,7 @@ export function AgentSettingsPanel() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="自定义可重试错误" description="新规则通过 Runtime 重试规则接口创建；启用和删除随下一次 Agent 设置保存。">
+      <SettingsGroup title="自定义可重试错误" description="添加可恢复错误的匹配规则，并在保存设置时一起生效。">
         <div className="flex flex-col gap-4">
           {draft.customRetryRules.map((rule, index) => (
             <div key={rule.id} className="flex flex-wrap items-center gap-3 rounded-lg border p-3">
@@ -485,7 +485,7 @@ export function AgentSettingsPanel() {
       </SettingsGroup>
 
       {preferences ? (
-        <SettingsGroup title="会话与输出" description="这些偏好按原版归属于 AI 代理，并即时保存到当前 Runtime 账户。">
+        <SettingsGroup title="会话与输出" description="配置消息加载、语言、Token 用量和输出统计显示。">
           <ToggleRow label="自动加载更早消息" description="滚动到会话顶部时自动读取更早的消息。" checked={preferences.autoLoadOlderMessages} onChange={(value) => void savePreference("autoLoadOlderMessages", value)} />
           <ToggleRow label="按用户语言回复" description="要求 Agent 尽量使用用户当前语言回复。" checked={preferences.replyInUserLanguage} onChange={(value) => void savePreference("replyInUserLanguage", value)} />
           <ToggleRow label="显示 Token 用量" description="在回复后展示输入和输出 Token。" checked={preferences.showTokenUsage} onChange={(value) => void savePreference("showTokenUsage", value)} />

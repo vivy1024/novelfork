@@ -1,4 +1,4 @@
-import { ExternalLink, Info, Package, RefreshCw, ServerCog } from "lucide-react";
+import { ExternalLink, Info, Package, RefreshCw } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ export function AboutPanel() {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-2xl font-bold text-foreground">关于</h2>
-        <p className="mt-1 text-sm text-muted-foreground">查看本地产品元数据，以及 Studio 与 Runtime 更新管理之间的边界。</p>
+        <p className="mt-1 text-sm text-muted-foreground">查看 NovelFork 的版本信息、产品说明和项目链接。</p>
       </div>
 
       <Card>
@@ -19,7 +19,7 @@ export function AboutPanel() {
         </CardHeader>
         <CardContent className="grid gap-3 sm:grid-cols-2">
           <MetadataItem icon={Package} label="Studio 软件包" value={`@vivy1024/novelfork-studio · 版本 ${STUDIO_PACKAGE_VERSION}`} />
-          <MetadataItem icon={ServerCog} label="运维后端" value="NarraFork Runtime 原生 API" />
+          <MetadataItem icon={Info} label="产品定位" value="中文网文创作与 AI 辅助工作台" />
           <MetadataItem icon={Info} label="产品界面" value="NovelFork Studio 设置中心" />
           <MetadataItem icon={Package} label="元数据来源" value="随 Studio 打包的软件包清单" />
         </CardContent>
@@ -27,9 +27,9 @@ export function AboutPanel() {
 
       <Alert>
         <RefreshCw className="mb-2 size-4 text-muted-foreground" />
-        <AlertTitle>更新状态由 Runtime 管理</AlertTitle>
+        <AlertTitle>更新信息</AlertTitle>
         <AlertDescription>
-          此面板不会调用旧版发布信息接口，也不会伪造更新检查。更新通道、服务器、下载和应用行为均由 Runtime 的 <code>settings.update</code> 配置及 Runtime 更新流程控制。
+          此页面仅展示当前版本信息，不会伪造更新检查；请通过项目发布渠道获取新版本。
         </AlertDescription>
       </Alert>
 
