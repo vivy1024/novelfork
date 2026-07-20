@@ -7,6 +7,7 @@ import type {
   WorkbenchResourceNode,
 } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench";
 
+import { runtimeJson } from "./auth";
 import {
   createRuntimeProductClient,
   type RuntimeBookSummary,
@@ -19,10 +20,11 @@ export interface RuntimeWritingWorkbenchRouteProps {
   readonly bookId: string;
   readonly onCanvasContextChange: (context: WorkbenchCanvasContext) => void;
   readonly onNavigateToConversation: (narratorId: string) => void;
+  readonly onChanged?: () => void | Promise<void>;
   readonly client?: RuntimeProductClient;
 }
 
-function toNode(bookId: string, resource: RuntimeWorkspaceResource): WorkbenchResourceNode {
+function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: string): WorkbenchResourceNode {
   const isChapter = resource.kind === "chapter";
   const isCandidate = resource.kind === "candidate";
   const isDraft = resource.kind === "draft";
@@ -46,11 +48,12 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource): WorkbenchRe
   return {
     id: resource.id,
     kind,
-    title: resource.title,
+    title: title ?? resource.title,
     ...(resource.content !== undefined && resource.content !== null ? { content: resource.content } : {}),
     ...(resource.path ? { path: resource.path } : {}),
     metadata: {
       bookId,
+      ...(resource.path ? { filePath: resource.path, isFile: true } : {}),
       ...(isChapter ? { isChapter: true } : {}),
       ...(resource.metadata ?? {}),
     },
@@ -65,6 +68,63 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource): WorkbenchRe
   };
 }
 
+function fileName(path: string): string {
+  return path.split("/").filter(Boolean).pop() ?? path;
+}
+
+function chapterFileTitle(resource: RuntimeWorkspaceResource, name: string): string {
+  if (resource.kind !== "chapter") return name;
+  const match = name.match(/^(\d{4})_(.+)\.md$/u);
+  if (!match) return resource.title || name;
+  const number = Number(match[1]);
+  return `第${number}章 ${resource.title || match[2].replaceAll("_", " ")}`;
+}
+
+/** Build the Explorer from the same path-shaped tree used by the IDE file view. */
+function mapResourcesToFileTree(bookId: string, resources: readonly RuntimeWorkspaceResource[]): WorkbenchResourceNode[] {
+  type MutableDir = WorkbenchResourceNode & { children: WorkbenchResourceNode[] };
+  const roots: MutableDir[] = [];
+  const ensureDir = (parts: string[]): MutableDir => {
+    let siblings = roots;
+    let currentPath = "";
+    let current: MutableDir | undefined;
+    for (let index = 0; index < parts.length; index += 1) {
+      currentPath = currentPath ? `${currentPath}/${parts[index]}` : parts[index];
+      let next = siblings.find((node) => node.metadata?.filePath === currentPath) as MutableDir | undefined;
+      if (!next) {
+        next = {
+          id: `file-dir:${currentPath}`,
+          kind: "group",
+          title: index === 0 ? ({ chapters: "正文", story: "设定", jingwei: "经纬文件" }[parts[0]] ?? parts[0]) : parts[index],
+          capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { bookId, filePath: currentPath, isDirectory: true },
+          children: [],
+        };
+        siblings.push(next);
+      }
+      current = next;
+      siblings = next.children as MutableDir[];
+    }
+    return current!;
+  };
+
+  for (const resource of resources) {
+    const path = resource.path?.replaceAll("\\", "/").replace(/^\/+|\/+$/gu, "");
+    if (!path) continue;
+    const parts = path.split("/").filter(Boolean);
+    if (parts.length === 0) continue;
+    const parent = parts.length === 1 ? null : ensureDir(parts.slice(0, -1));
+    const name = fileName(path);
+    const leaf = toNode(bookId, resource, chapterFileTitle(resource, name));
+    if (parent) parent.children.push(leaf);
+    else roots.push(leaf as MutableDir);
+  }
+  const sort = (nodes: readonly WorkbenchResourceNode[]): WorkbenchResourceNode[] => [...nodes]
+    .sort((a, b) => a.title.localeCompare(b.title))
+    .map((node) => node.children ? { ...node, children: sort(node.children) } : node);
+  return sort([...roots.values()]);
+}
+
 /** Maps the trusted Runtime snapshot into the retained NovelFork workbench. */
 export function mapRuntimeWorkspaceToWorkbenchNodes(
   bookId: string,
@@ -75,72 +135,15 @@ export function mapRuntimeWorkspaceToWorkbenchNodes(
     const status = resource.metadata?.status;
     return status !== "archived" && status !== "rejected";
   });
-  const chapters = activeResources
-    .filter((resource) => resource.kind === "chapter")
-    .map((resource) => toNode(bookId, resource));
-  const candidates = activeResources
-    .filter((resource) => resource.kind === "candidate")
-    .map((resource) => toNode(bookId, resource));
-  const drafts = activeResources
-    .filter((resource) => resource.kind === "draft")
-    .map((resource) => toNode(bookId, resource));
-  const archived = resources
-    .filter((resource) => resource.metadata?.status === "archived" || resource.metadata?.status === "rejected")
-    .map((resource) => toNode(bookId, resource));
-  const references = resources
-    .filter((resource) => !["chapter", "candidate", "draft"].includes(resource.kind))
-    .map((resource) => toNode(bookId, resource));
-  const groupCapabilities = { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false } as const;
-  const groups: WorkbenchResourceNode[] = [
-    {
-      id: "runtime-group:chapters",
-      kind: "group",
-      title: "章节",
-      capabilities: groupCapabilities,
-      children: chapters,
-    },
-    ...(candidates.length
-      ? [{ id: "runtime-group:candidates", kind: "group" as const, title: "候选稿", capabilities: groupCapabilities, children: candidates }]
-      : []),
-    ...(drafts.length
-      ? [{ id: "runtime-group:drafts", kind: "group" as const, title: "草稿", capabilities: groupCapabilities, children: drafts }]
-      : []),
-    ...(archived.length
-      ? [{ id: "runtime-group:archived", kind: "group" as const, title: "已归档", capabilities: groupCapabilities, children: archived }]
-      : []),
-    ...(references.length
-      ? [{
-          id: "runtime-group:reference",
-          kind: "group" as const,
-          title: "大纲与设定",
-          capabilities: groupCapabilities,
-          children: references,
-        }]
-      : []),
-    {
-      id: "jingwei-panel-entry",
-      kind: "jingwei",
-      title: "经纬资料",
-      metadata: { bookId, action: "open-jingwei-panel" },
-      capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: false, apply: false },
-    },
-    {
-      id: "narrative-memory-graph",
-      kind: "storyline",
-      title: "Narrative Memory",
-      metadata: { bookId, isNarrativeMemoryEntry: true },
-      capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-    },
-  ];
-
-  if (!book) return groups;
+  const fileTree = mapResourcesToFileTree(bookId, activeResources);
+  if (!book) return fileTree;
   return [{
     id: `book:${book.id}`,
     kind: "book",
     title: book.title,
-    metadata: { bookId: book.id, status: book.status },
+    metadata: { bookId, status: book.status },
     capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-    children: groups,
+    children: fileTree,
   }];
 }
 
@@ -153,7 +156,7 @@ function replaceNode(nodes: readonly WorkbenchResourceNode[], replacement: Workb
 
 function appendChapter(nodes: readonly WorkbenchResourceNode[], chapter: WorkbenchResourceNode): WorkbenchResourceNode[] {
   return nodes.map((node) => {
-    if (node.id === "runtime-group:chapters") {
+    if (node.metadata?.filePath === "chapters" && node.metadata.isDirectory) {
       return { ...node, children: [...(node.children ?? []), chapter] };
     }
     return node.children?.length ? { ...node, children: appendChapter(node.children, chapter) } : node;
@@ -169,15 +172,18 @@ export function RuntimeWritingWorkbenchRoute({
   bookId,
   onCanvasContextChange,
   onNavigateToConversation,
+  onChanged,
   client: suppliedClient,
 }: RuntimeWritingWorkbenchRouteProps) {
   const defaultClient = useMemo(() => createRuntimeProductClient(), []);
   const client = suppliedClient ?? defaultClient;
   const [nodes, setNodes] = useState<WorkbenchResourceNode[]>([]);
   const [selectedNode, setSelectedNode] = useState<WorkbenchResourceNode | null>(null);
-  const [narrator, setNarrator] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>[number] | null>(null);
+  const [narrators, setNarrators] = useState<Awaited<ReturnType<RuntimeProductClient["listNarrators"]>>>([]);
+  const [activeNarratorId, setActiveNarratorId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
@@ -189,8 +195,15 @@ export function RuntimeWritingWorkbenchRoute({
         client.listNarrators(bookId),
       ]);
       const nextNodes = mapRuntimeWorkspaceToWorkbenchNodes(bookId, workspace.resources, workspace.book);
+      const readableNarrators = narrators.filter((candidate) => candidate.capabilities.read === true);
+      const defaultNarrator = readableNarrators.find((candidate) => candidate.status !== "archived") ?? readableNarrators[0];
       setNodes(nextNodes);
-      setNarrator(narrators.find((candidate) => candidate.capabilities.read === true) ?? null);
+      setNarrators(readableNarrators);
+      setActiveNarratorId((current) =>
+        current && readableNarrators.some((candidate) => candidate.id === current)
+          ? current
+          : defaultNarrator?.id ?? null,
+      );
       setSelectedNode((current) => {
         if (!current) return null;
         const flatten = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -205,7 +218,8 @@ export function RuntimeWritingWorkbenchRoute({
       });
     } catch (cause) {
       setNodes([]);
-      setNarrator(null);
+      setNarrators([]);
+      setActiveNarratorId(null);
       setSelectedNode(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
@@ -240,15 +254,36 @@ export function RuntimeWritingWorkbenchRoute({
     }
   }, [bookId, client]);
 
+  const handleCreateSession = useCallback(async () => {
+    if (creatingSession) return;
+    setCreatingSession(true);
+    setError(null);
+    try {
+      const created = await client.createNarrator(bookId, { title: "新建对话" });
+      setNarrators((current) => [
+        ...current.filter((candidate) => candidate.id !== created.id),
+        created,
+      ]);
+      setActiveNarratorId(created.id);
+      await onChanged?.();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setCreatingSession(false);
+    }
+  }, [bookId, client, creatingSession, onChanged]);
+
+  const activeNarrator = narrators.find((candidate) => candidate.id === activeNarratorId) ?? null;
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
       <div className="flex items-center justify-between border-b border-border px-4 py-2">
-        <p className="text-sm text-muted-foreground">Runtime 受控小说工作台：章节、经纬、写作资源与 Narrative Memory 均来自真实书籍绑定</p>
+        <p className="text-sm text-muted-foreground">章节、经纬、写作资源与叙事记忆</p>
         <Button type="button" size="sm" onClick={() => void handleCreateChapter()} disabled={creating || loading}>
           {creating ? "创建中…" : "新建章节"}
         </Button>
       </div>
-      {loading ? <p className="p-4 text-sm text-muted-foreground" role="status">正在加载 Runtime 工作台…</p> : null}
+      {loading ? <p className="p-4 text-sm text-muted-foreground" role="status">正在加载工作台…</p> : null}
       {error ? <p className="p-4 text-sm text-destructive" role="alert">工作台加载失败：{error}</p> : null}
       {!loading && !error ? (
         <IdeWorkbench
@@ -260,17 +295,24 @@ export function RuntimeWritingWorkbenchRoute({
           onSave={handleSave}
           onCanvasContextChange={onCanvasContextChange}
           runtimeProductMode
-          chatSlot={narrator ? (
+          runtimeFetch={(input, init) => runtimeJson<unknown>(input, init)}
+          chatSlot={activeNarrator ? (
             <RuntimeNarratorPanelMount
-              key={narrator.id}
+              key={activeNarrator.id}
               bookId={bookId}
-              narrator={narrator}
+              narrator={activeNarrator}
               compact
             />
           ) : undefined}
-          onSwitchToAgent={narrator ? () => onNavigateToConversation(narrator.id) : undefined}
-          bookSessions={narrator ? [{ id: narrator.id, title: narrator.title, updatedAt: narrator.updatedAt }] : []}
-          activeSessionId={narrator?.id ?? null}
+          onSwitchToAgent={activeNarrator ? () => onNavigateToConversation(activeNarrator.id) : undefined}
+          bookSessions={narrators.map((narrator) => ({
+            id: narrator.id,
+            title: narrator.title,
+            updatedAt: narrator.updatedAt,
+          }))}
+          activeSessionId={activeNarrator?.id ?? null}
+          onSwitchSession={setActiveNarratorId}
+          onCreateSession={activeNarrator ? () => void handleCreateSession() : undefined}
         />
       ) : null}
     </section>

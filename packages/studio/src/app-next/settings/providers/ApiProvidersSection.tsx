@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "../../components/feedback";
-import type { ProviderProtocol } from "@/shared/provider-catalog";
+import type { ProviderProtocolChoice } from "./ProtocolSelectModal";
 import type { ApiProvider } from "../provider-types";
 import { ApiProviderCard } from "./ApiProviderCard";
 import { ProtocolSelectModal } from "./ProtocolSelectModal";
@@ -34,7 +34,7 @@ export function ApiProvidersSection({
   readonly onToggleAddForm: () => void;
   readonly onOpenProtocolModal?: () => void;
   readonly onCloseProtocolModal?: () => void;
-  readonly onSelectProtocol?: (protocol: ProviderProtocol) => void;
+  readonly onSelectProtocol?: (protocol: ProviderProtocolChoice) => void;
   readonly onSelectProvider: (providerId: string) => void;
   readonly onToggleProvider: (providerId: string, enabled: boolean) => void;
   readonly onDeleteProvider?: (providerId: string) => void;

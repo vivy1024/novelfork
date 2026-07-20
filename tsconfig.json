@@ -13,7 +13,18 @@
     "declarationMap": true,
     "sourceMap": true,
     "outDir": "dist",
-    "rootDir": "src"
+    "rootDir": "src",
+    "baseUrl": ".",
+    "paths": {
+      "@server/*": ["packages/narrafork-runtime-private/server/*"],
+      "@shared/*": ["packages/narrafork-runtime-private/shared/*"],
+      "@product/novelfork/*": ["packages/novelfork-product-runtime/src/*"],
+      "@vivy1024/novelfork-core": ["packages/core/src/index.ts"],
+      "@vivy1024/novelfork-core/i18n": ["packages/core/src/i18n/index.ts"],
+      "@vivy1024/novelfork-core/plugins": ["packages/core/src/plugins/index.ts"],
+      "@vivy1024/novelfork-novel-plugin": ["packages/novel-plugin/src/index.ts"],
+      "@vivy1024/novelfork-novel-plugin/*": ["packages/novel-plugin/src/*"]
+    }
   },
   "exclude": ["node_modules", "dist"]
 }

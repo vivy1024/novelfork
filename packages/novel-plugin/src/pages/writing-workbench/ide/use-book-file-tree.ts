@@ -30,12 +30,6 @@ const OPENABLE_EXT = new Set([
   ".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico", ".bmp",
 ]);
 const IMAGE_EXT = new Set([".png", ".jpg", ".jpeg", ".gif", ".svg", ".webp", ".ico", ".bmp"]);
-const legacyDir = (...codes: number[]): string => String.fromCharCode(...codes);
-const REMOVED_LEGACY_OUTPUT_DIRS = new Set([
-  legacyDir(100, 114, 97, 102, 116, 115),
-  legacyDir(103, 101, 110, 101, 114, 97, 116, 101, 100, 45, 99, 97, 110, 100, 105, 100, 97, 116, 101, 115),
-]);
-
 function extensionOf(name: string): string {
   const dot = name.lastIndexOf(".");
   return dot >= 0 ? name.slice(dot).toLowerCase() : "";
@@ -49,48 +43,18 @@ function isImageFile(name: string): boolean {
   return IMAGE_EXT.has(extensionOf(name));
 }
 
-/** 判断文件是否在 chapters/ 目录下(特化为章节节点) */
+/** chapters/ 下的 Markdown 保留真实文件名，但交给章节专用编辑器打开。 */
 function isChapterFile(path: string): boolean {
-  return /^chapters\/\d{4}_/.test(path) && path.endsWith(".md");
-}
-
-/** 从 chapters 文件名提取章节标题:0001_设备故障.md → 第1章 设备故障 */
-function chapterDisplayName(name: string): string {
-  const match = name.match(/^(\d{4})_(.+)\.md$/);
-  if (!match) return name;
-  const num = parseInt(match[1], 10);
-  const title = match[2];
-  // 跳过纯标题占位文件(如"第_1_章")
-  if (/^第_?\d+_?章$/.test(title)) return `第${num}章`;
-  return `第${num}章 ${title}`;
-}
-
-/** 顶级目录中文显示名(底层路径不变,显示翻译) */
-const DIR_DISPLAY_NAMES: Record<string, string> = {
-  chapters: "正文",
-  story: "设定",
-  jingwei: "经纬文件",
-};
-
-/** 判断是否为纯标题占位文件(如 0001_第_1_章.md,只有"# 第 X 章"一行) */
-function isTitlePlaceholder(name: string): boolean {
-  const match = name.match(/^\d{4}_(.+)\.md$/);
-  if (!match) return false;
-  return /^第_?\d+_?章$/.test(match[1]);
+  return /^chapters\/.+\.md$/iu.test(path);
 }
 
 export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
   if (entry.type === "directory") {
-    const displayName = DIR_DISPLAY_NAMES[entry.name] ?? entry.name;
-    // 目录内过滤掉纯标题占位文件
-    const children = (entry.children ?? [])
-      .filter(c => !(c.type === "directory" && REMOVED_LEGACY_OUTPUT_DIRS.has(c.name)))
-      .filter(c => !(c.type === "file" && isTitlePlaceholder(c.name)))
-      .map(c => mapBookFileEntryToNode(c, bookId));
+    const children = (entry.children ?? []).map(c => mapBookFileEntryToNode(c, bookId));
     return {
       id: `file-dir:${entry.path}`,
       kind: "group",
-      title: displayName,
+      title: entry.name,
       capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: true, apply: false },
       metadata: { filePath: entry.path, bookId, isDirectory: true, mtime: entry.mtime },
       children,
@@ -106,7 +70,7 @@ export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): Workbe
     return {
       id: `file:${entry.path}`,
       kind: "chapter" as WorkbenchResourceKind,
-      title: chapterDisplayName(entry.name),
+      title: entry.name,
       path: entry.path,
       capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
       metadata: { filePath: entry.path, bookId, isFile: true, isChapter: true, mtime: entry.mtime, size: entry.size },
@@ -147,13 +111,14 @@ export function useBookFileTree(bookId: string | undefined, enabled: boolean): U
     setLoading(true);
     setError(null);
     fetch(`/api/books/${encodeURIComponent(bookId)}/files/tree?depth=8`)
-      .then(r => r.json())
+      .then(async r => {
+        const data = await r.json() as { tree?: TreeEntry[]; message?: string };
+        if (!r.ok) throw new Error(data.message ?? "无法读取书籍文件树");
+        return data;
+      })
       .then((data: { tree?: TreeEntry[] }) => {
         if (cancelled) return;
-        const tree = data.tree ?? [];
-        setNodes(tree
-          .filter(e => !(e.type === "directory" && REMOVED_LEGACY_OUTPUT_DIRS.has(e.name)))
-          .map(e => mapBookFileEntryToNode(e, bookId)));
+        setNodes((data.tree ?? []).map(e => mapBookFileEntryToNode(e, bookId)));
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));

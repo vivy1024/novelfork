@@ -1,3 +1,4 @@
+import type { Locale } from "@vivy1024/novelfork-core/i18n";
 import {
   createRuntimeAdminRequest,
   jsonRequest,
@@ -33,7 +34,7 @@ export interface RuntimeUserCommand {
 export interface UserPreferenceAppearanceFields {
   readonly autoLoadOlderMessages: boolean;
   readonly fastModeDefault: boolean;
-  readonly language: string;
+  readonly language: Locale;
   readonly wordWrapMarkdown: boolean;
   readonly wordWrapCode: boolean;
   readonly wordWrapDiff: boolean;

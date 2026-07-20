@@ -120,7 +120,7 @@ export function ProfilePanel() {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">个人资料</h2>
-        <p className="text-sm text-muted-foreground">账户身份由 NarraFork Runtime 管理；此处管理头像和 Git 提交身份。</p>
+        <p className="text-sm text-muted-foreground">管理头像、账户信息和 Git 提交身份。</p>
       </div>
 
       {error ? (
@@ -134,8 +134,8 @@ export function ProfilePanel() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle>Runtime 账户</CardTitle>
-              <CardDescription>头像可通过 Runtime 上传或删除；用户名和角色为只读字段。</CardDescription>
+              <CardTitle>账户信息</CardTitle>
+              <CardDescription>头像可上传或删除；用户名和角色为只读字段。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-5">
               <div className="flex flex-wrap items-center gap-4">
@@ -170,7 +170,7 @@ export function ProfilePanel() {
                 <GitBranch data-icon="inline-start" />
                 Git 提交身份
               </CardTitle>
-              <CardDescription>用于 NovelFork 创建的 Git 提交；留空会清除 Runtime 中对应字段。</CardDescription>
+              <CardDescription>用于 NovelFork 创建的 Git 提交；留空会清除已保存的对应字段。</CardDescription>
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <label className="flex flex-col gap-2 text-sm">
@@ -194,7 +194,7 @@ export function ProfilePanel() {
               </label>
             </CardContent>
             <CardFooter className="justify-between gap-3">
-              <span className="text-xs text-muted-foreground">{saved ? "已保存到 Runtime" : "仅发送发生变化的字段"}</span>
+              <span className="text-xs text-muted-foreground">{saved ? "已保存" : "仅发送发生变化的字段"}</span>
               <Button onClick={handleSave} disabled={saving || (gitUsername === (profile.gitUsername ?? "") && gitEmail === (profile.gitEmail ?? ""))}>
                 <Save data-icon="inline-start" />
                 {saving ? "保存中…" : "保存 Git 身份"}

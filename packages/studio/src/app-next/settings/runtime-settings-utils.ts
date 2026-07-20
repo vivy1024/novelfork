@@ -2,6 +2,8 @@ import type {
   RuntimeCustomApiProtocol as RuntimeCustomApiProtocolContract,
   RuntimeCustomApiProviderSettings,
   RuntimeCustomModelSettings,
+  RuntimeClineProviderSettings,
+  RuntimeNugProviderSettings,
   RuntimeProviderProxySettings,
   RuntimeSettingsPatch,
 } from "../runtime-admin";
@@ -15,7 +17,7 @@ export type RuntimePermissionMode =
 
 export type RuntimeReasoningEffort = "none" | "low" | "medium" | "high" | "xhigh" | "max";
 export type RuntimeCustomApiProtocol = RuntimeCustomApiProtocolContract;
-export type RuntimeProviderArrayKey = "customApiProviders";
+export type RuntimeProviderArrayKey = "customApiProviders" | "nugProviders";
 
 const RUNTIME_CUSTOM_API_PROTOCOLS = new Set<RuntimeCustomApiProtocol>([
   "anthropic-official",
@@ -23,6 +25,7 @@ const RUNTIME_CUSTOM_API_PROTOCOLS = new Set<RuntimeCustomApiProtocol>([
   "responses-compatible",
   "completions-compatible",
   "codex-native",
+  "gemini-compatible",
 ]);
 
 function isRuntimeCustomApiProtocol(value: unknown): value is RuntimeCustomApiProtocol {
@@ -30,6 +33,7 @@ function isRuntimeCustomApiProtocol(value: unknown): value is RuntimeCustomApiPr
     && RUNTIME_CUSTOM_API_PROTOCOLS.has(value as RuntimeCustomApiProtocol);
 }
 export type RuntimeEditableProvider = RuntimeCustomApiProviderSettings;
+export type RuntimeEditableNugProvider = RuntimeNugProviderSettings;
 
 export interface RuntimeProviderArrayDefinition {
   readonly key: RuntimeProviderArrayKey;
@@ -41,9 +45,15 @@ export interface RuntimeProviderArrayDefinition {
 export const RUNTIME_PROVIDER_ARRAYS: readonly RuntimeProviderArrayDefinition[] = [
   {
     key: "customApiProviders",
-    label: "标准 API 供应商",
-    description: "唯一可编辑的 canonical 数据源，覆盖 Anthropic、Responses、Chat Completions 与 Codex Native 标准协议。",
-    addLabel: "添加标准 API 供应商",
+    label: "标准 API 连接",
+    description: "管理 Anthropic、Gemini、Responses、Chat Completions 与 Codex Native API 连接。",
+    addLabel: "添加标准 API 连接",
+  },
+  {
+    key: "nugProviders",
+    label: "NUG 反代服务",
+    description: "管理 NarraFork Unified Gateway 反代服务和远端模型通道。",
+    addLabel: "添加 NUG 反代服务",
   },
 ] as const;
 
@@ -89,8 +99,16 @@ export interface RuntimeAgentModelState {
 export interface RuntimeModelSettingsSource {
   readonly agent?: unknown;
   readonly customApiProviders?: readonly unknown[];
+  readonly nugProviders?: readonly unknown[];
+  readonly clineProviders?: readonly unknown[];
   readonly openaiModelsGrouped?: unknown;
   readonly anthropicModelsGrouped?: unknown;
+  readonly geminiModelsGrouped?: unknown;
+  readonly nugModelsGrouped?: unknown;
+  readonly clineModelsGrouped?: unknown;
+  readonly kiroModels?: unknown;
+  readonly codexModels?: unknown;
+  readonly builtinModelContextWindows?: unknown;
 }
 
 export function asRecord(value: unknown): Record<string, unknown> {
@@ -180,11 +198,21 @@ export function migrateRuntimeAgentModelPrefix(
 
 function groupedModelsForProvider(
   settings: RuntimeModelSettingsSource,
-  provider: RuntimeEditableProvider,
+  provider: RuntimeEditableProvider | RuntimeEditableNugProvider,
+  arrayKey: RuntimeProviderArrayKey,
 ): readonly unknown[] {
-  const grouped = provider.protocol === "anthropic-official" || provider.protocol === "anthropic-compatible"
+  if (arrayKey === "nugProviders") {
+    const group = asArray(settings.nugModelsGrouped)
+      .map(asRecord)
+      .find((candidate) => readString(candidate, ["providerId", "id"]) === provider.id);
+    return asArray(group?.models);
+  }
+  const customProvider = provider as RuntimeEditableProvider;
+  const grouped = customProvider.protocol === "anthropic-official" || customProvider.protocol === "anthropic-compatible"
     ? settings.anthropicModelsGrouped
-    : settings.openaiModelsGrouped;
+    : customProvider.protocol === "gemini-compatible"
+      ? settings.geminiModelsGrouped
+      : settings.openaiModelsGrouped;
   const group = asArray(grouped)
     .map(asRecord)
     .find((candidate) => readString(candidate, ["providerId", "id"]) === provider.id);
@@ -193,7 +221,7 @@ function groupedModelsForProvider(
 
 function modelOption(
   raw: unknown,
-  provider: RuntimeEditableProvider,
+  provider: RuntimeEditableProvider | RuntimeEditableNugProvider,
   agentModels: RuntimeAgentModelState,
   custom: boolean,
 ): RuntimeModelOption | null {
@@ -239,12 +267,24 @@ export function buildRuntimeModelGroups(
 ): RuntimeModelGroup[] {
   const includeHidden = options.includeHidden === true;
   const includeDisabled = options.includeDisabled === true;
-  const providers = getRuntimeProviderArray(settings, "customApiProviders");
+  const providerEntries: Array<{
+    readonly arrayKey: RuntimeProviderArrayKey;
+    readonly provider: RuntimeEditableProvider | RuntimeEditableNugProvider;
+  }> = [
+    ...getRuntimeProviderArray(settings, "customApiProviders").map((provider) => ({
+      arrayKey: "customApiProviders" as const,
+      provider,
+    })),
+    ...getRuntimeProviderArray(settings, "nugProviders").map((provider) => ({
+      arrayKey: "nugProviders" as const,
+      provider,
+    })),
+  ];
   const agentModels = getRuntimeAgentModelState(settings);
 
-  return providers.flatMap((provider) => {
+  return providerEntries.flatMap(({ arrayKey, provider }) => {
     if (provider.disabled && !includeDisabled) return [];
-    const discovered = groupedModelsForProvider(settings, provider)
+    const discovered = groupedModelsForProvider(settings, provider, arrayKey)
       .map((raw) => modelOption(raw, provider, agentModels, false))
       .filter((model): model is RuntimeModelOption => Boolean(model));
     const custom = agentModels.customModels
@@ -271,17 +311,149 @@ export function buildRuntimeModelOptions(settings: RuntimeModelSettingsSource): 
   return buildRuntimeModelGroups(settings).flatMap((group) => group.models);
 }
 
+export type RuntimePlatformModelKind = "kiro" | "codex";
+
+interface RuntimePlatformModelIdentity {
+  readonly id: string;
+  readonly name: string;
+  readonly prefix: string;
+}
+
+function platformModelOption(
+  raw: unknown,
+  identity: RuntimePlatformModelIdentity,
+  agentModels: RuntimeAgentModelState,
+  builtinWindows: Record<string, unknown>,
+  custom: boolean,
+): RuntimeModelOption | null {
+  const record = asRecord(raw);
+  const rawId = typeof raw === "string"
+    ? raw
+    : readString(record, ["value", "model_id", "modelId", "id", "model"]);
+  if (!rawId) return null;
+  const modelId = rawId.startsWith(`${identity.prefix}:`)
+    ? rawId.slice(identity.prefix.length + 1)
+    : rawId;
+  const value = `${identity.prefix}:${modelId}`;
+  const label = typeof raw === "string"
+    ? modelId
+    : readString(record, [
+      "label",
+      "display_name",
+      "displayName",
+      "model_short_name",
+      "modelShortName",
+      "model_name",
+      "modelName",
+      "name",
+    ]) || modelId;
+  const builtin = builtinWindows[value] ?? builtinWindows[modelId];
+  return {
+    value,
+    label,
+    provider: identity.prefix,
+    providerId: identity.id,
+    providerLabel: identity.name,
+    modelId,
+    hidden: agentModels.hiddenModels.includes(value),
+    custom,
+    contextWindow: agentModels.modelContextWindows[value]
+      ?? (typeof builtin === "number" && Number.isFinite(builtin) ? builtin : undefined),
+  };
+}
+
+function platformCustomModels(
+  identity: RuntimePlatformModelIdentity,
+  agentModels: RuntimeAgentModelState,
+  builtinWindows: Record<string, unknown>,
+): RuntimeModelOption[] {
+  return agentModels.customModels
+    .filter((model) => model.value.startsWith(`${identity.prefix}:`))
+    .map((model) => platformModelOption(model, identity, agentModels, builtinWindows, true))
+    .filter((model): model is RuntimeModelOption => Boolean(model));
+}
+
+function platformModelList(settings: RuntimeModelSettingsSource, platform: RuntimePlatformModelKind): readonly unknown[] {
+  return asArray(platform === "kiro" ? settings.kiroModels : settings.codexModels);
+}
+
+/** Builds Kiro or built-in Codex inventory with the same agent-level hide/context/custom semantics as API providers. */
+export function buildRuntimePlatformModelOptions(
+  settings: RuntimeModelSettingsSource,
+  platform: RuntimePlatformModelKind,
+  options: RuntimeModelGroupOptions = {},
+): RuntimeModelOption[] {
+  const identity: RuntimePlatformModelIdentity = platform === "kiro"
+    ? { id: "__platform_kiro__", name: "Kiro", prefix: "kiro" }
+    : { id: "__platform_codex__", name: "内建 Codex", prefix: "codex" };
+  const agentModels = getRuntimeAgentModelState(settings);
+  const builtinWindows = asRecord(settings.builtinModelContextWindows);
+  const seen = new Set<string>();
+  return [
+    ...platformModelList(settings, platform)
+      .map((raw) => platformModelOption(raw, identity, agentModels, builtinWindows, false))
+      .filter((model): model is RuntimeModelOption => Boolean(model)),
+    ...platformCustomModels(identity, agentModels, builtinWindows),
+  ].filter((model) => {
+    if (seen.has(model.value) || (!options.includeHidden && model.hidden)) return false;
+    seen.add(model.value);
+    return true;
+  });
+}
+
+/** Builds the model inventory for one Cline connection from its Runtime grouped model cache. */
+export function buildRuntimeClineModelOptions(
+  settings: RuntimeModelSettingsSource,
+  provider: Pick<RuntimeClineProviderSettings, "id" | "name" | "prefix">,
+  options: RuntimeModelGroupOptions = {},
+): RuntimeModelOption[] {
+  const identity: RuntimePlatformModelIdentity = {
+    id: provider.id,
+    name: provider.name || provider.prefix,
+    prefix: provider.prefix,
+  };
+  const group = asArray(settings.clineModelsGrouped)
+    .map(asRecord)
+    .find((candidate) => readString(candidate, ["providerId", "id"]) === provider.id);
+  const agentModels = getRuntimeAgentModelState(settings);
+  const builtinWindows = asRecord(settings.builtinModelContextWindows);
+  const seen = new Set<string>();
+  return [
+    ...asArray(group?.models)
+      .map((raw) => platformModelOption(raw, identity, agentModels, builtinWindows, false))
+      .filter((model): model is RuntimeModelOption => Boolean(model)),
+    ...platformCustomModels(identity, agentModels, builtinWindows),
+  ].filter((model) => {
+    if (seen.has(model.value) || (!options.includeHidden && model.hidden)) return false;
+    seen.add(model.value);
+    return true;
+  });
+}
+
 export function getRuntimeProviderArray(
   settings: RuntimeModelSettingsSource,
-  _key: RuntimeProviderArrayKey,
-): RuntimeEditableProvider[] {
-  return asArray(settings.customApiProviders).flatMap((rawProvider) => {
+  key: "customApiProviders",
+): RuntimeEditableProvider[];
+export function getRuntimeProviderArray(
+  settings: RuntimeModelSettingsSource,
+  key: "nugProviders",
+): RuntimeEditableNugProvider[];
+export function getRuntimeProviderArray(
+  settings: RuntimeModelSettingsSource,
+  key: RuntimeProviderArrayKey,
+): Array<RuntimeEditableProvider | RuntimeEditableNugProvider>;
+export function getRuntimeProviderArray(
+  settings: RuntimeModelSettingsSource,
+  key: RuntimeProviderArrayKey,
+): Array<RuntimeEditableProvider | RuntimeEditableNugProvider> {
+  const source = key === "nugProviders" ? settings.nugProviders : settings.customApiProviders;
+  return asArray(source).flatMap((rawProvider): Array<RuntimeEditableProvider | RuntimeEditableNugProvider> => {
     const provider = asRecord(rawProvider);
     const id = readString(provider, ["id"]);
     const name = readString(provider, ["name"]);
     const prefix = readString(provider, ["prefix"]);
     if (!id || !prefix) return [];
-    return [{
+    const common = {
       ...provider,
       id,
       name: name || prefix,
@@ -289,6 +461,10 @@ export function getRuntimeProviderArray(
       apiKey: typeof provider.apiKey === "string" ? provider.apiKey : "",
       baseUrl: typeof provider.baseUrl === "string" ? provider.baseUrl : "",
       defaultModel: typeof provider.defaultModel === "string" ? provider.defaultModel : "",
+    };
+    if (key === "nugProviders") return [common as RuntimeEditableNugProvider];
+    return [{
+      ...common,
       protocol: isRuntimeCustomApiProtocol(provider.protocol)
         ? provider.protocol
         : "responses-compatible",
@@ -297,13 +473,27 @@ export function getRuntimeProviderArray(
 }
 
 export function runtimeProviderPatch(
-  _key: RuntimeProviderArrayKey,
+  key: "customApiProviders",
   providers: readonly RuntimeEditableProvider[],
+): RuntimeSettingsPatch;
+export function runtimeProviderPatch(
+  key: "nugProviders",
+  providers: readonly RuntimeEditableNugProvider[],
+): RuntimeSettingsPatch;
+export function runtimeProviderPatch(
+  key: RuntimeProviderArrayKey,
+  providers: readonly (RuntimeEditableProvider | RuntimeEditableNugProvider)[],
+): RuntimeSettingsPatch;
+export function runtimeProviderPatch(
+  key: RuntimeProviderArrayKey,
+  providers: readonly (RuntimeEditableProvider | RuntimeEditableNugProvider)[],
 ): RuntimeSettingsPatch {
-  return { customApiProviders: providers };
+  return key === "nugProviders"
+    ? { nugProviders: providers as RuntimeSettingsPatch["nugProviders"] }
+    : { customApiProviders: providers as RuntimeSettingsPatch["customApiProviders"] };
 }
 
-export function createRuntimeProviderDraft(_key: RuntimeProviderArrayKey): RuntimeEditableProvider {
+export function createRuntimeProviderDraft(protocol: RuntimeCustomApiProtocol = "responses-compatible"): RuntimeEditableProvider {
   return {
     id: "__new__",
     name: "新标准 API 供应商",
@@ -311,7 +501,8 @@ export function createRuntimeProviderDraft(_key: RuntimeProviderArrayKey): Runti
     apiKey: "",
     baseUrl: "",
     defaultModel: "",
-    protocol: "responses-compatible",
+    protocol,
+    geminiTransport: protocol === "gemini-compatible" ? "generate-content" : undefined,
     disabled: false,
     tlsRejectUnauthorized: true,
     codexWebSocket: false,
@@ -323,27 +514,42 @@ export function createRuntimeProviderDraft(_key: RuntimeProviderArrayKey): Runti
   };
 }
 
-export function providerArrayLabel(_key: RuntimeProviderArrayKey): string {
-  return RUNTIME_PROVIDER_ARRAYS[0].label;
+export function createRuntimeNugProviderDraft(): RuntimeEditableNugProvider {
+  return {
+    id: "__new__",
+    name: "NUG 反代服务",
+    prefix: "nug",
+    apiKey: "",
+    baseUrl: "",
+    defaultModel: "",
+    disabled: false,
+  };
+}
+
+export function providerArrayLabel(key: RuntimeProviderArrayKey): string {
+  return RUNTIME_PROVIDER_ARRAYS.find((definition) => definition.key === key)?.label ?? "供应商";
 }
 
 export function providerApiTypeLabel(
-  _key: RuntimeProviderArrayKey,
-  provider: RuntimeEditableProvider,
+  key: RuntimeProviderArrayKey,
+  provider: RuntimeEditableProvider | RuntimeEditableNugProvider,
 ): string {
+  if (key === "nugProviders") return "NUG 反代";
+  const customProvider = provider as RuntimeEditableProvider;
   const labels: Record<RuntimeCustomApiProtocol, string> = {
     "anthropic-official": "Anthropic 官方",
     "anthropic-compatible": "Anthropic 兼容",
     "codex-native": "Codex Native",
     "responses-compatible": "Responses 兼容",
     "completions-compatible": "Chat Completions 兼容",
+    "gemini-compatible": "Gemini 兼容",
   };
-  return labels[provider.protocol ?? "responses-compatible"];
+  return labels[customProvider.protocol ?? "responses-compatible"];
 }
 
 export function providerSecrets(
   _key: RuntimeProviderArrayKey,
-  provider: RuntimeEditableProvider,
+  provider: RuntimeEditableProvider | RuntimeEditableNugProvider,
 ): RuntimeProviderSecret[] {
   return [{ key: "apiKey", label: "API Key", value: provider.apiKey ?? "", primary: true }];
 }
@@ -359,7 +565,7 @@ export function maskedSecretSummary(value: string | undefined | null): string {
 
 export function modelsForProvider(
   groups: readonly RuntimeModelGroup[],
-  provider: RuntimeEditableProvider,
+  provider: RuntimeEditableProvider | RuntimeEditableNugProvider,
 ): RuntimeModelOption[] {
   return groups.find((group) => group.id === provider.id)?.models.slice() ?? [];
 }

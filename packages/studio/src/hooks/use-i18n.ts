@@ -1,4 +1,4 @@
-import { useApi } from "./use-api";
+import { toStudioLanguage, useRuntimeLocale } from "../app-next/runtime/locale";
 
 type Lang = "zh" | "en";
 
@@ -349,9 +349,8 @@ export type StringKey = keyof typeof strings;
 export type TFunction = (key: StringKey) => string;
 
 export function useI18n() {
-  const { data } = useApi<{ language: string }>("/project");
-
-  const lang: Lang = data?.language === "en" ? "en" : "zh";
+  const { locale } = useRuntimeLocale();
+  const lang: Lang = toStudioLanguage(locale);
 
   function t(key: StringKey): string {
     return strings[key][lang];

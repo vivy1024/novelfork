@@ -67,14 +67,14 @@ afterEach(() => {
 });
 
 describe("ProxySettingsPanel", () => {
-  it("provider 覆盖只显示 canonical 标准 API，同时保留 Gateway 与 Hook 覆盖", async () => {
+  it("provider 覆盖显示标准 API 与 NUG，同时保留 Gateway 与 Hook 覆盖", async () => {
     render(<ProxySettingsPanel />);
 
     expect(await screen.findByRole("heading", { name: "代理管理" })).toBeTruthy();
     expect(screen.getByText("Canonical Responses")).toBeTruthy();
     expect(screen.queryByText("Kiro")).toBeNull();
     expect(screen.queryByText("OpenAI 派生缓存")).toBeNull();
-    expect(screen.queryByText("NUG 本地")).toBeNull();
+    expect(screen.getByText("NUG 本地")).toBeTruthy();
     expect(screen.getByText("Telegram")).toBeTruthy();
     expect(screen.getByText("https://example.com/hook")).toBeTruthy();
     expect(proxyClientMock.get).toHaveBeenCalledTimes(1);

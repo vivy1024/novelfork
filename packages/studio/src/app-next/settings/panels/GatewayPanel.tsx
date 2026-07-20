@@ -156,7 +156,7 @@ export function GatewayPanel() {
       <div data-slot="gateway-panel-header">
         <h2 className="text-lg font-semibold text-foreground">Gateway</h2>
         <p className="text-sm text-muted-foreground">
-          查看 NarraFork Gateway 的真实运行状态，重载已配置平台，并管理外部聊天会话。
+          查看外部聊天渠道的运行状态，重载已配置平台，并管理聊天会话。
         </p>
       </div>
 
@@ -170,7 +170,7 @@ export function GatewayPanel() {
       <Card>
         <CardHeader>
           <CardTitle>运行状态</CardTitle>
-          <CardDescription>数据来自 Runtime `GET /api/gateway/status`，重载会调用真实 Gateway Runtime。</CardDescription>
+          <CardDescription>显示当前渠道状态；重载会重新连接已配置的平台。</CardDescription>
           <CardAction>
             <div className="flex flex-wrap justify-end gap-2">
               <Button type="button" variant="outline" size="sm" onClick={() => void loadGateway()} disabled={loading || reloading}>
@@ -193,7 +193,7 @@ export function GatewayPanel() {
           ) : status ? (
             <div className="flex flex-col gap-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-sm font-medium">Runtime 状态</span>
+                <span className="text-sm font-medium">连接状态</span>
                 <Badge variant={status.started ? "default" : "secondary"}>
                   {status.started ? "运行中" : "已停止"}
                 </Badge>
@@ -206,7 +206,7 @@ export function GatewayPanel() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">Runtime 未返回 Gateway 状态。</p>
+            <p className="text-sm text-muted-foreground">暂时无法获取渠道状态。</p>
           )}
         </CardContent>
       </Card>
@@ -215,7 +215,7 @@ export function GatewayPanel() {
         <CardHeader>
           <CardTitle>Gateway 会话</CardTitle>
           <CardDescription>
-            {loading ? "正在读取 Runtime 会话…" : `共 ${sessions.length} 个外部聊天会话。删除后，下一条消息将创建新会话。`}
+            {loading ? "正在读取聊天会话…" : `共 ${sessions.length} 个外部聊天会话。删除后，下一条消息将创建新会话。`}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -230,7 +230,7 @@ export function GatewayPanel() {
               <EmptyHeader>
                 <EmptyMedia variant="icon"><MessagesSquare /></EmptyMedia>
                 <EmptyTitle>暂无 Gateway 会话</EmptyTitle>
-                <EmptyDescription>外部平台收到首条消息后，Runtime 会在这里创建会话。</EmptyDescription>
+                <EmptyDescription>外部平台收到首条消息后，会在这里创建会话。</EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : (

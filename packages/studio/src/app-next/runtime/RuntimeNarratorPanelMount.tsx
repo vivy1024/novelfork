@@ -1,9 +1,9 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 
-const NovelForkNarratorPanelHost = lazy(() =>
-	import("@frontend/components/narrator/NovelForkNarratorPanelHost").then(
+const EmbeddedNarratorDockHost = lazy(() =>
+	import("@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel").then(
 		(module) => ({
-			default: module.NovelForkNarratorPanelHost,
+			default: module.EmbeddedNarratorDockHost,
 		}),
 	),
 );
@@ -70,7 +70,7 @@ export function RuntimeNativeNarratorPanelMount({
 					</div>
 				}
 			>
-				<NovelForkNarratorPanelHost
+				<EmbeddedNarratorDockHost
 					key={narratorId}
 					narratorId={narratorId}
 					highlightMessageId={highlightMessageId}

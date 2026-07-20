@@ -77,6 +77,7 @@ export const SETTINGS_SECTIONS: readonly NovelForkSettingsSection[] = [
 ] as const;
 
 const LEGACY_SETTINGS_SECTION_ALIASES: Readonly<Record<string, SettingsSectionId>> = {
+  agent: "agents",
   "agent-hardening": "agents",
   "custom-subagents": "agents",
   mcp: "agents",

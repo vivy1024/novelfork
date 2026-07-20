@@ -8,8 +8,8 @@ export const LLMConfigSchema = z.object({
   temperature: z.number().min(0).max(2).default(0.7),
   maxTokens: z.number().int().min(1).default(8192),
   thinkingBudget: z.number().int().min(0).default(0),
-  extra: z.record(z.unknown()).optional(),
-  headers: z.record(z.string()).optional(),
+  extra: z.record(z.string(), z.unknown()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   apiFormat: z.enum(["chat", "responses"]).default("chat"),
   stream: z.boolean().default(true),
 });
@@ -98,7 +98,7 @@ export const HookConfigSchema = z.object({
   type: z.enum(["builtin", "script"]),
   handler: z.string().optional(),
   script: z.string().optional(),
-  config: z.record(z.unknown()).optional(),
+  config: z.record(z.string(), z.unknown()).optional(),
   enabled: z.boolean().default(true),
 });
 
@@ -109,9 +109,9 @@ export const MCPServerConfigSchema = z.object({
   transport: z.enum(["stdio", "sse"]),
   command: z.string().optional(),
   args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   url: z.string().url().optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   timeout: z.number().int().min(1000).default(180000),
   autoReconnect: z.boolean().default(true),
   enabled: z.boolean().default(true),

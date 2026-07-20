@@ -120,7 +120,7 @@ export function NotificationSettingsPanel() {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">通知</h2>
-        <p className="text-sm text-muted-foreground">只配置 Runtime 已支持的完成、等待、PWA、声音、钉钉和飞书通知。</p>
+        <p className="text-sm text-muted-foreground">配置任务完成、等待操作、系统声音以及钉钉和飞书通知。</p>
       </div>
 
       {error ? (
@@ -135,19 +135,19 @@ export function NotificationSettingsPanel() {
           <Card>
             <CardHeader>
               <CardTitle>触发时机</CardTitle>
-              <CardDescription>Runtime 当前只提供任务完成和等待用户操作两类事件。</CardDescription>
+              <CardDescription>可在任务完成或需要你操作时收到提醒。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <SwitchRow label="任务完成" description="Agent 完成当前任务时发送通知。" checked={preferences.notifyOnDone} onChange={(value) => void patchPreferences({ notifyOnDone: value })} />
               <SwitchRow label="等待用户操作" description="Agent 等待批准、回答或其他用户输入时发送通知。" checked={preferences.notifyOnWaiting} onChange={(value) => void patchPreferences({ notifyOnWaiting: value })} />
-              <SwitchRow label="PWA / 系统通知" description="允许 Runtime 通过已安装的 Web 应用发送系统通知。" checked={preferences.notifyPwaEnabled} onChange={(value) => void patchPreferences({ notifyPwaEnabled: value })} />
+              <SwitchRow label="PWA / 系统通知" description="允许已安装的 Web 应用发送系统通知。" checked={preferences.notifyPwaEnabled} onChange={(value) => void patchPreferences({ notifyPwaEnabled: value })} />
             </CardContent>
           </Card>
 
           <Card>
             <CardHeader>
               <CardTitle>声音</CardTitle>
-              <CardDescription>可使用 Runtime 内置提示音或上传自定义声音文件。</CardDescription>
+              <CardDescription>可使用内置提示音或上传自定义声音文件。</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-4">
               <SwitchRow label="声音提醒" description="通知触发时播放提示音。" checked={preferences.notifySoundEnabled} onChange={(value) => void patchPreferences({ notifySoundEnabled: value })} />
@@ -158,7 +158,7 @@ export function NotificationSettingsPanel() {
                   value={preferences.notifySoundType}
                   onValueChange={(value) => void patchPreferences({ notifySoundType: value as "builtin" | "custom" })}
                   options={[
-                    { value: "builtin", label: "Runtime 内置" },
+                    { value: "builtin", label: "内置提示音" },
                     { value: "custom", label: "自定义文件" },
                   ]}
                 />
@@ -192,7 +192,7 @@ export function NotificationSettingsPanel() {
                     }}
                   />
                   <span className="text-xs text-muted-foreground">
-                    {preferences.notifySoundFileId ? `Runtime 文件 ID：${preferences.notifySoundFileId}` : "尚未上传"}
+                    {preferences.notifySoundFileId ? "已上传自定义声音" : "尚未上传"}
                   </span>
                 </label>
               )}
@@ -207,7 +207,7 @@ export function NotificationSettingsPanel() {
 
           <WebhookCard
             title="钉钉通知"
-            description="通过钉钉机器人 Webhook 接收 Runtime 通知。"
+            description="通过钉钉机器人 Webhook 接收通知。"
             enabled={preferences.notifyDingtalkEnabled}
             webhook={preferences.notifyDingtalkWebhook}
             secret={preferences.notifyDingtalkSecret}
@@ -220,7 +220,7 @@ export function NotificationSettingsPanel() {
 
           <WebhookCard
             title="飞书通知"
-            description="通过飞书机器人 Webhook 接收 Runtime 通知。"
+            description="通过飞书机器人 Webhook 接收通知。"
             enabled={preferences.notifyFeishuEnabled}
             webhook={preferences.notifyFeishuWebhook}
             secret={preferences.notifyFeishuSecret}

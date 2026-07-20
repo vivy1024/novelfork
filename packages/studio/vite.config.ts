@@ -3,7 +3,21 @@ import react from "@vitejs/plugin-react";
 // import tailwindcss from "@tailwindcss/vite"; // Disabled due to build errors
 import { resolve } from "node:path";
 
-const runtimeFrontendOutDir = resolve(__dirname, "../narrafork-runtime-private/dist/frontend");
+const defaultRuntimeRoot = resolve(__dirname, "../narrafork-runtime-private");
+
+export function resolveRuntimeBuildPaths(
+  runtimeRootOverride = process.env.NOVELFORK_PRODUCT_RUNTIME_ROOT,
+) {
+  const runtimeRoot = runtimeRootOverride ? resolve(runtimeRootOverride) : defaultRuntimeRoot;
+  return {
+    runtimeRoot,
+    frontendRoot: resolve(runtimeRoot, "frontend"),
+    sharedRoot: resolve(runtimeRoot, "shared"),
+    frontendOutDir: resolve(runtimeRoot, "dist", "frontend"),
+  };
+}
+
+const runtimePaths = resolveRuntimeBuildPaths();
 const runtimePort = Number(process.env.NOVELFORK_RUNTIME_PORT ?? process.env.PORT ?? "7778");
 
 export default defineConfig({
@@ -21,14 +35,17 @@ export default defineConfig({
       "@tanstack/react-router",
     ],
     alias: {
-      "@frontend": resolve(__dirname, "../narrafork-runtime-private/frontend"),
-      "@shared": resolve(__dirname, "../narrafork-runtime-private/shared"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(runtimePaths.frontendRoot, "components/narrator/EmbeddedNarratorDockHost.tsx"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(runtimePaths.frontendRoot, "lib/query-client.ts"),
+      "@frontend": runtimePaths.frontendRoot,
+      "@shared": runtimePaths.sharedRoot,
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-config": resolve(__dirname, "../novel-plugin/src/pages/writing-config/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages": resolve(__dirname, "../novel-plugin/src/pages/index.ts"),
       "@vivy1024/novelfork-core/registry/command-registry": resolve(__dirname, "../core/src/registry/command-registry.ts"),
       "@vivy1024/novelfork-core/registry/command-executor": resolve(__dirname, "../core/src/registry/command-executor.ts"),
+      "@vivy1024/novelfork-core/i18n": resolve(__dirname, "../core/src/i18n/index.ts"),
       "@": resolve(__dirname, "src"),
     },
   },
@@ -36,7 +53,7 @@ export default defineConfig({
     // Official artifacts are served by the private Runtime's only HTTP/WS process.
     // Keep this outside Studio's dist/ so the legacy Studio API server cannot be
     // mistaken for the production host.
-    outDir: runtimeFrontendOutDir,
+    outDir: runtimePaths.frontendOutDir,
     emptyOutDir: true,
     // Package 6 / 7.1: route-level code splitting lives in src/App.tsx (React.lazy);
     // this config only carves out the heavy third-party vendors so they do not

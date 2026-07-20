@@ -6,9 +6,11 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
+import type { Locale } from "@vivy1024/novelfork-core/i18n";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { SettingsGroup, SettingsPage, SettingsSwitchRow } from "../components/SettingsPage";
 import { useLocalBooleanPreference, useNarratorMessageRendererMode, useScreenWakeLock } from "../local-preferences";
+import { publishRuntimeLocale } from "../../runtime/locale";
 import {
   createUserPreferencesClient,
   type RuntimeUserPreferences,
@@ -86,7 +88,9 @@ export function AppearancePanel() {
     setSavingField(String(key));
     setError(null);
     try {
-      setPreferences(await preferencesClient.patch({ [key]: value } as UserPreferencesPatch));
+      const updated = await preferencesClient.patch({ [key]: value } as UserPreferencesPatch);
+      setPreferences(updated);
+      if (key === "language") publishRuntimeLocale(updated.language);
     } catch (reason) {
       setPreferences(previous);
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -122,7 +126,7 @@ export function AppearancePanel() {
   return (
     <SettingsPage
       title="外观与界面"
-      description="本地显示偏好保存在当前浏览器；排版、终端和输入行为通过 Runtime 账户同步。"
+      description="管理主题、排版、终端和输入行为等界面偏好。"
     >
       {error ? (
         <Alert>
@@ -131,7 +135,7 @@ export function AppearancePanel() {
         </Alert>
       ) : null}
 
-      <SettingsGroup title="主题" description="浏览器本地设置，不会发送到 Runtime。">
+      <SettingsGroup title="主题" description="主题设置仅影响当前设备上的显示效果。">
         <div className="grid gap-2 sm:grid-cols-3">
           {themes.map(({ value, label, icon: Icon }) => (
             <Button
@@ -149,10 +153,10 @@ export function AppearancePanel() {
         <SwitchRow label="OLED 纯黑模式" description="深色主题下使用纯黑背景，适合 OLED 屏幕。" checked={oledMode} onChange={setOledMode} />
       </SettingsGroup>
 
-      <SettingsGroup title="显示" description="使用 NarraFork 原版浏览器本地键，不写入 Runtime 用户偏好。">
+      <SettingsGroup title="显示" description="调整全屏、动画、消息渲染和屏幕唤醒等显示行为。">
         <SwitchRow label="忽略安全区并全屏" description="请求浏览器全屏并使用完整显示区域。" checked={fullscreen} onChange={toggleFullscreen} />
         <SwitchRow label="保持屏幕唤醒" description="页面可见时通过 Screen Wake Lock 阻止屏幕休眠。" checked={wakeLock} onChange={setWakeLock} />
-        <SwitchRow label="高级动画" description="启用 NarraFork 的高级界面动画。" checked={advancedAnimation} onChange={setAdvancedAnimation} />
+        <SwitchRow label="高级动画" description="启用更丰富的界面动画效果。" checked={advancedAnimation} onChange={setAdvancedAnimation} />
         <Field orientation="responsive">
           <div>
             <FieldLabel>Narrator 消息渲染器</FieldLabel>
@@ -175,11 +179,11 @@ export function AppearancePanel() {
             <SwitchRow label="Diff 自动换行" description="差异视图中的长行自动折行。" checked={preferences.wordWrapDiff} onChange={(value) => void savePreference("wordWrapDiff", value)} />
           </SettingsGroup>
 
-          <SettingsGroup title="最近标签" description="由 Runtime 用户偏好同步到同一账户的其他设备。">
+          <SettingsGroup title="最近标签" description="控制子代理会话是否显示在最近访问列表中。">
             <SwitchRow label="将子代理加入最近标签" description="子代理会话也显示在最近访问列表中。" checked={preferences.addSubagentToRecentTabs ?? true} onChange={(value) => void savePreference("addSubagentToRecentTabs", value)} />
           </SettingsGroup>
 
-          <SettingsGroup title="终端" description="使用 NarraFork 原版终端主题键和 8–32 像素字号。">
+          <SettingsGroup title="终端" description="选择终端主题并调整 8–32 像素字号。">
             <Field orientation="responsive">
               <FieldLabel>终端主题</FieldLabel>
               <SimpleSelect
@@ -215,13 +219,13 @@ export function AppearancePanel() {
             </Field>
           </SettingsGroup>
 
-          <SettingsGroup title="语言" description="界面语言通过 Runtime 用户偏好同步。">
+          <SettingsGroup title="语言" description="选择 NovelFork 的界面语言。">
             <Field orientation="responsive">
               <FieldLabel>界面语言</FieldLabel>
               <SimpleSelect
                 aria-label="界面语言"
                 value={preferences.language}
-                onValueChange={(value) => void savePreference("language", value)}
+                onValueChange={(value) => void savePreference("language", value as Locale)}
                 options={[
                   { value: "zh-CN", label: "简体中文" },
                   { value: "en", label: "English" },

@@ -6,8 +6,8 @@ import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createNarrativeMemoryRouter } from "./narrative-memory.js";
-import { insertNarrativeEvent, insertRetrievalLog } from "../engine/narrative-memory/storage.js";
-import type { NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
+import { insertNarrativeEvent, insertNarrativeFact, insertRetrievalLog } from "../engine/narrative-memory/storage.js";
+import type { NarrativeEvent, NarrativeFact, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 
 const tempDirs: string[] = [];
 
@@ -38,6 +38,27 @@ function event(input: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "sub
     riskLevel: input.riskLevel ?? "high",
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     appliedAt: input.appliedAt,
+  };
+}
+
+function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subject" | "predicate" | "object">): NarrativeFact {
+  return {
+    id: input.id,
+    bookId: input.bookId ?? "book-1",
+    subject: input.subject,
+    predicate: input.predicate,
+    object: input.object,
+    category: input.category ?? "relationship",
+    layer: input.layer ?? "dynamic",
+    confidence: input.confidence ?? 0.8,
+    sourceType: input.sourceType ?? "event",
+    sourceId: input.sourceId,
+    sourceChapter: input.sourceChapter ?? 12,
+    evidenceText: input.evidenceText ?? "事实证据",
+    validFromChapter: input.validFromChapter,
+    validUntilChapter: input.validUntilChapter,
+    createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
+    updatedAt: input.updatedAt ?? "2026-06-22T00:00:00.000Z",
   };
 }
 
@@ -78,6 +99,65 @@ describe("narrative memory observability router", () => {
         evidence: "证据文本",
         chapterNumber: 12,
       }));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("exposes graph and admin reads from the same book-scoped memory source", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeFact(storage, fact({ id: "fact-rel", subject: "韩立", predicate: "敌对", object: "墨大夫" }));
+      insertNarrativeFact(storage, fact({ id: "fact-other-book", bookId: "book-2", subject: "韩立", predicate: "状态", object: "隐忍" }));
+      insertNarrativeEvent(storage, event({ id: "event-rel", eventType: "relationship_changed", subject: "韩立", predicate: "敌对", object: "墨大夫" }));
+
+      const app = createNarrativeMemoryRouter({ storage });
+      const graph = await app.request("http://localhost/api/books/book-1/narrative-memory/graph?view=relationship&focusEntity=%E9%9F%A9%E7%AB%8B&chapterFrom=1&chapterTo=20");
+      expect(graph.status).toBe(200);
+      expect(await graph.json()).toMatchObject({ facts: [expect.objectContaining({ id: "fact-rel" })], events: [expect.objectContaining({ id: "event-rel" })] });
+
+      const stats = await app.request("http://localhost/api/books/book-1/narrative-memory/stats");
+      expect(stats.status).toBe(200);
+      expect(await stats.json()).toMatchObject({ stats: { byKind: { fact: 1, event: 1 }, pendingEvents: 1 } });
+
+      const list = await app.request("http://localhost/api/books/book-1/narrative-memory/list?kind=fact&limit=10");
+      expect(list.status).toBe(200);
+      expect((await list.json()).entries).toEqual([expect.objectContaining({ kind: "fact", id: "fact-rel" })]);
+
+      const search = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&limit=10");
+      expect(search.status).toBe(200);
+      expect((await search.json()).entries).toEqual(expect.arrayContaining([expect.objectContaining({ kind: "fact", id: "fact-rel" })]));
+
+      const entry = await app.request("http://localhost/api/books/book-1/narrative-memory/entries/fact/fact-rel");
+      expect(entry.status).toBe(200);
+      expect(await entry.json()).toMatchObject({ entry: { kind: "fact", id: "fact-rel", subject: "韩立" } });
+
+      const otherBook = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&kind=fact&limit=10");
+      expect((await otherBook.json()).entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "fact-other-book" })]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("approves and rejects pending events through book-scoped routes", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeEvent(storage, event({ id: "event-approve", eventType: "character_state_changed", subject: "韩立", predicate: "状态", object: "更谨慎" }));
+      insertNarrativeEvent(storage, event({ id: "event-reject", eventType: "character_state_changed", subject: "墨大夫", predicate: "状态", object: "怀疑" }));
+      const app = createNarrativeMemoryRouter({ storage });
+
+      const approved = await app.request("http://localhost/api/books/book-1/narrative-memory/events/event-approve/approve", { method: "POST", body: JSON.stringify({ reason: "确认正文" }), headers: { "content-type": "application/json" } });
+      expect(approved.status).toBe(200);
+      expect(await approved.json()).toMatchObject({ event: { id: "event-approve", status: "applied" } });
+
+      const rejected = await app.request("http://localhost/api/books/book-1/narrative-memory/events/pending/event-reject/reject", { method: "POST" });
+      expect(rejected.status).toBe(200);
+      expect(await rejected.json()).toMatchObject({ event: { id: "event-reject", status: "rejected" } });
+
+      const pending = await app.request("http://localhost/api/books/book-1/narrative-memory/events/pending");
+      expect((await pending.json()).events).toEqual([]);
+      const facts = await app.request("http://localhost/api/books/book-1/narrative-memory/facts");
+      expect((await facts.json()).facts).toEqual(expect.arrayContaining([expect.objectContaining({ sourceId: "event-approve" })]));
     } finally {
       storage.close();
     }

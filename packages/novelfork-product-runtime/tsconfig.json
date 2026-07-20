@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@vivy1024/novelfork-core": ["../core/src/index.ts"],
+      "@vivy1024/novelfork-core/i18n": ["../core/src/i18n/index.ts"],
+      "@vivy1024/novelfork-core/plugins": ["../core/src/plugins/index.ts"],
+      "@vivy1024/novelfork-novel-plugin": ["../novel-plugin/src/index.ts"],
+      "@vivy1024/novelfork-novel-plugin/*": ["../novel-plugin/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

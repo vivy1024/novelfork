@@ -5,7 +5,7 @@ import {
 } from "./client";
 import type { RuntimeCustomApiProtocol } from "./settings";
 
-export type RuntimeProviderModelFamily = "openai" | "anthropic";
+export type RuntimeProviderModelFamily = "openai" | "anthropic" | "gemini";
 
 export interface RuntimeProviderModel extends Readonly<Record<string, unknown>> {
   readonly id: string;
@@ -26,12 +26,20 @@ export interface RefreshRuntimeProviderModelsInput {
   readonly protocol: RuntimeCustomApiProtocol;
 }
 
+export interface RefreshRuntimeNugProviderModelsResult {
+  readonly models: readonly RuntimeProviderModel[];
+  readonly fromCache: boolean;
+  readonly modelContextWindows?: Readonly<Record<string, number>>;
+}
+
 export function runtimeProviderModelFamily(
   protocol: RuntimeCustomApiProtocol,
 ): RuntimeProviderModelFamily {
-  return protocol === "anthropic-official" || protocol === "anthropic-compatible"
-    ? "anthropic"
-    : "openai";
+  if (protocol === "anthropic-official" || protocol === "anthropic-compatible") {
+    return "anthropic";
+  }
+  if (protocol === "gemini-compatible") return "gemini";
+  return "openai";
 }
 
 export function createProviderModelsClient(options: RuntimeAdminClientOptions = {}) {
@@ -44,5 +52,10 @@ export function createProviderModelsClient(options: RuntimeAdminClientOptions = 
         { method: "POST" },
       );
     },
+    refreshNugProviderModels: (providerId: string) =>
+      request<RefreshRuntimeNugProviderModelsResult>(
+        `/api/nug/providers/${encodePathSegment(providerId)}/models/refresh`,
+        { method: "POST" },
+      ),
   } as const;
 }

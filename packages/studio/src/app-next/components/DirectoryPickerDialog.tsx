@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -13,20 +13,19 @@ interface DirectoryPickerDialogProps {
 interface DirEntry {
   name: string;
   path: string;
-  isDirectory: boolean;
 }
 
 interface BrowseResult {
-  path: string;
+  path: string | null;
   parent: string | null;
   entries: DirEntry[];
+  drives?: DirEntry[];
   error?: string;
 }
 
 interface Shortcut {
-  name: string;
+  key: string;
   path: string;
-  icon: string;
 }
 
 function FolderIcon({ className }: { readonly className?: string }) {
@@ -37,6 +36,14 @@ function FolderIcon({ className }: { readonly className?: string }) {
   );
 }
 
+const SHORTCUT_LABELS: Record<string, string> = {
+  home: "主目录",
+  desktop: "桌面",
+  documents: "文档",
+  downloads: "下载",
+  root: "根目录",
+};
+
 function ShortcutIcon({ icon, className }: { readonly icon: string; readonly className?: string }) {
   switch (icon) {
     case "home":
@@ -46,24 +53,28 @@ function ShortcutIcon({ icon, className }: { readonly icon: string; readonly cla
         </svg>
       );
     case "monitor":
+    case "desktop":
       return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
           <rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" />
         </svg>
       );
     case "file-text":
+    case "documents":
       return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
           <path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z" /><path d="M14 2v4a2 2 0 0 0 2 2h4" /><line x1="10" x2="8" y1="9" y2="9" /><line x1="16" x2="8" y1="13" y2="13" /><line x1="16" x2="8" y1="17" y2="17" />
         </svg>
       );
     case "download":
+    case "downloads":
       return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />
         </svg>
       );
     case "hard-drive":
+    case "root":
       return (
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
           <line x1="22" x2="2" y1="12" y2="12" /><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z" /><line x1="6" x2="6.01" y1="16" y2="16" /><line x1="10" x2="10.01" y1="16" y2="16" />
@@ -78,6 +89,7 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
   const [currentPath, setCurrentPath] = useState(initialPath || "");
   const [addressInput, setAddressInput] = useState(initialPath || "");
   const [entries, setEntries] = useState<DirEntry[]>([]);
+  const [drives, setDrives] = useState<DirEntry[]>([]);
   const [parentPath, setParentPath] = useState<string | null>(null);
   const [shortcuts, setShortcuts] = useState<Shortcut[]>([]);
   const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
@@ -100,10 +112,12 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
         setError(data.error || "无法访问该目录");
         return;
       }
-      setCurrentPath(data.path);
-      setAddressInput(data.path);
-      setParentPath(data.parent);
-      setEntries(data.entries);
+      const resolvedPath = data.path ?? "";
+      setCurrentPath(resolvedPath);
+      setAddressInput(resolvedPath);
+      setParentPath(data.parent ?? null);
+      setEntries(data.entries ?? []);
+      setDrives(data.drives ?? []);
     } catch {
       setError("请求失败，请检查服务器连接");
     } finally {
@@ -144,7 +158,7 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
   };
 
   const handleNavigateHome = () => {
-    const homeShortcut = shortcuts.find((s) => s.icon === "home");
+    const homeShortcut = shortcuts.find((s) => s.key === "home");
     if (homeShortcut) browse(homeShortcut.path);
   };
 
@@ -170,25 +184,23 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
   };
 
   const handleCreateFolder = async () => {
-    if (!newFolderName.trim() || !currentPath) return;
+    const name = newFolderName.trim();
+    if (!name || !currentPath) return;
     try {
-      const newPath = currentPath + "\\" + newFolderName.trim();
-      const res = await fetch(`/api/fs/browse?path=${encodeURIComponent(newPath)}`);
-      if (res.ok) {
-        // Folder already exists or was created, navigate to parent to refresh
-        setNewFolderMode(false);
-        setNewFolderName("");
-        browse(currentPath);
+      const res = await fetch("/api/fs/mkdir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ parent: currentPath, name }),
+      });
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setError(data.error || "无法创建文件夹");
         return;
       }
-      // If browse fails, the folder doesn't exist — we can't create it from the browse API
-      // Just refresh the listing
       setNewFolderMode(false);
       setNewFolderName("");
-      setError("无法创建文件夹（目录不存在）");
+      browse(currentPath);
     } catch {
-      setNewFolderMode(false);
-      setNewFolderName("");
       setError("创建文件夹失败");
     }
   };
@@ -203,6 +215,7 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
       <DialogContent className="max-w-2xl h-[500px] flex flex-col p-0 gap-0">
         <DialogHeader className="px-4 pt-4 pb-2">
           <DialogTitle>选择目录</DialogTitle>
+          <DialogDescription className="sr-only">选择要绑定的 workspace 目录</DialogDescription>
         </DialogHeader>
 
         {/* Toolbar */}
@@ -248,8 +261,20 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
                 onClick={() => browse(shortcut.path)}
                 title={shortcut.path}
               >
-                <ShortcutIcon icon={shortcut.icon} className="size-3.5 shrink-0 text-muted-foreground" />
-                <span className="truncate">{shortcut.name}</span>
+                <ShortcutIcon icon={shortcut.key} className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{SHORTCUT_LABELS[shortcut.key] || shortcut.key}</span>
+              </button>
+            ))}
+            {drives.map((drive) => (
+              <button
+                key={drive.path}
+                type="button"
+                className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-muted transition-colors truncate"
+                onClick={() => browse(drive.path)}
+                title={drive.path}
+              >
+                <ShortcutIcon icon="monitor" className="size-3.5 shrink-0 text-muted-foreground" />
+                <span className="truncate">{drive.name}</span>
               </button>
             ))}
           </div>
@@ -266,13 +291,25 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
                 <p className="text-sm text-destructive">{error}</p>
               </div>
             )}
-            {!loading && !error && entries.length === 0 && (
+            {!loading && !error && entries.length === 0 && drives.length === 0 && (
               <div className="flex items-center justify-center h-full">
                 <p className="text-sm text-muted-foreground">此目录为空</p>
               </div>
             )}
             {!loading && !error && (
               <div className="space-y-0">
+                {!currentPath && drives.map((drive) => (
+                  <button
+                    key={drive.path}
+                    type="button"
+                    className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-muted transition-colors truncate"
+                    onClick={() => browse(drive.path)}
+                    title={drive.path}
+                  >
+                    <ShortcutIcon icon="monitor" className="size-4 shrink-0 text-muted-foreground" />
+                    <span className="truncate">{drive.name}</span>
+                  </button>
+                ))}
                 {newFolderMode && (
                   <div className="flex items-center gap-2 px-3 py-1.5">
                     <FolderIcon className="size-4 text-muted-foreground shrink-0" />

@@ -1,17 +1,52 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core";
 
 import {
+  handleMemoryEvents,
+  handleMemoryGraph,
+  type MemoryGraphInput,
+} from "../handlers/lore-memory-boundary-handlers.js";
+import {
+  handleMemoryList,
+  handleMemoryReadEntry,
+  handleMemorySearch,
+  handleMemoryStats,
+  type MemoryEntryKind,
+} from "../handlers/memory-admin-handlers.js";
+import {
   getLatestNarrativeRetrievalLog,
-  listPendingNarrativeEvents,
   queryNarrativeFacts,
 } from "../engine/narrative-memory/storage.js";
-import type { NarrativeEvent } from "../engine/narrative-memory/types.js";
+import {
+  NarrativeEventStatusSchema,
+  NarrativeFactLayerSchema,
+  type NarrativeEvent,
+  type NarrativeEventType,
+} from "../engine/narrative-memory/types.js";
 import type { NarrativeRetrievalLogRecord } from "../engine/narrative-memory/storage.js";
 
 export interface NarrativeMemoryRouterOptions {
   readonly storage?: StorageDatabase;
 }
+
+type HandlerResult = {
+  readonly ok: boolean;
+  readonly summary: string;
+  readonly error?: string;
+  readonly data?: Record<string, unknown>;
+};
+
+const GRAPH_VIEWS = [
+  "relationship",
+  "timeline",
+  "character_arc",
+  "foreshadowing",
+  "conflict",
+  "event_chain",
+  "wave",
+] as const;
+
+const MEMORY_KINDS = ["fact", "event", "log", "vector"] as const;
 
 function storageFor(options: NarrativeMemoryRouterOptions): StorageDatabase {
   return options.storage ?? getStorageDatabase();
@@ -50,28 +85,219 @@ function pendingEventSummary(event: NarrativeEvent) {
   };
 }
 
+function queryText(c: { req: { query(name: string): string | undefined } }, ...names: string[]): string | undefined {
+  for (const name of names) {
+    const value = c.req.query(name)?.trim();
+    if (value) return value;
+  }
+  return undefined;
+}
+
+function queryInteger(c: { req: { query(name: string): string | undefined } }, ...names: string[]): number | undefined {
+  const value = queryText(c, ...names);
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : undefined;
+}
+
+function queryLimit(c: { req: { query(name: string): string | undefined } }): number | undefined {
+  return queryInteger(c, "limit");
+}
+
+function queryChapterRange(c: { req: { query(name: string): string | undefined } }): [number, number] | undefined {
+  const from = queryInteger(c, "chapterFrom", "from");
+  const to = queryInteger(c, "chapterTo", "to");
+  if (from !== undefined && to !== undefined) return [from, to];
+  const range = queryText(c, "chapterRange");
+  if (!range) return undefined;
+  const parts = range.split(",").map((item) => Number(item.trim()));
+  if (parts.length < 2 || !parts.every((item) => Number.isSafeInteger(item))) return undefined;
+  return [parts[0]!, parts[1]!];
+}
+
+function invalidQuery(c: { json(body: unknown, status?: number): Response }, message: string): Response {
+  return c.json({ error: "invalid-input", summary: message }, 400);
+}
+
+function handlerStatus(error: string | undefined): number {
+  if (error === "not-found" || error === "event-not-found") return 404;
+  if (error === "event-apply-failed" || error === "event-not-applied") return 409;
+  if (error === "forbidden") return 403;
+  return 400;
+}
+
+function respondHandler(c: { json(body: unknown, status?: number): Response }, result: HandlerResult): Response {
+  if (result.ok) return c.json({ ...(result.data ?? {}), summary: result.summary });
+  return c.json({ error: result.error ?? "request-failed", summary: result.summary, ...(result.data ?? {}) }, handlerStatus(result.error));
+}
+
+async function readJson(c: { req: { json<T>(): Promise<T> } }): Promise<Record<string, unknown>> {
+  try {
+    const body = await c.req.json<unknown>();
+    return body && typeof body === "object" && !Array.isArray(body) ? body as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function parseKind(value: string | undefined): MemoryEntryKind | undefined {
+  return MEMORY_KINDS.includes(value as MemoryEntryKind) ? value as MemoryEntryKind : undefined;
+}
+
+function parseStatus(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = NarrativeEventStatusSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
+function parseLayer(value: string | undefined) {
+  if (!value) return undefined;
+  const parsed = NarrativeFactLayerSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
+}
+
 export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOptions = {}): Hono {
   const app = new Hono();
+  const base = "/api/books/:bookId/narrative-memory";
+  const storage = () => storageFor(options);
 
-  app.get("/api/books/:bookId/narrative-memory/diagnostics/latest", (c) => {
+  // The Runtime mounts this router below its authenticated, ready-book guard.
+  // This router never resolves a browser-supplied book ID to a filesystem path
+  // and all queries remain scoped by the guarded :bookId.
+
+  app.get(`${base}/diagnostics/latest`, (c) => {
     const bookId = c.req.param("bookId");
-    const log = getLatestNarrativeRetrievalLog(storageFor(options), bookId);
-    if (!log) return c.json({ error: "Narrative retrieval log not found" }, 404);
+    const log = getLatestNarrativeRetrievalLog(storage(), bookId);
+    if (!log) return c.json({ log: null, summary: null });
     return c.json({ log, summary: diagnosticsSummary(log) });
   });
 
-  app.get("/api/books/:bookId/narrative-memory/events/pending", (c) => {
-    const bookId = c.req.param("bookId");
-    const limit = Number(c.req.query("limit") ?? "50");
-    const events = listPendingNarrativeEvents(storageFor(options), { bookId, limit: Number.isFinite(limit) ? limit : 50 });
-    return c.json({ events: events.map(pendingEventSummary) });
+  app.get(`${base}/events/pending`, async (c) => {
+    const result = await handleMemoryEvents({
+      bookId: c.req.param("bookId"),
+      action: "list",
+      limit: queryLimit(c),
+    }, storage());
+    if (!result.ok) return respondHandler(c, result);
+    const events = Array.isArray(result.data.events) ? result.data.events as NarrativeEvent[] : [];
+    return c.json({ events: events.map(pendingEventSummary), summary: result.summary });
   });
 
-  app.get("/api/books/:bookId/narrative-memory/facts", (c) => {
+  app.post(`${base}/events`, async (c) => {
+    const body = await readJson(c);
+    const result = await handleMemoryEvents({
+      bookId: c.req.param("bookId"),
+      action: "create",
+      chapterNumber: typeof body.chapterNumber === "number" ? body.chapterNumber : Number(body.chapterNumber),
+      eventType: typeof body.eventType === "string" ? body.eventType as NarrativeEventType : undefined,
+      subject: typeof body.subject === "string" ? body.subject : undefined,
+      predicate: typeof body.predicate === "string" ? body.predicate : undefined,
+      object: typeof body.object === "string" ? body.object : undefined,
+      evidenceText: typeof body.evidenceText === "string" ? body.evidenceText : undefined,
+      confidence: typeof body.confidence === "number" ? body.confidence : undefined,
+      layer: typeof body.layer === "string" ? body.layer as "dynamic" | "canon" | "reference" : undefined,
+    }, storage());
+    return respondHandler(c, result);
+  });
+
+  async function mutatePendingEvent(c: Context, action: "approve" | "reject"): Promise<Response> {
+    const body = await readJson(c);
+    const result = await handleMemoryEvents({
+      bookId: c.req.param("bookId"),
+      action,
+      eventId: c.req.param("eventId"),
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+    }, storage());
+    return respondHandler(c, result);
+  }
+
+  app.post(`${base}/events/:eventId/approve`, (c) => mutatePendingEvent(c, "approve"));
+  app.post(`${base}/events/:eventId/reject`, (c) => mutatePendingEvent(c, "reject"));
+  // Keep the collection-oriented spelling available to UI clients that treat
+  // pending events as a review queue.
+  app.post(`${base}/events/pending/:eventId/approve`, (c) => mutatePendingEvent(c, "approve"));
+  app.post(`${base}/events/pending/:eventId/reject`, (c) => mutatePendingEvent(c, "reject"));
+
+  app.get(`${base}/facts`, (c) => {
     const bookId = c.req.param("bookId");
-    const facts = queryNarrativeFacts(storageFor(options), { bookId, limit: 500 });
+    const facts = queryNarrativeFacts(storage(), { bookId, limit: 500 });
     return c.json({ facts });
   });
+
+  const graphHandler = async (c: Context): Promise<Response> => {
+    const view = queryText(c, "view") ?? "relationship";
+    if (!GRAPH_VIEWS.includes(view as MemoryGraphInput["view"])) {
+      return invalidQuery(c, "view 必须是 relationship | timeline | character_arc | foreshadowing | conflict | event_chain | wave。");
+    }
+    const result = await handleMemoryGraph({
+      bookId: c.req.param("bookId"),
+      view: view as MemoryGraphInput["view"],
+      focusEntity: queryText(c, "focusEntity", "focus"),
+      chapterRange: queryChapterRange(c),
+    }, storage());
+    return respondHandler(c, result);
+  };
+  app.get(`${base}/graph`, graphHandler);
+
+  const listHandler = async (c: Context): Promise<Response> => {
+    const kindValue = queryText(c, "kind");
+    const statusValue = queryText(c, "status");
+    const layerValue = queryText(c, "layer");
+    if (kindValue && !parseKind(kindValue)) return invalidQuery(c, "kind 必须是 fact | event | log | vector。");
+    if (statusValue && !parseStatus(statusValue)) return invalidQuery(c, "status 必须是 pending | applied | rejected。");
+    if (layerValue && !parseLayer(layerValue)) return invalidQuery(c, "layer 必须是 canon | dynamic | reference。");
+    const result = await handleMemoryList({
+      bookId: c.req.param("bookId"),
+      kind: parseKind(kindValue),
+      status: parseStatus(statusValue),
+      layer: parseLayer(layerValue),
+      category: queryText(c, "category"),
+      chapterRange: queryChapterRange(c),
+      query: queryText(c, "query", "q"),
+      limit: queryLimit(c),
+      offset: queryInteger(c, "offset"),
+    }, storage());
+    return respondHandler(c, result);
+  };
+  app.get(`${base}/list`, listHandler);
+  app.get(`${base}/admin/list`, listHandler);
+
+  const searchHandler = async (c: Context): Promise<Response> => {
+    const kindValue = queryText(c, "kind");
+    const statusValue = queryText(c, "status");
+    if (kindValue && !parseKind(kindValue)) return invalidQuery(c, "kind 必须是 fact | event | log | vector。");
+    if (statusValue && !parseStatus(statusValue)) return invalidQuery(c, "status 必须是 pending | applied | rejected。");
+    const result = await handleMemorySearch({
+      bookId: c.req.param("bookId"),
+      query: queryText(c, "query", "q") ?? "",
+      kind: parseKind(kindValue),
+      status: parseStatus(statusValue),
+      limit: queryLimit(c),
+    }, storage());
+    return respondHandler(c, result);
+  };
+  app.get(`${base}/search`, searchHandler);
+  app.get(`${base}/admin/search`, searchHandler);
+
+  const statsHandler = async (c: Context): Promise<Response> => {
+    const result = await handleMemoryStats({ bookId: c.req.param("bookId") }, storage());
+    return respondHandler(c, result);
+  };
+  app.get(`${base}/stats`, statsHandler);
+  app.get(`${base}/admin/stats`, statsHandler);
+
+  const readEntryHandler = async (c: Context, kindValue?: string, idValue?: string): Promise<Response> => {
+    const kind = parseKind(kindValue ?? queryText(c, "kind"));
+    const id = idValue ?? queryText(c, "id");
+    if (!kind) return invalidQuery(c, "kind 必须是 fact | event | log | vector。");
+    if (!id) return invalidQuery(c, "id 必填。");
+    const result = await handleMemoryReadEntry({ bookId: c.req.param("bookId"), kind, id }, storage());
+    return respondHandler(c, result);
+  };
+  app.get(`${base}/read-entry`, (c) => readEntryHandler(c));
+  app.get(`${base}/admin/read-entry`, (c) => readEntryHandler(c));
+  app.get(`${base}/entries/:kind/:entryId`, (c) => readEntryHandler(c, c.req.param("kind"), c.req.param("entryId")));
+  app.get(`${base}/admin/entries/:kind/:entryId`, (c) => readEntryHandler(c, c.req.param("kind"), c.req.param("entryId")));
 
   return app;
 }

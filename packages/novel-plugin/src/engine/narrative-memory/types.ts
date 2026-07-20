@@ -85,7 +85,7 @@ export const NarrativeContextCardSchema = z.object({
   reason: nonEmptyString,
   estimatedTokens: nonNegativeInteger,
   score: z.number().optional(),
-  scoreBreakdown: z.record(z.number()).optional(),
+  scoreBreakdown: z.record(z.string(), z.number()).optional(),
 });
 export type NarrativeContextCard = Readonly<{
   id: string;
@@ -225,7 +225,7 @@ export const NarrativeChannelStatSchema = z.object({
   returnedCount: nonNegativeInteger,
   estimatedTokens: nonNegativeInteger,
   error: z.string().optional(),
-  metadata: z.record(z.unknown()).optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 export type NarrativeChannelStat = Readonly<{
   channel: string;
@@ -278,7 +278,7 @@ export const NarrativeRetrievalDiagnosticsSchema = z.object({
   totalMs: nonNegativeNumber,
   totalEstimatedTokens: nonNegativeInteger,
   channelStats: z.array(NarrativeChannelStatSchema).default([]),
-  injectedTokensByChannel: z.record(nonNegativeInteger).default({}),
+  injectedTokensByChannel: z.record(z.string(), nonNegativeInteger).default({}),
   droppedCardIds: z.array(z.string()).default([]),
   degradedCards: z.array(z.object({ id: nonEmptyString, from: nonEmptyString, to: nonEmptyString })).default([]),
   warnings: z.array(z.string()).default([]),

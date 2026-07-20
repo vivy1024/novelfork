@@ -515,15 +515,23 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
 // DefaultCockpitViewWithGuide — 新书显示引导，已完成引导显示 Cockpit
 // ---------------------------------------------------------------------------
 
+function containsChapterNode(nodes: readonly WorkbenchResourceNode[] | undefined): boolean {
+  return nodes?.some((node) => node.kind === "chapter" || containsChapterNode(node.children)) ?? false;
+}
+
 function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void; onJumpToChapter?: (chapterNumber: number) => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
   const presetSuggestedKey = `novelfork:preset-suggested:${bookId}`;
   // Skip guide if book already has chapters (old book without localStorage mark)
-  const hasChapters = nodes?.some(n => n.kind === "chapter") ?? false;
+  const hasChapters = containsChapterNode(nodes);
   const [guideCompleted, setGuideCompleted] = useState(() => {
     if (hasChapters) return true;
     try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
   });
+  // nodes 在工作台首次挂载后异步加载；已有章节时必须立即退出新书引导。
+  useEffect(() => {
+    if (hasChapters) setGuideCompleted(true);
+  }, [hasChapters]);
   // 建书引导刚完成时弹出预设推荐（仅一次，用 localStorage 标记避免重复）
   const [showPresetSuggestion, setShowPresetSuggestion] = useState(false);
 
