@@ -6,6 +6,7 @@ import {
 	BookRuntimeBindingService,
 	deriveBookRoot,
 	EXTERNAL_BOOK_WORKSPACE_MARKER,
+	resolveTrustedBookRoot,
 	type BookRuntimeBindingRecord,
 	type BookRuntimeBindingStore,
 } from "./book-binding";
@@ -140,5 +141,36 @@ describe("trusted novel runtime binding", () => {
 		const { adapter } = createHarness();
 		const definition = adapter.toolDefinitions().find((tool) => tool.name === "chapter.read");
 		expect(definition?.rawJsonSchema).toBeDefined();
+	});
+});
+
+
+describe("resolveTrustedBookRoot external workspaces", () => {
+	test("accepts marked external roots when allowExternalRoot is true", async () => {
+		const binding: BookRuntimeBindingRecord = {
+			id: "binding-a",
+			runtimeProjectId: "project-a",
+			bookId: "book-a",
+			bookRoot: externalBookRoot,
+			createdByUserId: "user-a",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+		const trusted = await resolveTrustedBookRoot(binding, booksRoot, true);
+		expect(trusted).toBeTruthy();
+		expect(await resolveTrustedBookRoot(binding, booksRoot, false)).toBeNull();
+	});
+
+	test("rejects unmarked external roots even when allowExternalRoot is true", async () => {
+		const binding: BookRuntimeBindingRecord = {
+			id: "binding-b",
+			runtimeProjectId: "project-b",
+			bookId: "book-b",
+			bookRoot: unmarkedExternalBookRoot,
+			createdByUserId: "user-a",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+		expect(await resolveTrustedBookRoot(binding, booksRoot, true)).toBeNull();
 	});
 });

@@ -262,6 +262,67 @@ describe("Runtime overlay replay", () => {
 		).toBe(fixture.base);
 	});
 
+	test("rejects malformed, missing, self-referential, and cyclic dependencies", async () => {
+		const fixture = await createOverlayFixture();
+		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
+		const readManifest = async () =>
+			JSON.parse(await readFile(manifestPath, "utf8")) as {
+				operations: Array<{ id: string; dependsOn?: unknown }>;
+			};
+		const writeManifest = async (manifest: unknown) =>
+			writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+		const operationAt = (
+			manifest: Awaited<ReturnType<typeof readManifest>>,
+			index: number,
+		) => {
+			const operation = manifest.operations[index];
+			if (!operation)
+				throw new Error(
+					`fixture manifest is missing operation at index ${index}`,
+				);
+			return operation;
+		};
+
+		let manifest = await readManifest();
+		operationAt(manifest, 0).dependsOn = [""];
+		await writeManifest(manifest);
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/dependsOn\[0\].*non-empty string/,
+		);
+
+		manifest = await readManifest();
+		operationAt(manifest, 0).dependsOn = [
+			"product-route-hooks",
+			"product-route-hooks",
+		];
+		await writeManifest(manifest);
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/contains a duplicate/,
+		);
+
+		manifest = await readManifest();
+		operationAt(manifest, 0).dependsOn = ["missing-operation"];
+		await writeManifest(manifest);
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/dependency does not exist/,
+		);
+
+		manifest = await readManifest();
+		operationAt(manifest, 0).dependsOn = ["product-host-contract"];
+		await writeManifest(manifest);
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/must not depend on itself/,
+		);
+
+		manifest = await readManifest();
+		operationAt(manifest, 0).dependsOn = ["product-route-hooks"];
+		operationAt(manifest, 1).dependsOn = ["product-host-contract"];
+		await writeManifest(manifest);
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/dependency cycle detected/,
+		);
+	});
+
 	test("accepts the generic generated-module declaration in the production overlay", async () => {
 		const overlayRoot = join(
 			import.meta.dir,
@@ -271,12 +332,56 @@ describe("Runtime overlay replay", () => {
 		);
 		const manifest = await verifyRuntimeOverlay(overlayRoot);
 		const generatedModules = manifest.operations.find(
-			(operation) => operation.id === "add-runtime-generated-module-declarations",
+			(operation) =>
+				operation.id === "add-runtime-generated-module-declarations",
 		);
 
 		expect(generatedModules).toMatchObject({
 			type: "add",
 			target: "server/generated-modules.d.ts",
+		});
+	});
+
+	test("declares generic embedded narrator transport operations", async () => {
+		const overlayRoot = join(
+			import.meta.dir,
+			"..",
+			"packages",
+			"narrafork-runtime-overlay",
+		);
+		const manifest = await verifyRuntimeOverlay(overlayRoot);
+		const byId = new Map(
+			manifest.operations.map((operation) => [operation.id, operation]),
+		);
+
+		expect(
+			byId.get("patch-runtime-narrator-ws-manager-connection-lease"),
+		).toMatchObject({
+			type: "patch",
+			target: "frontend/lib/narrator-ws-manager.ts",
+		});
+		expect(byId.get("add-runtime-frontend-host-providers")).toMatchObject({
+			dependsOn: ["patch-runtime-narrator-ws-manager-connection-lease"],
+		});
+		expect(
+			byId.get("patch-runtime-app-root-layout-connection-lease"),
+		).toMatchObject({
+			type: "patch",
+			target: "frontend/components/AppRootLayout.tsx",
+			dependsOn: ["patch-runtime-narrator-ws-manager-connection-lease"],
+		});
+		expect(
+			byId.get("patch-runtime-narrator-ws-manager-connection-lease-test"),
+		).toMatchObject({
+			dependsOn: ["patch-runtime-narrator-ws-manager-connection-lease"],
+		});
+		expect(byId.get("add-runtime-frontend-host-providers-test")).toMatchObject({
+			type: "add",
+			target: "frontend/components/host/RuntimeFrontendHostProviders.test.tsx",
+			dependsOn: [
+				"add-runtime-frontend-host-providers",
+				"patch-runtime-narrator-ws-manager-connection-lease",
+			],
 		});
 	});
 });

@@ -13,28 +13,26 @@ export const NOVEL_RUNTIME_TOOL_NAMES = new Set(
 );
 
 /**
- * The only generic Runtime capability a product novelist may request. Every
- * other model-visible operation must be a trusted NovelFork contribution.
+ * @deprecated Product narrators no longer hard-allowlist tools. Kept for
+ * callers that still import the constant; prefer Runtime-native toolFilter.
  */
 export const NOVEL_PRODUCT_CORE_TOOL_NAMES: ReadonlySet<string> = new Set(["AskUserQuestion"]);
 
 /**
- * Server-side product allowlist. A product narrator always receives the trusted
- * novel contribution and AskUserQuestion. Generic optional tools remain hidden
- * by default, but a project-level routine may deliberately opt one in; the
- * session has already resolved that override into `enabledOptionalToolNames`.
+ * Product narrators no longer apply a second hard allowlist on top of Runtime.
+ * Visibility matches native NarraFork:
+ * - core tools (Bash/Read/Write/Edit/…) are available by default
+ * - optional tools stay gated by session `_enabledOptionalTools` (routines / `/load`)
+ * - session details can still disable tools via custom-traits disabled-tools
  *
- * Core generic file tools are never added to this set, so they remain excluded
- * unless a separately registered optional routine explicitly exposes them.
+ * `enabledOptionalToolNames` is kept for SPI compatibility; the Runtime
+ * toolFilter applies the optional-tool gate after this check returns true.
  */
 export function isNovelProductToolAllowed(
-	toolName: string,
-	enabledOptionalToolNames: ReadonlySet<string>,
+	_toolName: string,
+	_enabledOptionalToolNames: ReadonlySet<string>,
 ): boolean {
-	return (
-		NOVEL_PRODUCT_CORE_TOOL_NAMES.has(toolName) ||
-		enabledOptionalToolNames.has(toolName)
-	);
+	return true;
 }
 
 /** Keep existing optional-tool visibility synchronization compatible. */

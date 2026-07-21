@@ -4,17 +4,10 @@ import {
   Pencil,
   Plus,
   Save,
-  TerminalSquare,
   Trash2,
   X,
 } from "lucide-react";
 
-import {
-  listRuntimeCommands,
-  type RuntimeCommandDefinition,
-  type RuntimeCommandSource,
-  type RuntimeCommandStatus,
-} from "@vivy1024/novelfork-core/registry/command-registry";
 import { invalidateNarratorCommands } from "../runtime/narrator-command-cache";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -103,29 +96,6 @@ const EMPTY_COMMAND_FORM: CommandFormState = {
   params: [],
   model: "",
   modelMode: "temporary",
-};
-
-const COMMAND_STATUS_LABELS: Record<RuntimeCommandStatus, string> = {
-  current: "当前可用",
-  partial: "部分可用",
-  planned: "计划中",
-  unsupported: "不支持",
-  "reference-only": "仅供参考",
-};
-
-const COMMAND_SOURCE_LABELS: Record<RuntimeCommandSource, string> = {
-  builtin: "内置",
-  "claude-adapter": "Claude 适配器",
-  "codex-adapter": "Codex 适配器",
-  "novel-agent-pack": "小说 Agent 包",
-};
-
-const COMMAND_SCOPE_LABELS: Record<RuntimeCommandDefinition["scope"], string> = {
-  session: "会话",
-  runtime: "运行时",
-  tooling: "工具",
-  extension: "扩展",
-  novel: "小说",
 };
 
 function isRoutineManaged(command: UserCommand): boolean {
@@ -231,7 +201,6 @@ export function CommandsSection() {
   const allCommands = preferences?.commands ?? [];
   const managedCommands = useMemo(() => allCommands.filter(isRoutineManaged), [allCommands]);
   const customCommands = useMemo(() => allCommands.filter((command) => !isRoutineManaged(command)), [allCommands]);
-  const runtimeCommands = useMemo(() => listRuntimeCommands(), []);
 
   async function persistCustomCommands(nextCustomCommands: readonly UserCommand[]) {
     setPending(true);
@@ -339,7 +308,7 @@ export function CommandsSection() {
         <div>
           <h2 className="text-lg font-semibold">自定义命令</h2>
           <p className="text-sm text-muted-foreground">
-            命令直接保存到当前用户的 Runtime preferences，并立即同步到叙述者 slash menu。
+            与原生 NarraFork 一致：只管理当前用户 Runtime preferences 中的 slash 命令，不混入前端产品注册表。
           </p>
         </div>
         <Button type="button" size="sm" onClick={openCreate} disabled={pending}>
@@ -349,9 +318,9 @@ export function CommandsSection() {
       </div>
 
       <Alert>
-        <AlertTitle>内置套路命令受保护</AlertTitle>
+        <AlertTitle>仅编辑用户 preferences 命令</AlertTitle>
         <AlertDescription>
-          带有 Runtime routine marker 的命令只读展示；保存用户命令时会从最新 preferences 重新合并，避免覆盖套路状态。
+          可创建/编辑/删除的是用户自定义命令。带 Runtime routine marker 的命令只读展示，请在「内置套路」分区启停，避免与 slash menu 真数据源混淆。
         </AlertDescription>
       </Alert>
       {error && <Alert><AlertTitle>命令请求失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
@@ -422,16 +391,6 @@ export function CommandsSection() {
           </div>
         </section>
       )}
-
-      <section className="flex flex-col gap-3" aria-label="Runtime 原生命令参考">
-        <div>
-          <h3 className="font-medium">Runtime 原生命令参考</h3>
-          <p className="text-sm text-muted-foreground">这些命令来自产品注册表，不存储在用户 preferences 中。</p>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2">
-          {runtimeCommands.map((command) => <RuntimeCommandCard key={command.id} command={command} />)}
-        </div>
-      </section>
 
       <CommandEditorDialog
         open={editor !== null}
@@ -703,32 +662,4 @@ function CommandEditorDialog({
   );
 }
 
-function RuntimeCommandCard({ command }: { readonly command: RuntimeCommandDefinition }) {
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="font-mono">{command.usage}</CardTitle>
-        <CardDescription>{command.description}</CardDescription>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <div className="flex flex-wrap gap-2">
-          <Badge variant={command.status === "current" ? "secondary" : "outline"}>
-            {COMMAND_STATUS_LABELS[command.status]}
-          </Badge>
-          <Badge variant="outline">{COMMAND_SOURCE_LABELS[command.source]}</Badge>
-          <Badge variant="outline">{COMMAND_SCOPE_LABELS[command.scope]}</Badge>
-        </div>
-        {command.aliases.length > 0 && (
-          <div className="text-xs text-muted-foreground">别名：{command.aliases.join(", ")}</div>
-        )}
-        {command.gaps && <div className="text-xs text-muted-foreground">当前缺口：{command.gaps}</div>}
-        {command.status === "current" && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <TerminalSquare />
-            Runtime 原生注册
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
+

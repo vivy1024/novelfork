@@ -22,6 +22,7 @@ export interface RuntimeOverlayUpstream {
 interface RuntimeOverlayOperationBase {
 	readonly id: string;
 	readonly reason: string;
+	readonly dependsOn: readonly string[];
 }
 
 export interface RuntimeOverlayAddOperation
@@ -98,12 +99,16 @@ const allowedAddTargets = new Set([
 	"server/generated-modules.d.ts",
 	"shared/learning-contract.ts",
 	"frontend/components/host/RuntimeFrontendHostProviders.tsx",
+	"frontend/components/host/RuntimeFrontendHostProviders.test.tsx",
 	"frontend/components/narrator/RuntimeToolResultRendererContext.tsx",
 	"frontend/components/narrator/EmbeddedNarratorDockHost.tsx",
 ]);
 
 const allowedPatchTargets = new Set([
+	"frontend/components/AppRootLayout.tsx",
 	"frontend/components/narrator/ToolCallCard.tsx",
+	"frontend/lib/narrator-ws-manager.ts",
+	"frontend/lib/narrator-ws-manager.test.ts",
 	"server/app.ts",
 	"server/main.ts",
 	"server/services/narrator-prompt.ts",
@@ -169,6 +174,31 @@ function normalizeRelativePath(value: unknown, label: string): string {
 	return normalized;
 }
 
+function parseDependsOn(value: unknown, index: number): readonly string[] {
+	if (value === undefined) return [];
+	if (!Array.isArray(value)) {
+		throw new Error(
+			`operations[${index}].dependsOn must be an array of strings`,
+		);
+	}
+	const dependsOn: string[] = [];
+	const seen = new Set<string>();
+	for (const [dependencyIndex, dependency] of value.entries()) {
+		assertNonEmptyString(
+			dependency,
+			`operations[${index}].dependsOn[${dependencyIndex}]`,
+		);
+		if (seen.has(dependency)) {
+			throw new Error(
+				`operations[${index}].dependsOn contains a duplicate: ${dependency}`,
+			);
+		}
+		seen.add(dependency);
+		dependsOn.push(dependency);
+	}
+	return dependsOn;
+}
+
 function assertAllowedOperation(operation: RuntimeOverlayOperation): void {
 	if (operation.type === "add" && !allowedAddTargets.has(operation.target)) {
 		throw new Error(
@@ -202,11 +232,13 @@ function parseOperation(
 	const reason = candidate.reason;
 	assertNonEmptyString(id, `operations[${index}].id`);
 	assertNonEmptyString(reason, `operations[${index}].reason`);
+	const dependsOn = parseDependsOn(candidate.dependsOn, index);
 	if (type === "add") {
 		const operation: RuntimeOverlayAddOperation = {
 			id,
 			type,
 			reason,
+			dependsOn,
 			target: normalizeRelativePath(
 				candidate.target,
 				`operations[${index}].target`,
@@ -233,6 +265,7 @@ function parseOperation(
 			id,
 			type,
 			reason,
+			dependsOn,
 			target: normalizeRelativePath(
 				candidate.target,
 				`operations[${index}].target`,
@@ -284,6 +317,7 @@ function parseOperation(
 			id,
 			type,
 			reason,
+			dependsOn,
 			target: target as RuntimeOverlayCopyOperation["target"],
 			source,
 			sha256: candidate.sha256,
@@ -390,7 +424,7 @@ async function sha256Tree(root: string): Promise<string> {
 	return createHash("sha256").update(entries.join("")).digest("hex");
 }
 
-function validateSingleTargetPatch(patch: string, target: string): void {
+export function validateSingleTargetPatch(patch: string, target: string): void {
 	const diffHeaders = [...patch.matchAll(/^diff --git a\/(.+) b\/(.+)$/gm)];
 	if (diffHeaders.length !== 1) {
 		throw new Error(
@@ -527,6 +561,36 @@ export async function readRuntimeOverlayManifest(
 		ids.add(operation.id);
 		targets.add(operation.target);
 	}
+	for (const operation of operations) {
+		for (const dependency of operation.dependsOn) {
+			if (!ids.has(dependency)) {
+				throw new Error(
+					`overlay operation dependency does not exist: ${operation.id} -> ${dependency}`,
+				);
+			}
+			if (dependency === operation.id) {
+				throw new Error(
+					`overlay operation must not depend on itself: ${operation.id}`,
+				);
+			}
+		}
+	}
+	const dependenciesById = new Map(
+		operations.map((operation) => [operation.id, operation.dependsOn] as const),
+	);
+	const visiting = new Set<string>();
+	const visited = new Set<string>();
+	const visit = (id: string): void => {
+		if (visited.has(id)) return;
+		if (visiting.has(id)) {
+			throw new Error(`overlay operation dependency cycle detected at: ${id}`);
+		}
+		visiting.add(id);
+		for (const dependency of dependenciesById.get(id) ?? []) visit(dependency);
+		visiting.delete(id);
+		visited.add(id);
+	};
+	for (const operation of operations) visit(operation.id);
 	if (
 		candidate.exclude !== undefined &&
 		(!Array.isArray(candidate.exclude) ||
