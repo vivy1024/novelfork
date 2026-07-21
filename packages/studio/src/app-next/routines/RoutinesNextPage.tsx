@@ -212,7 +212,7 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 						globalRoutineRoleResolved={globalRoutineRoleResolved}
 						types={OPTIONAL_TOOL_TYPES}
 						title="可选工具"
-						description="控制 Runtime 可选工具的全局状态与当前作品 override。"
+						description="控制 Terminal、Browser 等可选工具的全局状态与当前作品 override。核心工具默认可用（会话详情可禁用）。改开关后请新开或重建叙述者会话；会话内也可用 /load、/unload。"
 						emptyIcon={Wrench}
 					/>
 				)}
@@ -476,7 +476,14 @@ function RoutineCatalogSection({
 									return (
 										<Card key={routine.id}>
 											<CardHeader>
-												<CardTitle>{routine.name}</CardTitle>
+												<CardTitle className="flex flex-wrap items-center gap-2">
+													{routine.name}
+													{routine.type === "tool" && (
+														<Badge variant="outline" className="font-mono text-[10px]">
+															/load {routine.id}
+														</Badge>
+													)}
+												</CardTitle>
 												<CardDescription>
 													{routine.descriptionZh || routine.descriptionEn}
 												</CardDescription>
@@ -503,6 +510,11 @@ function RoutineCatalogSection({
 														全局{routine.enabled ? "已启用" : "已禁用"}
 													</Badge>
 												</div>
+												{routine.type === "tool" && (
+													<p className="text-xs text-muted-foreground">
+														作品覆盖写入后，需新开或重建叙述者会话才会装入可选工具。
+													</p>
+												)}
 												{bookId && projectRoutine && (
 													<div className="flex items-center justify-between gap-3 rounded-lg border p-3">
 														<div>
@@ -806,38 +818,56 @@ function SkillsSection({
 	}
 
 	const title = scope === "global" ? "全局技能" : "作品技能";
+	const skillSourceLabel = (location?: string): string => {
+		if (!location) return scope === "global" ? "全局" : "作品";
+		if (location.includes("/.narrafork/")) return ".narrafork";
+		if (location.includes("/.claude/")) return ".claude";
+		if (location.includes("/.agents/")) return ".agents";
+		return location;
+	};
 	return (
 		<div className="flex flex-col gap-4">
 			<SectionHeading
 				title={title}
 				description={
 					scope === "global"
-						? "可在多个项目间复用的 Runtime 技能。"
-						: `作用于当前作品 ${bookTitle || bookId} 的技能；内部 Runtime 项目由服务端绑定解析。`
+						? "先扫描发现家目录下 .narrafork/.claude/.agents 的技能，再按需创建或编辑。"
+						: `先扫描发现当前作品目录下的技能，再按需创建。作品：${bookTitle || bookId}`
 				}
 				action={
-					<Button
-						type="button"
-						size="sm"
-						onClick={() => {
-							setForm(EMPTY_SKILL_FORM);
-							setEditor({ mode: "create" });
-						}}
-					>
-						<Plus data-icon="inline-start" />
-						创建技能
-					</Button>
+					<div className="flex flex-wrap gap-2">
+						<Button
+							type="button"
+							variant="outline"
+							size="sm"
+							onClick={() => void load()}
+							disabled={loading}
+						>
+							<RefreshCw data-icon="inline-start" />
+							重新扫描
+						</Button>
+						<Button
+							type="button"
+							size="sm"
+							onClick={() => {
+								setForm(EMPTY_SKILL_FORM);
+								setEditor({ mode: "create" });
+							}}
+						>
+							<Plus data-icon="inline-start" />
+							创建技能
+						</Button>
+					</div>
 				}
 			/>
-			{scope === "book" && (
-				<Alert>
-					<AlertTitle>作品技能安全边界</AlertTitle>
-					<AlertDescription>
-						Studio 只发送 bookId；Runtime 校验书籍 owner/binding
-						后在受控作品目录内执行技能 CRUD。当前没有独立的作品技能启停接口。
-					</AlertDescription>
-				</Alert>
-			)}
+			<Alert>
+				<AlertTitle>发现优先</AlertTitle>
+				<AlertDescription>
+					{scope === "global"
+						? "列表来自 Runtime 扫描 ~/.narrafork、~/.claude、~/.agents 等技能目录；「重新扫描」会重新发现磁盘上的 SKILL.md。「创建」写入 .narrafork/skills。"
+						: "列表来自 Runtime 扫描当前作品绑定目录下的技能路径；Studio 只传 bookId，不传项目路径。当前没有独立的作品技能启停接口。"}
+				</AlertDescription>
+			</Alert>
 			{error && <ErrorAlert message={error} />}
 			{loading ? (
 				<LoadingCards />
@@ -847,16 +877,26 @@ function SkillsSection({
 						<EmptyMedia variant="icon">
 							<Sparkles />
 						</EmptyMedia>
-						<EmptyTitle>暂无{skillScopeLabel(scope)}技能</EmptyTitle>
+						<EmptyTitle>未发现{skillScopeLabel(scope)}技能</EmptyTitle>
 						<EmptyDescription>
-							通过 Runtime {skillScopeLabel(scope)}技能路由创建第一个技能。
+							先点「重新扫描」从磁盘发现已有技能；若目录为空，再创建新的 SKILL.md。
 						</EmptyDescription>
 					</EmptyHeader>
 					<EmptyContent>
-						<Button type="button" onClick={() => setEditor({ mode: "create" })}>
-							<Plus data-icon="inline-start" />
-							创建技能
-						</Button>
+						<div className="flex flex-wrap gap-2">
+							<Button
+								type="button"
+								variant="outline"
+								onClick={() => void load()}
+							>
+								<RefreshCw data-icon="inline-start" />
+								重新扫描
+							</Button>
+							<Button type="button" onClick={() => setEditor({ mode: "create" })}>
+								<Plus data-icon="inline-start" />
+								创建技能
+							</Button>
+						</div>
 					</EmptyContent>
 				</Empty>
 			) : (
@@ -882,12 +922,16 @@ function SkillsSection({
 							<CardContent className="flex flex-col gap-3">
 								<div className="flex flex-wrap gap-2">
 									<Badge variant="outline">
-										{scope === "global" ? skill.location : "作品"}
+										{skillSourceLabel(
+											"location" in skill ? skill.location : undefined,
+										)}
 									</Badge>
 									<Badge variant={skill.disabled ? "destructive" : "secondary"}>
 										{skill.disabled ? "已禁用" : "已启用"}
 									</Badge>
-									<Badge variant="outline">{skill.files.length} 个文件</Badge>
+									<Badge variant="outline">
+										{skill.files?.length ?? 0} 个文件
+									</Badge>
 								</div>
 								<div className="flex gap-2">
 									<Button

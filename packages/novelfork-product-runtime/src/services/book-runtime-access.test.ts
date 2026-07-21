@@ -110,3 +110,85 @@ describe("trusted book Runtime project access", () => {
 		);
 	});
 });
+
+
+describe("external workspace access with allowExternalRoot-style resolveBookRoot", () => {
+	test("succeeds when resolveBookRoot trusts a marked external root matching project gitPath", async () => {
+		const booksRoot = await mkdtemp(join(tmpdir(), "novelfork-books-root-"));
+		const externalRoot = await mkdtemp(join(tmpdir(), "novelfork-external-book-"));
+		try {
+			const bookId = "这个世界修仙讲科学-e664adad";
+			const extBinding: BookRuntimeBindingRecord = {
+				id: "binding-ext",
+				runtimeProjectId: "project-ext",
+				bookId,
+				bookRoot: externalRoot,
+				createdByUserId: "owner-a",
+				createdAt: "2026-01-01T00:00:00.000Z",
+				updatedAt: "2026-01-01T00:00:00.000Z",
+			};
+
+			const access = await resolveTrustedBookRuntimeAccess(
+				bookId,
+				{ userId: "owner-a", role: "user" },
+				{
+					findBindingByBookId: async (id) => (id === bookId ? extBinding : null),
+					// Simulates defaultBookRuntimeAccessDeps after allowExternalRoot=true
+					// when book.json marker validation has already succeeded.
+					resolveBookRoot: async (record) =>
+						record.bookId === bookId ? await realpath(externalRoot) : null,
+					findProjectById: async (projectId) =>
+						projectId === "project-ext"
+							? { id: "project-ext", gitPath: externalRoot }
+							: null,
+					canonicalizePath: (path) => realpath(path),
+				},
+			);
+			expect(access).toEqual({
+				runtimeProjectId: "project-ext",
+				bookRoot: await realpath(externalRoot),
+			});
+
+			await expectNotFound(
+				resolveTrustedBookRuntimeAccess(
+					bookId,
+					{ userId: "other-user", role: "user" },
+					{
+						findBindingByBookId: async (id) => (id === bookId ? extBinding : null),
+						resolveBookRoot: async () => await realpath(externalRoot),
+						findProjectById: async () => ({ id: "project-ext", gitPath: externalRoot }),
+						canonicalizePath: (path) => realpath(path),
+					},
+				),
+			);
+		} finally {
+			await rm(booksRoot, { recursive: true, force: true });
+			await rm(externalRoot, { recursive: true, force: true });
+		}
+	});
+
+	test("fails closed when resolveBookRoot rejects an unmarked external root", async () => {
+		const bookId = "这个世界修仙讲科学-e664adad";
+		const extBinding: BookRuntimeBindingRecord = {
+			id: "binding-ext",
+			runtimeProjectId: "project-ext",
+			bookId,
+			bookRoot: bookRoot,
+			createdByUserId: "owner-a",
+			createdAt: "2026-01-01T00:00:00.000Z",
+			updatedAt: "2026-01-01T00:00:00.000Z",
+		};
+		await expectNotFound(
+			resolveTrustedBookRuntimeAccess(
+				bookId,
+				{ userId: "owner-a", role: "user" },
+				{
+					findBindingByBookId: async (id) => (id === bookId ? extBinding : null),
+					resolveBookRoot: async () => null,
+					findProjectById: async () => ({ id: "project-ext", gitPath: bookRoot }),
+					canonicalizePath: (path) => realpath(path),
+				},
+			),
+		);
+	});
+});

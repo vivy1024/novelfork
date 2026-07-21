@@ -41,15 +41,23 @@ registerRuntimeProductIntegration(novelForkProductIntegration);
 // in the root executable without maintaining a second Runtime implementation package.
 await import("./packages/narrafork-runtime-private/server/index.ts");
 
-// Open the product UI only after the Runtime has bound its actual listener. Reading
-// the registered address matters when --port is overridden or the Runtime has to
-// move to the next available port during startup.
+// Open the product UI only after the Runtime has bound its actual listener.
+// Prefer the Runtime-registered address getter when available; fall back to the
+// product default port so a missing export cannot crash an otherwise healthy server.
 if (process.env.NOVELFORK_NO_BROWSER !== "1") {
-  const { getRuntimeAddress } = await import(
+  const serverRestart = await import(
     "./packages/narrafork-runtime-private/server/lib/server-restart.ts"
   );
   const { openStudioWindow } = await import("./packages/studio/src/desktop-window.ts");
-  const address = getRuntimeAddress();
+  const fallbackPort = Number(process.env.PORT ?? "4567");
+  const address =
+    typeof serverRestart.getRuntimeAddress === "function"
+      ? serverRestart.getRuntimeAddress()
+      : {
+          protocol: "http" as const,
+          host: "localhost",
+          port: Number.isFinite(fallbackPort) && fallbackPort > 0 ? fallbackPort : 4567,
+        };
   const host =
     address.host === "0.0.0.0" || address.host === "::" ? "localhost" : address.host;
   const browserHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;

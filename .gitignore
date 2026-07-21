@@ -37,6 +37,7 @@ docs/typedoc/
 novel-to-comic-research.docx
 .pnpm-store/
 tmp/
+.tmp/
 autoresearch/
 .playwright-cli/
 .superpowers/

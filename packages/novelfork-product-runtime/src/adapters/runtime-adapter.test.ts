@@ -145,17 +145,18 @@ describe("NovelRuntimeAdapter", () => {
 		expect([...enabled]).toEqual(["Terminal", "chapter.read"]);
 	});
 
-	test("allows only trusted novel tools and explicitly enabled product routines", () => {
+	test("does not hard-block core or optional tools (native Runtime parity)", () => {
 		const enabled = new Set(["chapter.read", "chapter.write", "Terminal"]);
 
+		// Product layer no longer filters; Runtime toolFilter handles optional gating.
 		expect(isNovelProductToolAllowed("chapter.read", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("chapter.write", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("AskUserQuestion", enabled)).toBe(true);
 		expect(isNovelProductToolAllowed("Terminal", enabled)).toBe(true);
-		expect(isNovelProductToolAllowed("Terminal", new Set())).toBe(false);
-		expect(isNovelProductToolAllowed("Bash", enabled)).toBe(false);
-		expect(isNovelProductToolAllowed("Write", enabled)).toBe(false);
-		expect(isNovelProductToolAllowed("Edit", enabled)).toBe(false);
+		expect(isNovelProductToolAllowed("Terminal", new Set())).toBe(true);
+		expect(isNovelProductToolAllowed("Bash", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("Write", enabled)).toBe(true);
+		expect(isNovelProductToolAllowed("Edit", enabled)).toBe(true);
 	});
 
 	test("exposes the portable contribution only after binding and injects its prompt once", async () => {

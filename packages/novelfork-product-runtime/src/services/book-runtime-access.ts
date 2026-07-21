@@ -38,7 +38,10 @@ export const defaultBookRuntimeAccessDeps: BookRuntimeAccessDeps = {
 		return bookRuntimeBindingService.getByBookId(bookId);
 	},
 	resolveBookRoot(binding) {
-		return resolveTrustedBookRoot(binding, getControlledBooksRoot());
+		// Bound product books may live under the controlled books root or under a
+		// previously marked external workspace (novelforkExternalWorkspace). The
+		// marker check inside resolveTrustedBookRoot still rejects unmarked paths.
+		return resolveTrustedBookRoot(binding, getControlledBooksRoot(), true);
 	},
 	async findProjectById(projectId) {
 		return (

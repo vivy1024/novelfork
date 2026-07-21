@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plus, Save, ShieldCheck, Trash2, Wrench } from "lucide-react";
+import { Plus, RefreshCw, Save, ShieldCheck, Trash2, Wrench } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -20,15 +20,21 @@ import {
   FieldSet,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SimpleSelect } from "@/components/ui/simple-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 
 import {
+  createMcpClient,
   createSettingsClient,
+  type McpBehavior,
+  type McpExternalTool,
+  type McpServerStatus,
   type RuntimeAgentSettings,
 } from "../runtime-admin";
 
 const settingsClient = createSettingsClient();
+const mcpClient = createMcpClient();
 
 type PatternEntry = NonNullable<RuntimeAgentSettings["commandWhitelist"]>[number];
 type BlacklistEntry = NonNullable<RuntimeAgentSettings["commandBlacklist"]>[number];
@@ -148,12 +154,18 @@ export function ToolPermissionsSection() {
   const [baseline, setBaseline] = useState(JSON.stringify(EMPTY_DRAFT));
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [mcpServers, setMcpServers] = useState<readonly McpServerStatus[]>([]);
+  const [mcpTools, setMcpTools] = useState<readonly McpExternalTool[]>([]);
+  const [mcpError, setMcpError] = useState<string | null>(null);
+  const [mcpLoading, setMcpLoading] = useState(true);
+  const [mcpPendingKey, setMcpPendingKey] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+    setSaved(false);
     try {
       const settings = await settingsClient.get();
       const next = draftFromAgent(settings.agent);
@@ -166,11 +178,89 @@ export function ToolPermissionsSection() {
     }
   }, []);
 
+  const loadMcp = useCallback(async () => {
+    setMcpLoading(true);
+    setMcpError(null);
+    try {
+      const [serversResult, toolsResult] = await Promise.all([
+        mcpClient.list(),
+        mcpClient.tools(),
+      ]);
+      setMcpServers(serversResult.servers);
+      setMcpTools(toolsResult.tools);
+    } catch (loadError) {
+      setMcpError(errorMessage(loadError));
+      setMcpServers([]);
+      setMcpTools([]);
+    } finally {
+      setMcpLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadMcp();
+  }, [load, loadMcp]);
 
   const dirty = useMemo(() => JSON.stringify(draft) !== baseline, [baseline, draft]);
+
+  const mcpToolCards = useMemo(() => {
+    const fromServers = mcpServers.flatMap((server) =>
+      server.tools.map((tool) => {
+        const permission = server.toolPermissions?.find(
+          (item) => item.toolName === tool.name,
+        );
+        const behavior =
+          permission?.enabled === false
+            ? "inherit"
+            : (permission?.behavior ?? server.defaultBehavior ?? "inherit");
+        return {
+          key: `${server.id}:${tool.name}`,
+          serverId: server.id,
+          serverName: server.name,
+          serverStatus: server.status,
+          toolName: tool.name,
+          description: tool.description ?? "",
+          behavior: behavior as string,
+          editable: true as const,
+        };
+      }),
+    );
+    if (fromServers.length > 0) return fromServers;
+    return mcpTools.map((tool) => ({
+      key: `${tool.serverId}:${tool.name}`,
+      serverId: tool.serverId,
+      serverName: tool.serverName,
+      serverStatus: "unknown" as const,
+      toolName: tool.name,
+      description: tool.description ?? "",
+      behavior: "inherit" as const,
+      editable: Boolean(tool.serverId) as boolean,
+    }));
+  }, [mcpServers, mcpTools]);
+
+  async function updateMcpToolBehavior(
+    serverId: string,
+    toolName: string,
+    behavior: McpBehavior | "inherit",
+  ) {
+    const pendingKey = `${serverId}:${toolName}`;
+    setMcpPendingKey(pendingKey);
+    setMcpError(null);
+    try {
+      await mcpClient.patch(serverId, {
+        toolPermissionPatch: {
+          toolName,
+          behavior: behavior === "inherit" ? null : behavior,
+        },
+      });
+      await loadMcp();
+    } catch (patchError) {
+      setMcpError(errorMessage(patchError));
+    } finally {
+      setMcpPendingKey(null);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -206,19 +296,35 @@ export function ToolPermissionsSection() {
         <div>
           <h2 className="text-lg font-semibold">工具权限</h2>
           <p className="text-sm text-muted-foreground">
-            展示 Runtime 内置权限分类；只编辑服务端真实支持的 Bash、WebFetch 与计划反思设置。
+            对齐 Runtime：展示内置工具分类；可编辑 Bash、WebFetch、计划反思，以及已发现 MCP 工具的权限行为。服务器生命周期在「MCP」分区管理。
           </p>
         </div>
-        <Button type="button" size="sm" disabled={loading || saving || !dirty} onClick={() => void save()}>
-          <Save data-icon="inline-start" />
-          {saving ? "保存中…" : "保存权限设置"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={loading || mcpLoading}
+            onClick={() => {
+              void load();
+              void loadMcp();
+            }}
+          >
+            <RefreshCw data-icon="inline-start" />
+            刷新
+          </Button>
+          <Button type="button" size="sm" disabled={loading || saving || !dirty} onClick={() => void save()}>
+            <Save data-icon="inline-start" />
+            {saving ? "保存中…" : "保存权限设置"}
+          </Button>
+        </div>
       </div>
 
       <Alert>
+        <ShieldCheck />
         <AlertTitle>权限引擎保持唯一</AlertTitle>
         <AlertDescription>
-          未标记“可配置”的工具遵循 Runtime 固定策略。MCP 服务器和逐工具 override 请在 MCP 分区管理。
+          未标记“可配置”的工具遵循 Runtime 固定策略。可选工具（Terminal/Browser…）由套路开关或会话 /load 控制；会话详情可禁用具体工具。
         </AlertDescription>
       </Alert>
       {error && <Alert><AlertTitle>工具权限请求失败</AlertTitle><AlertDescription>{error}</AlertDescription></Alert>}
@@ -251,6 +357,81 @@ export function ToolPermissionsSection() {
                 </Card>
               ))}
             </div>
+          </section>
+
+          <section className="flex flex-col gap-3" aria-label="MCP 工具面">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <h3 className="font-medium">已发现的 MCP 工具</h3>
+                <p className="text-sm text-muted-foreground">
+                  与原生一致：可在此直接修改每个工具的权限行为（继承/只读/读写/询问/拒绝）。服务器添加、连接与导入请到「MCP」分区。
+                </p>
+              </div>
+              <Badge variant="outline">{mcpToolCards.length} 个工具</Badge>
+            </div>
+            {mcpError && (
+              <Alert>
+                <AlertTitle>MCP 工具请求失败</AlertTitle>
+                <AlertDescription>{mcpError}</AlertDescription>
+              </Alert>
+            )}
+            {mcpLoading ? (
+              <div className="grid gap-3 md:grid-cols-2">
+                {[0, 1].map((item) => (
+                  <Card key={item}>
+                    <CardHeader>
+                      <Skeleton className="h-5 w-40" />
+                      <Skeleton className="h-4 w-full" />
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            ) : mcpToolCards.length === 0 ? (
+              <Alert>
+                <AlertTitle>暂无 MCP 工具</AlertTitle>
+                <AlertDescription>
+                  连接 MCP 服务器后，这里会列出已发现工具，并可直接设置权限行为。
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="grid gap-3">
+                {mcpToolCards.map((tool) => (
+                  <div
+                    key={tool.key}
+                    className="grid gap-3 rounded-lg border p-3 sm:grid-cols-[minmax(0,1fr)_12rem] sm:items-center"
+                  >
+                    <div className="flex min-w-0 flex-col gap-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="truncate font-mono text-sm">{tool.toolName}</span>
+                        <Badge variant="outline">{tool.serverName}</Badge>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {tool.description || "无描述"}
+                      </div>
+                    </div>
+                    <SimpleSelect
+                      aria-label={`工具权限：${tool.serverName}/${tool.toolName}`}
+                      value={tool.behavior === "allow" ? "readWrite" : tool.behavior}
+                      disabled={!tool.editable || mcpPendingKey === tool.key}
+                      onValueChange={(value) =>
+                        void updateMcpToolBehavior(
+                          tool.serverId,
+                          tool.toolName,
+                          value as McpBehavior | "inherit",
+                        )
+                      }
+                      options={[
+                        { value: "inherit", label: "继承服务器设置" },
+                        { value: "readOnly", label: "只读" },
+                        { value: "readWrite", label: "读写" },
+                        { value: "ask", label: "询问" },
+                        { value: "deny", label: "拒绝" },
+                      ]}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
           </section>
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -343,9 +524,9 @@ export function ToolPermissionsSection() {
 
           <Alert>
             <Wrench />
-            <AlertTitle>MCP 工具权限</AlertTitle>
+            <AlertTitle>MCP 权限与服务器管理</AlertTitle>
             <AlertDescription>
-              MCP 分区可设置服务器默认行为和每个已发现工具的 readOnly、readWrite、ask、deny 或继承。
+              上方可直接修改已发现工具的权限行为（与「MCP」分区同一 Runtime API）。添加/连接/导入服务器、修改服务器默认行为与作品级 override 仍在「MCP」分区完成。
             </AlertDescription>
           </Alert>
         </>

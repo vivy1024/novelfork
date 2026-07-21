@@ -4,12 +4,36 @@
 
 ## Unreleased
 
-### 🧠 Narrative Memory 管理工具
+## v3.2.0 (2026-07-21) — Runtime 产品化接入 + 叙事记忆管理工具
 
-- 新增 `memory.list`、`memory.read_entry`、`memory.search`、`memory.dedup`、`memory.export`、`memory.stats` 六个只读管理工具，用于列出、读取、搜索、去重候选、导出和统计叙事记忆条目。
-- 新增 `memory.update`、`memory.delete`、`memory.bulk_approve`、`memory.bulk_delete` 四个 confirmed-write 管理工具，用于受控更新/硬删 fact/event、批量批准 pending events、批量删除显式筛选的 fact/event。
-- 保持 `memory.read` / `memory.graph` / `memory.events` 写作主链路语义不变；管理工具不新增 HTTP 路由、不引入软删除迁移、不重写前端 UI。
-- 增加写删安全校验：`memory.update` 禁止直接改 `event.status/appliedAt`，批删按 kind 校验 filter，LIKE 查询转义 `%/_` 防止通配符扩大范围。
+### 🏗️ Runtime 产品边界（NarraFork 私有 Runtime 内嵌）
+
+- 以受控导入的私有 Runtime（`packages/narrafork-runtime-private`）为 Agent 执行核心；NovelFork 通过 `novelfork-product-runtime`、overlay 与 bridge 接入，不再平行维护第二套通用 Agent 引擎。
+- 书籍与叙述者绑定由服务端可信解析；外部作品目录需带信任标记后才可访问。
+- Runtime overlay 可重放：manifest + 精确 patch/add，含连接租约（connection lease）与 product-host 会话补丁；新增 `materialize-runtime-overlay` 物化脚本。
+- 产品入口 `main.ts` 在 Runtime 地址导出缺失时回退默认端口，避免健康服务因缺 export 起不来浏览器窗口。
+- 清理遗留规划/文档/品牌资产，仓库结构对齐当前产品架构。
+
+### 🧠 Narrative Memory 管理与结算
+
+- 新增 `memory.list`、`memory.read_entry`、`memory.search`、`memory.dedup`、`memory.export`、`memory.stats` 六个只读管理工具。
+- 新增 `memory.update`、`memory.delete`、`memory.bulk_approve`、`memory.bulk_delete` 四个 confirmed-write 管理工具。
+- 保持 `memory.read` / `memory.graph` / `memory.events` 写作主链路语义不变。
+- 写删安全校验：`memory.update` 禁止直接改 `event.status/appliedAt`，批删按 kind 校验 filter，LIKE 转义 `%/_`。
+- 确认章节可结算 Narrative Events，写入叙事记忆。
+
+### 🎛️ Studio / 会话 / Provider
+
+- Session tools 对齐暴露的 tool prompt；注册 memory admin handlers。
+- Provider 创建改为 draft 流程；保留协议字段在 Runtime history。
+- Routines：工具权限与 scope 重置更稳；可选工具说明、`/load` 提示；技能扫描路径文案更清晰。
+- 搜索 API 路径集中到 Runtime 契约路径。
+
+### 📦 交付
+
+- 版本号 `3.2.0`（根与各产品包已对齐）。
+- Windows 产物：`dist/novelfork-v3.2.0-windows-x64.exe` + SHA256。
+- Runtime 上游源码仍属私有仓，不随 NovelFork 公开；用户交付为产品 EXE / 产品仓库。
 
 ## v3.0.0 (2026-06-25) — 3D 结晶叙事记忆空间 + 经纬/记忆架构边界闭合
 
