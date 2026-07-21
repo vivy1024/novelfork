@@ -102,4 +102,12 @@ export type {
 	SkillSource,
 } from "../../narrafork-runtime-private/server/services/skill-service";
 
-export { deleteProjectById } from "./delete-project";
+/**
+ * Lazy-load project teardown. A static re-export would evaluate
+ * chapter/git services during product bootstrap and lock product-host
+ * before main.ts can register the NovelFork integration.
+ */
+export async function deleteProjectById(id: string): Promise<void> {
+	const { deleteProjectById: deleteRuntimeProjectById } = await import("./delete-project");
+	await deleteRuntimeProjectById(id);
+}
