@@ -22,6 +22,8 @@ describe("BookManagementPage Runtime maintenance actions", () => {
         onCreateBook={vi.fn()}
         onClaimLegacyBook={vi.fn()}
         onRepairBook={onRepairBook}
+        onRebindBookWorkspace={vi.fn()}
+        onDeleteBook={vi.fn()}
       />,
     );
 
@@ -29,6 +31,41 @@ describe("BookManagementPage Runtime maintenance actions", () => {
 
     await waitFor(() => expect(onRepairBook).toHaveBeenCalledWith("book-1"));
     expect(await screen.findByText(/Runtime 绑定已校验/)).not.toBeNull();
+  });
+
+  it("rebinds a listed book workspace through the product callback", async () => {
+    const onRebindBookWorkspace = vi.fn(async (bookId: string, workspaceRoot: string) => ({
+      bookId,
+      bookRoot: workspaceRoot,
+      runtimeProjectId: "project-1",
+    }));
+    render(
+      <BookManagementPage
+        books={[{ id: "book-1", title: "长夜" }]}
+        loading={false}
+        error={null}
+        onNavigateToBook={vi.fn()}
+        onCreateBook={vi.fn()}
+        onClaimLegacyBook={vi.fn()}
+        onRepairBook={vi.fn()}
+        onRebindBookWorkspace={onRebindBookWorkspace}
+        onDeleteBook={vi.fn()}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "修正目录" }));
+    fireEvent.change(screen.getByLabelText("正确目录"), {
+      target: { value: "D:\\\\Books\\\\changye" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "确认修正" }));
+
+    await waitFor(() =>
+      expect(onRebindBookWorkspace).toHaveBeenCalledWith(
+        "book-1",
+        "D:\\\\Books\\\\changye",
+      ),
+    );
+    expect(await screen.findByText(/工作目录已修正/)).not.toBeNull();
   });
 
   it("claims a legacy book by bookId without accepting a browser path", async () => {
@@ -42,6 +79,8 @@ describe("BookManagementPage Runtime maintenance actions", () => {
         onCreateBook={vi.fn()}
         onClaimLegacyBook={onClaimLegacyBook}
         onRepairBook={vi.fn()}
+        onRebindBookWorkspace={vi.fn()}
+        onDeleteBook={vi.fn()}
       />,
     );
 

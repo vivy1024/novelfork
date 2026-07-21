@@ -622,6 +622,14 @@ function RouteMountPoint({
                 await reloadRuntimeShell();
                 return operation;
               }}
+              onRebindBookWorkspace={async (bookId, workspaceRoot) => {
+                const result = await runtimeClient.rebindBookWorkspace(
+                  bookId,
+                  workspaceRoot,
+                );
+                await reloadRuntimeShell();
+                return result;
+              }}
               onDeleteBook={async (bookId, deleteWorkspace) => {
                 await runtimeClient.deleteBook(bookId, deleteWorkspace);
                 await reloadRuntimeShell();

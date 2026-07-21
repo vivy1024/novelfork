@@ -1292,6 +1292,130 @@ export class NovelForkProductBookService {
 		return publicOperation(await this.resume(operation, actor));
 	}
 
+	/**
+	 * Manually correct a book's trusted workspace root after migration or a bad
+	 * binding. Updates book_runtime_bindings.book_root, Runtime project/chapter
+	 * paths, and marks the book.json as an external workspace.
+	 */
+	async rebindWorkspace(
+		bookId: string,
+		actor: ProductActor,
+		workspaceRoot: string,
+	): Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }> {
+		const normalizedBookId = normalizeBookId(bookId);
+		const rawRoot = workspaceRoot.trim();
+		if (!rawRoot || !isAbsolute(rawRoot)) {
+			throw new ValidationError("workspaceRoot must be an absolute path");
+		}
+		const operation = await this.getOperation(normalizedBookId, actor);
+		if (operation.state !== "ready" || !operation.runtimeProjectId) {
+			throw new ValidationError("Only a ready product book can rebind its workspace");
+		}
+		const binding = await bookRuntimeBindingService.getByBookId(normalizedBookId);
+		if (
+			!binding ||
+			binding.runtimeProjectId !== operation.runtimeProjectId ||
+			!ownsBookBinding(actor, binding.createdByUserId)
+		) {
+			throw new NotFoundError("Book", normalizedBookId);
+		}
+
+		const root = await realpath(rawRoot).catch(() => {
+			throw new ValidationError("workspaceRoot does not exist");
+		});
+		const rootInfo = await stat(root).catch(() => null);
+		if (!rootInfo?.isDirectory()) {
+			throw new ValidationError("workspaceRoot must be an existing directory");
+		}
+
+		// Accept either a matching book.json or a directory that can be read as
+		// an imported book. Never silently invent a new identity.
+		const config = await readBookConfig(root, normalizedBookId).catch(async () => {
+			const imported = await readImportBookConfig(root);
+			if (typeof imported.id === "string" && imported.id.trim() && imported.id.trim() !== normalizedBookId) {
+				throw new ValidationError(
+					`workspaceRoot book id "${imported.id}" does not match "${normalizedBookId}"`,
+				);
+			}
+			return imported;
+		});
+		if (typeof config.id === "string" && config.id.trim() && config.id.trim() !== normalizedBookId) {
+			throw new ValidationError(
+				`workspaceRoot book id "${config.id}" does not match "${normalizedBookId}"`,
+			);
+		}
+
+		// Persist the external marker so resolveTrustedBookRoot continues to honor
+		// this absolute path after the binding is rewritten.
+		const existingRaw = await readFile(join(root, "book.json"), "utf8").catch(() => null);
+		const existingConfig =
+			existingRaw &&
+			(() => {
+				try {
+					return JSON.parse(existingRaw) as Record<string, unknown>;
+				} catch {
+					return null;
+				}
+			})();
+		const nextConfig: Record<string, unknown> = {
+			...(existingConfig && typeof existingConfig === "object" ? existingConfig : config),
+			id: normalizedBookId,
+			title:
+				(typeof existingConfig?.title === "string" && existingConfig.title) ||
+				(typeof config.title === "string" && config.title) ||
+				operation.title,
+			[EXTERNAL_BOOK_WORKSPACE_MARKER]: true,
+			updatedAt: now(),
+		};
+		await writeFile(join(root, "book.json"), `${JSON.stringify(nextConfig, null, 2)}\n`, "utf8");
+
+		const updatedBinding = await bookRuntimeBindingService.upsert(
+			operation.runtimeProjectId,
+			normalizedBookId,
+			binding.createdByUserId,
+			root,
+		);
+
+		const timestamp = now();
+		await runtimeDb
+			.update(projects)
+			.set({ gitPath: root, updatedAt: timestamp })
+			.where(eq(projects.id, operation.runtimeProjectId));
+		if (operation.runtimeChapterId) {
+			await runtimeDb
+				.update(chapters)
+				.set({ worktreePath: root, updatedAt: timestamp })
+				.where(eq(chapters.id, operation.runtimeChapterId));
+		}
+		if (operation.narratorId) {
+			await runtimeDb
+				.update(narrators)
+				.set({ cwd: root, updatedAt: timestamp })
+				.where(eq(narrators.id, operation.narratorId));
+		}
+
+		// Keep provision input in sync so delete/list continue treating this as
+		// an external workspace and do not force-delete the user's directory.
+		const input = operation.inputJson as ProductBookInput;
+		await this.updateOperation(operation.id, {
+			inputJson: {
+				...input,
+				projectInit: {
+					source: "existing",
+					workspaceRoot: root,
+					managedByNovelFork: false,
+				},
+			},
+			errorMessage: null,
+		});
+
+		return {
+			bookId: normalizedBookId,
+			bookRoot: updatedBinding.bookRoot,
+			runtimeProjectId: operation.runtimeProjectId,
+		};
+	}
+
 	async getReadOnlyResources(bookId: string, actor: ProductActor) {
 		const { config, root } = await this.getReadyBookRoot(bookId, actor);
 		const writingResources = await createDomainWritingResourceService(bookId, root).list(bookId, {
@@ -1936,7 +2060,12 @@ export class NovelForkProductBookService {
 		patch: Partial<
 			Pick<
 				ProvisionOperation,
-				"state" | "runtimeProjectId" | "runtimeChapterId" | "narratorId" | "errorMessage"
+				| "state"
+				| "runtimeProjectId"
+				| "runtimeChapterId"
+				| "narratorId"
+				| "errorMessage"
+				| "inputJson"
 			>
 		>,
 	): Promise<ProvisionOperation> {

@@ -109,6 +109,12 @@ describe("Runtime product contract", () => {
         });
       if (path === "/api/novelfork/books/book%201/repair")
         return response({ ...pendingOperation, state: "ready" });
+      if (path === "/api/novelfork/books/book%201/rebind-workspace")
+        return response({
+          bookId: "book 1",
+          bookRoot: "D:\\\\Books\\\\book-1",
+          runtimeProjectId: "project-1",
+        });
       if (path.endsWith("/narrators") && !path.includes("narrator%201"))
         return response({ narrators: bootstrap.narrators });
       if (path.endsWith("/workspace"))
@@ -149,6 +155,7 @@ describe("Runtime product contract", () => {
     await client.retryBookProvision("book 1");
     await client.claimLegacyBook("legacy/book");
     await client.repairBookBinding("book 1");
+    await client.rebindBookWorkspace("book 1", "D:\\\\Books\\\\book-1");
     await client.deleteBook("book 1");
     await client.listNarrators("book 1");
     await client.getWorkspace("book 1");
@@ -162,6 +169,7 @@ describe("Runtime product contract", () => {
       "/api/novelfork/books/book%201/retry",
       "/api/novelfork/books/legacy%2Fbook/claim",
       "/api/novelfork/books/book%201/repair",
+      "/api/novelfork/books/book%201/rebind-workspace",
       "/api/novelfork/books/book%201",
       "/api/books/book%201/narrators",
       "/api/books/book%201/workspace",
@@ -187,11 +195,15 @@ describe("Runtime product contract", () => {
     expect(fetchImpl.mock.calls[1]?.[1]?.body).toBe(
       JSON.stringify({ title: "长夜" }),
     );
-    expect(fetchImpl.mock.calls[6]?.[1]?.method).toBe("DELETE");
-    expect(fetchImpl.mock.calls[9]?.[1]?.body).toBe(
+    expect(fetchImpl.mock.calls[6]?.[1]?.method).toBe("POST");
+    expect(fetchImpl.mock.calls[6]?.[1]?.body).toBe(
+      JSON.stringify({ workspaceRoot: "D:\\\\Books\\\\book-1" }),
+    );
+    expect(fetchImpl.mock.calls[7]?.[1]?.method).toBe("DELETE");
+    expect(fetchImpl.mock.calls[10]?.[1]?.body).toBe(
       JSON.stringify({ title: "第 1 章" }),
     );
-    expect(fetchImpl.mock.calls[10]?.[1]?.body).toBe(
+    expect(fetchImpl.mock.calls[11]?.[1]?.body).toBe(
       JSON.stringify({ content: "正文" }),
     );
   });

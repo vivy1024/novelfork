@@ -48,6 +48,12 @@ const bookImportSchema = z
 	})
 	.strict();
 
+const bookRebindWorkspaceSchema = z
+	.object({
+		workspaceRoot: z.string().trim().min(1).max(2_000),
+	})
+	.strict();
+
 const workspaceResourceSaveSchema = z.object({ content: z.string().max(2_000_000) }).strict();
 const workspaceChapterCreateSchema = z
 	.object({ title: z.string().trim().min(1).max(200).optional() })
@@ -142,6 +148,18 @@ novelForkProductBooksRoutes.post("/books/:bookId/claim", async (c) => {
 
 novelForkProductBooksRoutes.post("/books/:bookId/repair", async (c) => {
 	return c.json(await novelForkProductBookService.repair(requiredParam(c, "bookId"), actor(c)));
+});
+
+novelForkProductBooksRoutes.post("/books/:bookId/rebind-workspace", async (c) => {
+	const parsed = bookRebindWorkspaceSchema.safeParse(await c.req.json());
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	return c.json(
+		await novelForkProductBookService.rebindWorkspace(
+			requiredParam(c, "bookId"),
+			actor(c),
+			parsed.data.workspaceRoot,
+		),
+	);
 });
 
 novelForkProductBooksRoutes.get("/books/:bookId/resources", async (c) => {
