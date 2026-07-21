@@ -10,7 +10,9 @@ import { initializeNovelRuntimeStorage } from "../adapters/storage";
 const owner = { sub: `gateway-owner-${crypto.randomUUID()}`, role: "user" as const };
 const outsider = { sub: `gateway-outsider-${crypto.randomUUID()}`, role: "user" as const };
 let externalBookRoot = "";
+let newExternalBookRoot = "";
 let bookId: string | null = null;
+let newBookId: string | null = null;
 
 function productApp(user: typeof owner) {
 	const app = new Hono();
@@ -28,20 +30,23 @@ function productApp(user: typeof owner) {
 beforeAll(async () => {
 	initializeNovelRuntimeStorage();
 	externalBookRoot = await mkdtemp(join(tmpdir(), "novelfork-existing-workspace-"));
+	newExternalBookRoot = await mkdtemp(join(tmpdir(), "novelfork-new-workspace-"));
 	await mkdir(join(externalBookRoot, "jingwei"), { recursive: true });
 	await writeFile(join(externalBookRoot, "source-marker.md"), "keep this source file intact\n", "utf8");
 	await writeFile(join(externalBookRoot, "jingwei", "source-material.md"), "# 已有经纬资料\n\n必须从外部 workspace 读取。\n", "utf8");
 });
 
 afterAll(async () => {
-	if (bookId) {
+	for (const id of [bookId, newBookId]) {
+		if (!id) continue;
 		try {
-			await productApp(owner).request(`/api/novelfork/books/${bookId}`, { method: "DELETE" });
+			await productApp(owner).request(`/api/novelfork/books/${id}`, { method: "DELETE" });
 		} catch {
 			// Best-effort fixture cleanup.
 		}
 	}
 	await rm(externalBookRoot, { recursive: true, force: true });
+	await rm(newExternalBookRoot, { recursive: true, force: true });
 });
 
 describe("NovelFork trusted narrator binding gateway", () => {
@@ -82,5 +87,58 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect((await app.request(`/api/books/${bookId}/files/read?path=../outside.txt`)).status).toBe(400);
 		expect((await productApp(outsider).request(`/api/novelfork/books/${bookId}`, { method: "DELETE" })).status).toBe(404);
 		await access(externalBookRoot);
+	});
+
+	test("creates a new workspace at the user-selected book_root instead of controlled books dir", async () => {
+		const app = productApp(owner);
+		const create = await app.request("/api/novelfork/books", {
+			method: "POST",
+			headers: {
+				"content-type": "application/json",
+				"Idempotency-Key": `new-workspace-${crypto.randomUUID()}`,
+			},
+			body: JSON.stringify({
+				title: "New external workspace novel",
+				projectInit: {
+					source: "new",
+					workspaceRoot: newExternalBookRoot,
+					managedByNovelFork: false,
+				},
+			}),
+		});
+		const operation = await create.json() as {
+			bookId?: string;
+			narratorId?: string;
+			state?: string;
+			errorMessage?: string | null;
+		};
+		expect({ status: create.status, operation }).toMatchObject({
+			status: 201,
+			operation: { state: "ready", errorMessage: null },
+		});
+		if (!operation.bookId || !operation.narratorId) {
+			throw new Error("product gateway did not create a new external binding");
+		}
+		newBookId = operation.bookId;
+
+		const config = JSON.parse(
+			await readFile(join(newExternalBookRoot, "book.json"), "utf8"),
+		) as { id?: string; novelforkExternalWorkspace?: boolean };
+		expect(config).toMatchObject({
+			id: operation.bookId,
+			novelforkExternalWorkspace: true,
+		});
+
+		const narrators = await app.request(`/api/books/${operation.bookId}/narrators`);
+		expect(narrators.status).toBe(200);
+		expect(await narrators.json()).toMatchObject({
+			narrators: [
+				expect.objectContaining({
+					id: operation.narratorId,
+					bookId: operation.bookId,
+					cwd: newExternalBookRoot,
+				}),
+			],
+		});
 	});
 });

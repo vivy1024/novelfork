@@ -10,6 +10,19 @@ import {
 import type { BoundNarratorActor } from "../services/narrator-access";
 import { getProductBootstrapContract } from "../services/product-contract";
 
+const guidedSetupAnswerSchema = z
+	.object({
+		mode: z.string().trim().min(1).max(40),
+		value: z.string().max(20_000),
+	})
+	.strict();
+
+const guidedSetupSchema = z
+	.object({
+		answers: z.record(z.string().trim().min(1).max(80), guidedSetupAnswerSchema),
+	})
+	.strict();
+
 const bookInputSchema = z
 	.object({
 		bookId: z.string().trim().min(1).max(80).optional(),
@@ -151,6 +164,18 @@ export async function assertBookProductAccess(
  * reviving the deleted Studio server.
  */
 export const bookDomainRoutes = new Hono();
+
+/** NewBookGuide completion: POST /api/books/:bookId/guided-setup */
+bookDomainRoutes.post("/guided-setup", async (c) => {
+	const parsed = guidedSetupSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const result = await novelForkProductBookService.applyGuidedSetup(
+		requiredParam(c, "bookId"),
+		parsed.data,
+		actor(c),
+	);
+	return c.json(result);
+});
 
 bookDomainRoutes.get("/", async (c) => {
 	const payload = await novelForkProductBookService.getReadOnlyResources(
