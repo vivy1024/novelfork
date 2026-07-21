@@ -29,6 +29,11 @@
 - Routines：工具权限与 scope 重置更稳；可选工具说明、`/load` 提示；技能扫描路径文案更清晰。
 - 搜索 API 路径集中到 Runtime 契约路径。
 
+### 🔒 Lore / Canon
+
+- `lore.write` / `jingwei.write` 新增 `action=retire`：错误或过期条目（含 canon）可退出 AI（`participates_in_ai=0` + archived），不改 layer/正文；必须 `reason`，canon 另需 `confirmCanonEdit=true`。
+- 硬删除 canon 仍禁止；失败文案引导使用 retire，避免 Agent 卡在 `canon-immutable`。
+
 ### 📦 交付
 
 - 版本号 `3.2.0`（根与各产品包已对齐）。
