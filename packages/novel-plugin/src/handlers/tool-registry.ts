@@ -371,6 +371,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -380,6 +381,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -389,6 +391,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -398,6 +401,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -407,6 +411,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -416,6 +421,7 @@ action=create | update | delete | retire。
     risk: "read",
     renderer: "narrative-memory.admin",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -425,6 +431,7 @@ action=create | update | delete | retire。
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -434,6 +441,7 @@ action=create | update | delete | retire。
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -443,6 +451,7 @@ action=create | update | delete | retire。
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
@@ -452,20 +461,22 @@ action=create | update | delete | retire。
     risk: "confirmed-write",
     renderer: "narrative-memory.admin",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
     name: "jingwei.audit",
-    description: "经纬 / Lore 审计门禁。检查静态设定条目是否满足 active + confirmed + participates_in_ai 的 AI 读取门禁，并报告 draft、needs-review、archived、分区禁用或条目禁用等问题。只读，不会修改经纬。",
+    description: "经纬审计门禁。检查静态设定条目是否满足 active + confirmed + participates_in_ai 的 AI 读取门禁，并报告 draft、needs-review、archived、分区禁用或条目禁用等问题。只读，不会修改经纬。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.audit"]),
     risk: "read",
     renderer: "jingwei.audit",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
     name: "jingwei.write",
-    description: `deprecated alias of lore.write。经纬（Jingwei）现在只等价于 Lore 静态设定写入工具，用于管理作者显式维护、可审阅的静态设定。
+    description: `兼容别名（= lore.write）。经纬静态设定写入工具，用于管理作者显式维护、可审阅的静态设定。
 
 action=create：创建新条目。必须传入 title、category、contentMd。
 action=update：更新已有条目（传 entryId 或 title 匹配）。
@@ -479,16 +490,17 @@ action=retire：退役错误/过期条目（含 canon）。不改 layer、不改
 - 动态事实不得直接写入 Lore；章节后抽取事实、关系变化、伏笔推进、Pending NarrativeEvents 请使用 memory.events / Narrative Memory 流程。
 - 不要把诊断结果、市场材料、工具临时输出直接写入 Lore canon。
 
-兼容说明：旧会话可继续调用 jingwei.write，但新 prompt 应使用 lore.write。`,
+兼容说明：jingwei.* 与 lore.* 等价；经纬是产品名，lore 是后端工具名。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.write"]),
     risk: "draft-write",
     renderer: "jingwei.write",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({
     name: "scene.spec",
-    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 调用 lore.read(scope=brief) 获取作者显式维护的静态设定包\n3. 调用 memory.read(purpose=write) 获取动态叙事记忆、通道状态、时间线/伏笔/事实召回\n4. 可选调用 pgi.ask 向用户追问本章意图\n5. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n不要用的时候：\n- 用户没有要求写章节时\n- 用户在做非写作操作（查看设定、整理 Lore、讨论方向）\n\n注意：经纬/Jingwei 是 lore.read 的 deprecated alias，只能读取静态设定；动态叙事记忆请使用 memory.read。",
+    description: "生成结构化写作蓝图（Scene Spec）。这是调用 pipeline.write 的硬前置条件——没有蓝图 pipeline.write 会报错。\n\n使用流程：\n1. 先调用 cockpit.snapshot 了解当前进度和待兑现伏笔\n2. 调用 lore.read(scope=brief) 或 jingwei.read 获取经纬静态设定包\n3. 调用 memory.read(purpose=write) 获取动态叙事记忆、通道状态、时间线/伏笔/事实召回\n4. 可选调用 pgi.ask 向用户追问本章意图\n5. 然后调用 scene.spec 传入上述信息生成蓝图\n\n蓝图包含：涉及角色、地点、核心冲突、情绪弧线、章节目标、目标字数、必须包含的伏笔节点。\n\n不要用的时候：\n- 用户没有要求写章节时\n- 用户在做非写作操作（查看设定、整理经纬、讨论方向）\n\n注意：经纬只读静态设定；动态叙事记忆请使用 memory.read。pipeline.write 成功后会自动章后结算。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["scene.spec"]),
     risk: "read",
     renderer: "scene.spec",
@@ -497,26 +509,26 @@ action=retire：退役错误/过期条目（含 canon）。不改 layer、不改
   }),
   sessionTool({
     name: "jingwei.read",
-    description: `deprecated alias of lore.read。经纬（Jingwei）现在只等价于 Lore 静态设定读取工具。
+    description: `兼容别名（= lore.read）。经纬静态设定读取工具。
 
 scope=brief：返回作者显式维护的核心静态设定包 + 分类目录。
 scope=category：按分类读取详细静态设定条目。
 scope=search：关键词搜索静态设定。
 
-默认过滤：archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目不会作为 Agent 可读 Lore 返回。
+默认过滤：archived、draft、needs-review、participates_in_ai=0 或等价非活跃条目不会作为 Agent 可读经纬返回。
 
 使用时机：
-- 用户说"看经纬"/"看设定"/"看世界模型" → scope=brief 返回给用户看
-- 写作前读取静态设定 → 优先使用 lore.read
+- 用户说"看经纬"/"看设定"/"看世界模型" → scope=brief
+- 写作前读取静态设定 → lore.read 或 jingwei.read
 - 查找特定设定 → scope=search
 
 不要用的时候：
-- 不要用 jingwei.read 获取动态叙事记忆；动态叙事记忆请使用 memory.read。
-- 关系图、时间线、角色弧线、伏笔网络、Pending NarrativeEvents 请使用 memory.graph / memory.events。`,
+- 不要用经纬读取动态叙事记忆；动态请用 memory.read / memory.graph / memory.events。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["jingwei.read"]),
     risk: "read",
     renderer: "jingwei.read",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    visibility: "advanced",
     scope: "novel",
   }),
   sessionTool({

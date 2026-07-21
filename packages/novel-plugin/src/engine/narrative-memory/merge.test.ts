@@ -76,13 +76,82 @@ describe("Narrative merge/scoring", () => {
     expect(merged[0]?.reason).toContain("别名命中");
   });
 
-  it("does not dedupe fact cards with same tuple but different validFromChapter", () => {
+  it("synthesizes same fact tuple across chapters and keeps the newer chapter", () => {
     const merged = mergeNarrativeContextCards([
       card({ id: "fact-old", sourceType: "fact", sourceId: "old", channel: "facts", title: "韩立 持有 小瓶", content: "旧状态", validFromChapter: 1 }),
       card({ id: "fact-new", sourceType: "fact", sourceId: "new", channel: "facts", title: "韩立 持有 小瓶", content: "新状态", validFromChapter: 8 }),
     ], { currentChapter: 12, queryEntities: ["韩立"] });
 
-    expect(merged).toHaveLength(2);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("fact-new");
+    expect(merged[0]?.content).toBe("新状态");
+    expect(merged[0]?.reason).toContain("已统一合成");
+  });
+
+  it("prefers narrative fact over jingwei entry for the same entity state", () => {
+    const merged = mergeNarrativeContextCards([
+      card({
+        id: "jw-hanli",
+        sourceType: "jingwei",
+        sourceId: "entry-hanli",
+        channel: "state",
+        title: "韩立",
+        content: "经纬人设：谨慎但尚未确认当前状态",
+        entities: ["韩立"],
+        tags: ["characters", "dynamic"],
+        priority: 90,
+        importance: 90,
+      }),
+      card({
+        id: "fact-hanli",
+        sourceType: "fact",
+        sourceId: "fact-hanli",
+        channel: "state",
+        title: "韩立 状态 更谨慎",
+        content: "韩立 状态 更谨慎",
+        entities: ["韩立"],
+        tags: ["character_state", "dynamic"],
+        priority: 60,
+        importance: 60,
+        validFromChapter: 12,
+      }),
+    ], { currentChapter: 13, queryEntities: ["韩立"] });
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("fact-hanli");
+    expect(merged[0]?.sourceType).toBe("fact");
+    expect(merged[0]?.reason).toContain("覆盖次级来源");
+  });
+
+  it("prefers runtime hook over jingwei foreshadowing for the same hook topic", () => {
+    const merged = mergeNarrativeContextCards([
+      card({
+        id: "jw-hook",
+        sourceType: "jingwei",
+        sourceId: "entry-hook",
+        channel: "hooks",
+        title: "小瓶伏笔",
+        content: "经纬记录：小瓶伏笔待回收",
+        tags: ["foreshadowing", "hook"],
+        entities: ["小瓶"],
+        priority: 80,
+      }),
+      card({
+        id: "rt-hook",
+        sourceType: "hook",
+        sourceId: "hook-1",
+        channel: "hooks",
+        title: "小瓶伏笔",
+        content: "状态：progressing；最近推进章节：10",
+        tags: ["hook", "progressing"],
+        entities: ["小瓶"],
+        priority: 70,
+      }),
+    ], { currentChapter: 12, queryEntities: ["小瓶"] });
+
+    expect(merged).toHaveLength(1);
+    expect(merged[0]?.id).toBe("rt-hook");
+    expect(merged[0]?.sourceType).toBe("hook");
   });
 
   it("scores with required MVP breakdown fields", () => {

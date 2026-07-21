@@ -350,7 +350,20 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     return {
       ok: false,
       error: "dynamic-memory-boundary",
-      summary: "时间线、关系变化、角色弧线、伏笔进展、矛盾诊断等动态叙事状态属于 memory.events / Narrative Memory，不应写入 Lore。若只是作者静态参考资料，请使用 layer=reference。",
+      summary: "时间线、关系变化、角色弧线、伏笔进展、矛盾诊断等动态叙事状态属于 Narrative Memory（章后自动结算 / memory.events），不应写入经纬权威源。若只是作者静态参考资料，请使用 layer=reference。",
+    };
+  }
+  // 即便 category 未标明，内容像“本章动态变化”也不应落进经纬权威层。
+  // 仅标题含「第N章」不拦截（人物卡可能写出场章）；需叠加动态语义词。
+  const titleLooksDynamicChapter =
+    /第\s*\d+\s*章/.test(title)
+    && /(关系|状态|伏笔|时间线|结算|事件变化|叙事事件)/.test(title);
+  const bodyLooksDynamicSettlement = /(关系变化|状态变化|伏笔推进|时间线推进|本章结算|叙事事件)/.test(`${title}\n${contentMd}`);
+  if ((titleLooksDynamicChapter || bodyLooksDynamicSettlement) && layer === "dynamic" && !writesProtectedLore) {
+    return {
+      ok: false,
+      error: "dynamic-memory-boundary",
+      summary: "内容像章后动态变化（关系/状态/伏笔/时间线），请进入 Narrative Memory，而不是经纬。静态参考可改用 layer=reference。",
     };
   }
   if (writesProtectedLore && (!reason || !sourceOrEvidence)) {

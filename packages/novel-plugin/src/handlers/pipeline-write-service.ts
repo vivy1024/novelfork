@@ -243,14 +243,15 @@ export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]):
     `  evidence: ${event.evidenceText}`,
   ].join("\n")).join("\n");
   const more = highRisk.length > 5 ? `\n...以及另外 ${highRisk.length - 5} 条高风险 pending。` : "";
-  return `检测到 ${highRisk.length} 条高风险 pending NarrativeEvents。请优先用 memory.events approve/reject 处理；如本次明确继续写作，系统不会自动修改正文或经纬 canon。\n${items}${more}`;
+  return `检测到 ${highRisk.length} 条高风险 pending NarrativeEvents（仅提醒，默认不阻断写作；作者可在叙事记忆历史查看/处理）。系统不会自动修改正文或经纬 canon。\n${items}${more}`;
 }
 
 export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
-  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, continueWithHighRiskPending = false, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  // 产品口径：章后结算自动进行；高风险 pending 仅提醒，不默认阻断写作（作者可在叙事记忆历史查看）。
+  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, continueWithHighRiskPending = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
   let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
 

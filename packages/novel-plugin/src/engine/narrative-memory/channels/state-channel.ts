@@ -139,11 +139,19 @@ export function createStateChannel(): NarrativeRetrievalChannel<StateChannelInpu
         cards.push(...facts.map((fact) => asStateCard(factToContextCard(fact, `state channel 命中当前实体事实：${fact.subject}/${fact.object}`))));
       }
 
+      // 通道内保留相关度顺序；limit 截断时优先保住 fact / runtime-state，经纬作兜底。
       const deduped = new Map<string, NarrativeContextCard>();
       for (const card of cards) {
-        if (!deduped.has(`${card.sourceType}:${card.sourceId}:${card.channel}`)) deduped.set(`${card.sourceType}:${card.sourceId}:${card.channel}`, card);
+        const key = `${card.sourceType}:${card.sourceId}:${card.channel}`;
+        if (!deduped.has(key)) deduped.set(key, card);
       }
-      const result = [...deduped.values()].slice(0, limit);
+      const ordered = [...deduped.values()];
+      const authoritative = ordered.filter((card) => card.sourceType === "fact" || card.sourceType === "runtime-state");
+      const fallback = ordered.filter((card) => card.sourceType !== "fact" && card.sourceType !== "runtime-state");
+      const reserved = authoritative.slice(0, limit);
+      const remainingSlots = Math.max(0, limit - reserved.length);
+      const chosenIds = new Set([...reserved, ...fallback.slice(0, remainingSlots)].map((card) => card.id));
+      const result = ordered.filter((card) => chosenIds.has(card.id)).slice(0, limit);
 
       if (result.length === 0) {
         warnings.push("state channel 为空：未找到当前场景相关 dynamic 经纬、RuntimeState 或可见 narrative facts。");
