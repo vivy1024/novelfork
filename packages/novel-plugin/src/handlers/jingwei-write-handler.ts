@@ -14,7 +14,12 @@ import { LEGACY_CATEGORY_MAP, JINGWEI_CATEGORIES } from "../engine/jingwei/unifi
 
 export interface JingweiWriteInput {
   bookId: string;
-  action?: "create" | "update" | "delete";
+  /**
+   * create | update | delete | retire
+   * retire：作者/Agent 退役错误或过期条目（含 canon）。不改 layer、不改正文，
+   * 只将条目退出 AI 可读集合（participates_in_ai=0 + soft-delete/archived）。
+   */
+  action?: "create" | "update" | "delete" | "retire";
   title: string;
   contentMd?: string;
   summaryMd?: string;
@@ -31,11 +36,11 @@ export interface JingweiWriteInput {
   priorityTier?: "core" | "relevant" | "reference" | "auto";
   /** 重要度评分 0-100，省略时按 priorityTier 映射 */
   importance?: number;
-  /** 确认修改 canon 条目（canon 条目更新时必须为 true） */
+  /** 确认修改 canon 条目（canon 条目 update/retire 时必须为 true） */
   confirmCanonEdit?: boolean;
   /** 条目状态 */
   status?: "draft" | "confirmed" | "needs-review";
-  /** 变更原因（存入 revision history） */
+  /** 变更原因（存入 revision history）；retire 时必填 */
   reason?: string;
   /** 设定来源；canon/rules 写入时与 evidence 至少提供一项 */
   source?: string;
@@ -47,7 +52,7 @@ export interface JingweiWriteSuccess {
   ok: true;
   summary: string;
   data: {
-    action: "created" | "updated" | "deleted";
+    action: "created" | "updated" | "deleted" | "retired";
     entryId: string;
     bookId: string;
     category?: string;
@@ -131,7 +136,16 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   // Parse & validate input
   let bookId = String(input.bookId);
   const title = String(input.title || "").trim();
-  const action = input.action === "delete" ? "delete" : input.action === "create" ? "create" : input.action === "update" ? "update" : undefined;
+  const action =
+    input.action === "delete"
+      ? "delete"
+      : input.action === "create"
+        ? "create"
+        : input.action === "update"
+          ? "update"
+          : input.action === "retire"
+            ? "retire"
+            : undefined;
 
   if (!title && !input.entryId) {
     return { ok: false, error: "invalid-input", summary: "title 或 entryId 不能都为空。" };
@@ -154,12 +168,24 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
       if (entryId) {
         const row = storage.sqlite.prepare(`SELECT id, layer FROM story_jingwei_entry WHERE book_id = ? AND id = ? AND deleted_at IS NULL`).get(bookId, entryId) as { id: string; layer?: string } | undefined;
         if (!row) return { ok: false, error: "entry-not-found", summary: `条目 ID "${entryId}" 不存在。` };
-        if (row.layer === "canon") return { ok: false, error: "canon-immutable", summary: "Canon 条目不能删除。如需废弃，请将其 layer 改为 reference。" };
+        if (row.layer === "canon") {
+          return {
+            ok: false,
+            error: "canon-immutable",
+            summary: "Canon 条目不能硬删除。若内容错误或过期，请使用 action=retire + confirmCanonEdit=true + reason（退出 AI，保留审计）。",
+          };
+        }
         targetId = row.id;
       } else {
         const row = storage.sqlite.prepare(`SELECT id, layer FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`).get(bookId, title) as { id: string; layer?: string } | undefined;
         if (!row) return { ok: false, error: "entry-not-found", summary: `条目「${title}」不存在。` };
-        if (row.layer === "canon") return { ok: false, error: "canon-immutable", summary: `Canon 条目「${title}」不能删除。如需废弃，请将其 layer 改为 reference。` };
+        if (row.layer === "canon") {
+          return {
+            ok: false,
+            error: "canon-immutable",
+            summary: `Canon 条目「${title}」不能硬删除。请使用 action=retire + confirmCanonEdit=true + reason。`,
+          };
+        }
         targetId = row.id;
       }
 
@@ -171,6 +197,106 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
     }
   }
 
+  // ─── RETIRE action（含 canon：退出 AI，不改 layer/正文） ───
+  if (action === "retire") {
+    try {
+      const entryId = input.entryId ? String(input.entryId) : undefined;
+      const reason = String(input.reason || "").trim();
+      if (!reason) {
+        return {
+          ok: false,
+          error: "invalid-input",
+          summary: "retire 必须提供 reason（说明为何退役，供审计）。",
+        };
+      }
+
+      type RetireRow = {
+        id: string;
+        title: string;
+        layer?: string | null;
+        category?: string | null;
+        content_md?: string | null;
+      };
+      let row: RetireRow | undefined;
+      if (entryId) {
+        row = storage.sqlite
+          .prepare(
+            `SELECT id, title, layer, category, content_md FROM story_jingwei_entry WHERE book_id = ? AND id = ? AND deleted_at IS NULL`,
+          )
+          .get(bookId, entryId) as RetireRow | undefined;
+        if (!row) return { ok: false, error: "entry-not-found", summary: `条目 ID "${entryId}" 不存在或已退役。` };
+      } else {
+        row = storage.sqlite
+          .prepare(
+            `SELECT id, title, layer, category, content_md FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`,
+          )
+          .get(bookId, title) as RetireRow | undefined;
+        if (!row) return { ok: false, error: "entry-not-found", summary: `条目「${title}」不存在或已退役。` };
+      }
+
+      const existingLayer = (row.layer as JingweiLayer) || "dynamic";
+      if (existingLayer === "canon" && input.confirmCanonEdit !== true) {
+        return {
+          ok: false,
+          error: "canon-confirm-required",
+          summary: `退役 Canon 条目「${row.title}」需要 confirmCanonEdit: true，并填写 reason。此操作不会改 layer/正文，只会退出 AI 可读集合。`,
+        };
+      }
+
+      const now = Date.now();
+      const revisionId = crypto.randomUUID();
+      storage.sqlite
+        .prepare(
+          `INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          revisionId,
+          row.id,
+          bookId,
+          row.content_md ?? "",
+          row.category ?? "unclassified",
+          existingLayer,
+          reason,
+          "agent-retire",
+          now,
+        );
+
+      storage.sqlite
+        .prepare(
+          `UPDATE story_jingwei_entry
+           SET participates_in_ai = 0,
+               status = 'needs-review',
+               lifecycle = 'archived',
+               deleted_at = ?,
+               updated_at = ?,
+               conflict_status = 'superseded',
+               conflict_detail = ?
+           WHERE id = ?`,
+        )
+        .run(now, now, reason, row.id);
+
+      return {
+        ok: true,
+        summary: `已退役经纬条目「${row.title}」（layer=${existingLayer} 保留；已退出 AI：participates_in_ai=0 + archived）。`,
+        data: {
+          action: "retired",
+          entryId: row.id,
+          bookId,
+          category: row.category ?? undefined,
+          title: row.title,
+          layer: existingLayer,
+        },
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        error: "retire-failed",
+        summary: `退役失败：${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
   // ─── CREATE / UPDATE action ───
   const contentMd = String(input.contentMd || "");
   if (!contentMd && action === "create") {
@@ -178,8 +304,12 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   }
 
   // Validate action value
-  if (input.action && !["create", "update", "delete"].includes(input.action)) {
-    return { ok: false, error: "invalid-action", summary: `无效的 action 值「${input.action}」。可选值：create | update | delete。` };
+  if (input.action && !["create", "update", "delete", "retire"].includes(input.action)) {
+    return {
+      ok: false,
+      error: "invalid-action",
+      summary: `无效的 action 值「${input.action}」。可选值：create | update | delete | retire。`,
+    };
   }
 
   const rawCategory = String(input.category || "").trim();

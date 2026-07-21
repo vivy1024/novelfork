@@ -321,9 +321,14 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     name: "lore.write",
     description: `Lore / 经纬静态设定写入工具。用于创建或修改作者可审阅的静态设定。
 
+action=create | update | delete | retire。
+- create/update：写入静态设定；canon/rules 必须 reason + source/evidence。
+- delete：仅非 canon。
+- retire：退役错误/过期条目（含 canon）。不改 layer/正文；设 participates_in_ai=0 + archived。必须 reason；canon 另需 confirmCanonEdit=true。
+
 职责边界：
 - 适合写入 canon/reference/rules 类作者设定、世界规则、平台规则与作者备注。
-- 写入 canon 或 rules 类设定时必须提供 reason，并提供 source 或 evidence。
+- Canon 不能硬删或降级 layer；错误 canon 用 retire，不要试图改 layer 绕过。
 - 动态事实、章节后抽取事实、诊断结果、市场材料、Pending NarrativeEvents 不得直接写入 Lore canon。
 - 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.write"]),
@@ -464,11 +469,13 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
 
 action=create：创建新条目。必须传入 title、category、contentMd。
 action=update：更新已有条目（传 entryId 或 title 匹配）。
-action=delete：删除条目。
+action=delete：删除非 canon 条目。
+action=retire：退役错误/过期条目（含 canon）。不改 layer、不改正文；设 participates_in_ai=0 并 archived 软删。必须 reason；canon 另需 confirmCanonEdit=true。
 
 边界：
 - 只写入静态设定、世界规则、平台规则、作者备注等 Lore 内容。
 - 写入 canon 或 rules 类设定时必须提供 reason，并提供 source 或 evidence。
+- Canon 不能硬删或降级 layer；错误 canon 请 retire，不要试图改 layer 绕过。
 - 动态事实不得直接写入 Lore；章节后抽取事实、关系变化、伏笔推进、Pending NarrativeEvents 请使用 memory.events / Narrative Memory 流程。
 - 不要把诊断结果、市场材料、工具临时输出直接写入 Lore canon。
 
