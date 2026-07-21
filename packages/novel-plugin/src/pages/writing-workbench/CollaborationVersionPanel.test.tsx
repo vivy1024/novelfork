@@ -33,17 +33,18 @@ describe("buildSessionForest", () => {
 });
 
 describe("CollaborationVersionPanel", () => {
-  it("并行展示书籍会话关系、worktree 分支和仓库提交，并可刷新", async () => {
+  it("通过产品 narrators 网关展示会话，并解析 collaboration-context", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url === "/api/sessions?status=active&projectId=book-1") return new Response(JSON.stringify(sessions));
-      if (url === "/api/git/worktrees") return new Response(JSON.stringify({ worktrees: [
-        { path: "D:/repo", branch: "main", status: { modified: 0, added: 0, deleted: 0, untracked: 0 } },
-        { path: "D:/repo-wt/review", branch: "review", status: { modified: 1, added: 0, deleted: 0, untracked: 2 } },
-      ] }));
-      if (url === "/api/git/log?path=D%3A%2Frepo&limit=30") return new Response(JSON.stringify({ commits: [
-        { hash: "abcdef123", short: "abcdef1", message: "feat: add chapter", author: "薛小川", date: "2 hours ago" },
-      ] }));
+      if (url === "/api/books/book-1/narrators") {
+        return new Response(JSON.stringify({
+          narrators: [
+            { id: "root", title: "主写作会话", status: "active", model: "writer", updatedAt: "2026-07-12T10:00:00.000Z" },
+            { id: "child", title: "审校分支", status: "active", model: "reviewer", updatedAt: "2026-07-12T11:00:00.000Z" },
+          ],
+        }));
+      }
+      // when repositoryPath is provided, collaboration-context is not fetched
       throw new Error(`unexpected request: ${url}`);
     });
 
@@ -53,31 +54,32 @@ describe("CollaborationVersionPanel", () => {
     expect(await screen.findByText("主写作会话")).toBeTruthy();
     expect(screen.getByText("审校分支")).toBeTruthy();
     expect(screen.getByText("reviewer")).toBeTruthy();
-    expect(screen.getByText("review")).toBeTruthy();
-    expect(screen.getByText("有改动 · 3")).toBeTruthy();
-    expect(screen.getByText("feat: add chapter")).toBeTruthy();
-    expect(screen.getByText("abcdef1")).toBeTruthy();
-
-    const sessionSection = screen.getByRole("region", { name: "会话协作关系" });
-    expect(within(sessionSection).getByTestId("session-edge-child")).toBeTruthy();
+    expect(screen.getByText(/仓库路径已绑定/)).toBeTruthy();
+    expect(screen.getByText(/D:\/repo/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "刷新协作与版本" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(6));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
   });
 
-  it("repositoryPath 缺失时跳过提交请求，且单个请求失败不影响其他区域", async () => {
+  it("repositoryPath 缺失时从 collaboration-context 取路径；narrators 失败不影响其它区", async () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url.startsWith("/api/sessions?")) return new Response("boom", { status: 500 });
-      if (url === "/api/git/worktrees") return new Response(JSON.stringify({ worktrees: [{ path: "D:/repo", branch: "main", status: { modified: 0, added: 0, deleted: 0, untracked: 0 } }] }));
+      if (url === "/api/books/book-1/narrators") return new Response("boom", { status: 500 });
+      if (url === "/api/books/book-1/collaboration-context") {
+        return new Response(JSON.stringify({
+          repositoryPath: "D:/bound-repo",
+          worktreeRoot: "D:/bound-repo/.narrafork-worktrees",
+        }));
+      }
       throw new Error(`unexpected request: ${url}`);
     });
 
     render(<CollaborationVersionPanel bookId="book-1" />);
 
     expect(await screen.findByText("会话协作关系加载失败")).toBeTruthy();
-    expect(screen.getByText("main")).toBeTruthy();
-    expect(screen.getByText("未绑定 repositoryPath，无法读取提交历史。")) .toBeTruthy();
-    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining("/api/git/log"));
+    expect(screen.getByText("D:/bound-repo/.narrafork-worktrees")).toBeTruthy();
+    expect(screen.getByText(/仓库路径已绑定/)).toBeTruthy();
+    expect(screen.getByText(/D:\/bound-repo/)).toBeTruthy();
+    expect(fetchMock).toHaveBeenCalledWith("/api/books/book-1/collaboration-context");
   });
 });

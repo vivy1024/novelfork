@@ -111,6 +111,7 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
   const [sessions, setSessions] = useState<CollaborationSession[]>([]);
   const [worktrees, setWorktrees] = useState<GitWorktreeSummary[]>([]);
   const [commits, setCommits] = useState<GitCommitSummary[]>([]);
+  const [resolvedRepoPath, setResolvedRepoPath] = useState<string | undefined>(repositoryPath);
   const [errors, setErrors] = useState<{ sessions?: string; worktrees?: string; commits?: string }>({});
   const [loading, setLoading] = useState(true);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -118,26 +119,76 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
   const load = useCallback(async () => {
     setLoading(true);
     setErrors({});
-    const sessionRequest = readJson<CollaborationSession[]>(`/api/sessions?status=active&projectId=${encodeURIComponent(bookId)}`, "会话协作关系");
-    const worktreeRequest = readJson<{ worktrees?: GitWorktreeSummary[] }>("/api/git/worktrees", "Git worktree");
-    const commitRequest = repositoryPath
-      ? readJson<{ commits?: GitCommitSummary[] }>(`/api/git/log?path=${encodeURIComponent(repositoryPath)}&limit=30`, "Git 提交历史")
-      : null;
 
-    const [sessionResult, worktreeResult, commitResult] = await Promise.allSettled([
+    // Product Runtime: book narrators live under /api/books/:bookId/narrators.
+    // Legacy Studio /api/sessions?projectId=bookId is retired.
+    type NarratorRow = {
+      id: string;
+      title: string;
+      status: string;
+      model?: string | null;
+      updatedAt?: string;
+      createdAt?: string;
+    };
+    const sessionRequest = readJson<{ narrators?: NarratorRow[] } | NarratorRow[]>(
+      `/api/books/${encodeURIComponent(bookId)}/narrators`,
+      "会话协作关系",
+    ).then((payload): CollaborationSession[] => {
+      const rows = Array.isArray(payload)
+        ? payload
+        : Array.isArray(payload?.narrators)
+          ? payload.narrators
+          : [];
+      return rows.map((row) => ({
+        id: row.id,
+        title: row.title || row.id,
+        status: row.status || "unknown",
+        agentId: row.model || "narrator",
+        lastModified: row.updatedAt || row.createdAt || "",
+      }));
+    });
+
+    // Resolve repository path from product binding when the workbench did not
+    // pass one (external books rely on book_runtime_bindings.book_root).
+    const contextRequest = repositoryPath
+      ? Promise.resolve({
+          repositoryPath,
+          worktrees: [] as GitWorktreeSummary[],
+        })
+      : readJson<{ repositoryPath?: string; worktreeRoot?: string }>(
+          `/api/books/${encodeURIComponent(bookId)}/collaboration-context`,
+          "Git worktree",
+        ).then((ctx) => ({
+          repositoryPath: ctx.repositoryPath,
+          worktrees: ctx.worktreeRoot
+            ? ([{ path: ctx.worktreeRoot }] as GitWorktreeSummary[])
+            : [],
+        }));
+
+    const [sessionResult, contextResult] = await Promise.allSettled([
       sessionRequest,
-      worktreeRequest,
-      commitRequest ?? Promise.resolve<{ commits?: GitCommitSummary[] }>({ commits: [] }),
+      contextRequest,
     ]);
 
-    if (sessionResult.status === "fulfilled") setSessions(Array.isArray(sessionResult.value) ? sessionResult.value : []);
-    else { setSessions([]); setErrors((current) => ({ ...current, sessions: errorMessage("会话协作关系") })); }
+    if (sessionResult.status === "fulfilled") setSessions(sessionResult.value);
+    else {
+      setSessions([]);
+      setErrors((current) => ({ ...current, sessions: errorMessage("会话协作关系") }));
+    }
 
-    if (worktreeResult.status === "fulfilled") setWorktrees(worktreeResult.value.worktrees ?? []);
-    else { setWorktrees([]); setErrors((current) => ({ ...current, worktrees: errorMessage("Git worktree") })); }
+    if (contextResult.status === "fulfilled") {
+      setResolvedRepoPath(contextResult.value.repositoryPath || repositoryPath);
+      setWorktrees(contextResult.value.worktrees ?? []);
+    } else {
+      setResolvedRepoPath(repositoryPath);
+      setWorktrees([]);
+      if (!repositoryPath) {
+        setErrors((current) => ({ ...current, worktrees: errorMessage("Git worktree") }));
+      }
+    }
 
-    if (commitResult.status === "fulfilled") setCommits(commitResult.value.commits ?? []);
-    else { setCommits([]); setErrors((current) => ({ ...current, commits: errorMessage("Git 提交历史") })); }
+    // Product Runtime does not yet expose /api/git/log — keep empty with UI notice.
+    setCommits([]);
     setLoading(false);
   }, [bookId, repositoryPath]);
 
@@ -190,21 +241,27 @@ export function CollaborationVersionPanel({ bookId, repositoryPath }: { bookId: 
       </Section>
 
       <Section title="Git 提交版本时间轴">
-        {!repositoryPath ? <p className="text-sm text-muted-foreground">未绑定 repositoryPath，无法读取提交历史。</p>
-          : errors.commits ? <p role="alert" className="text-sm text-destructive">{errors.commits}</p>
-          : commits.length > 0 ? (
-            <ol className="relative space-y-3 pl-5 before:absolute before:bottom-2 before:left-[5px] before:top-2 before:w-px before:bg-border">
-              {commits.map((commit) => (
-                <li key={commit.hash} className="relative before:absolute before:-left-[18px] before:top-1.5 before:size-2 before:rounded-full before:bg-primary">
-                  <div className="flex flex-wrap items-baseline gap-2">
-                    <code className="text-xs text-primary">{commit.short}</code>
-                    <span className="text-sm font-medium">{commit.message}</span>
-                  </div>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{commit.author} · {commit.date}</p>
-                </li>
-              ))}
-            </ol>
-          ) : !loading ? <p className="text-sm text-muted-foreground">没有可显示的提交。</p> : null}
+        {!resolvedRepoPath ? (
+          <p className="text-sm text-muted-foreground">未绑定 repositoryPath，无法读取提交历史。</p>
+        ) : errors.commits ? (
+          <p role="alert" className="text-sm text-destructive">{errors.commits}</p>
+        ) : commits.length > 0 ? (
+          <ol className="relative space-y-3 pl-5 before:absolute before:bottom-2 before:left-[5px] before:top-2 before:w-px before:bg-border">
+            {commits.map((commit) => (
+              <li key={commit.hash} className="relative before:absolute before:-left-[18px] before:top-1.5 before:size-2 before:rounded-full before:bg-primary">
+                <div className="flex flex-wrap items-baseline gap-2">
+                  <code className="text-xs text-primary">{commit.short}</code>
+                  <span className="text-sm font-medium">{commit.message}</span>
+                </div>
+                <p className="mt-0.5 text-xs text-muted-foreground">{commit.author} · {commit.date}</p>
+              </li>
+            ))}
+          </ol>
+        ) : !loading ? (
+          <p className="text-sm text-muted-foreground">
+            仓库路径已绑定（{resolvedRepoPath}）。当前产品 Runtime 未暴露 Git 提交历史 API，可在本地 Git 客户端查看。
+          </p>
+        ) : null}
       </Section>
     </div>
   );

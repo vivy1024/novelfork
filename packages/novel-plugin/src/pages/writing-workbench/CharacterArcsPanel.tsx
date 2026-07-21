@@ -94,7 +94,7 @@ function SourceBadge({ source }: { source?: string }) {
 // ---------------------------------------------------------------------------
 
 export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps) {
-  const { data, loading, error } = useApi<ArcsResponse>(`/books/${bookId}/arcs`);
+  const { data, loading, error } = useApi<ArcsResponse>(`/api/books/${encodeURIComponent(bookId)}/arcs`);
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   if (loading) {
