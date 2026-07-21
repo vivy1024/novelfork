@@ -102,9 +102,4 @@ export type {
 	SkillSource,
 } from "../../narrafork-runtime-private/server/services/skill-service";
 
-export async function deleteProjectById(id: string): Promise<void> {
-	const { deleteProjectById: deleteRuntimeProjectById } = await import(
-		"../../narrafork-runtime-private/server/routes/projects"
-	);
-	await deleteRuntimeProjectById(id);
-}
+export { deleteProjectById } from "./delete-project";

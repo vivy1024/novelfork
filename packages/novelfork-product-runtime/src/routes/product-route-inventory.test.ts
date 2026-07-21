@@ -59,6 +59,7 @@ describe("NovelFork product route inventory", () => {
 				"POST /books",
 				"POST /books/import",
 				"POST /books/:bookId/claim",
+				"POST /books/:bookId/rebind-workspace",
 				"POST /books/:bookId/repair",
 				"POST /books/:bookId/retry",
 			].sort(),

@@ -531,19 +531,33 @@ export function resolveIsolatedRuntimeDependencyImport(
 	isolatedWorkspaceRoot: string,
 	path: string,
 	resolveDir: string,
+	fallbackResolveRoots: readonly string[] = [],
 ): string | undefined {
 	if (!isBareDependencySpecifier(path)) return undefined;
 
 	const workspaceRoot = resolve(isolatedWorkspaceRoot);
-	const parent = isPathInside(workspaceRoot, resolveDir) ? resolveDir : workspaceRoot;
-	try {
-		const resolvedDependency = Bun.resolveSync(path, parent);
-		return isAbsolute(resolvedDependency) && isPathInside(workspaceRoot, resolvedDependency)
-			? resolvedDependency
-			: undefined;
-	} catch {
-		return undefined;
+	const parents = [
+		isPathInside(workspaceRoot, resolveDir) ? resolveDir : workspaceRoot,
+		...fallbackResolveRoots.map((root) => resolve(root)),
+	];
+	const seen = new Set<string>();
+	for (const parent of parents) {
+		const normalizedParent = resolve(parent);
+		if (seen.has(normalizedParent)) continue;
+		seen.add(normalizedParent);
+		try {
+			const resolvedDependency = Bun.resolveSync(path, normalizedParent);
+			if (
+				isAbsolute(resolvedDependency) &&
+				isPathInside(workspaceRoot, resolvedDependency)
+			) {
+				return resolvedDependency;
+			}
+		} catch {
+			// Try the next isolated root (e.g. Runtime package node_modules).
+		}
 	}
+	return undefined;
 }
 
 /**
@@ -641,6 +655,10 @@ export function createIsolatedRuntimeResolverPlugin(
 					workspaceRoot,
 					args.path,
 					args.resolveDir,
+					// Bridge source is loaded from the product tree (outside the isolated
+					// workspace) so bare deps must still resolve via isolated Runtime /
+					// package installs rather than the host repo node_modules graph.
+					[isolatedRoot, join(isolatedRoot, "node_modules")],
 				);
 				return dependency ? { path: toBunFilePath(dependency) } : undefined;
 			});

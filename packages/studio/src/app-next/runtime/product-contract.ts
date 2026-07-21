@@ -680,6 +680,24 @@ export function createRuntimeProductClient(
         ),
       );
     },
+    rebindBookWorkspace: async (
+      bookId: string,
+      workspaceRoot: string,
+    ): Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }> => {
+      const normalizedBookId = bookId.trim();
+      const normalizedRoot = workspaceRoot.trim();
+      if (!normalizedBookId) throw new Error("修正作品目录需要 bookId");
+      if (!normalizedRoot) throw new Error("修正作品目录需要 workspaceRoot");
+      return runtimeJson(
+        `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/rebind-workspace`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ workspaceRoot: normalizedRoot }),
+        },
+        fetchOptions,
+      );
+    },
     listBookRoutines: (
       bookId: string,
     ): Promise<{ readonly routines: readonly ProjectRoutineStatus[] }> =>

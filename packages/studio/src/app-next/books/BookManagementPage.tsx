@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   BookOpen,
   FolderOpen,
+  FolderPen,
   Plus,
   RefreshCw,
   ShieldCheck,
@@ -58,6 +59,10 @@ export interface BookManagementPageProps {
   readonly onRepairBook: (
     bookId: string,
   ) => Promise<RuntimeBookProvisionOperation>;
+  readonly onRebindBookWorkspace: (
+    bookId: string,
+    workspaceRoot: string,
+  ) => Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }>;
   readonly onDeleteBook: (bookId: string, deleteWorkspace?: boolean) => Promise<void>;
 }
 
@@ -70,6 +75,7 @@ export function BookManagementPage({
   onClaimLegacyBook,
   onImportBook,
   onRepairBook,
+  onRebindBookWorkspace,
   onDeleteBook,
 }: BookManagementPageProps) {
   const [createOpen, setCreateOpen] = useState(false);
@@ -85,6 +91,9 @@ export function BookManagementPage({
   const [deleteTarget, setDeleteTarget] = useState<ManagedBook | null>(null);
   const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [deleteWorkspace, setDeleteWorkspace] = useState(false);
+  const [rebindTarget, setRebindTarget] = useState<ManagedBook | null>(null);
+  const [rebindPath, setRebindPath] = useState("");
+  const [rebindPickerOpen, setRebindPickerOpen] = useState(false);
 
   const claimLegacyBook = async () => {
     const bookId = legacyBookId.trim();
@@ -138,6 +147,28 @@ export function BookManagementPage({
     } catch (caught) {
       setActionError(
         caught instanceof Error ? caught.message : "修复作品绑定失败",
+      );
+    } finally {
+      setActionBookId(null);
+    }
+  };
+
+  const rebindBook = async () => {
+    if (!rebindTarget) return;
+    const workspaceRoot = rebindPath.trim();
+    if (!workspaceRoot) return;
+    setActionBookId(rebindTarget.id);
+    setActionError(null);
+    try {
+      const result = await onRebindBookWorkspace(rebindTarget.id, workspaceRoot);
+      setActionMessage(
+        `作品 ${result.bookId} 工作目录已修正为：${result.bookRoot}`,
+      );
+      setRebindTarget(null);
+      setRebindPath("");
+    } catch (caught) {
+      setActionError(
+        caught instanceof Error ? caught.message : "修正作品目录失败",
       );
     } finally {
       setActionBookId(null);
@@ -266,6 +297,17 @@ export function BookManagementPage({
                   {actionBookId === book.id ? "校验中…" : "修复绑定"}
                 </Button>
                 <Button
+                  variant="outline"
+                  disabled={actionBookId === book.id}
+                  onClick={() => {
+                    setRebindTarget(book);
+                    setRebindPath("");
+                  }}
+                >
+                  <FolderPen data-icon="inline-start" />
+                  修正目录
+                </Button>
+                <Button
                   variant="destructive"
                   disabled={actionBookId === book.id}
                   onClick={() => {
@@ -303,6 +345,88 @@ export function BookManagementPage({
         }}
         initialPath={importPath || undefined}
       />
+
+      <DirectoryPickerDialog
+        open={rebindPickerOpen}
+        onClose={() => setRebindPickerOpen(false)}
+        onSelect={(path) => {
+          setRebindPath(path);
+          setRebindPickerOpen(false);
+        }}
+        initialPath={rebindPath || undefined}
+      />
+
+      <Dialog
+        open={rebindTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && actionBookId === null) {
+            setRebindTarget(null);
+            setRebindPath("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>修正作品工作目录</DialogTitle>
+            <DialogDescription>
+              当作品目录迁移或绑定路径错误时，选择正确的绝对路径。服务端会重写
+              book_root、Runtime 项目路径，并标记为外部 workspace。
+              {rebindTarget ? (
+                <>
+                  {" "}
+                  当前作品：
+                  <strong className="mx-1 text-foreground">
+                    {rebindTarget.title}
+                  </strong>
+                </>
+              ) : null}
+            </DialogDescription>
+          </DialogHeader>
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="rebind-book-path">正确目录</FieldLabel>
+              <div className="flex gap-2">
+                <Input
+                  id="rebind-book-path"
+                  value={rebindPath}
+                  onChange={(event) => setRebindPath(event.target.value)}
+                  placeholder="选择包含 book.json 的作品目录"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setRebindPickerOpen(true)}
+                >
+                  选择目录
+                </Button>
+              </div>
+              <FieldDescription>
+                目录内 book.json 的 id 必须与当前作品一致；修正后不会移动文件。
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={actionBookId !== null}
+              onClick={() => {
+                setRebindTarget(null);
+                setRebindPath("");
+              }}
+            >
+              取消
+            </Button>
+            <Button
+              disabled={
+                !rebindTarget || !rebindPath.trim() || actionBookId !== null
+              }
+              onClick={() => void rebindBook()}
+            >
+              {actionBookId === rebindTarget?.id ? "修正中…" : "确认修正"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={importOpen && Boolean(importPath)}
