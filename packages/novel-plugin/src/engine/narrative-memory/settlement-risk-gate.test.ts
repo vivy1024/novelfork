@@ -20,15 +20,16 @@ describe("settlement risk gate", () => {
     const decision = decideSettlementRisk(draft({ eventType: "location_changed" }));
 
     expect(decision).toMatchObject({ decision: "auto_apply", riskLevel: "low" });
-    expect(decision.reason).toContain("低风险");
+    expect(decision.reason).toContain("自动应用");
   });
 
-  it("keeps medium-risk relationship and important character changes pending", () => {
-    expect(decideSettlementRisk(draft({ eventType: "relationship_changed", subject: "韩立", predicate: "信任", object: "厉飞雨" }))).toMatchObject({ decision: "pending", riskLevel: "medium" });
-    expect(decideSettlementRisk(draft({ eventType: "character_state_changed", subject: "韩立", predicate: "决定", object: "离开山门" }))).toMatchObject({ decision: "pending", riskLevel: "medium" });
+  it("auto-applies medium-risk relationship and character changes when confidence is sufficient", () => {
+    expect(decideSettlementRisk(draft({ eventType: "relationship_changed", subject: "韩立", predicate: "信任", object: "厉飞雨", confidence: 0.9 }))).toMatchObject({ decision: "auto_apply", riskLevel: "medium" });
+    expect(decideSettlementRisk(draft({ eventType: "character_state_changed", subject: "韩立", predicate: "决定", object: "离开山门", confidence: 0.88 }))).toMatchObject({ decision: "auto_apply", riskLevel: "medium" });
+    expect(decideSettlementRisk(draft({ eventType: "character_state_changed", subject: "韩立", predicate: "决定", object: "离开山门", confidence: 0.5 }))).toMatchObject({ decision: "pending", riskLevel: "medium" });
   });
 
-  it("keeps high-risk irreversible or canon-level events pending", () => {
+  it("keeps high-risk irreversible or canon-level events pending for author history review", () => {
     expect(decideSettlementRisk(draft({ eventType: "character_state_changed", subject: "厉飞雨", predicate: "死亡", object: "战斗中身亡" }))).toMatchObject({ decision: "pending", riskLevel: "high" });
     expect(decideSettlementRisk(draft({ eventType: "world_fact_introduced", subject: "世界规则", predicate: "改变", object: "灵根可被后天逆转" }))).toMatchObject({ decision: "pending", riskLevel: "high" });
     expect(decideSettlementRisk(draft({ eventType: "hook_resolved", subject: "小瓶", predicate: "核心伏笔回收", object: "证明能催熟药草" }))).toMatchObject({ decision: "pending", riskLevel: "high" });

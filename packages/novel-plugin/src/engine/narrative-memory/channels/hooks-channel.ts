@@ -155,10 +155,16 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
         });
       }
 
-      const cards = scored
+      // 先按相关度排序；limit 截断时优先保住 runtime/pending hook，经纬 foreshadowing 作兜底。
+      const ordered = scored
         .sort((a, b) => b.score - a.score || a.card.sourceId.localeCompare(b.card.sourceId))
-        .map((item) => item.card)
-        .slice(0, limit);
+        .map((item) => item.card);
+      const authoritative = ordered.filter((card) => card.sourceType === "hook" || card.sourceType === "fact");
+      const fallback = ordered.filter((card) => card.sourceType !== "hook" && card.sourceType !== "fact");
+      const reserved = authoritative.slice(0, limit);
+      const remainingSlots = Math.max(0, limit - reserved.length);
+      const chosenIds = new Set([...reserved, ...fallback.slice(0, remainingSlots)].map((card) => card.id));
+      const cards = ordered.filter((card) => chosenIds.has(card.id)).slice(0, limit);
 
       if (cards.length === 0) {
         return { status: "skipped", cards: [], warnings: ["hooks channel 为空：未找到 runtime hooks、pending hooks 或伏笔经纬条目。"] };

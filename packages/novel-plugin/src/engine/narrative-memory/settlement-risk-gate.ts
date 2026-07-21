@@ -91,16 +91,26 @@ export function decideSettlementRisk(draft: NarrativeEventDraft): SettlementRisk
   }
 
   if (draft.eventType === "world_fact_introduced" || hasHighRiskTerm(draft)) {
-    return { decision: "pending", riskLevel: "high", reason: "高风险事件：可能改变 canon/rules、核心伏笔、时间线或不可逆角色/关系状态，需人工审查。" };
+    return { decision: "pending", riskLevel: "high", reason: "高风险事件：可能改变 canon/rules、核心伏笔、时间线或不可逆角色/关系状态；默认进入历史待审队列，不阻断 agent 后续写作。" };
   }
 
-  if (draft.eventType === "relationship_changed" || draft.eventType === "character_state_changed" || draft.eventType === "hook_resolved" || draft.confidence < 0.75) {
-    return { decision: "pending", riskLevel: "medium", reason: "中风险事件：会影响后续写作，先进入 pending，不自动沉淀。" };
+  // 产品口径：章后结算默认自动；中低风险且证据充分时直接沉淀，作者以历史面板查看。
+  if (draft.confidence < 0.75) {
+    return { decision: "pending", riskLevel: "medium", reason: "置信度不足 0.75，暂不自动沉淀，进入历史待审。" };
   }
 
-  if (isLowRiskEventType(draft.eventType)) {
-    return { decision: "auto_apply", riskLevel: "low", reason: "低风险事件：局部动态变化且有正文证据，可自动沉淀。" };
+  if (
+    isLowRiskEventType(draft.eventType)
+    || draft.eventType === "relationship_changed"
+    || draft.eventType === "character_state_changed"
+    || draft.eventType === "hook_resolved"
+  ) {
+    return {
+      decision: "auto_apply",
+      riskLevel: isLowRiskEventType(draft.eventType) ? "low" : "medium",
+      reason: "章后结算自动应用：有正文证据且置信度足够；作者可在叙事记忆历史中回看。",
+    };
   }
 
-  return { decision: "pending", riskLevel: "medium", reason: "默认按中风险处理，避免无审查自动落库。" };
+  return { decision: "auto_apply", riskLevel: "medium", reason: "默认自动结算；高风险词与 world_fact 仍保持 pending。" };
 }

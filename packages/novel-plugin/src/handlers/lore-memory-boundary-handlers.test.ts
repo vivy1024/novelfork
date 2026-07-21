@@ -10,6 +10,8 @@ import type { NarrativeEvent, NarrativeFact } from "../engine/narrative-memory/t
 
 let activeStorage: StorageDatabase | undefined;
 
+// 本文件只依赖 getStorageDatabase。残缺 mock 可能污染同进程后续文件，
+// 验证时请单独跑本文件，或与 pipeline 分进程执行。
 vi.mock("@vivy1024/novelfork-core", () => ({
   getStorageDatabase: () => {
     if (!activeStorage) throw new Error("test storage not initialized");
@@ -138,7 +140,24 @@ describe("lore-memory-boundary handlers", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error).toBe("dynamic-memory-boundary");
-    expect(result.summary).toContain("memory.events");
+    expect(result.summary).toMatch(/Narrative Memory|memory\.events/);
+  });
+
+  it("rejects chapter-dynamic content even without dynamic category labels", async () => {
+    const { handleLoreWrite } = await import("./lore-memory-boundary-handlers.js");
+
+    const result = await handleLoreWrite({
+      bookId: "book-1",
+      action: "create",
+      title: "第12章状态变化",
+      contentMd: "本章结算：韩立决定继续隐忍。",
+      category: "characters",
+      layer: "dynamic",
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toBe("dynamic-memory-boundary");
   });
 
   it("threads memoryContext into scene.spec fallback constraints", async () => {

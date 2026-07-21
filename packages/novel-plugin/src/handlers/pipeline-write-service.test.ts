@@ -70,7 +70,7 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).toContain("narrativeSettlement");
   });
 
-  it("checks high-risk pending events before writer generation", async () => {
+  it("checks high-risk pending events before writer generation but defaults to non-blocking auto settlement", async () => {
     const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
 
     const pendingCheckIndex = source.indexOf("listHighRiskPendingNarrativeEvents");
@@ -78,6 +78,8 @@ describe("pipeline.write canonical result contract", () => {
 
     expect(pendingCheckIndex).toBeGreaterThan(-1);
     expect(writerIndex).toBeGreaterThan(-1);
+    expect(source).toContain("continueWithHighRiskPending = true");
+    expect(source).toContain("默认不阻断写作");
     expect(pendingCheckIndex).toBeLessThan(writerIndex);
   });
 });
@@ -103,7 +105,7 @@ describe("pipeline.write high-risk pending reminder", () => {
     expect(reminder).toContain("高风险 pending NarrativeEvents");
     expect(reminder).toContain("event-1");
     expect(reminder).toContain("灵根可被后天逆转");
-    expect(reminder).toContain("memory.events");
+    expect(reminder).toContain("默认不阻断写作");
   });
 });
 

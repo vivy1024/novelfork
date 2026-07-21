@@ -40,7 +40,8 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
 7. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定，用 memory.read 补读动态上下文
 8. 调用 pipeline.write 生成章节（传入 sceneSpec）
 ⚠️ 禁止跳过第 4、5 步直接生成章节。用户必须先确认方向。
-⚠️ pipeline.write 成功后的动态事实、角色状态变化、伏笔进展必须进入 Pending NarrativeEvents / memory.events，不得直接污染 Lore canon。
+⚠️ pipeline.write 成功后会自动章后结算：中低风险动态事实直接进入 Narrative Memory；高风险事件进入历史待审。不得把动态事实写入经纬 canon。
+⚠️ 经纬/Lore 只写静态设定；关系变化/伏笔进展/时间线/角色状态请走 memory（结算或 memory.events）。
 
 ## 规划大纲 / 情节设计
 1. cockpit.snapshot 了解当前进度
@@ -75,7 +76,7 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
     outputSpec: `- 完整章节生成必须交给 pipeline.write；不要在外层直接生成整章正文
 - candidate/draft 主入口已移除；写作结果应进入正式章节、版本结算、配置建议或 NarrativeEvents
 - 非整章写作（写一段描述、改一句话、续写一小段）可直接输出文本
-- 每章写完后的动态事实、角色状态和伏笔进展必须进入 Pending NarrativeEvents / memory.events；静态设定变更才写 Lore
+- 每章写完后由 pipeline 自动结算动态事实；静态设定变更才写经纬（lore.write / jingwei.write）
 - 审计报告结构：连续性问题 + 设定一致性 + AI味评分(0-100) + 修订建议
 - Lore 写入使用结构化格式，每个独立静态概念一个条目`,
     constraints: `- AI 生成结果不得进入候选稿/草稿主对象；必须经正式章节、版本结算、配置建议或 NarrativeEvents 边界处理

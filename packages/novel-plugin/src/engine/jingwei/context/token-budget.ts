@@ -1,4 +1,12 @@
-export { estimateTokenCount as estimateTokens } from "@vivy1024/novelfork-core";
+/**
+ * Lightweight local token estimate for jingwei/narrative-memory budgeting.
+ * Keep this self-contained so unit tests that mock @vivy1024/novelfork-core
+ * do not break re-export resolution. Matches core estimateTokenCount (len/4).
+ */
+export function estimateTokens(text: string): number {
+  if (!text) return 0;
+  return Math.ceil(text.length / 4);
+}
 import type { JingweiLegacyContextItem } from "../types.js";
 
 export interface TokenBudgetResult<TItem extends JingweiLegacyContextItem = JingweiLegacyContextItem> {

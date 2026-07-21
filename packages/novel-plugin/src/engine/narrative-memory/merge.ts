@@ -1,17 +1,6 @@
-import { mergeDuplicateCardReasons, narrativeCardDedupeKeys } from "./dedupe.js";
+import { mergeDuplicateCardReasons, narrativeCardDedupeKeys, preferNarrativeCard } from "./dedupe.js";
 import { scoreNarrativeContextCard, type NarrativeScoringContext } from "./scoring.js";
 import type { NarrativeContextCard } from "./types.js";
-
-function preferCard(a: NarrativeContextCard, b: NarrativeContextCard): NarrativeContextCard {
-  if (a.channel === "hard" && b.channel !== "hard") return a;
-  if (b.channel === "hard" && a.channel !== "hard") return b;
-  const aScore = a.score ?? 0;
-  const bScore = b.score ?? 0;
-  if (aScore !== bScore) return aScore > bScore ? a : b;
-  if (a.priority !== b.priority) return a.priority > b.priority ? a : b;
-  if (a.importance !== b.importance) return a.importance > b.importance ? a : b;
-  return a.id.localeCompare(b.id) <= 0 ? a : b;
-}
 
 export function mergeNarrativeContextCards(
   cards: readonly NarrativeContextCard[],
@@ -34,7 +23,7 @@ export function mergeNarrativeContextCards(
 
     const group = [...duplicateIds].map((id) => byId.get(id)).filter((item): item is NarrativeContextCard => Boolean(item));
     group.push(card);
-    const winner = group.reduce(preferCard);
+    const winner = group.reduce(preferNarrativeCard);
     const losers = group.filter((item) => item.id !== winner.id);
 
     for (const item of group) byId.delete(item.id);
