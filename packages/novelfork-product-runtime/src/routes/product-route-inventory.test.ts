@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Hono } from "hono";
 import {
+	bookDomainRoutes,
 	bookNarratorGatewayRoutes,
 	bookWorkspaceRoutes,
 	novelForkProductBooksRoutes,
@@ -72,5 +73,10 @@ describe("NovelFork product route inventory", () => {
 
 	test("keeps book narrator history and creation on the trusted product gateway", () => {
 		expect(inventory(bookNarratorGatewayRoutes)).toEqual(["GET /", "POST /"].sort());
+	});
+
+	test("exposes NewBookGuide completion endpoint on book domain routes", () => {
+		const paths = inventory(bookDomainRoutes);
+		expect(paths).toContain("POST /guided-setup");
 	});
 });

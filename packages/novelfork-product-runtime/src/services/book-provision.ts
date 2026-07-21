@@ -29,6 +29,11 @@ import { and, desc, eq } from "drizzle-orm";
 // imports limited to novel-plugin domain services rather than copying their
 // SQLite and resource contracts into Runtime code.
 import { createBookRepository } from "../../../novel-plugin/src/engine/jingwei/repositories/book-repo";
+import {
+	createJingweiEntriesFromGuide,
+	type GuidedSetupAnswers,
+	getGenreTemplate,
+} from "../../../novel-plugin/src/engine/jingwei";
 import { createWritingResourceService } from "../../../novel-plugin/src/engine/writing-resource/service";
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
 import { getNovelForkProductDatabase } from "../db/database";
@@ -76,6 +81,23 @@ export type ProductActor = { userId: string; role: "admin" | "user" };
 export type ProductBookImportInput = {
 	sourcePath: string;
 	bookId?: string;
+};
+
+export type GuidedSetupAnswer = {
+	mode: "preset" | "custom" | "random" | string;
+	value: string;
+};
+
+export type GuidedSetupInput = {
+	answers: Record<string, GuidedSetupAnswer>;
+};
+
+export type GuidedSetupResult = {
+	ok: true;
+	bookId: string;
+	createdEntries: number;
+	genre: string;
+	complexity: "light" | "medium" | "heavy";
 };
 
 const READY_STATE: ProvisionState = "ready";
@@ -369,6 +391,18 @@ function generatedBookId(title: string): string {
 	return `${stem || "book"}-${randomUUID().slice(0, 8)}`;
 }
 
+/**
+ * User-selected absolute workspace roots must stay on that path.
+ * Previously only source=existing honored workspaceRoot; source=new silently
+ * rewrote book_root into ~/.novelfork/books/<id>, which is a binding bug.
+ */
+export function isExternalBookWorkspace(
+	projectInit?: ProductBookInput["projectInit"],
+): boolean {
+	if (!projectInit?.workspaceRoot?.trim()) return false;
+	return projectInit.source === "existing" || projectInit.source === "new";
+}
+
 function normalizeInput(
 	input: ProductBookInput,
 ): Required<Pick<ProductBookInput, "title">> & ProductBookInput {
@@ -377,16 +411,24 @@ function normalizeInput(
 	if (title.length > 200) throw new ValidationError("title must be at most 200 characters");
 	const rawProjectInit = input.projectInit as Partial<NonNullable<ProductBookInput["projectInit"]>> | undefined;
 	const source = rawProjectInit?.source ?? (rawProjectInit as { repositorySource?: ProductBookWorkspaceSource } | undefined)?.repositorySource ?? "none";
+	const workspaceRoot = rawProjectInit?.workspaceRoot?.trim() || undefined;
+	// External paths are user-owned: never default to managed auto-delete.
+	const managedByNovelFork = workspaceRoot
+		? false
+		: (rawProjectInit?.managedByNovelFork ?? source !== "existing");
 	const projectInit = {
 		source,
-		managedByNovelFork: rawProjectInit?.managedByNovelFork ?? source !== "existing",
-		...(rawProjectInit?.workspaceRoot?.trim() ? { workspaceRoot: rawProjectInit.workspaceRoot.trim() } : {}),
+		managedByNovelFork,
+		...(workspaceRoot ? { workspaceRoot } : {}),
 	};
 	if (!["none", "new", "existing"].includes(projectInit.source)) {
 		throw new ValidationError("projectInit.source is invalid");
 	}
 	if (projectInit.source === "existing" && !projectInit.workspaceRoot?.trim()) {
 		throw new ValidationError("workspaceRoot is required for an existing workspace");
+	}
+	if (projectInit.source === "new" && projectInit.managedByNovelFork === false && !projectInit.workspaceRoot?.trim()) {
+		throw new ValidationError("workspaceRoot is required when creating an unmanaged new workspace");
 	}
 	if (projectInit.workspaceRoot && !isAbsolute(projectInit.workspaceRoot.trim())) {
 		throw new ValidationError("workspaceRoot must be an absolute path");
@@ -652,8 +694,7 @@ async function syncImportedChapters(bookId: string, bookRoot: string): Promise<v
 
 function buildBookConfig(operation: ProvisionOperation): Record<string, unknown> {
 	const input = operation.inputJson as ProductBookInput;
-	const isExternalWorkspace =
-		input.projectInit?.source === "existing" && input.projectInit.managedByNovelFork === false;
+	const isExternalWorkspace = isExternalBookWorkspace(input.projectInit);
 	return {
 		id: operation.bookId,
 		title: operation.title,
@@ -667,6 +708,78 @@ function buildBookConfig(operation: ProvisionOperation): Record<string, unknown>
 		createdAt: operation.createdAt,
 		updatedAt: now(),
 	};
+}
+
+function normalizeGuidedSetupAnswers(
+	raw: Record<string, GuidedSetupAnswer> | undefined,
+): GuidedSetupAnswers {
+	if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+		throw new ValidationError("guided-setup answers must be an object");
+	}
+	const answers: Record<string, GuidedSetupAnswer> = {};
+	for (const [key, value] of Object.entries(raw)) {
+		if (!key.trim()) continue;
+		if (!value || typeof value !== "object" || Array.isArray(value)) {
+			throw new ValidationError(`guided-setup answer "${key}" is invalid`);
+		}
+		const mode = typeof value.mode === "string" ? value.mode : "random";
+		const answerValue = typeof value.value === "string" ? value.value : "";
+		answers[key] = { mode, value: answerValue };
+	}
+	return answers as GuidedSetupAnswers;
+}
+
+function guidedAnswerText(answer: { mode: string; value: string } | undefined): string | null {
+	if (!answer || answer.mode === "random") return null;
+	const text = answer.value?.trim();
+	return text ? text : null;
+}
+
+function parseGuidedChapterWordCount(raw: string | null): number | null {
+	if (!raw) return null;
+	const digits = raw.match(/\d{3,6}/u)?.[0];
+	if (!digits) return null;
+	const n = Number(digits);
+	if (!Number.isSafeInteger(n) || n < 500 || n > 100_000) return null;
+	return n;
+}
+
+function mapGuidedPlatform(raw: string | null): "tomato" | "feilu" | "qidian" | "other" | null {
+	if (!raw) return null;
+	const value = raw.trim().toLowerCase();
+	if (value.includes("番茄") || value.includes("tomato")) return "tomato";
+	if (value.includes("飞卢") || value.includes("feilu")) return "feilu";
+	if (value.includes("起点") || value.includes("qidian")) return "qidian";
+	if (value.includes("晋江") || value.includes("七猫") || value.includes("暂不确定")) return "other";
+	return "other";
+}
+
+async function appendGuidedStoryNotes(
+	bookRoot: string,
+	answers: GuidedSetupAnswers,
+): Promise<void> {
+	const premise = guidedAnswerText(answers.premise);
+	const protagonist = guidedAnswerText(answers.protagonist);
+	const goldenFinger = guidedAnswerText(answers.goldenFinger);
+	const world = guidedAnswerText(answers.worldModel);
+	const tone = guidedAnswerText(answers.tone);
+	const lines: string[] = [];
+	if (premise) lines.push(`## 核心前提\n${premise}`);
+	if (protagonist) lines.push(`## 主角\n${protagonist}`);
+	if (goldenFinger) lines.push(`## 金手指\n${goldenFinger}`);
+	if (world) lines.push(`## 世界观\n${world}`);
+	if (tone) lines.push(`## 文风基调\n${tone}`);
+	if (lines.length === 0) return;
+
+	const authorIntentPath = join(bookRoot, "story", "author_intent.md");
+	const existing = await readFile(authorIntentPath, "utf8").catch(() => "# 作者意图\n\n");
+	const stamp = new Date().toISOString().slice(0, 10);
+	const block = `\n\n## 新书引导（${stamp}）\n\n${lines.join("\n\n")}\n`;
+	if (existing.includes("## 新书引导（")) {
+		// Keep first guided seed; later completions should not duplicate.
+		return;
+	}
+	await writeFile(authorIntentPath, `${existing.trimEnd()}${block}`, "utf8");
 }
 
 async function writeBookConfig(
@@ -790,11 +903,11 @@ export class NovelForkProductBookService {
 			const binding = await bookRuntimeBindingService.getByBookId(operation.bookId);
 			if (!binding || !this.canAccessBinding(actor, binding)) continue;
 			const input = operation.inputJson as ProductBookInput;
-		const root = await resolveTrustedBookRoot(
-			binding,
-			getControlledBooksRoot(),
-			input.projectInit?.source === "existing" && input.projectInit.managedByNovelFork === false,
-		);
+			const root = await resolveTrustedBookRoot(
+				binding,
+				getControlledBooksRoot(),
+				isExternalBookWorkspace(input.projectInit),
+			);
 			const config = root ? await readBookConfig(root, operation.bookId).catch(() => null) : null;
 			if (!config) continue;
 			results.push(this.mapBook(operation));
@@ -818,7 +931,11 @@ export class NovelForkProductBookService {
 			throw new NotFoundError("Book", normalizedBookId);
 		}
 		const input = operation.inputJson as ProductBookInput;
-		const trustedBookRoot = await resolveTrustedBookRoot(binding, getControlledBooksRoot(), input.projectInit?.source === "existing" && input.projectInit.managedByNovelFork === false);
+		const trustedBookRoot = await resolveTrustedBookRoot(
+			binding,
+			getControlledBooksRoot(),
+			isExternalBookWorkspace(input.projectInit),
+		);
 		if (!trustedBookRoot) {
 			throw new ValidationError("Book binding does not resolve to a trusted product directory");
 		}
@@ -1205,6 +1322,64 @@ export class NovelForkProductBookService {
 		await this.getReadyBookRoot(bookId, actor);
 	}
 
+	/**
+	 * Apply NewBookGuide answers: update book.json metadata and seed jingwei entries.
+	 * This endpoint was lost when Studio server was retired; the frontend still posts here.
+	 */
+	async applyGuidedSetup(
+		bookId: string,
+		input: GuidedSetupInput,
+		actor: ProductActor,
+	): Promise<GuidedSetupResult> {
+		const { root, config } = await this.getReadyBookRoot(bookId, actor);
+		const answers = normalizeGuidedSetupAnswers(input.answers);
+		const genre = guidedAnswerText(answers.genre) ?? String(config.genre ?? "未分类");
+		const template = getGenreTemplate(genre);
+		const chapterWordCount =
+			parseGuidedChapterWordCount(guidedAnswerText(answers.chapterWordCount)) ??
+			(typeof config.chapterWordCount === "number" ? config.chapterWordCount : 3000);
+		const platform = mapGuidedPlatform(guidedAnswerText(answers.platform)) ??
+			(typeof config.platform === "string" ? config.platform : "other");
+
+		const nextConfig: Record<string, unknown> = {
+			...config,
+			genre,
+			platform,
+			chapterWordCount,
+			complexity: template.complexity,
+			status: config.status === "incubating" ? "outlining" : config.status,
+			updatedAt: now(),
+		};
+		const aiTaste = guidedAnswerText(answers.aiTasteLevel);
+		if (aiTaste) nextConfig.aiTasteLevel = aiTaste;
+		const writingPhilosophy = guidedAnswerText(answers.writingPhilosophy);
+		if (writingPhilosophy) nextConfig.writingPhilosophy = writingPhilosophy;
+		const tone = guidedAnswerText(answers.tone);
+		if (tone) nextConfig.tone = tone;
+
+		await writeBookConfig(root, nextConfig);
+
+		// Best-effort story notes so the workbench has human-readable seeds even when
+		// SQLite jingwei is empty or later re-imported.
+		await appendGuidedStoryNotes(root, answers).catch(() => undefined);
+
+		const storage = getStorageDatabase();
+		const { created } = await createJingweiEntriesFromGuide(
+			bookId,
+			answers as GuidedSetupAnswers,
+			template,
+			storage,
+		);
+
+		return {
+			ok: true,
+			bookId,
+			createdEntries: created,
+			genre,
+			complexity: template.complexity,
+		};
+	}
+
 	async getWorkspaceFileTree(
 		bookId: string,
 		actor: ProductActor,
@@ -1498,7 +1673,7 @@ export class NovelForkProductBookService {
 		const root = await resolveTrustedBookRoot(
 			binding,
 			getControlledBooksRoot(),
-			input.projectInit?.source === "existing" && input.projectInit.managedByNovelFork === false,
+			isExternalBookWorkspace(input.projectInit),
 		);
 		if (!root)
 			throw new ValidationError("Book binding no longer resolves to a readable workspace");
@@ -1566,23 +1741,44 @@ export class NovelForkProductBookService {
 		const input = operation.inputJson as ProductBookInput;
 		const configuredWorkspace = input.projectInit?.workspaceRoot?.trim();
 		const source = input.projectInit?.source ?? "none";
-		const root = source === "existing" && configuredWorkspace
-			? await realpath(configuredWorkspace).catch(() => { throw new ValidationError("workspaceRoot does not exist"); })
+		const external = isExternalBookWorkspace(input.projectInit);
+		const root = external
+			? resolve(configuredWorkspace as string)
 			: await this.controlledBookRoot(operation.bookId, true);
 		const rootInfo = await stat(root).catch(() => null);
 		if (rootInfo) {
 			if (!rootInfo.isDirectory()) {
 				throw new ValidationError(
-					source === "existing" ? "workspaceRoot must be a directory" : "Book root must be a directory",
+					external ? "workspaceRoot must be a directory" : "Book root must be a directory",
 				);
 			}
-			if (source === "existing") {
-				if (await pathExists(join(root, "book.json"))) await readImportBookConfig(root);
-				else await initializeExternalBookConfig(root, operation);
+			if (external) {
+				if (await pathExists(join(root, "book.json"))) {
+					if (source === "existing") {
+						await readImportBookConfig(root);
+						return;
+					}
+					// source=new into a directory that already has a book.json: only accept same id.
+					await readBookConfig(root, operation.bookId).catch(() => {
+						throw new ValidationError(
+							"所选目录已存在其他作品的 book.json，请换空目录或使用「已有 workspace」",
+						);
+					});
+					return;
+				}
+				if (source === "existing") {
+					await initializeExternalBookConfig(root, operation);
+					return;
+				}
+				// source=new on an existing empty/non-book directory: scaffold in place.
+				await writeBookScaffold(root, operation);
 				return;
 			}
 			await readBookConfig(root, operation.bookId);
 			return;
+		}
+		if (external) {
+			await mkdir(resolve(root, ".."), { recursive: true });
 		}
 		const staging = join(resolve(root, ".."), `.${basename(root)}.provision-${operation.id}`);
 		await rm(staging, { recursive: true, force: true });
@@ -1639,11 +1835,14 @@ export class NovelForkProductBookService {
 
 	private async bindRuntime(operation: ProvisionOperation): Promise<ProvisionOperation> {
 		const input = operation.inputJson as ProductBookInput;
-		const root = input.projectInit?.source === "existing" && input.projectInit.workspaceRoot
-			? await realpath(input.projectInit.workspaceRoot)
+		const external = isExternalBookWorkspace(input.projectInit);
+		const root = external && input.projectInit?.workspaceRoot
+			? await realpath(input.projectInit.workspaceRoot).catch(() => {
+					throw new ValidationError("workspaceRoot does not exist");
+				})
 			: await this.controlledBookRoot(operation.bookId, false);
 		await readBookConfig(root, operation.bookId).catch(async () => {
-			if (input.projectInit?.source === "existing") await readImportBookConfig(root);
+			if (external) await readImportBookConfig(root);
 			else throw new ValidationError("Book metadata is invalid");
 		});
 		let current = operation;
