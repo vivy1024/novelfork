@@ -154,7 +154,7 @@ describe("根 Host 编译契约", () => {
   });
 
   test("compile 由根级产品编排生成 NovelFork 根入口产物", () => {
-    expect(packageJson.version).toBe("3.2.0");
+    expect(packageJson.version).toBe("3.2.1");
     expect(packageJson.scripts.compile).toBe(
       "bun scripts/compile-product-runtime.ts --platform=windows-x64",
     );
