@@ -2,6 +2,7 @@
   "name": "novelfork",
   "version": "3.2.0",
   "private": true,
+  "packageManager": "pnpm@10.24.0",
   "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",
   "keywords": [
     "ai-novel-writing",
@@ -43,7 +44,7 @@
   },
   "engines": {
     "node": ">=22.5.0",
-    "pnpm": ">=9.0.0"
+    "pnpm": ">=10.24.0"
   },
   "dependencies": {
     "fuzzysort": "3.1.0",
@@ -57,14 +58,18 @@
     "esbuild": "0.28.0"
   },
   "overrides": {
-    "@tiptap/core": "2.27.2",
-    "@tiptap/pm": "2.27.2",
-    "@tiptap/extension-code-block": "2.27.2",
-    "@tiptap/extension-text-style": "2.27.2",
-    "@tiptap/react": "2.27.2",
-    "@tiptap/starter-kit": "2.27.2",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "narrafork>@tiptap/extension-link": "3.27.3",
+      "narrafork>@tiptap/markdown": "3.27.3",
+      "narrafork>@tiptap/pm": "3.27.3",
+      "narrafork>@tiptap/react": "3.27.3",
+      "narrafork>@tiptap/starter-kit": "3.27.3",
+      "prosemirror-model": "1.25.11"
+    }
   },
   "workspaces": [
     "packages/*",

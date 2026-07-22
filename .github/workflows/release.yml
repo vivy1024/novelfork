@@ -20,12 +20,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -41,12 +45,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -90,13 +98,17 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -196,13 +208,17 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
           registry-url: https://registry.npmjs.org
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -294,7 +310,7 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
@@ -303,7 +319,7 @@ jobs:
 
       - uses: oven-sh/setup-bun@v2
         with:
-          bun-version: latest
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
 
@@ -311,7 +327,7 @@ jobs:
         run: node scripts/set-package-versions.mjs "${{ needs.publish-canary.outputs.release_version }}" --root .
 
       - name: Build Bun single-exe artifact
-        run: pnpm --dir packages/studio compile
+        run: bun scripts/compile-product-runtime.ts --platform=linux-x64
 
       - uses: actions/upload-artifact@v4
         with:

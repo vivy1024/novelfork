@@ -195,7 +195,13 @@ export function configureSandboxRootDependencies(workspaceRoot: string): void {
 
 function copyIsolatedProductWorkspace(sourceRuntimeRoot: string, destinationRoot: string): string {
 	const sourceWorkspaceRoot = dirname(dirname(sourceRuntimeRoot));
-	const requiredRootFiles = ["package.json", "bun.lock", "tsconfig.json", "main.ts"] as const;
+	const requiredRootFiles = [
+		"package.json",
+		"pnpm-lock.yaml",
+		"pnpm-workspace.yaml",
+		"tsconfig.json",
+		"main.ts",
+	] as const;
 	for (const file of requiredRootFiles) {
 		const source = join(sourceWorkspaceRoot, file);
 		if (!existsSync(source) || !statSync(source).isFile()) {
@@ -680,46 +686,37 @@ export function createRuntimeBuildEnvironment(
 	return environment;
 }
 
-function hasCompleteWorkspaceLockfile(workspaceRoot: string): boolean {
-	const lockfilePath = join(workspaceRoot, "bun.lock");
-	if (!existsSync(lockfilePath) || !statSync(lockfilePath).isFile()) return false;
+const PNPM_COMMAND = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
-	try {
-		const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8")) as {
-			readonly workspaces?: Record<string, unknown>;
-		};
-		if (!lockfile.workspaces) return false;
-		for (const entry of readdirSync(join(workspaceRoot, "packages"), { withFileTypes: true })) {
-			if (!entry.isDirectory()) continue;
-			const manifest = join(workspaceRoot, "packages", entry.name, "package.json");
-			if (existsSync(manifest) && !Object.hasOwn(lockfile.workspaces, `packages/${entry.name}`)) {
-				return false;
-			}
-		}
-		return true;
-	} catch {
-		return false;
+function runPnpm(
+	workspaceRoot: string,
+	arguments_: readonly string[],
+	environment: NodeJS.ProcessEnv,
+	purpose: string,
+): void {
+	const result = Bun.spawnSync([PNPM_COMMAND, ...arguments_], {
+		cwd: workspaceRoot,
+		env: environment,
+		stdio: ["inherit", "inherit", "inherit"],
+	});
+	if (result.exitCode !== 0) {
+		throw new Error(`${purpose} failed with exit code ${result.exitCode ?? "unknown"}`);
 	}
 }
 
 function runSandboxInstall(workspaceRoot: string, environment: NodeJS.ProcessEnv): void {
-	const frozen = hasCompleteWorkspaceLockfile(workspaceRoot);
-	if (!frozen) {
-		console.log("→ Root Bun lockfile does not cover every product workspace; refreshing the sandbox-only lockfile...");
-		rmSync(join(workspaceRoot, "bun.lock"), { force: true });
-	}
-
-	const result = Bun.spawnSync(
-		frozen ? [process.execPath, "install", "--frozen-lockfile"] : [process.execPath, "install"],
-		{
-			cwd: workspaceRoot,
-			env: environment,
-			stdio: ["inherit", "inherit", "inherit"],
-		},
+	// The sandbox mutates only its copied manifests to add compiler-only pins.
+	// Refresh its private PNPM lock before using a frozen install; source lockfiles
+	// and the Runtime's upstream Bun lock remain untouched.
+	console.log("→ Refreshing the sandbox-only PNPM lockfile...");
+	runPnpm(workspaceRoot, ["install", "--lockfile-only"], environment, "Sandbox PNPM lockfile refresh");
+	console.log("→ Installing the isolated product workspace from its frozen PNPM lockfile...");
+	runPnpm(
+		workspaceRoot,
+		["install", "--frozen-lockfile"],
+		environment,
+		"Isolated product workspace PNPM install",
 	);
-	if (result.exitCode !== 0) {
-		throw new Error(`Isolated product workspace install failed with exit code ${result.exitCode ?? "unknown"}`);
-	}
 }
 
 function assertWorkspaceInstallation(workspaceRoot: string): void {
