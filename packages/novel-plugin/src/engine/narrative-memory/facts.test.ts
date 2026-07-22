@@ -89,6 +89,34 @@ describe("Narrative facts", () => {
     }
   });
 
+  it("reads one current ledger truth per state slot", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({
+        id: "state-old",
+        subject: "韩立",
+        predicate: "状态",
+        object: "犹豫",
+        validFromChapter: 1,
+        validUntilChapter: 11,
+      }));
+      upsertNarrativeFact(storage, fact({
+        id: "state-new",
+        subject: "韩立",
+        predicate: "状态",
+        object: "坚定",
+        validFromChapter: 11,
+      }));
+
+      const result = searchFactsByEntities(storage, { bookId: "book-1", entities: ["韩立"], currentChapter: 12 });
+
+      expect(result.map((item) => item.id)).toEqual(["state-new"]);
+      expect(result[0]?.object).toBe("坚定");
+    } finally {
+      storage.close();
+    }
+  });
+
   it("expands one-hop related facts with per-entity and total limits", async () => {
     const storage = await createStorage();
     try {

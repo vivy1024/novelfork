@@ -76,8 +76,15 @@ describe("NovelFork product route inventory", () => {
 		expect(inventory(bookNarratorGatewayRoutes)).toEqual(["GET /", "POST /"].sort());
 	});
 
-	test("exposes NewBookGuide completion endpoint on book domain routes", () => {
+	test("exposes book-scoped writing configuration endpoints on trusted domain routes", () => {
 		const paths = inventory(bookDomainRoutes);
 		expect(paths).toContain("POST /guided-setup");
+		expect(paths).toEqual(expect.arrayContaining([
+			"PUT /",
+			"GET /presets",
+			"PUT /presets",
+			"GET /beat-templates",
+			"PUT /beat-template",
+		]));
 	});
 });

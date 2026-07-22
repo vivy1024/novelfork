@@ -1,9 +1,17 @@
 import { ValidationError } from "@vivy1024/narrafork-runtime-bridge";
+import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import {
+	handleBeatRead,
+	handleBeatWrite,
+	handlePresetsRead,
+	handlePresetsWrite,
+} from "../../../novel-plugin/src/handlers/preset-beat-handlers";
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import {
 	getProductModelStatus,
 	novelForkProductBookService,
+	type ProductBookBasicSettingsPatch,
 	type ProductBookImportInput,
 	type ProductBookInput,
 } from "../services/book-provision";
@@ -38,6 +46,33 @@ const bookInputSchema = z
 		}).strict().optional(),
 		chapterWordCount: z.number().int().min(500).max(100_000).optional(),
 		targetChapters: z.number().int().min(1).max(100_000).optional(),
+	})
+	.strict();
+
+const bookBasicSettingsPatchSchema = z
+	.object({
+		title: z.string().trim().min(1).max(200).optional(),
+		genre: z.string().trim().min(1).max(100).optional(),
+		language: z.enum(["zh", "en"]).optional(),
+		platform: z.enum(["tomato", "feilu", "qidian", "other"]).optional(),
+		status: z.enum(["incubating", "outlining", "active", "paused", "completed", "dropped"]).optional(),
+		chapterWordCount: z.number().int().min(500).max(100_000).optional(),
+		targetChapters: z.number().int().min(1).max(100_000).nullable().optional(),
+		arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
+		customSensitiveWords: z.string().max(50_000).optional(),
+	})
+	.strict()
+	.refine((value) => Object.keys(value).length > 0, "至少提供一项可保存的书籍设置");
+
+const presetSelectionSchema = z
+	.object({
+		enabledPresetIds: z.array(z.string().trim().min(1).max(200)).max(100),
+	})
+	.strict();
+
+const beatTemplateSelectionSchema = z
+	.object({
+		beatTemplateId: z.string().trim().min(1).max(200),
 	})
 	.strict();
 
@@ -79,6 +114,16 @@ function requiredParam(
 	const value = c.req.param(name);
 	if (!value) throw new ValidationError(`${name} is required`);
 	return value;
+}
+
+function handlerData(result: {
+	ok: boolean;
+	summary: string;
+	error?: string;
+	data?: unknown;
+}): unknown {
+	if (!result.ok) throw new ValidationError(result.summary || result.error || "书籍写作配置操作失败");
+	return result.data ?? {};
 }
 
 /**
@@ -193,6 +238,65 @@ bookDomainRoutes.post("/guided-setup", async (c) => {
 		actor(c),
 	);
 	return c.json(result);
+});
+
+bookDomainRoutes.put("/", async (c) => {
+	const parsed = bookBasicSettingsPatchSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const book = await novelForkProductBookService.updateBasicSettings(
+		requiredParam(c, "bookId"),
+		parsed.data as ProductBookBasicSettingsPatch,
+		actor(c),
+	);
+	return c.json({ book });
+});
+
+bookDomainRoutes.get("/presets", async (c) => {
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const result = await handlePresetsRead(
+		{ bookId, scope: "available" },
+		{ bookRoot: root, storage: getStorageDatabase() },
+	);
+	return c.json(handlerData(result));
+});
+
+bookDomainRoutes.put("/presets", async (c) => {
+	const parsed = presetSelectionSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const result = await handlePresetsWrite(
+		{ bookId, action: "set", enabledPresetIds: parsed.data.enabledPresetIds },
+		{ bookRoot: root, storage: getStorageDatabase() },
+	);
+	return c.json(handlerData(result));
+});
+
+bookDomainRoutes.get("/beat-templates", async (c) => {
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const data = handlerData(await handleBeatRead(
+		{ bookId },
+		{ bookRoot: root, storage: getStorageDatabase() },
+	)) as { selectedTemplateId?: unknown; availableTemplates?: unknown };
+	return c.json({
+		bookId,
+		selectedTemplateId: typeof data.selectedTemplateId === "string" ? data.selectedTemplateId : null,
+		templates: Array.isArray(data.availableTemplates) ? data.availableTemplates : [],
+	});
+});
+
+bookDomainRoutes.put("/beat-template", async (c) => {
+	const parsed = beatTemplateSelectionSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const result = await handleBeatWrite(
+		{ bookId, action: "select", templateId: parsed.data.beatTemplateId },
+		{ bookRoot: root, storage: getStorageDatabase() },
+	);
+	return c.json(handlerData(result));
 });
 
 bookDomainRoutes.get("/", async (c) => {

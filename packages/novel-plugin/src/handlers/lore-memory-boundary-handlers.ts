@@ -2,6 +2,7 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { createNarrativeEvent, persistNarrativeEvents } from "../engine/narrative-memory/events.js";
 import { ensureNarrativeMemorySchema, listPendingNarrativeEvents, queryNarrativeFacts, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
@@ -28,6 +29,8 @@ export interface MemoryReadInput {
   sceneText?: string;
   budgetTokens?: number;
   channels?: string[];
+  /** Trusted absolute book root for loading book.json narrativeMemory config. */
+  bookRoot?: string;
 }
 
 export interface MemoryGraphInput {
@@ -51,6 +54,8 @@ export interface MemoryEventsInput {
   layer?: NarrativeFactLayer;
   reason?: string;
   limit?: number;
+  /** Trusted absolute book root injected by the Runtime/product router. */
+  bookRoot?: string;
 }
 
 type ToolResult =
@@ -86,6 +91,10 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
   }
 
   const storage = getStorageDatabase();
+  const memoryConfig = input.bookRoot?.trim()
+    ? await loadNarrativeMemoryConfig(bookId, input.bookRoot).catch(() => null)
+    : null;
+  const maxTokens = input.budgetTokens ?? memoryConfig?.retrieval.maxTokens;
   const result = await buildNarrativeContext({
     storage,
     bookId,
@@ -93,8 +102,11 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     chapterNumber: input.chapterNumber,
     sceneText: input.sceneText,
     entities: input.entities ?? [],
-    maxTokens: input.budgetTokens,
-    budgetPolicy: channelBudgetPolicy(input),
+    maxTokens,
+    budgetPolicy: channelBudgetPolicy({ ...input, budgetTokens: maxTokens }),
+    enabledChannels: memoryConfig?.retrieval.channels,
+    waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
+    semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
   });
 
   return {
@@ -235,7 +247,12 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
   if (action === "approve") {
     const event = getPendingEventByBook(storage, bookId, input.eventId);
     if (!event) return { ok: false, error: "event-not-found", summary: `Pending 事件 ${input.eventId} 不存在。` };
-    const applied = applyNarrativeEvents(storage, bookId, [{ ...event, status: "applied" }]);
+    const config = input.bookRoot?.trim()
+      ? await loadNarrativeMemoryConfig(bookId, input.bookRoot).catch(() => null)
+      : null;
+    const applied = applyNarrativeEvents(storage, bookId, [{ ...event, status: "applied" }], {
+      closeSupersededFacts: config?.ledger.closeSupersededFacts ?? true,
+    });
     if (applied.failedEvents.length > 0) {
       return { ok: false, error: "event-apply-failed", summary: `批准事件 ${event.id} 失败：${applied.failedEvents[0]?.error ?? "unknown"}` };
     }

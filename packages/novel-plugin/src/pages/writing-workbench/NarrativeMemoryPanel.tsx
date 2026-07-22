@@ -81,6 +81,12 @@ interface MemoryListResponse {
   entries?: MemoryEntry[];
 }
 
+interface CurrentLedgerResponse {
+  items?: MemoryEntry[];
+  facts?: MemoryEntry[];
+  counts?: { byCategory?: Record<string, number> };
+}
+
 interface NarrativeMemoryPanelProps {
   bookId: string;
   memoryNodes?: WorkbenchResourceNode[];
@@ -220,13 +226,11 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen }: { nodes: WorkbenchRes
 }
 
 function StoryStatusSummary({
-  stats,
   stateFacts,
   events,
   historyEvents,
   onOpenFact,
 }: {
-  stats?: MemoryStats | null;
   stateFacts: MemoryEntry[];
   events: PendingEvent[];
   historyEvents: MemoryEntry[];
@@ -253,8 +257,8 @@ function StoryStatusSummary({
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded border border-border/60 p-2">
-          <div className="text-sm font-semibold tabular-nums">{stats?.byKind?.fact ?? stateFacts.length}</div>
-          <div className="text-[10px] text-muted-foreground">动态事实</div>
+          <div className="text-sm font-semibold tabular-nums">{stateFacts.length}</div>
+          <div className="text-[10px] text-muted-foreground">当前事实</div>
         </div>
         <div className="rounded border border-border/60 p-2">
           <div className="text-sm font-semibold tabular-nums">{historyEvents.length}</div>
@@ -397,7 +401,9 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`),
         fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/stats`),
         fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/list?kind=event&limit=40`),
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/list?kind=fact&limit=40`),
+        // Story status intentionally reads the same current ledger as memory.read,
+        // rather than the historical fact administration list.
+        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/current?limit=40`),
       ]);
 
       let nextDiagnostics: DiagnosticsSummary | null = null;
@@ -431,8 +437,8 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
 
       let nextFacts: MemoryEntry[] = [];
       if (factsRes.ok) {
-        const payload = await factsRes.json() as MemoryListResponse;
-        nextFacts = payload.entries ?? [];
+        const payload = await factsRes.json() as CurrentLedgerResponse;
+        nextFacts = payload.items ?? payload.facts ?? [];
         setStateFacts(nextFacts);
       } else {
         setStateFacts([]);
@@ -666,7 +672,6 @@ export function NarrativeMemoryPanelShell({
       {activeView === "故事状态" && (
         <>
           <StoryStatusSummary
-            stats={stats}
             stateFacts={stateFacts}
             events={events}
             historyEvents={historyEvents}

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -31,6 +31,14 @@ async function createStorage(): Promise<StorageDatabase> {
   storage.sqlite.prepare(`INSERT INTO book (id, name, created_at, updated_at) VALUES ('book-2', '另一本书', 0, 0)`).run();
   ensureNarrativeMemorySchema(storage);
   return storage;
+}
+
+async function createBookRoot(narrativeMemory: Record<string, unknown>): Promise<string> {
+  const dir = join(tmpdir(), `novelfork-lore-memory-book-${crypto.randomUUID()}`);
+  await mkdir(dir, { recursive: true });
+  tempDirs.push(dir);
+  await writeFile(join(dir, "book.json"), `${JSON.stringify({ id: "book-1", title: "测试书籍", narrativeMemory }, null, 2)}\n`, "utf8");
+  return dir;
 }
 
 function event(input: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "subject" | "predicate" | "object">): NarrativeEvent {
@@ -84,8 +92,15 @@ describe("lore-memory-boundary handlers", () => {
     await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
 
-  it("approves pending memory events by writing dynamic facts", async () => {
+  it("approves pending memory events by writing dynamic facts and closing the superseded state", async () => {
     const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
+    insertNarrativeFact(activeStorage!, fact({
+      id: "old-state",
+      subject: "韩立",
+      predicate: "状态",
+      object: "犹豫",
+      validFromChapter: 1,
+    }));
     insertNarrativeEvent(activeStorage!, event({ id: "e-1", subject: "韩立", predicate: "状态", object: "更谨慎" }));
 
     const result = await handleMemoryEvents({ bookId: "book-1", action: "approve", eventId: "e-1", reason: "已确认正文发生" });
@@ -93,8 +108,56 @@ describe("lore-memory-boundary handlers", () => {
     expect(result.ok).toBe(true);
     expect(listPendingNarrativeEvents(activeStorage!, { bookId: "book-1" })).toEqual([]);
     const facts = queryNarrativeFacts(activeStorage!, { bookId: "book-1", entities: ["韩立"] });
-    expect(facts).toHaveLength(1);
-    expect(facts[0]).toMatchObject({ subject: "韩立", predicate: "状态", object: "更谨慎", layer: "dynamic", sourceId: "e-1" });
+    expect(facts).toHaveLength(2);
+    expect(facts.find((item) => item.id === "old-state")).toMatchObject({ validUntilChapter: 12 });
+    expect(facts.find((item) => item.sourceId === "e-1")).toMatchObject({ subject: "韩立", predicate: "状态", object: "更谨慎", layer: "dynamic", sourceId: "e-1" });
+  });
+
+  it("honors the book lifecycle setting when an author approves an event", async () => {
+    const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
+    const bookRoot = await createBookRoot({ ledger: { closeSupersededFacts: false } });
+    insertNarrativeFact(activeStorage!, fact({
+      id: "retained-state",
+      subject: "韩立",
+      predicate: "状态",
+      object: "犹豫",
+      validFromChapter: 1,
+    }));
+    insertNarrativeEvent(activeStorage!, event({ id: "e-retained", subject: "韩立", predicate: "状态", object: "坚定" }));
+
+    const result = await handleMemoryEvents({ bookId: "book-1", action: "approve", eventId: "e-retained", bookRoot });
+
+    expect(result.ok).toBe(true);
+    const retained = queryNarrativeFacts(activeStorage!, { bookId: "book-1", entities: ["韩立"] }).find((item) => item.id === "retained-state");
+    expect(retained?.validUntilChapter).toBeUndefined();
+  });
+
+  it("applies trusted book retrieval settings in memory.read", async () => {
+    const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
+    const bookRoot = await createBookRoot({
+      retrieval: {
+        maxTokens: 500,
+        channels: { state: false, timeline: false, hooks: false, facts: false, style: false, semantic: false },
+      },
+    });
+    insertNarrativeFact(activeStorage!, fact({ id: "hidden-fact", subject: "韩立", predicate: "状态", object: "谨慎", validFromChapter: 1 }));
+
+    const result = await handleMemoryRead({
+      bookId: "book-1",
+      purpose: "write",
+      chapterNumber: 12,
+      entities: ["韩立"],
+      bookRoot,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const diagnostics = result.data.diagnostics as { channelStats: Array<{ channel: string; status: string }> };
+    expect(diagnostics.channelStats).toEqual(expect.arrayContaining([
+      expect.objectContaining({ channel: "state", status: "skipped" }),
+      expect.objectContaining({ channel: "facts", status: "skipped" }),
+    ]));
+    expect((result.data.cards as Array<{ sourceId: string }>).some((card) => card.sourceId === "hidden-fact")).toBe(false);
   });
 
   it("filters memory.graph events by view, focus entity, and chapter range", async () => {

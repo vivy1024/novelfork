@@ -82,7 +82,14 @@ novelDomainRoutes.route(
 		}),
 	),
 );
-novelDomainRoutes.route("", asRuntimeRouter(createNarrativeMemoryRouter()));
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createNarrativeMemoryRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+		}),
+	),
+);
 novelDomainRoutes.route("", asRuntimeRouter(createOverviewRouter()));
 novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
 // Workbench tool panels (arcs/health/progress/pov/…) previously existed only on

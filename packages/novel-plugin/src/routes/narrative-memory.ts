@@ -14,9 +14,12 @@ import {
   type MemoryEntryKind,
 } from "../handlers/memory-admin-handlers.js";
 import {
-  getLatestNarrativeRetrievalLog,
-  queryNarrativeFacts,
-} from "../engine/narrative-memory/storage.js";
+  loadNarrativeMemoryConfig,
+  parseNarrativeMemoryConfigPatch,
+  saveNarrativeMemoryConfig,
+} from "../engine/narrative-memory/config.js";
+import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { getLatestNarrativeRetrievalLog } from "../engine/narrative-memory/storage.js";
 import {
   NarrativeEventStatusSchema,
   NarrativeFactLayerSchema,
@@ -27,6 +30,8 @@ import type { NarrativeRetrievalLogRecord } from "../engine/narrative-memory/sto
 
 export interface NarrativeMemoryRouterOptions {
   readonly storage?: StorageDatabase;
+  /** Resolve trusted absolute book root for config IO. */
+  readonly resolveBookRoot?: (bookId: string) => string;
 }
 
 type HandlerResult = {
@@ -160,10 +165,73 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   const app = new Hono();
   const base = "/api/books/:bookId/narrative-memory";
   const storage = () => storageFor(options);
+  const bookRootFor = (bookId: string): string => {
+    if (!options.resolveBookRoot) {
+      throw new Error("narrative-memory config requires resolveBookRoot on the product router");
+    }
+    return options.resolveBookRoot(bookId);
+  };
+  const optionalBookRootFor = (bookId: string): string | undefined => (
+    options.resolveBookRoot ? options.resolveBookRoot(bookId) : undefined
+  );
 
   // The Runtime mounts this router below its authenticated, ready-book guard.
   // This router never resolves a browser-supplied book ID to a filesystem path
   // and all queries remain scoped by the guarded :bookId.
+
+  app.get(`${base}/config`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const config = await loadNarrativeMemoryConfig(bookId, bookRootFor(bookId));
+      return c.json({ config });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.put(`${base}/config`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const patch = parseNarrativeMemoryConfigPatch(body?.config ?? body);
+      const config = await saveNarrativeMemoryConfig(bookId, bookRootFor(bookId), patch);
+      return c.json({ config, summary: "叙事记忆配置已保存。" });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  app.get(`${base}/current`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const asOfRaw = c.req.query("asOfChapter") ?? c.req.query("chapter");
+    const asOfChapter = asOfRaw ? Number(asOfRaw) : undefined;
+    const limitRaw = c.req.query("limit");
+    const limit = limitRaw ? Number(limitRaw) : undefined;
+    if (asOfChapter !== undefined && (!Number.isInteger(asOfChapter) || asOfChapter < 0)) {
+      return invalidQuery(c, "asOfChapter 必须是非负整数。");
+    }
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1 || limit > 500)) {
+      return invalidQuery(c, "limit 必须是 1 到 500 的整数。");
+    }
+    try {
+      const config = await loadNarrativeMemoryConfig(bookId, bookRootFor(bookId));
+      const ledger = queryCurrentNarrativeLedger(storage(), {
+        bookId,
+        asOfChapter,
+        limit: limit ?? config.ledger.currentViewLimit,
+      });
+      const items = ledger.items.map((fact) => ({ kind: "fact" as const, ...fact }));
+      return c.json({
+        bookId: ledger.bookId,
+        asOfChapter: ledger.asOfChapter,
+        items,
+        counts: ledger.counts,
+        facts: items,
+      });
+    } catch (error) {
+      return c.json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
 
   app.get(`${base}/diagnostics/latest`, (c) => {
     const bookId = c.req.param("bookId");
@@ -202,11 +270,13 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
 
   async function mutatePendingEvent(c: Context, action: "approve" | "reject"): Promise<Response> {
     const body = await readJson(c);
+    const bookId = c.req.param("bookId");
     const result = await handleMemoryEvents({
-      bookId: c.req.param("bookId"),
+      bookId,
       action,
       eventId: c.req.param("eventId"),
       reason: typeof body.reason === "string" ? body.reason : undefined,
+      bookRoot: optionalBookRootFor(bookId),
     }, storage());
     return respondHandler(c, result);
   }
@@ -220,8 +290,13 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
 
   app.get(`${base}/facts`, (c) => {
     const bookId = c.req.param("bookId");
-    const facts = queryNarrativeFacts(storage(), { bookId, limit: 500 });
-    return c.json({ facts });
+    const asOfRaw = c.req.query("asOfChapter") ?? c.req.query("chapter");
+    const asOfChapter = asOfRaw ? Number(asOfRaw) : undefined;
+    if (asOfChapter !== undefined && (!Number.isInteger(asOfChapter) || asOfChapter < 0)) {
+      return invalidQuery(c, "asOfChapter 必须是非负整数。");
+    }
+    const ledger = queryCurrentNarrativeLedger(storage(), { bookId, asOfChapter, limit: 500 });
+    return c.json({ facts: ledger.items, counts: ledger.counts, asOfChapter: ledger.asOfChapter });
   });
 
   const graphHandler = async (c: Context): Promise<Response> => {
