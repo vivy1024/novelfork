@@ -23,8 +23,13 @@ import { createWritingResourceService } from "../engine/writing-resource/service
 import { join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
+import {
+  handlePresetsCheckCompliance,
+  loadAccessiblePresetBeatStore,
+} from "./preset-beat-handlers.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { createLLMChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
+import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
@@ -79,7 +84,7 @@ export interface PipelineWriteOutput {
   readonly revised: boolean;
   readonly chapterId: string;
   readonly artifact: PipelineCanvasArtifact;
-  /** 长度治理：归一化后仍漂出 hard 区间时的警告（不阻断） */
+  /** 长度归一化过程的诊断警告；hard 区间最终越界会直接拒绝保存。 */
   readonly lengthWarning?: string;
   /** 多轮自愈达上限仍有 critical → 需人工复核（Human Review Gate） */
   readonly needsHumanReview?: boolean;
@@ -93,14 +98,24 @@ export interface PipelineWriteOutput {
 
 export interface PipelineWriteError {
   readonly ok: false;
-  readonly code: "book-not-found" | "spec-invalid" | "generation-failed" | "timeout" | "high-risk-pending";
+  readonly code:
+    | "book-not-found"
+    | "spec-invalid"
+    | "generation-failed"
+    | "timeout"
+    | "high-risk-pending"
+    | "length-out-of-range"
+    | "preset-compliance-failed";
   readonly error: string;
 }
 
 export type PipelineWriteResult = PipelineWriteOutput | PipelineWriteError;
 
 export interface PipelineWriteOptions {
+  /** Project root used for optional project-level agent resources. */
   readonly root: string;
+  /** Trusted bound book root; required for external workspace bindings. */
+  readonly bookRoot?: string;
   readonly client: LLMClient;
   readonly model: string;
   readonly onStream?: (chunk: string) => void;
@@ -117,14 +132,43 @@ function buildAgentCtx(options: PipelineWriteOptions, agentName: string, bookId:
   };
 }
 
-function countWords(text: string): number {
-  return text.replace(/\s+/g, "").length;
+function createPipelineState(options: PipelineWriteOptions, bookId: string): StateManager {
+  return new StateManager(options.root, options.bookRoot
+    ? {
+        resolveBookDir: (requestedBookId) => {
+          if (requestedBookId !== bookId) {
+            throw new Error("The requested book does not match the trusted pipeline binding.");
+          }
+          return options.bookRoot!;
+        },
+      }
+    : undefined);
 }
 
 type BookStyleConfig = Readonly<{
   enabledPresetIds?: readonly string[];
   beatTemplateId?: string;
 }>;
+
+type PresetComplianceViolation = Readonly<{
+  presetName: string;
+  rule: string;
+  violation: string;
+  severity: "warning" | "error";
+}>;
+
+function readPresetComplianceViolations(data: unknown): PresetComplianceViolation[] {
+  if (!data || typeof data !== "object" || !Array.isArray((data as { violations?: unknown }).violations)) return [];
+  return (data as { violations: unknown[] }).violations.filter((item): item is PresetComplianceViolation => (
+    Boolean(item)
+    && typeof item === "object"
+    && (item as { severity?: unknown }).severity !== undefined
+    && ((item as { severity?: unknown }).severity === "warning" || (item as { severity?: unknown }).severity === "error")
+    && typeof (item as { presetName?: unknown }).presetName === "string"
+    && typeof (item as { rule?: unknown }).rule === "string"
+    && typeof (item as { violation?: unknown }).violation === "string"
+  ));
+}
 
 function nonEmpty(value: string | undefined): string | undefined {
   const text = value?.trim();
@@ -167,14 +211,27 @@ export function beatTemplateToStyleSnippet(template: BeatTemplate): StyleSnippet
   };
 }
 
-export function resolveBookStyleChannelSnippets(config: BookStyleConfig): { readonly presets: readonly StyleSnippet[]; readonly beats: readonly StyleSnippet[] } {
+type BookStyleSource = Readonly<{
+  presets: readonly Preset[];
+  beatTemplate?: BeatTemplate;
+}>;
+
+export function resolveBookStyleChannelSnippets(
+  config: BookStyleConfig,
+  source?: BookStyleSource,
+): { readonly presets: readonly StyleSnippet[]; readonly beats: readonly StyleSnippet[] } {
   ensureBuiltinPresetStores();
-  const presets = (config.enabledPresetIds ?? [])
-    .map((id) => getPreset(id))
-    .filter((preset): preset is Preset => Boolean(preset))
+  const selectedPresets = source
+    ? source.presets
+    : (config.enabledPresetIds ?? [])
+      .map((id) => getPreset(id))
+      .filter((preset): preset is Preset => Boolean(preset));
+  const presets = selectedPresets
     .map(presetToStyleSnippet)
     .filter((snippet): snippet is StyleSnippet => Boolean(snippet));
-  const beatTemplate = config.beatTemplateId ? getBeatTemplate(config.beatTemplateId) : undefined;
+  const beatTemplate = source
+    ? source.beatTemplate
+    : (config.beatTemplateId ? getBeatTemplate(config.beatTemplateId) : undefined);
   const beatSnippet = beatTemplate ? beatTemplateToStyleSnippet(beatTemplate) : null;
   return {
     presets,
@@ -250,8 +307,9 @@ export async function executePipelineWrite(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
-  // 产品口径：章后结算自动进行；高风险 pending 仅提醒，不默认阻断写作（作者可在叙事记忆历史查看）。
-  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, continueWithHighRiskPending = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  // 产品口径：章后结算默认自动；是否阻断高风险 pending 由本书 narrativeMemory 配置决定。
+  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  let continueWithHighRiskPending = input.continueWithHighRiskPending;
   let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
 
@@ -267,7 +325,7 @@ export async function executePipelineWrite(
 
   try {
     // 1. Load book config
-    const state = new StateManager(root);
+    const state = createPipelineState(options, bookId);
     let book: BookConfig;
     try {
       book = await state.loadBookConfig(bookId);
@@ -276,8 +334,14 @@ export async function executePipelineWrite(
     }
 
     const bookDir = state.bookDir(bookId);
+    const memoryConfig = await loadNarrativeMemoryConfig(bookId, bookDir).catch(() => null);
+    if (continueWithHighRiskPending === undefined) {
+      continueWithHighRiskPending = !(memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false);
+    }
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
-    const lengthSpec = buildLengthSpec(sceneSpec.wordTarget ?? book.chapterWordCount);
+    // The persisted book setting is authoritative. SceneSpec is model-generated
+    // planning input and must not lower or replace the book's hard target.
+    const lengthSpec = buildLengthSpec(book.chapterWordCount, book.language === "en" ? "en" : "zh");
 
     logger?.info(`[pipeline.write] Starting for book=${bookId} chapter=${chapterNumber}`);
 
@@ -302,7 +366,15 @@ export async function executePipelineWrite(
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
-        const styleSnippets = resolveBookStyleChannelSnippets(book as BookStyleConfig);
+        const accessibleStore = loadAccessiblePresetBeatStore(storage, bookId);
+        const enabledPresetIds = new Set(book.enabledPresetIds ?? []);
+        const selectedBeatTemplate = typeof book.beatTemplateId === "string"
+          ? accessibleStore.beats.find((template) => template.id === book.beatTemplateId)
+          : undefined;
+        const styleSnippets = resolveBookStyleChannelSnippets(book as BookStyleConfig, {
+          presets: accessibleStore.presets.filter((preset) => enabledPresetIds.has(preset.id)),
+          ...(selectedBeatTemplate ? { beatTemplate: selectedBeatTemplate } : {}),
+        });
         narrativeContext = await buildNarrativeContext({
           storage,
           bookId,
@@ -311,11 +383,14 @@ export async function executePipelineWrite(
           sceneSpec,
           sceneText: sceneSpec.scenes.map((scene) => [scene.location, scene.conflict, scene.outcome, ...scene.characters].join(" ")).join("\n"),
           entities: sceneSpec.scenes.flatMap((scene) => [...scene.characters, scene.location, ...scene.hooks_used, ...scene.hooks_planted]),
-          maxTokens: 16_000,
+          maxTokens: memoryConfig?.retrieval.maxTokens ?? 16_000,
           previousChapterTail,
           runtimeSnapshot,
           presets: styleSnippets.presets,
           beats: styleSnippets.beats,
+          enabledChannels: memoryConfig?.retrieval.channels,
+          waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
+          semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
         });
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
@@ -376,7 +451,7 @@ export async function executePipelineWrite(
 
     logger?.info(`[pipeline.write] Writer done: "${writeOutput.title}" ${writeOutput.wordCount} words`);
 
-    // 2.2. Length governance (P0-1): 漂出 hard 区间则归一化一次，仍漂出则记 warning（不阻断）
+    // 2.2. Length governance (P0-1): Writer 输出漂出 hard 区间时先归一化；最终版本还会在保存前强制复核。
     let governedContent = writeOutput.content;
     let lengthWarning: string | undefined;
     {
@@ -399,7 +474,7 @@ export async function executePipelineWrite(
       chapterNumber,
       content: governedContent,
       sceneSpec,
-      wordTarget: sceneSpec.wordTarget ?? book.chapterWordCount,
+      wordTarget: book.chapterWordCount,
     });
     if (!preAudit.passed && preAudit.hardViolations.length > 0) {
       logger?.warn(`[pipeline.write] Pre-audit hard violations: ${preAudit.hardViolations.map((v) => v.ruleId).join(", ")}`);
@@ -444,11 +519,62 @@ export async function executePipelineWrite(
       auditResult = await runAudit(finalContent); // re-audit 修订后的版本
     }
 
+    // Revisions can reintroduce length drift after the initial normalizer. The
+    // book's persisted hard range is checked again before any formal resource
+    // or Narrative Memory settlement is allowed.
+    let finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
+    if (isOutsideHardRange(finalLengthCount, lengthSpec)) {
+      logger?.info(`[pipeline.write] Final length ${finalLengthCount} outside hard range ${lengthSpec.hardMin}-${lengthSpec.hardMax}, normalizing once more`);
+      const normalizer = new LengthNormalizerAgent(buildAgentCtx(options, "length-normalizer", bookId));
+      const norm = await normalizer.normalizeChapter({ chapterContent: finalContent, lengthSpec, chapterIntent });
+      if (norm.applied) {
+        finalContent = norm.normalizedContent;
+        lengthWarning = norm.warning ?? lengthWarning;
+        auditResult = await runAudit(finalContent);
+      }
+      finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
+    }
+    if (isOutsideHardRange(finalLengthCount, lengthSpec)) {
+      return {
+        ok: false,
+        code: "length-out-of-range",
+        error: `第${chapterNumber}章最终长度为 ${finalLengthCount}${lengthSpec.countingMode === "en_words" ? " words" : "字"}，不在本书 ${lengthSpec.target}${lengthSpec.countingMode === "en_words" ? " words" : "字"} 的硬范围 ${lengthSpec.hardMin}-${lengthSpec.hardMax} 内；未保存正式章节。`,
+      };
+    }
+
     // 门禁：剩余 S1（致命）→ 阻断采纳送人工复核；S2 也未清完同样需复核
     const finalGate = evaluateGate(auditResult.issues);
     const needsHumanReview = finalGate.hasRevisable;
     if (needsHumanReview) {
       logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
+    }
+
+    let presetWarnings: PresetComplianceViolation[] = [];
+    try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const compliance = await handlePresetsCheckCompliance(
+        { bookId, chapterNumber, content: finalContent },
+        { bookRoot: bookDir, storage: getStorageDatabase() },
+      );
+      if (!compliance.ok) {
+        return { ok: false, code: "preset-compliance-failed", error: compliance.summary };
+      }
+      const violations = readPresetComplianceViolations(compliance.data);
+      const errors = violations.filter((violation) => violation.severity === "error");
+      if (errors.length > 0) {
+        return {
+          ok: false,
+          code: "preset-compliance-failed",
+          error: `第${chapterNumber}章触发 ${errors.length} 条预设硬性违规；未保存正式章节。${errors.map((violation) => ` ${violation.presetName}：${violation.violation}`).join("")}`,
+        };
+      }
+      presetWarnings = violations.filter((violation) => violation.severity === "warning");
+    } catch (error) {
+      return {
+        ok: false,
+        code: "preset-compliance-failed",
+        error: `预设合规检查失败，拒绝保存正式章节：${error instanceof Error ? error.message : String(error)}`,
+      };
     }
 
     const narrativeEvents: NarrativeEvent[] = writeOutput.runtimeStateDelta
@@ -489,9 +615,17 @@ export async function executePipelineWrite(
     const chapterId = `chapter:${chapterNumber}`;
     let narrativeSettlement: ChapterSettlementResult | undefined;
     try {
-      const { getStorageDatabase, resolveBookStorageDir } = await import("@vivy1024/novelfork-core");
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
-      const resourceService = createWritingResourceService({ storage, resolveBookDir: (bid: string) => resolveBookStorageDir(root, bid) });
+      const resourceService = createWritingResourceService({
+        storage,
+        resolveBookDir: (requestedBookId: string) => {
+          if (requestedBookId !== bookId) {
+            throw new Error("Writing resource book binding mismatch");
+          }
+          return bookDir;
+        },
+      });
       const metadata = {
         sceneSpec,
         ...(buildPipelineChapterResultMetadata({ narrativeContext }) ? { narrativeMemoryDiagnostics: buildPipelineChapterResultMetadata({ narrativeContext }) } : {}),
@@ -501,7 +635,15 @@ export async function executePipelineWrite(
         reviseRounds,
         ...(needsHumanReview ? { needsHumanReview: true } : {}),
         ...(adversarialAudit ? { adversarialAudit: true } : {}),
+        length: {
+          actual: finalLengthCount,
+          target: lengthSpec.target,
+          hardMin: lengthSpec.hardMin,
+          hardMax: lengthSpec.hardMax,
+          countingMode: lengthSpec.countingMode,
+        },
         ...(lengthWarning ? { lengthWarning } : {}),
+        ...(presetWarnings.length > 0 ? { presetWarnings } : {}),
         ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
         ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
         ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
@@ -535,6 +677,8 @@ export async function executePipelineWrite(
           confirmedAt: new Date().toISOString(),
         }, {
           storage,
+          bookRoot: bookDir,
+          config: memoryConfig ?? undefined,
           llmExtractor: async (settlementInput) => {
             const llmExtractor = createLLMChapterEventExtractor(options.client, options.model);
             const llmDrafts = await llmExtractor(settlementInput).catch((error) => {
@@ -562,7 +706,7 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] Failed to save formal chapter: ${err}`);
     }
 
-    const wordCount = countWords(finalContent);
+    const wordCount = finalLengthCount;
 
     return {
       ok: true,

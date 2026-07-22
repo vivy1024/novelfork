@@ -66,7 +66,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 你正在 NovelFork 的小说项目中工作。当前书籍由宿主通过可信的 novel.book 资源绑定确定；不得依据用户文本或工具参数切换到其他书籍，也不得猜测 bookId。
 
-当用户明确要求改写已存在章节时，先读取必要上下文并明确说明目标章节和拟写入内容，再使用 chapter.write；该工具会由 Runtime 权限门控，未经用户批准不得写入。新建章节由工作台受控入口完成，模型不得自行创建文件或推断文件路径。
+当用户要求写一章完整的新正文时，先用 scene.spec 生成蓝图，再使用 pipeline.write；该管线会读取书籍的目标长度、语言、预设与节拍。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度和预设错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
@@ -98,7 +98,7 @@ type CustomReadyRuntimeToolName =
   | "pipeline.write";
 type LegacyReadHandler = (input: Record<string, unknown>) => Promise<unknown> | unknown;
 
-/** The Runtime schema validates model input; this adapter only adds trusted bookId for legacy handlers. */
+/** The Runtime schema validates model input; this adapter adds only trusted binding fields for legacy handlers. */
 function bridgeLegacyHandler<TInput>(handler: (input: TInput) => Promise<unknown> | unknown): LegacyReadHandler {
   return (input) => handler(input as unknown as TInput);
 }
@@ -263,7 +263,13 @@ async function executeReadyTool(
     return fail("forged-host-field", "bookId、sessionId 和 bookRoot 只能由可信宿主绑定，不能由模型提供。");
   }
 
-  const injectedInput: Record<string, unknown> = { ...input, bookId: binding.bookId };
+  const injectedInput: Record<string, unknown> = {
+    ...input,
+    bookId: binding.bookId,
+    // bookRoot remains host-owned and lets memory.read load this book's
+    // persisted narrativeMemory config without accepting a model path.
+    bookRoot: binding.root,
+  };
   try {
     const domainResult = await executeRuntimeDomainTool(tool.name, input, binding, context);
     if (domainResult) return domainResult;
@@ -285,7 +291,7 @@ async function executeReadyTool(
       return toRuntimeToolResult(await handleChapterRead(
         { bookId: binding.bookId, chapterNumber: injectedInput.chapterNumber },
         undefined,
-        { bookRoot: binding.root, storage: getStorageDatabase() },
+        { bookRoot: binding.root },
       ));
     }
     if (tool.name === "chapter.write") {
@@ -297,7 +303,7 @@ async function executeReadyTool(
       }
       return toRuntimeToolResult(await handleChapterWrite(
         { bookId: binding.bookId, chapterNumber: injectedInput.chapterNumber, content: injectedInput.content },
-        { bookRoot: binding.root },
+        { bookRoot: binding.root, storage: getStorageDatabase() },
       ));
     }
     if (tool.name === "chapter.list") {
