@@ -302,41 +302,43 @@ describe("NovelRuntimeAdapter", () => {
 		});
 	});
 
-	test("writes only an existing chapter through the trusted book binding", async () => {
+	test("writes only an existing compliant chapter through the trusted book binding", async () => {
 		bindNarrator();
+		const content = "已确认的改写正文。".repeat(334);
+		const storage = initializeStorageDatabase({ databasePath: join(workRoot, "novelfork.db") });
+		runStorageMigrations(storage);
+		try {
+			const writeResult = await adapter.execute(
+				"chapter.write",
+				{ chapterNumber: 1, content },
+				"narrator-a",
+			);
 
-		const writeResult = await adapter.execute(
-			"chapter.write",
-			{ chapterNumber: 1, content: "已确认的改写正文" },
-			"narrator-a",
-		);
+			expect(writeResult.isError).toBe(false);
+			expect(JSON.parse(writeResult.output)).toMatchObject({
+				ok: true,
+				data: { bookId: "book-a", chapterNumber: 1, fileName: "0001-opening.md" },
+			});
+			expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(content);
 
-		expect(writeResult.isError).toBe(false);
-		expect(JSON.parse(writeResult.output)).toMatchObject({
-			ok: true,
-			data: { bookId: "book-a", chapterNumber: 1, fileName: "0001-opening.md" },
-		});
-		expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(
-			"已确认的改写正文",
-		);
-
-		const missingChapter = await adapter.execute(
-			"chapter.write",
-			{ chapterNumber: 2, content: "不得创建新章节" },
-			"narrator-a",
-		);
-		expect(missingChapter.isError).toBe(true);
-		expect(JSON.parse(missingChapter.output)).toMatchObject({
-			ok: false,
-			error: "chapter-not-found",
-		});
-		expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(
-			"已确认的改写正文",
-		);
-		expect(
-			adapter.toolDefinitions().find((tool) => tool.name === "chapter.write")?.metadata
-				?.runtimeRisk,
-		).toBe("confirmed-write");
+			const missingChapter = await adapter.execute(
+				"chapter.write",
+				{ chapterNumber: 2, content },
+				"narrator-a",
+			);
+			expect(missingChapter.isError).toBe(true);
+			expect(JSON.parse(missingChapter.output)).toMatchObject({
+				ok: false,
+				error: "chapter-not-found",
+			});
+			expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(content);
+			expect(
+				adapter.toolDefinitions().find((tool) => tool.name === "chapter.write")?.metadata
+					?.runtimeRisk,
+			).toBe("confirmed-write");
+		} finally {
+			closeStorageDatabase();
+		}
 	});
 
 	test("executes a storage-backed ready memory tool after Core storage bootstrap", async () => {

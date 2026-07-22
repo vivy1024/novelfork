@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
   splitChapters,
@@ -65,14 +65,15 @@ function stringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
 }
 
-function productRoot(binding: TrustedRuntimeBookBinding): string {
-  const booksRoot = dirname(binding.root);
-  const root = dirname(booksRoot);
-  const expected = resolve(root, "books", binding.bookId);
-  if (expected !== resolve(binding.root) || basename(binding.root) !== binding.bookId) {
-    throw new Error("Trusted book binding does not match the controlled books layout.");
-  }
-  return root;
+function trustedBookState(binding: TrustedRuntimeBookBinding): StateManager {
+  return new StateManager(binding.root, {
+    resolveBookDir: (requestedBookId) => {
+      if (requestedBookId !== binding.bookId) {
+        throw new Error("The requested book does not match the trusted binding.");
+      }
+      return binding.root;
+    },
+  });
 }
 
 function requireGenerator(context: ToolExecutionContext): RuntimeTextGenerator | RuntimeToolResult {
@@ -143,8 +144,7 @@ async function readBoundChapter(binding: TrustedRuntimeBookBinding, chapterNumbe
 }
 
 async function withBookLock<T>(binding: TrustedRuntimeBookBinding, task: () => Promise<T>): Promise<T> {
-  const state = new StateManager(productRoot(binding));
-  const release = await state.acquireBookLock(binding.bookId);
+  const release = await trustedBookState(binding).acquireBookLock(binding.bookId);
   try {
     return await task();
   } finally {
@@ -251,7 +251,7 @@ async function rewriteApply(
       : [...lines.slice(0, start - 1), ...inserted, ...lines.slice(end)];
     const written = await handleChapterWrite(
       { bookId: binding.bookId, chapterNumber, content: next.join("\n") },
-      { bookRoot: binding.root },
+      { bookRoot: binding.root, purpose: "revision" },
     );
     if (!written.ok) return fail(written.error, written.summary);
     return ok(
@@ -320,7 +320,7 @@ async function pipelineRevise(
     const chapter = await readBoundChapter(binding, chapterNumber);
     if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
     const book = await readBookConfig(binding);
-    const root = productRoot(binding);
+    const root = binding.root;
     const client = hostClient(generator);
     const model = context.model?.id ?? "runtime-current";
     const agentContext = { client, model, projectRoot: root, bookId: binding.bookId };
@@ -354,7 +354,7 @@ async function pipelineRevise(
     );
     const written = await handleChapterWrite(
       { bookId: binding.bookId, chapterNumber, content: revised.revisedContent },
-      { bookRoot: binding.root },
+      { bookRoot: binding.root, purpose: "revision" },
     );
     if (!written.ok) return fail(written.error, written.summary);
     return ok(`第 ${chapterNumber} 章修订完成。`, {
@@ -608,12 +608,15 @@ async function pipelineWrite(
       ...(typeof input.jingweiContext === "string" ? { jingweiContext: input.jingweiContext } : {}),
       ...(typeof input.previousChapterTail === "string" ? { previousChapterTail: input.previousChapterTail } : {}),
       autoRevise: input.autoRevise !== false,
-      continueWithHighRiskPending: input.continueWithHighRiskPending === true,
+      ...(typeof input.continueWithHighRiskPending === "boolean"
+        ? { continueWithHighRiskPending: input.continueWithHighRiskPending }
+        : {}),
       ...(typeof input.adversarialAudit === "boolean" ? { adversarialAudit: input.adversarialAudit } : {}),
       ...(typeof input.maxReviseRounds === "number" ? { maxReviseRounds: input.maxReviseRounds } : {}),
     },
     {
-      root: productRoot(binding),
+      root: binding.root,
+      bookRoot: binding.root,
       client: hostClient(generator),
       model: context.model?.id ?? "runtime-current",
       onStream: context.emitOutput,

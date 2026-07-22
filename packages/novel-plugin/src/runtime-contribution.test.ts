@@ -17,10 +17,14 @@ import { NOVEL_RUNTIME_CONTRIBUTION } from "./runtime-contribution.js";
 const roots: string[] = [];
 afterEach(async () => Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true }))));
 
-async function createBook(bookId: string, content: string): Promise<{ projectRoot: string; bookRoot: string }> {
+async function createBook(
+  bookId: string,
+  content: string,
+  external = false,
+): Promise<{ projectRoot: string; bookRoot: string }> {
   const projectRoot = await mkdtemp(join(tmpdir(), "novelfork-runtime-"));
   roots.push(projectRoot);
-  const bookRoot = join(projectRoot, "books", bookId);
+  const bookRoot = external ? join(projectRoot, "external-workspace") : join(projectRoot, "books", bookId);
   const chapters = join(bookRoot, "chapters");
   await mkdir(chapters, { recursive: true });
   await writeFile(join(bookRoot, "book.json"), JSON.stringify({
@@ -31,6 +35,7 @@ async function createBook(bookId: string, content: string): Promise<{ projectRoo
     status: "active",
     targetChapters: 100,
     chapterWordCount: 3000,
+    ...(external ? { novelforkExternalWorkspace: true } : {}),
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   }), "utf8");
@@ -61,6 +66,38 @@ function tool(name: string) {
   if (!contribution) throw new Error(`${name} runtime contribution missing`);
   return contribution;
 }
+
+function pipelineGenerator(content: string): NonNullable<ToolExecutionContext["generateText"]> {
+  return async (request) => {
+    const system = request.messages
+      .filter((message) => message.role === "system")
+      .map((message) => message.content)
+      .join("\n");
+    if (system.includes("章节长度修正器")) return { text: content };
+    if (system.includes("审稿编辑") && system.includes("输出格式必须为 JSON")) {
+      return { text: JSON.stringify({ passed: true, issues: [], summary: "审计通过" }) };
+    }
+    return {
+      text: `=== PRE_WRITE_CHECK ===\n蓝图已检查\n=== CHAPTER_TITLE ===\n守卫测试\n=== CHAPTER_CONTENT ===\n${content}\n=== POST_SETTLEMENT ===\n完成\n=== UPDATED_STATE ===\n状态未变\n=== UPDATED_HOOKS ===\n- [ ] 测试伏笔\n=== CHAPTER_SUMMARY ===\n守卫测试。`,
+    };
+  };
+}
+
+const pipelineSceneSpec = {
+  chapter: 2,
+  title: "守卫测试",
+  wordTarget: 3000,
+  scenes: [{
+    characters: ["主角"],
+    location: "测试地点",
+    conflict: "验证写作守卫",
+    mood: "紧张",
+    outcome: "拒绝违规正文",
+    hooks_used: [],
+    hooks_planted: [],
+  }],
+  constraints: [],
+};
 
 function expectModelSchemaIsBounded(schema: unknown): void {
   if (Array.isArray(schema)) {
@@ -142,15 +179,129 @@ describe("novel Runtime contribution", () => {
     expect(result.data).toMatchObject({ bookId: "trusted", chapterNumber: 1, content: "trusted content" });
   });
 
-  it("writes only an existing chapter in the trusted book binding", async () => {
+  it("writes only a book-compliant complete chapter in the trusted binding", async () => {
     const trusted = await createBook("trusted", "旧正文");
-    const result = await tool("chapter.write").handler(
-      { chapterNumber: 1, content: "新的正文" },
-      context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-    );
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    const content = "新的正文。".repeat(600);
+    try {
+      const result = await tool("chapter.write").handler(
+        { chapterNumber: 1, content },
+        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
+      );
 
-    expect(result).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1 } });
-    expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe("新的正文");
+      expect(result).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1, wordCount: 3000 } });
+      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe(content);
+      expect(JSON.parse(await readFile(join(trusted.bookRoot, "chapters", "index.json"), "utf8"))).toMatchObject([
+        { number: 1, wordCount: 3000 },
+      ]);
+    } finally {
+      closeStorageDatabase();
+    }
+  });
+
+  it("rejects a short direct chapter.write without changing the trusted chapter", async () => {
+    const trusted = await createBook("trusted", "原始正文");
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    try {
+      const result = await tool("chapter.write").handler(
+        { chapterNumber: 1, content: "过短正文" },
+        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
+      );
+
+      expect(result).toMatchObject({ ok: false, error: "chapter-length-out-of-range" });
+      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe("原始正文");
+    } finally {
+      closeStorageDatabase();
+    }
+  });
+
+  it("rejects direct chapter.write when an enabled preset reports a hard violation", async () => {
+    const trusted = await createBook("trusted", "原始正文");
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
+    try {
+      expect(await tool("presets.write").handler({
+        action: "create",
+        name: "禁用总结腔",
+        category: "tone",
+        promptInjection: "禁止：总而言之",
+      }, trustedContext)).toMatchObject({ ok: true });
+
+      const result = await tool("chapter.write").handler(
+        { chapterNumber: 1, content: `总而言之，${"正文".repeat(1500)}` },
+        trustedContext,
+      );
+
+      expect(result).toMatchObject({ ok: false, error: "preset-compliance-failed" });
+      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe("原始正文");
+    } finally {
+      closeStorageDatabase();
+    }
+  });
+
+  it("rejects pipeline.write when final content remains outside the book hard range", async () => {
+    const trusted = await createBook("trusted", "原始正文");
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    const trustedContext: ToolExecutionContext = {
+      ...context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
+      model: { provider: "test-provider", id: "test-current-model" },
+      generateText: pipelineGenerator("过短正文"),
+    };
+    try {
+      const result = await tool("pipeline.write").handler(
+        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        trustedContext,
+      );
+
+      expect(result).toMatchObject({ ok: false, error: "length-out-of-range" });
+      expect(await tool("resource.manage").handler(
+        { action: "list", filter: { type: "chapter", status: "accepted" } },
+        trustedContext,
+      )).toMatchObject({ ok: true, data: { resources: [] } });
+      expect(storage.sqlite.prepare("SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ?").get("trusted"))
+        .toEqual({ count: 0 });
+    } finally {
+      closeStorageDatabase();
+    }
+  });
+
+  it("rejects pipeline.write when an enabled preset has a hard compliance violation", async () => {
+    const trusted = await createBook("trusted", "原始正文");
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    const content = `总而言之，${"正文".repeat(1498)}`;
+    const trustedContext: ToolExecutionContext = {
+      ...context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
+      model: { provider: "test-provider", id: "test-current-model" },
+      generateText: pipelineGenerator(content),
+    };
+    try {
+      expect(await tool("presets.write").handler({
+        action: "create",
+        name: "禁用总结腔",
+        category: "tone",
+        promptInjection: "禁止：总而言之",
+      }, trustedContext)).toMatchObject({ ok: true });
+
+      const result = await tool("pipeline.write").handler(
+        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        trustedContext,
+      );
+
+      expect(result).toMatchObject({ ok: false, error: "preset-compliance-failed" });
+      expect(await tool("resource.manage").handler(
+        { action: "list", filter: { type: "chapter", status: "accepted" } },
+        trustedContext,
+      )).toMatchObject({ ok: true, data: { resources: [] } });
+      expect(storage.sqlite.prepare("SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ?").get("trusted"))
+        .toEqual({ count: 0 });
+    } finally {
+      closeStorageDatabase();
+    }
   });
 
   it("reads the trusted chapter index and builds bound narrative artifacts", async () => {
@@ -284,7 +435,7 @@ describe("novel Runtime contribution", () => {
   });
 
   it("executes every migrated domain tool against the trusted book and current host model", async () => {
-    const trusted = await createBook("trusted", "林舟走进山门。\n值得注意的是，青铜铃缓缓摇动。\n守门人抬起头。");
+    const trusted = await createBook("trusted", "林舟走进山门。\n值得注意的是，青铜铃缓缓摇动。\n守门人抬起头。", true);
     await mkdir(join(trusted.bookRoot, "jingwei", "角色"), { recursive: true });
     await writeFile(join(trusted.bookRoot, "jingwei", "角色", "林舟.md"), "# 林舟\n谨慎的少年。", "utf8");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
@@ -322,7 +473,7 @@ describe("novel Runtime contribution", () => {
       }
       if (system.includes("网文改写编辑")) return { text: "青铜铃骤然响起，林舟停下脚步。" };
       return {
-        text: `=== PRE_WRITE_CHECK ===\n蓝图已检查\n=== CHAPTER_TITLE ===\n铃声之后\n=== CHAPTER_CONTENT ===\n${"林舟沿石阶向上，青铜铃在风里发出清响。".repeat(80)}\n=== POST_SETTLEMENT ===\n完成\n=== UPDATED_STATE ===\n林舟取得试炼资格\n=== UPDATED_HOOKS ===\n- [x] 青铜铃\n=== CHAPTER_SUMMARY ===\n林舟取得试炼资格。`,
+        text: `=== PRE_WRITE_CHECK ===\n蓝图已检查\n=== CHAPTER_TITLE ===\n铃声之后\n=== CHAPTER_CONTENT ===\n${"林舟沿石阶向上，青铜铃在风里发出清响。".repeat(160)}\n=== POST_SETTLEMENT ===\n完成\n=== UPDATED_STATE ===\n林舟取得试炼资格\n=== UPDATED_HOOKS ===\n- [x] 青铜铃\n=== CHAPTER_SUMMARY ===\n林舟取得试炼资格。`,
       };
     };
     const trustedContext: ToolExecutionContext = {
@@ -391,6 +542,7 @@ describe("novel Runtime contribution", () => {
         trustedContext,
       );
       expect(pipeline).toMatchObject({ ok: true, data: { chapterNumber: 2, title: "铃声之后" } });
+      expect((pipeline.data as { wordCount?: number } | undefined)?.wordCount).toBeGreaterThanOrEqual(2182);
 
       expect(generatedSystems.some((system) => system.includes("章节规划专家"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("文风分析师"))).toBe(true);

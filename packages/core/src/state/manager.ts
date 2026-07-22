@@ -4,8 +4,20 @@ import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
 import { bootstrapStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state-bootstrap.js";
 
+export interface StateManagerOptions {
+  /**
+   * Server-owned book directory resolver for a trusted external binding.
+   * Callers must reject unknown book IDs instead of falling back to another
+   * project directory.
+   */
+  readonly resolveBookDir?: (bookId: string) => string;
+}
+
 export class StateManager {
-  constructor(private readonly projectRoot: string) {}
+  constructor(
+    private readonly projectRoot: string,
+    private readonly options: StateManagerOptions = {},
+  ) {}
 
   private static defaultAuthorIntent(language: "zh" | "en"): string {
     return language === "zh"
@@ -149,6 +161,7 @@ export class StateManager {
   }
 
   bookDir(bookId: string): string {
+    if (this.options.resolveBookDir) return this.options.resolveBookDir(bookId);
     return join(this.booksDir, bookId);
   }
 

@@ -710,6 +710,20 @@ describe("StateManager", () => {
         join(tempDir, "books", "my-book", "story", "state"),
       );
     });
+
+    it("uses a trusted resolver without falling back to another book directory", () => {
+      const externalRoot = join(tempDir, "external-workspace");
+      const bound = new StateManager(tempDir, {
+        resolveBookDir: (bookId) => {
+          if (bookId !== "bound-book") throw new Error("binding mismatch");
+          return externalRoot;
+        },
+      });
+
+      expect(bound.bookDir("bound-book")).toBe(externalRoot);
+      expect(bound.stateDir("bound-book")).toBe(join(externalRoot, "story", "state"));
+      expect(() => bound.bookDir("other-book")).toThrow("binding mismatch");
+    });
   });
 
   // -------------------------------------------------------------------------
