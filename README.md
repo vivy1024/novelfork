@@ -216,14 +216,16 @@ scene.spec 蓝图驱动，多 Agent 协作生成。
 ```bash
 git clone https://github.com/vivy1024/novelfork.git
 cd novelfork
-bun install
-bun run dev          # 开发模式，热重载
+pnpm install
+pnpm dev              # 开发模式，热重载
 ```
+
+依赖安装统一使用 PNPM；Bun 仅用于运行时与产品单文件编译。
 
 编译单文件 exe：
 
 ```bash
-cd packages/studio && bun run compile
+pnpm compile
 # 产物 → dist/novelfork-vX.Y.Z-windows-x64.exe
 ```
 
@@ -233,7 +235,7 @@ cd packages/studio && bun run compile
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  1. 启动        双击 exe 或 bun run dev                       │
+│  1. 启动        双击 exe 或 pnpm dev                          │
 │  2. 打开浏览器   http://localhost:4567                         │
 │  3. 配置供应商   设置 → AI 供应商 → 添加 API Key               │
 │  4. 开始创作    新建书籍 或 直接开启叙述者对话                   │
@@ -349,11 +351,11 @@ novelfork/
 ## Build
 
 ```bash
-bun install                              # 安装依赖
-bun run dev                              # 开发模式（热重载）
-bun run typecheck                        # 全包类型检查
-cd packages/studio && bun run compile    # 编译单文件 exe
-bun run codegraph                        # 生成代码导航图
+pnpm install                             # 安装依赖
+pnpm dev                                 # 开发模式（热重载）
+pnpm typecheck                           # 全包类型检查
+pnpm compile                             # 编译单文件 exe
+pnpm codegraph                           # 生成代码导航图
 ```
 
 ---
@@ -459,10 +461,10 @@ bun run codegraph                        # 生成代码导航图
 git checkout -b feat/your-feature
 
 # 开发
-bun install && bun run dev
+pnpm install && pnpm dev
 
 # 类型检查确认无误
-bun run typecheck
+pnpm typecheck
 
 # 提交（遵循 conventional commits）
 git commit -m "feat(scope): description"

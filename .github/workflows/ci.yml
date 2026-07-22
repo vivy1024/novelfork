@@ -18,12 +18,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
@@ -37,12 +41,16 @@ jobs:
 
       - uses: pnpm/action-setup@v4
         with:
-          version: 9
+          version: 10.24.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
 
       - run: pnpm install --frozen-lockfile
       - run: pnpm build

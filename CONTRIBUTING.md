@@ -13,7 +13,7 @@
 
 ---
 
-## 从源码运行（过渡方式）
+## 从源码运行
 
 ```bash
 git clone https://github.com/vivy1024/novelfork.git novelfork
@@ -23,7 +23,7 @@ pnpm build
 pnpm test
 ```
 
-> 这是当前源码运行方式，不代表最终产品形态。
+> 根工作区依赖仅使用 PNPM 10.24.0 安装；Bun 保留为 Runtime 执行器和产品单文件编译器，不要在根目录执行 `bun install`。
 
 ---
 
