@@ -12,6 +12,10 @@ describe("novel domain product routes", () => {
 		expect(paths).toContain("GET /api/books/:bookId/arcs");
 		expect(paths).toContain("GET /api/books/:bookId/health");
 		expect(paths).toContain("GET /api/progress");
+		// Narrative-memory config and current ledger use the product book binding.
+		expect(paths).toContain("GET /api/books/:bookId/narrative-memory/config");
+		expect(paths).toContain("PUT /api/books/:bookId/narrative-memory/config");
+		expect(paths).toContain("GET /api/books/:bookId/narrative-memory/current");
 		// Runtime state panel
 		expect(paths).toContain("GET /api/books/:bookId/state");
 		// Collaboration context for external book binding

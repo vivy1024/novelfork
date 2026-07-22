@@ -1,7 +1,8 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { estimateTokens } from "../jingwei/context/token-budget.js";
-import { ensureNarrativeMemorySchema, queryNarrativeFacts, type QueryNarrativeFactsInput } from "./storage.js";
+import { queryCurrentNarrativeLedger } from "./ledger.js";
+import { ensureNarrativeMemorySchema, type QueryNarrativeFactsInput } from "./storage.js";
 import { NarrativeContextCardSchema, NarrativeFactSchema, type NarrativeContextCard, type NarrativeFact } from "./types.js";
 
 export interface SearchFactsByEntitiesInput extends QueryNarrativeFactsInput {
@@ -113,15 +114,33 @@ export function upsertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
   return parsed;
 }
 
+/**
+ * Resolve facts from the same current-state ledger exposed by the story-status
+ * panel and `/current`. For a pre-write `currentChapter`, the visible state is
+ * the end of the preceding chapter, matching the existing temporal semantics.
+ */
 export function searchFactsByEntities(storage: StorageDatabase, input: SearchFactsByEntitiesInput): NarrativeFact[] {
   const entities = uniqueStrings(input.entities);
   if (entities.length === 0) return [];
-  const facts = queryNarrativeFacts(storage, {
-    ...input,
-    entities,
-    limit: input.limit ?? 100,
+
+  const asOfChapter = input.currentChapter === undefined
+    ? undefined
+    : Math.max(0, input.currentChapter - 1);
+  const ledger = queryCurrentNarrativeLedger(storage, {
+    bookId: input.bookId,
+    asOfChapter,
+    categories: input.categories,
+    // Filter after slot collapse so unrelated high-confidence facts cannot
+    // crowd out relevant entity facts before the ledger chooses its truth.
+    limit: 500,
   });
-  return dedupeFacts(facts);
+  const entitySet = new Set(entities);
+  const facts = ledger.items.filter((fact) => (
+    (entitySet.has(fact.subject) || entitySet.has(fact.object))
+    && (!input.predicates?.length || input.predicates.includes(fact.predicate))
+    && (!input.layer || input.layer === fact.layer)
+  ));
+  return dedupeFacts(facts).slice(0, input.limit ?? 100);
 }
 
 export function expandFactsOneHop(storage: StorageDatabase, input: ExpandFactsOneHopInput): NarrativeFact[] {

@@ -1,6 +1,7 @@
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { ensureNarrativeMemorySchema, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import {
@@ -35,6 +36,8 @@ interface MemoryFilter {
 
 interface MemoryBaseInput {
   readonly bookId: string;
+  /** Trusted book root injected by the Runtime when available. */
+  readonly bookRoot?: string;
 }
 
 export interface MemoryListInput extends MemoryBaseInput {
@@ -740,6 +743,16 @@ function invalidFilterKeys(kind: Extract<MemoryEntryKind, "fact" | "event">, fil
   return invalid;
 }
 
+async function shouldCloseSupersededFacts(input: MemoryBaseInput): Promise<boolean> {
+  if (!input.bookRoot?.trim()) return true;
+  try {
+    return (await loadNarrativeMemoryConfig(input.bookId, input.bookRoot)).ledger.closeSupersededFacts;
+  } catch {
+    // Keep lifecycle convergence enabled if the trusted config is temporarily unreadable.
+    return true;
+  }
+}
+
 function resolveEventIds(storage: StorageDatabase, bookId: string, input: Pick<MemoryBulkApproveInput, "eventIds" | "filter" | "limit">): string[] | ToolFailure {
   const explicitIds = normalizeIds(input.eventIds);
   if (explicitIds.length > 0) return explicitIds;
@@ -762,6 +775,7 @@ export async function handleMemoryBulkApprove(input: MemoryBulkApproveInput): Pr
   if (isToolResult(resolvedIds)) return resolvedIds;
   const ids = resolvedIds.slice(0, clampLimit(input.limit, 100, 200));
   if (ids.length === 0) return fail("invalid-input", "memory.bulk_approve 需要 eventIds 或能匹配事件的 filter。");
+  const closeSupersededFacts = await shouldCloseSupersededFacts(input);
   const approved: any[] = [];
   const skipped: any[] = [];
   const failed: any[] = [];
@@ -769,7 +783,7 @@ export async function handleMemoryBulkApprove(input: MemoryBulkApproveInput): Pr
     const event = getEvent(storage, bookId, id);
     if (!event) { failed.push({ id, error: "not-found" }); continue; }
     if (event.status !== "pending") { skipped.push({ id, status: event.status, reason: "not-pending" }); continue; }
-    const applied = applyNarrativeEvents(storage, bookId, [{ ...event, status: "applied" }]);
+    const applied = applyNarrativeEvents(storage, bookId, [{ ...event, status: "applied" }], { closeSupersededFacts });
     if (applied.failedEvents.length > 0) {
       failed.push({ id, error: applied.failedEvents[0]?.error ?? "apply-failed" });
       continue;

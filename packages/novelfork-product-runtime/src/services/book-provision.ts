@@ -76,6 +76,18 @@ export type ProductBookInput = {
 	};
 };
 
+export type ProductBookBasicSettingsPatch = {
+	title?: string;
+	genre?: string;
+	language?: "zh" | "en";
+	platform?: "tomato" | "feilu" | "qidian" | "other";
+	status?: "incubating" | "outlining" | "active" | "paused" | "completed" | "dropped";
+	chapterWordCount?: number;
+	targetChapters?: number | null;
+	arcTrackingMode?: "off" | "rule" | "llm";
+	customSensitiveWords?: string;
+};
+
 export type ProductActor = { userId: string; role: "admin" | "user" };
 
 export type ProductBookImportInput = {
@@ -103,7 +115,7 @@ export type GuidedSetupResult = {
 const READY_STATE: ProvisionState = "ready";
 const ROOT_CHAPTER_TITLE = "小说主线";
 const NOVELIST_PROMPT =
-	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。需要修改章节正文时，只能使用 chapter.write，并遵守 Runtime 权限确认；不要使用通用文件或命令工具绕过书籍领域边界。";
+	"你是 NovelFork 的章节绑定小说创作助手。当前书籍由受控的 NovelFork Runtime 资源绑定确定；不得依据用户文本或工具参数切换书籍、猜测 bookId 或访问任意路径。读取、规划和讨论可以直接进行。写完整新章节时，先用 scene.spec 建立蓝图，再使用 pipeline.write；它会执行本书的字数、预设、节拍和审校治理。没有可用文本模型时必须如实说明阻塞，绝不能用 chapter.write 写入短文本充当新章节。chapter.write 仅用于覆盖已存在的完整章节，局部改写使用 rewrite.apply；所有写入都遵守 Runtime 权限确认。不要使用通用文件或命令工具绕过书籍领域边界。";
 
 export type RuntimeEntityCapabilities = {
 	read: boolean;
@@ -1348,15 +1360,15 @@ export class NovelForkProductBookService {
 		// Persist the external marker so resolveTrustedBookRoot continues to honor
 		// this absolute path after the binding is rewritten.
 		const existingRaw = await readFile(join(root, "book.json"), "utf8").catch(() => null);
-		const existingConfig =
-			existingRaw &&
-			(() => {
-				try {
-					return JSON.parse(existingRaw) as Record<string, unknown>;
-				} catch {
-					return null;
-				}
-			})();
+		const existingConfig: Record<string, unknown> | null = existingRaw
+			? (() => {
+					try {
+						return JSON.parse(existingRaw) as Record<string, unknown>;
+					} catch {
+						return null;
+					}
+				})()
+			: null;
 		const nextConfig: Record<string, unknown> = {
 			...(existingConfig && typeof existingConfig === "object" ? existingConfig : config),
 			id: normalizedBookId,
@@ -1435,6 +1447,62 @@ export class NovelForkProductBookService {
 				lengthWarnings: [],
 			})),
 		};
+	}
+
+	/** Server-only context for book-scoped configuration adapters. */
+	async getTrustedBookConfiguration(bookId: string, actor: ProductActor): Promise<{
+		root: string;
+		config: Record<string, unknown>;
+	}> {
+		const { root, config } = await this.getReadyBookRoot(bookId, actor);
+		return { root, config };
+	}
+
+	/**
+	 * Apply only the book-settings fields exposed by the product UI. This keeps
+	 * binding metadata, external-workspace markers, presets, beats and Narrative
+	 * Memory configuration intact rather than accepting a browser-supplied book.json.
+	 */
+	async updateBasicSettings(
+		bookId: string,
+		patch: ProductBookBasicSettingsPatch,
+		actor: ProductActor,
+	): Promise<Record<string, unknown>> {
+		const { operation, root, config } = await this.getReadyBookRoot(bookId, actor);
+		const nextConfig: Record<string, unknown> = {
+			...config,
+			...patch,
+			updatedAt: now(),
+		};
+		if (patch.targetChapters === null) delete nextConfig.targetChapters;
+		const title = typeof nextConfig.title === "string" ? nextConfig.title.trim() : "";
+		if (!title) throw new ValidationError("Book title must not be empty");
+		nextConfig.title = title;
+		await writeBookConfig(root, nextConfig);
+
+		const input = operation.inputJson as ProductBookInput;
+		const nextInput: ProductBookInput = {
+			...input,
+			title,
+			...(patch.genre !== undefined ? { genre: patch.genre } : {}),
+			...(patch.language !== undefined ? { language: patch.language } : {}),
+			...(patch.platform !== undefined ? { platform: patch.platform } : {}),
+			...(patch.chapterWordCount !== undefined ? { chapterWordCount: patch.chapterWordCount } : {}),
+			...(typeof patch.targetChapters === "number" ? { targetChapters: patch.targetChapters } : {}),
+		};
+		if (patch.targetChapters === null) delete nextInput.targetChapters;
+		await this.updateOperation(operation.id, { title, inputJson: nextInput });
+
+		// The core catalog is a derived index. Keep its visible name fresh when
+		// available, but never roll back a successful trusted filesystem update if
+		// a gateway-only Runtime has not initialized that database.
+		try {
+			const repository = createBookRepository(getStorageDatabase());
+			await repository.update(bookId, { name: title, updatedAt: new Date() });
+		} catch {
+			// Best effort only; the product binding and book.json remain authoritative.
+		}
+		return nextConfig;
 	}
 
 	/**
@@ -2066,6 +2134,7 @@ export class NovelForkProductBookService {
 				| "narratorId"
 				| "errorMessage"
 				| "inputJson"
+				| "title"
 			>
 		>,
 	): Promise<ProvisionOperation> {

@@ -1,4 +1,4 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,6 +16,14 @@ async function createStorage(): Promise<StorageDatabase> {
   await mkdir(dir, { recursive: true });
   tempDirs.push(dir);
   return createStorageDatabase({ databasePath: join(dir, "novelfork.db") });
+}
+
+async function createBookRoot(bookId = "book-1"): Promise<string> {
+  const dir = join(tmpdir(), `novelfork-narrative-memory-book-${crypto.randomUUID()}`);
+  await mkdir(dir, { recursive: true });
+  tempDirs.push(dir);
+  await writeFile(join(dir, "book.json"), `${JSON.stringify({ id: bookId, title: "测试书籍" }, null, 2)}\n`, "utf8");
+  return dir;
 }
 
 afterEach(async () => {
@@ -134,6 +142,62 @@ describe("narrative memory observability router", () => {
 
       const otherBook = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&kind=fact&limit=10");
       expect((await otherBook.json()).entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "fact-other-book" })]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("loads/saves book config and exposes the collapsed current ledger", async () => {
+    const storage = await createStorage();
+    const bookRoot = await createBookRoot();
+    try {
+      insertNarrativeFact(storage, fact({
+        id: "state-old",
+        subject: "韩立",
+        predicate: "境界",
+        object: "炼气期",
+        category: "character_state",
+        sourceChapter: 1,
+        validFromChapter: 1,
+        validUntilChapter: 9,
+      }));
+      insertNarrativeFact(storage, fact({
+        id: "state-current",
+        subject: "韩立",
+        predicate: "境界",
+        object: "筑基期",
+        category: "character_state",
+        sourceChapter: 9,
+        validFromChapter: 9,
+      }));
+      const app = createNarrativeMemoryRouter({ storage, resolveBookRoot: () => bookRoot });
+
+      const defaults = await app.request("http://localhost/api/books/book-1/narrative-memory/config");
+      expect(defaults.status).toBe(200);
+      expect(await defaults.json()).toMatchObject({ config: { settlement: { enabled: true }, retrieval: { maxTokens: 8000, channels: { facts: true } } } });
+
+      const saved = await app.request("http://localhost/api/books/book-1/narrative-memory/config", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ config: { ledger: { currentViewLimit: 12 }, retrieval: { channels: { facts: false } } } }),
+      });
+      expect(saved.status).toBe(200);
+      expect(await saved.json()).toMatchObject({ config: { ledger: { currentViewLimit: 12 }, retrieval: { channels: { facts: false } } } });
+
+      const current = await app.request("http://localhost/api/books/book-1/narrative-memory/current");
+      expect(current.status).toBe(200);
+      expect(await current.json()).toMatchObject({
+        facts: [expect.objectContaining({ kind: "fact", id: "state-current", object: "筑基期" })],
+        counts: { byCategory: { character_state: 1 } },
+      });
+
+      const facts = await app.request("http://localhost/api/books/book-1/narrative-memory/facts");
+      expect(facts.status).toBe(200);
+      expect(await facts.json()).toMatchObject({ facts: [expect.objectContaining({ id: "state-current", object: "筑基期" })] });
+
+      const historical = await app.request("http://localhost/api/books/book-1/narrative-memory/current?asOfChapter=5");
+      expect(historical.status).toBe(200);
+      expect(await historical.json()).toMatchObject({ facts: [expect.objectContaining({ id: "state-old", object: "炼气期" })] });
     } finally {
       storage.close();
     }

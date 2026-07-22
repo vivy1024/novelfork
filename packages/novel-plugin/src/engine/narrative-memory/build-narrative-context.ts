@@ -14,7 +14,18 @@ import { createStyleChannel, type StyleSnippet } from "./channels/style-channel.
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
 import { mergeNarrativeContextCards } from "./merge.js";
-import { BuildNarrativeContextInputSchema, NarrativeContextPackageSchema, WaveMemoryConfigSchema, type BuildNarrativeContextInput, type NarrativeContextCard, type NarrativeContextPackage, type SemanticChannelConfig, type WaveMemoryConfig, type WaveMemoryDiagnostics } from "./types.js";
+import {
+  BuildNarrativeContextInputSchema,
+  NarrativeContextPackageSchema,
+  WaveMemoryConfigSchema,
+  type BuildNarrativeContextInput,
+  type NarrativeContextCard,
+  type NarrativeContextChannel,
+  type NarrativeContextPackage,
+  type SemanticChannelConfig,
+  type WaveMemoryConfig,
+  type WaveMemoryDiagnostics,
+} from "./types.js";
 import { analyzeEPA } from "./wave/epa.js";
 import { rerankByGeodesicEnergy } from "./wave/geodesic-rerank.js";
 import { buildResidualPyramid } from "./wave/residual-pyramid.js";
@@ -37,7 +48,29 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   semanticProvider?: NarrativeEmbeddingProvider;
   semanticConfig?: Partial<SemanticChannelConfig>;
   waveConfig?: Partial<WaveMemoryConfig>;
+  /** Book-level switches for optional recall channels. `hard` is never switchable. */
+  enabledChannels?: Partial<Record<NarrativeContextChannel, boolean>>;
 }>;
+
+function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult {
+  return {
+    channel,
+    status: "skipped",
+    cards: [],
+    latencyMs: 0,
+    candidateCount: 0,
+    returnedCount: 0,
+    estimatedTokens: 0,
+    warnings: [`${channel} channel 已在本书叙事记忆配置中关闭。`],
+  };
+}
+
+function isOptionalChannelEnabled(
+  input: Pick<BuildNarrativeContextRuntimeInput, "enabledChannels">,
+  channel: Exclude<NarrativeContextChannel, "hard" | "relationship">,
+): boolean {
+  return input.enabledChannels?.[channel] !== false;
+}
 
 function asSceneSpec(value: unknown): SceneSpec | undefined {
   if (!value || typeof value !== "object") return undefined;
@@ -183,58 +216,70 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
       bookRulesText: input.bookRulesText,
       complianceRules: input.complianceRules,
     }, timeoutMs),
-    runChannel(createStateChannel(), {
-      storage: input.storage,
-      bookId: parsed.bookId,
-      currentChapter,
-      sceneSpec,
-      sceneText: parsed.sceneText,
-      entities,
-      runtimeSnapshot: input.runtimeSnapshot,
-    }, timeoutMs),
-    runChannel(createHooksChannel(), {
-      storage: input.storage,
-      bookId: parsed.bookId,
-      currentChapter,
-      runtimeSnapshot: input.runtimeSnapshot,
-      pendingHooks: input.pendingHooks,
-      sceneSpec,
-      sceneText: parsed.sceneText,
-      entities,
-    }, timeoutMs),
-    runChannel(createTimelineChannel(), {
-      storage: input.storage,
-      bookId: parsed.bookId,
-      currentChapter,
-      runtimeSnapshot: input.runtimeSnapshot,
-      previousChapterTail: input.previousChapterTail,
-      sceneSpec,
-      sceneText: parsed.sceneText,
-    }, timeoutMs),
-    runChannel(createFactsChannel(), {
-      storage: input.storage,
-      bookId: parsed.bookId,
-      currentChapter,
-      sceneSpec,
-      sceneText: parsed.sceneText,
-      entities,
-    }, timeoutMs),
-    runChannel(createSemanticChannel(), {
-      storage: input.storage,
-      bookId: parsed.bookId,
-      currentChapter,
-      queryText: [parsed.sceneText, sceneSpec?.title, ...entities].filter(Boolean).join(" "),
-      entities,
-      provider: input.semanticProvider,
-      config: input.semanticConfig,
-    }, timeoutMs),
-    runChannel(createStyleChannel(), {
-      bookId: parsed.bookId,
-      styleGuideText: input.styleGuideText,
-      presets: input.presets,
-      beats: input.beats,
-      complianceRules: input.complianceRules,
-    }, timeoutMs),
+    isOptionalChannelEnabled(input, "state")
+      ? runChannel(createStateChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        sceneSpec,
+        sceneText: parsed.sceneText,
+        entities,
+        runtimeSnapshot: input.runtimeSnapshot,
+      }, timeoutMs)
+      : disabledChannelResult("state"),
+    isOptionalChannelEnabled(input, "hooks")
+      ? runChannel(createHooksChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        runtimeSnapshot: input.runtimeSnapshot,
+        pendingHooks: input.pendingHooks,
+        sceneSpec,
+        sceneText: parsed.sceneText,
+        entities,
+      }, timeoutMs)
+      : disabledChannelResult("hooks"),
+    isOptionalChannelEnabled(input, "timeline")
+      ? runChannel(createTimelineChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        runtimeSnapshot: input.runtimeSnapshot,
+        previousChapterTail: input.previousChapterTail,
+        sceneSpec,
+        sceneText: parsed.sceneText,
+      }, timeoutMs)
+      : disabledChannelResult("timeline"),
+    isOptionalChannelEnabled(input, "facts")
+      ? runChannel(createFactsChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        sceneSpec,
+        sceneText: parsed.sceneText,
+        entities,
+      }, timeoutMs)
+      : disabledChannelResult("facts"),
+    isOptionalChannelEnabled(input, "semantic")
+      ? runChannel(createSemanticChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+        queryText: [parsed.sceneText, sceneSpec?.title, ...entities].filter(Boolean).join(" "),
+        entities,
+        provider: input.semanticProvider,
+        config: input.semanticConfig,
+      }, timeoutMs)
+      : disabledChannelResult("semantic"),
+    isOptionalChannelEnabled(input, "style")
+      ? runChannel(createStyleChannel(), {
+        bookId: parsed.bookId,
+        styleGuideText: input.styleGuideText,
+        presets: input.presets,
+        beats: input.beats,
+        complianceRules: input.complianceRules,
+      }, timeoutMs)
+      : disabledChannelResult("style"),
   ]);
 
   const merged = mergeNarrativeContextCards(channelResults.flatMap((result) => result.cards), {

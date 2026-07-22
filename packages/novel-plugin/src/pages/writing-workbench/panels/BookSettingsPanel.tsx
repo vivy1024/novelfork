@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/select";
 import { ArrowLeft, Loader2, AlertCircle, Music, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -185,33 +186,30 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
     setPresetsLoading(true);
     setPresetsError(null);
 
-    Promise.all([
-      fetch("/api/presets").then((r) => {
-        if (!r.ok) throw new Error("无法加载预设列表");
-        return r.json();
-      }),
-      fetch(`/api/books/${encodeURIComponent(bookId)}/presets`).then((r) => {
-        if (!r.ok) throw new Error("无法加载书籍预设");
-        return r.json();
-      }),
-    ])
-      .then(([allData, bookData]) => {
+    fetch(`/api/books/${encodeURIComponent(bookId)}/presets`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as {
+          presets?: Array<AllPreset & { enabled?: boolean }>;
+          enabledPresetIds?: string[];
+          error?: string;
+        } | null;
+        if (!response.ok || !payload) throw new Error(payload?.error ?? "无法加载书籍预设");
+        return payload;
+      })
+      .then((data) => {
         if (cancelled) return;
-        const enabledIds: string[] = bookData.enabledPresetIds ?? [];
-        const allPresets: AllPreset[] = allData.presets ?? [];
-        setPresets(
-          allPresets.map((p) => ({
-            id: p.id,
-            name: p.name,
-            category: p.category,
-            enabled: enabledIds.includes(p.id),
-          })),
-        );
+        const enabledIds = data.enabledPresetIds ?? [];
+        setPresets((data.presets ?? []).map((preset) => ({
+          id: preset.id,
+          name: preset.name,
+          category: preset.category,
+          enabled: typeof preset.enabled === "boolean" ? preset.enabled : enabledIds.includes(preset.id),
+        })));
         setPresetsLoading(false);
       })
-      .catch((err) => {
+      .catch((cause) => {
         if (!cancelled) {
-          setPresetsError(err instanceof Error ? err.message : "加载失败");
+          setPresetsError(cause instanceof Error ? cause.message : "加载失败");
           setPresetsLoading(false);
         }
       });
@@ -225,26 +223,32 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
     setBeatsLoading(true);
     setBeatsError(null);
 
-    fetch("/api/presets/beats")
-      .then((r) => {
-        if (!r.ok) throw new Error("无法加载节拍模板");
-        return r.json();
+    fetch(`/api/books/${encodeURIComponent(bookId)}/beat-templates`)
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null) as {
+          templates?: BeatTemplate[];
+          selectedTemplateId?: string | null;
+          error?: string;
+        } | null;
+        if (!response.ok || !payload) throw new Error(payload?.error ?? "无法加载书籍节拍模板");
+        return payload;
       })
       .then((data) => {
         if (!cancelled) {
-          setBeatTemplates(data.beats ?? []);
+          setBeatTemplates(data.templates ?? []);
+          setSelectedBeatId(data.selectedTemplateId ?? null);
           setBeatsLoading(false);
         }
       })
-      .catch((err) => {
+      .catch((cause) => {
         if (!cancelled) {
-          setBeatsError(err instanceof Error ? err.message : "加载失败");
+          setBeatsError(cause instanceof Error ? cause.message : "加载失败");
           setBeatsLoading(false);
         }
       });
 
     return () => { cancelled = true; };
-  }, []);
+  }, [bookId]);
 
   // =========================================================================
   // Auto-save for config (debounced)
@@ -472,7 +476,7 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
                 <label className="text-xs text-muted-foreground">每章字数</label>
                 <Input
                   type="number"
-                  min={100}
+                  min={500}
                   value={config.chapterWordCount}
                   onChange={(e) => updateConfig("chapterWordCount", Number(e.target.value))}
                 />
@@ -595,7 +599,18 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
         </section>
 
         {/* ============================================================= */}
-        {/* Section 4: 节拍模板 */}
+        {/* Section 4: 叙事记忆 */}
+        {/* ============================================================= */}
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">叙事记忆</h2>
+            <p className="text-xs text-muted-foreground">管理章节结算、当前故事状态与写作前动态召回；不修改经纬静态设定。</p>
+          </div>
+          <NarrativeMemorySettingsSection bookId={bookId} />
+        </section>
+
+        {/* ============================================================= */}
+        {/* Section 5: 节拍模板 */}
         {/* ============================================================= */}
         <section className="space-y-3 pb-6">
           <h2 className="text-sm font-semibold text-foreground">节拍模板</h2>

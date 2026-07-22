@@ -2,6 +2,11 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
 import { extractNarrativeEventsFromChapter, type ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
+import {
+  DEFAULT_NARRATIVE_MEMORY_CONFIG,
+  loadNarrativeMemoryConfig,
+  type NarrativeMemoryConfig,
+} from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
@@ -11,6 +16,10 @@ export type ChapterSettlementOptions = Readonly<{
   storage?: StorageDatabase;
   llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
   now?: () => Date;
+  /** Trusted absolute book root for loading book.json narrativeMemory config. */
+  bookRoot?: string;
+  /** Preloaded config; when omitted and bookRoot is set, loaded from book.json. */
+  config?: NarrativeMemoryConfig;
 }>;
 
 function idPart(value: string): string {
@@ -111,6 +120,19 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   const storage = options.storage ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
 
+  let config = options.config ?? DEFAULT_NARRATIVE_MEMORY_CONFIG;
+  if (!options.config && options.bookRoot?.trim()) {
+    try {
+      config = await loadNarrativeMemoryConfig(input.bookId, options.bookRoot);
+    } catch {
+      config = DEFAULT_NARRATIVE_MEMORY_CONFIG;
+    }
+  }
+
+  if (!config.settlement.enabled) {
+    return skipped(input, "叙事记忆结算已在本书配置中关闭。");
+  }
+
   if (!input.content.trim()) {
     return skipped(input, "章节正文为空，跳过 Narrative Memory 结算。");
   }
@@ -120,13 +142,18 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     chapterNumber: input.chapterNumber,
     title: input.title,
     content: input.content,
-    llmExtractor: options.llmExtractor,
+    llmExtractor: config.settlement.useLlmExtraction ? options.llmExtractor : undefined,
   });
   const warnings = [...extraction.warnings];
   const events: NarrativeEvent[] = [];
 
   for (const draft of extraction.drafts) {
-    const decision = decideSettlementRisk(draft);
+    const decision = decideSettlementRisk(draft, {
+      minConfidence: config.settlement.minConfidence,
+      autoApplyLowRisk: config.settlement.autoApplyLowRisk,
+      autoApplyMediumRisk: config.settlement.autoApplyMediumRisk,
+      highRiskAlwaysPending: config.settlement.highRiskAlwaysPending,
+    });
     if (decision.decision === "reject") {
       warnings.push(`丢弃事件草案：${decision.reason}`);
       continue;
@@ -137,7 +164,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   const persisted = persistSettlementEvents(storage, events, warnings);
   const eventResults = [...persisted];
 
-  const applied = applyNarrativeEvents(storage, input.bookId, persisted);
+  const applied = applyNarrativeEvents(storage, input.bookId, persisted, {
+    closeSupersededFacts: config.ledger.closeSupersededFacts,
+  });
   const downgradedPendingIds: string[] = [];
   for (const failed of applied.failedEvents) {
     const failedEvent = persisted.find((event) => event.id === failed.id);

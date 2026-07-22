@@ -1,6 +1,7 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { upsertNarrativeFact } from "./facts.js";
+import { closeSupersededNarrativeFacts } from "./ledger.js";
 import { updateNarrativeEventStatus } from "./storage.js";
 import type { NarrativeEvent, NarrativeEventType, NarrativeFact } from "./types.js";
 
@@ -10,6 +11,11 @@ export type ApplyNarrativeEventsResult = Readonly<{
   rejectedEventIds: readonly string[];
   skippedEventIds: readonly string[];
   failedEvents: readonly Readonly<{ id: string; error: string }>[];
+}>;
+
+export type ApplyNarrativeEventsOptions = Readonly<{
+  /** Close open facts that share the same current-state slot before writing the new fact. */
+  closeSupersededFacts?: boolean;
 }>;
 
 function factCategoryFor(eventType: NarrativeEventType): string {
@@ -74,7 +80,13 @@ function eventToFact(event: NarrativeEvent): NarrativeFact {
   };
 }
 
-function applyOne(storage: StorageDatabase, bookId: string, event: NarrativeEvent, seenTuples: Set<string>): { kind: "applied" | "pending" | "rejected" | "skipped"; id: string } {
+function applyOne(
+  storage: StorageDatabase,
+  bookId: string,
+  event: NarrativeEvent,
+  seenTuples: Set<string>,
+  options: ApplyNarrativeEventsOptions,
+): { kind: "applied" | "pending" | "rejected" | "skipped"; id: string } {
   if (event.bookId !== bookId) {
     throw new Error(`event bookId ${event.bookId} does not match reducer bookId ${bookId}`);
   }
@@ -93,13 +105,22 @@ function applyOne(storage: StorageDatabase, bookId: string, event: NarrativeEven
     return { kind: "skipped", id: event.id };
   }
 
-  upsertNarrativeFact(storage, eventToFact(event));
+  const nextFact = eventToFact(event);
+  if (options.closeSupersededFacts !== false) {
+    closeSupersededNarrativeFacts(storage, nextFact, event.chapterNumber);
+  }
+  upsertNarrativeFact(storage, nextFact);
   updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
   seenTuples.add(key);
   return { kind: "applied", id: event.id };
 }
 
-export function applyNarrativeEvents(storage: StorageDatabase, bookId: string, events: readonly NarrativeEvent[]): ApplyNarrativeEventsResult {
+export function applyNarrativeEvents(
+  storage: StorageDatabase,
+  bookId: string,
+  events: readonly NarrativeEvent[],
+  options: ApplyNarrativeEventsOptions = {},
+): ApplyNarrativeEventsResult {
   const appliedEventIds: string[] = [];
   const pendingEventIds: string[] = [];
   const rejectedEventIds: string[] = [];
@@ -109,7 +130,7 @@ export function applyNarrativeEvents(storage: StorageDatabase, bookId: string, e
 
   for (const event of events) {
     try {
-      const result = applyOne(storage, bookId, event, seenTuples);
+      const result = applyOne(storage, bookId, event, seenTuples, options);
       if (result.kind === "applied") appliedEventIds.push(result.id);
       else if (result.kind === "pending") pendingEventIds.push(result.id);
       else if (result.kind === "rejected") rejectedEventIds.push(result.id);

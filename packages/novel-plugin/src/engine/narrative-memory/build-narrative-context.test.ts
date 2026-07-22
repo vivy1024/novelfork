@@ -146,6 +146,37 @@ describe("buildNarrativeContext", () => {
     }
   });
 
+  it("honors book-level recall channel switches", async () => {
+    const storage = await createStorage();
+    try {
+      upsertNarrativeFact(storage, fact({
+        id: "state-fact",
+        subject: "韩立",
+        predicate: "状态",
+        object: "谨慎",
+        validFromChapter: 10,
+      }));
+
+      const result = await buildNarrativeContext({
+        storage,
+        bookId: "book-1",
+        purpose: "write_chapter",
+        chapterNumber: 12,
+        sceneSpec,
+        entities: ["韩立"],
+        enabledChannels: { state: false, facts: false, timeline: false, hooks: false, style: false, semantic: false },
+      });
+
+      expect(result.cards.some((item) => item.channel === "state" || item.channel === "facts")).toBe(false);
+      expect(result.diagnostics.channelStats).toEqual(expect.arrayContaining([
+        expect.objectContaining({ channel: "state", status: "skipped" }),
+        expect.objectContaining({ channel: "facts", status: "skipped" }),
+      ]));
+    } finally {
+      storage.close();
+    }
+  });
+
   it("includes semantic channel when enabled and records semantic diagnostics", async () => {
     const storage = await createStorage();
     try {

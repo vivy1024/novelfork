@@ -72,7 +72,7 @@ type HandlerResult = Readonly<{
 
 type BookWritingConfig = BookConfig & { readonly beatTemplateId?: string };
 
-type AccessiblePresetStore = Readonly<{
+export type AccessiblePresetStore = Readonly<{
   presets: readonly Preset[];
   beats: readonly BeatTemplate[];
 }>;
@@ -154,7 +154,7 @@ function normalizeStoredBeats(value: unknown): Beat[] | null {
   return beats;
 }
 
-function loadAccessibleStores(
+export function loadAccessiblePresetBeatStore(
   storage: StorageDatabase,
   bookId: string,
 ): AccessiblePresetStore {
@@ -218,7 +218,7 @@ export async function handlePresetsRead(
   try {
     const bookId = requireBookId(input.bookId);
     const config = await readBookConfig(bookId, options);
-    const store = loadAccessibleStores(options.storage, bookId);
+    const store = loadAccessiblePresetBeatStore(options.storage, bookId);
     const enabledIds = new Set(config.enabledPresetIds ?? []);
     const scope = input.scope ?? "enabled";
 
@@ -231,12 +231,15 @@ export async function handlePresetsRead(
         name: preset.name,
         category: preset.category,
         description: preset.description,
+        promptInjection: preset.promptInjection,
+        ...(preset.conflictGroup ? { conflictGroup: preset.conflictGroup } : {}),
+        ...(preset.postWriteChecks ? { postWriteChecks: preset.postWriteChecks } : {}),
         enabled: enabledIds.has(preset.id),
       }));
       return {
         ok: true,
         summary: `共 ${items.length} 个可用预设，其中 ${items.filter((item) => item.enabled).length} 个已启用。`,
-        data: { bookId, presets: items },
+        data: { bookId, enabledPresetIds: [...enabledIds], presets: items },
       };
     }
 
@@ -268,7 +271,7 @@ export async function handlePresetsWrite(
   try {
     const bookId = requireBookId(input.bookId);
     const action = input.action;
-    const store = loadAccessibleStores(options.storage, bookId);
+    const store = loadAccessiblePresetBeatStore(options.storage, bookId);
 
     if (action === "create") {
       const name = input.name?.trim() ?? "";
@@ -336,19 +339,27 @@ export async function handleBeatRead(
   try {
     const bookId = requireBookId(input.bookId);
     const config = await readBookConfig(bookId, options);
-    const store = loadAccessibleStores(options.storage, bookId);
+    const store = loadAccessiblePresetBeatStore(options.storage, bookId);
     const activeTemplate = config.beatTemplateId
       ? store.beats.find((template) => template.id === config.beatTemplateId)
       : undefined;
+    const availableTemplates = store.beats.map((template) => ({
+      id: template.id,
+      name: template.name,
+      description: template.description,
+      beats: template.beats,
+    }));
     if (!activeTemplate) {
       return {
         ok: true,
         summary: "当前未选择节拍模板。",
         data: {
           bookId,
+          selectedTemplateId: null,
           template: null,
           beats: [],
-          available: store.beats.map((template) => ({
+          availableTemplates,
+          available: availableTemplates.map((template) => ({
             id: template.id,
             name: template.name,
             beatCount: template.beats.length,
@@ -361,12 +372,14 @@ export async function handleBeatRead(
       summary: `当前节拍模板：${activeTemplate.name}（${activeTemplate.beats.length} 个节拍）。`,
       data: {
         bookId,
+        selectedTemplateId: activeTemplate.id,
         template: {
           id: activeTemplate.id,
           name: activeTemplate.name,
           description: activeTemplate.description,
           totalBeats: activeTemplate.beats.length,
         },
+        availableTemplates,
         beats: activeTemplate.beats.map((beat, index) => ({
           index,
           name: beat.name,
@@ -387,7 +400,7 @@ export async function handleBeatWrite(
 ): Promise<HandlerResult> {
   try {
     const bookId = requireBookId(input.bookId);
-    const store = loadAccessibleStores(options.storage, bookId);
+    const store = loadAccessiblePresetBeatStore(options.storage, bookId);
     if (input.action === "select") {
       const templateId = input.templateId?.trim() ?? "";
       const template = store.beats.find((candidate) => candidate.id === templateId);
@@ -437,7 +450,7 @@ export async function handlePresetsCheckCompliance(
     const bookId = requireBookId(input.bookId);
     if (!input.content.trim()) return fail("missing-content", "content 参数不能为空。");
     const config = await readBookConfig(bookId, options);
-    const store = loadAccessibleStores(options.storage, bookId);
+    const store = loadAccessiblePresetBeatStore(options.storage, bookId);
     const enabledIds = new Set(config.enabledPresetIds ?? []);
     const enabledPresets = store.presets.filter((preset) => enabledIds.has(preset.id));
     const violations: Array<{
