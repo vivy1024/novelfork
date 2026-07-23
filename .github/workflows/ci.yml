@@ -1,77 +1,16 @@
+# 公开仓库不跑自动 CI。
+# 完整验证在维护者本机完成：测试 + 编译 Windows EXE + EXE 功能核验。
+# 需要时仅可手动触发本 workflow。
 name: CI
 
 on:
-  push:
-    branches: [master]
-  pull_request:
-    branches: [master]
+  workflow_dispatch:
 
 jobs:
-  build-and-test:
+  noop:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version: [22]
-
     steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.24.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: ${{ matrix.node-version }}
-          cache: pnpm
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.13
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - run: pnpm test
-
-  verify-pack:
-    runs-on: ubuntu-latest
-    needs: build-and-test
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10.24.0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.13
-
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-
-      - name: Verify no workspace:* in tarballs
+      - name: Public CI disabled
         run: |
-          set -euo pipefail
-          for pkg in packages/core packages/cli; do
-            echo "--- Checking $pkg ---"
-            cd "$pkg"
-            PACKDIR=$(mktemp -d)
-            npm pack --pack-destination "$PACKDIR" 2>/dev/null
-            TGZ=$(ls "$PACKDIR"/*.tgz)
-            PACKED_PKG=$(tar -xOf "$TGZ" package/package.json)
-            if echo "$PACKED_PKG" | grep -q '"workspace:'; then
-              echo "FAIL: $pkg tarball still contains workspace: protocol"
-              echo "$PACKED_PKG" | grep 'workspace:'
-              rm -rf "$PACKDIR"
-              exit 1
-            fi
-            echo "OK: $pkg tarball is clean"
-            rm -rf "$PACKDIR"
-            cd - >/dev/null
-          done
+          echo "Public CI is intentionally disabled."
+          echo "Release gate: local tests + Windows EXE + EXE verification."

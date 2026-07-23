@@ -4,13 +4,35 @@
 
 ## Unreleased
 
+## v3.2.1 (2026-07-23) — 公开仓库边界与本地发版门禁
+
+### 🔒 公开 / 私有边界
+
+- 公开 Git 历史中移除完整 `packages/narrafork-runtime-private/` 源码路径；当前 tip 与远端分支 tip 不再包含 Runtime 本体。
+- `packages/narrafork-runtime-overlay/` 改为**私有 Git submodule**（`NarraFork/novelfork-runtime-overlay-private`）；公开仓库仅保留 gitlink。
+- 本地仍可保留 Runtime 物化树（ignore）与 overlay 子仓库，用于完整构建与 EXE 核验。
+- 根 `CLAUDE.md` 更新为当前开发约定：日常在本仓库开发、改哪里、验证与上游同步流程。
+
+### 🚫 公开 CI
+
+- 公开仓库的 `CI` / `Release` workflow **不再在 push/tag 上自动运行**（仅 `workflow_dispatch` 占位说明）。
+- 发版门禁明确为：**本机测试 + 编译 Windows EXE + EXE 功能核验**；不以公开 GitHub Actions 代替完整 Runtime 验证。
+
+### 📄 文档
+
+- `README.md` 对齐 v3.2.x 架构、包边界、源码开发前提与发版方式；去掉“clone 即可完整本地 Runtime”的过时表述。
+
+### 📦 交付
+
+- 版本线仍为 `3.2.1`（产品包已对齐）；用户交付以 Releases 中的 Windows EXE 为主。
+
 ## v3.2.0 (2026-07-21) — Runtime 产品化接入 + 叙事记忆管理工具
 
 ### 🏗️ Runtime 产品边界（NarraFork 私有 Runtime 内嵌）
 
-- 以受控导入的私有 Runtime（`packages/narrafork-runtime-private`）为 Agent 执行核心；NovelFork 通过 `novelfork-product-runtime`、overlay 与 bridge 接入，不再平行维护第二套通用 Agent 引擎。
+- 以本地物化的私有 Runtime（`packages/narrafork-runtime-private`，不公开跟踪）为 Agent 执行核心；NovelFork 通过 `novelfork-product-runtime`、overlay 与 bridge 接入，不再平行维护第二套通用 Agent 引擎。
 - 书籍与叙述者绑定由服务端可信解析；外部作品目录需带信任标记后才可访问。
-- Runtime overlay 可重放：manifest + 精确 patch/add，含连接租约（connection lease）与 product-host 会话补丁；新增 `materialize-runtime-overlay` 物化脚本。
+- Runtime overlay 可重放：manifest + 精确 patch/add，含连接租约（connection lease）与 product-host 会话补丁（overlay 现走私有子仓库）。
 - 产品入口 `main.ts` 在 Runtime 地址导出缺失时回退默认端口，避免健康服务因缺 export 起不来浏览器窗口。
 - 清理遗留规划/文档/品牌资产，仓库结构对齐当前产品架构。
 
