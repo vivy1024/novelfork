@@ -1,6 +1,6 @@
 # NovelFork 开发约定
 
-NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在 NarraFork 宿主内维护该仓库时的长期开发约定。
+NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在本仓库内开发、验证与发布时的长期约定。
 
 ## 指令优先级
 
@@ -17,53 +17,99 @@ NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在 NarraFor
 - 始终使用简体中文回复。
 - 根 `package.json`、根 `main.ts` 和当前源码是启动、构建及运行行为的事实来源。
 
+## 工作目录与仓库边界
+
+日常开发**只在** `D:\DESKTOP\novelfork`（本仓库根）进行。不要把临时脱敏镜像、公开候选 worktree 或旁路目录当成主开发环境。
+
+```text
+本仓库（NovelFork 产品）
+├─ 公开跟踪：产品代码、Bridge、构建与发布脚本
+├─ 私有子仓库：packages/narrafork-runtime-overlay/
+└─ 本地存在、Git 忽略：packages/narrafork-runtime-private/
+
+可选本地辅助（均不提交）
+├─ narrafork-private-main/     上游 NarraFork 完整 checkout（用于对照/导入）
+└─ packages/.narrafork-runtime-*  导入 staging / 备份缓存
+```
+
+| 路径 | 角色 | Git |
+|---|---|---|
+| `packages/core/` | 通用基础设施 | 跟踪（公开） |
+| `packages/studio/` | 产品前端与工作台 | 跟踪（公开） |
+| `packages/novel-plugin/` | 小说领域逻辑与写作 UI | 跟踪（公开） |
+| `packages/novelfork-product-runtime/` | 产品 Runtime 适配、书籍绑定、产品路由 | 跟踪（公开） |
+| `packages/narrafork-runtime-bridge/` | Studio/产品层与 Runtime 的窄契约 | 跟踪（公开） |
+| `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
+| `packages/narrafork-runtime-overlay/` | Runtime 适配补丁、嵌入面板、Product Host SPI、迁移 | **私有 submodule** |
+| `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树 | **ignore，仅本地** |
+| `narrafork-private-main/` | 上游私有 Runtime 完整 Git checkout | **ignore，仅本地** |
+
+### 公开边界（硬约束）
+
+- **不公开**完整 NarraFork Runtime 源码树。
+- **不公开** Runtime overlay 实现（补丁上下文、嵌入 Narrator 面板、Provider、Runtime 迁移等）；overlay 走私有子仓库。
+- 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
+- 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
+- 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 编译 Windows EXE + 用 EXE 做功能核验。
+
 ## 架构边界
 
 ```text
-packages/studio/                    NovelFork 产品前端与通用工作台
-packages/novel-plugin/              小说领域：写作、章节、Lore、Narrative Memory、工作台
-packages/core/                      通用基础设施
-packages/narrafork-runtime-private/ 受控导入的 NarraFork Agent Runtime
-packages/narrafork-runtime-overlay/  可重放的 Runtime 通用 overlay
-packages/narrafork-runtime-bridge/  Runtime 与产品层之间的受控契约
-packages/novelfork-product-runtime/ NovelFork 的 Runtime 产品适配、书籍绑定与领域路由
+packages/studio/                     NovelFork 产品前端与通用工作台
+packages/novel-plugin/               小说领域：写作、章节、Lore、Narrative Memory、工作台
+packages/core/                       通用基础设施
+packages/novelfork-product-runtime/  产品 Runtime 适配、书籍绑定与领域路由
+packages/narrafork-runtime-bridge/   Runtime 与产品层之间的受控契约（可公开）
+packages/narrafork-runtime-overlay/  私有 submodule：Runtime 通用 overlay
+packages/narrafork-runtime-private/  本地 ignore：完整 Runtime 物化树
 ```
 
-- NovelFork 的产品前端和写作工作台保持为产品界面。
+- NovelFork 产品前端和写作工作台保持为产品界面。
 - NarraFork Runtime 提供 Agent、权限、工具循环、会话持久化和实时通信等后端能力。
-- 小说领域逻辑归属 `packages/novel-plugin/`；`core`、`studio` 与 Runtime 通用层仅提供通用契约和宿主能力。
+- 小说领域逻辑归属 `packages/novel-plugin/`；`core`、`studio` 与 Bridge 仅提供通用契约和宿主能力。
 - Runtime 通过受控产品契约及可信书籍绑定访问小说数据；前端或模型不应直接构造书籍路径、项目或 narrator 标识。
-- `packages/narrafork-runtime-private/CLAUDE.md` 是迁入上游源码的维护参考。宿主工具语义、当前产品决策和本文件优先于该参考文档。
+- `packages/narrafork-runtime-private/CLAUDE.md` 只是上游迁入树内的参考，**不能**覆盖本文件或当前产品决策。
 
-## 标准开发流程
+## 在 NovelFork 里怎么开发
 
-### 1. 理解任务
+### 1. 起手必做
 
-1. 读取当前用户目标和相关源码、报错、日志或接口。
-2. 确认影响范围、数据边界和现有实现模式。
-3. 对多文件、行为变化或存在技术选择的任务，使用 NarraFork 原生 Plan Mode；简单明确的改动可直接处理。
+1. 工作目录确认在仓库根：`D:\DESKTOP\novelfork`。
+2. 需要完整本地可运行能力时，确认：
+   - `packages/narrafork-runtime-private/` 已物化存在；
+   - `packages/narrafork-runtime-overlay/` 子仓库已初始化（`git submodule update --init --recursive`）。
+3. 先读当前用户目标与相关源码/报错；不要假设旁路仓库或历史计划就是待办。
 
-### 2. 实现
+### 2. 改哪里
+
+| 目标 | 优先改动位置 |
+|---|---|
+| 写作工作台 / 书籍章节 UI | `packages/studio/`、`packages/novel-plugin/` |
+| 书籍绑定、产品权限、产品 API | `packages/novelfork-product-runtime/` |
+| 通用模型/存储/插件契约 | `packages/core/` |
+| 与 Runtime 的类型/面板契约 | `packages/narrafork-runtime-bridge/` |
+| Runtime 通用接入补丁 / 嵌入面板 | **私有** `packages/narrafork-runtime-overlay/`（子仓库内） |
+| Runtime 本体行为 | 上游私有 Runtime；经 import + overlay 物化到 `runtime-private`，**禁止**为图方便把产品逻辑写回 Runtime 并提交到公开树 |
+
+### 3. 实现原则
 
 1. 选择当前任务需要的最小改动。
 2. 沿用现有模块边界、类型约定和错误处理方式。
-3. 需要独立调查、复杂执行或隔离上下文时再使用 subagent；不把 subagent、Skill 或计划流程当成固定步骤。
+3. 需要独立调查或隔离上下文时再使用 subagent；不把 subagent、Skill 或计划流程当成固定步骤。
 4. 不以 mock、假数据或临时旁路代替真实能力。
+5. 未经授权不 `git reset --hard`、不清理用户工作区、不强制推送、不删除数据库文件。
 
-### 3. 验证
+### 4. 验证
 
-- 后端改动：通过真实 HTTP/API 调用、运行日志或目标测试验证。
-- 前端改动：启动实际应用并使用 Browser 验证；必要时保留截图证据。
-- 构建或打包改动：运行对应构建并启动产物验证。
-- 类型检查和静态阅读是辅助证据；用户可见功能应有实际运行证据。
+- 后端：真实 HTTP/API、运行日志或目标测试。
+- 前端：实际启动应用并用 Browser 验证；必要时保留截图。
+- 打包：`pnpm build` / `pnpm compile` 等当前 scripts；发版前用生成的 Windows EXE 做功能核验。
+- 类型检查是辅助证据；用户可见功能要有实际运行证据。
+- **不要**用公开 CI 代替本地 Runtime 完整能力验证。
 
-### 4. 交付
+### 5. 交付
 
-交付时简要说明：
-
-- 实际修改的文件和行为；
-- 实际执行的验证；
-- 已知限制或未完成项。
+简要说明：实际修改的文件与行为；实际执行的验证；已知限制或未完成项。
 
 ## Skill 使用原则
 
@@ -97,15 +143,13 @@ NarraFork 宿主的 Skill 机制是方法论补充，不是另一套任务或审
 
 ### Runtime、Studio 与小说产品的实际组合
 
-NovelFork 不把 NarraFork 当作可替换的外部聊天服务，也不维护第二套 Agent 引擎；它把 NarraFork 作为通用 Agent Runtime，并把小说领域安全地接入其中：
-
 ```text
 NovelFork Studio（产品壳）
   ├─ 写作工作台、书籍/章节/Lore 界面：Novel Plugin
   ├─ 原生叙述者面板：运行时复用 Runtime 的 EmbeddedNarratorDockHost
   └─ API / WebSocket：连接 NarraFork Runtime
 
-NarraFork Runtime
+NarraFork Runtime（本地 ignore 的物化树 + 私有 overlay 子仓库）
   ├─ Agent Loop、Provider、权限、会话、消息、工具循环、WebSocket 与运行时状态
   ├─ 维护 NarratorPanel 的核心行为、状态与通用前端依赖
   └─ 经由 Product Host SPI 调用 NovelFork 产品能力
@@ -116,43 +160,44 @@ NovelFork Product Runtime
   └─ 调用 Novel Plugin / Core 管理书籍、章节、Lore 与 Narrative Memory
 ```
 
-- **Runtime 的职责**：NarraFork Runtime 拥有 Agent 的真实执行、Provider、权限、会话、消息、通用工具执行器和实时连接。禁止在 Studio、Novel Plugin 或 Product Runtime 中平行实现第二套通用 Agent Loop、权限系统或消息同步层。
-- **NovelFork 的职责**：`packages/novel-plugin/`、`packages/core/` 与 `packages/novelfork-product-runtime/` 拥有书籍、章节、Lore、Narrative Memory、写作业务、领域工具和产品权限。Runtime 不得直接承载这些产品数据、迁移或业务路由。
-- **Studio 的职责**：`packages/studio/` 是 NovelFork 产品壳与写作界面；它组合小说工作台和 Runtime 叙述者体验，但不重写 Runtime 的对话核心。开发环境中 Studio 通过 Vite 代理把 `/api` 与 WebSocket 转给 Runtime（默认 Runtime 端口为 `7778`）；生产构建由 Runtime 服务 Studio 产物。实际产品验收必须使用已认证的 Studio 浏览器上下文，而不是以未认证的裸 HTTP 调用替代。
-- **原生面板复用**：`RuntimeNarratorPanelMount` 必须运行时复用 Runtime 的 `EmbeddedNarratorDockHost`，而不是复制、fork 或以简化 mock 替代 `NarratorPanel`。该面板保留 Runtime 自己的 Provider、React Query、i18n、消息状态和 WebSocket 语义；NovelFork 只通过正式扩展点注入产品 capability 守卫、可信书籍上下文和小说领域工具结果渲染。
-- **受控 Bridge**：`packages/narrafork-runtime-bridge/` 是 Studio 与 Runtime 的稳定、窄契约层。其 `frontend` 子路径只声明 Studio 必需的 `NarratorPanel` props、组件签名和 `queryClient` 接口；Vite/Vitest 精确别名仍解析到 Runtime 的真实 `EmbeddedNarratorDockHost.tsx` 与 `query-client.ts`，因此运行时能力随上游更新而更新。
-- **编译边界**：禁止在 `packages/studio/tsconfig.json` 中通过 `@frontend/*`、`@shared/*` 或等价宽路径映射暴露整个 `packages/narrafork-runtime-private/frontend` 源码。否则 Studio 的 `tsc` 会沿 Runtime 全量前端依赖树进行不相关类型检查。运行时 alias 与 TypeScript 类型契约必须分离：前者加载真实实现，后者只依赖 Bridge。
-- **可信绑定**：前端、模型或工具调用不得自行拼装书籍路径、项目路径或 narrator 标识。所有读取、执行和写入都必须由服务端的 Product Runtime 解析可信绑定并执行访问控制。
+- **Runtime 的职责**：拥有 Agent 真实执行、Provider、权限、会话、消息、通用工具执行器和实时连接。禁止在 Studio、Novel Plugin 或 Product Runtime 中平行实现第二套通用 Agent Loop、权限系统或消息同步层。
+- **NovelFork 的职责**：`novel-plugin`、`core`、`novelfork-product-runtime` 拥有书籍、章节、Lore、Narrative Memory、写作业务、领域工具和产品权限。Runtime 不得直接承载这些产品数据、迁移或业务路由。
+- **Studio 的职责**：产品壳与写作界面；开发环境通过 Vite 代理把 `/api` 与 WebSocket 转给 Runtime（默认端口 `7778`）；生产由 Runtime 服务 Studio 产物。产品验收必须使用已认证的 Studio 浏览器上下文。
+- **原生面板复用**：`RuntimeNarratorPanelMount` 必须运行时复用 Runtime 的 `EmbeddedNarratorDockHost`，而不是复制/mock `NarratorPanel`。NovelFork 只通过正式扩展点注入 capability 守卫、可信书籍上下文和领域工具结果渲染。
+- **受控 Bridge**：`packages/narrafork-runtime-bridge/` 是稳定窄契约层。Vite/Vitest 运行时 alias 可解析到本地 Runtime 真实实现；TypeScript 类型契约只依赖 Bridge，禁止在 Studio `tsconfig` 用 `@frontend/*` / `@shared/*` 宽映射扫进整个 Runtime 前端树。
+- **可信绑定**：前端、模型或工具调用不得自行拼装书籍路径、项目路径或 narrator 标识。
 
 ## Runtime 上游同步与 Overlay 更新（严格）
 
-`packages/narrafork-runtime-private/` 是受控导入的 NarraFork 上游树，不是 NovelFork 产品实现层。根 `CLAUDE.md` 是此流程的唯一权威；package 内的 `CLAUDE.md` 只可作为上游维护参考，不能覆盖本节。
+`packages/narrafork-runtime-private/` 是本地物化的上游 Runtime 树，不是公开产品实现层。  
+`packages/narrafork-runtime-overlay/` 是**私有 submodule**，承载可重放的通用 overlay。
 
 ### 不可突破的边界
 
-- NovelFork 的书籍、章节、Lore、Narrative Memory、产品权限、产品路由、领域工具、产品数据库表和迁移必须留在 `packages/novelfork-product-runtime/`、`packages/novel-plugin/`、`packages/core/` 或 `packages/studio/`，不得写回 Runtime。
-- AI Provider 的产品页面、交互和体验对齐默认只改 `packages/studio/`；Runtime 已有 API 时，只补 Studio 的 client 与渲染。
-- Runtime 的例外只能是 `packages/narrafork-runtime-overlay/` 中有清单、精确哈希、允许路径和产品内容检查的通用 overlay。不得为构建、启动或调试方便直接改 Runtime 的 `package.json`、迁移、路由、Agent、Provider 或数据库实现。
+- 书籍、章节、Lore、Narrative Memory、产品权限、产品路由、领域工具、产品数据库表和迁移必须留在产品包内，不得写回 Runtime 上游。
+- AI Provider 的产品页面与体验默认只改 `packages/studio/`；Runtime 已有 API 时只补 Studio client 与渲染。
+- 不得为构建/启动方便直接手改 `runtime-private` 后把改动冒充“公开产品提交”。Runtime 本体改动必须回到上游或正式 overlay 流程。
+- overlay 修改在私有子仓库内完成并推送到私有远端；主仓库只更新 gitlink 指针。
 
 ### 唯一事实基线
 
 1. `packages/narrafork-runtime-private/UPSTREAM.lock.json` 的 `commit` 和 `tree` 是唯一上游基线。
-2. **禁止**用仓库根目录的 `git diff`、`git diff --stat`、历史备份数量或 overlay 计划数量判断 Runtime 是否干净。导入树、旧 Git 基线与 Windows LF/CRLF 会产生误导性大 diff。
+2. **禁止**用根仓库 `git diff`、备份数量或主观“看起来差不多”判断 Runtime 是否干净。
 3. 判断 Runtime 实际状态只能使用：
 
    ```bash
    bun scripts/import-narrafork-runtime.ts --source <干净的上游 checkout> --report-only
    ```
 
-   该命令以锁定提交的 `git archive -c core.autocrlf=false` 为基线，并忽略 `UPSTREAM.lock.json` 与 lock 中已登记的 `managedOverlay` 输出。输出里的 `target local modifications` 是是否可替换的唯一判据。
-4. 上游 checkout 必须是 clean Git toplevel，且包含锁定基线提交。不要把 checkout 工作区的 LF/CRLF 字节差异误判为业务代码差异。
-5. `runtime-overlay.manifest.json` 是可重放 overlay 的定义；`UPSTREAM.lock.json.managedOverlay.operations` 是当前 Runtime 已物化且被允许的输出。两者不能混用。
+   以锁定提交的 `git archive -c core.autocrlf=false` 为基线；输出中的 `target local modifications` 是是否可替换的唯一判据。
+4. 上游 checkout 必须是 clean Git toplevel，并包含锁定基线提交。不要把 LF/CRLF 字节差误判为业务差。
+5. 子仓库内的 `runtime-overlay.manifest.json` 定义可重放 overlay；`UPSTREAM.lock.json.managedOverlay.operations` 记录当前 Runtime 已物化且被允许的输出。两者不能混用。
 
 ### 上游更新唯一流程
 
-1. 准备干净的 NarraFork 上游 checkout，并先运行 `--report-only`。
-2. 只要 `target local modifications` 非零，立即停止：禁止 `--replace`、`reset`、`restore`、覆盖或手工清空 Runtime。每项差异必须先归类为上游改动、受控 overlay、NovelFork 产品层或明确废弃。
-3. 上游变更造成 overlay patch 基线不匹配时，只能在 `packages/narrafork-runtime-overlay/` 重做对应的单文件 patch/add，并保持允许路径、精确 base/result SHA-256 和零产品业务内容；不得先手改 active Runtime 再复制。
+1. 准备干净上游 checkout（通常是 `narrafork-private-main` 或等价私有 clone），先 `--report-only`。
+2. 只要 `target local modifications` 非零，立即停止：禁止盲目 `--replace` / `reset` / 手工清空。
+3. overlay 基线不匹配时，只在私有 overlay 子仓库重做对应单文件 patch/add，保持允许路径与精确 SHA-256。
 4. 先验证再替换：
 
    ```bash
@@ -160,28 +205,17 @@ NovelFork Product Runtime
    bun scripts/import-narrafork-runtime.ts --source <干净的上游 checkout> --dry-run
    ```
 
-5. 只有 `--report-only` 为零、dry-run 成功且 overlay 已重绑到目标上游提交后，才能运行：
+5. 通过后再 `--replace`；替换后再次 `--report-only` 与 `bun run runtime:parity:verify`。
 
-   ```bash
-   bun scripts/import-narrafork-runtime.ts --source <干净的上游 checkout> --replace
-   ```
+### Submodule 与本地 Runtime 日常命令
 
-   导入器会在 staging tree 中从 Git archive 重放验证后的 overlay，再通过原子替换更新 Runtime；target 不干净时必须拒绝覆盖。
-6. 替换后再次运行：
+```bash
+# 初始化/更新私有 overlay 子仓库（需要私有仓库访问权限）
+git submodule update --init --recursive
 
-   ```bash
-   bun scripts/import-narrafork-runtime.ts --source <同一上游 checkout> --report-only
-   bun run runtime:parity:verify
-   ```
-
-   前者必须不再报告未登记 target 修改。
-
-### 当前已核实状态（2026 年 7 月 20 日）
-
-- 基线为 `NarraFork/narrafork-private@8c3c88cf2f0a7c867c4aa37d0fd070a735ba5a17`，tree 为 `aaa5ce6815f1a06077d5d93029eb04b4d2bbba72`。
-- Runtime 没有缺失上游文件；先前所谓“大规模 Runtime 改动”是错误地把根 Git 基线和 LF/CRLF 差异当成语义差异。
-- `--report-only` 当前仍报告 5 项待归类的 target local modifications：`ChunkStructureRefreshCtx.ts`、`ChunkedMessageList.tsx`、`MessageBubble.tsx`、`NarratorPanel.tsx`，以及 `server/generated-modules.d.ts` 的 overlay lock/资产哈希漂移。前四项是 Narrator Chunk Store 刷新前端修复。
-- 在这 5 项被正式迁移为上游改动、受控 overlay 或产品层实现之前，禁止宣称 Runtime 可直接安全替换。
+# 仅在有上游 checkout 时检查 Runtime 物化是否干净
+bun scripts/import-narrafork-runtime.ts --source ./narrafork-private-main --report-only
+```
 
 ## 代码质量与安全
 
@@ -189,13 +223,16 @@ NovelFork Product Runtime
 - 保持用户已有的工作区改动；未经授权不还原、删除或覆盖。
 - 使用宿主提供的代码图谱、文件搜索和编辑工具；工具名称和参数以当前宿主实际提供的版本为准。
 - 数据库结构变更遵循目标 package 的 schema 与迁移生成流程；不手改生成迁移，不删除数据库文件。
-- 不提交密钥、Token、`.env` 或用户数据。
+- 不提交密钥、Token、`.env`、用户数据，以及 Runtime/overlay 私有源码。
 
 ## Git 与发布
 
-- 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送或其他破坏性操作，除非用户明确授权。
+- 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送、历史重写或其他破坏性操作，除非用户明确授权。
 - 只有在用户明确要求时才创建 commit、push、tag 或 Release。
-- 发布前按照当前 package scripts 完成与改动相称的构建和验证。
+- 主仓库提交不得重新引入 `packages/narrafork-runtime-private/`。
+- overlay 变更：先在私有 submodule 仓库提交并推送，再在主仓库更新 gitlink。
+- 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
+- 公开仓库可见性变更前，必须确认：当前 tip 无私有 Runtime 源码，且历史策略已明确（清理历史或接受风险——默认不接受历史泄露）。
 
 ## 持久记忆
 
@@ -216,5 +253,6 @@ Engram 用于保存对后续工作有长期价值的信息，例如：
 | 产品与包边界 | 本文件与当前源码 |
 | 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md` |
 | 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
-| Runtime 行为 | `packages/narrafork-runtime-private/` 的当前源码 |
+| Runtime 行为 | 本地 `packages/narrafork-runtime-private/`（勿提交） |
+| Overlay 定义 | 私有 submodule `packages/narrafork-runtime-overlay/` |
 | 历史背景 | Kiro、Engram 与历史计划，且须与当前指令核对 |

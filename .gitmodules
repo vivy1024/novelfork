@@ -1,0 +1,4 @@
+[submodule "packages/narrafork-runtime-overlay"]
+	path = packages/narrafork-runtime-overlay
+	url = git@github.com:NarraFork/novelfork-runtime-overlay-private.git
+	branch = main
