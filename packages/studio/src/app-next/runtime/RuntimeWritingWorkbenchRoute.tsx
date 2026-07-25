@@ -249,6 +249,19 @@ export function RuntimeWritingWorkbenchRoute({
 
   const activeNarrator = narrators.find((candidate) => candidate.id === activeNarratorId) ?? null;
 
+  /**
+   * 写作视图的动作按钮：把已确认的写章请求交给当前叙述者。
+   * 走 Runtime 既有的 book-scoped narrator 消息契约，工具执行与权限确认仍在 Runtime 侧。
+   */
+  const handleSendToNarrator = useCallback(async (message: string) => {
+    if (!activeNarrator) throw new Error("当前没有可用的叙述者会话。");
+    await runtimeJson(`/api/narrators/${encodeURIComponent(activeNarrator.id)}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message }),
+    });
+  }, [activeNarrator]);
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
       <div className="flex items-center border-b border-border px-4 py-2">
@@ -276,6 +289,7 @@ export function RuntimeWritingWorkbenchRoute({
             />
           ) : undefined}
           onSwitchToAgent={activeNarrator ? () => onNavigateToConversation(activeNarrator.id) : undefined}
+          onSendToNarrator={activeNarrator ? handleSendToNarrator : undefined}
           bookSessions={narrators.map((narrator) => ({
             id: narrator.id,
             title: narrator.title,

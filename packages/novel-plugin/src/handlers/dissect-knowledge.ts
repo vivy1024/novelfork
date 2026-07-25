@@ -506,7 +506,7 @@ export function mergeLlmKnowledgePack(
   }
 
   const characterCards: DissectCharacterCard[] = asArray(parsed.characterCards)
-    .map((item) => {
+    .map((item): DissectCharacterCard | null => {
       const record = item as Record<string, unknown>;
       const name = trimText(record.name);
       if (!name) return null;
@@ -544,7 +544,7 @@ export function mergeLlmKnowledgePack(
     .slice(0, 24);
 
   const worldElements: DissectWorldElement[] = asArray(parsed.worldElements)
-    .map((item) => {
+    .map((item): DissectWorldElement | null => {
       const record = item as Record<string, unknown>;
       const name = trimText(record.name);
       if (!name) return null;
@@ -572,7 +572,7 @@ export function mergeLlmKnowledgePack(
     .slice(0, 40);
 
   const detailedSummaries: DissectChapterSummary[] = asArray(parsed.detailedSummaries)
-    .map((item) => {
+    .map((item): DissectChapterSummary | null => {
       const record = item as Record<string, unknown>;
       const number = Math.trunc(Number(record.number));
       const summary = trimText(record.summary);

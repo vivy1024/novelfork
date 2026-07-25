@@ -11,6 +11,7 @@ import {
 	createJingweiRouter,
 	createNarrativeMemoryRouter,
 	createOverviewRouter,
+	createWriteReadinessRouter,
 	createWritingResourceRouter,
 	createWritingToolsRouter,
 	type RouterContext,
@@ -95,6 +96,15 @@ novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
 // Workbench tool panels (arcs/health/progress/pov/…) previously existed only on
 // the retired Studio server. Mount them on the product Runtime surface.
 novelDomainRoutes.route("", asRuntimeRouter(createWritingToolsRouter(productRouterContext)));
+// 写作视图的只读就绪查询（write.preflight / 卷纲）。写动作仍走工具与权限确认。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createWriteReadinessRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+		}),
+	),
+);
 novelDomainRoutes.route("", asRuntimeRouter(createComplianceRouter(productRouterContext)));
 
 // Runtime state panel: knowledge / timeline / resource ledger from story/state.

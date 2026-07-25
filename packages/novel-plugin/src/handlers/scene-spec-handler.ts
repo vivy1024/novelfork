@@ -250,7 +250,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
             ok?: boolean;
             resolvedDirective?: string | null;
             needsUserConfirm?: boolean;
-            blockers?: Array<{ code: string; message: string }>;
+            blockers?: ReadonlyArray<{ readonly code: string; readonly message: string }>;
           }
         | undefined;
 

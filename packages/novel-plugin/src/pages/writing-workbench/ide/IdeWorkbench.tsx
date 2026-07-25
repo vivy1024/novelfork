@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, Brain,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, Brain, PenLine,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -25,6 +25,8 @@ import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { WriteViewPanel } from "../WriteViewPanel";
+import { buildWriteRequestMessage } from "../write-request";
 import { useIdeKeybindings } from "./use-ide-keybindings";
 import { usePanelManager, type ViewId } from "./use-panel-manager";
 import { CommandPalette } from "./command-palette";
@@ -96,7 +98,7 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView = "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
+export type SidebarView = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -112,6 +114,8 @@ export interface IdeWorkbenchProps {
   chapterActions?: ChapterActionHandlers;
   chatSlot?: ReactNode;
   onSwitchToAgent?: () => void;
+  /** 写作视图的「生成蓝图 / 直接写章」：把已确认的指示交给当前叙述者执行。 */
+  onSendToNarrator?: (message: string) => Promise<void> | void;
   bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
   activeSessionId?: string | null;
   onSwitchSession?: (sessionId: string) => void;
@@ -129,6 +133,7 @@ export interface IdeWorkbenchProps {
 // ── ViewContainer 定义（VS Code 风格：每个 Sidebar 视图的元数据） ──
 
 const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title: string }[] = [
+  { id: "write", icon: PenLine, label: "写作", title: "写作" },
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
   { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
@@ -163,6 +168,7 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
       return collectNodes(children, n => JINGWEI_KINDS.has(n.kind));
     case "tools":
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
+    case "write":
     case "search":
     case "narrative-memory":
       return [];
@@ -183,6 +189,7 @@ export function IdeWorkbench({
   chapterActions,
   chatSlot,
   onSwitchToAgent,
+  onSendToNarrator,
   bookSessions,
   activeSessionId,
   onSwitchSession,
@@ -571,6 +578,38 @@ export function IdeWorkbench({
     }
   }, [activeView, sidebarVisible, showPanel]);
 
+  // ── 写作视图：只读就绪查询 + 少数一键修工具 ──
+  const writeViewCallTool = useCallback(async (tool: string, input: Record<string, unknown>) => {
+    if (!bookId) throw new Error("尚未绑定书籍。");
+    const fetchJson = runtimeFetch ?? (async (url: string, init?: RequestInit) => {
+      const response = await fetch(url, init);
+      if (!response.ok) throw new Error(`请求失败：${response.status}`);
+      return response.json();
+    });
+    const base = `/api/books/${encodeURIComponent(bookId)}`;
+    const post = (path: string, body: Record<string, unknown>) => fetchJson(`${base}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    switch (tool) {
+      // 只读查询走 HTTP；任何写入都必须经叙述者与 Runtime 权限确认。
+      case "write.preflight":
+        return post("/write/preflight", input);
+      default:
+        throw new Error(`写作视图不直接执行 ${tool}，请在对话中调用。`);
+    }
+  }, [bookId, runtimeFetch]);
+
+  const handleRunWrite = useCallback((payload: {
+    mode: "blueprint" | "chapter";
+    chapterNumber: number;
+    directive: string;
+    acceptFocusDefault: boolean;
+  }) => {
+    void onSendToNarrator?.(buildWriteRequestMessage(payload));
+  }, [onSendToNarrator]);
+
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
     save: () => {
@@ -621,7 +660,12 @@ export function IdeWorkbench({
     setShowSettings,
     closeTab: keybindingActions.closeTab,
     closeAllTabs: () => ideTabsRef.current.closeAll(),
-  }), []);
+    // 导入是写操作：交给叙述者执行，保留 Runtime 的权限确认。
+    openImportWizard: () => onSendToNarrator?.(
+      "我要导入一本已有的旧书继续写。请先问我要导入的文本或文件，然后用 pipeline.import_chapters（autoSettle+extractBrief）导入；拆书产物先留在 needs-review，等我确认再入 canon。",
+    ),
+    sendToNarrator: (message: string) => { void onSendToNarrator?.(message); },
+  }), [onSendToNarrator]);
   const ideCommands = useIdeCommands(ideCommandOptions);
 
   // Quick Open: flatten file tree + jingwei entries into palette commands
@@ -865,6 +909,16 @@ export function IdeWorkbench({
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
               <div ref={hostRef} className="flex-1 relative" />
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}
+              {panelsReady && getContainer("write") && createPortal(
+                <WriteViewPanel
+                  bookId={bookId}
+                  callTool={writeViewCallTool}
+                  onSwitchView={(view) => keybindingActions.switchView(view)}
+                  onSendToNarrator={onSendToNarrator}
+                  onRunWrite={handleRunWrite}
+                />,
+                getContainer("write")!
+              )}
               {panelsReady && getContainer("explorer") && createPortal(
                 explorerNodes.length > 0
                   ? <WorkbenchResourceTree nodes={explorerNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
@@ -1262,6 +1316,7 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
 }
 
 const VIEW_LABEL: Record<SidebarView, string> = {
+  write: "写作",
   explorer: "资源管理器",
   jingwei: "经纬",
   tools: "工具",

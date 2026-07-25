@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 export type TabKind = "chapter" | "jingwei-entry" | "file" | "tool" | "other";
 
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab */
-export type TabView = "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
+/** 写作视图自身不承载编辑器 Tab，但需要作为合法的 Tab 归属值参与切换。 */
+export type TabView = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
 
 export interface TabState {
   id: string;
@@ -41,7 +42,7 @@ interface IdeTabsState {
   activeByView: Record<TabView, string | null>;
 }
 
-const EMPTY_ACTIVE: Record<TabView, string | null> = { explorer: null, jingwei: null, tools: null, search: null, "narrative-memory": null };
+const EMPTY_ACTIVE: Record<TabView, string | null> = { write: null, explorer: null, jingwei: null, tools: null, search: null, "narrative-memory": null };
 
 type IdeTabsAction =
   | { type: "LOAD"; state: IdeTabsState }
