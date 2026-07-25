@@ -42,6 +42,8 @@ routes:
 | 23 | [上下文管理](./23-context-management.md) | token、压缩、budget pressure、microcompact | `上下文` `压缩` `token` |
 | 24 | [模型选择与配置](./24-model-configuration.md) | 供应商、模型、fallback 与推理强度 | `模型` `供应商` `fallback` |
 | 25 | [调试与排错](./25-debugging.md) | 日志、Prompt Dump、上下文详情与排错流程 | `调试` `日志` `诊断` |
+| 26 | [平台写作卡](./26-platform-writing-cards.md) | 各平台章字数、钩子密度、AI 率与敏感尺度口径 | `平台` `发布` `合规` |
+| 27 | [写作 SOP](./27-writing-sop.md) | 写下一章、续写旧书、废稿重开、发布自检的动作顺序 | `SOP` `流程` `写前预检` |
 
 ---
 
