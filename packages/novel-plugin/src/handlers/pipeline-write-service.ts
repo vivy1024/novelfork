@@ -20,7 +20,7 @@ import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/
 import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import {
@@ -181,6 +181,10 @@ function buildAgentCtx(options: PipelineWriteOptions, agentName: string, bookId:
   };
 }
 
+/**
+ * 可信绑定下，这本书的目录只由 bookRoot 决定（外部工作区不在 <root>/books 下）。
+ * root 仅用于 StateManager 需要项目级路径的少数场景。
+ */
 function createPipelineState(options: PipelineWriteOptions, bookId: string): StateManager {
   return new StateManager(options.root, options.bookRoot
     ? {

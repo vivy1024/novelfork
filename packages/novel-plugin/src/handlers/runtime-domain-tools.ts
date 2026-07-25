@@ -841,7 +841,10 @@ async function pipelineWrite(
       ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
     },
     {
-      root: binding.root,
+      // root 是项目根（books/ 的父目录），bookRoot 才是这本书的目录。
+      // 过去两者都传 binding.root，导致 StateManager 把书目录当项目根，
+      // 凡是走 booksDir 的下游就会拼出 <bookRoot>/books/<bookId> 而找不到 book.json。
+      root: context.projectRoot || binding.root,
       bookRoot: binding.root,
       client: hostClient(generator),
       model: context.model?.id ?? "runtime-current",
