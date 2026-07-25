@@ -5,7 +5,7 @@ import { useMemo } from "react";
 import type { PaletteCommand } from "./command-palette";
 
 export interface IdeCommandOptions {
-  switchView: (view: "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory") => void;
+  switchView: (view: "write" | "explorer" | "jingwei" | "tools" | "search") => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   setShowSettings: (v: boolean) => void;

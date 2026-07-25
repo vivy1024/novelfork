@@ -46,7 +46,8 @@ interface EditorTabsProps {
 }
 
 function tabIcon(kind: TabKind, view?: TabView) {
-  if (view === "narrative-memory") return { Icon: Brain, color: "text-pink-500" };
+  // 叙事记忆条目现在归属经纬工作区，用 memory 图标区分于手写设定
+  if (kind === "memory-entry") return { Icon: Brain, color: "text-pink-500" };
   switch (kind) {
     case "chapter": return { Icon: FileText, color: "text-sky-500" };
     case "jingwei-entry": return { Icon: Scroll, color: "text-violet-500" };

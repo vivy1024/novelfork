@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, Brain, PenLine,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -19,12 +19,13 @@ import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 import { createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
+import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel } from "../panels/BookSettingsPanel";
-import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { LoreWorkspacePanel } from "../LoreWorkspacePanel";
 import { WriteViewPanel } from "../WriteViewPanel";
 import { buildWriteRequestMessage } from "../write-request";
 import { useIdeKeybindings } from "./use-ide-keybindings";
@@ -36,6 +37,7 @@ import { clearEditorState } from "./editor-state-cache";
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
+  if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
     case "chapter": return "chapter";
@@ -48,7 +50,8 @@ function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区） */
 function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  if (node.metadata?.isNarrativeMemoryEntry) return "narrative-memory";
+  // 叙事记忆条目属于经纬工作区的「进度」分区，与设定共用同一个 Tab 组
+  if (node.metadata?.isNarrativeMemoryEntry) return "jingwei";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "jingwei";
   return "explorer";
 }
@@ -59,16 +62,8 @@ function isTextEditingTarget(target: EventTarget | null): boolean {
   return tag === "input" || tag === "textarea" || target.isContentEditable || target.closest("[contenteditable='true'], .ProseMirror") !== null;
 }
 
-const DYNAMIC_MEMORY_CATEGORIES = new Set(["relationships", "conflicts", "foreshadowing", "timeline", "chapter-summaries"]);
-const DYNAMIC_MEMORY_PLACEHOLDER_TITLES = new Set(["人物关系", "情节脉络", "事件记录", "时间线", "章节摘要", "伏笔管理", "矛盾冲突"]);
-
-function isStaticLoreCategory(category: string): boolean {
-  return !DYNAMIC_MEMORY_CATEGORIES.has(category);
-}
-
-function isStaticLoreEntry(category: string, title: string): boolean {
-  return isStaticLoreCategory(category) && !DYNAMIC_MEMORY_PLACEHOLDER_TITLES.has(title.trim());
-}
+// 静态设定 vs 章后推进的切分由 CATEGORY_META.defaultLayer 单一表态，
+// 见 ../lore-workspace-split.ts；此处不再维护第二份分类名单或标题黑名单。
 
 function isImageFilePath(path: string): boolean {
   return /\.(png|jpe?g|gif|svg|webp)$/i.test(path);
@@ -98,7 +93,7 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
+export type SidebarView = "write" | "explorer" | "jingwei" | "tools" | "search";
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -136,9 +131,9 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title
   { id: "write", icon: PenLine, label: "写作", title: "写作" },
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
+  // 经纬工作区同时承载「设定」与「进度（叙事记忆）」，不再拆成两个入口
   { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
   { id: "tools", icon: Wrench, label: "工具", title: "工具" },
-  { id: "narrative-memory", icon: Brain, label: "叙事记忆", title: "叙事记忆" },
 ];
 
 // ── 过滤逻辑 ──
@@ -170,7 +165,6 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
     case "write":
     case "search":
-    case "narrative-memory":
       return [];
   }
 }
@@ -242,15 +236,6 @@ export function IdeWorkbench({
         const entries: Array<{ id: string; title: string; category?: string; contentMd?: string; sectionId?: string }> = entRes?.entries ?? [];
         const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
 
-        // 按统一分类分组（脏 category 经 normalizeCategory 归一），静态 Lore 与动态叙事记忆分流展示
-        const byCategory = new Map<string, typeof entries>();
-        for (const e of entries) {
-          const cat = normalizeCategory(e.category ?? "unclassified").category;
-          if (!isStaticLoreEntry(cat, e.title)) continue;
-          if (!byCategory.has(cat)) byCategory.set(cat, []);
-          byCategory.get(cat)!.push(e);
-        }
-
         const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
           id: `jingwei-entry:${e.id}`,
           kind: "jingwei-entry" as const,
@@ -268,41 +253,28 @@ export function IdeWorkbench({
           metadata: { isNarrativeMemoryEntry: true, category: fact.category, sourceId: fact.sourceId, predicate: fact.predicate, evidenceText: fact.evidenceText },
         });
 
-        // 只显示静态 Lore 分类 + 有条目的分类 + 保持 CATEGORY_META 顺序
-        const nodes: WorkbenchResourceNode[] = CATEGORY_META
-          .filter(meta => isStaticLoreCategory(meta.id))
-          .filter(meta => (byCategory.get(meta.id)?.length ?? 0) > 0)
-          .map(meta => {
-            const catEntries = byCategory.get(meta.id) ?? [];
-            return {
-              id: `jingwei-cat:${meta.id}`,
-              kind: "group" as const,
-              title: `${meta.name} (${catEntries.length})`,
-              capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-              metadata: { category: meta.id },
-              children: catEntries.map(e => toEntryNode(e)),
-            };
-          });
-        const memoryCategoryLabels: Record<string, string> = {
-          relationship: "关系",
-          hook: "伏笔",
-          timeline: "时间线",
-          conflict: "矛盾冲突",
-          world_fact: "世界事实",
-          character_state: "角色状态",
-          location: "地点状态",
-        };
+        // 设定分区：层级归属由 CATEGORY_META.defaultLayer 表态（见 lore-workspace-split）
+        const nodes: WorkbenchResourceNode[] = groupEntriesByCategory(entries, "settings")
+          .map(group => ({
+            id: `jingwei-cat:${group.category}`,
+            kind: "group" as const,
+            title: `${group.name} (${group.entries.length})`,
+            capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+            metadata: { category: group.category },
+            children: group.entries.map(e => toEntryNode(e)),
+          }));
         const factsByCategory = new Map<string, typeof memoryFacts>();
         for (const fact of memoryFacts) {
-          if (!factsByCategory.has(fact.category)) factsByCategory.set(fact.category, []);
-          factsByCategory.get(fact.category)!.push(fact);
+          const bucket = factsByCategory.get(fact.category);
+          if (bucket) bucket.push(fact);
+          else factsByCategory.set(fact.category, [fact]);
         }
         const memoryNodes: WorkbenchResourceNode[] = [...factsByCategory.entries()]
-          .sort(([a], [b]) => (memoryCategoryLabels[a] ?? a).localeCompare(memoryCategoryLabels[b] ?? b, "zh-CN"))
+          .sort(([a], [b]) => memoryFactLabel(a).localeCompare(memoryFactLabel(b), "zh-CN"))
           .map(([category, facts]) => ({
             id: `memory-cat:${category}`,
             kind: "group" as const,
-            title: `${memoryCategoryLabels[category] ?? category} (${facts.length})`,
+            title: `${memoryFactLabel(category)} (${facts.length})`,
             capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
             metadata: { category, isNarrativeMemoryEntry: true },
             children: facts.map((fact) => toMemoryFactNode(fact)),
@@ -926,9 +898,14 @@ export function IdeWorkbench({
                 getContainer("explorer")!
               )}
               {panelsReady && getContainer("jingwei") && createPortal(
-                jingweiSections.length > 0
-                  ? <WorkbenchResourceTree nodes={jingweiSections} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />
-                  : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无经纬条目</span></div>,
+                <LoreWorkspacePanel
+                  bookId={bookId}
+                  settingsNodes={jingweiSections}
+                  progressNodes={narrativeMemorySections}
+                  selectedNodeId={activeNode?.id ?? null}
+                  onOpen={handleOpen}
+                  onAction={handleResourceAction}
+                />,
                 getContainer("jingwei")!
               )}
               {panelsReady && getContainer("tools") && createPortal(
@@ -939,10 +916,7 @@ export function IdeWorkbench({
                 <SearchPanel nodes={fileTree.nodes} jingweiSections={jingweiSections} onOpen={handleOpen} />,
                 getContainer("search")!
               )}
-              {panelsReady && getContainer("narrative-memory") && bookId && createPortal(
-                <NarrativeMemoryPanel bookId={bookId} memoryNodes={narrativeMemorySections} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
-                getContainer("narrative-memory")!
-              )}
+
             </div>
           </Allotment.Pane>
 
@@ -1321,7 +1295,6 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   jingwei: "经纬",
   tools: "工具",
   search: "搜索",
-  "narrative-memory": "叙事记忆",
 };
 
 function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {

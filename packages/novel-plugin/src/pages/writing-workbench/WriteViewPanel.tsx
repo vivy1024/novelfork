@@ -21,7 +21,7 @@ export interface WriteViewPanelProps {
   /** 只读就绪查询；由工作台注入（内部补 bookId 等可信上下文）。 */
   readonly callTool?: (tool: string, input: Record<string, unknown>) => Promise<unknown>;
   /** 切到别的侧栏视图（一键修的 view 类动作）。 */
-  readonly onSwitchView?: (view: "jingwei" | "tools" | "narrative-memory" | "explorer") => void;
+  readonly onSwitchView?: (view: "jingwei" | "tools" | "explorer") => void;
   /** 把需要写入的修复交给叙述者执行（走 Runtime 权限确认）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 生成蓝图 / 直接写章：交给工作台驱动叙述者执行。 */

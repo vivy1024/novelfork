@@ -216,7 +216,7 @@ export interface FixActionPlan {
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
-  readonly view?: "jingwei" | "tools" | "narrative-memory" | "explorer";
+  readonly view?: "jingwei" | "tools" | "explorer";
   readonly label: string;
 }
 
@@ -239,8 +239,9 @@ export function planFixAction(
         message: "经纬里还没有卷纲。请用 outline.volume(action=suggest) 生成草案给我确认，我确认后再 set。",
         label: "生成卷纲草案",
       };
+    // 待确认事件在经纬工作区的「进度」分区
     case "review-pending":
-      return { kind: "view", view: "narrative-memory", label: "去处理待确认事件" };
+      return { kind: "view", view: "jingwei", label: "去处理待确认事件" };
     case "review-hooks":
       return { kind: "view", view: "tools", label: "查看伏笔看板" };
     case "enable-style":
