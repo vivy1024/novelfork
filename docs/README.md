@@ -8,9 +8,11 @@
 
 ## 当前事实入口
 
-- [学习中心](./learning/) — `/learn` 页面与 LearningGuide 在运行时消费的产品文档
+- [学习中心](./learning/) — 面向作者与开发者的产品说明文档
 
-产品行为的事实来源是**当前源码**与 `docs/learning/`。改 learning 下的文档会直接影响用户在 `/learn` 里看到的内容。开发约定、包边界与验证纪律见仓库根 `CLAUDE.md`。
+产品行为的事实来源是**当前源码**；`docs/learning/` 是与之配套的人类可读说明。开发约定、包边界与验证纪律见仓库根 `CLAUDE.md`。
+
+> 注意：应用内 `/learn` 页面与 LearningGuide 工具**不读这个目录**。它们的内容来自 Runtime 的 `shared/learning-content.ts` 与产品侧 `packages/novel-plugin/src/learning-contribution.ts` 里的内联双语文档。改这里不会改变应用内看到的内容，反之亦然 —— 两边需要各自维护。
 
 写作相关的常用入口：
 
@@ -24,7 +26,7 @@
 
 | 目录 | 内容 | 性质 |
 |------|------|------|
-| `learning/` | `/learn` 页面与 LearningGuide 消费的运行时文档（YAML frontmatter） | 手写，随功能更新 |
+| `learning/` | 产品说明文档（YAML frontmatter，仅供阅读，非应用内 `/learn` 数据源） | 手写，随功能更新 |
 | `codegraph/` | `bun run codegraph` 生成的代码导航索引 | 生成物，未生成时不存在，不要手改 |
 | [90-参考资料/](./90-参考资料/) | 小说写作与 AI 调研 | 背景资料 |
 
