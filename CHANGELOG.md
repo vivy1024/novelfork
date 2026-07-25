@@ -4,6 +4,48 @@
 
 ## Unreleased
 
+### ✍️ 写章上下文硬门禁与记忆回填/作废
+
+- 新增 `write.preflight`：写前组装最小上下文包（focus、近章摘要/事实、伏笔、resolvedDirective、memoryHealth），并对 `missing-directive` / `empty-recent-progress` 等硬拦截。
+- `scene.spec` / `pipeline.write` 接入写前硬门；`pipeline.write` 在近章记忆空时返回 `context-not-ready`。
+- 净化 `scene.spec` system prompt 与 Runtime 写章纪律：禁止用写作理论填空；软门（文风/去 AI）只走写后 audit/revise。
+- 新增 `memory.settle_range`：对历史章节批量/补结算 Narrative Memory（可 dryRun、幂等）。
+- 新增 `chapter.discard_range`：整段丢试写、清除章域 events/facts、按策略重置伏笔（confirmed + confirm=true）。
+- `memory.stats` 增加 `latestSettledChapter` 与 `pendingByChapter` 可观测字段。
+
+### 📚 导入/拆书闭环与主链硬化（S1）
+
+- `pipeline.import_chapters` 默认 `autoSettle` + `extractBrief`：导入后批量结算并抽取续写草案，返回 preflight 预检。
+- 新增 `book.dissect`：对已有正文抽取角色/地点/钩子/焦点草案；`apply`/`settle` 可选落盘与结算。
+- `style.import` 支持 `applyPreset` / `enableOnBook`，可把文风指南落成并启用自定义 preset。
+- `write.preflight` 增加结构化 `warningItems`（style-disabled / hooks-overdue / volume-focus-missing 等）与 `overdueHooks` / `currentVolume`。
+- `pipeline.write` 返回 `auditIssueCategories`、`publishHint`；可选 `requireFactCheckPass` 在 critical 未清时拒绝保存（`fact-check-failed`）。
+
+### 🔍 拆书深化 / 事实核查闭环 / 多格式导入
+
+- 新增 `dissect-knowledge`：`DissectKnowledgePack`（角色卡、世界要素、事件级章摘要、带来源与推测的伏笔、关系图、文风提示），规则抽取兜底 + 可选 LLM 增补；`apply` 时写 `pending_hooks.json` / `chapter_summaries.json` / `dissect_lore_draft.json`（draft/needs-review，不入 canon）。
+- `pipeline.write` 新增 `factCheckAutoRevise`：普通审修后若仍有 critical 事实/连续性问题，额外做 1 轮专项 spot-fix + 复审（输出 `factCheckRevised` / `factCheckRound`），再与 `requireFactCheckPass` 承接。
+- `severity-gate` 新增 `isFactContinuityIssue` / `selectFactContinuityIssues`。
+- 新增 `core` 的 `format-detector`：`detectFormat` / `htmlToPlainText` / `extractEpubText` / `normalizeImportSource`，支持 TXT/Markdown/HTML/EPUB，零新增依赖（自实现 ZIP 目录解析 + inflate）。
+- 新增导入向导：`import-wizard-state`（三步状态机、参数校验、工具 payload、preflight 红黄绿灯、下一步建议）与 `ImportWizard` 组件。
+
+### 🧭 单一权威源纠偏（S2.5）
+
+- 分类表态：`CATEGORY_META` 增加 `defaultLayer` / `allowCanon`；`jingwei.write` 守卫从内容正则猜测改为**查表**，随剧情推进的分类禁止写 canon，结构性账本（outline / foreshadowing / chapter-summaries）允许 dynamic 写入经纬。
+- 卷纲归位：`outline.volume` 以经纬 `outline` 条目为唯一权威源（`fields_json.volumes`），历史 `story/volume_outline.json` 自动一次性迁移，`.md` 降级为导出物；`write.preflight.currentVolume` 改读经纬。
+- 拆书落地：`book.dissect(apply=true)` 改为经账本写入经纬 `layer=dynamic` + `status=needs-review`（伏笔/章摘要/角色卡/世界要素/关系），不再以 `pending_hooks.json` / `chapter_summaries.json` / `dissect_lore_draft.json` 作权威；`dissect_draft.json` 降为调试快照。
+- 新增 `jingwei-ledger-store`：经纬结构性账本读写（list/find/upsert/softDelete）。
+- 新增 `diagnostic-explanation`：所有 preflight blocker 与 warning 带 `explanation`（whatHappened / whyItMatters / suggestedAction）与 `kind`（persistent / advisory）；含契约测试确保每个 code 都有人话解释。
+- `CLAUDE.md` 增补「单一权威源」硬纪律表与 DoD（旧入口同步下线、半成品默认隐藏、renderer 必须注册）。
+
+### 📖 卷级大纲 / 角色弧线 / 平台发布质检（S2）
+
+- 新增 `outline.volume`：卷纲 `get` / `set` / `suggest`（规则均分 + 可选 LLM 精修），落盘 `story/volume_outline.json` 与 `.md`；当前卷进入 `write.preflight`。
+- 新增 `arc.character`：角色弧 `status` / `sync` / `refine`，包装既有弧线规则引擎与检测器，写入 `jingwei_character_arc`（dynamic），输出弧线不一致与停滞告警。
+- 新增平台 profile（`engine/platform/platform-profile`）：番茄/起点/晋江/七猫/通用的章字数窗口、钩子密度、AI 率容忍与敏感阻断策略；`tomato→fanqie` 等产品平台映射。
+- 新增 `publish.check`：敏感词 + AI 率 + 格式 + 连续性汇总，并对照平台章字数目标。
+- `write.preflight` 增加 `platform` 字段与 `platform-target-mismatch` 警告；`pipeline.write` 保存前做单章发布轻检，默认只 warn，仅当平台要求且存在 block 级敏感命中时返回 `publish-blocked` 不保存。
+
 ## v3.2.1 (2026-07-23) — 公开仓库边界与本地发版门禁
 
 ### 🔒 公开 / 私有边界

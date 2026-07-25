@@ -31,11 +31,19 @@ export interface SceneSpecInput {
   bookId: string;
   chapterNumber: number;
   userDirectives: string;
+  /** 仅有 focus 默认目标时是否接受继续 */
+  acceptFocusDefault?: boolean;
+  /** 仅测试/迁移：跳过 empty-recent-progress 硬门 */
+  skipContextGate?: boolean;
+  /** write.preflight 结果（可选；传入可复用并参与硬门） */
+  writePreflight?: Record<string, unknown>;
   cockpitSnapshot?: Record<string, unknown>;
   /** 兼容旧字段；新调用优先 loreBrief */
   jingweiBrief?: Record<string, unknown>;
   loreBrief?: Record<string, unknown>;
   memoryContext?: Record<string, unknown>;
+  /** Trusted book root for preflight gate */
+  bookRoot?: string;
   /** 宿主注入的受控文本生成器 */
   generateText?: RuntimeTextGenerator;
 }
@@ -56,9 +64,9 @@ export type SceneSpecResult = SceneSpecSuccess | SceneSpecFailure;
 
 // ─── LLM Prompt ──────────────────────────────────────────────────────────────
 
-const SCENE_SPEC_SYSTEM_PROMPT = `你是一个小说章节规划专家。你的任务是根据用户的写作意图和当前故事状态，生成一个结构化的写作蓝图（Scene Spec）。
+const SCENE_SPEC_SYSTEM_PROMPT = `你根据精确事实与用户一句本章指示，生成结构化写作蓝图（Scene Spec）。
 
-输出必须是严格的 JSON 格式，包含以下字段：
+只输出严格 JSON：
 {
   "chapter": 章节号,
   "title": "章节标题",
@@ -74,7 +82,7 @@ const SCENE_SPEC_SYSTEM_PROMPT = `你是一个小说章节规划专家。你的�
       "hooks_planted": ["本场景埋设的新伏笔"]
     }
   ],
-  "constraints": ["写作约束/禁忌"]
+  "constraints": ["来自事实与用户指示的硬约束，禁止文论"]
 }
 
 规则：
@@ -84,6 +92,8 @@ const SCENE_SPEC_SYSTEM_PROMPT = `你是一个小说章节规划专家。你的�
 - conflict 必须明确（不能是"待定"）
 - outcome 必须有方向性（不能是"待定"）
 - mood 用"起始→结束"格式
+- 只根据用户指示 + 提供的进度/设定/记忆事实规划，禁止编造前文与写作理论
+- constraints 只写可执行事实约束，不要写传播力/思想核/文风大道理
 - 只输出 JSON，不要其他文字`;
 
 function buildSceneSpecUserPrompt(input: SceneSpecInput): string {
@@ -220,17 +230,92 @@ function buildFallbackSpec(input: SceneSpecInput): SceneSpec {
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecResult> {
-  const { bookId, chapterNumber, userDirectives, cockpitSnapshot, jingweiBrief } = input;
+  let { bookId, chapterNumber, cockpitSnapshot, jingweiBrief } = input;
 
-  if (!bookId || !chapterNumber || !userDirectives) {
+  if (!bookId || !chapterNumber) {
     return {
       ok: false,
       error: "missing-required-fields",
-      summary: "缺少必填字段：bookId、chapterNumber、userDirectives 均为必填。",
+      summary: "缺少必填字段：bookId、chapterNumber 均为必填。",
     };
   }
 
-  if (!userDirectives.trim()) {
+  // 写前硬门：优先复用传入的 writePreflight；否则在有 bookRoot 时现算。
+  let resolvedDirectives = typeof input.userDirectives === "string" ? input.userDirectives.trim() : "";
+  if (!input.skipContextGate) {
+    try {
+      const { assertDirectiveReady, handleWritePreflight } = await import("./write-preflight.js");
+      let preflight = input.writePreflight as
+        | {
+            ok?: boolean;
+            resolvedDirective?: string | null;
+            needsUserConfirm?: boolean;
+            blockers?: Array<{ code: string; message: string }>;
+          }
+        | undefined;
+
+      if (!preflight && input.bookRoot?.trim()) {
+        const computed = await handleWritePreflight({
+          bookId,
+          chapterNumber,
+          userDirectives: input.userDirectives,
+          acceptFocusDefault: input.acceptFocusDefault,
+          bookRoot: input.bookRoot,
+        });
+        preflight = computed;
+        input = { ...input, writePreflight: computed as unknown as Record<string, unknown> };
+        if (!resolvedDirectives && computed.resolvedDirective) {
+          resolvedDirectives = computed.resolvedDirective;
+        }
+      }
+
+      if (preflight) {
+        const gate = assertDirectiveReady({
+          userDirectives: resolvedDirectives || input.userDirectives,
+          acceptFocusDefault: input.acceptFocusDefault,
+          preflight: {
+            ok: Boolean(preflight.ok),
+            resolvedDirective: preflight.resolvedDirective ?? null,
+            needsUserConfirm: Boolean(preflight.needsUserConfirm),
+            blockers: Array.isArray(preflight.blockers)
+              ? preflight.blockers.map((item) => ({
+                  code: item.code as
+                    | "missing-directive"
+                    | "empty-recent-progress"
+                    | "high-risk-pending"
+                    | "book-not-found",
+                  message: item.message,
+                }))
+              : [],
+          },
+        });
+        if (!gate.ok) {
+          return { ok: false, error: gate.error, summary: gate.summary };
+        }
+        resolvedDirectives = gate.directive;
+      } else if (!resolvedDirectives) {
+        return {
+          ok: false,
+          error: "empty-directives",
+          summary: "userDirectives 为空。请先 write.preflight 或提供本章一句指示。",
+        };
+      } else if (resolvedDirectives.length < 8) {
+        return {
+          ok: false,
+          error: "missing-directive",
+          summary: "userDirectives 过短（需 ≥8 字）。请提供一句明确的本章目标。",
+        };
+      }
+    } catch {
+      if (!resolvedDirectives) {
+        return {
+          ok: false,
+          error: "empty-directives",
+          summary: "userDirectives 为空，无法生成写作蓝图。请提供本章写作方向/意图。",
+        };
+      }
+    }
+  } else if (!resolvedDirectives) {
     return {
       ok: false,
       error: "empty-directives",
@@ -238,7 +323,45 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     };
   }
 
-  const wordTarget = extractWordTarget(cockpitSnapshot);
+  // 将 preflight 近章/伏笔摘要并入 cockpitSnapshot，供 LLM/fallback 使用。
+  let enrichedCockpit = cockpitSnapshot;
+  const pf = input.writePreflight as
+    | {
+        recentChapters?: Array<{ number?: number; summary?: string }>;
+        openHooksForChapter?: Array<{ text?: string; description?: string }>;
+        overdueHooks?: Array<{ text?: string }>;
+        currentVolume?: { title?: string; goal?: string } | null;
+      }
+    | undefined;
+  if (pf && !enrichedCockpit) {
+    enrichedCockpit = {
+      progress: {},
+      openHooks: (pf.openHooksForChapter ?? []).map((hook) => ({
+        description: hook.text ?? hook.description ?? "",
+      })),
+      recentChapters: (pf.recentChapters ?? []).map((item) => ({
+        number: item.number,
+        summary: item.summary,
+      })),
+      overdueHooks: pf.overdueHooks ?? [],
+      currentVolume: pf.currentVolume ?? null,
+    };
+  } else if (pf && enrichedCockpit) {
+    enrichedCockpit = {
+      ...enrichedCockpit,
+      ...(pf.recentChapters ? { recentChapters: pf.recentChapters } : {}),
+      ...(pf.overdueHooks ? { overdueHooks: pf.overdueHooks } : {}),
+      ...(pf.currentVolume ? { currentVolume: pf.currentVolume } : {}),
+    };
+  }
+
+  const gatedInput: SceneSpecInput = {
+    ...input,
+    userDirectives: resolvedDirectives,
+    cockpitSnapshot: enrichedCockpit,
+  };
+
+  const wordTarget = extractWordTarget(enrichedCockpit ?? cockpitSnapshot);
   let sceneSpec: SceneSpec | null = null;
   let usedLLM = false;
 
@@ -246,7 +369,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   try {
     const generator = input.generateText;
     if (generator) {
-      const userPrompt = buildSceneSpecUserPrompt(input);
+      const userPrompt = buildSceneSpecUserPrompt(gatedInput);
       const response = await generator({
         messages: [
           { role: "system", content: SCENE_SPEC_SYSTEM_PROMPT },
@@ -267,7 +390,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
 
   // Fallback：从输入推断
   if (!sceneSpec) {
-    sceneSpec = buildFallbackSpec(input);
+    sceneSpec = buildFallbackSpec(gatedInput);
   }
 
   // H4 硬约束校验

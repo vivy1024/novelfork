@@ -270,6 +270,11 @@ async function styleImport(
 ): Promise<RuntimeToolResult> {
   const referenceText = typeof input.referenceText === "string" ? input.referenceText : "";
   const sourceName = typeof input.sourceName === "string" ? input.sourceName : undefined;
+  const applyPreset = input.applyPreset === true;
+  const enableOnBook = input.enableOnBook !== false;
+  const presetName = typeof input.presetName === "string" && input.presetName.trim()
+    ? input.presetName.trim()
+    : `导入文风${sourceName ? `·${sourceName}` : ""}`.slice(0, 40);
   if (referenceText.length < 2000) return fail("text-too-short", "参考文本至少需要 2000 字。");
   const generator = requireGenerator(context);
   if (typeof generator !== "function") return generator;
@@ -290,14 +295,52 @@ async function styleImport(
   });
   const styleGuide = generated.text.trim();
   if (!styleGuide) return fail("empty-model-output", "Runtime 模型没有返回文风指南。");
-  return ok(`已生成文风预设建议${sourceName ? `（${sourceName}）` : ""}。`, {
-    bookId: binding.bookId,
-    kind: "preset-suggestion",
-    profile,
-    styleGuide,
-    guidePreview: styleGuide.slice(0, 500),
-    nextActions: ["add-preset", "replace-preset", "manual-edit"],
-  });
+
+  let appliedPreset: { id?: string; enabledPresetIds?: readonly string[] } | undefined;
+  if (applyPreset) {
+    const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+    const { handlePresetsWrite } = await import("./preset-beat-handlers.js");
+    const created = await handlePresetsWrite(
+      {
+        bookId: binding.bookId,
+        action: "create",
+        name: presetName,
+        category: "tone",
+        promptInjection: styleGuide.slice(0, 6000),
+        description: sourceName ? `从「${sourceName}」导入` : "style.import 生成",
+      },
+      { bookRoot: binding.root, storage: getStorageDatabase() },
+    );
+    if (!created.ok) return fail(created.error ?? "preset-create-failed", created.summary);
+    const data = created.data as { id?: string; enabledPresetIds?: string[] } | undefined;
+    if (!enableOnBook && data?.id) {
+      // create 默认会 enable；若要求不启用，再 set 去掉（尽力而为）
+      const current = Array.isArray(data.enabledPresetIds) ? data.enabledPresetIds : [];
+      const without = current.filter((id) => id !== data.id);
+      await handlePresetsWrite(
+        { bookId: binding.bookId, action: "set", enabledPresetIds: without },
+        { bookRoot: binding.root, storage: getStorageDatabase() },
+      );
+      appliedPreset = { id: data.id, enabledPresetIds: without };
+    } else {
+      appliedPreset = { id: data?.id, enabledPresetIds: data?.enabledPresetIds };
+    }
+  }
+
+  return ok(
+    applyPreset
+      ? `已生成并${enableOnBook ? "启用" : "创建"}文风 preset${sourceName ? `（${sourceName}）` : ""}。`
+      : `已生成文风预设建议${sourceName ? `（${sourceName}）` : ""}。`,
+    {
+      bookId: binding.bookId,
+      kind: applyPreset ? "preset-applied" : "preset-suggestion",
+      profile,
+      styleGuide,
+      guidePreview: styleGuide.slice(0, 500),
+      appliedPreset,
+      nextActions: applyPreset ? ["write.preflight", "pipeline.write"] : ["applyPreset", "manual-edit"],
+    },
+  );
 }
 
 async function pipelineRevise(
@@ -426,14 +469,194 @@ async function importChapters(
     );
     const profile = analyzeStyle(content.slice(0, 50000), sourceName);
     await writeFile(join(storyDir, "style_profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
-    return ok(`已从「${sourceName}」导入 ${chapters.length} 章（共 ${totalWords} 字）。`, {
-      bookId: binding.bookId,
-      importedChapters: chapters.length,
-      totalWords,
-      firstChapter: startNumber,
-      nextChapter: startNumber + chapters.length,
-    });
+
+    const firstChapter = startNumber;
+    const lastChapter = startNumber + chapters.length - 1;
+    const autoSettle = input.autoSettle !== false;
+    const extractBrief = input.extractBrief !== false;
+    const applyDissectDraft = input.applyDissectDraft === true;
+
+    let settlementSummary: string | undefined;
+    let dissectSummary: string | undefined;
+    let dissectDraft: unknown;
+    let preflight: unknown;
+    let writtenFiles: readonly string[] = [];
+
+    if (autoSettle || extractBrief) {
+      const { handleBookDissect } = await import("./book-dissect.js");
+      const generator = context.generateText
+        ? async (request: {
+            messages: Array<{ role: "system" | "user"; content: string }>;
+            temperature?: number;
+            maxTokens?: number;
+          }) => {
+            const generated = await context.generateText!({
+              messages: request.messages,
+              temperature: request.temperature,
+              maxTokens: request.maxTokens,
+            });
+            return { text: generated.text };
+          }
+        : undefined;
+      const dissected = await handleBookDissect({
+        bookId: binding.bookId,
+        bookRoot: binding.root,
+        fromChapter: firstChapter,
+        toChapter: lastChapter,
+        settle: autoSettle,
+        apply: applyDissectDraft,
+        targets: ["all"],
+        generateText: generator,
+      });
+      settlementSummary = dissected.settlementSummary;
+      dissectSummary = dissected.summary;
+      dissectDraft = dissected.draft;
+      preflight = dissected.preflight;
+      writtenFiles = dissected.writtenFiles;
+    }
+
+    return ok(
+      [
+        `已从「${sourceName}」导入 ${chapters.length} 章（共 ${totalWords} 字）`,
+        autoSettle ? (settlementSummary ?? "已尝试 settle") : "未 settle",
+        extractBrief ? (dissectSummary ?? "已抽取草案") : "未抽取草案",
+      ].join("；"),
+      {
+        bookId: binding.bookId,
+        importedChapters: chapters.length,
+        totalWords,
+        firstChapter,
+        nextChapter: lastChapter + 1,
+        lastChapter,
+        styleProfileWritten: true,
+        autoSettle,
+        extractBrief,
+        applyDissectDraft,
+        settlementSummary,
+        dissectSummary,
+        dissectDraft,
+        writtenFiles,
+        preflight,
+        nextActions: [
+          "write.preflight",
+          "book.dissect",
+          "style.import",
+          "scene.spec",
+        ],
+      },
+    );
   });
+}
+
+async function bookDissect(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
+): Promise<RuntimeToolResult> {
+  const { handleBookDissect } = await import("./book-dissect.js");
+  const targets = Array.isArray(input.targets)
+    ? input.targets.filter((item): item is string => typeof item === "string")
+    : undefined;
+  const generator = context.generateText
+    ? async (request: {
+        messages: Array<{ role: "system" | "user"; content: string }>;
+        temperature?: number;
+        maxTokens?: number;
+      }) => {
+        const generated = await context.generateText!({
+          messages: request.messages,
+          temperature: request.temperature,
+          maxTokens: request.maxTokens,
+        });
+        return { text: generated.text };
+      }
+    : undefined;
+  const result = await handleBookDissect({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
+    ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
+    ...(targets ? { targets: targets as never } : {}),
+    apply: input.apply === true,
+    settle: input.settle === true,
+    generateText: generator,
+  });
+  if (!result.ok) return fail(result.error ?? "dissect-failed", result.summary);
+  return ok(result.summary, result);
+}
+
+async function outlineVolume(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
+): Promise<RuntimeToolResult> {
+  const { handleOutlineVolume } = await import("./outline-volume.js");
+  const generator = context.generateText
+    ? async (request: {
+        messages: Array<{ role: "system" | "user"; content: string }>;
+        temperature?: number;
+        maxTokens?: number;
+      }) => {
+        const generated = await context.generateText!({
+          messages: request.messages,
+          temperature: request.temperature,
+          maxTokens: request.maxTokens,
+        });
+        return { text: generated.text };
+      }
+    : undefined;
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const result = await handleOutlineVolume({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    storage: getStorageDatabase(),
+    ...(typeof input.action === "string" ? { action: input.action } : {}),
+    ...(Array.isArray(input.volumes) ? { volumes: input.volumes } : {}),
+    ...(typeof input.volumeCount === "number" ? { volumeCount: input.volumeCount } : {}),
+    ...(typeof input.targetChapters === "number" ? { targetChapters: input.targetChapters } : {}),
+    generateText: generator,
+  });
+  if (!result.ok) return fail(result.error ?? "outline-volume-failed", result.summary);
+  return ok(result.summary, result);
+}
+
+async function arcCharacter(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const { handleArcCharacter } = await import("./arc-character.js");
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const result = await handleArcCharacter({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    storage: getStorageDatabase(),
+    ...(typeof input.action === "string" ? { action: input.action } : {}),
+    ...(typeof input.chapterNumber === "number" ? { chapterNumber: input.chapterNumber } : {}),
+    ...(typeof input.characterName === "string" ? { characterName: input.characterName } : {}),
+    ...(typeof input.mode === "string" ? { mode: input.mode } : {}),
+    ...(typeof input.stagnantThreshold === "number" ? { stagnantThreshold: input.stagnantThreshold } : {}),
+  });
+  if (!result.ok) return fail(result.error ?? "arc-character-failed", result.summary);
+  return ok(result.summary, result);
+}
+
+async function publishCheck(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const { handlePublishCheck } = await import("./publish-check.js");
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const result = await handlePublishCheck({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    storage: getStorageDatabase(),
+    ...(typeof input.platform === "string" ? { platform: input.platform } : {}),
+    ...(typeof input.chapterNumber === "number" ? { chapterNumber: input.chapterNumber } : {}),
+    ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
+    ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
+  });
+  if (!result.ok) return fail(result.error ?? "publish-check-failed", result.summary);
+  return ok(result.summary, result);
 }
 
 function parseSuggestions(text: string): unknown[] {
@@ -613,6 +836,9 @@ async function pipelineWrite(
         : {}),
       ...(typeof input.adversarialAudit === "boolean" ? { adversarialAudit: input.adversarialAudit } : {}),
       ...(typeof input.maxReviseRounds === "number" ? { maxReviseRounds: input.maxReviseRounds } : {}),
+      ...(typeof input.skipContextGate === "boolean" ? { skipContextGate: input.skipContextGate } : {}),
+      ...(typeof input.requireFactCheckPass === "boolean" ? { requireFactCheckPass: input.requireFactCheckPass } : {}),
+      ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
     },
     {
       root: binding.root,
@@ -626,17 +852,26 @@ async function pipelineWrite(
   const settlementSummary = result.narrativeSettlement
     ? ` Narrative Memory：抽取 ${result.narrativeSettlement.extracted} 条，自动沉淀 ${result.narrativeSettlement.autoApplied} 条，pending ${result.narrativeSettlement.pending} 条。`
     : "";
+  const auditCat = result.auditIssueCategories;
+  const auditSummary = auditCat
+    ? ` critical=${auditCat.critical} warning=${auditCat.warning}`
+    : "";
   return ok(
-    `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : ""}`,
+    `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : ""}`,
     {
       chapterNumber: result.chapterNumber,
       title: result.title,
       wordCount: result.wordCount,
       auditPassed: result.auditResult.passed,
+      auditIssueCategories: result.auditIssueCategories,
+      factCheckRevised: result.factCheckRevised,
+      factCheckRound: result.factCheckRound,
       revised: result.revised,
       chapterId: result.chapterId,
       narrativeSettlement: result.narrativeSettlement,
       highRiskPendingReminder: result.highRiskPendingReminder,
+      publishHint: result.publishHint,
+      needsHumanReview: result.needsHumanReview,
       artifact: result.artifact,
     },
   );
@@ -653,6 +888,7 @@ export async function executeRuntimeDomainTool(
       return okResult(await handleSceneSpec({
         ...(input as unknown as Parameters<typeof handleSceneSpec>[0]),
         bookId: binding.bookId,
+        bookRoot: binding.root,
         generateText: context.generateText,
       }));
     case "chapter.audit":
@@ -667,8 +903,16 @@ export async function executeRuntimeDomainTool(
       return pipelineRevise(input, binding, context);
     case "pipeline.import_chapters":
       return importChapters(input, binding, context);
+    case "book.dissect":
+      return bookDissect(input, binding, context);
     case "outline.suggest_next":
       return outlineSuggestNext(binding, context);
+    case "outline.volume":
+      return outlineVolume(input, binding, context);
+    case "arc.character":
+      return arcCharacter(input, binding);
+    case "publish.check":
+      return publishCheck(input, binding);
     case "character.check_consistency":
       return characterConsistency(input, binding);
     case "hooks.manage":

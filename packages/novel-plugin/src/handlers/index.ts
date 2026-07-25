@@ -158,6 +158,103 @@ export type {
   PipelineWriteOptions,
 } from "./pipeline-write-service.js";
 
+export {
+  handleWritePreflight,
+  assertDirectiveReady,
+} from "./write-preflight.js";
+export type {
+  WritePreflightInput,
+  WritePreflightResult,
+  WritePreflightBlocker,
+  MemoryChannelHealth,
+} from "./write-preflight.js";
+
+export { handleMemorySettleRange } from "./memory-settle-range.js";
+export type {
+  MemorySettleRangeInput,
+  MemorySettleRangeResult,
+  MemorySettleRangeChapterResult,
+} from "./memory-settle-range.js";
+
+export { handleChapterDiscardRange } from "./chapter-discard-range.js";
+export type {
+  ChapterDiscardRangeInput,
+  ChapterDiscardRangeResult,
+  HookResetStrategy,
+} from "./chapter-discard-range.js";
+
+export {
+  handleOutlineVolume,
+  normalizeVolumes,
+  pickCurrentVolume,
+  buildRuleVolumeSuggestion,
+  renderVolumeMarkdown,
+} from "./outline-volume.js";
+export type {
+  OutlineVolumeInput,
+  OutlineVolumeResult,
+  OutlineVolumeAction,
+  VolumeEntry,
+  VolumeOutline,
+  VolumeStatus,
+} from "./outline-volume.js";
+
+export { handleArcCharacter, summarizeArcs } from "./arc-character.js";
+export type {
+  ArcCharacterInput,
+  ArcCharacterResult,
+  ArcCharacterAction,
+  ArcCharacterStatusItem,
+} from "./arc-character.js";
+
+export { handlePublishCheck } from "./publish-check.js";
+export type { PublishCheckInput, PublishCheckResult } from "./publish-check.js";
+
+export {
+  explainDiagnostic,
+  explainNarrativeEventRisk,
+  hasDiagnosticExplanation,
+  listExplainedDiagnosticCodes,
+} from "./diagnostic-explanation.js";
+export type { DiagnosticExplanation, ExplainedDiagnostic } from "./diagnostic-explanation.js";
+
+export {
+  listLedgerEntries,
+  findLedgerEntryByTitle,
+  upsertLedgerEntry,
+  softDeleteLedgerEntry,
+} from "./jingwei-ledger-store.js";
+export type { LedgerEntry, LedgerKind, LedgerWriteInput } from "./jingwei-ledger-store.js";
+
+export {
+  handleBookDissect,
+  extractDissectDraftFromTexts,
+} from "./book-dissect.js";
+export type {
+  BookDissectInput,
+  BookDissectResult,
+  DissectDraft,
+  DissectTarget,
+} from "./book-dissect.js";
+
+export {
+  extractKnowledgePack,
+  mergeLlmKnowledgePack,
+  buildDissectLlmUserPrompt,
+  DISSECT_LLM_SYSTEM_PROMPT,
+} from "./dissect-knowledge.js";
+export type {
+  DissectKnowledgePack,
+  DissectCharacterCard,
+  DissectWorldElement,
+  DissectWorldCategory,
+  DissectChapterSummary,
+  DissectOpenHook,
+  DissectRelationEdge,
+  DissectStyleHints,
+  DissectSourceChapter,
+} from "./dissect-knowledge.js";
+
 export { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 export type {
   AuditV2Input,

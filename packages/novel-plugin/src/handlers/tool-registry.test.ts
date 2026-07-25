@@ -56,8 +56,35 @@ describe("novel tool registry lore/memory boundary", () => {
 
   it("updates scene spec workflow to use lore/jingwei static settings and memory dynamic recall", () => {
     const description = tool("scene.spec")?.description ?? "";
+    expect(description).toContain("write.preflight");
     expect(description).toContain("lore.read");
     expect(description).toContain("memory.read");
     expect(description).toContain("章后结算");
+  });
+
+  it("registers write context gate and settlement/discard tools", () => {
+    expect(tool("write.preflight")?.risk).toBe("read");
+    expect(tool("memory.settle_range")?.risk).toBe("confirmed-write");
+    expect(tool("chapter.discard_range")?.risk).toBe("destructive");
+    expect(tool("pipeline.write")?.description).toContain("context-not-ready");
+  });
+
+  it("registers import closed-loop and book.dissect tools", () => {
+    const dissect = tool("book.dissect")?.description ?? "";
+    expect(dissect).toContain("续写知识包");
+    // 拆书产物必须写经纬 dynamic/needs-review，不能进 canon
+    expect(dissect).toContain("needs-review");
+    expect(dissect).toContain("权威源");
+    expect(tool("pipeline.import_chapters")?.description).toContain("autoSettle");
+    expect(tool("style.import")?.description).toContain("applyPreset");
+  });
+
+  it("registers volume outline, character arc and publish check tools", () => {
+    expect(tool("outline.volume")?.description).toContain("卷");
+    expect(tool("outline.volume")?.risk).toBe("confirmed-write");
+    expect(tool("arc.character")?.description).toContain("弧线");
+    expect(tool("arc.character")?.risk).toBe("confirmed-write");
+    expect(tool("publish.check")?.description).toContain("敏感词");
+    expect(tool("publish.check")?.risk).toBe("read");
   });
 });

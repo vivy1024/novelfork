@@ -96,6 +96,17 @@ export { extractPOVFromOutline, filterMatrixByPOV, filterHooksByPOV } from "./ut
 export { detectToxicPatterns, type ToxicDetectionContext, type ToxicDetectionResult } from "./utils/toxic-detector.js";
 export { parseOutlineTree, findOutlineNodeForChapter, detectOutlineDrift, type OutlineNode, type OutlineDriftResult } from "./utils/outline-drift.js";
 export { splitChapters, type SplitChapter } from "./utils/chapter-splitter.js";
+export {
+  detectFormat,
+  htmlToPlainText,
+  extractEpubText,
+  normalizeImportSource,
+  type ImportFormat,
+  type FormatDetectionResult,
+  type EpubExtractResult,
+  type NormalizeImportSourceInput,
+  type NormalizeImportSourceResult,
+} from "./utils/format-detector.js";
 export { countChapterLength, resolveLengthCountingMode, formatLengthCount, buildLengthSpec, isOutsideSoftRange, isOutsideHardRange, chooseNormalizeMode, type LengthLanguage } from "./utils/length-metrics.js";
 export { analyzeWordFrequency, renderWordFrequencyHint, type WordFrequencyResult } from "./utils/word-frequency.js";
 export { createLogger, createStderrSink, createJsonLineSink, nullSink, type Logger, type LogSink, type LogLevel, type LogEntry } from "./utils/logger.js";
