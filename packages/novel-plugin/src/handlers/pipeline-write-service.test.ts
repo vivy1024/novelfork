@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, beatTemplateToStyleSnippet, presetToStyleSnippet } from "./pipeline-write-service.js";
+import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, beatTemplateToStyleSnippet, presetToStyleSnippet, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
 import type { BeatTemplate, Preset } from "../engine/presets/types.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
@@ -81,6 +81,63 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).toContain("continueWithHighRiskPending === undefined");
     expect(source).toContain("blockWriteOnHighRiskPending");
     expect(pendingCheckIndex).toBeLessThan(writerIndex);
+  });
+
+  it("runs write.preflight context gate before writer generation", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const gateIndex = source.indexOf("handleWritePreflight");
+    const writerIndex = source.indexOf("const writer = new WriterAgent");
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(source).toContain("context-not-ready");
+    expect(source).toContain("empty-recent-progress");
+    expect(gateIndex).toBeLessThan(writerIndex);
+  });
+
+  it("supports requireFactCheckPass hard reject path in source", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    expect(source).toContain("requireFactCheckPass");
+    expect(source).toContain("fact-check-failed");
+    expect(source).toContain("auditIssueCategories");
+    expect(source).toContain("publishHint");
+  });
+
+  it("runs a platform publish check before saving and only blocks on sensitive block hits", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const publishIndex = source.indexOf("handlePublishCheck");
+    const saveIndex = source.indexOf("await resourceService.create(bookId");
+    expect(publishIndex).toBeGreaterThan(-1);
+    expect(publishIndex).toBeLessThan(saveIndex);
+    expect(source).toContain("blockOnSensitiveBlock");
+    expect(source).toContain("publish-blocked");
+    expect(source).toContain("sensitiveScan.totalBlockCount");
+  });
+
+  it("runs the fact-check specialist revise after the normal revise loop and before length recheck", async () => {
+    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const loopEnd = source.indexOf("auditResult = await runAudit(finalContent); // re-audit 修订后的版本");
+    const factIndex = source.indexOf("factCheckAutoRevise) {");
+    const lengthRecheck = source.indexOf("let finalLengthCount = countChapterLength");
+    expect(loopEnd).toBeGreaterThan(-1);
+    expect(factIndex).toBeGreaterThan(loopEnd);
+    expect(lengthRecheck).toBeGreaterThan(factIndex);
+    expect(source).toContain("selectFactContinuityIssues");
+    expect(source).toContain("[事实核查专项]");
+    expect(source).toContain("factCheckRound");
+  });
+});
+
+describe("summarizeAuditIssueCategories", () => {
+  it("counts severities and types", () => {
+    const summary = summarizeAuditIssueCategories([
+      { severity: "critical", type: "continuity" },
+      { severity: "critical", type: "continuity" },
+      { severity: "warning", type: "ai_taste" },
+      { severity: "info", type: "style" },
+    ]);
+    expect(summary.critical).toBe(2);
+    expect(summary.warning).toBe(1);
+    expect(summary.info).toBe(1);
+    expect(summary.byType.continuity).toBe(2);
   });
 });
 

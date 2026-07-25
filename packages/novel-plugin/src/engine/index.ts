@@ -102,6 +102,19 @@ export type { ComplianceViolation, ComplianceCheckResult } from "./presets/compl
 // ─── Compliance (platform publishing) ────────────────────────────────────────
 export * from "./compliance/index.js";
 
+// ─── Platform writing profiles ───────────────────────────────────────────────
+export {
+  SUPPORTED_PUBLISH_PLATFORMS,
+  checkPlatformChapterTarget,
+  getPlatformProfile,
+  isSupportedPlatform,
+  resolvePlatformProfile,
+  resolvePublishPlatform,
+  type BookPlatform,
+  type PlatformProfile,
+  type PlatformTargetCheck,
+} from "./platform/platform-profile.js";
+
 // ─── Tools (novel analysis) ──────────────────────────────────────────────────
 export * from "./tools/index.js";
 

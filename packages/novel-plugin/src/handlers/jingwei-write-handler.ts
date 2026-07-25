@@ -8,7 +8,18 @@
  */
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { JingweiLayer } from "../engine/jingwei/types.js";
-import { LEGACY_CATEGORY_MAP, JINGWEI_CATEGORIES } from "../engine/jingwei/unified-categories.js";
+import {
+  LEGACY_CATEGORY_MAP,
+  JINGWEI_CATEGORIES,
+  categoryAllowsCanon,
+  getCategoryDefaultLayer,
+} from "../engine/jingwei/unified-categories.js";
+
+/**
+ * 结构性账本分类：经纬是它们的唯一权威源（卷纲 / 伏笔 / 章摘要）。
+ * 这些分类天然按章推进，允许 layer=dynamic 写入经纬，不再被动态边界守卫拦截。
+ */
+const LEDGER_CATEGORIES = new Set(["outline", "foreshadowing", "chapter-summaries"]);
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -313,9 +324,9 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
   }
 
   const rawCategory = String(input.category || "").trim();
-  const layer: JingweiLayer = (input.layer === "canon" || input.layer === "dynamic" || input.layer === "reference")
+  const explicitLayer: JingweiLayer | null = (input.layer === "canon" || input.layer === "dynamic" || input.layer === "reference")
     ? input.layer
-    : "dynamic";
+    : null;
   const aliases = Array.isArray(input.aliases) ? input.aliases.filter((a): a is string => typeof a === "string") : [];
   const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
   const visibility = String(input.visibility || "tracked");
@@ -332,40 +343,39 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
   const rawInferred = inferCategory(rawCategory, title, contentMd);
   const category = normalizeCategoryLegacy(rawInferred);
+
+  // 分类表态：层级由分类的 defaultLayer 决定（写入方未显式指定时），
+  // 是否允许 canon 由 allowCanon 决定 —— 取代此前按内容/分类名正则猜测。
+  const layer: JingweiLayer = explicitLayer ?? getCategoryDefaultLayer(category);
   const isRulesCategory = /(^|[-_])(rules?|rule|platform|book-rules)([-_]|$)|规则/.test(category) || /平台规则|书籍规则|规则/.test(title);
-  const dynamicMemoryCategories = new Set([
-    "timeline", "timelines",
-    "plot", "plots", "event", "events",
-    "relationship", "relationships",
-    "foreshadowing", "foreshadowings",
-    "chapter-summary", "chapter-summaries", "chapter_summary", "chapter_summaries",
-    "arc", "arcs", "character_arc", "character_arcs", "character-arc", "character-arcs",
-    "conflict", "conflicts", "diagnostics", "diagnostic",
-  ]);
-  const writesDynamicMemory = dynamicMemoryCategories.has(category);
   const writesProtectedLore = layer === "canon" || isRulesCategory;
   const reason = String(input.reason || "").trim();
   const sourceOrEvidence = String(input.source || input.evidence || "").trim();
-  if (writesDynamicMemory && layer !== "reference") {
+
+  // 1) 分类不允许 canon 时，禁止把随剧情推进的对象写成不可变真相。
+  if (layer === "canon" && !categoryAllowsCanon(category)) {
     return {
       ok: false,
-      error: "dynamic-memory-boundary",
-      summary: "时间线、关系变化、角色弧线、伏笔进展、矛盾诊断等动态叙事状态属于 Narrative Memory（章后自动结算 / memory.events），不应写入经纬权威源。若只是作者静态参考资料，请使用 layer=reference。",
+      error: "canon-not-allowed-for-category",
+      summary: `分类「${category}」随剧情推进，不能写入 canon 层。请使用 layer=dynamic（作者可审的结构性账本）或 reference（纯参考资料）。`,
     };
   }
-  // 即便 category 未标明，内容像“本章动态变化”也不应落进经纬权威层。
-  // 仅标题含「第N章」不拦截（人物卡可能写出场章）；需叠加动态语义词。
+
+  // 2) 结构性账本分类（卷纲/伏笔/章摘要）是经纬的权威承载，允许 dynamic 写入；
+  //    其余分类若内容像「逐章变化记录」，仍应进 Narrative Memory 而不是经纬。
+  const isLedgerCategory = LEDGER_CATEGORIES.has(category);
   const titleLooksDynamicChapter =
-    /第\s*\d+\s*章/.test(title)
+    /第\s*[\d一二三四五六七八九十百千]+\s*章/.test(title)
     && /(关系|状态|伏笔|时间线|结算|事件变化|叙事事件)/.test(title);
   const bodyLooksDynamicSettlement = /(关系变化|状态变化|伏笔推进|时间线推进|本章结算|叙事事件)/.test(`${title}\n${contentMd}`);
-  if ((titleLooksDynamicChapter || bodyLooksDynamicSettlement) && layer === "dynamic" && !writesProtectedLore) {
+  if (!isLedgerCategory && (titleLooksDynamicChapter || bodyLooksDynamicSettlement) && layer !== "reference" && !writesProtectedLore) {
     return {
       ok: false,
       error: "dynamic-memory-boundary",
-      summary: "内容像章后动态变化（关系/状态/伏笔/时间线），请进入 Narrative Memory，而不是经纬。静态参考可改用 layer=reference。",
+      summary: "内容像章后动态变化（关系/状态/伏笔/时间线），请进入 Narrative Memory，而不是经纬。结构性账本请用 outline / foreshadowing / chapter-summaries 分类；静态参考可改用 layer=reference。",
     };
   }
+
   if (writesProtectedLore && (!reason || !sourceOrEvidence)) {
     return {
       ok: false,

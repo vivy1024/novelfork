@@ -49,3 +49,39 @@ export function evaluateGate(issues: ReadonlyArray<AuditIssue>): GateDecision {
     counts,
   };
 }
+
+/**
+ * 事实/连续性类关键词：用于 fact-check 专项修订筛选。
+ * 覆盖设定冲突、人设、时间线、数值、知识越界等「客观事实」维度。
+ */
+const FACT_CONTINUITY_HINTS = [
+  ...S1_CATEGORY_HINTS,
+  "连续性",
+  "continuity",
+  "timeline",
+  "时间线",
+  "数值",
+  "战力",
+  "信息越界",
+  "知识",
+  "knowledge",
+  "矛盾",
+  "事实",
+  "fact",
+  "伏笔",
+];
+
+/**
+ * 是否为 critical 级别的事实/连续性问题。
+ * 只对 critical 生效；warning/info 不进专项修订。
+ */
+export function isFactContinuityIssue(issue: AuditIssue): boolean {
+  if (issue.severity !== "critical") return false;
+  const blob = `${issue.category ?? ""} ${issue.description ?? ""}`.toLowerCase();
+  return FACT_CONTINUITY_HINTS.some((hint) => blob.includes(hint.toLowerCase()));
+}
+
+/** 从 issue 列表中取出 critical 事实/连续性问题。 */
+export function selectFactContinuityIssues(issues: ReadonlyArray<AuditIssue>): AuditIssue[] {
+  return issues.filter((issue) => isFactContinuityIssue(issue));
+}

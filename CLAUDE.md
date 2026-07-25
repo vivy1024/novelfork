@@ -217,6 +217,35 @@ git submodule update --init --recursive
 bun scripts/import-narrafork-runtime.ts --source ./narrafork-private-main --report-only
 ```
 
+## 单一权威源（硬纪律）
+
+每类信息只有一个权威源；其他位置只能是**导出物**或**派生视图**，不得双向同步。
+
+| 信息 | 唯一权威源 | 其他位置的角色 |
+|---|---|---|
+| 卷纲 | 经纬 `outline` 条目（`fields_json.volumes`） | `story/volume_outline.md` 仅导出 |
+| 伏笔 | 经纬 `foreshadowing` 条目（状态存 `fields_json`） | `story/pending_hooks.md` 仅导出；记忆 `hook` fact 只作证据 |
+| 章摘要 | 经纬 `chapter-summaries` 条目 | 记忆事件摘要仅在经纬缺失时兜底 |
+| 角色/关系/世界「当前设定」 | 经纬对应分类（`layer=dynamic` 可变） | 拆书 JSON 仅调试快照 |
+| 章后事实与事件流 | Narrative Memory（`narrative_fact` / `narrative_event`） | 无文件权威源 |
+| 角色弧 beats | `jingwei_character_arc` | 无 |
+| 文风 | presets（`enabledPresetIds`） | `style_profile.json` 仅统计快照 |
+| 诊断结果（preflight / publish / audit） | 不落盘，一次性返回 | 无 |
+
+配套规则：
+
+- **发现重复表达时删掉弱的一方，不加同步逻辑。**
+- **能派生的状态不存储**（如伏笔阶段应由推进记录算出，而非另存一列）。
+- 分类的层级由 `CATEGORY_META.defaultLayer` / `allowCanon` 表态决定，不靠内容正则猜测；随剧情推进的分类禁止写 canon。
+- 机器抽取的产物一律写 `layer=dynamic` + `status=needs-review`，作者确认后才可升 canon。
+- 所有拦截与告警必须带 `explanation`（发生了什么 / 为什么要看 / 建议怎么做）；前端与叙述者不得按 code 自造文案。
+
+## 交付定义（DoD 补充）
+
+- **旧入口必须同步下线**：新功能取代旧功能时删除旧入口，不允许侧栏/面板新旧并存。
+- **半成品默认隐藏**：做不完的功能标注实验性并默认不可见，不摆在正式 UI 里误导用户。
+- 工具在 `tool-registry` 声明的 `renderer` 必须已在 Studio 侧注册，或显式声明走 generic。
+
 ## 代码质量与安全
 
 - 先读取事实再作判断，避免基于假设修改行为。

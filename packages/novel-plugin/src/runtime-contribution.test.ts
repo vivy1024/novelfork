@@ -121,8 +121,17 @@ function expectModelSchemaIsBounded(schema: unknown): void {
 }
 
 describe("novel Runtime contribution", () => {
-  it("uses the catalog's exact 42-tool ready set", () => {
-    expect(NOVEL_RUNTIME_TOOL_CATALOG).toHaveLength(42);
+  it("uses the catalog's exact ready tool set", () => {
+    expect(NOVEL_RUNTIME_TOOL_CATALOG).toHaveLength(NOVEL_READY_RUNTIME_TOOL_NAMES.length);
+    expect(NOVEL_READY_RUNTIME_TOOL_NAMES).toEqual(expect.arrayContaining([
+      "write.preflight",
+      "memory.settle_range",
+      "chapter.discard_range",
+      "book.dissect",
+      "outline.volume",
+      "arc.character",
+      "publish.check",
+    ]));
     const readyNames = [...NOVEL_READY_RUNTIME_TOOL_NAMES].sort();
     expect(NOVEL_RUNTIME_TOOL_CATALOG.filter((tool) => tool.runtimeStatus === "ready").map((tool) => tool.name).sort())
       .toEqual(readyNames);
@@ -136,6 +145,8 @@ describe("novel Runtime contribution", () => {
     expect(prompt).toContain("NovelFork 小说创作运行时");
     expect(prompt).toContain("chapter.write");
     expect(prompt).toContain("可信的 novel.book 资源绑定");
+    expect(prompt).toContain("write.preflight");
+    expect(prompt).toContain("禁止用写作理论");
   });
 
   it("contributes factual NovelFork learning categories and the required writing documents", () => {
@@ -253,7 +264,7 @@ describe("novel Runtime contribution", () => {
     };
     try {
       const result = await tool("pipeline.write").handler(
-        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        { sceneSpec: pipelineSceneSpec, autoRevise: false, skipContextGate: true },
         trustedContext,
       );
 
@@ -288,7 +299,7 @@ describe("novel Runtime contribution", () => {
       }, trustedContext)).toMatchObject({ ok: true });
 
       const result = await tool("pipeline.write").handler(
-        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        { sceneSpec: pipelineSceneSpec, autoRevise: false, skipContextGate: true },
         trustedContext,
       );
 
@@ -460,7 +471,7 @@ describe("novel Runtime contribution", () => {
     const generateText: NonNullable<ToolExecutionContext["generateText"]> = async (request) => {
       const system = request.messages.filter((message) => message.role === "system").map((message) => message.content).join("\n");
       generatedSystems.push(system);
-      if (system.includes("章节规划专家")) return { text: JSON.stringify(sceneSpec) };
+      if (system.includes("章节规划专家") || system.includes("结构化写作蓝图")) return { text: JSON.stringify(sceneSpec) };
       if (system.includes("文风分析师")) return { text: "# 文风指南\n\n短句推进，动作承载情绪。" };
       if (system.includes("大纲编辑")) {
         return { text: JSON.stringify([{ title: "试炼开启", summary: "林舟进入山门试炼。", hooks: ["青铜铃"] }]) };
@@ -532,8 +543,44 @@ describe("novel Runtime contribution", () => {
         data: { hooks: [{ id: "hook-0", done: false }] },
       });
 
+      const blockedPreflight = await tool("write.preflight").handler(
+        { chapterNumber: 2, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
+        trustedContext,
+      );
+      expect(blockedPreflight.ok).toBe(false);
+      expect(blockedPreflight.error).toBe("context-not-ready");
+
+      const settled = await tool("memory.settle_range").handler(
+        { fromChapter: 1, toChapter: 3 },
+        trustedContext,
+      );
+      expect(settled.ok).toBe(true);
+      expect((settled.data as { chaptersSettled?: number } | undefined)?.chaptersSettled).toBeGreaterThan(0);
+
+      // 若抽取结果偏少，直接插入一条 applied 事件保证 preflight 可观测到近章记忆。
+      const eventCount = storage.sqlite.prepare(
+        "SELECT COUNT(*) AS c FROM narrative_event WHERE book_id = ? AND status = 'applied'",
+      ).get("trusted") as { c: number };
+      if (eventCount.c === 0) {
+        storage.sqlite.prepare(`
+          INSERT INTO narrative_event (
+            id, book_id, chapter_number, event_type, subject, predicate, object,
+            evidence_text, confidence, source, status, risk_level, created_at, applied_at
+          ) VALUES (
+            'seed-event-1', 'trusted', 3, 'timeline_advanced', '林舟', '抵达', '山门',
+            '林舟抵达山门。', 0.9, 'settle', 'applied', 'low',
+            '2026-07-24T00:00:00.000Z', '2026-07-24T00:00:00.000Z'
+          )
+        `).run();
+      }
+
+      expect(await tool("write.preflight").handler(
+        { chapterNumber: 4, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
+        trustedContext,
+      )).toMatchObject({ ok: true });
+
       expect(await tool("scene.spec").handler(
-        { chapterNumber: 2, userDirectives: "让林舟进入山门试炼" },
+        { chapterNumber: 2, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
         trustedContext,
       )).toMatchObject({ ok: true, data: { sceneSpec: { chapter: 2, title: "铃声之后" } } });
 
@@ -544,7 +591,7 @@ describe("novel Runtime contribution", () => {
       expect(pipeline).toMatchObject({ ok: true, data: { chapterNumber: 2, title: "铃声之后" } });
       expect((pipeline.data as { wordCount?: number } | undefined)?.wordCount).toBeGreaterThanOrEqual(2182);
 
-      expect(generatedSystems.some((system) => system.includes("章节规划专家"))).toBe(true);
+      expect(generatedSystems.some((system) => system.includes("结构化写作蓝图") || system.includes("章节规划专家"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("文风分析师"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("大纲编辑"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("审稿编辑"))).toBe(true);

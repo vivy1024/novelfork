@@ -576,16 +576,41 @@ export async function handleMemoryStats(input: MemoryStatsInput, storageOverride
   if (isToolResult(bookId)) return bookId;
   const storage = getStorage(storageOverride);
   const factRows = storage.sqlite.prepare(`SELECT layer, category, updated_at AS updatedAt FROM narrative_fact WHERE book_id = ?`).all(bookId) as any[];
-  const eventRows = storage.sqlite.prepare(`SELECT status, created_at AS createdAt, applied_at AS appliedAt FROM narrative_event WHERE book_id = ?`).all(bookId) as any[];
+  const eventRows = storage.sqlite.prepare(`SELECT status, chapter_number AS chapterNumber, created_at AS createdAt, applied_at AS appliedAt FROM narrative_event WHERE book_id = ?`).all(bookId) as any[];
   const logRows = storage.sqlite.prepare(`SELECT created_at AS createdAt FROM narrative_retrieval_log WHERE book_id = ?`).all(bookId) as any[];
   const vectorRows = storage.sqlite.prepare(`SELECT vector_updated_at AS updatedAt FROM narrative_context_vector WHERE book_id = ?`).all(bookId) as any[];
   const byKind = { fact: factRows.length, event: eventRows.length, log: logRows.length, vector: vectorRows.length };
   const eventStatus = countBy(eventRows, "status");
   const factLayer = countBy(factRows, "layer");
   const factCategory = countBy(factRows, "category");
+  const pendingByChapter: Record<string, number> = {};
+  let latestSettledChapter: number | null = null;
+  for (const row of eventRows) {
+    const chapterNumber = typeof row.chapterNumber === "number" ? row.chapterNumber : null;
+    if (chapterNumber != null && Number.isFinite(chapterNumber)) {
+      if (row.status === "pending") {
+        const key = String(chapterNumber);
+        pendingByChapter[key] = (pendingByChapter[key] ?? 0) + 1;
+      }
+      if (row.status === "applied" && (latestSettledChapter == null || chapterNumber > latestSettledChapter)) {
+        latestSettledChapter = chapterNumber;
+      }
+    }
+  }
   const duplicateRisk = duplicateGroups(listFacts(storage, { bookId, kind: "fact", limit: 500 }), "fact").length + duplicateGroups(listEvents(storage, { bookId, kind: "event", limit: 500 }), "event").length;
   const timestamps = [...factRows.map((r) => r.updatedAt), ...eventRows.map((r) => r.appliedAt ?? r.createdAt), ...logRows.map((r) => r.createdAt), ...vectorRows.map((r) => r.updatedAt)].filter(Boolean).sort();
-  const stats = { total: byKind.fact + byKind.event + byKind.log + byKind.vector, byKind, eventStatus, factLayer, factCategory, pendingEvents: eventStatus.pending ?? 0, duplicateRisk, latestUpdatedAt: timestamps.at(-1) };
+  const stats = {
+    total: byKind.fact + byKind.event + byKind.log + byKind.vector,
+    byKind,
+    eventStatus,
+    factLayer,
+    factCategory,
+    pendingEvents: eventStatus.pending ?? 0,
+    pendingByChapter,
+    latestSettledChapter,
+    duplicateRisk,
+    latestUpdatedAt: timestamps.at(-1),
+  };
   return ok("已统计叙事记忆。", { stats });
 }
 

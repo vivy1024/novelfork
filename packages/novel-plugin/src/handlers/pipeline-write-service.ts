@@ -17,7 +17,7 @@ import { WriterAgent } from "../engine/agents/writer.js";
 import { LengthNormalizerAgent } from "../engine/agents/length-normalizer.js";
 import { ContinuityAuditor } from "../engine/agents/continuity.js";
 import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/agents/adversarial-audit.js";
-import { evaluateGate } from "../engine/agents/severity-gate.js";
+import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { join } from "node:path";
@@ -72,6 +72,25 @@ export interface PipelineWriteInput {
   readonly adversarialAudit?: boolean;
   /** 多轮自愈：审查→修订最多 N 轮（默认 1） */
   readonly maxReviseRounds?: number;
+  /** 仅测试/迁移：跳过 empty-recent-progress 写前硬门 */
+  readonly skipContextGate?: boolean;
+  /**
+   * 若仍有 critical 事实/连续性类 issue 未清，则拒绝保存正式章。
+   * 默认 false：只标 needsHumanReview。
+   */
+  readonly requireFactCheckPass?: boolean;
+  /**
+   * 普通审修轮结束后，若仍有 critical 事实/连续性问题，触发一次事实专项 spot-fix + 复审。
+   * 独立于 maxReviseRounds，默认 false。
+   */
+  readonly factCheckAutoRevise?: boolean;
+}
+
+export interface PipelineAuditIssueCategories {
+  readonly critical: number;
+  readonly warning: number;
+  readonly info: number;
+  readonly byType: Readonly<Record<string, number>>;
 }
 
 export interface PipelineWriteOutput {
@@ -81,6 +100,7 @@ export interface PipelineWriteOutput {
   readonly wordCount: number;
   readonly chapterNumber: number;
   readonly auditResult: AuditResult;
+  readonly auditIssueCategories: PipelineAuditIssueCategories;
   readonly revised: boolean;
   readonly chapterId: string;
   readonly artifact: PipelineCanvasArtifact;
@@ -94,6 +114,16 @@ export interface PipelineWriteOutput {
   readonly narrativeSettlement?: ChapterSettlementResult;
   /** 写作前发现的高风险 pending NarrativeEvents 提醒 */
   readonly highRiskPendingReminder?: string;
+  /** 轻量发布向提示（默认只 warn；敏感 block 且平台要求时才拒绝保存） */
+  readonly publishHint?: {
+    readonly status: "ready" | "has-warnings" | "blocked" | "skipped";
+    readonly warnings: readonly string[];
+    readonly platform?: string;
+  };
+  /** 是否执行过事实专项修订 */
+  readonly factCheckRevised?: boolean;
+  /** 事实专项修订轮数（0 或 1） */
+  readonly factCheckRound?: number;
 }
 
 export interface PipelineWriteError {
@@ -105,8 +135,27 @@ export interface PipelineWriteError {
     | "timeout"
     | "high-risk-pending"
     | "length-out-of-range"
-    | "preset-compliance-failed";
+    | "preset-compliance-failed"
+    | "context-not-ready"
+    | "fact-check-failed"
+    | "publish-blocked";
   readonly error: string;
+}
+
+export function summarizeAuditIssueCategories(issues: readonly { severity?: string; type?: string; category?: string; ruleId?: string }[]): PipelineAuditIssueCategories {
+  const byType: Record<string, number> = {};
+  let critical = 0;
+  let warning = 0;
+  let info = 0;
+  for (const issue of issues) {
+    const severity = String(issue.severity ?? "info").toLowerCase();
+    if (severity === "critical" || severity === "error" || severity === "s1") critical += 1;
+    else if (severity === "warning" || severity === "s2") warning += 1;
+    else info += 1;
+    const type = String(issue.type ?? issue.category ?? issue.ruleId ?? "unknown");
+    byType[type] = (byType[type] ?? 0) + 1;
+  }
+  return { critical, warning, info, byType };
 }
 
 export type PipelineWriteResult = PipelineWriteOutput | PipelineWriteError;
@@ -308,7 +357,18 @@ export async function executePipelineWrite(
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
   // 产品口径：章后结算默认自动；是否阻断高风险 pending 由本书 narrativeMemory 配置决定。
-  const { bookId, sceneSpec, jingweiContext, previousChapterTail, autoRevise = true, adversarialAudit = false, maxReviseRounds = 1 } = input;
+  const {
+    bookId,
+    sceneSpec,
+    jingweiContext,
+    previousChapterTail,
+    autoRevise = true,
+    adversarialAudit = false,
+    maxReviseRounds = 1,
+    skipContextGate = false,
+    requireFactCheckPass = false,
+    factCheckAutoRevise = false,
+  } = input;
   let continueWithHighRiskPending = input.continueWithHighRiskPending;
   let narrativeContext = input.narrativeContext;
   const { root, logger } = options;
@@ -339,6 +399,37 @@ export async function executePipelineWrite(
       continueWithHighRiskPending = !(memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false);
     }
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
+
+    // 写前硬门：已有正式章但近章记忆/摘要为空时禁止继续硬写（软质量不在此拦）。
+    if (!skipContextGate) {
+      try {
+        const { handleWritePreflight } = await import("./write-preflight.js");
+        const preflight = await handleWritePreflight({
+          bookId,
+          chapterNumber,
+          userDirectives: sceneSpec.constraints?.find((item) => item.startsWith("用户指示："))?.slice("用户指示：".length)
+            ?? sceneSpec.title
+            ?? "按场景蓝图推进本章",
+          acceptFocusDefault: true,
+          bookRoot: bookDir,
+          cockpitState: {
+            loadBookConfig: (id) => state.loadBookConfig(id),
+            loadChapterIndex: (id) => state.loadChapterIndex(id),
+            bookDir: (id) => state.bookDir(id),
+          },
+        });
+        const hard = preflight.blockers.filter((item) => item.code === "empty-recent-progress" || item.code === "book-not-found");
+        if (hard.length > 0) {
+          return {
+            ok: false,
+            code: "context-not-ready",
+            error: hard.map((item) => item.message).join("；"),
+          };
+        }
+      } catch (err) {
+        logger?.debug(`[pipeline.write] Context gate skipped: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
     // The persisted book setting is authoritative. SceneSpec is model-generated
     // planning input and must not lower or replace the book's hard target.
     const lengthSpec = buildLengthSpec(book.chapterWordCount, book.language === "en" ? "en" : "zh");
@@ -519,6 +610,37 @@ export async function executePipelineWrite(
       auditResult = await runAudit(finalContent); // re-audit 修订后的版本
     }
 
+    // 3.5. 事实/连续性专项修订（独立于 maxReviseRounds，最多 1 轮）
+    let factCheckRevised = false;
+    let factCheckRound = 0;
+    if (factCheckAutoRevise) {
+      const factIssues = selectFactContinuityIssues(auditResult.issues);
+      if (factIssues.length > 0) {
+        factCheckRound = 1;
+        logger?.info(`[pipeline.write] Fact-check revise: ${factIssues.length} critical fact/continuity issue(s)`);
+        const factIssuesForRevise = factIssues.map((issue) => ({
+          ...issue,
+          description: `[事实核查专项] ${issue.description}`,
+        }));
+        try {
+          const factRevise = await new ReviserAgent(reviserCtx).reviseChapter(
+            bookDir, finalContent, chapterNumber, factIssuesForRevise, "spot-fix", book.genre,
+            { chapterIntent, contextPackage, ruleStack, lengthSpec },
+          );
+          if (factRevise.revisedContent.trim()) {
+            finalContent = factRevise.revisedContent;
+            revised = true;
+            factCheckRevised = true;
+            auditResult = await runAudit(finalContent);
+            const remaining = selectFactContinuityIssues(auditResult.issues).length;
+            logger?.info(`[pipeline.write] Fact-check revise done, remaining fact issues: ${remaining}`);
+          }
+        } catch (factError) {
+          logger?.warn(`[pipeline.write] Fact-check revise failed: ${factError instanceof Error ? factError.message : String(factError)}`);
+        }
+      }
+    }
+
     // Revisions can reintroduce length drift after the initial normalizer. The
     // book's persisted hard range is checked again before any formal resource
     // or Narrative Memory settlement is allowed.
@@ -544,9 +666,20 @@ export async function executePipelineWrite(
 
     // 门禁：剩余 S1（致命）→ 阻断采纳送人工复核；S2 也未清完同样需复核
     const finalGate = evaluateGate(auditResult.issues);
+    const auditIssueCategories = summarizeAuditIssueCategories(auditResult.issues);
     const needsHumanReview = finalGate.hasRevisable;
     if (needsHumanReview) {
       logger?.warn(`[pipeline.write] ${reviseRounds} round(s) exhausted, S1=${finalGate.counts.S1} S2=${finalGate.counts.S2} remain → needs human review`);
+    }
+    if (requireFactCheckPass && auditIssueCategories.critical > 0) {
+      const remainingFactIssues = selectFactContinuityIssues(auditResult.issues).length;
+      return {
+        ok: false,
+        code: "fact-check-failed",
+        error: `requireFactCheckPass：仍有 ${auditIssueCategories.critical} 条 critical 问题（其中事实/连续性 ${remainingFactIssues} 条）未清，拒绝保存正式章。${
+          factCheckRevised ? "事实专项修订已执行仍未通过。" : ""
+        }类别：${JSON.stringify(auditIssueCategories.byType)}`,
+      };
     }
 
     let presetWarnings: PresetComplianceViolation[] = [];
@@ -611,6 +744,59 @@ export async function executePipelineWrite(
       logger?.debug(`[pipeline.write] Runtime state check skipped: ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // 4.1. 平台发布向单章轻检（保存前）：默认只 warn；仅当 profile 要求且存在 block 级敏感命中时拒绝保存。
+    const publishWarnings: string[] = [];
+    if (needsHumanReview) publishWarnings.push("审计仍有 critical/S2，建议人工复核后再发布。");
+    if (factCheckRevised) publishWarnings.push("已执行事实/连续性专项修订，请抽查关键事实。");
+    if (presetWarnings.length > 0) publishWarnings.push(`预设警告 ${presetWarnings.length} 条。`);
+    if (knowledgeWarnings.length > 0) publishWarnings.push(`知识边界警告 ${knowledgeWarnings.length} 条。`);
+    if (timelineWarnings.length > 0) publishWarnings.push(`时间线警告 ${timelineWarnings.length} 条。`);
+
+    let publishStatus: "ready" | "has-warnings" | "blocked" | "skipped" = "ready";
+    let publishPlatform: string | undefined;
+    try {
+      const { handlePublishCheck } = await import("./publish-check.js");
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const publishResult = await handlePublishCheck({
+        bookId,
+        bookRoot: bookDir,
+        chapterNumber,
+        content: finalContent,
+        storage: getStorageDatabase(),
+      });
+      publishPlatform = publishResult.platform;
+      if (publishResult.ok && publishResult.report) {
+        publishStatus = publishResult.status;
+        if (publishResult.blockCount > 0) {
+          publishWarnings.push(`${publishResult.platformLabel}：${publishResult.blockCount} 条阻断级问题。`);
+        }
+        if (publishResult.warnCount > 0) {
+          publishWarnings.push(`${publishResult.platformLabel}：${publishResult.warnCount} 条发布提醒。`);
+        }
+        if (publishResult.chapterTarget?.message) publishWarnings.push(publishResult.chapterTarget.message);
+
+        const sensitiveBlocks = publishResult.report.sensitiveScan.totalBlockCount;
+        if (sensitiveBlocks > 0 && publishResult.profile.blockOnSensitiveBlock) {
+          return {
+            ok: false,
+            code: "publish-blocked",
+            error: `第${chapterNumber}章触发 ${sensitiveBlocks} 条${publishResult.platformLabel}阻断级敏感命中；未保存正式章节。可先 pipeline.revise 处理后重试，或调整书籍平台设置。`,
+          };
+        }
+      } else {
+        publishStatus = "skipped";
+      }
+    } catch (publishError) {
+      publishStatus = "skipped";
+      logger?.debug(`[pipeline.write] Publish check skipped: ${publishError instanceof Error ? publishError.message : String(publishError)}`);
+    }
+
+    const publishHint = {
+      status: (publishWarnings.length > 0 && publishStatus === "ready" ? "has-warnings" : publishStatus) as "ready" | "has-warnings" | "blocked" | "skipped",
+      warnings: publishWarnings,
+      ...(publishPlatform ? { platform: publishPlatform } : {}),
+    };
+
     // 4. Save as formal chapter result
     const chapterId = `chapter:${chapterNumber}`;
     let narrativeSettlement: ChapterSettlementResult | undefined;
@@ -634,6 +820,7 @@ export async function executePipelineWrite(
         revised,
         reviseRounds,
         ...(needsHumanReview ? { needsHumanReview: true } : {}),
+        ...(factCheckRevised ? { factCheckRevised: true, factCheckRound } : {}),
         ...(adversarialAudit ? { adversarialAudit: true } : {}),
         length: {
           actual: finalLengthCount,
@@ -646,6 +833,7 @@ export async function executePipelineWrite(
         ...(presetWarnings.length > 0 ? { presetWarnings } : {}),
         ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
         ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
+        publishHint,
         ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
         ...(narrativeEvents.length > 0 ? { narrativeEvents } : {}),
         generatedAt: new Date().toISOString(),
@@ -715,9 +903,13 @@ export async function executePipelineWrite(
       wordCount,
       chapterNumber,
       auditResult,
+      auditIssueCategories,
       revised,
       chapterId,
       reviseRounds,
+      publishHint,
+      factCheckRevised,
+      factCheckRound,
       ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
       ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
@@ -728,7 +920,13 @@ export async function executePipelineWrite(
         title: writeOutput.title,
         openInCanvas: true,
         resourceRef: { kind: "chapter", id: chapterId, bookId, chapterNumber, title: writeOutput.title },
-        metadata: { bookId, chapterNumber, source: "pipeline.write" },
+        metadata: {
+          bookId,
+          chapterNumber,
+          source: "pipeline.write",
+          auditIssueCategories,
+          publishHint,
+        },
       },
     };
   } catch (err) {

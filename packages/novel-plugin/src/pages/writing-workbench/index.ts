@@ -5,6 +5,8 @@ export * from "./ResourceHistoryPanel";
 export * from "./CheckpointPanel";
 export * from "./JingweiEntryEditor";
 export * from "./NewBookGuide";
+export * from "./ImportWizard";
+export * from "./import-wizard-state";
 export * from "./PresetsPanel";
 export * from "./PresetSuggestionCard";
 export * from "./ResourceDetailLoader";

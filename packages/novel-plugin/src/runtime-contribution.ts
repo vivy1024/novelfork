@@ -66,7 +66,18 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 你正在 NovelFork 的小说项目中工作。当前书籍由宿主通过可信的 novel.book 资源绑定确定；不得依据用户文本或工具参数切换到其他书籍，也不得猜测 bookId。
 
-当用户要求写一章完整的新正文时，先用 scene.spec 生成蓝图，再使用 pipeline.write；该管线会读取书籍的目标长度、语言、预设与节拍。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度和预设错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
+## 写新章硬纪律（不可跳过）
+1. write.preflight →（确认一句指示）→ scene.spec → pipeline.write。
+2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
+3. 只使用产品内 focus、近章事实、lore brief、伏笔与用户一句 Directives；禁止用写作理论、文风大道理或外部项目总结填空。
+4. 软门（文风 presets、去 AI 味、跑题、传播力）只在写后 chapter.audit / pipeline.revise / rewrite.*，不得在写前用长文论约束。
+
+## 长篇与平台
+- 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
+- 中盘防跑偏：outline.volume 维护卷纲（当前卷目标会进 preflight 与 scene.spec）；arc.character 查角色弧停滞或回退。
+- 发布前：publish.check 做平台自检（敏感词/AI 率/格式/连续性）。pipeline.write 保存前已做单章轻检，默认只提醒；平台要求且命中阻断级敏感词时会 publish-blocked 不保存。
+
+当用户要求写一章完整的新正文时：必须先 write.preflight；ok 后再 scene.spec 生成蓝图，再 pipeline.write。该管线会读取书籍的目标长度、语言、预设与节拍，并在成功后自动章后结算。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度和预设错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
@@ -74,9 +85,11 @@ const HOST_CONTROLLED_FIELDS = new Set(["bookId", "sessionId", "bookRoot"]);
 type ReadyRuntimeToolName = (typeof NOVEL_READY_RUNTIME_TOOL_NAMES)[number];
 type CustomReadyRuntimeToolName =
   | "cockpit.snapshot"
+  | "write.preflight"
   | "chapter.read"
   | "chapter.write"
   | "chapter.list"
+  | "chapter.discard_range"
   | "narrative.read_line"
   | "narrative.propose_change"
   | "presets.read"
@@ -92,10 +105,15 @@ type CustomReadyRuntimeToolName =
   | "style.import"
   | "pipeline.revise"
   | "pipeline.import_chapters"
+  | "book.dissect"
   | "outline.suggest_next"
+  | "outline.volume"
+  | "arc.character"
+  | "publish.check"
   | "character.check_consistency"
   | "hooks.manage"
-  | "pipeline.write";
+  | "pipeline.write"
+  | "memory.settle_range";
 type LegacyReadHandler = (input: Record<string, unknown>) => Promise<unknown> | unknown;
 
 /** The Runtime schema validates model input; this adapter adds only trusted binding fields for legacy handlers. */
@@ -282,6 +300,103 @@ async function executeReadyTool(
         ok: true,
         summary: "已读取驾驶舱快照。",
         data: { ...snapshot, storyDir: "story" },
+      });
+    }
+    if (tool.name === "write.preflight") {
+      const { handleWritePreflight } = await import("./handlers/write-preflight.js");
+      const preflight = await handleWritePreflight({
+        bookId: binding.bookId,
+        bookRoot: binding.root,
+        cockpitState: createBoundNovelState(binding),
+        ...(typeof injectedInput.chapterNumber === "number" ? { chapterNumber: injectedInput.chapterNumber } : {}),
+        ...(typeof injectedInput.userDirectives === "string" ? { userDirectives: injectedInput.userDirectives } : {}),
+        ...(typeof injectedInput.acceptFocusDefault === "boolean"
+          ? { acceptFocusDefault: injectedInput.acceptFocusDefault }
+          : {}),
+      });
+      const blockerText = preflight.blockers.length > 0
+        ? ` blockers=${preflight.blockers.map((item) => item.code).join(",")}`
+        : "";
+      return toRuntimeToolResult({
+        ok: preflight.ok,
+        summary: preflight.ok
+          ? `写前上下文就绪：第${preflight.chapterNumber}章，近章 ${preflight.recentChapters.length} 条。`
+          : `写前上下文未就绪：${preflight.blockers.map((item) => item.message).join("；") || "存在 blockers"}${blockerText}`,
+        ...(preflight.ok ? {} : { error: "context-not-ready" }),
+        data: preflight,
+      });
+    }
+    if (tool.name === "memory.settle_range") {
+      const { handleMemorySettleRange } = await import("./handlers/memory-settle-range.js");
+      if (typeof injectedInput.fromChapter !== "number" || typeof injectedInput.toChapter !== "number") {
+        return fail("invalid-input", "fromChapter/toChapter 必须是数字。");
+      }
+      const result = await handleMemorySettleRange({
+        bookId: binding.bookId,
+        bookRoot: binding.root,
+        fromChapter: injectedInput.fromChapter,
+        toChapter: injectedInput.toChapter,
+        ...(typeof injectedInput.source === "string"
+          ? { source: injectedInput.source as "accepted-resources" | "chapter-files" }
+          : {}),
+        ...(typeof injectedInput.dryRun === "boolean" ? { dryRun: injectedInput.dryRun } : {}),
+        llmExtractor: context.generateText
+          ? async ({ content, title, chapterNumber }) => {
+              const generated = await context.generateText!({
+                messages: [
+                  {
+                    role: "system",
+                    content: "从章节正文抽取叙事事件，返回 JSON 数组，每项含 eventType/subject/predicate/object/evidenceText/confidence。",
+                  },
+                  {
+                    role: "user",
+                    content: `第${chapterNumber}章 ${title ?? ""}\n\n${content.slice(0, 12000)}`,
+                  },
+                ],
+                temperature: 0.2,
+                maxTokens: 2000,
+              });
+              try {
+                const parsed = JSON.parse(generated.text) as unknown;
+                return Array.isArray(parsed) ? parsed as any : [];
+              } catch {
+                return [];
+              }
+            }
+          : undefined,
+      });
+      return toRuntimeToolResult({
+        ok: result.ok,
+        summary: result.summary,
+        ...(result.ok ? {} : { error: result.error ?? "settle-range-failed" }),
+        data: result,
+      });
+    }
+    if (tool.name === "chapter.discard_range") {
+      const { handleChapterDiscardRange } = await import("./handlers/chapter-discard-range.js");
+      if (typeof injectedInput.fromChapter !== "number" || typeof injectedInput.toChapter !== "number") {
+        return fail("invalid-input", "fromChapter/toChapter 必须是数字。");
+      }
+      if (injectedInput.confirm !== true) {
+        return fail("confirm-required", "chapter.discard_range 必须 confirm=true。");
+      }
+      const result = await handleChapterDiscardRange({
+        bookId: binding.bookId,
+        bookRoot: binding.root,
+        fromChapter: injectedInput.fromChapter,
+        toChapter: injectedInput.toChapter,
+        confirm: true,
+        ...(typeof injectedInput.deleteMemory === "boolean" ? { deleteMemory: injectedInput.deleteMemory } : {}),
+        ...(typeof injectedInput.resetHooks === "string"
+          ? { resetHooks: injectedInput.resetHooks as "untouched" | "planned-only" | "none" }
+          : {}),
+        ...(typeof injectedInput.hardDelete === "boolean" ? { hardDelete: injectedInput.hardDelete } : {}),
+      });
+      return toRuntimeToolResult({
+        ok: result.ok,
+        summary: result.summary,
+        ...(result.ok ? {} : { error: result.error ?? "discard-range-failed" }),
+        data: result,
       });
     }
     if (tool.name === "chapter.read") {
