@@ -9,8 +9,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelManager, type PanelId } from "./panel-manager";
 
-export type ViewId = "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
-const VIEW_IDS: ViewId[] = ["explorer", "jingwei", "tools", "search", "narrative-memory"];
+export type ViewId = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
+const VIEW_IDS: ViewId[] = ["write", "explorer", "jingwei", "tools", "search", "narrative-memory"];
 
 export interface UsePanelManagerReturn {
   activeView: ViewId;
