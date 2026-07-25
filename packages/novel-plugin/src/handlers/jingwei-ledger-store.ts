@@ -10,6 +10,44 @@
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
+export function ensureJingweiLedgerSchema(storage: StorageDatabase): void {
+  storage.sqlite.exec(`
+    CREATE TABLE IF NOT EXISTS story_jingwei_section (
+      id TEXT PRIMARY KEY,
+      book_id TEXT NOT NULL,
+      key TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      "order" INTEGER DEFAULT 0,
+      enabled INTEGER DEFAULT 1,
+      show_in_sidebar INTEGER DEFAULT 1,
+      participates_in_ai INTEGER DEFAULT 1,
+      default_visibility TEXT DEFAULT 'tracked',
+      fields_json TEXT,
+      created_at INTEGER,
+      updated_at INTEGER,
+      UNIQUE(book_id, key)
+    );
+
+    CREATE TABLE IF NOT EXISTS story_jingwei_entry (
+      id TEXT PRIMARY KEY,
+      section_id TEXT NOT NULL,
+      book_id TEXT NOT NULL,
+      category TEXT NOT NULL,
+      title TEXT NOT NULL,
+      layer TEXT NOT NULL DEFAULT 'canon',
+      status TEXT NOT NULL DEFAULT 'confirmed',
+      content_md TEXT,
+      fields_json TEXT,
+      sort_order INTEGER DEFAULT 0,
+      version INTEGER DEFAULT 1,
+      created_at INTEGER,
+      updated_at INTEGER,
+      deleted_at INTEGER
+    );
+  `);
+}
+
 /**
  * 账本可写入的经纬分类。
  * outline / foreshadowing / chapter-summaries 是结构性账本；
@@ -77,6 +115,7 @@ function parseFields(raw: unknown): Record<string, unknown> {
 }
 
 function ensureSection(storage: StorageDatabase, bookId: string, category: LedgerKind): string {
+  ensureJingweiLedgerSchema(storage);
   const existing = storage.sqlite.prepare(
     `SELECT id FROM story_jingwei_section WHERE book_id = ? AND key = ?`,
   ).get(bookId, category) as { id: string } | undefined;

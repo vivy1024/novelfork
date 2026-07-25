@@ -4,10 +4,14 @@
  * 把「focus / 近章事实 / 伏笔 / 用户一句指示」从叙述者自觉变成可机器校验的就绪检查。
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { explainDiagnostic, type DiagnosticExplanation } from "./diagnostic-explanation.js";
 import {
@@ -306,6 +310,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   const storage = input.storage ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
+  ensureJingweiLedgerSchema(storage);
 
   let cockpitState = input.cockpitState;
   if (!cockpitState) {
@@ -319,20 +324,21 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
         bookDir: () => input.bookRoot ?? "",
       };
     } else {
-      const { StateManager } = await import("@vivy1024/novelfork-core");
-      const root = input.bookRoot;
-      const state = new StateManager(root, {
-        resolveBookDir: (requestedBookId) => {
-          if (requestedBookId !== bookId) {
-            throw new Error("The requested book does not match the trusted binding.");
-          }
-          return root;
-        },
-      });
+      const bookRoot = input.bookRoot;
       cockpitState = {
-        loadBookConfig: (id) => state.loadBookConfig(id),
-        loadChapterIndex: (id) => state.loadChapterIndex(id),
-        bookDir: (id) => state.bookDir(id),
+        bookDir: () => bookRoot,
+        loadBookConfig: async () => {
+          const raw = await readFile(join(bookRoot, "book.json"), "utf8");
+          return JSON.parse(raw);
+        },
+        loadChapterIndex: async () => {
+          try {
+            const raw = await readFile(join(bookRoot, "chapters", "index.json"), "utf8");
+            return JSON.parse(raw);
+          } catch {
+            return [];
+          }
+        },
       };
     }
   }
