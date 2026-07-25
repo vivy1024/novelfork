@@ -9,8 +9,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelManager, type PanelId } from "./panel-manager";
 
-export type ViewId = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
-const VIEW_IDS: ViewId[] = ["write", "explorer", "jingwei", "tools", "search", "narrative-memory"];
+/** 经纬与叙事记忆合并为单一 `jingwei` 工作区（设定 + 进度两个分区）。 */
+export type ViewId = "write" | "explorer" | "jingwei" | "tools" | "search";
+const VIEW_IDS: ViewId[] = ["write", "explorer", "jingwei", "tools", "search"];
 
 export interface UsePanelManagerReturn {
   activeView: ViewId;

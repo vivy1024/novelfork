@@ -1,10 +1,28 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 
-export type TabKind = "chapter" | "jingwei-entry" | "file" | "tool" | "other";
+export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "tool" | "other";
 
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab */
-/** 写作视图自身不承载编辑器 Tab，但需要作为合法的 Tab 归属值参与切换。 */
-export type TabView = "write" | "explorer" | "jingwei" | "tools" | "search" | "narrative-memory";
+/**
+ * 写作视图自身不承载编辑器 Tab，但需要作为合法的 Tab 归属值参与切换。
+ *
+ * 经纬与叙事记忆已合并为单一 `jingwei` 工作区；历史持久化里的
+ * `narrative-memory` 会在读取时迁移过来，见 LEGACY_TAB_VIEWS。
+ */
+export type TabView = "write" | "explorer" | "jingwei" | "tools" | "search";
+
+/** 旧视图 → 现视图。用于迁移已落盘的 tab，避免变成点不开的孤儿。 */
+const LEGACY_TAB_VIEWS: Record<string, TabView> = {
+  "narrative-memory": "jingwei",
+};
+
+export function normalizeTabView(value: unknown): TabView {
+  if (typeof value !== "string") return "explorer";
+  if (value in LEGACY_TAB_VIEWS) return LEGACY_TAB_VIEWS[value]!;
+  return (["write", "explorer", "jingwei", "tools", "search"] as const).includes(value as TabView)
+    ? (value as TabView)
+    : "explorer";
+}
 
 export interface TabState {
   id: string;
@@ -42,7 +60,7 @@ interface IdeTabsState {
   activeByView: Record<TabView, string | null>;
 }
 
-const EMPTY_ACTIVE: Record<TabView, string | null> = { write: null, explorer: null, jingwei: null, tools: null, search: null, "narrative-memory": null };
+const EMPTY_ACTIVE: Record<TabView, string | null> = { write: null, explorer: null, jingwei: null, tools: null, search: null };
 
 type IdeTabsAction =
   | { type: "LOAD"; state: IdeTabsState }
@@ -179,15 +197,31 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
 // --- Persistence ---
 
 interface PersistedState {
-  tabs: { id: string; nodeId: string; title: string; kind?: TabKind; view?: TabView; pinned?: boolean }[];
-  activeByView?: Record<TabView, string | null>;
+  /** view 用 string：落盘数据可能来自旧版本，含已废弃的视图名。 */
+  tabs: { id: string; nodeId: string; title: string; kind?: TabKind; view?: string; pinned?: boolean }[];
+  activeByView?: Record<string, string | null>;
 }
 
 function getStorageKey(bookId: string): string {
   return `nf:ide-tabs:${bookId}`;
 }
 
-function loadState(bookId: string): IdeTabsState {
+/** 落盘数据里是否含已废弃的视图名（含则需要在加载后立即回写一次）。 */
+function hasLegacyPersistedView(bookId: string): boolean {
+  try {
+    const raw = localStorage.getItem(getStorageKey(bookId));
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as PersistedState;
+    const legacy = Object.keys(LEGACY_TAB_VIEWS);
+    return (parsed.tabs ?? []).some((t) => typeof t.view === "string" && legacy.includes(t.view))
+      || Object.keys(parsed.activeByView ?? {}).some((view) => legacy.includes(view));
+  } catch {
+    return false;
+  }
+}
+
+/** 导出仅为测试持久化迁移；正常使用请走 useIdeTabs。 */
+export function loadState(bookId: string): IdeTabsState {
   try {
     const raw = localStorage.getItem(getStorageKey(bookId));
     if (!raw) return { tabs: [], activeByView: { ...EMPTY_ACTIVE } };
@@ -195,9 +229,16 @@ function loadState(bookId: string): IdeTabsState {
     // 旧格式(无 activeByView)：清空,不迁移旧 tab 避免视图混乱
     if (!parsed.activeByView) return { tabs: [], activeByView: { ...EMPTY_ACTIVE } };
     const tabs: TabState[] = (parsed.tabs || []).map((t) => ({
-      id: t.id, nodeId: t.nodeId, title: t.title, dirty: false, pinned: t.pinned === true, kind: t.kind ?? "other", view: t.view ?? "explorer",
+      id: t.id, nodeId: t.nodeId, title: t.title, dirty: false, pinned: t.pinned === true, kind: t.kind ?? "other", view: normalizeTabView(t.view),
     }));
-    const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...(parsed.activeByView ?? {}) };
+    // 旧视图键先折叠到现视图，再按现视图校验激活项
+    const persistedActive = parsed.activeByView ?? {};
+    const migratedActive: Record<string, string | null> = {};
+    for (const [view, tabId] of Object.entries(persistedActive)) {
+      const target = normalizeTabView(view);
+      if (!migratedActive[target]) migratedActive[target] = tabId;
+    }
+    const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...migratedActive };
     // 校验每个视图的激活 tab 仍存在
     (Object.keys(activeByView) as TabView[]).forEach((v) => {
       const viewTabs = tabs.filter((t) => t.view === v);
@@ -211,7 +252,8 @@ function loadState(bookId: string): IdeTabsState {
   }
 }
 
-function saveState(bookId: string, state: IdeTabsState): void {
+/** 导出仅为测试持久化迁移；正常使用请走 useIdeTabs。 */
+export function saveState(bookId: string, state: IdeTabsState): void {
   try {
     const persisted: PersistedState = {
       tabs: state.tabs.map((t) => ({ id: t.id, nodeId: t.nodeId, title: t.title, kind: t.kind, view: t.view, pinned: t.pinned })),
@@ -232,9 +274,14 @@ export function useIdeTabs(bookId: string | undefined, activeView: TabView): Use
       dispatch({ type: "LOAD", state: { tabs: [], activeByView: { ...EMPTY_ACTIVE } } });
       return;
     }
-    isLoadingRef.current = true;
-    dispatch({ type: "LOAD", state: loadState(bookId) });
-    requestAnimationFrame(() => { isLoadingRef.current = false; });
+    // 迁移过旧视图名时必须立刻回写，否则内存里迁移了、磁盘上仍是废弃视图，
+    // 旧键会一直残留（isLoadingRef 本来会抑制 LOAD 后的首次保存）。
+    const needsRewrite = hasLegacyPersistedView(bookId);
+    const loaded = loadState(bookId);
+    isLoadingRef.current = !needsRewrite;
+    dispatch({ type: "LOAD", state: loaded });
+    if (needsRewrite) saveState(bookId, loaded);
+    else requestAnimationFrame(() => { isLoadingRef.current = false; });
   }, [bookId]);
 
   useEffect(() => {

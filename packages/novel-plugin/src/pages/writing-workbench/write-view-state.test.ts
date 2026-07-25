@@ -130,7 +130,8 @@ describe("planFixAction", () => {
   });
 
   it("routes review actions to sidebar views", () => {
-    expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("narrative-memory");
+    // 待确认事件与焦点都在合并后的经纬工作区
+    expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("jingwei");
     expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("tools");
     expect(planFixAction("open-focus", { chapterNumber: 5 }).view).toBe("jingwei");
   });
