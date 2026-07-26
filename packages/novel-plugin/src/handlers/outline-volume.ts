@@ -15,6 +15,12 @@ import {
   findLedgerEntryByTitle,
   upsertLedgerEntry,
 } from "./jingwei-ledger-store.js";
+import {
+  checkOverdraft,
+  parseEndgameReserve,
+  type EndgameReserve,
+  type OverdraftReport,
+} from "./endgame-reserve.js";
 
 export type VolumeStatus = "planned" | "active" | "done";
 
@@ -34,6 +40,11 @@ export interface VolumeOutline {
   readonly bookId: string;
   readonly volumes: readonly VolumeEntry[];
   readonly updatedAt: string;
+  /**
+   * 终局储备：全书级的底牌与升级台阶账，不属于任何单卷。
+   * 用于回答「牌还剩多少」，防止中盘把宿敌/真相/境界一次打光。
+   */
+  readonly endgameReserve?: EndgameReserve | null;
 }
 
 export type OutlineVolumeAction = "get" | "set" | "suggest";
@@ -47,6 +58,8 @@ export interface OutlineVolumeInput {
   readonly volumeCount?: number;
   /** suggest 用：全书目标章数（默认读 book.json targetChapters） */
   readonly targetChapters?: number;
+  /** set 用：终局储备账（底牌与升级台阶）。不传则保留已有。 */
+  readonly endgameReserve?: unknown;
   readonly storage?: StorageDatabase;
   readonly now?: () => Date;
   readonly generateText?: (input: {
@@ -67,6 +80,8 @@ export interface OutlineVolumeResult {
   readonly writtenFiles: readonly string[];
   readonly summary: string;
   readonly error?: string;
+  /** 透支两问的结果；get/set 都会给，便于写卷纲时立刻看到风险。 */
+  readonly overdraft?: OverdraftReport;
 }
 
 const VOLUME_JSON = "volume_outline.json";
@@ -159,6 +174,7 @@ function readOutlineFromLedger(
     bookId,
     volumes,
     updatedAt: new Date(entry.updatedAt || Date.now()).toISOString(),
+    endgameReserve: parseEndgameReserve(entry.fields.endgameReserve),
   };
 }
 
@@ -288,6 +304,10 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
 
   if (action === "get") {
     const currentVolume = existing ? pickCurrentVolume(existing.volumes, latestChapter) : null;
+    const overdraft = checkOverdraft(
+      existing?.endgameReserve ?? null,
+      volumeIndexOf(existing?.volumes ?? [], currentVolume),
+    );
     return {
       ok: true,
       bookId,
@@ -295,8 +315,9 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
       outline: existing,
       currentVolume,
       writtenFiles: [],
+      overdraft,
       summary: existing
-        ? `共 ${existing.volumes.length} 卷；当前卷「${currentVolume?.title ?? "未确定"}」（权威源：经纬 outline）。`
+        ? `共 ${existing.volumes.length} 卷；当前卷「${currentVolume?.title ?? "未确定"}」（权威源：经纬 outline）。${overdraft.summary}`
         : "尚未设置卷纲；可用 action=suggest 生成草案后 action=set 写入经纬。",
     };
   }
@@ -355,7 +376,9 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
   }
 
   const updatedAt = now().toISOString();
-  const outline: VolumeOutline = { bookId, volumes, updatedAt };
+  // 显式传入的储备优先；未传时保留已有的，避免每次 set 卷纲把储备账清掉。
+  const endgameReserve = parseEndgameReserve(input.endgameReserve) ?? existing?.endgameReserve ?? null;
+  const outline: VolumeOutline = { bookId, volumes, updatedAt, endgameReserve };
 
   // 权威写入：经纬 outline 账本条目。
   upsertLedgerEntry(storage, {
@@ -363,7 +386,7 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
     category: "outline",
     title: VOLUME_ENTRY_TITLE,
     contentMd: renderVolumeMarkdown(outline),
-    fields: { volumes },
+    fields: { volumes, ...(endgameReserve ? { endgameReserve } : {}) },
     status: "confirmed",
     now,
   });
@@ -380,6 +403,7 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
   }
 
   const currentVolume = pickCurrentVolume(volumes, latestChapter);
+  const overdraft = checkOverdraft(endgameReserve, volumeIndexOf(volumes, currentVolume));
   return {
     ok: true,
     bookId,
@@ -387,6 +411,17 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
     outline,
     currentVolume,
     writtenFiles,
-    summary: `已保存 ${volumes.length} 卷卷纲到经纬 outline；当前卷「${currentVolume?.title ?? "未确定"}」。`,
+    overdraft,
+    summary: `已保存 ${volumes.length} 卷卷纲到经纬 outline；当前卷「${currentVolume?.title ?? "未确定"}」。${overdraft.summary}`,
   };
+}
+
+/** 当前卷在卷序列中的序号（1 起）；找不到时按第 1 卷处理。 */
+function volumeIndexOf(
+  volumes: readonly VolumeEntry[],
+  current: VolumeEntry | null,
+): number {
+  if (!current) return 1;
+  const index = volumes.findIndex((item) => item.id === current.id);
+  return index >= 0 ? index + 1 : 1;
 }

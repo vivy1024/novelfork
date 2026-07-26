@@ -318,6 +318,41 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       }),
       volumeCount: numberSchema("action=suggest 时期望卷数（默认 3）。"),
       targetChapters: numberSchema("action=suggest 时全书目标章数（默认读 book.json）。"),
+      endgameReserve: {
+        type: "object",
+        description: "终局储备（防中盘塌陷）：底牌逐卷解锁、升级台阶不越级。action=set 时可传；不传保留已有。",
+        properties: {
+          trumpCards: arraySchema("一次性底牌，打出去就没了。", {
+            type: "object",
+            properties: {
+              id: stringSchema("底牌 ID（可选）。"),
+              kind: enumSchema(
+                ["arch-enemy", "ultimate-truth", "power-ceiling", "identity-end", "emotion-end"],
+                "类别：头号宿敌 / 终极真相 / 金手指上限 / 身份终点 / 核心情感终点。",
+              ),
+              name: stringSchema("底牌名称。"),
+              unlockAtVolume: numberSchema("最早允许动用的卷序号（1 起）。"),
+              spentAtVolume: numberSchema("已在第几卷动用；未动用则省略。"),
+              notes: stringSchema("备注（可选）。"),
+            },
+            required: ["name", "unlockAtVolume"],
+            additionalProperties: false,
+          }),
+          ladders: arraySchema("递进式升级线，不许越级。", {
+            type: "object",
+            properties: {
+              id: stringSchema("台阶 ID（可选）。"),
+              name: stringSchema("升级线名称，如境界/地图/势力层级。"),
+              totalSteps: numberSchema("总档数。"),
+              currentStep: numberSchema("当前档位（0 表示未起步）。"),
+              maxStepThisVolume: numberSchema("本卷允许到达的最高档（可选）。"),
+            },
+            required: ["name", "totalSteps", "currentStep"],
+            additionalProperties: false,
+          }),
+        },
+        additionalProperties: false,
+      },
     },
     required: ["bookId"],
     additionalProperties: false,
