@@ -9,6 +9,8 @@ import { analyzeChapterCadence } from "@vivy1024/novelfork-core";
 import type { BookRules } from "@vivy1024/novelfork-core";
 import type { GenreProfile } from "@vivy1024/novelfork-core";
 
+import { detectZhAiFlavor } from "./zh-ai-flavor/index.js";
+
 export interface PostWriteViolation {
   readonly rule: string;
   readonly severity: "error" | "warning";
@@ -73,23 +75,27 @@ export function validatePostWrite(
     return validatePostWriteEnglish(content, genreProfile, bookRules);
   }
 
-  // 1. 硬性禁令: "不是…而是…" 句式
-  if (/不是[^，。！？\n]{0,30}[，,]?\s*而是/.test(content)) {
+  // 1-2. 「不是…而是…」与破折号：由 zh-ai-flavor 统一按密度判定。
+  //
+  // 这两条原为 severity="error"（单次出现即报错）。用 915 章真人长篇校准后否掉：
+  // 破折号在 100% 的真人章节里出现（是作者文风取向，不是 AI 特征），
+  // 「不是A而是B」真人命中 12% 且样例均为正常中文。
+  // 单次即 error 会让作者每章都收到假警报，因此改为密度型 warning。
+  const flavor = detectZhAiFlavor(content);
+  for (const hit of flavor.blocking) {
     violations.push({
-      rule: "禁止句式",
+      rule: `AI味-${hit.label}`,
       severity: "error",
-      description: "出现了「不是……而是……」句式",
-      suggestion: "改用直述句",
+      description: `${hit.label}：命中 ${hit.count} 次（${hit.samples.join("、")}）`,
+      suggestion: hit.suggestion,
     });
   }
-
-  // 2. 硬性禁令: 破折号
-  if (content.includes("——")) {
+  for (const hit of [...flavor.advisory, ...flavor.overcompressed]) {
     violations.push({
-      rule: "禁止破折号",
-      severity: "error",
-      description: "出现了破折号「——」",
-      suggestion: "用逗号或句号断句",
+      rule: `AI味-${hit.label}`,
+      severity: "warning",
+      description: `${hit.label}密度 ${hit.perThousand}次/千字（命中 ${hit.count} 次：${hit.samples.join("、")}）`,
+      suggestion: hit.suggestion,
     });
   }
 
