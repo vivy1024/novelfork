@@ -560,6 +560,20 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       loreBrief: { type: "object", description: "lore.read 返回的静态设定核心包（可选，用于提取角色、地点、世界观等设定）。" },
       memoryContext: { type: "object", description: "memory.read 返回的动态叙事记忆上下文（可选，用于时间线、伏笔、事实和角色状态约束）。" },
       writePreflight: { type: "object", description: "write.preflight 返回结果（可选；传入时可跳过重复组装，并用于硬门校验）。" },
+      beatBudget: arraySchema(
+        "情节点字数预算（可选；不传则由 LLM 规划）。密点展开、疏点带过，总和落在 [wordTarget, wordTarget×1.1]。",
+        {
+          type: "object",
+          properties: {
+            summary: stringSchema("这一拍具体发生什么（写清事件，不要只写动词）。"),
+            density: enumSchema(["dense", "normal", "sparse"], "密度：dense 爽点/反转（≥250字）| normal 常规 | sparse 过场（≤150字）。"),
+            words: numberSchema("分配字数。"),
+            function: stringSchema("功能标签，如 信息揭示/冲突升级/情绪转折（可选）。"),
+          },
+          required: ["summary", "density", "words"],
+          additionalProperties: false,
+        },
+      ),
     },
     required: ["bookId", "chapterNumber", "userDirectives"],
     additionalProperties: false,
