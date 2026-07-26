@@ -12,6 +12,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
+import { listStaleChapters } from "./audit-freshness.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { explainDiagnostic, type DiagnosticExplanation } from "./diagnostic-explanation.js";
 import {
@@ -64,6 +65,7 @@ export interface WritePreflightWarning {
     | "high-risk-pending"
     | "empty-chapter-summary"
     | "platform-target-mismatch"
+    | "audit-stale"
     | "other";
   readonly message: string;
   readonly explanation?: DiagnosticExplanation;
@@ -111,6 +113,45 @@ const MIN_DIRECTIVE_CHARS = 8;
 
 function trimText(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+/**
+ * 找出「审计结论已不对应当前正文」的章节。
+ *
+ * 数据不全时一律返回空：这只是提醒项，宁可漏报也不要因为读不到表就报假警。
+ */
+function findStaleAuditChapters(
+  storage: StorageDatabase,
+  bookId: string,
+  snapshot: CockpitSnapshot,
+): number[] {
+  const chapterTimes = new Map<number, string>();
+  for (const item of snapshot.recentChapterResults.items) {
+    const updatedAt = trimText(item.updatedAt);
+    if (item.chapterNumber > 0 && updatedAt) chapterTimes.set(item.chapterNumber, updatedAt);
+  }
+  if (chapterTimes.size === 0) return [];
+
+  try {
+    const rows = storage.sqlite.prepare(`
+      SELECT chapter_number AS chapterNumber, MAX(audited_at) AS auditedAt
+      FROM chapter_audit_log
+      WHERE book_id = ?
+      GROUP BY chapter_number
+    `).all(bookId) as Array<{ chapterNumber: number; auditedAt: string | null }>;
+
+    const audits = new Map(rows.map((row) => [Number(row.chapterNumber), row.auditedAt]));
+    return listStaleChapters(
+      [...chapterTimes.entries()].map(([chapterNumber, chapterUpdatedAt]) => ({
+        chapterNumber,
+        chapterUpdatedAt,
+        auditedAt: audits.get(chapterNumber) ?? null,
+      })),
+    ).map((item) => item.chapterNumber).sort((left, right) => left - right);
+  } catch {
+    // 审计表可能尚未建立（新书/新库）
+    return [];
+  }
 }
 
 function firstNonEmptyLine(text: string, max = 120): string {
@@ -513,6 +554,20 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       warningItems,
       "empty-chapter-summary",
       "经纬 chapter-summary 为空；若未结算，写前只能依赖 memory 事件摘要。",
+    );
+  }
+
+  // 审计新鲜度：正文在审计之后被改过，则那份「通过」结论已失效。
+  // 只提醒不阻断：改自己的正文是正常操作，不该因此写不了下一章。
+  const staleAudits = findStaleAuditChapters(storage, bookId, snapshot);
+  if (staleAudits.length > 0) {
+    const preview = staleAudits.slice(0, 5).join("、");
+    const more = staleAudits.length > 5 ? ` 等 ${staleAudits.length} 章` : "";
+    pushWarning(
+      warnings,
+      warningItems,
+      "audit-stale",
+      `第 ${preview}${more} 在审计后又改过正文，审计结论已过期。`,
     );
   }
 
