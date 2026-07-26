@@ -92,6 +92,12 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     whyItMatters: "写前只能依赖叙事记忆事件，前情颗粒度更粗。",
     suggestedAction: "用 book.dissect(apply=true) 或章后结算补齐章摘要。",
   },
+  "audit-stale": {
+    kind: "advisory",
+    whatHappened: "有章节在审计之后又被修改过，现有审计结论已经不对应当前正文。",
+    whyItMatters: "那些章显示「审计通过」，但结论是对修改前的正文得出的，问题可能仍然存在。",
+    suggestedAction: "对这些章重新跑 chapter.audit，再据新结论决定是否修订。",
+  },
 };
 
 const FALLBACK: ExplanationTemplate = {
