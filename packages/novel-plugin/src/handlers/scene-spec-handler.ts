@@ -7,6 +7,8 @@
 
 import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 
+import { checkBeatBudget, parseBeatBudget, type BeatBudgetItem, type BeatBudgetReport } from "./beat-budget.js";
+
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface SceneSpecScene {
@@ -23,6 +25,11 @@ export interface SceneSpec {
   chapter: number;
   title: string;
   wordTarget: number;
+  /**
+   * 情节点字数预算。让章内节奏可核对：密点展开、疏点带过，
+   * 总和落在 [wordTarget, wordTarget×1.1]。为空时退化为只有总字数约束。
+   */
+  beatBudget?: BeatBudgetItem[];
   scenes: SceneSpecScene[];
   constraints: string[];
 }
@@ -37,6 +44,8 @@ export interface SceneSpecInput {
   skipContextGate?: boolean;
   /** write.preflight 结果（可选；传入可复用并参与硬门） */
   writePreflight?: Record<string, unknown>;
+  /** 调用方直接给定的情节点预算（可选；给了就不让 LLM 另拟一套） */
+  beatBudget?: unknown;
   cockpitSnapshot?: Record<string, unknown>;
   /** 兼容旧字段；新调用优先 loreBrief */
   jingweiBrief?: Record<string, unknown>;
@@ -51,7 +60,11 @@ export interface SceneSpecInput {
 export interface SceneSpecSuccess {
   ok: true;
   summary: string;
-  data: { sceneSpec: SceneSpec };
+  data: {
+    sceneSpec: SceneSpec;
+    /** 情节点预算校验结果；未提供 beatBudget 时也会给，用于提示未拆点。 */
+    beatBudget?: BeatBudgetReport;
+  };
 }
 
 export interface SceneSpecFailure {
@@ -71,6 +84,14 @@ const SCENE_SPEC_SYSTEM_PROMPT = `你根据精确事实与用户一句本章指�
   "chapter": 章节号,
   "title": "章节标题",
   "wordTarget": 目标字数,
+  "beatBudget": [
+    {
+      "summary": "具体发生什么（不能只写动词，要写清事件）",
+      "density": "dense | normal | sparse",
+      "words": 该点分配字数,
+      "function": "功能标签，如 信息揭示/冲突升级/情绪转折"
+    }
+  ],
   "scenes": [
     {
       "characters": ["出场角色列表"],
@@ -92,6 +113,14 @@ const SCENE_SPEC_SYSTEM_PROMPT = `你根据精确事实与用户一句本章指�
 - conflict 必须明确（不能是"待定"）
 - outcome 必须有方向性（不能是"待定"）
 - mood 用"起始→结束"格式
+
+beatBudget 规则（章内节奏，必须给）：
+- 拆 5-12 个情节点，覆盖整章
+- density=dense 用于爽点/反转/打脸/情绪高潮，字数不少于 250
+- density=sparse 用于过场/赶路/信息交代，字数不超过 150
+- 预算总和必须落在 [wordTarget, wordTarget×1.1] 之间
+- summary 写清具体事件（「在账单上发现4800元转出」），不要只写「发现线索」
+- 至少 1 个 dense 点；确为呼吸章时可以没有，但要在 constraints 里说明
 - 只根据用户指示 + 提供的进度/设定/记忆事实规划，禁止编造前文与写作理论
 - constraints 只写可执行事实约束，不要写传播力/思想核/文风大道理
 - 只输出 JSON，不要其他文字`;
@@ -143,10 +172,12 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
     // 校验基本结构
     if (!parsed.scenes || !Array.isArray(parsed.scenes) || parsed.scenes.length === 0) return null;
 
+    const beatBudget = parseBeatBudget(parsed.beatBudget);
     return {
       chapter: parsed.chapter ?? chapterNumber,
       title: parsed.title ?? `第${chapterNumber}章`,
       wordTarget: parsed.wordTarget ?? wordTarget,
+      ...(beatBudget.length > 0 ? { beatBudget } : {}),
       scenes: parsed.scenes.map((s: any) => ({
         characters: Array.isArray(s.characters) ? s.characters : ["主角"],
         location: s.location ?? "待定",
@@ -415,9 +446,18 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   }
 
   const source = usedLLM ? "LLM 智能规划" : "输入推断（LLM 不可用）";
+  // 调用方显式给的预算优先于 LLM 自拟，避免作者定好的节奏被覆盖。
+  const explicitBudget = parseBeatBudget(input.beatBudget);
+  if (explicitBudget.length > 0) sceneSpec.beatBudget = explicitBudget;
+  // 情节点预算：只报告不阻断。蓝图本身已通过场景完备性校验，
+  // 预算不合规属于「节奏需要调」，由作者或叙述者决定怎么改。
+  const budget = checkBeatBudget({
+    chapterTarget: wordTarget,
+    beats: sceneSpec.beatBudget ?? [],
+  });
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。`,
-    data: { sceneSpec },
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}`,
+    data: { sceneSpec, beatBudget: budget },
   };
 }

@@ -22,6 +22,7 @@ import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
+import { renderBeatBudget } from "./beat-budget.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import {
   handlePresetsCheckCompliance,
@@ -334,6 +335,15 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
       ...(input.authorIntentDoc ? [{ source: "story/author_intent.md", reason: "全书长视野创作意图（最高锚点，避免长篇跑偏主题）", excerpt: input.authorIntentDoc }] : []),
       ...(input.currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: input.currentFocusDoc }] : []),
       { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(input.sceneSpec) },
+      // 预算单独给一段可读文本：JSON 里的数字模型容易忽略，
+      // 显式列出「哪一拍该展开、哪一拍带过」才能真正约束章内节奏。
+      ...(input.sceneSpec.beatBudget && input.sceneSpec.beatBudget.length > 0
+        ? [{
+            source: "scene.spec/beatBudget",
+            reason: "章内节奏预算：密点必须展开到指定字数，疏点必须带过，不要平均用力",
+            excerpt: renderBeatBudget(input.sceneSpec.beatBudget),
+          }]
+        : []),
       ...narrativeSectionContext(input.narrativeContext),
       ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: input.jingweiContext }] : []),
       ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: input.previousChapterTail }] : []),
