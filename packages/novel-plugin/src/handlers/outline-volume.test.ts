@@ -234,3 +234,82 @@ describe("handleOutlineVolume", () => {
     expect(result.error).toBe("missing-book-root");
   });
 });
+
+describe("终局储备与卷纲一起持久化", () => {
+  const volumes = [
+    { id: "v1", title: "开篇卷", chapterRange: { from: 1, to: 30 }, goal: "立住动机", status: "active" },
+    { id: "v2", title: "山门卷", chapterRange: { from: 31, to: 80 }, goal: "拿到资格", status: "planned" },
+  ];
+  const reserve = {
+    trumpCards: [
+      { id: "t1", kind: "arch-enemy", name: "血河老祖", unlockAtVolume: 2 },
+      { id: "t2", kind: "ultimate-truth", name: "灭门真凶", unlockAtVolume: 2 },
+    ],
+    ladders: [{ id: "l1", name: "境界", totalSteps: 9, currentStep: 2, maxStepThisVolume: 3 }],
+  };
+
+  it("set 写入后 get 能读回，且给出透支报告", async () => {
+    const root = await createBook({ chapters: [1, 2, 3] });
+    const saved = await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "set",
+      volumes, endgameReserve: reserve, storage: activeStorage,
+    });
+    expect(saved.ok).toBe(true);
+    expect(saved.overdraft?.remainingTrumps).toBe(2);
+
+    const read = await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "get", storage: activeStorage,
+    });
+    expect(read.outline?.endgameReserve?.trumpCards).toHaveLength(2);
+    expect(read.outline?.endgameReserve?.ladders[0]?.totalSteps).toBe(9);
+    expect(read.overdraft?.findings).toEqual([]);
+  });
+
+  it("再次 set 卷纲但不传储备时，储备不会被清掉", async () => {
+    const root = await createBook({ chapters: [1] });
+    await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "set",
+      volumes, endgameReserve: reserve, storage: activeStorage,
+    });
+    // 只改卷纲，不带 endgameReserve
+    await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "set",
+      volumes: [{ ...volumes[0]!, goal: "改了目标" }], storage: activeStorage,
+    });
+    const read = await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "get", storage: activeStorage,
+    });
+    expect(read.outline?.volumes[0]?.goal).toBe("改了目标");
+    expect(read.outline?.endgameReserve?.trumpCards).toHaveLength(2);
+  });
+
+  it("底牌提前动用时，get 的 summary 会带出风险", async () => {
+    const root = await createBook({ chapters: [1] });
+    await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "set", volumes,
+      endgameReserve: {
+        ...reserve,
+        // 第 2 卷才解锁，却记为第 1 卷已动用
+        trumpCards: [{ id: "t1", kind: "arch-enemy", name: "血河老祖", unlockAtVolume: 2, spentAtVolume: 1 }],
+      },
+      storage: activeStorage,
+    });
+    const read = await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "get", storage: activeStorage,
+    });
+    expect(read.overdraft?.spentLockedTrump).toBe(true);
+    expect(read.summary).toContain("底牌提前动用");
+  });
+
+  it("未声明储备时 get 给出提示而非报错", async () => {
+    const root = await createBook({ chapters: [1] });
+    await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "set", volumes, storage: activeStorage,
+    });
+    const read = await handleOutlineVolume({
+      bookId: "book-1", bookRoot: root, action: "get", storage: activeStorage,
+    });
+    expect(read.ok).toBe(true);
+    expect(read.overdraft?.findings[0]?.code).toBe("no-reserve-declared");
+  });
+});
