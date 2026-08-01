@@ -76,7 +76,7 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(dissect).toContain("needs-review");
     expect(dissect).toContain("权威源");
     expect(tool("pipeline.import_chapters")?.description).toContain("autoSettle");
-    expect(tool("style.import")?.description).toContain("applyPreset");
+    expect(tool("style.import")?.description).toContain("saveAsWritingSkill");
   });
 
   it("registers volume outline, character arc and publish check tools", () => {

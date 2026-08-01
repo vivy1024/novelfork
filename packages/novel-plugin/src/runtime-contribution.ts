@@ -14,12 +14,11 @@ import type {
   RuntimeToolResult,
   ToolExecutionContext,
 } from "@vivy1024/novelfork-core/plugins";
+import type { NarrativeLineMutationPreview } from "./handlers/narrative-line-types.js";
 import {
   createCockpitService,
   createNarrativeLineService,
   executeRuntimeDomainTool,
-  handleBeatRead,
-  handleBeatWrite,
   handleChapterRead,
   handleChapterWrite,
   handleJingweiAudit,
@@ -41,9 +40,10 @@ import {
   handleMemoryStats,
   handleMemoryUpdate,
   handlePgiAsk,
-  handlePresetsCheckCompliance,
-  handlePresetsRead,
-  handlePresetsWrite,
+  handleWritingSkillsCheckCompliance,
+  handleWritingSkillsImportLegacy,
+  handleWritingSkillsRead,
+  handleWritingSkillsWrite,
   type CockpitState,
   type NarrativeLineState,
 } from "./handlers/index.js";
@@ -70,7 +70,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 1. write.preflight →（确认一句指示）→ scene.spec → pipeline.write。
 2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
 3. 只使用产品内 focus、近章事实、lore brief、伏笔与用户一句 Directives；禁止用写作理论、文风大道理或外部项目总结填空。
-4. 软门（文风 presets、去 AI 味、跑题、传播力）只在写后 chapter.audit / pipeline.revise / rewrite.*，不得在写前用长文论约束。
+4. 软门（Writing Skills 文风要求、去 AI 味、跑题、传播力）只在写后 chapter.audit / pipeline.revise / rewrite.*，不得在写前用长文论约束。
 
 ## 长篇与平台
 - 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
@@ -78,7 +78,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 - 终局储备：outline.volume 的 endgameReserve 记底牌（宿敌/真相/金手指上限，逐卷解锁）与升级台阶（不越级）。返回的 overdraft 报「底牌提前动用」「越级/到顶」时必须如实转述并建议改纲，不得替作者打光底牌。
 - 发布前：publish.check 做平台自检（敏感词/AI 率/格式/连续性）。pipeline.write 保存前已做单章轻检，默认只提醒；平台要求且命中阻断级敏感词时会 publish-blocked 不保存。
 
-当用户要求写一章完整的新正文时：必须先 write.preflight；ok 后再 scene.spec 生成蓝图，再 pipeline.write。该管线会读取书籍的目标长度、语言、预设与节拍，并在成功后自动章后结算。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度和预设错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
+当用户要求写一章完整的新正文时：必须先 write.preflight；ok 后再 scene.spec 生成蓝图，再 pipeline.write。该管线会读取书籍的目标长度、语言与当前 Writing Skills，并在成功后自动章后结算。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度与 Writing Skills 错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
@@ -93,11 +93,11 @@ type CustomReadyRuntimeToolName =
   | "chapter.discard_range"
   | "narrative.read_line"
   | "narrative.propose_change"
-  | "presets.read"
-  | "presets.write"
-  | "presets.check_compliance"
-  | "beat.read"
-  | "beat.write"
+  | "narrative.approve_change"
+  | "writing-skills.read"
+  | "writing-skills.write"
+  | "writing-skills.check_compliance"
+  | "writing-skills.import_legacy"
   | "resource.manage"
   | "scene.spec"
   | "chapter.audit"
@@ -195,6 +195,26 @@ function createBoundNovelState(
         return [];
       }
     },
+  };
+}
+
+/**
+ * 剥掉 preview 里所有层级的宿主字段。
+ *
+ * narrative.propose_change 的结果需要能被模型原样回传给 narrative.approve_change。
+ * 但服务端归一化会给 preview 本身以及每个 node/edge 都写上 bookId，而
+ * containsHostControlledField 是递归检查的 —— 原样回传会被 forged-host-field
+ * 拒绝，审批闭环就断在这里。书籍身份始终由可信绑定解析，模型不需要看到它。
+ */
+function toModelSafePreview(preview: NarrativeLineMutationPreview): Record<string, unknown> {
+  const stripBookId = <T extends { readonly bookId?: string }>(items: readonly T[] | undefined) => (
+    (items ?? []).map(({ bookId: _bookId, ...rest }) => rest)
+  );
+  const { bookId: _previewBookId, nodes, edges, ...rest } = preview;
+  return {
+    ...rest,
+    nodes: stripBookId(nodes),
+    edges: stripBookId(edges),
   };
 }
 
@@ -454,52 +474,86 @@ async function executeReadyTool(
         summary: injectedInput.summary,
         ...(Array.isArray(injectedInput.nodes) ? { nodes: injectedInput.nodes } : {}),
         ...(Array.isArray(injectedInput.edges) ? { edges: injectedInput.edges } : {}),
+        ...(Array.isArray(injectedInput.removeNodeIds) ? { removeNodeIds: injectedInput.removeNodeIds } : {}),
+        ...(Array.isArray(injectedInput.removeEdgeIds) ? { removeEdgeIds: injectedInput.removeEdgeIds } : {}),
         ...(typeof injectedInput.reason === "string" ? { reason: injectedInput.reason } : {}),
       });
-      return toRuntimeToolResult({ ok: true, summary: "已生成叙事线变更草案。", data: preview });
+      return toRuntimeToolResult({
+        ok: true,
+        summary: "已生成叙事线变更草案。",
+        data: toModelSafePreview(preview),
+      });
     }
-    if (tool.name === "presets.read") {
-      return toRuntimeToolResult(await handlePresetsRead({
+    if (tool.name === "narrative.approve_change") {
+      const decision = injectedInput.decision === "approved" || injectedInput.decision === "rejected"
+        ? injectedInput.decision
+        : null;
+      if (!decision) return fail("invalid-input", "decision 必须是 approved 或 rejected。");
+      const rawPreview = injectedInput.preview;
+      if (!rawPreview || typeof rawPreview !== "object" || Array.isArray(rawPreview)) {
+        return fail("invalid-input", "preview 必须是 narrative.propose_change 返回的对象。");
+      }
+      const previewRecord = rawPreview as Record<string, unknown>;
+      if (typeof previewRecord.summary !== "string" || !previewRecord.summary.trim()) {
+        return fail("invalid-input", "preview.summary 必须是非空字符串。");
+      }
+      const service = createNarrativeLineService({ state: createBoundNovelState(binding) });
+      // bookId 一律取可信绑定，忽略 preview 里携带的值。
+      const result = await service.applyChange({
         bookId: binding.bookId,
-        ...(typeof injectedInput.scope === "string" ? { scope: injectedInput.scope } : {}),
-        ...(typeof injectedInput.category === "string" ? { category: injectedInput.category } : {}),
-      }, { bookRoot: binding.root, storage: getStorageDatabase() }));
+        preview: {
+          id: typeof previewRecord.id === "string" ? previewRecord.id : `narrative-preview:${binding.bookId}:runtime`,
+          bookId: binding.bookId,
+          summary: previewRecord.summary,
+          ...(Array.isArray(previewRecord.nodes) ? { nodes: previewRecord.nodes as never } : {}),
+          ...(Array.isArray(previewRecord.edges) ? { edges: previewRecord.edges as never } : {}),
+          ...(Array.isArray(previewRecord.removeNodeIds)
+            ? { removeNodeIds: previewRecord.removeNodeIds.filter((id): id is string => typeof id === "string") }
+            : {}),
+          ...(Array.isArray(previewRecord.removeEdgeIds)
+            ? { removeEdgeIds: previewRecord.removeEdgeIds.filter((id): id is string => typeof id === "string") }
+            : {}),
+        },
+        decision,
+        ...(typeof injectedInput.reason === "string" ? { reason: injectedInput.reason } : {}),
+      });
+      return toRuntimeToolResult({
+        ok: true,
+        summary: result.applied ? "叙事线变更已应用。" : "叙事线变更已驳回，并记入审批台账。",
+        data: { ...result, preview: toModelSafePreview(result.preview) },
+      });
     }
-    if (tool.name === "presets.write") {
-      return toRuntimeToolResult(await handlePresetsWrite({
+    if (tool.name === "writing-skills.read") {
+      return toRuntimeToolResult(await handleWritingSkillsRead({
         bookId: binding.bookId,
-        action: typeof injectedInput.action === "string" ? injectedInput.action : "",
-        ...(Array.isArray(injectedInput.enabledPresetIds)
-          ? { enabledPresetIds: injectedInput.enabledPresetIds.filter((id): id is string => typeof id === "string") }
+        ...(injectedInput.scope === "available" || injectedInput.scope === "enabled"
+          ? { scope: injectedInput.scope }
           : {}),
-        ...(typeof injectedInput.name === "string" ? { name: injectedInput.name } : {}),
-        ...(typeof injectedInput.category === "string" ? { category: injectedInput.category } : {}),
-        ...(typeof injectedInput.promptInjection === "string" ? { promptInjection: injectedInput.promptInjection } : {}),
-        ...(typeof injectedInput.description === "string" ? { description: injectedInput.description } : {}),
-      }, { bookRoot: binding.root, storage: getStorageDatabase() }));
+      }, { bookRoot: binding.root }));
     }
-    if (tool.name === "presets.check_compliance") {
-      return toRuntimeToolResult(await handlePresetsCheckCompliance({
+    if (tool.name === "writing-skills.write") {
+      return toRuntimeToolResult(await handleWritingSkillsWrite({
+        bookId: binding.bookId,
+        enabledWritingSkillIds: Array.isArray(injectedInput.enabledWritingSkillIds)
+          ? injectedInput.enabledWritingSkillIds.filter((id): id is string => typeof id === "string")
+          : [],
+        ...(typeof injectedInput.discardUnmappedLegacyIds === "boolean"
+          ? { discardUnmappedLegacyIds: injectedInput.discardUnmappedLegacyIds }
+          : {}),
+      }, { bookRoot: binding.root }));
+    }
+    if (tool.name === "writing-skills.check_compliance") {
+      return toRuntimeToolResult(await handleWritingSkillsCheckCompliance({
         bookId: binding.bookId,
         content: typeof injectedInput.content === "string" ? injectedInput.content : "",
         ...(typeof injectedInput.chapterNumber === "number" ? { chapterNumber: injectedInput.chapterNumber } : {}),
-      }, { bookRoot: binding.root, storage: getStorageDatabase() }));
+      }, { bookRoot: binding.root }));
     }
-    if (tool.name === "beat.read") {
-      return toRuntimeToolResult(await handleBeatRead(
+    if (tool.name === "writing-skills.import_legacy") {
+      return toRuntimeToolResult(await handleWritingSkillsImportLegacy(
         { bookId: binding.bookId },
         { bookRoot: binding.root, storage: getStorageDatabase() },
       ));
-    }
-    if (tool.name === "beat.write") {
-      return toRuntimeToolResult(await handleBeatWrite({
-        bookId: binding.bookId,
-        action: typeof injectedInput.action === "string" ? injectedInput.action : "",
-        ...(typeof injectedInput.templateId === "string" ? { templateId: injectedInput.templateId } : {}),
-        ...(typeof injectedInput.name === "string" ? { name: injectedInput.name } : {}),
-        ...(typeof injectedInput.description === "string" ? { description: injectedInput.description } : {}),
-        ...(Array.isArray(injectedInput.beats) ? { beats: injectedInput.beats } : {}),
-      }, { bookRoot: binding.root, storage: getStorageDatabase() }));
     }
     if (tool.name === "resource.manage") {
       const action = typeof injectedInput.action === "string" ? injectedInput.action : "";

@@ -111,7 +111,12 @@ interface NarrativeLineApplyAudit {
   readonly checkpointId?: string;
   readonly targetNodeIds: readonly string[];
   readonly targetEdgeIds: readonly string[];
+  readonly removedNodeIds?: readonly string[];
+  readonly removedEdgeIds?: readonly string[];
   readonly summary: string;
+  /** 驳回也要留痕，否则「作者已看过并否决」这个事实会丢失。 */
+  readonly decision?: "approved" | "rejected";
+  readonly reason?: string;
 }
 
 interface NarrativeLineStore {
@@ -202,17 +207,32 @@ export class NarrativeLineService {
     readonly summary: string;
     readonly nodes?: readonly unknown[];
     readonly edges?: readonly unknown[];
+    readonly removeNodeIds?: readonly unknown[];
+    readonly removeEdgeIds?: readonly unknown[];
     readonly reason?: string;
   }): Promise<NarrativeLineMutationPreview> {
-    const nodes = normalizeProposedNodes(input.bookId, input.nodes ?? []);
-    const edges = normalizeProposedEdges(input.bookId, input.edges ?? []);
-    const warnings = validateMutationPreview(nodes, edges);
+    // 删除意图可以写在条目内联的 `_delete`，也可以走独立的 removeNodeIds。
+    // 两种都归一到同一份删除集合，避免把删除请求当成新增静默落盘。
+    const inlineNodeRemovals = collectInlineRemovals(input.nodes ?? []);
+    const inlineEdgeRemovals = collectInlineRemovals(input.edges ?? []);
+    const nodes = normalizeProposedNodes(input.bookId, keepNonRemovals(input.nodes ?? []));
+    const edges = normalizeProposedEdges(input.bookId, keepNonRemovals(input.edges ?? []));
+    const removeNodeIds = uniqueIds([...normalizeIdList(input.removeNodeIds), ...inlineNodeRemovals]);
+    const removeEdgeIds = uniqueIds([...normalizeIdList(input.removeEdgeIds), ...inlineEdgeRemovals]);
+
+    const store = await this.loadStore(input.bookId);
+    const warnings = [
+      ...validateMutationPreview(nodes, edges),
+      ...validateRemovals(store, removeNodeIds, removeEdgeIds),
+    ];
     return {
       id: `narrative-preview:${input.bookId}:${this.now().getTime()}`,
       bookId: input.bookId,
       summary: input.summary,
       nodes,
       edges,
+      ...(removeNodeIds.length > 0 ? { removeNodeIds } : {}),
+      ...(removeEdgeIds.length > 0 ? { removeEdgeIds } : {}),
       warnings,
     };
   }
@@ -223,13 +243,35 @@ export class NarrativeLineService {
     readonly decision: "approved" | "rejected";
     readonly sessionId?: string;
     readonly confirmationId?: string;
+    readonly reason?: string;
   }): Promise<NarrativeLineApplyResult> {
     const preview = normalizePreviewForBook(input.bookId, input.preview);
+    const store = await this.loadStore(input.bookId);
+
     if (input.decision === "rejected") {
-      return { applied: false, reason: "rejected", preview };
+      // 驳回同样进审批台账：只是不改动 nodes/edges。
+      const rejectedAudit: NarrativeLineApplyAudit = {
+        previewId: preview.id,
+        approvedAt: this.now().toISOString(),
+        ...(input.sessionId ? { sessionId: input.sessionId } : {}),
+        ...(input.confirmationId ? { confirmationId: input.confirmationId } : {}),
+        targetNodeIds: (preview.nodes ?? []).map((node) => node.id),
+        targetEdgeIds: (preview.edges ?? []).map((edge) => edge.id),
+        summary: preview.summary,
+        decision: "rejected",
+        ...(input.reason ? { reason: input.reason } : {}),
+      };
+      await this.writeStore(input.bookId, {
+        version: 1,
+        nodes: store.nodes,
+        edges: store.edges,
+        appliedMutations: [...store.appliedMutations, rejectedAudit],
+      });
+      return { applied: false, reason: "rejected", preview, audit: rejectedAudit };
     }
 
-    const store = await this.loadStore(input.bookId);
+    const removeNodeIds = new Set(preview.removeNodeIds ?? []);
+    const removeEdgeIds = new Set(preview.removeEdgeIds ?? []);
     const checkpoint = this.checkpoint
       ? await this.checkpoint.createCheckpoint({
           bookId: input.bookId,
@@ -240,8 +282,14 @@ export class NarrativeLineService {
         })
       : null;
     const checkpointId = checkpoint?.ok ? checkpoint.checkpoint.id : undefined;
-    const nodes = mergeNodes(store.nodes, preview.nodes ?? []);
-    const edges = mergeEdges(store.edges, preview.edges ?? []);
+    const nodes = mergeNodes(store.nodes, preview.nodes ?? []).filter((node) => !removeNodeIds.has(node.id));
+    // 删掉节点后，指向它的作者边会变成悬空引用，一并清理。
+    const survivingNodeIds = new Set(nodes.map((node) => node.id));
+    const edges = mergeEdges(store.edges, preview.edges ?? []).filter((edge) => (
+      !removeEdgeIds.has(edge.id)
+      && !(removeNodeIds.has(edge.fromNodeId) && !survivingNodeIds.has(edge.fromNodeId))
+      && !(removeNodeIds.has(edge.toNodeId) && !survivingNodeIds.has(edge.toNodeId))
+    ));
     const audit: NarrativeLineApplyAudit = {
       previewId: preview.id,
       approvedAt: this.now().toISOString(),
@@ -250,11 +298,26 @@ export class NarrativeLineService {
       ...(checkpointId ? { checkpointId } : {}),
       targetNodeIds: (preview.nodes ?? []).map((node) => node.id),
       targetEdgeIds: (preview.edges ?? []).map((edge) => edge.id),
+      ...(removeNodeIds.size > 0 ? { removedNodeIds: [...removeNodeIds] } : {}),
+      ...(removeEdgeIds.size > 0 ? { removedEdgeIds: [...removeEdgeIds] } : {}),
       summary: preview.summary,
+      decision: "approved",
+      ...(input.reason ? { reason: input.reason } : {}),
     };
     await this.writeStore(input.bookId, { version: 1, nodes, edges, appliedMutations: [...store.appliedMutations, audit] });
     const snapshot = await this.getSnapshot({ bookId: input.bookId });
     return { applied: true, preview, audit, snapshot, ...(checkpointId ? { checkpointId } : {}) };
+  }
+
+  /** 审批台账：作者已批准/已驳回的叙事线变更历史。 */
+  async listApprovals(input: {
+    readonly bookId: string;
+    readonly limit?: number;
+  }): Promise<readonly NarrativeLineApplyAudit[]> {
+    const store = await this.loadStore(input.bookId);
+    const ordered = [...store.appliedMutations].reverse();
+    const limit = input.limit;
+    return typeof limit === "number" && limit > 0 ? ordered.slice(0, limit) : ordered;
   }
 
   private async loadChapters(bookId: string): Promise<readonly ChapterMeta[]> {
@@ -391,19 +454,80 @@ function normalizeAudit(value: unknown): readonly NarrativeLineApplyAudit[] {
     ...(typeof value.checkpointId === "string" ? { checkpointId: value.checkpointId } : {}),
     targetNodeIds: Array.isArray(value.targetNodeIds) ? value.targetNodeIds.filter((id): id is string => typeof id === "string") : [],
     targetEdgeIds: Array.isArray(value.targetEdgeIds) ? value.targetEdgeIds.filter((id): id is string => typeof id === "string") : [],
+    ...(Array.isArray(value.removedNodeIds) ? { removedNodeIds: value.removedNodeIds.filter((id): id is string => typeof id === "string") } : {}),
+    ...(Array.isArray(value.removedEdgeIds) ? { removedEdgeIds: value.removedEdgeIds.filter((id): id is string => typeof id === "string") } : {}),
     summary: value.summary,
+    // 历史条目没有 decision 字段；它们只可能是已批准的应用记录。
+    decision: value.decision === "rejected" ? "rejected" : "approved",
+    ...(typeof value.reason === "string" ? { reason: value.reason } : {}),
   }];
 }
 
 function normalizePreviewForBook(bookId: string, preview: NarrativeLineMutationPreview): NarrativeLineMutationPreview {
+  const removeNodeIds = uniqueIds(normalizeIdList(preview.removeNodeIds));
+  const removeEdgeIds = uniqueIds(normalizeIdList(preview.removeEdgeIds));
   return {
     id: preview.id,
     bookId,
     summary: preview.summary,
     nodes: normalizeProposedNodes(bookId, preview.nodes ?? []),
     edges: normalizeProposedEdges(bookId, preview.edges ?? []),
+    ...(removeNodeIds.length > 0 ? { removeNodeIds } : {}),
+    ...(removeEdgeIds.length > 0 ? { removeEdgeIds } : {}),
     warnings: preview.warnings ?? [],
   };
+}
+
+/** 收集条目内联声明的删除目标（`{ id, _delete: true }`）。 */
+function collectInlineRemovals(values: readonly unknown[]): readonly string[] {
+  return values.flatMap((value) => {
+    if (!isRecord(value) || value._delete !== true) return [];
+    return typeof value.id === "string" && value.id.trim().length > 0 ? [value.id.trim()] : [];
+  });
+}
+
+/** 过滤掉声明为删除的条目，避免它们又被当成新增项归一化。 */
+function keepNonRemovals(values: readonly unknown[]): readonly unknown[] {
+  return values.filter((value) => !(isRecord(value) && value._delete === true));
+}
+
+function normalizeIdList(values: readonly unknown[] | undefined): readonly string[] {
+  if (!Array.isArray(values)) return [];
+  return values.flatMap((value) => (
+    typeof value === "string" && value.trim().length > 0 ? [value.trim()] : []
+  ));
+}
+
+function uniqueIds(values: readonly string[]): readonly string[] {
+  return [...new Set(values)];
+}
+
+/**
+ * 删除请求的可执行性检查。
+ *
+ * 章节、经纬事件等派生节点由权威源计算得出，删除 store 里的覆盖项不会让它们
+ * 从快照消失。与其静默无效，不如在 preview 阶段就说清楚。
+ */
+function validateRemovals(
+  store: NarrativeLineStore,
+  removeNodeIds: readonly string[],
+  removeEdgeIds: readonly string[],
+): readonly NarrativeWarning[] {
+  const authorNodeIds = new Set(store.nodes.map((node) => node.id));
+  const authorEdgeIds = new Set(store.edges.map((edge) => edge.id));
+  return [
+    ...removeNodeIds.flatMap((id) => authorNodeIds.has(id) ? [] : [{
+      type: "mutation-preview-risk",
+      severity: "warning" as const,
+      summary: `节点 ${id} 不在作者叙事线覆盖层中：它可能来自章节或经纬等权威源，删除请求不会生效。请到对应权威源处理。`,
+      nodeIds: [id],
+    }]),
+    ...removeEdgeIds.flatMap((id) => authorEdgeIds.has(id) ? [] : [{
+      type: "mutation-preview-risk",
+      severity: "warning" as const,
+      summary: `边 ${id} 不在作者叙事线覆盖层中：它由章节/事件推导得出，删除请求不会生效。`,
+    }]),
+  ];
 }
 
 function normalizeProposedNodes(bookId: string, values: readonly unknown[]): readonly NarrativeNode[] {

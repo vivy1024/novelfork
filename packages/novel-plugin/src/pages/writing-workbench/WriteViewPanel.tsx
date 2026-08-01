@@ -15,6 +15,13 @@ import {
   type WriteFixActionId,
   type WriteViewModel,
 } from "./write-view-state";
+import {
+  fetchPendingEvents,
+  groupProposalsByChapter,
+  mutatePendingEvent,
+  riskLabel,
+  type PendingEvent,
+} from "./narrative-pending-events";
 
 export interface WriteViewPanelProps {
   readonly bookId?: string;
@@ -64,6 +71,11 @@ export function WriteViewPanel({
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fixBusy, setFixBusy] = useState<WriteFixActionId | null>(null);
   const [fixNote, setFixNote] = useState<string | null>(null);
+  // 本章提议：章后结算提出、等作者确认的叙事事件。
+  const [proposals, setProposals] = useState<readonly PendingEvent[]>([]);
+  const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
+  const [proposalError, setProposalError] = useState<string | null>(null);
+  const [earlierOpen, setEarlierOpen] = useState(false);
 
   const model = useMemo(() => buildWriteViewModel(raw), [raw]);
 
@@ -83,11 +95,38 @@ export function WriteViewPanel({
     }
   }, [callTool]);
 
+  const loadProposals = useCallback(async () => {
+    if (!bookId) return;
+    try {
+      setProposals(await fetchPendingEvents(bookId, { limit: 100 }));
+      setProposalError(null);
+    } catch (err) {
+      // 提议加载失败不该挡住写作，只标注拿不到。
+      setProposals([]);
+      setProposalError(err instanceof Error ? err.message : "读取本章提议失败");
+    }
+  }, [bookId]);
+
   // 切书或首次挂载时自动预检一次
   useEffect(() => {
     if (!bookId || !callTool) return;
     void runPreflight();
   }, [bookId, callTool, runPreflight]);
+
+  useEffect(() => {
+    void loadProposals();
+  }, [loadProposals]);
+
+  /**
+   * 刷新写前状态与本章提议。
+   *
+   * 写作由叙述者异步执行，本面板无法知道哪一刻落盘完成，所以不做轮询猜测：
+   * 作者写完回到写作视图点一次刷新，就同时拿到新的预检结果和章后提议。
+   */
+  const refreshAll = useCallback(() => {
+    void runPreflight();
+    void loadProposals();
+  }, [loadProposals, runPreflight]);
 
   const handleFix = useCallback(async (action: WriteFixActionId) => {
     const plan = planFixAction(action, { chapterNumber: model.chapterNumber, formalChapterCount });
@@ -108,8 +147,31 @@ export function WriteViewPanel({
     }
   }, [formalChapterCount, model.chapterNumber, onSendToNarrator, onSwitchView]);
 
+  const handleProposal = useCallback(async (event: PendingEvent, action: "approve" | "reject") => {
+    if (!bookId || !event.id) return;
+    setProposalBusyId(event.id);
+    setProposalError(null);
+    try {
+      await mutatePendingEvent(bookId, event.id, action, {
+        reason: action === "approve" ? "写作视图确认本章提议" : "写作视图驳回本章提议",
+      });
+      await loadProposals();
+      // 提议影响写前状态（如高风险待确认会成为提醒），处理完重新预检。
+      if (callTool) void runPreflight();
+    } catch (err) {
+      setProposalError(err instanceof Error ? err.message : "处理提议失败");
+    } finally {
+      setProposalBusyId(null);
+    }
+  }, [bookId, callTool, loadProposals, runPreflight]);
+
   const gate = canStartWriting({ model, directiveDraft, acceptFocusDefault });
   const effectiveDirective = directiveDraft.trim() || model.resolvedDirective || "";
+
+  const proposalGroups = useMemo(
+    () => groupProposalsByChapter(proposals, model.chapterNumber),
+    [proposals, model.chapterNumber],
+  );
 
   const start = useCallback((mode: "blueprint" | "chapter") => {
     if (!gate.ok) return;
@@ -150,10 +212,10 @@ export function WriteViewPanel({
           </div>
           <button
             type="button"
-            onClick={() => void runPreflight()}
+            onClick={refreshAll}
             disabled={loading}
             className="shrink-0 rounded p-1 text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-50"
-            title="重新检查就绪"
+            title="重新检查就绪与本章提议"
             data-testid="write-refresh"
           >
             {loading ? <Loader2 className="size-3.5 animate-spin" /> : <RefreshCw className="size-3.5" />}
@@ -220,6 +282,82 @@ export function WriteViewPanel({
 
       {fixNote && <p className="text-[10px] text-muted-foreground">{fixNote}</p>}
 
+      {/*
+        本章提议：写作 → 叙事记忆 的回路终点。
+        章后结算会从正文提出事实与事件，作者必须能在写作路径上就地确认，
+        而不是写完再想起去叙事记忆面板翻队列。审批走与该面板同一条通道
+        （narrative-pending-events），批准语义与错误文案不会漂移。
+      */}
+      {(proposalGroups.current.length > 0 || proposalGroups.earlier.length > 0 || proposalError) && (
+        <section className="rounded-md border border-border bg-card/40 px-2 py-1.5" data-testid="write-proposals">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-medium text-foreground">
+              本章提议 {proposalGroups.current.length > 0 ? `(${proposalGroups.current.length})` : ""}
+            </span>
+            {proposalGroups.highRiskCount > 0 && (
+              <span className="text-[10px] text-amber-600 dark:text-amber-400">
+                高风险 {proposalGroups.highRiskCount}
+              </span>
+            )}
+          </div>
+          <p className="mt-0.5 text-[10px] text-muted-foreground">
+            章后结算从正文提出的事实与事件。确认后写入动态事实；不处理也不阻断写作。
+          </p>
+
+          {proposalError && (
+            <p className="mt-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-1 text-[10px] text-red-600 dark:text-red-400">
+              {proposalError}
+            </p>
+          )}
+
+          <ul className="mt-1.5 flex flex-col gap-1">
+            {proposalGroups.current.map((event, index) => (
+              <ProposalRow
+                key={event.id ?? `current-${index}`}
+                event={event}
+                busy={proposalBusyId === event.id}
+                disabled={proposalBusyId !== null}
+                onApprove={() => void handleProposal(event, "approve")}
+                onReject={() => void handleProposal(event, "reject")}
+              />
+            ))}
+          </ul>
+
+          {proposalGroups.earlier.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setEarlierOpen((open) => !open)}
+                className="mt-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                data-testid="write-proposals-earlier-toggle"
+              >
+                {earlierOpen ? "收起" : `另有 ${proposalGroups.earlier.length} 条前面章节遗留`}
+              </button>
+              {earlierOpen && (
+                <ul className="mt-1 flex flex-col gap-1">
+                  {proposalGroups.earlier.map((event, index) => (
+                    <ProposalRow
+                      key={event.id ?? `earlier-${index}`}
+                      event={event}
+                      busy={proposalBusyId === event.id}
+                      disabled={proposalBusyId !== null}
+                      onApprove={() => void handleProposal(event, "approve")}
+                      onReject={() => void handleProposal(event, "reject")}
+                    />
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </section>
+      )}
+
+      {/*
+        完整套路市场不挂在这里。
+        曾经嵌进本面板：面板一崩会带垮三栏 IDE 写作主路径（打开书即炸）。
+        市场入口只在：侧栏「套路」→「写作配置」→「套路 skills」。
+      */}
+
       {/* 一句话指示 */}
       <div className="mt-auto flex flex-col gap-2">
         <label className="text-[11px] font-medium text-foreground" htmlFor="write-directive">
@@ -268,5 +406,62 @@ export function WriteViewPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 一条本章提议。
+ *
+ * 220px 侧栏里放不下完整证据全文，所以只给作者判断所需的最少信息：
+ * 提议了什么、来自第几章、正文依据、风险与置信度。深度审计仍在叙事记忆面板。
+ */
+function ProposalRow({ event, busy, disabled, onApprove, onReject }: {
+  readonly event: PendingEvent;
+  readonly busy: boolean;
+  readonly disabled: boolean;
+  readonly onApprove: () => void;
+  readonly onReject: () => void;
+}) {
+  return (
+    <li className="rounded border border-border/60 bg-background/60 px-1.5 py-1" data-testid="write-proposal-item">
+      <div className="flex items-start justify-between gap-1.5">
+        <span className="min-w-0 flex-1 text-[11px] text-foreground">
+          {event.entity ?? "未命名实体"}
+          {event.eventType ? <span className="text-muted-foreground"> · {event.eventType}</span> : null}
+        </span>
+        <span className={`shrink-0 text-[10px] ${event.risk === "high" ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+          {riskLabel(event.risk)}
+        </span>
+      </div>
+      <div className="mt-0.5 text-[10px] text-muted-foreground">
+        第 {event.chapterNumber ?? "—"} 章
+        {typeof event.confidence === "number" ? ` · 置信度 ${event.confidence}` : ""}
+      </div>
+      {event.evidence && (
+        <p className="mt-0.5 line-clamp-2 text-[10px] leading-relaxed text-muted-foreground">{event.evidence}</p>
+      )}
+      {event.id && (
+        <div className="mt-1 flex justify-end gap-1">
+          <button
+            type="button"
+            onClick={onReject}
+            disabled={disabled}
+            className="rounded border border-border px-1.5 py-0.5 text-[10px] hover:bg-accent disabled:opacity-40"
+            data-testid="write-proposal-reject"
+          >
+            {busy ? "处理中" : "驳回"}
+          </button>
+          <button
+            type="button"
+            onClick={onApprove}
+            disabled={disabled}
+            className="rounded bg-primary px-1.5 py-0.5 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            data-testid="write-proposal-approve"
+          >
+            {busy ? "处理中" : "确认"}
+          </button>
+        </div>
+      )}
+    </li>
   );
 }

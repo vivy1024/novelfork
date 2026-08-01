@@ -392,21 +392,6 @@ CREATE INDEX "writing_log_date_idx" ON "writing_log" ("date");
 CREATE INDEX "chapter_audit_log_book_chapter_idx" ON "chapter_audit_log" ("book_id", "chapter_number");
 CREATE INDEX "chapter_audit_log_book_audited_idx" ON "chapter_audit_log" ("book_id", "audited_at");
 ` },
-  { name: "0010_user_template.sql", sql: `-- User templates for template market
-CREATE TABLE IF NOT EXISTS "user_template" (
-  "id" TEXT PRIMARY KEY,
-  "book_id" TEXT,
-  "name" TEXT NOT NULL,
-  "genre" TEXT,
-  "description" TEXT,
-  "bundle_json" TEXT NOT NULL,
-  "created_at" TEXT NOT NULL,
-  "updated_at" TEXT NOT NULL,
-  "deleted_at" TEXT
-);
-
-CREATE INDEX IF NOT EXISTS "user_template_book_id_idx" ON "user_template" ("book_id");
-` },
   { name: "0011_session_fork.sql", sql: `-- Add fork tracking columns to session table
 ALTER TABLE "session" ADD COLUMN "parent_session_id" TEXT;
 ALTER TABLE "session" ADD COLUMN "fork_mode" TEXT;

@@ -263,6 +263,18 @@ async function rewriteApply(
   });
 }
 
+/** 只允许单段安全目录名；空结果由调用方回退到内容哈希。 */
+function writingSkillSlugFrom(value: string): string {
+  return value.trim().toLowerCase()
+    .replace(/[^a-z0-9-_]+/gu, "-")
+    .replace(/^-+|-+$/gu, "")
+    .slice(0, 64);
+}
+
+function yamlString(value: string): string {
+  return JSON.stringify(value);
+}
+
 async function styleImport(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -270,10 +282,10 @@ async function styleImport(
 ): Promise<RuntimeToolResult> {
   const referenceText = typeof input.referenceText === "string" ? input.referenceText : "";
   const sourceName = typeof input.sourceName === "string" ? input.sourceName : undefined;
-  const applyPreset = input.applyPreset === true;
+  const saveAsWritingSkill = input.saveAsWritingSkill === true;
   const enableOnBook = input.enableOnBook !== false;
-  const presetName = typeof input.presetName === "string" && input.presetName.trim()
-    ? input.presetName.trim()
+  const skillName = typeof input.skillName === "string" && input.skillName.trim()
+    ? input.skillName.trim()
     : `导入文风${sourceName ? `·${sourceName}` : ""}`.slice(0, 40);
   if (referenceText.length < 2000) return fail("text-too-short", "参考文本至少需要 2000 字。");
   const generator = requireGenerator(context);
@@ -296,49 +308,86 @@ async function styleImport(
   const styleGuide = generated.text.trim();
   if (!styleGuide) return fail("empty-model-output", "Runtime 模型没有返回文风指南。");
 
-  let appliedPreset: { id?: string; enabledPresetIds?: readonly string[] } | undefined;
-  if (applyPreset) {
-    const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-    const { handlePresetsWrite } = await import("./preset-beat-handlers.js");
-    const created = await handlePresetsWrite(
-      {
-        bookId: binding.bookId,
-        action: "create",
-        name: presetName,
-        category: "tone",
-        promptInjection: styleGuide.slice(0, 6000),
-        description: sourceName ? `从「${sourceName}」导入` : "style.import 生成",
-      },
-      { bookRoot: binding.root, storage: getStorageDatabase() },
-    );
-    if (!created.ok) return fail(created.error ?? "preset-create-failed", created.summary);
-    const data = created.data as { id?: string; enabledPresetIds?: string[] } | undefined;
-    if (!enableOnBook && data?.id) {
-      // create 默认会 enable；若要求不启用，再 set 去掉（尽力而为）
-      const current = Array.isArray(data.enabledPresetIds) ? data.enabledPresetIds : [];
-      const without = current.filter((id) => id !== data.id);
-      await handlePresetsWrite(
-        { bookId: binding.bookId, action: "set", enabledPresetIds: without },
-        { bookRoot: binding.root, storage: getStorageDatabase() },
+  let createdWritingSkill: {
+    id: string;
+    slug: string;
+    path: string;
+    enabled: boolean;
+    enabledWritingSkillIds?: readonly string[];
+  } | undefined;
+  if (saveAsWritingSkill) {
+    const { writeAuthorWritingSkill } = await import("../engine/writing-skills/loader.js");
+    const { handleWritingSkillsWrite, loadActiveWritingSkillsForBook } = await import("./writing-skill-handlers.js");
+    const baseSlug = writingSkillSlugFrom(sourceName ?? skillName);
+    const slug = `imported-style-${baseSlug || Date.now().toString(36)}`;
+    const skillId = `writing-skill-${slug}`;
+    const description = sourceName
+      ? `从「${sourceName}」参考文本导入的文风指南。`
+      : "由 style.import 从参考文本生成的文风指南。";
+    const content = [
+      "---",
+      `id: ${yamlString(skillId)}`,
+      `name: ${yamlString(skillName)}`,
+      `description: ${yamlString(description)}`,
+      "kind: prose",
+      "mode: manual",
+      "---",
+      "",
+      styleGuide,
+      "",
+    ].join("\n");
+    let path: string;
+    try {
+      path = await writeAuthorWritingSkill(slug, content, undefined);
+    } catch (error) {
+      return fail(
+        "writing-skill-write-failed",
+        `文风 Skill 写入失败：${error instanceof Error ? error.message : String(error)}`,
       );
-      appliedPreset = { id: data.id, enabledPresetIds: without };
-    } else {
-      appliedPreset = { id: data?.id, enabledPresetIds: data?.enabledPresetIds };
+    }
+    createdWritingSkill = { id: skillId, slug, path, enabled: false };
+
+    if (enableOnBook) {
+      const active = await loadActiveWritingSkillsForBook(binding.bookId, { bookRoot: binding.root })
+        .catch(() => ({ enabledWritingSkillIds: [] as readonly string[] }));
+      // 不传 discardUnmappedLegacyIds：无法映射的旧选择必须由作者显式处理，
+      // 导入文风不应顺手清空 book.json 里的历史选择。
+      const enabled = await handleWritingSkillsWrite(
+        {
+          bookId: binding.bookId,
+          enabledWritingSkillIds: [...new Set([...active.enabledWritingSkillIds, skillId])],
+        },
+        { bookRoot: binding.root },
+      );
+      if (!enabled.ok) {
+        return fail(
+          enabled.error ?? "writing-skill-enable-failed",
+          `${enabled.summary} SKILL.md 已写入 ${path}，可在 Writing Skills 面板手动启用。`,
+        );
+      }
+      const data = enabled.data as { enabledWritingSkillIds?: readonly string[] } | undefined;
+      createdWritingSkill = {
+        ...createdWritingSkill,
+        enabled: Boolean(data?.enabledWritingSkillIds?.includes(skillId)),
+        ...(data?.enabledWritingSkillIds ? { enabledWritingSkillIds: data.enabledWritingSkillIds } : {}),
+      };
     }
   }
 
   return ok(
-    applyPreset
-      ? `已生成并${enableOnBook ? "启用" : "创建"}文风 preset${sourceName ? `（${sourceName}）` : ""}。`
-      : `已生成文风预设建议${sourceName ? `（${sourceName}）` : ""}。`,
+    saveAsWritingSkill
+      ? `已生成并${createdWritingSkill?.enabled ? "启用" : "创建"}文风 Writing Skill${sourceName ? `（${sourceName}）` : ""}。`
+      : `已生成文风指南建议${sourceName ? `（${sourceName}）` : ""}。`,
     {
       bookId: binding.bookId,
-      kind: applyPreset ? "preset-applied" : "preset-suggestion",
+      kind: saveAsWritingSkill ? "writing-skill-created" : "style-suggestion",
       profile,
       styleGuide,
       guidePreview: styleGuide.slice(0, 500),
-      appliedPreset,
-      nextActions: applyPreset ? ["write.preflight", "pipeline.write"] : ["applyPreset", "manual-edit"],
+      createdWritingSkill,
+      nextActions: saveAsWritingSkill
+        ? ["write.preflight", "pipeline.write"]
+        : ["saveAsWritingSkill", "manual-edit"],
     },
   );
 }

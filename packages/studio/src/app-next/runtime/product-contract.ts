@@ -232,6 +232,11 @@ export interface RuntimeProductClientOptions {
   readonly fetch?: RuntimeFetchOptions;
 }
 
+export interface RuntimeRebindBookWorkspaceResult {
+  readonly bookId: string;
+  readonly runtimeProjectId: string;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -683,12 +688,12 @@ export function createRuntimeProductClient(
     rebindBookWorkspace: async (
       bookId: string,
       workspaceRoot: string,
-    ): Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }> => {
+    ): Promise<RuntimeRebindBookWorkspaceResult> => {
       const normalizedBookId = bookId.trim();
       const normalizedRoot = workspaceRoot.trim();
       if (!normalizedBookId) throw new Error("修正作品目录需要 bookId");
       if (!normalizedRoot) throw new Error("修正作品目录需要 workspaceRoot");
-      return runtimeJson(
+      const result = await runtimeJson<RuntimeRebindBookWorkspaceResult>(
         `${RUNTIME_PRODUCT_BOOKS_PATH}/${encodeURIComponent(normalizedBookId)}/rebind-workspace`,
         {
           method: "POST",
@@ -697,6 +702,10 @@ export function createRuntimeProductClient(
         },
         fetchOptions,
       );
+      return {
+        bookId: result.bookId,
+        runtimeProjectId: result.runtimeProjectId,
+      };
     },
     listBookRoutines: (
       bookId: string,

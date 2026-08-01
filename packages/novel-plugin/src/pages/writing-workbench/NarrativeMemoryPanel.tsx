@@ -2,6 +2,18 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
+// 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
+import {
+  mutatePendingEvent as mutatePendingEventRequest,
+  riskLabel,
+  type PendingEvent,
+} from "./narrative-pending-events";
+// 叙事线审批台账与章后结算历史是同一件事的两半：都要能回答「谁在什么时候
+// 批了什么」。共用 narrative-line-proposals 这一条通道。
+import {
+  fetchNarrativeLineApprovals,
+  type NarrativeLineApproval,
+} from "./narrative-line-proposals";
 
 type ResourceTreeAction = {
   type: "open-side";
@@ -32,20 +44,6 @@ interface DiagnosticsSummary {
 
 interface DiagnosticsResponse {
   summary?: DiagnosticsSummary;
-}
-
-interface PendingEvent {
-  id?: string;
-  eventType?: string;
-  entity?: string;
-  confidence?: number;
-  risk?: string;
-  evidence?: string;
-  chapterNumber?: number;
-}
-
-interface PendingEventsResponse {
-  events?: PendingEvent[];
 }
 
 interface MemoryStats {
@@ -99,6 +97,8 @@ interface NarrativeMemoryPanelShellProps {
   diagnostics: DiagnosticsSummary | null;
   events: PendingEvent[];
   historyEvents?: MemoryEntry[];
+  /** 叙事线的批准/驳回台账，与章后结算历史并列展示。 */
+  lineApprovals?: readonly NarrativeLineApproval[];
   stateFacts?: MemoryEntry[];
   stats?: MemoryStats | null;
   searchResults?: MemoryEntry[];
@@ -161,13 +161,6 @@ function entryTitle(entry: MemoryEntry): string {
 
 function entryPredicateText(entry: MemoryEntry): string {
   return `${entry.predicate ?? ""} ${entry.object ?? ""}`.trim();
-}
-
-function riskLabel(risk?: string): string {
-  if (risk === "high") return "高风险";
-  if (risk === "medium") return "中风险";
-  if (risk === "low") return "低风险";
-  return risk ?? "待审";
 }
 
 function WaveSummary({ wave }: { wave?: Record<string, unknown> | null }) {
@@ -380,6 +373,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSummary | null>(null);
   const [events, setEvents] = useState<PendingEvent[]>([]);
   const [historyEvents, setHistoryEvents] = useState<MemoryEntry[]>([]);
+  const [lineApprovals, setLineApprovals] = useState<readonly NarrativeLineApproval[]>([]);
   const [stateFacts, setStateFacts] = useState<MemoryEntry[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
@@ -415,7 +409,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       }
 
       if (!eventsRes.ok) throw new Error(`events ${eventsRes.status}`);
-      const nextEvents = (await eventsRes.json() as PendingEventsResponse).events ?? [];
+      const nextEvents = (await eventsRes.json() as { events?: PendingEvent[] }).events ?? [];
       setEvents(nextEvents);
 
       let nextStats: MemoryStats | null = null;
@@ -444,7 +438,18 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         setStateFacts([]);
       }
 
-      setEmpty(nextEvents.length === 0 && nextHistory.length === 0 && nextFacts.length === 0 && !nextDiagnostics && (nextStats?.total ?? 0) === 0);
+      // 审批台账是附加视图：读不到不应让整个叙事记忆面板报错。
+      const nextApprovals = await fetchNarrativeLineApprovals(bookId, { limit: 40 }).catch(() => []);
+      setLineApprovals(nextApprovals);
+
+      setEmpty(
+        nextEvents.length === 0
+        && nextHistory.length === 0
+        && nextFacts.length === 0
+        && nextApprovals.length === 0
+        && !nextDiagnostics
+        && (nextStats?.total ?? 0) === 0,
+      );
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "加载叙事记忆失败");
     } finally {
@@ -480,15 +485,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     setActionLoadingId(event.id);
     setActionError(null);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/${encodeURIComponent(event.id)}/${action}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reason: action === "approve" ? "工作台确认 Narrative Memory 事件" : "工作台拒绝 Narrative Memory 事件" }),
-      });
-      if (!response.ok) {
-        const payload = await response.json().catch(() => ({})) as { summary?: string; error?: string };
-        throw new Error(payload.summary ?? payload.error ?? `事件操作失败（${response.status}）`);
-      }
+      await mutatePendingEventRequest(bookId, event.id, action);
       await load();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "事件操作失败");
@@ -521,6 +518,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       diagnostics={diagnostics}
       events={events}
       historyEvents={historyEvents}
+      lineApprovals={lineApprovals}
       stateFacts={stateFacts}
       stats={stats}
       searchResults={searchResults}
@@ -548,6 +546,7 @@ export function NarrativeMemoryPanelShell({
   diagnostics,
   events,
   historyEvents = [],
+  lineApprovals = [],
   stateFacts = [],
   stats,
   searchResults = [],
@@ -796,6 +795,57 @@ export function NarrativeMemoryPanelShell({
           ))}
         </section>
       )}
+
+      {/*
+        叙事线审批台账。
+        服务端从 propose → apply 起就在记录每次批准与驳回，但此前界面上没有
+        任何入口 —— 作者无法回答「这个节点是谁改的、什么时候批的、理由是什么」。
+        与章后结算历史并列，因为两者回答的是同一类问题。
+      */}
+      {activeView === "结算历史" && (
+        <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
+          <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
+          <p className="text-[10px] text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
+          {lineApprovals.length === 0 ? (
+            <p className="text-[11px] text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
+          ) : lineApprovals.slice(0, 40).map((approval) => (
+            <div
+              key={approval.previewId}
+              className="rounded border border-border/60 p-2"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium">{approval.summary}</span>
+                <span className={`shrink-0 text-[10px] ${approval.decision === "rejected" ? "text-muted-foreground" : "text-primary"}`}>
+                  {approval.decision === "rejected" ? "已驳回" : "已批准"}
+                </span>
+              </div>
+              <div className="mt-0.5 text-[10px] text-muted-foreground">
+                {formatApprovalTime(approval.approvedAt)}
+                {approvalScopeText(approval)}
+              </div>
+              {approval.reason && (
+                <p className="mt-0.5 text-[10px] text-muted-foreground">理由：{approval.reason}</p>
+              )}
+            </div>
+          ))}
+        </section>
+      )}
     </div>
   );
+}
+
+function formatApprovalTime(value: string): string {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleString();
+}
+
+/** 用「新增/删除了几个节点或边」描述这次审批的范围。 */
+function approvalScopeText(approval: NarrativeLineApproval): string {
+  const parts = [
+    (approval.targetNodeIds?.length ?? 0) > 0 ? `节点 ${approval.targetNodeIds!.length}` : "",
+    (approval.targetEdgeIds?.length ?? 0) > 0 ? `关系 ${approval.targetEdgeIds!.length}` : "",
+    (approval.removedNodeIds?.length ?? 0) > 0 ? `删除节点 ${approval.removedNodeIds!.length}` : "",
+    (approval.removedEdgeIds?.length ?? 0) > 0 ? `删除关系 ${approval.removedEdgeIds!.length}` : "",
+  ].filter(Boolean);
+  return parts.length > 0 ? ` · ${parts.join(" / ")}` : "";
 }

@@ -1,7 +1,14 @@
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { NarrativeMemoryPanelShell } from "./NarrativeMemoryPanel";
+
+// 本包没开 vitest globals，RTL 的自动 cleanup 不会注册；不清理会让多次 render
+// 的 DOM 累积，按 role 定位时命中上一个用例留下的节点。
+afterEach(() => {
+  cleanup();
+});
 
 describe("NarrativeMemoryPanelShell", () => {
   it("exposes author-first story status and history without diagnosis or market tools", () => {
@@ -65,5 +72,73 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).toContain("高级：召回诊断");
     // 诊断默认折叠，不直接铺开通道明细
     expect(html).not.toContain("检索 3");
+  });
+
+  /**
+   * 叙事线审批台账必须真的可达。
+   *
+   * 服务端从 H-2 起就记录批准/驳回，但界面上一直没有入口 —— 能力存在却看不到。
+   * 这里走真实的视图切换，而不是直接断言隐藏 DOM。
+   */
+  it("reaches the narrative line approval ledger from the settlement history view", () => {
+    render(
+      <NarrativeMemoryPanelShell
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        lineApprovals={[
+          {
+            previewId: "narrative-preview:book-1:1",
+            approvedAt: "2026-08-01T02:00:00.000Z",
+            summary: "添加节点：青铜铃异响",
+            decision: "approved",
+            targetNodeIds: ["node-hook"],
+          },
+          {
+            previewId: "narrative-preview:book-1:2",
+            approvedAt: "2026-08-01T03:00:00.000Z",
+            summary: "删除节点：旧支线",
+            decision: "rejected",
+            reason: "与主线冲突",
+            removedNodeIds: ["node-old"],
+          },
+        ]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    // 默认在「故事状态」，台账还不该出现。
+    expect(screen.queryByTestId("narrative-line-approvals")).toBeNull();
+
+    const nav = screen.getByRole("navigation", { name: "叙事记忆视图" });
+    fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
+
+    const ledger = screen.getByTestId("narrative-line-approvals");
+    expect(ledger).toBeTruthy();
+    expect(ledger.textContent).toContain("添加节点：青铜铃异响");
+    expect(ledger.textContent).toContain("已批准");
+    // 驳回同样留痕，并带上作者填的理由。
+    expect(ledger.textContent).toContain("删除节点：旧支线");
+    expect(ledger.textContent).toContain("已驳回");
+    expect(ledger.textContent).toContain("与主线冲突");
+    expect(ledger.textContent).toContain("删除节点 1");
+  });
+
+  it("explains the empty approval ledger instead of hiding the section", () => {
+    render(
+      <NarrativeMemoryPanelShell
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    // 「结算历史」既是导航项也是摘要区的「查看全部」目标，这里限定导航区。
+    const nav = screen.getByRole("navigation", { name: "叙事记忆视图" });
+    fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
+    expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("在叙事线视图增删节点后会出现");
   });
 });

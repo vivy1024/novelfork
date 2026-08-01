@@ -276,20 +276,24 @@ export type {
 
 export { handlePgiAsk } from "./pgi-ask-handler.js";
 export {
-  handleBeatRead,
-  handleBeatWrite,
-  handlePresetsCheckCompliance,
-  handlePresetsRead,
-  handlePresetsWrite,
-} from "./preset-beat-handlers.js";
+  handleWritingSkillsCheckCompliance,
+  handleWritingSkillsImportLegacy,
+  handleWritingSkillsRead,
+  handleWritingSkillsWrite,
+  loadActiveWritingSkillsForBook,
+  migrateLegacyWritingSkillSelection,
+  resolveActiveWritingSkills,
+} from "./writing-skill-handlers.js";
 export type {
-  BeatReadInput,
-  BeatWriteInput,
-  PresetsCheckComplianceInput,
-  PresetsReadInput,
-  PresetsWriteInput,
-  TrustedPresetBeatOptions,
-} from "./preset-beat-handlers.js";
+  LegacyWritingSkillsImportReport,
+  TrustedWritingSkillOptions,
+  WritingSkillComplianceViolation,
+  WritingSkillSelectionMigrationReport,
+  WritingSkillsCheckComplianceInput,
+  WritingSkillsImportLegacyInput,
+  WritingSkillsReadInput,
+  WritingSkillsWriteInput,
+} from "./writing-skill-handlers.js";
 export type {
   PgiAskInput,
   PgiAskResult,

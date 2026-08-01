@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   JINGWEI_CATEGORIES,
   CATEGORY_META,
+  CATEGORY_SUBCATEGORIES,
   LEGACY_CATEGORY_MAP,
   normalizeCategory,
   isValidCategory,
@@ -82,7 +83,6 @@ describe("unified-categories", () => {
   });
 
   it("subcategory mappings reference valid parent categories", () => {
-    const { CATEGORY_SUBCATEGORIES } = require("./unified-categories");
     for (const [parent, subs] of Object.entries(CATEGORY_SUBCATEGORIES)) {
       expect(isValidCategory(parent), `subcategory parent "${parent}" is not a valid category`).toBe(true);
       expect(Array.isArray(subs)).toBe(true);

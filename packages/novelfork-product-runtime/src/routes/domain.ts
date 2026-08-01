@@ -9,10 +9,12 @@ import {
 import {
 	createComplianceRouter,
 	createJingweiRouter,
+	createNarrativeLineRouter,
 	createNarrativeMemoryRouter,
 	createOverviewRouter,
 	createWriteReadinessRouter,
 	createWritingResourceRouter,
+	createWritingSkillsRouter,
 	createWritingToolsRouter,
 	type RouterContext,
 } from "@vivy1024/novelfork-novel-plugin/routes";
@@ -93,6 +95,15 @@ novelDomainRoutes.route(
 );
 novelDomainRoutes.route("", asRuntimeRouter(createOverviewRouter()));
 novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
+// 叙事线快照 + proposal 审批。propose 只算预览，apply 才写入并留审批台账。
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createNarrativeLineRouter({
+			resolveBookRoot: resolveDomainBookRoot,
+		}),
+	),
+);
 // Workbench tool panels (arcs/health/progress/pov/…) previously existed only on
 // the retired Studio server. Mount them on the product Runtime surface.
 novelDomainRoutes.route("", asRuntimeRouter(createWritingToolsRouter(productRouterContext)));
@@ -106,6 +117,9 @@ novelDomainRoutes.route(
 	),
 );
 novelDomainRoutes.route("", asRuntimeRouter(createComplianceRouter(productRouterContext)));
+// Writing Skills 全局目录与作者副本编辑。内容权威源始终是 SKILL.md 文件，
+// 书籍级启用只经 `enabledWritingSkillIds` 一条通道。
+novelDomainRoutes.route("", asRuntimeRouter(createWritingSkillsRouter()));
 
 // Runtime state panel: knowledge / timeline / resource ledger from story/state.
 novelDomainRoutes.get("/api/books/:bookId/state", async (c) => {

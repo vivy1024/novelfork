@@ -138,7 +138,7 @@ export function buildStyleToolInput(state: ImportWizardState): Record<string, un
   return {
     referenceText,
     sourceName: state.options.sourceName.trim() || state.fileName || "导入文本",
-    applyPreset: true,
+    saveAsWritingSkill: true,
     enableOnBook: true,
   };
 }

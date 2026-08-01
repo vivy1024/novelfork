@@ -3,7 +3,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseGenreProfile, type ParsedGenreProfile } from "@vivy1024/novelfork-core";
 import { parseBookRules, type ParsedBookRules } from "@vivy1024/novelfork-core";
-import { BookConfigSchema } from "@vivy1024/novelfork-core";
+import { z } from "zod";
 
 function resolveBuiltinGenresDir(): string {
   try {
@@ -112,7 +112,10 @@ export async function readBookLanguage(bookDir: string): Promise<"zh" | "en" | u
   if (!raw) return undefined;
 
   try {
-    const parsed = BookConfigSchema.pick({ language: true }).safeParse(JSON.parse(raw));
+    // BookConfigSchema 带 preprocess（旧字段归一），不是可 .pick 的 ZodObject；
+    // 这里只需要 language 一个字段，单独校验即可。
+    const parsed = z.object({ language: z.enum(["zh", "en"]).optional() })
+      .safeParse(JSON.parse(raw));
     return parsed.success ? parsed.data.language : undefined;
   } catch {
     return undefined;

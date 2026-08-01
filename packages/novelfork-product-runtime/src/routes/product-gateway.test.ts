@@ -101,26 +101,15 @@ describe("NovelFork trusted narrator binding gateway", () => {
 			narrativeMemory: { preservedForWritingSettingsTest: true },
 		}, null, 2), "utf8");
 
-		const presetsResponse = await app.request(`/api/books/${bookId}/presets`);
-		expect(presetsResponse.status).toBe(200);
-		const presets = await presetsResponse.json() as { presets?: Array<{ id: string }> };
-		const presetId = presets.presets?.[0]?.id;
-		if (!presetId) throw new Error("expected a builtin preset");
-		expect((await app.request(`/api/books/${bookId}/presets`, {
+		const skillsResponse = await app.request(`/api/books/${bookId}/writing-skills`);
+		expect(skillsResponse.status).toBe(200);
+		const skills = await skillsResponse.json() as { skills?: Array<{ id: string; mode?: string }> };
+		const skillId = skills.skills?.find((skill) => skill.mode !== "always")?.id;
+		if (!skillId) throw new Error("expected a builtin writing skill");
+		expect((await app.request(`/api/books/${bookId}/writing-skills`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ enabledPresetIds: [presetId] }),
-		})).status).toBe(200);
-
-		const beatsResponse = await app.request(`/api/books/${bookId}/beat-templates`);
-		expect(beatsResponse.status).toBe(200);
-		const beats = await beatsResponse.json() as { templates?: Array<{ id: string }> };
-		const beatTemplateId = beats.templates?.[0]?.id;
-		if (!beatTemplateId) throw new Error("expected a builtin beat template");
-		expect((await app.request(`/api/books/${bookId}/beat-template`, {
-			method: "PUT",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ beatTemplateId }),
+			body: JSON.stringify({ enabledWritingSkillIds: [skillId] }),
 		})).status).toBe(200);
 
 		const update = await app.request(`/api/books/${bookId}`, {
@@ -148,8 +137,7 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(saved).toMatchObject({
 			id: bookId,
 			novelforkExternalWorkspace: true,
-			enabledPresetIds: [presetId],
-			beatTemplateId,
+			enabledWritingSkillIds: [skillId],
 			narrativeMemory: { preservedForWritingSettingsTest: true },
 			chapterWordCount: 3200,
 		});

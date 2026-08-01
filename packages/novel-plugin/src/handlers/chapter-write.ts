@@ -8,7 +8,7 @@ import {
   type LengthSpec,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
-import { handlePresetsCheckCompliance } from "./preset-beat-handlers.js";
+import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
 
 export interface ChapterWriteInput {
   bookId: string;
@@ -21,7 +21,10 @@ export type TrustedChapterWritePurpose = "complete-chapter" | "revision";
 export interface TrustedChapterWriteOptions {
   /** Absolute root supplied by the trusted Runtime resource binding. */
   bookRoot: string;
-  /** Storage supplied by the trusted Runtime when preset checks must run. */
+  /**
+   * Legacy trusted storage handle. Writing Skills compliance reads SKILL.md files
+   * under the bound book root, so this is no longer required for chapter writes.
+   */
   storage?: StorageDatabase;
   /**
    * Internal-only write intent. Runtime tool input never exposes this field:
@@ -39,11 +42,14 @@ type ChapterLengthData = {
   countingMode: LengthSpec["countingMode"];
 };
 
-type PresetViolation = {
-  presetName: string;
+type WritingSkillViolation = {
+  skillId: string;
+  skillName: string;
+  checkId: string;
   rule: string;
   violation: string;
   severity: "warning" | "error";
+  explanation: string;
 };
 
 export type ChapterWriteResult =
@@ -57,14 +63,14 @@ export type ChapterWriteResult =
         wordCount: number;
         updatedAt: string;
         length: ChapterLengthData;
-        presetWarnings: PresetViolation[];
+        writingSkillWarnings: WritingSkillViolation[];
       };
     }
   | {
       ok: false;
       error: string;
       summary: string;
-      data?: { length?: ChapterLengthData; presetViolations?: PresetViolation[] };
+      data?: { length?: ChapterLengthData; writingSkillViolations?: WritingSkillViolation[] };
     };
 
 const CHAPTER_FILE_PATTERN = /^(\d{1,9})[_-].+\.md$/iu;
@@ -105,14 +111,14 @@ function toLengthData(actual: number, spec: LengthSpec): ChapterLengthData {
   };
 }
 
-function presetViolations(value: unknown): PresetViolation[] {
+function writingSkillViolations(value: unknown): WritingSkillViolation[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is PresetViolation => (
+  return value.filter((item): item is WritingSkillViolation => (
     Boolean(item)
     && typeof item === "object"
-    && (item as { severity?: unknown }).severity !== undefined
     && ((item as { severity?: unknown }).severity === "warning" || (item as { severity?: unknown }).severity === "error")
-    && typeof (item as { presetName?: unknown }).presetName === "string"
+    && typeof (item as { skillId?: unknown }).skillId === "string"
+    && typeof (item as { skillName?: unknown }).skillName === "string"
     && typeof (item as { rule?: unknown }).rule === "string"
     && typeof (item as { violation?: unknown }).violation === "string"
   ));
@@ -123,7 +129,7 @@ async function validateCompleteChapterWrite(
   options: TrustedChapterWriteOptions,
   length: ChapterLengthData,
   spec: LengthSpec,
-): Promise<ChapterWriteResult | PresetViolation[]> {
+): Promise<ChapterWriteResult | WritingSkillViolation[]> {
   if (options.purpose === "revision") return [];
   if (isOutsideHardRange(length.actual, spec)) {
     return {
@@ -133,27 +139,26 @@ async function validateCompleteChapterWrite(
       data: { length },
     };
   }
-  if (!options.storage) return [];
 
-  const compliance = await handlePresetsCheckCompliance(
+  const compliance = await handleWritingSkillsCheckCompliance(
     { bookId: input.bookId, chapterNumber: input.chapterNumber, content: input.content },
-    { bookRoot: options.bookRoot, storage: options.storage },
+    { bookRoot: options.bookRoot },
   );
   if (!compliance.ok) {
     return {
       ok: false,
-      error: compliance.error ?? "presets-check-failed",
+      error: compliance.error ?? "writing-skills-check-failed",
       summary: `${compliance.summary} 正文和章节索引均未修改。`,
     };
   }
-  const violations = presetViolations((compliance.data as { violations?: unknown } | undefined)?.violations);
+  const violations = writingSkillViolations((compliance.data as { violations?: unknown } | undefined)?.violations);
   const errors = violations.filter((violation) => violation.severity === "error");
   if (errors.length > 0) {
     return {
       ok: false,
-      error: "preset-compliance-failed",
-      summary: `第 ${input.chapterNumber} 章触发 ${errors.length} 条预设硬性违规；正文和章节索引均未修改。${errors.map((violation) => ` ${violation.presetName}：${violation.violation}`).join("")}`,
-      data: { length, presetViolations: violations },
+      error: "writing-skill-compliance-failed",
+      summary: `第 ${input.chapterNumber} 章触发 ${errors.length} 条 Writing Skills 硬性违规；正文和章节索引均未修改。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
+      data: { length, writingSkillViolations: violations },
     };
   }
   return violations;
@@ -226,7 +231,7 @@ export async function handleChapterWrite(
         wordCount,
         updatedAt,
         length,
-        presetWarnings: validation.filter((violation) => violation.severity === "warning"),
+        writingSkillWarnings: validation.filter((violation) => violation.severity === "warning"),
       },
     };
   } catch (error) {

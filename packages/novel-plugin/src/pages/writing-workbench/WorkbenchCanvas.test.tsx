@@ -15,6 +15,13 @@ function node(overrides: Partial<WorkbenchResourceNode> = {}): WorkbenchResource
   };
 }
 
+function editTiptap(label: string, text: string): HTMLElement {
+  const editor = screen.getByLabelText(label);
+  editor.innerHTML = `<p>${text}</p>`;
+  fireEvent.input(editor);
+  return editor;
+}
+
 afterEach(() => cleanup());
 
 describe("WorkbenchCanvas", () => {
@@ -27,8 +34,8 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByText("已保存")).toBeTruthy();
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "chapter:1", dirty: false })));
 
-    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "修改正文" } });
-    expect(screen.getByText("未保存")).toBeTruthy();
+    editTiptap("章节正文", "修改正文");
+    await waitFor(() => expect(screen.getByText("未保存")).toBeTruthy());
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "chapter:1", dirty: true, contentPreview: "修改正文" })));
 
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
@@ -38,11 +45,21 @@ describe("WorkbenchCanvas", () => {
 
   it("只读资源禁用编辑和保存", () => {
     const onSave = vi.fn();
-    render(<WorkbenchCanvas node={node({ kind: "jingwei", title: "经纬资料", capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false } })} onSave={onSave} />);
+    render(
+      <WorkbenchCanvas
+        node={node({
+          kind: "story",
+          title: "原文片段.txt",
+          path: "story/source.txt",
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+        onSave={onSave}
+      />,
+    );
 
     expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
-    expect(screen.getByText("只读资源，当前画布禁用编辑。")) .toBeTruthy();
+    expect(screen.getByText("只读原因：当前资源由合同标记为只读，保存入口已禁用。")) .toBeTruthy();
   });
 
   it("RED: 当前资源 header 必须卡片化展示类型、路径、读写能力、保存状态和只读原因", () => {
@@ -69,15 +86,17 @@ describe("WorkbenchCanvas", () => {
   it("未选择资源时显示占位状态", () => {
     render(<WorkbenchCanvas node={null} onSave={vi.fn()} />);
 
-    expect(screen.getByText("选择左侧资源开始写作")).toBeTruthy();
+    expect(screen.getByText("请先选择或创建一本作品")).toBeTruthy();
   });
 
   it("保存失败时保持 dirty 并显示真实错误", async () => {
     const onSave = vi.fn().mockRejectedValue(new Error("章节保存失败"));
     render(<WorkbenchCanvas node={node()} onSave={onSave} />);
 
-    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "保存失败正文" } });
+    editTiptap("章节正文", "保存失败正文");
+    await waitFor(() => expect(screen.getByText("未保存")).toBeTruthy());
     fireEvent.click(screen.getByRole("button", { name: "保存" }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(node(), "保存失败正文"));
 
     expect((await screen.findByRole("alert")).textContent).toContain("保存失败：章节保存失败");
     expect(screen.getByText("未保存")).toBeTruthy();
@@ -96,7 +115,7 @@ describe("WorkbenchCanvas", () => {
       dirty: false,
     })));
 
-    fireEvent.change(screen.getByLabelText("章节正文"), { target: { value: "带上下文正文" } });
+    editTiptap("章节正文", "带上下文正文");
 
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({
       activeResource: expect.objectContaining({ kind: "chapter", id: "chapter:1", title: "城门片段" }),
@@ -116,7 +135,7 @@ describe("WorkbenchCanvas", () => {
       />,
     );
 
-    expect(screen.getByText("工具结果")).toBeTruthy();
+    expect(screen.getAllByText("工具结果").length).toBeGreaterThan(0);
     expect(screen.getByTestId("raw-resource-node").textContent).toContain("pipeline.chapter");
     await waitFor(() => expect(onCanvasContextChange).toHaveBeenLastCalledWith(expect.objectContaining({ activeResourceId: "tool-result:1", activeKind: "tool-result" })));
   });

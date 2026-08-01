@@ -31,6 +31,8 @@ describe("WorkbenchResourceTree", () => {
     expect(screen.getByText("不支持")).toBeTruthy();
     expect(screen.getByText("可删除")).toBeTruthy();
     expect(screen.queryByText("可应用")).toBeNull();
-    expect(screen.getByRole("button", { name: /第二章/ }).getAttribute("aria-current")).toBe("true");
+    const selected = screen.getByRole("button", { name: /第二章/ });
+    expect(selected.getAttribute("aria-current")).toBe("true");
+    expect(selected.getAttribute("aria-selected")).toBe("true");
   });
 });

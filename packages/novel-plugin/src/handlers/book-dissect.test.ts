@@ -24,7 +24,7 @@ async function createBook(chapters: Array<{ number: number; content: string }>) 
     title: "测试书",
     chapterWordCount: 3000,
     language: "zh",
-    enabledPresetIds: [],
+    enabledWritingSkillIds: [],
   }), "utf8");
   const index = [];
   for (const chapter of chapters) {

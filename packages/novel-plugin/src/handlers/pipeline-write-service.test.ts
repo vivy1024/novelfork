@@ -1,11 +1,24 @@
 import { readFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, beatTemplateToStyleSnippet, presetToStyleSnippet, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
-import type { BeatTemplate, Preset } from "../engine/presets/types.js";
+import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories, writingSkillToStyleSnippet } from "./pipeline-write-service.js";
+import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
+
+/**
+ * 被检查的源码文件路径。
+ *
+ * 这些用例读自己的实现源码来断言管线纪律（例如「不得产生候选稿资源」）。
+ * 不能直接把 import.meta.url 交给 readFile：vitest 下模块 URL 是 http:// 而非
+ * file://，readFile 会拒绝。先在 file: 时正常还原路径，否则回退到包内相对路径。
+ */
+const SERVICE_SOURCE_PATH = import.meta.url.startsWith("file:")
+  ? resolve(dirname(fileURLToPath(import.meta.url)), "pipeline-write-service.ts")
+  : resolve(process.cwd(), "src/handlers/pipeline-write-service.ts");
 
 const sceneSpec: SceneSpec = {
   chapter: 12,
@@ -50,7 +63,7 @@ const narrativeContext: NarrativeContextPackage = {
 
 describe("pipeline.write canonical result contract", () => {
   it("does not create candidate/draft writing resources in the production pipeline path", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     expect(source).not.toContain("status: \"candidate\"");
     expect(source).not.toContain("type: \"draft\"");
@@ -60,7 +73,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("settles Narrative Memory only after the formal chapter resource is saved", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     const saveIndex = source.indexOf("await resourceService.create(bookId");
     const settlementIndex = source.indexOf("settleConfirmedChapter");
@@ -71,7 +84,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("checks high-risk pending events before writer generation and follows saved blocking policy", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     const pendingCheckIndex = source.indexOf("listHighRiskPendingNarrativeEvents");
     const writerIndex = source.indexOf("const writer = new WriterAgent");
@@ -84,7 +97,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("runs write.preflight context gate before writer generation", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     const gateIndex = source.indexOf("handleWritePreflight");
     const writerIndex = source.indexOf("const writer = new WriterAgent");
     expect(gateIndex).toBeGreaterThan(-1);
@@ -94,7 +107,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("supports requireFactCheckPass hard reject path in source", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     expect(source).toContain("requireFactCheckPass");
     expect(source).toContain("fact-check-failed");
     expect(source).toContain("auditIssueCategories");
@@ -102,7 +115,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("runs a platform publish check before saving and only blocks on sensitive block hits", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     const publishIndex = source.indexOf("handlePublishCheck");
     const saveIndex = source.indexOf("await resourceService.create(bookId");
     expect(publishIndex).toBeGreaterThan(-1);
@@ -113,7 +126,7 @@ describe("pipeline.write canonical result contract", () => {
   });
 
   it("runs the fact-check specialist revise after the normal revise loop and before length recheck", async () => {
-    const source = await readFile(new URL("./pipeline-write-service.ts", import.meta.url), "utf-8");
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     const loopEnd = source.indexOf("auditResult = await runAudit(finalContent); // re-audit 修订后的版本");
     const factIndex = source.indexOf("factCheckAutoRevise) {");
     const lengthRecheck = source.indexOf("let finalLengthCount = countChapterLength");
@@ -227,33 +240,39 @@ describe("pipeline.write narrative context integration helpers", () => {
     });
   });
 
-  it("maps enabled presets and beat templates to style channel snippets only", () => {
-    const preset: Preset = {
+  it("maps active writing skills to style channel snippets only", () => {
+    const skill: ParsedWritingSkill = {
       id: "austere",
+      slug: "austere",
       name: "克制写实",
-      category: "tone",
-      description: "风格预设",
-      promptInjection: "少形容词，多动作和观察。",
+      description: "克制写实文风技能",
+      kind: "prose",
+      body: "少形容词，多动作和观察。",
+      source: "user",
+      mode: "manual",
       tags: ["restrained"],
     };
-    const beatTemplate: BeatTemplate = {
-      id: "ending-hook",
-      name: "章节尾钩子",
-      description: "章末卡点模板。",
-      beats: [{ index: 1, name: "悬念句", purpose: "留下具体未解问题。", wordRatio: 0.1, emotionalTone: "好奇", networkNovelTip: "问题必须具体。" }],
-    };
 
-    expect(presetToStyleSnippet(preset)).toEqual({
+    expect(writingSkillToStyleSnippet(skill)).toEqual({
       id: "austere",
       title: "克制写实",
       text: "少形容词，多动作和观察。",
-      tags: ["preset", "tone", "restrained"],
+      tags: ["writing-skill", "prose", "restrained"],
     });
-    expect(beatTemplateToStyleSnippet(beatTemplate)).toEqual(expect.objectContaining({
-      id: "ending-hook",
-      title: "章节尾钩子",
-      tags: ["beat-template", "beat"],
-    }));
-    expect(beatTemplateToStyleSnippet(beatTemplate)?.text).toContain("悬念句");
+  });
+
+  it("drops writing skills whose body is empty", () => {
+    const skill: ParsedWritingSkill = {
+      id: "blank",
+      slug: "blank",
+      name: "空 Skill",
+      description: "无正文",
+      kind: "workflow",
+      body: "   \n  ",
+      source: "user",
+      mode: "manual",
+    };
+
+    expect(writingSkillToStyleSnippet(skill)).toBeNull();
   });
 });

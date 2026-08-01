@@ -45,8 +45,9 @@ describe("ResourceViewer", () => {
   it("渲染章节正文，不提供假保存状态", () => {
     render(<ResourceViewer node={node({ kind: "chapter", title: "第一章", content: "开篇正文" })} />);
     expect(screen.getByRole("heading", { name: "第一章" })).toBeTruthy();
-    expect(screen.getByLabelText("章节正文")).toHaveProperty("readOnly", false);
-    expect(screen.getByDisplayValue("开篇正文")).toBeTruthy();
+    const editor = screen.getByLabelText("章节正文");
+    expect(editor.getAttribute("contenteditable")).toBe("true");
+    expect(editor.textContent).toContain("开篇正文");
     expect(screen.queryByText("已保存")).toBeNull();
   });
 
@@ -81,8 +82,9 @@ describe("ResourceViewer", () => {
       />,
     );
 
-    expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
-    expect(screen.getByText("只读资源")) .toBeTruthy();
+    expect(screen.getByText("经纬资料")).toBeTruthy();
+    expect(screen.queryByLabelText("文本文件正文")).toBeNull();
+    expect(screen.getByText("暂无经纬内容")).toBeTruthy();
   });
 
   it("渲染真实合同中的经纬与叙事线节点为语义只读卡片", () => {
@@ -98,9 +100,9 @@ describe("ResourceViewer", () => {
       />,
     );
 
-    expect(screen.getByText("经纬资料")).toBeTruthy();
-    expect(screen.getByLabelText("只读内容")).toHaveProperty("readOnly", true);
-    expect(screen.getByDisplayValue("主角，灵潮亲和。")).toBeTruthy();
+    expect(screen.getByText("经纬条目")).toBeTruthy();
+    expect(screen.getByText("主角，灵潮亲和。")).toBeTruthy();
+    expect(screen.queryByLabelText("只读内容")).toBeNull();
     cleanup();
 
     render(

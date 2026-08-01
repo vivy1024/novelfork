@@ -1,0 +1,133 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-26",
+  "note": "供 vivy1024/novelfork-templates 使用的修正版 index.json。所有 toneId / settingBaseId / logicRiskIds 均已对齐 NovelFork 本地注册表，且 id 不与内置 bundle 冲突。",
+  "templates": [
+    {
+      "id": "entertainment-industry-climb",
+      "name": "娱乐圈资源博弈",
+      "genre": "entertainment",
+      "description": "娱乐圈题材 + 黑色幽默文风 + 平台经济基底。围绕资源分配、舆论反噬和人设经营展开。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["娱乐圈", "资源", "舆论", "人设"],
+      "bundle": {
+        "promptInjection": "使用带讽刺距离的冷静语言，围绕资源分配、舆论反噬、人设经营与合约博弈展开。每次翻身都要写清楚谁让渡了资源、代价由谁承担；不要让主角靠「实力被看见」自动得到机会。舆论转向必须有可追溯的传播路径，不允许一夜之间全网倒戈。",
+        "toneId": "dark-humor-social",
+        "settingBaseId": "modern-platform-economy-satire",
+        "logicRiskIds": ["economy-resource", "character-motivation", "institution-response", "information-flow"],
+        "compatibleGenres": ["entertainment", "urban"],
+        "difficulty": "medium",
+        "prerequisites": ["作者需要了解基本的经纪合约结构、宣发链路和平台流量分配逻辑。"],
+        "suitableFor": ["选秀翻红", "资本入场", "剧组群像"],
+        "notSuitableFor": ["纯甜宠无行业细节", "架空无媒介环境"]
+      }
+    },
+    {
+      "id": "business-war-negotiation",
+      "name": "商战谈判攻防",
+      "genre": "business",
+      "description": "商战题材 + 冷峻质朴文风 + 平台经济基底。以谈判桌上的信息与筹码交换为主轴。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["商战", "谈判", "并购", "现金流"],
+      "bundle": {
+        "promptInjection": "使用冷峻克制的语言，把冲突落在谈判桌、股权结构和现金流上，而不是靠口头羞辱取胜。每一次反制都要写明筹码来源：信息差、资金、渠道还是监管。禁止出现「随手调动数亿资金」而不交代资金成本与审批路径的桥段；赢下一局必须付出可量化的代价。",
+        "toneId": "austere-pragmatic",
+        "settingBaseId": "modern-platform-economy-satire",
+        "logicRiskIds": ["economy-resource", "institution-response", "satisfaction-cost", "information-flow"],
+        "compatibleGenres": ["business", "urban"],
+        "difficulty": "hard",
+        "prerequisites": ["作者需要了解股权、融资轮次、并购与合规审查的基本常识。"],
+        "suitableFor": ["创业逆袭", "家族企业内斗", "跨国并购"],
+        "notSuitableFor": ["无经济细节的爽文打脸", "纯校园背景"]
+      }
+    },
+    {
+      "id": "medical-emergency-ward",
+      "name": "医疗急诊现场",
+      "genre": "medical",
+      "description": "医疗题材 + 冷峻质朴文风 + 现代都市日常基底。强调抢救流程、资源限制与决策代价。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["医疗", "急诊", "职业", "伦理"],
+      "bundle": {
+        "promptInjection": "使用冷峻克制的语言，按真实抢救流程推进：分诊、评估、处置、交代病情。技术手段必须停在当下医学能做到的边界内，不要用「祖传秘方一针见效」绕过病理。每一次救人都要写清楚代价：耗材、床位、医保额度、家属签字，以及救了这个人就没能救另一个人。",
+        "toneId": "austere-pragmatic",
+        "settingBaseId": "modern-urban-daily",
+        "logicRiskIds": ["technology-boundary", "institution-response", "character-motivation", "satisfaction-cost"],
+        "compatibleGenres": ["medical", "urban"],
+        "difficulty": "hard",
+        "prerequisites": ["作者需要了解基本的分诊分级、常见急症处置流程和知情同意制度。"],
+        "suitableFor": ["急诊群像", "医患关系", "基层卫生院"],
+        "notSuitableFor": ["系统开挂治百病", "无医学细节的言情"]
+      }
+    },
+    {
+      "id": "courtroom-evidence-duel",
+      "name": "律政证据攻防",
+      "genre": "legal",
+      "description": "律政题材 + 冷峻质朴文风 + 现代都市日常基底。胜负由证据链和程序决定。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["律政", "庭审", "证据", "程序"],
+      "bundle": {
+        "promptInjection": "使用冷峻克制的语言，让胜负取决于证据链是否闭合、程序是否合规，而不是庭上的一段慷慨陈词。每条关键证据都要交代来源、取得方式和可采性；非法取得的证据必须被排除，即使它指向真相。反转要来自新证据或新解释，不能来自对手突然失智。",
+        "toneId": "austere-pragmatic",
+        "settingBaseId": "modern-urban-daily",
+        "logicRiskIds": ["institution-response", "information-flow", "character-motivation"],
+        "compatibleGenres": ["legal", "suspense", "urban"],
+        "difficulty": "hard",
+        "prerequisites": ["作者需要了解基本的举证责任、证据规则和审级制度。"],
+        "suitableFor": ["刑辩", "商事诉讼", "法律援助"],
+        "notSuitableFor": ["法庭只作背景板的爱情故事", "无程序概念的复仇爽文"]
+      }
+    },
+    {
+      "id": "culinary-craft-inheritance",
+      "name": "美食手艺传承",
+      "genre": "culinary",
+      "description": "美食题材 + 沙雕轻快文风 + 现代都市日常基底。以手艺、食材成本和小店经营为骨架。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["美食", "手艺", "小店", "传承"],
+      "bundle": {
+        "promptInjection": "使用轻快带烟火气的语言，把「好吃」写成具体的工序、火候和食材来源，而不是靠食客的夸张反应堆砌。开店要算得清账：租金、损耗、客单价、翻台率。食材受产地和时令限制，反季或稀缺食材必须交代怎么弄到的、花了多少。",
+        "toneId": "comedic-light",
+        "settingBaseId": "modern-urban-daily",
+        "logicRiskIds": ["economy-resource", "geography-transport", "satisfaction-cost"],
+        "compatibleGenres": ["culinary", "slice-of-life", "urban"],
+        "difficulty": "easy",
+        "prerequisites": ["作者需要对目标菜系的基本工序和食材成本有常识性了解。"],
+        "suitableFor": ["夫妻小店", "老字号复兴", "美食探店"],
+        "notSuitableFor": ["料理即神迹的超能力设定", "完全不涉及经营的纯日常"]
+      }
+    },
+    {
+      "id": "folk-horror-hometown",
+      "name": "民俗恐怖回乡",
+      "genre": "horror",
+      "description": "民俗恐怖题材 + 悲苦孤独文风 + 灵异神秘基底。恐惧来自封闭社群的规矩，而非跳吓。",
+      "author": "novelfork-templates",
+      "version": "1.0.0",
+      "mode": "manual",
+      "tags": ["民俗", "恐怖", "封闭社群", "回乡"],
+      "bundle": {
+        "promptInjection": "使用压抑克制的语言，让恐惧来自规矩本身：什么时辰不能出门、什么话不能说、谁的名字不能提。异常必须遵守它自己的规则，一旦立下就不能为了制造惊吓而临时改写。封闭村落的信息传递靠人走人传，主角不可能凭手机一秒查清全部真相；求援路径要写清楚为什么走不通。",
+        "toneId": "tragic-solitude",
+        "settingBaseId": "supernatural-occult",
+        "logicRiskIds": ["information-flow", "geography-transport", "technology-boundary", "character-motivation"],
+        "compatibleGenres": ["horror", "suspense"],
+        "difficulty": "medium",
+        "prerequisites": ["作者需要设计一套自洽的民俗规矩，并在全篇保持不变。"],
+        "suitableFor": ["回乡奔丧", "田野调查", "祭典"],
+        "notSuitableFor": ["靠 jump scare 推进的短打", "驱魔即战斗的爽文"]
+      }
+    }
+  ]
+}

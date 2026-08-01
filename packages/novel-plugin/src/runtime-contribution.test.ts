@@ -131,6 +131,17 @@ describe("novel Runtime contribution", () => {
       "outline.volume",
       "arc.character",
       "publish.check",
+      "writing-skills.read",
+      "writing-skills.write",
+      "writing-skills.check_compliance",
+      "writing-skills.import_legacy",
+    ]));
+    expect(NOVEL_READY_RUNTIME_TOOL_NAMES).not.toEqual(expect.arrayContaining([
+      "presets.read",
+      "presets.write",
+      "presets.check_compliance",
+      "beat.read",
+      "beat.write",
     ]));
     const readyNames = [...NOVEL_READY_RUNTIME_TOOL_NAMES].sort();
     expect(NOVEL_RUNTIME_TOOL_CATALOG.filter((tool) => tool.runtimeStatus === "ready").map((tool) => tool.name).sort())
@@ -138,6 +149,35 @@ describe("novel Runtime contribution", () => {
     expect(NOVEL_RUNTIME_CONTRIBUTION.tools?.map((tool) => tool.definition.name).sort())
       .toEqual(readyNames);
     expect(NOVEL_RUNTIME_TOOL_CATALOG.filter((tool) => tool.runtimeStatus !== "ready")).toHaveLength(0);
+  });
+
+  it("publishes only the Writing Skills Runtime contract", () => {
+    const definitions = new Map((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((entry) => [entry.definition.name, entry.definition]));
+    const skillToolNames = [...definitions.keys()].filter((name) => name.startsWith("writing-skills.")).sort();
+
+    expect(skillToolNames).toEqual([
+      "writing-skills.check_compliance",
+      "writing-skills.import_legacy",
+      "writing-skills.read",
+      "writing-skills.write",
+    ]);
+    expect(definitions.has("presets.read")).toBe(false);
+    expect(definitions.has("presets.write")).toBe(false);
+    expect(definitions.has("presets.check_compliance")).toBe(false);
+    expect(definitions.has("beat.read")).toBe(false);
+    expect(definitions.has("beat.write")).toBe(false);
+
+    const readSchema = definitions.get("writing-skills.read")?.inputSchema as Record<string, unknown>;
+    const writeSchema = definitions.get("writing-skills.write")?.inputSchema as Record<string, unknown>;
+    const complianceSchema = definitions.get("writing-skills.check_compliance")?.inputSchema as Record<string, unknown>;
+    const importSchema = definitions.get("writing-skills.import_legacy")?.inputSchema as Record<string, unknown>;
+    expect((readSchema.properties as Record<string, unknown>).scope).toBeDefined();
+    expect((writeSchema.properties as Record<string, unknown>).enabledWritingSkillIds).toBeDefined();
+    expect(writeSchema.required).toEqual(["enabledWritingSkillIds"]);
+    expect((complianceSchema.properties as Record<string, unknown>).content).toBeDefined();
+    expect(complianceSchema.required).toEqual(["content"]);
+    expect(importSchema.properties).toEqual({});
+    expect(definitions.get("writing-skills.import_legacy")?.risk).toBe("confirmed-write");
   });
 
   it("contributes the authoritative NovelFork writing workflow prompt", () => {
@@ -228,31 +268,6 @@ describe("novel Runtime contribution", () => {
     }
   });
 
-  it("rejects direct chapter.write when an enabled preset reports a hard violation", async () => {
-    const trusted = await createBook("trusted", "原始正文");
-    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
-    runStorageMigrations(storage);
-    const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
-    try {
-      expect(await tool("presets.write").handler({
-        action: "create",
-        name: "禁用总结腔",
-        category: "tone",
-        promptInjection: "禁止：总而言之",
-      }, trustedContext)).toMatchObject({ ok: true });
-
-      const result = await tool("chapter.write").handler(
-        { chapterNumber: 1, content: `总而言之，${"正文".repeat(1500)}` },
-        trustedContext,
-      );
-
-      expect(result).toMatchObject({ ok: false, error: "preset-compliance-failed" });
-      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe("原始正文");
-    } finally {
-      closeStorageDatabase();
-    }
-  });
-
   it("rejects pipeline.write when final content remains outside the book hard range", async () => {
     const trusted = await createBook("trusted", "原始正文");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
@@ -269,41 +284,6 @@ describe("novel Runtime contribution", () => {
       );
       console.log("FAIL_1:", JSON.stringify(result));
       expect(result).toMatchObject({ ok: false, error: "length-out-of-range" });
-      expect(await tool("resource.manage").handler(
-        { action: "list", filter: { type: "chapter", status: "accepted" } },
-        trustedContext,
-      )).toMatchObject({ ok: true, data: { resources: [] } });
-      expect(storage.sqlite.prepare("SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ?").get("trusted"))
-        .toEqual({ count: 0 });
-    } finally {
-      closeStorageDatabase();
-    }
-  });
-
-  it("rejects pipeline.write when an enabled preset has a hard compliance violation", async () => {
-    const trusted = await createBook("trusted", "原始正文");
-    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
-    runStorageMigrations(storage);
-    const content = `总而言之，${"正文".repeat(1498)}`;
-    const trustedContext: ToolExecutionContext = {
-      ...context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      model: { provider: "test-provider", id: "test-current-model" },
-      generateText: pipelineGenerator(content),
-    };
-    try {
-      expect(await tool("presets.write").handler({
-        action: "create",
-        name: "禁用总结腔",
-        category: "tone",
-        promptInjection: "禁止：总而言之",
-      }, trustedContext)).toMatchObject({ ok: true });
-
-      const result = await tool("pipeline.write").handler(
-        { sceneSpec: pipelineSceneSpec, autoRevise: false, skipContextGate: true },
-        trustedContext,
-      );
-      console.log("FAIL_2:", JSON.stringify(result));
-      expect(result).toMatchObject({ ok: false, error: "preset-compliance-failed" });
       expect(await tool("resource.manage").handler(
         { action: "list", filter: { type: "chapter", status: "accepted" } },
         trustedContext,
@@ -339,10 +319,53 @@ describe("novel Runtime contribution", () => {
       { summary: "推进主角进入山门" },
       trustedContext,
     );
-    expect(proposal).toMatchObject({
-      ok: true,
-      data: { bookId: "trusted", summary: "推进主角进入山门" },
-    });
+    expect(proposal).toMatchObject({ ok: true, data: { summary: "推进主角进入山门" } });
+    // preview 必须能原样回传给 narrative.approve_change，所以不能带宿主字段。
+    expect(JSON.stringify(proposal)).not.toContain("bookId");
+  });
+
+  it("only writes the narrative line after an explicit approval decision", async () => {
+    const trusted = await createBook("trusted", "trusted content");
+    const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
+    const storePath = join(trusted.bookRoot, "story", "narrative_line.json");
+
+    const proposal = await tool("narrative.propose_change").handler(
+      {
+        summary: "新增伏笔节点",
+        nodes: [{ id: "node-hook", type: "foreshadow", title: "青铜铃异响" }],
+      },
+      trustedContext,
+    ) as { ok: boolean; data?: Record<string, unknown> };
+    expect(proposal.ok).toBe(true);
+    // propose 只是草案：此时不得落盘。
+    await expect(readFile(storePath, "utf8")).rejects.toThrow();
+
+    // 缺少 decision 时必须拒绝，而不是默认写入。
+    expect(await tool("narrative.approve_change").handler(
+      { preview: proposal.data },
+      trustedContext,
+    )).toMatchObject({ ok: false, error: "invalid-input" });
+    await expect(readFile(storePath, "utf8")).rejects.toThrow();
+
+    const rejected = await tool("narrative.approve_change").handler(
+      { preview: proposal.data, decision: "rejected", reason: "与主线冲突" },
+      trustedContext,
+    );
+    expect(rejected).toMatchObject({ ok: true, data: { applied: false, reason: "rejected" } });
+    const afterReject = JSON.parse(await readFile(storePath, "utf8")) as {
+      nodes: Array<{ id: string }>;
+      appliedMutations: Array<{ decision?: string }>;
+    };
+    expect(afterReject.nodes.map((node) => node.id)).not.toContain("node-hook");
+    expect(afterReject.appliedMutations[0]?.decision).toBe("rejected");
+
+    const approved = await tool("narrative.approve_change").handler(
+      { preview: proposal.data, decision: "approved" },
+      trustedContext,
+    );
+    expect(approved).toMatchObject({ ok: true, data: { applied: true } });
+    const afterApprove = JSON.parse(await readFile(storePath, "utf8")) as { nodes: Array<{ id: string }> };
+    expect(afterApprove.nodes.map((node) => node.id)).toContain("node-hook");
   });
 
   it("creates Narrative Memory events only under the trusted book binding", async () => {
@@ -355,55 +378,6 @@ describe("novel Runtime contribution", () => {
         context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
       );
       expect(pgi).toMatchObject({ ok: true });
-
-      const availablePresets = await tool("presets.read").handler(
-        { scope: "available" },
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(availablePresets).toMatchObject({ ok: true, data: { bookId: "trusted" } });
-
-      const createdPreset = await tool("presets.write").handler(
-        {
-          action: "create",
-          name: "本书节奏约束",
-          category: "tone",
-          promptInjection: "禁止：总而言之",
-        },
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(createdPreset).toMatchObject({ ok: true, data: { bookId: "trusted", autoEnabled: true } });
-
-      const enabledPresets = await tool("presets.read").handler(
-        { scope: "enabled" },
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(enabledPresets).toMatchObject({
-        ok: true,
-        data: { bookId: "trusted", rules: [{ name: "本书节奏约束" }] },
-      });
-      const other = await createBook("other", "other content");
-      const otherPresets = await tool("presets.read").handler(
-        { scope: "available" },
-        context(other.projectRoot, { bookId: "other", root: other.bookRoot }),
-      );
-      expect(JSON.stringify(otherPresets)).not.toContain("本书节奏约束");
-
-      const selectedBeat = await tool("beat.write").handler(
-        { action: "select", templateId: "opening-hooks" },
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(selectedBeat).toMatchObject({ ok: true, data: { bookId: "trusted", templateId: "opening-hooks" } });
-      const activeBeat = await tool("beat.read").handler(
-        {},
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(activeBeat).toMatchObject({ ok: true, data: { bookId: "trusted", template: { id: "opening-hooks" } } });
-
-      const compliance = await tool("presets.check_compliance").handler(
-        { content: "总而言之，主角进入了山门。" },
-        context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
-      );
-      expect(compliance).toMatchObject({ ok: true, data: { bookId: "trusted", checkedPresets: 1 } });
 
       const resources = await tool("resource.manage").handler(
         { action: "list", filter: { type: "chapter", status: "accepted" } },
@@ -512,7 +486,7 @@ describe("novel Runtime contribution", () => {
       expect(await tool("style.import").handler(
         { referenceText: "山风穿过松林，少年拾级而上。".repeat(180), sourceName: "测试样本" },
         trustedContext,
-      )).toMatchObject({ ok: true, data: { bookId: "trusted", kind: "preset-suggestion" } });
+      )).toMatchObject({ ok: true, data: { bookId: "trusted", kind: "style-suggestion" } });
 
       expect(await tool("pipeline.revise").handler(
         { chapterNumber: 1, mode: "spot-fix" },

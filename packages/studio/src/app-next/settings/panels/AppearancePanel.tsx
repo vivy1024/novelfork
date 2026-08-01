@@ -135,7 +135,7 @@ export function AppearancePanel() {
         </Alert>
       ) : null}
 
-      <SettingsGroup title="主题" description="主题设置仅影响当前设备上的显示效果。">
+      <SettingsGroup title="主题" description="主题设置仅影响当前设备上的显示效果；浏览器本地设置不会写入 Runtime。">
         <div className="grid gap-2 sm:grid-cols-3">
           {themes.map(({ value, label, icon: Icon }) => (
             <Button

@@ -9,9 +9,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelManager, type PanelId } from "./panel-manager";
 
-/** 经纬与叙事记忆合并为单一 `jingwei` 工作区（设定 + 进度两个分区）。 */
-export type ViewId = "write" | "explorer" | "jingwei" | "tools" | "search";
-const VIEW_IDS: ViewId[] = ["write", "explorer", "jingwei", "tools", "search"];
+/** 经纬（作者维护的设定）与叙事记忆（正文产生的事实流）各自独立入口。 */
+export type ViewId =
+  | "write"
+  | "explorer"
+  | "jingwei"
+  | "tools"
+  | "search"
+  | "narrative-memory";
+const VIEW_IDS: ViewId[] = [
+  "write",
+  "explorer",
+  "jingwei",
+  "tools",
+  "search",
+  "narrative-memory",
+];
 
 export interface UsePanelManagerReturn {
   activeView: ViewId;

@@ -121,5 +121,15 @@ export interface NarrativeLineMutationPreview {
   readonly summary: string;
   readonly nodes?: readonly NarrativeNode[];
   readonly edges?: readonly NarrativeEdge[];
+  /**
+   * 待删除的作者节点 ID。
+   *
+   * 删除是与新增并列的显式意图，不能靠「提交一个空节点」表达 —— 那样只会
+   * 静默写入一个占位节点。派生节点（章节/经纬）不在此列：它们由权威源计算，
+   * 删除请求会在 preview 阶段被标为不可执行。
+   */
+  readonly removeNodeIds?: readonly string[];
+  /** 待删除的作者边 ID。 */
+  readonly removeEdgeIds?: readonly string[];
   readonly warnings?: readonly NarrativeWarning[];
 }

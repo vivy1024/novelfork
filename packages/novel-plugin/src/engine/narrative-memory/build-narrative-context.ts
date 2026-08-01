@@ -40,8 +40,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   bookRulesText?: string;
   complianceRules?: readonly string[];
   styleGuideText?: string;
-  presets?: readonly StyleSnippet[];
-  beats?: readonly StyleSnippet[];
+  /** 当前生效的 Writing Skills 片段；旧 presets/beats 入参已收口到这里。 */
+  writingSkills?: readonly StyleSnippet[];
   channelTimeoutMs?: number;
   retrievalLogId?: string;
   budgetPolicy?: NarrativeBudgetPolicy;
@@ -275,8 +275,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
       ? runChannel(createStyleChannel(), {
         bookId: parsed.bookId,
         styleGuideText: input.styleGuideText,
-        presets: input.presets,
-        beats: input.beats,
+        writingSkills: input.writingSkills,
         complianceRules: input.complianceRules,
       }, timeoutMs)
       : disabledChannelResult("style"),

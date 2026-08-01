@@ -10,7 +10,7 @@ import { Allotment } from "allotment";
 import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
-  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine,
+  Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine, Brain,
 } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
@@ -22,10 +22,10 @@ import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unifie
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import { EditorTabs } from "./EditorTabs";
-import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
+import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel } from "../panels/BookSettingsPanel";
-import { LoreWorkspacePanel } from "../LoreWorkspacePanel";
+import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { WriteViewPanel } from "../WriteViewPanel";
 import { buildWriteRequestMessage } from "../write-request";
 import { useIdeKeybindings } from "./use-ide-keybindings";
@@ -93,7 +93,13 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView = "write" | "explorer" | "jingwei" | "tools" | "search";
+export type SidebarView =
+  | "write"
+  | "explorer"
+  | "jingwei"
+  | "tools"
+  | "search"
+  | "narrative-memory";
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -131,9 +137,12 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title
   { id: "write", icon: PenLine, label: "写作", title: "写作" },
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
-  // 经纬工作区同时承载「设定」与「进度（叙事记忆）」，不再拆成两个入口
+  // 经纬 = 作者维护的设定；叙事记忆 = 正文产生的事实流。
+  // 两者性质不同，各自独立入口 —— 曾经合成一个工作区，作者在「设定」里
+  // 看到「记忆」会多出一层不知所以的概念，已按作者反馈还原。
   { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
   { id: "tools", icon: Wrench, label: "工具", title: "工具" },
+  { id: "narrative-memory", icon: Brain, label: "叙事记忆", title: "叙事记忆" },
 ];
 
 // ── 过滤逻辑 ──
@@ -165,6 +174,9 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
     case "write":
     case "search":
+      return [];
+    case "narrative-memory":
+      // 叙事记忆是独立面板，正文事实流由面板自己拉取，不走资源树过滤。
       return [];
   }
 }
@@ -208,7 +220,10 @@ export function IdeWorkbench({
   const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer");
 
   // --- Tabs ---
-  const ideTabs = useIdeTabs(bookId, activeView);
+  // 叙事记忆有独立侧栏入口，但不是编辑器 Tab 归属值 —— 它的 Tab 仍归经纬工作区，
+  // 与 normalizeTabView 的落盘迁移契约一致（见 use-ide-tabs-migration.test.ts）。
+  const tabView = normalizeTabView(activeView);
+  const ideTabs = useIdeTabs(bookId, tabView);
   const ideTabsRef = useRef(ideTabs);
   ideTabsRef.current = ideTabs;
 
@@ -898,15 +913,34 @@ export function IdeWorkbench({
                 getContainer("explorer")!
               )}
               {panelsReady && getContainer("jingwei") && createPortal(
-                <LoreWorkspacePanel
-                  bookId={bookId}
-                  settingsNodes={jingweiSections}
-                  progressNodes={narrativeMemorySections}
+                <WorkbenchResourceTree
+                  nodes={jingweiSections}
                   selectedNodeId={activeNode?.id ?? null}
                   onOpen={handleOpen}
                   onAction={handleResourceAction}
                 />,
                 getContainer("jingwei")!
+              )}
+              {/*
+                叙事记忆挂完整面板，不是只读事实树。
+                只读树只能看事实，作者拿不到章后结算真正需要的动作：待审事件的
+                批准/拒绝、结算历史、叙事线审批台账、召回诊断、图谱入口。
+                这些能力都在 NarrativeMemoryPanel 里，此处是它唯一的挂载点。
+                事实树保留为面板内的「状态树」分区（memoryNodes）。
+              */}
+              {panelsReady && getContainer("narrative-memory") && createPortal(
+                bookId
+                  ? <NarrativeMemoryPanel
+                      bookId={bookId}
+                      memoryNodes={narrativeMemorySections}
+                      selectedNodeId={activeNode?.id ?? null}
+                      onOpen={handleOpen}
+                      onAction={handleResourceAction}
+                    />
+                  : <div className="flex h-full items-center justify-center p-4 text-center">
+                      <span className="text-xs text-muted-foreground">先打开一本书，再回到叙事记忆。</span>
+                    </div>,
+                getContainer("narrative-memory")!
               )}
               {panelsReady && getContainer("tools") && createPortal(
                 <WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
@@ -930,7 +964,7 @@ export function IdeWorkbench({
                     <EditorTabs
                       tabs={ideTabs.tabs}
                       activeTabId={ideTabs.activeTabId}
-                      activeView={activeView}
+                      activeView={tabView}
                       onActivate={ideTabs.activateTab}
                       onClose={handleCloseTab}
                       onCloseOthers={ideTabs.closeOthers}
@@ -1295,6 +1329,7 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   jingwei: "经纬",
   tools: "工具",
   search: "搜索",
+  "narrative-memory": "叙事记忆",
 };
 
 function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {

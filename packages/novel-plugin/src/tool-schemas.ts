@@ -173,9 +173,37 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       summary: stringSchema("叙事线变更摘要。"),
       nodes: arraySchema("拟新增或修改的叙事节点。"),
       edges: arraySchema("拟新增或修改的叙事边。"),
+      removeNodeIds: arraySchema("拟删除的作者叙事节点 ID；章节/经纬等派生节点无法删除。", { type: "string" }),
+      removeEdgeIds: arraySchema("拟删除的作者叙事边 ID。", { type: "string" }),
       reason: stringSchema("提出该变更的原因。"),
     },
     required: ["bookId", "summary"],
+    additionalProperties: false,
+  },
+  "narrative.approve_change": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("当前书籍 ID。"),
+      // 必须逐字段声明：宿主校验器会给 type: "object" 补 additionalProperties: false，
+      // 声明成自由形态对象反而会让真实 preview 的所有字段都被拒。
+      preview: {
+        type: "object",
+        description: "narrative.propose_change 返回的预览对象，原样回传。",
+        properties: {
+          id: stringSchema("预览 ID。"),
+          summary: stringSchema("变更摘要。"),
+          nodes: arraySchema("预览中的叙事节点。"),
+          edges: arraySchema("预览中的叙事边。"),
+          removeNodeIds: arraySchema("预览中待删除的节点 ID。", { type: "string" }),
+          removeEdgeIds: arraySchema("预览中待删除的边 ID。", { type: "string" }),
+          warnings: arraySchema("预览告警。"),
+        },
+        required: ["summary"],
+      },
+      decision: enumSchema(["approved", "rejected"], "审批结论：approved | rejected。"),
+      reason: stringSchema("审批理由；驳回时建议填写，会写入审批台账。"),
+    },
+    required: ["bookId", "preview", "decision"],
     additionalProperties: false,
   },
   "chapter.read": {
@@ -259,9 +287,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       referenceText: stringSchema("参考文本（至少 2000 字）。"),
       sourceName: stringSchema("参考来源名称（可选，如「耳根《仙逆》」）。"),
-      applyPreset: booleanSchema("是否把文风指南落成自定义 preset（默认 false，只出建议）。"),
-      enableOnBook: booleanSchema("applyPreset=true 时是否立刻启用到本书（默认 true）。"),
-      presetName: stringSchema("自定义 preset 名称（可选）。"),
+      saveAsWritingSkill: booleanSchema("是否把文风指南保存为作者级 Writing Skill（默认 false，只出建议）。"),
+      enableOnBook: booleanSchema("saveAsWritingSkill=true 时是否立刻在本书启用（默认 true）。"),
+      skillName: stringSchema("Writing Skill 名称（可选）。"),
     },
     required: ["bookId", "referenceText"],
     additionalProperties: false,
@@ -426,70 +454,36 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "action"],
     additionalProperties: false,
   },
-  "presets.check_compliance": {
+  "writing-skills.read": {
     type: "object",
     properties: {
-      bookId: stringSchema("书籍 ID。"),
-      content: stringSchema("要检查的章节内容文本。"),
-      chapterNumber: numberSchema("章节序号（可选，用于上下文）。"),
-    },
-    required: ["bookId", "content"],
-    additionalProperties: false,
-  },
-  "presets.read": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。scope=enabled 时必填。"),
-      scope: enumSchema(["enabled", "available"], "enabled=当前书籍已启用规则（含 promptInjection 全文）；available=全部可用预设（含 enabled 标记）。默认 enabled。"),
-      category: stringSchema("scope=available 时可按分类过滤（可选）。"),
+      scope: enumSchema(["enabled", "available"], "enabled=当前书籍生效的 Writing Skills（含正文）；available=全部可用 Writing Skills（含 enabled 标记）。默认 available。"),
     },
     required: [],
     additionalProperties: false,
   },
-  "presets.write": {
+  "writing-skills.write": {
     type: "object",
     properties: {
-      bookId: stringSchema("书籍 ID。"),
-      action: enumSchema(["enable", "disable", "set", "create"], "enable（启用）/disable（禁用）/set（覆盖启用列表）/create（创建自定义预设）。"),
-      enabledPresetIds: arraySchema("enable/disable/set 时操作的预设 ID 列表。", { type: "string" }),
-      name: stringSchema("action=create 时必填：预设名。"),
-      category: enumSchema(["genre", "tone", "setting-base", "logic-risk", "bundle", "anti-ai", "literary"], "action=create 时必填：预设分类。"),
-      promptInjection: stringSchema("action=create 时必填：注入到写作提示词的规则全文。"),
-      description: stringSchema("action=create 时可选：描述。"),
+      enabledWritingSkillIds: arraySchema("要启用的 Writing Skill ID 列表；mode=always 的 Skill 无需传入。", { type: "string" }),
+      discardUnmappedLegacyIds: booleanSchema("存在无法映射的旧 Preset/Beat 选择时，是否明确丢弃这些旧选择。默认 false。"),
     },
-    required: ["action"],
+    required: ["enabledWritingSkillIds"],
     additionalProperties: false,
   },
-  "beat.read": {
+  "writing-skills.check_compliance": {
     type: "object",
     properties: {
-      bookId: stringSchema("书籍 ID。"),
+      content: stringSchema("要检查的章节内容文本。"),
+      chapterNumber: numberSchema("章节序号（可选，用于上下文）。"),
     },
-    required: ["bookId"],
+    required: ["content"],
     additionalProperties: false,
   },
-  "beat.write": {
+  "writing-skills.import_legacy": {
     type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-      action: enumSchema(["select", "create"], "select（切换到已有模板）/create（创建自定义节拍模板）。"),
-      templateId: stringSchema("action=select 时必填：模板 ID（如 opening-hooks、three-act、save-the-cat、heros-journey、chapter-ending-hooks）。"),
-      name: stringSchema("action=create 时必填：节拍模板名。"),
-      description: stringSchema("action=create 时必填：描述。"),
-      beats: arraySchema("action=create 时必填：节拍序列。", {
-        type: "object",
-        properties: {
-          name: stringSchema("节拍名。"),
-          emotionalTone: stringSchema("情绪基调。"),
-          wordRatio: numberSchema("建议字数占比。"),
-          purpose: stringSchema("节拍目的。"),
-          networkNovelTip: stringSchema("网文写作提示。"),
-        },
-        required: ["name", "emotionalTone"],
-        additionalProperties: false,
-      }),
-    },
-    required: ["action"],
+    properties: {},
+    required: [],
     additionalProperties: false,
   },
   "pipeline.write": {

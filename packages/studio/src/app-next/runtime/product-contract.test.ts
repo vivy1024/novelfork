@@ -155,7 +155,8 @@ describe("Runtime product contract", () => {
     await client.retryBookProvision("book 1");
     await client.claimLegacyBook("legacy/book");
     await client.repairBookBinding("book 1");
-    await client.rebindBookWorkspace("book 1", "D:\\\\Books\\\\book-1");
+    const rebindResult = await client.rebindBookWorkspace("book 1", "D:\\\\Books\\\\book-1");
+    expect(rebindResult).toEqual({ bookId: "book 1", runtimeProjectId: "project-1" });
     await client.deleteBook("book 1");
     await client.listNarrators("book 1");
     await client.getWorkspace("book 1");

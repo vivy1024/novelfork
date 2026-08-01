@@ -81,10 +81,13 @@ describe("NovelFork product route inventory", () => {
 		expect(paths).toContain("POST /guided-setup");
 		expect(paths).toEqual(expect.arrayContaining([
 			"PUT /",
-			"GET /presets",
-			"PUT /presets",
-			"GET /beat-templates",
-			"PUT /beat-template",
+			"GET /writing-skills",
+			"PUT /writing-skills",
 		]));
+		// 旧 Preset/Beat 端点已随 Writing Skills 迁移下线，不能再出现。
+		expect(paths).not.toContain("GET /presets");
+		expect(paths).not.toContain("PUT /presets");
+		expect(paths).not.toContain("GET /beat-templates");
+		expect(paths).not.toContain("PUT /beat-template");
 	});
 });

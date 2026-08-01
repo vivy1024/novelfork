@@ -114,7 +114,11 @@ describe("resource tree contract adapter", () => {
     });
     expect(flat.get("story-file:pending_hooks.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "unsupported" }, delete: { status: "current" } } });
     expect(flat.get("jingwei-panel-entry")).toMatchObject({ kind: "jingwei", title: "经纬资料", capabilities: { read: { status: "current" } }, metadata: { action: "open-jingwei-panel" } });
-    expect(flat.get("narrative-line:book/1")).toMatchObject({ kind: "narrative-line", capabilities: { read: { status: "current" }, edit: { status: "unsupported" } } });
+    // 叙事线的增删已由 propose → apply 审批闭环支撑，不再是 unsupported。
+    expect(flat.get("narrative-line:book/1")).toMatchObject({
+      kind: "narrative-line",
+      capabilities: { read: { status: "current" }, edit: { status: "current" }, apply: { status: "current" } },
+    });
     expect(result.errors).toEqual([]);
   });
 

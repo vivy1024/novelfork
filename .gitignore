@@ -94,3 +94,14 @@ session-error-root.png
 /narrafork-private-main/
 /tmp-*.png
 /tmp-gemini-stub.ts
+
+# Writing Skills 的外部参考仓库副本（约 79MB）。它只是
+# scripts/import-market-skills.ts 的本地输入；导入结果已物化为
+# packages/novel-plugin/skills/ 下的 SKILL.md 与 _source.json 溯源信息。
+/reference-skills/
+
+# 测试运行报告产物。
+/.nf-f-report.json
+
+# H-4 界面验收截图（本地证据，不入库）。
+/.narrafork/h4-*.png

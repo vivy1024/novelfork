@@ -118,6 +118,12 @@ const allowedPatchTargets = new Set([
 	"server/routes/learning.ts",
 	"server/db/run-migrations.ts",
 	"shared/learning-content.ts",
+	// 通用宿主生成能力：在 ToolExecutionContext 上声明并实现 model/generateText，
+	// 让工具能在交互式 agent loop 之外做非交互生成。不含任何产品标识。
+	"server/lib/agent/types.ts",
+	"server/lib/agent/tool-executor.ts",
+	// 导出可复用的项目拆除逻辑，避免宿主侧重复实现删除流程。
+	"server/routes/projects.ts",
 ]);
 
 const forbiddenOverlayContent = [

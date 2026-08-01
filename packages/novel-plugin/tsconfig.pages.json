@@ -1,0 +1,29 @@
+{
+	// src/pages/** 的类型检查。
+	//
+	// 主 tsconfig 排除了 src/pages/**（那里用 Studio 的 `@/` 别名，本包解析不了），
+	// 而 Studio 的 tsconfig 只 include 自己的 src —— 于是这些前端面板落进了
+	// 两边都不检查的真空区。`sources is not defined` 这类错误就是这样漏到运行时的。
+	//
+	// 这份配置把 `@/` 指向 studio/src，专门补检 pages。
+	//
+	// 用法：npx tsc --noEmit -p tsconfig.pages.json
+	"extends": "./tsconfig.json",
+	"compilerOptions": {
+		"jsx": "react-jsx",
+		"noEmit": true,
+		// 本包基座 tsconfig 仍带 baseUrl，装的 TypeScript 6 会为此报 TS5101
+		// 并直接中止检查 —— 不静音就永远看不到 pages 的真实类型错误。
+		// 这里不改基座配置（影响主构建），只在本检查内静音该弃用告警。
+		"ignoreDeprecations": "6.0",
+		"paths": {
+			"@/*": ["../studio/src/*"],
+			"@vivy1024/novelfork-core": ["../core/src/index.ts"],
+			"@vivy1024/novelfork-core/*": ["../core/src/*"]
+		}
+	},
+	// pages 里有 CSS 副作用 import（allotment / @xyflow）。声明已由 studio 维护，
+	// 这里复用同一份，不另写第二份 *.css 声明。
+	"include": ["src/pages", "../studio/src/style-imports.d.ts"],
+	"exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"]
+}

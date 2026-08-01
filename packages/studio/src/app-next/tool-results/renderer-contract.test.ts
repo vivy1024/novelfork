@@ -24,7 +24,6 @@ const TOOL_REGISTRY_PATH = resolve(
  * 想收窄体验就为它写专属卡并从这里删掉；不要反过来往这里加以让测试变绿。
  */
 const GENERIC_BY_DESIGN = new Set<string>([
-  "beat.current",
   "chapter.audit",
   "chapter.content",
   "chapter.discard_range",
@@ -45,13 +44,15 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "pgi.ask",
   "pipeline.import_chapters",
   "pipeline.revise",
-  "presets.compliance",
-  "presets.rules",
   "resource.manage",
   "scene.spec",
   "style.import",
   "tool.rewrite-apply",
   "tool.rewrite-segment",
+  // Writing Skills 迁移后的四个工具暫走 generic；H-3 提供专属卡后从这里删除。
+  "writing-skills.compliance",
+  "writing-skills.import",
+  "writing-skills.list",
 ]);
 
 /** 从 tool-registry 源码里抽出所有声明的 renderer 值。 */
