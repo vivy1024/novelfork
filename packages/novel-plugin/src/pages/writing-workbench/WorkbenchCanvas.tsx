@@ -16,7 +16,6 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
 import { NewBookGuide } from "./NewBookGuide";
-import { PresetSuggestionCard } from "./PresetSuggestionCard";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityPanel } from "./panels/QualityPanel";
@@ -33,7 +32,6 @@ const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => (
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
-const BeatProgressBar = lazy(() => import("./BeatProgressBar").then(m => ({ default: m.BeatProgressBar })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
@@ -184,9 +182,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
   const [sceneSpecOpen, setSceneSpecOpen] = useState(false);
   const [sceneSpec, setSceneSpec] = useState<SceneSpec | null>(null);
   const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
-  // TipTap 初始化时会规范化 markdown（如标准化换行/标题），导致首次 onContentChange
-  // 的内容 ≠ node.content 但语义相同。用 ref 记录规范化后的基准值，避免误标 dirty。
-  const normalizedBaseRef = useRef<string | null>(null);
+  // TipTap 可能规范化 markdown，但 dirty 基准必须始终从当前资源正文开始，
+  // 不能把第一次真实编辑误当成规范化基准值。
+  const normalizedBaseRef = useRef(node?.content ?? "");
 
   useEffect(() => {
     setContent(node?.content ?? "");
@@ -194,7 +192,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     setSaveError(null);
     setHistoryEntries(null);
     setHistoryError(null);
-    normalizedBaseRef.current = null; // reset on node change
+    normalizedBaseRef.current = node?.content ?? ""; // reset on node change
   }, [node]);
 
   useEffect(() => {
@@ -329,8 +327,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
   // 工具栏按钮（可 portal 到外部容器，也可本地渲染）
   const toolbarButtons = (
     <div className="flex items-center gap-1.5">
-      {saveError && <span className="text-xs text-destructive truncate max-w-48">{saveError}</span>}
-      <Button size="sm" disabled={readonly || needsHydration || !dirty || saving} onClick={handleSave}>
+      {saveError && <span role="alert" className="text-xs text-destructive truncate max-w-48">保存失败：{saveError}</span>}
+      <Button aria-label="保存" title="保存" size="sm" disabled={readonly || needsHydration || !dirty || saving} onClick={handleSave}>
         {saving ? <Loader2 className="size-3.5 animate-spin" /> : <Save className="size-3.5" />}
       </Button>
       {isChapterWorkflowNode(node) && (
@@ -367,15 +365,28 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     <div className="flex h-full flex-col min-h-0">
       {/* Header（IDE 模式下 toolbar 通过 portal 渲染到 EditorTabs 右侧） */}
       {!toolbarSlotRef && (
-        <header className="shrink-0 flex items-center justify-between border-b border-border px-4 py-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <h2 className="text-sm font-semibold truncate">{node.title}</h2>
-            <Badge variant="secondary" className="text-[10px] shrink-0">{resourceTypeLabel(node.kind)}</Badge>
-            {readonly && <Badge variant="outline" className="text-[10px] shrink-0">只读</Badge>}
-            {dirty && <Badge className="text-[10px] shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
-            {!dirty && !needsHydration && !readonly && <span className="text-[10px] text-muted-foreground">已保存</span>}
+        <header data-testid="workbench-resource-header" className="shrink-0 border-b border-border px-4 py-2">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <h2 className="text-sm font-semibold truncate">{node.title}</h2>
+              <Badge variant="secondary" className="text-[10px] shrink-0">{resourceTypeLabel(node.kind)}</Badge>
+              {readonly && <Badge variant="outline" className="text-[10px] shrink-0">只读</Badge>}
+              {dirty && <Badge className="text-[10px] shrink-0 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">未保存</Badge>}
+              {!dirty && !needsHydration && !readonly && <span className="text-[10px] text-muted-foreground">已保存</span>}
+            </div>
+            {toolbarButtons}
           </div>
-          {toolbarButtons}
+          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+            <span>资源类型：{node.kind === "story" ? "Story" : resourceTypeLabel(node.kind)}</span>
+            {node.path ? <span>真实路径：{node.path}</span> : null}
+            <span>读写能力：{readonly ? "只读" : "可编辑"}</span>
+            <span>保存状态：{needsHydration ? "待加载" : dirty ? "未保存" : "已保存"}</span>
+          </div>
+          {readonly && (
+            <div className="mt-1 text-[10px] text-muted-foreground">
+              只读原因：当前资源由合同标记为只读，保存入口已禁用。
+            </div>
+          )}
         </header>
       )}
       {/* IDE 模式：portal 渲染操作按钮到 EditorTabs 右侧 */}
@@ -383,9 +394,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
 
       {/* Alerts */}
       {needsHydration && (
-        <div className="shrink-0 flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
+        <div role="alert" className="shrink-0 flex items-center gap-2 bg-yellow-50 dark:bg-yellow-900/10 px-4 py-2 text-xs text-yellow-700 dark:text-yellow-300">
           <Loader2 className="size-3.5 animate-spin" />
-          正在加载内容...
+          章节详情未加载，正在加载内容...
         </div>
       )}
       {hydrateError && (
@@ -450,14 +461,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
         ) : (
           <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {
             setContent(nextContent);
-            // TipTap 首次 onContentChange 是规范化产物（非用户编辑），记为基准值。
-            // 后续编辑与基准值比较，避免规范化差异误标 dirty。
-            if (normalizedBaseRef.current === null) {
-              normalizedBaseRef.current = nextContent;
-              setDirty(false);
-            } else {
-              setDirty(nextContent !== normalizedBaseRef.current);
-            }
+            setDirty(nextContent !== normalizedBaseRef.current);
             setSaveError(null);
           }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
             const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
@@ -521,51 +525,25 @@ function containsChapterNode(nodes: readonly WorkbenchResourceNode[] | undefined
 
 function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void; onJumpToChapter?: (chapterNumber: number) => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
-  const presetSuggestedKey = `novelfork:preset-suggested:${bookId}`;
-  // Skip guide if book already has chapters (old book without localStorage mark)
   const hasChapters = containsChapterNode(nodes);
   const [guideCompleted, setGuideCompleted] = useState(() => {
     if (hasChapters) return true;
     try { return localStorage.getItem(storageKey) === "true"; } catch { return false; }
   });
-  // nodes 在工作台首次挂载后异步加载；已有章节时必须立即退出新书引导。
+
   useEffect(() => {
     if (hasChapters) setGuideCompleted(true);
   }, [hasChapters]);
-  // 建书引导刚完成时弹出预设推荐（仅一次，用 localStorage 标记避免重复）
-  const [showPresetSuggestion, setShowPresetSuggestion] = useState(false);
 
   const handleGuideComplete = useCallback(() => {
     try { localStorage.setItem(storageKey, "true"); } catch { /* ignore */ }
     setGuideCompleted(true);
-    // 引导完成后，若未提示过预设推荐，则展示
-    try {
-      if (localStorage.getItem(presetSuggestedKey) !== "true") {
-        setShowPresetSuggestion(true);
-      }
-    } catch {
-      setShowPresetSuggestion(true);
-    }
     onGuideComplete?.();
-  }, [storageKey, presetSuggestedKey, onGuideComplete]);
+  }, [storageKey, onGuideComplete]);
 
-  const handlePresetSuggestionClose = useCallback(() => {
-    try { localStorage.setItem(presetSuggestedKey, "true"); } catch { /* ignore */ }
-    setShowPresetSuggestion(false);
-  }, [presetSuggestedKey]);
-
-  if (!guideCompleted) {
-    return <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
-  }
-
-  return (
-    <>
-      <DefaultCockpitView bookId={bookId} onJumpToChapter={onJumpToChapter} />
-      {showPresetSuggestion && (
-        <PresetSuggestionCard bookId={bookId} onClose={handlePresetSuggestionClose} />
-      )}
-    </>
-  );
+  return guideCompleted
+    ? <DefaultCockpitView bookId={bookId} onJumpToChapter={onJumpToChapter} />
+    : <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -642,7 +620,6 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
             active={expandedPanel === "words"}
             onClick={() => togglePanel("words")}
           />
-          {/* 节拍进度条（Task C: BeatProgressBar 接入驾驶舱） */}
           <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
               <span>卷进度</span>
@@ -650,12 +627,6 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
             </div>
             <div className="h-1.5 rounded-full bg-muted overflow-hidden">
               <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(stats.volumeProgress.percent, 100)}%` }} />
-            </div>
-            {/* BeatProgressBar：默认节拍模板进度 */}
-            <div className="mt-2">
-              <Suspense fallback={null}>
-                <BeatProgressBar templateId="default" />
-              </Suspense>
             </div>
           </div>
         </div>

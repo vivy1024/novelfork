@@ -6,7 +6,7 @@
  * - agents/ — planner, composer, writer, auditor, reviser, etc.
  * - jingwei/ — worldbuilding, questionnaires, PGI, causal chains
  * - filter/ — AI taste detection, Zhuque integration
- * - presets/ — genre presets, beat templates, compliance checking
+ * - writing-skills/ — file-based writing skill loading and validation
  * - compliance/ — sensitive word scanning, publish readiness
  * - tools/ — chapter hooks, POV, progress, rhythm, arcs, tone, import
  */
@@ -33,7 +33,7 @@ export type { RadarResult, RadarRecommendation } from "./agents/radar.js";
 export { FanqieRadarSource, QidianRadarSource, TextRadarSource } from "./agents/radar-source.js";
 export type { RadarSource, PlatformRankings, RankingEntry } from "./agents/radar-source.js";
 export { readGenreProfile, readBookRules, listAvailableGenres, getBuiltinGenresDir } from "./agents/rules-reader.js";
-export { buildWriterSystemPrompt, buildPresetInjections } from "./agents/writer-prompts.js";
+export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";
 export { analyzeAITells } from "./agents/ai-tells.js";
 export type { AITellResult, AITellIssue } from "./agents/ai-tells.js";
 export { analyzeSensitiveWords } from "./agents/sensitive-words.js";
@@ -87,17 +87,41 @@ export type { VariantInput, VariantResult } from "./agents/variant-generator.js"
 export { buildBranchPrompt, parseBranchResult } from "./agents/outline-brancher.js";
 export type { OutlineNode as OutlineBranchNode, HookState, ChapterSummary as BranchChapterSummary, OutlineBranch, OutlineBranchChapter } from "./agents/outline-brancher.js";
 
+// ─── Writing Skills (file-based, no registry) ────────────────────────────────
+export {
+  BUILTIN_WRITING_SKILLS_DIR,
+  authorWritingSkillsDir,
+  forkWritingSkillForEditing,
+  getWritingSkillRawContentSync,
+  loadWritingSkills,
+  loadWritingSkillsSync,
+  parseWritingSkill,
+  removeAuthorWritingSkill,
+  splitFrontmatter,
+  writeAuthorWritingSkill,
+} from "./writing-skills/loader.js";
+export {
+  WRITING_SKILL_COMPLIANCE_CHECK_TYPES,
+  WRITING_SKILL_KINDS,
+} from "./writing-skills/types.js";
+export type {
+  ParsedWritingSkill,
+  WritingSkillComplianceCheck,
+  WritingSkillComplianceCheckType,
+  WritingSkillForbiddenTermsCheck,
+  WritingSkillKind,
+  WritingSkillMode,
+  WritingSkillPatternCheck,
+  WritingSkillProvenance,
+  WritingSkillRequiredTermsCheck,
+  WritingSkillSource,
+} from "./writing-skills/types.js";
+
 // ─── Jingwei (worldbuilding) ─────────────────────────────────────────────────
 export * from "./jingwei/index.js";
 
 // ─── Filter (AI taste detection) ─────────────────────────────────────────────
 export * from "./filter/index.js";
-
-// ─── Presets ─────────────────────────────────────────────────────────────────
-export * from "./presets/index.js";
-export { registerBuiltinPresets } from "./presets/builtin.js";
-export { checkPresetCompliance } from "./presets/compliance-checker.js";
-export type { ComplianceViolation, ComplianceCheckResult } from "./presets/compliance-checker.js";
 
 // ─── Compliance (platform publishing) ────────────────────────────────────────
 export * from "./compliance/index.js";

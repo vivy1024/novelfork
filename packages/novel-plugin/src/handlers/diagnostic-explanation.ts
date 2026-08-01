@@ -52,9 +52,9 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
   },
   "style-disabled": {
     kind: "advisory",
-    whatHappened: "本书没有启用任何文风预设或节拍模板，style 通道为空。",
+    whatHappened: "本书没有启用任何 Writing Skills，style 通道为空。",
     whyItMatters: "缺少文风约束时，语言容易向模型默认腔调漂移，出现 AI 味。",
-    suggestedAction: "用 style.import(applyPreset=true) 从参考文导入文风，或在预设面板启用 1–2 个 presets。",
+    suggestedAction: "用 style.import 从参考文导入文风，或在 Writing Skills 面板启用 1–2 个技法。",
   },
   "hooks-overdue": {
     kind: "advisory",

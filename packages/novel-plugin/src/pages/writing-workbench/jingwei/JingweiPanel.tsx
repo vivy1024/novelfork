@@ -10,8 +10,6 @@ import { JingweiEntryForm } from "./JingweiEntryForm";
 
 import { useJingweiEntries } from "./hooks/useJingweiEntries";
 import type { CategoryVisibility } from "./category-schemas";
-import { PresetsPanel } from "../PresetsPanel";
-
 
 interface JingweiPanelProps {
   bookId: string;
@@ -216,11 +214,6 @@ export function JingweiPanel({ bookId }: JingweiPanelProps) {
               </button>
             ))}
           </div>
-        ) : selectedCategory === "rules" ? (
-          <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <PresetsPanel bookId={bookId} />
-          </div>
-
         ) : (
           <div className="flex-1 flex min-h-0">
             {hasHierarchy ? (

@@ -31,9 +31,13 @@ let adapter: NovelRuntimeAdapter;
 
 const READY_TOOL_NAMES = [
   "cockpit.snapshot",
+  "write.preflight",
+  "memory.settle_range",
+  "chapter.discard_range",
   "pgi.ask",
   "narrative.read_line",
   "narrative.propose_change",
+  "narrative.approve_change",
   "chapter.read",
   "chapter.write",
   "chapter.list",
@@ -43,14 +47,17 @@ const READY_TOOL_NAMES = [
   "style.import",
   "pipeline.revise",
   "pipeline.import_chapters",
+  "book.dissect",
   "outline.suggest_next",
+  "outline.volume",
+  "arc.character",
+  "publish.check",
   "character.check_consistency",
   "hooks.manage",
-  "presets.read",
-  "presets.write",
-  "beat.read",
-  "beat.write",
-  "presets.check_compliance",
+  "writing-skills.read",
+  "writing-skills.write",
+  "writing-skills.check_compliance",
+  "writing-skills.import_legacy",
   "pipeline.write",
   "lore.read",
   "lore.write",
@@ -180,7 +187,7 @@ describe("NovelRuntimeAdapter", () => {
 		expect(
 			definitions.find((tool) => tool.name === "memory.events")?.metadata?.runtimeRisk,
 		).toBe("draft-write");
-		expect(definitions.find((tool) => tool.name === "presets.write")?.metadata?.runtimeRisk).toBe(
+		expect(definitions.find((tool) => tool.name === "writing-skills.write")?.metadata?.runtimeRisk).toBe(
 			"confirmed-write",
 		);
 		for (const name of ["rewrite.apply", "pipeline.revise", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
@@ -189,16 +196,14 @@ describe("NovelRuntimeAdapter", () => {
 		const chapterImport = definitions.find((tool) => tool.name === "pipeline.import_chapters");
 		expect(chapterImport?.parameters.safeParse({ content: "正文".repeat(500) }).success).toBe(true);
 		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
-		const beatWrite = definitions.find((tool) => tool.name === "beat.write");
-		expect(beatWrite?.parameters.safeParse({
-			action: "create",
-			name: "自定义节拍",
-			beats: [{ name: "开场", emotionalTone: "紧张", wordRatio: 1 }],
+		// Writing Skills 只接受书籍级启用选择；模型不能塞入任意规则正文或未知字段。
+		const writingSkillsWrite = definitions.find((tool) => tool.name === "writing-skills.write");
+		expect(writingSkillsWrite?.parameters.safeParse({
+			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
 		}).success).toBe(true);
-		expect(beatWrite?.parameters.safeParse({
-			action: "create",
-			name: "自定义节拍",
-			beats: [{ name: "开场", emotionalTone: "紧张", unexpected: true }],
+		expect(writingSkillsWrite?.parameters.safeParse({
+			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
+			promptInjection: "禁止：总而言之",
 		}).success).toBe(false);
 		expect(chapterRead?.parameters.safeParse({ chapterNumber: 1, extra: true }).success).toBe(false);
 		expect(
@@ -248,7 +253,7 @@ describe("NovelRuntimeAdapter", () => {
 			ok: true,
 			data: { sceneSpec: { chapter: 2, title: "山门试炼" } },
 		});
-		expect(requests).toEqual([{ system: expect.stringContaining("章节规划专家"), model: "current-test-model" }]);
+		expect(requests).toEqual([{ system: expect.stringContaining("Scene Spec"), model: "current-test-model" }]);
 		expect(streamed).toEqual([]);
 	});
 
@@ -298,7 +303,24 @@ describe("NovelRuntimeAdapter", () => {
 		expect(proposalResult.isError).toBe(false);
 		expect(JSON.parse(proposalResult.output)).toMatchObject({
 			ok: true,
-			data: { bookId: "book-a", summary: "推进主角进入山门" },
+			data: { summary: "推进主角进入山门" },
+		});
+		// preview 必须能原样回传给 narrative.approve_change，所以不含宿主 bookId。
+		expect(proposalResult.output).not.toContain("bookId");
+
+		const approvalResult = await adapter.execute(
+			"narrative.approve_change",
+			{
+				preview: (JSON.parse(proposalResult.output) as { data: unknown }).data,
+				decision: "rejected",
+				reason: "仅验证审批闭环",
+			},
+			"narrator-a",
+		);
+		expect(approvalResult.isError).toBe(false);
+		expect(JSON.parse(approvalResult.output)).toMatchObject({
+			ok: true,
+			data: { applied: false, reason: "rejected" },
 		});
 	});
 
@@ -361,39 +383,36 @@ describe("NovelRuntimeAdapter", () => {
 			expect(pgiResult.isError).toBe(false);
 			expect(JSON.parse(pgiResult.output)).toMatchObject({ ok: true });
 
-			const presetCreateResult = await adapter.execute(
-				"presets.write",
-				{
-					action: "create",
-					name: "本书节奏约束",
-					category: "tone",
-					promptInjection: "禁止：总而言之",
-				},
+			// Writing Skills 的内容权威源是 SKILL.md 文件；这里只验证可信绑定下的
+			// 书籍级启用读写闭环，不再有第二套 Preset/Beat 存储。
+			const skillsAvailable = await adapter.execute("writing-skills.read", {}, "narrator-a");
+			expect(skillsAvailable.isError).toBe(false);
+			const availablePayload = JSON.parse(skillsAvailable.output) as {
+				data?: { skills?: Array<{ id: string; mode?: string }> };
+			};
+			const selectableSkillId = availablePayload.data?.skills?.find((skill) => skill.mode !== "always")?.id;
+			expect(selectableSkillId).toBeTruthy();
+
+			const skillsWriteResult = await adapter.execute(
+				"writing-skills.write",
+				{ enabledWritingSkillIds: [selectableSkillId] },
 				"narrator-a",
 			);
-			expect(presetCreateResult.isError).toBe(false);
-			expect(JSON.parse(presetCreateResult.output)).toMatchObject({
+			expect(skillsWriteResult.isError).toBe(false);
+			expect(JSON.parse(skillsWriteResult.output)).toMatchObject({
 				ok: true,
-				data: { bookId: "book-a", autoEnabled: true },
-			});
-			const presetReadResult = await adapter.execute("presets.read", { scope: "enabled" }, "narrator-a");
-			expect(presetReadResult.isError).toBe(false);
-			expect(JSON.parse(presetReadResult.output)).toMatchObject({
-				ok: true,
-				data: { rules: [{ name: "本书节奏约束" }] },
+				data: { bookId: "book-a", enabledWritingSkillIds: [selectableSkillId] },
 			});
 
-			const beatSelectResult = await adapter.execute(
-				"beat.write",
-				{ action: "select", templateId: "opening-hooks" },
+			const skillsEnabledResult = await adapter.execute(
+				"writing-skills.read",
+				{ scope: "enabled" },
 				"narrator-a",
 			);
-			expect(beatSelectResult.isError).toBe(false);
-			const beatReadResult = await adapter.execute("beat.read", {}, "narrator-a");
-			expect(beatReadResult.isError).toBe(false);
-			expect(JSON.parse(beatReadResult.output)).toMatchObject({
+			expect(skillsEnabledResult.isError).toBe(false);
+			expect(JSON.parse(skillsEnabledResult.output)).toMatchObject({
 				ok: true,
-				data: { template: { id: "opening-hooks" } },
+				data: { enabledWritingSkillIds: [selectableSkillId] },
 			});
 
 			const resourcesResult = await adapter.execute(

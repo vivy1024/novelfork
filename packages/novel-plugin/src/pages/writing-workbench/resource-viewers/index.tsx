@@ -9,6 +9,7 @@ import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkben
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
 import { getImageRawUrl, isImageResourceNode } from "./image-resource";
+import { submitNarrativeLineChange } from "../narrative-line-proposals";
 
 export type ResourceViewerKind =
   | "chapter"
@@ -58,6 +59,12 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
           <h2 className="text-sm font-medium truncate">{node.title}</h2>
           <CapabilityNotice node={node} />
         </div>
+        {node.path ? (
+          <div className="mt-1 text-[10px] text-muted-foreground">
+            <span className="mr-1">来源路径：</span>
+            <span>{node.path}</span>
+          </div>
+        ) : null}
       </header>
       <div className="flex-1 min-h-0 overflow-y-auto">
         {children}
@@ -124,6 +131,7 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         readonly={readonly}
         onContentChange={options.onContentChange}
         placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
+        ariaLabel={editableLabels[node.kind] ?? "资源正文"}
         bookId={options.bookId}
       />
     </ViewerShell>
@@ -353,34 +361,19 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
     setSubmitting(true);
     setStatusMsg(null);
     try {
-      const proposeRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/propose`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: `添加节点：${addTitle}`,
-          nodes: [{ id: `node-${Date.now()}`, type: addType, title: addTitle, summary: addSummary || undefined }],
-          edges: [],
-          reason: "用户手动添加",
-        }),
+      const outcome = await submitNarrativeLineChange(bookId, {
+        summary: `添加节点：${addTitle}`,
+        nodes: [{ id: `node-${Date.now()}`, type: addType, title: addTitle, summary: addSummary || undefined }],
+        reason: "用户手动添加",
       });
-      if (!proposeRes.ok) { setStatusMsg("提交失败"); return; }
-      const { preview } = await proposeRes.json() as { preview: { id: string; summary: string; nodes: unknown[]; edges: unknown[]; warnings: unknown[] } };
-
-      const applyRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/apply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preview, decision: "approved" }),
-      });
-      if (applyRes.ok) {
-        setStatusMsg("节点已添加");
+      setStatusMsg(outcome.applied ? `节点已添加${outcome.notice}` : outcome.message);
+      if (outcome.applied) {
         setAddTitle("");
         setAddSummary("");
         setShowAddForm(false);
-      } else {
-        setStatusMsg("应用失败");
       }
-    } catch {
-      setStatusMsg("网络错误");
+    } catch (error) {
+      setStatusMsg(error instanceof Error ? error.message : "网络错误");
     } finally {
       setSubmitting(false);
     }
@@ -391,31 +384,15 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
     setSubmitting(true);
     setStatusMsg(null);
     try {
-      const proposeRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/propose`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          summary: `删除节点：${nodeTitle}`,
-          nodes: [{ id: nodeId, _delete: true }],
-          edges: [],
-          reason: "用户手动删除",
-        }),
+      // 删除是独立意图：走 removeNodeIds，而不是提交一个 `_delete` 占位节点。
+      const outcome = await submitNarrativeLineChange(bookId, {
+        summary: `删除节点：${nodeTitle}`,
+        removeNodeIds: [nodeId],
+        reason: "用户手动删除",
       });
-      if (!proposeRes.ok) { setStatusMsg("删除提交失败"); return; }
-      const { preview } = await proposeRes.json() as { preview: { id: string; summary: string; nodes: unknown[]; edges: unknown[]; warnings: unknown[] } };
-
-      const applyRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-line/apply`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ preview, decision: "approved" }),
-      });
-      if (applyRes.ok) {
-        setStatusMsg(`已删除「${nodeTitle}」`);
-      } else {
-        setStatusMsg("删除应用失败");
-      }
-    } catch {
-      setStatusMsg("网络错误");
+      setStatusMsg(outcome.applied ? `已删除「${nodeTitle}」${outcome.notice}` : outcome.message);
+    } catch (error) {
+      setStatusMsg(error instanceof Error ? error.message : "网络错误");
     } finally {
       setSubmitting(false);
     }
@@ -754,10 +731,15 @@ function renderImageFile(node: WorkbenchResourceNode, options: ResourceViewerRen
 
 function renderGeneric(node: WorkbenchResourceNode) {
   return (
-    <ViewerShell node={node} label="资源">
-      <div className="flex flex-col items-center justify-center py-8 text-center">
-        <p className="text-sm text-muted-foreground">此资源类型暂不支持直接编辑</p>
-        <p className="text-xs text-muted-foreground/60 mt-1">类型：{node.kind}</p>
+    <ViewerShell node={node} label="通用资源">
+      <div className="flex flex-col gap-3 p-4">
+        <div className="text-center">
+          <p className="text-sm text-muted-foreground">此资源类型暂不支持直接编辑</p>
+          <p className="text-xs text-muted-foreground/60 mt-1">类型：{node.kind}</p>
+        </div>
+        <pre data-testid="raw-resource-node" className="max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
+          {JSON.stringify(node, null, 2)}
+        </pre>
       </div>
     </ViewerShell>
   );

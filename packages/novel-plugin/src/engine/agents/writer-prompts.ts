@@ -2,7 +2,6 @@ import type { BookConfig, FanficMode } from "@vivy1024/novelfork-core";
 import type { GenreProfile } from "@vivy1024/novelfork-core";
 import type { BookRules } from "@vivy1024/novelfork-core";
 import type { LengthSpec } from "@vivy1024/novelfork-core";
-import type { Preset } from "../presets/types.js";
 import { buildFanficCanonSection, buildCharacterVoiceProfiles, buildFanficModeInstructions } from "./fanfic-prompt-sections.js";
 import { buildEnglishCoreRules, buildEnglishAntiAIRules, buildEnglishCharacterMethod, buildEnglishPreWriteChecklist, buildEnglishGenreIntro } from "./en-prompt-sections.js";
 import { buildLengthSpec } from "@vivy1024/novelfork-core";
@@ -31,7 +30,6 @@ export function buildWriterSystemPrompt(
   languageOverride?: "zh" | "en",
   inputProfile: "legacy" | "governed" = "legacy",
   lengthSpec?: LengthSpec,
-  enabledPresets: ReadonlyArray<Preset> = [],
 ): string {
   const isEnglish = (languageOverride ?? genreProfile.language) === "en";
   const governed = inputProfile === "governed";
@@ -86,37 +84,6 @@ export function buildWriterSystemPrompt(
       ];
 
   return sections.filter(Boolean).join("\n\n");
-}
-
-export function buildPresetInjections(enabledPresets: ReadonlyArray<Preset>): string {
-  if (enabledPresets.length === 0) return "";
-
-  const categoryOrder: ReadonlyArray<Preset["category"]> = ["genre", "tone", "setting-base", "logic-risk", "anti-ai", "literary", "beat", "bundle"];
-  const labels: Record<Preset["category"], string> = {
-    genre: "流派规则",
-    tone: "文风规则",
-    "setting-base": "时代/社会基底",
-    "logic-risk": "逻辑风险约束",
-    "anti-ai": "AI味过滤",
-    literary: "文学技法",
-    beat: "叙事节拍",
-    bundle: "推荐组合",
-  };
-
-  const sections = categoryOrder
-    .map((category) => {
-      const presets = enabledPresets.filter((preset) => preset.category === category && preset.promptInjection.trim().length > 0);
-      if (presets.length === 0) return "";
-
-      const body = presets
-        .map((preset) => `### ${preset.name}\n${preset.promptInjection}`)
-        .join("\n\n");
-
-      return `## ${labels[category]}\n\n${body}`;
-    })
-    .filter(Boolean);
-
-  return sections.length > 0 ? sections.join("\n\n") : "";
 }
 
 // ---------------------------------------------------------------------------

@@ -24,12 +24,13 @@ export { createComplianceRouter } from "./compliance.js";
 export { createWritingToolsRouter } from "./writing-tools.js";
 export { createContextManagerRouter } from "./context-manager.js";
 export { createQualityTrendRouter } from "./quality-trend.js";
-export { createPresetHitsRouter } from "./preset-hits.js";
+export { createWritingSkillsRouter, type CreateWritingSkillsRouterOptions } from "./writing-skills.js";
 export { createChapterLinksRouter } from "./chapter-links.js";
 export { createWritingResourceRouter } from "./writing-resource.js";
 export { createWriteReadinessRouter, type CreateWriteReadinessRouterOptions } from "./write-readiness.js";
 export { createOverviewRouter } from "./overview.js";
 export { createNarrativeMemoryRouter } from "./narrative-memory.js";
+export { createNarrativeLineRouter, type CreateNarrativeLineRouterOptions } from "./narrative-line.js";
 export type {
   AiObservationScope,
   AiObservationSuccess,

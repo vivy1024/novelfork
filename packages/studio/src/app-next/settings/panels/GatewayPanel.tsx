@@ -206,7 +206,7 @@ export function GatewayPanel() {
               </div>
             </div>
           ) : (
-            <p className="text-sm text-muted-foreground">暂时无法获取渠道状态。</p>
+            <p className="text-sm text-muted-foreground">Runtime 未返回 Gateway 状态。</p>
           )}
         </CardContent>
       </Card>

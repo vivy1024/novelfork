@@ -29,7 +29,7 @@ export function AboutPanel() {
         <RefreshCw className="mb-2 size-4 text-muted-foreground" />
         <AlertTitle>更新信息</AlertTitle>
         <AlertDescription>
-          此页面仅展示当前版本信息，不会伪造更新检查；请通过项目发布渠道获取新版本。
+          更新状态由 Runtime 管理；此页面仅展示当前版本信息，不会在浏览器端发起更新检查。
         </AlertDescription>
       </Alert>
 

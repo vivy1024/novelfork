@@ -86,7 +86,7 @@ describe("tool payload building", () => {
       plainText: "字".repeat(5000),
       options: { ...DEFAULT_IMPORT_OPTIONS, runStyleImport: true, sourceName: "仙逆" },
     }));
-    expect(enabled).toMatchObject({ applyPreset: true, enableOnBook: true, sourceName: "仙逆" });
+    expect(enabled).toMatchObject({ saveAsWritingSkill: true, enableOnBook: true, sourceName: "仙逆" });
     const tooShort = buildStyleToolInput(stateWith({
       plainText: "字".repeat(500),
       options: { ...DEFAULT_IMPORT_OPTIONS, runStyleImport: true },

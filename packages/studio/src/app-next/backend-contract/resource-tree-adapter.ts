@@ -337,9 +337,11 @@ function toNarrativeLineNode(bookId: string, snapshot: NarrativeLineSnapshot): C
     title: "叙事线快照",
     capabilities: {
       read: CURRENT_READ("narrative-line.read"),
-      edit: UNSUPPORTED("narrative-line.edit"),
-      delete: UNSUPPORTED("narrative-line.delete"),
-      apply: UNSUPPORTED("narrative-line.apply"),
+      // 作者节点的增删经 propose → apply 审批闭环落盘；派生节点仍由权威源管理，
+      // 删除请求会在 preview 阶段被告警。
+      edit: CURRENT_EDIT("narrative-line.edit"),
+      delete: CURRENT_DELETE("narrative-line.delete"),
+      apply: CURRENT_APPLY("narrative-line.apply"),
     },
     metadata: { snapshot },
   };

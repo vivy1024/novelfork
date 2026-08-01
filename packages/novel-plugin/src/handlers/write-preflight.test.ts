@@ -75,7 +75,7 @@ function appliedEvent(partial: Partial<NarrativeEvent> & Pick<NarrativeEvent, "i
 function cockpitState(input: {
   formalChapterCount?: number;
   focus?: string | null;
-  enabledPresetIds?: string[];
+  enabledWritingSkillIds?: string[];
 }): CockpitState {
   const formalChapterCount = input.formalChapterCount ?? 0;
   return {
@@ -87,7 +87,7 @@ function cockpitState(input: {
       status: "writing",
       chapterWordCount: 3000,
       language: "zh",
-      enabledPresetIds: input.enabledPresetIds ?? [],
+      enabledWritingSkillIds: input.enabledWritingSkillIds ?? [],
     }) as any,
     loadChapterIndex: async () => Array.from({ length: formalChapterCount }, (_, i) => ({
       number: i + 1,
@@ -221,7 +221,7 @@ describe("write.preflight", () => {
           status: "writing",
           chapterWordCount: 9000,
           language: "zh",
-          enabledPresetIds: [],
+          enabledWritingSkillIds: [],
         }) as never,
       },
     });

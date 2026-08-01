@@ -487,18 +487,16 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   let styleHealth: MemoryChannelHealth = "empty";
   try {
     const book = await cockpitState.loadBookConfig(bookId);
-    const enabled = Array.isArray((book as { enabledPresetIds?: unknown }).enabledPresetIds)
-      ? (book as { enabledPresetIds: unknown[] }).enabledPresetIds.length
+    const enabled = Array.isArray((book as { enabledWritingSkillIds?: unknown }).enabledWritingSkillIds)
+      ? (book as { enabledWritingSkillIds: unknown[] }).enabledWritingSkillIds.length
       : 0;
-    const beat = typeof (book as { beatTemplateId?: unknown }).beatTemplateId === "string"
-      && Boolean((book as { beatTemplateId?: string }).beatTemplateId?.trim());
-    styleHealth = enabled > 0 || beat ? "ok" : "disabled";
+    styleHealth = enabled > 0 ? "ok" : "disabled";
     if (styleHealth === "disabled") {
       pushWarning(
         warnings,
         warningItems,
         "style-disabled",
-        "未启用文风预设/节拍模板，style 通道将为空；可 style.import(applyPreset=true) 或启用 1–2 个 presets。",
+        "未启用任何 Writing Skills，style 通道将为空；可 style.import 导入文风，或启用 1–2 个 Writing Skills。",
       );
     }
   } catch {

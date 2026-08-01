@@ -138,6 +138,8 @@ interface ChapterEditorProps {
   readonly?: boolean;
   onContentChange?: (content: string) => void;
   placeholder?: string;
+  /** 编辑器的 accessible name */
+  ariaLabel?: string;
   /** Minimap 功能开关（默认开启） */
   showMinimap?: boolean;
   /** 书籍 ID，用于 AI 浮动工具栏调用 inline-write API */
@@ -149,12 +151,12 @@ export function ChapterEditor({
   readonly,
   onContentChange,
   placeholder,
+  ariaLabel = "章节正文",
   showMinimap = true,
   bookId,
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
-  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const isExternalUpdate = useRef(false);
 
   // Task B: Minimap 需要的 ref
@@ -177,19 +179,20 @@ export function ChapterEditor({
     ],
     content: content || "",
     editable: !readonly,
+    editorProps: {
+      attributes: {
+        "aria-label": ariaLabel,
+      },
+    },
     onUpdate: ({ editor: ed }) => {
       if (isExternalUpdate.current) return;
 
-      // Update word count using professional mix counter
+      // Update word count and surface content changes immediately so the
+      // containing canvas can mark the resource dirty without waiting for an
+      // autosave debounce.
       const text = ed.getText();
       setWordCount(countWords(text));
-
-      // Debounced save
-      clearTimeout(saveTimer.current);
-      saveTimer.current = setTimeout(() => {
-        const md = ed.storage.markdown.getMarkdown() as string;
-        onContentChange?.(md);
-      }, 1500);
+      onContentChange?.(ed.storage.markdown.getMarkdown() as string);
     },
   });
 
@@ -215,13 +218,6 @@ export function ChapterEditor({
       setWordCount(countWords(editor.getText()));
     }
   }, [editor, content]);
-
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      clearTimeout(saveTimer.current);
-    };
-  }, []);
 
   // Initial word count
   useEffect(() => {

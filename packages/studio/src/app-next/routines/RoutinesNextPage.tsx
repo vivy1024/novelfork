@@ -6,6 +6,7 @@ import {
 	Command,
 	FileText,
 	Pencil,
+	PenLine,
 	Plus,
 	RefreshCw,
 	Settings2,
@@ -16,7 +17,7 @@ import {
 	Workflow,
 	Wrench,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -77,6 +78,8 @@ import {
 	type SkillInput,
 	type SkillSummary,
 } from "../runtime-admin";
+import { getPluginUISections } from "../plugin-ui/register-plugins";
+import { getPluginSection } from "../plugin-ui/section-registry";
 import { CommandsSection } from "./CommandsSection";
 import { MCPServerPanel } from "./MCPServerPanel";
 import { RulesSection } from "./RulesSection";
@@ -104,7 +107,9 @@ type SectionId =
 	| "subagents"
 	| "mcp"
 	| "rules"
-	| "hooks";
+	| "hooks"
+	// 插件贡献的 section（如小说插件的「写作配置」）用 componentKey 作 id。
+	| (string & {});
 
 const BUILTIN_ROUTINE_TYPES = ["command", "skill"] as const;
 const OPTIONAL_TOOL_TYPES = ["tool"] as const;
@@ -126,6 +131,16 @@ const SECTIONS: ReadonlyArray<{
 	{ id: "hooks", label: "Hooks", icon: Settings2 },
 ];
 
+/**
+ * 插件贡献的 section（`mountPoint: "routines"`）。
+ *
+ * 小说插件的「写作配置」就走这条路 —— 它在 manifest 里声明了 uiSections，
+ * 但套路页此前只渲染上面那份硬编码列表，导致声明了却看不到。
+ */
+function usePluginRoutineSections() {
+	return useMemo(() => getPluginUISections("routines"), []);
+}
+
 export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 	// The current registry contains optional tools only. Start on the section that
 	// can render available routines while retaining the built-in tab for future
@@ -133,6 +148,7 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 	const [activeSection, setActiveSection] = useState<SectionId>("optionalTools");
 	const [canManageGlobalRoutines, setCanManageGlobalRoutines] = useState(false);
 	const [globalRoutineRoleResolved, setGlobalRoutineRoleResolved] = useState(false);
+	const pluginSections = usePluginRoutineSections();
 
 	useEffect(() => {
 		let active = true;
@@ -187,10 +203,53 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 							</Button>
 						);
 					})}
+					{pluginSections.map((section) => {
+						const selected = section.componentKey === activeSection;
+						return (
+							<Button
+								key={section.componentKey}
+								type="button"
+								role="tab"
+								aria-selected={selected}
+								variant={selected ? "secondary" : "ghost"}
+								size="sm"
+								onClick={() => setActiveSection(section.componentKey)}
+							>
+								<PenLine data-icon="inline-start" />
+								{section.label}
+							</Button>
+						);
+					})}
 				</div>
 			</header>
 
 			<div className="min-h-0 flex-1 overflow-y-auto p-4" role="tabpanel">
+				{pluginSections.map((section) => {
+					if (section.componentKey !== activeSection) return null;
+					const Component = getPluginSection(section.componentKey);
+					if (!Component) {
+						return (
+							<p key={section.componentKey} className="text-sm text-muted-foreground">
+								插件区块 {section.label} 未注册渲染组件。
+							</p>
+						);
+					}
+					if (section.requiresBook && !bookId) {
+						return (
+							<p key={section.componentKey} className="text-sm text-muted-foreground">
+								请先在左侧选择一部作品，再打开「{section.label}」。
+							</p>
+						);
+					}
+					return (
+						<Suspense
+							key={section.componentKey}
+							fallback={<p className="text-sm text-muted-foreground">加载中…</p>}
+						>
+							<Component bookId={bookId} />
+						</Suspense>
+					);
+				})}
 				{activeSection === "builtIn" && (
 					<RoutineCatalogSection
 						bookId={bookId}
@@ -819,7 +878,10 @@ function SkillsSection({
 
 	const title = scope === "global" ? "全局技能" : "作品技能";
 	const skillSourceLabel = (location?: string): string => {
-		if (!location) return scope === "global" ? "全局" : "作品";
+		// 无路径或占位 location（如 mock 的 "book"）时，显示作用域本身：全局 / 作品
+		if (!location || location === "book" || location === "global") {
+			return skillScopeLabel(scope);
+		}
 		if (location.includes("/.narrafork/")) return ".narrafork";
 		if (location.includes("/.claude/")) return ".claude";
 		if (location.includes("/.agents/")) return ".agents";

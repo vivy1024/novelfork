@@ -12,14 +12,23 @@ export default {
       "react/jsx-runtime": resolve(__dirname, "../studio/node_modules/react/jsx-runtime.js"),
       "react": resolve(__dirname, "../studio/node_modules/react"),
       "@testing-library/react": resolve(__dirname, "../studio/node_modules/@testing-library/react/dist/index.js"),
+      // 上面的 react 别名只改写裸 `react` 说明符。@tiptap/react 是 CJS，
+      // 它在自己的 node_modules 里 require("react")，pnpm 给 novel-plugin 链的那份
+      // @tiptap/react 又恰好挂在 react@19.2.7 上，于是 ChapterEditor 一渲染就出现
+      // 第二个 React 实例，useRef 从空 dispatcher 上读取而报 null。
+      // studio 装的是同版本 @tiptap/react、但链到 19.2.5，指向它即可回到单实例。
+      "@tiptap/react": resolve(__dirname, "../studio/node_modules/@tiptap/react"),
       "@": resolve(__dirname, "../studio/src"),
     },
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "@tiptap/react"],
   },
   test: {
     environment: "jsdom",
     setupFiles: [resolve(__dirname, "test-setup.ts")],
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    // 少数用例走 bun:test（需要真实文件系统与 bun 运行时），vitest 无法解析
+    // "bun:test" 说明符，收进 include 只会得到一条假失败。它们由 `bun test` 执行。
+    exclude: ["src/handlers/jingwei-write-retire.test.ts"],
     fileParallelism: false,
     minWorkers: 1,
     maxWorkers: 1,

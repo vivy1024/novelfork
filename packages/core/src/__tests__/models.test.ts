@@ -55,6 +55,20 @@ describe("BookConfigSchema", () => {
     expect(result.platform).toBe("tomato");
   });
 
+  it("normalizes legacy preset fields to writing skills without exposing them", () => {
+    const result = BookConfigSchema.parse({
+      ...validBook,
+      enabledPresetIds: ["skill-a"],
+      beatTemplateId: "legacy-beat",
+      customPresetOverrides: { tone: "legacy" },
+    });
+
+    expect(result.enabledWritingSkillIds).toEqual(["skill-a"]);
+    expect(result).not.toHaveProperty("enabledPresetIds");
+    expect(result).not.toHaveProperty("beatTemplateId");
+    expect(result).not.toHaveProperty("customPresetOverrides");
+  });
+
   it("applies default targetChapters and chapterWordCount", () => {
     const minimal = {
       id: "b1",

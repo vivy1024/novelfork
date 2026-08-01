@@ -76,19 +76,37 @@ async function readErrorDetails(res: Response): Promise<{ message: string; code?
   const contentType = res.headers.get("content-type") ?? "";
   if (contentType.includes("application/json")) {
     try {
-      const json = await res.json() as { error?: unknown };
+      // 优先用 explanation（发生了什么/建议怎么做），不要只丢短 error 标题。
+      // 否则「套路不存在」会覆盖 fork 失败、冷启动超时、格式非法等多种情况。
+      const json = await res.json() as {
+        error?: unknown;
+        explanation?: unknown;
+        code?: unknown;
+      };
+      const explanation =
+        typeof json.explanation === "string" && json.explanation.trim()
+          ? json.explanation.trim()
+          : null;
       if (typeof json.error === "string" && json.error.trim()) {
-        return { message: json.error };
+        return {
+          message: explanation ? `${json.error.trim()}：${explanation}` : json.error.trim(),
+          code: typeof json.code === "string" && json.code.trim() ? json.code : undefined,
+        };
       }
       if (json.error && typeof json.error === "object") {
         const structured = json.error as { code?: unknown; message?: unknown };
         if (typeof structured.message === "string" && structured.message.trim()) {
           return {
-            message: structured.message,
-            code: typeof structured.code === "string" && structured.code.trim() ? structured.code : undefined,
+            message: explanation
+              ? `${structured.message.trim()}：${explanation}`
+              : structured.message.trim(),
+            code: typeof structured.code === "string" && structured.code.trim()
+              ? structured.code
+              : undefined,
           };
         }
       }
+      if (explanation) return { message: explanation };
     } catch {
       // fall through
     }

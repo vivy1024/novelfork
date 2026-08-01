@@ -27,6 +27,7 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   // Narrative tools
   { toolName: "narrative.read_line", serviceKey: "narrative", method: "readLine" },
   { toolName: "narrative.propose_change", serviceKey: "narrative", method: "proposeChange" },
+  { toolName: "narrative.approve_change", serviceKey: "narrative", method: "applyChange" },
 
   // Direct handlers (already implemented in novel-plugin)
   { toolName: "chapter.read", serviceKey: "direct", method: "handleChapterRead" },
@@ -58,12 +59,11 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   { toolName: "character.check_consistency", serviceKey: "inline", method: "checkConsistency" },
   { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
 
-  // Presets/Beat tools (v2 consolidated)
-  { toolName: "presets.read", serviceKey: "inline", method: "readPresets" },
-  { toolName: "presets.write", serviceKey: "inline", method: "writePresets" },
-  { toolName: "presets.check_compliance", serviceKey: "inline", method: "checkCompliance" },
-  { toolName: "beat.read", serviceKey: "inline", method: "readBeat" },
-  { toolName: "beat.write", serviceKey: "inline", method: "writeBeat" },
+  // Writing Skills tools
+  { toolName: "writing-skills.read", serviceKey: "direct", method: "handleWritingSkillsRead" },
+  { toolName: "writing-skills.write", serviceKey: "direct", method: "handleWritingSkillsWrite" },
+  { toolName: "writing-skills.check_compliance", serviceKey: "direct", method: "handleWritingSkillsCheckCompliance" },
+  { toolName: "writing-skills.import_legacy", serviceKey: "direct", method: "handleWritingSkillsImportLegacy" },
 
   // Scene spec (direct handler)
   { toolName: "scene.spec", serviceKey: "direct", method: "handleSceneSpec" },

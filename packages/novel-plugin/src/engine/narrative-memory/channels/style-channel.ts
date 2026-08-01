@@ -12,8 +12,8 @@ export interface StyleSnippet {
 export interface StyleChannelInput {
   readonly bookId: string;
   readonly styleGuideText?: string;
-  readonly presets?: readonly StyleSnippet[];
-  readonly beats?: readonly StyleSnippet[];
+  /** 当前生效的 Writing Skills 正文片段；presets/beats 已统一收口到这里。 */
+  readonly writingSkills?: readonly StyleSnippet[];
   readonly complianceRules?: readonly string[];
 }
 
@@ -47,29 +47,16 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
         })));
       }
 
-      for (const preset of input.presets ?? []) {
-        const text = nonEmpty(preset.text);
+      for (const skill of input.writingSkills ?? []) {
+        const text = nonEmpty(skill.text);
         if (!text) continue;
         cards.push(lowPriority(styleTextToContextCard({
           bookId: input.bookId,
-          id: `preset:${preset.id}`,
-          title: preset.title,
+          id: `writing-skill:${skill.id}`,
+          title: skill.title,
           text,
-          tags: ["preset", ...(preset.tags ?? [])],
-          reason: "style channel 注入启用写作预设，但不得覆盖 hard/state 优先级。",
-        })));
-      }
-
-      for (const beat of input.beats ?? []) {
-        const text = nonEmpty(beat.text);
-        if (!text) continue;
-        cards.push(lowPriority(styleTextToContextCard({
-          bookId: input.bookId,
-          id: `beat:${beat.id}`,
-          title: beat.title,
-          text,
-          tags: ["beat", ...(beat.tags ?? [])],
-          reason: "style channel 注入节拍模板提示，用于控制章节节奏。",
+          tags: ["writing-skill", ...(skill.tags ?? [])],
+          reason: "style channel 注入启用 Writing Skills，但不得覆盖 hard/state 优先级。",
         })));
       }
 
@@ -85,7 +72,7 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
       }
 
       if (cards.length === 0) {
-        return { status: "skipped", cards: [], warnings: ["style channel 为空：未提供 style guide、preset、beat 或合规提示。"] };
+        return { status: "skipped", cards: [], warnings: ["style channel 为空：未提供 style guide、Writing Skills 或合规提示。"] };
       }
       return { cards, warnings: [] };
     },

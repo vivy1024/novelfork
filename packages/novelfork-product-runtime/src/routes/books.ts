@@ -1,11 +1,8 @@
 import { ValidationError } from "@vivy1024/narrafork-runtime-bridge";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import {
-	handleBeatRead,
-	handleBeatWrite,
-	handlePresetsRead,
-	handlePresetsWrite,
-} from "../../../novel-plugin/src/handlers/preset-beat-handlers";
+	handleWritingSkillsRead,
+	handleWritingSkillsWrite,
+} from "../../../novel-plugin/src/handlers/writing-skill-handlers";
 import { Hono } from "hono";
 import { z } from "zod/v4";
 import {
@@ -64,15 +61,10 @@ const bookBasicSettingsPatchSchema = z
 	.strict()
 	.refine((value) => Object.keys(value).length > 0, "至少提供一项可保存的书籍设置");
 
-const presetSelectionSchema = z
+const writingSkillSelectionSchema = z
 	.object({
-		enabledPresetIds: z.array(z.string().trim().min(1).max(200)).max(100),
-	})
-	.strict();
-
-const beatTemplateSelectionSchema = z
-	.object({
-		beatTemplateId: z.string().trim().min(1).max(200),
+		enabledWritingSkillIds: z.array(z.string().trim().min(1).max(200)).max(200),
+		discardUnmappedLegacyIds: z.boolean().optional(),
 	})
 	.strict();
 
@@ -251,50 +243,30 @@ bookDomainRoutes.put("/", async (c) => {
 	return c.json({ book });
 });
 
-bookDomainRoutes.get("/presets", async (c) => {
+// 书籍级写作技能选择。技能内容始终来自 SKILL.md 文件源；这里只读写
+// `enabledWritingSkillIds`，并保持在可信书籍绑定之后解析根目录。
+bookDomainRoutes.get("/writing-skills", async (c) => {
 	const bookId = requiredParam(c, "bookId");
 	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
-	const result = await handlePresetsRead(
-		{ bookId, scope: "available" },
-		{ bookRoot: root, storage: getStorageDatabase() },
-	);
+	const scope = c.req.query("scope") === "enabled" ? "enabled" : "available";
+	const result = await handleWritingSkillsRead({ bookId, scope }, { bookRoot: root });
 	return c.json(handlerData(result));
 });
 
-bookDomainRoutes.put("/presets", async (c) => {
-	const parsed = presetSelectionSchema.safeParse(await c.req.json().catch(() => ({})));
+bookDomainRoutes.put("/writing-skills", async (c) => {
+	const parsed = writingSkillSelectionSchema.safeParse(await c.req.json().catch(() => ({})));
 	if (!parsed.success) throw new ValidationError(parsed.error.message);
 	const bookId = requiredParam(c, "bookId");
 	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
-	const result = await handlePresetsWrite(
-		{ bookId, action: "set", enabledPresetIds: parsed.data.enabledPresetIds },
-		{ bookRoot: root, storage: getStorageDatabase() },
-	);
-	return c.json(handlerData(result));
-});
-
-bookDomainRoutes.get("/beat-templates", async (c) => {
-	const bookId = requiredParam(c, "bookId");
-	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
-	const data = handlerData(await handleBeatRead(
-		{ bookId },
-		{ bookRoot: root, storage: getStorageDatabase() },
-	)) as { selectedTemplateId?: unknown; availableTemplates?: unknown };
-	return c.json({
-		bookId,
-		selectedTemplateId: typeof data.selectedTemplateId === "string" ? data.selectedTemplateId : null,
-		templates: Array.isArray(data.availableTemplates) ? data.availableTemplates : [],
-	});
-});
-
-bookDomainRoutes.put("/beat-template", async (c) => {
-	const parsed = beatTemplateSelectionSchema.safeParse(await c.req.json().catch(() => ({})));
-	if (!parsed.success) throw new ValidationError(parsed.error.message);
-	const bookId = requiredParam(c, "bookId");
-	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
-	const result = await handleBeatWrite(
-		{ bookId, action: "select", templateId: parsed.data.beatTemplateId },
-		{ bookRoot: root, storage: getStorageDatabase() },
+	const result = await handleWritingSkillsWrite(
+		{
+			bookId,
+			enabledWritingSkillIds: parsed.data.enabledWritingSkillIds,
+			...(parsed.data.discardUnmappedLegacyIds === undefined
+				? {}
+				: { discardUnmappedLegacyIds: parsed.data.discardUnmappedLegacyIds }),
+		},
+		{ bookRoot: root },
 	);
 	return c.json(handlerData(result));
 });

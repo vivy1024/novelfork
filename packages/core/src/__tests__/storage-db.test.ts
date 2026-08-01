@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { closeStorageDatabase, createStorageDatabase, getStorageDatabase, initializeStorageDatabase } from "../storage/db.js";
 import { runStorageMigrations } from "../storage/migrations-runner.js";
+import { embeddedMigrations } from "../storage/embedded-migrations.js";
 import { sessions } from "../storage/schema.js";
 
 const tempDirs: string[] = [];
@@ -62,6 +63,7 @@ describe("storage SQLite database", () => {
         "session_message",
         "session_message_cursor",
       ]));
+      expect(tableNames).not.toContain("user_template");
 
       await storage.db.insert(sessions).values({
         id: "session-1",
@@ -76,6 +78,30 @@ describe("storage SQLite database", () => {
 
       expect(rows).toHaveLength(1);
       expect(rows[0]?.metadataJson).toBe(JSON.stringify({ title: "测试会话" }));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("does not create user_template while preserving a legacy table for plugin-owned read-only probing", async () => {
+    const databasePath = await createTempDbPath();
+    const storage = createStorageDatabase({ databasePath });
+
+    try {
+      storage.sqlite.exec(`CREATE TABLE "user_template" ("id" TEXT PRIMARY KEY);`);
+      const result = runStorageMigrations(storage);
+      const migrationNames = storage.sqlite
+        .prepare<{ name: string }>(`SELECT name FROM "drizzle_migrations" ORDER BY name`)
+        .all()
+        .map((row) => row.name);
+      const legacyTable = storage.sqlite
+        .prepare<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'user_template'`)
+        .get();
+
+      expect(result.applied).not.toContain("0010_user_template.sql");
+      expect(migrationNames).not.toContain("0010_user_template.sql");
+      expect(embeddedMigrations.map((migration) => migration.name)).not.toContain("0010_user_template.sql");
+      expect(legacyTable?.name).toBe("user_template");
     } finally {
       storage.close();
     }

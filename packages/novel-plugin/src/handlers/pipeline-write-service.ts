@@ -25,9 +25,9 @@ import type { SceneSpec } from "./scene-spec-handler.js";
 import { renderBeatBudget } from "./beat-budget.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import {
-  handlePresetsCheckCompliance,
-  loadAccessiblePresetBeatStore,
-} from "./preset-beat-handlers.js";
+  handleWritingSkillsCheckCompliance,
+  loadActiveWritingSkillsForBook,
+} from "./writing-skill-handlers.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { createLLMChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -36,9 +36,7 @@ import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnos
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
-import type { BeatTemplate, Preset } from "../engine/presets/types.js";
-import { getBeatTemplate, getPreset } from "../engine/presets/index.js";
-import { registerBuiltinPresets } from "../engine/presets/builtin.js";
+import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -136,7 +134,7 @@ export interface PipelineWriteError {
     | "timeout"
     | "high-risk-pending"
     | "length-out-of-range"
-    | "preset-compliance-failed"
+    | "writing-skill-compliance-failed"
     | "context-not-ready"
     | "fact-check-failed"
     | "publish-blocked";
@@ -199,26 +197,24 @@ function createPipelineState(options: PipelineWriteOptions, bookId: string): Sta
     : undefined);
 }
 
-type BookStyleConfig = Readonly<{
-  enabledPresetIds?: readonly string[];
-  beatTemplateId?: string;
-}>;
-
-type PresetComplianceViolation = Readonly<{
-  presetName: string;
+type WritingSkillComplianceWarning = Readonly<{
+  skillId: string;
+  skillName: string;
+  checkId: string;
   rule: string;
   violation: string;
   severity: "warning" | "error";
+  explanation: string;
 }>;
 
-function readPresetComplianceViolations(data: unknown): PresetComplianceViolation[] {
+function readWritingSkillViolations(data: unknown): WritingSkillComplianceWarning[] {
   if (!data || typeof data !== "object" || !Array.isArray((data as { violations?: unknown }).violations)) return [];
-  return (data as { violations: unknown[] }).violations.filter((item): item is PresetComplianceViolation => (
+  return (data as { violations: unknown[] }).violations.filter((item): item is WritingSkillComplianceWarning => (
     Boolean(item)
     && typeof item === "object"
-    && (item as { severity?: unknown }).severity !== undefined
     && ((item as { severity?: unknown }).severity === "warning" || (item as { severity?: unknown }).severity === "error")
-    && typeof (item as { presetName?: unknown }).presetName === "string"
+    && typeof (item as { skillId?: unknown }).skillId === "string"
+    && typeof (item as { skillName?: unknown }).skillName === "string"
     && typeof (item as { rule?: unknown }).rule === "string"
     && typeof (item as { violation?: unknown }).violation === "string"
   ));
@@ -229,67 +225,18 @@ function nonEmpty(value: string | undefined): string | undefined {
   return text ? text : undefined;
 }
 
-function ensureBuiltinPresetStores(): void {
-  try {
-    registerBuiltinPresets();
-  } catch {
-    // Builtin preset registration is idempotent; failure should not block writing.
-  }
-}
-
-export function presetToStyleSnippet(preset: Preset): StyleSnippet | null {
-  const text = nonEmpty(preset.promptInjection);
+/**
+ * Writing Skills 只经 narrative style channel 注入，不进 Writer system prompt：
+ * 这样它们在预算不足时可被丢弃，永远不会压过 hard/state 约束。
+ */
+export function writingSkillToStyleSnippet(skill: ParsedWritingSkill): StyleSnippet | null {
+  const text = nonEmpty(skill.body);
   if (!text) return null;
   return {
-    id: preset.id,
-    title: preset.name,
+    id: skill.id,
+    title: skill.name,
     text,
-    tags: ["preset", preset.category, ...(preset.tags ?? [])],
-  };
-}
-
-export function beatTemplateToStyleSnippet(template: BeatTemplate): StyleSnippet | null {
-  if (template.beats.length === 0) return null;
-  const body = template.beats.map((beat) => [
-    `- ${beat.index}. ${beat.name}`,
-    `  purpose: ${beat.purpose}`,
-    `  emotionalTone: ${beat.emotionalTone}`,
-    `  wordRatio: ${beat.wordRatio}`,
-    beat.networkNovelTip ? `  networkNovelTip: ${beat.networkNovelTip}` : "",
-  ].filter(Boolean).join("\n")).join("\n");
-  return {
-    id: template.id,
-    title: template.name,
-    text: `${template.description}\n${body}`.trim(),
-    tags: ["beat-template", "beat"],
-  };
-}
-
-type BookStyleSource = Readonly<{
-  presets: readonly Preset[];
-  beatTemplate?: BeatTemplate;
-}>;
-
-export function resolveBookStyleChannelSnippets(
-  config: BookStyleConfig,
-  source?: BookStyleSource,
-): { readonly presets: readonly StyleSnippet[]; readonly beats: readonly StyleSnippet[] } {
-  ensureBuiltinPresetStores();
-  const selectedPresets = source
-    ? source.presets
-    : (config.enabledPresetIds ?? [])
-      .map((id) => getPreset(id))
-      .filter((preset): preset is Preset => Boolean(preset));
-  const presets = selectedPresets
-    .map(presetToStyleSnippet)
-    .filter((snippet): snippet is StyleSnippet => Boolean(snippet));
-  const beatTemplate = source
-    ? source.beatTemplate
-    : (config.beatTemplateId ? getBeatTemplate(config.beatTemplateId) : undefined);
-  const beatSnippet = beatTemplate ? beatTemplateToStyleSnippet(beatTemplate) : null;
-  return {
-    presets,
-    beats: beatSnippet ? [beatSnippet] : [],
+    tags: ["writing-skill", skill.kind, ...(skill.tags ?? [])],
   };
 }
 
@@ -317,7 +264,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   timeline: "Narrative Memory timeline：最近章节、前章尾部与时间线连续性。",
   hooks: "Narrative Memory hooks：当前活跃/长期未推进伏笔。",
   facts: "Narrative Memory facts：结构化叙事事实与一跳扩展。",
-  style: "Narrative Memory style：文风、预设、节拍与合规风格提示。",
+  style: "Narrative Memory style：文风、Writing Skills 与合规风格提示。",
   semantic: "Narrative Memory semantic：语义记忆召回。",
 };
 
@@ -471,15 +418,14 @@ export async function executePipelineWrite(
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
-        const accessibleStore = loadAccessiblePresetBeatStore(storage, bookId);
-        const enabledPresetIds = new Set(book.enabledPresetIds ?? []);
-        const selectedBeatTemplate = typeof book.beatTemplateId === "string"
-          ? accessibleStore.beats.find((template) => template.id === book.beatTemplateId)
-          : undefined;
-        const styleSnippets = resolveBookStyleChannelSnippets(book as BookStyleConfig, {
-          presets: accessibleStore.presets.filter((preset) => enabledPresetIds.has(preset.id)),
-          ...(selectedBeatTemplate ? { beatTemplate: selectedBeatTemplate } : {}),
-        });
+        const activeWritingSkills = await loadActiveWritingSkillsForBook(bookId, { bookRoot: bookDir })
+          .catch((error: unknown) => {
+            logger?.warn(`[pipeline.write] Failed to load Writing Skills for style channel: ${error instanceof Error ? error.message : String(error)}`);
+            return { skills: [] as readonly ParsedWritingSkill[] };
+          });
+        const writingSkillSnippets = activeWritingSkills.skills
+          .map(writingSkillToStyleSnippet)
+          .filter((snippet): snippet is StyleSnippet => Boolean(snippet));
         narrativeContext = await buildNarrativeContext({
           storage,
           bookId,
@@ -491,8 +437,7 @@ export async function executePipelineWrite(
           maxTokens: memoryConfig?.retrieval.maxTokens ?? 16_000,
           previousChapterTail,
           runtimeSnapshot,
-          presets: styleSnippets.presets,
-          beats: styleSnippets.beats,
+          writingSkills: writingSkillSnippets,
           enabledChannels: memoryConfig?.retrieval.channels,
           waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
           semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
@@ -696,31 +641,30 @@ export async function executePipelineWrite(
       };
     }
 
-    let presetWarnings: PresetComplianceViolation[] = [];
+    let writingSkillWarnings: WritingSkillComplianceWarning[] = [];
     try {
-      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
-      const compliance = await handlePresetsCheckCompliance(
+      const compliance = await handleWritingSkillsCheckCompliance(
         { bookId, chapterNumber, content: finalContent },
-        { bookRoot: bookDir, storage: getStorageDatabase() },
+        { bookRoot: bookDir },
       );
       if (!compliance.ok) {
-        return { ok: false, code: "preset-compliance-failed", error: compliance.summary };
+        return { ok: false, code: "writing-skill-compliance-failed", error: compliance.summary };
       }
-      const violations = readPresetComplianceViolations(compliance.data);
+      const violations = readWritingSkillViolations(compliance.data);
       const errors = violations.filter((violation) => violation.severity === "error");
       if (errors.length > 0) {
         return {
           ok: false,
-          code: "preset-compliance-failed",
-          error: `第${chapterNumber}章触发 ${errors.length} 条预设硬性违规；未保存正式章节。${errors.map((violation) => ` ${violation.presetName}：${violation.violation}`).join("")}`,
+          code: "writing-skill-compliance-failed",
+          error: `第${chapterNumber}章触发 ${errors.length} 条 Writing Skills 硬性违规；未保存正式章节。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
         };
       }
-      presetWarnings = violations.filter((violation) => violation.severity === "warning");
+      writingSkillWarnings = violations.filter((violation) => violation.severity === "warning");
     } catch (error) {
       return {
         ok: false,
-        code: "preset-compliance-failed",
-        error: `预设合规检查失败，拒绝保存正式章节：${error instanceof Error ? error.message : String(error)}`,
+        code: "writing-skill-compliance-failed",
+        error: `Writing Skills 合规检查失败，拒绝保存正式章节：${error instanceof Error ? error.message : String(error)}`,
       };
     }
 
@@ -762,7 +706,7 @@ export async function executePipelineWrite(
     const publishWarnings: string[] = [];
     if (needsHumanReview) publishWarnings.push("审计仍有 critical/S2，建议人工复核后再发布。");
     if (factCheckRevised) publishWarnings.push("已执行事实/连续性专项修订，请抽查关键事实。");
-    if (presetWarnings.length > 0) publishWarnings.push(`预设警告 ${presetWarnings.length} 条。`);
+    if (writingSkillWarnings.length > 0) publishWarnings.push(`Writing Skills 警告 ${writingSkillWarnings.length} 条。`);
     if (knowledgeWarnings.length > 0) publishWarnings.push(`知识边界警告 ${knowledgeWarnings.length} 条。`);
     if (timelineWarnings.length > 0) publishWarnings.push(`时间线警告 ${timelineWarnings.length} 条。`);
 
@@ -844,7 +788,7 @@ export async function executePipelineWrite(
           countingMode: lengthSpec.countingMode,
         },
         ...(lengthWarning ? { lengthWarning } : {}),
-        ...(presetWarnings.length > 0 ? { presetWarnings } : {}),
+        ...(writingSkillWarnings.length > 0 ? { writingSkillWarnings } : {}),
         ...(knowledgeWarnings.length > 0 ? { knowledgeWarnings } : {}),
         ...(timelineWarnings.length > 0 ? { timelineWarnings } : {}),
         publishHint,

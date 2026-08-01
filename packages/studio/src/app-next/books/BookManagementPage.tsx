@@ -40,6 +40,7 @@ import { WorkspaceCreateWizard, type WorkspaceCreateInput } from "../components/
 import type {
   RuntimeBookProvisionOperation,
   RuntimeBookSummary,
+  RuntimeRebindBookWorkspaceResult,
 } from "../runtime/product-contract";
 
 type ManagedBook = Pick<RuntimeBookSummary, "id" | "title" | "status">;
@@ -62,7 +63,7 @@ export interface BookManagementPageProps {
   readonly onRebindBookWorkspace: (
     bookId: string,
     workspaceRoot: string,
-  ) => Promise<{ bookId: string; bookRoot: string; runtimeProjectId: string }>;
+  ) => Promise<RuntimeRebindBookWorkspaceResult>;
   readonly onDeleteBook: (bookId: string, deleteWorkspace?: boolean) => Promise<void>;
 }
 
@@ -162,7 +163,7 @@ export function BookManagementPage({
     try {
       const result = await onRebindBookWorkspace(rebindTarget.id, workspaceRoot);
       setActionMessage(
-        `作品 ${result.bookId} 工作目录已修正为：${result.bookRoot}`,
+        `作品 ${result.bookId} 工作目录已修正为：${workspaceRoot}`,
       );
       setRebindTarget(null);
       setRebindPath("");

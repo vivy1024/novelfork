@@ -18,7 +18,6 @@ export default defineConfig({
       "src/__tests__/outline-brancher.test.ts",
       "src/__tests__/pipeline-runner-memory-sync.test.ts",
       "src/__tests__/post-write-validator.test.ts",
-      "src/__tests__/presets-*.test.ts",
       "src/__tests__/reviser.test.ts",
       "src/__tests__/sensitive-words.test.ts",
       "src/__tests__/settler-delta-parser.test.ts",

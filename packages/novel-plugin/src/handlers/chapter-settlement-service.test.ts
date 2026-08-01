@@ -82,9 +82,9 @@ describe("chapter settlement service", () => {
         }],
       });
 
-      expect(result).toMatchObject({ status: "completed", extracted: 3, autoApplied: 1, pending: 2, highRiskPending: 1 });
-      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact").get()?.count).toBe(1);
-      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event WHERE status = 'pending'").get()?.count).toBe(2);
+      expect(result).toMatchObject({ status: "completed", extracted: 3, autoApplied: 2, pending: 1, highRiskPending: 1 });
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact").get()?.count).toBe(2);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event WHERE status = 'pending'").get()?.count).toBe(1);
     } finally {
       storage.close();
     }
