@@ -1,7 +1,7 @@
 import { realpath } from "node:fs/promises";
 import { resolve } from "node:path";
 import { db, NotFoundError, projects } from "@vivy1024/narrafork-runtime-bridge";
-import { eq } from "drizzle-orm";
+import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { ownsBookBinding } from "../policy/book-product-policy";
 import {
 	type BookRuntimeBindingRecord,

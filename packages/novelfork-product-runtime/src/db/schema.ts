@@ -1,4 +1,4 @@
-import { index, primaryKey, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { index, primaryKey, sqliteTable, text, uniqueIndex } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 
 export const bookRuntimeBindings = sqliteTable(
 	"book_runtime_bindings",

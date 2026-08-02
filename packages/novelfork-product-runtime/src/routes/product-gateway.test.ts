@@ -16,7 +16,7 @@ let bookId: string | null = null;
 let newBookId: string | null = null;
 
 function productApp(user: typeof owner) {
-	const app = new Hono();
+	const app = new Hono<{ Variables: { user: typeof owner } }>();
 	const { mountAuthenticatedGuards, mountAuthenticatedRoutes } = novelForkProductIntegration;
 	if (!mountAuthenticatedGuards || !mountAuthenticatedRoutes) {
 		throw new Error("NovelFork product integration did not provide authenticated HTTP mounts");

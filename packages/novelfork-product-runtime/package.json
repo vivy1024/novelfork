@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-product-runtime",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "private": true,
   "type": "module",
   "main": "src/index.ts",
@@ -16,7 +16,6 @@
     "@vivy1024/narrafork-runtime-bridge": "workspace:*",
     "@vivy1024/novelfork-core": "workspace:*",
     "@vivy1024/novelfork-novel-plugin": "workspace:*",
-    "drizzle-orm": "^0.45.2",
     "hono": "^4.12.14",
     "zod": "4.3.6"
   },

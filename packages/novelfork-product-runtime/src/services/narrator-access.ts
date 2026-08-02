@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	AppError,
 	chapters,

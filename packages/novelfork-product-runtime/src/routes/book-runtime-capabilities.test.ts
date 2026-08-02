@@ -151,7 +151,9 @@ beforeEach(() => {
 });
 
 function appFor(role: "admin" | "user") {
-	const app = new Hono();
+	const app = new Hono<{
+		Variables: { user: { sub: string; role: "admin" | "user" } };
+	}>();
 	app.use("*", async (c, next) => {
 		c.set("user", { sub: role === "admin" ? "admin-a" : "owner-a", role } as never);
 		await next();

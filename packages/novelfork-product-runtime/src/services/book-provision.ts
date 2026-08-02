@@ -24,7 +24,7 @@ import {
 	ValidationError,
 } from "@vivy1024/narrafork-runtime-bridge";
 import { getStorageDatabase, resolveBookStorageDir } from "@vivy1024/novelfork-core";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 // The private Runtime tsconfig maps only the plugin root. Keep direct source
 // imports limited to novel-plugin domain services rather than copying their
 // SQLite and resource contracts into Runtime code.
@@ -1790,9 +1790,9 @@ export class NovelForkProductBookService {
 				permissionMode: "default",
 				systemPrompt: NOVELIST_PROMPT,
 				traits: [
-					...new Set(
-						narrator.traits.filter((trait) => trait !== "read-only").concat("chapter-write"),
-					),
+						...new Set(
+							narrator.traits.filter((trait: string) => trait !== "read-only").concat("chapter-write"),
+						),
 				],
 				updatedAt: now(),
 			})
