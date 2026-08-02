@@ -46,12 +46,6 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 
 	const environment: NodeJS.ProcessEnv = {
 		...process.env,
-		// Keep both suites separate from a running desktop executable and from
-		// one another, including the controlled books root external bindings need.
-		NARRAFORK_HOME: join(testRoot, "runtime"),
-		// Runtime's test preload only honors an explicit NARRAFORK_HOME when the
-		// multi-instance debug flag is set; the path itself remains isolated.
-		NARRAFORK_ALLOW_MULTIPLE: "1",
 		NARRAFORK_MIGRATIONS_DIR: migrationsRoot,
 		NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP: "1",
 		NOVELFORK_PROJECT_ROOT: projectRoot,
@@ -62,6 +56,18 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 		TMP: workspaceTestTempRoot,
 		TMPDIR: workspaceTestTempRoot,
 	};
+
+	if (scope === "public") {
+		// Public packages import Runtime modules but do not exercise the Runtime
+		// instance-lock contract, so they need an explicit disposable data home.
+		environment.NARRAFORK_HOME = join(testRoot, "runtime");
+		environment.NARRAFORK_ALLOW_MULTIPLE = "1";
+	} else {
+		// Runtime's preload owns its isolated home and tests the lock itself.
+		delete environment.NARRAFORK_HOME;
+		delete environment.NARRAFORK_ALLOW_MULTIPLE;
+	}
+
 	const zstdExecutable = process.platform === "win32" ? "zstd.exe" : "zstd";
 	if (existsSync(join(localZstdDirectory, zstdExecutable))) {
 		environment.PATH = [localZstdDirectory, environment.PATH].filter(Boolean).join(delimiter);
@@ -92,8 +98,12 @@ try {
 	});
 	publicExitCode = await publicTests.exited;
 	if (publicExitCode === 0) {
-		const runtimeTests = Bun.spawn([process.execPath, "test", "--isolate"], {
-			cwd: runtimeExecutionRoot.path,
+		// Keep Runtime's real-timer recovery tests deterministic on Windows while
+		// retaining fresh globals for every test file.
+		const runtimeTests = Bun.spawn([process.execPath, "test", "--isolate", "--parallel=1"], {
+			// Keep Runtime module resolution on its canonical materialized path; the
+			// short junction remains alive above only for public-package imports.
+			cwd: runtimeRoot,
 			env: testEnvironment("runtime"),
 			stdio: ["inherit", "inherit", "inherit"],
 		});
