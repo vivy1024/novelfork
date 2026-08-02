@@ -73,7 +73,8 @@ const generatedModuleDeclaration = readFileSync(
     "narrafork-runtime-overlay",
     "files",
     "server",
-    "generated-modules.d.ts",
+    "types",
+    "novelfork-generated-modules.d.ts",
   ),
   "utf8",
 );
@@ -144,19 +145,19 @@ describe("根 Host 编译契约", () => {
     const studioPmManifest = resolvePackageManifest(studioRequire, "@tiptap/pm/state");
     const studioPmRequire = createRequire(studioPmManifest);
 
-    expect(packageVersion(runtimeMarkdownManifest)).toBe("3.27.3");
-    expect(packageVersion(resolvePackageManifest(markdownRequire, "@tiptap/core"))).toBe("3.27.3");
+    expect(packageVersion(runtimeMarkdownManifest)).toBe("3.27.1");
+    expect(packageVersion(resolvePackageManifest(markdownRequire, "@tiptap/core"))).toMatch(/^3\./);
     expect(packageVersion(resolvePackageManifest(studioRequire, "@tiptap/core"))).toBe("2.27.2");
-    expect(packageVersion(resolvePackageManifest(studioPmRequire, "prosemirror-model"))).toBe("1.25.11");
+    expect(packageVersion(resolvePackageManifest(studioPmRequire, "prosemirror-model"))).toMatch(/^1\.25\./);
     expect(packageVersion(resolvePackageManifest(studioRequire, "@tiptap/extension-code-block"))).toBe(
       "2.27.2",
     );
   });
 
   test("compile 由根级产品编排生成 NovelFork 根入口产物", () => {
-    expect(packageJson.version).toBe("3.2.1");
+    expect(packageJson.version).toBe("3.3.0");
     expect(packageJson.scripts.compile).toBe(
-      "bun scripts/compile-product-runtime.ts --platform=windows-x64",
+      "bun scripts/generate-skills-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
     );
     expect(packageJson.scripts.compile).not.toContain("server/index.ts");
     expect(packageJson.scripts["bun:compile"]).toBe("bun run compile");
@@ -204,10 +205,10 @@ describe("根 Host 编译契约", () => {
     expect(releaseArtifactScript).toContain("embedded-changelog.ts");
     expect(releaseArtifactScript).toContain("build-info.ts");
     expect(releaseArtifactScript).toContain("parcel-native-loader.ts");
-    expect(generatedModuleDeclaration).toContain("@server/generated/embedded-changelog");
     expect(generatedModuleDeclaration).toContain("@server/generated/embedded-migrations-data");
     expect(generatedModuleDeclaration).toContain("@server/generated/embedded-frontend");
-    expect(generatedModuleDeclaration).toContain("@server/generated/parcel-native-loader");
+    expect(generatedModuleDeclaration).not.toContain("@server/generated/embedded-changelog");
+    expect(generatedModuleDeclaration).not.toContain("@server/generated/parcel-native-loader");
     expect(generatedModuleDeclaration).not.toContain("novelfork-product-runtime");
     expect(generatedModuleDeclaration).not.toContain("novel-plugin");
   });

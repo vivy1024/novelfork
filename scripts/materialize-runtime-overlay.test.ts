@@ -80,7 +80,7 @@ async function createFixture(): Promise<Fixture> {
 		addResult,
 	);
 	await write(
-		join(overlay, "files", "server", "generated-modules.d.ts"),
+		join(overlay, "files", "server", "types", "novelfork-generated-modules.d.ts"),
 		newAddResult,
 	);
 	await write(join(overlay, "patches", "server-app.patch"), patch);
@@ -133,8 +133,8 @@ async function createFixture(): Promise<Fixture> {
 					{
 						id: "generated-module-declaration",
 						type: "add",
-						target: "server/generated-modules.d.ts",
-						source: "files/server/generated-modules.d.ts",
+						target: "server/types/novelfork-generated-modules.d.ts",
+						source: "files/server/types/novelfork-generated-modules.d.ts",
 						sha256: sha256(newAddResult),
 						reason: "Add a new generic Runtime generated-module declaration.",
 					},
@@ -208,7 +208,7 @@ describe("materializeRuntimeOverlay", () => {
 		).toBe(fixture.addResult);
 		expect(
 			await readFile(
-				join(fixture.target, "server", "generated-modules.d.ts"),
+				join(fixture.target, "server", "types", "novelfork-generated-modules.d.ts"),
 				"utf8",
 			),
 		).toBe(fixture.newAddResult);
@@ -234,7 +234,7 @@ describe("materializeRuntimeOverlay", () => {
 				}),
 				expect.objectContaining({
 					id: "generated-module-declaration",
-					target: "server/generated-modules.d.ts",
+					target: "server/types/novelfork-generated-modules.d.ts",
 					sha256: sha256(fixture.newAddResult),
 				}),
 				expect.objectContaining({

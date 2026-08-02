@@ -945,7 +945,7 @@ export async function importNarraForkRuntime(
 		throw new Error("source 与 target 不能相同或互相包含");
 	}
 	const targetExists = await pathExists(target);
-	if (targetExists && !options.replace) {
+	if (targetExists && !options.replace && !options.dryRun) {
 		throw new Error("target 已存在；如需替换请使用 --replace");
 	}
 

@@ -96,19 +96,35 @@ const allowedAddTargets = new Set([
 	"server/lib/product-host/null-integration.ts",
 	"server/lib/product-host/registry.ts",
 	"server/lib/product-host/__tests__/registry.test.ts",
-	"server/generated-modules.d.ts",
+	// 上游 v0.5.18 起自带 server/types/generated-modules.d.ts，overlay 改用独立
+	// 文件名只补上游未声明的模块，避免替换 Runtime 树时与上游文件冲突。
+	"server/types/novelfork-generated-modules.d.ts",
 	"shared/learning-contract.ts",
 	"frontend/components/host/RuntimeFrontendHostProviders.tsx",
 	"frontend/components/host/RuntimeFrontendHostProviders.test.tsx",
 	"frontend/components/narrator/RuntimeToolResultRendererContext.tsx",
 	"frontend/components/narrator/EmbeddedNarratorDockHost.tsx",
+	// Regenerates the Runtime's ignored TanStack route tree before standalone
+	// typecheck and test gates; it carries no product behavior or product imports.
+	"scripts/generate-route-tree.ts",
 ]);
 
 const allowedPatchTargets = new Set([
+	// Private Runtime dependency metadata: make isolated Bun resolution explicit without
+	// pulling this local Runtime tree back into the root workspace.
+	"package.json",
+	"bun.lock",
 	"frontend/components/AppRootLayout.tsx",
 	"frontend/components/narrator/ToolCallCard.tsx",
 	"frontend/lib/narrator-ws-manager.ts",
 	"frontend/lib/narrator-ws-manager.test.ts",
+	// Runtime-only test portability fixes; no product code may enter these patches.
+	"frontend/lib/shiki-language-aliases.test.ts",
+	"frontend/lib/app-shell-scroll.test.tsx",
+	"tests/preload.ts",
+	"tests/frontend/narrator-foreground-recovery.test.ts",
+	"server/db/run-migrations.test.ts",
+	"tsconfig.json",
 	"server/app.ts",
 	"server/main.ts",
 	"server/services/narrator-prompt.ts",
