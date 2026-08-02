@@ -1,6 +1,7 @@
 packages:
   - "packages/*"
   - "!packages/desktop"
+  - "!packages/narrafork-runtime-private"
 
 onlyBuiltDependencies:
   - better-sqlite3

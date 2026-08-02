@@ -1,6 +1,6 @@
 {
   "name": "novelfork",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",
@@ -27,9 +27,9 @@
     "start": "bun run main.ts",
     "skills:bundle": "bun scripts/generate-skills-bundle.ts",
     "compile": "bun scripts/generate-skills-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
-    "test": "pnpm -r test",
+    "test": "bun scripts/run-workspace-tests.ts",
     "lint": "pnpm -r lint",
-    "typecheck": "pnpm -r typecheck",
+    "typecheck": "bun scripts/run-workspace-typechecks.ts",
     "bun:main": "bun run start",
     "bun:build-client": "bun scripts/build-product-frontend.ts",
     "bun:compile": "bun run compile",
@@ -74,6 +74,7 @@
   },
   "workspaces": [
     "packages/*",
-    "!packages/desktop"
+    "!packages/desktop",
+    "!packages/narrafork-runtime-private"
   ]
 }

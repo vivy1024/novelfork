@@ -1,6 +1,6 @@
 {
   "name": "@vivy1024/novelfork-studio",
-  "version": "3.2.1",
+  "version": "3.3.0",
   "private": true,
   "description": "NovelFork Studio — product frontend for the NarraFork Runtime",
   "type": "module",

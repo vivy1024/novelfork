@@ -4,6 +4,27 @@
 
 ## Unreleased
 
+## v3.3.0 (2026-08-01) — Writing Skills、叙事线审批与 Runtime v0.5.18
+
+### ✍️ Writing Skills 与写作工作台
+
+- Writing Skills 成为正式写作配置入口，替代旧 Preset、Beat 和 Template Market 流程；旧入口与并行配置界面同步下线。
+- 写作工作台统一展示可用 Skills、当前书籍配置和相关工作流，避免作者在多个旧面板之间来回切换。
+
+### 🧭 叙事线 proposal 审批闭环
+
+- 叙事线 proposal 现支持提交、审批台账读取以及批准/驳回的完整闭环；审批结果可被真实产品路径消费。
+- 审批和告警信息提供可读解释，明确发生内容、影响和下一步动作。
+
+### 🧠 统一的叙事记忆与工作台入口
+
+- 将叙事记忆、关系图谱、Skills 与审批工作区收敛到一致的产品入口和导航，保留单一权威源纪律。
+
+### 🧩 Runtime v0.5.18 兼容与迁移
+
+- 私有 Runtime overlay 对齐上游 v0.5.18，更新生成模块声明路径、精确可重放 patch 与产品编译契约。
+- 纳入新的 Runtime 外部迁移资产，首次启动可随产品 Runtime 迁移流程完成兼容升级。
+
 ### ✍️ 写章上下文硬门禁与记忆回填/作废
 
 - 新增 `write.preflight`：写前组装最小上下文包（focus、近章摘要/事实、伏笔、resolvedDirective、memoryHealth），并对 `missing-directive` / `empty-recent-progress` 等硬拦截。
