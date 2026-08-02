@@ -49,6 +49,9 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 		// Keep both suites separate from a running desktop executable and from
 		// one another, including the controlled books root external bindings need.
 		NARRAFORK_HOME: join(testRoot, "runtime"),
+		// Runtime's test preload only honors an explicit NARRAFORK_HOME when the
+		// multi-instance debug flag is set; the path itself remains isolated.
+		NARRAFORK_ALLOW_MULTIPLE: "1",
 		NARRAFORK_MIGRATIONS_DIR: migrationsRoot,
 		NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP: "1",
 		NOVELFORK_PROJECT_ROOT: projectRoot,
@@ -84,14 +87,14 @@ let runtimeExitCode = 0;
 try {
 	const publicTests = Bun.spawn([pnpm, "-r", "test"], {
 		cwd: repositoryRoot,
-		env: testEnvironment("runtime"),
+		env: testEnvironment("public"),
 		stdio: ["inherit", "inherit", "inherit"],
 	});
 	publicExitCode = await publicTests.exited;
 	if (publicExitCode === 0) {
 		const runtimeTests = Bun.spawn([process.execPath, "test", "--isolate"], {
 			cwd: runtimeExecutionRoot.path,
-		env: testEnvironment("public"),
+			env: testEnvironment("runtime"),
 			stdio: ["inherit", "inherit", "inherit"],
 		});
 		runtimeExitCode = await runtimeTests.exited;
