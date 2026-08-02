@@ -9,7 +9,7 @@ import {
 	writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
 	analyzeNarraForkRuntimeImpact,
@@ -365,8 +365,9 @@ describe("importNarraForkRuntime", () => {
 		});
 
 		const extraContent = "declare module \"@server/generated/next\" {}\n";
-		const extraTarget = "server/generated-modules.d.ts";
-		const extraSource = "files/server/generated-modules.d.ts";
+		const extraTarget = "server/types/novelfork-generated-modules.d.ts";
+		const extraSource = "files/server/types/novelfork-generated-modules.d.ts";
+		await mkdir(dirname(join(fixture.overlay, extraSource)), { recursive: true });
 		await writeFile(join(fixture.overlay, extraSource), extraContent);
 		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
 		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
@@ -381,6 +382,7 @@ describe("importNarraForkRuntime", () => {
 			reason: "Allow a verified pending overlay output to be atomically materialized.",
 		});
 		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+		await mkdir(dirname(join(fixture.target, extraTarget)), { recursive: true });
 		await writeFile(join(fixture.target, extraTarget), extraContent);
 
 		const report = await analyzeNarraForkRuntimeImpact({
@@ -420,8 +422,9 @@ describe("importNarraForkRuntime", () => {
 		});
 
 		const extraContent = "declare module \"@server/generated/missing\" {}\n";
-		const extraTarget = "server/generated-modules.d.ts";
-		const extraSource = "files/server/generated-modules.d.ts";
+		const extraTarget = "server/types/novelfork-generated-modules.d.ts";
+		const extraSource = "files/server/types/novelfork-generated-modules.d.ts";
+		await mkdir(dirname(join(fixture.overlay, extraSource)), { recursive: true });
 		await writeFile(join(fixture.overlay, extraSource), extraContent);
 		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
 		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
@@ -671,7 +674,11 @@ describe("importNarraForkRuntime", () => {
 		).toBe("local product patch\n");
 	}, 20_000);
 
-	test("dry-run 验证 archive 但不写 target", async () => {
+	test("dry-run 验证 archive 但不写现有 target", async () => {
+		const sentinel = join(fixture.target, "local-sentinel.txt");
+		await mkdir(fixture.target, { recursive: true });
+		await writeFile(sentinel, "keep local runtime intact\n", "utf8");
+
 		const result = await importNarraForkRuntime({
 			source: fixture.source,
 			target: fixture.target,
@@ -680,7 +687,7 @@ describe("importNarraForkRuntime", () => {
 		});
 
 		expect(result.dryRun).toBe(true);
-		expect(await Bun.file(fixture.target).exists()).toBe(false);
+		expect(await readFile(sentinel, "utf8")).toBe("keep local runtime intact\n");
 	});
 });
 

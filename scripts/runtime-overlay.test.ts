@@ -336,9 +336,43 @@ describe("Runtime overlay replay", () => {
 				operation.id === "add-runtime-generated-module-declarations",
 		);
 
+		// 上游 v0.5.18 起自带 server/types/generated-modules.d.ts；overlay 改用
+		// 独立文件名，只补上游未声明的模块，避免替换 Runtime 树时冲突。
 		expect(generatedModules).toMatchObject({
 			type: "add",
-			target: "server/generated-modules.d.ts",
+			target: "server/types/novelfork-generated-modules.d.ts",
+		});
+	});
+
+	test("declares isolated linker dependency operations", async () => {
+		const overlayRoot = join(
+			import.meta.dir,
+			"..",
+			"packages",
+			"narrafork-runtime-overlay",
+		);
+		const manifest = await verifyRuntimeOverlay(overlayRoot);
+		const byId = new Map(
+			manifest.operations.map((operation) => [operation.id, operation]),
+		);
+
+		expect(byId.get("add-runtime-route-tree-generator")).toMatchObject({
+			type: "add",
+			target: "scripts/generate-route-tree.ts",
+		});
+		expect(
+			byId.get("patch-runtime-package-isolated-linker-dependencies"),
+		).toMatchObject({
+			type: "patch",
+			target: "package.json",
+			dependsOn: ["add-runtime-route-tree-generator"],
+		});
+		expect(
+			byId.get("patch-runtime-bun-lock-isolated-linker-dependencies"),
+		).toMatchObject({
+			type: "patch",
+			target: "bun.lock",
+			dependsOn: ["patch-runtime-package-isolated-linker-dependencies"],
 		});
 	});
 

@@ -704,7 +704,27 @@ function runPnpm(
 	}
 }
 
-function runSandboxInstall(workspaceRoot: string, environment: NodeJS.ProcessEnv): void {
+function runBun(
+	workspaceRoot: string,
+	arguments_: readonly string[],
+	environment: NodeJS.ProcessEnv,
+	purpose: string,
+): void {
+	const result = Bun.spawnSync([process.execPath, ...arguments_], {
+		cwd: workspaceRoot,
+		env: environment,
+		stdio: ["inherit", "inherit", "inherit"],
+	});
+	if (result.exitCode !== 0) {
+		throw new Error(`${purpose} failed with exit code ${result.exitCode ?? "unknown"}`);
+	}
+}
+
+function runSandboxInstall(
+	workspaceRoot: string,
+	runtimeRoot: string,
+	environment: NodeJS.ProcessEnv,
+): void {
 	// The sandbox mutates only its copied manifests to add compiler-only pins.
 	// Refresh its private PNPM lock before using a frozen install; source lockfiles
 	// and the Runtime's upstream Bun lock remain untouched.
@@ -717,6 +737,11 @@ function runSandboxInstall(workspaceRoot: string, environment: NodeJS.ProcessEnv
 		environment,
 		"Isolated product workspace PNPM install",
 	);
+	// The local Runtime is deliberately excluded from pnpm-workspace.yaml. Install
+	// its copied dependencies through its own frozen Bun lock before asserting that
+	// compiler-required packages can resolve from the isolated Runtime.
+	console.log("→ Installing the isolated Runtime from its frozen Bun lockfile...");
+	runBun(runtimeRoot, ["install", "--frozen-lockfile"], environment, "Isolated Runtime Bun install");
 }
 
 function assertWorkspaceInstallation(workspaceRoot: string): void {
@@ -777,7 +802,7 @@ export async function createIsolatedRuntimeBuild(
 		await reconcileSandboxRuntimeOverlay(workspaceRoot, root);
 		seedSandboxRuntimeMigrationHistory(workspaceRoot, root);
 		const environment = createRuntimeBuildEnvironment(process.env, root);
-		runSandboxInstall(workspaceRoot, environment);
+		runSandboxInstall(workspaceRoot, root, environment);
 		assertWorkspaceInstallation(workspaceRoot);
 		const prebundledZodPath = await prebundleZodForCompiledRuntime(workspaceRoot);
 
