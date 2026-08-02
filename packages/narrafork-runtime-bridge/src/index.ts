@@ -1,3 +1,10 @@
+import type { McpToolPermission as RuntimeMcpToolPermission } from "../../narrafork-runtime-private/server/lib/settings";
+import type {
+	ToolContext as RuntimeToolContext,
+	ToolDefinition as RuntimeToolDefinition,
+	ToolResult as RuntimeToolResult,
+} from "../../narrafork-runtime-private/server/lib/agent/types";
+
 export { registerRuntimeProductIntegration } from "./product-host";
 export type {
 	ResolvedRuntimeContributions,
@@ -14,12 +21,26 @@ export {
 	ValidationError,
 } from "../../narrafork-runtime-private/server/lib/errors";
 
-export type {
-	RuntimeToolRisk,
-	ToolContext,
-	ToolDefinition,
-	ToolResult,
-} from "../../narrafork-runtime-private/server/lib/agent/types";
+export type ToolContext = RuntimeToolContext;
+export type ToolResult = RuntimeToolResult;
+
+/** Product tool-risk metadata is deliberately independent of Runtime internals. */
+export type RuntimeToolRisk = "read" | "draft-write" | "confirmed-write" | "destructive";
+
+/**
+ * Runtime accepts arbitrary tool metadata at execution time; this narrow public
+ * contract preserves the product-owned renderer and risk fields without making
+ * the product depend on Runtime's private metadata implementation.
+ */
+export interface RuntimeToolMetadata {
+	runtimePluginId?: string;
+	runtimeRisk?: RuntimeToolRisk;
+	runtimeRenderer?: string;
+}
+
+export type ToolDefinition = Omit<RuntimeToolDefinition, "metadata"> & {
+	metadata?: RuntimeToolDefinition["metadata"] & RuntimeToolMetadata;
+};
 
 export type { NarratorServerMessage } from "../../narrafork-runtime-private/server/websocket/narrator-ws-types";
 
@@ -55,8 +76,14 @@ export { FOLLOW_DEFAULT_MODEL } from "../../narrafork-runtime-private/server/lib
 export type {
 	McpToolPermission,
 	NarraForkSettings,
-	ProjectMcpServerOverride,
 } from "../../narrafork-runtime-private/server/lib/settings";
+
+/** Product-scoped MCP permission overrides, persisted with trusted project settings. */
+export interface ProjectMcpServerOverride {
+	serverId: string;
+	defaultBehavior?: RuntimeMcpToolPermission["behavior"];
+	toolPermissions?: RuntimeMcpToolPermission[];
+}
 
 export { requireAdmin } from "../../narrafork-runtime-private/server/middleware/auth";
 
