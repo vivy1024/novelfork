@@ -10,7 +10,7 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": true,
-    "types": ["bun-types"],
+    "types": ["bun"],
     "typeRoots": [
       "../narrafork-runtime-private/node_modules/@types",
       "../narrafork-runtime-private/node_modules"

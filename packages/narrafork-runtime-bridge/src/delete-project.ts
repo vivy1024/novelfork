@@ -5,7 +5,9 @@
  * NovelFork product book deletion must call this shared helper so the bridge
  * never depends on a non-exported route symbol.
  */
-import { eq, inArray } from "drizzle-orm";
+// Runtime schema columns and query helpers must come from the same isolated
+// Bun dependency tree; Drizzle uses private members in its type identities.
+import { eq, inArray } from "../../narrafork-runtime-private/node_modules/drizzle-orm";
 import { db } from "../../narrafork-runtime-private/server/db";
 import {
 	chapters,
