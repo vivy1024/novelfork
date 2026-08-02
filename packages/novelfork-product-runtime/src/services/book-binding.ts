@@ -10,7 +10,7 @@ import {
 	type RuntimeResolveContext,
 	ValidationError,
 } from "@vivy1024/narrafork-runtime-bridge";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { getNovelForkProductDatabase } from "../db/database";
 import { bookRuntimeBindings } from "../db/schema";
 

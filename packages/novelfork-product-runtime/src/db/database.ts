@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
-import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
+import { drizzle, type BunSQLiteDatabase } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import * as schema from "./schema";
 
 export type NovelForkProductDatabase = BunSQLiteDatabase<typeof schema>;

@@ -3,7 +3,7 @@ import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
+import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { getNovelForkProductDatabase } from "../db/database";
 import { novelforkLegacySessionImports } from "../db/schema";
 

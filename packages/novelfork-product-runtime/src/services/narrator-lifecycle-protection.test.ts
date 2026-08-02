@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { inArray } from "drizzle-orm";
+import { inArray } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { Hono } from "hono";
 import { AppError, chapters, db, narrators, projects } from "@vivy1024/narrafork-runtime-bridge";
 import { novelForkProductIntegration } from "../index";
@@ -22,7 +22,9 @@ const bookRoot = resolve(getControlledBooksRoot(), bookId);
 const now = new Date().toISOString();
 
 function protectedRouteApp() {
-	const app = new Hono();
+	const app = new Hono<{
+		Variables: { user: { sub: string; role: "admin" | "user" } };
+	}>();
 	const { mountAuthenticatedGuards } = novelForkProductIntegration;
 	if (!mountAuthenticatedGuards) {
 		throw new Error("NovelFork product integration did not provide authenticated guards");

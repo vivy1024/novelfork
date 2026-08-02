@@ -10,7 +10,7 @@ import {
 	settings,
 	skillService,
 } from "@vivy1024/narrafork-runtime-bridge";
-import { eq } from "drizzle-orm";
+import { eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import { resolveTrustedBookRuntimeAccess } from "../services/book-runtime-access";
 import {
 	applyProjectMcpOverridePatch,

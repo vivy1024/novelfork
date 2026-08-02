@@ -11,7 +11,7 @@ const databases: Database[] = [];
 function createStorage(): StorageDatabase {
 	const sqlite = new Database(":memory:");
 	databases.push(sqlite);
-	return { sqlite } as StorageDatabase;
+	return { sqlite } as unknown as StorageDatabase;
 }
 
 afterEach(() => {

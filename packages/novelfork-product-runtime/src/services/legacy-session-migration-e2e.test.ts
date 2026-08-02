@@ -3,7 +3,7 @@ import { mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Database } from "bun:sqlite";
-import { inArray } from "drizzle-orm";
+import { inArray } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	db,
 	narratorMessageRefs,
