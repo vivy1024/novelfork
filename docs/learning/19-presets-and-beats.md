@@ -1,94 +1,81 @@
 ---
-title: 预设规则与节拍模板
-summary: 预设控制 AI 写作规则，节拍控制故事结构节奏，两者都可由 Agent 自动选择或自定义创建
-tags: [预设, 节拍, 规则, 模板, 自定义]
+title: 写作技能 (Writing Skills)
+summary: 取代旧 Preset/Beat 的写作规则系统，支持合规检查、文件树浏览与作品级物化
+tags: [写作技能, Skills, 合规, 文风, 规则, SKILL.md]
 routes:
   - /next/books/:bookId
+  - /next/routines
 ---
 
-# 预设规则与节拍模板
+# 写作技能 (Writing Skills)
 
-> 预设让 AI 守规矩，节拍让故事有节奏。
+> Writing Skills 是 NovelFork v3.3 起的正式写作配置入口，取代旧的 Preset 和 Beat Template 流程。
 
-## 预设规则
+## 核心概念
 
-预设是注入到 AI 写作指令中的规则文本。启用后，AI 每次生成内容都会遵守这些规则。
+**Writing Skill** 是一个包含 `SKILL.md`（Frontmatter + Prompt）的独立文件夹。每个 Skill 定义了一组写作规则、合规检查或结构模板，Agent 在写作时会遵守已启用的 Skills。
 
-### 内置预设（53 条）
+| 字段 | 说明 |
+|------|------|
+| `id` | 全局唯一标识 |
+| `name` | 显示名称 |
+| `kind` | 类型：`style` / `workflow` / `character` / `plot` / `structure` |
+| `mode` | `always`（始终生效）/ `manual`（书籍级启用） |
+| `checks` | 声明式合规检查规则（required-terms / forbidden-terms / pattern） |
 
-| 分类 | 数量 | 作用 |
-|------|------|------|
-| 去 AI 味（anti-ai） | 4 | 对话口语化、情绪具象化、句式变化、全扫描 |
-| 文学性（literary） | 4 | 角色多维、一致性审计、控制理念、钩子四态 |
-| 逻辑风险（logic-risk） | 8 | 时代错乱、角色动机、经济资源、地理交通、信息流、制度响应、满足代价、技术边界 |
-| 文风（tone） | 5 | 冷峻务实、古典意象、喜剧轻快、黑色幽默、悲剧孤独 |
-| 世界观基底（setting-base） | 6 | 古典游记江湖、历史朝堂、现代平台讽刺、近未来工业科幻、宗门仙侠、维多利亚神秘 |
-| 流派预设包（bundle） | 26 | 修仙、玄幻、武侠、都市、科幻、末日、克苏鲁、无限流等完整流派配置 |
+## 三级来源
 
-### 自定义预设
+| 来源 | 路径 | 优先级 |
+|------|------|--------|
+| 内置 | 产品 `skills/` 目录（编译时内联） | 最低 |
+| 作者级 | `~/.novelfork/skills/<slug>/` | 中（同 slug 覆盖内置） |
+| 作品级 | 作品根目录 `.novelfork/skills/<slug>/` | 最高 |
 
-Agent 可以用 `presets.write(action=create)` 工具创建专属规则。例如：
-- "本书禁止出现'修为暴涨'类描写，所有突破必须有代价"
-- "对话中必须体现地域方言特色"
+## 启用与物化
 
-### 操作方式
+1. 在**写作配置 → 技能**中开启/关闭某个 Skill（开关只对当前书生效）。
+2. 启用时系统自动将 `SKILL.md` 物化复制到作品的 `.novelfork/skills/<slug>/SKILL.md`。
+3. 物化后的 Skill 文件随作品迁移，在作品内编辑不影响内置与全局版本。
 
-- **让 Agent 选**：告诉叙述者"帮我选择适合这本书的预设"
-- **手动选**：状态栏「预设」面板勾选
-- **Agent 工具**：`presets.read`（查看）、`presets.write`（设置）、`presets.write(action=create)`（创建）
+## 文件树浏览与预览
 
-## 节拍模板
+在"套路 → 全局技能 / 作品技能"页面：
+- 每个 Skill 卡片可点击展开文件树，列出内部所有文件。
+- 点击文件名可在弹窗中在线预览 Markdown/代码源码。
 
-节拍是故事结构参考，指导 AI 安排情节节奏。
+## 合规检查 (Compliance Checks)
 
-### 内置模板（5 个）
+在 `SKILL.md` 的 `checks` 字段声明式定义规则：
 
-| 模板 | 节拍数 | 适用场景 |
-|------|--------|---------|
-| 网文开篇钩子 12 式 | 12 | 黄金三章，快速建立吸引力 |
-| 三幕结构 | 3 | 通用故事结构 |
-| 救猫咪 15 节拍 | 15 | Blake Snyder 节拍结构 |
-| 英雄之旅 17 阶段 | 17 | 成长、冒险、升级型长篇 |
-| 章节结尾钩子生成器 | 10 | 章末悬念设计 |
+```yaml
+checks:
+  - type: required-terms
+    terms: ["伏笔", "节奏"]
+    message: 本章缺少关键叙事要素
+  - type: forbidden-terms
+    terms: ["不禁", "莫名"]
+    severity: error
+  - type: pattern
+    pattern: "(.)\1{4,}"
+    message: 连续重复超过 4 次
+```
 
-### 自定义模板
-
-Agent 可以用 `beat.write(action=create)` 工具创建专属节拍。例如为你的书设计"日常渐变四阶段"。
-
-### 操作方式
-
-- **让 Agent 选**：告诉叙述者"帮我设计适合这本书的节拍结构"
-- **手动选**：状态栏「节拍」面板切换
-- **Agent 工具**：`beat.read`（查看）、`beat.write`（设置）、`beat.write(action=create)`（创建）
+写作结束后系统自动执行合规检查，违规项会在写作视图中提示修正。
 
 ## 推荐使用流程
 
-1. 创建新书后，告诉叙述者你的题材和风格偏好
-2. Agent 会自动选择合适的预设组合和节拍模板
-3. 写作过程中如果发现 AI 输出不符合预期，调整预设规则
-4. 需要特殊规则时让 Agent 创建自定义预设
+1. 写作配置 → 技能 → 按题材/风格启用适合的 Skills
+2. 如需自定义：编辑任意内置 Skill → 自动 fork 到 `~/.novelfork/skills/` 作为个人副本
+3. 作品级覆盖：在作品 `.novelfork/skills/` 下手动修改，只影响当前书
 
-## 最佳实践
+## 与旧 Preset/Beat 的关系
 
-- 不要全量启用所有预设，选 3-5 条最关键的
-- 流派预设包已经是精选组合，启用一个包通常够用
-- 节拍是参考不是约束，AI 会灵活运用
+| 旧概念 | 新对应 |
+|--------|--------|
+| Preset | `kind: style` 的 Writing Skill |
+| Beat Template | `kind: structure` + `kind: plot` 的 Writing Skill |
+| 自定义 Preset | 编辑 Skill → fork 到作者目录 |
+| 全局启用 | `mode: always` |
+| 书籍级启用 | `mode: manual` + 写作配置开关 |
 
-## 常见坑
-
-- 预设太多会撑爆上下文，影响生成质量
-- 自定义预设的 promptInjection 要具体，不要写"写得好一点"这种模糊指令
-- 节拍模板不匹配书的结构时，让 Agent 创建自定义的
-
-## Agent 查阅提示
-
-- 预设存储：`book.json` 的 `enabledPresetIds` 字段
-- 节拍存储：`book.json` 的 `beatTemplateId` 字段
-- 自定义预设/节拍存储：`user_template` 表（SQLite）
-- 预设注入时机：章节结果生成时注入 system prompt
-- 工具列表：`presets.read`、`presets.write`、`presets.write(action=create)`、`presets.check_compliance`、`beat.read`、`beat.write`、`beat.write(action=create)`
-
-## 可跳转功能入口
-
-- 预设面板: 状态栏点击「预设」。 (/next/books/:bookId)
-- 节拍面板: 状态栏点击「节拍」。 (/next/books/:bookId)
+旧 `enabledPresetIds` / `beatTemplateId` 字段在首次写入 Writing Skills 时自动迁移。

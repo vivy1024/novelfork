@@ -17,12 +17,16 @@ import {
   RUNTIME_STORAGE_SCAN_PATH,
   type DatabaseCleanupPreviewResult,
   type DatabaseCleanupTarget,
+  type DatabaseStorageBreakdown,
+  type DatabaseStorageCategorySummary,
+  type DatabaseStorageTableSummary,
   type StorageCategoryResult,
   type StorageCleanupTarget,
   type StorageScanResult,
 } from "@/app-next/runtime-admin";
 import { runtimeFetch } from "@/app-next/runtime/auth";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,6 +38,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -51,6 +56,22 @@ const CATEGORY_LABELS: Readonly<Record<string, string>> = {
   shares: "共享文件",
   worktrees: "工作树",
   containers: "容器镜像",
+};
+
+const CATEGORY_ORDER = ["database", "uploads", "shares", "worktrees", "containers"];
+
+const DATABASE_USAGE_CATEGORY_LABELS: Readonly<Record<string, string>> = {
+  sessions: "会话",
+  apiRequests: "API 请求",
+  projects: "项目",
+  runtime: "运行时",
+  users: "用户",
+  search: "搜索索引",
+  gateway: "网关",
+  benchmarks: "性能基准",
+  internal: "内部",
+  free: "可回收空间",
+  other: "其他",
 };
 
 const FILE_TARGETS: readonly {
@@ -99,6 +120,20 @@ function errorMessage(error: unknown, operation: string): string {
     return `403：需要 Runtime 管理员权限才能${operation}。${message}`;
   }
   return status ? `${status}：${message}` : message;
+}
+
+function getDatabaseBreakdown(category: StorageCategoryResult | undefined): DatabaseStorageBreakdown | null {
+  const details = category?.details as Partial<DatabaseStorageBreakdown> | undefined;
+  if (!details) return null;
+  if (
+    typeof details.mainBytes !== "number" ||
+    typeof details.walBytes !== "number" ||
+    typeof details.shmBytes !== "number" ||
+    typeof details.cleanupCandidates !== "object"
+  ) {
+    return null;
+  }
+  return details as unknown as DatabaseStorageBreakdown;
 }
 
 function detailsSummary(category: StorageCategoryResult): string {
@@ -206,6 +241,8 @@ export function StorageDiagnosticsPanel() {
   const [previewing, setPreviewing] = useState(false);
   const [databaseCleaning, setDatabaseCleaning] = useState(false);
   const [vacuuming, setVacuuming] = useState(false);
+  const [confirmCleanup, setConfirmCleanup] = useState<StorageCleanupTarget | null>(null);
+  const [confirmVacuum, setConfirmVacuum] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const loadCached = useCallback(async () => {
@@ -255,7 +292,7 @@ export function StorageDiagnosticsPanel() {
     }
   };
 
-  const cleanupFileTarget = async (target: StorageCleanupTarget) => {
+  const executeCleanupFileTarget = async (target: StorageCleanupTarget) => {
     setCleaningTarget(target);
     setError(null);
     try {
@@ -274,6 +311,13 @@ export function StorageDiagnosticsPanel() {
     } finally {
       setCleaningTarget(null);
     }
+  };
+
+  const handleCleanupConfirmed = () => {
+    if (!confirmCleanup) return;
+    const target = confirmCleanup;
+    setConfirmCleanup(null);
+    void executeCleanupFileTarget(target);
   };
 
   const selectedDatabaseTarget = useMemo(
@@ -323,13 +367,13 @@ export function StorageDiagnosticsPanel() {
     }
   };
 
-  const vacuumDatabase = async () => {
+  const executeVacuum = async () => {
     setVacuuming(true);
     setError(null);
     try {
       const result = await storageClient.vacuumDatabase();
       notify.success("数据库维护完成", {
-        description: `已释放 ${formatBytes(result.freedBytes)}，耗时 ${Math.round(result.durationMs / 1000)} 秒`,
+        description: `已释放 ${formatBytes(result.freedBytes)}（回收前可用 ${formatBytes(result.freelistBeforeBytes)}），耗时 ${(result.durationMs / 1000).toFixed(1)} 秒`,
       });
       await loadCached();
     } catch (caught) {
@@ -340,6 +384,22 @@ export function StorageDiagnosticsPanel() {
       setVacuuming(false);
     }
   };
+
+  const handleVacuumConfirmed = () => {
+    setConfirmVacuum(false);
+    void executeVacuum();
+  };
+
+  // Database breakdown from scan
+  const databaseCategory = scan?.categories.find((c) => c.key === "database");
+  const databaseDetails = getDatabaseBreakdown(databaseCategory);
+  const databaseUnreleasedBytes = (databaseDetails?.freelistBytes ?? 0) + (databaseDetails?.walBytes ?? 0);
+  const canVacuum = Boolean(databaseDetails) && databaseUnreleasedBytes > 0;
+  const databaseReadFailures = databaseDetails?.readFailures;
+  const databaseReadFailureCount = databaseReadFailures?.tableCount ?? 0;
+  const databaseReadFailureNames = (databaseReadFailures?.tableNames ?? []).slice(0, 5).join(", ");
+  const databaseUsageCategories: DatabaseStorageCategorySummary[] = (databaseDetails?.categories ?? []).filter((c) => c.totalBytes > 0);
+  const databaseTopTables: DatabaseStorageTableSummary[] = (databaseDetails?.topTables ?? []).filter((t) => t.totalBytes > 0);
 
   return (
     <div className="flex flex-col gap-6">
@@ -374,6 +434,7 @@ export function StorageDiagnosticsPanel() {
         </Alert>
       )}
 
+      {/* Summary cards */}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Card>
           <CardHeader>
@@ -382,15 +443,24 @@ export function StorageDiagnosticsPanel() {
           </CardHeader>
           <CardContent className="font-mono text-2xl font-semibold tabular-nums">{scan ? formatBytes(scan.totalBytes) : "—"}</CardContent>
         </Card>
-        {(scan?.categories ?? []).map((category) => (
-          <Card key={category.key}>
-            <CardHeader>
-              <CardTitle>{CATEGORY_LABELS[category.key] ?? category.key}</CardTitle>
-              <CardDescription>{detailsSummary(category)}</CardDescription>
-            </CardHeader>
-            <CardContent className="font-mono text-xl font-semibold tabular-nums">{formatBytes(category.sizeBytes)}</CardContent>
-          </Card>
-        ))}
+        {CATEGORY_ORDER.map((key) => {
+          const category = scan?.categories.find((c) => c.key === key);
+          if (!category) return null;
+          return (
+            <Card key={key}>
+              <CardHeader>
+                <CardTitle>{CATEGORY_LABELS[key] ?? key}</CardTitle>
+                <CardDescription>{detailsSummary(category)}</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="font-mono text-xl font-semibold tabular-nums">{formatBytes(category.sizeBytes)}</div>
+                {scan && scan.totalBytes > 0 && (
+                  <Progress value={(category.sizeBytes / scan.totalBytes) * 100} className="mt-2" />
+                )}
+              </CardContent>
+            </Card>
+          );
+        })}
       </div>
 
       {!cacheLoading && !scan && !error && (
@@ -400,6 +470,94 @@ export function StorageDiagnosticsPanel() {
         </Alert>
       )}
 
+      {/* Database detail breakdown */}
+      {databaseDetails && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><Database className="size-4 text-primary" />数据库存储明细</CardTitle>
+            <CardDescription>
+              主库 {formatBytes(databaseDetails.mainBytes)} · WAL {formatBytes(databaseDetails.walBytes)} · SHM {formatBytes(databaseDetails.shmBytes)}
+              {databaseDetails.scanMode && <Badge variant="outline" className="ml-2">{databaseDetails.scanMode === "dbstat" ? "精确扫描" : "近似估算"}</Badge>}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            {databaseReadFailureCount > 0 && (
+              <Alert className="border-yellow-500/40 bg-yellow-500/5">
+                <AlertTriangle className="mb-2 size-4 text-yellow-600" />
+                <AlertTitle>扫描报告不完整</AlertTitle>
+                <AlertDescription>
+                  {databaseReadFailureNames
+                    ? `${databaseReadFailureCount} 张表因锁竞争未能测量（${databaseReadFailureNames}），报告中的零值表示"未知"而非"为空"。`
+                    : `${databaseReadFailureCount} 张表因锁竞争未能测量，报告中的零值表示"未知"而非"为空"。`}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {databaseDetails.objectBytes != null && (
+              <p className="text-sm text-muted-foreground">
+                对象数据 {formatBytes(databaseDetails.objectBytes)} · 可回收空间 {formatBytes(databaseDetails.freelistBytes ?? 0)}
+              </p>
+            )}
+
+            {databaseUsageCategories.length > 0 && (
+              <div className="flex flex-col gap-2">
+                <h4 className="text-sm font-medium text-foreground">按类别占用</h4>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {databaseUsageCategories.map((cat) => (
+                    <div key={cat.key} className="rounded-lg border border-border p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-sm font-medium">{DATABASE_USAGE_CATEGORY_LABELS[cat.key] ?? cat.key}</span>
+                        <Badge variant="secondary">{formatBytes(cat.totalBytes)}</Badge>
+                      </div>
+                      {cat.key !== "free" && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {cat.tableCount} 张表 · {cat.rowCount} 行 · 索引 {formatBytes(cat.indexBytes)}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {databaseTopTables.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                占用最大的表：{databaseTopTables.slice(0, 5).map((t) => `${t.name} ${formatBytes(t.totalBytes)}`).join(" · ")}
+              </p>
+            )}
+
+            {/* Cleanup candidates from database breakdown */}
+            {databaseDetails.cleanupCandidates && (
+              <div className="flex flex-col gap-2">
+                <h4 className="text-sm font-medium text-foreground">可清理候选</h4>
+                {([
+                  { target: "archivedSessions" as const, label: "已归档会话", summary: databaseDetails.cleanupCandidates.archivedSessions },
+                  { target: "staleSessions" as const, label: "过期会话", summary: databaseDetails.cleanupCandidates.staleSessions },
+                  { target: "apiRequestDumps" as const, label: "API 请求转储", summary: databaseDetails.cleanupCandidates.apiRequestDumps },
+                ]).map((row) => (
+                  <div key={row.target} className="rounded-lg border border-border p-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium">{row.label}</span>
+                          <Badge variant="secondary">{formatBytes(row.summary.approxBytes)}</Badge>
+                        </div>
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{row.target === "apiRequestDumps" ? `${row.summary.count} 条请求` : `${row.summary.count} 个会话`}</span>
+                          {row.summary.oldestAt && <span>最早 {formatDateTime(row.summary.oldestAt)}</span>}
+                          {row.summary.blockedCount > 0 && <span className="text-yellow-600">{row.summary.blockedCount} 个被阻止</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* File cleanup targets */}
       <Card>
         <CardHeader>
           <CardTitle>文件清理目标</CardTitle>
@@ -415,7 +573,7 @@ export function StorageDiagnosticsPanel() {
                   <div className="min-w-0 flex-1">
                     <div className="font-medium text-foreground">{item.label}</div>
                     <p className="mt-1 text-xs text-muted-foreground">{item.description}</p>
-                    <Button className="mt-3" size="sm" variant="outline" onClick={() => void cleanupFileTarget(item.target)} disabled={cleaningTarget !== null}>
+                    <Button className="mt-3" size="sm" variant="outline" onClick={() => setConfirmCleanup(item.target)} disabled={cleaningTarget !== null}>
                       {cleaningTarget === item.target ? <Loader2 className="animate-spin" /> : <Trash2 />}
                       清理{item.label}
                     </Button>
@@ -427,6 +585,7 @@ export function StorageDiagnosticsPanel() {
         </CardContent>
       </Card>
 
+      {/* Database cleanup */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2"><Database className="size-4 text-primary" />数据库清理</CardTitle>
@@ -458,17 +617,18 @@ export function StorageDiagnosticsPanel() {
           <p className="text-xs text-muted-foreground">{selectedDatabaseTarget.description}</p>
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border p-3">
             <div>
-              <div className="font-medium text-foreground">SQLite VACUUM 与优化</div>
+              <div className="font-medium text-foreground">SQLite VACUUM 与空间整理</div>
               <p className="mt-1 text-xs text-muted-foreground">SQLite 重建数据库文件并为 WAL 执行检查点时，Runtime 数据库操作可能会暂时停顿。</p>
             </div>
-            <Button variant="outline" onClick={() => void vacuumDatabase()} disabled={vacuuming}>
+            <Button variant="outline" onClick={() => setConfirmVacuum(true)} disabled={vacuuming || (databaseDetails != null && !canVacuum)}>
               {vacuuming ? <Loader2 className="animate-spin" /> : <Database />}
-              {vacuuming ? "维护中…" : "整理数据库"}
+              {vacuuming ? "维护中…" : "整理数据库空间"}
             </Button>
           </div>
         </CardContent>
       </Card>
 
+      {/* Database cleanup preview dialog */}
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
@@ -481,7 +641,7 @@ export function StorageDiagnosticsPanel() {
                 <Alert className="border-destructive/40 bg-destructive/5">
                   <AlertTriangle className="mb-2 size-4 text-destructive" />
                   <AlertTitle>使用历史将被删除</AlertTitle>
-                  <AlertDescription>此清理会删除“使用历史”面板依赖的 API 请求记录，而不只是可丢弃文件。</AlertDescription>
+                  <AlertDescription>此清理会删除"使用历史"面板依赖的 API 请求记录，而不只是可丢弃文件。</AlertDescription>
                 </Alert>
               )}
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
@@ -530,6 +690,42 @@ export function StorageDiagnosticsPanel() {
             <Button variant="destructive" onClick={() => void executeDatabaseCleanup()} disabled={!preview || databaseCleaning}>
               {databaseCleaning ? <Loader2 className="animate-spin" /> : <Trash2 />}
               执行清理
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* File cleanup confirmation dialog */}
+      <Dialog open={confirmCleanup !== null} onOpenChange={(open) => { if (!open) setConfirmCleanup(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认清理</DialogTitle>
+            <DialogDescription>
+              即将清理「{FILE_TARGETS.find((t) => t.target === confirmCleanup)?.label ?? ""}」。此操作不可撤销，确定继续吗？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmCleanup(null)}>取消</Button>
+            <Button variant="destructive" onClick={handleCleanupConfirmed}>
+              <Trash2 />确认清理
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* VACUUM confirmation dialog */}
+      <Dialog open={confirmVacuum} onOpenChange={setConfirmVacuum}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>确认数据库维护</DialogTitle>
+            <DialogDescription>
+              SQLite VACUUM 会重建数据库文件并执行 WAL 检查点。在此期间 Runtime 数据库操作会暂时停顿。确定继续吗？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirmVacuum(false)}>取消</Button>
+            <Button variant="destructive" onClick={handleVacuumConfirmed}>
+              <Database />执行 VACUUM
             </Button>
           </DialogFooter>
         </DialogContent>

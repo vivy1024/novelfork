@@ -60,7 +60,14 @@ interface RawDiagnostic {
   kind?: unknown;
 }
 
-/** blocker/warning code → 就绪条标签与修复动作。 */
+/**
+ * blocker/warning code → 就绪条标签与修复动作。
+ *
+ * 标签必须叫得出作者能在界面上找到的东西。`style-disabled` 的判据是
+ * book.json 的 `enabledWritingSkillIds`（见 write-preflight），对应界面是
+ * Writing Skills 面板；旧「文风预设」（enabledPresetIds）已迁移下线，
+ * 继续用那个词只会把作者引到不存在的入口。
+ */
 const CHECK_META: Record<string, { label: string; fixAction?: WriteFixActionId }> = {
   "missing-directive": { label: "本章指示", fixAction: "open-focus" },
   "short-directive": { label: "本章指示", fixAction: "open-focus" },
@@ -69,7 +76,7 @@ const CHECK_META: Record<string, { label: string; fixAction?: WriteFixActionId }
   "empty-chapter-summary": { label: "章摘要", fixAction: "settle-range" },
   "high-risk-pending": { label: "待确认事件", fixAction: "review-pending" },
   "hooks-overdue": { label: "伏笔到期", fixAction: "review-hooks" },
-  "style-disabled": { label: "文风预设", fixAction: "enable-style" },
+  "style-disabled": { label: "Writing Skills", fixAction: "enable-style" },
   "volume-focus-missing": { label: "卷纲", fixAction: "set-volume" },
   "platform-target-mismatch": { label: "平台字数", fixAction: "adjust-word-target" },
   "book-not-found": { label: "书籍绑定" },
@@ -209,16 +216,26 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
  * 一键修动作 → 下一步怎么走。
  *
  * 纪律：任何会写入的修复都必须经叙述者与 Runtime 权限确认（kind="narrator"），
- * 前端不得静默 POST 写数据；只有切视图（kind="view"）才由前端直接完成。
+ * 前端不得静默 POST 写数据；只有导航类动作（view / settings / lore-panel）
+ * 才由前端直接完成。
+ *
+ * 导航目标必须与 preflight 的判据同源，否则作者点完按钮改了东西、重跑
+ * preflight 却发现问题还在。参见 CHECK_META 上方注释。
  */
 export interface FixActionPlan {
-  readonly kind: "narrator" | "view";
+  readonly kind: "narrator" | "view" | "settings" | "lore-panel";
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
   readonly view?: "jingwei" | "tools" | "explorer";
+  /** kind=settings 时要定位到的写作设置分区 */
+  readonly settingsSection?: SettingsSectionId;
+  /** kind=lore-panel 时要在经纬面板里定位的分类 */
+  readonly loreCategory?: string;
   readonly label: string;
 }
+
+export type SettingsSectionId = "basic" | "writing-skills" | "narrative-memory";
 
 export function planFixAction(
   action: WriteFixActionId,
@@ -244,12 +261,18 @@ export function planFixAction(
       return { kind: "view", view: "jingwei", label: "去处理待确认事件" };
     case "review-hooks":
       return { kind: "view", view: "tools", label: "查看伏笔看板" };
+    // 判据是 book.json 的 enabledWritingSkillIds，唯一能改它的界面是
+    // 写作设置里的 Writing Skills 面板。切「工具」视图只有诊断面板，改不了这项。
     case "enable-style":
-      return { kind: "view", view: "tools", label: "启用文风预设" };
+      return { kind: "settings", settingsSection: "writing-skills", label: "启用 Writing Skills" };
     case "adjust-word-target":
       return { kind: "view", view: "explorer", label: "调整章字数目标" };
+    // preflight 的 currentFocus 来自 cockpit 的 readCurrentFocusFromJingwei，
+    // 查的是经纬 SQLite（category IN focus/current-focus/outline），不是
+    // story/current_focus.md —— 那个 md 只在 pipeline.write 注入上下文时读，
+    // 改它不会让 missing-directive 消失。所以这里落到经纬 outline 分类。
     case "open-focus":
-      return { kind: "view", view: "jingwei", label: "编辑当前焦点" };
+      return { kind: "lore-panel", loreCategory: "outline", label: "编辑卷纲/当前焦点" };
     default:
       return { kind: "view", view: "tools", label: "查看详情" };
   }

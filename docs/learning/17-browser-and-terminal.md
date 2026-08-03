@@ -20,16 +20,23 @@ Agent 可通过 Browser 工具操作 headless 浏览器：
 
 使用系统已安装的 Chrome 或 Edge（headless 模式），无需额外安装浏览器。
 
-## Terminal 工具
+## Terminal 工具与 Web 交互终端
 
 Agent 可创建和管理持久化终端进程：
 
 - **创建进程**：启动长时间运行的命令（如 dev server）
 - **读取输出**：获取进程的 stdout/stderr
 - **发送输入**：向进程 stdin 写入
-- **终止进程**：停止运行中的进程
+- **网页内嵌终端 (xterm.js)**：在“设置 → 终端”页面中，支持直接在网页端附加并交互操作运行中的 dtach / PTY 终端会话，支持实时 ANSI 色彩、大小自适应与 WebSocket 输出回放。
 
 与 Bash 工具的区别：Bash 是一次性执行命令并返回结果；Terminal 是持久化进程，可持续交互。
+
+## 消息网关 (Gateway)
+
+在“设置 → 消息网关”中，可配置多平台机器人与 Webhook 连接：
+- 支持 Telegram、Discord、Slack、飞书、Webhook、微信与 QQ Bot；
+- 微信通道支持**网页二维码扫码登录与自动授权**；
+- 支持全局网关启停、默认权限模式与会话超时设定。
 
 ## 推荐使用流程
 

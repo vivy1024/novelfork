@@ -6,6 +6,10 @@ const gatewayClientMock = vi.hoisted(() => ({
   reload: vi.fn(),
   sessions: vi.fn(),
   deleteSession: vi.fn(),
+  getConfig: vi.fn(),
+  saveConfig: vi.fn(),
+  weixinQrStart: vi.fn(),
+  weixinQrPoll: vi.fn(),
 }));
 
 const notifyMock = vi.hoisted(() => ({
@@ -39,12 +43,19 @@ const gatewaySession = {
 beforeEach(() => {
   gatewayClientMock.status.mockResolvedValue({ started: true, platforms: ["telegram", "webhook"] });
   gatewayClientMock.sessions.mockResolvedValue([gatewaySession]);
+  gatewayClientMock.getConfig.mockResolvedValue({
+    enabled: true,
+    streaming: true,
+    defaultPermissionMode: "bypassPermissions",
+    platforms: [{ platform: "telegram", enabled: true, token: "tok-xxx" }],
+  });
   gatewayClientMock.reload.mockResolvedValue({
     ok: true,
     reloaded: ["telegram"],
     status: { started: false, platforms: [] },
   });
   gatewayClientMock.deleteSession.mockResolvedValue({ ok: true });
+  gatewayClientMock.saveConfig.mockResolvedValue({});
 });
 
 afterEach(() => {
@@ -60,6 +71,7 @@ describe("GatewayPanel", () => {
     await waitFor(() => {
       expect(gatewayClientMock.status).toHaveBeenCalledTimes(1);
       expect(gatewayClientMock.sessions).toHaveBeenCalledTimes(1);
+      expect(gatewayClientMock.getConfig).toHaveBeenCalledTimes(1);
     });
 
     expect(screen.getByText("运行中")).toBeTruthy();
@@ -106,5 +118,48 @@ describe("GatewayPanel", () => {
     expect(await screen.findByText("alice")).toBeTruthy();
     expect(screen.getByText(/状态：gateway unavailable/)).toBeTruthy();
     expect(screen.getByText("Runtime 未返回 Gateway 状态。")).toBeTruthy();
+  });
+
+  it("renders gateway config fields when enabled", async () => {
+    render(<GatewayPanel />);
+
+    // Wait for config to load
+    await waitFor(() => expect(gatewayClientMock.getConfig).toHaveBeenCalledTimes(1));
+
+    // Should show config UI since config.enabled is true
+    expect(await screen.findByText("网关配置")).toBeTruthy();
+    expect(screen.getByText("平台配置")).toBeTruthy();
+    expect(screen.getByText("流式输出")).toBeTruthy();
+  });
+
+  it("saves gateway config and triggers reload", async () => {
+    gatewayClientMock.getConfig.mockResolvedValue({
+      enabled: true,
+      streaming: true,
+      defaultPermissionMode: "bypassPermissions",
+      platforms: [],
+    });
+    gatewayClientMock.reload.mockResolvedValue({
+      ok: true,
+      reloaded: [],
+      status: { started: true, platforms: [] },
+    });
+
+    render(<GatewayPanel />);
+
+    // Wait for config to load
+    await waitFor(() => expect(gatewayClientMock.getConfig).toHaveBeenCalledTimes(1));
+
+    // Change streaming to trigger dirty state
+    await screen.findByText("流式输出");
+    const streamingSwitch = screen.getByText("流式输出").previousElementSibling;
+    if (streamingSwitch) fireEvent.click(streamingSwitch);
+
+    // Save button should appear
+    const saveButton = await screen.findByRole("button", { name: /保存配置/ });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => expect(gatewayClientMock.saveConfig).toHaveBeenCalledTimes(1));
+    expect(notifyMock.success).toHaveBeenCalledWith("Gateway 配置已保存");
   });
 });

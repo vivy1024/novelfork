@@ -24,10 +24,12 @@ import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
-import { BookSettingsPanel } from "../panels/BookSettingsPanel";
+import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { WriteViewPanel } from "../WriteViewPanel";
+import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
+import { buildOnboardingRequestMessage } from "../onboarding-request";
 import { useIdeKeybindings } from "./use-ide-keybindings";
 import { usePanelManager, type ViewId } from "./use-panel-manager";
 import { CommandPalette } from "./command-palette";
@@ -111,7 +113,7 @@ export interface IdeWorkbenchProps {
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onCreateChapter?: () => void;
-  onGuideComplete?: () => void;
+  onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
   chapterActions?: ChapterActionHandlers;
   chatSlot?: ReactNode;
   onSwitchToAgent?: () => void;
@@ -209,6 +211,8 @@ export function IdeWorkbench({
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [chatVisible, setChatVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
+  const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
   const [fileClipboard, setFileClipboard] = useState<{ node: WorkbenchResourceNode; mode: "copy" | "cut" } | null>(null);
 
@@ -597,6 +601,61 @@ export function IdeWorkbench({
     void onSendToNarrator?.(buildWriteRequestMessage(payload));
   }, [onSendToNarrator]);
 
+  /**
+   * 建书十一问完成 → 把 Skills 启用确认与深追问交给叙述者。
+   *
+   * 消息模板留在小说领域侧；工具执行、权限确认与 AskUserQuestion 渲染全在
+   * Runtime。没有可用叙述者时只刷新工作台，不静默丢步骤。
+   */
+  const handleGuideCompleteWithOnboarding = useCallback((outcome?: GuidedSetupOutcome) => {
+    onGuideComplete?.(outcome);
+    if (!onSendToNarrator) return;
+    void Promise.resolve(onSendToNarrator(buildOnboardingRequestMessage({
+      ...(bookRoot?.title ? { bookTitle: bookRoot.title } : {}),
+      ...(outcome?.recommendedWritingSkills
+        ? { recommendedWritingSkills: outcome.recommendedWritingSkills.map((skill) => ({ name: skill.name, reason: skill.reason })) }
+        : {}),
+      ...(outcome?.matchedGenreCluster !== undefined ? { matchedGenreCluster: outcome.matchedGenreCluster } : {}),
+    }))).catch(() => undefined);
+  }, [bookRoot?.title, onGuideComplete, onSendToNarrator]);
+
+  /**
+   * 写作视图「一键修」→ 打开写作设置并定位分区。
+   * `style-disabled` 的判据是 book.json 的 enabledWritingSkillIds，
+   * 唯一能改它的界面是这里的 Writing Skills 面板。
+   */
+  const handleOpenSettingsSection = useCallback((section?: BookSettingsSection) => {
+    setSettingsSection(section);
+    setShowSettings(true);
+  }, []);
+
+  /**
+   * 写作视图「一键修」→ 打开经纬完整面板并定位分类。
+   *
+   * preflight 的 currentFocus 来自经纬 SQLite（category focus/current-focus/outline），
+   * 而侧栏经纬树只挂静态设定层（outline 是 dynamic，压根不在树里），
+   * 所以这里走完整面板而不是切侧栏视图。
+   */
+  const handleOpenLorePanel = useCallback((category?: string) => {
+    if (!bookId) return;
+    const node: WorkbenchResourceNode = {
+      id: category ? `jingwei-panel-entry:${category}` : "jingwei-panel-entry",
+      kind: "jingwei",
+      title: category === "outline" ? "经纬 · 卷纲/大纲" : "经纬资料",
+      capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: {
+        bookId,
+        action: "open-jingwei-panel",
+        ...(category ? { jingweiCategory: category } : {}),
+      },
+    };
+    // 该节点不来自资源树/文件树，activeNode 解析不到它；loadedFiles 是
+    // 优先级最高的节点补充源，登记后 Tab 才能渲染出面板。
+    setLoadedFiles((prev) => new Map(prev).set(node.id, node));
+    setShowSettings(false);
+    handleOpen(node);
+  }, [bookId, handleOpen]);
+
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
     save: () => {
@@ -876,7 +935,7 @@ export function IdeWorkbench({
             icon={Settings}
             label="写作设置"
             active={showSettings}
-            onClick={() => setShowSettings(v => !v)}
+            onClick={() => { setSettingsSection(undefined); setShowSettings(v => !v); }}
           />
         </div>
       </div>
@@ -901,6 +960,8 @@ export function IdeWorkbench({
                   bookId={bookId}
                   callTool={writeViewCallTool}
                   onSwitchView={(view) => keybindingActions.switchView(view)}
+                  onOpenSettings={handleOpenSettingsSection}
+                  onOpenLorePanel={handleOpenLorePanel}
                   onSendToNarrator={onSendToNarrator}
                   onRunWrite={handleRunWrite}
                 />,
@@ -982,7 +1043,11 @@ export function IdeWorkbench({
                   <EditorErrorBoundary>
                     {showSettings && bookId ? (
                       <div className="h-full overflow-y-auto">
-                        <BookSettingsPanel bookId={bookId} onBack={() => setShowSettings(false)} />
+                        <BookSettingsPanel
+                          bookId={bookId}
+                          onBack={() => { setShowSettings(false); setSettingsSection(undefined); }}
+                          {...(settingsSection ? { initialSection: settingsSection } : {})}
+                        />
                       </div>
                     ) : activeNode || multiTabNodes.length > 0 ? (
                       <>
@@ -996,7 +1061,7 @@ export function IdeWorkbench({
                               repositoryPath={repositoryPath}
                               onSave={onSave}
                               onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
-                              onGuideComplete={onGuideComplete}
+                              onGuideComplete={handleGuideCompleteWithOnboarding}
                               chapterActions={chapterActions}
                               jingweiActions={jingweiActions}
                               toolbarSlotRef={toolbarSlotRef}
@@ -1014,7 +1079,7 @@ export function IdeWorkbench({
                         repositoryPath={repositoryPath}
                         onSave={onSave}
                         onCanvasContextChange={handleCanvasContextChange}
-                        onGuideComplete={onGuideComplete}
+                        onGuideComplete={handleGuideCompleteWithOnboarding}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         toolbarSlotRef={toolbarSlotRef}

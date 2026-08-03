@@ -73,7 +73,7 @@ function displayDate(value: string | null): string | null {
 }
 
 function downloadBackupCodes(codes: ReadonlyArray<string>) {
-  const blob = new Blob([`NarraFork backup codes\n\n${codes.join("\n")}\n`], {
+  const blob = new Blob([`NovelFork backup codes\n\n${codes.join("\n")}\n`], {
     type: "text/plain",
   });
   const url = URL.createObjectURL(blob);
@@ -365,7 +365,7 @@ export function SecurityPanel({ client = defaultSecurityClient }: SecurityPanelP
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">账户安全</h2>
-        <p className="text-sm text-muted-foreground">安全状态和身份操作直接由 NarraFork Runtime 提供。</p>
+        <p className="text-sm text-muted-foreground">安全状态和身份操作直接由 Runtime 提供。</p>
       </div>
 
       {error ? (

@@ -53,7 +53,9 @@ describe("buildWriteViewModel", () => {
     expect(model.canWrite).toBe(true);
     const warn = model.checks.find((item) => item.code === "style-disabled");
     expect(warn?.state).toBe("warn");
-    expect(warn?.label).toBe("文风预设");
+    // 判据是 book.json 的 enabledWritingSkillIds，界面上就叫 Writing Skills；
+    // 旧「文风预设」（enabledPresetIds）已下线，标签不能再指向它。
+    expect(warn?.label).toBe("Writing Skills");
     expect(warn?.fixAction).toBe("enable-style");
     expect(warn?.explanation?.suggestedAction).toContain("style.import");
     expect(model.headline).toContain("1 条提醒");
@@ -130,10 +132,43 @@ describe("planFixAction", () => {
   });
 
   it("routes review actions to sidebar views", () => {
-    // 待确认事件与焦点都在合并后的经纬工作区
+    // 待确认事件在合并后的经纬工作区，伏笔看板在工具视图
     expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("jingwei");
     expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("tools");
-    expect(planFixAction("open-focus", { chapterNumber: 5 }).view).toBe("jingwei");
+  });
+
+  /**
+   * 下面两条守护的是本次修复的核心：一键修的落点必须与 preflight 的判据同源。
+   * 落错了，作者点按钮、改完东西、重跑 preflight 会发现问题还在。
+   */
+  it("enable-style 打开写作设置的 Writing Skills 分区（判据是 enabledWritingSkillIds）", () => {
+    const plan = planFixAction("enable-style", { chapterNumber: 5 });
+    expect(plan.kind).toBe("settings");
+    expect(plan.settingsSection).toBe("writing-skills");
+    // 「工具」侧栏只有诊断面板，改不了启用状态
+    expect(plan.view).toBeUndefined();
+  });
+
+  it("open-focus 打开经纬 outline 分类，而不是 story/current_focus.md", () => {
+    const plan = planFixAction("open-focus", { chapterNumber: 5 });
+    expect(plan.kind).toBe("lore-panel");
+    expect(plan.loreCategory).toBe("outline");
+    // preflight 的 currentFocus 走 cockpit 的 readCurrentFocusFromJingwei（经纬 SQLite），
+    // story/current_focus.md 只在 pipeline.write 注入上下文时读；引导改 md 修不掉 blocker。
+    expect(JSON.stringify(plan)).not.toContain("current_focus.md");
+  });
+
+  it("三个 directive 类 code 都映射到 open-focus，且都落在经纬面板", () => {
+    for (const code of ["missing-directive", "short-directive", "focus-default-only"]) {
+      const model = buildWriteViewModel({
+        ...readyPreflight,
+        ok: false,
+        blockers: [{ code, message: `${code} 触发` }],
+      });
+      const check = model.checks.find((item) => item.code === code);
+      expect(check?.fixAction).toBe("open-focus");
+      expect(planFixAction(check!.fixAction!, { chapterNumber: 5 }).kind).toBe("lore-panel");
+    }
   });
 });
 

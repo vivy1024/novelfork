@@ -117,6 +117,73 @@ export interface DatabaseVacuumResult {
   readonly durationMs: number;
 }
 
+export type DatabaseStorageCategoryKey =
+  | "sessions"
+  | "apiRequests"
+  | "projects"
+  | "runtime"
+  | "users"
+  | "search"
+  | "gateway"
+  | "benchmarks"
+  | "internal"
+  | "free"
+  | "other";
+
+export interface DatabaseStorageCategorySummary {
+  readonly key: DatabaseStorageCategoryKey;
+  readonly tableCount: number;
+  readonly rowCount: number;
+  readonly approxContentBytes: number;
+  readonly diskBytes: number;
+  readonly indexBytes: number;
+  readonly totalBytes: number;
+}
+
+export interface DatabaseStorageTableSummary {
+  readonly name: string;
+  readonly category: DatabaseStorageCategoryKey;
+  readonly kind: "table" | "virtual" | "shadow" | "internal";
+  readonly rowCount: number | null;
+  readonly approxContentBytes: number;
+  readonly diskBytes: number;
+  readonly indexBytes: number;
+  readonly totalBytes: number;
+  readonly readFailed?: boolean;
+}
+
+export interface DatabaseStorageReadFailures {
+  readonly tableCount: number;
+  readonly tableNames: readonly string[];
+}
+
+export interface DatabaseCleanupCandidateSummary {
+  readonly count: number;
+  readonly approxBytes: number;
+  readonly oldestAt: string | null;
+  readonly retentionDays?: number;
+  readonly blockedCount: number;
+}
+
+export interface DatabaseStorageBreakdown {
+  readonly mainBytes: number;
+  readonly walBytes: number;
+  readonly shmBytes: number;
+  readonly pageSize?: number;
+  readonly pageCount?: number;
+  readonly freelistBytes?: number;
+  readonly objectBytes?: number;
+  readonly scanMode?: "dbstat" | "approximate";
+  readonly categories?: readonly DatabaseStorageCategorySummary[];
+  readonly topTables?: readonly DatabaseStorageTableSummary[];
+  readonly readFailures?: DatabaseStorageReadFailures;
+  readonly cleanupCandidates: {
+    readonly archivedSessions: DatabaseCleanupCandidateSummary;
+    readonly staleSessions: DatabaseCleanupCandidateSummary;
+    readonly apiRequestDumps: DatabaseCleanupCandidateSummary;
+  };
+}
+
 export function createStorageClient(options: RuntimeAdminClientOptions = {}) {
   const request = createRuntimeAdminRequest(options);
   return {

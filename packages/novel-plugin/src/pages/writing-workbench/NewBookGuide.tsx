@@ -32,10 +32,17 @@ interface GuideAnswer {
   value: string;
 }
 
+/** guided-setup 返回体里前端会用到的部分。 */
+export interface GuidedSetupOutcome {
+  readonly recommendedWritingSkills?: readonly { readonly name: string; readonly reason: string; readonly kind?: string }[];
+  readonly matchedGenreCluster?: string | null;
+}
+
 export interface NewBookGuideProps {
   bookId: string;
   bookTitle: string;
-  onComplete: () => void;
+  /** 十一问提交成功后回调；带上 guided-setup 的返回体供上层做后续编排。 */
+  onComplete: (outcome?: GuidedSetupOutcome) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -145,6 +152,9 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedGenre, setSelectedGenre] = useState<string>("");
+  // 提交成功后先停在摘要屏：让作者当场看见系统按他的回答挑了哪些技能、为什么挑，
+  // 而不是事后自己去设置页翻 372 个技能。
+  const [outcome, setOutcome] = useState<GuidedSetupOutcome | null>(null);
 
   // 根据题材复杂度动态过滤问题
   const complexity = getGenreComplexity(selectedGenre);
@@ -222,12 +232,19 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
         payload[q.fieldPath] = finalAnswers[q.id] ?? { mode: "random", value: "" };
       }
 
-      console.log("[NewBookGuide] posting to guided-setup, payload keys:", Object.keys(payload));
-      await postApi(`/books/${encodeURIComponent(bookId)}/guided-setup`, { answers: payload });
-      console.log("[NewBookGuide] guided-setup success, calling onComplete");
-      onComplete();
+      const result = await postApi(
+        `/books/${encodeURIComponent(bookId)}/guided-setup`,
+        { answers: payload },
+      ) as GuidedSetupOutcome | null;
+      const recommended = result?.recommendedWritingSkills ?? [];
+      if (recommended.length > 0) {
+        // 有推荐 → 先展示摘要，由作者点「进入工作台」再继续；
+        // 没推荐就没必要多一屏，直接走完。
+        setOutcome(result ?? {});
+        return;
+      }
+      onComplete(result ?? undefined);
     } catch (err) {
-      console.error("[NewBookGuide] guided-setup error:", err);
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(false);
@@ -236,6 +253,42 @@ export function NewBookGuide({ bookId, bookTitle, onComplete }: NewBookGuideProp
 
   // 判断当前模式
   const activeMode: AnswerMode | null = currentAnswer?.mode ?? null;
+
+  if (outcome) {
+    const recommended = outcome.recommendedWritingSkills ?? [];
+    return (
+      <div className="flex h-full flex-col items-center justify-center p-6" data-testid="new-book-guide-summary">
+        <div className="w-full max-w-lg space-y-5">
+          <div className="text-center space-y-1">
+            <h2 className="text-lg font-semibold">设定已保存</h2>
+            <p className="text-sm text-muted-foreground">
+              已按你的回答挑好 {recommended.length} 个写作技能
+              {outcome.matchedGenreCluster ? `（题材方向：${outcome.matchedGenreCluster}）` : ""}。
+              进入工作台后，AI 会先和你确认要启用哪些，再追问几个关键设定。
+            </p>
+          </div>
+
+          <ul className="space-y-2">
+            {recommended.map((skill) => (
+              <li key={skill.name} className="rounded-lg border border-border px-3 py-2">
+                <p className="text-sm font-medium text-foreground">{skill.name}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{skill.reason}</p>
+              </li>
+            ))}
+          </ul>
+
+          <p className="text-[11px] text-muted-foreground">
+            这些只是建议，还没有启用。你可以在对话里增删，也能随时去「写作设置 → Writing Skills」自己调。
+          </p>
+
+          <Button className="w-full" onClick={() => onComplete(outcome)} data-testid="new-book-guide-continue">
+            <Check className="size-4 mr-1" />
+            进入工作台
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col items-center justify-center p-6">

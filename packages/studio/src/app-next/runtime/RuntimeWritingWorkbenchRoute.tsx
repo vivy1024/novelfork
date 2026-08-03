@@ -262,6 +262,17 @@ export function RuntimeWritingWorkbenchRoute({
     });
   }, [activeNarrator]);
 
+  /**
+   * 建书十一问完成 → 刷新工作台资源。
+   *
+   * 编排消息由 novel-plugin 的 IdeWorkbench 构造后经 onSendToNarrator 发出：
+   * 消息模板与十一问同属小说领域，放在产品壳里会让 Studio 值依赖 novel-plugin
+   * 的 node 侧模块链（writing-skills loader 用 node:os），打不出浏览器包。
+   */
+  const handleGuideComplete = useCallback(() => {
+    void reload();
+  }, [reload]);
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
       <div className="flex items-center border-b border-border px-4 py-2">
@@ -290,6 +301,7 @@ export function RuntimeWritingWorkbenchRoute({
           ) : undefined}
           onSwitchToAgent={activeNarrator ? () => onNavigateToConversation(activeNarrator.id) : undefined}
           onSendToNarrator={activeNarrator ? handleSendToNarrator : undefined}
+          onGuideComplete={handleGuideComplete}
           bookSessions={narrators.map((narrator) => ({
             id: narrator.id,
             title: narrator.title,

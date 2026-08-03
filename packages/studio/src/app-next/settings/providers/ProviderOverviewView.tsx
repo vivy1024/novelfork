@@ -110,7 +110,7 @@ export function ProviderOverviewView({
       />
       <ProviderGroup
         heading="NUG 反代服务"
-        description="连接 NarraFork Unified Gateway，统一管理远端模型通道。"
+        description="连接 NUG (NovelFork Universal Gateway) 网关，统一管理远端模型通道与算力。"
         providers={nugProviders}
         modelGroups={modelGroups}
         busy={busy}

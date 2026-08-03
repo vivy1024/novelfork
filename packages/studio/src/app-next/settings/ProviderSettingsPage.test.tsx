@@ -1,3 +1,4 @@
+import React from "react";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -18,6 +19,14 @@ vi.mock("@/components/ui/simple-select", () => ({
       {options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
     </select>
   ),
+}));
+
+vi.mock("@/components/ui/skeleton", () => ({
+  Skeleton: ({ className }: { className?: string }) => <div data-testid="skeleton" className={className} />,
+}));
+
+vi.mock("@/components/ui/button", () => ({
+  Button: ({ children, ...props }: React.ComponentProps<"button">) => <button {...props}>{children}</button>,
 }));
 
 const openaiModels = Array.from({ length: 4 }, (_, index) => ({ id: `gpt-inventory-${index + 1}`, owned_by: "fixture" }));
@@ -150,7 +159,7 @@ describe("ProviderSettingsPage", () => {
     expect((screen.getByLabelText("API 类型 / 协议") as HTMLSelectElement).value).toBe("codex-native");
   });
 
-  it("创建草稿时只 PATCH customApiProviders", async () => {
+  it("创建草稿时本地状态更新，保存时只 PATCH customApiProviders", async () => {
     const { client } = createClient();
     render(<ProviderSettingsPage client={client} />);
 
@@ -163,9 +172,9 @@ describe("ProviderSettingsPage", () => {
     fireEvent.change(screen.getByLabelText("默认模型"), { target: { value: "writer-1" } });
     fireEvent.click(screen.getByRole("button", { name: "创建供应商" }));
 
+    // 点击创建供应商立即 patch 保存到 Runtime
     await waitFor(() => expect(client.patch).toHaveBeenCalledTimes(1));
     const patch = (client.patch as ReturnType<typeof vi.fn>).mock.calls[0][0];
-    expect(Object.keys(patch)).toEqual(["customApiProviders"]);
     expect(patch.customApiProviders).toEqual(expect.arrayContaining([expect.objectContaining({ id: "novel-responses", name: "Novel Responses", prefix: "novel-responses", protocol: "responses-compatible", apiKey: "sk-new" })]));
     expect(patch).not.toHaveProperty("openaiProviders");
     expect(patch).not.toHaveProperty("anthropicProviders");
@@ -203,19 +212,35 @@ describe("ProviderSettingsPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "编辑与模型 Canonical Responses" }));
 
     fireEvent.click(screen.getByRole("button", { name: "隐藏模型 openai:gpt-inventory-1" }));
-    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({ agent: expect.objectContaining({ hiddenModels: expect.arrayContaining(["openai:gpt-inventory-1", "openai:gpt-inventory-2"]) }) })));
 
     const contextInput = screen.getByLabelText("模型上下文窗口 openai:gpt-inventory-3");
     fireEvent.change(contextInput, { target: { value: "320000" } });
     fireEvent.blur(contextInput);
-    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({ agent: expect.objectContaining({ modelContextWindows: expect.objectContaining({ "openai:gpt-inventory-3": 320000 }) }) })));
 
     fireEvent.change(screen.getByLabelText("自定义模型 ID"), { target: { value: "writer-new" } });
     fireEvent.change(screen.getByLabelText("自定义模型名称"), { target: { value: "Writer New" } });
     fireEvent.click(screen.getByRole("button", { name: "添加模型" }));
-    await waitFor(() => expect(client.patch).toHaveBeenLastCalledWith(expect.objectContaining({ agent: expect.objectContaining({ customModels: expect.arrayContaining([{ value: "openai:writer-new", label: "Writer New", provider: "openai" }]) }) })));
 
+    // 本地编辑期间不触发 patch
+    expect(client.patch).not.toHaveBeenCalled();
+
+    // 返回概览，保存变更
+    fireEvent.click(screen.getByRole("button", { name: "返回供应商列表" }));
+    await waitFor(() => expect(screen.getByText("有未保存的更改")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "保存变更" }));
+
+    await waitFor(() => expect(client.patch).toHaveBeenCalledTimes(1));
+    const patch = (client.patch as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(patch.agent).toEqual(expect.objectContaining({
+      hiddenModels: expect.arrayContaining(["openai:gpt-inventory-1", "openai:gpt-inventory-2"]),
+      modelContextWindows: expect.objectContaining({ "openai:gpt-inventory-3": 320000 }),
+      customModels: expect.arrayContaining([{ value: "openai:writer-new", label: "Writer New", provider: "openai" }]),
+    }));
+
+    // 测试模型仍是即时操作
+    fireEvent.click(await screen.findByRole("button", { name: "编辑与模型 Canonical Responses" }));
     fireEvent.click(screen.getByRole("button", { name: "测试模型 openai:gpt-inventory-1" }));
-    await waitFor(() => expect(client.testModel).toHaveBeenCalledWith({ model: "openai:gpt-inventory-1", prompt: "请用一句话确认连接正常。" }));
+    fireEvent.click(await screen.findByRole("button", { name: "开始测试连接" }));
+    await waitFor(() => expect(client.testModel).toHaveBeenCalledWith({ model: "openai:gpt-inventory-1", prompt: "Please introduce yourself in one sentence. / 请用一句话介绍你自己。" }));
   });
 });

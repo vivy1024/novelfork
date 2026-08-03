@@ -56,6 +56,7 @@ const READY_TOOL_NAMES = [
   "hooks.manage",
   "writing-skills.read",
   "writing-skills.write",
+  "writing-skills.recommend",
   "writing-skills.check_compliance",
   "writing-skills.import_legacy",
   "pipeline.write",

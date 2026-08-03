@@ -254,6 +254,16 @@ bun scripts/import-narrafork-runtime.ts --source ./narrafork-private-main --repo
 - 数据库结构变更遵循目标 package 的 schema 与迁移生成流程；不手改生成迁移，不删除数据库文件。
 - 不提交密钥、Token、`.env`、用户数据，以及 Runtime/overlay 私有源码。
 
+## 常见错误行为（不可重犯）
+
+1. **别把调研/了解当成被要求的任务**：用户说"看看 X"时，是要你了解 X 然后按用户真正的目标行动，不是要你写一份审计报告。
+2. **别替用户做决定后再问确认**：用户说"你来做"就直接做；只在需要不可逆操作或真的缺信息时问。
+3. **别在同一个会话里重复解释同一个阻塞**：blocked 任务如果自己能解就解，只报告一次。
+4. **构建和测试路径以根 package.json scripts 为准**：不要自行猜测命令。
+5. **全程中文回复**：包括 commit message、注释、文案，除非代码本身是英文变量名。
+6. **不要操作用户正在使用的屏幕**：不启动 GUI、不打开浏览器窗口、不移动鼠标，除非明确授权。
+7. **不要把视频制作停在"写完代码"**：必须 headless 渲染出 MP4 并报告路径。
+
 ## Git 与发布
 
 - 不执行 `git reset --hard`、`git checkout --`、`git clean`、强制推送、历史重写或其他破坏性操作，除非用户明确授权。
@@ -272,6 +282,116 @@ Engram 用于保存对后续工作有长期价值的信息，例如：
 - 影响安全、数据一致性或实现路径的稳定约束。
 
 临时调查、未验证方案和普通操作不需要持久化。需要修订既有记录时，更新对应事实，避免形成相互矛盾的重复结论。
+
+## 视频制作
+
+本仓库需要定期产出宣传与技术演示视频。以下是长期有效的制作规约。
+
+### 工具链与环境（已验证可用）
+
+| 工具 | 版本 | 用途 |
+|---|---|---|
+| Node | v25.2.1 | Remotion / HyperFrames 宿主 |
+| npx | 11.6.2 | 运行视频 CLI |
+| Bun | 1.3.13 | 项目构建 |
+| FFmpeg | 8.1.1 full build | 转码、拼接、压制、音频合流 |
+| Python | 3.14.2 | Manim / ASCII-video / 脚本 |
+
+### 出片引擎选择
+
+| 引擎 | 技术栈 | 最适合 | 命令 |
+|---|---|---|---|
+| **Remotion** | React + TypeScript | 数据驱动动效、字幕、版本角标、信息卡、产品 demo 叠图 | `npx remotion render <id> out/final.mp4` |
+| **HyperFrames** | HTML + CSS + GSAP → MP4 | 电影感片头、HUD 科技风、产品 trailer | `npx hyperframes render --output final.mp4 --quality high` |
+| **Manim CE** | Python | 原理讲解、算法/架构动画、3Blue1Brown 风格 | `manim -qh script.py SceneName` |
+| **ASCII-video** | Python + NumPy + FFmpeg | 极客风转场、音频可视化 | 单 Python 脚本 → ffmpeg pipe |
+
+**默认选择**：产品宣传用 Remotion；技术原理讲解用 Manim；片头/trailer 用 HyperFrames。
+
+### 辅助素材技能
+
+| 技能 | 路径 | 用途 |
+|---|---|---|
+| `architecture-diagram` | 深色 SVG 架构图 HTML | 四层结构图 |
+| `excalidraw` | 手绘风流程图 JSON | 写作管线 |
+| `baoyu-infographic` | 21 布局 × 21 风格信息图 | 封面、对比图 |
+| `apikey-image-gen` | 生成/编辑图片 | 封面意象 |
+| `grok-image-to-video` | 静图 → 短视频 | 氛围镜头 |
+| `heartmula` | 歌词 + tags → MP3 | BGM 生成 |
+| `media/songsee` | 频谱分析 | 音频可视化 |
+| `creative/humanizer` | 去 AI 味 | 旁白文案打磨 |
+
+### 制作硬规则
+
+1. **全程 headless**：不启动 Remotion Studio、不开 HyperFrames preview、不打开浏览器窗口。只用 CLI `render` / `still` / `inspect`。用户明确授权 GUI 时例外。
+2. **不操作用户屏幕**：不移动鼠标、不使用 computer-use、不进行屏幕捕获。录屏由用户手动完成。
+3. **渲染前先验证**：Remotion 先 `npx remotion still` 一帧确认编译通过；HyperFrames 先 `lint` + `inspect`；Manim 先 `-ql` 草稿。
+4. **物料独立目录**：视频项目放在 `D:/DESKTOP/novelfork-video/`（或用户指定目录），不写入产品 git 仓库。
+5. **事实来源唯一**：所有数字（版本号、平台数、能力数）从 `01-事实核查表.md` 或代码中的 `theme.ts` / `FACTS` 常量取，不手写。
+6. **未提交功能禁止出镜**：录屏和动效均不得展示不属于当前 tag 版本的 UI 或工具。
+7. **交付必须含 MP4**：视频任务不以"写完代码"结束，必须 headless 渲染出实际 MP4 文件并报告路径和参数。
+
+### Remotion 项目规范
+
+```text
+novelfork-video/remotion/
+├── src/
+│   ├── theme.ts         ← 设计常量、FACTS 事实数字、sec() 工具
+│   ├── Root.tsx         ← Composition 注册
+│   └── Composition.tsx  ← 场景组件（每段一个函数组件）
+└── out/                 ← 渲染产物
+```
+
+- 颜色、字体、时长统一在 `theme.ts`。
+- 每个场景是独立 React 函数组件，接收 Remotion 的 `useCurrentFrame` / `useVideoConfig`。
+- 使用 `Sequence` 编排时间线，`interpolate` 和 `spring` 做动画。
+- 不使用 `Math.random()` 或 `Date.now()`，保证渲染确定性。
+- 默认 1920×1080 / 30fps / H.264 + AAC。
+
+### HyperFrames 项目规范
+
+- 根元素带 `data-composition-id`、`data-width`、`data-height`。
+- 用 GSAP 注册在 `window.__timelines`，不用 `requestAnimationFrame`。
+- 验证流程：`npx hyperframes lint` → `npx hyperframes inspect --samples 15` → `render`。
+
+### 拼接与压制
+
+多段素材最终用 FFmpeg concat 拼接：
+
+```bash
+# 写 concat 列表
+printf "file '%s'\n" clip1.mp4 clip2.mp4 clip3.mp4 > concat.txt
+# 拼接（同编码可无损）
+ffmpeg -y -f concat -safe 0 -i concat.txt -c copy final.mp4
+# 不同编码时重编码
+ffmpeg -y -f concat -safe 0 -i concat.txt -c:v libx264 -crf 18 -preset slow -c:a aac -b:a 192k final.mp4
+```
+
+### 音频合流
+
+```bash
+# 加 BGM（降到 -18dB 背景）
+ffmpeg -y -i video.mp4 -i bgm.mp3 \
+  -filter_complex "[1:a]volume=0.12[bg];[0:a][bg]amix=inputs=2:duration=first" \
+  -c:v copy -c:a aac -b:a 192k output.mp4
+
+# 加旁白（替换原音轨）
+ffmpeg -y -i video.mp4 -i voiceover.wav \
+  -map 0:v -map 1:a -c:v copy -c:a aac -b:a 192k output.mp4
+```
+
+### 当前视频物料位置
+
+```text
+D:/DESKTOP/novelfork-video/
+├── 00-README.md             总览
+├── 01-事实核查表.md          口径与证据
+├── 02-脚本-主片90秒.md       主片分镜与旁白
+├── 03-脚本-技术向补充片.md    NarraFork 技术片
+├── 04-录屏清单.md            素材编号与脱敏
+├── 05-发布文案包.md          标题/简介/社媒/QA
+└── remotion/                Remotion 项目（已渲染 novelfork-promo-v1.mp4）
+```
 
 ## 常用事实来源
 

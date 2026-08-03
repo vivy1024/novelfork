@@ -25,9 +25,10 @@
 - 🌌 **3D 结晶叙事记忆空间** — Canvas 2D 透视投影 · 测地线粒子网络 · 3D Fact Carousel
 - 🧠 **叙事记忆引擎** — 8 通道本地检索 · Wave 算法 · Pending Events 审批 · 管理工具集
 - 📚 **经纬 / Lore** — 静态设定库与动态记忆彻底分工 · Canon 保护 · retire 软下线
-- ✍️ **写作管线** — scene.spec → pipeline.write → 对抗式审查 → S1–S4 门禁
-- 🖥️ **IDE 写作工作台** — 三栏布局 · Tab · 搜索替换 · 经纬/章节编辑器
-- 🔌 **多模型** — Anthropic / OpenAI / DeepSeek / Codex / 兼容 API
+- ✍️ **写作管线 & 技能落地** — Writing Skill 文件物化 (.novelfork/skills/) · scene.spec → pipeline.write · S1–S4 门禁
+- 🛠️ **套路与设置** — Skill 文件树折叠浏览 & 弹窗预览 · 供应商单行表格与隐藏模型批量切换 · 脏检测保存 (Dirty Bar) · 消息网关微信扫码 · Web xterm.js 交互终端 · 6 步 SetupWizard
+- 🖥️ **IDE 写作工作台** — 三栏布局 · Tab · 侧栏可配置显示/收纳 · 经纬/章节/工具面板
+- 🔌 **多模型** — Anthropic / OpenAI / DeepSeek / Codex / NUG 反代 / 兼容 API
 - 🔒 **本地优先** — 数据与密钥在本机；完整 Runtime 能力不随公开仓库分发
 
 ---
@@ -36,6 +37,7 @@
 
 | 版本 | 日期 | 主题 |
 |------|------|------|
+| **v3.3.1** | 2026-08-03 | Skill 文件树与物化落地 · 设置/供应商扁平化与脏检测 · 消息网关扫码与 Web 终端 · 6 步 SetupWizard |
 | **v3.3.0** | 2026-08-01 | Writing Skills 取代旧 Preset/Beat · 叙事线审批闭环 · Runtime v0.5.18 兼容 |
 | **v3.2.1** | 2026-07-23 | 公开仓库边界：Runtime 历史清理 · overlay 私有子仓库 · 本地发版门禁 |
 | **v3.2.0** | 2026-07-21 | Runtime 产品化接入 · 叙事记忆管理工具 · Lore retire |

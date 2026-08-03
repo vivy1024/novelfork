@@ -1,15 +1,20 @@
 import { createHash } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 
 import {
   authorWritingSkillsDir,
+  getWritingSkillRawContentSync,
   loadWritingSkills,
   parseWritingSkill,
   writeAuthorWritingSkill,
 } from "../engine/writing-skills/loader.js";
+import {
+  MAX_RECOMMENDED_WRITING_SKILLS,
+  recommendWritingSkills,
+} from "../engine/writing-skills/recommend.js";
 import type {
   ParsedWritingSkill,
   WritingSkillComplianceCheck,
@@ -39,6 +44,11 @@ export interface WritingSkillsCheckComplianceInput {
   readonly bookId: string;
   readonly chapterNumber?: number;
   readonly content: string;
+}
+
+export interface WritingSkillsRecommendInput {
+  readonly bookId: string;
+  readonly maxCount?: number;
 }
 
 export interface WritingSkillsImportLegacyInput {
@@ -317,6 +327,18 @@ export async function handleWritingSkillsWrite(
       };
     });
 
+    // 物化启用的 Writing Skills 到作品目录 .novelfork/skills/<slug>/SKILL.md，
+    // 使 Runtime 项目 Skill 扫描能发现它们，且作品可独立迁移。
+    const projectSkillsDir = join(options.bookRoot, ".novelfork", "skills");
+    for (const skill of skills) {
+      if (!enabledWritingSkillIds.includes(skill.id)) continue;
+      const raw = getWritingSkillRawContentSync(skill.slug, options.home);
+      if (!raw) continue;
+      const skillDir = join(projectSkillsDir, skill.slug);
+      await mkdir(skillDir, { recursive: true });
+      await writeFile(join(skillDir, "SKILL.md"), raw, "utf8");
+    }
+
     return {
       ok: true,
       summary: enabledWritingSkillIds.length > 0
@@ -337,6 +359,64 @@ export async function handleWritingSkillsWrite(
     return fail(
       "writing-skills-write-failed",
       `Writing Skills 设置失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/**
+ * 按本书已落库的建书答案推荐 Writing Skills。
+ *
+ * 只读：答案取自 book.json（建书十一问由 applyGuidedSetup 写入），
+ * 不修改 `enabledWritingSkillIds`。启用必须由作者确认后走
+ * `writing-skills.write`，保留 Runtime 的权限确认。
+ */
+export async function handleWritingSkillsRecommend(
+  input: WritingSkillsRecommendInput,
+  options: TrustedWritingSkillOptions,
+): Promise<HandlerResult> {
+  try {
+    const bookId = normalizeBookId(input.bookId);
+    const [book, skills] = await Promise.all([
+      readBookFile(bookId, options),
+      loadWritingSkills(options.home),
+    ]);
+
+    const recommendation = recommendWritingSkills({
+      genre: asText(book.genre),
+      tone: asText((book as { tone?: unknown }).tone),
+      platform: asText(book.platform),
+      complexity: asText((book as { complexity?: unknown }).complexity),
+      aiTasteLevel: asText((book as { aiTasteLevel?: unknown }).aiTasteLevel),
+      writingPhilosophy: asText((book as { writingPhilosophy?: unknown }).writingPhilosophy),
+    }, skills);
+
+    const limit = typeof input.maxCount === "number" && Number.isInteger(input.maxCount) && input.maxCount > 0
+      ? Math.min(input.maxCount, MAX_RECOMMENDED_WRITING_SKILLS)
+      : MAX_RECOMMENDED_WRITING_SKILLS;
+    const recommended = recommendation.recommended.slice(0, limit);
+
+    // 已启用的不再重复建议，避免作者看到「推荐启用一个已经启用的」。
+    const migrated = migrateLegacyWritingSkillSelection(book, skills);
+    const enabled = new Set(migrated.enabledWritingSkillIds);
+
+    return {
+      ok: true,
+      summary: recommended.length > 0
+        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 writing-skills.write 启用。`
+        : "没有匹配到值得推荐的 Writing Skills；可在写作设置里手动挑选。",
+      data: {
+        bookId,
+        matchedGenreCluster: recommendation.matchedGenreCluster,
+        consideredCount: recommendation.consideredCount,
+        droppedByConflict: recommendation.droppedByConflict,
+        enabledWritingSkillIds: migrated.enabledWritingSkillIds,
+        recommended: recommended.map((item) => ({ ...item, alreadyEnabled: enabled.has(item.id) })),
+      },
+    };
+  } catch (error) {
+    return fail(
+      "writing-skills-recommend-failed",
+      `Writing Skills 推荐失败：${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

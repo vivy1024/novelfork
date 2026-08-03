@@ -28,6 +28,7 @@ import { Input } from "@/components/ui/input";
 import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { ModelTestDialog } from "./ModelTestDialog";
 import type { RuntimeCustomModelSettings } from "../../runtime-admin";
 import {
   isMaskedSecret,
@@ -133,6 +134,8 @@ export function ApiProviderDetail({
   const [testResult, setTestResult] = useState<string | null>(null);
   const [testError, setTestError] = useState<string | null>(null);
   const [testingModel, setTestingModel] = useState<string | null>(null);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [testDialogModel, setTestDialogModel] = useState<string | null>(null);
   const [customModelId, setCustomModelId] = useState("");
   const [customModelLabel, setCustomModelLabel] = useState("");
   const [modelError, setModelError] = useState<string | null>(null);
@@ -653,7 +656,28 @@ export function ApiProviderDetail({
               </AlertDescription>
             </Alert>
           ) : (
-            <div className="flex flex-col gap-3">
+            <>
+            <div className="flex items-center justify-end gap-2 pb-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                disabled={busy}
+                onClick={() => {
+                  const allHidden = modelOptions.every((m) => m.hidden);
+                  void patchAgentModels({
+                    ...agentModels,
+                    hiddenModels: allHidden
+                      ? agentModels.hiddenModels.filter((v) => !modelOptions.some((m) => m.value === v))
+                      : [...new Set([...agentModels.hiddenModels, ...modelOptions.map((m) => m.value)])],
+                  });
+                }}
+              >
+                {modelOptions.every((m) => m.hidden) ? <Eye className="mr-1 size-3.5" /> : <EyeOff className="mr-1 size-3.5" />}
+                {modelOptions.every((m) => m.hidden) ? "全部显示" : "全部隐藏"}
+              </Button>
+            </div>
+            <div className="flex flex-col max-h-[520px] overflow-y-auto pr-1">
               {modelOptions.map((model) => (
                 <ModelInventoryRow
                   key={model.value}
@@ -689,10 +713,14 @@ export function ApiProviderDetail({
                       modelContextWindows: nextWindows,
                     });
                   }}
-                  onTest={() => void handleTest(model.value)}
+                  onTest={() => {
+                    setTestDialogModel(model.value);
+                    setTestDialogOpen(true);
+                  }}
                 />
               ))}
             </div>
+            </>
           )}
 
           <FieldSeparator>添加自定义模型</FieldSeparator>
@@ -729,14 +757,29 @@ export function ApiProviderDetail({
           <Button
             type="button"
             variant="outline"
-            onClick={() => void handleTest(defaultModelValue)}
-            disabled={Boolean(testingModel) || draftMode || !defaultModelValue || !testPrompt.trim()}
+            onClick={() => {
+              setTestDialogModel(defaultModelValue);
+              setTestDialogOpen(true);
+            }}
+            disabled={Boolean(testingModel) || draftMode || !defaultModelValue}
           >
             <Play data-icon="inline-start" />
-            {testingModel === defaultModelValue ? "测试中…" : "测试默认模型"}
+            测试默认模型
           </Button>
         </CardFooter>
       </Card>
+
+      {testDialogModel ? (
+        <ModelTestDialog
+          opened={testDialogOpen}
+          onClose={() => {
+            setTestDialogOpen(false);
+            setTestDialogModel(null);
+          }}
+          modelValue={testDialogModel}
+          onRunTest={(m, p) => onTestModel(m, p)}
+        />
+      ) : null}
     </section>
   );
 }
@@ -797,86 +840,53 @@ export function ModelInventoryRow({
   }, [customModel?.label, model.label]);
 
   return (
-    <div data-hidden={model.hidden} className="flex flex-col gap-3 rounded-lg border p-3 data-[hidden=true]:opacity-60">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="min-w-0 flex-1 truncate font-mono text-xs">{model.value}</span>
-        {model.custom ? <Badge variant="secondary">自定义</Badge> : <Badge variant="outline">已发现</Badge>}
-        {model.hidden ? <Badge variant="secondary">已隐藏</Badge> : null}
+    <div data-hidden={model.hidden} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_9rem_auto] items-center gap-2 py-1.5 border-b border-border/50 last:border-b-0 data-[hidden=true]:opacity-50">
+      <span className="truncate font-mono text-xs text-muted-foreground">{model.value}</span>
+      <Input
+        aria-label={`模型显示名称 ${model.value}`}
+        className="h-7 text-xs"
+        value={labelValue}
+        disabled={!model.custom || busy}
+        onChange={(event) => setLabelValue(event.currentTarget.value)}
+        onBlur={() => {
+          const next = labelValue.trim() || model.modelId;
+          setLabelValue(next);
+          if (customModel && next !== customModel.label) onCustomLabelChange(next);
+        }}
+      />
+      <Input
+        aria-label={`模型上下文窗口 ${model.value}`}
+        className="h-7 text-xs text-right"
+        type="number"
+        min={1}
+        value={contextValue}
+        disabled={busy}
+        placeholder={model.contextWindow ? `${model.contextWindow} tokens` : "—"}
+        onChange={(event) => setContextValue(event.currentTarget.value)}
+        onBlur={() => {
+          const trimmed = contextValue.trim();
+          if (!trimmed) {
+            if (contextWindowOverride != null) onContextWindowChange(null);
+            return;
+          }
+          const next = Math.max(1, Math.floor(Number(trimmed) || 1));
+          setContextValue(String(next));
+          if (next !== contextWindowOverride) onContextWindowChange(next);
+        }}
+      />
+      <div className="flex items-center gap-0.5">
+        <Button type="button" size="icon-sm" variant="ghost" aria-label={`${model.hidden ? "显示" : "隐藏"}模型 ${model.value}`} onClick={onToggleHidden} disabled={busy}>
+          {model.hidden ? <EyeOff /> : <Eye />}
+        </Button>
+        <Button type="button" size="icon-sm" variant="ghost" aria-label={`测试模型 ${model.value}`} onClick={onTest} disabled={busy || testing}>
+          <Play />
+        </Button>
+        {model.custom ? (
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={`删除自定义模型 ${model.value}`} onClick={onDeleteCustom} disabled={busy}>
+            <Trash2 />
+          </Button>
+        ) : null}
       </div>
-      <FieldGroup className="sm:grid sm:grid-cols-[minmax(0,1fr)_13rem_auto] sm:items-end">
-        <Field data-disabled={!model.custom}>
-          <FieldLabel htmlFor={`model-label-${model.providerId}-${model.modelId}`}>显示名称</FieldLabel>
-          <Input
-            id={`model-label-${model.providerId}-${model.modelId}`}
-            aria-label={`模型显示名称 ${model.value}`}
-            value={labelValue}
-            disabled={!model.custom || busy}
-            onChange={(event) => setLabelValue(event.currentTarget.value)}
-            onBlur={() => {
-              const next = labelValue.trim() || model.modelId;
-              setLabelValue(next);
-              if (customModel && next !== customModel.label) onCustomLabelChange(next);
-            }}
-          />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor={`model-context-${model.providerId}-${model.modelId}`}>上下文窗口</FieldLabel>
-          <Input
-            id={`model-context-${model.providerId}-${model.modelId}`}
-            aria-label={`模型上下文窗口 ${model.value}`}
-            type="number"
-            min={1}
-            value={contextValue}
-            disabled={busy}
-            placeholder={model.contextWindow ? String(model.contextWindow) : "未覆盖"}
-            onChange={(event) => setContextValue(event.currentTarget.value)}
-            onBlur={() => {
-              const trimmed = contextValue.trim();
-              if (!trimmed) {
-                if (contextWindowOverride != null) onContextWindowChange(null);
-                return;
-              }
-              const next = Math.max(1, Math.floor(Number(trimmed) || 1));
-              setContextValue(String(next));
-              if (next !== contextWindowOverride) onContextWindowChange(next);
-            }}
-          />
-        </Field>
-        <div className="flex flex-wrap justify-end gap-1">
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`${model.hidden ? "显示" : "隐藏"}模型 ${model.value}`}
-            onClick={onToggleHidden}
-            disabled={busy}
-          >
-            {model.hidden ? <EyeOff /> : <Eye />}
-          </Button>
-          <Button
-            type="button"
-            size="icon-sm"
-            variant="ghost"
-            aria-label={`测试模型 ${model.value}`}
-            onClick={onTest}
-            disabled={busy || testing}
-          >
-            <Play />
-          </Button>
-          {model.custom ? (
-            <Button
-              type="button"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={`删除自定义模型 ${model.value}`}
-              onClick={onDeleteCustom}
-              disabled={busy}
-            >
-              <Trash2 />
-            </Button>
-          ) : null}
-        </div>
-      </FieldGroup>
     </div>
   );
 }

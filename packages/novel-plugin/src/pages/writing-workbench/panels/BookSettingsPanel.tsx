@@ -18,9 +18,14 @@ interface BookConfig {
   customSensitiveWords: string;
 }
 
+/** 可被外部直接定位的分区（写作视图一键修用）。 */
+export type BookSettingsSection = "basic" | "writing-skills" | "narrative-memory";
+
 export interface BookSettingsPanelProps {
   bookId: string;
   onBack: () => void;
+  /** 打开时滚动定位到指定分区；缺省停在顶部。 */
+  initialSection?: BookSettingsSection;
 }
 
 const PLATFORM_OPTIONS = [
@@ -47,11 +52,20 @@ function useDebounce<T extends (...args: never[]) => unknown>(fn: T, delay: numb
   }, [delay]) as unknown as T;
 }
 
-export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
+export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettingsPanelProps) {
   const [config, setConfig] = useState<BookConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const [configError, setConfigError] = useState<string | null>(null);
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const sectionRefs = useRef<Partial<Record<BookSettingsSection, HTMLElement | null>>>({});
+
+  // 从写作视图「一键修」跳进来时，直接滚到目标分区，
+  // 否则作者要在长表单里自己找 Writing Skills 开关。
+  useEffect(() => {
+    if (!initialSection) return;
+    const target = sectionRefs.current[initialSection];
+    if (target) target.scrollIntoView({ block: "start" });
+  }, [initialSection]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,7 +126,11 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
       </div>
 
       <div className="flex-1 overflow-y-auto space-y-6 px-4 py-4">
-        <section className="space-y-3">
+        <section
+          className="space-y-3"
+          data-settings-section="basic"
+          ref={(node) => { sectionRefs.current.basic = node; }}
+        >
           <h2 className="text-sm font-semibold text-foreground">基本信息</h2>
           {configLoading ? <div className="flex justify-center py-6"><Loader2 className="size-4 animate-spin text-muted-foreground" /></div> : configError ? (
             <div className="flex items-center gap-2 rounded-lg border border-border p-4"><AlertCircle className="size-4 text-destructive" /><span className="text-sm text-muted-foreground">{configError}</span></div>
@@ -134,12 +152,31 @@ export function BookSettingsPanel({ bookId, onBack }: BookSettingsPanelProps) {
           </div>}
         </section>
 
-        <section className="space-y-3">
-          <div><h2 className="text-sm font-semibold text-foreground">Writing Skills</h2><p className="text-xs text-muted-foreground">统一管理全局技能目录、书籍启用状态以及作者副本。</p></div>
+        <section
+          className="space-y-3"
+          data-settings-section="writing-skills"
+          ref={(node) => { sectionRefs.current["writing-skills"] = node; }}
+        >
+          {/*
+            作用域必须一句讲清：开关是本书独有的，技能库与作者副本是全局共享的。
+            旧文案「统一管理全局技能目录、书籍启用状态以及作者副本」把三者混在一句里，
+            作者会读成「这里配的是全局设置」，进而以为所有书共用同一套启用项。
+          */}
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">Writing Skills</h2>
+            <p className="text-xs text-muted-foreground">
+              下面的开关<strong className="font-medium text-foreground">只作用于当前这本书</strong>，切换作品后各自独立。
+              技能库本身与你的编辑副本是全局共享的，改了技能正文会影响所有启用它的书。
+            </p>
+          </div>
           <WritingSkillsPanel bookId={bookId} />
         </section>
 
-        <section className="space-y-3 pb-6">
+        <section
+          className="space-y-3 pb-6"
+          data-settings-section="narrative-memory"
+          ref={(node) => { sectionRefs.current["narrative-memory"] = node; }}
+        >
           <div><h2 className="text-sm font-semibold text-foreground">叙事记忆</h2><p className="text-xs text-muted-foreground">管理章节结算、当前故事状态与写作前动态召回。</p></div>
           <NarrativeMemorySettingsSection bookId={bookId} />
         </section>

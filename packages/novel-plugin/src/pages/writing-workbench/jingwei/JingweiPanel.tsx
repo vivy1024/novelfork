@@ -13,10 +13,12 @@ import type { CategoryVisibility } from "./category-schemas";
 
 interface JingweiPanelProps {
   bookId: string;
+  /** 打开时直接定位到某个分类（如写作视图一键修跳「卷纲/大纲」）。 */
+  initialCategory?: string;
 }
 
-export function JingweiPanel({ bookId }: JingweiPanelProps) {
-  const [selectedCategory, setSelectedCategory] = useState("characters");
+export function JingweiPanel({ bookId, initialCategory }: JingweiPanelProps) {
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory ?? "characters");
   const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; title: string; category: string; preview: string }> | null>(null);

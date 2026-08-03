@@ -188,7 +188,7 @@ export function LearnPage() {
             </span>
           </div>
           <p className="text-[11px] leading-4 text-muted-foreground">
-            这里汇总 NarraFork 除叙事线以外的主要功能文档、使用流程与最佳实践。
+            这里汇总 NovelFork 的主要功能文档、使用流程与最佳实践。
           </p>
           <label className="relative block">
             <span className="sr-only">搜索学习文档</span>

@@ -2,6 +2,7 @@ export * from "./account-profile";
 export * from "./authentication";
 export * from "./client";
 export * from "./chapter-containers";
+export * from "./dependencies";
 export * from "./custom-subagents";
 export * from "./devices";
 export * from "./gateway";

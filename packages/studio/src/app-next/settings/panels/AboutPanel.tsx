@@ -27,9 +27,9 @@ export function AboutPanel() {
 
       <Alert>
         <RefreshCw className="mb-2 size-4 text-muted-foreground" />
-        <AlertTitle>更新信息</AlertTitle>
+        <AlertTitle>更新说明</AlertTitle>
         <AlertDescription>
-          更新状态由 Runtime 管理；此页面仅展示当前版本信息，不会在浏览器端发起更新检查。
+          NovelFork 当前采用标准桌面二进制 (Windows EXE) 发版模式，暂未开启在线增量热更新服务。如需升级，请前往官方 GitHub Releases 获得最新版发布文件。
         </AlertDescription>
       </Alert>
 
