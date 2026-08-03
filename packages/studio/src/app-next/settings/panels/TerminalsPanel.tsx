@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Plug, RefreshCw, Trash2 } from "lucide-react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { Plug, PlugZap, RefreshCw, Terminal as TerminalIcon, Trash2, X } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { notify } from "@/lib/notify";
+import { getRuntimeToken } from "../../runtime/auth";
 import {
   createTerminalsAdminClient,
   type RuntimeAdminTerminal,
@@ -41,6 +42,12 @@ function ProcessList({ terminal }: { readonly terminal: RuntimeAdminTerminal }) 
   );
 }
 
+// ---------------------------------------------------------------------------
+// Embedded terminal panel (xterm.js + WebSocket to /ws/terminal)
+// ---------------------------------------------------------------------------
+
+const TerminalEmbed = lazy(() => import("./TerminalEmbed").then((m) => ({ default: m.TerminalEmbed })));
+
 export function TerminalsPanel() {
   const [data, setData] = useState<RuntimeAdminTerminalsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,6 +55,7 @@ export function TerminalsPanel() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const [openTerminalId, setOpenTerminalId] = useState<string | null>(null);
 
   const load = useCallback(async (quiet = false) => {
     if (!quiet) setRefreshing(true);
@@ -90,6 +98,7 @@ export function TerminalsPanel() {
 
   async function kill(id: string) {
     if (!window.confirm("确定要终止这个终端吗？")) return;
+    if (openTerminalId === id) setOpenTerminalId(null);
     await runAction(`kill:${id}`, () => client.kill(id), "终端已终止");
   }
 
@@ -106,12 +115,25 @@ export function TerminalsPanel() {
       } else {
         notify.success(`已终止 ${ids.length} 个终端`);
       }
+      if (openTerminalId && ids.includes(openTerminalId)) setOpenTerminalId(null);
       setSelected(new Set());
       await load(true);
     } catch (reason) {
       setError(messageOf(reason));
     } finally {
       setBusyAction(null);
+    }
+  }
+
+  function handleConnect(id: string, attached: boolean) {
+    if (!attached) {
+      // Reattach first, then open panel
+      void runAction(`reattach:${id}`, () => client.reattach(id), "终端已恢复").then(() => {
+        setOpenTerminalId(id);
+      });
+    } else {
+      // Toggle panel
+      setOpenTerminalId(openTerminalId === id ? null : id);
     }
   }
 
@@ -122,7 +144,7 @@ export function TerminalsPanel() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h2 className="text-lg font-semibold text-foreground">终端</h2>
-          <p className="text-sm text-muted-foreground">查看并管理 Runtime 当前记录的终端、进程和孤立 dtach socket。</p>
+          <p className="text-sm text-muted-foreground">查看并管理 Runtime 当前记录的终端、进程和孤立 dtach socket。可附加到运行中的终端进行交互。</p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={refreshing} onClick={() => void load()}>
           <RefreshCw data-icon="inline-start" />
@@ -135,6 +157,28 @@ export function TerminalsPanel() {
           <AlertTitle>终端管理操作失败</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
+      ) : null}
+
+      {/* Embedded terminal panel */}
+      {openTerminalId ? (
+        <Card>
+          <CardHeader className="flex-row items-center justify-between py-2 px-4">
+            <div className="flex items-center gap-2">
+              <TerminalIcon className="h-4 w-4" />
+              <span className="font-mono text-xs">{openTerminalId}</span>
+            </div>
+            <Button type="button" variant="ghost" size="xs" onClick={() => setOpenTerminalId(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="h-[400px] overflow-hidden">
+              <Suspense fallback={<div className="flex h-full items-center justify-center text-sm text-muted-foreground">正在加载终端…</div>}>
+                <TerminalEmbed terminalId={openTerminalId} />
+              </Suspense>
+            </div>
+          </CardContent>
+        </Card>
       ) : null}
 
       {(data?.orphanSockets.length ?? 0) > 0 ? (
@@ -172,7 +216,7 @@ export function TerminalsPanel() {
         <CardHeader className="sm:grid-cols-[1fr_auto]">
           <div>
             <CardTitle>运行中（{running.length}）</CardTitle>
-            <CardDescription>可恢复已脱离的终端，或终止单个及多个终端。</CardDescription>
+            <CardDescription>可附加到终端进行交互操作，恢复已脱离的终端，或终止单个及多个终端。</CardDescription>
           </div>
           {selected.size > 0 ? (
             <Button type="button" variant="destructive" size="sm" disabled={busyAction !== null} onClick={() => void batchKill()}>
@@ -187,13 +231,14 @@ export function TerminalsPanel() {
             selected={selected}
             allSelected={allRunningSelected}
             disabled={busyAction !== null}
+            openTerminalId={openTerminalId}
             onToggleAll={() => setSelected(allRunningSelected ? new Set() : new Set(running.map((terminal) => terminal.id)))}
             onToggle={(id) => setSelected((current) => {
               const next = new Set(current);
               if (next.has(id)) next.delete(id); else next.add(id);
               return next;
             })}
-            onReattach={(id) => void runAction(`reattach:${id}`, () => client.reattach(id), "终端已恢复")}
+            onConnect={handleConnect}
             onKill={(id) => void kill(id)}
           />
         </CardContent>
@@ -212,15 +257,16 @@ export function TerminalsPanel() {
   );
 }
 
-function TerminalTable({ terminals, selectable = false, selected, allSelected = false, disabled = false, onToggleAll, onToggle, onReattach, onKill }: {
+function TerminalTable({ terminals, selectable = false, selected, allSelected = false, disabled = false, openTerminalId, onToggleAll, onToggle, onConnect, onKill }: {
   readonly terminals: readonly RuntimeAdminTerminal[];
   readonly selectable?: boolean;
   readonly selected?: ReadonlySet<string>;
   readonly allSelected?: boolean;
   readonly disabled?: boolean;
+  readonly openTerminalId?: string | null;
   readonly onToggleAll?: () => void;
   readonly onToggle?: (id: string) => void;
-  readonly onReattach?: (id: string) => void;
+  readonly onConnect?: (id: string, attached: boolean) => void;
   readonly onKill?: (id: string) => void;
 }) {
   if (terminals.length === 0) return <p className="py-4 text-center text-sm text-muted-foreground">没有终端。</p>;
@@ -230,21 +276,33 @@ function TerminalTable({ terminals, selectable = false, selected, allSelected = 
         <TableRow>
           {selectable ? <TableHead><input aria-label="选择全部运行中终端" type="checkbox" checked={allSelected} onChange={onToggleAll} /></TableHead> : null}
           <TableHead>名称</TableHead><TableHead>状态</TableHead><TableHead>进程</TableHead><TableHead>工作目录</TableHead><TableHead>创建时间</TableHead>
-          {onKill || onReattach ? <TableHead>操作</TableHead> : null}
+          {onKill || onConnect ? <TableHead>操作</TableHead> : null}
         </TableRow>
       </TableHeader>
       <TableBody>
         {terminals.map((terminal) => (
-          <TableRow key={terminal.id}>
+          <TableRow key={terminal.id} className={openTerminalId === terminal.id ? "bg-muted/50" : undefined}>
             {selectable ? <TableCell><input aria-label={`选择终端 ${terminal.name}`} type="checkbox" checked={selected?.has(terminal.id) ?? false} onChange={() => onToggle?.(terminal.id)} /></TableCell> : null}
             <TableCell><p>{terminal.name}</p><p className="font-mono text-xs text-muted-foreground">{terminal.id}</p></TableCell>
             <TableCell><div className="flex gap-1"><Badge variant={terminal.status === "running" ? "default" : "secondary"}>{terminal.status === "running" ? "运行中" : "已退出"}</Badge>{terminal.status === "running" ? <Badge variant="outline">{terminal.attached ? "已连接" : "已脱离"}</Badge> : null}</div></TableCell>
             <TableCell><ProcessList terminal={terminal} /></TableCell>
             <TableCell><span className="block max-w-56 truncate font-mono text-xs">{terminal.cwd ?? "—"}</span></TableCell>
             <TableCell>{new Date(terminal.createdAt).toLocaleString()}</TableCell>
-            {onKill || onReattach ? (
+            {onKill || onConnect ? (
               <TableCell><div className="flex gap-1">
-                {!terminal.attached && onReattach ? <Button type="button" aria-label={`恢复终端 ${terminal.name}`} variant="outline" size="xs" disabled={disabled} onClick={() => onReattach(terminal.id)}><Plug data-icon="inline-start" />恢复</Button> : null}
+                {onConnect ? (
+                  <Button
+                    type="button"
+                    aria-label={terminal.attached ? (openTerminalId === terminal.id ? `关闭终端面板 ${terminal.name}` : `附加终端 ${terminal.name}`) : `恢复终端 ${terminal.name}`}
+                    variant={openTerminalId === terminal.id ? "default" : "outline"}
+                    size="xs"
+                    disabled={disabled}
+                    onClick={() => onConnect(terminal.id, !!terminal.attached)}
+                  >
+                    {terminal.attached ? <TerminalIcon data-icon="inline-start" /> : <PlugZap data-icon="inline-start" />}
+                    {terminal.attached ? (openTerminalId === terminal.id ? "关闭" : "附加") : "恢复"}
+                  </Button>
+                ) : null}
                 {onKill ? <Button type="button" aria-label={`终止终端 ${terminal.name}`} variant="destructive" size="xs" disabled={disabled} onClick={() => onKill(terminal.id)}><Trash2 data-icon="inline-start" />终止</Button> : null}
               </div></TableCell>
             ) : null}

@@ -91,7 +91,7 @@ const BUILTIN_TOOLS: readonly ToolMetadata[] = [
   { name: "ShareFile", description: "生成受控文件分享链接。", category: "optional" },
   { name: "Terminal", description: "管理持久交互终端。", category: "optional" },
   { name: "Browser", description: "控制浏览器并捕获页面证据。", category: "optional" },
-  { name: "Recall", description: "检索 NarraFork 会话记录。", category: "optional" },
+  { name: "Recall", description: "检索 会话记录。", category: "optional" },
 ];
 
 interface PermissionDraft {

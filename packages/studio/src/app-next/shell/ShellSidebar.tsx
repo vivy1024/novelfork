@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { BookMarked, BookOpen, CalendarClock, GripVertical, LogOut, MessageSquareText, Search, Settings, Users, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertical, LogOut, MessageSquareText, PackageMinus, Search, Settings, Users, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X } from "lucide-react";
 
 import { getShellNavItems, isShellNavItemActive, recentTabKey, type ShellBookItem, type ShellNavItem, type ShellRecentTabItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { resolveRecentNarrators } from "./NarratorWorkspaceDrawer";
@@ -244,6 +244,33 @@ export function ShellSidebar({
   };
   const globalItems = items.filter((item) => item.group === "global");
 
+  // 侧栏底部可配置显示/收纳
+  const SIDEBAR_COLLAPSED_KEY = "novelfork-sidebar-collapsed";
+  const [collapsedIds, setCollapsedIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
+      return raw ? new Set(JSON.parse(raw) as string[]) : new Set();
+    } catch { return new Set(); }
+  });
+  const [showCollapsed, setShowCollapsed] = useState(false);
+
+  const persistCollapsed = useCallback((next: Set<string>) => {
+    setCollapsedIds(next);
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, JSON.stringify([...next])); } catch {}
+  }, []);
+
+  const toggleItemCollapsed = useCallback((itemId: string) => {
+    setCollapsedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(itemId)) next.delete(itemId); else next.add(itemId);
+      persistCollapsed(next);
+      return next;
+    });
+  }, [persistCollapsed]);
+
+  const visibleGlobalItems = useMemo(() => globalItems.filter((item) => !collapsedIds.has(item.id)), [globalItems, collapsedIds]);
+  const collapsedGlobalItems = useMemo(() => globalItems.filter((item) => collapsedIds.has(item.id)), [globalItems, collapsedIds]);
+
   return (
     <TooltipProvider>
       <aside
@@ -430,7 +457,7 @@ export function ShellSidebar({
 
         {/* Bottom nav */}
         <nav className="flex flex-col gap-0.5 border-t border-border px-1.5 py-2" aria-label="全局入口">
-          {globalItems.map((item) => {
+          {visibleGlobalItems.map((item) => {
             const Icon = globalNavIcon(item.route.kind);
             const isActive = isShellNavItemActive(item, route);
 
@@ -459,6 +486,7 @@ export function ShellSidebar({
                 aria-current={isActive ? "page" : undefined}
                 className="w-full justify-start gap-2 aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
                 onClick={() => onNavigate(item.route)}
+                onContextMenu={(e) => { e.preventDefault(); toggleItemCollapsed(item.id); }}
                 data-tour-id={item.route.kind === "learn" ? "sidebar-learn" : undefined}
               >
                 <Icon data-icon="inline-start" />
@@ -466,6 +494,41 @@ export function ShellSidebar({
               </Button>
             );
           })}
+          {!isCollapsed && collapsedGlobalItems.length > 0 && (
+            <div className="mt-1">
+              <button
+                type="button"
+                className="flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-muted-foreground hover:bg-muted"
+                onClick={() => setShowCollapsed((v) => !v)}
+              >
+                <PackageMinus className="size-3" />
+                已收纳 ({collapsedGlobalItems.length})
+                {showCollapsed ? <ChevronUp className="ml-auto size-3" /> : <ChevronDown className="ml-auto size-3" />}
+              </button>
+              {showCollapsed && (
+                <div className="mt-0.5 flex flex-col gap-0.5 pl-1">
+                  {collapsedGlobalItems.map((item) => {
+                    const Icon = globalNavIcon(item.route.kind);
+                    const isActive = isShellNavItemActive(item, route);
+                    return (
+                      <Button
+                        key={item.id}
+                        variant="ghost"
+                        size="sm"
+                        aria-current={isActive ? "page" : undefined}
+                        className="w-full justify-start gap-2 text-xs opacity-70 aria-[current=page]:bg-primary/10 aria-[current=page]:text-primary"
+                        onClick={() => onNavigate(item.route)}
+                        onContextMenu={(e) => { e.preventDefault(); toggleItemCollapsed(item.id); }}
+                      >
+                        <Icon data-icon="inline-start" />
+                        {item.label}
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           {onLogout ? (
             <Button
               type="button"

@@ -22,6 +22,7 @@ describe("NovelFork shadcn settings registry", () => {
       "terminals",
       "devices",
       "storage",
+      "dependencies",
       "runtime",
       "usage",
       "about",

@@ -15,7 +15,7 @@ import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor } from "./JingweiEntryEditor";
 import { JingweiPanel } from "./jingwei/JingweiPanel";
-import { NewBookGuide } from "./NewBookGuide";
+import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityPanel } from "./panels/QualityPanel";
@@ -159,7 +159,7 @@ export interface WorkbenchCanvasProps {
   repositoryPath?: string;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
-  onGuideComplete?: () => void;
+  onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
   chapterActions?: ChapterActionHandlers;
   jingweiActions?: JingweiActionHandlers;
   /** 外部容器 ref，操作按钮通过 portal 渲染到此处（IDE 模式用） */
@@ -285,11 +285,15 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     }
   }
 
-  // Jingwei panel entry — render JingweiPanel directly
+  // Jingwei panel entry — render JingweiPanel directly.
+  // metadata.jingweiCategory 允许调用方（如写作视图一键修）直接定位分类。
   if (node.kind === "jingwei" && node.metadata?.action === "open-jingwei-panel" && bookId) {
+    const initialCategory = typeof node.metadata?.jingweiCategory === "string"
+      ? node.metadata.jingweiCategory
+      : undefined;
     return (
       <div className="flex h-full flex-col min-h-0">
-        <JingweiPanel bookId={bookId} />
+        <JingweiPanel bookId={bookId} {...(initialCategory ? { initialCategory } : {})} />
       </div>
     );
   }
@@ -523,7 +527,7 @@ function containsChapterNode(nodes: readonly WorkbenchResourceNode[] | undefined
   return nodes?.some((node) => node.kind === "chapter" || containsChapterNode(node.children)) ?? false;
 }
 
-function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: () => void; onJumpToChapter?: (chapterNumber: number) => void }) {
+function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: (outcome?: GuidedSetupOutcome) => void; onJumpToChapter?: (chapterNumber: number) => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
   const hasChapters = containsChapterNode(nodes);
   const [guideCompleted, setGuideCompleted] = useState(() => {
@@ -535,10 +539,11 @@ function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete
     if (hasChapters) setGuideCompleted(true);
   }, [hasChapters]);
 
-  const handleGuideComplete = useCallback(() => {
+  const handleGuideComplete = useCallback((outcome?: GuidedSetupOutcome) => {
     try { localStorage.setItem(storageKey, "true"); } catch { /* ignore */ }
     setGuideCompleted(true);
-    onGuideComplete?.();
+    // outcome 带着 Skills 推荐与题材簇，供上层交给叙述者做建书收尾编排。
+    onGuideComplete?.(outcome);
   }, [storageKey, onGuideComplete]);
 
   return guideCompleted

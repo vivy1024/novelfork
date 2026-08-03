@@ -57,6 +57,7 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "hooks.manage",
   "writing-skills.read",
   "writing-skills.write",
+  "writing-skills.recommend",
   "writing-skills.check_compliance",
   "writing-skills.import_legacy",
   "pipeline.write",
@@ -351,6 +352,22 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     risk: "confirmed-write",
     renderer: "writing-skills.list",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  // 只读推荐：按本书已落库的建书答案（题材/基调/平台/复杂度/AI 味容忍度）
+  // 从内置 Skills 里挑出候选并给出理由。不写 book.json —— 启用仍走
+  // writing-skills.write，保留 Runtime 权限确认。
+  // renderer 显式声明为 "generic"：Studio 侧没有专用卡片，由
+  // GenericToolResultRenderer 兜底（registry.tsx 的 resolveToolResultRendererKey
+  // 对未登记键同样回落 generic）。推荐结果是扁平的 name+kind+reason 列表，
+  // generic 卡片足够；真正需要作者交互的是随后的 AskUserQuestion，那由 Runtime 渲染。
+  sessionTool({
+    name: "writing-skills.recommend",
+    description: "按本书建书答案推荐应启用的 Writing Skills，返回候选与推荐理由。只读，不修改启用状态；确认后请用 writing-skills.write 落库。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["writing-skills.recommend"]),
+    risk: "read",
+    renderer: "generic",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({

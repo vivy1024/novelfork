@@ -43,6 +43,7 @@ import {
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsImportLegacy,
   handleWritingSkillsRead,
+  handleWritingSkillsRecommend,
   handleWritingSkillsWrite,
   type CockpitState,
   type NarrativeLineState,
@@ -96,6 +97,7 @@ type CustomReadyRuntimeToolName =
   | "narrative.approve_change"
   | "writing-skills.read"
   | "writing-skills.write"
+  | "writing-skills.recommend"
   | "writing-skills.check_compliance"
   | "writing-skills.import_legacy"
   | "resource.manage"
@@ -540,6 +542,12 @@ async function executeReadyTool(
         ...(typeof injectedInput.discardUnmappedLegacyIds === "boolean"
           ? { discardUnmappedLegacyIds: injectedInput.discardUnmappedLegacyIds }
           : {}),
+      }, { bookRoot: binding.root }));
+    }
+    if (tool.name === "writing-skills.recommend") {
+      return toRuntimeToolResult(await handleWritingSkillsRecommend({
+        bookId: binding.bookId,
+        ...(typeof injectedInput.maxCount === "number" ? { maxCount: injectedInput.maxCount } : {}),
       }, { bookRoot: binding.root }));
     }
     if (tool.name === "writing-skills.check_compliance") {

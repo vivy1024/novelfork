@@ -105,3 +105,5 @@ session-error-root.png
 
 # H-4 界面验收截图（本地证据，不入库）。
 /.narrafork/h4-*.png
+dist-verify/
+dist-verify2/

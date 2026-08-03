@@ -289,7 +289,7 @@ function RuntimeLoginPage({ authStatus, onAuthenticated }: { readonly authStatus
             </div>
             {infoPanel ? (
               <div className="rounded-md border bg-muted/30 p-3 text-xs text-muted-foreground" role="note">
-                {infoPanel === "protocol" && "NovelFork Studio 仅作为 Runtime 的产品界面；账户、会话和小说数据由 NarraFork Runtime 按当前实例策略处理。"}
+                {infoPanel === "protocol" && "NovelFork Studio 仅作为 Runtime 的产品界面；账户、会话和小说数据由 Runtime 按当前实例策略处理。"}
                 {infoPanel === "privacy" && "登录凭据只提交给当前 Runtime；Studio 不记录密码、Passkey 响应或 Client Secret。登出和认证失效时会清除命名空间内的 Runtime 缓存。"}
                 {infoPanel === "security" && "Runtime 负责 JWT、disabled_at、管理员门禁、MFA 与 WebAuthn 校验；请在 HTTPS 或受信任的本机环境中使用 Passkey。"}
               </div>

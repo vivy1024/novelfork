@@ -36,6 +36,12 @@ import {
 } from "../../../novel-plugin/src/engine/jingwei";
 import { createWritingResourceService } from "../../../novel-plugin/src/engine/writing-resource/service";
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
+import { loadWritingSkills } from "../../../novel-plugin/src/engine/writing-skills/loader";
+import {
+	recommendWritingSkills,
+	type WritingSkillRecommendation,
+	type WritingSkillRecommendationInput,
+} from "../../../novel-plugin/src/engine/writing-skills/recommend";
 import { getNovelForkProductDatabase } from "../db/database";
 import { bookProvisionOperations } from "../db/schema";
 import { ownsBookBinding } from "../policy/book-product-policy";
@@ -110,6 +116,22 @@ export type GuidedSetupResult = {
 	createdEntries: number;
 	genre: string;
 	complexity: "light" | "medium" | "heavy";
+	/**
+	 * 按建书答案挑出的 Writing Skills 建议。
+	 *
+	 * 只是建议：本接口不写 `enabledWritingSkillIds`。启用的 Skill 正文会注入
+	 * 每一章的 style 通道，属于需要作者确认的决定；实际启用由叙述者调
+	 * `writing-skills.write` 完成，走 Runtime 权限确认。
+	 */
+	recommendedWritingSkills: ReadonlyArray<{
+		id: string;
+		slug: string;
+		name: string;
+		kind: string;
+		reason: string;
+	}>;
+	/** 命中的题材簇；null 表示答案未落入任何已知簇，推荐走通用能力位。 */
+	matchedGenreCluster: string | null;
 };
 
 const READY_STATE: ProvisionState = "ready";
@@ -1563,13 +1585,54 @@ export class NovelForkProductBookService {
 			storage,
 		);
 
+		// 按答案挑 Writing Skills 建议。这里刻意不写 enabledWritingSkillIds：
+		// 每个启用的 Skill 都会持续影响后续每一章的生成，需作者确认后再由
+		// 叙述者经 writing-skills.write 落库（保留 Runtime 权限确认）。
+		const recommendation = await this.recommendWritingSkillsForGuidedSetup({
+			genre,
+			platform,
+			complexity: template.complexity,
+			...(tone ? { tone } : {}),
+			...(aiTaste ? { aiTasteLevel: aiTaste } : {}),
+			...(writingPhilosophy ? { writingPhilosophy } : {}),
+		});
+
 		return {
 			ok: true,
 			bookId,
 			createdEntries: created,
 			genre,
 			complexity: template.complexity,
+			recommendedWritingSkills: recommendation.recommended.map((item) => ({
+				id: item.id,
+				slug: item.slug,
+				name: item.name,
+				kind: item.kind,
+				reason: item.reason,
+			})),
+			matchedGenreCluster: recommendation.matchedGenreCluster,
 		};
+	}
+
+	/**
+	 * 加载内置 Writing Skills 并按建书答案给出建议。
+	 *
+	 * 推荐失败不应让建书失败：十一问的主产物是 book.json 与经纬条目，
+	 * 拿不到建议时返回空清单，作者仍可在写作设置里手动挑。
+	 */
+	private async recommendWritingSkillsForGuidedSetup(
+		input: WritingSkillRecommendationInput,
+	): Promise<WritingSkillRecommendation> {
+		try {
+			return recommendWritingSkills(input, await loadWritingSkills());
+		} catch {
+			return {
+				recommended: [],
+				consideredCount: 0,
+				droppedByConflict: [],
+				matchedGenreCluster: null,
+			};
+		}
 	}
 
 	async getWorkspaceFileTree(

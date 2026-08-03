@@ -159,6 +159,7 @@ describe("novel Runtime contribution", () => {
       "writing-skills.check_compliance",
       "writing-skills.import_legacy",
       "writing-skills.read",
+      "writing-skills.recommend",
       "writing-skills.write",
     ]);
     expect(definitions.has("presets.read")).toBe(false);
@@ -178,6 +179,17 @@ describe("novel Runtime contribution", () => {
     expect(complianceSchema.required).toEqual(["content"]);
     expect(importSchema.properties).toEqual({});
     expect(definitions.get("writing-skills.import_legacy")?.risk).toBe("confirmed-write");
+
+    // 推荐是只读建议：不得声明写风险，也不得声明未在 Studio 注册的 renderer
+    // （DoD：renderer 必须已注册，或显式走 generic —— 不声明即走 generic）。
+    const recommend = definitions.get("writing-skills.recommend");
+    const recommendSchema = recommend?.inputSchema as Record<string, unknown>;
+    expect(recommend?.risk).toBe("read");
+    expect((recommendSchema.properties as Record<string, unknown>).maxCount).toBeDefined();
+    expect(recommendSchema.required).toEqual([]);
+    // DoD：renderer 要么已在 Studio 注册，要么显式走 generic。这里选后者。
+    const recommendCatalogEntry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === "writing-skills.recommend");
+    expect(recommendCatalogEntry?.renderer).toBe("generic");
   });
 
   it("contributes the authoritative NovelFork writing workflow prompt", () => {

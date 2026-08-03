@@ -1,55 +1,72 @@
 ---
-title: 工具搜索与技能
-summary: 工具列表直注 system prompt、Skill 加载、MCP 扩展
-tags: [工具, 技能, MCP, ToolSearch, Skill]
+title: 工具、搜索与技能
+summary: Agent 工具执行机制、搜索能力与技能系统全景
+tags: [工具, 搜索, 技能, Skills, MCP, 权限]
 routes:
   - /next/routines
+  - /next/narrators/:id
 ---
 
-# 工具搜索与技能
+# 工具、搜索与技能
 
-> 工具列表直注 system prompt、Skill 加载、MCP 扩展。
+> Agent 通过注册的工具与技能执行具体操作，搜索能力扩展信息来源。
 
-## 核心概念
+## 工具系统
 
-**工具注入**：v1.3.0 起，所有可用工具列表直接注入到 system prompt 中，Agent 启动时即可看到完整工具集。不再依赖 ToolSearch 动态发现。
+Agent 可调用的工具分三类：
 
-**ToolSearch（已弱化）**：保留作为备用机制。当工具列表过长或需要搜索非核心工具时仍可使用。结果现在正确显示为结构化数据（已修复此前的 `[object Object]` 显示问题）。
+| 类型 | 说明 | 示例 |
+|------|------|------|
+| **内置工具** | Runtime 核心能力 | Read、Write、Bash、Browser、Terminal |
+| **领域工具** | novel-plugin 注册的写作工具 | write.preflight、scene.spec、pipeline.write、lore.read、memory.read |
+| **MCP 工具** | 外部 MCP Server 暴露的能力 | 数据库查询、API 调用、自定义脚本 |
 
-**Skill**：可复用的能力模块。Agent 通过 Skill 工具加载特定技能（如写作模板应用、合规检查流程），技能包含预定义的工具链和提示词。
+## 搜索能力
 
-**MCP（Model Context Protocol）**：连接外部 MCP Server 为 Agent 注入额外工具。支持 stdio 本地进程和 HTTP 远程服务两种模式。
+| 搜索类型 | 后端 | 用途 |
+|----------|------|------|
+| 文件搜索 | ripgrep (rg) | 代码与文本文件内容搜索 |
+| Web 搜索 | Tavily / Bocha / 智谱 / 自定义 HTTP | 联网获取最新信息 |
+| 叙事记忆搜索 | SQLite LIKE 匹配 | 搜索动态事实与事件 |
+| 经纬搜索 | 全文 + 分类过滤 | 搜索静态设定条目 |
 
-## 推荐使用流程
+## 技能系统 (Skills)
 
-1. 核心工具（Read/Write/Edit/Bash 等）始终可用，直接注入 system prompt
-2. 小说专属工具通过 novel-plugin 自动注册并注入
-3. 需要外部能力时，在套路 MCP tab 中添加 MCP Server
-4. Skill 用于加载复杂工作流模板
+### 全局技能 vs 作品技能
+- **全局技能**：扫描 `~/.narrafork/skills/`、`~/.claude/skills/`、`~/.agents/skills/` 目录。对所有叙述者生效。
+- **作品技能**：扫描作品目录 `.novelfork/skills/`。通过书籍可信绑定访问，仅对该书生效。
 
-## 最佳实践
+### 技能文件结构
 
-- 工具列表自动注入，无需手动管理
-- MCP 工具按需启用，不用的关掉减少噪音
-- 自定义 Skill 适合封装重复性工作流
-- ToolSearch 已不是主要发现机制，但仍可用于搜索
+每个技能是一个目录，包含 `SKILL.md`：
 
-## 常见坑
+```
+~/.novelfork/skills/my-skill/
+├── SKILL.md          ← 主文件（Frontmatter + Prompt）
+└── templates/        ← 可选辅助模板
+    └── example.md
+```
 
-- **Agent 说找不到某工具** → 工具可能未在当前套路中启用，检查套路工具 Tab
-- **MCP 工具调用失败** → MCP Server 未启动或连接断开
-- **ToolSearch 显示异常** → 已修复。如仍有问题请检查版本是否为 v1.3.0+
+### 在线浏览与预览
 
-## Agent 查阅提示
+在"套路 → 技能"页面：
+- 每个 Skill 卡片可展开文件树，列出包含的所有文件。
+- 点击文件名弹窗在线查看源码与 Markdown 格式化内容。
+- 支持创建、编辑、删除全局或作品级技能。
 
-- v1.3.0 起工具列表直接注入 system prompt，Agent 启动时即可见所有工具
-- ToolSearch 保留但已弱化，主要用于搜索非核心/外部工具
-- ToolSearch 结果已修复 [object Object] 问题，返回正确的结构化数据
-- Skill 加载后注入当前会话的工具集和系统提示
-- MCP 工具与内置工具共享权限模式和确认门机制
-- 工具权限在套路中配置：allowlist / blocklist 模式
-- MCP Server 配置在套路的 MCP tab 中，支持环境变量注入
+### 写作技能 (Writing Skills)
 
-## 可跳转功能入口
+属于独立子系统（见 `19-presets-and-beats.md`），专注于写作规则与合规检查。
+启用时会自动物化到作品 `.novelfork/skills/` 目录。
 
-- 套路管理: MCP Server 和工具权限配置。 (/next/routines)
+## 工具权限
+
+每个工具的执行受权限模式控制：
+
+| 模式 | 行为 |
+|------|------|
+| `allow` | 自动执行，不询问 |
+| `ask` | 每次执行前弹出确认 |
+| `deny` | 禁止执行 |
+
+可在"套路 → 工具权限"中按 pattern 配置规则。

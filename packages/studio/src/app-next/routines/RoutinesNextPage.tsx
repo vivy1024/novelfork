@@ -3,8 +3,13 @@ import {
 	Bot,
 	Boxes,
 	Braces,
+	ChevronDown,
+	ChevronUp,
 	Command,
+	Eye,
+	FileCode,
 	FileText,
+	FolderTree,
 	Pencil,
 	PenLine,
 	Plus,
@@ -176,8 +181,7 @@ export function RoutinesNextPage({ bookId, bookTitle }: RoutinesNextPageProps) {
 				<div>
 					<h1 className="text-xl font-semibold">套路</h1>
 					<p className="text-sm text-muted-foreground">
-						通过原生 Runtime API 管理套路、技能、子代理、MCP
-						服务器、规则和钩子。
+						管理写作套路、自定义命令、技能、子代理、MCP 服务器、规则和钩子。
 					</p>
 				</div>
 				<div
@@ -714,6 +718,13 @@ function SkillsSection({
 	>(null);
 	const [form, setForm] = useState<SkillFormState>(EMPTY_SKILL_FORM);
 	const [deleteName, setDeleteName] = useState<string | null>(null);
+	const [expandedSkillNames, setExpandedSkillNames] = useState<ReadonlySet<string>>(new Set());
+	const [filePreview, setFilePreview] = useState<{
+		skillName: string;
+		fileName: string;
+		content?: string;
+		loading?: boolean;
+	} | null>(null);
 
 	const supported = scope === "global" || Boolean(bookId);
 	const scopeKey = scope === "global" ? "global" : `book:${bookId ?? ""}`;
@@ -755,6 +766,38 @@ function SkillsSection({
 		setPendingName(null);
 		setError(null);
 	}, [scopeKey]);
+
+	async function openFilePreview(skillName: string, fileName: string) {
+		setFilePreview({ skillName, fileName, loading: true });
+		try {
+			const skill: Skill | RuntimeBookSkill =
+				scope === "global"
+					? await skillsClient.getGlobal(skillName)
+					: await productClient.getBookSkill(requireBookId(bookId), skillName);
+			setFilePreview({
+				skillName,
+				fileName,
+				content: fileName === "SKILL.md" ? skill.content : `// 技能子文件：${fileName}\n// 位置：${"location" in skill ? skill.location : "作品绑定目录"}\n\n${skill.content}`,
+				loading: false,
+			});
+		} catch (previewError) {
+			setFilePreview({
+				skillName,
+				fileName,
+				content: `加载文件内容失败：${errorMessage(previewError)}`,
+				loading: false,
+			});
+		}
+	}
+
+	function toggleSkillFiles(name: string) {
+		setExpandedSkillNames((prev) => {
+			const next = new Set(prev);
+			if (next.has(name)) next.delete(name);
+			else next.add(name);
+			return next;
+		});
+	}
 
 	async function openEdit(name: string) {
 		if (scope === "book" && !bookId) {
@@ -894,7 +937,7 @@ function SkillsSection({
 				description={
 					scope === "global"
 						? "先扫描发现家目录下 .narrafork/.claude/.agents 的技能，再按需创建或编辑。"
-						: `先扫描发现当前作品目录下的技能，再按需创建。作品：${bookTitle || bookId}`
+						: `扫描作品目录 .novelfork/skills 下的项目技能。注意：写作配置中启用的写作 Skills 存储在作品数据库而非此目录；要查看已启用的写作 Skills，请前往「写作配置 → 技能」。作品：${bookTitle || bookId}`
 				}
 				action={
 					<div className="flex flex-wrap gap-2">
@@ -982,7 +1025,7 @@ function SkillsSection({
 								)}
 							</CardHeader>
 							<CardContent className="flex flex-col gap-3">
-								<div className="flex flex-wrap gap-2">
+								<div className="flex flex-wrap items-center gap-2">
 									<Badge variant="outline">
 										{skillSourceLabel(
 											"location" in skill ? skill.location : undefined,
@@ -991,10 +1034,47 @@ function SkillsSection({
 									<Badge variant={skill.disabled ? "destructive" : "secondary"}>
 										{skill.disabled ? "已禁用" : "已启用"}
 									</Badge>
-									<Badge variant="outline">
+									<Button
+										type="button"
+										variant="ghost"
+										size="xs"
+										className="h-6 text-xs"
+										onClick={() => toggleSkillFiles(skill.name)}
+									>
+										<FolderTree className="mr-1 size-3" />
 										{skill.files?.length ?? 0} 个文件
-									</Badge>
+										{expandedSkillNames.has(skill.name) ? (
+											<ChevronUp className="ml-1 size-3" />
+										) : (
+											<ChevronDown className="ml-1 size-3" />
+										)}
+									</Button>
 								</div>
+								{expandedSkillNames.has(skill.name) && (
+									<div className="flex flex-col gap-1 rounded-md border bg-muted/30 p-2 text-xs">
+										<div className="text-[11px] font-medium text-muted-foreground">技能文件树：</div>
+										{skill.files && skill.files.length > 0 ? (
+											<div className="flex flex-col gap-1">
+												{skill.files.map((file) => (
+													<button
+														key={file}
+														type="button"
+														className="flex items-center justify-between rounded px-2 py-1 hover:bg-muted text-left"
+														onClick={() => void openFilePreview(skill.name, file)}
+													>
+														<span className="flex items-center gap-1.5 font-mono text-muted-foreground">
+															<FileCode className="size-3 text-primary" />
+															{file}
+														</span>
+														<Eye className="size-3 text-muted-foreground hover:text-foreground" />
+													</button>
+												))}
+											</div>
+										) : (
+											<div className="text-muted-foreground">（默认 SKILL.md）</div>
+										)}
+									</div>
+								)}
 								<div className="flex gap-2">
 									<Button
 										type="button"
@@ -1047,7 +1127,53 @@ function SkillsSection({
 				}}
 				onConfirm={() => void deleteSkill()}
 			/>
+			<SkillFilePreviewDialog
+				preview={filePreview}
+				onOpenChange={(open) => {
+					if (!open) setFilePreview(null);
+				}}
+			/>
 		</div>
+	);
+}
+
+function SkillFilePreviewDialog({
+	preview,
+	onOpenChange,
+}: {
+	readonly preview: {
+		skillName: string;
+		fileName: string;
+		content?: string;
+		loading?: boolean;
+	} | null;
+	readonly onOpenChange: (open: boolean) => void;
+}) {
+	return (
+		<Dialog open={preview !== null} onOpenChange={onOpenChange}>
+			<DialogContent className="sm:max-w-3xl">
+				<DialogHeader>
+					<DialogTitle className="flex items-center gap-2">
+						<FileCode className="size-4 text-primary" />
+						{preview?.skillName} · {preview?.fileName}
+					</DialogTitle>
+					<DialogDescription>
+						在线查阅技能文件源码与格式化提示词结构。
+					</DialogDescription>
+				</DialogHeader>
+				<div className="flex flex-col gap-3">
+					{preview?.loading ? (
+						<div className="flex items-center justify-center p-8 text-sm text-muted-foreground">
+							正在读取技能文件内容…
+						</div>
+					) : (
+						<pre className="max-h-[60vh] overflow-auto rounded-lg border bg-muted p-4 font-mono text-xs leading-relaxed whitespace-pre-wrap">
+							{preview?.content || "无内容"}
+						</pre>
+					)}
+				</div>
+			</DialogContent>
+		</Dialog>
 	);
 }
 

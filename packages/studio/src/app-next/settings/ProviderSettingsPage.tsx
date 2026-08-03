@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 import {
@@ -19,9 +20,6 @@ import {
 } from "../runtime-admin/provider-models";
 import {
   createNugProviderClient,
-  type RuntimeNugBillingConfig,
-  type RuntimeNugBillingOrder,
-  type RuntimeNugBillingOrderInput,
   type RuntimeNugChannelHealth,
   type RuntimeNugLoginResult,
   type RuntimeNugOAuthStartResult,
@@ -69,10 +67,6 @@ export interface ProviderSettingsClient extends Partial<RuntimePlatformProviders
   readonly nugGetChannelsHealth?: (providerId: string) => Promise<RuntimeNugChannelHealth>;
   readonly nugGetUsage?: (providerId: string, input?: RuntimeNugUsageInput) => Promise<RuntimeNugUsageResponse>;
   readonly nugGetUsageSummary?: (providerId: string, range?: RuntimeNugUsageInput["range"]) => Promise<RuntimeNugUsageSummary>;
-  readonly nugGetBillingConfig?: (providerId: string) => Promise<RuntimeNugBillingConfig>;
-  readonly nugCreateBillingOrder?: (providerId: string, input: RuntimeNugBillingOrderInput) => Promise<RuntimeNugBillingOrder>;
-  readonly nugGetBillingOrder?: (providerId: string, orderId: string) => Promise<RuntimeNugBillingOrder>;
-  readonly nugRepayBillingOrder?: (providerId: string, orderId: string) => Promise<RuntimeNugBillingOrder>;
 }
 
 const defaultClient: ProviderSettingsClient = {
@@ -114,6 +108,7 @@ interface ProviderDraft {
 
 export function ProviderSettingsPage({ client = defaultClient }: ProviderSettingsPageProps) {
   const [settings, setSettings] = useState<RuntimeSettings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<RuntimeSettings | null>(null);
   const [selection, setSelection] = useState<ProviderSelection | null>(null);
   const [draftSelection, setDraftSelection] = useState<ProviderDraft | null>(null);
   const [protocolModalOpen, setProtocolModalOpen] = useState(false);
@@ -139,7 +134,10 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     void refreshPlatformOverview();
     client.get()
       .then((data) => {
-        if (active) setSettings(data);
+        if (active) {
+          setSettings(data);
+          setSavedSettings(data);
+        }
       })
       .catch((reason) => {
         if (active) setError(reason instanceof Error ? reason.message : String(reason));
@@ -223,6 +221,57 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     ];
   }, [platformOverview, settings]);
 
+  const isDirty = useMemo(() => {
+    if (!settings || !savedSettings) return false;
+    return JSON.stringify({
+      customApiProviders: settings.customApiProviders,
+      nugProviders: settings.nugProviders,
+      hiddenModels: settings.agent?.hiddenModels,
+      customModels: settings.agent?.customModels,
+      modelContextWindows: settings.agent?.modelContextWindows,
+      disabledProviders: settings.agent?.disabledProviders,
+      providerOrder: settings.agent?.providerOrder,
+    }) !== JSON.stringify({
+      customApiProviders: savedSettings.customApiProviders,
+      nugProviders: savedSettings.nugProviders,
+      hiddenModels: savedSettings.agent?.hiddenModels,
+      customModels: savedSettings.agent?.customModels,
+      modelContextWindows: savedSettings.agent?.modelContextWindows,
+      disabledProviders: savedSettings.agent?.disabledProviders,
+      providerOrder: savedSettings.agent?.providerOrder,
+    });
+  }, [settings, savedSettings]);
+
+  async function saveAllChanges() {
+    if (!settings || !savedSettings) return;
+    setBusy(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const patch: RuntimeSettingsPatch = {
+        ...runtimeProviderPatch("customApiProviders", settings.customApiProviders ?? []),
+        ...runtimeProviderPatch("nugProviders", settings.nugProviders ?? []),
+        ...runtimeAgentModelPatch(getRuntimeAgentModelState(settings)),
+      };
+      const updated = await client.patch(patch);
+      setSettings(updated);
+      setSavedSettings(updated);
+      setFeedback("所有变更已保存。");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function discardChanges() {
+    if (savedSettings) {
+      setSettings(savedSettings);
+      setFeedback(null);
+      setError(null);
+    }
+  }
+
   function allProviders(): EditableProvider[] {
     return [...customProviders, ...nugProviders];
   }
@@ -259,6 +308,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     try {
       const updated = await client.patch(patch);
       setSettings(updated);
+      setSavedSettings(updated);
       setFeedback(successMessage);
       return updated;
     } catch (reason) {
@@ -272,6 +322,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
   async function reloadRuntimeSettings() {
     const updated = await client.get();
     setSettings(updated);
+    setSavedSettings(updated);
     void refreshPlatformOverview();
     return updated;
   }
@@ -311,12 +362,25 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     const currentAll = allProviders();
     try {
       if (draftMode) {
+        // 新建 provider 立即保存到 Runtime（不走 dirty 模式），
+        // 否则后续刷新模型/测试连接会因为 Runtime 不认识该 provider 而 404。
         assertUniquePrefix(provider, currentAll);
         const created = {
           ...provider,
           id: normalizeProviderId(provider.prefix, provider.name, currentAll),
         } as EditableProvider;
-        await replaceProviderArray(arrayKey, [...providers, created], `${provider.name} 已创建。`);
+        const nextProviders = [...providers, created];
+        setBusy(true);
+        try {
+          const updated = await client.patch({
+            ...runtimeProviderPatch(arrayKey, nextProviders as never),
+          });
+          setSettings(updated);
+          setSavedSettings(updated);
+          setFeedback(`${provider.name} 已创建。`);
+        } finally {
+          setBusy(false);
+        }
         setDraftSelection(null);
         setSelection({ kind: "connection", arrayKey, providerId: created.id });
         return;
@@ -329,7 +393,17 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         ? migrateRuntimeAgentModelPrefix(agentModels, previous.prefix, provider.prefix)
         : undefined;
       const nextProviders = providers.map((candidate) => candidate.id === provider.id ? normalizedProvider : candidate);
-      await replaceProviderArray(arrayKey, nextProviders, `${provider.name} 已更新。`, migratedAgentModels);
+      const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
+      const agentPatch = migratedAgentModels ? runtimeAgentModelPatch(migratedAgentModels) : {};
+      setBusy(true);
+      try {
+        const updated = await client.patch({ ...providerPatch, ...agentPatch });
+        setSettings(updated);
+        setSavedSettings(updated);
+        setFeedback(`${provider.name} 已更新。`);
+      } finally {
+        setBusy(false);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
       throw reason;
@@ -360,12 +434,14 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     const providers = getRuntimeProviderArray(settings, arrayKey);
     const provider = providers.find((candidate) => candidate.id === providerId);
     const nextProviders = providers.filter((candidate) => candidate.id !== providerId);
-    await replaceProviderArray(arrayKey, nextProviders, `${provider?.name ?? "供应商"} 已删除。`);
+    const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
     const currentDefault = typeof settings.agent?.defaultModel === "string" ? settings.agent.defaultModel : "";
+    let agentPatch: Partial<RuntimeSettingsPatch> = {};
     if (provider && currentDefault.startsWith(`${provider.prefix}:`)) {
-      const updated = await client.patch({ agent: { defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } });
-      setSettings(updated);
+      agentPatch = { agent: { ...settings.agent, defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } };
     }
+    setSettings((prev) => prev ? { ...prev, ...providerPatch, ...agentPatch } as RuntimeSettings : prev);
+    setFeedback(`${provider?.name ?? "供应商"} 已删除。`);
     setSelection(null);
   }
 
@@ -376,28 +452,20 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     const nextProviders = providers.map((candidate) => candidate.id === providerId
       ? { ...candidate, disabled: !enabled, ...(enabled ? {} : { defaultModel: "" }) }
       : candidate);
-    await replaceProviderArray(arrayKey, nextProviders, enabled ? "供应商已启用。" : "供应商已停用。");
+    const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
     const currentDefault = typeof settings.agent?.defaultModel === "string" ? settings.agent.defaultModel : "";
+    let agentPatch: Partial<RuntimeSettingsPatch> = {};
     if (!enabled && provider && currentDefault.startsWith(`${provider.prefix}:`)) {
-      const updated = await client.patch({ agent: { defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } });
-      setSettings(updated);
+      agentPatch = { agent: { ...settings.agent, defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } };
     }
+    setSettings((prev) => prev ? { ...prev, ...providerPatch, ...agentPatch } as RuntimeSettings : prev);
+    setFeedback(enabled ? "供应商已启用。" : "供应商已停用。");
   }
 
   async function updateAgentModels(next: RuntimeAgentModelState) {
-    setBusy(true);
-    setError(null);
-    setFeedback(null);
-    try {
-      const updated = await client.patch(runtimeAgentModelPatch(next));
-      setSettings(updated);
-      setFeedback("模型显示、上下文或自定义库存已更新。");
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
-      throw reason;
-    } finally {
-      setBusy(false);
-    }
+    const patch = runtimeAgentModelPatch(next);
+    setSettings((prev) => prev ? { ...prev, ...(patch.agent ? { agent: { ...prev.agent, ...patch.agent } } : {}) } as RuntimeSettings : prev);
+    setFeedback("模型显示、上下文或自定义库存已更新。");
   }
 
   async function refreshProviderModels(provider: EditableProvider) {
@@ -413,14 +481,19 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         });
         const fresh = await client.get();
         setSettings(fresh);
+        setSavedSettings(fresh);
         setFeedback(`${provider.name} 已刷新 ${result.models.length} 个模型。`);
       } else {
         if (!client.refreshNugProviderModels) throw new Error("当前 Runtime 不支持 NUG 模型刷新。");
         const result = await client.refreshNugProviderModels(provider.id);
         const fresh = await client.get();
         setSettings(fresh);
+        setSavedSettings(fresh);
         if (result.modelContextWindows) {
           await client.patch({ agent: { modelContextWindows: result.modelContextWindows } });
+          const freshAfterPatch = await client.get();
+          setSettings(freshAfterPatch);
+          setSavedSettings(freshAfterPatch);
         }
         setFeedback(`${provider.name} 已刷新 ${result.models.length} 个模型。`);
       }
@@ -439,11 +512,22 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     if (!apiKey) throw new Error("NUG 登录未返回 API Key。");
     const providers = getRuntimeProviderArray(settings ?? {}, "nugProviders");
     const userName = typeof result.user?.username === "string" ? result.user.username : username;
-    await replaceProviderArray(
-      "nugProviders",
-      providers.map((provider) => provider.id === providerId ? { ...provider, apiKey, nugUsername: userName } : provider),
-      "NUG 登录成功，API Key 已保存。",
-    );
+    const nextProviders = providers.map((provider) => provider.id === providerId ? { ...provider, apiKey, nugUsername: userName } : provider);
+    setBusy(true);
+    setError(null);
+    setFeedback(null);
+    try {
+      const patch: RuntimeSettingsPatch = runtimeProviderPatch("nugProviders", nextProviders as never);
+      const updated = await client.patch(patch);
+      setSettings(updated);
+      setSavedSettings(updated);
+      setFeedback("NUG 登录成功，API Key 已保存。");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+      throw reason;
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function startNugOAuth(providerId: string) {
@@ -494,10 +578,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onGetChannelsHealth={client.nugGetChannelsHealth}
         onGetUsage={client.nugGetUsage}
         onGetUsageSummary={client.nugGetUsageSummary}
-        onGetBillingConfig={client.nugGetBillingConfig}
-        onCreateBillingOrder={client.nugCreateBillingOrder}
-        onGetBillingOrder={client.nugGetBillingOrder}
-        onRepayBillingOrder={client.nugRepayBillingOrder}
       />
     ) : (
       <ApiProviderDetail
@@ -555,10 +635,6 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onGetChannelsHealth={client.nugGetChannelsHealth}
         onGetUsage={client.nugGetUsage}
         onGetUsageSummary={client.nugGetUsageSummary}
-        onGetBillingConfig={client.nugGetBillingConfig}
-        onCreateBillingOrder={client.nugCreateBillingOrder}
-        onGetBillingOrder={client.nugGetBillingOrder}
-        onRepayBillingOrder={client.nugRepayBillingOrder}
       />
     ) : (
       <ApiProviderDetail
@@ -599,6 +675,15 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         onClose={() => setProtocolModalOpen(false)}
         onSelect={handleProtocolSelect}
       />
+      {isDirty && (
+        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 rounded-lg border bg-background p-3 shadow-lg">
+          <span className="text-sm font-medium">有未保存的更改</span>
+          <Button variant="outline" size="sm" onClick={discardChanges}>放弃</Button>
+          <Button size="sm" onClick={() => void saveAllChanges()} disabled={busy}>
+            {busy ? "保存中…" : "保存变更"}
+          </Button>
+        </div>
+      )}
     </>
   );
 }

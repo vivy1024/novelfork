@@ -471,6 +471,14 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["enabledWritingSkillIds"],
     additionalProperties: false,
   },
+  "writing-skills.recommend": {
+    type: "object",
+    properties: {
+      maxCount: numberSchema("最多返回几条推荐；缺省 6（启用的 Skill 正文每章注入 style 通道，过多会挤占记忆预算）。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
   "writing-skills.check_compliance": {
     type: "object",
     properties: {

@@ -188,7 +188,7 @@ describe("SettingsSectionContent Runtime-native settings", () => {
 
   it("reads and PATCHes exact server/tls/update sections and generates TLS through Runtime", async () => {
     render(<SettingsSectionContent sectionId="server" />);
-    await screen.findByRole("heading", { name: "服务器与更新" });
+    await screen.findByRole("heading", { name: "服务器与系统" });
 
     fireEvent.change(screen.getByLabelText("服务器端口"), { target: { value: "7788" } });
     fireEvent.click(screen.getByRole("button", { name: "保存服务器设置" }));
@@ -215,10 +215,6 @@ describe("SettingsSectionContent Runtime-native settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "生成自签名证书" }));
     await waitFor(() => expect(settingsClientMock.generateTls).toHaveBeenCalledTimes(1));
     expect(await screen.findByText(/https:\/\/localhost:7778/)).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "立即检查更新" }));
-    await waitFor(() => expect(settingsClientMock.checkUpdate).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/发现新版本 0.6.0/)).toBeTruthy();
   });
 
   it("preserves subagent model allowlists and model aggregations", async () => {

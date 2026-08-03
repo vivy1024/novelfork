@@ -174,7 +174,7 @@ describe("运维设置面板", () => {
   it("显示本地软件包元数据且不执行客户端更新检查", () => {
     render(<AboutPanel />);
     expect(screen.getByText(/@vivy1024\/novelfork-studio/)).toBeTruthy();
-    expect(screen.getByText(/更新状态由 Runtime 管理/)).toBeTruthy();
+    expect(screen.getByText(/标准桌面二进制/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /检查更新/ })).toBeNull();
   });
 

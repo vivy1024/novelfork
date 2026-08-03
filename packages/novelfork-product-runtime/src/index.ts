@@ -27,6 +27,7 @@ import {
 	novelForkProductBooksRoutes,
 	novelRuntimeBindingRoutes,
 } from "./http";
+import { adminUserCleanupRoutes } from "./routes/admin-user-cleanup";
 import {
 	canAccessBoundNarratorFromUserId,
 	canAccessBoundPermissionFromUserId,
@@ -108,6 +109,7 @@ export const novelForkProductIntegration: RuntimeProductIntegration = {
 		app.use("/api/narrators/:id/*", guardRawNarratorRoute);
 	},
 	mountAuthenticatedRoutes(app: Hono): void {
+		app.route("", adminUserCleanupRoutes);
 		app.route("/api/novelfork", novelForkProductBooksRoutes);
 		app.route("/api/books/:bookId", bookDomainRoutes);
 		app.route("/api/books/:bookId", bookRuntimeCapabilitiesRoutes);

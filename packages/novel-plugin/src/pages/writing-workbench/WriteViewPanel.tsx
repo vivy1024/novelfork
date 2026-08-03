@@ -12,6 +12,7 @@ import {
   canStartWriting,
   planFixAction,
   type ReadyCheckItem,
+  type SettingsSectionId,
   type WriteFixActionId,
   type WriteViewModel,
 } from "./write-view-state";
@@ -29,6 +30,10 @@ export interface WriteViewPanelProps {
   readonly callTool?: (tool: string, input: Record<string, unknown>) => Promise<unknown>;
   /** 切到别的侧栏视图（一键修的 view 类动作）。 */
   readonly onSwitchView?: (view: "jingwei" | "tools" | "explorer") => void;
+  /** 打开写作设置并定位到指定分区（如 Writing Skills）。 */
+  readonly onOpenSettings?: (section?: SettingsSectionId) => void;
+  /** 打开经纬完整面板并定位到指定分类（如 outline）。 */
+  readonly onOpenLorePanel?: (category?: string) => void;
   /** 把需要写入的修复交给叙述者执行（走 Runtime 权限确认）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 生成蓝图 / 直接写章：交给工作台驱动叙述者执行。 */
@@ -59,6 +64,8 @@ export function WriteViewPanel({
   bookId,
   callTool,
   onSwitchView,
+  onOpenSettings,
+  onOpenLorePanel,
   onSendToNarrator,
   onRunWrite,
   formalChapterCount,
@@ -128,15 +135,45 @@ export function WriteViewPanel({
     void loadProposals();
   }, [loadProposals, runPreflight]);
 
+  /**
+   * 一键修分派。
+   *
+   * 每条分支在宿主没提供对应 handler 时都要写 fixNote：点了没反应会被当成
+   * 按钮坏了，而真实原因是当前环境没接这个入口。
+   */
   const handleFix = useCallback(async (action: WriteFixActionId) => {
     const plan = planFixAction(action, { chapterNumber: model.chapterNumber, formalChapterCount });
+    setFixNote(null);
     if (plan.kind === "view") {
-      onSwitchView?.(plan.view ?? "tools");
+      if (!onSwitchView) {
+        setFixNote(`当前环境无法切换侧栏视图，请手动打开「${plan.label}」。`);
+        return;
+      }
+      onSwitchView(plan.view ?? "tools");
       return;
     }
-    if (!plan.message || !onSendToNarrator) return;
+    if (plan.kind === "settings") {
+      if (!onOpenSettings) {
+        setFixNote(`当前环境无法打开写作设置，请点左下角设置图标后处理「${plan.label}」。`);
+        return;
+      }
+      onOpenSettings(plan.settingsSection);
+      return;
+    }
+    if (plan.kind === "lore-panel") {
+      if (!onOpenLorePanel) {
+        setFixNote(`当前环境无法打开经纬面板，请手动到经纬里处理「${plan.label}」。`);
+        return;
+      }
+      onOpenLorePanel(plan.loreCategory);
+      return;
+    }
+    if (!plan.message) return;
+    if (!onSendToNarrator) {
+      setFixNote(`当前没有可用的叙述者会话，无法执行「${plan.label}」；请先在对话里开一个会话。`);
+      return;
+    }
     setFixBusy(action);
-    setFixNote(null);
     try {
       await onSendToNarrator(plan.message);
       setFixNote(`已把「${plan.label}」交给叙述者，执行需要你在对话里确认权限。`);
@@ -145,7 +182,7 @@ export function WriteViewPanel({
     } finally {
       setFixBusy(null);
     }
-  }, [formalChapterCount, model.chapterNumber, onSendToNarrator, onSwitchView]);
+  }, [formalChapterCount, model.chapterNumber, onOpenLorePanel, onOpenSettings, onSendToNarrator, onSwitchView]);
 
   const handleProposal = useCallback(async (event: PendingEvent, action: "approve" | "reject") => {
     if (!bookId || !event.id) return;

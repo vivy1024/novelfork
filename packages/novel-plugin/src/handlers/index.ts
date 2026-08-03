@@ -279,6 +279,7 @@ export {
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsImportLegacy,
   handleWritingSkillsRead,
+  handleWritingSkillsRecommend,
   handleWritingSkillsWrite,
   loadActiveWritingSkillsForBook,
   migrateLegacyWritingSkillSelection,
@@ -292,6 +293,7 @@ export type {
   WritingSkillsCheckComplianceInput,
   WritingSkillsImportLegacyInput,
   WritingSkillsReadInput,
+  WritingSkillsRecommendInput,
   WritingSkillsWriteInput,
 } from "./writing-skill-handlers.js";
 export type {

@@ -72,8 +72,18 @@ export function createUsersClient(options: RuntimeAdminClientOptions = {}) {
         `/api/admin/users/${encodePathSegment(id)}`,
         jsonRequest("PATCH", input),
       ),
-    deleteUser: (id: string) =>
-      request<OkResponse>(`/api/admin/users/${encodePathSegment(id)}`, { method: "DELETE" }),
+    deleteUser: async (id: string) => {
+      try {
+        return await request<OkResponse>(`/api/admin/users/${encodePathSegment(id)}`, { method: "DELETE" });
+      } catch (error) {
+        // Upstream Runtime fails with FK constraint; fall back to product force-delete.
+        const status = typeof error === "object" && error !== null && "status" in error ? (error as { status?: number }).status : undefined;
+        if (status === 500) {
+          return request<OkResponse>(`/api/product/admin/users/${encodePathSegment(id)}/force`, { method: "DELETE" });
+        }
+        throw error;
+      }
+    },
   } as const;
 }
 

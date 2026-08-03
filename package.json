@@ -1,6 +1,6 @@
 {
   "name": "novelfork",
-  "version": "3.3.0",
+  "version": "3.3.1",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",
@@ -26,7 +26,7 @@
     "dev:frontend": "bun run --cwd packages/studio dev",
     "start": "bun run main.ts",
     "skills:bundle": "bun scripts/generate-skills-bundle.ts",
-    "compile": "bun scripts/generate-skills-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
+    "compile": "bun scripts/generate-skills-bundle.ts && bun scripts/generate-genre-profiles-bundle.ts && bun scripts/generate-learning-contribution.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
     "test": "bun scripts/run-workspace-tests.ts",
     "lint": "pnpm -r lint",
     "typecheck": "bun scripts/run-workspace-typechecks.ts",

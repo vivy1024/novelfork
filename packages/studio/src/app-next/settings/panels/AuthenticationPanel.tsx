@@ -207,7 +207,7 @@ export function AuthenticationPanel({ client = defaultAuthenticationClient }: Au
       const updated = await client.patch(input, validationOptions);
       adoptConfig(updated);
       notify.success("认证设置已保存", {
-        description: "OIDC 提供方与 WebAuthn RP 配置已由 NarraFork Runtime 更新。",
+        description: "OIDC 提供方与 WebAuthn RP 配置已由 Runtime 更新。",
       });
     } catch (reason) {
       const message = reason instanceof AuthenticationConfigValidationError
@@ -249,7 +249,7 @@ export function AuthenticationPanel({ client = defaultAuthenticationClient }: Au
       <div>
         <h2 className="text-lg font-semibold text-foreground">实例认证</h2>
         <p className="text-sm text-muted-foreground">
-          配置 NarraFork Runtime 的 OIDC 登录提供方和 Passkey 所使用的 WebAuthn 依赖方。
+          配置 Runtime 的 OIDC 登录提供方和 Passkey 所使用的 WebAuthn 依赖方。
         </p>
       </div>
 
@@ -470,7 +470,7 @@ export function AuthenticationPanel({ client = defaultAuthenticationClient }: Au
                   id="authentication-webauthn-rp-id"
                   aria-label="WebAuthn RP ID"
                   aria-invalid={Boolean(issueFor(issues, "webauthn.rpID"))}
-                  placeholder="narrafork.example.com"
+                  placeholder="novelfork.example.com"
                   value={rpID}
                   onChange={(event) => { setRpID(event.currentTarget.value); setIssues([]); }}
                 />
@@ -483,7 +483,7 @@ export function AuthenticationPanel({ client = defaultAuthenticationClient }: Au
                   id="authentication-webauthn-rp-name"
                   aria-label="WebAuthn 显示名称"
                   aria-invalid={Boolean(issueFor(issues, "webauthn.rpName"))}
-                  placeholder="NarraFork"
+                  placeholder="NovelFork"
                   value={rpName}
                   onChange={(event) => { setRpName(event.currentTarget.value); setIssues([]); }}
                 />
@@ -496,7 +496,7 @@ export function AuthenticationPanel({ client = defaultAuthenticationClient }: Au
                 id="authentication-webauthn-origins"
                 aria-label="WebAuthn Origins"
                 aria-invalid={Boolean(issueFor(issues, "webauthn.origins"))}
-                placeholder="https://narrafork.example.com"
+                placeholder="https://novelfork.example.com"
                 value={origins}
                 onChange={(event) => { setOrigins(event.currentTarget.value); setIssues([]); }}
               />

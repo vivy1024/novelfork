@@ -30,13 +30,20 @@ routes:
 | **Commands** | 自定义斜杠命令 | 定义 `/命令名` → prompt 模板，Composer 中 `/` 触发补全 |
 | **Tools** | 可选工具开关 | 控制哪些工具对 Agent 可见，支持 `/load` 等价入口 |
 | **Permissions** | 工具权限规则 | 每个工具的权限行为：allow / deny / ask，支持 pattern 匹配 |
-| **Global Skills** | 全局技能 | 全局生效的技能指令，注入所有 Agent 的 system prompt |
-| **Project Skills** | 项目技能 | 项目级技能，覆盖全局同名技能 |
+| **Global Skills** | 全局技能 | 全局生效的技能指令，支持展开文件树与在线预览 SKILL.md 源码 |
+| **Project Skills** | 项目技能 | 项目级技能，自动物理物化至作品 `.novelfork/skills/` 目录，随作品迁移且不影响全局 |
 | **SubAgents** | 子代理定义 | 自定义子代理类型：名称、systemPrompt、工具权限 |
 | **Global Prompts** | 全局提示词 | 注入所有叙述者的 system prompt 中 |
 | **System Prompts** | 系统提示词 | 更底层的系统提示注入 |
 | **MCP Tools** | MCP 工具 | 外部 MCP Server 暴露的工具，支持审批 |
 | **Hooks** | 钩子 | shell/webhook/llm 三种类型，在工具调用前后触发 |
+
+## v3.3.1 新增：Skill 文件树与作品物理物化
+
+1. **Skill 文件树在线浏览**：在“全局技能”与“作品技能”卡片上，点击“查看文件”可展开 Skill 内包含的所有文件列表（如 `SKILL.md`、`templates/*.md`），点击文件名可直接在弹窗中实时预览源码与 Markdown 格式。
+2. **写作技能物理落地 (`.novelfork/skills/`)**：在写作配置中启用写作 Skill 时，系统会自动将其 `SKILL.md` 及关联模板物化复制到作品根目录的 `.novelfork/skills/<slug>/` 目录中。这使得 Runtime 的项目 Skill 能够自动识别该技能，且作品可以独立导出与迁移，在作品内修改后不会污染内置和全局模板。
+3. **设置项脏检测 (Dirty Bar)**：供应商及模型设置采用与 NarraFork 原生一致的脏检测模式——修改配置后底部出现固定浮条提示未保存，点击“保存变更”批量提交。
+4. **首次启动引导向导 (SetupWizard)**：首次进入设置时自动弹出 6 步引导（环境依赖检测 → AI 供应商校验 → 基础模型与摘要模型配置 → 网络监听模式 → 完成）。
 
 ## Hooks 钩子系统
 

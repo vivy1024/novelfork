@@ -1,90 +1,51 @@
 ---
-title: 书籍叙述者分工
-summary: 每本书有多个专职叙述者角色（writer/auditor/hooks/chapter-hooks/outline/planner/architect/explorer），各司其职
-tags: [叙述者, 角色, 写书, 审校, 伏笔, 钩子, 大纲, 架构]
+title: 书籍叙述者
+summary: 每本书自带不可删除的叙述者会话，支持多会话切换与书籍绑定工具
+tags: [叙述者, 会话, 书籍, 绑定, 多会话]
 routes:
   - /next/books/:bookId
+  - /next/narrators/:id
 ---
 
-# 书籍叙述者分工
+# 书籍叙述者
 
-> 多个叙述者角色各司其职，你不需要记住所有命令——切换到对应叙述者，用快捷按钮即可。
+> 每本书自带专属叙述者，它是你与 AI 协作写作的唯一入口。
 
-## 叙述者角色
+## 核心机制
 
-| 叙述者 | agentId | 职责 | 典型操作 |
-|--------|---------|------|---------|
-| 📝 写书 | writer | 生成章节内容 | 生成下一章、续写、选段写作、多版本变体 |
-| 🔍 审校 | auditor | 质量检查 | 连续性审校、AI 味检测、37维度审计 |
-| 🎣 伏笔 | hooks | 伏笔管理 | 伏笔建议、埋设/回收/强化 |
-| 🪝 章末钩子 | chapter-hooks | 章末悬念 | 生成 3-5 个钩子方案 |
-| 📋 大纲与经纬 | outline | 结构规划 | 生成大纲、维护经纬、规划卷结构 |
-| 🏗️ 架构 | architect | 世界观构建 | 力量体系、地理、势力、设定维护 |
-| 📐 规划 | planner | 章节规划 | 情节点设计、伏笔部署方案 |
-| 🔭 探索 | explorer | 信息汇总 | 只读探索、进度汇报、方向建议 |
+- **自动创建**：创建新书时自动绑定一个叙述者会话（不可删除）。
+- **可信书籍绑定**：叙述者通过服务端绑定解析作品路径，前端或 AI 模型无法直接构造路径。
+- **书籍级工具**：绑定后的叙述者自动拥有写作领域工具（chapter.read、lore.read、memory.read、cockpit.snapshot、pipeline.write 等）。
+- **多会话**：同一本书可以有多个叙述者会话（如主线写作会话 + 实验性改动会话），在工作台顶部切换。
 
-## 什么时候用哪个
+## 叙述者能力
 
-| 你想做的事 | 用哪个叙述者 |
-|-----------|-------------|
-| 写新章节 | 📝 写书 |
-| 续写/扩写某段 | 📝 写书 |
-| 检查剧情矛盾 | 🔍 审校 |
-| 检测 AI 味 | 🔍 审校 |
-| 分析可以埋的伏笔 | 🎣 伏笔 |
-| 给章末加悬念 | 🪝 章末钩子 |
-| 规划下一卷大纲 | 📋 大纲与经纬 |
-| 整理世界观设定 | 🏗️ 架构 |
-| 了解当前进度和待处理项 | 🔭 探索 |
-| 讨论想法/闲聊 | 任意一个都行 |
+| 能力 | 说明 |
+|------|------|
+| 读取经纬 | 访问书籍全部静态设定 |
+| 读取叙事记忆 | 检索动态事实与事件 |
+| 读写章节 | 写入新章 / 修改已有章节 |
+| 写前预检 | write.preflight 检测是否满足写章条件 |
+| 合规检查 | 调用 Writing Skills 声明的合规规则 |
+| 工具执行 | 经纬条目创建/更新、伏笔管理、导入拆书等 |
+| 权限确认 | 破坏性操作（删除、覆盖）需用户手动确认 |
 
-## 角色工具权限
+## 会话状态
 
-每个角色有不同的默认工具启用集：
+| 状态 | 含义 |
+|------|------|
+| `running` | 正在执行（Agent 工作中） |
+| `idle` | 等待用户输入 |
+| `archived` | 已归档（可在设置 → 存储中清理） |
 
-| 角色 | 启用工具 | 禁用工具 |
-|------|---------|---------|
-| writer | Bash, Read, Write, Edit, Grep, Glob, EnterWorktree, ExitWorktree, TaskCreate | Terminal, Browser, ForkNarrator, Recall, ShareFile |
-| auditor | Read, Grep, Glob | Write, Edit, Bash, Terminal, Browser, ForkNarrator |
-| hooks | Read, Write, Grep, Glob | Bash, Terminal, Browser, ForkNarrator |
-| chapter-hooks | Read, Grep, Glob | Write, Edit, Bash, Terminal, Browser |
-| outline | Read, Write, Edit, Grep, Glob | Bash, Terminal, Browser, ForkNarrator |
-| architect | Read, Write, Edit, Grep, Glob | Bash, Terminal, Browser, ForkNarrator |
-| planner | Read, Write, Edit, Grep, Glob | Bash, Terminal, Browser, ForkNarrator |
-| explorer | Read, Grep, Glob, Recall | Write, Edit, Bash, Terminal, Browser, ForkNarrator, ShareFile |
+## 与写作视图的关系
 
-## 推荐使用流程
+写作视图（WriteViewPanel）的"写蓝图"/"直接写章"按钮通过 `onSendToNarrator` 向当前活跃叙述者发送消息，叙述者负责执行完整写作管线并在权限框架内操作。
 
-1. 写作阶段用「📝 写书」生成内容
-2. 写完一章切到「🔍 审校」检查质量
-3. 每隔几章用「🎣 伏笔」分析伏笔布局
-4. 每章结尾用「🪝 章末钩子」加悬念
-5. 开新卷前用「📋 大纲与经纬」规划结构
-6. 需要丰富世界观时用「🏗️ 架构」维护设定
+## 常见问题
 
-## 最佳实践
-
-- 每个叙述者有独立上下文，不会互相干扰
-- 快捷按钮本质是预设消息，你也可以直接打字说需求
-- 不确定用哪个时，用「📝 写书」——它是最通用的
-- 审校叙述者是只读的，不会修改你的正文
-- 探索叙述者 100% 只读，适合了解现状不动手
-
-## 常见坑
-
-- 在审校叙述者里写章节——它的工具配置偏向检查而非生成
-- 叙述者之间不共享对话历史，切换后需要重新说明上下文
-- 快捷按钮只是发消息的快捷方式，不是独立功能
-
-## Agent 查阅提示
-
-- 角色通过 session 的 `agentId` 字段区分：writer / auditor / hooks / chapter-hooks / outline / architect / planner / explorer
-- 每个角色有不同的默认工具启用集（NOVEL_AGENT_PRESETS）
-- 快捷按钮定义在 AgentQuickActions 的 ROLE_ACTIONS 中
-- 所有角色共享相同的底层小说工具集（NOVEL_SESSION_TOOL_DEFINITIONS），区别在于默认启用哪些通用工具
-- session 创建时通过 `agentId` 决定角色，不可中途切换
-- 角色的 system prompt 在 AGENT_SYSTEM_PROMPTS 中定义
-
-## 可跳转功能入口
-
-- 书籍工作台: 左侧资源树下方显示所有叙述者。 (/next/books/:bookId)
+| 问题 | 说明 |
+|------|------|
+| 叙述者无响应 | 检查 AI 供应商是否配置且可用 |
+| 写章按钮不可用 | write.preflight 未通过（缺少设定/经纬/指示） |
+| 想删除叙述者 | 书籍叙述者不可删除，但可新建替代会话 |

@@ -101,6 +101,15 @@ export {
   writeAuthorWritingSkill,
 } from "./writing-skills/loader.js";
 export {
+  MAX_RECOMMENDED_WRITING_SKILLS,
+  recommendWritingSkills,
+} from "./writing-skills/recommend.js";
+export type {
+  RecommendedWritingSkill,
+  WritingSkillRecommendation,
+  WritingSkillRecommendationInput,
+} from "./writing-skills/recommend.js";
+export {
   WRITING_SKILL_COMPLIANCE_CHECK_TYPES,
   WRITING_SKILL_KINDS,
 } from "./writing-skills/types.js";

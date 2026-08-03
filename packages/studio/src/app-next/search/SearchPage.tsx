@@ -198,7 +198,7 @@ export function SearchPage() {
         <Alert>
           <AlertTitle>搜索词较短</AlertTitle>
           <AlertDescription className="flex items-center justify-between gap-3">
-            <span>原版 NarraFork 默认要求至少 3 个字符，以避免昂贵的全局扫描。</span>
+            <span>默认要求至少 3 个字符，以避免昂贵的全局扫描。</span>
             <Button size="sm" variant="outline" onClick={() => setForceSearch(true)}>仍然搜索</Button>
           </AlertDescription>
         </Alert>

@@ -470,6 +470,16 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
 
   return (
     <div className="space-y-2" data-testid="writing-skills-panel">
+      {/*
+        作用域提示：这个面板也被「写作配置」复用，不只出现在书籍设置页。
+        技能库全局共享，但开关是书籍级的，必须就地说明并显示本书已启用数，
+        否则作者会以为所有作品共用同一套启用项。
+      */}
+      <p className="text-[10px] text-muted-foreground" data-testid="writing-skills-scope-hint">
+        技能库全局共享；<span className="text-foreground">启用/禁用开关只对当前这本书生效</span>
+        （本书已启用 {enabledIds.length} 个）。启用不会修改内置技能文件；编辑时自动 fork 到 ~/.novelfork/skills/ 作为你的个人副本。
+      </p>
+
       {/* 搜索：几百个 skill 平铺翻不动，先给关键词 */}
       <div className="flex items-center gap-1.5">
         <input

@@ -15,6 +15,7 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import {
   createSettingsClient,
+  createUserPreferencesClient,
   type RuntimeServerSettings,
   type RuntimeSettings,
   type RuntimeTlsSettings,
@@ -26,7 +27,9 @@ import { AgentSettingsPanel } from "./panels/AgentSettingsPanel";
 import { AppearancePanel } from "./panels/AppearancePanel";
 import { AuthenticationPanel } from "./panels/AuthenticationPanel";
 import { DataPanel } from "./panels/DataPanel";
+import { DependencyStatusPanel } from "./panels/DependencyStatusPanel";
 import { DevicesPanel } from "./panels/DevicesPanel";
+import { SetupWizardPanel } from "./panels/SetupWizardPanel";
 import { MonitoringPanel } from "./panels/MonitoringPanel";
 import { NotificationSettingsPanel } from "./panels/NotificationSettingsPanel";
 import { ProfilePanel } from "./panels/ProfilePanel";
@@ -49,6 +52,22 @@ interface SettingsSectionContentProps {
 }
 
 export function SettingsSectionContent({ sectionId }: SettingsSectionContentProps) {
+  const [wizardDismissed, setWizardDismissed] = useState<boolean>(true);
+
+  useEffect(() => {
+    void createUserPreferencesClient().get()
+      .then((data) => {
+        if ((data as { setupWizardCompleted?: boolean }).setupWizardCompleted === false) {
+          setWizardDismissed(false);
+        }
+      })
+      .catch(() => setWizardDismissed(true));
+  }, []);
+
+  if (!wizardDismissed) {
+    return <SetupWizardPanel onComplete={() => setWizardDismissed(true)} />;
+  }
+
   switch (sectionId) {
     case "profile":
       return <ProfilePanel />;
@@ -86,6 +105,8 @@ export function SettingsSectionContent({ sectionId }: SettingsSectionContentProp
       return <AuthenticationPanel />;
     case "storage":
       return <StorageDiagnosticsPanel />;
+    case "dependencies":
+      return <DependencyStatusPanel />;
     case "data":
       return <DataPanel />;
     case "usage":
@@ -274,8 +295,8 @@ function ServerSection() {
 
   return (
     <SettingsPage
-      title="服务器与更新"
-      description="直接读写 Runtime 设置中的 server、paths、tls 和 update 字段。"
+      title="服务器与系统"
+      description="配置 Runtime 监听端口、TLS 与默认项目目录。"
     >
       <Alert>
         <AlertTitle className="flex items-center gap-2"><AlertTriangle data-icon="inline-start" />保存后可能重启 Runtime</AlertTitle>
@@ -344,42 +365,8 @@ function ServerSection() {
         </div>
       </SettingsGroup>
 
-      <SettingsGroup title="Runtime 更新" description="只保存更新源、产品标识、通道、检查间隔和自动下载设置。">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="runtime-update-server">更新服务器</FieldLabel>
-            <Input id="runtime-update-server" aria-label="更新服务器" value={draft.update.serverUrl} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, serverUrl: event.currentTarget.value } })} placeholder="https://updates.example.com" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="runtime-update-product">产品标识</FieldLabel>
-            <Input id="runtime-update-product" aria-label="更新产品标识" value={draft.update.product} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, product: event.currentTarget.value } })} />
-          </Field>
-          <Field>
-            <FieldLabel>更新通道</FieldLabel>
-            <SimpleSelect aria-label="更新通道" value={draft.update.channel} onValueChange={(value) => setDraft({ ...draft, update: { ...draft.update, channel: value as "stable" | "beta" } })} options={[
-              { value: "stable", label: "稳定版" },
-              { value: "beta", label: "测试版" },
-            ]} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="runtime-update-interval">检查间隔（分钟）</FieldLabel>
-            <Input id="runtime-update-interval" aria-label="更新检查间隔" type="number" min={0} value={draft.update.checkIntervalMinutes} onChange={(event) => setDraft({ ...draft, update: { ...draft.update, checkIntervalMinutes: Math.max(0, Number(event.currentTarget.value) || 0) } })} />
-            <FieldDescription>0 表示禁用自动检查。</FieldDescription>
-          </Field>
-          <Field orientation="horizontal">
-            <FieldContent>
-              <FieldTitle>自动下载</FieldTitle>
-              <FieldDescription>检测到更新后自动下载。</FieldDescription>
-            </FieldContent>
-            <Switch aria-label="自动下载更新" checked={draft.update.autoDownload} onCheckedChange={(value) => setDraft({ ...draft, update: { ...draft.update, autoDownload: value } })} />
-          </Field>
-        </div>
-        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
-          <p className="text-sm text-muted-foreground">{updateStatus ?? "可直接通过 Runtime 更新接口检查当前产品版本。"}</p>
-          <Button type="button" variant="outline" onClick={handleCheckUpdate} disabled={checkingUpdate}>
-            {checkingUpdate ? "检查中…" : "立即检查更新"}
-          </Button>
-        </div>
+      <SettingsGroup title="版本与更新" description="NovelFork 当前采用桌面 EXE 发版模式。">
+        <p className="text-sm text-muted-foreground">暂未开启在线增量热更新服务。如需升级请前往 GitHub Releases 下载最新版本。</p>
       </SettingsGroup>
 
       <SettingsSaveBar

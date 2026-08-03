@@ -78,6 +78,7 @@ export interface RuntimeUserPreferences
 export type UserPreferencesPatch = Partial<
   UserPreferenceAppearanceFields & UserPreferenceNotificationFields & {
     readonly commands: readonly RuntimeUserCommand[];
+    readonly setupWizardCompleted?: boolean;
   }
 >;
 

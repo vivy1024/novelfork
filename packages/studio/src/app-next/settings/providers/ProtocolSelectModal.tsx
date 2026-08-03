@@ -52,7 +52,7 @@ const PROTOCOLS: readonly ProtocolOption[] = [
   {
     value: "nug",
     label: "NUG 反代服务",
-    description: "连接 NarraFork Unified Gateway，使用其远端模型通道。",
+    description: "连接 NUG 统一网关，使用其远端模型通道。",
     badge: "反代",
   },
 ];

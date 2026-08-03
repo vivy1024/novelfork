@@ -157,9 +157,12 @@ describe("根 Host 编译契约", () => {
   test("compile 由根级产品编排生成 NovelFork 根入口产物", () => {
     expect(packageJson.version).toBe("3.3.0");
     expect(packageJson.scripts.compile).toBe(
-      "bun scripts/generate-skills-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
+      "bun scripts/generate-skills-bundle.ts && bun scripts/generate-genre-profiles-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
     );
     expect(packageJson.scripts.compile).not.toContain("server/index.ts");
+    // 题材 profile 必须随 EXE 分发：磁盘上的 packages/core/genres 在编译产物里不存在，
+    // 缺这一步 pipeline.write 会以 "题材定义缺失" 硬失败。
+    expect(packageJson.scripts.compile).toContain("scripts/generate-genre-profiles-bundle.ts");
     expect(packageJson.scripts["bun:compile"]).toBe("bun run compile");
     expect(productCompileScript).toContain("prepareRuntimeReleaseArtifacts");
     expect(productCompileScript).toContain("prepareEmbeddedProductMigrationData");

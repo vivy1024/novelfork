@@ -53,6 +53,10 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "writing-skills.compliance",
   "writing-skills.import",
   "writing-skills.list",
+  // writing-skills.recommend 直接把 renderer 声明成 "generic"：推荐结果是扁平的
+  // name/kind/reason 列表，generic 卡足够；作者真正的交互发生在随后的
+  // AskUserQuestion（由 Runtime 原生渲染）。
+  "generic",
 ]);
 
 /** 从 tool-registry 源码里抽出所有声明的 renderer 值。 */

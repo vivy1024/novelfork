@@ -4,7 +4,31 @@
 
 ## Unreleased
 
-## v3.3.0 (2026-08-01) — Writing Skills、叙事线审批与 Runtime v0.5.18
+## v3.3.1 (2026-08-03) — 套路与设置全面对齐、Skill 物理落地与网关终端增强
+
+### ⚙️ 套路系统与 Skill 物理落地
+
+- **Skill 文件树浏览与弹窗预览**：在全局技能与作品技能卡片上提供“查看文件”折叠树，点击任意文件可通过 Dialog 在线预览 `SKILL.md` 和模版源码。
+- **写作技能物理物化**：写作配置中启用 Writing Skill 时，系统会自动将 `SKILL.md` 及关联模版实体拷贝至作品目录的 `.novelfork/skills/<slug>/`，确保 Runtime 扫描能够发现，且作品可独立迁移与隔离修改。
+
+### 🤖 AI 供应商与设置模式重构
+
+- **单行表格与紧凑间距**：AI 供应商模型列表重构为符合 NarraFork 原生视觉的 4 列扁平网格行（模型 ID · 显示名 · context window · 操作图标），去除了臃肿卡片边框。
+- **批量隐藏/显示**：模型列表增加一键全显/全隐切换按钮。
+- **脏检测与批量保存 (Dirty Bar)**：供应商设置改用脏检测模式，编辑配置后底部弹出固定浮条提示，确认后一键批量 PATCH 提交 Runtime。
+- **NUG 服务增强**：自动从 Base URL 提取域名作为前缀（Prefix），通道健康面板增加百分比进度条，清理掉了不属于原生的账单充值模块。
+
+### 🌐 消息网关、终端与首次引导
+
+- **消息网关 (GatewayPanel)**：补齐全局网关与 7 种平台表单（Telegram、Discord、Slack、飞书、Webhook、微信、QQ Bot），增加微信二维码扫码登录与轮询。
+- **网页内嵌终端 (TerminalsPanel)**：接入 xterm.js 与 WebSocket，支持直接在网页端附加与交互运行中的 PTY/dtach 终端会话。
+- **存储与清理 (StorageDiagnosticsPanel)**：补充 SQLite 主库/WAL/freelist 详细诊断与表级占用，清理伪备份按钮，操作加二次确认。
+- **首次引导向导 (SetupWizard)**：未完成配置时自动展示 6 步向导（欢迎 → 依赖检测 → 供应商校验 → 基础模型选择 → 网络监听模式 → 完成）。
+- **侧栏自由配置**：支持右键切换导航项“显示”或“收纳”到折叠区。
+
+### 🛠️ 路由修复
+
+- **质量趋势与文风漂移路由挂载**：在 `packages/novelfork-product-runtime/src/routes/domain.ts` 中补挂载了 `createQualityTrendRouter` 与 `createWritingModesRouter`，解决全书质量分析与文风漂移检测 API 404 的问题。
 
 ### ✍️ Writing Skills 与写作工作台
 

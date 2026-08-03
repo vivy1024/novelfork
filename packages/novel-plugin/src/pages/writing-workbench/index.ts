@@ -5,6 +5,8 @@ export * from "./ResourceHistoryPanel";
 export * from "./CheckpointPanel";
 export * from "./JingweiEntryEditor";
 export * from "./NewBookGuide";
+export { buildOnboardingRequestMessage } from "./onboarding-request";
+export type { OnboardingRecommendedSkill, OnboardingRequestPayload } from "./onboarding-request";
 export * from "./ImportWizard";
 export * from "./import-wizard-state";
 export * from "./WritingSkillsPanel";
