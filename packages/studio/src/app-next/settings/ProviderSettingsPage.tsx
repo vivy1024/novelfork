@@ -280,10 +280,17 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     setError(null);
     setFeedback(null);
     try {
+      const agentState = getRuntimeAgentModelState(settings);
       const patch: RuntimeSettingsPatch = {
         ...runtimeProviderPatch("customApiProviders", settings.customApiProviders ?? []),
         ...runtimeProviderPatch("nugProviders", settings.nugProviders ?? []),
-        ...runtimeAgentModelPatch(getRuntimeAgentModelState(settings)),
+        ...runtimeAgentModelPatch(agentState),
+        agent: {
+          ...runtimeAgentModelPatch(agentState).agent,
+          disabledProviders: settings.agent?.disabledProviders,
+          providerOrder: settings.agent?.providerOrder,
+          defaultModel: settings.agent?.defaultModel,
+        },
       };
       const updated = await client.patch(patch);
       setSettings(updated);
@@ -375,6 +382,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       };
       const updated = await client.patch(patch);
       setSettings(updated);
+      setSavedSettings(updated);
       setFeedback(successMessage);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
@@ -466,20 +474,41 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     const providers = getRuntimeProviderArray(settings, arrayKey);
     const provider = providers.find((candidate) => candidate.id === providerId);
     const nextProviders = providers.filter((candidate) => candidate.id !== providerId);
-    const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
     const currentDefault = typeof settings.agent?.defaultModel === "string" ? settings.agent.defaultModel : "";
-    let agentPatch: Partial<RuntimeSettingsPatch> = {};
-    if (provider && currentDefault.startsWith(`${provider.prefix}:`)) {
-      agentPatch = { agent: { ...settings.agent, defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } };
+    const needDefaultMigrate = provider && currentDefault.startsWith(`${provider.prefix}:`);
+    const nextDefault = needDefaultMigrate ? nextAvailableDefaultModel(arrayKey, nextProviders) : undefined;
+    // 删除后去掉该 provider 下的 agent model 记录
+    const nextAgentModels: RuntimeAgentModelState = {
+      hiddenModels: agentModels.hiddenModels.filter((v) => !v.startsWith(`${provider?.prefix}:`)),
+      customModels: agentModels.customModels.filter((m) => !m.value.startsWith(`${provider?.prefix}:`)),
+      modelContextWindows: Object.fromEntries(
+        Object.entries(agentModels.modelContextWindows).filter(([k]) => !k.startsWith(`${provider?.prefix}:`)),
+      ),
+    };
+    setBusy(true);
+    setError(null);
+    try {
+      const patch: RuntimeSettingsPatch = {
+        ...runtimeProviderPatch(arrayKey, nextProviders as never),
+        agent: {
+          ...runtimeAgentModelPatch(nextAgentModels).agent,
+          ...(nextDefault != null ? { defaultModel: nextDefault } : {}),
+        },
+      };
+      const updated = await client.patch(patch);
+      setSettings(updated);
+      setSavedSettings(updated);
+      setFeedback(`${provider?.name ?? "供应商"} 已删除。`);
+      setSelection(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
     }
-    setSettings((prev) => prev ? { ...prev, ...providerPatch, ...agentPatch } as RuntimeSettings : prev);
-    setFeedback(`${provider?.name ?? "供应商"} 已删除。`);
-    setSelection(null);
   }
 
   async function toggleProvider(arrayKey: RuntimeProviderArrayKey, providerId: string, enabled: boolean) {
     if (!settings) return;
-    // 维护独立的 disabledProviders 数组而非修改 provider 数组的 disabled 字段
     const rawDisabled = settings.agent?.disabledProviders;
     const currentDisabled: string[] = Array.isArray(rawDisabled) ? [...rawDisabled as string[]] : [];
     let nextDisabled: string[];
@@ -488,11 +517,18 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     } else {
       nextDisabled = currentDisabled.includes(providerId) ? currentDisabled : [...currentDisabled, providerId];
     }
-    setSettings((prev) => prev ? {
-      ...prev,
-      agent: { ...prev.agent, disabledProviders: nextDisabled },
-    } as RuntimeSettings : prev);
-    setFeedback(enabled ? "供应商已启用。" : "供应商已停用。");
+    setBusy(true);
+    setError(null);
+    try {
+      const updated = await client.patch({ agent: { disabledProviders: nextDisabled } });
+      setSettings(updated);
+      setSavedSettings(updated);
+      setFeedback(enabled ? "供应商已启用。" : "供应商已停用。");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : String(reason));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function updateAgentModels(next: RuntimeAgentModelState) {
