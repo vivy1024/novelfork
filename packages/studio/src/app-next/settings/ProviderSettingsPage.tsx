@@ -34,11 +34,15 @@ import { PlatformProviderDetail, type PlatformProviderKind } from "./providers/P
 import { ProtocolSelectModal, type ProviderProtocolChoice } from "./providers/ProtocolSelectModal";
 import { ProviderOverviewView } from "./providers/ProviderOverviewView";
 import {
+  buildPrefixMap,
   buildRuntimeModelGroups,
   createRuntimeNugProviderDraft,
   createRuntimeProviderDraft,
+  extractPrimaryDomainLabel,
+  getPrefixError,
   getRuntimeAgentModelState,
   getRuntimeProviderArray,
+  getUniquePrefix,
   migrateRuntimeAgentModelPrefix,
   modelsForProvider,
   runtimeAgentModelPatch,
@@ -50,6 +54,7 @@ import {
   type RuntimeModelOption,
   type RuntimeProviderArrayKey,
 } from "./runtime-settings-utils";
+import { getModelDefaultContextWindow } from "./providers/model-context-defaults";
 
 export interface ProviderSettingsClient extends Partial<RuntimePlatformProvidersClient> {
   readonly get: () => Promise<RuntimeSettings>;
@@ -148,6 +153,31 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     return () => { active = false; };
   }, [client]);
 
+  // OAuth 回调处理：页面 mount 时检查 URL 参数
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const oauthSuccess = params.get("oauth_success");
+    const oauthError = params.get("oauth_error");
+    if (!oauthSuccess && !oauthError) return;
+
+    // 清理 URL 参数
+    const cleanUrl = window.location.pathname;
+    window.history.replaceState({}, "", cleanUrl);
+
+    if (oauthSuccess) {
+      // 刷新 settings 以获取 OAuth 注入的 API Key
+      void (async () => {
+        const fresh = await client.get();
+        setSettings(fresh);
+        setSavedSettings(fresh);
+        setFeedback(`OAuth 授权成功，已更新供应商配置。`);
+      })();
+    } else if (oauthError) {
+      setError(`OAuth 授权失败：${oauthError}`);
+    }
+  }, []);
+
   const modelGroups = useMemo(
     () => settings ? buildRuntimeModelGroups(settings, { includeHidden: true, includeDisabled: true }) : [],
     [settings],
@@ -241,6 +271,8 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
       providerOrder: savedSettings.agent?.providerOrder,
     });
   }, [settings, savedSettings]);
+
+  const allPrefixToId = useMemo(() => buildPrefixMap(settings ?? {}), [settings]);
 
   async function saveAllChanges() {
     if (!settings || !savedSettings) return;
@@ -447,18 +479,19 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
 
   async function toggleProvider(arrayKey: RuntimeProviderArrayKey, providerId: string, enabled: boolean) {
     if (!settings) return;
-    const providers = getRuntimeProviderArray(settings, arrayKey);
-    const provider = providers.find((candidate) => candidate.id === providerId);
-    const nextProviders = providers.map((candidate) => candidate.id === providerId
-      ? { ...candidate, disabled: !enabled, ...(enabled ? {} : { defaultModel: "" }) }
-      : candidate);
-    const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
-    const currentDefault = typeof settings.agent?.defaultModel === "string" ? settings.agent.defaultModel : "";
-    let agentPatch: Partial<RuntimeSettingsPatch> = {};
-    if (!enabled && provider && currentDefault.startsWith(`${provider.prefix}:`)) {
-      agentPatch = { agent: { ...settings.agent, defaultModel: nextAvailableDefaultModel(arrayKey, nextProviders) } };
+    // 维护独立的 disabledProviders 数组而非修改 provider 数组的 disabled 字段
+    const rawDisabled = settings.agent?.disabledProviders;
+    const currentDisabled: string[] = Array.isArray(rawDisabled) ? [...rawDisabled as string[]] : [];
+    let nextDisabled: string[];
+    if (enabled) {
+      nextDisabled = currentDisabled.filter((id) => id !== providerId);
+    } else {
+      nextDisabled = currentDisabled.includes(providerId) ? currentDisabled : [...currentDisabled, providerId];
     }
-    setSettings((prev) => prev ? { ...prev, ...providerPatch, ...agentPatch } as RuntimeSettings : prev);
+    setSettings((prev) => prev ? {
+      ...prev,
+      agent: { ...prev.agent, disabledProviders: nextDisabled },
+    } as RuntimeSettings : prev);
     setFeedback(enabled ? "供应商已启用。" : "供应商已停用。");
   }
 
@@ -468,10 +501,35 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
     setFeedback("模型显示、上下文或自定义库存已更新。");
   }
 
+  /** 刷新后为未设置上下文窗口的模型自动填入模型族默认值，返回填充数量。 */
+  function autoFillContextWindows(currentSettings: RuntimeSettings, providerId: string): number {
+    const groups = buildRuntimeModelGroups(currentSettings);
+    const group = groups.find((g) => g.id === providerId);
+    if (!group) return 0;
+    const existing = currentSettings.agent?.modelContextWindows ?? {};
+    const additions: Record<string, number> = {};
+    for (const model of group.models) {
+      if (existing[model.value] != null) continue;
+      const defaultSize = getModelDefaultContextWindow(model.modelId ?? model.value);
+      if (defaultSize != null) additions[model.value] = defaultSize;
+    }
+    const count = Object.keys(additions).length;
+    if (count === 0) return 0;
+    const next = { ...existing, ...additions };
+    setSettings((prev) => prev ? { ...prev, agent: { ...prev.agent, modelContextWindows: next } } as RuntimeSettings : prev);
+    return count;
+  }
+
   async function refreshProviderModels(provider: EditableProvider) {
     setRefreshingProviderId(provider.id);
     setError(null);
     setFeedback(null);
+    // 保留用户在本地编辑但尚未持久化的 agent model 变更（contextWindows / hidden / custom）
+    const pendingAgentPatch = settings ? runtimeAgentModelPatch(getRuntimeAgentModelState(settings)) : {};
+    const mergeWithPending = (fresh: RuntimeSettings): RuntimeSettings => {
+      if (!pendingAgentPatch.agent) return fresh;
+      return { ...fresh, agent: { ...fresh.agent, ...pendingAgentPatch.agent } } as RuntimeSettings;
+    };
     try {
       if ("protocol" in provider) {
         const customProvider = provider as RuntimeEditableProvider;
@@ -480,20 +538,30 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
           protocol: customProvider.protocol,
         });
         const fresh = await client.get();
-        setSettings(fresh);
+        const merged = mergeWithPending(fresh);
         setSavedSettings(fresh);
-        setFeedback(`${provider.name} 已刷新 ${result.models.length} 个模型。`);
+        setSettings(merged);
+        // resolved URL 通知
+        const urlNotes: string[] = [];
+        if (result.resolvedBaseUrl) urlNotes.push(`实际请求地址：${result.resolvedBaseUrl}`);
+        if (result.resolvedModelsUrl) urlNotes.push(`模型列表来源：${result.resolvedModelsUrl}`);
+        // 自动填充默认上下文窗口
+        const autoFilled = autoFillContextWindows(merged, provider.id);
+        const feedbackParts = [`${provider.name} 已刷新 ${result.models.length} 个模型。`];
+        if (autoFilled > 0) feedbackParts.push(`自动填充了 ${autoFilled} 个模型的上下文窗口。`);
+        if (urlNotes.length) feedbackParts.push(...urlNotes);
+        setFeedback(feedbackParts.join(" "));
       } else {
         if (!client.refreshNugProviderModels) throw new Error("当前 Runtime 不支持 NUG 模型刷新。");
         const result = await client.refreshNugProviderModels(provider.id);
         const fresh = await client.get();
-        setSettings(fresh);
         setSavedSettings(fresh);
+        setSettings(mergeWithPending(fresh));
         if (result.modelContextWindows) {
           await client.patch({ agent: { modelContextWindows: result.modelContextWindows } });
           const freshAfterPatch = await client.get();
-          setSettings(freshAfterPatch);
           setSavedSettings(freshAfterPatch);
+          setSettings(mergeWithPending(freshAfterPatch));
         }
         setFeedback(`${provider.name} 已刷新 ${result.models.length} 个模型。`);
       }
@@ -588,6 +656,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         draftMode
         busy={busy}
         error={error}
+        allPrefixToId={allPrefixToId}
         onBack={() => setDraftSelection(null)}
         onSave={(provider) => saveProvider("customApiProviders", provider, true)}
         onRefreshModels={async () => undefined}
@@ -645,6 +714,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         busy={busy}
         refreshing={refreshingProviderId === selectedProvider.id}
         error={error}
+        allPrefixToId={allPrefixToId}
         onBack={() => setSelection(null)}
         onSave={(provider) => saveProvider("customApiProviders", provider, false)}
         onDelete={(providerId) => deleteProvider("customApiProviders", providerId)}
@@ -661,6 +731,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         providers={overviewProviders}
         modelGroups={modelGroups}
         platformProviders={platformProviders}
+        providerOrder={Array.isArray(settings?.agent?.providerOrder) ? settings.agent.providerOrder as string[] : undefined}
         busy={busy}
         error={error}
         feedback={feedback}

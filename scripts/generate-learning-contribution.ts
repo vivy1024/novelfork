@@ -30,8 +30,9 @@ interface ParsedDoc {
 }
 
 function parseFrontmatter(raw: string): { frontmatter: DocFrontmatter; body: string } {
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) return { frontmatter: { title: "", summary: "", tags: [], routes: [] }, body: raw };
+  const normalized = raw.replace(/\r\n?/g, "\n");
+  const match = normalized.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
+  if (!match) return { frontmatter: { title: "", summary: "", tags: [], routes: [] }, body: normalized };
   const yamlBlock = match[1];
   const body = match[2];
   const fm: Record<string, unknown> = {};
@@ -40,7 +41,9 @@ function parseFrontmatter(raw: string): { frontmatter: DocFrontmatter; body: str
     if (kv) {
       const [, key, val] = kv;
       if (val.startsWith("[")) {
-        fm[key] = val.slice(1, -1).split(",").map(s => s.trim().replace(/^['"]|['"]$/g, ""));
+        fm[key] = val.slice(1, -1).split(",")
+          .map(s => s.trim().replace(/^['"]|['"]$/g, ""))
+          .filter(Boolean);
       } else {
         fm[key] = val.trim();
       }

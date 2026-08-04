@@ -171,6 +171,25 @@ function labelForCredential(entry: RuntimePlatformCredential): string {
   return entry.displayName || entry.email || entry.name || entry.id;
 }
 
+type KiroTier = "pro" | "free" | "enterprise" | "unknown";
+
+function classifyKiroTier(credential: RuntimePlatformCredential): KiroTier {
+  const raw = ((credential.tier ?? "") + " " + (credential.subscriptionTitle ?? "")).toLowerCase();
+  if (raw.includes("pro")) return "pro";
+  if (raw.includes("free") || raw.includes("builder")) return "free";
+  if (raw.includes("enterprise")) return "enterprise";
+  return "unknown";
+}
+
+const KIRO_TIER_LABEL: Record<KiroTier, string> = {
+  pro: "Pro",
+  free: "Free / Builder",
+  enterprise: "Enterprise",
+  unknown: "未知套餐",
+};
+
+const KIRO_TIER_ORDER: readonly KiroTier[] = ["enterprise", "pro", "free", "unknown"];
+
 function platformTitle(platform: PlatformProviderKind): string {
   switch (platform) {
     case "kiro": return "Kiro 账号池";
@@ -572,6 +591,65 @@ export function PlatformProviderDetail(props: PlatformProviderDetailProps) {
   }
 }
 
+function KiroGroupedCredentialPool({
+  entries,
+  currentId,
+  action,
+  busy,
+  usageCache,
+  onEnable,
+  onDisable,
+  onRefresh,
+  onReset,
+  onUsage,
+  onEdit,
+  onDelete,
+}: {
+  readonly entries: readonly RuntimePlatformCredential[];
+  readonly currentId?: string;
+  readonly action: string | null;
+  readonly busy: boolean;
+  readonly usageCache?: Readonly<Record<string, RuntimeCredentialUsage>>;
+  readonly onEnable?: (id: string) => void;
+  readonly onDisable?: (id: string) => void;
+  readonly onRefresh?: (id: string) => void;
+  readonly onReset?: (id: string) => void;
+  readonly onUsage?: (id: string) => Promise<RuntimeCredentialUsage>;
+  readonly onEdit?: (id: string, patch: { readonly displayName?: string; readonly priority?: number; readonly email?: string; readonly region?: string }) => Promise<void>;
+  readonly onDelete?: (id: string) => void;
+}) {
+  const grouped = useMemo(() => {
+    const map = new Map<KiroTier, RuntimePlatformCredential[]>();
+    for (const entry of entries) {
+      const tier = classifyKiroTier(entry);
+      const group = map.get(tier) ?? [];
+      group.push(entry);
+      map.set(tier, group);
+    }
+    return KIRO_TIER_ORDER
+      .filter((tier) => map.has(tier))
+      .map((tier) => ({ tier, entries: map.get(tier)! }));
+  }, [entries]);
+
+  if (grouped.length <= 1) {
+    return <CredentialPool title="Kiro 凭据" entries={entries} currentId={currentId} action={action} busy={busy} usageCache={usageCache} allowKiroMetadata onEnable={onEnable} onDisable={onDisable} onRefresh={onRefresh} onReset={onReset} onUsage={onUsage} onEdit={onEdit} onDelete={onDelete} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {grouped.map(({ tier, entries: groupEntries }) => (
+        <div key={tier} className="flex flex-col gap-2">
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary">{KIRO_TIER_LABEL[tier]}</Badge>
+            <span className="text-xs text-muted-foreground">{groupEntries.length} 个账号</span>
+          </div>
+          <CredentialPool title={`Kiro 凭据 — ${KIRO_TIER_LABEL[tier]}`} entries={groupEntries} currentId={currentId} action={action} busy={busy} usageCache={usageCache} allowKiroMetadata onEnable={onEnable} onDisable={onDisable} onRefresh={onRefresh} onReset={onReset} onUsage={onUsage} onEdit={onEdit} onDelete={onDelete} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function KiroPlatformDetail({ settings, client, busy = false, agentModels = getRuntimeAgentModelState(settings), onBack, onPatchSettings, onReloadSettings, onUpdateAgentModels, onTestModel }: PlatformProviderDetailProps) {
   const [status, setStatus] = useState<Awaited<ReturnType<NonNullable<typeof client.kiroStatus>>> | null>(null);
   const [loading, setLoading] = useState(Boolean(client.kiroStatus));
@@ -620,9 +698,61 @@ function KiroPlatformDetail({ settings, client, busy = false, agentModels = getR
       </Card>
       <Card><CardHeader><CardTitle>网络策略</CardTitle><CardDescription>只覆盖 Kiro；“继承统一代理”继续使用 Runtime 的全局代理配置。</CardDescription></CardHeader><CardContent><FieldGroup className="sm:grid sm:grid-cols-2"><Field><FieldLabel>Kiro 代理策略</FieldLabel><SimpleSelect aria-label="Kiro 代理策略" value={proxyMode(draftProxy)} onValueChange={(value) => setDraftProxy(normalizeProviderProxy(value as "default" | "system" | "direct" | "custom", draftProxy?.url))} options={[...PROXY_MODE_OPTIONS]} /></Field>{hasProxyUrl(draftProxy) ? <Field><FieldLabel htmlFor="kiro-proxy-url">代理 URL</FieldLabel><Input id="kiro-proxy-url" aria-label="Kiro 代理 URL" value={draftProxy?.url ?? ""} onChange={(event) => setDraftProxy(normalizeProviderProxy("custom", event.currentTarget.value))} placeholder="http://127.0.0.1:7890" /></Field> : null}</FieldGroup></CardContent><CardFooter className="justify-end"><Button type="button" onClick={() => void runAction("proxy", () => onPatchSettings({ kiro: { proxy: draftProxy } }))} disabled={busy || action === "proxy"}><Save data-icon="inline-start" />保存 Kiro 网络策略</Button></CardFooter></Card>
       <Card><CardHeader><CardTitle>导入凭据</CardTitle><CardDescription>粘贴 Runtime 支持的 Kiro 凭据 JSON；账号会留在独立 Kiro 池中。</CardDescription></CardHeader><CardContent><Textarea aria-label="Kiro 凭据 JSON" value={importText} onChange={(event) => setImportText(event.currentTarget.value)} placeholder={'[{\n  "refreshToken": "…"\n}]'} rows={5} /></CardContent><CardFooter className="justify-end"><Button type="button" onClick={() => void importCredentials()} disabled={!importText.trim() || action === "import" || busy || !client.kiroImportCredentials}><KeyRound data-icon="inline-start" />{action === "import" ? "导入中…" : "导入 Kiro 凭据"}</Button></CardFooter></Card>
-      <CredentialPool title="Kiro 凭据" entries={entries} currentId={snapshot?.currentId} action={action} busy={busy} usageCache={status?.usageCache} allowKiroMetadata onEnable={(id) => client.kiroEnableCredential && void runAction(`enable:${id}`, () => client.kiroEnableCredential?.(id) ?? Promise.resolve())} onDisable={(id) => client.kiroDisableCredential && void runAction(`disable:${id}`, () => client.kiroDisableCredential?.(id) ?? Promise.resolve())} onRefresh={(id) => client.kiroRefreshCredential && void runAction(`refresh:${id}`, () => client.kiroRefreshCredential?.(id) ?? Promise.resolve())} onReset={(id) => client.kiroResetCredential && void runAction(`reset:${id}`, () => client.kiroResetCredential?.(id) ?? Promise.resolve())} onUsage={client.kiroGetCredentialUsage} onEdit={async (id, patch) => { await runAction(`edit:${id}`, async () => { const metadata = { displayName: patch.displayName, email: patch.email, region: patch.region }; if (client.kiroUpdateCredential && Object.values(metadata).some(Boolean)) await client.kiroUpdateCredential(id, metadata); if (client.kiroSetCredentialPriority && patch.priority != null) await client.kiroSetCredentialPriority(id, patch.priority); }); }} onDelete={(id) => client.kiroDeleteCredential && void runAction(`delete:${id}`, () => client.kiroDeleteCredential?.(id) ?? Promise.resolve())} />
+      <KiroGroupedCredentialPool entries={entries} currentId={snapshot?.currentId} action={action} busy={busy} usageCache={status?.usageCache} onEnable={(id) => client.kiroEnableCredential && void runAction(`enable:${id}`, () => client.kiroEnableCredential?.(id) ?? Promise.resolve())} onDisable={(id) => client.kiroDisableCredential && void runAction(`disable:${id}`, () => client.kiroDisableCredential?.(id) ?? Promise.resolve())} onRefresh={(id) => client.kiroRefreshCredential && void runAction(`refresh:${id}`, () => client.kiroRefreshCredential?.(id) ?? Promise.resolve())} onReset={(id) => client.kiroResetCredential && void runAction(`reset:${id}`, () => client.kiroResetCredential?.(id) ?? Promise.resolve())} onUsage={client.kiroGetCredentialUsage} onEdit={async (id, patch) => { await runAction(`edit:${id}`, async () => { const metadata = { displayName: patch.displayName, email: patch.email, region: patch.region }; if (client.kiroUpdateCredential && Object.values(metadata).some(Boolean)) await client.kiroUpdateCredential(id, metadata); if (client.kiroSetCredentialPriority && patch.priority != null) await client.kiroSetCredentialPriority(id, patch.priority); }); }} onDelete={(id) => client.kiroDeleteCredential && void runAction(`delete:${id}`, () => client.kiroDeleteCredential?.(id) ?? Promise.resolve())} />
       <PlatformModelInventory title="Kiro 模型库存" description="管理 Kiro 模型的隐藏状态、上下文覆盖、自定义条目和连通性测试。" providerPrefix="kiro" modelOptions={modelOptions} agentModels={agentModels} busy={busy} onUpdateAgentModels={onUpdateAgentModels} onTestModel={onTestModel} />
     </section>
+  );
+}
+
+function CodexQuotaOverview({ status, entries }: {
+  readonly status: Record<string, unknown> | null;
+  readonly entries: readonly RuntimePlatformCredential[];
+}) {
+  const quota = useMemo(() => {
+    // 优先从 status.quotaOverview 取
+    const raw = status ? recordOf((status as Record<string, unknown>).quotaOverview) : {};
+    const used = numberOf(raw.used);
+    const total = numberOf(raw.total ?? raw.limit);
+    const resetAt = stringOf(raw.resetAt ?? raw.reset_at ?? raw.resetTime);
+    if (used != null && total != null) return { used, total, resetAt };
+    // 回退：从凭据 usage 汇总
+    let sumUsed = 0;
+    let sumTotal = 0;
+    let hasData = false;
+    for (const entry of entries) {
+      const usage = recordOf((entry as Record<string, unknown>).usage);
+      const u = numberOf(usage.used ?? usage.usage);
+      const t = numberOf(usage.total ?? usage.limit ?? usage.quota);
+      if (u != null) { sumUsed += u; hasData = true; }
+      if (t != null) { sumTotal += t; hasData = true; }
+    }
+    if (!hasData) return null;
+    return { used: sumUsed, total: sumTotal, resetAt: null as string | null };
+  }, [status, entries]);
+
+  if (!quota) return null;
+
+  const percent = quota.total > 0 ? (quota.used / quota.total) * 100 : 0;
+  const progressColor = percent >= 90 ? "text-destructive" : percent >= 70 ? "text-warning" : undefined;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>配额概览</CardTitle>
+        <CardDescription>Codex 账号池总体配额使用状况。</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+          <span>已用：<strong>{quota.used}</strong></span>
+          <span>总额：<strong>{quota.total}</strong></span>
+          {quota.resetAt ? <span>重置时间：<strong>{quota.resetAt}</strong></span> : null}
+        </div>
+        <div className={progressColor}>
+          <Progress value={Math.max(0, Math.min(percent, 100))} aria-label={`Codex 配额已使用 ${Math.round(percent)}%`} />
+        </div>
+        <p className="text-xs text-muted-foreground">已使用 {Math.round(percent)}%</p>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -721,6 +851,7 @@ function CodexPlatformDetail({ settings, client, busy = false, agentModels = get
         {browserAuthPending ? <CardContent className="border-t pt-4"><Alert><AlertTitle>等待浏览器授权</AlertTitle><AlertDescription>请在已打开的浏览器完成 Codex 登录；完成后刷新状态。<Button type="button" variant="ghost" size="sm" onClick={() => client.codexCancelBrowserAuth && void runAction("cancel-browser-auth", client.codexCancelBrowserAuth, false)} disabled={!client.codexCancelBrowserAuth || action === "cancel-browser-auth"}>取消等待</Button></AlertDescription></Alert></CardContent> : null}
         {deviceAuth ? <CardContent className="border-t pt-4"><Alert><AlertTitle>完成 Codex 设备授权</AlertTitle><AlertDescription>在已打开的授权页输入设备码：<strong className="font-mono">{deviceAuth.userCode}</strong>{deviceAuth.verificationUri ? <span className="block pt-1 break-all">{deviceAuth.verificationUri}</span> : null}</AlertDescription></Alert><div className="mt-3 flex justify-end gap-2"><Button type="button" variant="outline" size="sm" onClick={() => client.codexPollDeviceAuth && void client.codexPollDeviceAuth().then((next) => { if (!next.pending) setDeviceAuth(null); })}>检查授权状态</Button><Button type="button" variant="ghost" size="sm" onClick={() => client.codexCancelDeviceAuth && void runAction("cancel-device-auth", client.codexCancelDeviceAuth, false)}>取消</Button></div></CardContent> : null}
       </Card>
+      <CodexQuotaOverview status={status} entries={entries} />
       <Card><CardHeader><CardTitle>套餐优先级</CardTitle><CardDescription>仅“按套餐均衡”时使用；通过上下移动调整到由高至低的调度顺序。</CardDescription></CardHeader><CardContent className="flex flex-col gap-2">{tierOrder.length ? tierOrder.map((tier, index) => <div key={tier} className="flex items-center gap-2 rounded-lg border p-2"><Badge variant="secondary">{index + 1}</Badge><span className="flex-1 font-mono text-sm">{tier}</span><Button type="button" variant="ghost" size="icon-sm" aria-label={`上移套餐 ${tier}`} disabled={index === 0 || busy} onClick={() => moveTier(index, -1)}><ArrowUp /></Button><Button type="button" variant="ghost" size="icon-sm" aria-label={`下移套餐 ${tier}`} disabled={index === tierOrder.length - 1 || busy} onClick={() => moveTier(index, 1)}><ArrowDown /></Button></div>) : <p className="text-sm text-muted-foreground">Runtime 尚未返回套餐顺序。</p>}</CardContent><CardFooter className="justify-end"><Button type="button" variant="outline" onClick={() => client.codexSetTierOrder && void runAction("tier-order", () => client.codexSetTierOrder?.(tierOrder) ?? Promise.resolve())} disabled={!client.codexSetTierOrder || tierOrder.length === 0 || busy || action === "tier-order"}><Save data-icon="inline-start" />保存套餐顺序</Button></CardFooter></Card>
       <Card><CardHeader><CardTitle>原生能力与网络</CardTitle><CardDescription>这些设置只影响内建 Codex 账号池，不影响 Custom API 连接。</CardDescription></CardHeader><CardContent><FieldGroup className="sm:grid sm:grid-cols-2"><Field><FieldLabel>Codex 代理策略</FieldLabel><SimpleSelect aria-label="Codex 代理策略" value={proxyMode(draft.proxy)} onValueChange={(value) => setDraft((current) => ({ ...current, proxy: normalizeProviderProxy(value as "default" | "system" | "direct" | "custom", current.proxy?.url) }))} options={[...PROXY_MODE_OPTIONS]} /></Field>{hasProxyUrl(draft.proxy) ? <Field><FieldLabel htmlFor="codex-proxy-url">代理 URL</FieldLabel><Input id="codex-proxy-url" aria-label="Codex 代理 URL" value={draft.proxy?.url ?? ""} onChange={(event) => setDraft((current) => ({ ...current, proxy: normalizeProviderProxy("custom", event.currentTarget.value) }))} placeholder="http://127.0.0.1:7890" /></Field> : null}<Field><FieldLabel>默认推理强度</FieldLabel><SimpleSelect aria-label="Codex 默认推理强度" value={draft.defaultReasoningEffort ?? ""} onValueChange={(value) => setDraft((current) => ({ ...current, defaultReasoningEffort: value ? value as NonNullable<CodexSettingsDraft["defaultReasoningEffort"]> : null }))} options={[...CODEX_REASONING_OPTIONS]} /></Field><ToggleField label="允许 Web Search" description="将原生 web_search 工具提供给 Codex 模型。" checked={draft.useWebSearch !== false} onCheckedChange={(checked) => setDraft((current) => ({ ...current, useWebSearch: checked }))} /><ToggleField label="允许 Image Generation" description="将原生 image_generation 工具提供给 Codex 模型。" checked={draft.useImageGeneration !== false} onCheckedChange={(checked) => setDraft((current) => ({ ...current, useImageGeneration: checked }))} /><ToggleField label="使用 Responses WebSocket" description="通过 Runtime 的原生 WebSocket transport 执行 Codex Responses 请求。" checked={status?.useWebSocket !== false} onCheckedChange={(checked) => client.codexSetUseWebSocket && void runAction("websocket", () => client.codexSetUseWebSocket?.(checked) ?? Promise.resolve())} /></FieldGroup></CardContent><CardFooter className="justify-end"><Button type="button" onClick={() => void runAction("save-settings", () => onPatchSettings({ codex: draft as RuntimeSettingsPatch["codex"] }))} disabled={busy || action === "save-settings"}><Save data-icon="inline-start" />保存 Codex 设置</Button></CardFooter></Card>
       <Card><CardHeader><CardTitle>客户端指纹</CardTitle><CardDescription>管理 Codex 用户代理、额外请求头、稳定头模拟和本机 installation ID。</CardDescription></CardHeader><CardContent>{fingerprint ? <FieldGroup className="sm:grid sm:grid-cols-2"><Field><FieldLabel>客户端指纹</FieldLabel><SimpleSelect aria-label="Codex 客户端指纹" value={fingerprint.userAgentMode} onValueChange={(value) => setFingerprint((current) => current ? { ...current, userAgentMode: value as RuntimeCodexFingerprint["userAgentMode"] } : current)} options={[{ value: "codex", label: "Codex CLI" }, { value: "narrafork", label: "NarraFork 默认" }, { value: "claude-code", label: "Claude Code" }, { value: "custom", label: "自定义" }]} /></Field>{fingerprint.userAgentMode === "custom" ? <Field><FieldLabel htmlFor="codex-custom-user-agent">自定义 User-Agent</FieldLabel><Input id="codex-custom-user-agent" value={fingerprint.customUserAgent} onChange={(event) => setFingerprint((current) => current ? { ...current, customUserAgent: event.currentTarget.value } : current)} /></Field> : null}<Field className="sm:col-span-2"><FieldLabel htmlFor="codex-fingerprint-headers">额外请求头（JSON）</FieldLabel><Textarea id="codex-fingerprint-headers" aria-label="Codex 额外请求头" rows={4} value={fingerprintHeaders} onChange={(event) => setFingerprintHeaders(event.currentTarget.value)} /></Field><ToggleField label="模拟 Codex 稳定请求头" description="保留 Codex CLI 风格的 originator、session 和线程指纹。" checked={fingerprint.emulateCodexHeaders} onCheckedChange={(checked) => setFingerprint((current) => current ? { ...current, emulateCodexHeaders: checked } : current)} /><Field><FieldLabel>Installation ID</FieldLabel><Input value={fingerprint.installationId} readOnly /><FieldDescription>重新生成会让下一次 Codex 请求使用新的设备指纹。</FieldDescription></Field></FieldGroup> : <p className="text-sm text-muted-foreground">正在读取 Runtime 指纹配置。</p>}</CardContent><CardFooter className="flex flex-wrap justify-between gap-2"><Button type="button" variant="outline" onClick={() => client.codexRegenerateInstallationId && void runAction("regenerate-installation", async () => { const result = await client.codexRegenerateInstallationId?.(); if (result) setFingerprint((current) => current ? { ...current, installationId: result.installationId } : current); }, false)} disabled={!client.codexRegenerateInstallationId || busy}>重新生成 Installation ID</Button><Button type="button" onClick={() => void saveFingerprint()} disabled={!fingerprint || !client.codexUpdateFingerprint || busy || action === "fingerprint"}><Save data-icon="inline-start" />保存指纹</Button></CardFooter></Card>

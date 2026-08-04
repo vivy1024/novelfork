@@ -1,6 +1,6 @@
 /**
  * AI routes — mounted in all modes (standalone + relay).
- * Endpoints: audit, revise, detect, style, transform, outline, complete,
+ * Endpoints: audit, revise, detect, style, transform, generate, outline, complete,
  * context-assembly, web-capture, studio SSE.
  *
  * Removed (no frontend callers): import/canon, fanfic/init, fanfic/refresh, radar/scan.
@@ -506,6 +506,67 @@ export function createAIRouter(ctx: RouterContext): Hono {
         chapterNumber: body.chapterNumber,
       }, startedAt, e);
       return c.json({ error: String(e) }, 500);
+    }
+  });
+
+  // --- Generic text generation (resource actions) ---
+
+  app.post("/api/ai/generate", async (c) => {
+    const body = await c.req
+      .json<{ prompt: string; maxTokens?: number; bookId?: string; sessionId?: string; chapterNumber?: number }>()
+      .catch(() => ({ prompt: "", maxTokens: undefined, bookId: undefined, sessionId: undefined, chapterNumber: undefined }));
+    if (!body.prompt?.trim()) {
+      return c.json({ error: "prompt is required" }, 400);
+    }
+
+    const maxTokens = typeof body.maxTokens === "number" && Number.isFinite(body.maxTokens)
+      ? Math.min(Math.max(Math.trunc(body.maxTokens), 1), 4096)
+      : 1000;
+    const startedAt = Date.now();
+    let pipelineLogger: Awaited<ReturnType<typeof ctx.buildPipelineConfig>>["logger"] | undefined;
+
+    try {
+      const sessionLlm = await ctx.getSessionLlm(c);
+      const config = await ctx.buildPipelineConfig(sessionLlm);
+      pipelineLogger = config.logger;
+      const response = await chatCompletion(
+        config.client,
+        config.model,
+        [
+          {
+            role: "system",
+            content: "你是小说写作助手。根据用户要求生成可直接放入写作资料的中文内容，只返回内容本身，不要解释生成过程。",
+          },
+          { role: "user", content: body.prompt.trim() },
+        ],
+        { temperature: 0.7, maxTokens },
+      );
+      ctx.aiRequestObserver?.logSuccess(pipelineLogger, {
+        endpoint: "/api/ai/generate",
+        requestKind: "resource-generate",
+        narrator: "studio.ai.resource-generate",
+        provider: config.client.provider,
+        model: config.model,
+        method: "POST",
+        bookId: body.bookId,
+        sessionId: body.sessionId,
+        chapterNumber: body.chapterNumber,
+      }, startedAt, {
+        content: response.content,
+        usage: response.usage,
+      });
+      return c.json({ content: response.content });
+    } catch (error) {
+      ctx.aiRequestObserver?.logError(pipelineLogger, {
+        endpoint: "/api/ai/generate",
+        requestKind: "resource-generate",
+        narrator: "studio.ai.resource-generate",
+        method: "POST",
+        bookId: body.bookId,
+        sessionId: body.sessionId,
+        chapterNumber: body.chapterNumber,
+      }, startedAt, error);
+      return c.json({ error: toErrorMessage(error) }, 500);
     }
   });
 

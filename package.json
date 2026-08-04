@@ -1,6 +1,6 @@
 {
   "name": "novelfork",
-  "version": "3.3.1",
+  "version": "3.3.2",
   "private": true,
   "packageManager": "pnpm@10.24.0",
   "description": "NovelFork — Forked from InkOS, specialized AI-assisted workbench for Chinese web novel creation",

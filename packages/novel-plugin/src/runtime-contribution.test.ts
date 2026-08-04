@@ -201,28 +201,32 @@ describe("novel Runtime contribution", () => {
     expect(prompt).toContain("禁止用写作理论");
   });
 
-  it("contributes factual NovelFork learning categories and the required writing documents", () => {
+  it("contributes the generated NovelFork learning catalog without empty metadata", () => {
     const learning = NOVEL_RUNTIME_CONTRIBUTION.learning;
+    const docs = learning?.docs ?? [];
+    const documentIds = docs.map((doc) => doc.id);
+
     expect(learning?.categories.map((category) => category.id)).toEqual([
       "novelfork-writing",
       "novelfork-context",
-      "novelfork-review",
+      "novelfork-settings",
+      "novelfork-advanced",
     ]);
-    expect(learning?.docs.map((doc) => doc.id)).toEqual([
-      "novelfork-books",
-      "novelfork-workbench",
-      "novelfork-chapter-flow",
-      "novelfork-jingwei-lore",
-      "novelfork-narrative-memory",
-      "novelfork-writing-resources",
-      "novelfork-agent-writing",
-      "novelfork-candidates-versions",
-    ]);
-    expect(learning?.docs.flatMap((doc) => doc.actions).every((action) => (
-      action.href === "/next/books" || action.href === "/next/sessions"
-    ))).toBe(true);
-    expect(learning?.docs.find((doc) => doc.id === "novelfork-candidates-versions")?.sections
-      .some((section) => section.body["zh-CN"].includes("尚未暴露完整候选稿状态按钮和一键回退控件"))).toBe(true);
+    expect(documentIds).toEqual(expect.arrayContaining([
+      "overview",
+      "book-management",
+      "ai-writing",
+      "guided-generation",
+      "narrator-conversation",
+      "story-jingwei",
+      "writing-tools",
+      "agent-pipeline",
+    ]));
+    expect(new Set(documentIds).size).toBe(documentIds.length);
+    expect(docs.every((doc) => doc.title["zh-CN"].trim() && doc.summary["zh-CN"].trim())).toBe(true);
+    expect(docs.flatMap((doc) => doc.actions).every((action) => action.href.startsWith("/next"))).toBe(true);
+    expect(docs.find((doc) => doc.id === "ai-writing")?.sections
+      .some((section) => section.body["zh-CN"].includes("正式章节结果"))).toBe(true);
   });
 
   it("does not expose host-controlled fields in any model schema", () => {

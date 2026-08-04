@@ -297,9 +297,59 @@ function ChannelHealthPanel({ health }: { readonly health: RuntimeNugChannelHeal
 function ChannelHealthRow({ channel }: { readonly channel: RuntimeNugChannelHealthItem }) {
   const availability = numeric(channel.availability ?? channel.availableRate);
   const status = valueOf(channel, ["status"]);
-  return <TableRow><TableCell><div className="flex flex-col"><span>{valueOf(channel, ["name", "channel", "id"])}</span><span className="font-mono text-xs text-muted-foreground">{valueOf(channel, ["channelType", "type"])}</span></div></TableCell><TableCell><Badge variant={status === "healthy" || channel.available ? "secondary" : status === "error" ? "destructive" : "outline"}>{status}</Badge></TableCell><TableCell>{availability == null ? "—" : (() => { const pct = Math.min(100, Math.max(0, availability <= 1 ? availability * 100 : availability)); return <div className="flex items-center gap-2"><div className="h-2 w-16 rounded-full bg-muted overflow-hidden"><div className="h-full rounded-full bg-primary" style={{ width: `${pct}%` }} /></div><span className="text-xs tabular-nums">{Math.round(pct)}%</span></div>; })()}</TableCell><TableCell>{valueOf(channel, ["credentialCount", "credentials", "availableCredentials"])}</TableCell><TableCell>{valueOf(channel, ["concurrency", "maxConcurrency"])} / {valueOf(channel, ["queueDepth", "queue", "queueSize"])}</TableCell><TableCell className="max-w-56 truncate text-xs text-muted-foreground">{valueOf(channel, ["error", "message", "lastError"])}</TableCell></TableRow>;
+  const channelType = (valueOf(channel, ["channelType", "type"]) ?? "").toLowerCase();
+  return <TableRow><TableCell><div className="flex flex-col"><span>{valueOf(channel, ["name", "channel", "id"])}</span><span className="font-mono text-xs text-muted-foreground">{channelType}</span></div></TableCell><TableCell><Badge variant={status === "healthy" || channel.available ? "secondary" : status === "error" ? "destructive" : "outline"}>{status}</Badge></TableCell><TableCell>{availability == null ? "—" : (() => { const pct = Math.min(100, Math.max(0, availability <= 1 ? availability * 100 : availability)); const barColor = pct >= 80 ? channelBarColor(channelType) : pct >= 50 ? "bg-yellow-500" : "bg-red-500"; return <div className="flex items-center gap-2"><div className="h-2 w-16 rounded-full bg-muted overflow-hidden"><div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} /></div><span className="text-xs tabular-nums">{Math.round(pct)}%</span></div>; })()}</TableCell><TableCell>{valueOf(channel, ["credentialCount", "credentials", "availableCredentials"])}</TableCell><TableCell>{valueOf(channel, ["concurrency", "maxConcurrency"])} / {valueOf(channel, ["queueDepth", "queue", "queueSize"])}</TableCell><TableCell className="max-w-56 truncate text-xs text-muted-foreground">{valueOf(channel, ["error", "message", "lastError"])}</TableCell></TableRow>;
+}
+
+const USAGE_STANDARD_FIELDS = new Set([
+  "id", "requestId", "model", "modelId", "channel", "channelType", "provider",
+  "inputTokens", "input_tokens", "outputTokens", "output_tokens",
+  "cacheWriteTokens", "cache_write_tokens", "cacheReadTokens", "cache_read_tokens",
+  "reasoningTokens", "reasoning_tokens", "status", "createdAt", "created_at",
+  "timestamp", "quotaCost", "quota_cost", "meterUsage", "meter_usage",
+]);
+
+function formatTokensCell(record: Readonly<Record<string, unknown>>) {
+  const input = valueOf(record, ["inputTokens", "input_tokens"]);
+  const output = valueOf(record, ["outputTokens", "output_tokens"]);
+  const cacheWrite = Number(valueOf(record, ["cacheWriteTokens", "cache_write_tokens"]) ?? 0);
+  const cacheRead = Number(valueOf(record, ["cacheReadTokens", "cache_read_tokens"]) ?? 0);
+  const reasoning = Number(valueOf(record, ["reasoningTokens", "reasoning_tokens"]) ?? 0);
+  return (
+    <span className="font-mono text-xs whitespace-nowrap">
+      {input}
+      {cacheWrite > 0 && <span className="text-orange-500"> +W:{cacheWrite}</span>}
+      {cacheRead > 0 && <span className="text-teal-500"> +R:{cacheRead}</span>}
+      {" → "}{output}
+      {reasoning > 0 && <span className="text-violet-500"> (R:{reasoning})</span>}
+    </span>
+  );
+}
+
+function formatExtraCell(record: Readonly<Record<string, unknown>>) {
+  const extras: [string, unknown][] = [];
+  for (const key of Object.keys(record)) {
+    if (!USAGE_STANDARD_FIELDS.has(key)) extras.push([key, record[key]]);
+  }
+  if (extras.length === 0) return <span className="text-muted-foreground">—</span>;
+  const display = extras.slice(0, 3).map(([k, v]) => `${k}: ${v}`).join(" · ");
+  const suffix = extras.length > 3 ? ` +${extras.length - 3}` : "";
+  const titleText = extras.map(([k, v]) => `${k}: ${v}`).join("\n");
+  return <span className="text-xs" title={titleText}>{display}{suffix}</span>;
 }
 
 function UsagePanel({ range, summary, records, busy, onRangeChange }: { readonly range: RuntimeNugUsageRange; readonly summary: RuntimeNugUsageSummary | null; readonly records: readonly Readonly<Record<string, unknown>>[]; readonly busy: boolean; readonly onRangeChange: (range: RuntimeNugUsageRange) => void }) {
-  return <Card><CardHeader><CardTitle>使用量</CardTitle><CardDescription>按时间范围查看 NUG 聚合消耗和最近请求明细。</CardDescription><CardAction><SimpleSelect aria-label="NUG 使用时间范围" value={range} onValueChange={(value) => onRangeChange(value as RuntimeNugUsageRange)} disabled={busy} options={[{ value: "today", label: "今天" }, { value: "7days", label: "近 7 天" }, { value: "30days", label: "近 30 天" }, { value: "all", label: "全部" }]} /></CardAction></CardHeader><CardContent className="flex flex-col gap-4">{summary ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><SummaryMetric label="请求数" value={summary.requestCount} /><SummaryMetric label="计量用量" value={summary.totalMeterUsage.toFixed(2)} /><SummaryMetric label="额度成本" value={summary.totalQuotaCost.toFixed(2)} /><SummaryMetric label="输入 / 输出 Token" value={`${summary.totalInputTokens} / ${summary.totalOutputTokens}`} /></div> : null}{records.length ? <Table><TableHeader><TableRow><TableHead>时间</TableHead><TableHead>模型</TableHead><TableHead>通道</TableHead><TableHead>输入 / 输出</TableHead><TableHead>费用</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{records.map((record, index) => <TableRow key={`${valueOf(record, ["id", "requestId"])}-${index}`}><TableCell>{valueOf(record, ["createdAt", "timestamp", "created_at"])}</TableCell><TableCell className="font-mono text-xs">{valueOf(record, ["model", "modelId"])}</TableCell><TableCell>{valueOf(record, ["channel", "channelType", "provider"])}</TableCell><TableCell>{valueOf(record, ["inputTokens", "input_tokens"])} / {valueOf(record, ["outputTokens", "output_tokens"])}</TableCell><TableCell>{valueOf(record, ["quotaCost", "quota_cost", "meterUsage", "meter_usage"])} </TableCell><TableCell><Badge variant={valueOf(record, ["status"]) === "error" ? "destructive" : "outline"}>{valueOf(record, ["status"])}</Badge></TableCell></TableRow>)}</TableBody></Table> : <p className="text-sm text-muted-foreground">当前范围没有可展示的请求明细。</p>}</CardContent></Card>;
+  return <Card><CardHeader><CardTitle>使用量</CardTitle><CardDescription>按时间范围查看 NUG 聚合消耗和最近请求明细。</CardDescription><CardAction><SimpleSelect aria-label="NUG 使用时间范围" value={range} onValueChange={(value) => onRangeChange(value as RuntimeNugUsageRange)} disabled={busy} options={[{ value: "today", label: "今天" }, { value: "7days", label: "近 7 天" }, { value: "30days", label: "近 30 天" }, { value: "all", label: "全部" }]} /></CardAction></CardHeader><CardContent className="flex flex-col gap-4">{summary ? <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4"><SummaryMetric label="请求数" value={summary.requestCount} /><SummaryMetric label="计量用量" value={summary.totalMeterUsage.toFixed(2)} /><SummaryMetric label="额度成本" value={summary.totalQuotaCost.toFixed(2)} /><SummaryMetric label="输入 / 输出 Token" value={`${summary.totalInputTokens} / ${summary.totalOutputTokens}`} /></div> : null}{records.length ? <Table><TableHeader><TableRow><TableHead>时间</TableHead><TableHead>通道</TableHead><TableHead>模型</TableHead><TableHead>Tokens</TableHead><TableHead>Extra</TableHead><TableHead>计量用量</TableHead><TableHead>额度成本</TableHead><TableHead>状态</TableHead></TableRow></TableHeader><TableBody>{records.map((record, index) => <TableRow key={`${valueOf(record, ["id", "requestId"])}-${index}`}><TableCell>{valueOf(record, ["createdAt", "timestamp", "created_at"])}</TableCell><TableCell>{valueOf(record, ["channel", "channelType", "provider"])}</TableCell><TableCell className="font-mono text-xs">{valueOf(record, ["model", "modelId"])}</TableCell><TableCell>{formatTokensCell(record)}</TableCell><TableCell>{formatExtraCell(record)}</TableCell><TableCell>{valueOf(record, ["meterUsage", "meter_usage"])}</TableCell><TableCell>{valueOf(record, ["quotaCost", "quota_cost"])}</TableCell><TableCell><Badge variant={valueOf(record, ["status"]) === "error" ? "destructive" : "outline"}>{valueOf(record, ["status"])}</Badge></TableCell></TableRow>)}</TableBody></Table> : <p className="text-sm text-muted-foreground">当前范围没有可展示的请求明细。</p>}</CardContent></Card>;
+}
+
+const CHANNEL_COLORS: Record<string, string> = {
+  kiro: "bg-violet-500",
+  codex: "bg-teal-500",
+  openai: "bg-green-500",
+  anthropic: "bg-orange-500",
+  gemini: "bg-blue-500",
+};
+
+function channelBarColor(channelType: string): string {
+  return CHANNEL_COLORS[channelType] ?? "bg-primary";
 }

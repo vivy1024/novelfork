@@ -1,4 +1,5 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 import type { ArcBeat, CharacterArc } from "./arc-types.js";
 import { extractBeatsFromChapter, type CharacterInput } from "./rule-engine.js";
 import { refineBeatsWithLlm } from "./llm-refiner.js";
@@ -18,11 +19,13 @@ export interface SyncCharacterArcsParams {
   readonly chapterContent: string;
   readonly mode: ArcTrackingMode;
   readonly storage: StorageDatabase;
+  readonly generateText?: RuntimeTextGenerator;
 }
 
 export interface SyncCharacterArcsResult {
   readonly beats: ArcBeat[];
   readonly warnings: string[];
+  readonly refinedByLlm: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -68,7 +71,7 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
   const { bookId, chapterNumber, chapterContent, mode, storage } = params;
 
   if (mode === "off") {
-    return { beats: [], warnings: [] };
+    return { beats: [], warnings: [], refinedByLlm: false };
   }
 
   // 1. Load registered characters
@@ -76,7 +79,7 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
   const characters = await characterRepo.listByBook(bookId);
 
   if (characters.length === 0) {
-    return { beats: [], warnings: [] };
+    return { beats: [], warnings: [], refinedByLlm: false };
   }
 
   const characterInputs: CharacterInput[] = characters.map((c) => ({
@@ -87,20 +90,30 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
 
   // 2. Run rule engine
   let beats = extractBeatsFromChapter(chapterContent, characterInputs, chapterNumber);
+  const warnings: string[] = [];
+  let refinedByLlm = false;
 
-  // 3. Optionally refine with LLM
+  // 3. Refine with the current Runtime model when explicitly requested.
   if (mode === "llm" && beats.length > 0) {
-    beats = await refineBeatsWithLlm(chapterContent, characterInputs, beats);
+    const refinement = await refineBeatsWithLlm(
+      chapterContent,
+      characterInputs,
+      beats,
+      chapterNumber,
+      params.generateText,
+    );
+    beats = refinement.beats;
+    refinedByLlm = refinement.refined;
+    if (refinement.warning) warnings.push(refinement.warning);
   }
 
   if (beats.length === 0) {
-    return { beats: [], warnings: [] };
+    return { beats: [], warnings, refinedByLlm };
   }
 
   // 4. Deduplicate & write to DB
   const arcRepo = createJingweiCharacterArcRepository(storage);
   const allArcs = await arcRepo.listByBook(bookId);
-  const warnings: string[] = [];
 
   // Build a map: characterId -> arc record
   const characterArcMap = new Map<string, typeof allArcs[number]>();
@@ -163,5 +176,5 @@ export async function syncCharacterArcs(params: SyncCharacterArcsParams): Promis
     }
   }
 
-  return { beats: newBeats, warnings };
+  return { beats: newBeats, warnings, refinedByLlm };
 }

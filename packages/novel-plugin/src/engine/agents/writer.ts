@@ -1091,6 +1091,13 @@ ${overrides}\n`;
           chapterContent: output.content,
           mode,
           storage: arcSyncOptions.storage,
+          generateText: async (request) => {
+            const response = await this.chat(request.messages, {
+              temperature: request.temperature,
+              maxTokens: request.maxTokens,
+            });
+            return { text: response.content, usage: response.usage };
+          },
         });
         if (result.warnings.length > 0) {
           for (const warning of result.warnings) {

@@ -5,6 +5,7 @@
  * 不写 lore canon：beats 落在 jingwei_character_arc 表（dynamic）。
  */
 
+import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
@@ -29,6 +30,7 @@ export interface ArcCharacterInput {
   readonly mode?: string;
   readonly stagnantThreshold?: number;
   readonly storage?: StorageDatabase;
+  readonly generateText?: RuntimeTextGenerator;
 }
 
 export interface ArcCharacterStatusItem {
@@ -173,6 +175,7 @@ export async function handleArcCharacter(input: ArcCharacterInput): Promise<ArcC
 
   const newBeats: ArcBeat[] = [];
   const syncWarnings: string[] = [];
+  let llmRefined = false;
 
   if (action === "sync" || action === "refine") {
     if (!chapterNumber) {
@@ -203,9 +206,11 @@ export async function handleArcCharacter(input: ArcCharacterInput): Promise<ArcC
         chapterContent: chapter.data.content,
         mode,
         storage,
+        generateText: input.generateText,
       });
       newBeats.push(...synced.beats);
       syncWarnings.push(...synced.warnings);
+      llmRefined = synced.refinedByLlm;
     } catch (error) {
       syncWarnings.push(`弧线同步失败：${error instanceof Error ? error.message : String(error)}`);
     }
@@ -232,7 +237,13 @@ export async function handleArcCharacter(input: ArcCharacterInput): Promise<ArcC
 
   const allWarnings = [...syncWarnings, ...warnings];
   const summaryParts = [
-    action === "status" ? "角色弧状态" : action === "sync" ? "弧线已按规则同步" : "弧线已 LLM 精修",
+    action === "status"
+      ? "角色弧状态"
+      : action === "sync"
+        ? "弧线已按规则同步"
+        : llmRefined
+          ? "弧线已 LLM 精修"
+          : "弧线已按规则同步（LLM 精修未完成）",
     `角色弧 ${items.length} 条`,
     action !== "status" ? `新增 beats ${newBeats.length} 条` : "",
     allWarnings.length > 0 ? `告警 ${allWarnings.length} 条` : "无告警",
