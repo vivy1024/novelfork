@@ -426,7 +426,7 @@ export function ProviderSettingsPage({ client = defaultClient }: ProviderSetting
         : undefined;
       const nextProviders = providers.map((candidate) => candidate.id === provider.id ? normalizedProvider : candidate);
       const providerPatch = runtimeProviderPatch(arrayKey, nextProviders as never);
-      const agentPatch = migratedAgentModels ? runtimeAgentModelPatch(migratedAgentModels) : {};
+      const agentPatch = runtimeAgentModelPatch(migratedAgentModels ?? agentModels);
       setBusy(true);
       try {
         const updated = await client.patch({ ...providerPatch, ...agentPatch });
