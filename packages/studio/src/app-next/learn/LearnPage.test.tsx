@@ -19,7 +19,7 @@ const indexResponse = {
     {
       id: "overview",
       category: "start",
-      title: "一页理解 NarraFork",
+      title: "一页理解 NovelFork",
       summary: "核心概念",
       tags: ["intro", "workflow"],
       actions: [],
@@ -33,7 +33,7 @@ const indexResponse = {
       actions: [],
     },
     {
-      id: "novelfork-books",
+      id: "book-management",
       category: "novelfork-writing",
       title: "小说创建与书籍管理",
       summary: "创建由 Runtime 管理的作品并进入工作台",
@@ -78,7 +78,7 @@ function installSuccessfulRuntimeMock() {
     if (path.startsWith("/learning?")) return indexResponse as never;
     if (path.startsWith("/learning/overview?")) return overviewDoc as never;
     if (path.startsWith("/learning/routines?")) return routinesDoc as never;
-    if (path.startsWith("/learning/novelfork-books?")) return novelBooksDoc as never;
+    if (path.startsWith("/learning/book-management?")) return novelBooksDoc as never;
     throw new Error(`unexpected path: ${path}`);
   });
 }
@@ -96,7 +96,7 @@ describe("LearnPage Runtime learning contract", () => {
     render(<LearnPage />);
 
     expect(await screen.findByText("核心心智模型")).toBeTruthy();
-    expect(screen.getByText("这里汇总 NarraFork 除叙事线以外的主要功能文档、使用流程与最佳实践。")).toBeTruthy();
+    expect(screen.getByText("这里汇总 NovelFork 的主要功能文档、使用流程与最佳实践。")).toBeTruthy();
     expect(screen.getByText("叙述者是带工具的 AI 工作会话。")).toBeTruthy();
     expect(screen.getByText("配置模型")).toBeTruthy();
     expect(screen.getByRole("link", { name: /打开设置/ }).getAttribute("href")).toBe("/next/settings");
@@ -123,7 +123,7 @@ describe("LearnPage Runtime learning contract", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索学习文档" }), { target: { value: "automation" } });
 
     expect(await screen.findByText("什么是套路")).toBeTruthy();
-    expect(screen.queryByText("一页理解 NarraFork")).toBeNull();
+    expect(screen.queryByText("一页理解 NovelFork")).toBeNull();
     expect(new URLSearchParams(window.location.search).get("q")).toBe("automation");
     expect(new URLSearchParams(window.location.search).has("doc")).toBe(false);
     expect(mockedFetchJson.mock.calls.some(([path]) => path.startsWith("/learning/search"))).toBe(false);
@@ -144,19 +144,19 @@ describe("LearnPage Runtime learning contract", () => {
     expect(new URLSearchParams(window.location.search).get("doc")).toBe("routines");
   });
 
-  it("shows original NarraFork and contributed NovelFork docs together and supports a NovelFork deep link", async () => {
-    window.history.replaceState(null, "", "/next/learn?doc=novelfork-books");
+  it("shows Runtime and contributed NovelFork docs together and supports a NovelFork deep link", async () => {
+    window.history.replaceState(null, "", "/next/learn?doc=book-management");
     render(<LearnPage />);
 
     expect(await screen.findByText("可信书籍身份")).toBeTruthy();
     expect(screen.getByRole("button", { name: /从这里开始/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /NovelFork 写作/ })).toBeTruthy();
     expect(screen.getByRole("link", { name: /打开我的作品/ }).getAttribute("href")).toBe("/next/books");
-    expect(new URLSearchParams(window.location.search).get("doc")).toBe("novelfork-books");
+    expect(new URLSearchParams(window.location.search).get("doc")).toBe("book-management");
 
     fireEvent.change(screen.getByRole("searchbox", { name: "搜索学习文档" }), { target: { value: "写作" } });
     expect(await screen.findByText("可信书籍身份")).toBeTruthy();
-    expect(screen.queryByText("一页理解 NarraFork")).toBeNull();
+    expect(screen.queryByText("一页理解 NovelFork")).toBeNull();
   });
 
   it("shows retryable catalog and detail errors without presenting fake empty data", async () => {

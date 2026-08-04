@@ -14,4 +14,4 @@ export type {
   RunResult,
 } from "./relay.js";
 
-export { LocalAIRelay } from "./local-relay.js";
+// LocalAIRelay was removed with PipelineRunner; callers must use Runtime-backed routes.

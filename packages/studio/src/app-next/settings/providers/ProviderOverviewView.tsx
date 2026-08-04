@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Plus } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -32,6 +33,7 @@ export interface ProviderOverviewViewProps {
   }>;
   readonly modelGroups: readonly RuntimeModelGroup[];
   readonly platformProviders?: readonly PlatformProviderSummary[];
+  readonly providerOrder?: readonly string[];
   readonly busy?: boolean;
   readonly error?: string | null;
   readonly feedback?: string | null;
@@ -46,6 +48,7 @@ export function ProviderOverviewView({
   providers,
   modelGroups,
   platformProviders = [],
+  providerOrder,
   busy = false,
   error,
   feedback,
@@ -55,10 +58,18 @@ export function ProviderOverviewView({
   onToggle,
   onDelete,
 }: ProviderOverviewViewProps) {
+  const sortedProviders = useMemo(() => {
+    if (!providerOrder || providerOrder.length === 0) return providers;
+    return [...providers].sort((a, b) => {
+      const indexA = providerOrder.indexOf(a.provider.id);
+      const indexB = providerOrder.indexOf(b.provider.id);
+      return (indexA === -1 ? Infinity : indexA) - (indexB === -1 ? Infinity : indexB);
+    });
+  }, [providers, providerOrder]);
   const enabledCount = providers.filter(({ provider }) => !provider.disabled).length;
   const discoveredModels = modelGroups.reduce((total, group) => total + group.models.length, 0);
-  const customProviders = providers.filter(({ arrayKey }) => arrayKey === "customApiProviders");
-  const nugProviders = providers.filter(({ arrayKey }) => arrayKey === "nugProviders");
+  const customProviders = sortedProviders.filter(({ arrayKey }) => arrayKey === "customApiProviders");
+  const nugProviders = sortedProviders.filter(({ arrayKey }) => arrayKey === "nugProviders");
 
   return (
     <section aria-label="AI 供应商设置" className="flex flex-col gap-6">

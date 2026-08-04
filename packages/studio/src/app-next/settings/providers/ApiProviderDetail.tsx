@@ -29,8 +29,12 @@ import { SimpleSelect } from "@/components/ui/simple-select";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { ModelTestDialog } from "./ModelTestDialog";
+import { ModelSearchList } from "./ModelSearchList";
 import type { RuntimeCustomModelSettings } from "../../runtime-admin";
 import {
+  extractPrimaryDomainLabel,
+  getPrefixError,
+  getUniquePrefix,
   isMaskedSecret,
   normalizeProviderProxy,
   providerApiTypeLabel,
@@ -53,6 +57,7 @@ interface ApiProviderDetailProps {
   readonly busy?: boolean;
   readonly refreshing?: boolean;
   readonly error?: string | null;
+  readonly allPrefixToId?: Map<string, string>;
   readonly onBack: () => void;
   readonly onSave: (provider: RuntimeEditableProvider) => Promise<void>;
   readonly onDelete?: (providerId: string) => Promise<void>;
@@ -119,6 +124,7 @@ export function ApiProviderDetail({
   busy = false,
   refreshing = false,
   error,
+  allPrefixToId,
   onBack,
   onSave,
   onDelete,
@@ -127,6 +133,8 @@ export function ApiProviderDetail({
   onTestModel,
 }: ApiProviderDetailProps) {
   const [draft, setDraft] = useState<RuntimeEditableProvider>(provider);
+  const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
+  const [prefixManuallyEdited, setPrefixManuallyEdited] = useState(false);
   const [secretInputs, setSecretInputs] = useState<Record<string, string>>({});
   const [headersInput, setHeadersInput] = useState(headersText(provider.extraHeaders));
   const [headersError, setHeadersError] = useState<string | null>(null);
@@ -256,6 +264,23 @@ export function ApiProviderDetail({
   const proxyMode = draft.proxy?.mode ?? "default";
   const isCodex = draft.protocol === "codex-native";
   const isGemini = draft.protocol === "gemini-compatible";
+  const hiddenSet = useMemo(() => new Set(agentModels.hiddenModels), [agentModels.hiddenModels]);
+  const prefixError = allPrefixToId ? getPrefixError(draft.prefix ?? "", draft.id, allPrefixToId) : undefined;
+
+  function handleBaseUrlChange(value: string) {
+    setDraft((prev) => ({ ...prev, baseUrl: value }));
+    // 自动推导 name + prefix（仅在用户未手动编辑时）
+    if (!nameManuallyEdited || !prefixManuallyEdited) {
+      const label = extractPrimaryDomainLabel(value);
+      if (label) {
+        setDraft((prev) => ({
+          ...prev,
+          ...(!nameManuallyEdited ? { name: label } : {}),
+          ...(!prefixManuallyEdited && allPrefixToId ? { prefix: getUniquePrefix(label, prev.id, allPrefixToId) } : {}),
+        }));
+      }
+    }
+  }
 
   return (
     <section aria-label={`${draft.name} 供应商详情`} className="flex flex-col gap-6">
@@ -312,7 +337,10 @@ export function ApiProviderDetail({
                 id="provider-name"
                 aria-label="名称"
                 value={draft.name}
-                onChange={(event) => updateDraft({ name: event.currentTarget.value })}
+                onChange={(event) => {
+                  setNameManuallyEdited(true);
+                  updateDraft({ name: event.currentTarget.value });
+                }}
               />
             </Field>
             <Field>
@@ -321,10 +349,17 @@ export function ApiProviderDetail({
                 id="provider-prefix"
                 aria-label="模型前缀"
                 value={draft.prefix}
-                onChange={(event) => updateDraft({ prefix: event.currentTarget.value.replace(/:/g, "") })}
+                onChange={(event) => {
+                  setPrefixManuallyEdited(true);
+                  updateDraft({ prefix: event.currentTarget.value.replace(/:/g, "") });
+                }}
                 placeholder="my-provider"
               />
-              <FieldDescription>生成 provider:model 标识，必须与其他标准 API 供应商不同。</FieldDescription>
+              {prefixError ? (
+                <FieldError>{prefixError}</FieldError>
+              ) : (
+                <FieldDescription>生成 provider:model 标识，必须与其他标准 API 供应商不同。</FieldDescription>
+              )}
             </Field>
 
             <Field>
@@ -376,7 +411,7 @@ export function ApiProviderDetail({
                 id="provider-base-url"
                 aria-label="Base URL"
                 value={draft.baseUrl}
-                onChange={(event) => updateDraft({ baseUrl: event.currentTarget.value })}
+                onChange={(event) => handleBaseUrlChange(event.currentTarget.value)}
                 placeholder={isGemini
                   ? "https://generativelanguage.googleapis.com/v1beta"
                   : "https://api.example.com/v1"
@@ -677,8 +712,8 @@ export function ApiProviderDetail({
                 {modelOptions.every((m) => m.hidden) ? "全部显示" : "全部隐藏"}
               </Button>
             </div>
-            <div className="flex flex-col max-h-[520px] overflow-y-auto pr-1">
-              {modelOptions.map((model) => (
+            <ModelSearchList models={modelOptions} hiddenSet={hiddenSet}>
+              {(visibleModels) => visibleModels.map((model) => (
                 <ModelInventoryRow
                   key={model.value}
                   model={model}
@@ -719,7 +754,7 @@ export function ApiProviderDetail({
                   }}
                 />
               ))}
-            </div>
+            </ModelSearchList>
             </>
           )}
 

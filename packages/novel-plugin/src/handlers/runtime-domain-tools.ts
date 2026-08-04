@@ -672,6 +672,7 @@ async function outlineVolume(
 async function arcCharacter(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
   const { handleArcCharacter } = await import("./arc-character.js");
   const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
@@ -684,6 +685,7 @@ async function arcCharacter(
     ...(typeof input.characterName === "string" ? { characterName: input.characterName } : {}),
     ...(typeof input.mode === "string" ? { mode: input.mode } : {}),
     ...(typeof input.stagnantThreshold === "number" ? { stagnantThreshold: input.stagnantThreshold } : {}),
+    generateText: context.generateText,
   });
   if (!result.ok) return fail(result.error ?? "arc-character-failed", result.summary);
   return ok(result.summary, result);
@@ -962,7 +964,7 @@ export async function executeRuntimeDomainTool(
     case "outline.volume":
       return outlineVolume(input, binding, context);
     case "arc.character":
-      return arcCharacter(input, binding);
+      return arcCharacter(input, binding, context);
     case "publish.check":
       return publishCheck(input, binding);
     case "character.check_consistency":

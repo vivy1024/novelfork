@@ -140,6 +140,9 @@ const allowedPatchTargets = new Set([
 	"server/lib/agent/tool-executor.ts",
 	// 导出可复用的项目拆除逻辑，避免宿主侧重复实现删除流程。
 	"server/routes/projects.ts",
+	// Keep Runtime settings documentation synchronized with DEFAULTS without
+	// coupling the replaceable Runtime tree to product code.
+	"server/lib/settings/defaults.ts",
 ]);
 
 const forbiddenOverlayContent = [

@@ -583,3 +583,79 @@ export function normalizeProviderProxy(
   if (mode === "default") return undefined;
   return mode === "custom" ? { mode, url: url?.trim() ?? "" } : { mode };
 }
+
+// ---------------------------------------------------------------------------
+// 前缀冲突检测
+// ---------------------------------------------------------------------------
+
+const RESERVED_PREFIXES = new Set(["kiro", "codex"]);
+
+/**
+ * 构建 prefix → providerId 映射。
+ * 用于实时检测前缀是否与其他供应商或保留前缀冲突。
+ */
+export function buildPrefixMap(settings: Record<string, unknown>): Map<string, string> {
+  const map = new Map<string, string>();
+  const custom = getRuntimeProviderArray(settings, "customApiProviders") as Array<{ id: string; prefix?: string }>;
+  const nug = getRuntimeProviderArray(settings, "nugProviders") as Array<{ id: string; prefix?: string }>;
+  for (const p of [...custom, ...nug]) {
+    if (p.prefix) map.set(p.prefix, p.id);
+  }
+  return map;
+}
+
+/**
+ * 返回前缀验证错误文案；无冲突时返回 undefined。
+ */
+export function getPrefixError(
+  prefix: string,
+  currentProviderId: string,
+  allPrefixToId: Map<string, string>,
+): string | undefined {
+  if (!prefix) return undefined;
+  if (RESERVED_PREFIXES.has(prefix)) return `前缀 "${prefix}" 是系统保留名称，不能使用。`;
+  const owner = allPrefixToId.get(prefix);
+  if (owner && owner !== currentProviderId) return `前缀 "${prefix}" 已被其他供应商使用。`;
+  return undefined;
+}
+
+/**
+ * 为新供应商生成不冲突的 prefix。
+ */
+export function getUniquePrefix(
+  base: string,
+  currentId: string,
+  allPrefixToId: Map<string, string>,
+): string {
+  if (!getPrefixError(base, currentId, allPrefixToId)) return base;
+  for (let i = 2; i < 100; i++) {
+    const candidate = `${base}-${i}`;
+    if (!getPrefixError(candidate, currentId, allPrefixToId)) return candidate;
+  }
+  return base;
+}
+
+// ---------------------------------------------------------------------------
+// 从 baseUrl 域名自动推导 name + prefix
+// ---------------------------------------------------------------------------
+
+/**
+ * 从 URL 中提取主域名 label（倒数第二级），如：
+ * - `https://api.openai.com/v1` → "openai"
+ * - `https://open.bigmodel.cn` → "bigmodel"
+ * 无法解析或为 IP/localhost 时返回 null。
+ */
+export function extractPrimaryDomainLabel(rawUrl: string): string | null {
+  let url: URL;
+  try {
+    const normalized = rawUrl.includes("://") ? rawUrl : `https://${rawUrl}`;
+    url = new URL(normalized);
+  } catch {
+    return null;
+  }
+  const hostname = url.hostname;
+  if (!hostname || hostname === "localhost" || /^\d+\.\d+\.\d+\.\d+$/.test(hostname)) return null;
+  const labels = hostname.split(".");
+  if (labels.length < 2) return null;
+  return labels[labels.length - 2] || null;
+}

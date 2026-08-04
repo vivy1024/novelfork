@@ -155,6 +155,8 @@ function isUnfilledSection(body: string): boolean {
 
 function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void }) {
   const [editingRaw, setEditingRaw] = useState(false);
+  const [generatingSection, setGeneratingSection] = useState<string | null>(null);
+  const [generationError, setGenerationError] = useState<string | null>(null);
   const content = node.content ?? "";
   const sections = parseJingweiSections(content);
 
@@ -199,29 +201,35 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
                 <button
                   type="button"
                   className="inline-flex items-center gap-1 text-primary hover:underline"
+                  disabled={generatingSection !== null}
                   onClick={async () => {
+                    setGeneratingSection(section.title);
+                    setGenerationError(null);
                     try {
-                      const res = await fetch("/api/ai-relay/generate", {
+                      const res = await fetch("/api/ai/generate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ prompt: `请为小说的"${section.title}"部分生成详细内容。要求具体、生动、可直接用于写作。输出纯文本，不要解释。`, maxTokens: 1000 }),
                       });
-                      if (res.ok) {
-                        const data = await res.json() as { content?: string };
-                        if (data.content) {
-                          // Replace placeholder with generated content
-                          const updated = node.content?.replace(
-                            new RegExp(`## ${section.title}\\n[\\s\\S]*?(?=\\n## |$)`),
-                            `## ${section.title}\n${data.content}\n`,
-                          );
-                          if (updated && onContentChange) onContentChange(updated);
-                        }
-                      }
-                    } catch { /* non-fatal */ }
+                      const data = await res.json() as { content?: string; error?: string };
+                      if (!res.ok) throw new Error(data.error || `AI 生成失败（${res.status}）`);
+                      if (!data.content?.trim()) throw new Error("AI 没有返回可用内容。");
+
+                      // Replace placeholder with generated content
+                      const updated = node.content?.replace(
+                        new RegExp(`## ${section.title}\\n[\\s\\S]*?(?=\\n## |$)`),
+                        `## ${section.title}\\n${data.content.trim()}\\n`,
+                      );
+                      if (updated && onContentChange) onContentChange(updated);
+                    } catch (error) {
+                      setGenerationError(error instanceof Error ? error.message : "AI 生成失败。");
+                    } finally {
+                      setGeneratingSection(null);
+                    }
                   }}
                 >
                   <Sparkles className="size-3" />
-                  让 AI 生成
+                  {generatingSection === section.title ? "生成中…" : "让 AI 生成"}
                 </button>
               </div>
             ) : (
@@ -230,6 +238,7 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
           </div>
         ))
       )}
+      {generationError ? <p role="alert" className="text-xs text-destructive">{generationError}</p> : null}
     </div>
   );
 }
