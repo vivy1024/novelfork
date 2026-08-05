@@ -107,8 +107,15 @@ function expectModelSchemaIsBounded(schema: unknown): void {
   if (!schema || typeof schema !== "object") return;
   const record = schema as Record<string, unknown>;
   if (record.type === "object") {
-    expect(record.additionalProperties).toBe(false);
     const properties = record.properties as Record<string, unknown> | undefined;
+    // 声明了字段清单的对象（含显式空清单）必须收紧；自由载荷对象
+    // （快照/记忆上下文/patch）没有清单，必须保持开放，否则工具自己产出的
+    // 真实数据无法原样回传。
+    if (properties) {
+      expect(record.additionalProperties).toBe(false);
+    } else {
+      expect(record.additionalProperties).toBeUndefined();
+    }
     expect(properties?.bookId).toBeUndefined();
     expect(properties?.sessionId).toBeUndefined();
     expect(properties?.bookRoot).toBeUndefined();
@@ -173,11 +180,16 @@ describe("novel Runtime contribution", () => {
     const complianceSchema = definitions.get("writing-skills.check_compliance")?.inputSchema as Record<string, unknown>;
     const importSchema = definitions.get("writing-skills.import_legacy")?.inputSchema as Record<string, unknown>;
     expect((readSchema.properties as Record<string, unknown>).scope).toBeDefined();
-    expect((writeSchema.properties as Record<string, unknown>).enabledWritingSkillIds).toBeDefined();
-    expect(writeSchema.required).toEqual(["enabledWritingSkillIds"]);
+    const writeProperties = writeSchema.properties as Record<string, unknown>;
+    expect(writeProperties.addSkillIds).toBeDefined();
+    expect(writeProperties.removeSkillIds).toBeDefined();
+    expect(writeProperties.refreshSkillIds).toBeDefined();
+    expect(writeProperties.enabledWritingSkillIds).toBeUndefined();
+    expect(writeSchema.required).toEqual([]);
     expect((complianceSchema.properties as Record<string, unknown>).content).toBeDefined();
     expect(complianceSchema.required).toEqual(["content"]);
     expect(importSchema.properties).toEqual({});
+    expect(importSchema.required).toEqual([]);
     expect(definitions.get("writing-skills.import_legacy")?.risk).toBe("confirmed-write");
 
     // 推荐是只读建议：不得声明写风险，也不得声明未在 Studio 注册的 renderer
@@ -233,6 +245,27 @@ describe("novel Runtime contribution", () => {
     for (const contribution of NOVEL_RUNTIME_CONTRIBUTION.tools ?? []) {
       expectModelSchemaIsBounded(contribution.definition.inputSchema);
     }
+  });
+
+  it("publishes stable NUG-compatible NovelFork tool schemas", () => {
+    const definitions = new Map((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((entry) => [entry.definition.name, entry.definition]));
+
+    const loreSchema = definitions.get("lore.write")?.inputSchema as Record<string, unknown>;
+    const loreProperties = loreSchema.properties as Record<string, Record<string, unknown>>;
+    for (const field of ["aliases", "tags", "relatedEntryIds"]) {
+      expect(loreProperties[field]?.items).toMatchObject({ type: "string" });
+    }
+
+    // 自由载荷对象必须保持开放：这些字段回传的是工具自己产出的真实数据。
+    const sceneSchema = definitions.get("scene.spec")?.inputSchema as Record<string, unknown>;
+    const sceneProperties = sceneSchema.properties as Record<string, Record<string, unknown>>;
+    for (const field of ["cockpitSnapshot", "loreBrief", "memoryContext", "writePreflight"]) {
+      expect(sceneProperties[field]?.type).toBe("object");
+      expect(sceneProperties[field]?.additionalProperties).toBeUndefined();
+    }
+    const memoryUpdateSchema = definitions.get("memory.update")?.inputSchema as Record<string, unknown>;
+    const memoryUpdateProperties = memoryUpdateSchema.properties as Record<string, Record<string, unknown>>;
+    expect(memoryUpdateProperties.patch?.additionalProperties).toBeUndefined();
   });
 
   it("injects the trusted binding bookId instead of accepting a model bookId", async () => {
@@ -315,7 +348,7 @@ describe("novel Runtime contribution", () => {
     const trusted = await createBook("trusted", "trusted content");
     const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
 
-    const cockpit = await tool("cockpit.snapshot").handler({}, trustedContext);
+    const cockpit = await tool("cockpit.snapshot").handler({ confirm: true }, trustedContext);
     expect(cockpit).toMatchObject({
       ok: true,
       data: { status: "available", book: { id: "trusted" }, storyDir: "story" },

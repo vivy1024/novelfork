@@ -23,6 +23,7 @@ import {
   type CockpitSnapshot,
   type CockpitState,
 } from "./cockpit-service.js";
+import { loadActiveWritingSkillsForBook } from "./writing-skill-handlers.js";
 
 export type MemoryChannelHealth = "ok" | "empty" | "missing" | "disabled";
 
@@ -486,17 +487,19 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   let styleHealth: MemoryChannelHealth = "empty";
   try {
-    const book = await cockpitState.loadBookConfig(bookId);
-    const enabled = Array.isArray((book as { enabledWritingSkillIds?: unknown }).enabledWritingSkillIds)
-      ? (book as { enabledWritingSkillIds: unknown[] }).enabledWritingSkillIds.length
-      : 0;
-    styleHealth = enabled > 0 ? "ok" : "disabled";
+    if (!input.bookRoot?.trim()) {
+      // 没有可信项目根时不能扫描作品 `.novelfork/skills`；不依赖 book.json 选择字段。
+      styleHealth = "disabled";
+    } else {
+      const activeWritingSkills = await loadActiveWritingSkillsForBook(bookId, { bookRoot: input.bookRoot });
+      styleHealth = activeWritingSkills.skills.length > 0 ? "ok" : "disabled";
+    }
     if (styleHealth === "disabled") {
       pushWarning(
         warnings,
         warningItems,
         "style-disabled",
-        "未启用任何 Writing Skills，style 通道将为空；可 style.import 导入文风，或启用 1–2 个 Writing Skills。",
+        "当前项目 `.novelfork/skills` 未发现可生效的 Writing Skills，style 通道将为空；可在写作设置中添加 1–2 个 Writing Skills。",
       );
     }
   } catch {

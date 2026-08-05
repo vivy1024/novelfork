@@ -9,6 +9,8 @@ export default defineConfig({
       "react-dom": resolve(__dirname, "node_modules/react-dom"),
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(__dirname, "../narrafork-runtime-private/frontend/components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(__dirname, "../narrafork-runtime-private/frontend/lib/query-client.ts"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(__dirname, "../narrafork-runtime-private/frontend/components/providers/EmbeddedProviderSettingsHost.tsx"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/notification-sound": resolve(__dirname, "../narrafork-runtime-private/frontend/lib/notification-sound.ts"),
       "@frontend": resolve(__dirname, "../narrafork-runtime-private/frontend"),
       "@shared": resolve(__dirname, "../narrafork-runtime-private/shared"),
       "@vivy1024/novelfork-core/registry/command-registry": resolve(__dirname, "../core/src/registry/command-registry.ts"),

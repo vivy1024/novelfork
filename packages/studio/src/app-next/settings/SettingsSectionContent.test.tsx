@@ -231,7 +231,10 @@ describe("SettingsSectionContent Runtime-native settings", () => {
     fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
     await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledWith(expect.objectContaining({
       agent: expect.objectContaining({
-        subagentAllowedModels: runtimeSettings.agent.subagentAllowedModels,
+        // The fixture predates the review subagent, so the panel normalizes the
+        // missing key to an empty allowlist (no extra restriction) rather than
+        // dropping it from the payload.
+        subagentAllowedModels: { ...runtimeSettings.agent.subagentAllowedModels, review: [] },
         modelAggregations: [{ ...runtimeSettings.agent.modelAggregations[0], name: "Fast Updated" }],
       }),
     })));

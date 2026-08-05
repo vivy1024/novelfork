@@ -282,14 +282,12 @@ export {
   handleWritingSkillsRecommend,
   handleWritingSkillsWrite,
   loadActiveWritingSkillsForBook,
-  migrateLegacyWritingSkillSelection,
-  resolveActiveWritingSkills,
 } from "./writing-skill-handlers.js";
 export type {
   LegacyWritingSkillsImportReport,
   TrustedWritingSkillOptions,
   WritingSkillComplianceViolation,
-  WritingSkillSelectionMigrationReport,
+  WritingSkillProjectReport,
   WritingSkillsCheckComplianceInput,
   WritingSkillsImportLegacyInput,
   WritingSkillsReadInput,

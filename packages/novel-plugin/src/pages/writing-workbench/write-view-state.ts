@@ -64,8 +64,8 @@ interface RawDiagnostic {
  * blocker/warning code → 就绪条标签与修复动作。
  *
  * 标签必须叫得出作者能在界面上找到的东西。`style-disabled` 的判据是
- * book.json 的 `enabledWritingSkillIds`（见 write-preflight），对应界面是
- * Writing Skills 面板；旧「文风预设」（enabledPresetIds）已迁移下线，
+ * 当前项目 `.novelfork/skills/` 扫描不到可生效 Writing Skill（见 write-preflight），对应界面是
+ * Writing Skills 面板；旧 `book.json` 启用字段与「文风预设」（enabledPresetIds）都已迁移下线，
  * 继续用那个词只会把作者引到不存在的入口。
  */
 const CHECK_META: Record<string, { label: string; fixAction?: WriteFixActionId }> = {
@@ -261,7 +261,7 @@ export function planFixAction(
       return { kind: "view", view: "jingwei", label: "去处理待确认事件" };
     case "review-hooks":
       return { kind: "view", view: "tools", label: "查看伏笔看板" };
-    // 判据是 book.json 的 enabledWritingSkillIds，唯一能改它的界面是
+    // 判据是当前项目 `.novelfork/skills/` 的实际文件，唯一能改它的界面是
     // 写作设置里的 Writing Skills 面板。切「工具」视图只有诊断面板，改不了这项。
     case "enable-style":
       return { kind: "settings", settingsSection: "writing-skills", label: "启用 Writing Skills" };

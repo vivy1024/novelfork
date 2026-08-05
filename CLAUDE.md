@@ -50,7 +50,7 @@ NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在本仓库
 - **不公开** Runtime overlay 实现（补丁上下文、嵌入 Narrator 面板、Provider、Runtime 迁移等）；overlay 走私有子仓库。
 - 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
 - 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
-- 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 编译 Windows EXE + 用 EXE 做功能核验。
+- 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
 
 ## 架构边界
 
@@ -103,9 +103,27 @@ packages/narrafork-runtime-private/  本地 ignore：完整 Runtime 物化树
 
 - 后端：真实 HTTP/API、运行日志或目标测试。
 - 前端：实际启动应用并用 Browser 验证；必要时保留截图。
-- 打包：`pnpm build` / `pnpm compile` 等当前 scripts；发版前用生成的 Windows EXE 做功能核验。
+- 打包：`pnpm build` / `pnpm compile` 等当前 scripts；发版前用生成的 Windows EXE 做功能核验（见「多平台发版流程」）。
 - 类型检查是辅助证据；用户可见功能要有实际运行证据。
 - **不要**用公开 CI 代替本地 Runtime 完整能力验证。
+
+#### 隔离验证实例（写数据前必读）
+
+任何需要注册账号、改用户偏好或写数据的验证，**必须**用隔离实例：
+
+```bash
+bun scripts/start-isolated-verify.ts --port=4613
+# 前端连它：NOVELFORK_RUNTIME_PORT=4613 pnpm run --cwd packages/studio dev
+```
+
+只设 `NOVELFORK_PROJECT_ROOT` **不构成隔离**。`main.ts` 把 `NOVELFORK_RUNTIME_DIR` 与 `NOVELFORK_STORAGE_DB_PATH` 默认到 `~/.novelfork`，因此账号、用户偏好仍会写进用户真实的 `~/.novelfork/.runtime/narrafork.db`。历史上已有多个测试账号因此残留在用户库里。必须同时设置的变量：`NOVELFORK_PROJECT_ROOT`、`NOVELFORK_BOOKS_ROOT`、`NOVELFORK_RUNTIME_DIR`、`NARRAFORK_HOME`、`NOVELFORK_SESSION_STORE_DIR`、`NOVELFORK_STORAGE_DB_PATH`（上面的脚本已固化）。
+
+其他约束：
+
+- 端口避开用户常用的 `4567` 与开发 Runtime 的 `7778`；验证前先确认目标端口没有正在运行的实例，不要连到用户自己的进程上。
+- 始终带 `NOVELFORK_NO_BROWSER=1`，不弹窗占用用户屏幕。
+- 验证结束后停掉自己启动的全部进程并清理临时数据目录。
+- 已经写进用户真实数据库的残留数据，属于用户数据：先如实报告并取证（影响了哪些表、哪些行），**取得明确授权后**才能删除，并先导出可回滚的行快照。
 
 ### 5. 交付
 
@@ -263,6 +281,7 @@ bun scripts/import-narrafork-runtime.ts --source ./narrafork-private-main --repo
 5. **全程中文回复**：包括 commit message、注释、文案，除非代码本身是英文变量名。
 6. **不要操作用户正在使用的屏幕**：不启动 GUI、不打开浏览器窗口、不移动鼠标，除非明确授权。
 7. **不要把视频制作停在"写完代码"**：必须 headless 渲染出 MP4 并报告路径。
+8. **不要用用户的真实数据库做验证**：需要注册账号或写数据时用 `bun scripts/start-isolated-verify.ts`；只设 `NOVELFORK_PROJECT_ROOT` 会把测试账号写进 `~/.novelfork/.runtime/narrafork.db`（详见「隔离验证实例」）。
 
 ## Git 与发布
 
@@ -272,6 +291,53 @@ bun scripts/import-narrafork-runtime.ts --source ./narrafork-private-main --repo
 - overlay 变更：先在私有 submodule 仓库提交并推送，再在主仓库更新 gitlink。
 - 发布前完成与改动相称的本地构建/测试，并用 Windows EXE 做发版前功能核验。
 - 公开仓库可见性变更前，必须确认：当前 tip 无私有 Runtime 源码，且历史策略已明确（清理历史或接受风险——默认不接受历史泄露）。
+
+### 多平台发版流程
+
+发布产物与 NarraFork 通用 Runtime 的目标矩阵一致，共 7 个：
+
+| 平台 | 产物名（`dist/`） |
+|---|---|
+| Windows x64 | `novelfork-v<版本>-windows-x64.exe` |
+| Windows x64 baseline | `novelfork-v<版本>-windows-x64-baseline.exe` |
+| Linux x64 | `novelfork-v<版本>-linux-x64` |
+| Linux x64 baseline | `novelfork-v<版本>-linux-x64-baseline` |
+| Linux arm64 | `novelfork-v<版本>-linux-arm64` |
+| macOS arm64 | `novelfork-v<版本>-macos-arm64` |
+| macOS x64 | `novelfork-v<版本>-macos-x64` |
+
+baseline 变体面向不支持 AVX2 的旧 CPU 与部分虚拟机，缺它会让老机器直接崩在启动阶段，属于必发资产。
+
+命令（以根 `package.json` 为准）：
+
+```bash
+pnpm compile            # 仅本机 Windows x64，日常核验用
+pnpm run compile:windows # Windows x64 + baseline
+pnpm run compile:linux   # Linux x64 + baseline + arm64
+pnpm run compile:macos   # macOS arm64 + x64
+pnpm run compile:all     # 全部 7 个平台，发版用
+```
+
+全部平台都在 Windows 本机交叉编译，无需 Linux/macOS 机器或 CI。
+
+发版步骤：
+
+1. `pnpm test` 与相关 typecheck 通过，工作区无意外改动。
+2. 更新版本号与 CHANGELOG，`pnpm run compile:all` 一次性产出 7 个平台产物。
+3. 用当次编译出的 `windows-x64.exe` 做功能核验（不是旧产物）。
+4. 只有在用户明确要求时才 commit、tag、push 与创建 Release；上传时带上聚合校验和文件。
+
+产物校验：每个产物旁生成 `<产物名>.sha256`；多平台构建额外生成 `dist/novelfork-v<版本>-SHA256SUMS` 汇总全部产物，Release 资产以它为准。
+
+交叉编译前置条件：Bun 会为每个非本机目标下载独立运行时并缓存在 `~/.bun/install/cache/bun-<target>-v<bun版本>`。首次或网络中断时会出现 `Failed to extract executable for 'bun-darwin-aarch64-...'`。`compile-product-runtime.ts` 因此在准备任何产物之前先用一次性最小编译探测全部目标（失败重试 3 次），所以这类问题会在几秒内失败，而不是在几十分钟的矩阵构建中途炸掉。真的探测失败时，先确认能访问 npm registry，再重跑同一命令即可。
+
+EXE 核验注意：产物启动时会自动打开产品窗口。无头核验必须带 `NOVELFORK_NO_BROWSER=1`，不要在用户使用屏幕时弹窗：
+
+```bash
+NOVELFORK_NO_BROWSER=1 PORT=4599 ./dist/novelfork-v<版本>-windows-x64.exe
+```
+
+已知限制：非 Windows 产物在本机只能验证交叉编译成功与目标格式（Mach-O / ELF），真实运行行为需要在对应系统上核验。上游 Runtime 的 `latest*.yml` 自动更新清单与二进制签名不属于 NovelFork 发版流程——产品层未接自动更新服务，不要顺手引入。
 
 ## 持久记忆
 

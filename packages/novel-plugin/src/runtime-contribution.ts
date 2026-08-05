@@ -229,7 +229,14 @@ function containsHostControlledField(value: unknown): boolean {
   ));
 }
 
-/** Convert existing schema metadata into a model-safe, portable JSON Schema. */
+/**
+ * Convert existing schema metadata into a model-safe, portable JSON Schema.
+ *
+ * 只有声明了 properties 的对象才收紧为 additionalProperties: false。
+ * 自由载荷对象（cockpitSnapshot、loreBrief、memoryContext、memory.update 的 patch 等）
+ * 本身没有字段清单，收紧后会把工具自己返回、原样回传的真实数据全部判非法 ——
+ * narrative.approve_change 的 preview 已经踩过这个坑。
+ */
 export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
   const sanitize = (value: unknown): PortableJsonValue => {
     if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -239,6 +246,9 @@ export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
 
     const source = value as Record<string, unknown>;
     const isObjectSchema = source.type === "object";
+    const declaresProperties = Boolean(
+      source.properties && typeof source.properties === "object" && !Array.isArray(source.properties),
+    );
     const result: Record<string, PortableJsonValue> = {};
     for (const [key, child] of Object.entries(source)) {
       if (key === "properties" && isObjectSchema && child && typeof child === "object" && !Array.isArray(child)) {
@@ -256,7 +266,7 @@ export function toRuntimeInputSchema(schema: unknown): PortableJsonSchema {
       if (key === "additionalProperties" && isObjectSchema) continue;
       result[key] = sanitize(child);
     }
-    if (isObjectSchema) result.additionalProperties = false;
+    if (isObjectSchema && declaresProperties) result.additionalProperties = false;
     return result;
   };
 
@@ -536,11 +546,14 @@ async function executeReadyTool(
     if (tool.name === "writing-skills.write") {
       return toRuntimeToolResult(await handleWritingSkillsWrite({
         bookId: binding.bookId,
-        enabledWritingSkillIds: Array.isArray(injectedInput.enabledWritingSkillIds)
-          ? injectedInput.enabledWritingSkillIds.filter((id): id is string => typeof id === "string")
-          : [],
-        ...(typeof injectedInput.discardUnmappedLegacyIds === "boolean"
-          ? { discardUnmappedLegacyIds: injectedInput.discardUnmappedLegacyIds }
+        ...(Array.isArray(injectedInput.addSkillIds)
+          ? { addSkillIds: injectedInput.addSkillIds.filter((id): id is string => typeof id === "string") }
+          : {}),
+        ...(Array.isArray(injectedInput.removeSkillIds)
+          ? { removeSkillIds: injectedInput.removeSkillIds.filter((id): id is string => typeof id === "string") }
+          : {}),
+        ...(Array.isArray(injectedInput.refreshSkillIds)
+          ? { refreshSkillIds: injectedInput.refreshSkillIds.filter((id): id is string => typeof id === "string") }
           : {}),
       }, { bookRoot: binding.root }));
     }

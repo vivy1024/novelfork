@@ -4,12 +4,43 @@
 
 ## Unreleased
 
+## v3.4.0 (2026-08-05) — 七平台交叉编译、隔离验证固化与设置对齐 Runtime
+
+### 📦 多平台发版
+
+- **一次编译产出 7 个平台产物**：新增 `compile:all` 与 `compile:windows` / `compile:linux` / `compile:macos` 平台族脚本，目标矩阵与 NarraFork 通用 Runtime 对齐（Windows x64 + baseline、Linux x64 + baseline + arm64、macOS arm64 + x64），全部在 Windows 本机交叉编译。
+- **共享产物只准备一次**：前端资源、迁移、changelog 与 parcel watcher 二进制在矩阵构建中复用，循环内只按平台重写 `build-info`。
+- **交叉编译目标预检**：编译前用一次性最小编译探测每个目标运行时（失败重试 3 次），把 `Failed to extract executable` 类问题从矩阵构建中途提前到几秒内暴露。
+- **聚合校验和**：多平台构建额外输出 `dist/novelfork-v<版本>-SHA256SUMS`，Release 资产以它为准。
+
+### 🔒 验证隔离与数据安全
+
+- **隔离验证脚本**：新增 `scripts/start-isolated-verify.ts`，一次性固化 6 个数据路径环境变量。此前只设 `NOVELFORK_PROJECT_ROOT` 并不构成隔离，测试账号会写进用户真实的 `~/.novelfork/.runtime/narrafork.db`。
+- **契约测试防回归**：`scripts/start-isolated-verify.test.ts` 锁定变量覆盖、临时目录归属、无头默认与端口避让。
+- **忽略规则收紧**：`.gitignore` 用 `/packages/.narrafork-runtime-*/` 通配，避免任何本地 Runtime checkout 变体进入公开树。
+
+### ⚙️ 设置与 Runtime 功能对齐
+
+- **通知**：修正内置提示音枚举（此前 `bell`/`pop` 是 Runtime 不存在的值，`alert`/`soft` 选不到），改为直接消费 Runtime 声音引擎并支持试听；补齐钉钉/飞书「测试连接」与 PWA 通知权限请求（含四种权限态说明）。
+- **关于**：新增运行时构建标识卡片，展示 Runtime 版本、构建提交、运行平台与容器可用性，便于反馈问题时定位构建。
+- **模型**：补齐 Review 子代理模型与允许模型白名单、翻译模型（含「跟随摘要模型」）、推理强度 `max` 档、推理强度黑名单，聚合成员支持顺序调整。
+- **AI 代理**：补齐 `pipelineUnusedToolCallThreshold`。
+- **搜索**：协议列表改为从 Runtime 适配器注册表动态加载（此前博查、U深搜、自定义 HTTP 在产品内不可选），并补齐 `custom-http` 的请求方法、认证方式、请求体模板、查询参数与响应字段映射。
+- **设备**：新增连接测试与连接诊断（握手阶段、Socket 状态、协议版本、最近错误、执行器能力集），作用域支持全局/项目并按项目名选择绑定。
+- **外部依赖**：支持一键安装（二次确认后由 Runtime 执行包管理器命令，完成后重新检测）。
+- **用户与知识库**：新增用户知识库权限授权（分级、分区标签可读/可审阅、写入权限），条目详情支持按需预览可访问用户及授权来源。
+- **使用历史**：图表指标由固定三项改为 12 项可多选，覆盖费用、首字延迟、缓存读写与计量用量。
+
+### 🧱 Runtime 复用
+
+- Bridge 新增 `frontend/notification-sound` 窄契约，Studio 运行时复用 Runtime 声音引擎，避免枚举二次漂移。
+
 ## v3.3.1 (2026-08-03) — 套路与设置全面对齐、Skill 物理落地与网关终端增强
 
 ### ⚙️ 套路系统与 Skill 物理落地
 
 - **Skill 文件树浏览与弹窗预览**：在全局技能与作品技能卡片上提供“查看文件”折叠树，点击任意文件可通过 Dialog 在线预览 `SKILL.md` 和模版源码。
-- **写作技能物理物化**：写作配置中启用 Writing Skill 时，系统会自动将 `SKILL.md` 及关联模版实体拷贝至作品目录的 `.novelfork/skills/<slug>/`，确保 Runtime 扫描能够发现，且作品可独立迁移与隔离修改。
+- **写作技能物理物化**：写作配置中管理 Writing Skill 时，系统会将 `SKILL.md` 及关联模版同步至作品目录的 `.novelfork/skills/<slug>/`；Runtime 自动扫描该目录，作品可独立迁移。
 
 ### 🤖 AI 供应商与设置模式重构
 

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Clipboard, Laptop, Pencil, Plus, RefreshCw, Send, Trash2 } from "lucide-react";
+import { Clipboard, Laptop, Pencil, PlugZap, Plus, RefreshCw, Send, Stethoscope, Trash2 } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -43,14 +43,44 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   createDevicesClient,
   type CreateRuntimeDeviceInput,
+  type DeviceConnectionDiagnostics,
   type DeviceConnectionMode,
+  type DeviceConnectionTestResult,
+  type DeviceScope,
   type DeviceTransferInput,
   type DevicesClient,
   type RuntimeDevice,
+  type RuntimeProjectOption,
   type UpdateRuntimeDeviceInput,
 } from "../../runtime-admin/devices";
 
 const defaultDevicesClient = createDevicesClient();
+
+/** Chinese labels for the Runtime handshake stages, so a stalled connection is readable. */
+const STAGE_LABELS: Readonly<Record<string, string>> = {
+  ready: "已就绪",
+  rpc_ready: "RPC 可用",
+  rpc_failed: "RPC 调用失败",
+  waiting_for_executor: "等待执行器接入",
+  idle: "未发起连接",
+  connecting: "正在建立连接",
+  waiting_auth_init: "等待认证初始化",
+  authenticating: "正在认证",
+  waiting_hello: "等待 hello 帧",
+  reconnect_wait: "等待重连",
+  offline: "离线",
+};
+
+const SOCKET_STATE_LABELS: Readonly<Record<string, string>> = {
+  connecting: "connecting（正在握手）",
+  open: "open（已打开）",
+  closing: "closing（正在关闭）",
+  closed: "closed（已关闭）",
+};
+
+function stageLabel(stage: string): string {
+  return STAGE_LABELS[stage] ? `${STAGE_LABELS[stage]}（${stage}）` : stage;
+}
 
 interface VisibleToken {
   readonly name: string;
@@ -86,6 +116,10 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
   const [rotatingDevice, setRotatingDevice] = useState<RuntimeDevice | null>(null);
   const [deletingDevice, setDeletingDevice] = useState<RuntimeDevice | null>(null);
   const [transferDevice, setTransferDevice] = useState<RuntimeDevice | null>(null);
+  const [diagnostics, setDiagnostics] = useState<Readonly<Record<string, DeviceConnectionDiagnostics>>>({});
+  const [testResults, setTestResults] = useState<Readonly<Record<string, DeviceConnectionTestResult>>>({});
+  const [probingDevice, setProbingDevice] = useState<string | null>(null);
+  const [projects, setProjects] = useState<readonly RuntimeProjectOption[]>([]);
 
   const load = useCallback(async (showLoading = true) => {
     if (showLoading) setLoading(true);
@@ -102,6 +136,20 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Project options let a project-scoped device be bound by name instead of by a
+  // hand-typed id. A failure is non-fatal: the dialog falls back to text input.
+  useEffect(() => {
+    let active = true;
+    client.listProjects()
+      .then((rows) => {
+        if (active && Array.isArray(rows)) setProjects(rows);
+      })
+      .catch(() => {
+        // Fallback to manual id entry.
+      });
+    return () => { active = false; };
+  }, [client]);
 
   useEffect(() => {
     if (refreshIntervalMs <= 0) return;
@@ -191,6 +239,42 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
     }
   }
 
+  /**
+   * Probe the connection and keep the diagnostics.
+   *
+   * The Runtime's test endpoint dials a direct device before probing, so a
+   * failure here is the only place an operator can see where the handshake
+   * actually stopped and what the transport error was.
+   */
+  async function testConnection(device: RuntimeDevice) {
+    setProbingDevice(device.id);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await client.testConnection(device.id);
+      setTestResults((current) => ({ ...current, [device.id]: result }));
+      setDiagnostics((current) => ({ ...current, [device.id]: result.diagnostics }));
+      await load(false);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setProbingDevice(null);
+    }
+  }
+
+  async function loadDiagnostics(device: RuntimeDevice) {
+    setProbingDevice(device.id);
+    setError(null);
+    try {
+      const result = await client.diagnostics(device.id);
+      setDiagnostics((current) => ({ ...current, [device.id]: result }));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setProbingDevice(null);
+    }
+  }
+
   async function copyToken(token: string) {
     try {
       if (!navigator.clipboard) throw new Error("当前浏览器不允许访问剪贴板");
@@ -209,9 +293,7 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
         <Skeleton className="h-36 w-full" />
       </div>
     );
-  }
-
-  if (!devices) {
+  }  if (!devices) {
     return (
       <Alert>
         <AlertTitle>无法读取设备列表</AlertTitle>
@@ -267,6 +349,11 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
             <DeviceCard
               key={device.id}
               device={device}
+              probing={probingDevice === device.id}
+              diagnostics={diagnostics[device.id]}
+              testResult={testResults[device.id]}
+              onTest={() => void testConnection(device)}
+              onDiagnostics={() => void loadDiagnostics(device)}
               onTransfer={() => setTransferDevice(device)}
               onEdit={() => setEditingDevice(device)}
               onRotate={() => setRotatingDevice(device)}
@@ -279,6 +366,7 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
       <CreateDeviceDialog
         open={createOpen}
         busy={busyAction === "create"}
+        projects={projects}
         onOpenChange={setCreateOpen}
         onSubmit={(input) => void createDevice(input)}
       />
@@ -288,6 +376,7 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
       <EditDeviceDialog
         device={editingDevice}
         busy={busyAction === "edit"}
+        projects={projects}
         onClose={() => setEditingDevice(null)}
         onSubmit={(input) => void updateDevice(input)}
       />
@@ -334,12 +423,22 @@ export function DevicesPanel({ client = defaultDevicesClient, refreshIntervalMs 
 
 function DeviceCard({
   device,
+  probing,
+  diagnostics,
+  testResult,
+  onTest,
+  onDiagnostics,
   onTransfer,
   onEdit,
   onRotate,
   onDelete,
 }: {
   readonly device: RuntimeDevice;
+  readonly probing: boolean;
+  readonly diagnostics?: DeviceConnectionDiagnostics;
+  readonly testResult?: DeviceConnectionTestResult;
+  readonly onTest: () => void;
+  readonly onDiagnostics: () => void;
   readonly onTransfer: () => void;
   readonly onEdit: () => void;
   readonly onRotate: () => void;
@@ -359,10 +458,20 @@ function DeviceCard({
             {device.status === "online" ? "在线" : "离线"}
           </Badge>
           <Badge variant="outline">{device.connectionMode === "reverse" ? "反向连接" : "直接连接"}</Badge>
+          <Badge variant="outline">
+            {device.scope === "project" ? `项目：${device.projectId ?? "未绑定"}` : "全局"}
+          </Badge>
         </CardTitle>
         <CardDescription>{device.description || "未填写设备说明"}</CardDescription>
         <CardAction>
           <div className="flex flex-wrap justify-end gap-2">
+            <Button variant="outline" size="sm" disabled={probing} onClick={onTest}>
+              <PlugZap data-icon="inline-start" />
+              {probing ? "测试中…" : "测试连接"}
+            </Button>
+            <Button variant="outline" size="sm" disabled={probing} onClick={onDiagnostics}>
+              <Stethoscope data-icon="inline-start" />诊断
+            </Button>
             {device.status === "online" ? (
               <Button variant="outline" size="sm" onClick={onTransfer}>
                 <Send data-icon="inline-start" />文件传输
@@ -378,25 +487,149 @@ function DeviceCard({
           </div>
         </CardAction>
       </CardHeader>
-      <CardContent className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-        <code className="rounded-md bg-muted px-2 py-1 text-foreground">{device.slug}</code>
-        <span>{platform}</span>
-        <span>令牌前缀：{device.tokenPrefix}…</span>
-        {device.defaultCwd ? <span>默认目录：{device.defaultCwd}</span> : null}
-        {device.agentVersion ? <span>执行器版本：{device.agentVersion}</span> : null}
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+          <code className="rounded-md bg-muted px-2 py-1 text-foreground">{device.slug}</code>
+          <span>{platform}</span>
+          <span>令牌前缀：{device.tokenPrefix}…</span>
+          {device.defaultCwd ? <span>默认目录：{device.defaultCwd}</span> : null}
+          {device.agentVersion ? <span>执行器版本：{device.agentVersion}</span> : null}
+        </div>
+        {testResult ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs" role="status">
+            <Badge variant={testResult.ok ? "default" : "destructive"}>
+              {testResult.ok ? "连接测试通过" : "连接测试失败"}
+            </Badge>
+            <span className="text-muted-foreground">阶段：{stageLabel(testResult.stage)}</span>
+            {testResult.latencyMs !== undefined ? (
+              <span className="text-muted-foreground">耗时 {testResult.latencyMs} ms</span>
+            ) : null}
+            {testResult.message ? (
+              <span className="min-w-0 break-words text-muted-foreground">{testResult.message}</span>
+            ) : null}
+          </div>
+        ) : null}
+        {diagnostics ? <DeviceDiagnosticsDetails diagnostics={diagnostics} /> : null}
       </CardContent>
     </Card>
+  );
+}
+
+function DeviceDiagnosticsDetails({ diagnostics }: {
+  readonly diagnostics: DeviceConnectionDiagnostics;
+}) {
+  const capabilityEntries = diagnostics.capabilities
+    ? Object.entries(diagnostics.capabilities)
+    : [];
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3 text-xs" data-slot="device-diagnostics">
+      <p className="font-medium text-foreground">连接诊断</p>
+      <div className="grid gap-x-4 gap-y-1 sm:grid-cols-2">
+        <span className="text-muted-foreground">握手阶段：{stageLabel(diagnostics.stage)}</span>
+        <span className="text-muted-foreground">
+          连接方式：{diagnostics.mode === "reverse" ? "反向连接" : "直接连接"}
+          {diagnostics.online ? " · 在线" : " · 离线"}
+        </span>
+        {diagnostics.socketState ? (
+          <span className="text-muted-foreground">
+            Socket 状态：{SOCKET_STATE_LABELS[diagnostics.socketState] ?? diagnostics.socketState}
+          </span>
+        ) : null}
+        {diagnostics.protocolVersion !== undefined ? (
+          <span className="text-muted-foreground">协议版本：{diagnostics.protocolVersion}</span>
+        ) : null}
+        {diagnostics.agentVersion ? (
+          <span className="text-muted-foreground">执行器版本：{diagnostics.agentVersion}</span>
+        ) : null}
+        {diagnostics.lastEventAt !== undefined ? (
+          <span className="text-muted-foreground">
+            最近事件：{new Date(diagnostics.lastEventAt).toLocaleString("zh-CN")}
+          </span>
+        ) : null}
+        {diagnostics.directUrl ? (
+          <span className="min-w-0 break-all text-muted-foreground">直连地址：{diagnostics.directUrl}</span>
+        ) : null}
+      </div>
+      {diagnostics.lastError ? (
+        <p className="break-words text-destructive">最近错误：{diagnostics.lastError}</p>
+      ) : null}
+      {capabilityEntries.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {capabilityEntries.map(([key, value]) => (
+            <Badge key={key} variant="secondary" className="font-normal">
+              {key}
+              {typeof value === "boolean" ? (value ? "" : "：否") : `：${String(value)}`}
+            </Badge>
+          ))}
+        </div>
+      ) : (
+        <p className="text-muted-foreground">执行器尚未上报能力集。</p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Bind a project-scoped device. A project list turns this into a pick-from-list
+ * action; without the list (request failed, or the project predates it) the
+ * operator can still type the id so an existing binding stays editable.
+ */
+function ProjectBindingField({ idPrefix, projects, value, onChange }: {
+  readonly idPrefix: string;
+  readonly projects: readonly RuntimeProjectOption[];
+  readonly value: string;
+  readonly onChange: (projectId: string) => void;
+}) {
+  const known = projects.some((project) => project.id === value);
+  if (projects.length === 0) {
+    return (
+      <Field>
+        <FieldLabel htmlFor={`${idPrefix}-project-id`}>项目 ID</FieldLabel>
+        <Input
+          id={`${idPrefix}-project-id`}
+          aria-label="项目 ID"
+          value={value}
+          placeholder="Runtime 项目标识"
+          onChange={(event) => onChange(event.currentTarget.value)}
+        />
+        <FieldDescription>未能读取项目列表，请手动填写项目标识。</FieldDescription>
+      </Field>
+    );
+  }
+  return (
+    <Field>
+      <FieldLabel htmlFor={`${idPrefix}-project`}>绑定项目</FieldLabel>
+      <Select value={value} onValueChange={onChange}>
+        <SelectTrigger id={`${idPrefix}-project`} aria-label="绑定项目" className="w-full">
+          <SelectValue placeholder="请选择项目" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectGroup>
+            {projects.map((project) => (
+              <SelectItem key={project.id} value={project.id}>{project.name}</SelectItem>
+            ))}
+            {value && !known ? (
+              <SelectItem value={value}>{value}（当前绑定，不在活跃项目列表中）</SelectItem>
+            ) : null}
+          </SelectGroup>
+        </SelectContent>
+      </Select>
+      <FieldDescription>仅该项目内的叙述者可以使用此设备。</FieldDescription>
+    </Field>
   );
 }
 
 function CreateDeviceDialog({
   open,
   busy,
+  projects,
   onOpenChange,
   onSubmit,
 }: {
   readonly open: boolean;
   readonly busy: boolean;
+  readonly projects: readonly RuntimeProjectOption[];
   readonly onOpenChange: (open: boolean) => void;
   readonly onSubmit: (input: CreateRuntimeDeviceInput) => void;
 }) {
@@ -404,7 +637,13 @@ function CreateDeviceDialog({
   const [description, setDescription] = useState("");
   const [connectionMode, setConnectionMode] = useState<DeviceConnectionMode>("reverse");
   const [directUrl, setDirectUrl] = useState("");
-  const valid = Boolean(name.trim()) && (connectionMode !== "direct" || Boolean(directUrl.trim()));
+  const [scope, setScope] = useState<DeviceScope>("global");
+  const [projectId, setProjectId] = useState("");
+  // A project-scoped device is only reachable from that project, so the binding
+  // must be supplied at creation time rather than defaulted to global.
+  const valid = Boolean(name.trim())
+    && (connectionMode !== "direct" || Boolean(directUrl.trim()))
+    && (scope !== "project" || Boolean(projectId.trim()));
 
   function submit() {
     if (!valid) return;
@@ -413,7 +652,8 @@ function CreateDeviceDialog({
       description: description.trim() || undefined,
       connectionMode,
       directUrl: connectionMode === "direct" ? directUrl.trim() : undefined,
-      scope: "global",
+      scope,
+      projectId: scope === "project" ? projectId.trim() : undefined,
     });
   }
 
@@ -422,7 +662,7 @@ function CreateDeviceDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>添加远程设备</DialogTitle>
-          <DialogDescription>注册全局远程执行器。创建后令牌只显示一次。</DialogDescription>
+          <DialogDescription>注册远程执行器，可选择全局可用或绑定到某个项目。创建后令牌只显示一次。</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -433,6 +673,28 @@ function CreateDeviceDialog({
             <FieldLabel htmlFor="device-description">设备说明</FieldLabel>
             <Textarea id="device-description" aria-label="设备说明" value={description} onChange={(event) => setDescription(event.currentTarget.value)} />
           </Field>
+          <Field>
+            <FieldLabel htmlFor="device-scope">作用域</FieldLabel>
+            <Select value={scope} onValueChange={(value) => setScope(value as DeviceScope)}>
+              <SelectTrigger id="device-scope" aria-label="作用域" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectGroup>
+                  <SelectItem value="global">全局（所有项目可用）</SelectItem>
+                  <SelectItem value="project">仅指定项目</SelectItem>
+                </SelectGroup>
+              </SelectContent>
+            </Select>
+          </Field>
+          {scope === "project" ? (
+            <ProjectBindingField
+              idPrefix="device"
+              projects={projects}
+              value={projectId}
+              onChange={setProjectId}
+            />
+          ) : null}
           <Field>
             <FieldLabel htmlFor="device-mode">连接方式</FieldLabel>
             <Select value={connectionMode} onValueChange={(value) => setConnectionMode(value as DeviceConnectionMode)}>
@@ -467,11 +729,13 @@ function CreateDeviceDialog({
 function EditDeviceDialog({
   device,
   busy,
+  projects,
   onClose,
   onSubmit,
 }: {
   readonly device: RuntimeDevice | null;
   readonly busy: boolean;
+  readonly projects: readonly RuntimeProjectOption[];
   readonly onClose: () => void;
   readonly onSubmit: (input: UpdateRuntimeDeviceInput) => void;
 }) {
@@ -479,6 +743,8 @@ function EditDeviceDialog({
   const [description, setDescription] = useState(device?.description ?? "");
   const [connectionMode, setConnectionMode] = useState<DeviceConnectionMode>(device?.connectionMode ?? "reverse");
   const [directUrl, setDirectUrl] = useState(device?.directUrl ?? "");
+  const [scope, setScope] = useState<DeviceScope>(device?.scope ?? "global");
+  const [projectId, setProjectId] = useState(device?.projectId ?? "");
 
   useEffect(() => {
     if (!device) return;
@@ -486,15 +752,19 @@ function EditDeviceDialog({
     setDescription(device.description ?? "");
     setConnectionMode(device.connectionMode);
     setDirectUrl(device.directUrl ?? "");
+    setScope(device.scope);
+    setProjectId(device.projectId ?? "");
   }, [device]);
 
-  const valid = Boolean(name.trim()) && (connectionMode !== "direct" || Boolean(directUrl.trim()));
+  const valid = Boolean(name.trim())
+    && (connectionMode !== "direct" || Boolean(directUrl.trim()))
+    && (scope !== "project" || Boolean(projectId.trim()));
   return (
     <Dialog open={device !== null} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>编辑设备</DialogTitle>
-          <DialogDescription>更新设备元数据与连接方式；设备令牌不会回显。</DialogDescription>
+          <DialogDescription>更新设备元数据、作用域与连接方式；设备令牌不会回显。</DialogDescription>
         </DialogHeader>
         <FieldGroup>
           <Field>
@@ -505,6 +775,24 @@ function EditDeviceDialog({
             <FieldLabel htmlFor="edit-device-description">设备说明</FieldLabel>
             <Textarea id="edit-device-description" aria-label="设备说明" value={description} onChange={(event) => setDescription(event.currentTarget.value)} />
           </Field>
+          <Field>
+            <FieldLabel htmlFor="edit-device-scope">作用域</FieldLabel>
+            <Select value={scope} onValueChange={(value) => setScope(value as DeviceScope)}>
+              <SelectTrigger id="edit-device-scope" aria-label="作用域" className="w-full"><SelectValue /></SelectTrigger>
+              <SelectContent><SelectGroup>
+                <SelectItem value="global">全局（所有项目可用）</SelectItem>
+                <SelectItem value="project">仅指定项目</SelectItem>
+              </SelectGroup></SelectContent>
+            </Select>
+          </Field>
+          {scope === "project" ? (
+            <ProjectBindingField
+              idPrefix="edit-device"
+              projects={projects}
+              value={projectId}
+              onChange={setProjectId}
+            />
+          ) : null}
           <Field>
             <FieldLabel htmlFor="edit-device-mode">连接方式</FieldLabel>
             <Select value={connectionMode} onValueChange={(value) => setConnectionMode(value as DeviceConnectionMode)}>
@@ -529,6 +817,8 @@ function EditDeviceDialog({
             description: description.trim() || null,
             connectionMode,
             directUrl: connectionMode === "direct" ? directUrl.trim() : null,
+            scope,
+            projectId: scope === "project" ? projectId.trim() : null,
           })}>{busy ? "正在保存…" : "保存"}</Button>
         </DialogFooter>
       </DialogContent>

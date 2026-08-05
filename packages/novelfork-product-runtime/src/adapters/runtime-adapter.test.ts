@@ -196,15 +196,36 @@ describe("NovelRuntimeAdapter", () => {
 		}
 		const chapterImport = definitions.find((tool) => tool.name === "pipeline.import_chapters");
 		expect(chapterImport?.parameters.safeParse({ content: "正文".repeat(500) }).success).toBe(true);
+		const cockpitSnapshot = definitions.find((tool) => tool.name === "cockpit.snapshot");
+		expect(cockpitSnapshot?.parameters.safeParse({}).success).toBe(true);
+		expect(cockpitSnapshot?.parameters.safeParse({ bookId: "book-a" }).success).toBe(false);
+		// 自由载荷对象必须保持开放：scene.spec 回传的是工具自己产出的真实快照。
+		const sceneSpec = definitions.find((tool) => tool.name === "scene.spec");
+		expect(sceneSpec?.parameters.safeParse({
+			chapterNumber: 2,
+			userDirectives: "让主角进入山门",
+			cockpitSnapshot: { status: "available", progress: { chapterCount: 1 } },
+		}).success).toBe(true);
+		const loreWrite = definitions.find((tool) => tool.name === "lore.write");
+		expect(loreWrite?.parameters.safeParse({
+			title: "设定",
+			tags: ["灵觉"],
+			aliases: ["感知"],
+			relatedEntryIds: ["entry-1"],
+		}).success).toBe(true);
+		expect(loreWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
 		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
-		// Writing Skills 只接受书籍级启用选择；模型不能塞入任意规则正文或未知字段。
+		// Writing Skills 只接受对项目文件的增删/刷新；模型不能塞入任意规则正文或未知字段。
 		const writingSkillsWrite = definitions.find((tool) => tool.name === "writing-skills.write");
 		expect(writingSkillsWrite?.parameters.safeParse({
-			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
+			addSkillIds: ["writing-skill-opening-hooks"],
 		}).success).toBe(true);
 		expect(writingSkillsWrite?.parameters.safeParse({
-			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
+			addSkillIds: ["writing-skill-opening-hooks"],
 			promptInjection: "禁止：总而言之",
+		}).success).toBe(false);
+		expect(writingSkillsWrite?.parameters.safeParse({
+			enabledWritingSkillIds: ["writing-skill-opening-hooks"],
 		}).success).toBe(false);
 		expect(chapterRead?.parameters.safeParse({ chapterNumber: 1, extra: true }).success).toBe(false);
 		expect(
@@ -389,20 +410,21 @@ describe("NovelRuntimeAdapter", () => {
 			const skillsAvailable = await adapter.execute("writing-skills.read", {}, "narrator-a");
 			expect(skillsAvailable.isError).toBe(false);
 			const availablePayload = JSON.parse(skillsAvailable.output) as {
-				data?: { skills?: Array<{ id: string; mode?: string }> };
+				data?: { skills?: Array<{ id: string; slug: string; mode?: string }> };
 			};
-			const selectableSkillId = availablePayload.data?.skills?.find((skill) => skill.mode !== "always")?.id;
-			expect(selectableSkillId).toBeTruthy();
+			const selectableSkill = availablePayload.data?.skills?.find((skill) => skill.mode !== "always");
+			expect(selectableSkill).toBeTruthy();
+			if (!selectableSkill) throw new Error("No selectable Writing Skill in catalog");
 
 			const skillsWriteResult = await adapter.execute(
 				"writing-skills.write",
-				{ enabledWritingSkillIds: [selectableSkillId] },
+				{ addSkillIds: [selectableSkill.id] },
 				"narrator-a",
 			);
 			expect(skillsWriteResult.isError).toBe(false);
 			expect(JSON.parse(skillsWriteResult.output)).toMatchObject({
 				ok: true,
-				data: { bookId: "book-a", enabledWritingSkillIds: [selectableSkillId] },
+				data: { bookId: "book-a", projectSkillSlugs: [selectableSkill.slug] },
 			});
 
 			const skillsEnabledResult = await adapter.execute(
@@ -413,7 +435,7 @@ describe("NovelRuntimeAdapter", () => {
 			expect(skillsEnabledResult.isError).toBe(false);
 			expect(JSON.parse(skillsEnabledResult.output)).toMatchObject({
 				ok: true,
-				data: { enabledWritingSkillIds: [selectableSkillId] },
+				data: { projectSkillSlugs: [selectableSkill.slug] },
 			});
 
 			const resourcesResult = await adapter.execute(

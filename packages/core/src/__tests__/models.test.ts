@@ -55,15 +55,16 @@ describe("BookConfigSchema", () => {
     expect(result.platform).toBe("tomato");
   });
 
-  it("normalizes legacy preset fields to writing skills without exposing them", () => {
+  it("does not bind Writing Skills or legacy Preset/Beat fields", () => {
     const result = BookConfigSchema.parse({
       ...validBook,
+      enabledWritingSkillIds: ["skill-a"],
       enabledPresetIds: ["skill-a"],
       beatTemplateId: "legacy-beat",
       customPresetOverrides: { tone: "legacy" },
     });
 
-    expect(result.enabledWritingSkillIds).toEqual(["skill-a"]);
+    expect(result).not.toHaveProperty("enabledWritingSkillIds");
     expect(result).not.toHaveProperty("enabledPresetIds");
     expect(result).not.toHaveProperty("beatTemplateId");
     expect(result).not.toHaveProperty("customPresetOverrides");

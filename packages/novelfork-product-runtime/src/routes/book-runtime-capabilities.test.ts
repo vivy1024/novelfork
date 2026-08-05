@@ -89,7 +89,7 @@ beforeEach(() => {
 					{
 						name: "book-skill",
 						description: "Book skill",
-						location: `${root}/.narrafork/skills/book-skill/SKILL.md`,
+						location: `${root}/.novelfork/skills/book-skill/SKILL.md`,
 						content: "content",
 						files: ["notes.md"],
 					},
@@ -100,7 +100,7 @@ beforeEach(() => {
 				return {
 					name,
 					description: "Book skill",
-					location: `${root}/.narrafork/skills/${name}/SKILL.md`,
+					location: `${root}/.novelfork/skills/${name}/SKILL.md`,
 					content: "content",
 					files: [],
 				};
@@ -111,7 +111,7 @@ beforeEach(() => {
 					name,
 					description,
 					content,
-					location: `${root}/.narrafork/skills/${name}/SKILL.md`,
+					location: `${root}/.novelfork/skills/${name}/SKILL.md`,
 					files: [],
 				};
 			},
@@ -121,7 +121,7 @@ beforeEach(() => {
 					name,
 					description,
 					content,
-					location: `${root}/.narrafork/skills/${name}/SKILL.md`,
+					location: `${root}/.novelfork/skills/${name}/SKILL.md`,
 					files: [],
 				};
 			},

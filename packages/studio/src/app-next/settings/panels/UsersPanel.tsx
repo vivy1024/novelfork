@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Ban, Pencil, ShieldCheck, Trash2, UserCheck, Users } from "lucide-react";
+import { Ban, KeyRound, Pencil, ShieldCheck, Trash2, UserCheck, Users } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -46,6 +46,7 @@ import {
   type RuntimeUsersSnapshot,
   type UsersClient,
 } from "../../runtime-admin/users";
+import { UserKnowledgeAclDialog } from "./UserKnowledgeAclDialog";
 
 const defaultUsersClient = createUsersClient();
 
@@ -78,6 +79,7 @@ export function UsersPanel({ client = defaultUsersClient }: UsersPanelProps) {
   const [editPassword, setEditPassword] = useState("");
   const [roleChange, setRoleChange] = useState<RoleChange | null>(null);
   const [deletingUser, setDeletingUser] = useState<RuntimeAdminUser | null>(null);
+  const [aclUser, setAclUser] = useState<RuntimeAdminUser | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -333,6 +335,14 @@ export function UsersPanel({ client = defaultUsersClient }: UsersPanelProps) {
                       <TableCell>{displayDate(user.createdAt)}</TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
+                          <Button
+                            variant="outline"
+                            size="icon-sm"
+                            aria-label={`知识库权限 ${user.username}`}
+                            onClick={() => setAclUser(user)}
+                          >
+                            <KeyRound />
+                          </Button>
                           <Button variant="outline" size="icon-sm" aria-label={`编辑 ${user.username}`} onClick={() => openEdit(user)}>
                             <Pencil />
                           </Button>
@@ -421,6 +431,12 @@ export function UsersPanel({ client = defaultUsersClient }: UsersPanelProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <UserKnowledgeAclDialog
+        userId={aclUser?.id ?? null}
+        username={aclUser?.username ?? ""}
+        onClose={() => setAclUser(null)}
+      />
     </div>
   );
 }

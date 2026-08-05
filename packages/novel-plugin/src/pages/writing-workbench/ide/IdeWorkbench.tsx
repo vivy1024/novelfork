@@ -621,7 +621,7 @@ export function IdeWorkbench({
 
   /**
    * 写作视图「一键修」→ 打开写作设置并定位分区。
-   * `style-disabled` 的判据是 book.json 的 enabledWritingSkillIds，
+   * `style-disabled` 的判据是当前项目 `.novelfork/skills/` 的实际文件，
    * 唯一能改它的界面是这里的 Writing Skills 面板。
    */
   const handleOpenSettingsSection = useCallback((section?: BookSettingsSection) => {

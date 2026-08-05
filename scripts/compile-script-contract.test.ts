@@ -155,14 +155,20 @@ describe("根 Host 编译契约", () => {
   });
 
   test("compile 由根级产品编排生成 NovelFork 根入口产物", () => {
-    expect(packageJson.version).toBe("3.3.0");
+    // 版本号随发版变化，这里只约束格式，避免每次发版都要改契约测试。
+    expect(packageJson.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(packageJson.scripts["compile:bundles"]).toBe(
+      "bun scripts/generate-skills-bundle.ts && bun scripts/generate-genre-profiles-bundle.ts && bun scripts/generate-learning-contribution.ts",
+    );
     expect(packageJson.scripts.compile).toBe(
-      "bun scripts/generate-skills-bundle.ts && bun scripts/generate-genre-profiles-bundle.ts && bun scripts/compile-product-runtime.ts --platform=windows-x64",
+      "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=windows-x64",
     );
     expect(packageJson.scripts.compile).not.toContain("server/index.ts");
     // 题材 profile 必须随 EXE 分发：磁盘上的 packages/core/genres 在编译产物里不存在，
     // 缺这一步 pipeline.write 会以 "题材定义缺失" 硬失败。
-    expect(packageJson.scripts.compile).toContain("scripts/generate-genre-profiles-bundle.ts");
+    expect(packageJson.scripts["compile:bundles"]).toContain(
+      "scripts/generate-genre-profiles-bundle.ts",
+    );
     expect(packageJson.scripts["bun:compile"]).toBe("bun run compile");
     expect(productCompileScript).toContain("prepareRuntimeReleaseArtifacts");
     expect(productCompileScript).toContain("prepareEmbeddedProductMigrationData");
@@ -186,6 +192,60 @@ describe("根 Host 编译契约", () => {
     expect(isolatedRuntimeBuildScript).not.toContain("mklink");
     expect(studioViteConfig).toContain("NOVELFORK_PRODUCT_RUNTIME_ROOT");
     expect(studioViteConfig).toContain("frontendOutDir");
+  });
+
+  test("产品编排覆盖 NarraFork 的全部发布平台并可按平台族调用", () => {
+    // 与通用 Runtime 的 7 个发布目标保持一致：Windows/Windows-baseline/Linux(x64、
+    // baseline、arm64)/macOS(arm64、x64)。少一个目标就意味着 Release 资产缺平台。
+    for (const artifact of [
+      "novelfork-v${version}-windows-x64.exe",
+      "novelfork-v${version}-windows-x64-baseline.exe",
+      "novelfork-v${version}-linux-x64",
+      "novelfork-v${version}-linux-x64-baseline",
+      "novelfork-v${version}-linux-arm64",
+      "novelfork-v${version}-macos-arm64",
+      "novelfork-v${version}-macos-x64",
+    ]) {
+      expect(productCompileScript).toContain(artifact);
+    }
+    for (const target of [
+      "bun-windows-x64",
+      "bun-windows-x64-baseline",
+      "bun-linux-x64",
+      "bun-linux-x64-baseline",
+      "bun-linux-arm64",
+      "bun-darwin-arm64",
+      "bun-darwin-x64",
+    ]) {
+      expect(productCompileScript).toContain(target);
+    }
+    expect(productCompileScript).toContain('if (requested === "all") return [...supportedPlatforms]');
+    // 跨平台矩阵只准备一次共享产物，按平台仅重写 build-info。
+    expect(productCompileScript).toContain("writeRuntimeBuildInfo");
+    expect(productCompileScript).toContain("buildPlatform: platform.buildPlatform");
+    expect(releaseArtifactScript).toContain("export function writeRuntimeBuildInfo");
+    expect(productCompileScript).toContain("writeAggregateChecksums");
+    expect(productCompileScript).toContain("novelfork-v${version}-SHA256SUMS");
+    // Bun 需要为每个交叉编译目标下载独立运行时；断点下载只会在编译到该平台时
+    // 才炸掉整条矩阵构建，所以必须在准备任何产物之前先探测全部目标。
+    expect(productCompileScript).toContain("ensureCompileTargetsAvailable(selectedPlatforms)");
+    expect(productCompileScript).toContain("Failed to extract executable");
+    expect(
+      productCompileScript.indexOf("ensureCompileTargetsAvailable(selectedPlatforms)"),
+    ).toBeLessThan(productCompileScript.indexOf("createIsolatedRuntimeBuild(runtimeSourceRoot)"));
+
+    expect(packageJson.scripts["compile:windows"]).toBe(
+      "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=windows-x64 --platform=windows-x64-baseline",
+    );
+    expect(packageJson.scripts["compile:linux"]).toBe(
+      "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=linux-x64 --platform=linux-x64-baseline --platform=linux-arm64",
+    );
+    expect(packageJson.scripts["compile:macos"]).toBe(
+      "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=macos-arm64 --platform=macos-x64",
+    );
+    expect(packageJson.scripts["compile:all"]).toBe(
+      "bun run compile:bundles && bun scripts/compile-product-runtime.ts --platform=all",
+    );
   });
 
   test("通用 Runtime 交叉编译脚本保持独立且产品编排生成全部缺失产物", () => {

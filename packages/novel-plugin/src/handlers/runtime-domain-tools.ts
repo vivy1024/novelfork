@@ -313,7 +313,7 @@ async function styleImport(
     slug: string;
     path: string;
     enabled: boolean;
-    enabledWritingSkillIds?: readonly string[];
+    projectSkillSlugs?: readonly string[];
   } | undefined;
   if (saveAsWritingSkill) {
     const { writeAuthorWritingSkill } = await import("../engine/writing-skills/loader.js");
@@ -349,27 +349,25 @@ async function styleImport(
 
     if (enableOnBook) {
       const active = await loadActiveWritingSkillsForBook(binding.bookId, { bookRoot: binding.root })
-        .catch(() => ({ enabledWritingSkillIds: [] as readonly string[] }));
-      // 不传 discardUnmappedLegacyIds：无法映射的旧选择必须由作者显式处理，
-      // 导入文风不应顺手清空 book.json 里的历史选择。
+        .catch(() => ({ projectSkillSlugs: [] as readonly string[] }));
       const enabled = await handleWritingSkillsWrite(
         {
           bookId: binding.bookId,
-          enabledWritingSkillIds: [...new Set([...active.enabledWritingSkillIds, skillId])],
+          ...(active.projectSkillSlugs.includes(slug) ? {} : { addSkillIds: [skillId] }),
         },
         { bookRoot: binding.root },
       );
       if (!enabled.ok) {
         return fail(
           enabled.error ?? "writing-skill-enable-failed",
-          `${enabled.summary} SKILL.md 已写入 ${path}，可在 Writing Skills 面板手动启用。`,
+          `${enabled.summary} SKILL.md 已写入 ${path}，可在 Writing Skills 面板手动添加。`,
         );
       }
-      const data = enabled.data as { enabledWritingSkillIds?: readonly string[] } | undefined;
+      const data = enabled.data as { projectSkillSlugs?: readonly string[] } | undefined;
       createdWritingSkill = {
         ...createdWritingSkill,
-        enabled: Boolean(data?.enabledWritingSkillIds?.includes(skillId)),
-        ...(data?.enabledWritingSkillIds ? { enabledWritingSkillIds: data.enabledWritingSkillIds } : {}),
+        enabled: Boolean(data?.projectSkillSlugs?.includes(slug)),
+        ...(data?.projectSkillSlugs ? { projectSkillSlugs: data.projectSkillSlugs } : {}),
       };
     }
   }

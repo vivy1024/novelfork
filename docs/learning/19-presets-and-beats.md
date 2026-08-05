@@ -20,7 +20,7 @@ routes:
 | `id` | 全局唯一标识 |
 | `name` | 显示名称 |
 | `kind` | 类型：`style` / `workflow` / `character` / `plot` / `structure` |
-| `mode` | `always`（始终生效）/ `manual`（书籍级启用） |
+| `mode` | `always`（始终生效）/ `manual`（项目级启用） |
 | `checks` | 声明式合规检查规则（required-terms / forbidden-terms / pattern） |
 
 ## 三级来源
@@ -29,13 +29,14 @@ routes:
 |------|------|--------|
 | 内置 | 产品 `skills/` 目录（编译时内联） | 最低 |
 | 作者级 | `~/.novelfork/skills/<slug>/` | 中（同 slug 覆盖内置） |
-| 作品级 | 作品根目录 `.novelfork/skills/<slug>/` | 最高 |
+| 作品级 | 作品根目录 `.novelfork/skills/<slug>/` | 最高；文件自动发现 |
 
-## 启用与物化
+## 作品级自动发现与文件操作
 
-1. 在**写作配置 → 技能**中开启/关闭某个 Skill（开关只对当前书生效）。
-2. 启用时系统自动将 `SKILL.md` 物化复制到作品的 `.novelfork/skills/<slug>/SKILL.md`。
-3. 物化后的 Skill 文件随作品迁移，在作品内编辑不影响内置与全局版本。
+1. `.novelfork/skills/<slug>/SKILL.md` 是作品级 Writing Skill 的唯一规范路径；Runtime、preflight、工具解析和 UI 都直接扫描该目录。
+2. 目录中的每个技能文件都会自动解释并参与当前作品写作，文件是否存在就是生效状态，不需要 `book.json` 字段绑定。
+3. 写作配置面板的开关只负责对 catalog Skill 执行文件增删；刷新操作才会用 catalog 原文覆盖已有项目文件。
+4. 作品内直接编辑 `SKILL.md` 或附件即可形成该作品的独立规则，作者级覆盖和内置版本不会被反向修改。
 
 ## 文件树浏览与预览
 
@@ -64,9 +65,9 @@ checks:
 
 ## 推荐使用流程
 
-1. 写作配置 → 技能 → 按题材/风格启用适合的 Skills
+1. 写作配置 → 技能 → 按题材/风格将 catalog Skill 添加到当前作品
 2. 如需自定义：编辑任意内置 Skill → 自动 fork 到 `~/.novelfork/skills/` 作为个人副本
-3. 作品级覆盖：在作品 `.novelfork/skills/` 下手动修改，只影响当前书
+3. 作品级规则：直接在作品 `.novelfork/skills/` 下新增或修改 `SKILL.md`，Runtime 会自动发现，只影响当前作品
 
 ## 与旧 Preset/Beat 的关系
 
@@ -76,6 +77,6 @@ checks:
 | Beat Template | `kind: structure` + `kind: plot` 的 Writing Skill |
 | 自定义 Preset | 编辑 Skill → fork 到作者目录 |
 | 全局启用 | `mode: always` |
-| 书籍级启用 | `mode: manual` + 写作配置开关 |
+| 作品级生效 | `mode: manual` + `.novelfork/skills/` 中存在对应文件 |
 
-旧 `enabledPresetIds` / `beatTemplateId` 字段在首次写入 Writing Skills 时自动迁移。
+`book.json` 不保存 Writing Skill 的启用列表；旧 `enabledWritingSkillIds`、`enabledPresetIds`、`beatTemplateId` 等字段不参与运行时判定。

@@ -1,5 +1,5 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, isAbsolute, join, win32 } from "node:path";
 import { homedir } from "node:os";
 import { fileURLToPath } from "node:url";
@@ -314,13 +314,36 @@ export async function loadWritingSkills(home?: string): Promise<ReadonlyArray<Pa
   return loadWritingSkillsFromSources(home);
 }
 
+function isDirectorySync(path: string): boolean {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+/** 返回当前 catalog skill 的原始来源目录，供项目物化时递归复制附件。 */
+export function getWritingSkillSourceDirSync(slug: string, home?: string): string | null {
+  if (!isSafeWritingSkillSlug(slug)) return null;
+  const authorDir = join(authorWritingSkillsDir(home), slug);
+  if (isDirectorySync(authorDir) && tryReadFileSync(skillFile(authorWritingSkillsDir(home), slug))) {
+    return authorDir;
+  }
+
+  const builtinDir = join(BUILTIN_WRITING_SKILLS_DIR, slug);
+  if (isDirectorySync(builtinDir) && tryReadFileSync(skillFile(BUILTIN_WRITING_SKILLS_DIR, slug))) {
+    return builtinDir;
+  }
+
+  // 编译态 bundled snapshot 没有可复制的附件目录，调用方应回退为单文件写入。
+  return null;
+}
+
 export function getWritingSkillRawContentSync(slug: string, home?: string): string | null {
   if (!isSafeWritingSkillSlug(slug)) return null;
-  const fromAuthor = tryReadFileSync(skillFile(authorWritingSkillsDir(home), slug));
-  if (fromAuthor) return fromAuthor;
-
-  const fromBuiltin = tryReadFileSync(skillFile(BUILTIN_WRITING_SKILLS_DIR, slug));
-  if (fromBuiltin) return fromBuiltin;
+  const sourceDir = getWritingSkillSourceDirSync(slug, home);
+  const fromSource = sourceDir ? tryReadFileSync(join(sourceDir, "SKILL.md")) : null;
+  if (fromSource) return fromSource;
 
   return BUNDLED_WRITING_SKILLS.find((entry) => entry.slug === slug)?.content ?? null;
 }

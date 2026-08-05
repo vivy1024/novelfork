@@ -30,6 +30,7 @@ import {
   Field,
   FieldContent,
   FieldDescription,
+  FieldError,
   FieldGroup,
   FieldLabel,
   FieldTitle,
@@ -50,13 +51,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { notify } from "@/lib/notify";
 import {
   createSearchSettingsClient,
+  CUSTOM_HTTP_PROTOCOL,
+  DEFAULT_SEARCH_PROTOCOL,
   DEFAULT_SEARCH_TIMEOUT_MS,
   normalizeSearchProtocol,
   normalizeSearchSettings,
-  SEARCH_PROTOCOL_BASE_URLS,
+  protocolDefaultBaseUrl,
   type CustomSearchProviderConfig,
   type CustomSearchProviderProtocol,
   type SearchChannelConfig,
+  type SearchProtocolMeta,
   type SearchSettings,
   type SearchSettingsClient,
   type SearchSettingsResponse,
@@ -66,15 +70,35 @@ import { buildRuntimeModelGroups } from "../runtime-settings-utils";
 const defaultSearchSettingsClient = createSearchSettingsClient();
 const AUTO_VALUE = "__automatic__";
 
-const PROTOCOL_LABELS: Readonly<Record<CustomSearchProviderProtocol, string>> = {
+/**
+ * Fallback copy for the two protocols that predate registry-driven rendering.
+ * The Runtime registry supplies labels and descriptions for everything else, so
+ * new adapters appear here without a product change.
+ */
+const FALLBACK_PROTOCOL_LABELS: Readonly<Record<string, string>> = {
   "zhipu-web-search-v1": "智谱 Web Search API",
   "tavily-mcp": "Tavily MCP",
 };
 
-const PROTOCOL_DESCRIPTIONS: Readonly<Record<CustomSearchProviderProtocol, string>> = {
+const FALLBACK_PROTOCOL_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "zhipu-web-search-v1": "调用智谱开放平台的 Web Search API；API Key 通过受保护设置保存。",
   "tavily-mcp": "调用 Tavily 的远程 MCP 端点；可在 API Key 或端点查询参数中配置凭据。",
 };
+
+function protocolLabel(protocol: string, registry: readonly SearchProtocolMeta[]): string {
+  const meta = registry.find((entry) => entry.id === protocol);
+  return meta?.label["zh-CN"] ?? meta?.label.en ?? FALLBACK_PROTOCOL_LABELS[protocol] ?? protocol;
+}
+
+function protocolDescription(protocol: string, registry: readonly SearchProtocolMeta[]): string {
+  const meta = registry.find((entry) => entry.id === protocol);
+  return (
+    meta?.description["zh-CN"]
+    ?? meta?.description.en
+    ?? FALLBACK_PROTOCOL_DESCRIPTIONS[protocol]
+    ?? "该协议由 Runtime 搜索适配器注册表提供。"
+  );
+}
 
 const REASONING_OPTIONS = [
   { value: AUTO_VALUE, label: "自动" },
@@ -134,6 +158,7 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
   const [testQuery, setTestQuery] = useState("最新 AI 新闻");
   const [testPurpose, setTestPurpose] = useState("验证搜索渠道能够返回带来源的最新网页结果。");
   const [testingChannel, setTestingChannel] = useState<string | null>(null);
+  const [protocols, setProtocols] = useState<readonly SearchProtocolMeta[]>([]);
 
   useEffect(() => {
     let active = true;
@@ -153,6 +178,31 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
       });
     return () => { active = false; };
   }, [client]);
+
+  // The adapter registry is the authoritative protocol list. A failure here must
+  // not block the page: existing providers stay editable with fallback copy.
+  useEffect(() => {
+    let active = true;
+    client.listProtocols()
+      .then((registry) => {
+        if (active && Array.isArray(registry)) setProtocols(registry);
+      })
+      .catch(() => {
+        // Fallback labels cover the protocols that shipped before the registry.
+      });
+    return () => { active = false; };
+  }, [client]);
+
+  const protocolOptions = useMemo(
+    () => (protocols.length > 0
+      ? protocols.map((meta) => ({ value: meta.id, label: protocolLabel(meta.id, protocols) }))
+      : Object.keys(FALLBACK_PROTOCOL_LABELS).map((id) => ({
+          value: id,
+          label: FALLBACK_PROTOCOL_LABELS[id],
+        }))),
+    [protocols],
+  );
+  const knownProtocolIds = useMemo(() => protocols.map((meta) => meta.id), [protocols]);
 
   const dirty = useMemo(
     () => Boolean(draft && saved && JSON.stringify(draft) !== JSON.stringify(saved)),
@@ -192,8 +242,8 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
         {
           id,
           name: "新自定义搜索",
-          protocol: "zhipu-web-search-v1",
-          baseUrl: SEARCH_PROTOCOL_BASE_URLS["zhipu-web-search-v1"],
+          protocol: DEFAULT_SEARCH_PROTOCOL,
+          baseUrl: protocolDefaultBaseUrl(DEFAULT_SEARCH_PROTOCOL, protocols),
         },
       ],
       channels: [
@@ -217,14 +267,55 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
       ...current,
       customProviders: current.customProviders.map((provider) => {
         if (provider.id !== id) return provider;
-        const oldDefault = SEARCH_PROTOCOL_BASE_URLS[normalizeSearchProtocol(provider.protocol)];
+        const oldDefault = protocolDefaultBaseUrl(
+          normalizeSearchProtocol(provider.protocol, knownProtocolIds),
+          protocols,
+        );
         return {
           ...provider,
           protocol,
           baseUrl: !provider.baseUrl || provider.baseUrl === oldDefault
-            ? SEARCH_PROTOCOL_BASE_URLS[protocol]
+            ? protocolDefaultBaseUrl(protocol, protocols)
             : provider.baseUrl,
         };
+      }),
+    } : current);
+  }
+
+  /** Merge a patch into the custom-http adapter options without dropping siblings. */
+  function updateCustomHttpOption(id: string, patch: Record<string, unknown>) {
+    setDraft((current) => current ? {
+      ...current,
+      customProviders: current.customProviders.map((provider) => {
+        if (provider.id !== id) return provider;
+        const options = { ...(provider.options ?? {}) };
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === undefined || value === "") delete options[key];
+          else options[key] = value;
+        }
+        return { ...provider, options };
+      }),
+    } : current);
+  }
+
+  /** Response field mapping lives one level deeper, under options.responseMapping. */
+  function updateResponseMapping(id: string, patch: Record<string, string | undefined>) {
+    setDraft((current) => current ? {
+      ...current,
+      customProviders: current.customProviders.map((provider) => {
+        if (provider.id !== id) return provider;
+        const options = { ...(provider.options ?? {}) };
+        const rawMapping = options.responseMapping;
+        const mapping: Record<string, unknown> = rawMapping && typeof rawMapping === "object" && !Array.isArray(rawMapping)
+          ? { ...(rawMapping as Record<string, unknown>) }
+          : {};
+        for (const [key, value] of Object.entries(patch)) {
+          if (value === undefined || value === "") delete mapping[key];
+          else mapping[key] = value;
+        }
+        if (Object.keys(mapping).length === 0) delete options.responseMapping;
+        else options.responseMapping = mapping;
+        return { ...provider, options };
       }),
     } : current);
   }
@@ -513,11 +604,13 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
               <EmptyHeader>
                 <EmptyMedia variant="icon"><Search /></EmptyMedia>
                 <EmptyTitle>暂无自定义搜索供应商</EmptyTitle>
-                <EmptyDescription>可添加智谱 Web Search API 或 Tavily MCP。</EmptyDescription>
+                <EmptyDescription>
+                  可添加 Runtime 支持的任一搜索协议：{protocolOptions.map((option) => option.label).join("、")}。
+                </EmptyDescription>
               </EmptyHeader>
             </Empty>
           ) : draft.customProviders.map((provider) => {
-            const protocol = normalizeSearchProtocol(provider.protocol);
+            const protocol = normalizeSearchProtocol(provider.protocol, knownProtocolIds);
             return (
               <Card key={provider.id} size="sm">
                 <CardHeader>
@@ -547,19 +640,19 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`search-provider-protocol-${provider.id}`}>协议</FieldLabel>
-                      <Select value={protocol} onValueChange={(value) => updateProviderProtocol(provider.id, normalizeSearchProtocol(value))}>
+                      <Select value={protocol} onValueChange={(value) => updateProviderProtocol(provider.id, value)}>
                         <SelectTrigger id={`search-provider-protocol-${provider.id}`} className="w-full">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectGroup>
-                            {(Object.keys(PROTOCOL_LABELS) as CustomSearchProviderProtocol[]).map((value) => (
-                              <SelectItem key={value} value={value}>{PROTOCOL_LABELS[value]}</SelectItem>
+                            {protocolOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
                             ))}
                           </SelectGroup>
                         </SelectContent>
                       </Select>
-                      <FieldDescription>{PROTOCOL_DESCRIPTIONS[protocol]}</FieldDescription>
+                      <FieldDescription>{protocolDescription(protocol, protocols)}</FieldDescription>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor={`search-provider-url-${provider.id}`}>Base URL</FieldLabel>
@@ -601,6 +694,13 @@ export function SearchSettingsPanel({ client = defaultSearchSettingsClient }: Se
                       />
                     </Field>
                   </FieldGroup>
+                  {protocol === CUSTOM_HTTP_PROTOCOL ? (
+                    <CustomHttpOptionsFields
+                      provider={provider}
+                      onOptionChange={(patch) => updateCustomHttpOption(provider.id, patch)}
+                      onMappingChange={(patch) => updateResponseMapping(provider.id, patch)}
+                    />
+                  ) : null}
                 </CardContent>
               </Card>
             );
@@ -665,14 +765,179 @@ function NumberField({ id, label, description, value, min, max, onChange }: {
   );
 }
 
+/**
+ * Editor for the `custom-http` adapter options.
+ *
+ * Without these fields a self-hosted HTTP search endpoint cannot be configured
+ * at all: the Runtime adapter needs the request shape and the response field
+ * mapping, and neither has a usable default.
+ */
+function CustomHttpOptionsFields({ provider, onOptionChange, onMappingChange }: {
+  readonly provider: CustomSearchProviderConfig;
+  readonly onOptionChange: (patch: Record<string, unknown>) => void;
+  readonly onMappingChange: (patch: Record<string, string | undefined>) => void;
+}) {
+  const options = (provider.options ?? {}) as Record<string, unknown>;
+  const rawMapping = options.responseMapping;
+  const mapping = (rawMapping && typeof rawMapping === "object" && !Array.isArray(rawMapping)
+    ? rawMapping
+    : {}) as Record<string, unknown>;
+  const text = (value: unknown): string => (typeof value === "string" ? value : "");
+  const method = options.method === "GET" ? "GET" : "POST";
+  const authStyle = typeof options.authStyle === "string" ? options.authStyle : "bearer";
+
+  // Query params are a free-form map, so they are edited as JSON with validation
+  // (same pattern as provider extra headers) instead of a fixed field list.
+  const [queryParamsInput, setQueryParamsInput] = useState(() =>
+    options.queryParams && typeof options.queryParams === "object"
+      ? JSON.stringify(options.queryParams, null, 2)
+      : "",
+  );
+  const [queryParamsError, setQueryParamsError] = useState<string | null>(null);
+
+  function commitQueryParams(value: string) {
+    setQueryParamsInput(value);
+    const trimmed = value.trim();
+    if (trimmed.length === 0) {
+      setQueryParamsError(null);
+      onOptionChange({ queryParams: undefined });
+      return;
+    }
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        setQueryParamsError("必须是 JSON 对象，例如 {\"q\": \"{{query}}\"}。");
+        return;
+      }
+      const entries = Object.entries(parsed as Record<string, unknown>);
+      if (entries.some(([, item]) => typeof item !== "string")) {
+        setQueryParamsError("每个查询参数的值必须是字符串。");
+        return;
+      }
+      setQueryParamsError(null);
+      onOptionChange({ queryParams: Object.fromEntries(entries) });
+    } catch {
+      setQueryParamsError("JSON 解析失败，请检查括号与引号。");
+    }
+  }
+
+  return (
+    <div className="mt-4 flex flex-col gap-4 rounded-lg border border-border p-4" data-slot="custom-http-options">
+      <div>
+        <p className="text-sm font-medium text-foreground">自定义 HTTP 请求</p>
+        <p className="text-xs text-muted-foreground">
+          请求体与查询参数支持占位符 <code>{"{{query}}"}</code>、<code>{"{{count}}"}</code>、<code>{"{{freshness}}"}</code>。
+        </p>
+      </div>
+      <FieldGroup className="grid md:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor={`custom-http-method-${provider.id}`}>请求方法</FieldLabel>
+          <Select value={method} onValueChange={(value) => onOptionChange({ method: value })}>
+            <SelectTrigger id={`custom-http-method-${provider.id}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="POST">POST</SelectItem>
+                <SelectItem value="GET">GET</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`custom-http-auth-${provider.id}`}>认证方式</FieldLabel>
+          <Select value={authStyle} onValueChange={(value) => onOptionChange({ authStyle: value })}>
+            <SelectTrigger id={`custom-http-auth-${provider.id}`} className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectItem value="bearer">Bearer 令牌</SelectItem>
+                <SelectItem value="header">自定义请求头</SelectItem>
+                <SelectItem value="query">查询参数</SelectItem>
+                <SelectItem value="none">不认证</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        </Field>
+        {authStyle === "query" ? (
+          <Field>
+            <FieldLabel htmlFor={`custom-http-auth-param-${provider.id}`}>API Key 查询参数名</FieldLabel>
+            <Input
+              id={`custom-http-auth-param-${provider.id}`}
+              value={text(options.authQueryParam)}
+              placeholder="key"
+              onChange={(event) => onOptionChange({ authQueryParam: event.currentTarget.value })}
+            />
+          </Field>
+        ) : null}
+      </FieldGroup>
+      <Field>
+        <FieldLabel htmlFor={`custom-http-body-${provider.id}`}>请求体模板（JSON）</FieldLabel>
+        <Textarea
+          id={`custom-http-body-${provider.id}`}
+          rows={4}
+          className="font-mono text-xs"
+          value={text(options.bodyTemplate)}
+          placeholder={'{"query": "{{query}}", "count": {{count}}}'}
+          onChange={(event) => onOptionChange({ bodyTemplate: event.currentTarget.value })}
+        />
+        <FieldDescription>仅 POST 使用；留空则发送适配器默认请求体。</FieldDescription>
+      </Field>
+      <Field data-invalid={Boolean(queryParamsError)}>
+        <FieldLabel htmlFor={`custom-http-query-${provider.id}`}>查询参数（JSON）</FieldLabel>
+        <Textarea
+          id={`custom-http-query-${provider.id}`}
+          rows={3}
+          className="font-mono text-xs"
+          aria-invalid={Boolean(queryParamsError)}
+          value={queryParamsInput}
+          placeholder={'{\n  "q": "{{query}}",\n  "limit": "{{count}}"\n}'}
+          onChange={(event) => commitQueryParams(event.currentTarget.value)}
+        />
+        <FieldDescription>
+          追加到 URL 的查询参数，GET 与 POST 都会生效
+          {method === "GET" ? "；GET 模式通常只靠这里传递检索词。" : "。"}
+        </FieldDescription>
+        <FieldError>{queryParamsError}</FieldError>
+      </Field>
+      <div>
+        <p className="text-sm font-medium text-foreground">响应字段映射</p>
+        <p className="text-xs text-muted-foreground">
+          告诉 Runtime 从响应的哪个位置读取结果数组与各字段；留空则使用适配器默认字段名。
+        </p>
+      </div>
+      <FieldGroup className="grid md:grid-cols-2 xl:grid-cols-3">
+        {([
+          ["resultsPath", "结果数组路径", "data.webPages"],
+          ["titleField", "标题字段", "title"],
+          ["urlField", "URL 字段", "url"],
+          ["snippetField", "摘要字段", "snippet"],
+          ["sourceField", "来源字段", "source"],
+          ["publishedAtField", "发布时间字段", "datePublished"],
+        ] as const).map(([key, label, placeholder]) => (
+          <Field key={key}>
+            <FieldLabel htmlFor={`custom-http-${key}-${provider.id}`}>{label}</FieldLabel>
+            <Input
+              id={`custom-http-${key}-${provider.id}`}
+              value={text(mapping[key])}
+              placeholder={placeholder}
+              onChange={(event) => onMappingChange({ [key]: event.currentTarget.value })}
+            />
+          </Field>
+        ))}
+      </FieldGroup>
+    </div>
+  );
+}
+
 function OptionalNumberField({ id, label, description, value, min, max, onChange }: {
   readonly id: string;
   readonly label: string;
   readonly description?: string;
   readonly value: number | undefined;
   readonly min: number;
-  readonly max: number;
-  readonly onChange: (value: number | undefined) => void;
+  readonly max: number;  readonly onChange: (value: number | undefined) => void;
 }) {
   return (
     <Field>

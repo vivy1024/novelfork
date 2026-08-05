@@ -189,3 +189,92 @@ export async function deleteKnowledgeEntry(entryId: string): Promise<{ readonly 
     { method: "DELETE" },
   );
 }
+
+// ── Per-user knowledge ACL (admin only) ──────────────────────────────────────
+
+/** Clearance level a user can be granted; higher rank sees more. */
+export interface KnowledgeLevel {
+  readonly id: string;
+  readonly name: string;
+  readonly rank: number;
+  readonly label?: string | null;
+}
+
+/** Compartment tag. A user needs the matching tag grant to read tagged entries. */
+export interface KnowledgeTag {
+  readonly id: string;
+  readonly name: string;
+  readonly collectionId?: string | null;
+  readonly typeId?: string | null;
+  readonly controlled?: boolean;
+}
+
+/**
+ * Effective credentials for one user, aggregated by the Runtime from its
+ * individual grant rows. `reviewTagIds` marks tags the user may review rather
+ * than only read.
+ */
+export interface UserKnowledgeAcl {
+  readonly clearanceLevel: string | null;
+  readonly tagIds: readonly string[];
+  readonly reviewTagIds: readonly string[];
+  readonly canWrite: boolean;
+}
+
+export interface SetUserKnowledgeAclInput {
+  readonly clearanceLevel?: string | null;
+  readonly tagIds?: readonly string[];
+  readonly reviewTagIds?: readonly string[];
+  readonly canWrite?: boolean;
+}
+
+export async function listKnowledgeLevels(): Promise<KnowledgeLevel[]> {
+  return fetchJson<KnowledgeLevel[]>(`${KNOWLEDGE_API}/levels`);
+}
+
+export async function listKnowledgeTags(collectionId?: string): Promise<KnowledgeTag[]> {
+  const suffix = collectionId ? `?collectionId=${encodeURIComponent(collectionId)}` : "";
+  return fetchJson<KnowledgeTag[]>(`${KNOWLEDGE_API}/tags${suffix}`);
+}
+
+export async function getUserKnowledgeAcl(userId: string): Promise<UserKnowledgeAcl> {
+  return fetchJson<UserKnowledgeAcl>(
+    `${KNOWLEDGE_API}/users/${encodeURIComponent(userId)}/acl`,
+  );
+}
+
+export async function setUserKnowledgeAcl(
+  userId: string,
+  input: SetUserKnowledgeAclInput,
+): Promise<UserKnowledgeAcl> {
+  return fetchJson<UserKnowledgeAcl>(
+    `${KNOWLEDGE_API}/users/${encodeURIComponent(userId)}/acl`,
+    { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(input) },
+  );
+}
+
+/**
+ * Why a given user can read an entry: `admin` bypasses ACL, `owner` owns the
+ * collection, `grant` matched a clearance/tag grant.
+ */
+export type KnowledgeAccessReason = "admin" | "owner" | "grant";
+
+export interface KnowledgeAccessibleUser {
+  readonly userId: string;
+  readonly username: string;
+  readonly role: string;
+  readonly reason: KnowledgeAccessReason;
+}
+
+/**
+ * Who can currently read one entry. This is the only way to check an ACL change
+ * before publishing sensitive material — the grant list alone does not show the
+ * resulting audience.
+ */
+export async function listKnowledgeEntryAccessibleUsers(
+  entryId: string,
+): Promise<KnowledgeAccessibleUser[]> {
+  return fetchJson<KnowledgeAccessibleUser[]>(
+    `${KNOWLEDGE_API}/entries/${encodeURIComponent(entryId)}/accessible-users`,
+  );
+}

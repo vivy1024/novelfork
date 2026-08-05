@@ -92,9 +92,11 @@ describe("RuntimeControlPanel", () => {
       agent: {
         defaultModel: "openai:writer-custom",
         summaryModel: "kiro:claude-haiku-4.5",
+        translationModel: "__summary__",
         defaultReasoningEffort: "medium",
-        subagentModels: { explore: "kiro:claude-sonnet-4.5", plan: "", search: "openai:gpt-4.1" },
-        subagentAllowedModels: { explore: [], plan: [], search: [], general: [] },
+        subagentModels: { explore: "kiro:claude-sonnet-4.5", plan: "", search: "openai:gpt-4.1", review: "" },
+        subagentAllowedModels: { explore: [], plan: [], search: [], general: [], review: [] },
+        reasoningEffortBlocklist: [],
         modelAggregations: [],
       },
       codex: {
@@ -104,6 +106,111 @@ describe("RuntimeControlPanel", () => {
     expect(patch).not.toHaveProperty("customApiProviders");
     expect(patch).not.toHaveProperty("openaiModelsGrouped");
     expect(patch).not.toHaveProperty("server");
+  });
+
+  it("暴露 Review 子代理模型与允许模型白名单", async () => {
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    // Runtime supports a review subagent; without these inputs the model and its
+    // allowed pool are unreachable from the product UI.
+    expect(screen.getByLabelText("Review 子代理模型")).toBeTruthy();
+    expect(screen.getByLabelText("review 允许模型")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Review 子代理模型"), { target: { value: "openai:gpt-4.1" } });
+    fireEvent.change(screen.getByLabelText("review 允许模型"), { target: { value: "openai:writer-custom" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
+
+    await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledTimes(1));
+    const patch = settingsClientMock.patch.mock.calls[0][0];
+    expect(patch.agent.subagentModels.review).toBe("openai:gpt-4.1");
+    expect(patch.agent.subagentAllowedModels.review).toEqual(["openai:writer-custom"]);
+  });
+
+  it("翻译模型默认跟随摘要模型，且哨兵值不被当成库存外模型", async () => {
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    const translation = screen.getByLabelText("翻译模型") as HTMLSelectElement;
+    expect(translation.value).toBe("__summary__");
+    expect(translation.textContent).toContain("跟随摘要模型");
+    expect(screen.queryByText(/__summary__/)).toBeNull();
+
+    fireEvent.change(translation, { target: { value: "openai:gpt-4.1" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
+
+    await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledTimes(1));
+    expect(settingsClientMock.patch.mock.calls[0][0].agent.translationModel).toBe("openai:gpt-4.1");
+  });
+
+  it("默认推理强度提供 Runtime 的全部七档，含默认值 max", async () => {
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    const select = screen.getByLabelText("默认推理强度") as HTMLSelectElement;
+    const values = Array.from(select.options).map((option) => option.value);
+    // Runtime ships defaultReasoningEffort: "max"; excluding it left the product
+    // unable to express the shipped default.
+    expect(values).toEqual(["", "none", "low", "medium", "high", "xhigh", "max"]);
+  });
+
+  it("推理强度黑名单可增删并按 Runtime 形状提交", async () => {
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    expect(screen.getByText(/暂无规则/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /添加规则/ }));
+    fireEvent.change(screen.getByLabelText("推理强度黑名单模式 1"), {
+      target: { value: "  claude-3  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
+
+    await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledTimes(1));
+    // Patterns are trimmed and default to enabled, matching the Runtime schema.
+    expect(settingsClientMock.patch.mock.calls[0][0].agent.reasoningEffortBlocklist).toEqual([
+      { pattern: "claude-3", enabled: true },
+    ]);
+  });
+
+  it("空白模式不会被提交到 Runtime", async () => {
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    fireEvent.click(screen.getByRole("button", { name: /添加规则/ }));
+    fireEvent.change(screen.getByLabelText("推理强度黑名单模式 1"), { target: { value: "   " } });
+    fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
+
+    await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledTimes(1));
+    expect(settingsClientMock.patch.mock.calls[0][0].agent.reasoningEffortBlocklist).toEqual([]);
+  });
+
+  it("聚合成员可调整顺序，顺序即 priority 路由优先级", async () => {
+    settingsClientMock.get.mockResolvedValue({
+      ...settings,
+      agent: {
+        ...settings.agent,
+        modelAggregations: [
+          {
+            id: "fast",
+            name: "Fast",
+            models: ["openai:gpt-4.1", "openai:writer-custom"],
+            routingMode: "priority",
+          },
+        ],
+      },
+    });
+
+    render(<RuntimeControlPanel />);
+    await screen.findByRole("heading", { name: "模型设置" });
+
+    fireEvent.click(screen.getByRole("button", { name: "下移 openai:gpt-4.1" }));
+    fireEvent.click(screen.getByRole("button", { name: "保存模型设置" }));
+
+    await waitFor(() => expect(settingsClientMock.patch).toHaveBeenCalledTimes(1));
+    expect(settingsClientMock.patch.mock.calls[0][0].agent.modelAggregations[0].models).toEqual([
+      "openai:writer-custom",
+      "openai:gpt-4.1",
+    ]);
   });
 
   it("uses Runtime test-model action", async () => {

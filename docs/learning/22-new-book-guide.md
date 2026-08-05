@@ -38,9 +38,9 @@ routes:
 ## 与写作技能的联动
 
 引导结束后：
-- 推荐的 Skills 通过 `handleWritingSkillsWrite` 写入 `book.json` 的 `enabledWritingSkillIds`。
-- 同时将 `SKILL.md` 物化到作品的 `.novelfork/skills/` 目录。
-- 作者可在"写作配置 → 技能"中随时调整。
+- 推荐的 Skills 只是建议，作者确认后由 `handleWritingSkillsWrite` 直接同步到当前项目磁盘。
+- Skill 及其关联附件同步到作品的 `.novelfork/skills/<slug>/`；Runtime 会自动发现文件，`book.json` 不保存启用态。
+- 作者可在"写作配置 → 技能"中随时调整，面板只对指定项目文件执行添加、删除或刷新。
 
 ## 与旧版建书的区别
 

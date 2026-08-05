@@ -92,7 +92,7 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		await access(externalBookRoot);
 	});
 
-	test("persists book-scoped writing settings without dropping external binding metadata", async () => {
+	test("materializes project writing skills without storing selection in book.json", async () => {
 		if (!bookId) throw new Error("gateway fixture missing");
 		const app = productApp(owner);
 		const current = JSON.parse(await readFile(join(externalBookRoot, "book.json"), "utf8")) as Record<string, unknown>;
@@ -103,13 +103,15 @@ describe("NovelFork trusted narrator binding gateway", () => {
 
 		const skillsResponse = await app.request(`/api/books/${bookId}/writing-skills`);
 		expect(skillsResponse.status).toBe(200);
-		const skills = await skillsResponse.json() as { skills?: Array<{ id: string; mode?: string }> };
-		const skillId = skills.skills?.find((skill) => skill.mode !== "always")?.id;
-		if (!skillId) throw new Error("expected a builtin writing skill");
+		const skills = await skillsResponse.json() as { skills?: Array<{ id: string; slug: string; mode?: string }> };
+		const skill = skills.skills?.find((candidate) => candidate.mode !== "always");
+		const skillId = skill?.id;
+		const skillSlug = skill?.slug;
+		if (!skillId || !skillSlug) throw new Error("expected a builtin writing skill");
 		expect((await app.request(`/api/books/${bookId}/writing-skills`, {
 			method: "PUT",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ enabledWritingSkillIds: [skillId] }),
+			body: JSON.stringify({ addSkillIds: [skillId] }),
 		})).status).toBe(200);
 
 		const update = await app.request(`/api/books/${bookId}`, {
@@ -137,10 +139,11 @@ describe("NovelFork trusted narrator binding gateway", () => {
 		expect(saved).toMatchObject({
 			id: bookId,
 			novelforkExternalWorkspace: true,
-			enabledWritingSkillIds: [skillId],
 			narrativeMemory: { preservedForWritingSettingsTest: true },
 			chapterWordCount: 3200,
 		});
+		expect(saved).not.toHaveProperty("enabledWritingSkillIds");
+		await access(join(externalBookRoot, ".novelfork", "skills", skillSlug, "SKILL.md"));
 	});
 
 	test("rebinds an existing book to a marked external workspace", async () => {
