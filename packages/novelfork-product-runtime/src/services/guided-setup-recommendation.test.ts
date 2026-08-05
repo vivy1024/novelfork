@@ -9,8 +9,8 @@ import { recommendWritingSkills } from "../../../novel-plugin/src/engine/writing
  * 建书十一问 → Writing Skills 建议。
  *
  * 这里守两件事：
- * 1. `applyGuidedSetup` 只产出建议，绝不代替作者写 `enabledWritingSkillIds`
- *    （启用的 Skill 正文会注入每一章的 style 通道，属于需作者确认的决定，
+ * 1. `applyGuidedSetup` 只产出建议，绝不代替作者同步项目 Skill 文件
+ *    （项目 Skill 正文会注入每一章的 style 通道，属于需作者确认的决定，
  *    且写入必须走 writing-skills.write 以保留 Runtime 权限确认）。
  * 2. 建议本身对真实的十一问答案有意义，而不是空壳。
  */
@@ -39,12 +39,11 @@ function executableOnly(source: string): string {
 }
 
 describe("applyGuidedSetup 的 Writing Skills 边界", () => {
-	test("产出推荐，但不写入 enabledWritingSkillIds", () => {
+	test("产出推荐，但不直接写入项目 Skill 文件", () => {
 		const executable = executableOnly(guidedSetupBody());
 		expect(executable).toContain("recommendWritingSkillsForGuidedSetup");
 		expect(executable).toContain("recommendedWritingSkills");
-		// 启用必须由作者确认后经 writing-skills.write 落库
-		expect(executable).not.toContain("enabledWritingSkillIds");
+		// 添加必须由作者确认后经 writing-skills.write 同步到 `.novelfork/skills`
 		expect(executable).not.toContain("handleWritingSkillsWrite");
 	});
 

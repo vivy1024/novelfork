@@ -4,7 +4,8 @@
  * 按分类筛选、开关启用、查看或编辑技能。内置技能编辑前会 fork 为作者副本，
  * 保存后写进 `~/.novelfork/skills/`，同名覆盖内置。
  *
- * 书籍启用态统一由 `enabledWritingSkillIds` 管理。
+ * 项目生效态以当前作品目录 `.novelfork/skills/` 的实际文件为准；面板只对指定
+ * catalog Skill 执行文件增删/刷新，不把选择状态写入 book.json。
  */
 
 import { useState, useEffect } from "react";
@@ -33,11 +34,13 @@ export interface WritingSkillItem {
   readonly name: string;
   readonly description: string;
   readonly kind: string;
-  readonly source: "builtin" | "user" | "remote";
+  readonly source: "builtin" | "user" | "remote" | "project";
   readonly mode?: string;
   readonly tags?: readonly string[];
   readonly version?: string | null;
   readonly editable: boolean;
+  readonly content?: string | null;
+  readonly body?: string;
   /** 来自内置市场的外部作品，必须展示归属。 */
   readonly provenance?: {
     readonly repo: string;
@@ -50,7 +53,12 @@ interface WritingSkillsResponse {
 }
 
 interface BookWritingSkillsResponse {
-  readonly enabledWritingSkillIds?: readonly string[];
+  readonly projectSkillSlugs?: readonly string[];
+  readonly projectSkillsDirectory?: string;
+  readonly skills?: readonly (WritingSkillItem & { readonly body?: string })[];
+  readonly migration?: {
+    readonly migratedSlugs?: readonly string[];
+  };
 }
 
 export interface WritingSkillsPanelProps {
@@ -202,14 +210,14 @@ export function applyWritingSkillFilters(
  */
 export function WritingSkillsPanelShell({
   skills,
-  enabledIds,
+  enabledSlugs,
   filterKind = null,
   filterGenre = null,
   activeSource = null,
   query = "",
 }: {
   readonly skills: readonly WritingSkillItem[];
-  readonly enabledIds: readonly string[];
+  readonly enabledSlugs: readonly string[];
   readonly filterKind?: string | null;
   readonly filterGenre?: string | null;
   /** 已进入的来源分区；null 表示在全部 skill 里浏览。 */
@@ -294,7 +302,7 @@ export function WritingSkillsPanelShell({
                     已自定义
                   </Badge>
                 )}
-                {enabledIds.includes(skill.id) && (
+                {enabledSlugs.includes(skill.slug) && (
                   <Badge variant="outline" className="text-[9px] h-4">
                     已启用
                   </Badge>
@@ -318,7 +326,7 @@ export function WritingSkillsPanelShell({
 
 export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const { data, loading, error, refetch } = useApi<WritingSkillsResponse>("/writing-skills");
-  const [enabledIds, setEnabledIds] = useState<string[]>([]);
+  const [projectSlugs, setProjectSlugs] = useState<string[]>([]);
   const [filterKind, setFilterKind] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string | null>(null);
   const [filterGenre, setFilterGenre] = useState<string | null>(null);
@@ -329,25 +337,34 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // 启用态由书籍作用域的 Writing Skills 配置提供。
-  const { data: bookWritingSkills } = useApi<BookWritingSkillsResponse>(`/books/${bookId}/writing-skills`);
+  // 生效态由可信书籍根目录 `.novelfork/skills` 扫描结果提供。
+  const {
+    data: bookWritingSkills,
+    refetch: refetchBook,
+  } = useApi<BookWritingSkillsResponse>(`/books/${bookId}/writing-skills`);
 
-  // 本地态用于开关的乐观更新，初值跟随服务端。
+  // 本地态只缓存项目目录中的 slug，用于开关的乐观更新。
   useEffect(() => {
-    if (!bookWritingSkills?.enabledWritingSkillIds) return;
-    setEnabledIds([...bookWritingSkills.enabledWritingSkillIds]);
+    if (!bookWritingSkills?.projectSkillSlugs) return;
+    setProjectSlugs([...bookWritingSkills.projectSkillSlugs]);
   }, [bookWritingSkills]);
 
-  async function handleToggle(skillId: string, enabled: boolean) {
-    const previous = enabledIds;
-    const nextIds = enabled
-      ? [...enabledIds, skillId]
-      : enabledIds.filter((id) => id !== skillId);
-    setEnabledIds(nextIds);
+  async function handleToggle(skillSlug: string, enabled: boolean) {
+    const skill = skills.find((candidate) => candidate.slug === skillSlug);
+    if (skill?.mode === "always") return;
+    const previous = projectSlugs;
+    const nextSlugs = enabled
+      ? [...new Set([...projectSlugs, skillSlug])]
+      : projectSlugs.filter((slug) => slug !== skillSlug);
+    setProjectSlugs(nextSlugs);
     try {
-      await putApi(`/books/${bookId}/writing-skills`, { enabledWritingSkillIds: nextIds });
+      if (!skill) throw new Error("找不到要操作的 Writing Skill。");
+      await putApi(`/books/${bookId}/writing-skills`, enabled
+        ? { addSkillIds: [skill.id] }
+        : { removeSkillIds: [skill.id] });
+      refetchBook?.();
     } catch {
-      setEnabledIds(previous);
+      setProjectSlugs(previous);
     }
   }
 
@@ -358,6 +375,13 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     setBusy(true);
     const slugPath = `/writing-skills/${encodeURIComponent(skill.slug)}`;
     try {
+      // 作品目录中的项目文件可能不在全局 catalog；书籍 API 已返回原始 SKILL.md，
+      // 直接使用它，避免把项目级技能误当成全局技能请求。
+      if (skill.source === "project" && skill.content) {
+        setDraft(forEditing ? skill.content : (skill.body ?? skill.content));
+        setEditing(forEditing);
+        return;
+      }
       if (forEditing && !skill.editable) {
         // 内置/远程技能只读：先 fork 到作者副本，再编辑。
         await postApi(`${slugPath}/fork`, {});
@@ -405,9 +429,16 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       await putApi(`/writing-skills/${encodeURIComponent(viewing.slug)}`, {
         content: draft,
       });
-      setNotice("已保存到我的写作技能。");
+      // 作者副本保存后，已存在的当前项目文件立即刷新；未进入项目的 Skill 不提前物化。
+      if (projectSlugs.includes(viewing.slug)) {
+        await putApi(`/books/${bookId}/writing-skills`, {
+          refreshSkillIds: [viewing.id],
+        });
+      }
+      setNotice("已保存到我的写作技能；当前项目文件已同步。");
       setEditing(false);
       refetch?.();
+      refetchBook?.();
     } catch (saveError) {
       setNotice(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -422,9 +453,16 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       await fetchJson(`/writing-skills/${encodeURIComponent(skill.slug)}`, {
         method: "DELETE",
       });
-      setNotice("已恢复内置版本。");
+      // 恢复作者覆盖后，已存在的项目文件需要重新复制 catalog 版本；未进入项目的 Skill 不物化。
+      if (projectSlugs.includes(skill.slug)) {
+        await putApi(`/books/${bookId}/writing-skills`, {
+          refreshSkillIds: [skill.id],
+        });
+      }
+      setNotice("已恢复内置版本；当前项目文件已同步。");
       setViewing(null);
       refetch?.();
+      refetchBook?.();
     } catch (resetError) {
       setNotice(resetError instanceof Error ? resetError.message : String(resetError));
     } finally {
@@ -432,7 +470,11 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     }
   }
 
-  const skills = data?.skills ?? [];
+  const catalogSkills = data?.skills ?? [];
+  const projectOnlySkills = (bookWritingSkills?.skills ?? []).filter((skill) => skill.source === "project");
+  const skills = [...catalogSkills, ...projectOnlySkills.filter(
+    (projectSkill) => !catalogSkills.some((catalogSkill) => catalogSkill.slug === projectSkill.slug),
+  )];
   const sections = groupBySource(skills);
   // 分区与筛选平行：进了分区就在该分区里筛，没进就在全部里筛。
   // 切分区不清筛选条件 —— 作者可能想在另一个仓库里看同一类写作技能。
@@ -472,12 +514,12 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     <div className="space-y-2" data-testid="writing-skills-panel">
       {/*
         作用域提示：这个面板也被「写作配置」复用，不只出现在书籍设置页。
-        技能库全局共享，但开关是书籍级的，必须就地说明并显示本书已启用数，
-        否则作者会以为所有作品共用同一套启用项。
+        技能 catalog/作者覆盖是全局来源，但启用态直接物化到当前项目目录，
+        必须就地说明取消勾选会删除项目副本，避免作者误以为是数据库开关。
       */}
       <p className="text-[10px] text-muted-foreground" data-testid="writing-skills-scope-hint">
-        技能库全局共享；<span className="text-foreground">启用/禁用开关只对当前这本书生效</span>
-        （本书已启用 {enabledIds.length} 个）。启用不会修改内置技能文件；编辑时自动 fork 到 ~/.novelfork/skills/ 作为你的个人副本。
+        技能库与作者覆盖全局共享；<span className="text-foreground">项目文件只对当前作品生效</span>
+        （当前目录已发现 {projectSlugs.length} 个）。勾选会写入 <code>.novelfork/skills/</code>，取消会删除对应项目副本；编辑时自动 fork 到 ~/.novelfork/skills/。
       </p>
 
       {/* 搜索：几百个 skill 平铺翻不动，先给关键词 */}
@@ -605,8 +647,9 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
             </div>
             <div className="flex items-center gap-1 shrink-0">
               <Switch
-                checked={enabledIds.includes(skill.id)}
-                onCheckedChange={(checked) => void handleToggle(skill.id, checked)}
+                checked={skill.mode === "always" || projectSlugs.includes(skill.slug)}
+                disabled={skill.mode === "always" || busy}
+                onCheckedChange={(checked) => void handleToggle(skill.slug, checked)}
                 aria-label={`启用写作技能 ${skill.name}`}
                 className="scale-75"
               />

@@ -63,8 +63,9 @@ const bookBasicSettingsPatchSchema = z
 
 const writingSkillSelectionSchema = z
 	.object({
-		enabledWritingSkillIds: z.array(z.string().trim().min(1).max(200)).max(200),
-		discardUnmappedLegacyIds: z.boolean().optional(),
+		addSkillIds: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+		removeSkillIds: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
+		refreshSkillIds: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
 	})
 	.strict();
 
@@ -243,8 +244,8 @@ bookDomainRoutes.put("/", async (c) => {
 	return c.json({ book });
 });
 
-// 书籍级写作技能选择。技能内容始终来自 SKILL.md 文件源；这里只读写
-// `enabledWritingSkillIds`，并保持在可信书籍绑定之后解析根目录。
+// 书籍级 Writing Skills。项目目录 `.novelfork/skills/` 的实际文件是唯一生效来源，
+// 该路由只对指定 catalog Skill 执行增删/刷新，不维护 book.json 选择字段。
 bookDomainRoutes.get("/writing-skills", async (c) => {
 	const bookId = requiredParam(c, "bookId");
 	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
@@ -261,10 +262,9 @@ bookDomainRoutes.put("/writing-skills", async (c) => {
 	const result = await handleWritingSkillsWrite(
 		{
 			bookId,
-			enabledWritingSkillIds: parsed.data.enabledWritingSkillIds,
-			...(parsed.data.discardUnmappedLegacyIds === undefined
-				? {}
-				: { discardUnmappedLegacyIds: parsed.data.discardUnmappedLegacyIds }),
+			...(parsed.data.addSkillIds === undefined ? {} : { addSkillIds: parsed.data.addSkillIds }),
+			...(parsed.data.removeSkillIds === undefined ? {} : { removeSkillIds: parsed.data.removeSkillIds }),
+			...(parsed.data.refreshSkillIds === undefined ? {} : { refreshSkillIds: parsed.data.refreshSkillIds }),
 		},
 		{ bookRoot: root },
 	);

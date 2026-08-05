@@ -65,7 +65,11 @@ const RuntimeWritingWorkbenchRouteLazy = lazy(() =>
 import { SettingsLayout } from "./components/layouts";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
-import { ProviderSettingsPage } from "./settings/ProviderSettingsPage";
+const RuntimeProviderSettingsHost = lazy(() =>
+  import("@vivy1024/narrafork-runtime-bridge/frontend/provider-settings").then((module) => ({
+    default: module.EmbeddedProviderSettingsHost,
+  })),
+);
 import { createAccountProfileClient } from "./runtime-admin";
 import { SettingsSectionContent } from "./settings/SettingsSectionContent";
 import {
@@ -513,7 +517,7 @@ function SettingsRouteLive({
       onMobileBack={() => onNavigate({ kind: "settings" })}
     >
       {activeSectionId === "providers" ? (
-        <ProviderSettingsPage />
+        <RuntimeProviderSettingsHost />
       ) : (
         <SettingsSectionContent
           sectionId={activeSectionId}

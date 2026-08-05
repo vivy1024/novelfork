@@ -85,7 +85,7 @@ export type {
   LegacyWritingSkillsImportReport,
   TrustedWritingSkillOptions,
   WritingSkillComplianceViolation,
-  WritingSkillSelectionMigrationReport,
+  WritingSkillProjectReport,
   WritingSkillsReadInput,
   WritingSkillsWriteInput,
   WritingSkillsRecommendInput,

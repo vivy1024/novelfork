@@ -110,7 +110,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "cockpit.snapshot",
     description:
-      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- chapters：最近正式章节与章节结果\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
+      "驾驶舱全景快照——一次性读取当前书籍的完整状态概览。\n\n返回内容：\n- progress：总章数、总字数、最近更新章节\n- hooks：所有未兑现伏笔（含到期章节）\n- chapters：最近正式章节与章节结果\n- health：书籍健康度评分\n- recentChapters：最近 5 章摘要\n\n使用时机：\n- 每次写作会话开始时首先调用，建立全局认知\n- 用户说「继续写」/「下一章」时先调用确认当前进度\n- 用户问「进度怎么样」/「写到哪了」/「伏笔状态」\n- 准备写下一章前的第一步\n- 与 chapter.list 的区别：cockpit 是概览（含伏笔/健康度），chapter.list 是纯章节列表\n\n不要用的时候：\n- 刚调用过且结果还在上下文中（除非被折叠提示了）\n\nNUG/Kiro 调用参数：必须传入 `confirm: true`；当前书籍身份由宿主可信绑定注入，禁止传 `bookId`。\n\n注意：此工具只读不写，开销约 1000-3000 tokens，可放心频繁调用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["cockpit.snapshot"]),
     risk: "read",
     renderer: "cockpit.snapshot",
@@ -338,7 +338,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   // --- Writing Skills 工具组 ---
   sessionTool({
     name: "writing-skills.read",
-    description: "读取当前书籍的 Writing Skills。scope=enabled 返回当前生效 Skill 的完整正文；scope=available 返回全部可用 Skill 及启用状态。",
+    description: "读取当前项目的 Writing Skills。scope=enabled 返回 `.novelfork/skills/` 中自动发现的完整正文；scope=available 返回 catalog 与项目文件的合并视图。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["writing-skills.read"]),
     risk: "read",
     renderer: "writing-skills.list",
@@ -347,7 +347,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "writing-skills.write",
-    description: "设置当前书籍启用的 Writing Skills。会校验旧 Preset/Beat 选择迁移状态；无法映射的旧选择必须显式确认丢弃。",
+    description: "管理当前项目 `.novelfork/skills/` 中的 Writing Skill 文件；项目目录扫描结果是唯一生效来源。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["writing-skills.write"]),
     risk: "confirmed-write",
     renderer: "writing-skills.list",

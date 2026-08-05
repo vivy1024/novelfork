@@ -102,6 +102,8 @@ const allowedAddTargets = new Set([
 	"shared/learning-contract.ts",
 	"frontend/components/host/RuntimeFrontendHostProviders.tsx",
 	"frontend/components/host/RuntimeFrontendHostProviders.test.tsx",
+	// Generic Runtime-owned Provider settings host exposed through the narrow host SPI.
+	"frontend/components/providers/EmbeddedProviderSettingsHost.tsx",
 	"frontend/components/narrator/RuntimeToolResultRendererContext.tsx",
 	"frontend/components/narrator/EmbeddedNarratorDockHost.tsx",
 	// Regenerates the Runtime's ignored TanStack route tree before standalone
@@ -116,6 +118,8 @@ const allowedPatchTargets = new Set([
 	"bun.lock",
 	"frontend/components/AppRootLayout.tsx",
 	"frontend/components/narrator/ToolCallCard.tsx",
+	// Generic Runtime Provider page export used by the embedded host, with no product imports.
+	"frontend/routes/settings/providers.tsx",
 	"frontend/lib/narrator-ws-manager.ts",
 	"frontend/lib/narrator-ws-manager.test.ts",
 	// Runtime-only test portability fixes; no product code may enter these patches.

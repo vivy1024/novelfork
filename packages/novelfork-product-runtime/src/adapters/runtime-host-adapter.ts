@@ -37,7 +37,14 @@ function findForbiddenModelField(value: unknown, path = "$input"): string | null
 	return null;
 }
 
-/** Clone JSON Schema objects into closed-world input schemas for model-originated values. */
+/**
+ * Clone JSON Schema objects into closed-world input schemas for model-originated values.
+ *
+ * 只收紧声明了 properties 的对象。自由载荷对象（scene.spec 的 cockpitSnapshot /
+ * loreBrief / memoryContext / writePreflight、memory.update 的 patch 等）没有字段清单，
+ * 收紧后会把工具自己产出、由模型原样回传的真实数据全部判非法。宿主字段走私仍由
+ * containsHostControlledField 递归拦截。
+ */
 function closeSchemaObjects(value: unknown): unknown {
 	if (Array.isArray(value)) return value.map(closeSchemaObjects);
 	if (!value || typeof value !== "object") return value;
@@ -46,7 +53,10 @@ function closeSchemaObjects(value: unknown): unknown {
 	for (const [key, child] of Object.entries(source)) {
 		normalized[key] = closeSchemaObjects(child);
 	}
-	if (source.type === "object") normalized.additionalProperties = false;
+	const declaresProperties = Boolean(
+		source.properties && typeof source.properties === "object" && !Array.isArray(source.properties),
+	);
+	if (source.type === "object" && declaresProperties) normalized.additionalProperties = false;
 	return normalized;
 }
 

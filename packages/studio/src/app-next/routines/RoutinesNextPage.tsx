@@ -969,8 +969,8 @@ function SkillsSection({
 				<AlertTitle>发现优先</AlertTitle>
 				<AlertDescription>
 					{scope === "global"
-						? "列表来自 Runtime 扫描 ~/.narrafork、~/.claude、~/.agents 等技能目录；「重新扫描」会重新发现磁盘上的 SKILL.md。「创建」写入 .narrafork/skills。"
-						: "列表来自 Runtime 扫描当前作品绑定目录下的技能路径；Studio 只传 bookId，不传项目路径。当前没有独立的作品技能启停接口。"}
+						? "列表来自 Runtime 扫描 ~/.novelfork、~/.narrafork、~/.claude、~/.agents 等技能目录；「重新扫描」会重新发现磁盘上的 SKILL.md。「创建」写入 Runtime 全局技能目录。"
+						: "列表来自 Runtime 自动扫描当前作品绑定目录下的 `.novelfork/skills`；Studio 只传 bookId，不传项目路径。作品级 Writing Skills 由 Novel Plugin 面板管理文件。"}
 				</AlertDescription>
 			</Alert>
 			{error && <ErrorAlert message={error} />}

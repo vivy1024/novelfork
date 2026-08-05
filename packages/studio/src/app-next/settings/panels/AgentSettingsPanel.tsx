@@ -49,6 +49,7 @@ interface AgentDraft {
   autoContinuationMode: "always" | "blockStop" | "protectedOnly" | "off";
   maxTransientRetries: number;
   silentToolCallThreshold: number;
+  pipelineUnusedToolCallThreshold: number;
   behaviorFenceInterval: number;
   tasksReminderInterval: number;
   behaviorFenceAttachTasks: boolean;
@@ -101,6 +102,7 @@ function draftFromSettings(settings: RuntimeSettings): AgentDraft {
     autoContinuationMode: (typeof agent.autoContinuationMode === "string" ? agent.autoContinuationMode : "always") as AgentDraft["autoContinuationMode"],
     maxTransientRetries: num(agent, "maxTransientRetries", 10),
     silentToolCallThreshold: num(agent, "silentToolCallThreshold", 20),
+    pipelineUnusedToolCallThreshold: num(agent, "pipelineUnusedToolCallThreshold", 10),
     behaviorFenceInterval: num(agent, "behaviorFenceInterval", -1),
     tasksReminderInterval: num(agent, "tasksReminderInterval", 15),
     behaviorFenceAttachTasks: bool(agent, "behaviorFenceAttachTasks", true),
@@ -154,6 +156,7 @@ function sanitizedDraft(draft: AgentDraft): AgentDraft {
     questionReflectionTimeoutMs: Math.min(3_600_000, Math.max(10_000, Math.trunc(draft.questionReflectionTimeoutMs))),
     maxTransientRetries: Math.min(100, Math.max(-1, Math.trunc(draft.maxTransientRetries))),
     silentToolCallThreshold: Math.min(1000, Math.max(-1, Math.trunc(draft.silentToolCallThreshold))),
+    pipelineUnusedToolCallThreshold: Math.min(1000, Math.max(-1, Math.trunc(draft.pipelineUnusedToolCallThreshold))),
     behaviorFenceInterval: normalizeInterval(draft.behaviorFenceInterval),
     tasksReminderInterval: normalizeInterval(draft.tasksReminderInterval),
     retryBackoffCeilMs: Math.min(300_000, Math.max(1_000, Math.trunc(draft.retryBackoffCeilMs))),
@@ -287,6 +290,7 @@ export function AgentSettingsPanel() {
           autoContinuationMode: next.autoContinuationMode,
           maxTransientRetries: next.maxTransientRetries,
           silentToolCallThreshold: next.silentToolCallThreshold,
+          pipelineUnusedToolCallThreshold: next.pipelineUnusedToolCallThreshold,
           behaviorFenceInterval: next.behaviorFenceInterval,
           tasksReminderInterval: next.tasksReminderInterval,
           behaviorFenceAttachTasks: next.behaviorFenceAttachTasks,
@@ -417,6 +421,14 @@ export function AgentSettingsPanel() {
             <NumberField label="行为围栏间隔" value={draft.behaviorFenceInterval} min={-1} max={1000} onChange={(value) => setDraft({ ...draft, behaviorFenceInterval: value })} />
             <NumberField label="任务提醒间隔" value={draft.tasksReminderInterval} min={-1} max={1000} onChange={(value) => setDraft({ ...draft, tasksReminderInterval: value })} />
           </div>
+          <NumberField
+            label="Pipeline 未使用结果清理阈值"
+            description="Pipeline 捕获的结果连续多少次工具调用未被 ExtractPipeline 使用后自动清理。-1 表示关闭。"
+            value={draft.pipelineUnusedToolCallThreshold}
+            min={-1}
+            max={1000}
+            onChange={(value) => setDraft({ ...draft, pipelineUnusedToolCallThreshold: value })}
+          />
           <ToggleRow label="行为围栏附带任务" description="注入行为围栏时同时附带当前 Dynamic Spec 任务。" checked={draft.behaviorFenceAttachTasks} onChange={(value) => setDraft({ ...draft, behaviorFenceAttachTasks: value })} />
         </div>
       </SettingsGroup>

@@ -9,6 +9,7 @@ import {
   getKnowledgeEntry,
   listKnowledgeCollections,
   listKnowledgeEntries,
+  listKnowledgeEntryAccessibleUsers,
   updateKnowledgeEntry,
 } from "../runtime-admin/knowledge";
 import { KnowledgeBasePage } from "./KnowledgeBasePage";
@@ -21,6 +22,7 @@ vi.mock("../runtime-admin/knowledge", () => ({
   getKnowledgeEntry: vi.fn(),
   listKnowledgeCollections: vi.fn(),
   listKnowledgeEntries: vi.fn(),
+  listKnowledgeEntryAccessibleUsers: vi.fn(),
   updateKnowledgeEntry: vi.fn(),
 }));
 
@@ -70,6 +72,7 @@ beforeEach(() => {
   mockedListCollections.mockResolvedValue([collection]);
   mockedListEntries.mockResolvedValue([summary]);
   mockedGetEntry.mockResolvedValue(detail);
+  vi.mocked(listKnowledgeEntryAccessibleUsers).mockReset();
 });
 
 afterEach(() => cleanup());
@@ -115,5 +118,43 @@ describe("KnowledgeBasePage", () => {
       expect(mockedListCollections).toHaveBeenCalledTimes(2);
     });
     expect(await screen.findByRole("button", { name: "灵力体系" })).toBeTruthy();
+  });
+
+  it("按需计算条目的可访问用户并说明授权来源", async () => {
+    vi.mocked(listKnowledgeEntryAccessibleUsers).mockResolvedValue([
+      { userId: "u1", username: "vivy1024", role: "admin", reason: "admin" },
+      { userId: "u2", username: "editor", role: "user", reason: "grant" },
+    ]);
+
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "灵力体系" }));
+    await screen.findByText("灵力分为九阶。");
+
+    // Admin-only endpoint: not requested until explicitly asked for.
+    expect(listKnowledgeEntryAccessibleUsers).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "查看可访问用户" }));
+
+    await waitFor(() => expect(listKnowledgeEntryAccessibleUsers).toHaveBeenCalledWith("entry-1"));
+    expect(await screen.findByText("vivy1024")).toBeTruthy();
+    expect(screen.getByText("管理员（绕过 ACL）")).toBeTruthy();
+    expect(screen.getByText("editor")).toBeTruthy();
+    expect(screen.getByText("分级/标签授权")).toBeTruthy();
+  });
+
+  it("无人可读时明确说明，读取失败时展示原因", async () => {
+    vi.mocked(listKnowledgeEntryAccessibleUsers).mockResolvedValue([]);
+
+    render(<KnowledgeBasePage />);
+    fireEvent.click(await screen.findByRole("button", { name: "灵力体系" }));
+    await screen.findByText("灵力分为九阶。");
+
+    fireEvent.click(screen.getByRole("button", { name: "查看可访问用户" }));
+    expect(await screen.findByText("当前没有用户可以读取此条目。")).toBeTruthy();
+
+    vi.mocked(listKnowledgeEntryAccessibleUsers).mockRejectedValue(new Error("需要管理员权限"));
+    fireEvent.click(screen.getByRole("button", { name: "重新计算" }));
+
+    expect(await screen.findByText("需要管理员权限")).toBeTruthy();
   });
 });

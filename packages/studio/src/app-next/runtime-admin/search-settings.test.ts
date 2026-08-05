@@ -1,7 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   createSearchSettingsClient,
+  normalizeSearchProtocol,
   normalizeSearchSettings,
+  protocolDefaultBaseUrl,
   SEARCH_PROTOCOL_BASE_URLS,
 } from "./search-settings";
 
@@ -104,5 +106,51 @@ describe("search settings client", () => {
       defaultTimeoutMs: 60_000,
       maxOutputChars: 24_000,
     });
+  });
+
+  it("保留 Runtime 新增协议，不在注册表未加载时改写为默认协议", () => {
+    // A provider configured against a newer Runtime must survive a save round-trip
+    // even before the protocol registry response arrives.
+    expect(normalizeSearchProtocol("bocha")).toBe("bocha");
+    expect(normalizeSearchProtocol("custom-http")).toBe("custom-http");
+    expect(normalizeSearchProtocol("")).toBe("zhipu-web-search-v1");
+    expect(normalizeSearchProtocol(undefined)).toBe("zhipu-web-search-v1");
+  });
+
+  it("已知协议集给定时才把未知协议回落到默认协议", () => {
+    const known = ["zhipu-web-search-v1", "tavily-mcp", "bocha"];
+    expect(normalizeSearchProtocol("bocha", known)).toBe("bocha");
+    expect(normalizeSearchProtocol("retired-protocol", known)).toBe("zhipu-web-search-v1");
+    // An empty registry means "not loaded yet", not "nothing is valid".
+    expect(normalizeSearchProtocol("retired-protocol", [])).toBe("retired-protocol");
+  });
+
+  it("默认 Base URL 优先取注册表，其次取内置回退表", () => {
+    const registry = [
+      {
+        id: "bocha",
+        label: { en: "Bocha", "zh-CN": "博查" },
+        description: { en: "", "zh-CN": "" },
+        defaultBaseUrl: "https://api.bochaai.com/v1",
+      },
+    ];
+    expect(protocolDefaultBaseUrl("bocha", registry)).toBe("https://api.bochaai.com/v1");
+    expect(protocolDefaultBaseUrl("zhipu-web-search-v1", registry)).toBe(
+      SEARCH_PROTOCOL_BASE_URLS["zhipu-web-search-v1"],
+    );
+    expect(protocolDefaultBaseUrl("unknown-protocol", registry)).toBe("");
+  });
+
+  it("协议注册表通过 Runtime 端点获取", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify([]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    }));
+    const client = createSearchSettingsClient({ fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    await client.listProtocols();
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toContain("/api/settings/search/protocols");
   });
 });

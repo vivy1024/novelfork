@@ -4,19 +4,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * Writing Skills 的作用域行为与文案。
  *
  * 用户反馈「不同书籍怎么用的一样的 skills，这应该是作品级别的设置」。
- * 实测存储层是隔离的（各写 books/<id>/book.json 的 enabledWritingSkillIds），
- * 真正的问题有两处：
+ * 当前 API 以各书籍项目目录 `.novelfork/skills/` 为权威，返回的 project slug 只是扫描视图。
+ * 这里验证两件事：
  * 1. 推荐阶段 tone 劫持了题材判定（已在 recommend.test.ts 覆盖）；
- * 2. UI 文案把「全局技能库」和「书籍级开关」混在一句里，读起来像全局配置。
+ * 2. UI 文案明确「全局技能库/作者覆盖」与「项目级物化开关」的边界。
  *
  * 这里用**真实的 useApi**、只替换全局 fetch —— mock 掉 useApi 会把
  * 「切 path 时旧 data 是否残留」这一关键行为一起 mock 掉，测试就失去意义。
  */
 
-/** bookId → 该书启用的 skill ids（充当服务端 book.json）。 */
-const bookEnabled: Record<string, string[]> = {};
-/** 记录 PUT 落库调用，验证不会把旧勾选写进新书。 */
-const putCalls: Array<{ bookId: string; ids: string[] }> = [];
+/** bookId → 该项目磁盘中已发现的 skill slugs（充当服务端 `.novelfork/skills/` 扫描结果）。 */
+const projectEnabled: Record<string, string[]> = {};
+/** 记录 PUT 文件操作，验证不会把旧项目的 Skill 带进新书。 */
+const putCalls: Array<{ bookId: string; body: Record<string, string[]> }> = [];
 
 const SKILLS = [
   { id: "skill-a", slug: "a", name: "技能A", description: "d", kind: "opening", source: "builtin", editable: false },
@@ -31,7 +31,7 @@ function jsonResponse(body: unknown): Response {
 }
 
 beforeEach(async () => {
-  for (const key of Object.keys(bookEnabled)) delete bookEnabled[key];
+  for (const key of Object.keys(projectEnabled)) delete projectEnabled[key];
   putCalls.length = 0;
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -39,14 +39,22 @@ beforeEach(async () => {
     const bookMatch = url.match(/\/api\/books\/([^/]+)\/writing-skills$/u);
 
     if (bookMatch && (init?.method ?? "GET").toUpperCase() === "PUT") {
-      const body = JSON.parse(String(init?.body ?? "{}")) as { enabledWritingSkillIds?: string[] };
-      const ids = body.enabledWritingSkillIds ?? [];
-      putCalls.push({ bookId: bookMatch[1]!, ids: [...ids] });
-      bookEnabled[bookMatch[1]!] = [...ids];
-      return jsonResponse({ ok: true, enabledWritingSkillIds: ids });
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, string[]>;
+      const current = new Set(projectEnabled[bookMatch[1]!] ?? []);
+      for (const id of body.addSkillIds ?? []) {
+        const skill = SKILLS.find((candidate) => candidate.id === id);
+        if (skill) current.add(skill.slug);
+      }
+      for (const id of body.removeSkillIds ?? []) {
+        const skill = SKILLS.find((candidate) => candidate.id === id);
+        if (skill) current.delete(skill.slug);
+      }
+      putCalls.push({ bookId: bookMatch[1]!, body });
+      projectEnabled[bookMatch[1]!] = [...current];
+      return jsonResponse({ ok: true, projectSkillSlugs: [...current] });
     }
     if (bookMatch) {
-      return jsonResponse({ enabledWritingSkillIds: bookEnabled[bookMatch[1]!] ?? [] });
+      return jsonResponse({ projectSkillSlugs: projectEnabled[bookMatch[1]!] ?? [] });
     }
     if (url.endsWith("/api/writing-skills")) {
       return jsonResponse({ skills: SKILLS });
@@ -69,31 +77,32 @@ function enabledSkillNames(container: HTMLElement): string[] {
 }
 
 describe("WritingSkillsPanel 的作用域文案", () => {
-  it("就地说明开关是书籍级、技能库是全局，并显示本书已启用数", async () => {
+  it("就地说明开关是项目级、技能库是全局，并显示当前项目物化数", async () => {
     const { render, screen, waitFor } = await import("@testing-library/react");
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
-    bookEnabled["book-a"] = ["skill-a", "skill-b"];
+    projectEnabled["book-a"] = ["a", "b"];
     render(<WritingSkillsPanel bookId="book-a" />);
 
     const hint = await waitFor(() => screen.getByTestId("writing-skills-scope-hint"));
-    expect(hint.textContent).toContain("只对当前这本书生效");
+    expect(hint.textContent).toContain("只对当前作品生效");
     expect(hint.textContent).toContain("全局共享");
-    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("本书已启用 2 个"));
+    expect(hint.textContent).toContain(".novelfork/skills/");
+    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 2 个"));
   });
 
   it("换书后已启用数跟着变", async () => {
     const { render, screen, waitFor } = await import("@testing-library/react");
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
-    bookEnabled["book-a"] = ["skill-a", "skill-b"];
-    bookEnabled["book-b"] = ["skill-a"];
+    projectEnabled["book-a"] = ["a", "b"];
+    projectEnabled["book-b"] = ["a"];
 
     const view = render(<WritingSkillsPanel bookId="book-a" />);
-    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("本书已启用 2 个"));
+    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 2 个"));
 
     view.rerender(<WritingSkillsPanel bookId="book-b" />);
-    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("本书已启用 1 个"));
+    await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 1 个"));
   });
 });
 
@@ -102,8 +111,8 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     const { render, waitFor } = await import("@testing-library/react");
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
-    bookEnabled["book-a"] = ["skill-a", "skill-b"];
-    bookEnabled["book-b"] = [];
+    projectEnabled["book-a"] = ["a", "b"];
+    projectEnabled["book-b"] = [];
 
     const view = render(<WritingSkillsPanel bookId="book-a" />);
     await waitFor(() => expect(enabledSkillNames(view.container).sort()).toEqual(["技能A", "技能B"]));
@@ -117,8 +126,8 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     const { fireEvent, render, waitFor } = await import("@testing-library/react");
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
-    bookEnabled["book-a"] = ["skill-a", "skill-b"];
-    bookEnabled["book-b"] = [];
+    projectEnabled["book-a"] = ["a", "b"];
+    projectEnabled["book-b"] = [];
 
     const view = render(<WritingSkillsPanel bookId="book-a" />);
     await waitFor(() => expect(enabledSkillNames(view.container).sort()).toEqual(["技能A", "技能B"]));
@@ -133,16 +142,16 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
 
     await waitFor(() => expect(putCalls.length).toBe(1));
     expect(putCalls[0]?.bookId).toBe("book-b");
-    // 只应有刚点的那一个，绝不能带上 book-a 的 skill-b
-    expect(putCalls[0]?.ids).toEqual(["skill-a"]);
+    // 只应有刚点的一个增量操作，绝不能把 book-a 的其它文件带进来
+    expect(putCalls[0]?.body).toEqual({ addSkillIds: ["skill-a"] });
   });
 
   it("回到原书时仍能读回该书自己的勾选", async () => {
     const { render, waitFor } = await import("@testing-library/react");
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
-    bookEnabled["book-a"] = ["skill-b"];
-    bookEnabled["book-b"] = [];
+    projectEnabled["book-a"] = ["b"];
+    projectEnabled["book-b"] = [];
 
     const view = render(<WritingSkillsPanel bookId="book-a" />);
     await waitFor(() => expect(enabledSkillNames(view.container)).toEqual(["技能B"]));

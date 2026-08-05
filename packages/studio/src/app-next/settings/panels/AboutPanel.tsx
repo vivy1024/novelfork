@@ -1,10 +1,31 @@
-import { ExternalLink, Info, Package, RefreshCw } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CircuitBoard, ExternalLink, GitCommitHorizontal, Info, MonitorCog, Package, RefreshCw } from "lucide-react";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { STUDIO_CHANGELOG_URL, STUDIO_PACKAGE_VERSION } from "@/shared/release-manifest";
+import { createRuntimeHealthClient, describeRuntimeEnvironment, isRuntimeHealthy, type RuntimeHealth } from "../../runtime-admin";
+
+const healthClient = createRuntimeHealthClient();
 
 export function AboutPanel() {
+  const [health, setHealth] = useState<RuntimeHealth | null>(null);
+  const [healthError, setHealthError] = useState<string | null>(null);
+
+  // The Runtime build identity is the first thing needed when diagnosing a bug
+  // report, so read it from the live server rather than from bundled constants.
+  useEffect(() => {
+    let active = true;
+    healthClient.get()
+      .then((data) => {
+        if (active) setHealth(data);
+      })
+      .catch((reason) => {
+        if (active) setHealthError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => { active = false; };
+  }, []);
+
   return (
     <div className="flex flex-col gap-6">
       <div>
@@ -22,6 +43,43 @@ export function AboutPanel() {
           <MetadataItem icon={Info} label="产品定位" value="中文网文创作与 AI 辅助工作台" />
           <MetadataItem icon={Info} label="产品界面" value="NovelFork Studio 设置中心" />
           <MetadataItem icon={Package} label="元数据来源" value="随 Studio 打包的软件包清单" />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><CircuitBoard className="size-4 text-primary" />运行时构建标识</CardTitle>
+          <CardDescription>
+            当前正在服务本产品的 NarraFork Runtime 构建信息。反馈问题时请附上这里的版本与提交号。
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          {healthError ? (
+            <p className="text-sm text-muted-foreground sm:col-span-2">
+              无法读取运行时构建标识：{healthError}
+            </p>
+          ) : (
+            <>
+              <MetadataItem icon={CircuitBoard} label="Runtime 版本" value={health?.version ?? "读取中…"} />
+              <MetadataItem icon={GitCommitHorizontal} label="构建提交" value={health?.commit || "未提供"} />
+              <MetadataItem icon={MonitorCog} label="运行平台" value={health?.platform ?? "读取中…"} />
+              <MetadataItem
+                icon={MonitorCog}
+                label="运行方式"
+                value={health ? `${describeRuntimeEnvironment(health.runtimeEnvironment)} · Git ${health.gitAvailable ? "可用" : "不可用"}` : "读取中…"}
+              />
+              {health?.runtimeEnvironment?.containerUnsupportedReason ? (
+                <p className="text-xs text-muted-foreground sm:col-span-2">
+                  容器不可用原因：{health.runtimeEnvironment.containerUnsupportedReason}
+                </p>
+              ) : null}
+              {health && !isRuntimeHealthy(health) ? (
+                <p className="text-sm text-muted-foreground sm:col-span-2">
+                  运行时状态：{health.readiness ?? health.status}（启动恢复尚未完成时会显示为非 ready）
+                </p>
+              ) : null}
+            </>
+          )}
         </CardContent>
       </Card>
 

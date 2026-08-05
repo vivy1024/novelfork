@@ -418,4 +418,30 @@ describe("Runtime overlay replay", () => {
 			],
 		});
 	});
+
+	test("declares generic embedded Provider settings operations", async () => {
+		const overlayRoot = join(
+			import.meta.dir,
+			"..",
+			"packages",
+			"narrafork-runtime-overlay",
+		);
+		const manifest = await verifyRuntimeOverlay(overlayRoot);
+		const byId = new Map(
+			manifest.operations.map((operation) => [operation.id, operation]),
+		);
+
+		expect(byId.get("add-embedded-provider-settings-host")).toMatchObject({
+			type: "add",
+			target: "frontend/components/providers/EmbeddedProviderSettingsHost.tsx",
+			dependsOn: [
+				"add-runtime-frontend-host-providers",
+				"patch-runtime-settings-providers-export-component",
+			],
+		});
+		expect(byId.get("patch-runtime-settings-providers-export-component")).toMatchObject({
+			type: "patch",
+			target: "frontend/routes/settings/providers.tsx",
+		});
+	});
 });

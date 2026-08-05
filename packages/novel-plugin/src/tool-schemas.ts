@@ -457,7 +457,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "writing-skills.read": {
     type: "object",
     properties: {
-      scope: enumSchema(["enabled", "available"], "enabled=当前书籍生效的 Writing Skills（含正文）；available=全部可用 Writing Skills（含 enabled 标记）。默认 available。"),
+      scope: enumSchema(["enabled", "available"], "enabled=当前项目 `.novelfork/skills/` 中生效的 Writing Skills（含正文）；available=全部可用 Writing Skills（含项目目录标记）。默认 available。"),
     },
     required: [],
     additionalProperties: false,
@@ -465,10 +465,11 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "writing-skills.write": {
     type: "object",
     properties: {
-      enabledWritingSkillIds: arraySchema("要启用的 Writing Skill ID 列表；mode=always 的 Skill 无需传入。", { type: "string" }),
-      discardUnmappedLegacyIds: booleanSchema("存在无法映射的旧 Preset/Beat 选择时，是否明确丢弃这些旧选择。默认 false。"),
+      addSkillIds: arraySchema("将指定 catalog Writing Skill 物化到当前项目 `.novelfork/skills/`；不影响其它已存在的项目 Skill。", { type: "string" }),
+      removeSkillIds: arraySchema("删除当前项目 `.novelfork/skills/` 中指定 catalog Writing Skill 的文件夹。", { type: "string" }),
+      refreshSkillIds: arraySchema("用 catalog 原文刷新当前项目中指定 Writing Skill；作者已修改的项目文件不会自动刷新。", { type: "string" }),
     },
-    required: ["enabledWritingSkillIds"],
+    required: [],
     additionalProperties: false,
   },
   "writing-skills.recommend": {
@@ -534,10 +535,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       summaryMd: stringSchema("条目短摘要（可选；未提供时自动截断生成）。"),
       category: stringSchema("经纬类别。"),
       layer: stringSchema("数据层：canon（不可变真相）| dynamic（每章可更新）| reference（按需查阅）。默认 dynamic。"),
-      aliases: arraySchema("别名列表。"),
-      tags: arraySchema("标签列表。"),
+      aliases: arraySchema("别名列表。", { type: "string" }),
+      tags: arraySchema("标签列表。", { type: "string" }),
       visibility: stringSchema("可见性规则：global | tracked | nested。默认 tracked。"),
-      relatedEntryIds: arraySchema("关联条目 ID 列表。"),
+      relatedEntryIds: arraySchema("关联条目 ID 列表。", { type: "string" }),
       entryId: stringSchema("条目 ID（delete/retire 时可用，按 ID 精确操作）。"),
       mode: stringSchema("写入模式：overwrite（覆盖，默认）、append（追加到已有内容末尾）。"),
       confirmCanonEdit: booleanSchema("修改或退役 Canon 条目时必须设为 true"),

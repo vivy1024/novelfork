@@ -1,12 +1,11 @@
 import { createHash } from "node:crypto";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 
 import {
   authorWritingSkillsDir,
-  getWritingSkillRawContentSync,
   loadWritingSkills,
   parseWritingSkill,
   writeAuthorWritingSkill,
@@ -15,6 +14,11 @@ import {
   MAX_RECOMMENDED_WRITING_SKILLS,
   recommendWritingSkills,
 } from "../engine/writing-skills/recommend.js";
+import {
+  loadProjectWritingSkills,
+  readProjectWritingSkillRaw,
+  syncProjectWritingSkills,
+} from "../engine/writing-skills/project-storage.js";
 import type {
   ParsedWritingSkill,
   WritingSkillComplianceCheck,
@@ -35,9 +39,12 @@ export interface WritingSkillsReadInput {
 
 export interface WritingSkillsWriteInput {
   readonly bookId: string;
-  readonly enabledWritingSkillIds: readonly string[];
-  /** 有无法映射的 legacy ID 时，明确允许清理旧字段。默认 false，避免静默丢失。 */
-  readonly discardUnmappedLegacyIds?: boolean;
+  /** 将 catalog Skill 文件物化到当前项目 `.novelfork/skills`。 */
+  readonly addSkillIds?: readonly string[];
+  /** 删除当前项目中对应 catalog Skill 的文件夹。 */
+  readonly removeSkillIds?: readonly string[];
+  /** 作者副本更新后，覆盖当前项目中已经存在的对应文件。 */
+  readonly refreshSkillIds?: readonly string[];
 }
 
 export interface WritingSkillsCheckComplianceInput {
@@ -55,10 +62,8 @@ export interface WritingSkillsImportLegacyInput {
   readonly bookId?: string;
 }
 
-export interface WritingSkillSelectionMigrationReport {
-  readonly migratedIds: readonly string[];
-  readonly unmappedLegacyIds: readonly string[];
-  readonly canRemoveLegacySelection: boolean;
+export interface WritingSkillProjectReport {
+  readonly migratedSlugs: readonly string[];
 }
 
 export interface WritingSkillComplianceViolation {
@@ -88,11 +93,6 @@ type HandlerResult = Readonly<{
 
 type BookFile = Record<string, unknown> & {
   readonly id?: unknown;
-  readonly enabledWritingSkillIds?: unknown;
-  readonly enabledPresetIds?: unknown;
-  readonly beatTemplateId?: unknown;
-  readonly customPresetOverrides?: unknown;
-  readonly updatedAt?: unknown;
 };
 
 type LegacyUserTemplateRow = Readonly<{
@@ -147,87 +147,45 @@ async function readBookFile(bookId: string, options: TrustedWritingSkillOptions)
   return book;
 }
 
-async function writeBookFile(
-  bookId: string,
+async function resolveProjectWritingSkillState(
   options: TrustedWritingSkillOptions,
-  update: (book: BookFile) => BookFile,
-): Promise<BookFile> {
-  const current = await readBookFile(bookId, options);
-  const next = update(current);
-  await writeFile(bookConfigPath(options), `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  return next;
-}
-
-function nowIso(options: TrustedWritingSkillOptions): string {
-  return (options.now?.() ?? new Date()).toISOString();
-}
-
-function explicitSelection(book: BookFile): string[] {
-  return normalizeIds(book.enabledWritingSkillIds);
-}
-
-function legacySelection(book: BookFile): string[] {
-  const selected = normalizeIds(book.enabledPresetIds);
-  const beatTemplateId = asText(book.beatTemplateId);
-  return beatTemplateId ? [...new Set([...selected, beatTemplateId])] : selected;
-}
-
-/**
- * 纯映射：仅迁移已经能由当前 SKILL.md 解析出的旧选择 ID。
- * 未映射旧值绝不静默删除，命令调用方可以把报告交给作者处理。
- */
-export function migrateLegacyWritingSkillSelection(
-  book: BookFile,
   skills: readonly ParsedWritingSkill[],
-): { readonly enabledWritingSkillIds: readonly string[]; readonly report: WritingSkillSelectionMigrationReport } {
-  const knownIds = new Set(skills.map((skill) => skill.id));
-  const current = explicitSelection(book).filter((id) => knownIds.has(id));
-  const legacy = legacySelection(book);
-  const migratedIds = legacy.filter((id) => knownIds.has(id));
-  const unmappedLegacyIds = legacy.filter((id) => !knownIds.has(id));
+): Promise<{
+  readonly projectSkills: readonly ParsedWritingSkill[];
+  readonly projectSkillSlugs: readonly string[];
+  readonly report: WritingSkillProjectReport;
+}> {
+  const loaded = await loadProjectWritingSkills(options.bookRoot, skills);
   return {
-    enabledWritingSkillIds: [...new Set([...current, ...migratedIds])],
-    report: {
-      migratedIds,
-      unmappedLegacyIds,
-      canRemoveLegacySelection: unmappedLegacyIds.length === 0,
-    },
+    projectSkills: loaded.skills,
+    projectSkillSlugs: loaded.projectSkillSlugs,
+    report: { migratedSlugs: loaded.migratedSlugs },
   };
 }
 
-export function resolveActiveWritingSkills(
-  skills: readonly ParsedWritingSkill[],
-  enabledWritingSkillIds: Iterable<string>,
-): ReadonlyArray<ParsedWritingSkill> {
-  const enabled = new Set(enabledWritingSkillIds);
-  const explicitlySelected = skills.filter((skill) => skill.mode !== "always" && enabled.has(skill.id));
-  const alwaysEnabled = skills.filter((skill) => skill.mode === "always" && !enabled.has(skill.id));
-  return [...explicitlySelected, ...alwaysEnabled];
-}
-
-/** 读取一书当前真正生效的 Skills；供管线和工具复用，不读数据库。 */
+/** 读取一书当前真正生效的 Skills；项目文件是唯一权威源。 */
 export async function loadActiveWritingSkillsForBook(
   bookId: string,
   options: TrustedWritingSkillOptions,
 ): Promise<Readonly<{
   skills: readonly ParsedWritingSkill[];
-  enabledWritingSkillIds: readonly string[];
-  migration: WritingSkillSelectionMigrationReport;
+  projectSkillSlugs: readonly string[];
+  migration: WritingSkillProjectReport;
 }>> {
   const normalizedBookId = normalizeBookId(bookId);
-  const [book, skills] = await Promise.all([
-    readBookFile(normalizedBookId, options),
-    loadWritingSkills(options.home),
-  ]);
-  const migrated = migrateLegacyWritingSkillSelection(book, skills);
+  void normalizedBookId;
+  const catalog = await loadWritingSkills(options.home);
+  const state = await resolveProjectWritingSkillState(options, catalog);
+  const projectSlugs = new Set(state.projectSkillSlugs);
+  const always = catalog.filter((skill) => skill.mode === "always" && !projectSlugs.has(skill.slug));
   return {
-    skills: resolveActiveWritingSkills(skills, migrated.enabledWritingSkillIds),
-    enabledWritingSkillIds: migrated.enabledWritingSkillIds,
-    migration: migrated.report,
+    skills: [...always, ...state.projectSkills],
+    projectSkillSlugs: state.projectSkillSlugs,
+    migration: state.report,
   };
 }
 
-function toListItem(skill: ParsedWritingSkill, enabled: boolean) {
+function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
   return {
     id: skill.id,
     slug: skill.slug,
@@ -240,7 +198,7 @@ function toListItem(skill: ParsedWritingSkill, enabled: boolean) {
     version: skill.version ?? null,
     provenance: skill.provenance ?? null,
     editable: skill.source === "user",
-    enabled,
+    projectActive,
   };
 }
 
@@ -250,35 +208,47 @@ export async function handleWritingSkillsRead(
 ): Promise<HandlerResult> {
   try {
     const bookId = normalizeBookId(input.bookId);
-    const [book, skills] = await Promise.all([
-      readBookFile(bookId, options),
-      loadWritingSkills(options.home),
-    ]);
-    const migrated = migrateLegacyWritingSkillSelection(book, skills);
-    const active = resolveActiveWritingSkills(skills, migrated.enabledWritingSkillIds);
-    const activeIds = new Set(active.map((skill) => skill.id));
+    const catalog = await loadWritingSkills(options.home);
+    const active = await loadActiveWritingSkillsForBook(bookId, options);
+    const activeSlugs = new Set(active.projectSkillSlugs);
+    const catalogSlugs = new Set(catalog.map((skill) => skill.slug));
+    const projectOnly = active.skills.filter((skill) => !catalogSlugs.has(skill.slug));
+    const available = [...catalog, ...projectOnly];
+    const projectContent = new Map(
+      await Promise.all(
+        active.skills
+          .filter((skill) => skill.source === "project")
+          .map(async (skill) => [skill.slug, await readProjectWritingSkillRaw(options.bookRoot, skill.slug)] as const),
+      ),
+    );
+    const listItem = (skill: ParsedWritingSkill, projectActive: boolean) => ({
+      ...toListItem(skill, projectActive),
+      ...(projectContent.has(skill.slug) ? { content: projectContent.get(skill.slug) } : {}),
+    });
 
     if ((input.scope ?? "available") === "enabled") {
       return {
         ok: true,
-        summary: `已加载 ${active.length} 个生效 Writing Skills。`,
+        summary: `已加载 ${active.skills.length} 个项目目录中的生效 Writing Skills。`,
         data: {
           bookId,
-          enabledWritingSkillIds: migrated.enabledWritingSkillIds,
-          skills: active.map((skill) => ({ ...toListItem(skill, true), body: skill.body })),
-          migration: migrated.report,
+          projectSkillSlugs: active.projectSkillSlugs,
+          projectSkillsDirectory: ".novelfork/skills",
+          skills: active.skills.map((skill) => ({ ...listItem(skill, true), body: skill.body })),
+          migration: active.migration,
         },
       };
     }
 
     return {
       ok: true,
-      summary: `共 ${skills.length} 个可用 Writing Skills，其中 ${active.length} 个当前生效。`,
+      summary: `共 ${available.length} 个可用 Writing Skills，其中 ${active.skills.length} 个来自当前项目目录。`,
       data: {
         bookId,
-        enabledWritingSkillIds: migrated.enabledWritingSkillIds,
-        skills: skills.map((skill) => toListItem(skill, activeIds.has(skill.id))),
-        migration: migrated.report,
+        projectSkillSlugs: active.projectSkillSlugs,
+        projectSkillsDirectory: ".novelfork/skills",
+        skills: available.map((skill) => listItem(skill, skill.mode === "always" || activeSlugs.has(skill.slug))),
+        migration: active.migration,
       },
     };
   } catch (error) {
@@ -295,64 +265,29 @@ export async function handleWritingSkillsWrite(
 ): Promise<HandlerResult> {
   try {
     const bookId = normalizeBookId(input.bookId);
-    const [current, skills] = await Promise.all([
-      readBookFile(bookId, options),
-      loadWritingSkills(options.home),
-    ]);
-    const existingMigration = migrateLegacyWritingSkillSelection(current, skills);
-    if (!existingMigration.report.canRemoveLegacySelection && input.discardUnmappedLegacyIds !== true) {
-      return fail(
-        "legacy-writing-skill-selection-unresolved",
-        `仍有 ${existingMigration.report.unmappedLegacyIds.length} 个旧 Preset/Beat 选择无法映射到当前 SKILL.md；未修改 book.json。请先运行 writing-skills.import_legacy，或明确确认 discardUnmappedLegacyIds。`,
-        { migration: existingMigration.report },
-      );
-    }
-
-    const knownSelectableIds = new Set(skills.filter((skill) => skill.mode !== "always").map((skill) => skill.id));
-    const requested = normalizeIds(input.enabledWritingSkillIds);
-    const enabledWritingSkillIds = requested.filter((id) => knownSelectableIds.has(id));
-    const invalidIds = requested.filter((id) => !knownSelectableIds.has(id));
-
-    await writeBookFile(bookId, options, (book) => {
-      const {
-        enabledPresetIds: _enabledPresetIds,
-        beatTemplateId: _beatTemplateId,
-        customPresetOverrides: _customPresetOverrides,
-        ...rest
-      } = book;
-      return {
-        ...rest,
-        enabledWritingSkillIds,
-        updatedAt: nowIso(options),
-      };
-    });
-
-    // 物化启用的 Writing Skills 到作品目录 .novelfork/skills/<slug>/SKILL.md，
-    // 使 Runtime 项目 Skill 扫描能发现它们，且作品可独立迁移。
-    const projectSkillsDir = join(options.bookRoot, ".novelfork", "skills");
-    for (const skill of skills) {
-      if (!enabledWritingSkillIds.includes(skill.id)) continue;
-      const raw = getWritingSkillRawContentSync(skill.slug, options.home);
-      if (!raw) continue;
-      const skillDir = join(projectSkillsDir, skill.slug);
-      await mkdir(skillDir, { recursive: true });
-      await writeFile(join(skillDir, "SKILL.md"), raw, "utf8");
-    }
+    const skills = await loadWritingSkills(options.home);
+    const synced = await syncProjectWritingSkills(options.bookRoot, skills, {
+      addSkillIds: normalizeIds(input.addSkillIds),
+      removeSkillIds: normalizeIds(input.removeSkillIds),
+      refreshSkillIds: normalizeIds(input.refreshSkillIds),
+    }, { home: options.home });
 
     return {
       ok: true,
-      summary: enabledWritingSkillIds.length > 0
-        ? `已启用 ${enabledWritingSkillIds.length} 个 Writing Skills。`
-        : "已清空书籍级 Writing Skills 选择；mode: always 的 Skills 仍会生效。",
+      summary: synced.createdSlugs.length > 0 || synced.refreshedSlugs.length > 0
+        ? `已更新当前项目 .novelfork/skills，当前发现 ${synced.projectSkillSlugs.length} 个项目 Writing Skills。`
+        : synced.removedSlugs.length > 0
+          ? `已从当前项目 .novelfork/skills 移除 ${synced.removedSlugs.length} 个 Writing Skills。`
+          : `当前项目 .novelfork/skills 中发现 ${synced.projectSkillSlugs.length} 个 Writing Skills。`,
       data: {
         bookId,
-        enabledWritingSkillIds,
-        invalidIds,
-        migration: {
-          ...existingMigration.report,
-          canRemoveLegacySelection: true,
-          ...(input.discardUnmappedLegacyIds ? { discardedLegacyIds: existingMigration.report.unmappedLegacyIds } : {}),
-        },
+        projectSkillSlugs: synced.projectSkillSlugs,
+        projectSkillsDirectory: ".novelfork/skills",
+        invalidIds: synced.invalidIds,
+        createdSlugs: synced.createdSlugs,
+        removedSlugs: synced.removedSlugs,
+        refreshedSlugs: synced.refreshedSlugs,
+        migratedSlugs: synced.migratedSlugs,
       },
     };
   } catch (error) {
@@ -367,7 +302,7 @@ export async function handleWritingSkillsWrite(
  * 按本书已落库的建书答案推荐 Writing Skills。
  *
  * 只读：答案取自 book.json（建书十一问由 applyGuidedSetup 写入），
- * 不修改 `enabledWritingSkillIds`。启用必须由作者确认后走
+ * 不修改项目 Skill 文件。添加或移除必须由作者确认后走
  * `writing-skills.write`，保留 Runtime 的权限确认。
  */
 export async function handleWritingSkillsRecommend(
@@ -395,22 +330,22 @@ export async function handleWritingSkillsRecommend(
       : MAX_RECOMMENDED_WRITING_SKILLS;
     const recommended = recommendation.recommended.slice(0, limit);
 
-    // 已启用的不再重复建议，避免作者看到「推荐启用一个已经启用的」。
-    const migrated = migrateLegacyWritingSkillSelection(book, skills);
-    const enabled = new Set(migrated.enabledWritingSkillIds);
+    // 已在项目目录中的不再重复建议，避免作者看到「推荐启用一个已经存在的文件」。
+    const projectState = await resolveProjectWritingSkillState(options, skills);
+    const projectSlugs = new Set(projectState.projectSkillSlugs);
 
     return {
       ok: true,
       summary: recommended.length > 0
-        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 writing-skills.write 启用。`
+        ? `按本书设定推荐 ${recommended.length} 个 Writing Skills${recommendation.matchedGenreCluster ? `（题材簇：${recommendation.matchedGenreCluster}）` : ""}。这只是建议，需你确认后再用 writing-skills.write 添加到项目目录。`
         : "没有匹配到值得推荐的 Writing Skills；可在写作设置里手动挑选。",
       data: {
         bookId,
         matchedGenreCluster: recommendation.matchedGenreCluster,
         consideredCount: recommendation.consideredCount,
         droppedByConflict: recommendation.droppedByConflict,
-        enabledWritingSkillIds: migrated.enabledWritingSkillIds,
-        recommended: recommended.map((item) => ({ ...item, alreadyEnabled: enabled.has(item.id) })),
+        projectSkillSlugs: projectState.projectSkillSlugs,
+        recommended: recommended.map((item) => ({ ...item, alreadyEnabled: projectSlugs.has(item.slug) })),
       },
     };
   } catch (error) {

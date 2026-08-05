@@ -37,6 +37,8 @@ export default defineConfig({
     alias: {
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(runtimePaths.frontendRoot, "components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(runtimePaths.frontendRoot, "lib/query-client.ts"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(runtimePaths.frontendRoot, "components/providers/EmbeddedProviderSettingsHost.tsx"),
+      "@vivy1024/narrafork-runtime-bridge/frontend/notification-sound": resolve(runtimePaths.frontendRoot, "lib/notification-sound.ts"),
       "@frontend": runtimePaths.frontendRoot,
       "@shared": runtimePaths.sharedRoot,
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/ide/index.ts"),

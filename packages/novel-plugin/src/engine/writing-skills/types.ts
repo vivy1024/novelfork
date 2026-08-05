@@ -20,7 +20,7 @@ export const WRITING_SKILL_KINDS = [
 
 export type WritingSkillKind = (typeof WRITING_SKILL_KINDS)[number];
 export type WritingSkillMode = "manual" | "auto" | "always";
-export type WritingSkillSource = "builtin" | "user";
+export type WritingSkillSource = "builtin" | "user" | "project";
 
 export interface WritingSkillProvenance {
   readonly repo: string;

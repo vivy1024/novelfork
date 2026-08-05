@@ -47,12 +47,21 @@ import {
   getKnowledgeEntry,
   listKnowledgeCollections,
   listKnowledgeEntries,
+  listKnowledgeEntryAccessibleUsers,
   updateKnowledgeEntry,
+  type KnowledgeAccessibleUser,
   type KnowledgeCollection,
   type KnowledgeEntry,
   type KnowledgeEntryStatus,
   type KnowledgeEntrySummary,
 } from "../runtime-admin/knowledge";
+
+/** Chinese labels for why a user can read an entry. */
+const ACCESS_REASON_LABELS: Readonly<Record<string, string>> = {
+  admin: "管理员（绕过 ACL）",
+  owner: "集合所有者",
+  grant: "分级/标签授权",
+};
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error && error.message.trim() ? error.message : fallback;
@@ -685,10 +694,71 @@ function EntryDetailCard({
             {entry.keywords.length > 0 ? (
               <p className="text-xs text-muted-foreground">关键词：{entry.keywords.join("、")}</p>
             ) : null}
+            <EntryAccessPreview entryId={entry.id} />
           </div>
         )}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Shows who can currently read this entry.
+ *
+ * Grants alone do not reveal the resulting audience, so this is the check to run
+ * before publishing sensitive material. Loaded on demand rather than with the
+ * entry: it is an admin-only endpoint and would 403 for regular authors.
+ */
+function EntryAccessPreview({ entryId }: { readonly entryId: string }) {
+  const [users, setUsers] = useState<readonly KnowledgeAccessibleUser[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset when switching entries so a stale audience is never shown.
+  useEffect(() => {
+    setUsers(null);
+    setError(null);
+  }, [entryId]);
+
+  async function load() {
+    setLoading(true);
+    setError(null);
+    try {
+      setUsers(await listKnowledgeEntryAccessibleUsers(entryId));
+    } catch (reason) {
+      setError(errorMessage(reason, "读取可访问用户失败"));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-border p-3" data-slot="entry-access-preview">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-foreground">可访问用户</p>
+          <p className="text-xs text-muted-foreground">按当前分级与分区标签计算出的实际可读范围。</p>
+        </div>
+        <Button size="sm" variant="outline" disabled={loading} onClick={() => void load()}>
+          {loading ? "正在计算…" : users ? "重新计算" : "查看可访问用户"}
+        </Button>
+      </div>
+      {error ? (
+        <p className="text-xs text-destructive">{error}</p>
+      ) : users === null ? null : users.length === 0 ? (
+        <p className="text-xs text-muted-foreground">当前没有用户可以读取此条目。</p>
+      ) : (
+        <ul className="flex flex-col gap-1">
+          {users.map((user) => (
+            <li key={user.userId} className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-medium text-foreground">{user.username}</span>
+              <Badge variant="outline">{user.role}</Badge>
+              <Badge variant="secondary">{ACCESS_REASON_LABELS[user.reason] ?? user.reason}</Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 

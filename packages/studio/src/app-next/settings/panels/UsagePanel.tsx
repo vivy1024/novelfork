@@ -51,11 +51,44 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 const usageClient = createUsageHistoryClient();
 const PAGE_SIZE = 25;
 
-const chartConfig = {
-  totalTokens: { label: "Token 数", color: "hsl(var(--primary))" },
-  requestCount: { label: "请求数", color: "hsl(var(--muted-foreground))" },
-  errorCount: { label: "错误数", color: "hsl(var(--destructive))" },
-} satisfies ChartConfig;
+/**
+ * Selectable chart metrics, matching the Runtime usage chart's own metric list.
+ * The panel previously hardcoded three bars, so cost, TTFT, cache and metered
+ * usage were invisible even though the Runtime returns them for every bucket.
+ */
+const CHART_METRICS = [
+  { value: "totalTokens", label: "Token 总数", axis: "tokens" },
+  { value: "requestCount", label: "请求数", axis: "count" },
+  { value: "errorCount", label: "错误数", axis: "count" },
+  { value: "totalInputTokens", label: "输入 Token", axis: "tokens" },
+  { value: "totalOutputTokens", label: "输出 Token", axis: "tokens" },
+  { value: "totalReasoningTokens", label: "推理 Token", axis: "tokens" },
+  { value: "totalCacheReadTokens", label: "缓存读取 Token", axis: "tokens" },
+  { value: "totalCacheCreationTokens", label: "缓存写入 Token", axis: "tokens" },
+  { value: "totalCost", label: "费用", axis: "tokens" },
+  { value: "averageTtftMs", label: "平均首字延迟（ms）", axis: "tokens" },
+  { value: "averageDurationMs", label: "平均耗时（ms）", axis: "tokens" },
+  { value: "meterUsage", label: "计量用量", axis: "tokens" },
+] as const;
+
+type ChartMetric = (typeof CHART_METRICS)[number]["value"];
+
+const DEFAULT_CHART_METRICS: readonly ChartMetric[] = ["totalTokens", "requestCount", "errorCount"];
+
+const METRIC_COLORS = [
+  "hsl(var(--primary))",
+  "hsl(var(--muted-foreground))",
+  "hsl(var(--destructive))",
+  "hsl(var(--chart-4, var(--primary)))",
+] as const;
+
+function metricLabel(metric: ChartMetric): string {
+  return CHART_METRICS.find((entry) => entry.value === metric)?.label ?? metric;
+}
+
+function metricAxis(metric: ChartMetric): "tokens" | "count" {
+  return CHART_METRICS.find((entry) => entry.value === metric)?.axis ?? "tokens";
+}
 
 interface UsageListState {
   readonly records: readonly UsageHistoryRecord[];
@@ -148,6 +181,7 @@ export function UsagePanel() {
   const [list, setList] = useState<UsageListState | null>(null);
   const [stats, setStats] = useState<UsageHistoryStats | null>(null);
   const [timeseries, setTimeseries] = useState<UsageHistoryTimeSeriesResponse | null>(null);
+  const [selectedMetrics, setSelectedMetrics] = useState<readonly ChartMetric[]>(DEFAULT_CHART_METRICS);
   const [loading, setLoading] = useState(true);
   const [refreshNonce, setRefreshNonce] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -222,6 +256,13 @@ export function UsagePanel() {
     ...point,
     label: formatAxisTime(point.timestamp, granularity),
   }));
+
+  const chartConfig = Object.fromEntries(
+    selectedMetrics.map((metric, index) => [
+      metric,
+      { label: metricLabel(metric), color: METRIC_COLORS[index % METRIC_COLORS.length] },
+    ]),
+  ) as ChartConfig;
 
   return (
     <div className="flex flex-col gap-6">
@@ -299,7 +340,7 @@ export function UsagePanel() {
       <Card>
         <CardHeader>
           <CardTitle>时间序列</CardTitle>
-          <CardDescription>由 Runtime 聚合。Token 使用左侧刻度，请求数和错误数使用右侧刻度。</CardDescription>
+          <CardDescription>由 Runtime 聚合。Token、费用与耗时使用左侧刻度，请求数和错误数使用右侧刻度。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           <Tabs value={granularity} onValueChange={(value) => { setGranularity(value as UsageHistoryGranularity); setPage(1); }}>
@@ -309,6 +350,37 @@ export function UsagePanel() {
               <TabsTrigger value="month">月</TabsTrigger>
             </TabsList>
           </Tabs>
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              图表指标（可多选，至少保留一项）
+              {timeseries?.points.some((point) => point.meterUnit)
+                ? ` · 计量单位：${timeseries.points.find((point) => point.meterUnit)?.meterUnit}`
+                : ""}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {CHART_METRICS.map((metric) => {
+                const active = selectedMetrics.includes(metric.value);
+                return (
+                  <Button
+                    key={metric.value}
+                    type="button"
+                    size="sm"
+                    variant={active ? "default" : "outline"}
+                    aria-pressed={active}
+                    aria-label={`指标 ${metric.label}`}
+                    onClick={() => setSelectedMetrics((current) => {
+                      if (!current.includes(metric.value)) return [...current, metric.value];
+                      // Removing the last metric would render an empty chart.
+                      if (current.length === 1) return current;
+                      return current.filter((item) => item !== metric.value);
+                    })}
+                  >
+                    {metric.label}
+                  </Button>
+                );
+              })}
+            </div>
+          </div>
           {timeseries?.truncated && (
             <Alert><AlertTriangle className="mb-2 size-4" /><AlertTitle>时间序列已截断</AlertTitle><AlertDescription>当前范围达到 Runtime 上限，共返回 {timeseries.maxBuckets} 个时间桶。</AlertDescription></Alert>
           )}
@@ -322,11 +394,17 @@ export function UsagePanel() {
                 <CartesianGrid vertical={false} />
                 <XAxis dataKey="label" tickLine={false} axisLine={false} minTickGap={28} />
                 <YAxis yAxisId="tokens" tickLine={false} axisLine={false} tickFormatter={formatCompact} width={48} />
-                <YAxis yAxisId="requests" orientation="right" tickLine={false} axisLine={false} allowDecimals={false} width={36} />
+                <YAxis yAxisId="count" orientation="right" tickLine={false} axisLine={false} allowDecimals={false} width={36} />
                 <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar yAxisId="tokens" dataKey="totalTokens" fill="var(--color-totalTokens)" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="requests" dataKey="requestCount" fill="var(--color-requestCount)" radius={[4, 4, 0, 0]} />
-                <Bar yAxisId="requests" dataKey="errorCount" fill="var(--color-errorCount)" radius={[4, 4, 0, 0]} />
+                {selectedMetrics.map((metric, index) => (
+                  <Bar
+                    key={metric}
+                    yAxisId={metricAxis(metric)}
+                    dataKey={metric}
+                    fill={METRIC_COLORS[index % METRIC_COLORS.length]}
+                    radius={[4, 4, 0, 0]}
+                  />
+                ))}
               </BarChart>
             </ChartContainer>
           )}

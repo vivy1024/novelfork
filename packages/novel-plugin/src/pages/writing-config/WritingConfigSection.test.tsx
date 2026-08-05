@@ -31,7 +31,7 @@ describe("WritingConfigSection", () => {
     stubs["/writing-skills"] = {
       skills: [{ id: "skill-a", slug: "cool-prose", name: "冷峻叙述", description: "克制的叙述语气。", kind: "prose", source: "builtin", editable: false }],
     };
-    stubs[`/books/${BOOK_ID}/writing-skills`] = { enabledWritingSkillIds: ["skill-a"] };
+    stubs[`/books/${BOOK_ID}/writing-skills`] = { projectSkillSlugs: ["cool-prose"] };
 
     const html = renderToStaticMarkup(<WritingConfigSection bookId={BOOK_ID} />);
 

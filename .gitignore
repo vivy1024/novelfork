@@ -85,9 +85,11 @@ session-error-root.png
 
 # Externally materialized upstream Runtime and transient import staging.
 # Runtime behavior is pinned by the versioned overlay manifest and product source.
+# The wildcard keeps every local Runtime checkout/staging variant (import,
+# backups, ad-hoc verification trees) out of the public tree: any one of them
+# would leak the private Runtime source.
 /packages/narrafork-runtime-private/
-/packages/.narrafork-runtime-import/
-/packages/.narrafork-runtime-backups/
+/packages/.narrafork-runtime-*/
 
 # Local Runtime diagnostics, clean upstream checkout, and browser-verification artifacts.
 /.novelfork-debug/

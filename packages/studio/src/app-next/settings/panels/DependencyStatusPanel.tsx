@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleMinus, RefreshCw, XCircle } from "lucide-react";
+import { CheckCircle2, CircleMinus, Download, RefreshCw, XCircle } from "lucide-react";
 
 import {
   createDependenciesClient,
+  isInstallableDependency,
   type DependencyCheckResult,
   type DependencyInfo,
 } from "@/app-next/runtime-admin";
@@ -41,6 +42,17 @@ function formatErrorMessage(reason: unknown): string {
   return `依赖状态检测失败：${message}`;
 }
 
+function formatInstallError(name: string, reason: unknown): string {
+  const status =
+    typeof reason === "object" && reason !== null && "status" in reason
+      ? Number((reason as { status?: unknown }).status)
+      : undefined;
+  const message = reason instanceof Error ? reason.message : String(reason);
+  if (status === 403) return `安装 ${name} 需要 Runtime 管理员权限。`;
+  if (status === 401) return `Runtime 登录已失效，无法安装 ${name}。`;
+  return `安装 ${name} 失败：${message}`;
+}
+
 function DependencyIcon({ dep }: { readonly dep: DependencyInfo }) {
   if (!dep.platformSupported) {
     return <CircleMinus className="size-4 text-muted-foreground" />;
@@ -51,11 +63,23 @@ function DependencyIcon({ dep }: { readonly dep: DependencyInfo }) {
   return <XCircle className="size-4 text-destructive" />;
 }
 
-function DependencyRow({ dep, packageManager }: { readonly dep: DependencyInfo; readonly packageManager?: string }) {
+function DependencyRow({ dep, packageManager, installing, onInstall }: {
+  readonly dep: DependencyInfo;
+  readonly packageManager?: string;
+  readonly installing: boolean;
+  readonly onInstall: (dep: DependencyInfo, command: string) => void;
+}) {
   const unsupported = !dep.platformSupported;
   const recommendedCmd = packageManager && dep.installCommands[packageManager]
     ? dep.installCommands[packageManager]
     : null;
+  // The Runtime only accepts git/rg/dtach for automated installation and needs a
+  // command for the detected package manager, so the button appears only when the
+  // install can actually succeed.
+  const canInstall = !dep.installed
+    && dep.platformSupported
+    && recommendedCmd !== null
+    && isInstallableDependency(dep.name);
 
   return (
     <Card size="sm">
@@ -87,11 +111,31 @@ function DependencyRow({ dep, packageManager }: { readonly dep: DependencyInfo; 
         </div>
       </CardHeader>
       {!dep.installed && dep.platformSupported && recommendedCmd ? (
-        <CardContent>
-          <p className="mb-1 text-xs text-muted-foreground">推荐安装命令：</p>
-          <code className="block whitespace-pre-wrap rounded bg-muted px-3 py-2 text-xs">
-            {recommendedCmd}
-          </code>
+        <CardContent className="flex flex-col gap-3">
+          <div>
+            <p className="mb-1 text-xs text-muted-foreground">推荐安装命令：</p>
+            <code className="block whitespace-pre-wrap rounded bg-muted px-3 py-2 text-xs">
+              {recommendedCmd}
+            </code>
+          </div>
+          {canInstall ? (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={installing}
+                onClick={() => onInstall(dep, recommendedCmd)}
+              >
+                {installing ? (
+                  <Download data-icon="inline-start" className="motion-safe:animate-pulse" />
+                ) : (
+                  <Download data-icon="inline-start" />
+                )}
+                {installing ? `正在安装 ${dep.name}…` : `安装 ${dep.name}`}
+              </Button>
+            </div>
+          ) : null}
         </CardContent>
       ) : null}
     </Card>
@@ -123,6 +167,9 @@ export function DependencyStatusPanel() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState<{ dep: DependencyInfo; command: string } | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [installResult, setInstallResult] = useState<{ name: string; ok: boolean; detail?: string } | null>(null);
 
   async function loadDependencies(isRefresh = false) {
     if (isRefresh) setRefreshing(true);
@@ -135,6 +182,37 @@ export function DependencyStatusPanel() {
     } finally {
       setLoading(false);
       setRefreshing(false);
+    }
+  }
+
+  /**
+   * Installing runs a real package-manager command on the host, so it is
+   * confirmed first and the resulting status is re-read from the Runtime rather
+   * than assumed from the response.
+   */
+  async function confirmInstall() {
+    if (!pending) return;
+    const { dep } = pending;
+    setInstalling(dep.name);
+    setInstallResult(null);
+    setError(null);
+    setPending(null);
+    try {
+      const result = await dependenciesClient.install(dep.name);
+      setInstallResult({
+        name: dep.name,
+        ok: result.ok,
+        detail: result.ok
+          ? result.dependency?.version
+            ? `已安装 ${result.dependency.version}`
+            : undefined
+          : result.error,
+      });
+      await loadDependencies(true);
+    } catch (reason) {
+      setInstallResult({ name: dep.name, ok: false, detail: formatInstallError(dep.name, reason) });
+    } finally {
+      setInstalling(null);
     }
   }
 
@@ -188,6 +266,43 @@ export function DependencyStatusPanel() {
         </Alert>
       ) : null}
 
+      {installResult ? (
+        <Alert>
+          <AlertTitle>
+            {installResult.ok ? `${installResult.name} 安装成功` : `${installResult.name} 安装失败`}
+          </AlertTitle>
+          <AlertDescription>
+            {installResult.detail
+              ?? (installResult.ok
+                ? "依赖状态已重新检测。"
+                : "Runtime 未返回失败原因，请查看服务器日志。")}
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
+      {pending ? (
+        <Alert>
+          <AlertTitle>确认安装 {pending.dep.name}</AlertTitle>
+          <AlertDescription className="flex flex-col items-start gap-3">
+            <span>
+              将在服务器上执行下面的命令。安装过程由 Runtime 以管理员身份运行，可能需要数分钟。
+            </span>
+            <code className="block w-full whitespace-pre-wrap rounded bg-muted px-3 py-2 text-xs">
+              {pending.command}
+            </code>
+            <div className="flex gap-2">
+              <Button type="button" size="sm" onClick={() => void confirmInstall()}>
+                <Download data-icon="inline-start" />
+                确认安装
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setPending(null)}>
+                取消
+              </Button>
+            </div>
+          </AlertDescription>
+        </Alert>
+      ) : null}
+
       {loading && !data ? <LoadingSkeleton /> : null}
 
       {data ? (
@@ -207,6 +322,8 @@ export function DependencyStatusPanel() {
                 key={dep.name}
                 dep={dep}
                 packageManager={data.packageManager}
+                installing={installing === dep.name}
+                onInstall={(target, command) => setPending({ dep: target, command })}
               />
             ))}
           </div>

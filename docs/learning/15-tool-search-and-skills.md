@@ -33,8 +33,8 @@ Agent 可调用的工具分三类：
 ## 技能系统 (Skills)
 
 ### 全局技能 vs 作品技能
-- **全局技能**：扫描 `~/.narrafork/skills/`、`~/.claude/skills/`、`~/.agents/skills/` 目录。对所有叙述者生效。
-- **作品技能**：扫描作品目录 `.novelfork/skills/`。通过书籍可信绑定访问，仅对该书生效。
+- **全局技能**：扫描 `~/.novelfork/skills/` 以及 Runtime 兼容的 `~/.narrafork/skills/`、`~/.claude/skills/`、`~/.agents/skills/`。对所有叙述者生效。
+- **作品技能**：自动扫描作品目录 `.novelfork/skills/`。通过书籍可信绑定访问，仅对该作品生效；文件存在即参与解析。
 
 ### 技能文件结构
 
@@ -57,7 +57,7 @@ Agent 可调用的工具分三类：
 ### 写作技能 (Writing Skills)
 
 属于独立子系统（见 `19-presets-and-beats.md`），专注于写作规则与合规检查。
-启用时会自动物化到作品 `.novelfork/skills/` 目录。
+作品目录中的 `.novelfork/skills/` 文件会被自动发现并解释；面板的添加/删除操作只是对这些文件执行增量同步。
 
 ## 工具权限
 

@@ -25,6 +25,16 @@
       "types": "./src/frontend/query-client.ts",
       "import": "./src/frontend/query-client.ts",
       "default": "./src/frontend/query-client.ts"
+    },
+    "./frontend/provider-settings": {
+      "types": "./src/frontend/provider-settings.ts",
+      "import": "./src/frontend/provider-settings.ts",
+      "default": "./src/frontend/provider-settings.ts"
+    },
+    "./frontend/notification-sound": {
+      "types": "./src/frontend/notification-sound.ts",
+      "import": "./src/frontend/notification-sound.ts",
+      "default": "./src/frontend/notification-sound.ts"
     }
   },
   "scripts": {

@@ -53,8 +53,8 @@ describe("buildWriteViewModel", () => {
     expect(model.canWrite).toBe(true);
     const warn = model.checks.find((item) => item.code === "style-disabled");
     expect(warn?.state).toBe("warn");
-    // 判据是 book.json 的 enabledWritingSkillIds，界面上就叫 Writing Skills；
-    // 旧「文风预设」（enabledPresetIds）已下线，标签不能再指向它。
+    // 判据是当前项目 `.novelfork/skills/`，界面上就叫 Writing Skills；
+    // 旧 book.json 启用字段与「文风预设」（enabledPresetIds）已下线，标签不能再指向它。
     expect(warn?.label).toBe("Writing Skills");
     expect(warn?.fixAction).toBe("enable-style");
     expect(warn?.explanation?.suggestedAction).toContain("style.import");
@@ -141,7 +141,7 @@ describe("planFixAction", () => {
    * 下面两条守护的是本次修复的核心：一键修的落点必须与 preflight 的判据同源。
    * 落错了，作者点按钮、改完东西、重跑 preflight 会发现问题还在。
    */
-  it("enable-style 打开写作设置的 Writing Skills 分区（判据是 enabledWritingSkillIds）", () => {
+  it("enable-style 打开写作设置的 Writing Skills 分区（判据是项目 Skill 文件）", () => {
     const plan = planFixAction("enable-style", { chapterNumber: 5 });
     expect(plan.kind).toBe("settings");
     expect(plan.settingsSection).toBe("writing-skills");

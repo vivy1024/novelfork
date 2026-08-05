@@ -21,13 +21,20 @@ const clients = vi.hoisted(() => ({
     get: vi.fn(),
     patch: vi.fn(),
   },
+  health: {
+    get: vi.fn(),
+  },
 }));
 
-vi.mock("@/app-next/runtime-admin", () => ({
+// Spread the real module so pure helpers (e.g. describeRuntimeEnvironment) stay
+// authentic and only the network-facing client factories are stubbed.
+vi.mock("@/app-next/runtime-admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app-next/runtime-admin")>()),
   RUNTIME_STORAGE_SCAN_PATH: "/api/storage/scan",
   createStorageClient: () => clients.storage,
   createUsageHistoryClient: () => clients.usage,
   createSettingsClient: () => clients.settings,
+  createRuntimeHealthClient: () => clients.health,
 }));
 
 vi.mock("@/app-next/runtime/auth", () => ({ runtimeFetch: vi.fn() }));
@@ -122,6 +129,39 @@ describe("运维设置面板", () => {
     });
   });
 
+  it("图表指标可多选切换，且不能清空到无指标", async () => {
+    clients.usage.providers.mockResolvedValue({ providers: [] });
+    clients.usage.list.mockResolvedValue({ records: [], total: 0, page: 1, pageSize: 25, totalPages: 0 });
+    clients.usage.stats.mockResolvedValue(emptyStats);
+    clients.usage.timeseries.mockResolvedValue(emptyTimeseries);
+
+    render(<UsagePanel />);
+
+    // Runtime returns cost / TTFT / cache / metered usage per bucket; these were
+    // invisible while the chart hardcoded three bars.
+    const costButton = await screen.findByRole("button", { name: "指标 费用" });
+    expect(costButton.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByRole("button", { name: "指标 平均首字延迟（ms）" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "指标 计量用量" })).toBeTruthy();
+
+    const tokenButton = screen.getByRole("button", { name: "指标 Token 总数" });
+    const requestButton = screen.getByRole("button", { name: "指标 请求数" });
+    const errorButton = screen.getByRole("button", { name: "指标 错误数" });
+    expect(tokenButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(costButton);
+    expect(costButton.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(tokenButton);
+    expect(tokenButton.getAttribute("aria-pressed")).toBe("false");
+
+    // Removing every metric would render an empty chart, so the last one sticks.
+    fireEvent.click(requestButton);
+    fireEvent.click(errorButton);
+    fireEvent.click(costButton);
+    expect(costButton.getAttribute("aria-pressed")).toBe("true");
+  });
+
   it("如实显示使用历史所需的 Runtime 管理员 403 错误", async () => {
     const forbidden = Object.assign(new Error("需要管理员权限"), { status: 403 });
     clients.usage.providers.mockResolvedValue({ providers: [] });
@@ -172,10 +212,62 @@ describe("运维设置面板", () => {
   });
 
   it("显示本地软件包元数据且不执行客户端更新检查", () => {
+    clients.health.get.mockResolvedValue({ status: "ok" });
     render(<AboutPanel />);
     expect(screen.getByText(/@vivy1024\/novelfork-studio/)).toBeTruthy();
     expect(screen.getByText(/标准桌面二进制/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /检查更新/ })).toBeNull();
+  });
+
+  it("展示 Runtime 构建标识以便用户反馈问题时定位版本", async () => {
+    // Shape verified against a live /api/health response: runtimeEnvironment is a
+    // structured object, so rendering it raw would print "[object Object]".
+    clients.health.get.mockResolvedValue({
+      status: "ok",
+      readiness: "ready",
+      version: "0.5.18",
+      commit: "a9fec772",
+      platform: "windows",
+      gitAvailable: true,
+      runtimeEnvironment: {
+        android: false,
+        proot: false,
+        termux: false,
+        containerSupport: false,
+        containerUnsupportedReason: "Container management is only supported on Linux",
+      },
+    });
+
+    render(<AboutPanel />);
+
+    await waitFor(() => expect(screen.getByText("0.5.18")).toBeTruthy());
+    expect(screen.getByText("a9fec772")).toBeTruthy();
+    expect(screen.getByText("windows")).toBeTruthy();
+    expect(screen.getByText(/标准桌面环境 · 容器不可用 · Git 可用/)).toBeTruthy();
+    expect(screen.getByText(/Container management is only supported on Linux/)).toBeTruthy();
+    expect(screen.queryByText(/\[object Object\]/)).toBeNull();
+    // A live Runtime reports readiness "ready"; that must not read as degraded.
+    expect(screen.queryByText(/运行时状态/)).toBeNull();
+  });
+
+  it("启动恢复未完成时提示运行时状态未就绪", async () => {
+    clients.health.get.mockResolvedValue({
+      status: "recovering",
+      readiness: "recovering",
+      version: "0.5.18",
+    });
+
+    render(<AboutPanel />);
+
+    await waitFor(() => expect(screen.getByText(/运行时状态：recovering/)).toBeTruthy());
+  });
+
+  it("读取运行时构建标识失败时给出解释而不是空白卡片", async () => {
+    clients.health.get.mockRejectedValue(new Error("health unavailable"));
+
+    render(<AboutPanel />);
+
+    await waitFor(() => expect(screen.getByText(/无法读取运行时构建标识：health unavailable/)).toBeTruthy());
   });
 
   it("包含 Runtime 原生客户端且不包含已退役的面板端点", () => {
@@ -185,6 +277,7 @@ describe("运维设置面板", () => {
     expect(source).toContain("createStorageClient");
     expect(source).toContain("createUsageHistoryClient");
     expect(source).toContain("createSettingsClient");
+    expect(source).toContain("createRuntimeHealthClient");
     expect(source).toContain("RUNTIME_STORAGE_SCAN_PATH");
     expect(source).not.toMatch(/\/api\/storage\/scan|\/storage\/diagnostics|\/storage\/vacuum|\/storage\/cleanup|\/usage\/|\/settings\/user|\/settings\/release|\/settings\/check-update/);
   });
