@@ -12,6 +12,8 @@
     "noEmit": true,
     "types": ["bun"],
     "typeRoots": [
+      "../../node_modules/@types",
+      "../../node_modules",
       "../narrafork-runtime-private/node_modules/@types",
       "../narrafork-runtime-private/node_modules"
     ],

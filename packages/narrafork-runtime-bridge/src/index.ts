@@ -44,12 +44,104 @@ export type ToolDefinition = Omit<RuntimeToolDefinition, "metadata"> & {
 
 export type { NarratorServerMessage } from "../../narrafork-runtime-private/server/websocket/narrator-ws-types";
 
-export {
-	getLearningCategories,
-	getLearningDoc,
-	getLearningDocSummaries,
-	searchLearningDocs,
+import {
+	getLearningCategories as getRuntimeLearningCategories,
+	getLearningDoc as getRuntimeLearningDoc,
+	getLearningDocSummaries as getRuntimeLearningDocSummaries,
+	searchLearningDocs as searchRuntimeLearningDocs,
+	type LearningCategory,
+	type LearningDoc,
+	type LearningDocSummary,
 } from "../../narrafork-runtime-private/shared/learning-content";
+import type { RuntimeLearningContribution } from "./product-host";
+
+export function getLearningCategories(
+	localeInput?: string | null,
+	contributions?: readonly RuntimeLearningContribution[],
+): LearningCategory[] {
+	const base = getRuntimeLearningCategories(localeInput);
+	if (!contributions) return base;
+	const locale = localeInput === "en" ? "en" : "zh-CN";
+	const extra: LearningCategory[] = contributions.flatMap((c) =>
+		c.categories.map((cat) => ({
+			id: cat.id,
+			title: typeof cat.label === "string" ? cat.label : cat.label[locale] ?? cat.label["zh-CN"] ?? "",
+			description: typeof cat.description === "string" ? cat.description : cat.description[locale] ?? cat.description["zh-CN"] ?? "",
+		})),
+	);
+	return [...base, ...extra];
+}
+
+export function getLearningDocSummaries(
+	localeInput?: string | null,
+	contributions?: readonly RuntimeLearningContribution[],
+): LearningDocSummary[] {
+	const base = getRuntimeLearningDocSummaries(localeInput);
+	if (!contributions) return base;
+	const locale = localeInput === "en" ? "en" : "zh-CN";
+	const extra: LearningDocSummary[] = contributions.flatMap((c) =>
+		c.docs.map((doc) => ({
+			id: doc.id,
+			category: doc.category,
+			title: typeof doc.title === "string" ? doc.title : doc.title[locale] ?? doc.title["zh-CN"] ?? "",
+			summary: typeof doc.summary === "string" ? doc.summary : doc.summary[locale] ?? doc.summary["zh-CN"] ?? "",
+			tags: doc.tags ?? [],
+			routes: [],
+		})),
+	);
+	return [...base, ...extra];
+}
+
+export function searchLearningDocs(
+	query: string,
+	localeInput?: string | null,
+	contributions?: readonly RuntimeLearningContribution[],
+): LearningDocSummary[] {
+	const base = searchRuntimeLearningDocs(query, localeInput);
+	if (!contributions) return base;
+	const locale = localeInput === "en" ? "en" : "zh-CN";
+	const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+	const summaries = getLearningDocSummaries(localeInput, contributions);
+	if (terms.length === 0) return summaries;
+	return summaries.filter((doc) => {
+		const full = getLearningDoc(doc.id, locale, contributions);
+		const fullText = full
+			? `${full.title} ${full.summary} ${full.tags.join(" ")} ${full.sections.map((s) => `${s.title} ${s.body}`).join(" ")}`
+			: `${doc.title} ${doc.summary} ${doc.tags.join(" ")}`;
+		const text = fullText.toLowerCase();
+		return terms.every((term) => text.includes(term));
+	});
+}
+
+/** Product wrapper adding support for contributed learning modules. */
+export function getLearningDoc(
+	id: string,
+	localeInput?: string | null,
+	contributions?: readonly RuntimeLearningContribution[],
+): LearningDoc | null {
+	const doc = getRuntimeLearningDoc(id, localeInput);
+	if (doc) return doc;
+	if (!contributions) return null;
+	for (const contribution of contributions) {
+		const match = contribution.docs.find((d) => d.id === id);
+		if (match) {
+			const locale = localeInput === "en" ? "en" : "zh-CN";
+			return {
+				id: match.id,
+				category: match.category,
+				title: typeof match.title === "string" ? match.title : match.title[locale] ?? match.title["zh-CN"] ?? "",
+				summary: typeof match.summary === "string" ? match.summary : match.summary[locale] ?? match.summary["zh-CN"] ?? "",
+				tags: match.tags ?? [],
+				routes: [],
+				sections: match.sections.map((s) => ({
+					title: typeof s.title === "string" ? s.title : s.title[locale] ?? s.title["zh-CN"] ?? "",
+					body: typeof s.body === "string" ? s.body : s.body[locale] ?? s.body["zh-CN"] ?? "",
+				})),
+			};
+		}
+	}
+	return null;
+}
 export type {
 	LearningCategory,
 	LearningDoc,
