@@ -12,7 +12,7 @@ import type {
   RuntimeToolResult,
   ToolExecutionContext,
 } from "@vivy1024/novelfork-core/plugins";
-import { ContinuityAuditor, ReviserAgent, analyzeStyle } from "../engine/index.js";
+import { analyzeStyle } from "../engine/index.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
@@ -23,17 +23,6 @@ export interface TrustedRuntimeBookBinding {
   readonly bookId: string;
   readonly root: string;
 }
-
-const AI_MARKERS = [
-  "值得注意的是",
-  "不禁",
-  "缓缓",
-  "微微",
-  "淡淡",
-  "仿佛",
-  "宛如",
-  "与此同时",
-];
 
 function fail(error: string, summary: string): RuntimeToolResult {
   return { ok: false, error, summary };
@@ -186,8 +175,11 @@ async function rewriteSegment(
   const start = positiveInteger(selection?.start);
   const end = positiveInteger(selection?.end);
   const mode = typeof input.mode === "string" ? input.mode : "";
-  if (!chapterNumber || !start || !end || start > end || !["continue", "expand", "reduce_ai", "restyle"].includes(mode)) {
-    return fail("invalid-input", "需要有效的 chapterNumber、selection.start/end 和改写模式。");
+  if (!chapterNumber || !start || !end || start > end || !["continue", "expand", "restyle"].includes(mode)) {
+    return fail(
+      "invalid-input",
+      "需要有效的 chapterNumber、selection.start/end 和改写模式（continue | expand | restyle）。去 AI 味已统一由 Writer 写作纪律与 story-deslop Writing Skill 承担，不再单独提供 reduce_ai 模式。",
+    );
   }
   const generator = requireGenerator(context);
   if (typeof generator !== "function") return generator;
@@ -201,7 +193,6 @@ async function rewriteSegment(
   const instructions: Record<string, string> = {
     continue: "续写以下段落，保持风格一致并自然衔接。",
     expand: "扩写以下段落，增加有效细节和描写，保持原意。",
-    reduce_ai: "改写以下段落，删除模式化 AI 表达，保持原意并让语言更自然。",
     restyle: `按指定风格改写以下段落：${typeof input.styleHint === "string" ? input.styleHint : "更生动自然"}。`,
   };
   const generated = await generator({
@@ -209,21 +200,16 @@ async function rewriteSegment(
       { role: "system", content: "你是中文网文改写编辑。只输出改写后的正文，不解释，不加 Markdown 围栏。" },
       { role: "user", content: `${instructions[mode]}\n\n${originalText}` },
     ],
-    temperature: mode === "reduce_ai" ? 0.5 : 0.7,
+    temperature: 0.7,
     maxTokens: 8192,
   });
   const rewrittenText = generated.text.trim();
   if (!rewrittenText) return fail("empty-model-output", "Runtime 模型没有返回改写文本。");
-  const beforeMarkers = AI_MARKERS.filter((marker) => originalText.includes(marker));
-  const afterMarkers = AI_MARKERS.filter((marker) => rewrittenText.includes(marker));
   return ok(`已完成第 ${chapterNumber} 章第 ${start}-${end} 行改写。`, {
     mode,
     originalText,
     rewrittenText,
     lineRange: { start, end },
-    ...(mode === "reduce_ai"
-      ? { aiTasteComparison: { before: { count: beforeMarkers.length, markers: beforeMarkers }, after: { count: afterMarkers.length, markers: afterMarkers } } }
-      : {}),
   });
 }
 
@@ -282,7 +268,9 @@ async function styleImport(
 ): Promise<RuntimeToolResult> {
   const referenceText = typeof input.referenceText === "string" ? input.referenceText : "";
   const sourceName = typeof input.sourceName === "string" ? input.sourceName : undefined;
-  const saveAsWritingSkill = input.saveAsWritingSkill === true;
+  // 默认保存为 Writing Skill：governed 写作路径下 styleGuide 字段已固定为空占位，
+  // 只返回一段文本的旧路径没有任何下游注入点，等于静默无效。
+  const saveAsWritingSkill = input.saveAsWritingSkill !== false;
   const enableOnBook = input.enableOnBook !== false;
   const skillName = typeof input.skillName === "string" && input.skillName.trim()
     ? input.skillName.trim()
@@ -375,7 +363,7 @@ async function styleImport(
   return ok(
     saveAsWritingSkill
       ? `已生成并${createdWritingSkill?.enabled ? "启用" : "创建"}文风 Writing Skill${sourceName ? `（${sourceName}）` : ""}。`
-      : `已生成文风指南建议${sourceName ? `（${sourceName}）` : ""}。`,
+      : `已生成文风指南建议${sourceName ? `（${sourceName}）` : ""}，但它不会影响写作：文风只能通过已启用的 Writing Skill 进入写作上下文。要真正生效，请用 saveAsWritingSkill=true 重新导入，或用 writing-skills.write 手动落盘并启用。`,
     {
       bookId: binding.bookId,
       kind: saveAsWritingSkill ? "writing-skill-created" : "style-suggestion",
@@ -383,81 +371,17 @@ async function styleImport(
       styleGuide,
       guidePreview: styleGuide.slice(0, 500),
       createdWritingSkill,
+      ...(saveAsWritingSkill
+        ? {}
+        : {
+            notAppliedReason:
+              "写作管线只从已启用的 Writing Skills 读取文风；未保存为 Skill 的文风指南没有注入路径。",
+          }),
       nextActions: saveAsWritingSkill
         ? ["write.preflight", "pipeline.write"]
-        : ["saveAsWritingSkill", "manual-edit"],
+        : ["writing-skills.write", "style.import(saveAsWritingSkill=true)"],
     },
   );
-}
-
-async function pipelineRevise(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-  context: ToolExecutionContext,
-): Promise<RuntimeToolResult> {
-  const mode = typeof input.mode === "string" ? input.mode : "polish";
-  if (!["polish", "rewrite", "rework", "spot-fix", "anti-detect"].includes(mode)) {
-    return fail("invalid-input", `不支持的修订模式：${mode}。`);
-  }
-  const generator = requireGenerator(context);
-  if (typeof generator !== "function") return generator;
-  const index = await readChapterIndex(binding);
-  const latest = index.reduce((max, entry) => Math.max(max, Number(entry.number) || 0), 0);
-  const chapterNumber = optionalPositiveInteger(input.chapterNumber) ?? latest;
-  if (!chapterNumber) return fail("no-chapters", "该书籍尚无章节可修订。");
-
-  return withBookLock(binding, async () => {
-    const chapter = await readBoundChapter(binding, chapterNumber);
-    if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
-    const book = await readBookConfig(binding);
-    const root = binding.root;
-    const client = hostClient(generator);
-    const model = context.model?.id ?? "runtime-current";
-    const agentContext = { client, model, projectRoot: root, bookId: binding.bookId };
-    context.emitOutput?.(`正在审计第 ${chapterNumber} 章…`);
-    const audit = await new ContinuityAuditor(agentContext).auditChapter(
-      binding.root,
-      chapter.data.content,
-      chapterNumber,
-      typeof book.genre === "string" ? book.genre : undefined,
-    );
-    const shouldRevise = mode !== "spot-fix"
-      || audit.issues.some((issue) => issue.severity === "critical" || issue.severity === "warning");
-    if (!shouldRevise) {
-      return ok(`第 ${chapterNumber} 章未发现需要定点修复的问题。`, {
-        bookId: binding.bookId,
-        chapterNumber,
-        mode,
-        auditPassed: audit.passed,
-        issueCount: audit.issues.length,
-        revised: false,
-      });
-    }
-    context.emitOutput?.(`正在按 ${mode} 模式修订第 ${chapterNumber} 章…`);
-    const revised = await new ReviserAgent(agentContext).reviseChapter(
-      binding.root,
-      chapter.data.content,
-      chapterNumber,
-      audit.issues,
-      mode as "polish" | "rewrite" | "rework" | "spot-fix" | "anti-detect",
-      typeof book.genre === "string" ? book.genre : undefined,
-    );
-    const written = await handleChapterWrite(
-      { bookId: binding.bookId, chapterNumber, content: revised.revisedContent },
-      { bookRoot: binding.root, purpose: "revision" },
-    );
-    if (!written.ok) return fail(written.error, written.summary);
-    return ok(`第 ${chapterNumber} 章修订完成。`, {
-      bookId: binding.bookId,
-      chapterNumber,
-      mode,
-      auditPassed: audit.passed,
-      issueCount: audit.issues.length,
-      revised: true,
-      originalWords: chapter.data.content.length,
-      revisedWords: revised.revisedContent.length,
-    });
-  });
 }
 
 async function importChapters(
@@ -924,11 +848,17 @@ async function pipelineWrite(
       highRiskPendingReminder: result.highRiskPendingReminder,
       publishHint: result.publishHint,
       needsHumanReview: result.needsHumanReview,
+      settlementError: result.settlementError,
       artifact: result.artifact,
     },
   );
 }
 
+/**
+ * Writing Skills 不是独立的注入概念：启用即物化到作品的 .novelfork/skills/，
+ * 由 Runtime 的 Skill 机制交给正在调用工具的 agent。领域工具不再另开一条
+ * prompt 注入路径，避免同一份信息出现两种表达。
+ */
 export async function executeRuntimeDomainTool(
   toolName: string,
   input: Readonly<Record<string, unknown>>,
@@ -951,8 +881,6 @@ export async function executeRuntimeDomainTool(
       return rewriteApply(input, binding);
     case "style.import":
       return styleImport(input, binding, context);
-    case "pipeline.revise":
-      return pipelineRevise(input, binding, context);
     case "pipeline.import_chapters":
       return importChapters(input, binding, context);
     case "book.dissect":

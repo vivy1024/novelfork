@@ -65,7 +65,16 @@ export async function loadRuntimeStateSnapshot(bookDir: string): Promise<Runtime
     const summary = issues
       .map((issue) => `${issue.code}${issue.path ? `@${issue.path}` : ""}`)
       .join(", ");
-    throw new Error(`Invalid persisted runtime state: ${summary}`);
+    const details = issues.map((issue) => `- ${issue.code}: ${issue.message}`).join("\n");
+    throw new Error(
+      [
+        `Invalid persisted runtime state: ${summary}`,
+        `状态目录：${stateDir}`,
+        details,
+        "bootstrap 已会把超前的 current_state.chapter 自动钳制到 durable 章节进度；",
+        "若仍出现该错误，说明状态文件被外部改写或存在代码缺陷，可用 rewriteStructuredStateFromMarkdown 从 markdown 重建。",
+      ].join("\n"),
+    );
   }
 
   return snapshot;

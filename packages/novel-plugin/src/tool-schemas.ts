@@ -51,6 +51,19 @@ const memoryFilterSchema = {
   additionalProperties: false,
 };
 
+const acknowledgedSkillsSchema = arraySchema(
+  "对本书已启用 Writing Skills 的原文引用确认。每项 {slug, quote}：quote 必须是该技能 SKILL.md 正文里不少于 30 字（去空白计）的连续原文，换行与缩进可不同。写章前必须逐个提交，否则会被 skills-not-acknowledged 阻断。",
+  {
+    type: "object",
+    properties: {
+      slug: stringSchema("技能 slug（取自 write.preflight 的 requiredSkillAcknowledgements）。"),
+      quote: stringSchema("该技能 SKILL.md 正文中的原文连续片段（≥30 字）。"),
+    },
+    required: ["slug", "quote"],
+    additionalProperties: false,
+  },
+);
+
 const lineRangeSchema = {
   type: "object",
   properties: {
@@ -116,6 +129,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("目标章节序号（可选，默认下一章）。"),
       userDirectives: stringSchema("用户一句本章写作指示（可选；空时尝试用 currentFocus 生成默认句）。"),
       acceptFocusDefault: booleanSchema("仅有 focus 默认目标时是否接受继续（默认 false，会 needsUserConfirm）。"),
+      acknowledgedSkills: acknowledgedSkillsSchema,
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -262,7 +276,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("章节序号。"),
       selection: lineRangeSchema,
-      mode: stringSchema("改写模式：continue | expand | reduce_ai | restyle。"),
+      mode: stringSchema("改写模式：continue | expand | restyle。"),
       styleHint: stringSchema("restyle 模式的风格提示（可选）。"),
       sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
     },
@@ -287,22 +301,11 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       referenceText: stringSchema("参考文本（至少 2000 字）。"),
       sourceName: stringSchema("参考来源名称（可选，如「耳根《仙逆》」）。"),
-      saveAsWritingSkill: booleanSchema("是否把文风指南保存为作者级 Writing Skill（默认 false，只出建议）。"),
+      saveAsWritingSkill: booleanSchema("是否把文风指南保存为作者级 Writing Skill（默认 true）。设为 false 只出建议，且该建议不会进入写作上下文。"),
       enableOnBook: booleanSchema("saveAsWritingSkill=true 时是否立刻在本书启用（默认 true）。"),
       skillName: stringSchema("Writing Skill 名称（可选）。"),
     },
     required: ["bookId", "referenceText"],
-    additionalProperties: false,
-  },
-  "pipeline.revise": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-      chapterNumber: numberSchema("章节序号（不填则修订最新章）。"),
-      mode: stringSchema("修订模式：polish（润色，默认）、rewrite（重写）、rework（大改）、spot-fix（定点修复）、anti-detect（去AI味）。"),
-      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
-    },
-    required: ["bookId"],
     additionalProperties: false,
   },
   "pipeline.import_chapters": {
@@ -509,6 +512,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       skipContextGate: booleanSchema("仅测试/迁移：跳过写前 empty-recent-progress 硬门。默认 false。"),
       requireFactCheckPass: booleanSchema("若仍有 critical 事实/连续性 S1 未清，则拒绝保存正式章（默认 false，只标 needsHumanReview）。"),
       factCheckAutoRevise: booleanSchema("普通审修后若仍有 critical 事实/连续性问题，额外触发 1 轮事实专项 spot-fix + 复审（默认 false）。"),
+      acknowledgedSkills: acknowledgedSkillsSchema,
     },
     required: ["bookId", "sceneSpec"],
     additionalProperties: false,

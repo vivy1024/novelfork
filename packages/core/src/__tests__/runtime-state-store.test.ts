@@ -322,4 +322,63 @@ describe("runtime-state-store memory helpers", () => {
       lastAdvancedChapter: 12,
     }));
   });
+
+  it("clamps a stale current_state chapter down to durable progress instead of throwing", async () => {
+    root = await mkdtemp(join(tmpdir(), "novelfork-runtime-state-clamp-"));
+    const bookDir = join(root, "book");
+    const storyDir = join(bookDir, "story");
+    const stateDir = join(storyDir, "state");
+    const chaptersDir = join(bookDir, "chapters");
+    await mkdir(stateDir, { recursive: true });
+    await mkdir(chaptersDir, { recursive: true });
+    // durable 进度只有 2 章：模拟第 3 章写入中断，索引没跟上。
+    await writeFile(
+      join(chaptersDir, "index.json"),
+      JSON.stringify([
+        { number: 1, title: "Ch1", status: "approved" },
+        { number: 2, title: "Ch2", status: "approved" },
+      ]),
+      "utf-8",
+    );
+
+    await Promise.all([
+      writeFile(join(stateDir, "manifest.json"), JSON.stringify({
+        schemaVersion: 2,
+        language: "zh",
+        lastAppliedChapter: 3,
+        projectionVersion: 1,
+        migrationWarnings: [],
+      }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "current_state.json"), JSON.stringify({
+        chapter: 3,
+        facts: [],
+      }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "hooks.json"), JSON.stringify({ hooks: [] }, null, 2), "utf-8"),
+      writeFile(join(stateDir, "chapter_summaries.json"), JSON.stringify({ rows: [] }, null, 2), "utf-8"),
+    ]);
+
+    const snapshot = await loadRuntimeStateSnapshot(bookDir);
+
+    expect(snapshot.manifest.lastAppliedChapter).toBe(2);
+    expect(snapshot.currentState.chapter).toBe(2);
+    expect(snapshot.manifest.migrationWarnings).toEqual(
+      expect.arrayContaining([expect.stringContaining("current_state chapter normalized from 3 to 2")]),
+    );
+
+    // 钳制后写章链路可以继续：下一章 delta 不再被判定为回退。
+    const artifacts = await buildRuntimeStateArtifacts({
+      bookDir,
+      language: "zh",
+      delta: {
+        chapter: 3,
+        hookOps: { upsert: [], mention: [], resolve: [], defer: [] },
+        newHookCandidates: [],
+        notes: [],
+        subplotOps: [],
+        emotionalArcOps: [],
+        characterMatrixOps: [],
+      },
+    });
+    expect(artifacts.snapshot.manifest.lastAppliedChapter).toBe(3);
+  });
 });

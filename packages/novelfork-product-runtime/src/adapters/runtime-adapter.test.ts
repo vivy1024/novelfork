@@ -45,7 +45,6 @@ const READY_TOOL_NAMES = [
   "rewrite.segment",
   "rewrite.apply",
   "style.import",
-  "pipeline.revise",
   "pipeline.import_chapters",
   "book.dissect",
   "outline.suggest_next",
@@ -191,9 +190,10 @@ describe("NovelRuntimeAdapter", () => {
 		expect(definitions.find((tool) => tool.name === "writing-skills.write")?.metadata?.runtimeRisk).toBe(
 			"confirmed-write",
 		);
-		for (const name of ["rewrite.apply", "pipeline.revise", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
+		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
 			expect(definitions.find((tool) => tool.name === name)?.metadata?.runtimeRisk).toBe("confirmed-write");
 		}
+		expect(definitions.some((tool) => tool.name === "pipeline.revise")).toBe(false);
 		const chapterImport = definitions.find((tool) => tool.name === "pipeline.import_chapters");
 		expect(chapterImport?.parameters.safeParse({ content: "正文".repeat(500) }).success).toBe(true);
 		const cockpitSnapshot = definitions.find((tool) => tool.name === "cockpit.snapshot");

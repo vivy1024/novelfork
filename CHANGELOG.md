@@ -4,7 +4,32 @@
 
 ## Unreleased
 
-## v3.4.0 (2026-08-05) — 七平台交叉编译、隔离验证固化与设置对齐 Runtime
+## v3.5.0 (2026-08-06) — 写作链路根因修复、去 AI 味收敛、Skill 生效强制与产品品牌回归
+
+### 🏷 产品品牌回归（v3.4.0 回归修复）
+
+- **编译产物启动横幅与启动日志重新显示 NovelFork**。v3.4.0 对齐上游 Runtime v0.5.18 基线时，`server/lib/version.ts` 消费 `buildProduct` 的逻辑与 `server/main.ts` 的 `${BUILD_PRODUCT}` 横幅被干净上游覆盖，而这层改动当时没有表达成可重放 overlay，于是 v3.4.0 产物退回显示 `⛏ NarraFork`。
+- **改成可重放的 overlay**：新增 `patch-runtime-version-product-branding`（version.ts 消费 `build-info.buildProduct` 并导出 `BUILD_PRODUCT`，dev 模式读产品 `package.json` 版本），并把横幅与 `server running on` 日志的产品名合并进既有 `patch-runtime-main-product-host`。Runtime 内不出现产品字面量，产品名只来自编译期 `build-info`，缺失时回退 Runtime 自身默认值。以后每次上游 import 都会自动重放，不会再被同步掉。
+- `scripts/runtime-overlay.ts` 的 patch 白名单加入 `server/lib/version.ts`。
+
+### 🛠 写作链路根因修复
+
+- **状态不一致不再丢弃已生成正文**：`current_state.chapter` 超前于章节文件推导出的 durable 进度时，bootstrap 向下钳制并记 `migrationWarnings`，而不是让 `validateRuntimeState` 抛 `current_state_ahead_of_manifest` 使整本书无法加载。此前该错误发生在 Writer 创作阶段**之后**的状态结算里，等于花掉一次生成又把正文整章丢掉。
+- **章后结算失败降级为可观测**：结算异常时保留正文并回传 `settlementError`，`publishHint.warnings` 提示用 `memory.settle_range` 补结算。
+- **情节点预算硬门**：`pipeline.write` 生成前用书籍权威章字数复核 `beatBudget`，判 block 时返回 `beat-budget-invalid`（三段式说明），避免带着不合格预算进生产后再撞 `length-out-of-range` 白跑一次生成。无 `beatBudget` 的旧书不阻断，只记 warning。
+
+### 🔐 Writing Skills 生效强制机制（不依赖模型自觉）
+
+- **写前确认门**：`write.preflight` 新增 `requiredSkillAcknowledgements` 与 blocker `skills-not-acknowledged`；`pipeline.write` 新增 `acknowledgedSkills:[{slug,quote}]` 并在生成前独立复核（绕过 preflight 直接写章同样被拦）。`quote` 必须是该 `SKILL.md` 正文里 ≥30 字（去空白计）的连续原文，允许重新折行与缩进，改字或编造判 `notFound`。刻意不用内容哈希：哈希得由产品侧先算给模型、模型照抄即可通过，等于没门。
+- **写后违规逐条可见**：Writing Skills 合规校验的 warning 级违规改为逐条写进 `publishHint.warnings`；error 级仍 `writing-skill-compliance-failed` 拒绝保存。
+- **Writing Skills 不再是独立注入概念**：删除 style 通道的 Writing Skills 卡片、`writingSkillToStyleSnippet` 与 `writingSkillsApplied` / `writingSkillsDropped`。启用即物化到作品 `.novelfork/skills/<slug>/SKILL.md`，由 Runtime 的 Skill 机制交给正在调用工具的 agent 自行读取。
+
+### 🧹 去 AI 味冗余收敛（破坏性）
+
+- **下线 `pipeline.revise` 工具**：其内部 Auditor + Reviser 与 `pipeline.write` 的审修循环完全重复。整章问题改走 `chapter.audit` 定位 + `rewrite.segment` / `rewrite.apply` 定点处理，整章重写走 `pipeline.write`。
+- **移除 `rewrite.segment` 的 `reduce_ai` 模式**与 `ReviserAgent` 的 `anti-detect` 模式、`AI_MARKERS` 硬编码词表。去 AI 味统一由 Writer 内置写作纪律 + `story-deslop` Writing Skill 承担。
+- **`style.import` 默认落成 Writing Skill**：`saveAsWritingSkill` 默认改为 true。governed 路径下 `styleGuide` 已是空占位，旧默认只返回一段没有下游的文本；设为 false 时明确说明"该建议不会进入写作上下文"。
+
 
 ### 📦 多平台发版
 

@@ -134,7 +134,6 @@ const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "chapter.list": "列出章节",
   "chapter.audit": "审计章节",
   "pipeline.write": "写作管线（完整生成链路）",
-  "pipeline.revise": "修订管线",
   "pipeline.import_chapters": "导入章节",
   "scene.spec": "场景蓝图生成",
   "rewrite.segment": "重写选段",

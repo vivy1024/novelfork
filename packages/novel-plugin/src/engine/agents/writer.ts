@@ -98,6 +98,11 @@ export interface WriteChapterOutput {
     readonly description: string;
     readonly suggestion: string;
   }>;
+  /**
+   * 章后状态结算失败时的原因。结算可用 memory.settle_range 幂等补齐，
+   * 而已生成的正文一旦丢弃就是纯损失，因此这里降级为可观测字段而不是抛错。
+   */
+  readonly settlementError?: string;
   readonly tokenUsage?: TokenUsage;
 }
 
@@ -321,12 +326,14 @@ export class WriterAgent extends BaseAgent {
     });
     const settlement = settleResult.settlement;
     const settleUsage = settleResult.usage;
-    const runtimeStateArtifacts = await this.buildRuntimeStateArtifactsIfPresent(
+    const settlementArtifacts = await this.buildRuntimeStateArtifactsSafely(
       bookDir,
       settlement.runtimeStateDelta,
       resolvedLanguage,
       chapterNumber,
     );
+    const runtimeStateArtifacts = settlementArtifacts.artifacts;
+    const settlementError = settlementArtifacts.error;
     const resolvedRuntimeStateDelta = runtimeStateArtifacts?.resolvedDelta ?? settlement.runtimeStateDelta;
     const priorHookIds = new Set(parsePendingHooksMarkdown(hooks).map((hook) => hook.hookId));
     const hookHealthIssues = resolvedRuntimeStateDelta
@@ -409,6 +416,7 @@ export class WriterAgent extends BaseAgent {
       postWriteErrors,
       postWriteWarnings,
       hookHealthIssues,
+      ...(settlementError ? { settlementError } : {}),
       tokenUsage,
     };
   }
@@ -1205,6 +1213,36 @@ ${overrides}\n`;
         });
       },
     });
+  }
+
+  /**
+   * 写章路径专用：结算失败时不抛错，改为返回原因。
+   * 已经花掉一次创作生成的正文必须保留下来，叙事记忆可用 memory.settle_range 补齐。
+   */
+  private async buildRuntimeStateArtifactsSafely(
+    bookDir: string,
+    delta: RuntimeStateDelta | undefined,
+    language: "zh" | "en",
+    authoritativeChapterNumber?: number,
+    allowReapply?: boolean,
+  ): Promise<{ artifacts: RuntimeStateArtifacts | null; error?: string }> {
+    try {
+      const artifacts = await this.buildRuntimeStateArtifactsIfPresent(
+        bookDir,
+        delta,
+        language,
+        authoritativeChapterNumber,
+        allowReapply,
+      );
+      return { artifacts };
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logWarn(language, {
+        zh: `章后状态结算失败，正文保留、叙事记忆未更新：${reason}`,
+        en: `Chapter settlement failed; chapter text kept, narrative memory not updated: ${reason}`,
+      });
+      return { artifacts: null, error: reason };
+    }
   }
 
   private async resolveRuntimeStateArtifactsForOutput(

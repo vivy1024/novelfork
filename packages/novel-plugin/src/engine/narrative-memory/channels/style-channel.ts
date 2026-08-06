@@ -12,8 +12,6 @@ export interface StyleSnippet {
 export interface StyleChannelInput {
   readonly bookId: string;
   readonly styleGuideText?: string;
-  /** 当前生效的 Writing Skills 正文片段；presets/beats 已统一收口到这里。 */
-  readonly writingSkills?: readonly StyleSnippet[];
   readonly complianceRules?: readonly string[];
 }
 
@@ -47,19 +45,8 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
         })));
       }
 
-      for (const skill of input.writingSkills ?? []) {
-        const text = nonEmpty(skill.text);
-        if (!text) continue;
-        cards.push(lowPriority(styleTextToContextCard({
-          bookId: input.bookId,
-          id: `writing-skill:${skill.id}`,
-          title: skill.title,
-          text,
-          tags: ["writing-skill", ...(skill.tags ?? [])],
-          reason: "style channel 注入启用 Writing Skills，但不得覆盖 hard/state 优先级。",
-        })));
-      }
-
+      // Writing Skills 不从这里注入：启用即物化到作品 .novelfork/skills/，
+      // 由 Runtime 的 Skill 机制交给正在调用工具的 agent，写前另有确认硬门。
       if (input.complianceRules && input.complianceRules.length > 0) {
         cards.push(lowPriority(styleTextToContextCard({
           bookId: input.bookId,
@@ -72,7 +59,7 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
       }
 
       if (cards.length === 0) {
-        return { status: "skipped", cards: [], warnings: ["style channel 为空：未提供 style guide、Writing Skills 或合规提示。"] };
+        return { status: "skipped", cards: [], warnings: ["style channel 为空：未提供 style guide 或合规提示。"] };
       }
       return { cards, warnings: [] };
     },

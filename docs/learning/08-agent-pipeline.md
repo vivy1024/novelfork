@@ -38,6 +38,7 @@ routes:
 | `missing-directive` | 没有本章目标，且焦点也推不出默认句 | 补一句本章要发生什么 |
 | `empty-recent-progress` | 已有章节进度，但近章摘要/记忆为空 | `memory.settle_range` 回填；废稿先 `chapter.discard_range` |
 | `high-risk-pending` | 存在高风险待确认事件 | 先在经纬工作区「进度」分区确认或驳回 |
+| `skills-not-acknowledged` | 本书已启用 Writing Skills，但没提交原文引用 | 逐个读 `.novelfork/skills/<slug>/SKILL.md`，把一段 ≥30 字原文放进 `acknowledgedSkills` |
 | `book-not-found` | 书籍绑定无效 | 检查 bookId |
 
 告警（不阻断，但要看）：`short-directive`、`focus-default-only`、`empty-chapter-summary`、`hooks-overdue`、`style-disabled`、`volume-focus-missing`、`platform-target-mismatch`。
@@ -64,19 +65,34 @@ routes:
 | `arc.character` | 查角色弧停滞或回退 | read |
 | `book.dissect` | 拆已有旧书为续写知识包（产物为待确认档） | read/write |
 | `publish.check` | 发布前平台自检（敏感词/AI 率/格式/连续性） | read |
-| `pipeline.revise` | 修订已有章节（polish/rewrite/rework/spot-fix/anti-detect） | draft-write |
-| `rewrite.segment` | 对选中段落执行续写/扩写/去 AI 味/风格改写 | read/write |
+| `chapter.audit` | 整章规则审计（不调模型） | read |
+| `rewrite.segment` | 对选中段落执行续写/扩写/风格改写（`continue`、`expand`、`restyle`） | read/write |
+| `rewrite.apply` | 按行范围把改写结果写回正文 | confirmed-write |
+| `writing-skills.check_compliance` | 按启用技能校验正文，硬性违规阻断保存 | read |
+
+去 AI 味没有独立工具：Writer 写作纪律已内置铁律，作者侧叠加 story-deslop Writing Skill。原修订管线工具与选段的去 AI 味模式与之重复，已下线。
 
 ## `pipeline.write` 内部做什么？
 
 对外看是一次工具调用，内部会执行：
 
-1. 组装 ContextCard：整合 sceneSpec、Lore、动态记忆、前文、风格/节拍等。
-2. WriterAgent 三段式生成：creative → observer → settler。
-3. 质量检查：长度治理、动态词频提示、AI 痕迹规则维度。
-4. ContinuityAuditor / adversarial audit：连续性、叙事、文本多视角审查。
-5. Severity Gate：S1 阻断、S2 修订、S3/S4 警告。
-6. 生成正式章节 artifact，供前端画布审阅。
+1. 写前硬门：`write.preflight` 上下文门、Writing Skills 原文引用确认门（`skills-not-acknowledged`）、高风险 pending 事件策略、情节点预算复核（预算判 block 时直接返回 `beat-budget-invalid`，不浪费一次生成）。
+2. 组装 ContextCard：整合 sceneSpec、Lore、动态记忆、前文。Writing Skills 不走这条通道，由叙述者自己读 `.novelfork/skills/`。
+3. WriterAgent 三段式生成：creative → observer → settler。
+4. 质量检查：长度治理、动态词频提示、AI 痕迹规则维度。
+5. ContinuityAuditor / adversarial audit：连续性、叙事、文本多视角审查。
+6. Severity Gate：S1 阻断、S2 修订、S3/S4 警告。
+7. 保存前按启用技能做合规校验：硬性违规 `writing-skill-compliance-failed` 不保存，warning 级逐条进 `publishHint.warnings`。
+8. 生成正式章节 artifact，供前端画布审阅。
+
+单章内部会发起多次模型调用（创作、状态结算、审计、必要时修订与长度归一化），对调用方是一次请求一次返回，无法中途介入。
+
+Writing Skills 的生效不靠提示词自觉：写前要交原文引用（≥30 字、必须是 SKILL.md 里的连续片段），写后按技能规则硬校验。两头都是机制，中间不猜。
+
+返回值里的可观测字段：
+
+- `publishHint.warnings`：逐条列出违反了哪个技能的哪条要求。
+- `settlementError`：正文已保存但章后结算失败，需对该章 `memory.settle_range` 补结算。正文不会因结算失败被丢弃。
 
 ## 正式章节结果机制
 

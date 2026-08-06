@@ -71,7 +71,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 1. write.preflight →（确认一句指示）→ scene.spec → pipeline.write。
 2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
 3. 只使用产品内 focus、近章事实、lore brief、伏笔与用户一句 Directives；禁止用写作理论、文风大道理或外部项目总结填空。
-4. 软门（Writing Skills 文风要求、去 AI 味、跑题、传播力）只在写后 chapter.audit / pipeline.revise / rewrite.*，不得在写前用长文论约束。
+4. 软门（Writing Skills 文风要求、去 AI 味、跑题、传播力）只在写后 chapter.audit / writing-skills.check_compliance / rewrite.*，不得在写前用长文论约束。
 
 ## 长篇与平台
 - 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
@@ -106,7 +106,6 @@ type CustomReadyRuntimeToolName =
   | "rewrite.segment"
   | "rewrite.apply"
   | "style.import"
-  | "pipeline.revise"
   | "pipeline.import_chapters"
   | "book.dissect"
   | "outline.suggest_next"
