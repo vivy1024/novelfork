@@ -247,6 +247,29 @@ describe("Runtime overlay replay", () => {
 		);
 	});
 
+	test("rejects a patch operation whose declared result equals its base", async () => {
+		const fixture = await createOverlayFixture();
+		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
+		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+			operations: Array<{
+				type?: string;
+				baseSha256?: string;
+				resultSha256?: string;
+			}>;
+		};
+		const patchOperation = manifest.operations.find(
+			(operation) => operation.type === "patch",
+		);
+		if (!patchOperation)
+			throw new Error("fixture manifest unexpectedly has no patch operation");
+		patchOperation.resultSha256 = patchOperation.baseSha256;
+		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+		await expect(verifyRuntimeOverlay(fixture.overlay)).rejects.toThrow(
+			/declares no change/,
+		);
+	});
+
 	test("rejects an overlay whose upstream identity does not match the staged archive", async () => {
 		const fixture = await createOverlayFixture();
 

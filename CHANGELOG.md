@@ -10,7 +10,14 @@
 
 - **彻底解决压缩后子代理导致主对话 400 的问题**：升级 NarraFork Runtime 至 `v0.5.21`（提交 `58002012`），接入 `planSubagentCompactRestart` 机制。此前的游离离线任务在上下文压缩后会与主 Loop 竞速，导致模型在停止调用工具后仍被触发一次多余请求，因缺少配对的 `tool_result` 抛出 `REQUEST_BODY_INVALID` 导致 400 错误。
 - **防止叙述者异常状态挂起**：修复了反思检查失败导致的回合永久挂起与反思请求/更新闸门的死锁问题，避免压缩/重试阶段界面停留在「运行中」。
-- **基线与 Overlay 规范对齐**：更新并通过 47 个 overlay 自动化重放操作，保持 `UPSTREAM.lock.json` 在编译与版本同步时的零漂移（zero-diff）。
+- **基线与 Overlay 完整重放**：overlay 的 30 条 patch 全部在 `v0.5.21` 基线上重新生成并逐条校验 `baseSha256` / `resultSha256`，`UPSTREAM.lock.json` 的 `managedOverlay.operations` 与 manifest 同步。全树比对上游 2608 个文件：除 30 个 overlay 纳管目标外无任何内容偏离，其余差异均为 Windows 行尾。
+
+### 🧱 Overlay 空操作登记修复（发版门禁）
+
+- **问题**：升级到 `v0.5.21` 时，manifest 里 30 条 patch 有 28 条被登记成 `baseSha256 === resultSha256`，重放据此静默跳过，产物中整个 overlay 层为空——产品品牌、Product Host SPI、嵌入面板、技能/套路服务与内嵌迁移全部缺失。首个症状是编译产物启动即在迁移阶段退出（`Can't find meta/_journal.json in ./drizzle`）：上游原版用运行时变量路径 `await import(path)`，Bun 单文件编译无法静态分析，内嵌迁移数据没进产物，于是兜底到不存在的相对目录。
+- **修复**：`server/db/run-migrations.ts` 的 overlay 恢复静态别名 import `@server/generated/embedded-migrations-data` 并解析绝对迁移目录（不再依赖进程工作目录）。23 条 patch 直接重放；4 条经模糊匹配后用三方合并（base `v0.5.18` / theirs `v0.5.21`）交叉验证结果哈希一致；`narrator-prompt.ts` 与 `narrator-session.ts` 的 7 处真冲突按产品与上游并集人工解决。
+- **防复发**：`scripts/runtime-overlay.ts` 解析 manifest 时，对 `baseSha256 === resultSha256` 的 patch 直接抛 `declares no change`，并新增对应测试。同类失效以后会在 `verifyRuntimeOverlay` 阶段当场失败，不可能再一路通到编译产物。
+- **迁移资产补全**：overlay `runtime-migrations` 补回 `0004_lumpy_echo`（`device_transfer_tasks`）与 `0005_friendly_captain_midlands`（`integration_audit_events`）及 journal 条目。编译期内嵌 6 条迁移，新产物实测 `applied: 6` 且走 embedded 数据，启动横幅恢复 `⛏ NovelFork`。
 
 
 ### 🏷 产品品牌回归（v3.4.0 回归修复）
