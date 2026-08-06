@@ -43,7 +43,6 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "outline.suggestions",
   "pgi.ask",
   "pipeline.import_chapters",
-  "pipeline.revise",
   "resource.manage",
   "scene.spec",
   "style.import",

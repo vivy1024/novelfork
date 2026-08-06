@@ -147,6 +147,10 @@ const allowedPatchTargets = new Set([
 	// Keep Runtime settings documentation synchronized with DEFAULTS without
 	// coupling the replaceable Runtime tree to product code.
 	"server/lib/settings/defaults.ts",
+	// 让 Runtime 的版本模块消费 build-info 里的 buildProduct 并导出 BUILD_PRODUCT，
+	// 启动横幅与启动日志据此显示宿主产品名。Runtime 内不出现任何产品字面量，
+	// 产品名只来自编译期生成的 build-info；缺失时回退到 Runtime 自身默认值。
+	"server/lib/version.ts",
 ]);
 
 const forbiddenOverlayContent = [

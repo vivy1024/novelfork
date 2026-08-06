@@ -463,9 +463,11 @@ describe("novel Runtime contribution", () => {
     expect(importProperties.content).toBeDefined();
     expect(importProperties.filePath).toBeUndefined();
     expect(importSchema.required).toEqual(["content"]);
-    for (const name of ["rewrite.apply", "pipeline.revise", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
+    for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
       expect(definitions.get(name)?.risk).toBe("confirmed-write");
     }
+    // 去 AI 味冗余入口已下线：统一由 Writer 写作纪律 + story-deslop Writing Skill 承担。
+    expect(definitions.has("pipeline.revise")).toBe(false);
   });
 
   it("executes every migrated domain tool against the trusted book and current host model", async () => {
@@ -521,10 +523,16 @@ describe("novel Runtime contribution", () => {
       expect(await tool("chapter.audit").handler({ chapterNumber: 1 }, trustedContext)).toMatchObject({ ok: true });
 
       const rewrite = await tool("rewrite.segment").handler(
-        { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "reduce_ai" },
+        { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "restyle", styleHint: "更克制" },
         trustedContext,
       );
       expect(rewrite).toMatchObject({ ok: true, data: { rewrittenText: "青铜铃骤然响起，林舟停下脚步。" } });
+
+      // 去 AI 味不再是独立改写模式。
+      expect(await tool("rewrite.segment").handler(
+        { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "reduce_ai" },
+        trustedContext,
+      )).toMatchObject({ ok: false, error: "invalid-input" });
 
       expect(await tool("rewrite.apply").handler(
         { chapterNumber: 1, lineRange: { start: 2, end: 2 }, newText: "青铜铃骤然响起。" },
@@ -532,15 +540,19 @@ describe("novel Runtime contribution", () => {
       )).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1 } });
       expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
 
+      // 默认落成 Writing Skill：只返回建议的旧默认在 governed 写作路径下没有注入点。
       expect(await tool("style.import").handler(
         { referenceText: "山风穿过松林，少年拾级而上。".repeat(180), sourceName: "测试样本" },
         trustedContext,
-      )).toMatchObject({ ok: true, data: { bookId: "trusted", kind: "style-suggestion" } });
+      )).toMatchObject({ ok: true, data: { bookId: "trusted", kind: "writing-skill-created" } });
 
-      expect(await tool("pipeline.revise").handler(
-        { chapterNumber: 1, mode: "spot-fix" },
+      // 显式关掉保存时必须说清「这份建议不会生效」。
+      const suggestionOnly = await tool("style.import").handler(
+        { referenceText: "山风穿过松林，少年拾级而上。".repeat(180), sourceName: "仅建议", saveAsWritingSkill: false },
         trustedContext,
-      )).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1, revised: false } });
+      );
+      expect(suggestionOnly).toMatchObject({ ok: true, data: { kind: "style-suggestion" } });
+      expect((suggestionOnly as { data?: { notAppliedReason?: string } }).data?.notAppliedReason).toContain("没有注入路径");
 
       const importedText = `第1章 旧城\n${"旧城风雨。".repeat(120)}\n第2章 山门\n${"山门钟鸣。".repeat(120)}`;
       expect(await tool("pipeline.import_chapters").handler(

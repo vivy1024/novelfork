@@ -449,15 +449,20 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   // 调用方显式给的预算优先于 LLM 自拟，避免作者定好的节奏被覆盖。
   const explicitBudget = parseBeatBudget(input.beatBudget);
   if (explicitBudget.length > 0) sceneSpec.beatBudget = explicitBudget;
-  // 情节点预算：只报告不阻断。蓝图本身已通过场景完备性校验，
-  // 预算不合规属于「节奏需要调」，由作者或叙述者决定怎么改。
+  // 情节点预算在本工具只报告不阻断：蓝图本身已通过场景完备性校验，
+  // 预算怎么改由作者或叙述者决定。但 pipeline.write 会对 block 级预算硬拒绝，
+  // 所以这里必须把「不修就写不了」说清楚，避免带着不合格结构进生产。
   const budget = checkBeatBudget({
     chapterTarget: wordTarget,
     beats: sceneSpec.beatBudget ?? [],
   });
+  const blockers = budget.findings.filter((finding) => finding.severity === "block");
+  const gateNote = blockers.length > 0
+    ? " 预算判为不合规，pipeline.write 会以 beat-budget-invalid 拒绝执行，请先重排预算再写章。"
+    : "";
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}`,
     data: { sceneSpec, beatBudget: budget },
   };
 }

@@ -17,7 +17,7 @@ import { applySpotFixPatches, parseSpotFixPatches } from "@vivy1024/novelfork-co
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-export type ReviseMode = "polish" | "rewrite" | "rework" | "anti-detect" | "spot-fix";
+export type ReviseMode = "polish" | "rewrite" | "rework" | "spot-fix";
 
 export const DEFAULT_REVISE_MODE: ReviseMode = "spot-fix";
 
@@ -39,18 +39,8 @@ const MODE_DESCRIPTIONS: Record<ReviseMode, string> = {
   polish: "润色：只改表达、节奏、段落呼吸，不改事实与剧情结论。禁止：增删段落、改变人名/地名/物品名、增加新情节或新对话、改变因果关系。只允许：替换用词、调整句序、修改标点节奏",
   rewrite: "改写：允许重组问题段落、调整画面和叙述力度，但优先保留原文的绝大部分句段。除非问题跨越整章，否则禁止整章推倒重写；只能围绕问题段落及其直接上下文改写，同时保留核心事实与人物动机",
   rework: "重写：可重构场景推进和冲突组织，但不改主设定和大事件结果",
-  "anti-detect": `反检测改写：在保持剧情不变的前提下，降低AI生成可检测性。
-
-改写手法（附正例）：
-1. 打破句式规律：连续短句 → 长短交替，句式不可预测
-2. 口语化替代：✗"然而事情并没有那么简单" → ✓"哪有那么便宜的事"
-3. 减少"了"字密度：✗"他走了过去，拿了杯子" → ✓"他走过去，端起杯子"
-4. 转折词降频：✗"虽然…但是…" → ✓ 用角色内心吐槽或直接动作切换
-5. 情绪外化：✗"他感到愤怒" → ✓"他捏碎了茶杯，滚烫的茶水流过指缝"
-6. 删掉叙述者结论：✗"这一刻他终于明白了力量" → ✓ 只写行动，让读者自己感受
-7. 群像反应具体化：✗"全场震惊" → ✓"老陈的烟掉在裤子上，烫得他跳起来"
-8. 段落长度差异化：不再等长段落，有的段只有一句话，有的段七八行
-9. 消灭"不禁""仿佛""宛如"等AI标记词：换成具体感官描写`,
+  // 去 AI 味不再作为独立修订模式：Writer system prompt 已内置去 AI 味铁律，
+  // 作者侧可叠加 story-deslop Writing Skill，避免同一件事分散在四处各写一版规则。
   "spot-fix": "定点修复：只修改审稿意见指出的具体句子或段落，其余所有内容必须原封不动保留。修改范围限定在问题句子及其前后各一句。禁止改动无关段落",
 };
 

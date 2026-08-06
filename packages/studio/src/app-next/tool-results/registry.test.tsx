@@ -9,14 +9,14 @@ describe("tool-results registry", () => {
   it("只为已验证兼容的 Runtime renderer 启用专用卡", () => {
     expect(resolveToolResultRendererKey({ toolName: "cockpit.snapshot", result: { data: {} } })).toBe("cockpit");
     expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
-    expect(resolveToolResultRendererKey({ toolName: "pipeline.revise", result: { data: {} } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("generic");
     expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { data: {} } })).toBe("generic");
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
   });
 
   it("result.renderer 优先于 toolName 且不会按前缀误匹配", () => {
     expect(resolveToolResultRendererKey({ toolName: "custom.wrapper", result: { renderer: "pipeline.chapter-result" } })).toBe("pipeline");
-    expect(resolveToolResultRendererKey({ toolName: "pipeline.revise", result: { renderer: "pipeline.revise" } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "pipeline.import_chapters", result: { renderer: "pipeline.import_chapters" } })).toBe("generic");
   });
 
   it("unknown fallback 保留 raw data", () => {

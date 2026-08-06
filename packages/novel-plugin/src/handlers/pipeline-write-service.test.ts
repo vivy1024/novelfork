@@ -4,8 +4,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories, writingSkillToStyleSnippet } from "./pipeline-write-service.js";
-import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
+import { buildHighRiskPendingReminder, buildPipelineChapterResultMetadata, buildPipelineContextPackage, summarizeAuditIssueCategories } from "./pipeline-write-service.js";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import type { NarrativeContextPackage } from "../engine/narrative-memory/types.js";
 
@@ -240,39 +239,54 @@ describe("pipeline.write narrative context integration helpers", () => {
     });
   });
 
-  it("maps active writing skills to style channel snippets only", () => {
-    const skill: ParsedWritingSkill = {
-      id: "austere",
-      slug: "austere",
-      name: "克制写实",
-      description: "克制写实文风技能",
-      kind: "prose",
-      body: "少形容词，多动作和观察。",
-      source: "user",
-      mode: "manual",
-      tags: ["restrained"],
-    };
+});
 
-    expect(writingSkillToStyleSnippet(skill)).toEqual({
-      id: "austere",
-      title: "克制写实",
-      text: "少形容词，多动作和观察。",
-      tags: ["writing-skill", "prose", "restrained"],
-    });
+describe("pipeline.write beat budget hard gate", () => {
+  it("rejects a block-level beat budget before writer generation and explains why", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    const gateIndex = source.indexOf("code: \"beat-budget-invalid\"");
+    const writerIndex = source.indexOf("const writer = new WriterAgent");
+
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(gateIndex).toBeLessThan(writerIndex);
+    expect(source).toContain("checkBeatBudget");
+    expect(source).toContain("为什么要看：");
+    expect(source).toContain("建议怎么做：");
+    // 预算目标必须取书籍权威字数，不能被模型生成的 sceneSpec.wordTarget 顶掉。
+    expect(source).toContain("chapterTarget: book.chapterWordCount");
   });
 
-  it("drops writing skills whose body is empty", () => {
-    const skill: ParsedWritingSkill = {
-      id: "blank",
-      slug: "blank",
-      name: "空 Skill",
-      description: "无正文",
-      kind: "workflow",
-      body: "   \n  ",
-      source: "user",
-      mode: "manual",
-    };
+  it("keeps writing when sceneSpec has no beat budget at all", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    expect(source).toContain("未提供 beatBudget");
+    expect(source).toContain("旧书兼容路径");
+  });
+});
 
-    expect(writingSkillToStyleSnippet(skill)).toBeNull();
+describe("pipeline.write settlement degradation", () => {
+  it("keeps the generated chapter when settlement fails and points at memory.settle_range", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    expect(source).toContain("writeOutput.settlementError");
+    expect(source).toContain("memory.settle_range");
+  });
+});
+
+describe("pipeline.write writing skill acknowledgement gate", () => {
+  it("verifies acknowledgements before writer generation", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    const gateIndex = source.indexOf("code: \"skills-not-acknowledged\"");
+    const writerIndex = source.indexOf("const writer = new WriterAgent");
+
+    expect(gateIndex).toBeGreaterThan(-1);
+    expect(gateIndex).toBeLessThan(writerIndex);
+    expect(source).toContain("verifyWritingSkillAcknowledgements");
+    expect(source).toContain("describeWritingSkillAcknowledgementRequirement");
+  });
+
+  it("no longer injects writing skills through the style channel", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    expect(source).not.toContain("writingSkills:");
+    expect(source).not.toContain("writingSkillsApplied");
+    expect(source).not.toContain("writingSkillToStyleSnippet");
   });
 });

@@ -24,6 +24,14 @@ import {
   type CockpitState,
 } from "./cockpit-service.js";
 import { loadActiveWritingSkillsForBook } from "./writing-skill-handlers.js";
+import {
+  describeWritingSkillAcknowledgementRequirement,
+  explainWritingSkillAcknowledgementVerdict,
+  verifyWritingSkillAcknowledgements,
+  type AcknowledgeableWritingSkill,
+  type WritingSkillAcknowledgement,
+  type WritingSkillAcknowledgementRequirement,
+} from "./writing-skill-acknowledgement.js";
 
 export type MemoryChannelHealth = "ok" | "empty" | "missing" | "disabled";
 
@@ -32,7 +40,8 @@ export interface WritePreflightBlocker {
     | "missing-directive"
     | "empty-recent-progress"
     | "high-risk-pending"
-    | "book-not-found";
+    | "book-not-found"
+    | "skills-not-acknowledged";
   readonly message: string;
   /** 人话三段式：发生了什么 / 为什么要看 / 建议怎么做。前端不得按 code 自造文案。 */
   readonly explanation?: DiagnosticExplanation;
@@ -54,6 +63,11 @@ export interface WritePreflightInput {
   readonly storage?: StorageDatabase;
   readonly cockpitState?: CockpitState;
   readonly now?: () => Date;
+  /**
+   * 对已启用 Writing Skills 的原文引用确认。缺失或对不上时 preflight 会以
+   * skills-not-acknowledged 阻断，避免模型跳过技能直接写章。
+   */
+  readonly acknowledgedSkills?: readonly WritingSkillAcknowledgement[];
 }
 
 export interface WritePreflightWarning {
@@ -100,6 +114,11 @@ export interface WritePreflightResult {
     readonly events: MemoryChannelHealth;
   };
   readonly blockers: readonly WritePreflightBlocker[];
+  /**
+   * 本书已启用、需要在写章前提交原文引用的 Writing Skills。
+   * 只给 slug/name/最小引用长度，不给正文：否则模型可以照抄 preflight 输出蒙过去。
+   */
+  readonly requiredSkillAcknowledgements: readonly WritingSkillAcknowledgementRequirement[];
   /** 兼容旧字段：纯文本 warnings */
   readonly warnings: readonly string[];
   /** 结构化 warnings（主链硬化） */
@@ -344,6 +363,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
         events: "missing",
       },
       blockers: [makeBlocker("book-not-found", "缺少 bookId。")],
+      requiredSkillAcknowledgements: [],
       warnings: [],
       warningItems: [],
       cockpit: null,
@@ -416,6 +436,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
         events: "missing",
       },
       blockers,
+      requiredSkillAcknowledgements: [],
       warnings,
       warningItems,
       cockpit: null,
@@ -486,6 +507,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
   );
 
   let styleHealth: MemoryChannelHealth = "empty";
+  let activeSkillsForAck: readonly AcknowledgeableWritingSkill[] = [];
   try {
     if (!input.bookRoot?.trim()) {
       // 没有可信项目根时不能扫描作品 `.novelfork/skills`；不依赖 book.json 选择字段。
@@ -493,6 +515,11 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     } else {
       const activeWritingSkills = await loadActiveWritingSkillsForBook(bookId, { bookRoot: input.bookRoot });
       styleHealth = activeWritingSkills.skills.length > 0 ? "ok" : "disabled";
+      activeSkillsForAck = activeWritingSkills.skills.map((skill) => ({
+        slug: skill.slug,
+        name: skill.name,
+        body: skill.body ?? "",
+      }));
     }
     if (styleHealth === "disabled") {
       pushWarning(
@@ -504,6 +531,23 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     }
   } catch {
     styleHealth = "missing";
+  }
+
+  // Skill 生效硬门：已启用技能就必须先确认读过，不能只靠提示词要求模型自觉。
+  const requiredSkillAcknowledgements = describeWritingSkillAcknowledgementRequirement(activeSkillsForAck);
+  if (requiredSkillAcknowledgements.length > 0) {
+    const verdict = verifyWritingSkillAcknowledgements({
+      skills: activeSkillsForAck,
+      acknowledged: input.acknowledgedSkills ?? [],
+    });
+    if (!verdict.ok) {
+      const explanation = explainWritingSkillAcknowledgementVerdict({ verdict, skills: activeSkillsForAck });
+      blockers.push({
+        code: "skills-not-acknowledged",
+        message: `${explanation.whatHappened} ${explanation.suggestedAction}`,
+        explanation,
+      });
+    }
   }
 
   const memoryHealth = {
@@ -636,6 +680,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     formalChapterCount,
     memoryHealth,
     blockers,
+    requiredSkillAcknowledgements,
     warnings,
     warningItems,
     cockpit: {

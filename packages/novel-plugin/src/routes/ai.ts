@@ -148,7 +148,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const body: { mode?: string; brief?: string } = await c.req
       .json<{ mode?: string; brief?: string }>()
       .catch(() => ({ mode: "spot-fix" }));
-    const mode = (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework" | "anti-detect";
+    const mode = (body.mode ?? "spot-fix") as "spot-fix" | "polish" | "rewrite" | "rework";
 
     broadcastStudioEvent("revise:start", { bookId: id, chapter: chapterNum });
     try {

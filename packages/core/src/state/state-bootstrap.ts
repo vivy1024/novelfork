@@ -87,6 +87,7 @@ export async function bootstrapStructuredStateFromMarkdown(params: {
     createdFiles,
     warnings,
     bootstrapState: markdownState.currentState,
+    clampChapter: markdownState.durableStoryProgress,
   });
   // Only trust durable artifact progress (chapter files + index).
   // currentState.chapter comes from markdown which can contain
@@ -146,7 +147,10 @@ export async function rewriteStructuredStateFromMarkdown(params: {
   });
   const summariesState = markdownState.summariesState;
   const hooksState = markdownState.hooksState;
-  const currentState = markdownState.currentState;
+  // 与 manifest.lastAppliedChapter 保持同一 durable 上限，避免重建后仍然超前。
+  const currentState = markdownState.currentState.chapter > markdownState.durableStoryProgress
+    ? clampChapterValue(markdownState.currentState, markdownState.durableStoryProgress, warnings)
+    : markdownState.currentState;
 
   const manifest = StateManifestSchema.parse({
     schemaVersion: 2,
@@ -181,6 +185,13 @@ async function loadOrBootstrapCurrentState(params: {
   readonly warnings: string[];
   readonly bootstrapState?: CurrentStateState;
   readonly forceBootstrapFromMarkdown?: boolean;
+  /**
+   * durable 章节进度上限。已落盘的 current_state.chapter 只能来自 markdown，
+   * 可能是幻觉数字或上一次写入中断后的残留；超过 durable 进度时向下钳制，
+   * 否则 validateRuntimeState 会以 current_state_ahead_of_manifest 直接抛错，
+   * 让整本书无法加载（写章链路会连带丢弃已生成正文）。
+   */
+  readonly clampChapter?: number;
 }): Promise<CurrentStateState> {
   if (!params.forceBootstrapFromMarkdown) {
     const existing = await loadJsonIfValid(
@@ -190,21 +201,62 @@ async function loadOrBootstrapCurrentState(params: {
       "current_state.json",
     );
     if (existing) {
-      return existing;
+      return clampCurrentStateChapter({
+        currentState: existing,
+        statePath: params.statePath,
+        clampChapter: params.clampChapter,
+        warnings: params.warnings,
+      });
     }
   }
 
-  const currentState = params.bootstrapState ?? await loadMarkdownCurrentState({
+  const bootstrapped = params.bootstrapState ?? await loadMarkdownCurrentState({
     storyDir: params.storyDir,
     fallbackChapter: params.fallbackChapter,
     warnings: params.warnings,
   });
+  // markdown 解析出的章号同样可能超前（幻觉数字/中断残留），落盘前先钳制。
+  const currentState = params.clampChapter !== undefined && bootstrapped.chapter > params.clampChapter
+    ? clampChapterValue(bootstrapped, params.clampChapter, params.warnings)
+    : bootstrapped;
   const existed = await pathExists(params.statePath);
   await writeFile(params.statePath, JSON.stringify(currentState, null, 2), "utf-8");
   if (!existed) {
     params.createdFiles.push("current_state.json");
   }
   return currentState;
+}
+
+/** 生成钳制后的 current state 并记录归一化 warning（不落盘）。 */
+function clampChapterValue(
+  currentState: CurrentStateState,
+  limit: number,
+  warnings: string[],
+): CurrentStateState {
+  appendWarning(
+    warnings,
+    `current_state chapter normalized from ${currentState.chapter} to ${limit}`,
+  );
+  return CurrentStateStateSchema.parse({ ...currentState, chapter: limit });
+}
+
+/**
+ * 把已落盘的 current_state.chapter 钳制到 durable 章节进度。
+ * 返回值保证满足 currentState.chapter <= manifest.lastAppliedChapter 不变式。
+ */
+async function clampCurrentStateChapter(params: {
+  readonly currentState: CurrentStateState;
+  readonly statePath: string;
+  readonly clampChapter?: number;
+  readonly warnings: string[];
+}): Promise<CurrentStateState> {
+  const limit = params.clampChapter;
+  if (limit === undefined || params.currentState.chapter <= limit) {
+    return params.currentState;
+  }
+  const clamped = clampChapterValue(params.currentState, limit, params.warnings);
+  await writeFile(params.statePath, JSON.stringify(clamped, null, 2), "utf-8");
+  return clamped;
 }
 
 async function loadOrBootstrapHooks(params: {
