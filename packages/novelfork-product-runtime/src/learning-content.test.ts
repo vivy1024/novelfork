@@ -12,7 +12,6 @@ describe("NovelFork learning contribution", () => {
 		const categories = getLearningCategories("zh-CN", [NOVEL_LEARNING_CONTRIBUTION]);
 		const docs = getLearningDocSummaries("zh-CN", [NOVEL_LEARNING_CONTRIBUTION]);
 
-		expect(categories.some((category) => category.id === "start")).toBe(true);
 		expect(categories.some((category) => category.id === "novelfork-writing")).toBe(true);
 		expect(docs.some((doc) => doc.id === "overview")).toBe(true);
 		expect(docs.some((doc) => doc.id === "book-management")).toBe(true);

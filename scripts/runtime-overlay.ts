@@ -112,45 +112,36 @@ const allowedAddTargets = new Set([
 ]);
 
 const allowedPatchTargets = new Set([
-	// Private Runtime dependency metadata: make isolated Bun resolution explicit without
-	// pulling this local Runtime tree back into the root workspace.
-	"package.json",
 	"bun.lock",
+	"frontend/components/AppNotifications.tsx",
 	"frontend/components/AppRootLayout.tsx",
 	"frontend/components/narrator/ToolCallCard.tsx",
-	// Generic Runtime Provider page export used by the embedded host, with no product imports.
-	"frontend/routes/settings/providers.tsx",
-	"frontend/lib/narrator-ws-manager.ts",
 	"frontend/lib/narrator-ws-manager.test.ts",
-	// Runtime-only test portability fixes; no product code may enter these patches.
+	"frontend/lib/narrator-ws-manager.ts",
 	"frontend/lib/shiki-language-aliases.test.ts",
-	"frontend/lib/app-shell-scroll.test.tsx",
-	"tests/preload.ts",
-	"tests/frontend/narrator-foreground-recovery.test.ts",
-	"server/db/run-migrations.test.ts",
-	"tsconfig.json",
+	"frontend/routes/settings/providers.tsx",
+	"package.json",
 	"server/app.ts",
+	"server/db/run-migrations.test.ts",
+	"server/db/run-migrations.ts",
+	"server/lib/agent/tool-executor.ts",
+	"server/lib/agent/tools/index.ts",
+	"server/lib/agent/types.ts",
+	"server/lib/browser/pool.ts",
+	"server/lib/db-worker/pool.ts",
+	"server/lib/version.ts",
 	"server/main.ts",
+	"server/routes/learning.ts",
+	"server/routes/projects.ts",
+	"server/routes/skills.ts",
+	"server/services/knowledge-pack-activation-service.ts",
 	"server/services/narrator-prompt.ts",
 	"server/services/narrator-session.ts",
+	"server/services/routine-service.ts",
+	"server/services/skill-service.ts",
 	"server/websocket/narrator-ws.ts",
-	"server/lib/agent/tools/index.ts",
-	"server/routes/learning.ts",
-	"server/db/run-migrations.ts",
 	"shared/learning-content.ts",
-	// 通用宿主生成能力：在 ToolExecutionContext 上声明并实现 model/generateText，
-	// 让工具能在交互式 agent loop 之外做非交互生成。不含任何产品标识。
-	"server/lib/agent/types.ts",
-	"server/lib/agent/tool-executor.ts",
-	// 导出可复用的项目拆除逻辑，避免宿主侧重复实现删除流程。
-	"server/routes/projects.ts",
-	// Keep Runtime settings documentation synchronized with DEFAULTS without
-	// coupling the replaceable Runtime tree to product code.
-	"server/lib/settings/defaults.ts",
-	// 让 Runtime 的版本模块消费 build-info 里的 buildProduct 并导出 BUILD_PRODUCT，
-	// 启动横幅与启动日志据此显示宿主产品名。Runtime 内不出现任何产品字面量，
-	// 产品名只来自编译期生成的 build-info；缺失时回退到 Runtime 自身默认值。
-	"server/lib/version.ts",
+	"tsconfig.json"
 ]);
 
 const forbiddenOverlayContent = [
@@ -431,7 +422,7 @@ async function sha256File(path: string): Promise<string> {
 		.digest("hex");
 }
 
-async function sha256Tree(root: string): Promise<string> {
+export async function sha256Tree(root: string): Promise<string> {
 	const rootRealPath = await realpath(root);
 	const entries: string[] = [];
 
