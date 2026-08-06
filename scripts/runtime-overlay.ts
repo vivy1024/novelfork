@@ -319,6 +319,14 @@ function parseOperation(
 				`overlay patch must live under patches/: ${operation.patch}`,
 			);
 		}
+		// A patch whose declared result equals its base is a no-op registration: replay
+		// would silently skip it and the Runtime would ship without the product change.
+		// This is exactly how an upstream rebase can drop the whole overlay unnoticed.
+		if (operation.baseSha256 === operation.resultSha256) {
+			throw new Error(
+				`overlay patch declares no change (baseSha256 === resultSha256): ${operation.id}; rebuild the patch against the current upstream baseline`,
+			);
+		}
 		assertAllowedOperation(operation);
 		return operation;
 	}

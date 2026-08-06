@@ -65,6 +65,7 @@ export function getLearningCategories(
 	const extra: LearningCategory[] = contributions.flatMap((c) =>
 		c.categories.map((cat) => ({
 			id: cat.id,
+			label: typeof cat.label === "string" ? cat.label : cat.label[locale] ?? cat.label["zh-CN"] ?? "",
 			title: typeof cat.label === "string" ? cat.label : cat.label[locale] ?? cat.label["zh-CN"] ?? "",
 			description: typeof cat.description === "string" ? cat.description : cat.description[locale] ?? cat.description["zh-CN"] ?? "",
 		})),
@@ -85,8 +86,9 @@ export function getLearningDocSummaries(
 			category: doc.category,
 			title: typeof doc.title === "string" ? doc.title : doc.title[locale] ?? doc.title["zh-CN"] ?? "",
 			summary: typeof doc.summary === "string" ? doc.summary : doc.summary[locale] ?? doc.summary["zh-CN"] ?? "",
-			tags: doc.tags ?? [],
+			tags: [...(doc.tags ?? [])],
 			routes: [],
+			actions: [],
 		})),
 	);
 	return [...base, ...extra];
@@ -131,12 +133,16 @@ export function getLearningDoc(
 				category: match.category,
 				title: typeof match.title === "string" ? match.title : match.title[locale] ?? match.title["zh-CN"] ?? "",
 				summary: typeof match.summary === "string" ? match.summary : match.summary[locale] ?? match.summary["zh-CN"] ?? "",
-				tags: match.tags ?? [],
-				routes: [],
+				tags: [...(match.tags ?? [])],
 				sections: match.sections.map((s) => ({
 					title: typeof s.title === "string" ? s.title : s.title[locale] ?? s.title["zh-CN"] ?? "",
 					body: typeof s.body === "string" ? s.body : s.body[locale] ?? s.body["zh-CN"] ?? "",
 				})),
+				workflow: match.workflow ? match.workflow.map((w) => (typeof w === "string" ? w : w[locale] ?? w["zh-CN"] ?? "")) : [],
+				bestPractices: match.bestPractices ? match.bestPractices.map((b) => (typeof b === "string" ? b : b[locale] ?? b["zh-CN"] ?? "")) : [],
+				pitfalls: match.pitfalls ? match.pitfalls.map((p) => (typeof p === "string" ? p : p[locale] ?? p["zh-CN"] ?? "")) : [],
+				agentHints: match.agentHints ? match.agentHints.map((a) => (typeof a === "string" ? a : a[locale] ?? a["zh-CN"] ?? "")) : [],
+				actions: [],
 			};
 		}
 	}
