@@ -107,6 +107,71 @@ function resourceTypeLabel(kind: WorkbenchResourceKind): string {
   return resourceTypeLabels[kind] ?? kind;
 }
 
+function asFinitePositiveNumber(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
+}
+
+function countEditorWords(text: string): number {
+  if (!text) return 0;
+  const chineseChars = text.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
+  const englishWords = text.replace(/[\u4e00-\u9fa5]/g, " ").match(/[a-zA-Z0-9_-]+/g)?.length ?? 0;
+  return chineseChars + englishWords;
+}
+
+function resolveChapterWordTarget(node: WorkbenchResourceNode, nodes: readonly WorkbenchResourceNode[], sceneSpec: SceneSpec | null): number | undefined {
+  if (sceneSpec?.wordTarget) return sceneSpec.wordTarget;
+  const metadata = node.metadata ?? {};
+  const telemetry = asRecord(metadata.lengthTelemetry);
+  const book = asRecord(nodes.find((candidate) => candidate.kind === "book")?.metadata?.book);
+  return asFinitePositiveNumber(metadata.wordTarget)
+    ?? asFinitePositiveNumber(metadata.chapterTarget)
+    ?? asFinitePositiveNumber(telemetry?.target)
+    ?? asFinitePositiveNumber(book?.chapterWordCount);
+}
+
+function ChapterStatusBar({
+  chapterNumber,
+  content,
+  targetWords,
+  sceneSpec,
+  onOpenBlueprint,
+}: {
+  chapterNumber?: number;
+  content: string;
+  targetWords?: number;
+  sceneSpec: SceneSpec | null;
+  onOpenBlueprint: () => void;
+}) {
+  const wordCount = countEditorWords(content);
+  const delta = typeof targetWords === "number" ? wordCount - targetWords : undefined;
+  const targetLabel = typeof targetWords === "number" ? `${targetWords.toLocaleString()} 字` : "未设置";
+  const progressLabel = typeof delta === "number"
+    ? delta === 0 ? "正好达到目标" : delta > 0 ? `超出 ${delta.toLocaleString()} 字` : `还差 ${Math.abs(delta).toLocaleString()} 字`
+    : "暂无目标字数";
+
+  return (
+    <div data-testid="chapter-status-bar" className="shrink-0 border-b border-border/70 bg-muted/20 px-4 py-1.5">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-muted-foreground">
+        {typeof chapterNumber === "number" ? <span>第 {chapterNumber} 章</span> : null}
+        <span>蓝图：</span>
+        {sceneSpec ? (
+          <button type="button" className="font-medium text-primary hover:underline" onClick={onOpenBlueprint}>
+            已生成 · {sceneSpec.scenes.length} 场
+          </button>
+        ) : (
+          <span>未生成</span>
+        )}
+        <span>正文 {wordCount.toLocaleString()} / 目标 {targetLabel}</span>
+        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{progressLabel}</Badge>
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------------------
 // ToolPanelView — renders tool panel content in the canvas area
 // ---------------------------------------------------------------------------
@@ -148,7 +213,7 @@ export interface ChapterActionHandlers {
 }
 
 export interface JingweiActionHandlers {
-  onSave: (entryId: string, payload: { title: string; contentMd: string }) => Promise<void>;
+  onSave: (entryId: string, payload: { title: string; contentMd: string; priorityTier?: "auto" | "core" | "relevant" | "reference" }) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
 }
 
@@ -168,9 +233,11 @@ export interface WorkbenchCanvasProps {
   isActive?: boolean;
   /** 工具面板（如伏笔看板）跳转到指定章节，由上层打开对应章节 Tab */
   onJumpToChapter?: (chapterNumber: number) => void;
+  /** 关联条目跳转；返回 false 表示目标资源不存在。 */
+  onOpenJingweiEntry?: (entryId: string) => boolean;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -192,6 +259,8 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     setSaveError(null);
     setHistoryEntries(null);
     setHistoryError(null);
+    setSceneSpec(null);
+    setSceneSpecOpen(false);
     normalizedBaseRef.current = node?.content ?? ""; // reset on node change
   }, [node]);
 
@@ -447,20 +516,43 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
         />
       )}
 
+      {isChapterWorkflowNode(node) && (
+        <ChapterStatusBar
+          chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+          content={content}
+          targetWords={resolveChapterWordTarget(node, nodes, sceneSpec)}
+          sceneSpec={sceneSpec}
+          onOpenBlueprint={() => setSceneSpecOpen(true)}
+        />
+      )}
+
       {/* Editor */}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
         {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (
           <JingweiEntryEditor
+            bookId={bookId}
             entry={{
               id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
               title: node.title,
               contentMd: content,
               sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
               updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
+              category: typeof node.metadata?.category === "string" ? node.metadata.category : undefined,
+              fields: asRecord(node.metadata?.fields),
+              priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
+              status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
+              layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
+              version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
+              relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
+              conflictStatus: node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none",
+              conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
             }}
             sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "叙事记忆" : "经纬资料"}
             onSave={jingweiActions.onSave}
             onDelete={jingweiActions.onDelete}
+            onNavigateToEntry={(entryId) => {
+              if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
+            }}
           />
         ) : (
           <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {

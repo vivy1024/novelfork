@@ -1,17 +1,16 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
 import type { RouterContext } from "./context.js";
 import { linkChapterToEntries, type LinkResult } from "../engine/jingwei/auto-linker.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 async function readChapterContent(ctx: RouterContext, bookId: string, chapterNumber: number): Promise<string> {
-  const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
-  const padded = String(chapterNumber).padStart(4, "0");
-  const files = await readdir(chaptersDir).catch(() => []);
-  const filename = files.find((file) => file.startsWith(padded) && file.endsWith(".md"));
-  if (!filename) return "";
-  return readFile(join(chaptersDir, filename), "utf-8").catch(() => "");
+  const bookRoot = ctx.state.bookDir(bookId);
+  const chapterFile = (await listChapterFiles(bookRoot)).find((file) => file.number === chapterNumber);
+  if (!chapterFile) return "";
+  return readFile(join(bookRoot, chapterFile.relativePath), "utf-8").catch(() => "");
 }
 
 export function createChapterLinksRouter(ctx: RouterContext): Hono {

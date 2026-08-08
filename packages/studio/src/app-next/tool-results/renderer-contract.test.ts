@@ -24,7 +24,6 @@ const TOOL_REGISTRY_PATH = resolve(
  * 想收窄体验就为它写专属卡并从这里删掉；不要反过来往这里加以让测试变绿。
  */
 const GENERIC_BY_DESIGN = new Set<string>([
-  "chapter.audit",
   "chapter.content",
   "chapter.discard_range",
   "chapter.list",
@@ -34,17 +33,13 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "jingwei.audit",
   "jingwei.read",
   "jingwei.write",
-  "narrative.line",
+  // narrative.mutationPreview（propose_change / approve_change）暂无专属差异预览卡，
+  // NarrativeLineCard 只覆盖 narrative.read_line 的只读快照，故此项仍显式走 generic。
   "narrative.mutationPreview",
   "narrative-memory.admin",
-  "narrative-memory.events",
-  "narrative-memory.graph",
-  "narrative-memory.read",
   "outline.suggestions",
-  "pgi.ask",
   "pipeline.import_chapters",
   "resource.manage",
-  "scene.spec",
   "style.import",
   "tool.rewrite-apply",
   "tool.rewrite-segment",

@@ -12,6 +12,9 @@ import {
   NOVEL_READY_RUNTIME_TOOL_NAMES,
   NOVEL_RUNTIME_TOOL_CATALOG,
 } from "./handlers/tool-registry.js";
+import { executeRuntimeDomainTool } from "./handlers/runtime-domain-tools.js";
+import { createBookRepository } from "./engine/jingwei/repositories/book-repo.js";
+import { ensureNarrativeMemorySchema } from "./engine/narrative-memory/storage.js";
 import { NOVEL_RUNTIME_CONTRIBUTION } from "./runtime-contribution.js";
 
 const roots: string[] = [];
@@ -26,7 +29,8 @@ async function createBook(
   roots.push(projectRoot);
   const bookRoot = external ? join(projectRoot, "external-workspace") : join(projectRoot, "books", bookId);
   const chapters = join(bookRoot, "chapters");
-  await mkdir(chapters, { recursive: true });
+  const volume = join(chapters, "卷01");
+  await mkdir(volume, { recursive: true });
   await writeFile(join(bookRoot, "book.json"), JSON.stringify({
     id: bookId,
     title: `Book ${bookId}`,
@@ -39,11 +43,11 @@ async function createBook(
     createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
   }), "utf8");
-  await writeFile(join(chapters, "0001-test.md"), content, "utf8");
+  await writeFile(join(volume, "0001-test.md"), content, "utf8");
   await writeFile(join(chapters, "index.json"), JSON.stringify([{
     number: 1,
     title: "第一章",
-    fileName: "0001-test.md",
+    fileName: "卷01/0001-test.md",
     wordCount: content.length,
     status: "accepted",
   }]), "utf8");
@@ -119,10 +123,14 @@ function expectModelSchemaIsBounded(schema: unknown): void {
     expect(properties?.bookId).toBeUndefined();
     expect(properties?.sessionId).toBeUndefined();
     expect(properties?.bookRoot).toBeUndefined();
+    expect(properties?.skipContextGate).toBeUndefined();
+    expect(properties?.writePreflight).toBeUndefined();
     const required = (record.required as readonly string[] | undefined) ?? [];
     expect(required).not.toContain("bookId");
     expect(required).not.toContain("sessionId");
     expect(required).not.toContain("bookRoot");
+    expect(required).not.toContain("skipContextGate");
+    expect(required).not.toContain("writePreflight");
   }
   Object.values(record).forEach(expectModelSchemaIsBounded);
 }
@@ -259,10 +267,12 @@ describe("novel Runtime contribution", () => {
     // 自由载荷对象必须保持开放：这些字段回传的是工具自己产出的真实数据。
     const sceneSchema = definitions.get("scene.spec")?.inputSchema as Record<string, unknown>;
     const sceneProperties = sceneSchema.properties as Record<string, Record<string, unknown>>;
-    for (const field of ["cockpitSnapshot", "loreBrief", "memoryContext", "writePreflight"]) {
+    for (const field of ["cockpitSnapshot", "loreBrief", "memoryContext"]) {
       expect(sceneProperties[field]?.type).toBe("object");
       expect(sceneProperties[field]?.additionalProperties).toBeUndefined();
     }
+    expect(sceneProperties.writePreflight).toBeUndefined();
+    expect(sceneProperties.skipContextGate).toBeUndefined();
     const memoryUpdateSchema = definitions.get("memory.update")?.inputSchema as Record<string, unknown>;
     const memoryUpdateProperties = memoryUpdateSchema.properties as Record<string, Record<string, unknown>>;
     expect(memoryUpdateProperties.patch?.additionalProperties).toBeUndefined();
@@ -283,6 +293,7 @@ describe("novel Runtime contribution", () => {
     const trusted = await createBook("trusted", "旧正文");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
     const content = "新的正文。".repeat(600);
     try {
       const result = await tool("chapter.write").handler(
@@ -291,7 +302,7 @@ describe("novel Runtime contribution", () => {
       );
 
       expect(result).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1, wordCount: 3000 } });
-      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe(content);
+      expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toBe(content);
       expect(JSON.parse(await readFile(join(trusted.bookRoot, "chapters", "index.json"), "utf8"))).toMatchObject([
         { number: 1, wordCount: 3000 },
       ]);
@@ -304,6 +315,7 @@ describe("novel Runtime contribution", () => {
     const trusted = await createBook("trusted", "原始正文");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
     try {
       const result = await tool("chapter.write").handler(
         { chapterNumber: 1, content: "过短正文" },
@@ -311,7 +323,7 @@ describe("novel Runtime contribution", () => {
       );
 
       expect(result).toMatchObject({ ok: false, error: "chapter-length-out-of-range" });
-      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toBe("原始正文");
+      expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toBe("原始正文");
     } finally {
       closeStorageDatabase();
     }
@@ -321,24 +333,43 @@ describe("novel Runtime contribution", () => {
     const trusted = await createBook("trusted", "原始正文");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    storage.sqlite.prepare(`
+      INSERT INTO narrative_event (
+        id, book_id, chapter_number, event_type, subject, predicate, object,
+        evidence_text, confidence, source, status, risk_level, created_at, applied_at
+      ) VALUES (
+        'pipeline-length-seed', 'trusted', 1, 'timeline_advanced', '主角', '完成', '第一章',
+        '第一章已有正式进展。', 0.9, 'settle', 'applied', 'low',
+        '2026-08-07T00:00:00.000Z', '2026-08-07T00:00:00.000Z'
+      )
+    `).run();
     const trustedContext: ToolExecutionContext = {
       ...context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot }),
       model: { provider: "test-provider", id: "test-current-model" },
       generateText: pipelineGenerator("过短正文"),
     };
     try {
-      const result = await tool("pipeline.write").handler(
-        { sceneSpec: pipelineSceneSpec, autoRevise: false, skipContextGate: true },
+      const result = await executeRuntimeDomainTool(
+        "pipeline.write",
+        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        { bookId: "trusted", root: trusted.bookRoot },
         trustedContext,
       );
-      console.log("FAIL_1:", JSON.stringify(result));
       expect(result).toMatchObject({ ok: false, error: "length-out-of-range" });
-      expect(await tool("resource.manage").handler(
+      const listed = await tool("resource.manage").handler(
         { action: "list", filter: { type: "chapter", status: "accepted" } },
         trustedContext,
-      )).toMatchObject({ ok: true, data: { resources: [] } });
-      expect(storage.sqlite.prepare("SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ?").get("trusted"))
-        .toEqual({ count: 0 });
+      );
+      expect(listed).toMatchObject({ ok: true });
+      expect((listed.data as { resources?: Array<{ chapterNumber?: number }> }).resources)
+        .not.toEqual(expect.arrayContaining([expect.objectContaining({ chapterNumber: 2 })]));
+      expect(storage.sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ? AND chapter_number = ?",
+      ).get("trusted", 2)).toEqual({ count: 0 });
+      expect(storage.sqlite.prepare(
+        "SELECT COUNT(*) AS count FROM narrative_event WHERE book_id = ? AND chapter_number = ?",
+      ).get("trusted", 1)).toEqual({ count: 1 });
     } finally {
       closeStorageDatabase();
     }
@@ -421,6 +452,7 @@ describe("novel Runtime contribution", () => {
     const trusted = await createBook("trusted", "trusted content");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
     try {
       const pgi = await tool("pgi.ask").handler(
         { chapterNumber: 1, chapterIntent: "主角进入山门" },
@@ -476,6 +508,16 @@ describe("novel Runtime contribution", () => {
     await writeFile(join(trusted.bookRoot, "jingwei", "角色", "林舟.md"), "# 林舟\n谨慎的少年。", "utf8");
     const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
     runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    const now = new Date("2026-08-07T00:00:00.000Z");
+    await createBookRepository(storage).create({
+      id: "trusted",
+      name: "Book trusted",
+      jingweiMode: "dynamic",
+      currentChapter: 1,
+      createdAt: now,
+      updatedAt: now,
+    });
     const generatedSystems: string[] = [];
     const outputs: string[] = [];
     const sceneSpec = {
@@ -526,7 +568,18 @@ describe("novel Runtime contribution", () => {
         { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "restyle", styleHint: "更克制" },
         trustedContext,
       );
-      expect(rewrite).toMatchObject({ ok: true, data: { rewrittenText: "青铜铃骤然响起，林舟停下脚步。" } });
+      expect(rewrite).toMatchObject({
+        ok: true,
+        data: {
+          rewrittenText: "青铜铃骤然响起，林舟停下脚步。",
+          modelCalls: [{
+            purpose: "生成局部改写正文",
+            provider: "test-provider",
+            model: "test-current-model",
+            status: "completed",
+          }],
+        },
+      });
 
       // 去 AI 味不再是独立改写模式。
       expect(await tool("rewrite.segment").handler(
@@ -535,10 +588,10 @@ describe("novel Runtime contribution", () => {
       )).toMatchObject({ ok: false, error: "invalid-input" });
 
       expect(await tool("rewrite.apply").handler(
-        { chapterNumber: 1, lineRange: { start: 2, end: 2 }, newText: "青铜铃骤然响起。" },
+        { chapterNumber: 1, lineRange: { start: 1, end: 1 }, newText: "青铜铃骤然响起。" },
         trustedContext,
       )).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1 } });
-      expect(await readFile(join(trusted.bookRoot, "chapters", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
+      expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
 
       // 默认落成 Writing Skill：只返回建议的旧默认在 governed 写作路径下没有注入点。
       expect(await tool("style.import").handler(
@@ -559,6 +612,13 @@ describe("novel Runtime contribution", () => {
         { content: importedText, sourceName: "显式文本" },
         trustedContext,
       )).toMatchObject({ ok: true, data: { bookId: "trusted", importedChapters: 2, firstChapter: 2 } });
+      await expect(readFile(join(trusted.bookRoot, "chapters", "卷01", "0002_旧城.md"), "utf8"))
+        .resolves.toContain("旧城风雨");
+      expect(JSON.parse(await readFile(join(trusted.bookRoot, "chapters", "index.json"), "utf8")))
+        .toEqual(expect.arrayContaining([
+          expect.objectContaining({ number: 2, fileName: "卷01/0002_旧城.md" }),
+          expect.objectContaining({ number: 3, fileName: "卷01/0003_山门.md" }),
+        ]));
 
       expect(await tool("outline.suggest_next").handler({}, trustedContext)).toMatchObject({
         ok: true,
@@ -591,6 +651,14 @@ describe("novel Runtime contribution", () => {
       );
       expect(settled.ok).toBe(true);
       expect((settled.data as { chaptersSettled?: number } | undefined)?.chaptersSettled).toBeGreaterThan(0);
+      const settledCalls = (settled.data as { modelCalls?: unknown[] } | undefined)?.modelCalls ?? [];
+      expect(settledCalls).toHaveLength(3);
+      expect(settledCalls).toEqual(expect.arrayContaining([expect.objectContaining({
+        purpose: "抽取章节叙事事件",
+        provider: "test-provider",
+        model: "test-current-model",
+        status: "completed",
+      })]));
 
       // 若抽取结果偏少，直接插入一条 applied 事件保证 preflight 可观测到近章记忆。
       const eventCount = storage.sqlite.prepare(
@@ -617,24 +685,67 @@ describe("novel Runtime contribution", () => {
       expect(await tool("scene.spec").handler(
         { chapterNumber: 4, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
         trustedContext,
-      )).toMatchObject({ ok: true, data: { sceneSpec: { title: "铃声之后" } } });
+      )).toMatchObject({
+        ok: true,
+        data: {
+          sceneSpec: { title: "铃声之后" },
+          modelCalls: [{
+            purpose: "生成结构化写作蓝图",
+            provider: "test-provider",
+            model: "test-current-model",
+            status: "completed",
+          }],
+        },
+      });
 
       const pipeline = await tool("pipeline.write").handler(
-        { sceneSpec: { ...pipelineSceneSpec, chapter: 4 }, autoRevise: false },
+        { sceneSpec: { ...pipelineSceneSpec, chapter: 4 }, autoRevise: false, adversarialAudit: true },
         trustedContext,
       );
       expect(pipeline).toMatchObject({ ok: true, data: { chapterNumber: 4 } });
       expect((pipeline.data as { wordCount?: number } | undefined)?.wordCount).toBeGreaterThanOrEqual(2182);
+      const pipelineCalls = (pipeline.data as { modelCalls?: unknown[] } | undefined)?.modelCalls ?? [];
+      expect(pipelineCalls.length).toBeGreaterThanOrEqual(2);
+      expect(pipelineCalls).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          purpose: "执行章节生成、审计、修订与结算",
+          provider: "test-provider",
+          model: "test-current-model",
+          status: "completed",
+        }),
+      ]));
+      const pipelineCallRecords = pipelineCalls as Array<{ id?: string; sequence?: number }>;
+      expect(new Set(pipelineCallRecords.map((call) => call.id)).size).toBe(pipelineCalls.length);
+      expect(pipelineCallRecords.map((call) => call.sequence).sort((left, right) => Number(left) - Number(right)))
+        .toEqual(Array.from({ length: pipelineCalls.length }, (_, index) => index + 1));
 
       expect(generatedSystems.some((system) => system.includes("结构化写作蓝图") || system.includes("章节规划专家"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("文风分析师"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("大纲编辑"))).toBe(true);
       expect(generatedSystems.some((system) => system.includes("审稿编辑"))).toBe(true);
-      expect(outputs.length).toBeGreaterThan(0);
+      expect(outputs).toEqual(expect.arrayContaining([
+        expect.stringContaining("内部模型调用 1 开始"),
+        expect.stringContaining("内部模型调用 1 完成"),
+      ]));
       expect(JSON.stringify({ generatedSystems, outputs })).not.toContain("apiKey");
     } finally {
       closeStorageDatabase();
     }
+  });
+
+  it("rejects forged host-controlled fields including skipContextGate and writePreflight", async () => {
+    const trusted = await createBook("trusted", "trusted content");
+    const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
+
+    expect(await tool("pipeline.write").handler(
+      { sceneSpec: pipelineSceneSpec, skipContextGate: true },
+      trustedContext,
+    )).toMatchObject({ ok: false, error: "forged-host-field" });
+
+    expect(await tool("scene.spec").handler(
+      { chapterNumber: 1, userDirectives: "测试指示", writePreflight: { ok: true } },
+      trustedContext,
+    )).toMatchObject({ ok: false, error: "forged-host-field" });
   });
 
   it("rejects a forged model bookId instead of crossing books", async () => {

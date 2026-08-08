@@ -1,6 +1,6 @@
 /**
  * book.dissect / import 闭环辅助：从已有正文抽取续写所需的最小草案。
- * 默认只出草案；apply=true 时写入 dynamic 草稿（hooks 文本 / focus / 章摘要旁路）。
+ * 默认只出草案；apply=true 时写入经纬 dynamic 账本（hooks 文本 / focus / 章摘要旁路导出）。
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -294,161 +294,189 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
 
   const writtenFiles: string[] = [];
   if (input.apply) {
-    const storyDir = join(input.bookRoot, "story");
-    await mkdir(storyDir, { recursive: true });
     const createdAt = new Date().toISOString();
     const now = () => new Date(createdAt);
 
-    // 权威写入：经纬 dynamic + needs-review。机器抽取一律待作者确认，不进 canon。
-    if (want.has("all") || want.has("hooks")) {
-      for (const [index, hook] of knowledge.openHooks.entries()) {
-        upsertLedgerEntry(storage, {
-          bookId,
-          category: "foreshadowing",
-          title: hook.description.slice(0, 60) || `伏笔 ${index + 1}`,
-          contentMd: [
-            `- 埋设章：第${hook.plantedChapter}章`,
-            `- 状态：${hook.status === "progressed" ? "已有进展" : "未回收"}`,
-            hook.evidence ? `- 证据：${hook.evidence}` : "",
-            hook.speculation ? `- 续写建议：${hook.speculation}` : "",
-          ].filter(Boolean).join("\n"),
-          fields: {
-            hookStatus: hook.status === "progressed" ? "progressed" : "pending",
-            plantedChapter: hook.plantedChapter,
-            evidence: hook.evidence,
-            speculation: hook.speculation,
-            source: "book.dissect",
-          },
-          status: "needs-review",
-          now,
-        });
+    // 权威写入：StorageDatabase SQLite 真实事务包裹经纬批量写。
+    // 若数据库事务提交失败，取消权威提交；DB权威提交成功后，派生文件导出失败不影响/不污染权威 DB 状态。
+    const applyDBWrite = () => {
+      if (want.has("all") || want.has("hooks")) {
+        for (const [index, hook] of knowledge.openHooks.entries()) {
+          upsertLedgerEntry(storage, {
+            bookId,
+            category: "foreshadowing",
+            title: hook.description.slice(0, 60) || `伏笔 ${index + 1}`,
+            contentMd: [
+              `- 埋设章：第${hook.plantedChapter}章`,
+              `- 状态：${hook.status === "progressed" ? "已有进展" : "未回收"}`,
+              hook.evidence ? `- 证据：${hook.evidence}` : "",
+              hook.speculation ? `- 续写建议：${hook.speculation}` : "",
+            ].filter(Boolean).join("\n"),
+            fields: {
+              hookStatus: hook.status === "progressed" ? "progressed" : "pending",
+              plantedChapter: hook.plantedChapter,
+              evidence: hook.evidence,
+              speculation: hook.speculation,
+              source: "book.dissect",
+            },
+            status: "needs-review",
+            now,
+          });
+        }
+        if (knowledge.openHooks.length > 0) writtenFiles.push(`jingwei:foreshadowing × ${knowledge.openHooks.length}`);
       }
-      if (knowledge.openHooks.length > 0) writtenFiles.push(`jingwei:foreshadowing × ${knowledge.openHooks.length}`);
 
-      // 导出物：作者可读 md（不作为权威源）
-      const hooksPath = join(storyDir, "pending_hooks.md");
-      const existing = await readFile(hooksPath, "utf8").catch(() => "");
-      const lines = knowledge.openHooks.map((hook, index) =>
-        `- [${hook.status === "progressed" ? "~" : " "}] [dissect-${index + 1}] 第${hook.plantedChapter}章：${hook.description}`,
+      if (want.has("all") || want.has("summaries")) {
+        for (const summary of knowledge.detailedSummaries) {
+          upsertLedgerEntry(storage, {
+            bookId,
+            category: "chapter-summaries",
+            title: `第${summary.number}章摘要`,
+            contentMd: [
+              summary.summary,
+              summary.keyEvents.length > 0 ? `\n关键事件：\n${summary.keyEvents.map((item) => `- ${item}`).join("\n")}` : "",
+            ].filter(Boolean).join("\n"),
+            fields: {
+              chapterNumber: summary.number,
+              keyEvents: summary.keyEvents,
+              source: "book.dissect",
+            },
+            status: "needs-review",
+            now,
+          });
+        }
+        if (knowledge.detailedSummaries.length > 0) {
+          writtenFiles.push(`jingwei:chapter-summaries × ${knowledge.detailedSummaries.length}`);
+        }
+      }
+
+      if (want.has("all") || want.has("characters")) {
+        for (const card of knowledge.characterCards) {
+          upsertLedgerEntry(storage, {
+            bookId,
+            category: "characters",
+            title: card.name,
+            contentMd: [
+              `- 身份：${card.identity}`,
+              card.aliases.length > 0 ? `- 别名：${card.aliases.join("、")}` : "",
+              `- 首次出现：第${card.firstAppearance}章`,
+              card.relationships.length > 0
+                ? `- 关系：${card.relationships.map((rel) => `${rel.target}（${rel.relation}）`).join("、")}`
+                : "",
+            ].filter(Boolean).join("\n"),
+            fields: {
+              aliases: card.aliases,
+              role: card.role,
+              firstAppearance: card.firstAppearance,
+              frequency: card.frequency,
+              confidence: card.confidence,
+              relationships: card.relationships,
+              source: "book.dissect",
+            },
+            status: "needs-review",
+            now,
+          });
+        }
+        if (knowledge.characterCards.length > 0) {
+          writtenFiles.push(`jingwei:characters × ${knowledge.characterCards.length}`);
+        }
+      }
+
+      if (want.has("all") || want.has("world")) {
+        for (const element of knowledge.worldElements) {
+          upsertLedgerEntry(storage, {
+            bookId,
+            category: WORLD_CATEGORY_MAP[element.category] ?? "world-model",
+            title: element.name,
+            contentMd: [
+              element.description,
+              element.sourceChapters.length > 0 ? `\n出处章节：${element.sourceChapters.join("、")}` : "",
+            ].filter(Boolean).join("\n"),
+            fields: {
+              worldCategory: element.category,
+              sourceChapters: element.sourceChapters,
+              source: "book.dissect",
+            },
+            status: "needs-review",
+            now,
+          });
+        }
+        if (knowledge.worldElements.length > 0) {
+          writtenFiles.push(`jingwei:world × ${knowledge.worldElements.length}`);
+        }
+
+        for (const edge of knowledge.relationshipGraph) {
+          upsertLedgerEntry(storage, {
+            bookId,
+            category: "relationships",
+            title: `${edge.source} ↔ ${edge.target}`,
+            contentMd: edge.description,
+            fields: { source: edge.source, target: edge.target, origin: "book.dissect" },
+            status: "needs-review",
+            now,
+          });
+        }
+        if (knowledge.relationshipGraph.length > 0) {
+          writtenFiles.push(`jingwei:relationships × ${knowledge.relationshipGraph.length}`);
+        }
+      }
+    };
+
+    try {
+      const runInTx = storage.sqlite.transaction(applyDBWrite);
+      runInTx();
+    } catch (txError) {
+      return {
+        ok: false,
+        bookId,
+        fromChapter: range.from,
+        toChapter: range.to,
+        applied: false,
+        settled,
+        draft,
+        writtenFiles: [],
+        summary: `经纬权威事务写入失败，数据已完全回滚：${txError instanceof Error ? txError.message : String(txError)}`,
+        error: "dissect-transaction-failed",
+      };
+    }
+
+    // DB 权威提交已成功。派生文件导出为可重建补偿导出，导出失败捕获记录，不污染/回滚权威 DB。
+    try {
+      const storyDir = join(input.bookRoot, "story");
+      await mkdir(storyDir, { recursive: true });
+
+      if (want.has("all") || want.has("hooks")) {
+        const hooksPath = join(storyDir, "pending_hooks.md");
+        const existing = await readFile(hooksPath, "utf8").catch(() => "");
+        const lines = knowledge.openHooks.map((hook, index) =>
+          `- [${hook.status === "progressed" ? "~" : " "}] [dissect-${index + 1}] 第${hook.plantedChapter}章：${hook.description}`,
+        );
+        const next = existing.trim()
+          ? `${existing.trimEnd()}\n\n# dissect ${createdAt}（导出）\n${lines.join("\n")}\n`
+          : `# 伏笔追踪（导出；权威源在经纬 foreshadowing）\n\n${lines.join("\n")}\n`;
+        await writeFile(hooksPath, next, "utf8");
+        writtenFiles.push("story/pending_hooks.md（导出）");
+      }
+
+      if ((want.has("all") || want.has("summaries") || want.has("characters")) && knowledge.suggestedFocus) {
+        const focusPath = join(storyDir, "current_focus.md");
+        const existingFocus = await readFile(focusPath, "utf8").catch(() => "");
+        if (!existingFocus.trim()) {
+          await writeFile(focusPath, `${knowledge.suggestedFocus}\n`, "utf8");
+          writtenFiles.push("story/current_focus.md（导出）");
+        }
+      }
+
+      // 调试快照（非权威源）
+      await writeFile(
+        join(storyDir, "dissect_draft.json"),
+        `${JSON.stringify({ bookId, range, createdAt, note: "调试快照；权威源在经纬", draft, knowledge }, null, 2)}\n`,
+        "utf8",
       );
-      const next = existing.trim()
-        ? `${existing.trimEnd()}\n\n# dissect ${createdAt}（导出）\n${lines.join("\n")}\n`
-        : `# 伏笔追踪（导出；权威源在经纬 foreshadowing）\n\n${lines.join("\n")}\n`;
-      await writeFile(hooksPath, next, "utf8");
-      writtenFiles.push("story/pending_hooks.md（导出）");
+      writtenFiles.push("story/dissect_draft.json（快照）");
+    } catch (exportError) {
+      writtenFiles.push(`export:warning - 派生导出文件写入失败（可随时从 DB 经纬重建）: ${exportError instanceof Error ? exportError.message : String(exportError)}`);
     }
-
-    if (want.has("all") || want.has("summaries")) {
-      for (const summary of knowledge.detailedSummaries) {
-        upsertLedgerEntry(storage, {
-          bookId,
-          category: "chapter-summaries",
-          title: `第${summary.number}章摘要`,
-          contentMd: [
-            summary.summary,
-            summary.keyEvents.length > 0 ? `\n关键事件：\n${summary.keyEvents.map((item) => `- ${item}`).join("\n")}` : "",
-          ].filter(Boolean).join("\n"),
-          fields: {
-            chapterNumber: summary.number,
-            keyEvents: summary.keyEvents,
-            source: "book.dissect",
-          },
-          status: "needs-review",
-          now,
-        });
-      }
-      if (knowledge.detailedSummaries.length > 0) {
-        writtenFiles.push(`jingwei:chapter-summaries × ${knowledge.detailedSummaries.length}`);
-      }
-    }
-
-    if (want.has("all") || want.has("characters")) {
-      for (const card of knowledge.characterCards) {
-        upsertLedgerEntry(storage, {
-          bookId,
-          category: "characters",
-          title: card.name,
-          contentMd: [
-            `- 身份：${card.identity}`,
-            card.aliases.length > 0 ? `- 别名：${card.aliases.join("、")}` : "",
-            `- 首次出现：第${card.firstAppearance}章`,
-            card.relationships.length > 0
-              ? `- 关系：${card.relationships.map((rel) => `${rel.target}（${rel.relation}）`).join("、")}`
-              : "",
-          ].filter(Boolean).join("\n"),
-          fields: {
-            aliases: card.aliases,
-            role: card.role,
-            firstAppearance: card.firstAppearance,
-            frequency: card.frequency,
-            confidence: card.confidence,
-            relationships: card.relationships,
-            source: "book.dissect",
-          },
-          status: "needs-review",
-          now,
-        });
-      }
-      if (knowledge.characterCards.length > 0) {
-        writtenFiles.push(`jingwei:characters × ${knowledge.characterCards.length}`);
-      }
-    }
-
-    if (want.has("all") || want.has("world")) {
-      for (const element of knowledge.worldElements) {
-        upsertLedgerEntry(storage, {
-          bookId,
-          category: WORLD_CATEGORY_MAP[element.category] ?? "world-model",
-          title: element.name,
-          contentMd: [
-            element.description,
-            element.sourceChapters.length > 0 ? `\n出处章节：${element.sourceChapters.join("、")}` : "",
-          ].filter(Boolean).join("\n"),
-          fields: {
-            worldCategory: element.category,
-            sourceChapters: element.sourceChapters,
-            source: "book.dissect",
-          },
-          status: "needs-review",
-          now,
-        });
-      }
-      if (knowledge.worldElements.length > 0) {
-        writtenFiles.push(`jingwei:world × ${knowledge.worldElements.length}`);
-      }
-
-      for (const edge of knowledge.relationshipGraph) {
-        upsertLedgerEntry(storage, {
-          bookId,
-          category: "relationships",
-          title: `${edge.source} ↔ ${edge.target}`,
-          contentMd: edge.description,
-          fields: { source: edge.source, target: edge.target, origin: "book.dissect" },
-          status: "needs-review",
-          now,
-        });
-      }
-      if (knowledge.relationshipGraph.length > 0) {
-        writtenFiles.push(`jingwei:relationships × ${knowledge.relationshipGraph.length}`);
-      }
-    }
-
-    if ((want.has("all") || want.has("summaries") || want.has("characters")) && knowledge.suggestedFocus) {
-      const focusPath = join(storyDir, "current_focus.md");
-      const existingFocus = await readFile(focusPath, "utf8").catch(() => "");
-      if (!existingFocus.trim()) {
-        await writeFile(focusPath, `${knowledge.suggestedFocus}\n`, "utf8");
-        writtenFiles.push("story/current_focus.md");
-      }
-    }
-
-    // 调试快照（非权威源）
-    await writeFile(
-      join(storyDir, "dissect_draft.json"),
-      `${JSON.stringify({ bookId, range, createdAt, note: "调试快照；权威源在经纬", draft, knowledge }, null, 2)}\n`,
-      "utf8",
-    );
-    writtenFiles.push("story/dissect_draft.json（快照）");
   }
 
   const preflight = await handleWritePreflight({

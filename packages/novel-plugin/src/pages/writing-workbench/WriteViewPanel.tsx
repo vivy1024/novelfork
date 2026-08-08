@@ -4,8 +4,8 @@
  * 一屏回答三个问题：现在能不能写、缺什么、下一步点哪。
  * 数据只来自 write.preflight；文案只来自 preflight 的 explanation，不按 code 自造。
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, ChevronDown, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
 
 import {
   buildWriteViewModel,
@@ -17,12 +17,24 @@ import {
   type WriteViewModel,
 } from "./write-view-state";
 import {
+  buildVolumeCockpitModel,
+  type VolumeCockpitModel,
+} from "./volume-cockpit-state";
+import {
   fetchPendingEvents,
   groupProposalsByChapter,
   mutatePendingEvent,
   riskLabel,
   type PendingEvent,
 } from "./narrative-pending-events";
+
+/**
+ * 写作进度事件：章节保存/结算完成后由工作台派发，写作视图据此自动刷新
+ * 就绪状态、卷驾驶舱与本章提议，免去作者手动点刷新。
+ *
+ * 用一次性 DOM 事件而非轮询定时器：刷新只在真正发生写作动作时触发。
+ */
+export const WRITING_PROGRESS_EVENT = "novelfork:writing-progress";
 
 export interface WriteViewPanelProps {
   readonly bookId?: string;
@@ -45,6 +57,12 @@ export interface WriteViewPanelProps {
     readonly preflight: unknown;
   }) => void;
   readonly formalChapterCount?: number;
+  /**
+   * 面板是否可见（写作视图为当前侧栏视图且侧栏展开）。
+   * 由 false→true 时自动刷新一次，作者写完回到写作视图即拿到最新状态，
+   * 无需手动点刷新，也不引入常驻轮询。
+   */
+  readonly visible?: boolean;
 }
 
 const LIGHT_STYLE: Record<WriteViewModel["light"], { bar: string; text: string; icon: typeof CheckCircle2 }> = {
@@ -69,6 +87,7 @@ export function WriteViewPanel({
   onSendToNarrator,
   onRunWrite,
   formalChapterCount,
+  visible,
 }: WriteViewPanelProps) {
   const [raw, setRaw] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
@@ -83,8 +102,15 @@ export function WriteViewPanel({
   const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [earlierOpen, setEarlierOpen] = useState(false);
+  // 卷驾驶舱：当前卷上下文，走 outline.volume(action=get) 只读通道。
+  const [volumeRaw, setVolumeRaw] = useState<unknown>(null);
+  const [volumeError, setVolumeError] = useState<string | null>(null);
 
   const model = useMemo(() => buildWriteViewModel(raw), [raw]);
+  const volumeModel = useMemo<VolumeCockpitModel>(
+    () => buildVolumeCockpitModel(volumeRaw, model.chapterNumber),
+    [volumeRaw, model.chapterNumber],
+  );
 
   const runPreflight = useCallback(async () => {
     if (!callTool) {
@@ -102,6 +128,18 @@ export function WriteViewPanel({
     }
   }, [callTool]);
 
+  const loadVolume = useCallback(async () => {
+    if (!callTool) return;
+    try {
+      setVolumeRaw(await callTool("outline.volume", {}));
+      setVolumeError(null);
+    } catch (err) {
+      // 卷纲加载失败不该挡住写作，只标注拿不到当前卷。
+      setVolumeRaw(null);
+      setVolumeError(err instanceof Error ? err.message : "读取卷纲失败");
+    }
+  }, [callTool]);
+
   const loadProposals = useCallback(async () => {
     if (!bookId) return;
     try {
@@ -114,26 +152,46 @@ export function WriteViewPanel({
     }
   }, [bookId]);
 
-  // 切书或首次挂载时自动预检一次
+  // 切书或首次挂载时自动预检一次，并读取当前卷。
   useEffect(() => {
     if (!bookId || !callTool) return;
     void runPreflight();
-  }, [bookId, callTool, runPreflight]);
+    void loadVolume();
+  }, [bookId, callTool, runPreflight, loadVolume]);
 
   useEffect(() => {
     void loadProposals();
   }, [loadProposals]);
 
   /**
-   * 刷新写前状态与本章提议。
+   * 刷新写前状态、卷驾驶舱与本章提议。
    *
-   * 写作由叙述者异步执行，本面板无法知道哪一刻落盘完成，所以不做轮询猜测：
-   * 作者写完回到写作视图点一次刷新，就同时拿到新的预检结果和章后提议。
+   * 写作由叙述者异步执行，本面板无法在进程内知道哪一刻落盘完成。刷新有三条
+   * 来源，都不依赖轮询定时器：手动点刷新、面板由隐藏转为可见、以及工作台在
+   * 章节保存/结算后派发的 WRITING_PROGRESS_EVENT。
    */
   const refreshAll = useCallback(() => {
     void runPreflight();
     void loadProposals();
-  }, [loadProposals, runPreflight]);
+    void loadVolume();
+  }, [loadProposals, loadVolume, runPreflight]);
+
+  // 写作进度事件：章节保存/结算完成后刷新。一次性事件，无常驻定时器。
+  useEffect(() => {
+    if (!bookId) return;
+    const handler = () => refreshAll();
+    window.addEventListener(WRITING_PROGRESS_EVENT, handler);
+    return () => window.removeEventListener(WRITING_PROGRESS_EVENT, handler);
+  }, [bookId, refreshAll]);
+
+  // 面板由隐藏转为可见时刷新一次：覆盖「叙述者异步写完、作者切回写作视图」，
+  // 免去手动刷新，也避免面板不可见时做无谓请求。
+  const wasVisibleRef = useRef(false);
+  useEffect(() => {
+    if (!bookId || !callTool) return;
+    if (visible && !wasVisibleRef.current) refreshAll();
+    wasVisibleRef.current = Boolean(visible);
+  }, [visible, bookId, callTool, refreshAll]);
 
   /**
    * 一键修分派。
@@ -263,6 +321,15 @@ export function WriteViewPanel({
       {error && (
         <p className="rounded border border-red-500/40 bg-red-500/10 px-2 py-1 text-[11px] text-red-600 dark:text-red-400">{error}</p>
       )}
+
+      {/* 卷驾驶舱：当前卷目标与本章在本卷的位置，就绪红绿灯下方集中呈现。 */}
+      <VolumeCockpit
+        volume={volumeModel}
+        chapterNumber={model.chapterNumber}
+        error={volumeError}
+        onCreateVolume={() => void handleFix("set-volume")}
+        creating={fixBusy === "set-volume"}
+      />
 
       {/* 检查项清单 */}
       {model.checks.length > 0 && (
@@ -443,6 +510,92 @@ export function WriteViewPanel({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * 卷驾驶舱：写作视图侧栏的当前卷视图。
+ *
+ * 卷此前只有三个派生标签露脸（就绪条的「卷纲：」、画布卷进度条、经纬 outline
+ * 条目），没有集中的卷视图。这里一屏回答：当前是第几卷、章号区间、本章在本卷
+ * 的位置、剩余章数、本卷剧情目标与卷状态。
+ *
+ * 数据只来自 outline.volume(action=get)。没有卷纲时给建卷引导而非空白区块；
+ * 章号落在本卷区间外时用醒目样式提示脱节（这是对数据的事实呈现，与后端
+ * renderCurrentVolumeFocus 的口径一致，不按 code 自造告警文案）。
+ */
+function VolumeCockpit({ volume, chapterNumber, error, onCreateVolume, creating }: {
+  readonly volume: VolumeCockpitModel;
+  readonly chapterNumber: number;
+  readonly error: string | null;
+  readonly onCreateVolume: () => void;
+  readonly creating: boolean;
+}) {
+  // 尚无卷纲：给建卷引导，不显示空白区块。
+  if (volume.state === "empty") {
+    return (
+      <section className="rounded-md border border-dashed border-border bg-card/40 px-2.5 py-2" data-testid="write-volume-cockpit">
+        <div className="flex items-center gap-1.5 text-[11px] font-medium text-foreground">
+          <BookOpen className="size-3.5 text-muted-foreground" />
+          当前卷
+        </div>
+        <p className="mt-1 text-[10px] leading-relaxed text-muted-foreground">
+          {error ?? "还没有卷纲。设定卷目标后，长篇每章都能对齐本卷主线，不易写散。"}
+        </p>
+        <button
+          type="button"
+          onClick={onCreateVolume}
+          disabled={creating}
+          className="mt-1.5 rounded bg-primary/10 px-2 py-0.5 text-[10px] text-primary hover:bg-primary/20 disabled:opacity-50"
+          data-testid="write-volume-create"
+        >
+          {creating ? "处理中" : "用 outline.volume 建卷"}
+        </button>
+      </section>
+    );
+  }
+
+  const current = volume.current!;
+  const rangeText = typeof current.from === "number" && typeof current.to === "number"
+    ? `第 ${current.from}–${current.to} 章`
+    : "章号区间未填写";
+  const derailed = volume.inRange === false;
+
+  return (
+    <section
+      className={`rounded-md border px-2.5 py-2 ${derailed ? "border-amber-500/50 bg-amber-500/10" : "border-border bg-card/40"}`}
+      data-testid="write-volume-cockpit"
+    >
+      <div className="flex items-center gap-1.5">
+        <BookOpen className={`size-3.5 shrink-0 ${derailed ? "text-amber-600 dark:text-amber-400" : "text-primary"}`} />
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+          {volume.index > 0 ? `第 ${volume.index} 卷 · ` : ""}{current.title}
+        </span>
+        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">{volume.statusLabel}</span>
+      </div>
+
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 text-[10px] text-muted-foreground">
+        <span>{rangeText}</span>
+        {volume.offset !== null && volume.total > 0 && (
+          <span data-testid="write-volume-position">本章第 {volume.offset}/{volume.total} 章</span>
+        )}
+        {volume.remaining !== null && (
+          <span>剩余 {volume.remaining} 章</span>
+        )}
+      </div>
+
+      {derailed && (
+        <p className="mt-1 text-[10px] leading-relaxed text-amber-600 dark:text-amber-400" data-testid="write-volume-derailed">
+          第 {chapterNumber} 章不在本卷区间（{rangeText}），卷纲与实际进度已脱节。
+        </p>
+      )}
+
+      <p className="mt-1 text-[10px] leading-relaxed text-foreground/90">
+        {current.goal
+          ? `本卷目标：${current.goal}`
+          : "本卷目标：未填写（卷纲缺目标，无法据此约束本章走向）"}
+      </p>
+    </section>
   );
 }
 

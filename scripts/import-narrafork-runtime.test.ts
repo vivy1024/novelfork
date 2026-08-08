@@ -391,9 +391,7 @@ describe("importNarraForkRuntime", () => {
 			repositoryRoot: fixture.outer,
 			reportOnly: true,
 		});
-		expect(report.targetModifications).toEqual([
-			expect.objectContaining({ status: "A", path: extraTarget }),
-		]);
+		expect(report.targetModifications).toEqual([]);
 
 		const result = await importNarraForkRuntime({
 			source: fixture.source,
@@ -529,6 +527,34 @@ describe("importNarraForkRuntime", () => {
 		).toBe(false);
 	}, 20_000);
 
+	test("replace 忽略纯 LF/CRLF 字节差异", async () => {
+		await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+		});
+		const trackedPath = join(fixture.target, "src", "tracked.ts");
+		const original = await readFile(trackedPath, "utf8");
+		await writeFile(trackedPath, original.replaceAll("\n", "\r\n"), "utf8");
+
+		const report = await analyzeNarraForkRuntimeImpact({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+		});
+		expect(report.targetModifications).not.toEqual(
+			expect.arrayContaining([expect.objectContaining({ path: "src/tracked.ts" })]),
+		);
+
+		const result = await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+			replace: true,
+		});
+		expect(result.replaced).toBe(true);
+	}, 20_000);
+
 	test("replace 拒绝覆盖相对 UPSTREAM.lock 已修改的 Runtime", async () => {
 		await importNarraForkRuntime({
 			source: fixture.source,
@@ -601,6 +627,12 @@ describe("importNarraForkRuntime", () => {
 		await mkdir(join(fixture.target, ".runtime-e2e", "books"), {
 			recursive: true,
 		});
+		await mkdir(join(fixture.target, "runtime-migrations", "meta"), {
+			recursive: true,
+		});
+		await mkdir(join(fixture.target, "docs", "plugin-system"), {
+			recursive: true,
+		});
 		await writeFile(
 			join(fixture.target, "node_modules", "local-only", "index.js"),
 			"generated\n",
@@ -614,6 +646,15 @@ describe("importNarraForkRuntime", () => {
 			"{}\n",
 		);
 		await writeFile(join(fixture.target, "local.db"), "generated\n");
+		await writeFile(
+			join(fixture.target, "runtime-migrations", "meta", "_journal.json"),
+			"{}\n",
+		);
+		await writeFile(join(fixture.target, "tsr.config.json"), "{}\n");
+		await writeFile(
+			join(fixture.target, "docs", "plugin-system", "楠屾敹璁板綍.md"),
+			"generated archive filename artifact\n",
+		);
 		await mkdir(join(fixture.source, "server", "permission"), {
 			recursive: true,
 		});
@@ -665,6 +706,15 @@ describe("importNarraForkRuntime", () => {
 		);
 		expect(report.targetModifications.map((item) => item.path)).not.toContain(
 			"local.db",
+		);
+		expect(report.targetModifications.map((item) => item.path)).not.toContain(
+			"runtime-migrations/meta/_journal.json",
+		);
+		expect(report.targetModifications.map((item) => item.path)).not.toContain(
+			"tsr.config.json",
+		);
+		expect(report.targetModifications.map((item) => item.path)).not.toContain(
+			"docs/plugin-system/楠屾敹璁板綍.md",
 		);
 		expect(
 			await readFile(join(fixture.target, "UPSTREAM.lock.json"), "utf8"),

@@ -51,22 +51,25 @@ describe("ResourceViewer", () => {
     expect(screen.queryByText("已保存")).toBeNull();
   });
 
-  it("渲染 story/truth 文本文件为只读，并显示来源路径", () => {
+  it("渲染 story/file Markdown 为只读格式化编辑器，并显示来源路径", () => {
     render(
       <ResourceViewer
         node={node({
           id: "story-file:1",
           kind: "story",
-          title: "原文片段.txt",
-          content: "原文内容",
-          path: "books/source/原文片段.txt",
+          title: "原文片段.md",
+          content: "# 原文标题\n\n正文内容\n\n|列1|列2|\n|---|---|\n|甲|乙|",
+          path: "books/source/原文片段.md",
           capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
         })}
       />,
     );
 
-    expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
-    expect(screen.getByText("books/source/原文片段.txt")).toBeTruthy();
+    const editor = screen.getByLabelText("Markdown 文件内容");
+    expect(editor.getAttribute("contenteditable")).toBe("false");
+    expect(screen.getByRole("heading", { name: "原文标题" })).toBeTruthy();
+    expect(screen.getByText("正文内容")).toBeTruthy();
+    expect(screen.getByText("books/source/原文片段.md")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "保存" })).toBeNull();
     cleanup();
 
@@ -85,6 +88,25 @@ describe("ResourceViewer", () => {
     expect(screen.getByText("经纬资料")).toBeTruthy();
     expect(screen.queryByLabelText("文本文件正文")).toBeNull();
     expect(screen.getByText("暂无经纬内容")).toBeTruthy();
+  });
+
+  it("较大的 Markdown 文件默认懒加载预览，避免首次建立大编辑器文档", () => {
+    const largeContent = `# 大文件\\n\\n${"长文本。".repeat(80_000)}`;
+    render(
+      <ResourceViewer
+        node={node({
+          id: "story-file:large",
+          kind: "story",
+          title: "大型设定.md",
+          content: largeContent,
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+      />,
+    );
+
+    expect(screen.getByText("这是一个较大的 Markdown 文件")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "加载 Markdown 预览" })).toBeTruthy();
+    expect(screen.queryByLabelText("Markdown 文件内容")).toBeNull();
   });
 
   it("渲染真实合同中的经纬与叙事线节点为语义只读卡片", () => {

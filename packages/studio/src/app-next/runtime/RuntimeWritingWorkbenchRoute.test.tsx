@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
     activeSessionId?: string | null;
     onCreateSession?: () => void;
+    runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
   }>,
 }));
 
@@ -66,7 +67,7 @@ describe("RuntimeWritingWorkbenchRoute", () => {
         kind: "chapter",
         title: "第一章",
         content: "正文",
-        path: "chapters/0001_first.md",
+        path: "chapters/卷01/0001_first.md",
         capabilities: { read: true, update: true },
       },
       {
@@ -80,9 +81,11 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     ]);
 
     const chapters = nodes.find((node) => node.metadata?.filePath === "chapters");
+    const volume = chapters?.children?.find((node) => node.metadata?.filePath === "chapters/卷01");
     const bookConfig = nodes.find((node) => node.id === "book.json");
-    expect(chapters).toMatchObject({ kind: "group", children: [{ id: "chapter:1", kind: "chapter" }] });
-    expect(chapters?.children?.[0]?.capabilities).toMatchObject({ open: true, edit: true, readonly: false, delete: false });
+    expect(chapters).toMatchObject({ kind: "group" });
+    expect(volume).toMatchObject({ kind: "group", children: [{ id: "chapter:1", kind: "chapter" }] });
+    expect(volume?.children?.[0]?.capabilities).toMatchObject({ open: true, edit: true, readonly: false, delete: false });
     expect(bookConfig).toMatchObject({ id: "book.json", kind: "story" });
     expect(bookConfig?.capabilities).toMatchObject({ open: true, edit: false, readonly: true, unsupported: false, delete: false });
   });
@@ -116,6 +119,41 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     expect(mocks.workbenchProps.at(-1)?.nodes).toEqual([
       expect.objectContaining({ id: "book:book-1", title: "测试作品" }),
     ]);
+  });
+
+  it("父组件重渲染时保持 runtimeFetch 引用稳定，避免工作台加载 effect 循环请求", async () => {
+    const client = {
+      getWorkspace: vi.fn(async () => ({
+        book: { id: "book-1", title: "测试作品", capabilities: { read: true } },
+        resources: [],
+        capabilities: { read: true, create: true, update: true },
+      })),
+      listNarrators: vi.fn(async () => [narrator]),
+    };
+    const firstCanvasHandler = vi.fn();
+    const { rerender } = render(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-1"
+        onCanvasContextChange={firstCanvasHandler}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+
+    await screen.findByTestId("ide-workbench-mock");
+    const firstRuntimeFetch = mocks.workbenchProps.at(-1)?.runtimeFetch;
+    expect(firstRuntimeFetch).toBeTypeOf("function");
+
+    rerender(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-1"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.workbenchProps.at(-1)?.runtimeFetch).toBe(firstRuntimeFetch));
   });
 
   it("已有书籍会话历史时仍显示全部会话并通过书籍作用域创建新会话", async () => {

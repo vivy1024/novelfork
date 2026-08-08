@@ -1,3 +1,5 @@
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
+
 /**
  * Auto-downgrade character lifecycle based on last appearance.
  * Called periodically or after each chapter.
@@ -6,15 +8,20 @@ export async function updateCharacterLifecycles(bookId: string, currentChapter: 
   const { getStorageDatabase } = await import("@vivy1024/novelfork-core/storage");
   const storage = getStorageDatabase();
 
-  // Get all active/recurring characters with their last appearance chapter
+  // Get all active/recurring characters with their last appearance chapter.
+  // Keep legacy singular values readable while new writes use the canonical plural category.
+  const characterCategories = getJingweiCategoryAliases("characters");
   const characters = storage.sqlite.prepare(
     `SELECT e.id, e.lifecycle, MAX(cs.chapter_number) as last_appearance
      FROM story_jingwei_entry e
-     LEFT JOIN bible_chapter_summary cs ON cs.book_id = e.book_id
+     LEFT JOIN jingwei_chapter_summary cs ON cs.book_id = e.book_id
        AND cs.appearing_character_ids_json LIKE '%' || e.id || '%'
-     WHERE e.book_id = ? AND e.category = 'character' AND e.lifecycle IN ('active', 'recurring') AND e.deleted_at IS NULL
+     WHERE e.book_id = ?
+       AND e.category IN (${sqlInPlaceholders(characterCategories)})
+       AND e.lifecycle IN ('active', 'recurring')
+       AND e.deleted_at IS NULL
      GROUP BY e.id`
-  ).all(bookId) as Array<{ id: string; lifecycle: string; last_appearance: number | null }>;
+  ).all(bookId, ...characterCategories) as Array<{ id: string; lifecycle: string; last_appearance: number | null }>;
 
   let downgraded = 0;
   for (const char of characters) {

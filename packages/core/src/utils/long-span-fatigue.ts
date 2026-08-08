@@ -1,10 +1,14 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { analyzeChapterCadence } from "./chapter-cadence.js";
 import {
   CADENCE_WINDOW_DEFAULTS,
   LONG_SPAN_FATIGUE_THRESHOLDS,
 } from "./cadence-policy.js";
+import {
+  listChapterFiles,
+  resolveChapterFilePath,
+} from "../state/state-bootstrap.js";
 
 export interface LongSpanFatigueIssue {
   readonly severity: "warning";
@@ -154,20 +158,22 @@ async function loadPreviousChapterBodies(
   limit: number,
 ): Promise<string[]> {
   const chaptersDir = join(bookDir, "chapters");
-  try {
-    const files = await readdir(chaptersDir);
-    const previousFiles = files
-      .map((file) => ({ file, chapter: Number.parseInt(file.slice(0, 4), 10) }))
-      .filter((entry) => Number.isFinite(entry.chapter) && entry.chapter < currentChapter && entry.file.endsWith(".md"))
-      .sort((left, right) => left.chapter - right.chapter)
-      .slice(-limit);
+  const chapterNumbers = [...new Set(
+    (await listChapterFiles(chaptersDir))
+      .map((file) => file.chapterNumber)
+      .filter((chapter) => chapter < currentChapter),
+  )]
+    .sort((left, right) => left - right)
+    .slice(-limit);
 
-    return Promise.all(
-      previousFiles.map((entry) => readFile(join(chaptersDir, entry.file), "utf-8")),
-    );
-  } catch {
-    return [];
-  }
+  const chapterPaths = await Promise.all(
+    chapterNumbers.map((chapter) => resolveChapterFilePath(chaptersDir, chapter)),
+  );
+  return Promise.all(
+    chapterPaths
+      .filter((path): path is string => path !== null)
+      .map((path) => readFile(path, "utf-8")),
+  );
 }
 
 function mergeCurrentSummary(rows: ReadonlyArray<SummaryRow>, currentSummary?: string): SummaryRow[] {
@@ -290,26 +296,30 @@ async function loadRecentChapterBodies(
   currentContent: string,
 ): Promise<string[]> {
   const chaptersDir = join(bookDir, "chapters");
-  try {
-    const files = await readdir(chaptersDir);
-    const previousFiles = files
-      .map((file) => ({ file, chapter: Number.parseInt(file.slice(0, 4), 10) }))
-      .filter((entry) => Number.isFinite(entry.chapter) && entry.chapter < currentChapter && entry.file.endsWith(".md"))
-      .sort((left, right) => left.chapter - right.chapter)
-      .slice(-CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies);
+  const previousChapterNumbers = [...new Set(
+    (await listChapterFiles(chaptersDir))
+      .map((file) => file.chapterNumber)
+      .filter((chapter) => chapter < currentChapter),
+  )]
+    .sort((left, right) => left - right)
+    .slice(-CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies);
 
-    if (previousFiles.length < CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies) {
-      return [];
-    }
-
-    const previousBodies = await Promise.all(
-      previousFiles.map((entry) => readFile(join(chaptersDir, entry.file), "utf-8")),
-    );
-
-    return [...previousBodies, currentContent];
-  } catch {
+  if (previousChapterNumbers.length < CADENCE_WINDOW_DEFAULTS.recentBoundaryPatternBodies) {
     return [];
   }
+
+  const chapterPaths = await Promise.all(
+    previousChapterNumbers.map((chapter) => resolveChapterFilePath(chaptersDir, chapter)),
+  );
+  const previousBodies = await Promise.all(
+    chapterPaths
+      .filter((path): path is string => path !== null)
+      .map((path) => readFile(path, "utf-8")),
+  );
+
+  return previousBodies.length === previousChapterNumbers.length
+    ? [...previousBodies, currentContent]
+    : [];
 }
 
 function buildSentencePatternIssue(

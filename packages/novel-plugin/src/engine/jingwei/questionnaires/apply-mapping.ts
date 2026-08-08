@@ -64,7 +64,7 @@ function applyPremiseField(state: Record<string, unknown>, fieldPath: string, va
 function readPremise(sqlite: StorageSqliteDatabase, bookId: string): Record<string, unknown> {
   const row = sqlite.prepare(`
     SELECT "id", "logline", "theme_json", "tone", "target_readers", "unique_hook", "genre_tags_json", "created_at"
-    FROM "bible_premise"
+    FROM "jingwei_premise"
     WHERE "book_id" = ?
   `).get(bookId) as { id: string; logline: string; theme_json: string; tone: string; target_readers: string; unique_hook: string; genre_tags_json: string; created_at: number } | undefined;
   return {
@@ -83,7 +83,7 @@ function writePremise(sqlite: StorageSqliteDatabase, bookId: string, state: Reco
   const id = String(state.id ?? crypto.randomUUID());
   const createdAt = typeof state.createdAt === "number" ? state.createdAt : timestamp.getTime();
   sqlite.prepare(`
-    INSERT INTO "bible_premise" (
+    INSERT INTO "jingwei_premise" (
       "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook",
       "genre_tags_json", "created_at", "updated_at"
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -122,7 +122,7 @@ function applyWorldModelField(state: Record<string, unknown>, fieldPath: string,
 function readWorldModel(sqlite: StorageSqliteDatabase, bookId: string): Record<string, unknown> {
   const row = sqlite.prepare(`
     SELECT "id", "economy_json", "society_json", "geography_json", "power_system_json", "culture_json", "timeline_json"
-    FROM "bible_world_model"
+    FROM "jingwei_world_model"
     WHERE "book_id" = ?
   `).get(bookId) as { id: string; economy_json: string; society_json: string; geography_json: string; power_system_json: string; culture_json: string; timeline_json: string } | undefined;
   return {
@@ -139,7 +139,7 @@ function readWorldModel(sqlite: StorageSqliteDatabase, bookId: string): Record<s
 function writeWorldModel(sqlite: StorageSqliteDatabase, bookId: string, state: Record<string, unknown>, timestamp: Date): string {
   const id = String(state.id ?? crypto.randomUUID());
   sqlite.prepare(`
-    INSERT INTO "bible_world_model" (
+    INSERT INTO "jingwei_world_model" (
       "id", "book_id", "economy_json", "society_json", "geography_json", "power_system_json", "culture_json", "timeline_json", "updated_at"
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT("book_id") DO UPDATE SET
@@ -166,9 +166,9 @@ function writeWorldModel(sqlite: StorageSqliteDatabase, bookId: string, state: R
 
 function insertSimpleTarget(sqlite: StorageSqliteDatabase, table: string, values: Record<string, unknown>, timestamp: Date): string {
   const id = String(values.id ?? crypto.randomUUID());
-  if (table === "bible_conflict") {
+  if (table === "jingwei_conflict") {
     sqlite.prepare(`
-      INSERT INTO "bible_conflict" (
+      INSERT INTO "jingwei_conflict" (
         "id", "book_id", "name", "type", "scope", "priority", "protagonist_side_json", "antagonist_side_json",
         "stakes", "root_cause_json", "evolution_path_json", "resolution_state", "resolution_chapter",
         "related_conflict_ids_json", "visibility_rule_json", "created_at", "updated_at"
@@ -176,17 +176,17 @@ function insertSimpleTarget(sqlite: StorageSqliteDatabase, table: string, values
     `).run(id, values.bookId, String(values.name ?? "未命名矛盾"), String(values.type ?? "external-character"), String(values.scope ?? "arc"), Number(values.priority ?? 3), String(values.stakes ?? ""), JSON.stringify(values.rootCause ?? {}), timestamp.getTime(), timestamp.getTime());
     return id;
   }
-  if (table === "bible_character") {
+  if (table === "jingwei_character") {
     sqlite.prepare(`
-      INSERT INTO "bible_character" (
+      INSERT INTO "jingwei_character" (
         "id", "book_id", "name", "aliases_json", "role_type", "summary", "traits_json", "visibility_rule_json", "first_chapter", "last_chapter", "created_at", "updated_at"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, '{"type":"tracked"}', NULL, NULL, ?, ?)
     `).run(id, values.bookId, String(values.name ?? "未命名角色"), JSON.stringify(parseList(values.aliases)), String(values.roleType ?? "minor"), String(values.summary ?? ""), JSON.stringify(values.traits ?? {}), timestamp.getTime(), timestamp.getTime());
     return id;
   }
-  if (table === "bible_setting") {
+  if (table === "jingwei_setting") {
     sqlite.prepare(`
-      INSERT INTO "bible_setting" (
+      INSERT INTO "jingwei_setting" (
         "id", "book_id", "category", "name", "content", "visibility_rule_json", "nested_refs_json", "created_at", "updated_at"
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(id, values.bookId, String(values.category ?? "other"), String(values.name ?? "未命名设定"), String(values.content ?? ""), JSON.stringify(values.visibilityRule ?? { type: "global" }), JSON.stringify(parseList(values.nestedRefs)), timestamp.getTime(), timestamp.getTime());
@@ -232,8 +232,8 @@ export function applyQuestionnaireMappings(params: {
     if (value === undefined) continue;
     setPath(values, question.mapping.fieldPath.split("."), value);
   }
-  if (targetObject === "conflict") return insertSimpleTarget(sqlite, "bible_conflict", values, timestamp);
-  if (targetObject === "character") return insertSimpleTarget(sqlite, "bible_character", values, timestamp);
-  if (targetObject === "setting") return insertSimpleTarget(sqlite, "bible_setting", values, timestamp);
+  if (targetObject === "conflict") return insertSimpleTarget(sqlite, "jingwei_conflict", values, timestamp);
+  if (targetObject === "character") return insertSimpleTarget(sqlite, "jingwei_character", values, timestamp);
+  if (targetObject === "setting") return insertSimpleTarget(sqlite, "jingwei_setting", values, timestamp);
   throw new Error(`Unsupported questionnaire mapping target: ${targetObject}`);
 }

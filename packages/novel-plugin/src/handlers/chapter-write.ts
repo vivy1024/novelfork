@@ -1,19 +1,24 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import {
   buildLengthSpec,
   countChapterLength,
   isOutsideHardRange,
+  StateManager,
   type LengthSpec,
   type StorageDatabase,
 } from "@vivy1024/novelfork-core";
 import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
+import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
+import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 
 export interface ChapterWriteInput {
   bookId: string;
   chapterNumber: number;
   content: string;
+  expectedHash?: string;
 }
 
 export type TrustedChapterWritePurpose = "complete-chapter" | "revision";
@@ -62,6 +67,7 @@ export type ChapterWriteResult =
         fileName: string;
         wordCount: number;
         updatedAt: string;
+        hash: string;
         length: ChapterLengthData;
         writingSkillWarnings: WritingSkillViolation[];
       };
@@ -70,18 +76,16 @@ export type ChapterWriteResult =
       ok: false;
       error: string;
       summary: string;
-      data?: { length?: ChapterLengthData; writingSkillViolations?: WritingSkillViolation[] };
+      explanation?: string;
+      data?: {
+        length?: ChapterLengthData;
+        writingSkillViolations?: WritingSkillViolation[];
+        currentHash?: string;
+        expectedHash?: string;
+      };
     };
 
-const CHAPTER_FILE_PATTERN = /^(\d{1,9})[_-].+\.md$/iu;
 const MAX_CONTENT_LENGTH = 2_000_000;
-
-function chapterNumberFromFileName(fileName: string): number | null {
-  const match = CHAPTER_FILE_PATTERN.exec(fileName);
-  if (!match) return null;
-  const chapterNumber = Number(match[1]);
-  return Number.isSafeInteger(chapterNumber) && chapterNumber > 0 ? chapterNumber : null;
-}
 
 async function loadBookLengthSpec(
   bookId: string,
@@ -164,29 +168,6 @@ async function validateCompleteChapterWrite(
   return violations;
 }
 
-async function updateChapterIndex(
-  bookRoot: string,
-  chapterNumber: number,
-  wordCount: number,
-  updatedAt: string,
-): Promise<void> {
-  const indexPath = join(bookRoot, "chapters", "index.json");
-  const raw = await readFile(indexPath, "utf8").catch(() => "[]");
-  let index: unknown;
-  try {
-    index = JSON.parse(raw);
-  } catch {
-    return;
-  }
-  if (!Array.isArray(index)) return;
-  const nextIndex = index.map((entry) => (
-    entry && typeof entry === "object" && !Array.isArray(entry) && Number((entry as Record<string, unknown>).number) === chapterNumber
-      ? { ...(entry as Record<string, unknown>), wordCount, updatedAt }
-      : entry
-  ));
-  await writeFile(indexPath, `${JSON.stringify(nextIndex, null, 2)}\n`, "utf8");
-}
-
 /**
  * Write one existing chapter selected by its numeric resource identity.
  * The caller supplies a trusted root, and this function selects a directory entry
@@ -203,23 +184,65 @@ export async function handleChapterWrite(
     return { ok: false, error: "invalid-input", summary: `章节正文必须是长度不超过 ${MAX_CONTENT_LENGTH} 的字符串。` };
   }
 
+  const stateManager = new StateManager("", { resolveBookDir: () => options.bookRoot });
+  let releaseLock: (() => Promise<void>) | undefined;
   try {
+    releaseLock = await stateManager.acquireBookLock(input.bookId);
+  } catch (lockError) {
+    return {
+      ok: false,
+      error: "chapter-write-locked",
+      summary: `章节写入已被加锁：${lockError instanceof Error ? lockError.message : String(lockError)}`,
+      explanation: "当前书籍正在进行另一个写入操作，加锁冲突。请稍后重试。",
+    };
+  }
+
+  try {
+    const fileStore = createWritingResourceFileStore(() => options.bookRoot, {
+      resolveChapterVolumeDirectory: options.storage
+        ? (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
+            options.storage!,
+            requestedBookId,
+            requestedChapterNumber,
+          )
+        : undefined,
+    });
+
+    if (typeof input.expectedHash === "string") {
+      const existingResource = await fileStore.findAcceptedChapter(input.bookId, input.chapterNumber);
+      const currentContent = existingResource ? existingResource.content : "";
+      const currentHash = createHash("sha256").update(currentContent, "utf8").digest("hex");
+      if (currentHash !== input.expectedHash) {
+        return {
+          ok: false,
+          error: "chapter-concurrent-modification",
+          summary: `第 ${input.chapterNumber} 章正文在写入前已被并发修改（预期 Hash: ${input.expectedHash}，实际 Hash: ${currentHash}）。`,
+          explanation: "检测到章节正文在读取与本次写入之间已被其它并发任务更新，已取消写入以防止覆盖最新正文。请获取最新章节内容后再试。",
+          data: {
+            currentHash,
+            expectedHash: input.expectedHash,
+          },
+        };
+      }
+    }
+
     const lengthSpec = await loadBookLengthSpec(input.bookId, options.bookRoot);
     const wordCount = countChapterLength(input.content, lengthSpec.countingMode);
     const length = toLengthData(wordCount, lengthSpec);
     const validation = await validateCompleteChapterWrite(input, options, length, lengthSpec);
     if (!Array.isArray(validation)) return validation;
 
-    const entries = await readdir(join(options.bookRoot, "chapters"), { withFileTypes: true });
-    const matched = entries.find((entry) => entry.isFile() && chapterNumberFromFileName(entry.name) === input.chapterNumber);
-    if (!matched) {
+    const updatedAt = new Date().toISOString();
+    const updated = await fileStore.update(input.bookId, `chapter:${input.chapterNumber}`, {
+      content: input.content,
+      wordCount,
+      updatedAt: Date.parse(updatedAt),
+    });
+    if (!updated) {
       return { ok: false, error: "chapter-not-found", summary: `章节 ${input.chapterNumber} 不存在，拒绝写入。` };
     }
 
-    const chapterPath = join(options.bookRoot, "chapters", matched.name);
-    const updatedAt = new Date().toISOString();
-    await writeFile(chapterPath, input.content, "utf8");
-    await updateChapterIndex(options.bookRoot, input.chapterNumber, wordCount, updatedAt);
+    const hash = createHash("sha256").update(input.content, "utf8").digest("hex");
 
     return {
       ok: true,
@@ -227,9 +250,10 @@ export async function handleChapterWrite(
       data: {
         bookId: input.bookId,
         chapterNumber: input.chapterNumber,
-        fileName: matched.name,
+        fileName: typeof updated.metadata.fileName === "string" ? updated.metadata.fileName : `${updated.id}.md`,
         wordCount,
         updatedAt,
+        hash,
         length,
         writingSkillWarnings: validation.filter((violation) => violation.severity === "warning"),
       },
@@ -240,5 +264,9 @@ export async function handleChapterWrite(
       error: "chapter-write-failed",
       summary: `章节写入失败：${error instanceof Error ? error.message : String(error)}`,
     };
+  } finally {
+    if (releaseLock) {
+      await releaseLock().catch(() => undefined);
+    }
   }
 }

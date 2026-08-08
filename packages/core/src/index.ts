@@ -139,7 +139,7 @@ export { analyzeHookHealth } from "./utils/hook-health.js";
 export { analyzeChapterCadence, isHighTensionMood, type CadenceSummaryRow, type ChapterCadenceAnalysis, type SceneCadencePressure, type MoodCadencePressure, type TitleCadencePressure } from "./utils/chapter-cadence.js";
 export { buildGovernedMemoryEvidenceBlocks } from "./utils/governed-context.js";
 export { buildGovernedHookWorkingSet, mergeTableMarkdownByKey, mergeCharacterMatrixMarkdown, buildGovernedCharacterMatrixWorkingSet } from "./utils/governed-working-set.js";
-export { retrieveMemorySelection, extractQueryTerms, parsePendingHooksMarkdown, renderHookSnapshot, renderSummarySnapshot, parseChapterSummariesMarkdown, parseCurrentStateFacts, buildPlannerHookAgenda, isFuturePlannedHook, isHookWithinChapterWindow, type MemorySelection, type VolumeSummarySelection } from "./utils/memory-retrieval.js";
+export { retrieveMemorySelection, extractQueryTerms, parsePendingHooksMarkdown, renderHookSnapshot, renderSummarySnapshot, parseChapterSummariesMarkdown, parseCurrentStateFacts, buildPlannerHookAgenda, isFuturePlannedHook, isHookWithinChapterWindow, type MemorySelection } from "./utils/memory-retrieval.js";
 export { extractEntities, type Entity } from "./utils/ner-extractor.js";
 export { retrieveLorebookEntries, formatLorebookContext, type LorebookEntry as LorebookRagEntry, type RetrievalOptions } from "./utils/lorebook-rag.js";
 export { DEFAULT_HOOK_LOOKAHEAD_CHAPTERS, filterActiveHooks } from "./utils/hook-agenda.js";

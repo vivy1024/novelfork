@@ -38,14 +38,7 @@ export interface MemorySelection {
   readonly hooks: ReadonlyArray<StoredHook>;
   readonly activeHooks: ReadonlyArray<StoredHook>;
   readonly facts: ReadonlyArray<Fact>;
-  readonly volumeSummaries: ReadonlyArray<VolumeSummarySelection>;
   readonly dbPath?: string;
-}
-
-export interface VolumeSummarySelection {
-  readonly heading: string;
-  readonly content: string;
-  readonly anchor: string;
 }
 
 export async function retrieveMemorySelection(params: {
@@ -66,13 +59,11 @@ export async function retrieveMemorySelection(params: {
 
   const [
     currentStateMarkdown,
-    volumeSummariesMarkdown,
     structuredCurrentState,
     structuredHooks,
     structuredSummaries,
   ] = await Promise.all([
     readFile(join(storyDir, "current_state.md"), "utf-8").catch(() => ""),
-    readFile(join(storyDir, "volume_summaries.md"), "utf-8").catch(() => ""),
     readStructuredState(join(stateDir, "current_state.json"), CurrentStateStateSchema),
     readStructuredState(join(stateDir, "hooks.json"), HooksStateSchema),
     readStructuredState(join(stateDir, "chapter_summaries.json"), ChapterSummariesStateSchema),
@@ -90,10 +81,6 @@ export async function retrieveMemorySelection(params: {
     params.goal,
     params.outlineNode,
     params.mustKeep ?? [],
-  );
-  const volumeSummaries = selectRelevantVolumeSummaries(
-    parseVolumeSummariesMarkdown(volumeSummariesMarkdown),
-    narrativeQueryTerms,
   );
 
   const memoryDb = openMemoryDB(params.bookDir);
@@ -130,7 +117,6 @@ export async function retrieveMemorySelection(params: {
         hooks: selectRelevantHooks(activeHooks, narrativeQueryTerms, params.chapterNumber),
         activeHooks,
         facts: selectRelevantFacts(memoryDb.getCurrentFacts(), factQueryTerms),
-        volumeSummaries,
         dbPath: join(storyDir, "memory.db"),
       };
     } finally {
@@ -151,7 +137,6 @@ export async function retrieveMemorySelection(params: {
     hooks: selectRelevantHooks(activeHooks, narrativeQueryTerms, params.chapterNumber),
     activeHooks,
     facts: selectRelevantFacts(facts, factQueryTerms),
-    volumeSummaries,
   };
 }
 
@@ -277,27 +262,6 @@ function uniqueTerms(terms: ReadonlyArray<string>): string[] {
   return result;
 }
 
-function parseVolumeSummariesMarkdown(markdown: string): VolumeSummarySelection[] {
-  if (!markdown.trim()) return [];
-
-  const sections = markdown
-    .split(/^##\s+/m)
-    .map((section) => section.trim())
-    .filter(Boolean);
-
-  return sections.map((section) => {
-    const [headingLine, ...bodyLines] = section.split("\n");
-    const heading = headingLine?.trim() ?? "";
-    const content = bodyLines.join("\n").trim();
-
-    return {
-      heading,
-      content,
-      anchor: slugifyAnchor(heading),
-    };
-  }).filter((section) => section.heading.length > 0 && section.content.length > 0);
-}
-
 function isUnresolvedHook(status: string): boolean {
   return status.trim().length === 0 || /open|待定|推进|active|progressing/i.test(status);
 }
@@ -401,36 +365,6 @@ function selectRelevantFacts(
     .map((entry) => entry.fact);
 }
 
-function selectRelevantVolumeSummaries(
-  summaries: ReadonlyArray<VolumeSummarySelection>,
-  queryTerms: ReadonlyArray<string>,
-): VolumeSummarySelection[] {
-  if (summaries.length === 0) return [];
-
-  const ranked = summaries
-    .map((summary, index) => {
-      const text = `${summary.heading} ${summary.content}`;
-      const termScore = queryTerms.reduce(
-        (score, term) => score + (includesTerm(text, term) ? Math.max(8, term.length * 2) : 0),
-        0,
-      );
-
-      return {
-        index,
-        summary,
-        score: termScore + index,
-        matched: matchesAny(text, queryTerms),
-      };
-    })
-    .filter((entry, index, all) => entry.matched || index === all.length - 1)
-    .sort((left, right) => right.score - left.score)
-    .slice(0, 2)
-    .sort((left, right) => left.index - right.index)
-    .map((entry) => entry.summary);
-
-  return ranked;
-}
-
 function scoreSummary(summary: StoredSummary, chapterNumber: number, queryTerms: ReadonlyArray<string>): number {
   const text = [
     summary.title,
@@ -463,13 +397,4 @@ function matchesAny(text: string, queryTerms: ReadonlyArray<string>): boolean {
 
 function includesTerm(text: string, term: string): boolean {
   return text.toLowerCase().includes(term.toLowerCase());
-}
-
-function slugifyAnchor(value: string): string {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    || "volume-summary";
 }

@@ -9,9 +9,12 @@ describe("tool-results registry", () => {
   it("只为已验证兼容的 Runtime renderer 启用专用卡", () => {
     expect(resolveToolResultRendererKey({ toolName: "cockpit.snapshot", result: { data: {} } })).toBe("cockpit");
     expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
-    expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("generic");
-    expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { data: {} } })).toBe("generic");
+    // 补了专属卡后，这些工具名也会解析到对应保留键（不再退回 generic）。
+    expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("chapter-audit");
+    expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { data: {} } })).toBe("pgi");
+    // narrative.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
+    expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
 
   it("result.renderer 优先于 toolName 且不会按前缀误匹配", () => {
@@ -49,6 +52,20 @@ describe("tool-results registry", () => {
     const onOpenArtifact = vi.fn();
     const artifact = { kind: "chapter", id: "chapter:3", title: "第三章" };
     render(<>{renderToolResult({ toolName: "pipeline.write", result: { renderer: "pipeline.chapter-result", data: { title: "第三章" }, artifact }, onOpenArtifact })}</>);
+
+    fireEvent.click(screen.getByRole("button", { name: "在画布打开" }));
+
+    expect(onOpenArtifact).toHaveBeenCalledWith(artifact);
+  });
+
+  it("也能从 Runtime data.artifact 提供画布打开动作", () => {
+    const onOpenArtifact = vi.fn();
+    const artifact = { kind: "chapter", id: "chapter:4", title: "第四章" };
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: { renderer: "pipeline.chapter-result", data: { title: "第四章", artifact } },
+      onOpenArtifact,
+    })}</>);
 
     fireEvent.click(screen.getByRole("button", { name: "在画布打开" }));
 

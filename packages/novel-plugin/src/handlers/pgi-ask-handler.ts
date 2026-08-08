@@ -34,12 +34,17 @@ export interface PgiAskQuestionItem {
   context?: Record<string, unknown>;
 }
 
+export interface AskUserQuestionOptionItem {
+  label: string;
+  description: string;
+  preview?: string;
+}
+
 export interface AskUserQuestionInputItem {
-  id: string;
   question: string;
-  options: string[];
-  multiSelect: boolean;
   header: string;
+  options: AskUserQuestionOptionItem[];
+  multiSelect: boolean;
 }
 
 export interface PgiAskSuccessData {
@@ -94,6 +99,23 @@ function reasonForQuestion(question: PGIQuestion): string {
   return "检测到生成前隐性判断，需要作者确认。";
 }
 
+export function formatOptionToAskUserOption(opt: string): AskUserQuestionOptionItem {
+  return {
+    label: opt,
+    description: opt,
+  };
+}
+
+export function convertPgiQuestionToAskUserQuestion(q: PGIQuestion): AskUserQuestionInputItem {
+  const options = (q.options ?? []).slice(0, 4).map(formatOptionToAskUserOption);
+  return {
+    question: q.id,
+    header: q.prompt,
+    options,
+    multiSelect: false,
+  };
+}
+
 // ─── Handler ─────────────────────────────────────────────────────────────────
 
 /**
@@ -141,14 +163,8 @@ export async function handlePgiAsk(input: PgiAskInput): Promise<PgiAskResult> {
     ...(q.context ? { context: q.context } : {}),
   }));
 
-  // 格式化为 AskUserQuestion 工具可用的格式
-  const askUserQuestionInput: AskUserQuestionInputItem[] = questions.map((q) => ({
-    id: q.id,
-    question: q.prompt,
-    options: q.options,
-    multiSelect: false,
-    header: reasonForQuestion(q).slice(0, 12),
-  }));
+  // 格式化为 NarraFork AskUserQuestion 工具适用的格式（单题最多 4 项选项，header 为展示文案，question 为稳定 id/key）
+  const askUserQuestionInput: AskUserQuestionInputItem[] = questions.map(convertPgiQuestionToAskUserQuestion);
 
   return {
     ok: true,

@@ -5,13 +5,57 @@
  * Tab 切换，可收起/展开。
  */
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Activity, Droplets, Play, Loader2 } from "lucide-react";
+import { ChevronUp, ChevronDown, Activity, Droplets, Play, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 import { ChapterHealthCard } from "./ChapterHealthCard";
 
-type ToolbarTab = "health" | "ai-taste";
+type ToolbarTab = "health" | "ai-taste" | "audit";
+
+type AuditIssue = {
+  readonly severity?: string;
+  readonly type?: string;
+  readonly description?: string;
+  readonly suggestion?: string;
+  readonly location?: string;
+};
+
+type AuditResult = {
+  readonly passed?: boolean;
+  readonly issues?: readonly AuditIssue[];
+  readonly hardViolations?: readonly AuditIssue[];
+  readonly softViolations?: readonly AuditIssue[];
+  readonly error?: string;
+};
+
+function AuditSummary({ result }: { result: AuditResult }) {
+  const hard = result.hardViolations ?? [];
+  const soft = result.softViolations ?? [];
+  const issues = result.issues ?? [];
+  const allIssues = [...hard, ...soft, ...issues];
+  const uniqueIssues = allIssues.filter((issue, index, items) => items.indexOf(issue) === index);
+  return (
+    <div className="space-y-2">
+      <p className={result.passed === false ? "font-medium text-destructive" : "font-medium text-emerald-600"}>
+        {result.passed === false ? `未通过：发现 ${uniqueIssues.length} 项问题` : "审计通过"}
+      </p>
+      {uniqueIssues.length > 0 && (
+        <div className="max-h-32 space-y-1 overflow-y-auto">
+          {uniqueIssues.slice(0, 12).map((issue, index) => (
+            <details key={`${issue.type ?? "issue"}-${index}`} className="rounded border border-border/60 p-1.5">
+              <summary className="cursor-pointer">
+                {issue.severity ? `[${issue.severity}] ` : ""}{issue.description ?? issue.type ?? "未命名问题"}
+              </summary>
+              {issue.location && <p className="mt-1 text-muted-foreground">位置：{issue.location}</p>}
+              {issue.suggestion && <p className="mt-1 text-muted-foreground">建议：{issue.suggestion}</p>}
+            </details>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export interface ChapterToolbarProps {
   bookId: string;
@@ -23,6 +67,8 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
   const [activeTab, setActiveTab] = useState<ToolbarTab>("health");
   const [detecting, setDetecting] = useState(false);
   const [detectResult, setDetectResult] = useState<{ score?: number; details?: string } | null>(null);
+  const [auditing, setAuditing] = useState(false);
+  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
 
   const handleRunDetect = async () => {
     if (!chapterNumber) return;
@@ -37,6 +83,22 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
       setDetectResult({ details: err instanceof Error ? err.message : "检测失败" });
     } finally {
       setDetecting(false);
+    }
+  };
+
+  const handleRunAudit = async () => {
+    if (!chapterNumber) return;
+    setAuditing(true);
+    setAuditResult(null);
+    try {
+      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/audit/${chapterNumber}`, { method: "POST" });
+      const data = await res.json().catch(() => ({})) as AuditResult;
+      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      setAuditResult(data);
+    } catch (err) {
+      setAuditResult({ error: err instanceof Error ? err.message : "章节审计失败" });
+    } finally {
+      setAuditing(false);
     }
   };
 
@@ -75,6 +137,15 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
               <Droplets className="size-3" />
               <span className="text-[10px]">AI味</span>
             </Button>
+            <Button
+              variant={activeTab === "audit" ? "secondary" : "ghost"}
+              size="xs"
+              className="h-6 gap-1"
+              onClick={() => setActiveTab("audit")}
+            >
+              <ShieldCheck className="size-3" />
+              <span className="text-[10px]">章节审计</span>
+            </Button>
           </>
         )}
       </div>
@@ -105,6 +176,30 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
                   {detectResult.score != null && <p>AI 味分数：<span className="font-semibold">{detectResult.score}</span></p>}
                   {detectResult.details && <p className="mt-1 opacity-70">{detectResult.details}</p>}
                 </div>
+              )}
+            </div>
+          )}
+          {activeTab === "audit" && (
+            <div className="space-y-3 py-2 text-xs">
+              <div className="flex items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">章节审计</p>
+                  <p className="text-[10px] text-muted-foreground">纯规则/连续性检查，不修改正文。</p>
+                </div>
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className="gap-1"
+                  disabled={auditing || !chapterNumber}
+                  onClick={() => void handleRunAudit()}
+                >
+                  {auditing ? <Loader2 className="size-3 animate-spin" /> : <ShieldCheck className="size-3" />}
+                  {auditing ? "审计中..." : "运行审计"}
+                </Button>
+              </div>
+              {auditResult?.error && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">{auditResult.error}</p>}
+              {auditResult && !auditResult.error && (
+                <AuditSummary result={auditResult} />
               )}
             </div>
           )}

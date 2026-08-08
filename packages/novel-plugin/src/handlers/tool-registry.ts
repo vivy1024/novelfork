@@ -15,6 +15,13 @@ export type NovelSessionToolVisibility = "author" | "advanced";
 export type NovelSessionToolScope = "universal" | "novel" | "all";
 export type NovelRuntimeStatus = "ready" | "unavailable";
 
+export interface NovelToolPermissionPolicy {
+  readonly risk: NovelRuntimeToolRisk;
+  readonly enabledForModes: readonly NovelSessionPermissionMode[];
+  readonly visibility: NovelSessionToolVisibility;
+  readonly resolveRisk?: (input?: Record<string, unknown>) => NovelRuntimeToolRisk;
+}
+
 export interface NovelSessionToolDefinition {
   readonly name: string;
   readonly description: string;
@@ -23,6 +30,7 @@ export interface NovelSessionToolDefinition {
   readonly renderer: string;
   readonly enabledForModes: readonly NovelSessionPermissionMode[];
   readonly visibility: NovelSessionToolVisibility;
+  readonly resolveRisk?: (input?: Record<string, unknown>) => NovelRuntimeToolRisk;
   readonly scope?: NovelSessionToolScope;
 }
 
@@ -264,8 +272,9 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
       "拆解已有正文为续写知识包（角色卡/世界要素/关系/伏笔/章摘要/建议 focus）。\n\n默认只返回草案；apply=true 写入**经纬 dynamic 层且 status=needs-review**（待作者确认，不进 canon）；settle=true 可同时批量结算叙事记忆。\n\n权威源：伏笔→经纬 foreshadowing；章摘要→chapter-summaries；角色→characters；世界→world-model/locations/factions/power-system/rules。story/*.md 仅为导出物。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["book.dissect"]),
     risk: "draft-write",
+    resolveRisk: (input) => input?.apply === true || input?.settle === true ? "draft-write" : "read",
     renderer: "book.dissect",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -283,8 +292,9 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
       "卷级大纲（卷纲）管理。\n\naction=get（默认）：读取 volumes 与当前卷；\naction=suggest：按目标章数/卷数生成草案（不落盘，可 LLM 精修）；\naction=set：落盘 story/volume_outline.json + .md。\n\n用途：长篇中盘防跑偏——当前卷目标会进 write.preflight 与 scene.spec 上下文。\n不写 lore canon。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["outline.volume"]),
     risk: "confirmed-write",
+    resolveRisk: (input) => input?.action === "suggest" ? "draft-write" : input?.action === "set" ? "confirmed-write" : "read",
     renderer: "outline.volume",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -293,8 +303,9 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
       "角色弧线工具。\n\naction=status（默认，只读）：列出各角色弧类型、当前阶段、beats 数、最后推进章，并给出弧线不一致/停滞告警；\naction=sync：按规则从指定章正文抽取 beats 并写入动态弧线表；\naction=refine：同 sync 但用 LLM 精修 beats。\n\n用途：长篇人物成长线可见与纠偏。写入 jingwei_character_arc（dynamic），不动 canon。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["arc.character"]),
     risk: "confirmed-write",
+    resolveRisk: (input) => input?.action === "sync" || input?.action === "refine" ? "draft-write" : "read",
     renderer: "character.arcs",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -321,8 +332,9 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     description: "伏笔统一管理：埋设、兑现、检查到期、列出所有伏笔。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["hooks.manage"]),
     risk: "confirmed-write",
+    resolveRisk: (input) => input?.action === "list" || input?.action === "check_due" ? "read" : "confirmed-write",
     renderer: "hooks.manage",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   // --- Writing Skills 工具组 ---
@@ -622,8 +634,9 @@ scope=search：关键词搜索静态设定。
     description: "正式章节结果管理。\n\naction=list：列出所有正式章节结果（传 filter 可过滤）\naction=archive：归档正式章节结果（不删除但标记不活跃）\naction=delete：永久删除正式章节结果\n\n使用时机：\n- 用户说「删掉这个章节」→ delete 或 archive\n- 用户想看有哪些章节 → list",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["resource.manage"]),
     risk: "confirmed-write",
+    resolveRisk: (input) => input?.action === "list" ? "read" : input?.action === "delete" ? "destructive" : "confirmed-write",
     renderer: "resource.manage",
-    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
 ] as const;
@@ -631,6 +644,17 @@ scope=search：关键词搜索静态设定。
 /**
  * 小说工具名列表 — 供 novel-plugin manifest 引用
  */
+export function getNovelToolPermissionPolicy(toolName: string): NovelToolPermissionPolicy | null {
+  const tool = NOVEL_RUNTIME_TOOL_CATALOG.find((entry) => entry.name === toolName);
+  if (!tool) return null;
+  return {
+    risk: tool.risk,
+    enabledForModes: tool.enabledForModes,
+    visibility: tool.visibility,
+    ...(tool.resolveRisk ? { resolveRisk: tool.resolveRisk } : {}),
+  };
+}
+
 /** Studio compatibility export; the portable catalog above remains authoritative. */
 export const NOVEL_SESSION_TOOL_DEFINITIONS: readonly NovelSessionToolDefinition[] = NOVEL_RUNTIME_TOOL_CATALOG;
 

@@ -47,7 +47,7 @@ describe("writing resource hybrid service", () => {
       expect(created.id).toBe("chapter:1");
       expect(created.chapterNumber).toBe(1);
       expect(created.status).toBe("accepted");
-      await expect(readFile(join(bookDir, "chapters", "0001_第一章.md"), "utf-8")).resolves.toBe("这是正式章节正文。");
+      await expect(readFile(join(bookDir, "chapters", "卷01", "0001_第一章.md"), "utf-8")).resolves.toBe("这是正式章节正文。");
       await expect(service.getById("book-1", "chapter:1")).resolves.toEqual(expect.objectContaining({ title: "第一章", content: "这是正式章节正文。", chapterNumber: 1 }));
       await expect(service.findAcceptedChapter("book-1", 1)).resolves.toEqual(expect.objectContaining({ id: "chapter:1", status: "accepted" }));
     } finally {
@@ -89,7 +89,7 @@ describe("writing resource hybrid service", () => {
 
       const updated = await service.update("book-1", created.id, { title: "第二章修订", content: "修订正文。" });
       expect(updated).toEqual(expect.objectContaining({ title: "第二章修订", content: "修订正文。" }));
-      await expect(readFile(join(bookDir, "chapters", "0001_第二章修订.md"), "utf-8")).resolves.toBe("修订正文。");
+      await expect(readFile(join(bookDir, "chapters", "卷01", "0001_第二章修订.md"), "utf-8")).resolves.toBe("修订正文。");
 
       const deleted = await service.softDelete("book-1", created.id);
       expect(deleted).toEqual(expect.objectContaining({ id: created.id }));

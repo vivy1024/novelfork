@@ -1,5 +1,10 @@
-import { FileSearch, Users, Globe, Link2, ClipboardCheck } from "lucide-react";
+import { ClipboardCheck, FileSearch, Globe, Link2, Users } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+import { SecondaryModelCalls } from "./SecondaryModelCalls";
+import { ToolResultSurface } from "./ToolResultSurface";
 import { asRecord, getNumber, getString, getStringArray, getToolResultData, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
 function countOf(value: unknown): number {
@@ -51,24 +56,21 @@ export const BookDissectCard: ToolResultRenderer = (context: ToolResultRendererC
   const applied = data.applied === true;
   const settled = data.settled === true;
   const summary = getString(data.summary);
-
   const characterCount = countOf(knowledge?.characterCards) || getStringArray(knowledge?.characters).length;
   const worldCount = countOf(knowledge?.worldElements);
   const hookCount = countOf(knowledge?.openHooks) || getStringArray(knowledge?.hooks).length;
   const summaryCount = countOf(knowledge?.detailedSummaries) || countOf(knowledge?.chapterSummaries);
   const suggestedFocus = getString(knowledge?.suggestedFocus);
+  const range = fromChapter && toChapter ? `第 ${fromChapter}–${toChapter} 章` : undefined;
 
   return (
-    <div data-testid="tool-result-book-dissect" className="space-y-2 rounded-lg border border-border bg-card p-3 text-sm">
-      <div className="flex items-center gap-2">
-        <FileSearch className="size-4 text-primary" />
-        <span className="font-medium">拆书结果</span>
-        {fromChapter && toChapter && (
-          <span className="text-xs text-muted-foreground">第 {fromChapter}–{toChapter} 章</span>
-        )}
-      </div>
-
-      <ul className="space-y-1">
+    <ToolResultSurface
+      testId="tool-result-book-dissect"
+      title="拆书结果"
+      icon={<FileSearch className="size-4 text-primary" />}
+      meta={range}
+    >
+      <ul className="flex flex-col gap-1">
         <StatRow icon={Users} label="人物" count={characterCount} samples={names(knowledge?.characterCards, 4).length > 0 ? names(knowledge?.characterCards, 4) : getStringArray(knowledge?.characters).slice(0, 4)} />
         <StatRow icon={Globe} label="世界设定" count={worldCount} samples={names(knowledge?.worldElements, 3)} />
         <StatRow icon={Link2} label="未收伏笔" count={hookCount} samples={names(knowledge?.openHooks, 2).length > 0 ? names(knowledge?.openHooks, 2) : getStringArray(knowledge?.hooks).slice(0, 2)} />
@@ -76,23 +78,24 @@ export const BookDissectCard: ToolResultRenderer = (context: ToolResultRendererC
       </ul>
 
       {suggestedFocus && (
-        <p className="text-xs text-muted-foreground">
-          建议下一步焦点：<span className="text-foreground">{suggestedFocus}</span>
-        </p>
+        <p className="text-xs text-muted-foreground">建议下一步焦点：<span className="text-foreground">{suggestedFocus}</span></p>
       )}
 
-      <div className="border-t border-border pt-2 text-xs text-muted-foreground">
+      <Separator />
+      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
         {applied ? (
           <p>
-            已写入经纬，状态为 <span className="text-amber-500">needs-review（待确认）</span>。
+            已写入经纬，状态为 <Badge variant="outline">needs-review（待确认）</Badge>。
             确认无误后再升为 canon；有幻觉的条目直接改或删。
           </p>
         ) : (
           <p>仅预览，未写入经纬。确认后用 book.dissect(apply=true) 落库为待确认档。</p>
         )}
         {settled && <p>已同时结算叙事记忆。</p>}
-        {summary && <p className="mt-1">{summary}</p>}
+        {summary && <p>{summary}</p>}
       </div>
-    </div>
+
+      <SecondaryModelCalls value={data.modelCalls} />
+    </ToolResultSurface>
   );
 };

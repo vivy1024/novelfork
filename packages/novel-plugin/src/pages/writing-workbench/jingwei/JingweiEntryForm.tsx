@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { SimpleSelect } from "@/components/ui/simple-select";
-import { Save, Trash2, Loader2, X, History, Link } from "lucide-react";
+import { Save, Trash2, Loader2, X, History, Link, RotateCcw } from "lucide-react";
 import type { JingweiEntry } from "./hooks/useJingweiEntries";
 
 interface JingweiEntryFormProps {
@@ -161,7 +161,17 @@ export function JingweiEntryForm({ entry, bookId, onSave, onDelete, onClose }: J
       </div>
 
       {/* Revision history panel (conditional) */}
-      {showHistory && <RevisionHistoryPanel bookId={bookId} entryId={entry.id} />}
+      {showHistory && (
+        <RevisionHistoryPanel
+          bookId={bookId}
+          entryId={entry.id}
+          onReverted={(revision) => {
+            setContentMd(revision.content_md);
+            if (revision.category) setCategory(revision.category);
+            if (revision.layer === "canon" || revision.layer === "dynamic" || revision.layer === "reference") setLayer(revision.layer);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -304,27 +314,71 @@ function StatusBadge({ status, onChange }: { status: string; onChange: (s: strin
   );
 }
 
-function RevisionHistoryPanel({ bookId, entryId }: { bookId?: string; entryId: string }) {
-  const [revisions, setRevisions] = useState<Array<{ id: string; reason?: string; changed_by: string; created_at: number; content_md: string }>>([]);
+interface RevisionHistoryRecord {
+  id: string;
+  reason?: string | null;
+  changed_by: string;
+  created_at: number;
+  content_md: string;
+  category?: string | null;
+  layer?: string | null;
+}
+
+function RevisionHistoryPanel({
+  bookId,
+  entryId,
+  onReverted,
+}: {
+  bookId?: string;
+  entryId: string;
+  onReverted?: (revision: RevisionHistoryRecord) => void;
+}) {
+  const [revisions, setRevisions] = useState<RevisionHistoryRecord[]>([]);
+  const [revertingId, setRevertingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!bookId) return;
     fetch(`/api/books/${bookId}/jingwei/entries/${entryId}/revisions`)
       .then(r => r.json())
       .then(d => setRevisions(d.revisions ?? []))
-      .catch(() => {});
+      .catch(() => setRevisions([]));
   }, [bookId, entryId]);
+
+  async function revert(revision: RevisionHistoryRecord): Promise<void> {
+    if (!bookId || revertingId) return;
+    setRevertingId(revision.id);
+    setError(null);
+    try {
+      const response = await fetch(`/api/books/${bookId}/jingwei/entries/${entryId}/revert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ revisionId: revision.id }),
+      });
+      if (!response.ok) throw new Error("回滚失败");
+      onReverted?.(revision);
+      setRevisions((current) => current.filter((item) => item.id !== revision.id));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "回滚失败");
+    } finally {
+      setRevertingId(null);
+    }
+  }
 
   if (revisions.length === 0) return <div className="px-3 py-2 text-xs text-muted-foreground border-t">暂无修改历史</div>;
 
   return (
-    <div className="max-h-40 overflow-y-auto border-t border-border px-3 py-2 space-y-1">
-      <p className="text-[10px] text-muted-foreground font-medium">修改历史</p>
+    <div className="max-h-48 overflow-y-auto border-t border-border px-3 py-2 space-y-1">
+      <p className="text-[10px] text-muted-foreground font-medium">修改历史（可回滚正文、分类与层级）</p>
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
       {revisions.map(r => (
         <div key={r.id} className="flex items-center gap-2 text-[10px]">
-          <span className="text-muted-foreground">{new Date(r.created_at).toLocaleString()}</span>
-          <span className={r.changed_by === "agent" ? "text-blue-500" : "text-foreground"}>{r.changed_by}</span>
-          {r.reason && <span className="text-muted-foreground truncate">{r.reason}</span>}
+          <span className="text-muted-foreground whitespace-nowrap">{new Date(r.created_at).toLocaleString()}</span>
+          <span className={r.changed_by === "agent" || r.changed_by === "agent-write" ? "text-blue-500" : "text-foreground"}>{r.changed_by}</span>
+          {r.reason && <span className="text-muted-foreground truncate flex-1">{r.reason}</span>}
+          <Button size="xs" variant="ghost" disabled={revertingId !== null} onClick={() => void revert(r)} title="回滚到此版本">
+            {revertingId === r.id ? <Loader2 className="size-3 animate-spin" /> : <RotateCcw className="size-3" />}
+          </Button>
         </div>
       ))}
     </div>

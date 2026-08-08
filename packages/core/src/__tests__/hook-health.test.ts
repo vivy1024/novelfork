@@ -164,33 +164,66 @@ describe("analyzeHookHealth", () => {
     expect(issues.some((issue) => issue.description.includes("Opened 2 new hooks"))).toBe(false);
   });
 
-  it("P3-2: 跨卷未回收伏笔 → 升级告警", () => {
-    // 每卷10章，伏笔埋在第1卷(第3章)，当前在第3卷(第25章) → 跨2卷
+  it("P3-2: 按真实卷章区间检测跨卷未回收伏笔", () => {
+    // 真实卷纲不等长：第1卷 1-20 章、第2卷 21-25 章、第3卷 26-60 章。
     const issues = analyzeHookHealth({
       language: "zh",
-      chapterNumber: 25,
+      chapterNumber: 26,
       hooks: [createHook({ hookId: "ancient-curse", startChapter: 3, status: "open" })],
-      chaptersPerVolume: 10,
+      volumeRanges: [
+        { from: 1, to: 20 },
+        { from: 21, to: 25 },
+        { from: 26, to: 60 },
+      ],
     });
     expect(issues.some((i) => i.description.includes("跨") && i.description.includes("ancient-curse"))).toBe(true);
+  });
+
+  it("P3-2: 真实卷章区间优先于均分章数回退", () => {
+    const issues = analyzeHookHealth({
+      language: "zh",
+      chapterNumber: 26,
+      hooks: [createHook({ hookId: "uneven-debt", startChapter: 20, status: "open" })],
+      volumeRanges: [
+        { from: 1, to: 20 },
+        { from: 21, to: 25 },
+        { from: 26, to: 60 },
+      ],
+      chaptersPerVolume: 10,
+    });
+    expect(issues.some((i) => i.description.includes("跨") && i.description.includes("uneven-debt"))).toBe(true);
   });
 
   it("P3-2: 同卷/相邻卷未回收 → 不触发跨卷告警", () => {
     const issues = analyzeHookHealth({
       language: "zh",
-      chapterNumber: 15, // 第2卷
-      hooks: [createHook({ hookId: "recent-debt", startChapter: 8, status: "open" })], // 第1卷，仅差1卷
-      chaptersPerVolume: 10,
+      chapterNumber: 25,
+      hooks: [createHook({ hookId: "recent-debt", startChapter: 8, status: "open" })],
+      volumeRanges: [
+        { from: 1, to: 20 },
+        { from: 21, to: 25 },
+        { from: 26, to: 60 },
+      ],
     });
     expect(issues.some((i) => i.description.includes("跨") && i.description.includes("recent-debt"))).toBe(false);
   });
 
-  it("P3-2: 未提供 chaptersPerVolume → 跳过跨卷检测", () => {
+  it("P3-2: 未提供卷区间与 chaptersPerVolume → 跳过跨卷检测", () => {
     const issues = analyzeHookHealth({
       language: "zh",
       chapterNumber: 25,
       hooks: [createHook({ hookId: "x", startChapter: 3, status: "open" })],
     });
     expect(issues.some((i) => i.description.includes("跨"))).toBe(false);
+  });
+
+  it("P3-2: chaptersPerVolume 仅作为兼容回退", () => {
+    const issues = analyzeHookHealth({
+      language: "zh",
+      chapterNumber: 25,
+      hooks: [createHook({ hookId: "legacy-debt", startChapter: 3, status: "open" })],
+      chaptersPerVolume: 10,
+    });
+    expect(issues.some((i) => i.description.includes("跨") && i.description.includes("legacy-debt"))).toBe(true);
   });
 });

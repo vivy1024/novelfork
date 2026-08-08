@@ -3,19 +3,12 @@
  *
  * 只迁移已经接受的正式章节；candidate/draft 历史记录不再迁移到运行时文件结构。
  */
+import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
+import { chapterRelativePath, volumeDirectoryName, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
 import { countChineseWords, type WritingResourceRow } from "./types.js";
-
-function padNumber(n: number, len = 4): string {
-  return String(n).padStart(len, "0");
-}
-
-function sanitizeTitle(title: string): string {
-  return title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().slice(0, 50) || "未命名";
-}
 
 export interface MigrationResult {
   chapters: number;
@@ -25,7 +18,10 @@ export interface MigrationResult {
 export async function migrateWritingResourcesToFiles(
   storage: StorageDatabase,
   resolveBookDir: (bookId: string) => string,
+  options?: { readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver },
 ): Promise<MigrationResult> {
+  const resolveVolumeDirectory = options?.resolveChapterVolumeDirectory
+    ?? (() => volumeDirectoryName(1));
   const rows = storage.sqlite.prepare(
     `SELECT DISTINCT book_id FROM writing_resource WHERE deleted_at IS NULL AND type = 'chapter' AND status = 'accepted'`
   ).all() as { book_id: string }[];
@@ -41,22 +37,33 @@ export async function migrateWritingResourcesToFiles(
       `SELECT * FROM writing_resource WHERE book_id = ? AND deleted_at IS NULL AND type = 'chapter' AND status = 'accepted' ORDER BY COALESCE(chapter_number, 999999), updated_at DESC`
     ).all(bookId) as WritingResourceRow[];
     if (accepted.length > 0) {
-      const chaptersDir = join(bookDir, "chapters");
-      await mkdir(chaptersDir, { recursive: true });
+      const indexEntries = [] as Array<{
+        number: number;
+        title: string;
+        fileName: string;
+        wordCount: number;
+        updatedAt: string;
+      }>;
 
-      const indexEntries = accepted.map((resource) => ({
-        number: resource.chapter_number ?? 0,
-        title: resource.title,
-        fileName: `${padNumber(resource.chapter_number ?? 0)}_${sanitizeTitle(resource.title)}.md`,
-        wordCount: resource.word_count || countChineseWords(resource.content),
-        updatedAt: new Date(resource.updated_at).toISOString(),
-      })).sort((left, right) => left.number - right.number);
-
-      for (const entry of indexEntries) {
-        const resource = accepted.find((item) => item.chapter_number === entry.number);
-        if (resource) await writeFile(join(chaptersDir, entry.fileName), resource.content, "utf-8");
+      for (const resource of accepted) {
+        const number = resource.chapter_number ?? 0;
+        const volumeDirectory = await resolveVolumeDirectory(bookId, number);
+        const fileName = chapterRelativePath(volumeDirectory, number, resource.title);
+        const entry = {
+          number,
+          title: resource.title,
+          fileName,
+          wordCount: resource.word_count || countChineseWords(resource.content),
+          updatedAt: new Date(resource.updated_at).toISOString(),
+        };
+        indexEntries.push(entry);
+        await mkdir(join(bookDir, "chapters", volumeDirectory), { recursive: true });
+        await writeFile(join(bookDir, "chapters", fileName), resource.content, "utf-8");
       }
-      await writeFile(join(chaptersDir, "index.json"), JSON.stringify(indexEntries, null, 2), "utf-8");
+
+      indexEntries.sort((left, right) => left.number - right.number);
+      await mkdir(join(bookDir, "chapters"), { recursive: true });
+      await writeFile(join(bookDir, "chapters", "index.json"), JSON.stringify(indexEntries, null, 2), "utf-8");
       totalChapters += accepted.length;
     }
 

@@ -44,6 +44,9 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: stri
   const supported = isChapter || isCandidate || isDraft || isReadableReference;
   const canRead = resource.capabilities.read === true;
   const canEdit = resource.capabilities.update === true && (isChapter || isDraft);
+  const unsupportedReason = !supported
+    ? `资源类型「${resource.kind}」当前没有接入 NovelFork 工作台查看器；文件仍保留在工作区，可用外部编辑器打开。`
+    : undefined;
   return {
     id: resource.id,
     kind,
@@ -54,6 +57,7 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: stri
       bookId,
       ...(resource.path ? { filePath: resource.path, isFile: true } : {}),
       ...(isChapter ? { isChapter: true } : {}),
+      ...(unsupportedReason ? { unsupportedReason } : {}),
       ...(resource.metadata ?? {}),
     },
     capabilities: {
@@ -73,7 +77,7 @@ function fileName(path: string): string {
 
 function chapterFileTitle(resource: RuntimeWorkspaceResource, name: string): string {
   if (resource.kind !== "chapter") return name;
-  const match = name.match(/^(\d{4})_(.+)\.md$/u);
+  const match = name.match(/^(\d{1,9})[_-](.+)\.md$/u);
   if (!match) return resource.title || name;
   const number = Number(match[1]);
   return `第${number}章 ${resource.title || match[2].replaceAll("_", " ")}`;
@@ -118,8 +122,10 @@ function mapResourcesToFileTree(bookId: string, resources: readonly RuntimeWorks
     if (parent) parent.children.push(leaf);
     else roots.push(leaf as MutableDir);
   }
+  // 章节标题是「第N章 …」，纯 localeCompare 会把第 10 章排到第 1 章前面，
+  // 十章以上的书目录顺序全是乱的。numeric 让数字段按数值比较。
   const sort = (nodes: readonly WorkbenchResourceNode[]): WorkbenchResourceNode[] => [...nodes]
-    .sort((a, b) => a.title.localeCompare(b.title))
+    .sort((a, b) => a.title.localeCompare(b.title, "zh", { numeric: true }))
     .map((node) => node.children ? { ...node, children: sort(node.children) } : node);
   return sort([...roots.values()]);
 }
@@ -273,6 +279,11 @@ export function RuntimeWritingWorkbenchRoute({
     void reload();
   }, [reload]);
 
+  const handleRuntimeFetch = useCallback(
+    (input: string, init?: RequestInit) => runtimeJson<unknown>(input, init),
+    [],
+  );
+
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
       <div className="flex items-center border-b border-border px-4 py-2">
@@ -290,7 +301,7 @@ export function RuntimeWritingWorkbenchRoute({
           onSave={handleSave}
           onCanvasContextChange={onCanvasContextChange}
           runtimeProductMode
-          runtimeFetch={(input, init) => runtimeJson<unknown>(input, init)}
+          runtimeFetch={handleRuntimeFetch}
           chatSlot={activeNarrator ? (
             <RuntimeNarratorPanelMount
               key={activeNarrator.id}

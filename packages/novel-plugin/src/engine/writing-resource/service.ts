@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
+import type { ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
 import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
   CreateWritingResourceInput,
@@ -58,11 +59,16 @@ export function createWritingResourceService(input: {
   readonly storage: StorageDatabase;
   readonly now?: () => number;
   readonly resolveBookDir?: (bookId: string) => string;
+  readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver;
   readonly repository?: WritingResourceRepository;
 }): WritingResourceService {
   const now = input.now ?? (() => Date.now());
   const repository = input.repository ?? createWritingResourceRepository(input.storage);
-  const fileStore = input.resolveBookDir ? createWritingResourceFileStore(input.resolveBookDir) : undefined;
+  const fileStore = input.resolveBookDir
+    ? createWritingResourceFileStore(input.resolveBookDir, {
+        resolveChapterVolumeDirectory: input.resolveChapterVolumeDirectory,
+      })
+    : undefined;
 
   async function list(bookId: string, filter: ListWritingResourcesFilter = {}): Promise<WritingResource[]> {
     const databaseResources = repository.list(bookId, filter);

@@ -49,7 +49,7 @@ function scanCandidates(chapterText: string): RatifyCandidate[] {
 }
 
 function existingNames(storage: StorageDatabase, bookId: string, type: RatifyCandidateType): Set<string> {
-  const table = type === "character" ? "bible_character" : type === "setting" ? "bible_setting" : "bible_conflict";
+  const table = type === "character" ? "jingwei_character" : type === "setting" ? "jingwei_setting" : "jingwei_conflict";
   const rows = storage.sqlite.prepare(`
     SELECT "name" FROM "${table}"
     WHERE "book_id" = ? AND "deleted_at" IS NULL

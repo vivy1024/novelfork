@@ -12,7 +12,7 @@ import type {
 import { toJingweiReadableItem, getEntryReadableContent } from "./entry-summary.js";
 import { buildJingweiIndexFromItems } from "./build-jingwei-index.js";
 import { applyTokenBudgetWithDegradation, type DegradableItem, type JingweiBudgetDetailLevel } from "./token-budget.js";
-import { estimateJingweiTokens } from "../context/build-jingwei-context.js";
+import { estimateTokens as estimateJingweiTokens } from "../context/token-budget.js";
 
 export interface BuildJingweiBriefInput {
   readonly bookId: string;

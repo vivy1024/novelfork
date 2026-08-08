@@ -23,7 +23,7 @@ import {
   filterHooksByPOV,
 } from "@vivy1024/novelfork-core";
 import { join } from "node:path";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import {
   AUTHOR_REVIEW_FILES,
   buildWebCaptureReviewMarkdown,
@@ -32,6 +32,7 @@ import {
   type AuthorWebCaptureResult,
 } from "./author-materials.js";
 import type { RouterContext } from "./context.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 type EventHandler = (event: string, data: unknown) => void;
 
@@ -116,13 +117,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
     broadcastStudioEvent("audit:start", { bookId: id, chapter: chapterNum });
     try {
       const book = await state.loadBookConfig(id);
-      const chaptersDir = join(bookDir, "chapters");
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(chapterNum).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      const match = (await listChapterFiles(bookDir)).find((file) => file.number === chapterNum);
       if (!match) return c.json({ error: "Chapter not found" }, 404);
 
-      const content = await readFile(join(chaptersDir, match), "utf-8");
+      const content = await readFile(join(bookDir, match.relativePath), "utf-8");
       const currentConfig = await import("@vivy1024/novelfork-core").then(m => m.loadProjectConfig(root, { requireApiKey: false }));
       const { ContinuityAuditor } = await import("../engine/index.js");
       const auditor = new ContinuityAuditor({
@@ -161,12 +159,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
 
       // Read chapter
       const bookDir = state.bookDir(id);
-      const chaptersDir = join(bookDir, "chapters");
-      const files = await readdir(chaptersDir);
-      const padded = String(chapterNum).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(padded) && f.endsWith(".md"));
+      const match = (await listChapterFiles(bookDir)).find((file) => file.number === chapterNum);
       if (!match) return c.json({ error: "Chapter not found" }, 404);
-      const raw = await readFile(join(chaptersDir, match), "utf-8");
+      const chapterPath = join(bookDir, match.relativePath);
+      const raw = await readFile(chapterPath, "utf-8");
       // Strip title line to get content body
       const lines = raw.split("\n");
       const contentStart = lines.findIndex((l, i) => i > 0 && l.trim().length > 0);
@@ -203,7 +199,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
           // Save revised chapter
           const heading = lines[0] ?? "";
           await writeFile(
-            join(chaptersDir, match),
+            chapterPath,
             heading ? `${heading}\n\n${revisedContent}` : revisedContent,
             "utf-8",
           );
@@ -242,13 +238,10 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const bookDir = state.bookDir(id);
 
     try {
-      const chaptersDir = join(bookDir, "chapters");
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(chapterNum).padStart(4, "0");
-      const match = files.find((f) => f.startsWith(paddedNum) && f.endsWith(".md"));
+      const match = (await listChapterFiles(bookDir)).find((file) => file.number === chapterNum);
       if (!match) return c.json({ error: "Chapter not found" }, 404);
 
-      const content = await readFile(join(chaptersDir, match), "utf-8");
+      const content = await readFile(join(bookDir, match.relativePath), "utf-8");
       const { analyzeAITells } = await import("../engine/index.js");
       const result = analyzeAITells(content);
       return c.json({ chapterNumber: chapterNum, ...result });
@@ -264,17 +257,14 @@ export function createAIRouter(ctx: RouterContext): Hono {
     const bookDir = state.bookDir(id);
 
     try {
-      const chaptersDir = join(bookDir, "chapters");
-      const files = await readdir(chaptersDir);
-      const mdFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
+      const chapterFiles = await listChapterFiles(bookDir);
       const { analyzeAITells } = await import("../engine/index.js");
 
       const results = await Promise.all(
-        mdFiles.map(async (f) => {
-          const num = parseInt(f.slice(0, 4), 10);
-          const content = await readFile(join(chaptersDir, f), "utf-8");
+        chapterFiles.map(async (file) => {
+          const content = await readFile(join(bookDir, file.relativePath), "utf-8");
           const result = analyzeAITells(content);
-          return { chapterNumber: num, filename: f, ...result };
+          return { chapterNumber: file.number, filename: file.chapterRelativePath, ...result };
         }),
       );
       return c.json({ bookId: id, results });
@@ -756,14 +746,8 @@ export function createAIRouter(ctx: RouterContext): Hono {
       ]);
 
       // Load chapter list for context
-      const chaptersDir = join(bookDir, "chapters");
-      let chapterFiles: string[] = [];
-      try {
-        const files = await readdir(chaptersDir);
-        chapterFiles = files.filter((f) => f.endsWith(".md") && /^\d{4}/.test(f)).sort();
-      } catch {
-        // No chapters dir yet
-      }
+      const chapterFiles = await listChapterFiles(bookDir);
+      const chapterFileNames = chapterFiles.map((file) => file.chapterRelativePath);
 
       const contextParts = [
         outline ? `### 现有大纲\n${outline}` : "### 现有大纲\n（无）",
@@ -771,7 +755,7 @@ export function createAIRouter(ctx: RouterContext): Hono {
         storyJingwei ? `### 故事经纬（摘要）\n${storyJingwei.slice(0, 2000)}` : "",
         currentState ? `### 当前状态\n${currentState}` : "",
         hooks ? `### 悬念钩子\n${hooks.slice(0, 1000)}` : "",
-        `### 已有章节文件\n${chapterFiles.length > 0 ? chapterFiles.join(", ") : "（无）"}`,
+        `### 已有章节文件\n${chapterFileNames.length > 0 ? chapterFileNames.join(", ") : "（无）"}`,
       ].filter(Boolean);
 
       const systemPrompt = OUTLINE_PROMPTS[body.action]!;

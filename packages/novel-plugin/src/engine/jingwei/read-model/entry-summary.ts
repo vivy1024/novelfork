@@ -7,7 +7,7 @@ import type {
   StoryJingweiEntryRecord,
   StoryJingweiSectionRecord,
 } from "../types.js";
-import { estimateJingweiTokens } from "../context/build-jingwei-context.js";
+import { estimateTokens as estimateJingweiTokens } from "../context/token-budget.js";
 import { JINGWEI_CATEGORY_TITLES, resolveJingweiReadCategory } from "./category-map.js";
 
 function normalizeSummary(text: string): string {
@@ -20,13 +20,15 @@ function excerptText(text: string, maxLength = 240): string {
   return `${normalized.slice(0, Math.max(0, maxLength - 1)).trimEnd()}…`;
 }
 
-function readCustomFieldString(entry: StoryJingweiEntryRecord, key: string): string | undefined {
-  const value = entry.customFields[key];
-  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
+function readStructuredFieldString(entry: StoryJingweiEntryRecord, key: string): string | undefined {
+  const canonical = entry.fields[key];
+  if (typeof canonical === "string" && canonical.trim().length > 0) return canonical;
+  const legacy = entry.customFields[key];
+  return typeof legacy === "string" && legacy.trim().length > 0 ? legacy : undefined;
 }
 
 export function getEntrySummaryMd(entry: StoryJingweiEntryRecord): string {
-  return readCustomFieldString(entry, "summaryMd")
+  return readStructuredFieldString(entry, "summaryMd")
     ?? entry.summaryMd?.trim()
     ?? excerptText(entry.contentMd, 240);
 }

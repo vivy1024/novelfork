@@ -68,6 +68,12 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     whyItMatters: "缺少本卷目标时，中盘容易失去方向，章节各自为战。",
     suggestedAction: "用 outline.volume(action=suggest) 生成草案，确认后 action=set 写入经纬。",
   },
+  "volume-range-drift": {
+    kind: "advisory",
+    whatHappened: "要写的章号不在当前卷的章号区间内。",
+    whyItMatters: "卷纲与实际进度已脱节。带着错卷的目标写下去，本章会服务于错误的主线，卷末收束时对不上；pipeline.write 会以 volume-range-violation 直接拦下，这一次生成会白跑。",
+    suggestedAction: "用 outline.volume 把覆盖该章号的卷设为 active，或修正卷区间后再写。",
+  },
   "platform-target-mismatch": {
     kind: "advisory",
     whatHappened: "本书设定的章目标字数不在目标平台的建议区间内。",

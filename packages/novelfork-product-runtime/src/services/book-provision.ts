@@ -35,6 +35,8 @@ import {
 	getGenreTemplate,
 } from "../../../novel-plugin/src/engine/jingwei";
 import { createWritingResourceService } from "../../../novel-plugin/src/engine/writing-resource/service";
+import { listChapterFiles, parseChapterFileName } from "../../../novel-plugin/src/engine/writing-resource/chapter-layout";
+import { resolveChapterVolumeDirectory } from "../../../novel-plugin/src/handlers/outline-volume";
 import type { WritingResource } from "../../../novel-plugin/src/engine/writing-resource/types";
 import { loadWritingSkills } from "../../../novel-plugin/src/engine/writing-skills/loader";
 import {
@@ -293,7 +295,6 @@ const CHAPTER_RESOURCE_CAPABILITIES: RuntimeEntityCapabilities = {
 };
 
 const MAX_WORKSPACE_CONTENT_LENGTH = 2_000_000;
-const CHAPTER_FILE_PATTERN = /^(\d{1,9})[_-].+\.md$/iu;
 
 type ControlledChapterFile = {
 	number: number;
@@ -513,25 +514,13 @@ async function pathExists(path: string): Promise<boolean> {
 	return Boolean(await stat(path).catch(() => null));
 }
 
-function chapterFileFromName(fileName: string): ControlledChapterFile | null {
-	const match = CHAPTER_FILE_PATTERN.exec(fileName);
-	if (!match) return null;
-	const number = Number(match[1]);
-	if (!Number.isSafeInteger(number) || number < 1) return null;
-	return { number, fileName, relativePath: join("chapters", fileName) };
-}
-
 async function listControlledChapterFiles(bookRoot: string): Promise<ControlledChapterFile[]> {
-	const entries = await readdir(join(bookRoot, "chapters"), { withFileTypes: true }).catch(
-		() => [],
-	);
-	return entries
-		.filter((entry) => entry.isFile())
-		.map((entry) => chapterFileFromName(entry.name))
-		.filter((entry): entry is ControlledChapterFile => entry !== null)
-		.sort(
-			(left, right) => left.number - right.number || left.fileName.localeCompare(right.fileName),
-		);
+	const files = await listChapterFiles(bookRoot);
+	return files.map((file) => ({
+		number: file.number,
+		fileName: file.fileName,
+		relativePath: file.relativePath,
+	}));
 }
 
 function chapterResourceId(number: number): string {
@@ -570,7 +559,10 @@ async function listMarkdownResources(
 			const content = await readFile(join(bookRoot, relativePath), "utf8").catch(() => null);
 			if (content === null) continue;
 			const normalizedPath = relativePath.replaceAll("\\", "/");
-			const chapter = folder === "chapters" ? chapterFileFromName(entry.name) : null;
+			const parsedChapter = folder === "chapters" ? parseChapterFileName(entry.name) : null;
+			const chapter = parsedChapter
+				? { ...parsedChapter, relativePath: normalizedPath }
+				: null;
 			const heading = /^#\s+(.+)$/mu.exec(content)?.[1]?.trim();
 			resources.push({
 				id: chapter ? chapterResourceId(chapter.number) : `${folder}:${normalizedPath}`,
@@ -580,7 +572,7 @@ async function listMarkdownResources(
 				path: normalizedPath,
 				metadata: {
 					bookId,
-					fileName: entry.name,
+					fileName: folder === "chapters" ? normalizedPath : entry.name,
 					...(chapter ? { chapterNumber: chapter.number, isChapter: true } : {}),
 				},
 				capabilities: chapter
@@ -882,6 +874,11 @@ function createDomainWritingResourceService(bookId: string, bookRoot?: string) {
 				throw new ValidationError("Writing resource book binding mismatch");
 			return domainRoot;
 		},
+		resolveChapterVolumeDirectory: (requestedBookId, chapterNumber) => {
+			if (requestedBookId !== bookId)
+				throw new ValidationError("Writing resource book binding mismatch");
+			return resolveChapterVolumeDirectory(getStorageDatabase(), requestedBookId, chapterNumber);
+		},
 	});
 }
 
@@ -894,13 +891,19 @@ function workspaceResourceId(resource: WritingResource): string {
 
 function toWorkspaceWritingResource(resource: WritingResource): ProductWorkspaceResource {
 	const editable = resource.status === "accepted" || resource.status === "draft";
+	const chapterFileName = typeof resource.metadata.fileName === "string"
+		? resource.metadata.fileName.replaceAll("\\", "/").replace(/^chapters\//u, "")
+		: null;
+	const workspacePath = resource.type === "chapter" && resource.status === "accepted" && chapterFileName
+		? `chapters/${chapterFileName}`
+		: `writing-resources/${resource.id}`;
 	return {
 		id: workspaceResourceId(resource),
 		kind: resource.type,
 		title:
 			resource.title || (resource.chapterNumber ? `第 ${resource.chapterNumber} 章` : "未命名资源"),
 		content: resource.content,
-		path: `writing-resources/${resource.id}`,
+		path: workspacePath,
 		metadata: {
 			...resource.metadata,
 			bookId: resource.bookId,
@@ -1675,13 +1678,28 @@ export class NovelForkProductBookService {
 		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: true });
 		const info = await stat(target.absolutePath);
 		if (!info.isFile()) throw new ValidationError("workspace path must identify a file");
-		if (info.size > MAX_WORKSPACE_FILE_BYTES) throw new ValidationError("workspace file is too large to open in the IDE");
+		if (info.size > MAX_WORKSPACE_FILE_BYTES) {
+			const sizeKb = Math.ceil(info.size / 1024);
+			const limitKb = Math.floor(MAX_WORKSPACE_FILE_BYTES / 1024);
+			throw new ValidationError([
+				`发生了什么：文件约 ${sizeKb} KB，超过工作台打开上限 ${limitKb} KB。`,
+				"为什么要看：直接加载会让 Markdown 编辑器建立过大的文档树，导致界面卡顿甚至无响应。",
+				"建议怎么做：把设定拆成多个较小的 Markdown 文件，或先用外部编辑器处理后再回到工作台。",
+			].join("\n"));
+		}
 		return { path: target.relativePath, content: await readFile(target.absolutePath, "utf8") };
 	}
 
 	async writeWorkspaceFile(bookId: string, rawPath: string, content: string, actor: ProductActor): Promise<{ path: string }> {
-		if (typeof content !== "string" || Buffer.byteLength(content, "utf8") > MAX_WORKSPACE_FILE_BYTES) {
-			throw new ValidationError(`workspace content must be at most ${MAX_WORKSPACE_FILE_BYTES} bytes`);
+		const contentBytes = typeof content === "string" ? Buffer.byteLength(content, "utf8") : 0;
+		if (typeof content !== "string" || contentBytes > MAX_WORKSPACE_FILE_BYTES) {
+			const sizeKb = Math.ceil(contentBytes / 1024);
+			const limitKb = Math.floor(MAX_WORKSPACE_FILE_BYTES / 1024);
+			throw new ValidationError([
+				`发生了什么：要保存的内容约 ${sizeKb} KB，超过工作台保存上限 ${limitKb} KB。`,
+				"为什么要看：过大的单文件会拖慢编辑器和版本保存，继续写入也可能导致工作区响应变慢。",
+				"建议怎么做：拆分文件后分别保存，或先在外部编辑器中整理。",
+			].join("\n"));
 		}
 		const { root } = await this.getReadyBookRoot(bookId, actor);
 		const normalizedPath = normalizeWorkspacePath(rawPath);

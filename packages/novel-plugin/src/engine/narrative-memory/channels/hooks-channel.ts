@@ -86,7 +86,7 @@ function entryLooksLikeHook(entry: StoryJingweiEntryRecord, section?: StoryJingw
   const category = typeof entry.customFields.category === "string" ? entry.customFields.category.toLowerCase() : "";
   return sectionLooksLikeHook(section)
     || /foreshadow|hook|clue|pending/u.test(category)
-    || entry.tags.some((tag) => /伏笔|hook|foreshadow|线索|小瓶/u.test(tag));
+    || entry.tags.some((tag) => /伏笔|hook|foreshadow|线索|clue/u.test(tag));
 }
 
 function entryVisible(entry: StoryJingweiEntryRecord, currentChapter?: number): boolean {

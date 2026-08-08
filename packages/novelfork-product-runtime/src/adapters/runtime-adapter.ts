@@ -29,19 +29,20 @@ export const NOVEL_PRODUCT_CORE_TOOL_NAMES: ReadonlySet<string> = new Set(["AskU
  * toolFilter applies the optional-tool gate after this check returns true.
  */
 export function isNovelProductToolAllowed(
-	_toolName: string,
-	_enabledOptionalToolNames: ReadonlySet<string>,
+	toolName: string,
+	enabledOptionalToolNames: ReadonlySet<string>,
+	context?: Readonly<{ permissionMode?: import("@vivy1024/narrafork-runtime-bridge").SessionPermissionMode | string; isAdvancedEnabled?: boolean }>,
 ): boolean {
-	return true;
+	return novelRuntimeAdapter.hostAdapter.isToolAllowed(toolName, enabledOptionalToolNames, context);
 }
 
 /** Keep existing optional-tool visibility synchronization compatible. */
 export function syncNovelRuntimeToolVisibility(
 	enabledToolNames: Set<string>,
 	resolvedToolNames: readonly string[],
+	context?: Readonly<{ isAdvancedEnabled?: boolean; permissionMode?: import("@vivy1024/narrafork-runtime-bridge").SessionPermissionMode | string }>,
 ): void {
-	for (const toolName of NOVEL_RUNTIME_TOOL_NAMES) enabledToolNames.delete(toolName);
-	for (const toolName of resolvedToolNames) enabledToolNames.add(toolName);
+	novelRuntimeAdapter.hostAdapter.syncToolVisibility(enabledToolNames, resolvedToolNames, context);
 }
 
 /**

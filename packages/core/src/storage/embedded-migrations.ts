@@ -897,4 +897,20 @@ ALTER TABLE "bible_character_arc" RENAME TO "jingwei_character_arc";
 -- Rename bible_mode column in book table
 ALTER TABLE "book" RENAME COLUMN "bible_mode" TO "jingwei_mode";
 ` },
+  { name: "0026_drop_legacy_jingwei_volume_summaries.sql", sql: `-- Retire the abandoned recursive volume-summary table.
+DROP TABLE IF EXISTS "jingwei_volume_summaries";
+` },
+  { name: "0027_jingwei_authority_consolidation.sql", sql: `-- Consolidate legacy Jingwei custom fields into the authoritative fields_json.
+-- Only valid JSON objects are eligible, and existing authoritative values win.
+UPDATE "story_jingwei_entry"
+SET "fields_json" = "custom_fields_json"
+WHERE ("fields_json" IS NULL OR "fields_json" = '' OR "fields_json" = '{}')
+  AND "custom_fields_json" IS NOT NULL
+  AND "custom_fields_json" <> ''
+  AND "custom_fields_json" <> '{}'
+  AND json_valid("custom_fields_json") = 1
+  AND json_type("custom_fields_json") = 'object';
+
+ALTER TABLE "jingwei_revision" ADD COLUMN "snapshot_json" TEXT;
+` },
 ];

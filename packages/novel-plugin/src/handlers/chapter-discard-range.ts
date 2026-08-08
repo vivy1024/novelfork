@@ -2,7 +2,7 @@
  * chapter.discard_range — 试写整段丢弃：抹去范围内正式章结果与章域记忆，并按策略重置伏笔。
  */
 
-import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
@@ -10,6 +10,8 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
+import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 
 export type HookResetStrategy = "untouched" | "planned-only" | "none";
 
@@ -75,33 +77,29 @@ async function archiveOrDeleteChapterFiles(
   const chaptersDir = join(bookRoot, "chapters");
   const details: string[] = [];
   let deletedChapterFiles = 0;
-  let files: string[] = [];
-  try {
-    files = await readdir(chaptersDir);
-  } catch {
-    return { deletedChapterFiles: 0, details: ["chapters 目录不存在，跳过文件清理。"] };
-  }
-
-  const archiveDir = join(bookRoot, "chapters", "_discarded", now.toISOString().replace(/[:.]/gu, "-"));
-  if (!hardDelete) {
-    await mkdir(archiveDir, { recursive: true });
-  }
-
-  for (const file of files) {
-    if (!file.endsWith(".md")) continue;
-    const match = file.match(/^(\d{1,6})/);
-    if (!match) continue;
-    const number = Number(match[1]);
-    if (!Number.isFinite(number) || number < fromChapter || number > toChapter) continue;
-    const full = join(chaptersDir, file);
-    if (hardDelete) {
-      await rm(full, { force: true });
-      details.push(`deleted ${file}`);
-    } else {
-      await rename(full, join(archiveDir, file));
-      details.push(`archived ${file}`);
+  const files = await listChapterFiles(bookRoot);
+  if (files.length === 0) {
+    details.push("chapters 目录不存在或没有章节文件，跳过文件清理。");
+  } else {
+    const archiveDir = join(bookRoot, "chapters", "_discarded", now.toISOString().replace(/[:.]/gu, "-"));
+    if (!hardDelete) {
+      await mkdir(archiveDir, { recursive: true });
     }
-    deletedChapterFiles += 1;
+
+    for (const file of files) {
+      if (file.number < fromChapter || file.number > toChapter) continue;
+      const full = join(bookRoot, file.relativePath);
+      if (hardDelete) {
+        await rm(full, { force: true });
+        details.push(`deleted ${file.chapterRelativePath}`);
+      } else {
+        const archivedPath = join(archiveDir, file.chapterRelativePath);
+        await mkdir(dirname(archivedPath), { recursive: true });
+        await rename(full, archivedPath);
+        details.push(`archived ${file.chapterRelativePath}`);
+      }
+      deletedChapterFiles += 1;
+    }
   }
 
   // 同步裁剪 index.json 中范围内条目（若存在）
@@ -288,6 +286,11 @@ export async function handleChapterDiscardRange(input: ChapterDiscardRangeInput)
     const service = createWritingResourceService({
       storage,
       resolveBookDir: () => input.bookRoot!,
+      resolveChapterVolumeDirectory: (requestedBookId, chapterNumber) => resolveChapterVolumeDirectory(
+        storage,
+        requestedBookId,
+        chapterNumber,
+      ),
     });
     const resources = await service.list(bookId, { type: "chapter" });
     for (const resource of resources) {

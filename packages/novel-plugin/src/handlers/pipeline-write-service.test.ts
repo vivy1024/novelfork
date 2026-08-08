@@ -102,7 +102,26 @@ describe("pipeline.write canonical result contract", () => {
     expect(gateIndex).toBeGreaterThan(-1);
     expect(source).toContain("context-not-ready");
     expect(source).toContain("empty-recent-progress");
+    expect(source).toContain("explanationText");
     expect(gateIndex).toBeLessThan(writerIndex);
+  });
+
+  it("fails closed when preflight or skill verification cannot run", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    expect(source).toContain("preflight-execution-failed");
+    expect(source).toContain("skill-verification-failed");
+    expect(source).toContain("Context gate failed closed");
+    expect(source).toContain("Skill acknowledgement gate failed closed");
+    expect(source).not.toContain("Context gate skipped");
+    expect(source).not.toContain("Skill acknowledgement gate skipped");
+  });
+
+  it("passes the outline's real chapter ranges into Writer hook-health checks", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    expect(source).toContain("const ranges = volumeContext.volumes.map((volume) => volume.chapterRange);");
+    expect(source).toContain("volumeRanges = ranges.length > 0 ? ranges : undefined;");
+    expect(source).toContain("      volumeRanges,\n      chapterIntent,");
+    expect(source).not.toContain("chaptersPerVolume: book.targetChapters");
   });
 
   it("supports requireFactCheckPass hard reject path in source", async () => {

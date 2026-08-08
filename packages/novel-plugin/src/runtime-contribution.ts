@@ -49,6 +49,7 @@ import {
   type NarrativeLineState,
 } from "./handlers/index.js";
 import { createWritingResourceService } from "./engine/writing-resource/service.js";
+import { resolveChapterVolumeDirectory } from "./handlers/outline-volume.js";
 import {
   NOVEL_READY_RUNTIME_TOOL_NAMES,
   NOVEL_RUNTIME_TOOL_CATALOG,
@@ -83,7 +84,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
-const HOST_CONTROLLED_FIELDS = new Set(["bookId", "sessionId", "bookRoot"]);
+const HOST_CONTROLLED_FIELDS = new Set(["bookId", "sessionId", "bookRoot", "skipContextGate", "writePreflight"]);
 type ReadyRuntimeToolName = (typeof NOVEL_READY_RUNTIME_TOOL_NAMES)[number];
 type CustomReadyRuntimeToolName =
   | "cockpit.snapshot"
@@ -300,7 +301,124 @@ function toRuntimeToolResult(result: unknown): RuntimeToolResult {
   }
 }
 
-async function executeReadyTool(
+interface SecondaryModelCallTrace {
+  readonly id: string;
+  readonly sequence: number;
+  readonly purpose: string;
+  readonly provider: string;
+  readonly model: string;
+  readonly status: "completed" | "failed";
+  readonly durationMs: number;
+  readonly request: {
+    readonly messageCount: number;
+    readonly temperature?: number;
+    readonly maxTokens?: number;
+  };
+  readonly usage?: {
+    readonly promptTokens?: number;
+    readonly completionTokens?: number;
+    readonly totalTokens?: number;
+  };
+  readonly error?: string;
+}
+
+const TOOL_MODEL_CALL_PURPOSE: Readonly<Record<string, string>> = {
+  "scene.spec": "生成结构化写作蓝图",
+  "rewrite.segment": "生成局部改写正文",
+  "style.import": "提炼参考文本的文风指南",
+  "pipeline.import_chapters": "抽取导入章节的叙事资料",
+  "book.dissect": "抽取拆书草案与叙事资料",
+  "outline.suggest_next": "生成下一步大纲建议",
+  "outline.volume": "生成卷纲草案",
+  "arc.character": "分析并精修角色弧线",
+  "pipeline.write": "执行章节生成、审计、修订与结算",
+  "memory.settle_range": "抽取章节叙事事件",
+};
+
+function createTrackedToolContext(
+  toolName: string,
+  context: ToolExecutionContext,
+): { readonly context: ToolExecutionContext; readonly calls: SecondaryModelCallTrace[] } {
+  if (!context.generateText) return { context, calls: [] };
+
+  const calls: SecondaryModelCallTrace[] = [];
+  let nextCallNumber = 0;
+  const generateText = context.generateText;
+  const provider = context.model?.provider ?? "runtime";
+  const model = context.model?.id ?? "current";
+  const purpose = TOOL_MODEL_CALL_PURPOSE[toolName] ?? `${toolName} 内部模型处理`;
+
+  return {
+    calls,
+    context: {
+      ...context,
+      generateText: async (request) => {
+        const callNumber = ++nextCallNumber;
+        const startedAt = Date.now();
+        context.emitOutput?.(`内部模型调用 ${callNumber} 开始：${purpose}（${provider}/${model}）`);
+        try {
+          const generated = await generateText(request);
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          calls.push({
+            id: `${toolName}:model-call:${callNumber}`,
+            sequence: callNumber,
+            purpose,
+            provider,
+            model,
+            status: "completed",
+            durationMs,
+            request: {
+              messageCount: request.messages.length,
+              ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+              ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
+            },
+            ...(generated.usage ? { usage: generated.usage } : {}),
+          });
+          const totalTokens = generated.usage?.totalTokens;
+          context.emitOutput?.(
+            `内部模型调用 ${callNumber} 完成：${durationMs}ms${totalTokens === undefined ? "" : `，${totalTokens} tokens`}`,
+          );
+          return generated;
+        } catch (error) {
+          const durationMs = Math.max(0, Date.now() - startedAt);
+          const message = error instanceof Error ? error.message : String(error);
+          calls.push({
+            id: `${toolName}:model-call:${callNumber}`,
+            sequence: callNumber,
+            purpose,
+            provider,
+            model,
+            status: "failed",
+            durationMs,
+            request: {
+              messageCount: request.messages.length,
+              ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
+              ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
+            },
+            error: message,
+          });
+          context.emitOutput?.(`内部模型调用 ${callNumber} 失败：${message}`);
+          throw error;
+        }
+      },
+    },
+  };
+}
+
+function attachModelCalls(
+  result: RuntimeToolResult,
+  calls: readonly SecondaryModelCallTrace[],
+): RuntimeToolResult {
+  if (calls.length === 0) return result;
+  const existingData = result.data;
+  const merged = existingData && typeof existingData === "object" && !Array.isArray(existingData)
+    ? { ...(existingData as Record<string, unknown>), modelCalls: calls }
+    : { value: existingData ?? null, modelCalls: calls };
+  const data = toPortableValue(merged);
+  return data === undefined ? result : { ...result, data };
+}
+
+async function executeReadyToolImpl(
   tool: NovelRuntimeToolCatalogEntry,
   input: Readonly<Record<string, unknown>>,
   context: ToolExecutionContext,
@@ -344,6 +462,9 @@ async function executeReadyTool(
         ...(typeof injectedInput.userDirectives === "string" ? { userDirectives: injectedInput.userDirectives } : {}),
         ...(typeof injectedInput.acceptFocusDefault === "boolean"
           ? { acceptFocusDefault: injectedInput.acceptFocusDefault }
+          : {}),
+        ...(Array.isArray(injectedInput.acknowledgedSkills)
+          ? { acknowledgedSkills: injectedInput.acknowledgedSkills as never }
           : {}),
       });
       const blockerText = preflight.blockers.length > 0
@@ -577,9 +698,15 @@ async function executeReadyTool(
     }
     if (tool.name === "resource.manage") {
       const action = typeof injectedInput.action === "string" ? injectedInput.action : "";
+      const storage = getStorageDatabase();
       const service = createWritingResourceService({
-        storage: getStorageDatabase(),
+        storage,
         resolveBookDir: (bookId) => requireBoundBookRoot(binding, bookId),
+        resolveChapterVolumeDirectory: (bookId, chapterNumber) => resolveChapterVolumeDirectory(
+          storage,
+          bookId,
+          chapterNumber,
+        ),
       });
       if (action === "list") {
         const filter = injectedInput.filter && typeof injectedInput.filter === "object"
@@ -633,6 +760,16 @@ async function executeReadyTool(
   }
 }
 
+async function executeReadyTool(
+  tool: NovelRuntimeToolCatalogEntry,
+  input: Readonly<Record<string, unknown>>,
+  context: ToolExecutionContext,
+): Promise<RuntimeToolResult> {
+  const tracked = createTrackedToolContext(tool.name, context);
+  const result = await executeReadyToolImpl(tool, input, tracked.context);
+  return attachModelCalls(result, tracked.calls);
+}
+
 const READY_RUNTIME_TOOLS = NOVEL_RUNTIME_TOOL_CATALOG.filter(
   (tool): tool is NovelRuntimeToolCatalogEntry & { readonly runtimeStatus: "ready" } => tool.runtimeStatus === "ready",
 );
@@ -666,6 +803,7 @@ export const NOVEL_RUNTIME_CONTRIBUTION: RuntimePluginContribution = {
       renderer: tool.renderer,
       risk: tool.risk,
       enabledForModes: tool.enabledForModes,
+      visibility: tool.visibility,
       scope: tool.scope,
     },
     handler: (input, context) => executeReadyTool(tool, input, context),

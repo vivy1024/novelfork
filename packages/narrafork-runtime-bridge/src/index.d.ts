@@ -8,11 +8,21 @@
  */
 
 export type RuntimeToolRisk = "read" | "draft-write" | "confirmed-write" | "destructive";
+export type SessionPermissionMode = "ask" | "edit" | "allow" | "read" | "plan";
+export type ToolVisibility = "author" | "advanced";
+
+export interface ContributedToolPermissionPolicy {
+	readonly risk: RuntimeToolRisk;
+	readonly enabledForModes: readonly SessionPermissionMode[];
+	readonly visibility: ToolVisibility;
+	readonly resolveRisk?: (input?: Record<string, unknown>) => RuntimeToolRisk;
+}
 
 export interface RuntimeToolMetadata {
 	runtimePluginId?: string;
 	runtimeRisk?: RuntimeToolRisk;
 	runtimeRenderer?: string;
+	contributedPermission?: ContributedToolPermissionPolicy;
 	[key: string]: unknown;
 }
 
@@ -33,7 +43,8 @@ export interface RuntimeGenerateTextResult {
 
 export interface ToolContext {
 	narratorId: string;
-	model?: { readonly provider: string; readonly id: string };
+	provider?: string;
+	model?: string;
 	generateText?: (request: RuntimeGenerateTextRequest) => Promise<RuntimeGenerateTextResult>;
 	emitOutput?: (output: string) => void;
 	[key: string]: unknown;

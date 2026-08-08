@@ -1,5 +1,6 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { copyFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 import { eq } from "drizzle-orm";
@@ -17,6 +18,35 @@ async function createTempDbPath() {
   await mkdir(dir, { recursive: true });
   tempDirs.push(dir);
   return join(dir, "novelfork.db");
+}
+
+const migrationsSourceDir = fileURLToPath(new URL("../storage/migrations/", import.meta.url));
+
+async function copyMigrationsBefore0027(destinationDir: string) {
+  await mkdir(destinationDir, { recursive: true });
+  const migrationFiles = (await readdir(migrationsSourceDir))
+    .filter((file) => /^\d+.*\.sql$/u.test(file))
+    .filter((file) => file.localeCompare("0027_jingwei_authority_consolidation.sql") < 0);
+  await Promise.all(
+    migrationFiles.map((file) => copyFile(join(migrationsSourceDir, file), join(destinationDir, file))),
+  );
+}
+
+function seedAuthorityConsolidationFixtures(storage: ReturnType<typeof createStorageDatabase>) {
+  storage.sqlite.exec(`
+    INSERT INTO "book" ("id", "name", "created_at", "updated_at")
+    VALUES ('migration-book', '迁移测试书', 1, 1);
+    INSERT INTO "story_jingwei_section" ("id", "book_id", "key", "name", "created_at", "updated_at")
+    VALUES ('migration-section', 'migration-book', 'settings', '设定', 1, 1);
+    INSERT INTO "story_jingwei_entry"
+      ("id", "book_id", "section_id", "title", "fields_json", "custom_fields_json", "created_at", "updated_at")
+    VALUES
+      ('fill-empty', 'migration-book', 'migration-section', '空串字段', '', '{"legacy":"value"}', 1, 1),
+      ('fill-object', 'migration-book', 'migration-section', '空对象字段', '{}', '{"legacy":true}', 1, 1),
+      ('preserve-value', 'migration-book', 'migration-section', '权威字段', '{"authoritative":true}', '{"legacy":true}', 1, 1),
+      ('ignore-array', 'migration-book', 'migration-section', '非对象字段', '{}', '[1,2,3]', 1, 1),
+      ('ignore-invalid', 'migration-book', 'migration-section', '无效 JSON', '{}', '{invalid', 1, 1);
+  `);
 }
 
 afterEach(async () => {
@@ -80,6 +110,149 @@ describe("storage SQLite database", () => {
       expect(rows[0]?.metadataJson).toBe(JSON.stringify({ title: "测试会话" }));
     } finally {
       storage.close();
+    }
+  });
+
+  it("retires the abandoned jingwei volume-summary table in filesystem and embedded migrations", async () => {
+    const filesystemDatabasePath = await createTempDbPath();
+    const filesystemStorage = createStorageDatabase({ databasePath: filesystemDatabasePath });
+
+    try {
+      const filesystemResult = runStorageMigrations(filesystemStorage);
+      const filesystemTable = filesystemStorage.sqlite
+        .prepare<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'jingwei_volume_summaries'`)
+        .get();
+
+      expect(filesystemResult.applied).toContain("0026_drop_legacy_jingwei_volume_summaries.sql");
+      expect(filesystemTable == null).toBe(true);
+    } finally {
+      filesystemStorage.close();
+    }
+
+    const embeddedDatabasePath = await createTempDbPath();
+    const embeddedStorage = createStorageDatabase({ databasePath: embeddedDatabasePath });
+    const embeddedMigrationsDir = join(embeddedDatabasePath, "missing-migrations");
+
+    try {
+      const embeddedResult = runStorageMigrations(embeddedStorage, { migrationsDir: embeddedMigrationsDir });
+      const embeddedTable = embeddedStorage.sqlite
+        .prepare<{ name: string }>(`SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'jingwei_volume_summaries'`)
+        .get();
+
+      expect(embeddedResult.applied).toContain("0026_drop_legacy_jingwei_volume_summaries.sql");
+      expect(embeddedTable == null).toBe(true);
+      expect(embeddedMigrations.some((migration) => migration.name === "0026_drop_legacy_jingwei_volume_summaries.sql" && migration.sql.includes("DROP TABLE IF EXISTS"))).toBe(true);
+    } finally {
+      embeddedStorage.close();
+    }
+  });
+
+  it("applies 0027 in filesystem and embedded modes without overwriting authority or removing legacy jingwei tables", async () => {
+    const migrationSql = await readFile(
+      join(migrationsSourceDir, "0027_jingwei_authority_consolidation.sql"),
+      "utf-8",
+    );
+    const embeddedMigration = embeddedMigrations.find(
+      (migration) => migration.name === "0027_jingwei_authority_consolidation.sql",
+    );
+    expect(embeddedMigration?.sql).toBe(migrationSql);
+
+    const filesystemDatabasePath = await createTempDbPath();
+    const filesystemStorage = createStorageDatabase({ databasePath: filesystemDatabasePath });
+    const filesystemMigrationsDir = join(dirname(filesystemDatabasePath), "filesystem-migrations");
+
+    try {
+      await copyMigrationsBefore0027(filesystemMigrationsDir);
+      runStorageMigrations(filesystemStorage, { migrationsDir: filesystemMigrationsDir });
+      seedAuthorityConsolidationFixtures(filesystemStorage);
+      await copyFile(
+        join(migrationsSourceDir, "0027_jingwei_authority_consolidation.sql"),
+        join(filesystemMigrationsDir, "0027_jingwei_authority_consolidation.sql"),
+      );
+
+      const filesystemResult = runStorageMigrations(filesystemStorage, { migrationsDir: filesystemMigrationsDir });
+      const filesystemRows = filesystemStorage.sqlite
+        .prepare<{ id: string; fields_json: string; custom_fields_json: string }>(
+          `SELECT "id", "fields_json", "custom_fields_json" FROM "story_jingwei_entry" WHERE "book_id" = 'migration-book' ORDER BY "id"`,
+        )
+        .all();
+      const filesystemRevisionColumns = filesystemStorage.sqlite
+        .prepare<{ name: string }>(`PRAGMA table_info("jingwei_revision")`)
+        .all()
+        .map((row) => row.name);
+      const filesystemLegacyTables = filesystemStorage.sqlite
+        .prepare<{ name: string }>(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'jingwei_%' ORDER BY name`,
+        )
+        .all()
+        .map((row) => row.name);
+
+      expect(filesystemResult.applied).toEqual(["0027_jingwei_authority_consolidation.sql"]);
+      expect(filesystemRows).toEqual([
+        { id: "fill-empty", fields_json: '{"legacy":"value"}', custom_fields_json: '{"legacy":"value"}' },
+        { id: "fill-object", fields_json: '{"legacy":true}', custom_fields_json: '{"legacy":true}' },
+        { id: "ignore-array", fields_json: "{}", custom_fields_json: "[1,2,3]" },
+        { id: "ignore-invalid", fields_json: "{}", custom_fields_json: "{invalid" },
+        { id: "preserve-value", fields_json: '{"authoritative":true}', custom_fields_json: '{"legacy":true}' },
+      ]);
+      expect(filesystemRevisionColumns).toContain("snapshot_json");
+      expect(filesystemLegacyTables).toEqual(expect.arrayContaining([
+        "jingwei_character",
+        "jingwei_event",
+        "jingwei_setting",
+        "jingwei_chapter_summary",
+        "jingwei_conflict",
+        "jingwei_world_model",
+        "jingwei_premise",
+        "jingwei_character_arc",
+      ]));
+      expect(runStorageMigrations(filesystemStorage, { migrationsDir: filesystemMigrationsDir }).applied).toEqual([]);
+    } finally {
+      filesystemStorage.close();
+    }
+
+    const embeddedDatabasePath = await createTempDbPath();
+    const embeddedStorage = createStorageDatabase({ databasePath: embeddedDatabasePath });
+    const embeddedMigrationsDir = join(dirname(embeddedDatabasePath), "embedded-migrations");
+
+    try {
+      await copyMigrationsBefore0027(embeddedMigrationsDir);
+      runStorageMigrations(embeddedStorage, { migrationsDir: embeddedMigrationsDir });
+      seedAuthorityConsolidationFixtures(embeddedStorage);
+
+      const embeddedResult = runStorageMigrations(embeddedStorage, {
+        migrationsDir: join(embeddedDatabasePath, "missing-migrations"),
+      });
+      const embeddedSnapshotColumn = embeddedStorage.sqlite
+        .prepare<{ name: string }>(`PRAGMA table_info("jingwei_revision")`)
+        .all()
+        .some((row) => row.name === "snapshot_json");
+      const embeddedRows = embeddedStorage.sqlite
+        .prepare<{ id: string; fields_json: string }>(
+          `SELECT "id", "fields_json" FROM "story_jingwei_entry" WHERE "book_id" = 'migration-book' ORDER BY "id"`,
+        )
+        .all();
+      const embeddedLegacyTable = embeddedStorage.sqlite
+        .prepare<{ name: string }>(
+          `SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'jingwei_character'`,
+        )
+        .get();
+
+      expect(embeddedResult.applied).toContain("0027_jingwei_authority_consolidation.sql");
+      expect(embeddedSnapshotColumn).toBe(true);
+      expect(embeddedRows).toEqual([
+        { id: "fill-empty", fields_json: '{"legacy":"value"}' },
+        { id: "fill-object", fields_json: '{"legacy":true}' },
+        { id: "ignore-array", fields_json: "{}" },
+        { id: "ignore-invalid", fields_json: "{}" },
+        { id: "preserve-value", fields_json: '{"authoritative":true}' },
+      ]);
+      expect(embeddedLegacyTable?.name).toBe("jingwei_character");
+      expect(runStorageMigrations(embeddedStorage, {
+        migrationsDir: join(embeddedDatabasePath, "missing-migrations"),
+      }).applied).toEqual([]);
+    } finally {
+      embeddedStorage.close();
     }
   });
 

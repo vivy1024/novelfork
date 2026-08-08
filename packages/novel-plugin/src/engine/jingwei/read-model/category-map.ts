@@ -116,9 +116,12 @@ export function resolveJingweiReadCategory(
   entry: StoryJingweiEntryRecord,
   section?: StoryJingweiSectionRecord,
 ): JingweiCategory {
-  return lookupCategory(entry.customFields.category)
+  return lookupCategory(entry.category)
+    ?? lookupCategory(entry.fields.category)
     ?? lookupCategory(section?.builtinKind)
     ?? lookupCategory(section?.key)
     ?? entry.tags.map(lookupCategory).find((category): category is JingweiCategory => Boolean(category))
+    // custom_fields_json 只用于迁移前异常旧数据的最后兜底。
+    ?? lookupCategory(entry.customFields.category)
     ?? "reference";
 }

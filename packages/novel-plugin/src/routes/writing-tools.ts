@@ -1,4 +1,4 @@
-import { appendFile, mkdir, readFile, readdir } from "node:fs/promises";
+import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
@@ -25,6 +25,7 @@ import {
   type ProgressConfig,
 } from "../engine/index.js";
 import type { RouterContext } from "./context.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 const PROGRESS_CONFIG_KEY = "writing-tools:progress-config";
 const DEFAULT_PROGRESS_CONFIG: ProgressConfig = { dailyTarget: 6000 };
@@ -294,15 +295,13 @@ async function readJsonBody(c: JsonContext): Promise<Record<string, unknown>> {
 }
 
 async function readBookChapters(ctx: RouterContext, bookId: string): Promise<ChapterLookup[]> {
-  const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
-  const files = await readdir(chaptersDir).catch(() => []);
-  const chapters: ChapterLookup[] = [];
-  for (const filename of files.filter((file) => file.endsWith(".md")).sort()) {
-    const content = await readFile(join(chaptersDir, filename), "utf-8").catch(() => "");
-    const chapterNumber = readPositiveInteger(filename.match(/^(\d+)/)?.[1]) ?? chapters.length + 1;
-    chapters.push({ chapterNumber, filename, content });
-  }
-  return chapters;
+  const bookRoot = ctx.state.bookDir(bookId);
+  const chapterFiles = await listChapterFiles(bookRoot);
+  return Promise.all(chapterFiles.map(async (chapterFile) => ({
+    chapterNumber: chapterFile.number,
+    filename: chapterFile.chapterRelativePath,
+    content: await readFile(join(bookRoot, chapterFile.relativePath), "utf-8").catch(() => ""),
+  })));
 }
 
 function measuredMetric(value: number, source: string): MeasuredMetric {
@@ -380,13 +379,11 @@ function normalizeLine(value: string): string {
 }
 
 async function readChapter(ctx: RouterContext, bookId: string, chapterNumber: number): Promise<ChapterLookup | null> {
-  const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
-  const files = await readdir(chaptersDir).catch(() => []);
-  const padded = String(chapterNumber).padStart(4, "0");
-  const filename = files.find((file) => file.startsWith(padded) && file.endsWith(".md"));
-  if (!filename) return null;
-  const content = await readFile(join(chaptersDir, filename), "utf-8").catch(() => "");
-  return content ? { chapterNumber, content, filename } : null;
+  const bookRoot = ctx.state.bookDir(bookId);
+  const chapterFile = (await listChapterFiles(bookRoot)).find((file) => file.number === chapterNumber);
+  if (!chapterFile) return null;
+  const content = await readFile(join(bookRoot, chapterFile.relativePath), "utf-8").catch(() => "");
+  return content ? { chapterNumber, content, filename: chapterFile.chapterRelativePath } : null;
 }
 
 async function resolveChapterNumber(ctx: RouterContext, bookId: string, explicit: number | undefined): Promise<number> {

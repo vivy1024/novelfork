@@ -5,10 +5,11 @@ import type { FanficMode } from "@vivy1024/novelfork-core";
 import type { ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
 import { readGenreProfile, readBookLanguage, readBookRules } from "./rules-reader.js";
 import { getFanficDimensionConfig, FANFIC_DIMENSIONS } from "./fanfic-dimensions.js";
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { filterHooks, filterSummaries, filterSubplots, filterEmotionalArcs, filterCharacterMatrix } from "@vivy1024/novelfork-core";
 import { buildGovernedMemoryEvidenceBlocks } from "@vivy1024/novelfork-core";
 import { join } from "node:path";
+import { listChapterFiles } from "../writing-resource/chapter-layout.js";
 
 export interface AuditResult {
   readonly passed: boolean;
@@ -488,7 +489,6 @@ ${dimList}
           ? `\n## Chapter Summaries (for pacing checks)\n${filteredSummaries}\n`
           : `\n## 章节摘要（用于节奏检查）\n${filteredSummaries}\n`
         : "");
-    const volumeSummariesBlock = governedMemoryBlocks?.volumeSummariesBlock ?? "";
 
     const canonBlock = hasParentCanon
       ? isEnglish
@@ -528,7 +528,7 @@ ${dimList}
 ## Current State Card
 ${currentState}
 ${ledgerBlock}
-${hooksBlock}${volumeSummariesBlock}${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${reducedControlBlock || outlineBlock}${prevChapterBlock}${styleGuideBlock}
+${hooksBlock}${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${reducedControlBlock || outlineBlock}${prevChapterBlock}${styleGuideBlock}
 
 ## Chapter Content Under Review
 ${chapterContent}`
@@ -537,7 +537,7 @@ ${chapterContent}`
 ## 当前状态卡
 ${currentState}
 ${ledgerBlock}
-${hooksBlock}${volumeSummariesBlock}${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${reducedControlBlock || outlineBlock}${prevChapterBlock}${styleGuideBlock}
+${hooksBlock}${subplotBlock}${emotionalBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${reducedControlBlock || outlineBlock}${prevChapterBlock}${styleGuideBlock}
 
 ## 待审章节内容
 ${chapterContent}`;
@@ -707,13 +707,10 @@ ${overrides}\n`;
 
   private async loadPreviousChapter(bookDir: string, currentChapter: number): Promise<string> {
     if (currentChapter <= 1) return "";
-    const chaptersDir = join(bookDir, "chapters");
     try {
-      const files = await readdir(chaptersDir);
-      const paddedPrev = String(currentChapter - 1).padStart(4, "0");
-      const prevFile = files.find((f) => f.startsWith(paddedPrev) && f.endsWith(".md"));
-      if (!prevFile) return "";
-      return await readFile(join(chaptersDir, prevFile), "utf-8");
+      const previousChapter = (await listChapterFiles(bookDir)).find((file) => file.number === currentChapter - 1);
+      if (!previousChapter) return "";
+      return await readFile(join(bookDir, previousChapter.relativePath), "utf-8");
     } catch {
       return "";
     }

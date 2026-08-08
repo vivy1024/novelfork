@@ -86,7 +86,7 @@ beforeEach(async () => {
 	workRoot = await mkdtemp(join(tmpdir(), "novel-runtime-adapter-"));
 	booksRoot = join(workRoot, "books");
 	bookRoot = join(booksRoot, "book-a");
-	await mkdir(join(bookRoot, "chapters"), { recursive: true });
+	await mkdir(join(bookRoot, "chapters", "卷01"), { recursive: true });
 	await writeFile(join(bookRoot, "book.json"), JSON.stringify({
 		id: "book-a",
 		title: "测试书籍",
@@ -98,11 +98,11 @@ beforeEach(async () => {
 		createdAt: "2026-01-01T00:00:00.000Z",
 		updatedAt: "2026-01-01T00:00:00.000Z",
 	}), "utf8");
-	await writeFile(join(bookRoot, "chapters", "0001-opening.md"), "第一章正文", "utf8");
+	await writeFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "第一章正文", "utf8");
 	await writeFile(join(bookRoot, "chapters", "index.json"), JSON.stringify([{
 		number: 1,
 		title: "第一章",
-		fileName: "0001-opening.md",
+		fileName: "卷01/0001-opening.md",
 		wordCount: 5,
 		status: "accepted",
 	}]), "utf8");
@@ -242,7 +242,8 @@ describe("NovelRuntimeAdapter", () => {
 			{ chapterNumber: 2, userDirectives: "让主角进入山门" },
 			{
 				narratorId: "narrator-a",
-				model: { provider: "test-provider", id: "current-test-model" },
+				provider: "test-provider",
+				model: "current-test-model",
 				generateText: async (request) => {
 					requests.push({
 						system: request.messages.find((message) => message.role === "system")?.content ?? "",
@@ -273,10 +274,21 @@ describe("NovelRuntimeAdapter", () => {
 		expect(result.isError).toBe(false);
 		expect(JSON.parse(result.output)).toMatchObject({
 			ok: true,
-			data: { sceneSpec: { chapter: 2, title: "山门试炼" } },
+			data: {
+				sceneSpec: { chapter: 2, title: "山门试炼" },
+				modelCalls: [{
+					purpose: "生成结构化写作蓝图",
+					provider: "test-provider",
+					model: "current-test-model",
+					status: "completed",
+				}],
+			},
 		});
 		expect(requests).toEqual([{ system: expect.stringContaining("Scene Spec"), model: "current-test-model" }]);
-		expect(streamed).toEqual([]);
+		expect(streamed).toEqual([
+			expect.stringContaining("内部模型调用 1 开始：生成结构化写作蓝图（test-provider/current-test-model）"),
+			expect.stringMatching(/^内部模型调用 1 完成：\d+ms$/u),
+		]);
 	});
 
 	test("reads the trusted bound chapter without model-supplied book identity", async () => {
@@ -361,9 +373,9 @@ describe("NovelRuntimeAdapter", () => {
 			expect(writeResult.isError).toBe(false);
 			expect(JSON.parse(writeResult.output)).toMatchObject({
 				ok: true,
-				data: { bookId: "book-a", chapterNumber: 1, fileName: "0001-opening.md" },
+				data: { bookId: "book-a", chapterNumber: 1, fileName: "卷01/0001-opening.md" },
 			});
-			expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(content);
+			expect(await readFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "utf8")).toBe(content);
 
 			const missingChapter = await adapter.execute(
 				"chapter.write",
@@ -375,7 +387,7 @@ describe("NovelRuntimeAdapter", () => {
 				ok: false,
 				error: "chapter-not-found",
 			});
-			expect(await readFile(join(bookRoot, "chapters", "0001-opening.md"), "utf8")).toBe(content);
+			expect(await readFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "utf8")).toBe(content);
 			expect(
 				adapter.toolDefinitions().find((tool) => tool.name === "chapter.write")?.metadata
 					?.runtimeRisk,
@@ -487,4 +499,34 @@ describe("NovelRuntimeAdapter", () => {
 			expect(JSON.parse(result.output)).toMatchObject({ ok: false, error: "invalid-tool-input" });
 		});
 	}
+
+	test("respects contributed tool permission policy and session mode", () => {
+		bindNarrator();
+		const enabled = new Set<string>();
+
+		// 默认非 advanced 模式下，advanced 工具不会自动进入 enabledSet，但 author 工具会自动加入
+		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
+		expect(enabled.has("memory.list")).toBe(false);
+		expect(enabled.has("chapter.read")).toBe(true);
+
+		// 如果显式/持久化启用了 advanced 工具，sync 时将被保留
+		enabled.add("memory.list");
+		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
+		expect(enabled.has("memory.list")).toBe(true);
+
+		// 模式限制：写工具在 read 模式下不允许
+		expect(isNovelProductToolAllowed("chapter.write", enabled, { permissionMode: "read" })).toBe(false);
+		expect(isNovelProductToolAllowed("chapter.read", enabled, { permissionMode: "read" })).toBe(true);
+	});
+
+	test("preserves provider alias mapping without duplicating ToolDefinitions", () => {
+		bindNarrator();
+		const definitions = adapter.toolDefinitions();
+		const names = definitions.map((t) => t.name);
+
+		// 确认没有以 provider 别名 (_nf_...) 命名的 ToolDefinition 注入
+		expect(names.some((name) => name.startsWith("_nf_"))).toBe(false);
+		// 确认基础名字唯一
+		expect(new Set(names).size).toBe(names.length);
+	});
 });

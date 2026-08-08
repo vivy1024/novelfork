@@ -203,7 +203,6 @@ ${outputFormat}`;
       ?? (chapterSummariesWorkingSet !== "(文件不存在)"
         ? `\n## 章节摘要\n${chapterSummariesWorkingSet}\n`
         : "");
-    const volumeSummariesBlock = governedMemoryBlocks?.volumeSummariesBlock ?? "";
 
     const hasParentCanon = parentCanon !== "(文件不存在)";
     const hasFanficCanon = fanficCanon !== "(文件不存在)";
@@ -233,7 +232,7 @@ ${issueList}
 ## 当前状态卡
 ${currentState}
 ${ledgerBlock}
-${hookDebtBlock}${hooksBlock}${volumeSummariesBlock}${reducedControlBlock || outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${styleGuideBlock}${lengthGuidanceBlock}
+${hookDebtBlock}${hooksBlock}${reducedControlBlock || outlineBlock}${bibleBlock}${matrixBlock}${summariesBlock}${canonBlock}${fanficCanonBlock}${styleGuideBlock}${lengthGuidanceBlock}
 
 ## 待修正章节
 ${chapterContent}`;

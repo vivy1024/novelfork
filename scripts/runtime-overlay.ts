@@ -96,6 +96,7 @@ const allowedAddTargets = new Set([
 	"server/lib/product-host/null-integration.ts",
 	"server/lib/product-host/registry.ts",
 	"server/lib/product-host/__tests__/registry.test.ts",
+	"server/services/__tests__/contributed-tool-permission.test.ts",
 	// 上游 v0.5.18 起自带 server/types/generated-modules.d.ts，overlay 改用独立
 	// 文件名只补上游未声明的模块，避免替换 Runtime 树时与上游文件冲突。
 	"server/types/novelfork-generated-modules.d.ts",
@@ -115,33 +116,82 @@ const allowedPatchTargets = new Set([
 	"bun.lock",
 	"frontend/components/AppNotifications.tsx",
 	"frontend/components/AppRootLayout.tsx",
+	"frontend/components/host/RuntimeFrontendHostProviders.test.tsx",
 	"frontend/components/narrator/ToolCallCard.tsx",
+	"frontend/components/narrator/MarkdownCodeBlock.corner.test.ts",
+	"frontend/components/narrator/vlist/low-lod-streaming-cost.test.ts",
+	"frontend/components/narrator/vlist/measure/measure-tool-call.test.ts",
+	"frontend/components/narrator/vlist/vlist-compact-interaction.test.tsx",
+	"frontend/components/narrator/vlist/vlist-scroll-pin.test.ts",
+	"frontend/lib/app-shell-scroll.test.tsx",
+	"frontend/lib/legacy-builtins.guard.test.ts",
 	"frontend/lib/narrator-ws-manager.test.ts",
 	"frontend/lib/narrator-ws-manager.ts",
+	"frontend/lib/notifications-safe-area.test.tsx",
 	"frontend/lib/shiki-language-aliases.test.ts",
+	"frontend/lib/toast-selection.test.tsx",
 	"frontend/routes/settings/providers.tsx",
 	"package.json",
 	"server/app.ts",
+	"server/db/__tests__/connection-guard-subprocess.test.ts",
+	"server/db/__tests__/connection-test-guard.test.ts",
+	"server/db/connection.ts",
 	"server/db/run-migrations.test.ts",
 	"server/db/run-migrations.ts",
+	"server/lib/__tests__/uploads.test.ts",
+	"server/lib/__tests__/zstd-patch-file.test.ts",
+	"server/lib/agent/__tests__/bash-analyze.test.ts",
+	"server/lib/agent/__tests__/bash-path-e2e.test.ts",
+	"server/lib/agent/__tests__/image-generation.test.ts",
+	"server/lib/agent/__tests__/openai-provider-history.test.ts",
+	"server/lib/agent/openai-provider.ts",
+	"server/lib/agent/tools/__tests__/tools.test.ts",
 	"server/lib/agent/tool-executor.ts",
 	"server/lib/agent/tools/index.ts",
 	"server/lib/agent/types.ts",
 	"server/lib/browser/pool.ts",
+	"server/lib/db-worker/__tests__/pool.test.ts",
 	"server/lib/db-worker/pool.ts",
 	"server/lib/version.ts",
 	"server/main.ts",
 	"server/routes/learning.ts",
 	"server/routes/projects.ts",
 	"server/routes/skills.ts",
+	"server/services/__tests__/device-connection-auth.test.ts",
+	"server/services/__tests__/edit-regen-textfiles.test.ts",
+	"server/services/device-connection-service.ts",
+	"server/services/device-remote-backend.ts",
+	"server/services/__tests__/knowledge-pack.test.ts",
+	"server/services/__tests__/narrator-permission-confirm.test.ts",
+	"server/services/__tests__/plugin-ui-assets.test.ts",
 	"server/services/knowledge-pack-activation-service.ts",
+	"server/services/narrator-scoped-revert.test.ts",
+	"server/services/narrator-permission.ts",
 	"server/services/narrator-prompt.ts",
 	"server/services/narrator-session.ts",
 	"server/services/routine-service.ts",
 	"server/services/skill-service.ts",
+	"server/services/worktree-tree-snapshot.test.ts",
+	"server/services/worktree-tree-snapshot.ts",
+	"server/services/storage-scan-queries.ts",
 	"server/websocket/narrator-ws.ts",
 	"shared/learning-content.ts",
-	"tsconfig.json"
+	"tests/preload.ts",
+	"tests/server/integration/plugins/kiro-external-commands.e2e.test.ts",
+	"tests/server/integration/plugins/plugin-reference-lifecycle.e2e.test.ts",
+	"tests/server/lib/instance-lock.test.ts",
+	"tests/server/routes/plugins.test.ts",
+	"tests/server/services/exit-plan-mode-resolve.test.ts",
+	"tests/server/services/permission-boundary.test.ts",
+	"tests/server/services/plugin-package-store.test.ts",
+	"tests/server/services/plugin-reference-runtime.e2e.test.ts",
+	"tests/server/services/plugin-runtime.test.ts",
+	"tests/server/services/plugin-secret-vault.test.ts",
+	"tests/scripts/build-plugin.test.ts",
+	"tests/scripts/release-baseline.test.ts",
+	"tests/server/services/storage-dir-scan.test.ts",
+	"tests/setup.ts",
+	"tsconfig.json",
 ]);
 
 const forbiddenOverlayContent = [
@@ -584,14 +634,23 @@ export async function readRuntimeOverlayManifest(
 	}
 	const operations = candidate.operations.map(parseOperation);
 	const ids = new Set<string>();
-	const targets = new Set<string>();
+	const targets = new Map<string, RuntimeOverlayOperation>();
 	for (const operation of operations) {
 		if (ids.has(operation.id))
 			throw new Error(`overlay operation id is duplicated: ${operation.id}`);
-		if (targets.has(operation.target))
-			throw new Error(`overlay target is duplicated: ${operation.target}`);
+		const previous = targets.get(operation.target);
+		if (previous) {
+			const isExplicitPatchChain =
+				previous.type === "patch" &&
+				operation.type === "patch" &&
+				operation.dependsOn.includes(previous.id) &&
+				operation.baseSha256 === previous.resultSha256;
+			if (!isExplicitPatchChain) {
+				throw new Error(`overlay target is duplicated without an exact patch chain: ${operation.target}`);
+			}
+		}
 		ids.add(operation.id);
-		targets.add(operation.target);
+		targets.set(operation.target, operation);
 	}
 	for (const operation of operations) {
 		for (const dependency of operation.dependsOn) {
