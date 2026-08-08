@@ -645,7 +645,8 @@ scope=search：关键词搜索静态设定。
  * 小说工具名列表 — 供 novel-plugin manifest 引用
  */
 export function getNovelToolPermissionPolicy(toolName: string): NovelToolPermissionPolicy | null {
-  const tool = NOVEL_RUNTIME_TOOL_CATALOG.find((entry) => entry.name === toolName);
+  const normalized = toolName.replace(/\./g, "_");
+  const tool = NOVEL_RUNTIME_TOOL_CATALOG.find((entry) => entry.name === toolName || entry.name.replace(/\./g, "_") === normalized);
   if (!tool) return null;
   return {
     risk: tool.risk,

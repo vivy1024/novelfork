@@ -987,7 +987,9 @@ export async function executeRuntimeDomainTool(
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult | null> {
-  switch (toolName) {
+  const normalized = toolName.replace(/\./g, "_");
+  switch (normalized) {
+    case "scene_spec":
     case "scene.spec":
       return okResult(await handleSceneSpec({
         ...(input as unknown as Parameters<typeof handleSceneSpec>[0]),
@@ -995,30 +997,43 @@ export async function executeRuntimeDomainTool(
         bookRoot: binding.root,
         generateText: context.generateText,
       }));
+    case "chapter_audit":
     case "chapter.audit":
       return chapterAudit(input, binding);
+    case "rewrite_segment":
     case "rewrite.segment":
       return rewriteSegment(input, binding, context);
+    case "rewrite_apply":
     case "rewrite.apply":
       return rewriteApply(input, binding);
+    case "style_import":
     case "style.import":
       return styleImport(input, binding, context);
+    case "pipeline_import_chapters":
     case "pipeline.import_chapters":
       return importChapters(input, binding, context);
+    case "book_dissect":
     case "book.dissect":
       return bookDissect(input, binding, context);
+    case "outline_suggest_next":
     case "outline.suggest_next":
       return outlineSuggestNext(binding, context);
+    case "outline_volume":
     case "outline.volume":
       return outlineVolume(input, binding, context);
+    case "arc_character":
     case "arc.character":
       return arcCharacter(input, binding, context);
+    case "publish_check":
     case "publish.check":
       return publishCheck(input, binding);
+    case "character_check_consistency":
     case "character.check_consistency":
       return characterConsistency(input, binding);
+    case "hooks_manage":
     case "hooks.manage":
       return hooksManage(input, binding);
+    case "pipeline_write":
     case "pipeline.write":
       return pipelineWrite(input, binding, context);
     default:
