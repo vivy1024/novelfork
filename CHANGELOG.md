@@ -2,6 +2,15 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
+## v3.6.1 (2026-08-08) — NarraFork Runtime v0.5.23 升级、工具 Schema 完全规范对齐与废弃群聊清理
+
+### Runtime 引擎与 API 适配
+
+- 物理无损升级至 NarraFork Runtime 官方 `v0.5.23` 提交基线，零改动 NarraFork 底层代码。
+- 规范小说领域工具在 `novel-plugin` 的导出 Schema 和工具名兼容映射，消灭 Anthropic / Kiro / OpenAI 等 Provider 网关下的 400 格式错误 (`REQUEST_BODY_INVALID`)。
+- 恢复 `RuntimeFrontendHostProviders` 中的 WebSocket 全局长连接 Lease，彻底修复实时文字打字流与 Tool Card 过程渲染。
+- 配合上游 `v0.5.23` 彻底清理并下线 Studio 前端遗留的 `chat-groups` 路由、组件和测试文件。
+
 ## v3.6.0 (2026-08-08) — 经纬权威源收敛、写作工作台重构与 Runtime 契约门禁
 
 ### 经纬与写作数据权威源
