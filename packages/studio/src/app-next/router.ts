@@ -62,11 +62,6 @@ const scheduledTasksRoute = createRoute({
   path: "/scheduled-tasks",
 });
 
-const groupsRoute = createRoute({
-  getParentRoute: () => nextRoute,
-  path: "/groups",
-});
-
 const settingsRoute = createRoute({
   getParentRoute: () => nextRoute,
   path: "/settings",
@@ -162,7 +157,6 @@ const routeTree = rootRoute.addChildren([
     routinesRoute,
     knowledgeRoute,
     scheduledTasksRoute,
-    groupsRoute,
     settingsRoute,
     settingsSectionRoute,
     learnRoute,
@@ -187,4 +181,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, booksListRoute, sessionsRoute, searchRoute, routinesRoute, knowledgeRoute, scheduledTasksRoute, groupsRoute, settingsRoute, settingsSectionRoute, learnRoute };
+export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, booksListRoute, sessionsRoute, searchRoute, routinesRoute, knowledgeRoute, scheduledTasksRoute, settingsRoute, settingsSectionRoute, learnRoute };
