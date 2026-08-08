@@ -220,6 +220,14 @@ function toModelSafePreview(preview: NarrativeLineMutationPreview): Record<strin
   };
 }
 
+export function normalizeToolName(name: string): string {
+  return name.replace(/\./g, "_");
+}
+
+function matchesToolName(requested: string, catalogName: string): boolean {
+  return requested === catalogName || normalizeToolName(requested) === normalizeToolName(catalogName);
+}
+
 /** Reject host-owned fields even when a caller bypasses model JSON-schema validation. */
 function containsHostControlledField(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(containsHostControlledField);
@@ -442,7 +450,7 @@ async function executeReadyToolImpl(
     const domainResult = await executeRuntimeDomainTool(tool.name, input, binding, context);
     if (domainResult) return domainResult;
 
-    if (tool.name === "cockpit.snapshot") {
+    if (matchesToolName(tool.name, "cockpit.snapshot")) {
       const snapshot = await createCockpitService({ state: createBoundNovelState(binding) }).getSnapshot({
         bookId: binding.bookId,
       });
@@ -452,7 +460,7 @@ async function executeReadyToolImpl(
         data: { ...snapshot, storyDir: "story" },
       });
     }
-    if (tool.name === "write.preflight") {
+    if (matchesToolName(tool.name, "write.preflight")) {
       const { handleWritePreflight } = await import("./handlers/write-preflight.js");
       const preflight = await handleWritePreflight({
         bookId: binding.bookId,
@@ -479,7 +487,7 @@ async function executeReadyToolImpl(
         data: preflight,
       });
     }
-    if (tool.name === "memory.settle_range") {
+    if (matchesToolName(tool.name, "memory.settle_range")) {
       const { handleMemorySettleRange } = await import("./handlers/memory-settle-range.js");
       if (typeof injectedInput.fromChapter !== "number" || typeof injectedInput.toChapter !== "number") {
         return fail("invalid-input", "fromChapter/toChapter 必须是数字。");
@@ -525,7 +533,7 @@ async function executeReadyToolImpl(
         data: result,
       });
     }
-    if (tool.name === "chapter.discard_range") {
+    if (matchesToolName(tool.name, "chapter.discard_range")) {
       const { handleChapterDiscardRange } = await import("./handlers/chapter-discard-range.js");
       if (typeof injectedInput.fromChapter !== "number" || typeof injectedInput.toChapter !== "number") {
         return fail("invalid-input", "fromChapter/toChapter 必须是数字。");
@@ -552,7 +560,7 @@ async function executeReadyToolImpl(
         data: result,
       });
     }
-    if (tool.name === "chapter.read") {
+    if (matchesToolName(tool.name, "chapter.read")) {
       if (typeof injectedInput.chapterNumber !== "number" || !Number.isInteger(injectedInput.chapterNumber)) {
         return fail("invalid-input", "chapterNumber 必须是整数。");
       }
@@ -562,7 +570,7 @@ async function executeReadyToolImpl(
         { bookRoot: binding.root },
       ));
     }
-    if (tool.name === "chapter.write") {
+    if (matchesToolName(tool.name, "chapter.write")) {
       if (typeof injectedInput.chapterNumber !== "number" || !Number.isInteger(injectedInput.chapterNumber)) {
         return fail("invalid-input", "chapterNumber 必须是整数。");
       }
@@ -574,7 +582,7 @@ async function executeReadyToolImpl(
         { bookRoot: binding.root, storage: getStorageDatabase() },
       ));
     }
-    if (tool.name === "chapter.list") {
+    if (matchesToolName(tool.name, "chapter.list")) {
       const chapters = await createBoundNovelState(binding).loadChapterIndex(binding.bookId);
       const items = chapters.map((chapter) => ({
         number: chapter.number,
@@ -588,7 +596,7 @@ async function executeReadyToolImpl(
         data: { bookId: binding.bookId, chapters: items },
       });
     }
-    if (tool.name === "narrative.read_line") {
+    if (matchesToolName(tool.name, "narrative.read_line")) {
       const service = createNarrativeLineService({ state: createBoundNovelState(binding) });
       const snapshot = await service.getSnapshot({
         bookId: binding.bookId,
@@ -596,7 +604,7 @@ async function executeReadyToolImpl(
       });
       return toRuntimeToolResult({ ok: true, summary: "已读取叙事线快照。", data: snapshot });
     }
-    if (tool.name === "narrative.propose_change") {
+    if (matchesToolName(tool.name, "narrative.propose_change")) {
       if (typeof injectedInput.summary !== "string" || !injectedInput.summary.trim()) {
         return fail("invalid-input", "summary 必须是非空字符串。");
       }
@@ -616,7 +624,7 @@ async function executeReadyToolImpl(
         data: toModelSafePreview(preview),
       });
     }
-    if (tool.name === "narrative.approve_change") {
+    if (matchesToolName(tool.name, "narrative.approve_change")) {
       const decision = injectedInput.decision === "approved" || injectedInput.decision === "rejected"
         ? injectedInput.decision
         : null;
@@ -655,7 +663,7 @@ async function executeReadyToolImpl(
         data: { ...result, preview: toModelSafePreview(result.preview) },
       });
     }
-    if (tool.name === "writing-skills.read") {
+    if (matchesToolName(tool.name, "writing-skills.read")) {
       return toRuntimeToolResult(await handleWritingSkillsRead({
         bookId: binding.bookId,
         ...(injectedInput.scope === "available" || injectedInput.scope === "enabled"
@@ -663,7 +671,7 @@ async function executeReadyToolImpl(
           : {}),
       }, { bookRoot: binding.root }));
     }
-    if (tool.name === "writing-skills.write") {
+    if (matchesToolName(tool.name, "writing-skills.write")) {
       return toRuntimeToolResult(await handleWritingSkillsWrite({
         bookId: binding.bookId,
         ...(Array.isArray(injectedInput.addSkillIds)
@@ -677,26 +685,25 @@ async function executeReadyToolImpl(
           : {}),
       }, { bookRoot: binding.root }));
     }
-    if (tool.name === "writing-skills.recommend") {
+    if (matchesToolName(tool.name, "writing-skills.recommend")) {
       return toRuntimeToolResult(await handleWritingSkillsRecommend({
         bookId: binding.bookId,
         ...(typeof injectedInput.maxCount === "number" ? { maxCount: injectedInput.maxCount } : {}),
       }, { bookRoot: binding.root }));
     }
-    if (tool.name === "writing-skills.check_compliance") {
+    if (matchesToolName(tool.name, "writing-skills.check_compliance")) {
       return toRuntimeToolResult(await handleWritingSkillsCheckCompliance({
         bookId: binding.bookId,
         content: typeof injectedInput.content === "string" ? injectedInput.content : "",
         ...(typeof injectedInput.chapterNumber === "number" ? { chapterNumber: injectedInput.chapterNumber } : {}),
       }, { bookRoot: binding.root }));
     }
-    if (tool.name === "writing-skills.import_legacy") {
-      return toRuntimeToolResult(await handleWritingSkillsImportLegacy(
-        { bookId: binding.bookId },
-        { bookRoot: binding.root, storage: getStorageDatabase() },
-      ));
+    if (matchesToolName(tool.name, "writing-skills.import_legacy")) {
+      return toRuntimeToolResult(await handleWritingSkillsImportLegacy({
+        bookId: binding.bookId,
+      }, { bookRoot: binding.root }));
     }
-    if (tool.name === "resource.manage") {
+    if (matchesToolName(tool.name, "resource.manage")) {
       const action = typeof injectedInput.action === "string" ? injectedInput.action : "";
       const storage = getStorageDatabase();
       const service = createWritingResourceService({
