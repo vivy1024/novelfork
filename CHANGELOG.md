@@ -22,6 +22,12 @@
 - 彻底清理 Studio 前端遗留的群聊入口：移除侧栏导航项、`groups` 路由分支、悬空的 `groupsRoute` 导出与相关测试断言。`ShellRecentTabItem` 保留 `"group"` 类型仅用于兼容历史 recent-tab 数据，不再提供任何入口。
 - 为 Runtime 前端源码补充 `@simplewebauthn/browser` 测试解析别名（Runtime 树无独立 `node_modules`，无法自解析该依赖）。
 
+### 领域工具与数据库迁移诊断（本次补齐）
+
+- 修复领域工具在可信绑定解析异常时静默丢工具的缺陷：`book-binding` 新增 `diagnoseTrustedBookRoot` 诊断函数，将异常拆解为 5 种作者可读的原因码说明，并在 `resolveContribution` 无法解析时精准日志告警，消灭静默降级与本地重写死循环。
+- 补齐 Overlay `0009` 纯增量迁移，补齐 Runtime `v0.5.23` 声明的 15 个缺失列（如 `user_preferences.notify_sound_volume`）与 `idx_chapters_snapshot_shadow_key` 索引，彻底清理 3 张遗留空群聊表，消除数据库自愈（`run-migrations` 40 项）与 `recent-tabs` 单元测试中的缺列报错。
+- 针对 `v0.5.23` 基线重新生成并登记 POSIX 路径测试 patch，修复 Windows 宿主路径规范化导致的路径提取与危险分类测试失败。
+
 ### 验证
 
 - Runtime overlay 与导入门禁 28 项通过；Runtime 产品 parity 31 项 Capability 契约通过。

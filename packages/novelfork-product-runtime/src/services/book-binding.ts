@@ -85,7 +85,39 @@ export async function resolveTrustedBookRoot(
 	booksRoot: string,
 	allowExternalRoot = false,
 ): Promise<string | null> {
-	if (!binding.bookId.trim() || !isAbsolute(binding.bookRoot)) return null;
+	const diagnosis = await diagnoseTrustedBookRoot(binding, booksRoot, allowExternalRoot);
+	return diagnosis.reason === "trusted" ? diagnosis.bookRoot : null;
+}
+
+/**
+ * Why a persisted binding is (not) trusted.
+ *
+ * `resolveTrustedBookRoot` deliberately collapses every failure into `null`,
+ * which used to make a broken binding indistinguishable from "no binding at
+ * all". That silence is what let a book narrator lose every novel domain tool
+ * with no explanation: the model kept being told to maintain Jingwei while
+ * `lore.write` had already been filtered out, so it fell back to rewriting
+ * local files. Callers that surface diagnostics must use this function instead.
+ */
+export type TrustedBookRootDiagnosis =
+	| { readonly reason: "trusted"; readonly bookRoot: string }
+	| {
+			readonly reason:
+				| "empty-book-id"
+				| "relative-book-root"
+				| "book-root-missing"
+				| "book-root-not-directory"
+				| "external-root-unmarked";
+			readonly bookRoot: null;
+	  };
+
+export async function diagnoseTrustedBookRoot(
+	binding: BookRuntimeBindingRecord,
+	booksRoot: string,
+	allowExternalRoot = false,
+): Promise<TrustedBookRootDiagnosis> {
+	if (!binding.bookId.trim()) return { reason: "empty-book-id", bookRoot: null };
+	if (!isAbsolute(binding.bookRoot)) return { reason: "relative-book-root", bookRoot: null };
 	try {
 		const canonicalBooksRoot = await realpath(resolve(booksRoot));
 		const expectedBookRoot = deriveBookRoot(canonicalBooksRoot, binding.bookId);
@@ -94,17 +126,38 @@ export async function resolveTrustedBookRoot(
 			realpath(expectedBookRoot).catch(() => null),
 			stat(binding.bookRoot),
 		]);
-		if (!bookInfo.isDirectory()) return null;
+		if (!bookInfo.isDirectory()) return { reason: "book-root-not-directory", bookRoot: null };
 		const isControlledRoot =
 			canonicalBookRoot === expectedCanonicalRoot &&
 			isContained(canonicalBooksRoot, canonicalBookRoot);
-		if (isControlledRoot) return canonicalBookRoot;
-		if (!allowExternalRoot) return null;
+		if (isControlledRoot) return { reason: "trusted", bookRoot: canonicalBookRoot };
+		if (!allowExternalRoot) return { reason: "external-root-unmarked", bookRoot: null };
 		return (await isMarkedExternalBookRoot(canonicalBookRoot, binding.bookId))
-			? canonicalBookRoot
-			: null;
+			? { reason: "trusted", bookRoot: canonicalBookRoot }
+			: { reason: "external-root-unmarked", bookRoot: null };
 	} catch {
-		return null;
+		// realpath/stat failure means the recorded root no longer resolves on disk.
+		return { reason: "book-root-missing", bookRoot: null };
+	}
+}
+
+/** Author-facing explanation: what happened / why it matters / what to do. */
+export function explainTrustedBookRootFailure(
+	reason: Exclude<TrustedBookRootDiagnosis["reason"], "trusted">,
+	binding: Pick<BookRuntimeBindingRecord, "bookId" | "bookRoot">,
+): string {
+	const where = `书籍 ${binding.bookId}（记录根目录：${binding.bookRoot}）`;
+	switch (reason) {
+		case "empty-book-id":
+			return `${where} 的绑定记录缺少 bookId，服务端无法解析可信书籍上下文，因此本会话不会加载任何小说领域工具。请在书籍设置中重新绑定该书。`;
+		case "relative-book-root":
+			return `${where} 的绑定记录保存的是相对路径，可信根解析要求绝对路径，因此本会话不会加载任何小说领域工具。请重新绑定该书以写入规范化的绝对路径。`;
+		case "book-root-missing":
+			return `${where} 的目录当前无法访问（可能已被移动、重命名或所在磁盘未挂载），因此本会话不会加载任何小说领域工具。请把目录恢复到记录路径，或重新绑定到新位置。`;
+		case "book-root-not-directory":
+			return `${where} 的记录路径存在但不是目录，因此本会话不会加载任何小说领域工具。请检查该路径并重新绑定该书。`;
+		case "external-root-unmarked":
+			return `${where} 位于受控 books 根之外，且其 book.json 缺少服务端写入的可信标记（${EXTERNAL_BOOK_WORKSPACE_MARKER}=true 且 id 与 bookId 一致），因此本会话不会加载任何小说领域工具。请在产品内重新绑定该外部书籍目录，由服务端补写标记。`;
 	}
 }
 
@@ -147,6 +200,38 @@ export class BookRuntimeBindingService {
 
 	getByNarratorId(narratorId: string): Promise<BookRuntimeBindingRecord | null> {
 		return this.store.findByNarratorId(narratorId);
+	}
+
+	/**
+	 * Why this narrator has (or lacks) a trusted book context.
+	 *
+	 * `resolveForNarrator` returns `null` both when a narrator is simply not
+	 * bound to a book and when a real binding failed its trust check. Only the
+	 * second case is a defect the author must fix, and it is the one that
+	 * silently strips every novel domain tool from a book narrator. Callers that
+	 * report diagnostics must use this instead of interpreting a bare `null`.
+	 */
+	async diagnoseForNarrator(narratorId: string): Promise<
+		| { readonly status: "unbound" }
+		| { readonly status: "trusted"; readonly binding: BookRuntimeBindingRecord }
+		| {
+				readonly status: "untrusted";
+				readonly binding: BookRuntimeBindingRecord;
+				readonly reason: Exclude<TrustedBookRootDiagnosis["reason"], "trusted">;
+				readonly explanation: string;
+		  }
+	> {
+		if (!narratorId.trim()) return { status: "unbound" };
+		const binding = await this.store.findByNarratorId(narratorId);
+		if (!binding) return { status: "unbound" };
+		const diagnosis = await diagnoseTrustedBookRoot(binding, this.booksRoot, true);
+		if (diagnosis.reason === "trusted") return { status: "trusted", binding };
+		return {
+			status: "untrusted",
+			binding,
+			reason: diagnosis.reason,
+			explanation: explainTrustedBookRootFailure(diagnosis.reason, binding),
+		};
 	}
 
 	async resolveForNarrator(narratorId: string): Promise<RuntimeResolveContext | null> {

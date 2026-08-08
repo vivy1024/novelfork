@@ -115,8 +115,49 @@ function toPluginRuntimeResolveContext(
 	};
 }
 
+export interface NovelBindingDiagnosis {
+	readonly status: "unbound" | "trusted" | "untrusted";
+	readonly reason?: string;
+	readonly explanation?: string;
+	readonly binding?: { readonly bookId: string; readonly bookRoot: string };
+}
+
 export interface NovelRuntimeBindingResolver {
 	resolveForNarrator(narratorId: string): Promise<RuntimeResolveContext | null>;
+	/**
+	 * Optional. When present, a failed contribution resolution can tell an
+	 * author-facing broken binding apart from a narrator that was never bound.
+	 */
+	diagnoseForNarrator?(narratorId: string): Promise<NovelBindingDiagnosis>;
+}
+
+/** Reports a broken book binding once per narrator+reason, so it cannot spam a turn loop. */
+export interface NovelBindingDiagnosticSink {
+	(event: {
+		readonly narratorId: string;
+		readonly reason: string;
+		readonly explanation: string;
+		readonly bookId?: string;
+		readonly bookRoot?: string;
+	}): void;
+}
+
+function defaultBindingDiagnosticSink(event: {
+	narratorId: string;
+	reason: string;
+	explanation: string;
+	bookId?: string;
+	bookRoot?: string;
+}): void {
+	// Lazy import keeps the product adapter usable in unit tests that never boot
+	// the Runtime logger.
+	void import("@vivy1024/narrafork-runtime-bridge")
+		.then(({ logger }) => {
+			logger.error("Novel domain tools unavailable: book binding is not trusted", event);
+		})
+		.catch(() => {
+			// A missing logger must never break tool resolution.
+		});
 }
 
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
@@ -152,8 +193,12 @@ function errorResult(
 export class NovelRuntimeHostAdapter {
 	readonly host = new RuntimePluginHost();
 	private readonly validators = new WeakMap<object, z.ZodType>();
+	private readonly reportedBindingFailures = new Set<string>();
 
-	constructor(private readonly bindings: NovelRuntimeBindingResolver) {
+	constructor(
+		private readonly bindings: NovelRuntimeBindingResolver,
+		private readonly diagnosticSink: NovelBindingDiagnosticSink = defaultBindingDiagnosticSink,
+	) {
 		this.host.register(NOVEL_RUNTIME_CONTRIBUTION);
 	}
 
@@ -164,7 +209,40 @@ export class NovelRuntimeHostAdapter {
 	async resolveContribution(narratorId: string): Promise<ResolvedRuntimeContributions | null> {
 		const context = await this.resolve(narratorId);
 		const pluginContext = context ? toPluginRuntimeResolveContext(context) : null;
-		return pluginContext ? this.host.resolve(pluginContext) : null;
+		const resolved = pluginContext ? this.host.resolve(pluginContext) : null;
+		// An empty contribution is what strips every novel domain tool from the
+		// session. Report the author-facing cause instead of failing silently.
+		if (!resolved) await this.reportUnresolvedBinding(narratorId);
+		return resolved;
+	}
+
+	/**
+	 * Author-facing answer to "why does this book narrator have no novel tools?".
+	 * Returns `unbound` for narrators that were never bound to a book.
+	 */
+	async diagnoseBinding(narratorId: string): Promise<NovelBindingDiagnosis> {
+		if (!this.bindings.diagnoseForNarrator) {
+			const context = await this.resolve(narratorId).catch(() => null);
+			return { status: context ? "trusted" : "unbound" };
+		}
+		return this.bindings.diagnoseForNarrator(narratorId);
+	}
+
+	private async reportUnresolvedBinding(narratorId: string): Promise<void> {
+		if (!this.bindings.diagnoseForNarrator) return;
+		const diagnosis = await this.bindings.diagnoseForNarrator(narratorId).catch(() => null);
+		// "unbound" is a normal standalone narrator, not a defect worth reporting.
+		if (!diagnosis || diagnosis.status !== "untrusted") return;
+		const reason = diagnosis.reason ?? "unknown";
+		const key = `${narratorId}:${reason}`;
+		if (this.reportedBindingFailures.has(key)) return;
+		this.reportedBindingFailures.add(key);
+		this.diagnosticSink({
+			narratorId,
+			reason,
+			explanation: diagnosis.explanation ?? "书籍绑定未通过可信性校验，本会话不会加载小说领域工具。",
+			...(diagnosis.binding ? { bookId: diagnosis.binding.bookId, bookRoot: diagnosis.binding.bookRoot } : {}),
+		});
 	}
 
 	async resolveToolNames(narratorId: string): Promise<string[]> {
