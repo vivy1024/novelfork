@@ -25,10 +25,10 @@ function parseJsonObject(raw: string): Record<string, unknown> {
 }
 
 function applyPremiseSnapshot(storage: StorageDatabase, bookId: string, snapshot: Record<string, unknown>, now: Date): void {
-  const current = storage.sqlite.prepare(`SELECT * FROM "bible_premise" WHERE "book_id" = ?`).get(bookId) as { id?: string; theme_json?: string; target_readers?: string; unique_hook?: string; genre_tags_json?: string; created_at?: number } | undefined;
+  const current = storage.sqlite.prepare(`SELECT * FROM "jingwei_premise" WHERE "book_id" = ?`).get(bookId) as { id?: string; theme_json?: string; target_readers?: string; unique_hook?: string; genre_tags_json?: string; created_at?: number } | undefined;
   const id = String(snapshot.id ?? current?.id ?? crypto.randomUUID());
   storage.sqlite.prepare(`
-    INSERT INTO "bible_premise" (
+    INSERT INTO "jingwei_premise" (
       "id", "book_id", "logline", "theme_json", "tone", "target_readers", "unique_hook", "genre_tags_json", "created_at", "updated_at"
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT("book_id") DO UPDATE SET
@@ -56,7 +56,7 @@ function applyPremiseSnapshot(storage: StorageDatabase, bookId: string, snapshot
 function markAffectedChapters(storage: StorageDatabase, bookId: string, shiftId: string, chapters: number[], now: Date): void {
   for (const chapter of chapters) {
     const row = storage.sqlite.prepare(`
-      SELECT "id", "metadata_json" FROM "bible_chapter_summary"
+      SELECT "id", "metadata_json" FROM "jingwei_chapter_summary"
       WHERE "book_id" = ? AND "chapter_number" = ? AND "deleted_at" IS NULL
     `).get(bookId, chapter) as { id: string; metadata_json: string } | undefined;
     if (!row) continue;
@@ -64,7 +64,7 @@ function markAffectedChapters(storage: StorageDatabase, bookId: string, shiftId:
     const current = Array.isArray(metadata.coreShiftReviewRequired) ? metadata.coreShiftReviewRequired.map(String) : [];
     metadata.coreShiftReviewRequired = [...new Set([...current, shiftId])];
     storage.sqlite.prepare(`
-      UPDATE "bible_chapter_summary"
+      UPDATE "jingwei_chapter_summary"
       SET "metadata_json" = ?, "updated_at" = ?
       WHERE "book_id" = ? AND "id" = ?
     `).run(JSON.stringify(metadata), now.getTime(), bookId, row.id);

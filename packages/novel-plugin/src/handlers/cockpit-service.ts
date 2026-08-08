@@ -1,5 +1,6 @@
 import type { BookConfig, ChapterMeta } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
 
@@ -242,13 +243,16 @@ export class CockpitService {
   private async readChapterSummariesFromJingwei(bookId: string): Promise<CockpitListResult<CockpitChapterSummaryItem>> {
     try {
       const storage = this.getStorage();
+      const summaryCategories = getJingweiCategoryAliases("chapter-summaries");
       const rows = storage.sqlite.prepare(`
         SELECT title, content_md, fields_json, related_chapter_numbers_json
         FROM story_jingwei_entry
-        WHERE book_id = ? AND category = 'chapter-summary' AND deleted_at IS NULL
+        WHERE book_id = ?
+          AND category IN (${sqlInPlaceholders(summaryCategories)})
+          AND deleted_at IS NULL
         ORDER BY sort_order DESC, updated_at DESC
         LIMIT 10
-      `).all(bookId) as Array<{ title: string; content_md: string; fields_json: string; related_chapter_numbers_json: string }>;
+      `).all(bookId, ...summaryCategories) as Array<{ title: string; content_md: string; fields_json: string; related_chapter_numbers_json: string }>;
 
       if (rows.length === 0) {
         return { status: "empty", items: [], reason: "经纬中暂无章节摘要。" };

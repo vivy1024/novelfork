@@ -1,6 +1,10 @@
-import { readFile, writeFile, mkdir, readdir, stat, rm, unlink, open } from "node:fs/promises";
+import { readFile, writeFile, mkdir, rm, unlink, open } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
+import {
+  resolveChapterFilePath,
+  resolveChapterFilePaths,
+} from "../state/state-bootstrap.js";
 import { StateManager } from "../state/manager.js";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
@@ -16,6 +20,8 @@ import type {
 /**
  * Maps jingwei-file logical names to their on-disk filenames inside `story/`.
  */
+const DEFAULT_VOLUME_DIRECTORY = "卷01";
+
 const JINGWEI_FILE_MAP: Readonly<Record<string, string>> = {
   currentState: "current_state.md",
   particleLedger: "particle_ledger.md",
@@ -66,17 +72,13 @@ export class FileSystemStorageAdapter implements StorageAdapter {
 
   async loadChapterContent(bookId: string, num: number): Promise<string> {
     const chaptersDir = join(this.state.bookDir(bookId), "chapters");
-    const files = await readdir(chaptersDir);
-    const paddedNum = String(num).padStart(4, "0");
-    const chapterFile = files.find(
-      (f) => f.startsWith(paddedNum) && f.endsWith(".md"),
-    );
-    if (!chapterFile) {
+    const chapterPath = await resolveChapterFilePath(chaptersDir, num);
+    if (!chapterPath) {
       throw new Error(
         `Chapter ${num} file not found in ${chaptersDir}`,
       );
     }
-    return readFile(join(chaptersDir, chapterFile), "utf-8");
+    return readFile(chapterPath, "utf-8");
   }
 
   async saveChapterContent(
@@ -86,35 +88,32 @@ export class FileSystemStorageAdapter implements StorageAdapter {
     meta: ChapterMeta,
   ): Promise<void> {
     const chaptersDir = join(this.state.bookDir(bookId), "chapters");
-    await mkdir(chaptersDir, { recursive: true });
+    const volumeDir = join(chaptersDir, DEFAULT_VOLUME_DIRECTORY);
+    await mkdir(volumeDir, { recursive: true });
 
-    // Remove any existing file for this chapter number
-    try {
-      const files = await readdir(chaptersDir);
-      const paddedNum = String(num).padStart(4, "0");
-      for (const f of files) {
-        if (f.startsWith(paddedNum) && f.endsWith(".md")) {
-          await unlink(join(chaptersDir, f));
-        }
-      }
-    } catch {
-      // directory may not exist yet
-    }
+    // Remove every legacy or volume-layout file for this chapter number.
+    const existingPaths = await resolveChapterFilePaths(chaptersDir, num);
+    await Promise.all(existingPaths.map((path) => unlink(path).catch(() => undefined)));
 
     const paddedNum = String(num).padStart(4, "0");
     const safeTitle = (meta.title || "untitled")
-      .replace(/[/\\?%*:|"<>]/g, "_")
+      .replace(/[\/\\?%*:|"<>]/g, "_")
       .slice(0, 80);
     const fileName = `${paddedNum}_${safeTitle}.md`;
-    await writeFile(join(chaptersDir, fileName), content, "utf-8");
+    const chapterRelativePath = `${DEFAULT_VOLUME_DIRECTORY}/${fileName}`;
+    await writeFile(join(chaptersDir, chapterRelativePath), content, "utf-8");
 
-    // Update the chapter index
-    const index = [...(await this.state.loadChapterIndex(bookId))];
+    // Update the chapter index. ChapterMeta predates fileName, so keep the
+    // layout metadata as an additive JSON field without widening the model.
+    const index = [...(await this.state.loadChapterIndex(bookId))] as Array<
+      ChapterMeta & { readonly fileName?: string }
+    >;
+    const nextMeta = { ...meta, fileName: chapterRelativePath };
     const existingIdx = index.findIndex((c) => c.number === num);
     if (existingIdx >= 0) {
-      index[existingIdx] = { ...meta };
+      index[existingIdx] = { ...index[existingIdx], ...nextMeta };
     } else {
-      index.push({ ...meta });
+      index.push(nextMeta);
       index.sort((a, b) => a.number - b.number);
     }
     await this.state.saveChapterIndex(bookId, index);

@@ -12,8 +12,6 @@ import {
   Files, Scroll, Wrench, Settings, X,
   Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine, Brain,
 } from "lucide-react";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -26,7 +24,7 @@ import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
-import { WriteViewPanel } from "../WriteViewPanel";
+import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
 import { buildOnboardingRequestMessage } from "../onboarding-request";
@@ -36,6 +34,7 @@ import { CommandPalette } from "./command-palette";
 import { useIdeCommands } from "./use-ide-commands";
 import { ProblemsPanel, type EditorIssue } from "./ProblemsPanel";
 import { clearEditorState } from "./editor-state-cache";
+import { useWorkbenchDialogs } from "./use-workbench-dialogs";
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
@@ -216,6 +215,10 @@ export function IdeWorkbench({
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
   const [fileClipboard, setFileClipboard] = useState<{ node: WorkbenchResourceNode; mode: "copy" | "cut" } | null>(null);
 
+  // 文件/条目操作的产品内弹层，取代浏览器原生 confirm/prompt/alert。
+  // confirm/prompt/alert 由 useCallback 稳定，可安全进入依赖数组。
+  const { confirm: confirmDialog, prompt: promptDialog, alert: alertDialog, element: dialogElement } = useWorkbenchDialogs();
+
   // --- Command Palette state ---
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [paletteMode, setPaletteMode] = useState<"commands" | "files">("commands");
@@ -252,7 +255,22 @@ export function IdeWorkbench({
           fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).catch(() => ({ facts: [] })),
         ]);
         if (cancelled) return;
-        const entries: Array<{ id: string; title: string; category?: string; contentMd?: string; sectionId?: string }> = entRes?.entries ?? [];
+        const entries: Array<{
+          id: string;
+          title: string;
+          category?: string;
+          contentMd?: string;
+          sectionId?: string;
+          fields?: Record<string, unknown>;
+          priorityTier?: "auto" | "core" | "relevant" | "reference";
+          relatedEntryIds?: string[];
+          status?: string;
+          layer?: string;
+          version?: number;
+          updatedAt?: string;
+          conflictStatus?: string;
+          conflictDetail?: string;
+        }> = entRes?.entries ?? [];
         const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
 
         const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
@@ -261,7 +279,21 @@ export function IdeWorkbench({
           title: e.title,
           content: e.contentMd ?? "",
           capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-          metadata: { entryId: e.id, sectionId: e.sectionId, isJingweiEntry: true },
+          metadata: {
+            entryId: e.id,
+            sectionId: e.sectionId,
+            isJingweiEntry: true,
+            category: e.category,
+            fields: e.fields,
+            priorityTier: e.priorityTier,
+            relatedEntryIds: e.relatedEntryIds,
+            status: e.status,
+            layer: e.layer,
+            version: e.version,
+            updatedAt: e.updatedAt,
+            conflictStatus: e.conflictStatus,
+            conflictDetail: e.conflictDetail,
+          },
         });
         const toMemoryFactNode = (fact: typeof memoryFacts[number]): WorkbenchResourceNode => ({
           id: `memory-fact:${fact.id}`,
@@ -396,10 +428,16 @@ export function IdeWorkbench({
   }, [activeNode, bookId, loadedFiles]);
 
   // --- Tab 关闭:dirty 时弹确认 + 清理缓存 ---
-  const handleCloseTab = useCallback((tabId: string) => {
+  const handleCloseTab = useCallback(async (tabId: string) => {
     const tab = ideTabsRef.current.tabs.find(t => t.id === tabId);
     if (tab?.dirty) {
-      if (!confirm(`"${tab.title}" 有未保存的修改，确认关闭？`)) return;
+      const confirmed = await confirmDialog({
+        title: `"${tab.title}" 有未保存的修改`,
+        description: "关闭后未保存的修改将丢失，确认关闭？",
+        confirmLabel: "关闭",
+        destructive: true,
+      });
+      if (!confirmed) return;
     }
     ideTabs.closeTab(tabId);
     clearEditorState(tabId);
@@ -409,7 +447,7 @@ export function IdeWorkbench({
       next.delete(tabId);
       return next;
     });
-  }, [ideTabs.closeTab]);
+  }, [ideTabs.closeTab, confirmDialog]);
 
   const handleOpen = useCallback((node: WorkbenchResourceNode) => {
     // 文件树节点：先加载内容
@@ -443,6 +481,21 @@ export function IdeWorkbench({
     if (node.capabilities.open) ideTabsRef.current.openTab(node.id, node.title, toTabKind(node), toTabView(node));
     onOpen(node);
   }, [onOpen, bookId]);
+
+  const handleOpenJingweiEntry = useCallback((entryId: string): boolean => {
+    const findEntry = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
+      for (const item of items) {
+        if (item.kind === "jingwei-entry" && item.metadata?.entryId === entryId) return item;
+        const nested = item.children ? findEntry(item.children) : null;
+        if (nested) return nested;
+      }
+      return null;
+    };
+    const target = findEntry(jingweiSections);
+    if (!target) return false;
+    handleOpen(target);
+    return true;
+  }, [handleOpen, jingweiSections]);
 
   // 伏笔看板"目标章节"跳转：按章节号在资源/文件树中找到章节节点并打开
   const handleJumpToChapter = useCallback((chapterNumber: number) => {
@@ -508,17 +561,22 @@ export function IdeWorkbench({
   const jingweiActions = useMemo(() => {
     if (!bookId) return undefined;
     return {
-      onSave: async (entryId: string, payload: { title: string; contentMd: string }) => {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
+      onSave: async (entryId: string, payload: { title: string; contentMd: string; priorityTier?: "auto" | "core" | "relevant" | "reference" }) => {
+        const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!response.ok) {
+          const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
+          throw new Error(data?.error?.message ?? `经纬保存失败（${response.status}）`);
+        }
       },
       onDelete: async (entryId: string) => {
-        await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
+        const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "DELETE",
         });
+        if (!response.ok) throw new Error(`经纬删除失败（${response.status}）`);
       },
     };
   }, [bookId]);
@@ -587,6 +645,10 @@ export function IdeWorkbench({
       // 只读查询走 HTTP；任何写入都必须经叙述者与 Runtime 权限确认。
       case "write.preflight":
         return post("/write/preflight", input);
+      // 卷驾驶舱只读当前卷上下文：复用写作就绪路由的 outline.volume(action=get)，
+      // 不新造 fetch 封装，也不在前端拼装书籍路径或 narrator 标识。
+      case "outline.volume":
+        return fetchJson(`${base}/write/volume`);
       default:
         throw new Error(`写作视图不直接执行 ${tool}，请在对话中调用。`);
     }
@@ -600,6 +662,16 @@ export function IdeWorkbench({
   }) => {
     void onSendToNarrator?.(buildWriteRequestMessage(payload));
   }, [onSendToNarrator]);
+
+  /**
+   * 章节保存包装：保存落盘后派发写作进度事件，写作视图据此自动刷新就绪、
+   * 卷驾驶舱与本章提议，去掉「保存后必须手动点刷新」。用一次性 DOM 事件而非
+   * 轮询定时器：只在真正保存成功时触发一次。
+   */
+  const handleSaveWithProgress = useCallback(async (node: WorkbenchResourceNode, content: string) => {
+    await onSave(node, content);
+    window.dispatchEvent(new CustomEvent(WRITING_PROGRESS_EVENT, { detail: { reason: "chapter-save" } }));
+  }, [onSave]);
 
   /**
    * 建书十一问完成 → 把 Skills 启用确认与深追问交给叙述者。
@@ -755,7 +827,13 @@ export function IdeWorkbench({
     if (type === "delete" && typeof filePath === "string") {
       const isDir = node.metadata?.isDirectory === true;
       const warning = isDir ? "此文件夹及其所有内容将被递归删除，" : "";
-      if (!confirm(`确认删除 "${node.title}"？${warning}此操作不可撤销。`)) return;
+      const confirmed = await confirmDialog({
+        title: `确认删除 "${node.title}"？`,
+        description: `${warning}此操作不可撤销。`,
+        confirmLabel: "删除",
+        destructive: true,
+      });
+      if (!confirmed) return;
       try {
         await ensureOk(await fetch(`/api/books/${encodeURIComponent(bookId)}/files/delete`, {
           method: "POST",
@@ -764,10 +842,10 @@ export function IdeWorkbench({
         }), "删除文件失败");
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "rename" && typeof filePath === "string") {
-      const newName = action.newName ?? prompt("新名称:", node.title);
+      const newName = action.newName ?? await promptDialog({ title: "重命名", defaultValue: node.title, confirmLabel: "重命名" });
       if (!newName || newName === node.title) return;
       const dir = filePath.replace(/[/\\][^/\\]+$/, "");
       const newPath = dir ? `${dir}/${newName}` : newName;
@@ -779,12 +857,12 @@ export function IdeWorkbench({
         }), "重命名文件失败");
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "create") {
       // 经纬条目创建
       if (node.kind === "jingwei-section" && bookId) {
-        const title = prompt("新条目标题:");
+        const title = await promptDialog({ title: "新建经纬条目", placeholder: "条目标题", confirmLabel: "创建" });
         if (!title) return;
         const category = node.metadata?.category ?? node.id.replace("jingwei-section:", "");
         try {
@@ -794,11 +872,11 @@ export function IdeWorkbench({
             body: JSON.stringify({ title, category, contentMd: "" }),
           }), "创建经纬条目失败");
         } catch (err) {
-          alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+          await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
         }
       }
     } else if (type === "create-file" && typeof filePath === "string") {
-      const name = action.name ?? prompt("文件名:");
+      const name = action.name ?? await promptDialog({ title: "新建文件", placeholder: "文件名", confirmLabel: "创建" });
       if (!name) return;
       const dir = node.metadata?.isDirectory ? filePath : filePath.replace(/[/\\][^/\\]+$/, "");
       try {
@@ -809,10 +887,10 @@ export function IdeWorkbench({
         }), "创建文件失败");
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "create-folder" && typeof filePath === "string") {
-      const name = action.name ?? prompt("文件夹名:");
+      const name = action.name ?? await promptDialog({ title: "新建文件夹", placeholder: "文件夹名", confirmLabel: "创建" });
       if (!name) return;
       const dir = node.metadata?.isDirectory ? filePath : filePath.replace(/[/\\][^/\\]+$/, "");
       try {
@@ -823,7 +901,7 @@ export function IdeWorkbench({
         }), "创建文件夹失败");
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "copy-path" && typeof filePath === "string") {
       try {
@@ -861,7 +939,7 @@ export function IdeWorkbench({
         }
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "move" && action.targetNode && typeof filePath === "string") {
       const targetPath = action.targetNode.metadata?.filePath;
@@ -877,7 +955,7 @@ export function IdeWorkbench({
         }), "移动文件失败");
         refreshFileTree();
       } catch (err) {
-        alert(`操作失败: ${err instanceof Error ? err.message : "未知错误"}`);
+        await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
       }
     } else if (type === "open-side") {
       setSplitNodeId(node.id);
@@ -885,7 +963,7 @@ export function IdeWorkbench({
       // 章节专属操作：打开章节文件，用户通过编辑器工具栏操作
       handleOpen(node);
     }
-  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen]);
+  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen, confirmDialog, promptDialog, alertDialog]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -909,8 +987,8 @@ export function IdeWorkbench({
   }, [activeNode, handleResourceAction]);
 
   return (
-    <TooltipProvider>
-    <div className="flex h-full w-full bg-background" style={{ minHeight: 0 }}>
+    <>
+      <div className="flex h-full w-full bg-background" style={{ minHeight: 0 }}>
       {/* ── ActivityBar（VS Code 规范：48px 宽，48px 项高，左侧 2px 强调条，背景加重区分） ── */}
       <div className="flex h-full w-12 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary">
         <div className="flex flex-col items-center gap-1 pt-2">
@@ -964,6 +1042,7 @@ export function IdeWorkbench({
                   onOpenLorePanel={handleOpenLorePanel}
                   onSendToNarrator={onSendToNarrator}
                   onRunWrite={handleRunWrite}
+                  visible={activeView === "write" && sidebarVisible && !showSettings}
                 />,
                 getContainer("write")!
               )}
@@ -1059,7 +1138,7 @@ export function IdeWorkbench({
                               nodes={nodes}
                               bookId={bookId}
                               repositoryPath={repositoryPath}
-                              onSave={onSave}
+                              onSave={handleSaveWithProgress}
                               onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
                               onGuideComplete={handleGuideCompleteWithOnboarding}
                               chapterActions={chapterActions}
@@ -1067,6 +1146,7 @@ export function IdeWorkbench({
                               toolbarSlotRef={toolbarSlotRef}
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
+                              onOpenJingweiEntry={handleOpenJingweiEntry}
                             />
                           </div>
                         ))}
@@ -1077,13 +1157,14 @@ export function IdeWorkbench({
                         nodes={nodes}
                         bookId={bookId}
                         repositoryPath={repositoryPath}
-                        onSave={onSave}
+                        onSave={handleSaveWithProgress}
                         onCanvasContextChange={handleCanvasContextChange}
                         onGuideComplete={handleGuideCompleteWithOnboarding}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         toolbarSlotRef={toolbarSlotRef}
                         onJumpToChapter={handleJumpToChapter}
+                        onOpenJingweiEntry={handleOpenJingweiEntry}
                       />
                     ) : (
                       <ViewEmptyState view={activeView} />
@@ -1116,11 +1197,12 @@ export function IdeWorkbench({
                         nodes={nodes}
                         bookId={bookId}
                         repositoryPath={repositoryPath}
-                        onSave={onSave}
+                        onSave={handleSaveWithProgress}
                         onCanvasContextChange={() => {}}
                         chapterActions={chapterActions}
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
+                        onOpenJingweiEntry={handleOpenJingweiEntry}
                       />
                     </div>
                   </div>
@@ -1172,7 +1254,9 @@ export function IdeWorkbench({
       placeholder={paletteMode === "commands" ? "输入命令..." : "输入文件名..."}
       mode={paletteMode}
     />
-    </TooltipProvider>
+    {/* 文件/条目操作弹层（confirm/prompt/alert 的产品内实现） */}
+      {dialogElement}
+    </>
   );
 }
 
@@ -1185,24 +1269,20 @@ function ActivityBarItem({ icon: Icon, label, active, onClick }: {
   onClick: () => void;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <button
-          type="button"
-          onClick={onClick}
-          aria-label={label}
-          className={`relative flex h-12 w-12 items-center justify-center rounded-md transition-colors ${
-            active
-              ? "bg-primary/10 text-foreground"
-              : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
-          }`}
-        >
-          {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-primary" />}
-          <Icon className="size-[22px]" strokeWidth={active ? 2.2 : 1.6} />
-        </button>
-      </TooltipTrigger>
-      <TooltipContent side="right">{label}</TooltipContent>
-    </Tooltip>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`relative flex h-12 w-12 items-center justify-center rounded-md transition-colors ${
+        active
+          ? "bg-primary/10 text-foreground"
+          : "text-muted-foreground/60 hover:bg-muted/50 hover:text-foreground"
+      }`}
+    >
+      {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[2px] rounded-r bg-primary" />}
+      <Icon className="size-[22px]" strokeWidth={active ? 2.2 : 1.6} />
+    </button>
   );
 }
 
@@ -1237,36 +1317,21 @@ function ChatHeader({
       <div className="flex h-9 items-center border-b border-border px-3">
         <span className="flex-1 truncate text-sm text-muted-foreground">{activeTitle}</span>
         <div className="flex items-center gap-1">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button type="button" onClick={() => { setShowHistory(v => !v); setSearchQuery(""); }}
-                className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                <Clock className="size-4" />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">会话历史</TooltipContent>
-          </Tooltip>
+          <button type="button" title="会话历史" aria-label="会话历史" onClick={() => { setShowHistory(v => !v); setSearchQuery(""); }}
+            className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
+            <Clock className="size-4" />
+          </button>
           {onCreateSession && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" onClick={onCreateSession}
-                  className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                  <PlusCircle className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">新建对话</TooltipContent>
-            </Tooltip>
+            <button type="button" title="新建对话" aria-label="新建对话" onClick={onCreateSession}
+              className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
+              <PlusCircle className="size-4" />
+            </button>
           )}
           {onSwitchToAgent && (
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" onClick={onSwitchToAgent}
-                  className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                  <MessageSquare className="size-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">切换到 Agent 对话模式</TooltipContent>
-            </Tooltip>
+            <button type="button" title="切换到 Agent 对话模式" aria-label="切换到 Agent 对话模式" onClick={onSwitchToAgent}
+              className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
+              <MessageSquare className="size-4" />
+            </button>
           )}
         </div>
       </div>

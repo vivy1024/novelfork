@@ -1,7 +1,7 @@
 /**
  * outline.volume — 卷级大纲（volume outline）读写与建议。
  *
- * 结构化真相存 story/volume_outline.json；同时维护 volume_outline.md 作者可读副本。
+ * 结构化真相存经纬 outline 条目的 fields_json.volumes；volume_outline.md 只是作者可读导出物。
  * 不写 lore canon；suggest 只出草案，需 action=set 才落盘。
  */
 
@@ -21,8 +21,17 @@ import {
   type EndgameReserve,
   type OverdraftReport,
 } from "./endgame-reserve.js";
+import { DEFAULT_VOLUME_DIRECTORY, volumeDirectoryName } from "../engine/writing-resource/chapter-layout.js";
 
 export type VolumeStatus = "planned" | "active" | "done";
+export type MainlineBeatStatus = "planned" | "active" | "done";
+
+export interface VolumeMainlineBeat {
+  readonly id: string;
+  readonly title: string;
+  readonly status: MainlineBeatStatus;
+  readonly notes?: string;
+}
 
 /** 卷纲在经纬中的条目标题（唯一权威承载）。 */
 const VOLUME_ENTRY_TITLE = "卷纲";
@@ -33,6 +42,11 @@ export interface VolumeEntry {
   readonly chapterRange: { readonly from: number; readonly to: number };
   readonly goal: string;
   readonly status: VolumeStatus;
+  /** 本卷目标章数/字数：用于进度展示，不直接替代 chapterRange 硬门。 */
+  readonly targetChapters?: number;
+  readonly targetWords?: number;
+  /** 本卷必须推进的主线节点；完成状态用于上下文和驾驶舱展示。 */
+  readonly mainlineBeats?: readonly VolumeMainlineBeat[];
   readonly notes?: string;
 }
 
@@ -106,6 +120,32 @@ function positiveInt(value: unknown, fallback: number): number {
   return Number.isFinite(num) && num > 0 ? num : fallback;
 }
 
+function optionalPositiveInt(value: unknown): number | undefined {
+  const num = Math.trunc(Number(value));
+  return Number.isFinite(num) && num > 0 ? num : undefined;
+}
+
+function parseMainlineBeatStatus(value: unknown): MainlineBeatStatus {
+  const status = trimText(value).toLowerCase();
+  return status === "active" || status === "done" ? status : "planned";
+}
+
+function normalizeMainlineBeats(value: unknown): VolumeMainlineBeat[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (!item || typeof item !== "object") return [];
+    const record = item as Record<string, unknown>;
+    const title = trimText(record.title ?? record.name);
+    if (!title) return [];
+    return [{
+      id: trimText(record.id) || `beat-${index + 1}`,
+      title,
+      status: parseMainlineBeatStatus(record.status),
+      ...(trimText(record.notes) ? { notes: trimText(record.notes) } : {}),
+    }];
+  });
+}
+
 /** 归一化外部传入的 volumes；非法条目被丢弃。 */
 export function normalizeVolumes(input: readonly unknown[] | undefined): VolumeEntry[] {
   if (!Array.isArray(input)) return [];
@@ -118,12 +158,18 @@ export function normalizeVolumes(input: readonly unknown[] | undefined): VolumeE
     const range = (record.chapterRange ?? {}) as Record<string, unknown>;
     const from = positiveInt(range.from ?? record.startChapter, 1);
     const toRaw = positiveInt(range.to ?? record.endChapter, from);
+    const targetChapters = optionalPositiveInt(record.targetChapters);
+    const targetWords = optionalPositiveInt(record.targetWords);
+    const mainlineBeats = normalizeMainlineBeats(record.mainlineBeats);
     out.push({
       id: trimText(record.id) || `vol-${index + 1}`,
       title,
       chapterRange: { from, to: Math.max(from, toRaw) },
       goal: trimText(record.goal),
       status: parseStatus(record.status),
+      ...(targetChapters ? { targetChapters } : {}),
+      ...(targetWords ? { targetWords } : {}),
+      ...(mainlineBeats.length > 0 ? { mainlineBeats } : {}),
       ...(trimText(record.notes) ? { notes: trimText(record.notes) } : {}),
     });
   }
@@ -147,13 +193,122 @@ export function pickCurrentVolume(
   return volumes[0] ?? null;
 }
 
+/**
+ * 当前卷上下文。写作链路读取卷纲的唯一入口：
+ * 此前 write-preflight 与 pipeline.write 各自实现一遍「当前卷」推导，
+ * 结果卷目标只进了 preflight 结果、没进生成上下文。
+ */
+export interface CurrentVolumeContext {
+  readonly volumes: readonly VolumeEntry[];
+  readonly current: VolumeEntry | null;
+  /** 当前卷在 volumes 中的序号（1 基）。无卷纲时为 0。 */
+  readonly index: number;
+  /** 目标章号是否落在当前卷区间内。无卷纲时为 null，表示不作判定。 */
+  readonly inRange: boolean | null;
+}
+
+export function loadCurrentVolumeContext(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber?: number,
+): CurrentVolumeContext {
+  const outline = readOutlineFromLedger(storage, bookId);
+  const volumes = outline?.volumes ?? [];
+  if (volumes.length === 0) {
+    return { volumes: [], current: null, index: 0, inRange: null };
+  }
+  const current = pickCurrentVolume(volumes, chapterNumber);
+  if (!current) return { volumes, current: null, index: 0, inRange: null };
+  const inRange = typeof chapterNumber === "number" && chapterNumber > 0
+    ? chapterNumber >= current.chapterRange.from && chapterNumber <= current.chapterRange.to
+    : null;
+  return {
+    volumes,
+    current,
+    index: volumes.findIndex((volume) => volume.id === current.id) + 1,
+    inRange,
+  };
+}
+
+/**
+ * 渲染「本卷目标」这一层写作上下文。全书意图与近 1-3 章焦点之间原本是空的，
+ * 卷目标缺位正是长篇章节与卷主线脱节的直接原因。
+ */
+export function renderCurrentVolumeFocus(
+  context: CurrentVolumeContext,
+  chapterNumber?: number,
+): string {
+  const volume = context.current;
+  if (!volume) return "";
+  const { from, to } = volume.chapterRange;
+  const total = Math.max(0, to - from + 1);
+  const lines = [
+    `第 ${context.index} 卷《${volume.title}》（第 ${from}-${to} 章，共 ${total} 章，状态 ${volume.status}）`,
+    volume.targetChapters ? `本卷目标章数：${volume.targetChapters}` : "",
+    volume.targetWords ? `本卷目标字数：${volume.targetWords}` : "",
+    volume.goal ? `本卷剧情目标：${volume.goal}` : "本卷剧情目标：未填写（卷纲缺目标，无法据此约束本章走向）",
+    volume.mainlineBeats?.length
+      ? `本卷主线节点：${volume.mainlineBeats.map((beat) => `${beat.status === "done" ? "✓" : beat.status === "active" ? "→" : "○"}${beat.title}`).join("；")}`
+      : "本卷主线节点：未结构化填写（可在 outline.volume 中补充 mainlineBeats）",
+  ].filter(Boolean);
+  if (typeof chapterNumber === "number" && chapterNumber > 0 && total > 0) {
+    const offset = chapterNumber - from + 1;
+    if (offset >= 1 && offset <= total) {
+      lines.push(`本章位置：本卷第 ${offset}/${total} 章，剩余 ${total - offset} 章收束本卷目标。`);
+    }
+  }
+  if (context.inRange === false) {
+    lines.push(`注意：第 ${chapterNumber} 章不在本卷区间内，卷纲与实际进度已脱节。`);
+  }
+  if (volume.notes) lines.push(`卷备注：${volume.notes}`);
+  return lines.join("\n");
+}
+
+/**
+ * 检查卷区间是否连续无重叠。volumes 已按 from 升序（normalizeVolumes 保证）。
+ * 返回三段式说明；无问题返回 null。
+ */
+export function findVolumeRangeIssue(volumes: readonly VolumeEntry[]): string | null {
+  for (let index = 1; index < volumes.length; index += 1) {
+    const previous = volumes[index - 1];
+    const current = volumes[index];
+    if (!previous || !current) continue;
+    if (current.chapterRange.from <= previous.chapterRange.to) {
+      return [
+        `发生了什么：《${previous.title}》（第 ${previous.chapterRange.from}-${previous.chapterRange.to} 章）与《${current.title}》（第 ${current.chapterRange.from}-${current.chapterRange.to} 章）的章号区间重叠。`,
+        "为什么要看：重叠区间里的章会同时属于两卷，当前卷的推导结果取决于遍历顺序，写作时可能带着另一卷的目标走，卷末收束对不上。",
+        `建议怎么做：把《${current.title}》的起始章改为 ${previous.chapterRange.to + 1}，或收窄《${previous.title}》的结束章。`,
+      ].join("\n");
+    }
+    if (current.chapterRange.from > previous.chapterRange.to + 1) {
+      const gapFrom = previous.chapterRange.to + 1;
+      const gapTo = current.chapterRange.from - 1;
+      return [
+        `发生了什么：第 ${gapFrom}-${gapTo} 章不属于任何卷（《${previous.title}》与《${current.title}》之间有空洞）。`,
+        "为什么要看：落在空洞里的章不受任何卷目标约束，写出来无法归属任何主线；写到那里时会被 volume-range-violation 直接拦下。",
+        `建议怎么做：把《${previous.title}》的结束章延到 ${gapTo}，或把《${current.title}》的起始章提前到 ${gapFrom}，也可以在中间补一卷。`,
+      ].join("\n");
+    }
+  }
+  return null;
+}
+
 export function renderVolumeMarkdown(outline: VolumeOutline): string {
   const lines = ["# 卷纲", ""];
   for (const volume of outline.volumes) {
     const flag = volume.status === "active" ? "（当前）" : volume.status === "done" ? "（已完成）" : "";
     lines.push(`## ${volume.title}${flag}`);
     lines.push(`- 章节范围：第 ${volume.chapterRange.from}-${volume.chapterRange.to} 章`);
+    if (volume.targetChapters) lines.push(`- 目标章数：${volume.targetChapters}`);
+    if (volume.targetWords) lines.push(`- 目标字数：${volume.targetWords}`);
     if (volume.goal) lines.push(`- 本卷目标：${volume.goal}`);
+    if (volume.mainlineBeats?.length) {
+      lines.push("- 主线节点：");
+      for (const beat of volume.mainlineBeats) {
+        const status = beat.status === "done" ? "已完成" : beat.status === "active" ? "进行中" : "待推进";
+        lines.push(`  - [${status}] ${beat.title}${beat.notes ? `：${beat.notes}` : ""}`);
+      }
+    }
     if (volume.notes) lines.push(`- 备注：${volume.notes}`);
     lines.push("");
   }
@@ -176,6 +331,28 @@ function readOutlineFromLedger(
     updatedAt: new Date(entry.updatedAt || Date.now()).toISOString(),
     endgameReserve: parseEndgameReserve(entry.fields.endgameReserve),
   };
+}
+
+/**
+ * 根据经纬 outline 的 chapterRange 解析章节所在的真实卷目录。
+ * 没有卷纲时使用卷01；区间空洞与末尾越界使用下一个确定的卷序号，
+ * 具体的越界写作拦截仍由写前硬门负责。
+ */
+export function resolveChapterVolumeDirectory(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+): string {
+  const outline = readOutlineFromLedger(storage, bookId);
+  if (!outline || outline.volumes.length === 0) return DEFAULT_VOLUME_DIRECTORY;
+
+  const hit = outline.volumes.findIndex((volume) => (
+    chapterNumber >= volume.chapterRange.from && chapterNumber <= volume.chapterRange.to
+  ));
+  if (hit >= 0) return volumeDirectoryName(hit + 1);
+
+  const next = outline.volumes.findIndex((volume) => chapterNumber < volume.chapterRange.from);
+  return volumeDirectoryName(next >= 0 ? next + 1 : outline.volumes.length + 1);
 }
 
 /**
@@ -373,6 +550,14 @@ export async function handleOutlineVolume(input: OutlineVolumeInput): Promise<Ou
   const volumes = normalizeVolumes(input.volumes);
   if (volumes.length === 0) {
     return { ...base, ok: false, summary: "action=set 需要至少 1 个有效 volume（含 title）。", error: "invalid-volumes" };
+  }
+
+  // 区间连续性是卷纲能当约束用的前提：重叠会让同一章同时属于两卷（当前卷推导
+  // 结果取决于遍历顺序），空洞会让洞里的章不受任何卷目标约束，两者都会让
+  // pipeline.write 的 volume-range-violation 拦在错误的位置上。
+  const rangeIssue = findVolumeRangeIssue(volumes);
+  if (rangeIssue) {
+    return { ...base, ok: false, summary: rangeIssue, error: "volume-range-invalid" };
   }
 
   const updatedAt = now().toISOString();

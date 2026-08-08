@@ -317,6 +317,20 @@ describe("StateManager", () => {
 
       expect(next).toBe(13);
     });
+
+    it("counts recursively stored volume chapters when resolving next chapter progress", async () => {
+      const bookId = "nested-volume-progress-book";
+      const chaptersDir = join(manager.bookDir(bookId), "chapters");
+      await mkdir(join(chaptersDir, "卷01"), { recursive: true });
+      await mkdir(join(chaptersDir, "卷02", "支线"), { recursive: true });
+      await Promise.all([
+        writeFile(join(chaptersDir, "卷01", "0001_First.md"), "chapter 1", "utf-8"),
+        writeFile(join(chaptersDir, "卷02", "支线", "0002_Second.md"), "chapter 2", "utf-8"),
+      ]);
+
+      await expect(manager.getNextChapterNumber(bookId)).resolves.toBe(3);
+      await expect(manager.getPersistedChapterCount(bookId)).resolves.toBe(2);
+    });
   });
 
   // -------------------------------------------------------------------------
@@ -1190,6 +1204,42 @@ describe("StateManager", () => {
         { number: 3, title: "Title Three", status: "audit-failed", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: ["pacing"], lengthWarnings: [] },
       ]);
     }
+
+    it("deletes nested volume files and indexed paths during rollback", async () => {
+      const nestedBookId = "rollback-nested-volume-book";
+      const bookDir = manager.bookDir(nestedBookId);
+      const storyDir = join(bookDir, "story");
+      const chaptersDir = join(bookDir, "chapters");
+      await mkdir(storyDir, { recursive: true });
+      await mkdir(join(chaptersDir, "卷01"), { recursive: true });
+      await mkdir(join(chaptersDir, "卷02"), { recursive: true });
+      await mkdir(join(chaptersDir, "卷03"), { recursive: true });
+
+      await Promise.all([
+        writeFile(join(storyDir, "current_state.md"), "# State at chapter 1", "utf-8"),
+        writeFile(join(storyDir, "pending_hooks.md"), "# Hooks at chapter 1", "utf-8"),
+        writeFile(join(storyDir, "chapter_summaries.md"), "# Summaries", "utf-8"),
+      ]);
+      await manager.snapshotState(nestedBookId, 1);
+
+      const now = "2026-04-01T00:00:00Z";
+      const chapterIndex = [
+        { number: 1, title: "Keep", status: "approved", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: [], lengthWarnings: [], fileName: "卷01/0001_Keep.md" },
+        { number: 2, title: "Discard", status: "approved", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: [], lengthWarnings: [], fileName: "卷02/0002_Discard.md" },
+        { number: 3, title: "Indexed only", status: "approved", wordCount: 100, createdAt: now, updatedAt: now, auditIssues: [], lengthWarnings: [], fileName: "卷03/indexed-only.md" },
+      ];
+      await Promise.all([
+        writeFile(join(chaptersDir, "卷01", "0001_Keep.md"), "keep", "utf-8"),
+        writeFile(join(chaptersDir, "卷02", "0002_Discard.md"), "discard", "utf-8"),
+        writeFile(join(chaptersDir, "卷03", "indexed-only.md"), "discard by index", "utf-8"),
+        writeFile(join(chaptersDir, "index.json"), JSON.stringify(chapterIndex), "utf-8"),
+      ]);
+
+      await expect(manager.rollbackToChapter(nestedBookId, 1)).resolves.toEqual([2, 3]);
+      await expect(stat(join(chaptersDir, "卷01", "0001_Keep.md"))).resolves.toBeDefined();
+      await expect(stat(join(chaptersDir, "卷02", "0002_Discard.md"))).rejects.toThrow();
+      await expect(stat(join(chaptersDir, "卷03", "indexed-only.md"))).rejects.toThrow();
+    });
 
     it("restores state to the target chapter and removes subsequent chapters", async () => {
       await setupRollbackBook();

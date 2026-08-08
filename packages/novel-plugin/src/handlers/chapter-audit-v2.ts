@@ -36,6 +36,7 @@ export interface AuditV2Input {
   }>;
   readonly povCharacter?: string;
   readonly wordTarget?: number;
+  readonly checks?: readonly string[];
 }
 
 export interface AuditV2Violation {
@@ -201,15 +202,25 @@ function checkSoftConstraints(content: string, input: AuditV2Input): AuditV2Viol
 }
 
 export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
-  const { content, canonEntries, sceneSpec, povCharacter } = input;
+  const { content, canonEntries, sceneSpec, povCharacter, checks } = input;
   const wordCount = countWords(content);
 
+  const enabledChecks = checks && checks.length > 0 ? new Set(checks) : null;
+  const runCanon = !enabledChecks || enabledChecks.has("canon") || enabledChecks.has("continuity");
+  const runPov = !enabledChecks || enabledChecks.has("pov") || enabledChecks.has("continuity");
+
   const hardViolations = [
-    ...checkCanonViolations(content, canonEntries),
-    ...checkPovViolations(content, sceneSpec, povCharacter),
+    ...(runCanon ? checkCanonViolations(content, canonEntries) : []),
+    ...(runPov ? checkPovViolations(content, sceneSpec, povCharacter) : []),
   ];
 
-  const softViolations = checkSoftConstraints(content, input);
+  const softViolations = checkSoftConstraints(content, input).filter((v) => {
+    if (!enabledChecks) return true;
+    if (v.ruleId === "S1") return enabledChecks.has("rhythm") || enabledChecks.has("continuity");
+    if (v.ruleId === "S2") return enabledChecks.has("ai_taste");
+    if (v.ruleId === "S5") return enabledChecks.has("character") || enabledChecks.has("continuity");
+    return true;
+  });
 
   const passed = hardViolations.length === 0;
   const totalIssues = hardViolations.length + softViolations.length;

@@ -195,6 +195,45 @@ describe("Runtime overlay replay", () => {
 		).toBe(false);
 	});
 
+	test("allows an exact dependency-ordered patch chain on the same target", async () => {
+		const fixture = await createOverlayFixture();
+		const finalResult = 'export const mode = "final";\n';
+		const secondPatch = [
+			"diff --git a/server/app.ts b/server/app.ts",
+			"--- a/server/app.ts",
+			"+++ b/server/app.ts",
+			"@@ -1 +1 @@",
+			'-export const mode = "overlay";',
+			'+export const mode = "final";',
+			"",
+		].join("\n");
+		await write(join(fixture.overlay, "patches", "server-app.final.patch"), secondPatch);
+		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
+		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
+			operations: Array<Record<string, unknown>>;
+		};
+		manifest.operations.splice(2, 0, {
+			id: "product-route-final",
+			type: "patch",
+			target: "server/app.ts",
+			patch: "patches/server-app.final.patch",
+			patchSha256: sha256(secondPatch),
+			baseSha256: sha256(fixture.result),
+			resultSha256: sha256(finalResult),
+			dependsOn: ["product-route-hooks"],
+			reason: "Apply a second exact patch after the first target mutation.",
+		});
+		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+
+		await replayRuntimeOverlay({
+			overlayRoot: fixture.overlay,
+			stagingRoot: fixture.staging,
+			upstream,
+		});
+
+		expect(await readFile(join(fixture.staging, "server", "app.ts"), "utf8")).toBe(finalResult);
+	});
+
 	test("patches a staging tree nested below another Git worktree and removes temporary metadata", async () => {
 		const fixture = await createOverlayFixture();
 		await initializeGitRepository(root);

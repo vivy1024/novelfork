@@ -1,5 +1,10 @@
-import { BookOpen, Circle, CircleDot, CheckCircle2 } from "lucide-react";
+import { BookOpen, CheckCircle2, Circle, CircleDot } from "lucide-react";
 
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+
+import { SecondaryModelCalls } from "./SecondaryModelCalls";
+import { ToolResultSurface } from "./ToolResultSurface";
 import { asRecord, getNumber, getString, getToolResultData, type ToolResultRenderer, type ToolResultRendererContext } from "./types";
 
 interface VolumeRow {
@@ -29,7 +34,7 @@ function readVolumes(value: unknown): VolumeRow[] {
 }
 
 function StatusIcon({ status }: { status: string }) {
-  if (status === "done") return <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" />;
+  if (status === "done") return <CheckCircle2 className="size-3.5 shrink-0 text-primary" />;
   if (status === "active") return <CircleDot className="size-3.5 shrink-0 text-primary" />;
   return <Circle className="size-3.5 shrink-0 text-muted-foreground" />;
 }
@@ -56,34 +61,25 @@ export const OutlineVolumeCard: ToolResultRenderer = (context: ToolResultRendere
   const summary = getString(data.summary);
 
   return (
-    <div data-testid="tool-result-outline-volume" className="space-y-2 rounded-lg border border-border bg-card p-3 text-sm">
-      <div className="flex items-center gap-2">
-        <BookOpen className="size-4 text-primary" />
-        <span className="font-medium">
-          {isSuggestion ? "卷纲草案（未保存）" : "卷纲"}
-        </span>
-        <span className="text-xs text-muted-foreground">{rows.length} 卷</span>
-      </div>
-
+    <ToolResultSurface
+      testId="tool-result-outline-volume"
+      title={isSuggestion ? "卷纲草案（未保存）" : "卷纲"}
+      icon={<BookOpen className="size-4 text-primary" />}
+      meta={`${rows.length} 卷`}
+    >
       {rows.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          {summary || "经纬里还没有卷纲。可以用 outline.volume(action=suggest) 生成草案。"}
-        </p>
+        <p className="text-xs text-muted-foreground">{summary || "经纬里还没有卷纲。可以用 outline.volume(action=suggest) 生成草案。"}</p>
       ) : (
-        <ul className="space-y-1.5">
+        <ul className="flex flex-col gap-1.5">
           {rows.map((volume) => (
             <li key={volume.id} className="flex items-start gap-1.5 text-xs">
               <StatusIcon status={volume.status} />
               <div className="min-w-0">
-                <p className="text-foreground">
-                  {volume.title}
-                  {volume.from && volume.to ? (
-                    <span className="ml-1 text-muted-foreground">第 {volume.from}–{volume.to} 章</span>
-                  ) : null}
-                  <span className="ml-1 text-muted-foreground">· {STATUS_LABEL[volume.status] ?? volume.status}</span>
-                  {volume.id && volume.id === currentId && (
-                    <span className="ml-1 text-primary">当前卷</span>
-                  )}
+                <p className="flex flex-wrap items-center gap-1 text-foreground">
+                  <span>{volume.title}</span>
+                  {volume.from && volume.to && <span className="text-muted-foreground">第 {volume.from}–{volume.to} 章</span>}
+                  <Badge variant="outline">{STATUS_LABEL[volume.status] ?? volume.status}</Badge>
+                  {volume.id === currentId && <Badge variant="secondary">当前卷</Badge>}
                 </p>
                 {volume.goal && <p className="text-muted-foreground">{volume.goal}</p>}
               </div>
@@ -93,10 +89,13 @@ export const OutlineVolumeCard: ToolResultRenderer = (context: ToolResultRendere
       )}
 
       {isSuggestion && (
-        <p className="border-t border-border pt-2 text-xs text-muted-foreground">
-          这是草案，还没写进经纬。确认后用 outline.volume(action=set) 保存。
-        </p>
+        <>
+          <Separator />
+          <p className="text-xs text-muted-foreground">这是草案，还没写进经纬。确认后用 outline.volume(action=set) 保存。</p>
+        </>
       )}
-    </div>
+
+      <SecondaryModelCalls value={data.modelCalls} />
+    </ToolResultSurface>
   );
 };

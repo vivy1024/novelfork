@@ -1,3 +1,5 @@
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
+
 /**
  * Generate a structured briefing for the AI before writing a chapter.
  * This is injected into the system prompt.
@@ -9,11 +11,15 @@ export async function buildChapterBriefing(bookId: string, chapterNumber: number
   const sections: string[] = [];
 
   // 1. Active characters (lifecycle = 'active')
+  const characterCategories = getJingweiCategoryAliases("characters");
   const activeChars = storage.sqlite.prepare(
     `SELECT title, fields_json FROM story_jingwei_entry
-     WHERE book_id = ? AND category = 'character' AND lifecycle = 'active' AND deleted_at IS NULL
+     WHERE book_id = ?
+       AND category IN (${sqlInPlaceholders(characterCategories)})
+       AND lifecycle = 'active'
+       AND deleted_at IS NULL
      ORDER BY sort_order LIMIT 10`
-  ).all(bookId) as Array<{ title: string; fields_json: string }>;
+  ).all(bookId, ...characterCategories) as Array<{ title: string; fields_json: string }>;
 
   if (activeChars.length > 0) {
     const charLines = activeChars.map(c => {
@@ -53,12 +59,19 @@ export async function buildChapterBriefing(bookId: string, chapterNumber: number
   }
 
   // 4. Hard constraints (global visibility)
+  const hardConstraintCategories = [
+    ...getJingweiCategoryAliases("world-model"),
+    ...getJingweiCategoryAliases("power-system"),
+    ...getJingweiCategoryAliases("rules"),
+  ].filter((category, index, all) => all.indexOf(category) === index);
   const constraints = storage.sqlite.prepare(
     `SELECT title, content_md FROM story_jingwei_entry
-     WHERE book_id = ? AND category IN ('worldview', 'special', 'power-system')
-     AND visibility_rule_json LIKE '%global%' AND deleted_at IS NULL
+     WHERE book_id = ?
+       AND category IN (${sqlInPlaceholders(hardConstraintCategories)})
+       AND visibility_rule_json LIKE '%global%'
+       AND deleted_at IS NULL
      LIMIT 5`
-  ).all(bookId) as Array<{ title: string; content_md: string }>;
+  ).all(bookId, ...hardConstraintCategories) as Array<{ title: string; content_md: string }>;
 
   if (constraints.length > 0) {
     const cLines = constraints.map(c => `- ${c.title}：${(c.content_md || "").slice(0, 80)}`);

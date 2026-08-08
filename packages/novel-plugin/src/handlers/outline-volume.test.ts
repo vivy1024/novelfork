@@ -7,10 +7,14 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   buildRuleVolumeSuggestion,
+  findVolumeRangeIssue,
   handleOutlineVolume,
+  loadCurrentVolumeContext,
   normalizeVolumes,
   pickCurrentVolume,
+  renderCurrentVolumeFocus,
   renderVolumeMarkdown,
+  resolveChapterVolumeDirectory,
   type VolumeEntry,
 } from "./outline-volume.js";
 
@@ -137,6 +141,138 @@ describe("renderVolumeMarkdown", () => {
     expect(md).toContain("## 开篇卷（当前）");
     expect(md).toContain("第 1-20 章");
     expect(md).toContain("立住主角动机");
+  });
+});
+
+describe("loadCurrentVolumeContext / renderCurrentVolumeFocus", () => {
+  async function seedVolumes(): Promise<void> {
+    const bookRoot = await createBook({ chapters: [1, 2] });
+    await handleOutlineVolume({
+      bookId: "book-1",
+      bookRoot,
+      action: "set",
+      storage: activeStorage,
+      volumes: [
+        { title: "开篇卷", chapterRange: { from: 1, to: 30 }, goal: "立住动机", status: "active" },
+        { title: "中盘卷", chapterRange: { from: 31, to: 60 }, goal: "扩大冲突" },
+      ],
+    });
+  }
+
+  it("resolves physical chapter directories from the ledger chapterRange", async () => {
+    await seedVolumes();
+    expect(resolveChapterVolumeDirectory(activeStorage!, "book-1", 12)).toBe("卷01");
+    expect(resolveChapterVolumeDirectory(activeStorage!, "book-1", 45)).toBe("卷02");
+    expect(resolveChapterVolumeDirectory(activeStorage!, "book-1", 99)).toBe("卷03");
+  });
+
+  it("renders the volume goal layer that used to be missing from writing context", async () => {
+    await seedVolumes();
+    const context = loadCurrentVolumeContext(activeStorage!, "book-1", 12);
+    expect(context.current?.title).toBe("开篇卷");
+    expect(context.index).toBe(1);
+    expect(context.inRange).toBe(true);
+
+    const focus = renderCurrentVolumeFocus(context, 12);
+    expect(focus).toContain("第 1 卷《开篇卷》");
+    expect(focus).toContain("第 1-30 章");
+    expect(focus).toContain("立住动机");
+    expect(focus).toContain("本卷第 12/30 章");
+  });
+
+  it("flags a chapter number that falls outside the active volume range", async () => {
+    await seedVolumes();
+    const context = loadCurrentVolumeContext(activeStorage!, "book-1", 45);
+    expect(context.current?.title).toBe("开篇卷");
+    expect(context.inRange).toBe(false);
+    expect(renderCurrentVolumeFocus(context, 45)).toContain("不在本卷区间内");
+  });
+
+  it("does not judge range when no volume outline exists", async () => {
+    await createBook();
+    const context = loadCurrentVolumeContext(activeStorage!, "book-1", 3);
+    expect(context.current).toBeNull();
+    expect(context.inRange).toBeNull();
+    expect(renderCurrentVolumeFocus(context, 3)).toBe("");
+  });
+});
+
+describe("volume planning fields", () => {
+  it("normalizes targets and mainline beats without breaking legacy fields", () => {
+    const volumes = normalizeVolumes([{
+      title: "主线卷",
+      chapterRange: { from: 1, to: 30 },
+      goal: "完成第一次觉醒",
+      targetChapters: 30,
+      targetWords: 60_000,
+      mainlineBeats: [
+        { id: "beat-1", title: "发现异常", status: "done" },
+        { name: "完成觉醒", status: "active", notes: "不能提前揭示真相" },
+      ],
+    }]);
+    expect(volumes[0]?.targetChapters).toBe(30);
+    expect(volumes[0]?.targetWords).toBe(60_000);
+    expect(volumes[0]?.mainlineBeats).toEqual([
+      { id: "beat-1", title: "发现异常", status: "done" },
+      { id: "beat-2", title: "完成觉醒", status: "active", notes: "不能提前揭示真相" },
+    ]);
+
+    const markdown = renderVolumeMarkdown({ bookId: "book-1", volumes, updatedAt: "2026-08-06T00:00:00.000Z" });
+    expect(markdown).toContain("目标章数：30");
+    expect(markdown).toContain("目标字数：60000");
+    expect(markdown).toContain("[已完成] 发现异常");
+    expect(markdown).toContain("[进行中] 完成觉醒");
+  });
+});
+
+describe("findVolumeRangeIssue", () => {
+  it("rejects overlapping volume ranges on set", async () => {
+    const bookRoot = await createBook();
+    const result = await handleOutlineVolume({
+      bookId: "book-1",
+      bookRoot,
+      action: "set",
+      storage: activeStorage,
+      volumes: [
+        { title: "开篇卷", chapterRange: { from: 1, to: 30 } },
+        { title: "中盘卷", chapterRange: { from: 25, to: 60 } },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("volume-range-invalid");
+    expect(result.summary).toContain("区间重叠");
+    expect(result.summary).toContain("建议怎么做");
+    // 校验失败不得落盘
+    const rows = activeStorage!.sqlite.prepare(
+      `SELECT COUNT(*) AS c FROM story_jingwei_entry WHERE book_id = ? AND category = 'outline'`,
+    ).get("book-1") as { c: number };
+    expect(rows.c).toBe(0);
+  });
+
+  it("rejects a gap between volume ranges on set", async () => {
+    const bookRoot = await createBook();
+    const result = await handleOutlineVolume({
+      bookId: "book-1",
+      bookRoot,
+      action: "set",
+      storage: activeStorage,
+      volumes: [
+        { title: "开篇卷", chapterRange: { from: 1, to: 30 } },
+        { title: "中盘卷", chapterRange: { from: 41, to: 60 } },
+      ],
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("volume-range-invalid");
+    expect(result.summary).toContain("第 31-40 章不属于任何卷");
+  });
+
+  it("accepts contiguous ranges", () => {
+    const volumes = normalizeVolumes([
+      { title: "一", chapterRange: { from: 1, to: 30 } },
+      { title: "二", chapterRange: { from: 31, to: 60 } },
+      { title: "三", chapterRange: { from: 61, to: 90 } },
+    ]);
+    expect(findVolumeRangeIssue(volumes)).toBeNull();
   });
 });
 

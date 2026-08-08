@@ -41,10 +41,13 @@ const editableLabels: Record<string, string> = {
 };
 
 function CapabilityNotice({ node }: { node: WorkbenchResourceNode }) {
+  const unsupportedReason = typeof node.metadata?.unsupportedReason === "string"
+    ? node.metadata.unsupportedReason
+    : null;
   return (
-    <div className="resource-viewer__capabilities" aria-label="资源能力">
+    <div className="resource-viewer__capabilities flex flex-wrap items-center gap-1" aria-label="资源能力">
       {node.capabilities.readonly ? <span>只读资源</span> : null}
-      {node.capabilities.unsupported ? <span>不支持的资源类型</span> : null}
+      {node.capabilities.unsupported ? <span title={unsupportedReason ?? undefined}>不支持的资源类型</span> : null}
       {node.capabilities.apply ? <span>可应用</span> : null}
     </div>
   );
@@ -73,53 +76,6 @@ function ViewerShell({ node, label, children }: { node: WorkbenchResourceNode; l
   );
 }
 
-function TextBody({ node, label, onContentChange, onTabComplete }: { node: WorkbenchResourceNode; label: string; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"] }) {
-  const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
-  const [completing, setCompleting] = useState(false);
-
-  const handleKeyDown = useCallback(async (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Tab" || event.shiftKey || !onTabComplete || readonly || completing) return;
-    event.preventDefault();
-    const textarea = event.currentTarget;
-    const cursorPos = textarea.selectionStart;
-    const content = textarea.value;
-
-    setCompleting(true);
-    try {
-      const completion = await onTabComplete(content, cursorPos);
-      if (completion) {
-        const before = content.slice(0, cursorPos);
-        const after = content.slice(cursorPos);
-        const newContent = before + completion + after;
-        onContentChange?.(newContent);
-        // Move cursor to end of completion
-        requestAnimationFrame(() => {
-          textarea.selectionStart = textarea.selectionEnd = cursorPos + completion.length;
-        });
-      }
-    } finally {
-      setCompleting(false);
-    }
-  }, [onTabComplete, readonly, completing, onContentChange]);
-
-  return (
-    <div className="flex flex-col h-full min-h-0 relative p-3">
-      <textarea aria-label={label} readOnly={readonly} value={node.content ?? ""} className="flex-1 min-h-0 resize-none w-full rounded-lg border border-input bg-transparent px-2.5 py-2 text-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-input/30" onChange={(event) => onContentChange?.(event.currentTarget.value)} onKeyDown={(e) => void handleKeyDown(e)} />
-      {completing && (
-        <span className="absolute bottom-5 right-5 text-[10px] text-muted-foreground animate-pulse">续写中…</span>
-      )}
-    </div>
-  );
-}
-
-function renderEditableText(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
-  const label = editableLabels[node.kind] ?? "资源正文";
-  return (
-    <ViewerShell node={node} label={resourceViewerRegistry[node.kind as ResourceViewerKind]?.label ?? "资源"}>
-      <TextBody node={node} label={label} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
-    </ViewerShell>
-  );
-}
 
 function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
@@ -251,11 +207,63 @@ function renderJingweiFile(node: WorkbenchResourceNode, options: ResourceViewerR
   );
 }
 
+const LAZY_MARKDOWN_PREVIEW_BYTES = 256 * 1024;
+
+function utf8ByteLength(value: string): number {
+  return typeof TextEncoder === "undefined" ? value.length : new TextEncoder().encode(value).byteLength;
+}
+
+function MarkdownResourceBody({
+  node,
+  onContentChange,
+  bookId,
+}: {
+  node: WorkbenchResourceNode;
+  onContentChange?: (content: string) => void;
+  bookId?: string;
+}) {
+  const content = node.content ?? "";
+  const readonly = node.capabilities.readonly || !node.capabilities.edit || node.capabilities.unsupported;
+  const isLarge = utf8ByteLength(content) > LAZY_MARKDOWN_PREVIEW_BYTES;
+  const [previewLarge, setPreviewLarge] = useState(!isLarge);
+
+  if (isLarge && !previewLarge) {
+    return (
+      <div className="flex h-full min-h-0 items-center justify-center p-6">
+        <div className="max-w-md space-y-3 rounded-lg border border-border bg-card p-4 text-center">
+          <p className="text-sm font-medium">这是一个较大的 Markdown 文件</p>
+          <p className="text-xs leading-relaxed text-muted-foreground">
+            为避免首次打开卡顿，当前先不建立完整编辑器文档。文件仍可读取；需要格式化预览时再加载。
+          </p>
+          <p className="text-[11px] text-muted-foreground">
+            大小约 {Math.ceil(utf8ByteLength(content) / 1024)} KB，渲染阈值为 256 KB。
+          </p>
+          <Button type="button" size="sm" onClick={() => setPreviewLarge(true)}>
+            加载 Markdown 预览
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <ChapterEditor
+      content={content}
+      readonly={readonly}
+      onContentChange={onContentChange}
+      placeholder="Markdown 文件内容…"
+      ariaLabel="Markdown 文件内容"
+      showMinimap={false}
+      bookId={bookId}
+    />
+  );
+}
+
 function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRenderOptions = {}) {
   const isNarrativeMemory = node.metadata?.isNarrativeMemoryEntry === true;
   return (
-    <ViewerShell node={node} label={isNarrativeMemory ? "叙事记忆" : "Story 文本文件"}>
-      <TextBody node={node} label={isNarrativeMemory ? "记忆内容" : "文本文件正文"} onContentChange={options.onContentChange} onTabComplete={options.onTabComplete} />
+    <ViewerShell node={node} label={isNarrativeMemory ? "叙事记忆" : "Markdown 文件"}>
+      <MarkdownResourceBody node={node} onContentChange={options.onContentChange} bookId={options.bookId} />
     </ViewerShell>
   );
 }
@@ -739,16 +747,24 @@ function renderImageFile(node: WorkbenchResourceNode, options: ResourceViewerRen
 }
 
 function renderGeneric(node: WorkbenchResourceNode) {
+  const unsupportedReason = typeof node.metadata?.unsupportedReason === "string"
+    ? node.metadata.unsupportedReason
+    : "当前查看器没有为这个资源类型提供安全的读取与编辑能力。";
   return (
     <ViewerShell node={node} label="通用资源">
       <div className="flex flex-col gap-3 p-4">
-        <div className="text-center">
-          <p className="text-sm text-muted-foreground">此资源类型暂不支持直接编辑</p>
-          <p className="text-xs text-muted-foreground/60 mt-1">类型：{node.kind}</p>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-sm font-medium">当前文件不能在工作台内直接打开</p>
+          <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{unsupportedReason}</p>
+          <p className="mt-2 text-xs text-muted-foreground/70">类型：{node.kind}</p>
+          {node.path ? <p className="mt-1 break-all text-xs text-muted-foreground/70">路径：{node.path}</p> : null}
         </div>
-        <pre data-testid="raw-resource-node" className="max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
-          {JSON.stringify(node, null, 2)}
-        </pre>
+        <details>
+          <summary className="cursor-pointer text-xs text-muted-foreground">查看原始资源信息</summary>
+          <pre data-testid="raw-resource-node" className="mt-2 max-h-80 overflow-auto rounded-md bg-muted p-3 text-xs whitespace-pre-wrap">
+            {JSON.stringify(node, null, 2)}
+          </pre>
+        </details>
       </div>
     </ViewerShell>
   );

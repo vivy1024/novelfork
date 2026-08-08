@@ -1,9 +1,11 @@
+import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 import {
   splitChapters,
   StateManager,
+  getStorageDatabase,
   type ChapterMeta,
   type LLMClient,
 } from "@vivy1024/novelfork-core";
@@ -13,11 +15,26 @@ import type {
   ToolExecutionContext,
 } from "@vivy1024/novelfork-core/plugins";
 import { analyzeStyle } from "../engine/index.js";
+import {
+  exportPendingHooksMarkdown,
+  findLedgerEntryById,
+  findLedgerEntryByTitle,
+  listLedgerEntries,
+  softDeleteLedgerEntry,
+  upsertLedgerEntry,
+} from "./jingwei-ledger-store.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
-import { executePipelineWrite } from "./pipeline-write-service.js";
+import { executePipelineWrite, type PipelineWriteInput } from "./pipeline-write-service.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
+import {
+  DEFAULT_VOLUME_DIRECTORY,
+  chapterRelativePath,
+  readChapterIndex as readChapterLayoutIndex,
+  writeChapterIndex,
+  type ChapterIndexRecord,
+} from "../engine/writing-resource/chapter-layout.js";
 
 export interface TrustedRuntimeBookBinding {
   readonly bookId: string;
@@ -52,6 +69,18 @@ function record(value: unknown): Record<string, unknown> | undefined {
 
 function stringArray(value: unknown): string[] | undefined {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : undefined;
+}
+
+function writingSkillAcknowledgements(
+  value: unknown,
+): PipelineWriteInput["acknowledgedSkills"] {
+  if (!Array.isArray(value)) return undefined;
+  const acknowledgements = value.flatMap((item) => {
+    const entry = record(item);
+    if (!entry || typeof entry.slug !== "string" || typeof entry.quote !== "string") return [];
+    return [{ slug: entry.slug, quote: entry.quote }];
+  });
+  return acknowledgements.length > 0 ? acknowledgements : undefined;
 }
 
 function trustedBookState(binding: TrustedRuntimeBookBinding): StateManager {
@@ -116,11 +145,20 @@ async function readBookConfig(binding: TrustedRuntimeBookBinding): Promise<Recor
   return parsed as Record<string, unknown>;
 }
 
-async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<Array<Record<string, unknown>>> {
+async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<ChapterIndexRecord[]> {
+  const indexed = await readChapterLayoutIndex(binding.root);
+  if (indexed.length > 0) return indexed;
+
+  // 兼容主迁移完成前缺少标准字段的旧索引；新写入始终走 chapter-layout 的标准记录。
   const raw = await readFile(join(binding.root, "chapters", "index.json"), "utf8").catch(() => "[]");
-  const parsed = JSON.parse(raw) as unknown;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw) as unknown;
+  } catch {
+    return [];
+  }
   return Array.isArray(parsed)
-    ? parsed.filter((entry): entry is Record<string, unknown> => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
+    ? parsed.filter((entry): entry is ChapterIndexRecord => Boolean(entry) && typeof entry === "object" && !Array.isArray(entry))
     : [];
 }
 
@@ -161,6 +199,7 @@ async function chapterAudit(
     ...(Array.isArray(input.canonEntries) ? { canonEntries: input.canonEntries as never } : {}),
     ...(typeof input.povCharacter === "string" ? { povCharacter: input.povCharacter } : {}),
     ...(typeof input.wordTarget === "number" ? { wordTarget: input.wordTarget } : {}),
+    ...(Array.isArray(input.checks) ? { checks: stringArray(input.checks) } : {}),
   });
   return ok(audit.summary, audit);
 }
@@ -226,27 +265,26 @@ async function rewriteApply(
   if (!chapterNumber || !start || !end || start > end || newText === null) {
     return fail("invalid-input", "需要有效的 chapterNumber、lineRange.start/end 和 newText。");
   }
-  return withBookLock(binding, async () => {
-    const chapter = await readBoundChapter(binding, chapterNumber);
-    if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
-    const lines = chapter.data.content.split("\n");
-    if (end > lines.length) return fail("invalid-range", `行号范围无效（1-${lines.length}）。`);
-    const inserted = newText.split("\n");
-    const next = mode === "insert_after"
-      ? [...lines.slice(0, end), ...inserted, ...lines.slice(end)]
-      : [...lines.slice(0, start - 1), ...inserted, ...lines.slice(end)];
-    const written = await handleChapterWrite(
-      { bookId: binding.bookId, chapterNumber, content: next.join("\n") },
-      { bookRoot: binding.root, purpose: "revision" },
-    );
-    if (!written.ok) return fail(written.error, written.summary);
-    return ok(
-      mode === "insert_after"
-        ? `已在第 ${end} 行后插入 ${inserted.length} 行。`
-        : `已替换第 ${start}-${end} 行。`,
-      { bookId: binding.bookId, chapterNumber, mode, linesAffected: inserted.length },
-    );
-  });
+  const chapter = await readBoundChapter(binding, chapterNumber);
+  if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
+  const expectedHash = createHash("sha256").update(chapter.data.content, "utf8").digest("hex");
+  const lines = chapter.data.content.split("\n");
+  if (end > lines.length) return fail("invalid-range", `行号范围无效（1-${lines.length}）。`);
+  const inserted = newText.split("\n");
+  const next = mode === "insert_after"
+    ? [...lines.slice(0, end), ...inserted, ...lines.slice(end)]
+    : [...lines.slice(0, start - 1), ...inserted, ...lines.slice(end)];
+  const written = await handleChapterWrite(
+    { bookId: binding.bookId, chapterNumber, content: next.join("\n"), expectedHash },
+    { bookRoot: binding.root, purpose: "revision" },
+  );
+  if (!written.ok) return fail(written.error, written.summary);
+  return ok(
+    mode === "insert_after"
+      ? `已在第 ${end} 行后插入 ${inserted.length} 行。`
+      : `已替换第 ${start}-${end} 行。`,
+    { bookId: binding.bookId, chapterNumber, mode, linesAffected: inserted.length },
+  );
 }
 
 /** 只允许单段安全目录名；空结果由调用方回退到内容哈希。 */
@@ -410,19 +448,20 @@ async function importChapters(
     const startNumber = existing.reduce((max, entry) => Math.max(max, Number(entry.number) || 0), 0) + 1;
     const now = new Date().toISOString();
     let totalWords = 0;
-    const imported: Array<Record<string, unknown>> = [];
+    const imported: ChapterIndexRecord[] = [];
     for (let index = 0; index < chapters.length; index += 1) {
       const chapter = chapters[index]!;
       const number = startNumber + index;
-      const padded = String(number).padStart(4, "0");
-      const safeTitle = (chapter.title || `第${number}章`).replace(/[<>:"/\\|?*]/g, "_").slice(0, 50);
-      const fileName = `${padded}_${safeTitle}.md`;
-      const chapterContent = `# ${chapter.title || `第${number}章`}\n\n${chapter.content}`;
-      await writeFile(join(chaptersDir, fileName), chapterContent, "utf8");
+      const title = chapter.title || `第${number}章`;
+      const fileName = chapterRelativePath(DEFAULT_VOLUME_DIRECTORY, number, title);
+      const chapterContent = `# ${title}\n\n${chapter.content}`;
+      const chapterPath = join(chaptersDir, fileName);
+      await mkdir(dirname(chapterPath), { recursive: true });
+      await writeFile(chapterPath, chapterContent, "utf8");
       totalWords += chapter.content.length;
       imported.push({
         number,
-        title: chapter.title || `第${number}章`,
+        title,
         fileName,
         wordCount: chapter.content.length,
         status: "imported",
@@ -433,10 +472,9 @@ async function importChapters(
       });
       context.emitOutput?.(`已导入 ${index + 1}/${chapters.length} 章…`);
     }
-    await writeFile(
-      join(chaptersDir, "index.json"),
-      `${JSON.stringify([...existing, ...imported] satisfies Array<Record<string, unknown>>, null, 2)}\n`,
-      "utf8",
+    await writeChapterIndex(
+      binding.root,
+      [...existing, ...imported].sort((left, right) => left.number - right.number),
     );
     const profile = analyzeStyle(content.slice(0, 50000), sourceName);
     await writeFile(join(storyDir, "style_profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf8");
@@ -585,6 +623,7 @@ async function outlineVolume(
     ...(Array.isArray(input.volumes) ? { volumes: input.volumes } : {}),
     ...(typeof input.volumeCount === "number" ? { volumeCount: input.volumeCount } : {}),
     ...(typeof input.targetChapters === "number" ? { targetChapters: input.targetChapters } : {}),
+    ...(input.endgameReserve !== undefined ? { endgameReserve: input.endgameReserve } : {}),
     generateText: generator,
   });
   if (!result.ok) return fail(result.error ?? "outline-volume-failed", result.summary);
@@ -649,6 +688,7 @@ async function outlineSuggestNext(
 ): Promise<RuntimeToolResult> {
   const generator = requireGenerator(context);
   if (typeof generator !== "function") return generator;
+  const storage = getStorageDatabase();
   const index = await readChapterIndex(binding);
   const recentEntries = [...index]
     .sort((left, right) => Number(left.number) - Number(right.number))
@@ -660,18 +700,47 @@ async function outlineSuggestNext(
     const chapter = await readBoundChapter(binding, chapterNumber);
     if (chapter.ok && chapter.data) recent.push(`第${chapterNumber}章\n${chapter.data.content.slice(0, 2500)}`);
   }
-  const storyFiles = ["outline.md", "volume_outline.md", "current_focus.md", "pending_hooks.md"];
+
+  // 权威源：读取经纬 outline 与 foreshadowing，章摘要/章节索引，Narrative Memory
+  const outlineEntries = listLedgerEntries(storage, binding.bookId, "outline");
+  const foreshadowingEntries = listLedgerEntries(storage, binding.bookId, "foreshadowing");
+  const chapterSummaryEntries = listLedgerEntries(storage, binding.bookId, "chapter-summaries");
+
   const storyContext: string[] = [];
-  for (const fileName of storyFiles) {
-    const text = await readFile(join(binding.root, "story", fileName), "utf8").catch(() => "");
-    if (text.trim()) storyContext.push(`## ${fileName}\n${text.slice(0, 3000)}`);
+  if (outlineEntries.length > 0) {
+    storyContext.push(`## 卷纲/大纲\n${outlineEntries.map((e) => `### ${e.title}\n${e.contentMd}\n${JSON.stringify(e.fields)}`).join("\n\n")}`);
   }
+  if (foreshadowingEntries.length > 0) {
+    const activeHooks = foreshadowingEntries.filter((e) => e.fields.status !== "paid_off" && e.fields.status !== "resolved");
+    storyContext.push(`## 待回收伏笔\n${activeHooks.map((e) => `- ${e.title} (${JSON.stringify(e.fields)})`).join("\n")}`);
+  }
+  if (chapterSummaryEntries.length > 0) {
+    const recentSummaries = chapterSummaryEntries.slice(-5);
+    storyContext.push(`## 近期章节摘要\n${recentSummaries.map((e) => `- ${e.title}: ${e.contentMd}`).join("\n")}`);
+  }
+
+  // 读取 Narrative Memory 事实与事件
+  try {
+    const { ensureNarrativeMemorySchema, queryNarrativeFacts, listPendingNarrativeEvents } = await import("../engine/narrative-memory/storage.js");
+    ensureNarrativeMemorySchema(storage);
+    const facts = queryNarrativeFacts(storage, { bookId: binding.bookId, limit: 10 });
+    if (facts.length > 0) {
+      storyContext.push(`## Narrative Memory 动态事实\n${facts.map((f) => `- [${f.category}] ${f.subject} ${f.predicate} ${f.object}`).join("\n")}`);
+    }
+    const events = listPendingNarrativeEvents(storage, { bookId: binding.bookId, limit: 5 });
+    if (events.length > 0) {
+      storyContext.push(`## Narrative Memory 未决事件\n${events.map((e) => `- 第${e.chapterNumber}章: ${e.subject} ${e.predicate} ${e.object}`).join("\n")}`);
+    }
+  } catch {
+    // 允许忽略 Narrative Memory 异常
+  }
+
   const generated = await generator({
     messages: [
       { role: "system", content: "你是网文大纲编辑。返回严格 JSON 数组，每项包含 title、summary、hooks 三个字段。" },
       {
         role: "user",
-        content: `基于以下信息推荐下一章的 2-3 个方向。每个方向说明标题、50 字内摘要、推进的伏笔。\n\n${storyContext.join("\n\n") || "暂无大纲文件"}\n\n## 最近章节\n${recent.join("\n\n---\n\n") || "暂无章节"}`,
+        content: `基于以下信息推荐下一章的 2-3 个方向。每个方向说明标题、50 字内摘要、推进的伏笔。\n\n${storyContext.join("\n\n") || "暂无经纬大纲信息"}\n\n## 最近章节\n${recent.join("\n\n---\n\n") || "暂无章节"}`,
       },
     ],
     temperature: 0.6,
@@ -736,53 +805,104 @@ async function hooksManage(
   binding: TrustedRuntimeBookBinding,
 ): Promise<RuntimeToolResult> {
   const action = typeof input.action === "string" ? input.action : "";
-  const hooksPath = join(binding.root, "story", "pending_hooks.md");
-  const content = await readFile(hooksPath, "utf8").catch(() => "");
-  const lines = content.split("\n");
-  const hookLines = lines
-    .map((text, lineIndex) => ({ text, lineIndex }))
-    .filter((entry) => /^- \[[ x]\]/i.test(entry.text));
-  const listed = hookLines.map((entry, index) => ({
-    id: `hook-${index}`,
-    done: /^- \[x\]/i.test(entry.text),
-    text: entry.text.replace(/^- \[[ x]\]\s*/i, "").trim(),
-  }));
-  if (action === "list") return ok(`共 ${listed.length} 个伏笔。`, { hooks: listed });
+  const storage = getStorageDatabase();
+  const rawEntries = listLedgerEntries(storage, binding.bookId, "foreshadowing");
+  const listed = rawEntries.map((entry, idx) => {
+    const isDone = entry.fields.status === "paid_off" || entry.fields.status === "resolved";
+    const plantedChapter = typeof entry.fields.plantedChapter === "number" ? entry.fields.plantedChapter : undefined;
+    const payoffChapter = typeof entry.fields.payoffChapter === "number" ? entry.fields.payoffChapter : undefined;
+    return {
+      id: entry.id,
+      legacyIndexId: `hook-${idx}`,
+      done: isDone,
+      text: entry.title,
+      contentMd: entry.contentMd,
+      plantedChapter,
+      payoffChapter,
+      status: String(entry.fields.status ?? (isDone ? "paid_off" : "planted")),
+    };
+  });
+
+  if (action === "list") {
+    return ok(`共 ${listed.length} 个伏笔。`, {
+      hooks: listed.map((h) => ({
+        id: h.legacyIndexId,
+        entryId: h.id,
+        done: h.done,
+        text: h.text + (h.plantedChapter ? `（埋设于第${h.plantedChapter}章）` : "") + (h.done ? (h.payoffChapter ? `（兑现于第${h.payoffChapter}章）` : "（已兑现）") : ""),
+      })),
+    });
+  }
+
   if (action === "check_due") {
     const chapterNumber = optionalPositiveInteger(input.chapterNumber);
     const dueHooks = listed.filter((hook) => !hook.done && (!chapterNumber || (() => {
+      if (hook.plantedChapter) {
+        return chapterNumber - hook.plantedChapter >= 10;
+      }
       const planted = hook.text.match(/第(\d+)章/)?.[1];
       return planted ? chapterNumber - Number(planted) >= 10 : false;
     })()));
-    return ok(`${dueHooks.length} 个伏笔到期。`, { chapterNumber, dueHooks });
+    return ok(`${dueHooks.length} 个伏笔到期。`, {
+      chapterNumber,
+      dueHooks: dueHooks.map((h) => ({
+        id: h.id,
+        done: h.done,
+        text: h.text + (h.plantedChapter ? `（埋设于第${h.plantedChapter}章）` : ""),
+      })),
+    });
   }
 
   return withBookLock(binding, async () => {
-    await mkdir(dirname(hooksPath), { recursive: true });
     if (action === "plant") {
       const description = typeof input.description === "string" ? input.description.trim() : "";
       const chapterNumber = optionalPositiveInteger(input.chapterNumber);
       if (!description) return fail("invalid-input", "plant 需要 description。");
-      const line = `- [ ] ${description}${chapterNumber ? `（埋设于第${chapterNumber}章）` : ""}`;
-      const next = content.trim() ? `${content.trimEnd()}\n${line}\n` : `# 伏笔追踪\n\n${line}\n`;
-      await writeFile(hooksPath, next, "utf8");
+      upsertLedgerEntry(storage, {
+        bookId: binding.bookId,
+        category: "foreshadowing",
+        title: description,
+        contentMd: description,
+        fields: {
+          status: "planted",
+          ...(chapterNumber ? { plantedChapter: chapterNumber } : {}),
+        },
+        changedBy: "hooks.manage",
+        reason: "plant-hook",
+      });
+      await exportPendingHooksMarkdown(storage, binding.bookId, binding.root);
       return ok(`已埋设伏笔：${description}`, { action, description, chapterNumber });
     }
+
     const hookId = typeof input.hookId === "string" ? input.hookId : "";
-    const index = /^hook-(\d+)$/.exec(hookId)?.[1];
-    const selected = index === undefined ? undefined : hookLines[Number(index)];
+    const selected = listed.find((h) => h.id === hookId || h.legacyIndexId === hookId);
     if (!selected) return fail("hook-not-found", `伏笔 ${hookId || "(空)"} 不存在。`);
+
     if (action === "payoff") {
       const chapterNumber = optionalPositiveInteger(input.chapterNumber);
-      lines[selected.lineIndex] = selected.text.replace(/^- \[ \]/, "- [x]") + (chapterNumber ? `（兑现于第${chapterNumber}章）` : "（已兑现）");
-      await writeFile(hooksPath, lines.join("\n"), "utf8");
-      return ok(`伏笔已兑现：${listed[Number(index)]?.text ?? hookId}`, { action, hookId, chapterNumber });
+      upsertLedgerEntry(storage, {
+        bookId: binding.bookId,
+        category: "foreshadowing",
+        title: selected.text,
+        contentMd: selected.contentMd || selected.text,
+        fields: {
+          status: "paid_off",
+          ...(selected.plantedChapter ? { plantedChapter: selected.plantedChapter } : {}),
+          ...(chapterNumber ? { payoffChapter: chapterNumber } : {}),
+        },
+        changedBy: "hooks.manage",
+        reason: "payoff-hook",
+      });
+      await exportPendingHooksMarkdown(storage, binding.bookId, binding.root);
+      return ok(`伏笔已兑现：${selected.text}`, { action, hookId: selected.id, chapterNumber });
     }
+
     if (action === "delete") {
-      lines.splice(selected.lineIndex, 1);
-      await writeFile(hooksPath, lines.join("\n"), "utf8");
-      return ok(`已删除伏笔：${listed[Number(index)]?.text ?? hookId}`, { action, hookId });
+      softDeleteLedgerEntry(storage, binding.bookId, selected.id);
+      await exportPendingHooksMarkdown(storage, binding.bookId, binding.root);
+      return ok(`已删除伏笔：${selected.text}`, { action, hookId: selected.id });
     }
+
     return fail("invalid-action", `不支持的 action：${action}。`);
   });
 }
@@ -809,7 +929,9 @@ async function pipelineWrite(
         : {}),
       ...(typeof input.adversarialAudit === "boolean" ? { adversarialAudit: input.adversarialAudit } : {}),
       ...(typeof input.maxReviseRounds === "number" ? { maxReviseRounds: input.maxReviseRounds } : {}),
-      ...(typeof input.skipContextGate === "boolean" ? { skipContextGate: input.skipContextGate } : {}),
+      ...(writingSkillAcknowledgements(input.acknowledgedSkills)
+        ? { acknowledgedSkills: writingSkillAcknowledgements(input.acknowledgedSkills) }
+        : {}),
       ...(typeof input.requireFactCheckPass === "boolean" ? { requireFactCheckPass: input.requireFactCheckPass } : {}),
       ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
     },

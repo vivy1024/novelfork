@@ -319,6 +319,46 @@ async function reconcileSandboxRuntimeOverlay(
 		);
 	}
 
+	// A target may have an exact dependency-ordered patch chain. Inspect the
+	// materialized file once per target and treat a later operation's result as an
+	// already-applied prefix, rather than rejecting the earlier operation because the
+	// file has advanced beyond its own result hash.
+	const patchOperationsByTarget = new Map<
+		string,
+		Array<Extract<(typeof manifest.operations)[number], { type: "patch" }>>
+	>();
+	for (const operation of manifest.operations) {
+		if (operation.type !== "patch") continue;
+		const operations = patchOperationsByTarget.get(operation.target) ?? [];
+		operations.push(operation);
+		patchOperationsByTarget.set(operation.target, operations);
+	}
+
+	const patchPendingFromByTarget = new Map<string, number>();
+	for (const [targetName, operations] of patchOperationsByTarget) {
+		const target = join(runtimeRoot, targetName);
+		if (!existsSync(target) || !statSync(target).isFile()) {
+			throw new Error(`Isolated Runtime overlay patch target is missing: ${targetName}`);
+		}
+		const actualHash = sha256File(target);
+		let pendingFrom: number | undefined;
+		for (const [index, operation] of operations.entries()) {
+			if (actualHash === operation.baseSha256) {
+				pendingFrom = pendingFrom === undefined ? index : Math.min(pendingFrom, index);
+			}
+			if (actualHash === operation.resultSha256) {
+				const nextIndex = index + 1;
+				pendingFrom = pendingFrom === undefined ? nextIndex : Math.max(pendingFrom, nextIndex);
+			}
+		}
+		if (pendingFrom === undefined) {
+			throw new Error(
+				`Isolated Runtime overlay patch target has unexpected content: ${targetName}`,
+			);
+		}
+		patchPendingFromByTarget.set(targetName, pendingFrom);
+	}
+
 	const pendingOperations = manifest.operations.filter((operation) => {
 		if (operation.type === "copy") return false;
 		const target = join(runtimeRoot, operation.target);
@@ -330,15 +370,9 @@ async function reconcileSandboxRuntimeOverlay(
 			);
 		}
 
-		if (!existsSync(target) || !statSync(target).isFile()) {
-			throw new Error(`Isolated Runtime overlay patch target is missing: ${operation.target}`);
-		}
-		const actualHash = sha256File(target);
-		if (actualHash === operation.resultSha256) return false;
-		if (actualHash === operation.baseSha256) return true;
-		throw new Error(
-			`Isolated Runtime overlay patch target has unexpected content: ${operation.target}`,
-		);
+		const operations = patchOperationsByTarget.get(operation.target) ?? [];
+		const pendingFrom = patchPendingFromByTarget.get(operation.target);
+		return operations.indexOf(operation) >= (pendingFrom ?? operations.length);
 	});
 	if (pendingOperations.length === 0) return;
 

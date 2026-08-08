@@ -1,4 +1,4 @@
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
@@ -17,6 +17,7 @@ import {
 } from "../engine/index.js";
 
 import type { RouterContext } from "./context.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
 const SUPPORTED_PLATFORMS = ["qidian", "jjwxc", "fanqie", "qimao", "generic"] as const;
 const SENSITIVE_CATEGORIES = ["political", "sexual", "violence", "religious", "racial", "crime-glorify", "minor-protection", "medical-mislead", "custom"] as const;
@@ -78,12 +79,10 @@ function resolveChapterAiScore(meta: Record<string, unknown>, body: Record<strin
 }
 
 async function readChapterFile(ctx: RouterContext, bookId: string, chapterNumber: number): Promise<string> {
-  const chaptersDir = join(ctx.state.bookDir(bookId), "chapters");
-  const padded = String(chapterNumber).padStart(4, "0");
-  const files = await readdir(chaptersDir).catch(() => []);
-  const filename = files.find((file) => file.startsWith(padded) && file.endsWith(".md"));
-  if (!filename) return "";
-  return readFile(join(chaptersDir, filename), "utf-8").catch(() => "");
+  const bookRoot = ctx.state.bookDir(bookId);
+  const chapterFile = (await listChapterFiles(bookRoot)).find((file) => file.number === chapterNumber);
+  if (!chapterFile) return "";
+  return readFile(join(bookRoot, chapterFile.relativePath), "utf-8").catch(() => "");
 }
 
 async function loadChapters(ctx: RouterContext, bookId: string, body: Record<string, unknown>): Promise<ReadonlyArray<LoadedChapter>> {

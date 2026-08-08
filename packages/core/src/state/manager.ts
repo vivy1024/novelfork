@@ -2,7 +2,12 @@ import { readFile, writeFile, mkdir, readdir, rm, stat, unlink, open } from "nod
 import { join } from "node:path";
 import type { BookConfig } from "../models/book.js";
 import type { ChapterMeta } from "../models/chapter.js";
-import { bootstrapStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state-bootstrap.js";
+import {
+  bootstrapStructuredStateFromMarkdown,
+  listChapterFiles,
+  resolveChapterFilePaths,
+  resolveDurableStoryProgress,
+} from "./state-bootstrap.js";
 
 export interface StateManagerOptions {
   /**
@@ -244,20 +249,8 @@ export class StateManager {
 
   async getPersistedChapterCount(bookId: string): Promise<number> {
     const chaptersDir = join(this.bookDir(bookId), "chapters");
-    const chapterNumbers = new Set<number>();
-
-    try {
-      const files = await readdir(chaptersDir);
-      for (const file of files) {
-        const match = file.match(/^(\d+)_.*\.md$/);
-        if (!match) continue;
-        chapterNumbers.add(parseInt(match[1]!, 10));
-      }
-    } catch {
-      return 0;
-    }
-
-    return chapterNumbers.size;
+    const chapterFiles = await listChapterFiles(chaptersDir);
+    return new Set(chapterFiles.map((file) => file.chapterNumber)).size;
   }
 
   async loadChapterIndex(bookId: string): Promise<ReadonlyArray<ChapterMeta>> {
@@ -446,20 +439,24 @@ export class StateManager {
       }
     }
 
-    // Delete chapter markdown files for discarded chapters
-    try {
-      const files = await readdir(chaptersDir);
-      for (const file of files) {
-        const match = file.match(/^(\d+)_.*\.md$/);
-        if (!match) continue;
-        const num = parseInt(match[1]!, 10);
-        if (num > targetChapter) {
-          await unlink(join(chaptersDir, file)).catch(() => {});
-        }
-      }
-    } catch {
-      // chapters directory missing
+    // Delete chapter markdown files recursively. Indexed fileName paths are
+    // also removed so files whose names do not expose a chapter number cannot
+    // survive rollback.
+    const chapterFiles = await listChapterFiles(chaptersDir);
+    const chapterPathsToDelete = new Set(
+      chapterFiles
+        .filter((file) => file.chapterNumber > targetChapter)
+        .map((file) => file.path),
+    );
+    const indexedChapterPaths = await Promise.all(
+      discarded.map((chapterNumber) => resolveChapterFilePaths(chaptersDir, chapterNumber)),
+    );
+    for (const paths of indexedChapterPaths) {
+      for (const path of paths) chapterPathsToDelete.add(path);
     }
+    await Promise.all(
+      [...chapterPathsToDelete].map((path) => unlink(path).catch(() => undefined)),
+    );
 
     // Delete snapshots for discarded chapters
     const snapshotsDir = join(bookDir, "story", "snapshots");

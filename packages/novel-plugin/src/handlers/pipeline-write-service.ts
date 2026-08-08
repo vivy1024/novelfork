@@ -20,6 +20,7 @@ import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/
 import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
 import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
+import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { renderBeatBudget, checkBeatBudget } from "./beat-budget.js";
@@ -155,9 +156,14 @@ export interface PipelineWriteError {
     | "length-out-of-range"
     | "writing-skill-compliance-failed"
     | "context-not-ready"
+    | "preflight-execution-failed"
+    | "skill-verification-failed"
     | "fact-check-failed"
+    | "volume-range-violation"
     | "publish-blocked";
   readonly error: string;
+  readonly summary?: string;
+  readonly explanation?: string;
 }
 
 export function summarizeAuditIssueCategories(issues: readonly { severity?: string; type?: string; category?: string; ruleId?: string }[]): PipelineAuditIssueCategories {
@@ -261,6 +267,7 @@ type BuildPipelineContextPackageInput = Readonly<{
   chapterNumber: number;
   sceneSpec: SceneSpec;
   authorIntentDoc?: string;
+  volumeFocusDoc?: string;
   currentFocusDoc?: string;
   narrativeContext?: NarrativeContextPackage;
   jingweiContext?: string;
@@ -289,6 +296,9 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
     chapter: input.chapterNumber,
     selectedContext: [
       ...(input.authorIntentDoc ? [{ source: "story/author_intent.md", reason: "全书长视野创作意图（最高锚点，避免长篇跑偏主题）", excerpt: input.authorIntentDoc }] : []),
+      // 卷目标这一层此前是空的：卷纲只进 preflight 结果与 UI 标签，从不进生成上下文，
+      // 于是章节内容与本卷主线脱节。锚点顺序必须是 全书 → 本卷 → 近 1-3 章 → 本章。
+      ...(input.volumeFocusDoc ? [{ source: "outline/volume", reason: "本卷目标与章号区间（本章必须服务于本卷主线，不得提前收束或越卷取材）", excerpt: input.volumeFocusDoc }] : []),
       ...(input.currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: input.currentFocusDoc }] : []),
       { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(input.sceneSpec) },
       // 预算单独给一段可读文本：JSON 里的数字模型容易忽略，
@@ -381,6 +391,7 @@ export async function executePipelineWrite(
             ?? sceneSpec.title
             ?? "按场景蓝图推进本章",
           acceptFocusDefault: true,
+          ...(input.acknowledgedSkills ? { acknowledgedSkills: input.acknowledgedSkills } : {}),
           bookRoot: bookDir,
           cockpitState: {
             loadBookConfig: (id) => state.loadBookConfig(id),
@@ -388,16 +399,35 @@ export async function executePipelineWrite(
             bookDir: (id) => state.bookDir(id),
           },
         });
-        const hard = preflight.blockers.filter((item) => item.code === "empty-recent-progress" || item.code === "book-not-found");
+        const hard = preflight.blockers.filter((item) => (
+          item.code === "empty-recent-progress"
+          || item.code === "book-not-found"
+          || item.code === "skills-not-acknowledged"
+        ));
         if (hard.length > 0) {
+          const firstBlocker = hard[0];
+          const explanationText = firstBlocker?.explanation
+            ? `\n${firstBlocker.explanation.whatHappened}\n${firstBlocker.explanation.whyItMatters}\n${firstBlocker.explanation.suggestedAction}`
+            : "";
+          const summaryMsg = hard.map((item) => item.message).join("；");
           return {
             ok: false,
             code: "context-not-ready",
-            error: hard.map((item) => item.message).join("；"),
+            error: summaryMsg + explanationText,
+            summary: summaryMsg,
+            explanation: explanationText.trim(),
           };
         }
       } catch (err) {
-        logger?.debug(`[pipeline.write] Context gate skipped: ${err instanceof Error ? err.message : String(err)}`);
+        const detail = err instanceof Error ? err.message : String(err);
+        logger?.error(`[pipeline.write] Context gate failed closed: ${detail}`);
+        return {
+          ok: false,
+          code: "preflight-execution-failed",
+          error: `写前上下文预检执行失败：${detail}`,
+          summary: "写前上下文预检失败，已阻止生成。",
+          explanation: "预检依赖未能可靠读取，继续写作可能导致章节脱离当前正史上下文；请修复存储或上下文后重试。",
+        };
       }
     }
     // Skill 生效硬门：已启用技能就必须先提交原文引用，证明确实读过 SKILL.md。
@@ -412,7 +442,15 @@ export async function executePipelineWrite(
           body: skill.body ?? "",
         }));
       } catch (err) {
-        logger?.debug(`[pipeline.write] Skill acknowledgement gate skipped: ${err instanceof Error ? err.message : String(err)}`);
+        const detail = err instanceof Error ? err.message : String(err);
+        logger?.error(`[pipeline.write] Skill acknowledgement gate failed closed: ${detail}`);
+        return {
+          ok: false,
+          code: "skill-verification-failed",
+          error: `Writing Skills 确认门执行失败：${detail}`,
+          summary: "Writing Skills 无法可靠加载，已阻止生成。",
+          explanation: "系统无法确认当前启用技能的原文要求，继续写作可能绕过写作规范；请修复技能资源后重试。",
+        };
       }
       if (describeWritingSkillAcknowledgementRequirement(activeSkills).length > 0) {
         const verdict = verifyWritingSkillAcknowledgements({
@@ -421,15 +459,18 @@ export async function executePipelineWrite(
         });
         if (!verdict.ok) {
           const explanation = explainWritingSkillAcknowledgementVerdict({ verdict, skills: activeSkills });
+          const summaryMsg = `第${chapterNumber}章未通过 Writing Skills 确认门，未开始生成。`;
           return {
             ok: false,
             code: "skills-not-acknowledged",
             error: [
-              `第${chapterNumber}章未通过 Writing Skills 确认门，未开始生成。`,
+              summaryMsg,
               `发生了什么：${explanation.whatHappened}`,
               `为什么要看：${explanation.whyItMatters}`,
               `建议怎么做：${explanation.suggestedAction}`,
             ].join("\n"),
+            summary: summaryMsg,
+            explanation: `${explanation.whatHappened}\n${explanation.whyItMatters}\n${explanation.suggestedAction}`,
           };
         }
       }
@@ -524,6 +565,7 @@ export async function executePipelineWrite(
     // 此前 author_intent 只被 planner 消化成 goal，原文不进 writer 上下文 → 长篇易跑偏。
     let authorIntentDoc = "";
     let currentFocusDoc = "";
+    let volumeRanges: ReadonlyArray<{ readonly from: number; readonly to: number }> | undefined;
     try {
       const ctrl = await state.loadControlDocuments(bookId);
       authorIntentDoc = truncateDoc(ctrl.authorIntent);
@@ -532,11 +574,45 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] Failed to load control documents: ${err}`);
     }
 
+    // 卷目标层：卷纲此前只出现在 preflight 结果与 UI 标签里，从不进生成上下文。
+    // 章号越界是客观可判定的，直接硬拦；卷目标本身作为上下文交给模型理解。
+    let volumeFocusDoc = "";
+    try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const { loadCurrentVolumeContext, renderCurrentVolumeFocus } = await import("./outline-volume.js");
+      const volumeContext = loadCurrentVolumeContext(getStorageDatabase(), bookId, chapterNumber);
+      const ranges = volumeContext.volumes.map((volume) => volume.chapterRange);
+      volumeRanges = ranges.length > 0 ? ranges : undefined;
+      volumeFocusDoc = renderCurrentVolumeFocus(volumeContext, chapterNumber);
+      if (volumeContext.inRange === false && volumeContext.current) {
+        const { from, to } = volumeContext.current.chapterRange;
+        const owner = volumeContext.volumes.find(
+          (volume) => chapterNumber >= volume.chapterRange.from && chapterNumber <= volume.chapterRange.to,
+        );
+        return {
+          ok: false,
+          code: "volume-range-violation",
+          error: [
+            `发生了什么：第 ${chapterNumber} 章不在当前卷《${volumeContext.current.title}》的区间（第 ${from}-${to} 章）内。`,
+            owner
+              ? `为什么要看：该章号属于《${owner.title}》（第 ${owner.chapterRange.from}-${owner.chapterRange.to} 章）。带着错卷的目标写下去，本章会服务于错误的主线，卷末收束时必然对不上。`
+              : `为什么要看：该章号不属于任何已规划的卷，写下去这一章不受任何卷目标约束，卷纲与正文会彻底脱节。`,
+            owner
+              ? `建议怎么做：用 outline.volume 把《${owner.title}》的 status 设为 active，或修正卷区间后重写本章。`
+              : `建议怎么做：用 outline.volume 扩展卷区间覆盖第 ${chapterNumber} 章，或先补一卷再写。`,
+          ].join("\n"),
+        };
+      }
+    } catch (err) {
+      logger?.warn(`[pipeline.write] Failed to load volume focus: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // Build structured ContextPackage (优先 Narrative Memory，保留 legacy jingweiContext 兼容路径)
     const contextPackage = buildPipelineContextPackage({
       chapterNumber,
       sceneSpec,
       authorIntentDoc,
+      volumeFocusDoc,
       currentFocusDoc,
       narrativeContext,
       jingweiContext,
@@ -561,6 +637,7 @@ export async function executePipelineWrite(
       book,
       bookDir,
       chapterNumber,
+      volumeRanges,
       chapterIntent,
       contextPackage,
       ruleStack,
@@ -850,6 +927,11 @@ export async function executePipelineWrite(
           }
           return bookDir;
         },
+        resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
+          storage,
+          requestedBookId,
+          requestedChapterNumber,
+        ),
       });
       const metadata = {
         sceneSpec,

@@ -1,350 +1,207 @@
 import { getStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type {
-  JingweiChapterSummaryRecord,
-  JingweiCharacterArcRecord,
-  JingweiCharacterRecord,
-  JingweiConflictRecord,
-  JingweiLegacyContextItem,
-  JingweiEventRecord,
-  JingweiMode,
-  JingweiPremiseRecord,
-  JingweiSettingRecord,
-  JingweiWorldModelRecord,
   BuildJingweiLegacyContextInput,
   BuildJingweiLegacyContextResult,
-  VisibilityRule,
+  JingweiContextItemType,
+  JingweiContextSource,
+  JingweiMode,
+  StoryJingweiEntryRecord,
+  StoryJingweiSectionRecord,
 } from "../types.js";
 import { createBookRepository } from "../repositories/book-repo.js";
-import { createJingweiCharacterRepository } from "../repositories/character-repo.js";
-import { createJingweiChapterSummaryRepository } from "../repositories/chapter-summary-repo.js";
-import { createJingweiCharacterArcRepository } from "../repositories/character-arc-repo.js";
-import { createJingweiConflictRepository } from "../repositories/conflict-repo.js";
-import { createJingweiEventRepository } from "../repositories/event-repo.js";
-import { createJingweiPremiseRepository } from "../repositories/premise-repo.js";
-import { createJingweiSettingRepository } from "../repositories/setting-repo.js";
-import { createJingweiWorldModelRepository } from "../repositories/world-model-repo.js";
-import { matchTrackedByAliases } from "./alias-matcher.js";
+import { createStoryJingweiEntryRepository } from "../repositories/entry-repo.js";
+import { createStoryJingweiSectionRepository } from "../repositories/section-repo.js";
 import { composeJingweiContext, type ComposableJingweiContextItem } from "./compose-context.js";
 import { resolveNestedRefs } from "./nested-resolver.js";
 import { estimateTokens } from "./token-budget.js";
-import { filterEntriesVisibleAtChapter, getVisibilityRule } from "./visibility-filter.js";
-import { formatDescriptor, hasDescriptorContent, safeParseDescriptor } from "./format-descriptor.js";
+import { getEntryReadableContent, toJingweiReadableItem } from "../read-model/entry-summary.js";
+import { resolveJingweiReadCategory, type JingweiCategory } from "../read-model/category-map.js";
 
 export interface BuildJingweiLegacyContextOptions extends BuildJingweiLegacyContextInput {
   storage?: StorageDatabase;
 }
 
-interface CandidateJingweiContextItem extends ComposableJingweiContextItem {
-  aliasesJson?: string;
-  nestedRefsJson?: string;
-  visibilityRule: VisibilityRule;
-  visibilityRuleJson: string;
+interface CanonicalCandidate extends ComposableJingweiContextItem {
+  entry: StoryJingweiEntryRecord;
+  section: StoryJingweiSectionRecord;
+  readCategory: JingweiCategory;
+  nestedRefsJson: string;
 }
 
-function sourceFromRule(rule: VisibilityRule): JingweiLegacyContextItem["source"] {
-  return rule.type;
+function normalize(text: string | undefined): string {
+  return (text ?? "").trim().toLowerCase();
 }
 
-function priorityFromSource(source: JingweiLegacyContextItem["source"]): number {
-  if (source === "global") return 30;
-  if (source === "nested") return 20;
-  return 10;
+function isVisibleAtChapter(entry: StoryJingweiEntryRecord, currentChapter: number): boolean {
+  const { visibleAfterChapter, visibleUntilChapter } = entry.visibilityRule;
+  if (visibleAfterChapter !== undefined && currentChapter < visibleAfterChapter) return false;
+  if (visibleUntilChapter !== undefined && currentChapter > visibleUntilChapter) return false;
+  return true;
 }
 
-function makeItem(input: {
-  id: string;
-  type: JingweiLegacyContextItem["type"];
-  category?: string;
-  name: string;
-  rawContent: string;
-  source: JingweiLegacyContextItem["source"];
-  aliasesJson?: string;
-  nestedRefsJson?: string;
-  visibilityRule: VisibilityRule;
-  visibilityRuleJson: string;
-  updatedAt: Date;
-}): CandidateJingweiContextItem {
-  return {
-    id: input.id,
-    type: input.type,
-    ...(input.category ? { category: input.category } : {}),
-    name: input.name,
-    content: input.rawContent,
-    rawContent: input.rawContent,
-    priority: priorityFromSource(input.source),
-    source: input.source,
-    estimatedTokens: estimateTokens(input.rawContent),
-    aliasesJson: input.aliasesJson,
-    nestedRefsJson: input.nestedRefsJson,
-    visibilityRule: input.visibilityRule,
-    visibilityRuleJson: input.visibilityRuleJson,
-    updatedAt: input.updatedAt,
-  };
+function matchesScene(entry: StoryJingweiEntryRecord, sceneText: string): boolean {
+  const haystack = normalize(sceneText);
+  if (!haystack) return false;
+  return [entry.title, ...entry.aliases, ...entry.tags, ...(entry.visibilityRule.keywords ?? [])]
+    .map(normalize)
+    .filter(Boolean)
+    .some((needle) => haystack.includes(needle));
 }
 
-function characterToItem(row: JingweiCharacterRecord): CandidateJingweiContextItem {
-  const visibilityRule = getVisibilityRule(row);
-  return makeItem({
-    id: row.id,
-    type: "character",
-    name: row.name,
-    rawContent: row.summary,
-    source: sourceFromRule(visibilityRule),
-    aliasesJson: row.aliasesJson,
-    nestedRefsJson: "[]",
-    visibilityRule,
-    visibilityRuleJson: row.visibilityRuleJson,
-    updatedAt: row.updatedAt,
-  });
+function contextTypeForCategory(category: JingweiCategory): JingweiContextItemType {
+  if (category === "characters" || category === "relationships") return "character";
+  if (category === "timeline") return "event";
+  if (category === "chapter-summaries") return "chapter-summary";
+  if (category === "conflicts" || category === "foreshadowing") return "conflict";
+  if (category === "world-model") return "world-model";
+  if (category === "premise" || category === "outline") return "premise";
+  return "setting";
 }
 
-function eventToItem(row: JingweiEventRecord): CandidateJingweiContextItem {
-  const visibilityRule = getVisibilityRule(row);
-  return makeItem({
-    id: row.id,
-    type: "event",
-    name: row.name,
-    rawContent: row.summary,
-    source: sourceFromRule(visibilityRule),
-    aliasesJson: JSON.stringify([row.name]),
-    nestedRefsJson: "[]",
-    visibilityRule,
-    visibilityRuleJson: row.visibilityRuleJson,
-    updatedAt: row.updatedAt,
-  });
+function visibilitySource(entry: StoryJingweiEntryRecord): JingweiContextSource {
+  if (entry.visibilityRule.type === "global") return "global";
+  if (entry.visibilityRule.type === "nested") return "nested";
+  return "tracked";
 }
 
-function settingToItem(row: JingweiSettingRecord): CandidateJingweiContextItem {
-  const visibilityRule = getVisibilityRule(row);
-  return makeItem({
-    id: row.id,
-    type: "setting",
-    category: row.category,
-    name: row.name,
-    rawContent: row.content,
-    source: sourceFromRule(visibilityRule),
-    aliasesJson: JSON.stringify([row.name]),
-    nestedRefsJson: row.nestedRefsJson,
-    visibilityRule,
-    visibilityRuleJson: row.visibilityRuleJson,
-    updatedAt: row.updatedAt,
-  });
+function chapterNumberOf(entry: StoryJingweiEntryRecord): number | null {
+  const fieldValue = entry.fields.chapterNumber;
+  if (typeof fieldValue === "number" && Number.isFinite(fieldValue)) return fieldValue;
+  return entry.relatedChapterNumbers.find((value) => Number.isFinite(value)) ?? null;
 }
 
-function chapterSummaryToItem(row: JingweiChapterSummaryRecord): CandidateJingweiContextItem {
-  const visibilityRule: VisibilityRule = { type: "global", visibleAfterChapter: row.chapterNumber };
-  return makeItem({
-    id: row.id,
-    type: "chapter-summary",
-    name: row.title || `第 ${row.chapterNumber} 章`,
-    rawContent: row.summary,
-    source: "global",
-    aliasesJson: "[]",
-    nestedRefsJson: "[]",
-    visibilityRule,
-    visibilityRuleJson: JSON.stringify(visibilityRule),
-    updatedAt: row.updatedAt,
-  });
+function applyChapterSummaryWindow(candidates: CanonicalCandidate[], currentChapter: number): CanonicalCandidate[] {
+  const summaries = candidates
+    .filter((candidate) => candidate.readCategory === "chapter-summaries")
+    .filter((candidate) => {
+      const chapterNumber = chapterNumberOf(candidate.entry);
+      return chapterNumber === null || chapterNumber <= currentChapter;
+    })
+    .sort((a, b) => (chapterNumberOf(b.entry) ?? 0) - (chapterNumberOf(a.entry) ?? 0))
+    .slice(0, 15);
+  const summaryIds = new Set(summaries.map((candidate) => candidate.id));
+  return candidates.filter((candidate) => candidate.readCategory !== "chapter-summaries" || summaryIds.has(candidate.id));
 }
 
-function dedupeByBestSource<TItem extends ComposableJingweiContextItem>(items: readonly TItem[]): TItem[] {
-  const rank: Record<JingweiLegacyContextItem["source"], number> = { global: 3, nested: 2, tracked: 1 };
-  const byId = new Map<string, TItem>();
-
-  for (const item of items) {
-    const current = byId.get(item.id);
-    if (!current || rank[item.source] > rank[current.source]) {
-      byId.set(item.id, item);
+function buildNestedRefs(entries: readonly StoryJingweiEntryRecord[]): Map<string, string[]> {
+  const refs = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    refs.set(entry.id, new Set(entry.relatedEntryIds));
+  }
+  for (const entry of entries) {
+    if (entry.visibilityRule.type !== "nested") continue;
+    for (const parentId of entry.visibilityRule.parentEntryIds ?? []) {
+      const parentRefs = refs.get(parentId);
+      if (parentRefs) parentRefs.add(entry.id);
     }
   }
+  return new Map(Array.from(refs, ([id, values]) => [id, Array.from(values)]));
+}
 
+async function loadCanonicalCandidates(
+  storage: StorageDatabase,
+  bookId: string,
+  currentChapter: number,
+): Promise<CanonicalCandidate[]> {
+  const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(bookId);
+  const sectionById = new Map(sections.map((section) => [section.id, section]));
+  const entries = (await createStoryJingweiEntryRepository(storage).listForAi(bookId, sections.map((section) => section.id)))
+    .filter((entry) => isVisibleAtChapter(entry, currentChapter));
+  const nestedRefs = buildNestedRefs(entries);
+
+  const candidates = entries.flatMap((entry): CanonicalCandidate[] => {
+    const section = sectionById.get(entry.sectionId);
+    if (!section) return [];
+    const source = visibilitySource(entry);
+    const readable = toJingweiReadableItem(entry, section, source, "full");
+    const rawContent = getEntryReadableContent(entry, "full");
+    return [{
+      id: entry.id,
+      type: contextTypeForCategory(readable.category),
+      category: readable.category,
+      name: entry.title,
+      content: rawContent,
+      rawContent,
+      priority: readable.priority,
+      source,
+      estimatedTokens: estimateTokens(rawContent),
+      updatedAt: entry.updatedAt,
+      nestedRefsJson: JSON.stringify(nestedRefs.get(entry.id) ?? []),
+      entry,
+      section,
+      readCategory: readable.category,
+    }];
+  });
+
+  return applyChapterSummaryWindow(candidates, currentChapter);
+}
+
+function markNested(candidate: CanonicalCandidate): CanonicalCandidate {
+  return { ...candidate, source: "nested", priority: candidate.priority - 10 };
+}
+
+function dedupeByBestSource(items: readonly CanonicalCandidate[]): CanonicalCandidate[] {
+  const sourceRank: Record<JingweiContextSource, number> = { global: 3, tracked: 2, nested: 1 };
+  const byId = new Map<string, CanonicalCandidate>();
+  for (const item of items) {
+    const current = byId.get(item.id);
+    if (!current || sourceRank[item.source] > sourceRank[current.source]) byId.set(item.id, item);
+  }
   return Array.from(byId.values());
 }
 
-async function loadAllCandidateEntries(storage: StorageDatabase, bookId: string, currentChapter: number): Promise<CandidateJingweiContextItem[]> {
-  const characters = await createJingweiCharacterRepository(storage).listByBook(bookId);
-  const events = await createJingweiEventRepository(storage).listByBook(bookId);
-  const settings = await createJingweiSettingRepository(storage).listByBook(bookId);
-  const summaries = (await createJingweiChapterSummaryRepository(storage).listByBook(bookId))
-    .filter((summary) => summary.chapterNumber <= currentChapter)
-    .sort((a, b) => b.chapterNumber - a.chapterNumber)
-    .slice(0, 15); // 滑动窗口：只注入最近 15 章摘要，更早的靠经纬条目覆盖
-
-  return [
-    ...characters.map(characterToItem),
-    ...events.map(eventToItem),
-    ...settings.map(settingToItem),
-    ...summaries.map(chapterSummaryToItem),
-  ];
-}
-
-function markNested(item: CandidateJingweiContextItem): CandidateJingweiContextItem {
-  return {
-    ...item,
-    source: "nested",
-    priority: priorityFromSource("nested"),
-  };
-}
-
-function premiseToItem(row: JingweiPremiseRecord): ComposableJingweiContextItem | null {
-  const parts = [
-    row.logline,
-    row.tone ? `基调 ${row.tone}` : "",
-    row.targetReaders ? `目标读者 ${row.targetReaders}` : "",
-    row.uniqueHook ? `差异化钩子 ${row.uniqueHook}` : "",
-  ].filter(Boolean);
-  if (parts.length === 0) return null;
-  const rawContent = parts.join(" · ");
-  return {
-    id: row.id,
-    type: "premise",
-    name: "故事基线",
-    content: rawContent,
-    rawContent,
-    priority: 100,
-    source: "global",
-    estimatedTokens: estimateTokens(rawContent),
-    updatedAt: row.updatedAt,
-  };
-}
-
-function worldModelToItems(row: JingweiWorldModelRecord): ComposableJingweiContextItem[] {
-  const dimensions: Array<[string, string, string]> = [
-    ["economy", "经济", row.economyJson],
-    ["society", "社会", row.societyJson],
-    ["geography", "地理", row.geographyJson],
-    ["power-system", "力量体系", row.powerSystemJson],
-    ["culture", "文化", row.cultureJson],
-    ["timeline", "纪年", row.timelineJson],
-  ];
-
-  return dimensions
-    .filter(([, , raw]) => hasDescriptorContent(raw))
-    .map(([key, label, raw]) => {
-      const rawContent = formatDescriptor(safeParseDescriptor(raw));
-      return {
-        id: `world-model:${key}`,
-        type: "world-model",
-        category: label,
-        name: label,
-        content: rawContent,
-        rawContent,
-        priority: 90,
-        source: "global",
-        estimatedTokens: estimateTokens(rawContent),
-        updatedAt: row.updatedAt,
-      } satisfies ComposableJingweiContextItem;
-    });
-}
-
-function conflictToItem(row: JingweiConflictRecord): ComposableJingweiContextItem {
-  const rawContent = `【矛盾-${row.type}】${row.name}（${row.resolutionState}）：${row.stakes}`;
-  return {
-    id: row.id,
-    type: "conflict",
-    category: row.type,
-    name: row.name,
-    content: rawContent,
-    rawContent,
-    priority: 70 - row.priority,
-    source: row.scope === "main" ? "global" : "tracked",
-    estimatedTokens: estimateTokens(rawContent),
-    updatedAt: row.updatedAt,
-  };
-}
-
-function arcToItem(row: JingweiCharacterArcRecord, characterName: string): ComposableJingweiContextItem | null {
-  if (!row.currentPosition && !row.startingState && !row.endingState) return null;
-  const rawContent = `${characterName} 当前处于 ${row.currentPosition || "未标注"}（${row.arcType}：${row.startingState} → ${row.endingState}）`;
-  return {
-    id: row.id,
-    type: "character-arc",
-    name: characterName,
-    content: rawContent,
-    rawContent,
-    priority: 35,
-    source: "global",
-    estimatedTokens: estimateTokens(rawContent),
-    updatedAt: row.updatedAt,
-  };
+function filterByCategories(candidates: CanonicalCandidate[], categories: readonly JingweiCategory[]): ComposableJingweiContextItem[] {
+  const accepted = new Set<JingweiCategory>(categories);
+  return candidates.filter((candidate) => accepted.has(candidate.readCategory));
 }
 
 export async function injectPremise(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
-  const premise = await createJingweiPremiseRepository(options.storage).getByBook(options.bookId);
-  const item = premise ? premiseToItem(premise) : null;
-  return item ? [item] : [];
+  const book = await createBookRepository(options.storage).getById(options.bookId);
+  if (!book) return [];
+  return filterByCategories(await loadCanonicalCandidates(options.storage, options.bookId, book.currentChapter), ["premise", "outline"]);
 }
 
 export async function injectWorldModel(options: { storage: StorageDatabase; bookId: string }): Promise<ComposableJingweiContextItem[]> {
-  const worldModel = await createJingweiWorldModelRepository(options.storage).getByBook(options.bookId);
-  return worldModel ? worldModelToItems(worldModel) : [];
+  const book = await createBookRepository(options.storage).getById(options.bookId);
+  if (!book) return [];
+  return filterByCategories(await loadCanonicalCandidates(options.storage, options.bookId, book.currentChapter), ["world-model"]);
 }
 
 export async function injectConflicts(options: { storage: StorageDatabase; bookId: string; currentChapter: number }): Promise<ComposableJingweiContextItem[]> {
-  const conflicts = await createJingweiConflictRepository(options.storage).getActiveConflictsAtChapter(options.bookId, options.currentChapter);
-  return conflicts.map(conflictToItem);
+  return filterByCategories(await loadCanonicalCandidates(options.storage, options.bookId, options.currentChapter), ["conflicts", "foreshadowing"]);
 }
 
 export async function injectCharacterArcs(options: { storage: StorageDatabase; bookId: string; currentChapter: number; characterIds?: readonly string[] }): Promise<ComposableJingweiContextItem[]> {
-  const repo = createJingweiCharacterArcRepository(options.storage);
-  const [characters, arcs] = await Promise.all([
-    createJingweiCharacterRepository(options.storage).listByBook(options.bookId),
-    options.characterIds && options.characterIds.length > 0
-      ? Promise.all(options.characterIds.map((characterId) => repo.listByCharacter(options.bookId, characterId))).then((groups) => groups.flat())
-      : repo.listByBook(options.bookId),
-  ]);
-  const characterNames = new Map(characters.map((character) => [character.id, character.name]));
-  return filterEntriesVisibleAtChapter(arcs.map((arc) => ({ ...arc, visibilityRuleJson: arc.visibilityRuleJson })), options.currentChapter)
-    .map((arc) => arcToItem(arc, characterNames.get(arc.characterId) ?? arc.characterId))
-    .filter((item): item is ComposableJingweiContextItem => item !== null);
+  const candidates = await loadCanonicalCandidates(options.storage, options.bookId, options.currentChapter);
+  const acceptedIds = options.characterIds ? new Set(options.characterIds) : null;
+  return candidates.filter((candidate) => {
+    if (candidate.readCategory !== "characters") return false;
+    if (!acceptedIds || acceptedIds.size === 0) return true;
+    return acceptedIds.has(candidate.id) || candidate.entry.relatedEntryIds.some((id) => acceptedIds.has(id));
+  });
 }
 
-export async function buildJingweiLegacyContext(input: BuildJingweiLegacyContextOptions): Promise<BuildJingweiLegacyContextResult> {
+export async function buildJingweiContext(input: BuildJingweiLegacyContextOptions): Promise<BuildJingweiLegacyContextResult> {
   const storage = input.storage ?? getStorageDatabase();
   const book = await createBookRepository(storage).getById(input.bookId);
-  if (!book) {
-    throw new Error(`Book not found: ${input.bookId}`);
-  }
+  if (!book) throw new Error(`Book not found: ${input.bookId}`);
 
   const mode: JingweiMode = book.jingweiMode;
   const currentChapter = input.currentChapter ?? book.currentChapter;
-  const allEntries = await loadAllCandidateEntries(storage, input.bookId, currentChapter);
-  const timelineFiltered = filterEntriesVisibleAtChapter(allEntries, currentChapter);
-  const phaseBAnchors = [
-    ...await injectPremise({ storage, bookId: input.bookId }),
-    ...await injectWorldModel({ storage, bookId: input.bookId }),
-    ...await injectConflicts({ storage, bookId: input.bookId, currentChapter }),
-  ];
+  const candidates = await loadCanonicalCandidates(storage, input.bookId, currentChapter);
+  const globals = candidates.filter((candidate) => candidate.entry.visibilityRule.type === "global");
 
-  if (mode === "static") {
-    const globals = timelineFiltered.filter((entry) => entry.visibilityRule.type === "global");
-    const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
-    const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
-    return composeJingweiContext([
-      ...phaseBAnchors,
-      ...globals,
-      ...arcs,
-    ], { mode, tokenBudget: input.tokenBudget });
+  if (mode === "static" || !input.sceneText?.trim()) {
+    return composeJingweiContext(globals, { mode, tokenBudget: input.tokenBudget });
   }
 
-  const globals = timelineFiltered.filter((entry) => entry.visibilityRule.type === "global");
-  if (!input.sceneText) {
-    const characterIds = globals.filter((entry) => entry.type === "character").map((entry) => entry.id);
-    const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
-    return composeJingweiContext([...phaseBAnchors, ...globals, ...arcs], { mode, tokenBudget: input.tokenBudget });
-  }
-
-  const trackedCandidates = timelineFiltered.filter((entry) => entry.visibilityRule.type === "tracked");
-  const tracked = matchTrackedByAliases(trackedCandidates, input.sceneText);
-  const nested = resolveNestedRefs([...globals, ...tracked], timelineFiltered, { maxDepth: 3 }).map(markNested);
-  const characterIds = [...globals, ...tracked, ...nested].filter((entry) => entry.type === "character").map((entry) => entry.id);
-  const arcs = await injectCharacterArcs({ storage, bookId: input.bookId, currentChapter, characterIds });
-  const merged = dedupeByBestSource([...phaseBAnchors, ...globals, ...tracked, ...arcs, ...nested]);
-
+  const tracked = candidates.filter((candidate) => candidate.entry.visibilityRule.type === "tracked" && matchesScene(candidate.entry, input.sceneText!));
+  const nested = resolveNestedRefs([...globals, ...tracked], candidates, { maxDepth: 3 }).map(markNested);
+  const merged = dedupeByBestSource([...globals, ...tracked, ...nested]);
   return composeJingweiContext(merged, { mode, tokenBudget: input.tokenBudget });
 }
 
-export { buildJingweiLegacyContext as buildJingweiContext };
+/** @deprecated 名称仅为外部兼容；实现已统一读取 story_jingwei_entry。 */
+export const buildJingweiLegacyContext = buildJingweiContext;
 export type { BuildJingweiLegacyContextOptions as BuildJingweiContextOptions };
 export { estimateTokens as estimateJingweiTokens } from "./token-budget.js";
-

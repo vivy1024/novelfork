@@ -1,9 +1,13 @@
 import { Hono, type Context } from "hono";
 import { ApiError, getStorageDatabase, isSafeBookId, type StorageDatabase } from "@vivy1024/novelfork-core";
 import type {
+  JingweiEntryLifecycle,
+  JingweiEntryStatus,
   JingweiFieldDefinition,
+  JingweiLayer,
   JingweiTemplateSelection,
   JingweiVisibilityRule,
+  StoryJingweiEntryRecord,
 } from "../engine/jingwei/types.js";
 
 /** Extended entry fields from 0012_jingwei_overhaul migration */
@@ -79,12 +83,65 @@ function stringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
 }
 
+function parseStringArrayJson(value: unknown): string[] {
+  if (Array.isArray(value)) return stringArray(value);
+  if (typeof value !== "string") return [];
+  try {
+    return stringArray(JSON.parse(value));
+  } catch {
+    return [];
+  }
+}
+
 function numberArray(value: unknown): number[] {
   return Array.isArray(value) ? value.filter((item): item is number => typeof item === "number" && Number.isFinite(item)) : [];
 }
 
 function objectRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function parseObjectJson(value: string | null | undefined): Record<string, unknown> {
+  if (!value) return {};
+  try {
+    return objectRecord(JSON.parse(value));
+  } catch {
+    return {};
+  }
+}
+
+function normalizeEntryFields(body: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (Object.prototype.hasOwnProperty.call(body, "fields")) return objectRecord(body.fields);
+  if (Object.prototype.hasOwnProperty.call(body, "fieldsJson")) {
+    if (typeof body.fieldsJson === "string") return parseObjectJson(body.fieldsJson);
+    return objectRecord(body.fieldsJson);
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "customFields")) return objectRecord(body.customFields);
+  return undefined;
+}
+
+function normalizeEntryLayer(value: unknown): JingweiLayer | undefined {
+  return value === "canon" || value === "dynamic" || value === "reference" ? value : undefined;
+}
+
+function normalizeEntryStatus(value: unknown): JingweiEntryStatus | undefined {
+  return value === "draft" || value === "confirmed" || value === "needs-review" ? value : undefined;
+}
+
+function normalizeEntryLifecycle(value: unknown): JingweiEntryLifecycle | undefined {
+  return value === "active" || value === "archived" || value === "inactive" || value === "retired" ? value : undefined;
+}
+
+function serializeEntry(entry: StoryJingweiEntryRecord) {
+  return {
+    ...entry,
+    fields: entry.fields,
+    fieldsJson: JSON.stringify(entry.fields),
+    customFields: entry.customFields,
+    updatedAt: entry.updatedAt.toISOString(),
+    createdAt: entry.createdAt.toISOString(),
+    deletedAt: entry.deletedAt?.toISOString() ?? null,
+  };
 }
 
 function normalizeVisibilityType(value: unknown): JingweiVisibilityRule["type"] {
@@ -242,38 +299,24 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const sectionId = c.req.query("sectionId");
     const category = c.req.query("category");
     const parentId = c.req.query("parentId");
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    let entries = await createStoryJingweiEntryRepository(storage).listByBook(bookId);
 
-    // 直接 SQL 查询，包含 overhaul 字段（category, parent_id, fields_json）
-    let sql = `SELECT e.*, e.category, e.parent_id as parentId, e.fields_json as fieldsJson, e.content_md as contentMd FROM story_jingwei_entry e WHERE e.book_id = ? AND e.deleted_at IS NULL`;
-    const params: unknown[] = [bookId];
-
-    if (sectionId) {
-      sql += ` AND e.section_id = ?`;
-      params.push(sectionId);
-    }
+    if (sectionId) entries = entries.filter((entry) => entry.sectionId === sectionId);
     if (category) {
-      // 兼容旧数据：查询时匹配新分类名 + 所有映射到该分类的旧名
       const { LEGACY_CATEGORY_MAP } = await import("../engine/jingwei/unified-categories.js");
-      const legacyAliases = Object.entries(LEGACY_CATEGORY_MAP)
-        .filter(([, v]) => v.category === category)
-        .map(([k]) => k);
-      const allNames = [...new Set([category, ...legacyAliases])];
-      sql += ` AND e.category IN (${allNames.map(() => "?").join(",")})`;
-      params.push(...allNames);
+      const aliases = Object.entries(LEGACY_CATEGORY_MAP)
+        .filter(([, value]) => value.category === category)
+        .map(([key]) => key);
+      const accepted = new Set([category, ...aliases]);
+      entries = entries.filter((entry) => accepted.has(entry.category));
     }
     if (parentId !== undefined) {
       const targetParent = parentId === "" || parentId === "null" ? null : parentId;
-      if (targetParent === null) {
-        sql += ` AND (e.parent_id IS NULL OR e.parent_id = '')`;
-      } else {
-        sql += ` AND e.parent_id = ?`;
-        params.push(targetParent);
-      }
+      entries = entries.filter((entry) => entry.parentId === targetParent);
     }
 
-    sql += ` ORDER BY e.sort_order ASC, e.updated_at DESC`;
-    const entries = storage.sqlite.prepare(sql).all(...params);
-    return c.json({ entries });
+    return c.json({ entries: entries.map(serializeEntry) });
   });
 
   app.post("/api/books/:bookId/jingwei/entries", async (c) => {
@@ -281,40 +324,76 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const sectionId = requireText(body.sectionId, "JINGWEI_SECTION_ID_REQUIRED", "Jingwei sectionId is required.");
     const timestamp = new Date();
     const { createStoryJingweiEntryRepository, createStoryJingweiSectionRepository } = await loadEngine();
-    const section = await createStoryJingweiSectionRepository(storage).getById(bookId, sectionId);
-    if (!section) throw new ApiError(404, "JINGWEI_SECTION_NOT_FOUND", `Jingwei section not found: ${sectionId}`);
+    const sectionRepo = createStoryJingweiSectionRepository(storage);
+    const requestedCategory = typeof body.category === "string" && body.category.trim() ? body.category.trim() : undefined;
+    let section = typeof body.sectionId === "string" ? await sectionRepo.getById(bookId, body.sectionId) : null;
+
+    if (!section && requestedCategory) {
+      section = (await sectionRepo.listByBook(bookId)).find((candidate) => candidate.key === requestedCategory) ?? null;
+      if (!section) {
+        const { CATEGORY_META } = await import("../engine/jingwei/unified-categories.js");
+        const meta = CATEGORY_META.find((candidate) => candidate.id === requestedCategory);
+        section = await sectionRepo.create({
+          id: crypto.randomUUID(),
+          bookId,
+          key: requestedCategory,
+          name: meta?.name ?? requestedCategory,
+          description: meta?.recommendedWhen ?? "",
+          icon: meta?.icon ?? null,
+          order: (await sectionRepo.listByBook(bookId)).length,
+          enabled: true,
+          showInSidebar: true,
+          participatesInAi: true,
+          defaultVisibility: "tracked",
+          fieldsJson: [],
+          builtinKind: meta ? requestedCategory : null,
+          sourceTemplate: "manual",
+          createdAt: timestamp,
+          updatedAt: timestamp,
+        });
+      }
+    }
+    if (!section) throw new ApiError(400, "JINGWEI_SECTION_ID_REQUIRED", "Jingwei sectionId or category is required.");
+
+    const fields = normalizeEntryFields(body) ?? {};
+    const category = requestedCategory
+      ?? (typeof fields.category === "string" && fields.category.trim() ? fields.category.trim() : undefined)
+      ?? section.key;
+    const visibilityInput = body.visibilityRule
+      ?? (typeof body.visibilityRuleJson === "string" ? parseObjectJson(body.visibilityRuleJson) : body.visibilityRuleJson);
+    const aliases = Array.isArray(body.aliases) ? stringArray(body.aliases) : parseStringArrayJson(body.aliasesJson);
     const entry = await createStoryJingweiEntryRepository(storage).create({
       id: typeof body.id === "string" ? body.id : crypto.randomUUID(),
       bookId,
-      sectionId,
+      sectionId: section.id,
       title: requireText(body.title, "JINGWEI_ENTRY_TITLE_REQUIRED", "Jingwei entry title is required."),
       contentMd: optionalText(body.contentMd),
+      summaryMd: optionalNullableText(body.summaryMd),
+      category,
+      fields,
+      parentId: optionalNullableText(body.parentId),
+      sortOrder: optionalNumber(body.sortOrder, 0),
+      lifecycle: normalizeEntryLifecycle(body.lifecycle) ?? "active",
+      status: normalizeEntryStatus(body.status) ?? "confirmed",
+      version: optionalNumber(body.version, 1),
       tags: stringArray(body.tags),
-      aliases: stringArray(body.aliases),
-      customFields: objectRecord(body.customFields),
+      aliases,
+      customFields: fields,
       relatedChapterNumbers: numberArray(body.relatedChapterNumbers),
       relatedEntryIds: stringArray(body.relatedEntryIds),
-      visibilityRule: normalizeVisibilityRule(body.visibilityRule, section.defaultVisibility),
+      visibilityRule: normalizeVisibilityRule(visibilityInput, section.defaultVisibility),
       participatesInAi: optionalBoolean(body.participatesInAi, true),
       tokenBudget: optionalNullableNumber(body.tokenBudget),
+      priorityTier: body.priorityTier === "core" || body.priorityTier === "relevant" || body.priorityTier === "reference" ? body.priorityTier : "auto",
+      layer: normalizeEntryLayer(body.layer) ?? "dynamic",
+      importance: optionalNumber(body.importance, 40),
+      summaryL0: optionalNullableText(body.summaryL0),
       createdAt: timestamp,
       updatedAt: timestamp,
     });
-    // Write overhaul fields directly via SQL if provided
-    const overhaulCategory = optionalText(body.category, "setting");
-    const overhaulParentId = optionalNullableText(body.parentId);
-    const overhaulFieldsJson = typeof body.fieldsJson === "object" ? JSON.stringify(body.fieldsJson) : "{}";
-    const overhaulAliasesJson = Array.isArray(body.aliasesJson) ? JSON.stringify(stringArray(body.aliasesJson)) : "[]";
-    const overhaulVisibilityRuleJson = typeof body.visibilityRuleJson === "object" ? JSON.stringify(body.visibilityRuleJson) : '{"type":"tracked"}';
-    storage.sqlite.prepare(`
-      UPDATE "story_jingwei_entry"
-      SET "category" = ?, "parent_id" = ?, "fields_json" = ?, "aliases_json" = ?, "visibility_rule_json" = ?
-      WHERE "id" = ?
-    `).run(overhaulCategory, overhaulParentId, overhaulFieldsJson, overhaulAliasesJson, overhaulVisibilityRuleJson, entry.id);
-    return c.json({ entry: { ...entry, category: overhaulCategory, parentId: overhaulParentId, fieldsJson: overhaulFieldsJson } }, 201);
+    return c.json({ entry: serializeEntry(entry) }, 201);
   });
 
   app.put("/api/books/:bookId/jingwei/entries/:entryId", async (c) => {
@@ -322,30 +401,40 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
+    const fields = normalizeEntryFields(body);
+    const legacyCategory = fields && typeof fields.category === "string" ? fields.category.trim() : undefined;
+    const legacyLayer = fields ? normalizeEntryLayer(fields.layer) : undefined;
+    const legacyStatus = fields ? normalizeEntryStatus(fields.status) : undefined;
+    const visibilityInput = body.visibilityRule
+      ?? (typeof body.visibilityRuleJson === "string" ? parseObjectJson(body.visibilityRuleJson) : body.visibilityRuleJson);
     const { createStoryJingweiEntryRepository } = await loadEngine();
     const entry = await createStoryJingweiEntryRepository(storage).update(bookId, c.req.param("entryId"), {
       ...(typeof body.sectionId === "string" ? { sectionId: body.sectionId } : {}),
       ...(typeof body.title === "string" ? { title: body.title.trim() } : {}),
       ...(typeof body.contentMd === "string" ? { contentMd: body.contentMd } : {}),
+      ...(typeof body.summaryMd === "string" || body.summaryMd === null ? { summaryMd: optionalNullableText(body.summaryMd) } : {}),
+      ...(typeof body.category === "string" ? { category: body.category.trim() } : legacyCategory ? { category: legacyCategory } : {}),
+      ...(fields ? { fields, customFields: fields } : {}),
+      ...(body.parentId === null || typeof body.parentId === "string" ? { parentId: optionalNullableText(body.parentId) } : {}),
+      ...(typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {}),
+      ...(normalizeEntryLifecycle(body.lifecycle) ? { lifecycle: normalizeEntryLifecycle(body.lifecycle)! } : {}),
+      ...(normalizeEntryStatus(body.status) ? { status: normalizeEntryStatus(body.status)! } : legacyStatus ? { status: legacyStatus } : {}),
+      ...(normalizeEntryLayer(body.layer) ? { layer: normalizeEntryLayer(body.layer)! } : legacyLayer ? { layer: legacyLayer } : {}),
       ...(Array.isArray(body.tags) ? { tags: stringArray(body.tags) } : {}),
-      ...(Array.isArray(body.aliases) ? { aliases: stringArray(body.aliases) } : {}),
-      ...(body.customFields && typeof body.customFields === "object" ? { customFields: objectRecord(body.customFields) } : {}),
+      ...(Array.isArray(body.aliases) ? { aliases: stringArray(body.aliases) } : Array.isArray(body.aliasesJson) ? { aliases: stringArray(body.aliasesJson) } : {}),
       ...(Array.isArray(body.relatedChapterNumbers) ? { relatedChapterNumbers: numberArray(body.relatedChapterNumbers) } : {}),
       ...(Array.isArray(body.relatedEntryIds) ? { relatedEntryIds: stringArray(body.relatedEntryIds) } : {}),
-      ...(body.visibilityRule && typeof body.visibilityRule === "object" ? { visibilityRule: normalizeVisibilityRule(body.visibilityRule) } : {}),
+      ...(visibilityInput && typeof visibilityInput === "object" ? { visibilityRule: normalizeVisibilityRule(visibilityInput) } : {}),
       ...(typeof body.participatesInAi === "boolean" ? { participatesInAi: body.participatesInAi } : {}),
       ...(typeof body.tokenBudget === "number" || body.tokenBudget === null ? { tokenBudget: optionalNullableNumber(body.tokenBudget) } : {}),
+      ...(body.priorityTier === "core" || body.priorityTier === "relevant" || body.priorityTier === "reference" || body.priorityTier === "auto" ? { priorityTier: body.priorityTier } : {}),
+      ...(typeof body.importance === "number" ? { importance: body.importance } : {}),
+      ...(typeof body.summaryL0 === "string" || body.summaryL0 === null ? { summaryL0: optionalNullableText(body.summaryL0) } : {}),
+      source: "user",
       updatedAt: new Date(),
     });
     if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${c.req.param("entryId")}`);
-
-    // Also update overhaul columns (fields_json) so frontend reads consistent data
-    const entryId = c.req.param("entryId");
-    if (body.customFields && typeof body.customFields === "object") {
-      storage.sqlite.prepare(`UPDATE "story_jingwei_entry" SET "fields_json" = ? WHERE "id" = ?`).run(JSON.stringify(body.customFields), entryId);
-    }
-
-    return c.json({ entry });
+    return c.json({ entry: serializeEntry(entry) });
   });
 
   app.delete("/api/books/:bookId/jingwei/entries/:entryId", async (c) => {
@@ -421,15 +510,15 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     await ensureBook(storage, bookId);
     const body = await readJson(c);
     const newParentId = body.parentId === null || body.parentId === "" ? null : optionalNullableText(body.parentId);
-    const result = storage.sqlite.prepare(`
-      UPDATE "story_jingwei_entry"
-      SET "parent_id" = ?, "updated_at" = ?
-      WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-    `).run(newParentId, Date.now(), bookId, entryId);
-    if (result.changes === 0) {
-      throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${entryId}`);
-    }
-    return c.json({ ok: true, entryId, parentId: newParentId });
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const entry = await createStoryJingweiEntryRepository(storage).update(bookId, entryId, {
+      parentId: newParentId,
+      source: "user",
+      revisionReason: "move",
+      updatedAt: new Date(),
+    });
+    if (!entry) throw new ApiError(404, "JINGWEI_ENTRY_NOT_FOUND", `Jingwei entry not found: ${entryId}`);
+    return c.json({ ok: true, entry: serializeEntry(entry) });
   });
 
   // --- Jingwei Overhaul: Tree endpoint ---
@@ -691,6 +780,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
           sectionId,
           title,
           contentMd: content,
+          category,
+          fields: {},
           tags: [],
           aliases: [],
           customFields: {},
@@ -702,10 +793,6 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
           createdAt: timestamp,
           updatedAt: timestamp,
         });
-        // 写入 category
-        storage.sqlite.prepare(`
-          UPDATE "story_jingwei_entry" SET "category" = ? WHERE "id" = ?
-        `).run(category, entryId);
         imported++;
         existingTitleCategorySet.add(dedupeKey);
       }
@@ -776,25 +863,34 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
 
     if (!entryIds?.length) return c.json({ error: "No entries specified" }, 400);
 
-    const placeholders = entryIds.map(() => "?").join(",");
-    const now = Date.now();
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const repo = createStoryJingweiEntryRepository(storage);
+    let affected = 0;
 
     switch (action) {
       case "move":
         if (!target) return c.json({ error: "target category required" }, 400);
-        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET category = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(target, now, ...entryIds, bookId);
+        for (const entryId of entryIds) {
+          if (await repo.update(bookId, entryId, { category: target, source: "user", revisionReason: "bulk-move", updatedAt: new Date() })) affected += 1;
+        }
         break;
       case "delete":
-        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET deleted_at = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(now, now, ...entryIds, bookId);
+        for (const entryId of entryIds) {
+          if (await repo.softDelete(bookId, entryId, new Date())) affected += 1;
+        }
         break;
-      case "set-status":
-        if (!target) return c.json({ error: "target status required" }, 400);
-        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = ?, updated_at = ? WHERE id IN (${placeholders}) AND book_id = ?`).run(target, now, ...entryIds, bookId);
+      case "set-status": {
+        const status = normalizeEntryStatus(target);
+        if (!status) return c.json({ error: "valid target status required" }, 400);
+        for (const entryId of entryIds) {
+          if (await repo.update(bookId, entryId, { status, source: "user", revisionReason: "bulk-status", updatedAt: new Date() })) affected += 1;
+        }
         break;
+      }
       default:
         return c.json({ error: `Unknown action: ${action}` }, 400);
     }
-    return c.json({ ok: true, affected: entryIds.length });
+    return c.json({ ok: true, affected });
   });
 
   // --- Jingwei v2: Revision history ---
@@ -802,12 +898,19 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     const entryId = c.req.param("entryId");
     const storage = await resolveStorage(options);
-    const revisions = storage.sqlite.prepare(`
-      SELECT id, content_md, category, layer, reason, changed_by, created_at
-      FROM jingwei_revision
-      WHERE entry_id = ? AND book_id = ?
-      ORDER BY created_at DESC LIMIT 20
-    `).all(entryId, bookId);
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const revisions = (await createStoryJingweiEntryRepository(storage).listRevisions(bookId, entryId))
+      .slice(0, 20)
+      .map((revision) => ({
+        id: revision.id,
+        content_md: revision.contentMd,
+        category: revision.category,
+        layer: revision.layer,
+        snapshot: revision.snapshot,
+        reason: revision.reason,
+        changed_by: revision.changedBy,
+        created_at: revision.createdAt.getTime(),
+      }));
     return c.json({ revisions });
   });
 
@@ -817,18 +920,14 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const entryId = c.req.param("entryId");
     const storage = await resolveStorage(options);
     const body = await c.req.json<{ revisionId: string }>();
-
-    const revision = storage.sqlite.prepare(`SELECT content_md, category, layer FROM jingwei_revision WHERE id = ? AND entry_id = ? AND book_id = ?`).get(body.revisionId, entryId, bookId) as { content_md: string; category?: string; layer?: string } | undefined;
-    if (!revision) return c.json({ error: "Revision not found" }, 404);
-
-    // Save current as new revision before reverting
-    const current = storage.sqlite.prepare(`SELECT content_md, category, layer FROM story_jingwei_entry WHERE id = ? AND book_id = ?`).get(entryId, bookId) as { content_md: string; category?: string; layer?: string } | undefined;
-    if (current) {
-      storage.sqlite.prepare(`INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(crypto.randomUUID(), entryId, bookId, current.content_md, current.category, current.layer, "revert", "user", Date.now());
-    }
-
-    storage.sqlite.prepare(`UPDATE story_jingwei_entry SET content_md = ?, version = version + 1, updated_at = ? WHERE id = ? AND book_id = ?`).run(revision.content_md, Date.now(), entryId, bookId);
-    return c.json({ ok: true });
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const entry = await createStoryJingweiEntryRepository(storage).revertToRevision(bookId, entryId, body.revisionId, {
+      changedBy: "user",
+      reason: "revert",
+      updatedAt: new Date(),
+    });
+    if (!entry) return c.json({ error: "Revision or entry not found" }, 404);
+    return c.json({ ok: true, entry: serializeEntry(entry) });
   });
 
   // --- Jingwei v2: Custom categories ---

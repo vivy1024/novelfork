@@ -328,21 +328,21 @@ function isManagedOverlay(value: unknown): value is RuntimeManagedOverlay {
 	if (!value || typeof value !== "object") return false;
 	const candidate = value as Partial<RuntimeManagedOverlay>;
 	if (!Array.isArray(candidate.operations)) return false;
-	const targets = new Set<string>();
+	const ids = new Set<string>();
 	return candidate.operations.every((operation) => {
 		if (!operation || typeof operation !== "object") return false;
 		const entry = operation as Partial<RuntimeManagedOverlayOperation>;
 		if (
 			typeof entry.id !== "string" ||
 			entry.id.length === 0 ||
+			ids.has(entry.id) ||
 			typeof entry.target !== "string" ||
 			entry.target.length === 0 ||
 			typeof entry.sha256 !== "string" ||
-			!sha256Pattern.test(entry.sha256) ||
-			targets.has(entry.target)
+			!sha256Pattern.test(entry.sha256)
 		)
 			return false;
-		targets.add(entry.target);
+		ids.add(entry.id);
 		return true;
 	});
 }
@@ -488,6 +488,7 @@ const RUNTIME_LOCAL_ARTIFACT_PREFIXES = [
 	"node_modules/",
 	"dist/",
 	"drizzle/",
+	"runtime-migrations/",
 	"server/generated/",
 	".worktrees/",
 	".runtime-e2e/",
@@ -509,7 +510,9 @@ function isRuntimeLocalArtifact(filePath: string): boolean {
 		return true;
 	if (
 		normalized === "frontend/routeTree.gen.ts" ||
-		normalized === "package-lock.json"
+		normalized === "package-lock.json" ||
+		normalized === "tsr.config.json" ||
+		normalized === "docs/plugin-system/楠屾敹璁板綍.md"
 	)
 		return true;
 	return /(?:^|\/)(?:\.tmp-narrafork-home\.|start-home-|test-home(?:\/|$))|(?:\.db(?:-journal|-wal|-shm)?|\.log|\.heapsnapshot)$/.test(
@@ -556,6 +559,18 @@ async function sha256File(path: string): Promise<string> {
 	return createHash("sha256")
 		.update(await readFile(path))
 		.digest("hex");
+}
+
+function buffersEqualIgnoringCrLf(left: Buffer, right: Buffer): boolean {
+	if (left.equals(right)) return true;
+	if (left.includes(0) || right.includes(0)) return false;
+	try {
+		const decoder = new TextDecoder("utf-8", { fatal: true });
+		return decoder.decode(left).replaceAll("\r\n", "\n") ===
+			decoder.decode(right).replaceAll("\r\n", "\n");
+	} catch {
+		return false;
+	}
 }
 
 async function targetChangesFromCommit(
@@ -659,7 +674,7 @@ async function targetChangesFromCommit(
 				readFile(join(baseline, filePath)),
 				readFile(join(target, filePath)),
 			]);
-			if (!expected.equals(actual))
+			if (!buffersEqualIgnoringCrLf(expected, actual))
 				changes.push({
 					status: "M",
 					path: filePath,
@@ -690,16 +705,25 @@ export async function analyzeNarraForkRuntimeImpact(
 	if (!options.source?.trim()) throw new Error("必须提供 --source <path>");
 	const requestedSource = resolve(options.source);
 	const requestedTarget = resolve(options.target ?? DEFAULT_TARGET);
-	const [sourceInfo, targetInfo] = await Promise.all([
+	const requestedOverlayRoot = resolve(
+		options.overlayRoot ??
+			(options.repositoryRoot
+				? join(resolve(options.repositoryRoot), "packages", "narrafork-runtime-overlay")
+				: DEFAULT_OVERLAY),
+	);
+	const [sourceInfo, targetInfo, overlayInfo] = await Promise.all([
 		stat(requestedSource).catch(() => null),
 		stat(requestedTarget).catch(() => null),
+		stat(requestedOverlayRoot).catch(() => null),
 	]);
 	if (!sourceInfo?.isDirectory()) throw new Error("source 不存在或不是目录");
 	if (!targetInfo?.isDirectory())
 		throw new Error("report-only 需要已导入的 target 目录和 UPSTREAM.lock");
-	const [source, target] = await Promise.all([
+	if (!overlayInfo?.isDirectory()) throw new Error("overlayRoot 不存在或不是目录");
+	const [source, target, overlayRoot] = await Promise.all([
 		realpath(requestedSource),
 		realpath(requestedTarget),
+		realpath(requestedOverlayRoot),
 	]);
 	const topLevel = await requireCommand(
 		["git", "rev-parse", "--show-toplevel"],
@@ -717,6 +741,42 @@ export async function analyzeNarraForkRuntimeImpact(
 		readInstalledLock(target),
 		readUpstreamLock(source),
 	]);
+	let acceptedManagedOverlay: RuntimeManagedOverlay | undefined;
+	if (previousLock.commit === next.lock.commit) {
+		const runRoot = await mkdtemp(join(tmpdir(), "novelfork-runtime-report-overlay-"));
+		const staging = join(runRoot, "staging");
+		const archive = join(runRoot, "runtime.tar");
+		await mkdir(staging);
+		try {
+			const prepared = await prepareRuntimeStaging(
+				source,
+				next.lock,
+				staging,
+				archive,
+				overlayRoot,
+			);
+			const acceptedOperations: RuntimeManagedOverlayOperation[] = [
+				...(prepared.lock.managedOverlay?.operations ?? []),
+			];
+			for (const [index, filePath] of (await collectFiles(staging)).entries()) {
+				const actualPath = join(target, filePath);
+				if (!(await pathExists(actualPath))) continue;
+				const [actual, expected] = await Promise.all([
+					readFile(actualPath),
+					readFile(join(staging, filePath)),
+				]);
+				if (!buffersEqualIgnoringCrLf(actual, expected)) continue;
+				acceptedOperations.push({
+					id: `report-verified-${index}`,
+					target: filePath,
+					sha256: createHash("sha256").update(actual).digest("hex"),
+				});
+			}
+			acceptedManagedOverlay = { operations: acceptedOperations };
+		} finally {
+			await rm(runRoot, { recursive: true, force: true });
+		}
+	}
 	const [changedFiles, targetModifications] = await Promise.all([
 		changedFilesBetween(source, previousLock.commit, next.lock.commit),
 		targetChangesFromCommit(
@@ -724,6 +784,7 @@ export async function analyzeNarraForkRuntimeImpact(
 			target,
 			previousLock.commit,
 			previousLock.managedOverlay,
+			acceptedManagedOverlay,
 		),
 	]);
 	await assertSourceUnchanged(source, next.lock.commit);

@@ -76,28 +76,28 @@ const LEGACY_SECTION_DEFINITIONS: ReadonlyArray<{
   {
     key: "people",
     name: "人物",
-    description: "由 legacy bible_character 非破坏性映射而来的人物栏目。",
+    description: "由 legacy jingwei_character 非破坏性映射而来的人物栏目。",
     builtinKind: "people",
     defaultVisibility: "tracked",
   },
   {
     key: "events",
     name: "事件",
-    description: "由 legacy bible_event 非破坏性映射而来的事件栏目。",
+    description: "由 legacy jingwei_event 非破坏性映射而来的事件栏目。",
     builtinKind: "events",
     defaultVisibility: "tracked",
   },
   {
     key: "settings",
     name: "设定",
-    description: "由 legacy bible_setting 非破坏性映射而来的设定栏目。",
+    description: "由 legacy jingwei_setting 非破坏性映射而来的设定栏目。",
     builtinKind: "settings",
     defaultVisibility: "global",
   },
   {
     key: "chapter-summary",
     name: "章节摘要",
-    description: "由 legacy bible_chapter_summary 非破坏性映射而来的章节摘要栏目。",
+    description: "由 legacy jingwei_chapter_summary 非破坏性映射而来的章节摘要栏目。",
     builtinKind: "chapter-summary",
     defaultVisibility: "global",
   },
@@ -162,10 +162,10 @@ function createLegacySectionInput(bookId: string, definition: typeof LEGACY_SECT
 function hasLegacyRows(storage: StorageDatabase, bookId: string): boolean {
   const row = storage.sqlite.prepare(`
     SELECT 1 AS "exists"
-    WHERE EXISTS (SELECT 1 FROM "bible_character" WHERE "book_id" = ? AND "deleted_at" IS NULL)
-      OR EXISTS (SELECT 1 FROM "bible_event" WHERE "book_id" = ? AND "deleted_at" IS NULL)
-      OR EXISTS (SELECT 1 FROM "bible_setting" WHERE "book_id" = ? AND "deleted_at" IS NULL)
-      OR EXISTS (SELECT 1 FROM "bible_chapter_summary" WHERE "book_id" = ? AND "deleted_at" IS NULL)
+    WHERE EXISTS (SELECT 1 FROM "jingwei_character" WHERE "book_id" = ? AND "deleted_at" IS NULL)
+      OR EXISTS (SELECT 1 FROM "jingwei_event" WHERE "book_id" = ? AND "deleted_at" IS NULL)
+      OR EXISTS (SELECT 1 FROM "jingwei_setting" WHERE "book_id" = ? AND "deleted_at" IS NULL)
+      OR EXISTS (SELECT 1 FROM "jingwei_chapter_summary" WHERE "book_id" = ? AND "deleted_at" IS NULL)
   `).get(bookId, bookId, bookId, bookId) as { exists: number } | undefined;
   return Boolean(row);
 }
@@ -177,6 +177,18 @@ function characterToEntry(row: LegacyCharacterRow): StoryJingweiEntryRecord {
     sectionId: legacySectionId(row.book_id, "people"),
     title: row.name,
     contentMd: row.summary,
+    category: "characters",
+    fields: {
+      roleType: row.role_type,
+      traits: parseJson<Record<string, unknown>>(row.traits_json, {}),
+      firstChapter: row.first_chapter,
+      lastChapter: row.last_chapter,
+    },
+    parentId: null,
+    sortOrder: 0,
+    lifecycle: "active",
+    status: "confirmed",
+    version: 1,
     tags: [row.role_type].filter(Boolean),
     aliases: parseJson<string[]>(row.aliases_json, []),
     customFields: {
@@ -190,6 +202,11 @@ function characterToEntry(row: LegacyCharacterRow): StoryJingweiEntryRecord {
     visibilityRule: normalizeVisibilityRule(row.visibility_rule_json),
     participatesInAi: true,
     tokenBudget: null,
+    priorityTier: "auto",
+    layer: "dynamic",
+    importance: 40,
+    source: "system-init",
+    conflictStatus: "none",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: null,
@@ -204,6 +221,16 @@ function eventToEntry(row: LegacyEventRow): StoryJingweiEntryRecord {
     sectionId: legacySectionId(row.book_id, "events"),
     title: row.name,
     contentMd: row.summary,
+    category: "timeline",
+    fields: {
+      eventType: row.event_type,
+      foreshadowState: row.foreshadow_state,
+    },
+    parentId: null,
+    sortOrder: 0,
+    lifecycle: "active",
+    status: "confirmed",
+    version: 1,
     tags: [row.event_type].filter(Boolean),
     aliases: [],
     customFields: {
@@ -215,6 +242,11 @@ function eventToEntry(row: LegacyEventRow): StoryJingweiEntryRecord {
     visibilityRule: normalizeVisibilityRule(row.visibility_rule_json),
     participatesInAi: true,
     tokenBudget: null,
+    priorityTier: "auto",
+    layer: "dynamic",
+    importance: 40,
+    source: "system-init",
+    conflictStatus: "none",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: null,
@@ -229,6 +261,13 @@ function settingToEntry(row: LegacySettingRow): StoryJingweiEntryRecord {
     sectionId: legacySectionId(row.book_id, "settings"),
     title: row.name,
     contentMd: row.content,
+    category: "world-model",
+    fields: { category: row.category },
+    parentId: null,
+    sortOrder: 0,
+    lifecycle: "active",
+    status: "confirmed",
+    version: 1,
     tags: [row.category].filter(Boolean),
     aliases: [],
     customFields: { category: row.category },
@@ -237,6 +276,11 @@ function settingToEntry(row: LegacySettingRow): StoryJingweiEntryRecord {
     visibilityRule: normalizeVisibilityRule(row.visibility_rule_json),
     participatesInAi: true,
     tokenBudget: null,
+    priorityTier: "auto",
+    layer: "dynamic",
+    importance: 40,
+    source: "system-init",
+    conflictStatus: "none",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: null,
@@ -252,9 +296,22 @@ function chapterSummaryToEntry(row: LegacyChapterSummaryRow): StoryJingweiEntryR
     sectionId: legacySectionId(row.book_id, "chapter-summary"),
     title: row.title,
     contentMd: row.summary,
+    category: "chapter-summaries",
+    fields: {
+      chapterNumber: row.chapter_number,
+      wordCount: row.word_count,
+      pov: row.pov,
+      metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
+    },
+    parentId: null,
+    sortOrder: row.chapter_number,
+    lifecycle: "active",
+    status: "confirmed",
+    version: 1,
     tags: [],
     aliases: [],
     customFields: {
+      chapterNumber: row.chapter_number,
       wordCount: row.word_count,
       pov: row.pov,
       metadata: parseJson<Record<string, unknown>>(row.metadata_json, {}),
@@ -267,6 +324,11 @@ function chapterSummaryToEntry(row: LegacyChapterSummaryRow): StoryJingweiEntryR
     visibilityRule: { type: "global", visibleAfterChapter: row.chapter_number },
     participatesInAi: true,
     tokenBudget: null,
+    priorityTier: "auto",
+    layer: "dynamic",
+    importance: 40,
+    source: "system-init",
+    conflictStatus: "none",
     createdAt: new Date(row.created_at),
     updatedAt: new Date(row.updated_at),
     deletedAt: null,
@@ -292,28 +354,28 @@ export function createLegacyJingweiAdapter(storage: StorageDatabase) {
       const characters = storage.sqlite.prepare(`
         SELECT "id", "book_id", "name", "aliases_json", "role_type", "summary", "traits_json",
           "visibility_rule_json", "first_chapter", "last_chapter", "created_at", "updated_at"
-        FROM "bible_character"
+        FROM "jingwei_character"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as LegacyCharacterRow[];
       const events = storage.sqlite.prepare(`
         SELECT "id", "book_id", "name", "event_type", "chapter_start", "chapter_end", "summary",
           "related_character_ids_json", "visibility_rule_json", "foreshadow_state", "created_at", "updated_at"
-        FROM "bible_event"
+        FROM "jingwei_event"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as LegacyEventRow[];
       const settings = storage.sqlite.prepare(`
         SELECT "id", "book_id", "category", "name", "content", "visibility_rule_json", "nested_refs_json",
           "created_at", "updated_at"
-        FROM "bible_setting"
+        FROM "jingwei_setting"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "updated_at" DESC, "name" ASC
       `).all(bookId) as LegacySettingRow[];
       const summaries = storage.sqlite.prepare(`
         SELECT "id", "book_id", "chapter_number", "title", "summary", "word_count", "key_events_json",
           "appearing_character_ids_json", "pov", "metadata_json", "created_at", "updated_at"
-        FROM "bible_chapter_summary"
+        FROM "jingwei_chapter_summary"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "chapter_number" ASC
       `).all(bookId) as LegacyChapterSummaryRow[];

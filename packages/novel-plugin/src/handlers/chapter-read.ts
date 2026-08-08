@@ -1,9 +1,10 @@
-import { readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { resolveBookStorageDir, type StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { createWritingResourceFileStore } from "../engine/writing-resource/file-store.js";
+import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
+import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 
 export interface ChapterReadInput {
   bookId: string;
@@ -54,39 +55,39 @@ export async function handleChapterRead(
       ? await createWritingResourceService({
           storage: trusted.storage,
           resolveBookDir: () => bookRoot,
+          resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => (
+            resolveChapterVolumeDirectory(trusted.storage!, requestedBookId, requestedChapterNumber)
+          ),
         }).findAcceptedChapter(bookId, chapterNumber)
       : await createWritingResourceFileStore(() => bookRoot).findAcceptedChapter(bookId, chapterNumber);
     if (resource) {
       return {
         ok: true,
         summary: `已读取第 ${chapterNumber} 章（${resource.wordCount} 字）。`,
-        data: { bookId, chapterNumber, fileName: `${resource.id}.md`, content: resource.content, wordCount: resource.wordCount },
+        data: {
+          bookId,
+          chapterNumber,
+          fileName: typeof resource.metadata.fileName === "string" ? resource.metadata.fileName : `${resource.id}.md`,
+          content: resource.content,
+          wordCount: resource.wordCount,
+        },
       };
     }
   } catch {
     // Fall back to the bound/legacy chapter path below.
   }
 
-  const chaptersDir = join(bookRoot, "chapters");
-  let chapterFile: string | undefined;
-  try {
-    const files = readdirSync(chaptersDir);
-    const padded = String(chapterNumber).padStart(4, "0");
-    chapterFile = files.find(f => f.startsWith(padded) && f.endsWith(".md"));
-  } catch {
-    /* chapters dir may not exist */
-  }
-
+  const chapterFile = (await listChapterFiles(bookRoot)).find((file) => file.number === chapterNumber);
   if (!chapterFile) {
     return { ok: false, error: "chapter-not-found", summary: `第 ${chapterNumber} 章文件未找到。` };
   }
 
   try {
-    const content = await readFile(join(chaptersDir, chapterFile), "utf-8");
+    const content = await readFile(join(bookRoot, chapterFile.relativePath), "utf-8");
     return {
       ok: true,
       summary: `已读取第 ${chapterNumber} 章（${content.length} 字）。`,
-      data: { bookId, chapterNumber, fileName: chapterFile, content, wordCount: content.length },
+      data: { bookId, chapterNumber, fileName: chapterFile.chapterRelativePath, content, wordCount: content.length },
     };
   } catch (error) {
     return { ok: false, error: "read-failed", summary: `读取章节失败：${error instanceof Error ? error.message : String(error)}` };

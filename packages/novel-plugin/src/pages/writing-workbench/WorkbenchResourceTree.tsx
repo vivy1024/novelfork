@@ -84,7 +84,8 @@ function sortNodes(nodes: readonly WorkbenchResourceNode[], mode: ResourceTreeSo
         const bTime = typeof b.metadata?.mtime === "string" ? Date.parse(b.metadata.mtime) : 0;
         if (aTime !== bTime) return bTime - aTime;
       }
-      return a.title.localeCompare(b.title);
+      // 章节标题形如「第N章 …」，不带 numeric 会把第 10 章排到第 1 章前面。
+      return a.title.localeCompare(b.title, "zh", { numeric: true });
     })
     .map((node) => node.children ? { ...node, children: sortNodes(node.children, mode) } : node);
 }

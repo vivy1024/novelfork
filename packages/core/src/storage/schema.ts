@@ -357,6 +357,13 @@ export const storyJingweiEntries = sqliteTable(
     sectionId: text("section_id")
       .notNull()
       .references(() => storyJingweiSections.id, { onDelete: "cascade" }),
+    parentId: text("parent_id"),
+    category: text("category").notNull().default("setting"),
+    fieldsJson: text("fields_json").notNull().default("{}"),
+    sortOrder: integer("sort_order").notNull().default(0),
+    lifecycle: text("lifecycle").notNull().default("active"),
+    status: text("status").notNull().default("confirmed"),
+    version: integer("version").notNull().default(1),
     title: text("title").notNull(),
     contentMd: text("content_md").notNull().default(""),
     summaryMd: text("summary_md"),
@@ -385,6 +392,23 @@ export const storyJingweiEntries = sqliteTable(
     index("story_jingwei_entry_book_section_updated_idx").on(table.bookId, table.sectionId, table.updatedAt),
     index("story_jingwei_entry_book_ai_idx").on(table.bookId, table.participatesInAi),
   ],
+);
+
+export const jingweiRevisions = sqliteTable(
+  "jingwei_revision",
+  {
+    id: text("id").primaryKey(),
+    entryId: text("entry_id").notNull(),
+    bookId: text("book_id").notNull(),
+    contentMd: text("content_md").notNull(),
+    category: text("category"),
+    layer: text("layer"),
+    reason: text("reason"),
+    changedBy: text("changed_by").default("user"),
+    snapshotJson: text("snapshot_json"),
+    createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
+  },
+  (table) => [index("idx_jingwei_revision_entry").on(table.entryId)],
 );
 
 export const writingLogs = sqliteTable(

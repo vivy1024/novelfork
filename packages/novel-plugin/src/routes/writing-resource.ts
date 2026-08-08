@@ -5,6 +5,7 @@ import {
   type CreateServiceInput,
   type WritingResourceTransitionAction,
 } from "../engine/writing-resource/service.js";
+import { resolveChapterVolumeDirectory } from "../handlers/outline-volume.js";
 import type {
   ListWritingResourcesFilter,
   WritingResourceStatus,
@@ -19,9 +20,17 @@ export function createWritingResourceRouter(options: WritingResourceRouterOption
   const app = new Hono();
 
   function serviceForRequest() {
+    const storage = getStorageDatabase();
     return createWritingResourceService({
-      storage: getStorageDatabase(),
-      ...(options.resolveBookDir ? { resolveBookDir: options.resolveBookDir } : {}),
+      storage,
+      ...(options.resolveBookDir ? {
+        resolveBookDir: options.resolveBookDir,
+        resolveChapterVolumeDirectory: (bookId, chapterNumber) => resolveChapterVolumeDirectory(
+          storage,
+          bookId,
+          chapterNumber,
+        ),
+      } : {}),
     });
   }
 

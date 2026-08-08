@@ -15,7 +15,12 @@ export function analyzeHookHealth(params: {
   readonly staleAfterChapters?: number;
   readonly noAdvanceWindow?: number;
   readonly newHookBurstThreshold?: number;
-  /** 每卷章数（P3-2 跨卷未回收检测）。省略则跳过跨卷检测。 */
+  /** 经纬 outline 的真实卷章号区间；优先用于 P3-2 跨卷未回收检测。 */
+  readonly volumeRanges?: ReadonlyArray<{
+    readonly from: number;
+    readonly to: number;
+  }>;
+  /** @deprecated 仅供未接入真实卷纲的旧调用方兼容回退。 */
   readonly chaptersPerVolume?: number;
 }): AuditIssue[] {
   const maxActiveHooks = params.maxActiveHooks ?? HOOK_HEALTH_DEFAULTS.maxActiveHooks;
@@ -128,26 +133,49 @@ export function analyzeHookHealth(params: {
   }
 
   // P3-2 跨卷未回收检测：伏笔埋设卷 比 当前卷 落后 ≥2 卷且仍未回收 → 升级告警
-  if (params.chaptersPerVolume && params.chaptersPerVolume > 0) {
-    const volumeOf = (chapter: number) => Math.floor(Math.max(0, chapter - 1) / params.chaptersPerVolume!) + 1;
-    const currentVolume = volumeOf(params.chapterNumber);
+  const volumeOf = createVolumeResolver(params.volumeRanges, params.chaptersPerVolume);
+  const currentVolume = volumeOf(params.chapterNumber);
+  if (currentVolume !== undefined) {
     for (const hook of activeHooks) {
       const hookVolume = hook.volume ?? volumeOf(hook.startChapter);
-      if (currentVolume - hookVolume >= 2) {
-        issues.push(warning(
-          params.language,
-          params.language === "en"
-            ? `Hook "${hook.hookId}" was planted in volume ${hookVolume} but is still unresolved in volume ${currentVolume} (${currentVolume - hookVolume} volumes behind).`
-            : `伏笔「${hook.hookId}」埋设于第 ${hookVolume} 卷，到第 ${currentVolume} 卷仍未回收（已跨 ${currentVolume - hookVolume} 卷）。`,
-          params.language === "en"
-            ? "Cross-volume debt risks reader frustration; schedule a payoff or explicit defer."
-            : "跨卷未回收易让读者失去耐心，请安排回收或明确延后。",
-        ));
-      }
+      if (hookVolume === undefined || currentVolume - hookVolume < 2) continue;
+      issues.push(warning(
+        params.language,
+        params.language === "en"
+          ? `Hook "${hook.hookId}" was planted in volume ${hookVolume} but is still unresolved in volume ${currentVolume} (${currentVolume - hookVolume} volumes behind).`
+          : `伏笔「${hook.hookId}」埋设于第 ${hookVolume} 卷，到第 ${currentVolume} 卷仍未回收（已跨 ${currentVolume - hookVolume} 卷）。`,
+        params.language === "en"
+          ? "Cross-volume debt risks reader frustration; schedule a payoff or explicit defer."
+          : "跨卷未回收易让读者失去耐心，请安排回收或明确延后。",
+      ));
     }
   }
 
   return issues;
+}
+
+function createVolumeResolver(
+  volumeRanges: ReadonlyArray<{ readonly from: number; readonly to: number }> | undefined,
+  chaptersPerVolume: number | undefined,
+): (chapter: number) => number | undefined {
+  const validRanges = (volumeRanges ?? []).filter((range) =>
+    Number.isFinite(range.from)
+    && Number.isFinite(range.to)
+    && range.from > 0
+    && range.to >= range.from,
+  );
+  if (validRanges.length > 0) {
+    return (chapter: number) => {
+      const index = validRanges.findIndex((range) => chapter >= range.from && chapter <= range.to);
+      return index >= 0 ? index + 1 : undefined;
+    };
+  }
+
+  if (chaptersPerVolume && chaptersPerVolume > 0) {
+    return (chapter: number) => Math.floor(Math.max(0, chapter - 1) / chaptersPerVolume) + 1;
+  }
+
+  return () => undefined;
 }
 
 function buildPressureDescription(params: {

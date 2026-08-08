@@ -37,7 +37,7 @@ export async function analyzeCoreShiftImpact(storage: StorageDatabase, input: An
   const terms = snapshotTerms(input);
   const summaries = storage.sqlite.prepare(`
     SELECT "chapter_number", "summary", "key_events_json", "appearing_character_ids_json", "metadata_json"
-    FROM "bible_chapter_summary"
+    FROM "jingwei_chapter_summary"
     WHERE "book_id" = ? AND "deleted_at" IS NULL
   `).all(input.bookId) as Array<{ chapter_number: number; summary: string; key_events_json: string; appearing_character_ids_json: string; metadata_json: string }>;
 
@@ -55,7 +55,7 @@ export async function analyzeCoreShiftImpact(storage: StorageDatabase, input: An
 
   const conflicts = storage.sqlite.prepare(`
     SELECT "evolution_path_json"
-    FROM "bible_conflict"
+    FROM "jingwei_conflict"
     WHERE "book_id" = ? AND "deleted_at" IS NULL
   `).all(input.bookId) as Array<{ evolution_path_json: string }>;
   for (const conflict of conflicts) {
@@ -69,7 +69,7 @@ export async function analyzeCoreShiftImpact(storage: StorageDatabase, input: An
 
   const arcs = storage.sqlite.prepare(`
     SELECT "key_turning_points_json"
-    FROM "bible_character_arc"
+    FROM "jingwei_character_arc"
     WHERE "book_id" = ? AND "deleted_at" IS NULL
   `).all(input.bookId) as Array<{ key_turning_points_json: string }>;
   for (const arc of arcs) {

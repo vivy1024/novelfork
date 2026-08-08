@@ -1,5 +1,5 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, join, resolve } from "node:path";
 import { prepareRuntimeExecutionRoot } from "./runtime-execution";
 
@@ -47,6 +47,7 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 	const environment: NodeJS.ProcessEnv = {
 		...process.env,
 		NARRAFORK_MIGRATIONS_DIR: migrationsRoot,
+		NARRAFORK_TEST_REAL_HOME: homedir(),
 		NARRAFORK_DEFER_WINDOWS_TEMP_CLEANUP: "1",
 		NOVELFORK_PROJECT_ROOT: projectRoot,
 		NOVELFORK_BOOKS_ROOT: booksRoot,

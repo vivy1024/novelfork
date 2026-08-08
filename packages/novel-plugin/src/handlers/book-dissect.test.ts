@@ -140,4 +140,70 @@ describe("handleBookDissect", () => {
     expect(draftFile).toContain("book-1");
     expect(draftFile).toContain("权威源在经纬");
   });
+
+  it("rolls back all jingwei data if database transaction fails", async () => {
+    const bookRoot = await createBook([
+      { number: 1, content: "韩立走道药园，淡淡道：「将来再议。」殊不知小瓶另有秘密。" },
+    ]);
+
+    // Install a temporary trigger that intentionally breaks SQLite insert into story_jingwei_entry
+    activeStorage!.sqlite.exec(`
+      CREATE TRIGGER fail_jingwei_insert BEFORE INSERT ON story_jingwei_entry
+      BEGIN
+        SELECT RAISE(FAIL, 'simulated-db-error');
+      END;
+    `);
+
+    const result = await handleBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      apply: true,
+      storage: activeStorage,
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("dissect-transaction-failed");
+    expect(result.summary).toContain("经纬权威事务写入失败");
+
+    // Verify 0 rows persisted in story_jingwei_entry
+    const rows = activeStorage!.sqlite.prepare(
+      `SELECT id FROM story_jingwei_entry WHERE book_id = ?`,
+    ).all("book-1") as Array<{ id: string }>;
+    expect(rows.length).toBe(0);
+  });
+
+  it("retains authority DB commit even if derived file export fails", async () => {
+    const bookRoot = await createBook([
+      { number: 1, content: "韩立走道药园，淡淡道：「将来再议。」殊不知小瓶另有秘密。" },
+    ]);
+
+    // Make story directory read-only / unwriteable to simulate derived file export failure
+    // On Windows, writing to an un-created invalid filename directory or invalid permissions can trigger.
+    // Alternatively, we can test with a custom file write wrapper, or test unwriteable story path.
+    // For platform compatibility, we can point storyDir to a file path so mkdir/writeFile throws.
+    await writeFile(join(bookRoot, "story-file-conflict"), "not a dir", "utf8");
+
+    // Replace story path with invalid file-as-directory conflict by writing story file if not created,
+    // actually, let's create `story` as a file instead of directory before dissect.
+    await rm(join(bookRoot, "story"), { recursive: true, force: true });
+    await writeFile(join(bookRoot, "story"), "blocking-directory-creation", "utf8");
+
+    const result = await handleBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      apply: true,
+      storage: activeStorage,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.applied).toBe(true);
+    expect(result.writtenFiles.some((item) => item.includes("export:warning"))).toBe(true);
+
+    // Verify DB transaction committed successfully
+    const rows = activeStorage!.sqlite.prepare(
+      `SELECT category, status FROM story_jingwei_entry WHERE book_id = ?`,
+    ).all("book-1") as Array<{ category: string; status: string }>;
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((row) => row.status === "needs-review")).toBe(true);
+  });
 });

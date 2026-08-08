@@ -7,7 +7,6 @@ export function buildGovernedMemoryEvidenceBlocks(
   readonly hookDebtBlock?: string;
   readonly hooksBlock?: string;
   readonly summariesBlock?: string;
-  readonly volumeSummariesBlock?: string;
   readonly titleHistoryBlock?: string;
   readonly moodTrailBlock?: string;
   readonly canonBlock?: string;
@@ -21,9 +20,6 @@ export function buildGovernedMemoryEvidenceBlocks(
   );
   const summaryEntries = contextPackage.selectedContext.filter((entry) =>
     entry.source.startsWith("story/chapter_summaries.md#"),
-  );
-  const volumeSummaryEntries = contextPackage.selectedContext.filter((entry) =>
-    entry.source.startsWith("story/volume_summaries.md#"),
   );
   const titleHistoryEntries = contextPackage.selectedContext.filter((entry) =>
     entry.source === "story/chapter_summaries.md#recent_titles",
@@ -53,12 +49,6 @@ export function buildGovernedMemoryEvidenceBlocks(
       ? renderEvidenceBlock(
           resolvedLanguage === "en" ? "Selected Chapter Summary Evidence" : "已选章节摘要证据",
           summaryEntries,
-        )
-      : undefined,
-    volumeSummariesBlock: volumeSummaryEntries.length > 0
-      ? renderEvidenceBlock(
-          resolvedLanguage === "en" ? "Selected Volume Summary Evidence" : "已选卷级摘要证据",
-          volumeSummaryEntries,
         )
       : undefined,
     titleHistoryBlock: titleHistoryEntries.length > 0

@@ -22,7 +22,10 @@ function editTiptap(label: string, text: string): HTMLElement {
   return editor;
 }
 
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("WorkbenchCanvas", () => {
   it("支持打开资源、标记 dirty、输出 canvasContext 并触发保存回调", async () => {
@@ -43,6 +46,25 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByText("已保存")).toBeTruthy();
   });
 
+  it("章节头部常驻展示蓝图状态与正文/目标字数", () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          metadata: { isChapter: true, chapterNumber: 3, wordTarget: 10 },
+          content: "初始正文",
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const status = screen.getByTestId("chapter-status-bar");
+    expect(within(status).getByText("第 3 章")).toBeTruthy();
+    expect(within(status).getByText("蓝图：")).toBeTruthy();
+    expect(within(status).getByText("未生成")).toBeTruthy();
+    expect(within(status).getByText(/正文 4 \/ 目标 10 字/)).toBeTruthy();
+    expect(within(status).getByText("还差 6 字")).toBeTruthy();
+  });
+
   it("只读资源禁用编辑和保存", () => {
     const onSave = vi.fn();
     render(
@@ -57,7 +79,7 @@ describe("WorkbenchCanvas", () => {
       />,
     );
 
-    expect(screen.getByLabelText("文本文件正文")).toHaveProperty("readOnly", true);
+    expect(screen.getByLabelText("Markdown 文件内容").getAttribute("contenteditable")).toBe("false");
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
     expect(screen.getByText("只读原因：当前资源由合同标记为只读，保存入口已禁用。")) .toBeTruthy();
   });
@@ -157,6 +179,44 @@ describe("WorkbenchCanvas", () => {
 
     expect(screen.queryByLabelText("章节正文")).toBeNull();
     expect(screen.getByText(/章节详情.*加载|未完成详情 hydrate/)).toBeTruthy();
+  });
+
+  it("经纬关联条目点击后调用工作台真实打开回调", async () => {
+    const onOpenJingweiEntry = vi.fn().mockReturnValue(true);
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/revisions")) {
+        return new Response(JSON.stringify({ revisions: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        entries: [
+          { id: "entry-1", title: "当前条目", relatedEntryIds: ["entry-2"] },
+          { id: "entry-2", title: "关联条目", relatedEntryIds: [] },
+        ],
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "jingwei-entry:entry-1",
+          kind: "jingwei-entry",
+          title: "当前条目",
+          content: "经纬正文",
+          metadata: { entryId: "entry-1", relatedEntryIds: ["entry-2"] },
+        })}
+        bookId="book-1"
+        onSave={vi.fn()}
+        jingweiActions={{ onSave: vi.fn().mockResolvedValue(undefined) }}
+        onOpenJingweiEntry={onOpenJingweiEntry}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /关联/ }));
+    fireEvent.click(await screen.findByRole("button", { name: "关联条目" }));
+    expect(onOpenJingweiEntry).toHaveBeenCalledWith("entry-2");
+    vi.unstubAllGlobals();
   });
 
   it("RED: 详情未 hydrate 前禁止把章节 textarea 内容保存回正式资源", () => {

@@ -117,9 +117,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
   "cockpit.snapshot": {
     type: "object",
     properties: {
-      bookId: stringSchema("要读取快照的书籍 ID。"),
+      bookId: stringSchema("书籍 ID（宿主注入；模型勿伪造）。"),
     },
-    required: ["bookId"],
+    required: [],
     additionalProperties: false,
   },
   "write.preflight": {
@@ -509,10 +509,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       continueWithHighRiskPending: booleanSchema("存在 high-risk pending NarrativeEvents 时是否明确继续写作。默认 false，会先返回处理提醒。"),
       adversarialAudit: booleanSchema("是否启用多视角对抗式审计。"),
       maxReviseRounds: numberSchema("最大自动修订轮数。"),
-      skipContextGate: booleanSchema("仅测试/迁移：跳过写前 empty-recent-progress 硬门。默认 false。"),
+      acknowledgedSkills: acknowledgedSkillsSchema,
       requireFactCheckPass: booleanSchema("若仍有 critical 事实/连续性 S1 未清，则拒绝保存正式章（默认 false，只标 needsHumanReview）。"),
       factCheckAutoRevise: booleanSchema("普通审修后若仍有 critical 事实/连续性问题，额外触发 1 轮事实专项 spot-fix + 复审（默认 false）。"),
-      acknowledgedSkills: acknowledgedSkillsSchema,
     },
     required: ["bookId", "sceneSpec"],
     additionalProperties: false,
@@ -561,12 +560,10 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       chapterNumber: numberSchema("目标章节序号。"),
       userDirectives: stringSchema("用户对本章的一句写作指示/方向（禁止塞写作理论长文）。"),
       acceptFocusDefault: booleanSchema("当 write.preflight 仅给出 focus 默认目标时，是否接受继续。"),
-      skipContextGate: booleanSchema("仅测试/迁移：跳过写前 empty-recent-progress 硬门。默认 false。"),
       cockpitSnapshot: { type: "object", description: "驾驶舱快照（可选，用于提取进度、伏笔、风险等上下文）。" },
       jingweiBrief: { type: "object", description: "兼容旧字段：经纬/Lore 核心包摘要（可选）。新调用优先使用 loreBrief。" },
       loreBrief: { type: "object", description: "lore.read 返回的静态设定核心包（可选，用于提取角色、地点、世界观等设定）。" },
       memoryContext: { type: "object", description: "memory.read 返回的动态叙事记忆上下文（可选，用于时间线、伏笔、事实和角色状态约束）。" },
-      writePreflight: { type: "object", description: "write.preflight 返回结果（可选；传入时可跳过重复组装，并用于硬门校验）。" },
       beatBudget: arraySchema(
         "情节点字数预算（可选；不传则由 LLM 规划）。密点展开、疏点带过，总和落在 [wordTarget, wordTarget×1.1]。",
         {

@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { isAbsolute, join, relative, sep } from "node:path";
 import {
   ChapterSummariesStateSchema,
   CurrentStateStateSchema,
@@ -442,6 +442,150 @@ async function resolveRuntimeLanguage(bookDir: string): Promise<"zh" | "en"> {
   }
 }
 
+export interface ChapterFileEntry {
+  readonly chapterNumber: number;
+  readonly path: string;
+  /** Relative to the chapters directory, using `/` separators. */
+  readonly relativePath: string;
+}
+
+/**
+ * Recursively lists persisted chapter markdown files under `chapters/`.
+ * The chapter number comes from the filename, while an index fileName is
+ * preferred by resolveChapterFilePath/resolveChapterFilePaths when available.
+ */
+export async function listChapterFiles(chaptersDir: string): Promise<ReadonlyArray<ChapterFileEntry>> {
+  const files: ChapterFileEntry[] = [];
+
+  const walk = async (directory: string, relativeDirectory: string): Promise<void> => {
+    let entries: Awaited<ReturnType<typeof readdir>>;
+    try {
+      entries = await readdir(directory, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"))) {
+      if (entry.name === "index.json" || entry.name === "_discarded") continue;
+      const nextRelativePath = relativeDirectory
+        ? join(relativeDirectory, entry.name)
+        : entry.name;
+      const nextPath = join(directory, entry.name);
+
+      if (entry.isDirectory()) {
+        await walk(nextPath, nextRelativePath);
+        continue;
+      }
+      if (!entry.isFile() || !entry.name.toLowerCase().endsWith(".md")) continue;
+
+      const chapterNumber = parseChapterNumberFromFileName(entry.name);
+      if (chapterNumber === null) continue;
+      files.push({
+        chapterNumber,
+        path: nextPath,
+        relativePath: nextRelativePath.replaceAll("\\", "/"),
+      });
+    }
+  };
+
+  await walk(chaptersDir, "");
+  return files.sort(
+    (left, right) => left.chapterNumber - right.chapterNumber
+      || left.relativePath.localeCompare(right.relativePath, "zh-CN"),
+  );
+}
+
+/**
+ * Resolves every file belonging to a chapter. The index fileName is returned
+ * first when it points to an existing file; recursive filename parsing fills
+ * in legacy or duplicate files that the index does not describe.
+ */
+export async function resolveChapterFilePaths(
+  chaptersDir: string,
+  chapterNumber: number,
+): Promise<ReadonlyArray<string>> {
+  const paths = new Set<string>();
+  const indexedPath = await resolveIndexedChapterFilePath(chaptersDir, chapterNumber);
+  if (indexedPath) paths.add(indexedPath);
+
+  const scannedFiles = await listChapterFiles(chaptersDir);
+  for (const file of scannedFiles) {
+    if (file.chapterNumber === chapterNumber) paths.add(file.path);
+  }
+  return [...paths];
+}
+
+/** Resolves the preferred readable file for a chapter, or null if absent. */
+export async function resolveChapterFilePath(
+  chaptersDir: string,
+  chapterNumber: number,
+): Promise<string | null> {
+  const paths = await resolveChapterFilePaths(chaptersDir, chapterNumber);
+  return paths[0] ?? null;
+}
+
+function parseChapterNumberFromFileName(fileName: string): number | null {
+  const match = /^(\d{1,9})[_-].+\.md$/iu.exec(fileName);
+  if (!match) return null;
+  const chapterNumber = Number(match[1]);
+  return Number.isSafeInteger(chapterNumber) && chapterNumber > 0
+    ? chapterNumber
+    : null;
+}
+
+async function resolveIndexedChapterFilePath(
+  chaptersDir: string,
+  chapterNumber: number,
+): Promise<string | null> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(join(chaptersDir, "index.json"), "utf-8"));
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(parsed)) return null;
+
+  const entry = parsed.find((candidate) => {
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+    return (candidate as Record<string, unknown>).number === chapterNumber;
+  });
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) return null;
+
+  const fileName = (entry as Record<string, unknown>).fileName;
+  if (typeof fileName !== "string" || !fileName.trim()) return null;
+  const candidatePath = resolveChapterIndexFilePath(chaptersDir, fileName);
+  if (!candidatePath) return null;
+
+  try {
+    const fileStat = await stat(candidatePath);
+    return fileStat.isFile() ? candidatePath : null;
+  } catch {
+    return null;
+  }
+}
+
+function resolveChapterIndexFilePath(chaptersDir: string, fileName: string): string | null {
+  let normalized = fileName.trim().replaceAll("\\", "/");
+  if (normalized.startsWith("chapters/")) normalized = normalized.slice("chapters/".length);
+  normalized = normalized.replace(/^\/+|\/+$/gu, "");
+  if (!normalized || normalized.includes("\0") || normalized.split("/").includes("..")) {
+    return null;
+  }
+  if (!normalized.toLowerCase().endsWith(".md")) return null;
+
+  const candidatePath = join(chaptersDir, ...normalized.split("/"));
+  const candidateRelativePath = relative(chaptersDir, candidatePath);
+  if (
+    !candidateRelativePath
+    || candidateRelativePath === ".."
+    || candidateRelativePath.startsWith(`..${sep}`)
+    || isAbsolute(candidateRelativePath)
+  ) {
+    return null;
+  }
+  return candidatePath;
+}
+
 export async function resolveDurableStoryProgress(params: {
   readonly bookDir: string;
   readonly fallbackChapter?: number;
@@ -539,12 +683,7 @@ async function loadDurableArtifactChapterNumbers(bookDir: string): Promise<numbe
           .filter((entry): entry is number => typeof entry === "number" && Number.isInteger(entry) && entry > 0);
       })
       .catch(() => [] as number[]),
-    readdir(chaptersDir)
-      .then((entries) => entries.flatMap((entry) => {
-        const match = entry.match(/^(\d+)_.*\.md$/);
-        return match ? [parseInt(match[1]!, 10)] : [];
-      }))
-      .catch(() => [] as number[]),
+    listChapterFiles(chaptersDir).then((entries) => entries.map((entry) => entry.chapterNumber)),
   ]);
   return [...indexChapters, ...fileChapters];
 }

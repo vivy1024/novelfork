@@ -76,6 +76,8 @@ export type UpdateStoryJingweiSectionInput = Partial<Omit<CreateStoryJingweiSect
 export type JingweiPriorityTier = "core" | "relevant" | "reference" | "auto";
 
 export type JingweiLayer = "canon" | "dynamic" | "reference";
+export type JingweiEntryStatus = "draft" | "confirmed" | "needs-review";
+export type JingweiEntryLifecycle = "active" | "archived" | "inactive" | "retired";
 
 export interface StoryJingweiEntryRecord {
   id: string;
@@ -84,23 +86,32 @@ export interface StoryJingweiEntryRecord {
   title: string;
   contentMd: string;
   summaryMd?: string | null;
+  category: string;
+  /** 结构化字段唯一权威源，对应 fields_json。 */
+  fields: Record<string, unknown>;
+  /** @deprecated 兼容旧 custom_fields_json 调用方；不得作为新业务权威源。 */
+  customFields: Record<string, unknown>;
+  parentId: string | null;
+  sortOrder: number;
+  lifecycle: JingweiEntryLifecycle;
+  status: JingweiEntryStatus;
+  version: number;
   tags: string[];
   aliases: string[];
-  customFields: Record<string, unknown>;
   relatedChapterNumbers: number[];
   relatedEntryIds: string[];
   visibilityRule: JingweiVisibilityRule;
   participatesInAi: boolean;
   tokenBudget: number | null;
-  priorityTier?: JingweiPriorityTier;
-  layer?: JingweiLayer;
+  priorityTier: JingweiPriorityTier;
+  layer: JingweiLayer;
   /** 重要度评分 0-100，用于分级注入排序与逐条降级（默认 40） */
-  importance?: number;
+  importance: number;
   /** 一句话摘要（L0），上下文预算紧张时的最简降级内容 */
   summaryL0?: string | null;
   /** 最近一次修改来源 */
   source?: EntrySource;
-  /** 修订历史（最近 20 条） */
+  /** @deprecated 旧 revision_history JSON，仅用于兼容读取，不再写入。 */
   revisionHistory?: EntryRevision[];
   /** 冲突标记（多写入源产生分歧时） */
   conflictStatus?: ConflictStatus;
@@ -111,10 +122,27 @@ export interface StoryJingweiEntryRecord {
   deletedAt: Date | null;
 }
 
-export type { EntrySource, EntryRevision, ConflictStatus } from "./repositories/collaborative-types.js";
+export type { EntrySource, EntryRevision, ConflictStatus, JingweiRevisionRecord, JingweiRevisionSnapshot } from "./repositories/collaborative-types.js";
 
-export type CreateStoryJingweiEntryInput = Omit<StoryJingweiEntryRecord, "deletedAt">;
-export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryInput, "id" | "bookId" | "createdAt">>;
+type StoryJingweiEntryDefaultedFields =
+  | "category"
+  | "fields"
+  | "parentId"
+  | "sortOrder"
+  | "lifecycle"
+  | "status"
+  | "version"
+  | "priorityTier"
+  | "layer"
+  | "importance";
+
+export type CreateStoryJingweiEntryInput =
+  & Omit<StoryJingweiEntryRecord, "deletedAt" | StoryJingweiEntryDefaultedFields>
+  & Partial<Pick<StoryJingweiEntryRecord, StoryJingweiEntryDefaultedFields>>;
+export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryInput, "id" | "bookId" | "createdAt">> & {
+  revisionReason?: string;
+  changedBy?: string;
+};
 
 export type JingweiContextSource = "global" | "tracked" | "nested";
 

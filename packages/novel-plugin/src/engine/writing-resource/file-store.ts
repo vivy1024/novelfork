@@ -1,38 +1,31 @@
 /**
  * 文件系统正式章节存储层。
  *
- * 写作结果只落到 {bookDir}/chapters/*.md 和 chapters/index.json。
- * candidate/draft 文件目录不再作为运行时资源模型读取或写入。
+ * 正式章节文件落在 {bookDir}/chapters/卷NN/*.md；chapters/index.json
+ * 保存相对于 chapters/ 的 fileName，candidate/draft 不进入文件存储。
  */
-import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join } from "node:path";
+import { mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import type {
   CreateWritingResourceInput,
   ListWritingResourcesFilter,
   UpdateWritingResourceInput,
   WritingResource,
 } from "./types.js";
-
-interface ChapterIndexEntry {
-  number: number;
-  title: string;
-  fileName: string;
-  wordCount: number;
-  updatedAt: string;
-}
-
-function padNumber(n: number, len = 4): string {
-  return String(n).padStart(len, "0");
-}
-
-function sanitizeTitle(title: string): string {
-  return title.replace(/[<>:"/\\|?*\x00-\x1f]/g, "").trim().slice(0, 50) || "未命名";
-}
-
-function countWords(content: string): number {
-  return content.replace(/\s+/g, "").trim().length;
-}
+import {
+  CHAPTERS_DIRECTORY,
+  DEFAULT_VOLUME_DIRECTORY,
+  type ChapterIndexRecord,
+  type ChapterVolumeDirectoryResolver,
+  chapterRelativePath,
+  chapterWordCount,
+  normalizeChapterRelativePath,
+  readChapterIndex,
+  synchronizeChapterLayout,
+  volumeDirectoryName,
+  writeChapterIndex,
+} from "./chapter-layout.js";
 
 function chapterId(number: number): string {
   return `chapter:${number}`;
@@ -54,30 +47,26 @@ export interface WritingResourceFileStore {
   readonly getHistory: (bookId: string, id: string) => Promise<WritingResource[]>;
 }
 
-export function createWritingResourceFileStore(resolveBookDir: (bookId: string) => string): WritingResourceFileStore {
-  function chaptersDir(bookId: string) { return join(resolveBookDir(bookId), "chapters"); }
-  function chaptersIndexPath(bookId: string) { return join(chaptersDir(bookId), "index.json"); }
+export function createWritingResourceFileStore(
+  resolveBookDir: (bookId: string) => string,
+  options?: { readonly resolveChapterVolumeDirectory?: ChapterVolumeDirectoryResolver },
+): WritingResourceFileStore {
+  const resolveVolumeDirectory = options?.resolveChapterVolumeDirectory
+    ?? (() => volumeDirectoryName(1));
 
-  async function ensureDir(dir: string): Promise<void> {
-    await mkdir(dir, { recursive: true });
+  function chaptersDir(bookId: string) {
+    return join(resolveBookDir(bookId), CHAPTERS_DIRECTORY);
   }
 
-  async function readChapterIndex(bookId: string): Promise<ChapterIndexEntry[]> {
-    try {
-      const raw = await readFile(chaptersIndexPath(bookId), "utf-8");
-      const parsed = JSON.parse(raw) as unknown;
-      return Array.isArray(parsed) ? parsed.filter(isChapterIndexEntry) : [];
-    } catch {
-      return [];
-    }
+  function chapterPath(bookId: string, fileName: string) {
+    return join(chaptersDir(bookId), fileName);
   }
 
-  async function writeChapterIndex(bookId: string, entries: ChapterIndexEntry[]): Promise<void> {
-    await ensureDir(chaptersDir(bookId));
-    await writeFile(chaptersIndexPath(bookId), JSON.stringify(entries, null, 2), "utf-8");
+  async function ensureLayout(bookId: string): Promise<void> {
+    await synchronizeChapterLayout(bookId, resolveBookDir(bookId), resolveVolumeDirectory);
   }
 
-  function chapterToResource(bookId: string, entry: ChapterIndexEntry, content: string): WritingResource {
+  async function chapterToResource(bookId: string, entry: ChapterIndexRecord, content: string): Promise<WritingResource> {
     const updatedAt = new Date(entry.updatedAt).getTime();
     return {
       id: chapterId(entry.number),
@@ -91,7 +80,10 @@ export function createWritingResourceFileStore(resolveBookDir: (bookId: string) 
       parentId: null,
       version: 1,
       source: null,
-      metadata: {},
+      metadata: {
+        fileName: normalizeChapterRelativePath(entry.fileName),
+        chapterPath: normalizeChapterRelativePath(join(CHAPTERS_DIRECTORY, entry.fileName)),
+      },
       createdAt: updatedAt,
       updatedAt,
       acceptedAt: updatedAt,
@@ -100,12 +92,13 @@ export function createWritingResourceFileStore(resolveBookDir: (bookId: string) 
   }
 
   async function listChapters(bookId: string): Promise<WritingResource[]> {
-    const entries = await readChapterIndex(bookId);
+    await ensureLayout(bookId);
+    const entries = await readChapterIndex(resolveBookDir(bookId));
     const results: WritingResource[] = [];
     for (const entry of entries) {
       try {
-        const content = await readFile(join(chaptersDir(bookId), entry.fileName), "utf-8");
-        results.push(chapterToResource(bookId, entry, content));
+        const content = await readFile(chapterPath(bookId, entry.fileName), "utf-8");
+        results.push(await chapterToResource(bookId, entry, content));
       } catch {
         // 文件缺失时跳过，保留真实可读章节。
       }
@@ -128,62 +121,85 @@ export function createWritingResourceFileStore(resolveBookDir: (bookId: string) 
     },
 
     async create(bookId, input) {
+      await ensureLayout(bookId);
+      const bookRoot = resolveBookDir(bookId);
       const now = new Date(input.updatedAt ?? Date.now()).toISOString();
       const content = input.content;
-      const wordCount = countWords(content);
-      const chapterNumber = input.chapterNumber ?? ((await readChapterIndex(bookId)).reduce((max, entry) => Math.max(max, entry.number), 0) + 1);
-      const fileName = `${padNumber(chapterNumber)}_${sanitizeTitle(input.title)}.md`;
-      const index = (await readChapterIndex(bookId)).filter((entry) => entry.number !== chapterNumber);
-      await ensureDir(chaptersDir(bookId));
-      await writeFile(join(chaptersDir(bookId), fileName), content, "utf-8");
-      index.push({ number: chapterNumber, title: input.title, fileName, wordCount, updatedAt: now });
-      index.sort((a, b) => a.number - b.number);
-      await writeChapterIndex(bookId, index);
+      const wordCount = chapterWordCount(content);
+      const index = await readChapterIndex(bookRoot);
+      const chapterNumber = input.chapterNumber ?? (index.reduce((max, entry) => Math.max(max, entry.number), 0) + 1);
+      const volumeDirectory = normalizeChapterRelativePath(await resolveVolumeDirectory(bookId, chapterNumber)) || DEFAULT_VOLUME_DIRECTORY;
+      const fileName = chapterRelativePath(volumeDirectory, chapterNumber, input.title);
+      const previous = index.find((entry) => entry.number === chapterNumber);
+      if (previous && normalizeChapterRelativePath(previous.fileName) !== fileName) {
+        await unlink(chapterPath(bookId, previous.fileName)).catch(() => undefined);
+      }
+      await mkdir(dirname(chapterPath(bookId, fileName)), { recursive: true });
+      await writeFile(chapterPath(bookId, fileName), content, "utf-8");
+      const nextIndex = index.filter((entry) => entry.number !== chapterNumber);
+      nextIndex.push({ number: chapterNumber, title: input.title, fileName, wordCount, updatedAt: now });
+      nextIndex.sort((a, b) => a.number - b.number);
+      await writeChapterIndex(bookRoot, nextIndex);
       return chapterToResource(bookId, { number: chapterNumber, title: input.title, fileName, wordCount, updatedAt: now }, content);
     },
 
     async update(bookId, id, input) {
+      await ensureLayout(bookId);
+      const bookRoot = resolveBookDir(bookId);
       const chapterNumber = parseChapterId(id);
       if (!chapterNumber) return null;
-      const index = await readChapterIndex(bookId);
+      const index = await readChapterIndex(bookRoot);
       const idx = index.findIndex((entry) => entry.number === chapterNumber);
       if (idx === -1) return null;
       const entry = { ...index[idx]! };
       const now = new Date(input.updatedAt ?? Date.now()).toISOString();
-      if (input.content !== undefined) {
-        await writeFile(join(chaptersDir(bookId), entry.fileName), input.content, "utf-8");
+      const oldPath = chapterPath(bookId, entry.fileName);
+      let content = input.content;
+      if (content !== undefined) {
+        await mkdir(dirname(oldPath), { recursive: true });
+        await writeFile(oldPath, content, "utf-8");
       }
       if (input.title !== undefined) {
-        const oldPath = join(chaptersDir(bookId), entry.fileName);
-        entry.fileName = `${padNumber(chapterNumber)}_${sanitizeTitle(input.title)}.md`;
+        const oldVolume = normalizeChapterRelativePath(dirname(entry.fileName));
+        const volumeDirectory = oldVolume && oldVolume !== "." ? oldVolume : normalizeChapterRelativePath(await resolveVolumeDirectory(bookId, chapterNumber)) || DEFAULT_VOLUME_DIRECTORY;
+        const nextFileName = chapterRelativePath(volumeDirectory, chapterNumber, input.title);
+        const nextPath = chapterPath(bookId, nextFileName);
+        entry.fileName = nextFileName;
         entry.title = input.title;
-        if (existsSync(oldPath)) await rename(oldPath, join(chaptersDir(bookId), entry.fileName));
+        if (oldPath !== nextPath && existsSync(oldPath)) {
+          await mkdir(dirname(nextPath), { recursive: true });
+          await rename(oldPath, nextPath);
+        }
       }
-      const content = input.content ?? await readFile(join(chaptersDir(bookId), entry.fileName), "utf-8").catch(() => "");
-      entry.wordCount = input.wordCount ?? countWords(content);
+      content = content ?? await readFile(chapterPath(bookId, entry.fileName), "utf-8").catch(() => "");
+      entry.wordCount = input.wordCount ?? chapterWordCount(content);
       entry.updatedAt = now;
       index[idx] = entry;
-      await writeChapterIndex(bookId, index);
+      await writeChapterIndex(bookRoot, index);
       return chapterToResource(bookId, entry, content);
     },
 
     async softDelete(bookId, id) {
+      await ensureLayout(bookId);
+      const bookRoot = resolveBookDir(bookId);
       const chapterNumber = parseChapterId(id);
       if (!chapterNumber) return null;
-      const index = await readChapterIndex(bookId);
+      const index = await readChapterIndex(bookRoot);
       const entry = index.find((item) => item.number === chapterNumber);
       if (!entry) return null;
-      await writeChapterIndex(bookId, index.filter((item) => item.number !== chapterNumber));
-      try { await unlink(join(chaptersDir(bookId), entry.fileName)); } catch { /* ignore */ }
-      return { ...chapterToResource(bookId, entry, ""), status: "archived" };
+      await writeChapterIndex(bookRoot, index.filter((item) => item.number !== chapterNumber));
+      try { await unlink(chapterPath(bookId, entry.fileName)); } catch { /* ignore */ }
+      return { ...(await chapterToResource(bookId, entry, "")), status: "archived" };
     },
 
     async findAcceptedChapter(bookId, chapterNumber) {
-      const index = await readChapterIndex(bookId);
+      await ensureLayout(bookId);
+      const bookRoot = resolveBookDir(bookId);
+      const index = await readChapterIndex(bookRoot);
       const entry = index.find((item) => item.number === chapterNumber);
       if (!entry) return null;
       try {
-        const content = await readFile(join(chaptersDir(bookId), entry.fileName), "utf-8");
+        const content = await readFile(chapterPath(bookId, entry.fileName), "utf-8");
         return chapterToResource(bookId, entry, content);
       } catch {
         return null;
@@ -195,14 +211,4 @@ export function createWritingResourceFileStore(resolveBookDir: (bookId: string) 
       return resource ? [resource] : [];
     },
   };
-}
-
-function isChapterIndexEntry(value: unknown): value is ChapterIndexEntry {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const record = value as Record<string, unknown>;
-  return typeof record.number === "number"
-    && typeof record.title === "string"
-    && typeof record.fileName === "string"
-    && typeof record.wordCount === "number"
-    && typeof record.updatedAt === "string";
 }

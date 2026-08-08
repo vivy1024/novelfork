@@ -1,8 +1,11 @@
 import {
+	type ContributedToolPermissionPolicy,
 	type RuntimeToolRisk,
+	type SessionPermissionMode,
 	type ToolContext,
 	type ToolDefinition,
 	type ToolResult,
+	type ToolVisibility,
 	type ResolvedRuntimeContributions,
 	type RuntimeResolveContext,
 } from "@vivy1024/narrafork-runtime-bridge";
@@ -14,10 +17,19 @@ import {
 	type RuntimeToolContribution,
 	type ToolExecutionContext as PluginToolExecutionContext,
 } from "@vivy1024/novelfork-core/plugins";
-import { NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
+import {
+	NOVEL_RUNTIME_CONTRIBUTION,
+	getNovelToolPermissionPolicy,
+} from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
 
-const FORBIDDEN_MODEL_FIELDS = new Set(["bookId", "sessionId", "bookRoot"]);
+const FORBIDDEN_MODEL_FIELDS = new Set([
+  "bookId",
+  "sessionId",
+  "bookRoot",
+  "skipContextGate",
+  "writePreflight",
+]);
 
 function findForbiddenModelField(value: unknown, path = "$input"): string | null {
 	if (Array.isArray(value)) {
@@ -108,7 +120,7 @@ export interface NovelRuntimeBindingResolver {
 }
 
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
-	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write") return risk;
+	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write" || risk === "destructive") return risk;
 	// An incomplete or future contribution must not silently become a read tool.
 	return "confirmed-write";
 }
@@ -169,10 +181,59 @@ export class NovelRuntimeHostAdapter {
 		return (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => this.toToolDefinition(tool));
 	}
 
+	getToolPermissionPolicy(toolName: string): ContributedToolPermissionPolicy | null {
+		const policy = getNovelToolPermissionPolicy(toolName);
+		if (!policy) return null;
+		return {
+			risk: policy.risk,
+			enabledForModes: policy.enabledForModes,
+			visibility: policy.visibility,
+			...(policy.resolveRisk ? { resolveRisk: policy.resolveRisk } : {}),
+		};
+	}
+
+	isToolAllowed(
+		toolName: string,
+		enabledOptionalToolNames: ReadonlySet<string>,
+		context?: Readonly<{ permissionMode?: SessionPermissionMode | string; isAdvancedEnabled?: boolean }>,
+	): boolean {
+		const policy = this.getToolPermissionPolicy(toolName);
+		if (!policy) return true;
+
+		if (context?.permissionMode) {
+			const mode = context.permissionMode as SessionPermissionMode;
+			if (policy.enabledForModes.length > 0 && !policy.enabledForModes.includes(mode)) {
+				return false;
+			}
+		}
+
+		if (policy.visibility === "advanced") {
+			return context?.isAdvancedEnabled === true || enabledOptionalToolNames.has(toolName);
+		}
+		return true;
+	}
+
+	syncToolVisibility(
+		enabledToolNames: Set<string>,
+		resolvedToolNames: readonly string[],
+		context?: Readonly<{ isAdvancedEnabled?: boolean; permissionMode?: SessionPermissionMode | string }>,
+	): void {
+		const explicitlyEnabled = new Set(enabledToolNames);
+		const registeredNames = new Set((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((t) => t.definition.name));
+		for (const name of registeredNames) enabledToolNames.delete(name);
+		for (const name of resolvedToolNames) {
+			const policy = this.getToolPermissionPolicy(name);
+			if (!policy) continue;
+			if (policy.visibility === "author" || explicitlyEnabled.has(name)) {
+				enabledToolNames.add(name);
+			}
+		}
+	}
+
 	async execute(
 		toolName: string,
 		input: Readonly<Record<string, unknown>>,
-		execution: string | Pick<ToolContext, "narratorId" | "model" | "generateText" | "emitOutput">,
+		execution: string | Pick<ToolContext, "narratorId" | "provider" | "model" | "generateText" | "emitOutput">,
 	): Promise<ToolResult> {
 		const narratorId = typeof execution === "string" ? execution : execution.narratorId;
 		const context = await this.resolve(narratorId);
@@ -207,7 +268,9 @@ export class NovelRuntimeHostAdapter {
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,
-				...(hostExecution?.model ? { model: hostExecution.model } : {}),
+				...(hostExecution?.provider && hostExecution.model
+					? { model: { provider: hostExecution.provider, id: hostExecution.model } }
+					: {}),
 				...(hostExecution?.generateText ? { generateText: hostExecution.generateText } : {}),
 				...(hostExecution?.emitOutput ? { emitOutput: hostExecution.emitOutput } : {}),
 			};
@@ -230,6 +293,7 @@ export class NovelRuntimeHostAdapter {
 
 	private toToolDefinition(tool: RuntimeToolContribution): ToolDefinition {
 		const { definition } = tool;
+		const contributedPermission = this.getToolPermissionPolicy(definition.name);
 		return {
 			name: definition.name,
 			description: definition.description,
@@ -239,6 +303,7 @@ export class NovelRuntimeHostAdapter {
 			metadata: {
 				runtimePluginId: NOVEL_RUNTIME_CONTRIBUTION.id,
 				runtimeRisk: toRuntimeRisk(definition.risk),
+				...(contributedPermission ? { contributedPermission } : {}),
 				...(definition.renderer ? { runtimeRenderer: definition.renderer } : {}),
 			},
 		};

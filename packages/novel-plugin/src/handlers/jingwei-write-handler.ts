@@ -8,6 +8,7 @@
  */
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { JingweiLayer } from "../engine/jingwei/types.js";
+import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 import {
   LEGACY_CATEGORY_MAP,
   JINGWEI_CATEGORIES,
@@ -143,6 +144,7 @@ function resolveImportance(raw: unknown, priorityTier: string): number {
 
 export async function handleJingweiWrite(input: JingweiWriteInput): Promise<JingweiWriteResult> {
   const storage = getStorageDatabase();
+  const entryRepo = createStoryJingweiEntryRepository(storage);
 
   // Parse & validate input
   let bookId = String(input.bookId);
@@ -200,8 +202,7 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         targetId = row.id;
       }
 
-      const now = Date.now();
-      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET deleted_at = ?, updated_at = ? WHERE id = ?`).run(now, now, targetId);
+      await entryRepo.softDelete(bookId, targetId, new Date());
       return { ok: true, summary: `已删除经纬条目「${title || targetId}」。`, data: { action: "deleted", entryId: targetId, bookId } };
     } catch (error) {
       return { ok: false, error: "delete-failed", summary: `删除失败：${error instanceof Error ? error.message : String(error)}` };
@@ -254,38 +255,7 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         };
       }
 
-      const now = Date.now();
-      const revisionId = crypto.randomUUID();
-      storage.sqlite
-        .prepare(
-          `INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .run(
-          revisionId,
-          row.id,
-          bookId,
-          row.content_md ?? "",
-          row.category ?? "unclassified",
-          existingLayer,
-          reason,
-          "agent-retire",
-          now,
-        );
-
-      storage.sqlite
-        .prepare(
-          `UPDATE story_jingwei_entry
-           SET participates_in_ai = 0,
-               status = 'needs-review',
-               lifecycle = 'archived',
-               deleted_at = ?,
-               updated_at = ?,
-               conflict_status = 'superseded',
-               conflict_detail = ?
-           WHERE id = ?`,
-        )
-        .run(now, now, reason, row.id);
+      await entryRepo.retire(bookId, row.id, { reason, changedBy: "agent-retire", retiredAt: new Date() });
 
       return {
         ok: true,
@@ -409,22 +379,15 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
 
     // Find existing entry by title
     const existingRows = storage.sqlite.prepare(
-      `SELECT id, section_id, content_md, layer, category FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND deleted_at IS NULL`
-    ).all(bookId, title) as Array<{ id: string; section_id: string; content_md: string; layer: string | null; category: string | null }>;
+      `SELECT id, section_id, content_md, layer, category FROM story_jingwei_entry WHERE book_id = ? AND title = ? AND category = ? AND deleted_at IS NULL`
+    ).all(bookId, title, category) as Array<{ id: string; section_id: string; content_md: string; layer: string | null; category: string | null }>;
 
-    const visibilityJson = JSON.stringify({ type: visibility });
-    const aliasesJson = JSON.stringify(aliases);
-    const tagsJson = JSON.stringify(tags);
-    const relatedEntryIdsJson = JSON.stringify(relatedEntryIds);
-    const fieldsJson = input.fields && typeof input.fields === "object"
-      ? JSON.stringify(input.fields)
-      : "{}";
-    const now = Date.now();
+    const fields = input.fields && typeof input.fields === "object" ? input.fields : undefined;
+    const now = new Date();
 
     if (existingRows.length > 0) {
       const existing = existingRows[0]!;
       const existingLayer = (existing.layer as JingweiLayer) || "dynamic";
-      const existingCategory = existing.category || "unclassified";
 
       // Canon write protection: requires explicit confirmation
       if (existingLayer === "canon") {
@@ -455,26 +418,33 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         }
       }
 
-      // Save revision before overwriting
-      const revisionId = crypto.randomUUID();
-      storage.sqlite.prepare(`
-        INSERT INTO jingwei_revision (id, entry_id, book_id, content_md, category, layer, reason, changed_by, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(revisionId, existing.id, bookId, existing.content_md, existingCategory, existingLayer, input.reason ?? null, "agent", now);
-
       // Append mode: concatenate new content to existing content
       let finalContentMd = contentMd;
       if (input.mode === "append" && existing.content_md && existing.content_md.trim().length > 0 && contentMd) {
         finalContentMd = existing.content_md + "\n\n" + contentMd;
       }
 
-      // Update existing entry (version increment + no summary generation)
       const entryId = existing.id;
-      storage.sqlite.prepare(`
-        UPDATE story_jingwei_entry
-        SET content_md = ?, tags_json = ?, aliases_json = ?, related_entry_ids_json = ?, visibility_rule_json = ?, section_id = ?, layer = ?, priority_tier = ?, importance = ?, custom_fields_json = ?, category = ?, status = ?, version = version + 1, updated_at = ?
-        WHERE id = ?
-      `).run(finalContentMd, tagsJson, aliasesJson, relatedEntryIdsJson, visibilityJson, sectionId, layer, priorityTier, importance, fieldsJson, category, entryStatus, now, entryId);
+      const updated = await entryRepo.update(bookId, entryId, {
+        contentMd: finalContentMd,
+        ...(input.summaryMd !== undefined ? { summaryMd: input.summaryMd } : {}),
+        tags,
+        aliases,
+        relatedEntryIds,
+        visibilityRule: { type: visibility as "tracked" | "global" | "nested" },
+        sectionId,
+        layer,
+        priorityTier,
+        importance,
+        ...(fields ? { fields, customFields: fields } : {}),
+        category,
+        status: entryStatus,
+        source: "agent-write",
+        changedBy: "agent",
+        revisionReason: input.reason,
+        updatedAt: now,
+      });
+      if (!updated) throw new Error(`经纬条目不存在：${entryId}`);
 
       return {
         ok: true,
@@ -482,12 +452,36 @@ export async function handleJingweiWrite(input: JingweiWriteInput): Promise<Jing
         data: { action: "updated", entryId, bookId, category, title, layer },
       };
     } else {
-      // Create new entry
       const entryId = crypto.randomUUID();
-      storage.sqlite.prepare(`
-        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, token_budget, layer, priority_tier, importance, status, version, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, 1, NULL, ?, ?, ?, ?, 1, ?, ?)
-      `).run(entryId, bookId, sectionId, title, contentMd, tagsJson, aliasesJson, fieldsJson, relatedEntryIdsJson, visibilityJson, layer, priorityTier, importance, entryStatus, now, now);
+      await entryRepo.create({
+        id: entryId,
+        bookId,
+        sectionId,
+        title,
+        contentMd,
+        summaryMd: input.summaryMd ?? null,
+        category,
+        fields: fields ?? {},
+        customFields: fields ?? {},
+        parentId: null,
+        sortOrder: 0,
+        lifecycle: "active",
+        status: entryStatus,
+        version: 1,
+        tags,
+        aliases,
+        relatedChapterNumbers: [],
+        relatedEntryIds,
+        visibilityRule: { type: visibility as "tracked" | "global" | "nested" },
+        participatesInAi: true,
+        tokenBudget: null,
+        layer,
+        priorityTier,
+        importance,
+        source: "agent-write",
+        createdAt: now,
+        updatedAt: now,
+      });
 
       return {
         ok: true,

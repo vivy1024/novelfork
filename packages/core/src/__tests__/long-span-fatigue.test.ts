@@ -122,6 +122,30 @@ describe("analyzeLongSpanFatigue", () => {
     }
   });
 
+  it("reads chapter bodies recursively from volume directories", async () => {
+    const bookDir = await createBookDir("novelfork-long-span-volume-test-");
+    const volumeDir = join(bookDir, "chapters", "卷02", "支线");
+    await mkdir(volumeDir, { recursive: true });
+
+    await Promise.all([
+      writeFile(join(volumeDir, "0001_Ledger.md"), "# Chapter 1\n\nMara kept the ledger close. The corridor stayed quiet after the bell. There it was again.", "utf-8"),
+      writeFile(join(volumeDir, "0002_Ash.md"), "# Chapter 2\n\nMara kept the ledger close while ash fell. The corridor stayed quiet until Taryn stopped. There it was again.", "utf-8"),
+      writeFile(join(volumeDir, "0003_Harbor.md"), "# Chapter 3\n\nMara kept the ledger close near the harbor. The corridor stayed quiet while guards changed. There it was again.", "utf-8"),
+    ]);
+
+    try {
+      const brief = await buildEnglishVarianceBrief({
+        bookDir,
+        chapterNumber: 4,
+      });
+
+      expect(brief).not.toBeNull();
+      expect(brief?.highFrequencyPhrases.length).toBeGreaterThan(0);
+    } finally {
+      await rm(join(bookDir, ".."), { recursive: true, force: true });
+    }
+  });
+
   it("warns when title focus collapses and high-tension mood never releases", async () => {
     const bookDir = await createBookDir("novelfork-long-span-cadence-test-");
 

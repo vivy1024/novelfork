@@ -81,6 +81,7 @@ export interface WritePreflightWarning {
     | "empty-chapter-summary"
     | "platform-target-mismatch"
     | "audit-stale"
+    | "volume-range-drift"
     | "other";
   readonly message: string;
   readonly explanation?: DiagnosticExplanation;
@@ -298,42 +299,9 @@ function makeBlocker(
 }
 
 /**
- * 当前卷：唯一权威源是经纬 outline 账本（`outline.volume` 维护）。
- * 不再读 story/volume_outline.json；md 仅为导出物。
+ * 当前卷的读取已收敛到 outline-volume 的 loadCurrentVolumeContext，
+ * 这里不再保留第二份推导实现（曾经的重复导致卷目标进不了生成上下文）。
  */
-async function readCurrentVolume(
-  storage: StorageDatabase,
-  bookId: string,
-  latestChapter: number,
-): Promise<{ title: string; goal: string } | null> {
-  try {
-    const { findLedgerEntryByTitle } = await import("./jingwei-ledger-store.js");
-    const entry = findLedgerEntryByTitle(storage, bookId, "outline", "卷纲");
-    const volumes = Array.isArray(entry?.fields.volumes)
-      ? entry.fields.volumes as Array<{
-        title?: string;
-        goal?: string;
-        status?: string;
-        chapterRange?: { from?: number; to?: number };
-      }>
-      : [];
-    if (volumes.length === 0) return null;
-    const active = volumes.find((item) => item.status === "active")
-      ?? volumes.find((item) => {
-        const from = Number(item.chapterRange?.from);
-        const to = Number(item.chapterRange?.to);
-        return Number.isFinite(from) && Number.isFinite(to) && latestChapter >= from && latestChapter <= to;
-      })
-      ?? volumes[0];
-    if (!active) return null;
-    return {
-      title: active.title?.trim() || "当前卷",
-      goal: active.goal?.trim() || "",
-    };
-  } catch {
-    return null;
-  }
-}
 
 export async function handleWritePreflight(input: WritePreflightInput): Promise<WritePreflightResult> {
   const bookId = trimText(input.bookId);
@@ -655,13 +623,29 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     platformInfo = null;
   }
 
-  const currentVolume = await readCurrentVolume(storage, bookId, formalChapterCount);
+  // 当前卷统一走 outline-volume 的共享入口：此前这里另有一份推导实现，
+  // 结果卷目标只停留在 preflight 结果里，没进生成上下文。
+  const { loadCurrentVolumeContext } = await import("./outline-volume.js");
+  const volumeContext = loadCurrentVolumeContext(storage, bookId, chapterNumber);
+  const currentVolume = volumeContext.current
+    ? { title: volumeContext.current.title, goal: volumeContext.current.goal }
+    : null;
   if (!currentVolume && formalChapterCount >= 3) {
     pushWarning(
       warnings,
       warningItems,
       "volume-focus-missing",
       "经纬 outline 中未设置卷纲；长篇建议用 outline.volume(action=suggest→set) 设定本卷目标。",
+    );
+  }
+  // 越界在 pipeline.write 是硬拦，这里提前预警，避免作者把一次生成浪费在被拦的章号上。
+  if (volumeContext.inRange === false && volumeContext.current) {
+    const { from, to } = volumeContext.current.chapterRange;
+    pushWarning(
+      warnings,
+      warningItems,
+      "volume-range-drift",
+      `第 ${chapterNumber} 章不在当前卷《${volumeContext.current.title}》区间（第 ${from}-${to} 章）内，pipeline.write 会以 volume-range-violation 拦下；请先用 outline.volume 修正卷区间或切换 active 卷。`,
     );
   }
 
