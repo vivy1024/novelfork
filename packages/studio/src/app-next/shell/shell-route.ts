@@ -10,7 +10,6 @@ export type ShellRoute =
   | { readonly kind: "routines" }
   | { readonly kind: "knowledge" }
   | { readonly kind: "scheduled-tasks" }
-  | { readonly kind: "groups" }
   | { readonly kind: "settings"; readonly section?: string }
   | { readonly kind: "learn" };
 
@@ -35,6 +34,9 @@ export interface ShellSessionItem {
 }
 
 export interface ShellRecentTabItem {
+  // Mirrors Runtime's persisted RecentTabType. "group" is retained for data
+  // compatibility with historical recent-tab rows only — the group chat feature
+  // is gone and the shell exposes no route or nav entry for it.
   readonly type: "chapter" | "narrator" | "project" | "workspace" | "subagent" | "group";
   readonly id: string;
   readonly narratorId?: string;
@@ -93,7 +95,6 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   if (section === "routines") return { kind: "routines" };
   if (section === "knowledge") return { kind: "knowledge" };
   if (section === "scheduled-tasks") return { kind: "scheduled-tasks" };
-  if (section === "groups") return { kind: "groups" };
   if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
   if (section === "learn") return { kind: "learn" };
   return { kind: "home" };
@@ -117,8 +118,6 @@ export function toShellPath(route: ShellRoute): string {
       return `${STUDIO_NEXT_BASE_PATH}/knowledge`;
     case "scheduled-tasks":
       return `${STUDIO_NEXT_BASE_PATH}/scheduled-tasks`;
-    case "groups":
-      return `${STUDIO_NEXT_BASE_PATH}/groups`;
     case "settings":
       return route.section
         ? `${STUDIO_NEXT_BASE_PATH}/settings/${encodeSegment(route.section)}`
@@ -149,7 +148,6 @@ export function getShellNavItems({
     { id: "routines", label: "套路", group: "global", route: { kind: "routines" } },
     { id: "knowledge", label: "知识库", group: "global", route: { kind: "knowledge" } },
     { id: "scheduled-tasks", label: "定时任务", group: "global", route: { kind: "scheduled-tasks" } },
-    { id: "groups", label: "群聊", group: "global", route: { kind: "groups" } },
     { id: "learn", label: "学习", group: "global", route: { kind: "learn" } },
     { id: "settings", label: "设置", group: "global", route: { kind: "settings" } },
   ];

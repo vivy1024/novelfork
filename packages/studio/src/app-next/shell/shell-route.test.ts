@@ -13,7 +13,6 @@ describe("Agent Shell route parsing", () => {
     expect(parseShellRoute("/next/routines")).toEqual({ kind: "routines" });
     expect(parseShellRoute("/next/knowledge")).toEqual({ kind: "knowledge" });
     expect(parseShellRoute("/next/scheduled-tasks")).toEqual({ kind: "scheduled-tasks" });
-    expect(parseShellRoute("/next/groups")).toEqual({ kind: "groups" });
     expect(parseShellRoute("/next/settings")).toEqual({ kind: "settings" });
     expect(parseShellRoute("/next/learn")).toEqual({ kind: "learn" });
   });
@@ -38,7 +37,6 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "routines" })).toBe("/next/routines");
     expect(toShellPath({ kind: "knowledge" })).toBe("/next/knowledge");
     expect(toShellPath({ kind: "scheduled-tasks" })).toBe("/next/scheduled-tasks");
-    expect(toShellPath({ kind: "groups" })).toBe("/next/groups");
     expect(toShellPath({ kind: "settings" })).toBe("/next/settings");
     expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
   });

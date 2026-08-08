@@ -12,7 +12,6 @@ describe("Studio Next routing", () => {
     expect(resolveStudioNextRoute("/next/routines")).toEqual({ kind: "routines" });
     expect(resolveStudioNextRoute("/next/knowledge")).toEqual({ kind: "knowledge" });
     expect(resolveStudioNextRoute("/next/scheduled-tasks")).toEqual({ kind: "scheduled-tasks" });
-    expect(resolveStudioNextRoute("/next/groups")).toEqual({ kind: "groups" });
     expect(resolveStudioNextRoute("/next/search")).toEqual({ kind: "search" });
     expect(resolveStudioNextRoute("/next/unknown")).toEqual({ kind: "home" });
   });

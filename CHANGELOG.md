@@ -2,14 +2,31 @@
 
 本文件记录 **NovelFork** 的版本变更。
 
-## v3.6.1 (2026-08-08) — NarraFork Runtime v0.5.23 升级、工具 Schema 完全规范对齐与废弃群聊清理
+## v3.6.1 (2026-08-09) — NarraFork Runtime v0.5.23 升级、Overlay 物化修复、实时渲染修复与废弃群聊清理
 
 ### Runtime 引擎与 API 适配
 
-- 物理无损升级至 NarraFork Runtime 官方 `v0.5.23` 提交基线，零改动 NarraFork 底层代码。
+- 物理无损升级至 NarraFork Runtime 官方 `v0.5.23` 提交基线，零改动 NarraFork 底层代码（`target local modifications = 0`）。
 - 规范小说领域工具在 `novel-plugin` 的导出 Schema 和工具名兼容映射，消灭 Anthropic / Kiro / OpenAI 等 Provider 网关下的 400 格式错误 (`REQUEST_BODY_INVALID`)。
-- 恢复 `RuntimeFrontendHostProviders` 中的 WebSocket 全局长连接 Lease，彻底修复实时文字打字流与 Tool Card 过程渲染。
-- 配合上游 `v0.5.23` 彻底清理并下线 Studio 前端遗留的 `chat-groups` 路由、组件和测试文件。
+
+### Overlay 物化修复（本次关键修复）
+
+- 修复 Runtime 物化树中 **84 个 overlay patch 全部未生效** 的问题：此前 `UPSTREAM.lock.json` 记录了预期结果哈希，但补丁从未写入物化树，导致 Product Host SPI、WebSocket 连接 Lease 等接入在编译产物中整体缺失。
+- 将 `package.json` overlay patch 的 base/result 哈希 rebase 到 `v0.5.23` 上游实际内容（此前仍指向 v0.5.21 基线，使 overlay 重放整体 fail-closed）。
+- 修复 `isolated-runtime-build` 中沙箱依赖注入先于 overlay 对账执行的顺序缺陷；注入会重写 `package.json` 并破坏精确哈希校验。
+- 恢复 `bun.lock` patch 对 `package.json` patch 的依赖声明，保持补丁链顺序确定。
+
+### 实时渲染与前端
+
+- 修复嵌入式叙述者面板下实时流式渲染失效：`RuntimeFrontendHostProviders` 此前仅注册空监听器（`addListener({ types: [] })`），从不建立 WebSocket；现改为取用 Runtime 的共享连接 Lease（`narratorWSManager.acquireConnection()`），与 `AppRootLayout` 共用同一计数，避免相互断连。
+- 彻底清理 Studio 前端遗留的群聊入口：移除侧栏导航项、`groups` 路由分支、悬空的 `groupsRoute` 导出与相关测试断言。`ShellRecentTabItem` 保留 `"group"` 类型仅用于兼容历史 recent-tab 数据，不再提供任何入口。
+- 为 Runtime 前端源码补充 `@simplewebauthn/browser` 测试解析别名（Runtime 树无独立 `node_modules`，无法自解析该依赖）。
+
+### 验证
+
+- Runtime overlay 与导入门禁 28 项通过；Runtime 产品 parity 31 项 Capability 契约通过。
+- Studio typecheck 通过，121 个测试文件 / 581 项测试全部通过。
+- 当次编译的 Windows x64 EXE 隔离实例核验：`readiness: ready`，嵌入面板挂载后成功建立 `ws://.../ws/narrator` 连接并接收到服务端推送帧，卸载后正确释放。
 
 ## v3.6.0 (2026-08-08) — 经纬权威源收敛、写作工作台重构与 Runtime 契约门禁
 

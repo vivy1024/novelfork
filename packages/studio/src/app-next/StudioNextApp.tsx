@@ -49,9 +49,6 @@ const ScheduledTasksPageLazy = lazy(() =>
     default: m.ScheduledTasksPage,
   })),
 );
-const GroupChatPageLazy = lazy(() =>
-  import("./groups/GroupChatPage").then((m) => ({ default: m.GroupChatPage })),
-);
 const RuntimeNarratorConversationLoaderLazy = lazy(() =>
   import("./runtime/RuntimeNarratorConversationRoute").then((m) => ({
     default: m.RuntimeNarratorConversationLoader,
@@ -687,14 +684,6 @@ function RouteMountPoint({
         <LazyErrorBoundary fallbackLabel="定时任务">
           <Suspense fallback={<LazyFallback />}>
             <ScheduledTasksPageLazy />
-          </Suspense>
-        </LazyErrorBoundary>
-      );
-    case "groups":
-      return (
-        <LazyErrorBoundary fallbackLabel="群聊">
-          <Suspense fallback={<LazyFallback />}>
-            <GroupChatPageLazy />
           </Suspense>
         </LazyErrorBoundary>
       );

@@ -832,8 +832,11 @@ export async function createIsolatedRuntimeBuild(
 	let disposed = false;
 	try {
 		const root = copyIsolatedProductWorkspace(sourceRoot, workspaceRoot);
-		ensureSandboxRuntimeDependencies(root);
+		// Overlay reconciliation compares package.json against exact overlay hashes,
+		// so it must run before any sandbox-only dependency injection rewrites that
+		// file. Injecting first makes the hash unrecognizable and fails the check.
 		await reconcileSandboxRuntimeOverlay(workspaceRoot, root);
+		ensureSandboxRuntimeDependencies(root);
 		seedSandboxRuntimeMigrationHistory(workspaceRoot, root);
 		const environment = createRuntimeBuildEnvironment(process.env, root);
 		runSandboxInstall(workspaceRoot, root, environment);

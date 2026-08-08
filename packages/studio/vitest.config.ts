@@ -7,6 +7,9 @@ export default defineConfig({
     alias: {
       "react": resolve(__dirname, "node_modules/react"),
       "react-dom": resolve(__dirname, "node_modules/react-dom"),
+      // Runtime 树没有自己的 node_modules；它的 frontend 源码引用此包时
+      // 无法从自身目录向上解析到 Studio 的私有依赖，需显式指向。
+      "@simplewebauthn/browser": resolve(__dirname, "node_modules/@simplewebauthn/browser"),
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(__dirname, "../narrafork-runtime-private/frontend/components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(__dirname, "../narrafork-runtime-private/frontend/lib/query-client.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(__dirname, "../narrafork-runtime-private/frontend/components/providers/EmbeddedProviderSettingsHost.tsx"),
