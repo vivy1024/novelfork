@@ -2,11 +2,16 @@ import { NOVEL_RUNTIME_CONTRIBUTION } from "@vivy1024/novelfork-novel-plugin";
 import type { ToolDefinition, ToolResult } from "@vivy1024/narrafork-runtime-bridge";
 import { bookRuntimeBindingService } from "../services/book-binding";
 import {
+	type NovelBindingDiagnosticSink,
 	type NovelRuntimeBindingResolver,
 	NovelRuntimeHostAdapter,
 } from "./runtime-host-adapter";
 
-export type { NovelRuntimeBindingResolver } from "./runtime-host-adapter";
+export type {
+	NovelBindingDiagnosis,
+	NovelBindingDiagnosticSink,
+	NovelRuntimeBindingResolver,
+} from "./runtime-host-adapter";
 
 export const NOVEL_RUNTIME_TOOL_NAMES = new Set(
 	(NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => tool.definition.name),
@@ -52,8 +57,17 @@ export function syncNovelRuntimeToolVisibility(
 export class NovelRuntimeAdapter {
 	readonly hostAdapter: NovelRuntimeHostAdapter;
 
-	constructor(bindings: NovelRuntimeBindingResolver = bookRuntimeBindingService) {
-		this.hostAdapter = new NovelRuntimeHostAdapter(bindings);
+	constructor(
+		bindings: NovelRuntimeBindingResolver = bookRuntimeBindingService,
+		diagnosticSink?: NovelBindingDiagnosticSink,
+	) {
+		this.hostAdapter = diagnosticSink
+			? new NovelRuntimeHostAdapter(bindings, diagnosticSink)
+			: new NovelRuntimeHostAdapter(bindings);
+	}
+
+	diagnoseBinding(narratorId: string) {
+		return this.hostAdapter.diagnoseBinding(narratorId);
 	}
 
 	get host() {

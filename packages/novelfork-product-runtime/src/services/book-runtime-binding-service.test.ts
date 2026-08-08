@@ -109,4 +109,48 @@ describe("BookRuntimeBindingService", () => {
 			"already bound to another runtime project",
 		);
 	});
+
+	// A book narrator that loses every novel domain tool used to be
+	// indistinguishable from an unbound standalone narrator: both paths returned
+	// a bare `null`. The model then kept being told to maintain Jingwei while
+	// `lore.write` had already been filtered out, so it fell back to rewriting
+	// local markdown until the provider rejected the turn. These tests pin the
+	// diagnosis that makes the real cause reportable.
+	test("separates an unbound narrator from a book narrator whose root vanished", async () => {
+		expect(await service.diagnoseForNarrator("narrator-missing")).toEqual({ status: "unbound" });
+		expect(await service.diagnoseForNarrator("")).toEqual({ status: "unbound" });
+
+		const saved = await service.upsert("project-a", "book-a", "user-a");
+		expect(await service.diagnoseForNarrator("narrator-a")).toEqual({
+			status: "trusted",
+			binding: saved,
+		});
+
+		store.records.set("project-a", { ...saved, bookRoot: join(booksRoot, "book-gone") });
+		const vanished = await service.diagnoseForNarrator("narrator-a");
+		expect(vanished.status).toBe("untrusted");
+		if (vanished.status !== "untrusted") throw new Error("expected untrusted diagnosis");
+		expect(vanished.reason).toBe("book-root-missing");
+		expect(vanished.explanation).toContain("book-a");
+		expect(vanished.explanation).toContain("无法访问");
+		// resolveForNarrator still fails closed — the diagnosis never widens trust.
+		expect(await service.resolveForNarrator("narrator-a")).toBeNull();
+	});
+
+	test("reports an unmarked external root instead of silently dropping domain tools", async () => {
+		const external = await mkdtemp(join(tmpdir(), "novelfork-external-"));
+		try {
+			const saved = await service.upsert("project-a", "book-a", "user-a");
+			store.records.set("project-a", { ...saved, bookRoot: await realpath(external) });
+
+			const diagnosis = await service.diagnoseForNarrator("narrator-a");
+			expect(diagnosis.status).toBe("untrusted");
+			if (diagnosis.status !== "untrusted") throw new Error("expected untrusted diagnosis");
+			expect(diagnosis.reason).toBe("external-root-unmarked");
+			expect(diagnosis.explanation).toContain("novelforkExternalWorkspace");
+			expect(await service.resolveForNarrator("narrator-a")).toBeNull();
+		} finally {
+			await rm(external, { recursive: true, force: true });
+		}
+	});
 });

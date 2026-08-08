@@ -529,4 +529,60 @@ describe("NovelRuntimeAdapter", () => {
 		// 确认基础名字唯一
 		expect(new Set(names).size).toBe(names.length);
 	});
+
+	// 书籍叙述者一旦解析不到可信绑定，领域工具会被整体过滤掉。此前这个失败是
+	// 静默的：模型仍被要求维护经纬，却看不到 lore.write，只能反复用通用 Write
+	// 重写本地文件。这里固定"必须产出可读诊断，且只报一次"的契约。
+	test("reports a broken book binding once instead of silently dropping domain tools", async () => {
+		const events: Array<Record<string, unknown>> = [];
+		const brokenResolver: NovelRuntimeBindingResolver = {
+			async resolveForNarrator() {
+				return null;
+			},
+			async diagnoseForNarrator() {
+				return {
+					status: "untrusted" as const,
+					reason: "external-root-unmarked",
+					explanation: "书籍 book-a 位于受控 books 根之外，且缺少可信标记。",
+					binding: { bookId: "book-a", bookRoot: "D:/external/book-a" },
+				};
+			},
+		};
+		const diagnosed = new NovelRuntimeAdapter(brokenResolver, (event) => {
+			events.push({ ...event });
+		});
+
+		expect(await diagnosed.resolveToolNames("narrator-a")).toEqual([]);
+		expect(events).toHaveLength(1);
+		expect(events[0]?.narratorId).toBe("narrator-a");
+		expect(events[0]?.reason).toBe("external-root-unmarked");
+		expect(events[0]?.bookId).toBe("book-a");
+		expect(String(events[0]?.explanation)).toContain("可信标记");
+
+		// 同一叙述者的同一原因不再重复上报，避免在续跑回合里刷屏。
+		await diagnosed.resolveToolNames("narrator-a");
+		expect(events).toHaveLength(1);
+
+		expect(await diagnosed.diagnoseBinding("narrator-a")).toMatchObject({
+			status: "untrusted",
+			reason: "external-root-unmarked",
+		});
+	});
+
+	test("keeps an unbound standalone narrator silent", async () => {
+		const events: unknown[] = [];
+		const unbound: NovelRuntimeBindingResolver = {
+			async resolveForNarrator() {
+				return null;
+			},
+			async diagnoseForNarrator() {
+				return { status: "unbound" as const };
+			},
+		};
+		const diagnosed = new NovelRuntimeAdapter(unbound, (event) => events.push(event));
+
+		expect(await diagnosed.resolveToolNames("narrator-standalone")).toEqual([]);
+		// 未绑定书籍是正常状态，不是缺陷，不应产生告警。
+		expect(events).toHaveLength(0);
+	});
 });
