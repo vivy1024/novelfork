@@ -16,7 +16,7 @@
 
 ## Navigation
 
-[快速开始](#quick-start) · [架构](#architecture) · [变更日志](CHANGELOG.md) · [GitHub Releases](https://github.com/vivy1024/novelfork/releases)
+[快速开始](#quick-start) · [版本演进](#版本演进) · [架构](#architecture) · [变更日志](CHANGELOG.md) · [GitHub Releases](https://github.com/vivy1024/novelfork/releases)
 
 ---
 
@@ -37,14 +37,27 @@
 
 | 版本 | 日期 | 主题 |
 |------|------|------|
-| **v3.3.1** | 2026-08-03 | Skill 文件树与物化落地 · 设置/供应商扁平化与脏检测 · 消息网关扫码与 Web 终端 · 6 步 SetupWizard |
-| **v3.3.0** | 2026-08-01 | Writing Skills 取代旧 Preset/Beat · 叙事线审批闭环 · Runtime v0.5.18 兼容 |
-| **v3.2.1** | 2026-07-23 | 公开仓库边界：Runtime 历史清理 · overlay 私有子仓库 · 本地发版门禁 |
-| **v3.2.0** | 2026-07-21 | Runtime 产品化接入 · 叙事记忆管理工具 · Lore retire |
+| **v3.6.0** | 2026-08-08 | 经纬权威源收敛 · 写作工作台重构 · 工具结果 Renderer · Runtime Overlay 与七平台发版门禁 |
+| **v3.5.1** | 2026-08-06 | Runtime v0.5.21 · 子代理压缩重启与 400 根因修复 · Writing Skills 硬门禁 |
+| **v3.5.0** | 2026-08-06 | 写作链路根因修复 · Writing Skills 物化 · 多平台编译 · 隔离验证 |
+| **v3.4.0** | 2026-08-06 | 七平台交叉编译 · Runtime Overlay 对齐 · 设置与 Provider 体验统一 |
+| **v3.3.x** | 2026-08-01 | Skill 文件树与物化 · 网关/终端/SetupWizard · Runtime v0.5.18 |
+| **v3.2.x** | 2026-07-21 | Runtime 产品化 · 叙事记忆管理 · 公开/私有源码边界 |
 | **v3.0.0** | 2026-06-25 | 3D 结晶叙事记忆 · 经纬/记忆架构闭合 |
-| **v2.x** | 2026-06 | 上下文修复 · IDE · 管线与质量机制 |
+| **v1.x–v2.x** | 2026-05 至 2026-06 | Agent Runtime、经纬、IDE、资源系统、上下文与质量管线持续重构 |
 
 完整记录见 [CHANGELOG.md](CHANGELOG.md)。
+
+## 版本演进
+
+从 `v1.0.0` 到 `v3.6.0`，NovelFork 的主要演进可以概括为：
+
+- **v1.0–v1.4：基础 Runtime 与小说工作台**：完成独立项目发布、Agent Runtime 对齐、经纬与候选稿链路、PGI/UserQuestionGate、Recall、TaskCreate、ToolSearch 与基础安全隔离。
+- **v1.5–v1.8：约束写作与资源系统**：重写 System Prompt，统一工具命名与分层，建立 Scene Spec、Pipeline Write、Canon/Dynamic/Reference 分层、统一资源版本系统、IDE 工作台和插件 UI 注册。
+- **v1.9–v2.2：质量管线与上下文引擎**：加入对抗式审查、S1–S4 严重度门禁、资源账本、知识边界、时间线、伏笔追踪、上下文预算、推理强度和 Narrative Memory/Wave 检索。
+- **v3.0–v3.2：叙事记忆与 Runtime 产品化**：上线 3D 结晶记忆空间，收紧经纬与叙事记忆边界，接入私有 NarraFork Runtime，增加记忆管理工具，并确立公开产品树与私有 Runtime/Overlay 边界。
+- **v3.3–v3.5：技能化写作与跨平台交付**：Writing Skills 取代旧 Preset/Beat 入口并物化到作品目录，补齐网关、Web 终端、SetupWizard、Provider 设置与七平台交叉编译，强化写前/写后门禁、Runtime v0.5.21 和隔离验证。
+- **v3.6.0：权威源收敛与工作台重构**：统一经纬、章节摘要、写作资源和叙事记忆的权威路径，重构写作工作台与工具结果 Renderer，强化 Core/Bridge/Overlay 契约，并通过全量测试、Parity、七平台编译和当次 EXE 核验。
 
 ---
 
@@ -54,7 +67,7 @@
 |------|------|------|
 | **Bun** | ≥ 1.3 | 运行时与 Windows 单文件编译 |
 | **pnpm** | 10.x | 工作区依赖安装 |
-| **OS** | Windows x64 | 主要支持与发版平台 |
+| **OS** | Windows x64 / Linux x64 / Linux arm64 / macOS x64 / macOS arm64 | v3.6.0 提供七平台产物；Windows x64 为本机主要核验平台 |
 | **浏览器** | Chrome / Edge | 本地 Web 工作台 |
 
 > 从公开源码完整跑通本地产品，需要维护者私有的 Runtime 物化树与 overlay 子仓库权限。普通用户请使用 **Releases 中的 Windows EXE**。
@@ -65,13 +78,22 @@
 
 ### Option 1: 下载 EXE（推荐）
 
-从 [GitHub Releases](https://github.com/vivy1024/novelfork/releases/latest) 下载：
+从 [GitHub Releases](https://github.com/vivy1024/novelfork/releases/latest) 下载单个平台文件，或下载七平台统一压缩包：
 
 ```text
+novelfork-vX.Y.Z-7-platforms.zip
 novelfork-vX.Y.Z-windows-x64.exe
+novelfork-vX.Y.Z-windows-x64-baseline.exe
+novelfork-vX.Y.Z-linux-x64
+novelfork-vX.Y.Z-linux-x64-baseline
+novelfork-vX.Y.Z-linux-arm64
+novelfork-vX.Y.Z-macos-arm64
+novelfork-vX.Y.Z-macos-x64
 ```
 
-双击运行，无需安装。
+Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部分虚拟机选择 `windows-x64-baseline.exe`。每个产物旁有 `.sha256` 文件，Release 同时提供聚合校验文件。
+
+双击 Windows EXE 运行，无需安装。
 
 ### Option 2: 源码开发（维护者）
 
@@ -168,10 +190,10 @@ novelfork/
 
 ```bash
 pnpm install
-pnpm test          # 工作区测试（需本地 Runtime 时再跑完整能力）
-pnpm build         # 产品前端等
-pnpm compile       # Windows x64 EXE
-# 用生成的 EXE 做功能核验后再上传 Release 资产
+pnpm test             # 工作区全量测试（需本地 Runtime）
+pnpm build            # 产品前端构建
+pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
+# 用当次生成的 Windows x64 EXE 做无头功能核验后再上传 Release
 ```
 
 常用命令：
@@ -181,9 +203,13 @@ pnpm compile       # Windows x64 EXE
 | `pnpm dev` | 开发入口 |
 | `pnpm dev:frontend` | 仅 Studio Vite |
 | `pnpm build` | 产品前端构建 |
-| `pnpm compile` | Windows 单文件 EXE |
+| `pnpm compile` | Windows x64 单文件 EXE |
+| `pnpm compile:windows` | Windows x64 + baseline |
+| `pnpm compile:linux` | Linux x64 + baseline + arm64 |
+| `pnpm compile:macos` | macOS arm64 + x64 |
+| `pnpm compile:all` | 全部 7 个平台并生成 `SHA256SUMS` |
 | `pnpm typecheck` | 各包类型检查 |
-| `pnpm test` | 递归测试 |
+| `pnpm test` | 根工作区递归测试 |
 
 ---
 
