@@ -11,6 +11,7 @@ import {
 	type BookRuntimeBindingStore,
 } from "./book-binding";
 import { NovelRuntimeAdapter } from "../adapters/runtime-adapter";
+import { toRuntimeToolName } from "../adapters/runtime-host-adapter";
 
 class MemoryStore implements BookRuntimeBindingStore {
 	bindings = new Map<string, BookRuntimeBindingRecord>();
@@ -90,7 +91,7 @@ describe("trusted novel runtime binding", () => {
 			bookId: "book-a",
 			root: resolve(externalBookRoot),
 		});
-		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter.read");
+		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.read"));
 	});
 
 	test("fails closed for an unmarked external workspace", async () => {
@@ -126,7 +127,7 @@ describe("trusted novel runtime binding", () => {
 		const { service, adapter } = createHarness();
 		expect(await adapter.resolveToolNames("narrator-a")).toEqual([]);
 		await service.upsert("project-a", "book-a", null);
-		expect(await adapter.resolveToolNames("narrator-a")).toContain("chapter.read");
+		expect(await adapter.resolveToolNames("narrator-a")).toContain(toRuntimeToolName("chapter.read"));
 	});
 
 	test("returns one trusted product prompt extension", async () => {
@@ -139,7 +140,7 @@ describe("trusted novel runtime binding", () => {
 
 	test("adapter preserves portable raw JSON schema", () => {
 		const { adapter } = createHarness();
-		const definition = adapter.toolDefinitions().find((tool) => tool.name === "chapter.read");
+		const definition = adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.read"));
 		expect(definition?.rawJsonSchema).toBeDefined();
 	});
 });

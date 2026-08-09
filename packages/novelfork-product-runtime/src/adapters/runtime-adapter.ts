@@ -5,6 +5,7 @@ import {
 	type NovelBindingDiagnosticSink,
 	type NovelRuntimeBindingResolver,
 	NovelRuntimeHostAdapter,
+	toRuntimeToolName,
 } from "./runtime-host-adapter";
 
 export type {
@@ -14,7 +15,7 @@ export type {
 } from "./runtime-host-adapter";
 
 export const NOVEL_RUNTIME_TOOL_NAMES = new Set(
-	(NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => tool.definition.name),
+	(NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => toRuntimeToolName(tool.definition.name)),
 );
 
 /**

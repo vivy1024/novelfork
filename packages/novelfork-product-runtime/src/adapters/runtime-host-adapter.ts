@@ -160,6 +160,48 @@ function defaultBindingDiagnosticSink(event: {
 		});
 }
 
+const RUNTIME_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u;
+
+type RuntimeToolNameAlias = Readonly<{
+	canonical: string;
+	wire: string;
+}>;
+
+export function toRuntimeToolName(canonicalName: string): string {
+	return canonicalName.replace(/\./g, "_");
+}
+
+function createRuntimeToolNameAliases(): Readonly<{
+	aliases: readonly RuntimeToolNameAlias[];
+	canonicalToWire: ReadonlyMap<string, string>;
+	wireToCanonical: ReadonlyMap<string, string>;
+}> {
+	const aliases: RuntimeToolNameAlias[] = [];
+	const canonicalToWire = new Map<string, string>();
+	const wireToCanonical = new Map<string, string>();
+
+	for (const tool of NOVEL_RUNTIME_CONTRIBUTION.tools ?? []) {
+		const canonical = tool.definition.name;
+		const wire = toRuntimeToolName(canonical);
+		if (!RUNTIME_TOOL_NAME_PATTERN.test(wire)) {
+			throw new Error(`小说工具名不符合 Runtime provider 约束：${canonical} -> ${wire}`);
+		}
+		const previousCanonical = wireToCanonical.get(wire);
+		if (previousCanonical && previousCanonical !== canonical) {
+			throw new Error(`小说工具名归一化冲突：${previousCanonical} 与 ${canonical} 都映射到 ${wire}`);
+		}
+		canonicalToWire.set(canonical, wire);
+		wireToCanonical.set(wire, canonical);
+		aliases.push({ canonical, wire });
+	}
+
+	return {
+		aliases: aliases.sort((left, right) => right.canonical.length - left.canonical.length),
+		canonicalToWire,
+		wireToCanonical,
+	};
+}
+
 function toRuntimeRisk(risk: string | undefined): RuntimeToolRisk {
 	if (risk === "read" || risk === "draft-write" || risk === "confirmed-write" || risk === "destructive") return risk;
 	// An incomplete or future contribution must not silently become a read tool.
@@ -194,6 +236,7 @@ export class NovelRuntimeHostAdapter {
 	readonly host = new RuntimePluginHost();
 	private readonly validators = new WeakMap<object, z.ZodType>();
 	private readonly reportedBindingFailures = new Set<string>();
+	private readonly toolNameAliases = createRuntimeToolNameAliases();
 
 	constructor(
 		private readonly bindings: NovelRuntimeBindingResolver,
@@ -212,8 +255,28 @@ export class NovelRuntimeHostAdapter {
 		const resolved = pluginContext ? this.host.resolve(pluginContext) : null;
 		// An empty contribution is what strips every novel domain tool from the
 		// session. Report the author-facing cause instead of failing silently.
-		if (!resolved) await this.reportUnresolvedBinding(narratorId);
-		return resolved;
+		if (!resolved) {
+			await this.reportUnresolvedBinding(narratorId);
+			return null;
+		}
+
+		// Runtime later validates the final provider-facing name with
+		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
+		// here rather than letting dotted catalog names disappear at the last step.
+		return {
+			...resolved,
+			tools: resolved.tools.map((tool) => ({
+				...tool,
+				definition: {
+					...tool.definition,
+					name: this.toWireToolName(tool.definition.name),
+				},
+			})),
+			promptExtensions: resolved.promptExtensions.map((extension) => ({
+				...extension,
+				content: this.toModelFacingText(extension.content),
+			})),
+		};
 	}
 
 	/**
@@ -255,12 +318,28 @@ export class NovelRuntimeHostAdapter {
 		return resolved ? resolved.promptExtensions.map((extension) => extension.content) : [];
 	}
 
+	private toWireToolName(canonicalName: string): string {
+		return this.toolNameAliases.canonicalToWire.get(canonicalName) ?? canonicalName;
+	}
+
+	private toCanonicalToolName(wireName: string): string {
+		return this.toolNameAliases.wireToCanonical.get(wireName) ?? wireName;
+	}
+
+	private toModelFacingText(text: string): string {
+		let translated = text;
+		for (const { canonical, wire } of this.toolNameAliases.aliases) {
+			translated = translated.replaceAll(canonical, wire);
+		}
+		return translated;
+	}
+
 	toolDefinitions(): ToolDefinition[] {
 		return (NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((tool) => this.toToolDefinition(tool));
 	}
 
 	getToolPermissionPolicy(toolName: string): ContributedToolPermissionPolicy | null {
-		const policy = getNovelToolPermissionPolicy(toolName);
+		const policy = getNovelToolPermissionPolicy(this.toCanonicalToolName(toolName));
 		if (!policy) return null;
 		return {
 			risk: policy.risk,
@@ -286,7 +365,10 @@ export class NovelRuntimeHostAdapter {
 		}
 
 		if (policy.visibility === "advanced") {
-			return context?.isAdvancedEnabled === true || enabledOptionalToolNames.has(toolName);
+			const canonicalToolName = this.toCanonicalToolName(toolName);
+			return context?.isAdvancedEnabled === true
+				|| enabledOptionalToolNames.has(toolName)
+				|| enabledOptionalToolNames.has(canonicalToolName);
 		}
 		return true;
 	}
@@ -296,8 +378,13 @@ export class NovelRuntimeHostAdapter {
 		resolvedToolNames: readonly string[],
 		context?: Readonly<{ isAdvancedEnabled?: boolean; permissionMode?: SessionPermissionMode | string }>,
 	): void {
-		const explicitlyEnabled = new Set(enabledToolNames);
-		const registeredNames = new Set((NOVEL_RUNTIME_CONTRIBUTION.tools ?? []).map((t) => t.definition.name));
+		const explicitlyEnabled = new Set(
+			[...enabledToolNames].map((name) => this.toWireToolName(name)),
+		);
+		const registeredNames = new Set([
+			...this.toolNameAliases.canonicalToWire.keys(),
+			...this.toolNameAliases.canonicalToWire.values(),
+		]);
 		for (const name of registeredNames) enabledToolNames.delete(name);
 		for (const name of resolvedToolNames) {
 			const policy = this.getToolPermissionPolicy(name);
@@ -314,17 +401,21 @@ export class NovelRuntimeHostAdapter {
 		execution: string | Pick<ToolContext, "narratorId" | "provider" | "model" | "generateText" | "emitOutput">,
 	): Promise<ToolResult> {
 		const narratorId = typeof execution === "string" ? execution : execution.narratorId;
+		const canonicalToolName = this.toCanonicalToolName(toolName);
 		const context = await this.resolve(narratorId);
 		const pluginContext = context ? toPluginRuntimeResolveContext(context) : null;
 		if (!context || !pluginContext) {
-			return errorResult("missing-resource-binding", "缺少可信书籍绑定。", toolName);
+			return errorResult("missing-resource-binding", "缺少可信书籍绑定。", toolName, {
+				runtimeCanonicalToolName: canonicalToolName,
+			});
 		}
 
 		const resolved = this.host.resolve(pluginContext);
-		const tool = resolved.tools.find((candidate) => candidate.definition.name === toolName);
+		const tool = resolved.tools.find((candidate) => candidate.definition.name === canonicalToolName);
 		if (!tool) {
 			return errorResult("runtime-tool-not-visible", "当前可信绑定下工具不可见。", toolName, {
 				runtimeProjectId: context.runtimeProjectId,
+				runtimeCanonicalToolName: canonicalToolName,
 			});
 		}
 
@@ -338,6 +429,7 @@ export class NovelRuntimeHostAdapter {
 		const runtimeRisk = toRuntimeRisk(tool.definition.risk);
 		const runtimeMetadata = {
 			runtimeProjectId: context.runtimeProjectId,
+			runtimeCanonicalToolName: canonicalToolName,
 			runtimeRisk,
 			...(tool.definition.renderer ? { runtimeRenderer: tool.definition.renderer } : {}),
 		};
@@ -371,15 +463,17 @@ export class NovelRuntimeHostAdapter {
 
 	private toToolDefinition(tool: RuntimeToolContribution): ToolDefinition {
 		const { definition } = tool;
+		const wireToolName = this.toWireToolName(definition.name);
 		const contributedPermission = this.getToolPermissionPolicy(definition.name);
 		return {
-			name: definition.name,
-			description: definition.description,
+			name: wireToolName,
+			description: this.toModelFacingText(definition.description),
 			parameters: this.validatorFor(definition.inputSchema),
 			rawJsonSchema: definition.inputSchema as Record<string, unknown>,
-			execute: (args, ctx) => this.execute(definition.name, args, ctx),
+			execute: (args, ctx) => this.execute(wireToolName, args, ctx),
 			metadata: {
 				runtimePluginId: NOVEL_RUNTIME_CONTRIBUTION.id,
+				runtimeCanonicalToolName: definition.name,
 				runtimeRisk: toRuntimeRisk(definition.risk),
 				...(contributedPermission ? { contributedPermission } : {}),
 				...(definition.renderer ? { runtimeRenderer: definition.renderer } : {}),

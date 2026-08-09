@@ -56,6 +56,11 @@ function testEnvironment(scope: "public" | "runtime"): NodeJS.ProcessEnv {
 		TEMP: workspaceTestTempRoot,
 		TMP: workspaceTestTempRoot,
 		TMPDIR: workspaceTestTempRoot,
+		// Runtime Git fixtures must not inherit a developer-machine checkout policy:
+		// core.autocrlf=true changes snapshot bytes and makes clean-worktree tests platform-dependent.
+		GIT_CONFIG_COUNT: "1",
+		GIT_CONFIG_KEY_0: "core.autocrlf",
+		GIT_CONFIG_VALUE_0: "false",
 	};
 
 	if (scope === "public") {
@@ -101,13 +106,16 @@ try {
 	if (publicExitCode === 0) {
 		// Keep Runtime's real-timer recovery tests deterministic on Windows while
 		// retaining fresh globals for every test file.
-		const runtimeTests = Bun.spawn([process.execPath, "test", "--isolate", "--parallel=1"], {
-			// Keep Runtime module resolution on its canonical materialized path; the
-			// short junction remains alive above only for public-package imports.
-			cwd: runtimeRoot,
-			env: testEnvironment("runtime"),
-			stdio: ["inherit", "inherit", "inherit"],
-		});
+		const runtimeTests = Bun.spawn(
+			[process.execPath, "test", "--isolate", "--parallel=1", "--timeout=30000"],
+			{
+				// Keep Runtime module resolution on its canonical materialized path; the
+				// short junction remains alive above only for public-package imports.
+				cwd: runtimeRoot,
+				env: testEnvironment("runtime"),
+				stdio: ["inherit", "inherit", "inherit"],
+			},
+		);
 		runtimeExitCode = await runtimeTests.exited;
 	}
 } finally {

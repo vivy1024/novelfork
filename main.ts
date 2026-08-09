@@ -37,6 +37,14 @@ const { registerRuntimeProductIntegration } = await import(
 const { novelForkProductIntegration } = await import("./packages/novelfork-product-runtime/src/index.ts");
 registerRuntimeProductIntegration(novelForkProductIntegration);
 
+// NovelFork owns the single desktop-window launch below. The embedded Runtime
+// has its own generic browser auto-open setting, which would otherwise launch a
+// second window before the product shell opens its app window.
+const { settings: runtimeSettings } = await import(
+  "./packages/narrafork-runtime-private/server/lib/settings/index.ts"
+);
+runtimeSettings.server.openBrowser = "off";
+
 // Keep the specifier literal so Bun includes the complete Runtime dependency graph
 // in the root executable without maintaining a second Runtime implementation package.
 await import("./packages/narrafork-runtime-private/server/index.ts");
@@ -44,7 +52,10 @@ await import("./packages/narrafork-runtime-private/server/index.ts");
 // Open the product UI only after the Runtime has bound its actual listener.
 // Prefer the Runtime-registered address getter when available; fall back to the
 // product default port so a missing export cannot crash an otherwise healthy server.
-if (process.env.NOVELFORK_NO_BROWSER !== "1") {
+if (
+  process.env.NOVELFORK_NO_BROWSER !== "1" &&
+  process.env.NARRAFORK_NO_BROWSER !== "1"
+) {
   const serverRestart = await import(
     "./packages/narrafork-runtime-private/server/lib/server-restart.ts"
   );
