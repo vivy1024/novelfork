@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+	books,
 	closeStorageDatabase,
 	initializeStorageDatabase,
 	runStorageMigrations,
@@ -14,6 +15,7 @@ import {
 	type NovelRuntimeBindingResolver,
 	syncNovelRuntimeToolVisibility,
 } from "./runtime-adapter";
+import { toRuntimeToolName } from "./runtime-host-adapter";
 
 class MemoryResolver implements NovelRuntimeBindingResolver {
 	context: RuntimeResolveContext | null = null;
@@ -29,7 +31,7 @@ let bookRoot: string;
 let resolver: MemoryResolver;
 let adapter: NovelRuntimeAdapter;
 
-const READY_TOOL_NAMES = [
+const CANONICAL_READY_TOOL_NAMES = [
   "cockpit.snapshot",
   "write.preflight",
   "memory.settle_range",
@@ -81,6 +83,8 @@ const READY_TOOL_NAMES = [
   "resource.manage",
 ];
 
+const READY_TOOL_NAMES = CANONICAL_READY_TOOL_NAMES.map(toRuntimeToolName);
+const RUNTIME_TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u;
 
 beforeEach(async () => {
 	workRoot = await mkdtemp(join(tmpdir(), "novel-runtime-adapter-"));
@@ -173,40 +177,45 @@ describe("NovelRuntimeAdapter", () => {
 		const extensions = await adapter.promptExtensions("narrator-a");
 		expect(extensions).toHaveLength(1);
 		expect(extensions[0]).toContain("NovelFork 小说创作运行时");
+		expect(extensions[0]).toContain("lore_write");
+		expect(extensions[0]).not.toContain("lore.write");
 
 		const definitions = adapter.toolDefinitions();
 		expect(definitions.map((tool) => tool.name)).toEqual(READY_TOOL_NAMES);
-		const chapterRead = definitions.find((tool) => tool.name === "chapter.read");
+		expect(definitions.every((tool) => RUNTIME_TOOL_NAME_PATTERN.test(tool.name))).toBe(true);
+		expect(definitions.some((tool) => tool.name === "lore.write")).toBe(false);
+		const chapterRead = definitions.find((tool) => tool.name === toRuntimeToolName("chapter.read"));
 		expect(chapterRead?.rawJsonSchema).toBeDefined();
 		expect(chapterRead?.metadata?.runtimePluginId).toBe("novelfork-novel");
 		expect(chapterRead?.metadata?.runtimeRisk).toBe("read");
 		expect(chapterRead?.metadata?.runtimeRenderer).toBe("chapter.content");
-		expect(definitions.find((tool) => tool.name === "lore.write")?.metadata?.runtimeRisk).toBe(
+		expect(chapterRead?.metadata?.runtimeCanonicalToolName).toBe("chapter.read");
+		expect(definitions.find((tool) => tool.name === toRuntimeToolName("lore.write"))?.metadata?.runtimeRisk).toBe(
 			"draft-write",
 		);
 		expect(
-			definitions.find((tool) => tool.name === "memory.events")?.metadata?.runtimeRisk,
+			definitions.find((tool) => tool.name === toRuntimeToolName("memory.events"))?.metadata?.runtimeRisk,
 		).toBe("draft-write");
-		expect(definitions.find((tool) => tool.name === "writing-skills.write")?.metadata?.runtimeRisk).toBe(
+		expect(definitions.find((tool) => tool.name === toRuntimeToolName("writing-skills.write"))?.metadata?.runtimeRisk).toBe(
 			"confirmed-write",
 		);
 		for (const name of ["rewrite.apply", "pipeline.import_chapters", "hooks.manage", "pipeline.write"]) {
-			expect(definitions.find((tool) => tool.name === name)?.metadata?.runtimeRisk).toBe("confirmed-write");
+			expect(definitions.find((tool) => tool.name === toRuntimeToolName(name))?.metadata?.runtimeRisk).toBe("confirmed-write");
 		}
-		expect(definitions.some((tool) => tool.name === "pipeline.revise")).toBe(false);
-		const chapterImport = definitions.find((tool) => tool.name === "pipeline.import_chapters");
+		expect(definitions.some((tool) => tool.name === toRuntimeToolName("pipeline.revise"))).toBe(false);
+		const chapterImport = definitions.find((tool) => tool.name === toRuntimeToolName("pipeline.import_chapters"));
 		expect(chapterImport?.parameters.safeParse({ content: "正文".repeat(500) }).success).toBe(true);
-		const cockpitSnapshot = definitions.find((tool) => tool.name === "cockpit.snapshot");
+		const cockpitSnapshot = definitions.find((tool) => tool.name === toRuntimeToolName("cockpit.snapshot"));
 		expect(cockpitSnapshot?.parameters.safeParse({}).success).toBe(true);
 		expect(cockpitSnapshot?.parameters.safeParse({ bookId: "book-a" }).success).toBe(false);
 		// 自由载荷对象必须保持开放：scene.spec 回传的是工具自己产出的真实快照。
-		const sceneSpec = definitions.find((tool) => tool.name === "scene.spec");
+		const sceneSpec = definitions.find((tool) => tool.name === toRuntimeToolName("scene.spec"));
 		expect(sceneSpec?.parameters.safeParse({
 			chapterNumber: 2,
 			userDirectives: "让主角进入山门",
 			cockpitSnapshot: { status: "available", progress: { chapterCount: 1 } },
 		}).success).toBe(true);
-		const loreWrite = definitions.find((tool) => tool.name === "lore.write");
+		const loreWrite = definitions.find((tool) => tool.name === toRuntimeToolName("lore.write"));
 		expect(loreWrite?.parameters.safeParse({
 			title: "设定",
 			tags: ["灵觉"],
@@ -216,7 +225,7 @@ describe("NovelRuntimeAdapter", () => {
 		expect(loreWrite?.parameters.safeParse({ title: "设定", tags: [{ key: "灵觉" }] }).success).toBe(false);
 		expect(chapterImport?.parameters.safeParse({ filePath: "C:/secret.txt" }).success).toBe(false);
 		// Writing Skills 只接受对项目文件的增删/刷新；模型不能塞入任意规则正文或未知字段。
-		const writingSkillsWrite = definitions.find((tool) => tool.name === "writing-skills.write");
+		const writingSkillsWrite = definitions.find((tool) => tool.name === toRuntimeToolName("writing-skills.write"));
 		expect(writingSkillsWrite?.parameters.safeParse({
 			addSkillIds: ["writing-skill-opening-hooks"],
 		}).success).toBe(true);
@@ -389,7 +398,7 @@ describe("NovelRuntimeAdapter", () => {
 			});
 			expect(await readFile(join(bookRoot, "chapters", "卷01", "0001-opening.md"), "utf8")).toBe(content);
 			expect(
-				adapter.toolDefinitions().find((tool) => tool.name === "chapter.write")?.metadata
+				adapter.toolDefinitions().find((tool) => tool.name === toRuntimeToolName("chapter.write"))?.metadata
 					?.runtimeRisk,
 			).toBe("confirmed-write");
 		} finally {
@@ -401,6 +410,12 @@ describe("NovelRuntimeAdapter", () => {
 		bindNarrator();
 		const storage = initializeStorageDatabase({ databasePath: join(workRoot, "novelfork.db") });
 		runStorageMigrations(storage);
+		await storage.db.insert(books).values({
+			id: "book-a",
+			name: "测试书籍",
+			createdAt: new Date("2026-01-01T00:00:00.000Z"),
+			updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+		});
 		try {
 			const result = await adapter.execute("memory.stats", {}, "narrator-a");
 			expect(result.isError).toBe(false);
@@ -408,6 +423,30 @@ describe("NovelRuntimeAdapter", () => {
 				ok: true,
 				data: { stats: { total: 0 } },
 			});
+
+			const loreDefinition = adapter.toolDefinitions().find((tool) => tool.name === "lore_write");
+			expect(loreDefinition).toBeDefined();
+			const loreWriteResult = await loreDefinition!.execute(
+				{
+					title: "wire alias lore",
+					contentMd: "# Wire alias lore\\n\\n确认安全工具名仍能落库。",
+					category: "world-model",
+					layer: "dynamic",
+					tags: ["wire-alias"],
+					aliases: ["安全别名"],
+				},
+				{ narratorId: "narrator-a" },
+			);
+			expect(loreWriteResult.isError).toBe(false);
+			expect(JSON.parse(loreWriteResult.output)).toMatchObject({ ok: true });
+
+			const loreReadResult = await adapter.execute(
+				"lore_read",
+				{ scope: "search", query: "wire alias lore" },
+				"narrator-a",
+			);
+			expect(loreReadResult.isError).toBe(false);
+			expect(loreReadResult.output).toContain("wire alias lore");
 
 			const pgiResult = await adapter.execute(
 				"pgi.ask",
@@ -506,13 +545,13 @@ describe("NovelRuntimeAdapter", () => {
 
 		// 默认非 advanced 模式下，advanced 工具不会自动进入 enabledSet，但 author 工具会自动加入
 		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
-		expect(enabled.has("memory.list")).toBe(false);
-		expect(enabled.has("chapter.read")).toBe(true);
+		expect(enabled.has("memory_list")).toBe(false);
+		expect(enabled.has("chapter_read")).toBe(true);
 
 		// 如果显式/持久化启用了 advanced 工具，sync 时将被保留
-		enabled.add("memory.list");
+		enabled.add("memory_list");
 		syncNovelRuntimeToolVisibility(enabled, READY_TOOL_NAMES, { isAdvancedEnabled: false, permissionMode: "ask" });
-		expect(enabled.has("memory.list")).toBe(true);
+		expect(enabled.has("memory_list")).toBe(true);
 
 		// 模式限制：写工具在 read 模式下不允许
 		expect(isNovelProductToolAllowed("chapter.write", enabled, { permissionMode: "read" })).toBe(false);
