@@ -68,20 +68,34 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 
 你正在 NovelFork 的小说项目中工作。当前书籍由宿主通过可信的 novel.book 资源绑定确定；不得依据用户文本或工具参数切换到其他书籍，也不得猜测 bookId。
 
+## 创作立场：你是作者（用户）的创作伙伴
+你不是这本书的作者——作者是正在与你协作的用户。你以作者级的标准执行创作，但身份是伙伴与代笔：
+- 为读者负责：每一章都要有信息增量与可追读的理由，兑现设定与伏笔的承诺，不注水、不烂尾、不把悬念拖到失温。
+- 为作品负责：人物、设定、时间线必须一致；不因省事让角色降智、让世界观崩塌、让力量体系失衡。
+- 为作者负责：这本书的风格、价值观、题材红线由作者定；你按作者的意图执行，如实提醒方向性风险，不擅自改写方向、不替作者做决定。
+- 判断标准：画面感、节奏、信息量、人物真实。AI 腔、空转描写、模板化转折、套话密度是失职。
+
+## 三类知识：长篇不遗忘、写作有方法
+你的知识来源分三层，各管一件事，不得混用：
+- 经纬（Jingwei，静态设定）：这本书"是什么"——角色人设、世界观、力量体系、势力门派、卷纲大纲、伏笔。权威源在经纬数据库，用 lore.read 查询、lore.write 录入/更新；写前必查相关设定，改设定必须经作者确认。
+- 叙事记忆（Narrative Memory，动态事实）：这本书"发生了什么"——时间线、事实、事件、角色状态、近章进展。用 memory.* 查询；写前查近章与相关事实，写后由 pipeline 自动结算或 memory.settle_range 补结算；高风险/待确认事件不得冒充已确认事实。
+- 写作技能（Writing Skills，通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用即物化在 .novelfork/skills/<slug>/SKILL.md，由本会话的 Skill 工具加载；写前先读相关技能，写后由 writing-skills.check_compliance 按技能规则校验。
+- 边界：经纬只写静态设定，动态事实只进叙事记忆；方法论是"怎么写"，设定是"是什么"，两者不互相充当。
+
 ## 写新章硬纪律（不可跳过）
-1. write.preflight →（确认一句指示）→ scene.spec → pipeline.write。
+1. write.preflight →（确认一句指示）→ 读取相关 Writing Skills → scene.spec → pipeline.write。
 2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
 3. 只使用产品内 focus、近章事实、lore brief、伏笔与用户一句 Directives；禁止用写作理论、文风大道理或外部项目总结填空。
-4. 软门（Writing Skills 文风要求、去 AI 味、跑题、传播力）只在写后 chapter.audit / writing-skills.check_compliance / rewrite.*，不得在写前用长文论约束。
+4. scene.spec 必须由你本人显式提交结构化蓝图（chapter/title/wordTarget/scenes/constraints/beatBudget），工具只做校验；pipeline.write 必须由你本人提交完整正文 content，工具负责校验、落盘与章后结算，不再内部生成。
 
 ## 长篇与平台
-- 故事经纬数据库（Jingwei）：本书的角色人设、世界观、力量体系、势力门派、卷纲大纲与伏笔统一称为“经纬”。查询经纬使用 lore.read；录入或更新经纬必须使用 lore.write（支持分类如 characters / world-model / factions / power-system / outline / foreshadowing）。严禁使用宿主通用 KnowledgeSearch/KnowledgeCreate 工具，也严禁擅自写入本地 md 文件充当经纬落库。
+- 经纬读写：查询使用 lore.read；录入或更新必须使用 lore.write（支持分类如 characters / world-model / factions / power-system / outline / foreshadowing）。严禁使用宿主通用 KnowledgeSearch/KnowledgeCreate 工具，也严禁擅自写入本地 md 文件充当经纬落库。
 - 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
 - 中盘防跑偏：outline.volume 维护卷纲（当前卷目标会进 preflight 与 scene.spec）；arc.character 查角色弧停滞或回退。
 - 终局储备：outline.volume 的 endgameReserve 记底牌（宿敌/真相/金手指上限，逐卷解锁）与升级台阶（不越级）。返回的 overdraft 报「底牌提前动用」「越级/到顶」时必须如实转述并建议改纲，不得替作者打光底牌。
 - 发布前：publish.check 做平台自检（敏感词/AI 率/格式/连续性）。pipeline.write 保存前已做单章轻检，默认只提醒；平台要求且命中阻断级敏感词时会 publish-blocked 不保存。
 
-当用户要求写一章完整的新正文时：必须先 write.preflight；ok 后再 scene.spec 生成蓝图，再 pipeline.write。该管线会读取书籍的目标长度、语言与当前 Writing Skills，并在成功后自动章后结算。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度与 Writing Skills 错误守卫；局部改写使用 rewrite.apply。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
+当用户要求写一章完整的新正文时：先 write.preflight；ok 后用 Skill 读取相关写作技能，由你本人生成蓝图（scene.spec 校验）与完整正文（pipeline.write 校验、落盘并自动章后结算）。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度与 Writing Skills 错误守卫；局部改写由你本人生成新文本后使用 rewrite.apply 落盘。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 
 查询、讨论、查看设定时只执行所需读取，不要强行进入写作管线。章节正文、Lore 静态设定与 Narrative Memory 动态事实必须保持边界；高风险或待确认事件不得冒充已确认事实。`;
 
@@ -105,12 +119,9 @@ type CustomReadyRuntimeToolName =
   | "resource.manage"
   | "scene.spec"
   | "chapter.audit"
-  | "rewrite.segment"
   | "rewrite.apply"
-  | "style.import"
   | "pipeline.import_chapters"
   | "book.dissect"
-  | "outline.suggest_next"
   | "outline.volume"
   | "arc.character"
   | "publish.check"
@@ -310,123 +321,6 @@ function toRuntimeToolResult(result: unknown): RuntimeToolResult {
   }
 }
 
-interface SecondaryModelCallTrace {
-  readonly id: string;
-  readonly sequence: number;
-  readonly purpose: string;
-  readonly provider: string;
-  readonly model: string;
-  readonly status: "completed" | "failed";
-  readonly durationMs: number;
-  readonly request: {
-    readonly messageCount: number;
-    readonly temperature?: number;
-    readonly maxTokens?: number;
-  };
-  readonly usage?: {
-    readonly promptTokens?: number;
-    readonly completionTokens?: number;
-    readonly totalTokens?: number;
-  };
-  readonly error?: string;
-}
-
-const TOOL_MODEL_CALL_PURPOSE: Readonly<Record<string, string>> = {
-  "scene.spec": "生成结构化写作蓝图",
-  "rewrite.segment": "生成局部改写正文",
-  "style.import": "提炼参考文本的文风指南",
-  "pipeline.import_chapters": "抽取导入章节的叙事资料",
-  "book.dissect": "抽取拆书草案与叙事资料",
-  "outline.suggest_next": "生成下一步大纲建议",
-  "outline.volume": "生成卷纲草案",
-  "arc.character": "分析并精修角色弧线",
-  "pipeline.write": "执行章节生成、审计、修订与结算",
-  "memory.settle_range": "抽取章节叙事事件",
-};
-
-function createTrackedToolContext(
-  toolName: string,
-  context: ToolExecutionContext,
-): { readonly context: ToolExecutionContext; readonly calls: SecondaryModelCallTrace[] } {
-  if (!context.generateText) return { context, calls: [] };
-
-  const calls: SecondaryModelCallTrace[] = [];
-  let nextCallNumber = 0;
-  const generateText = context.generateText;
-  const provider = context.model?.provider ?? "runtime";
-  const model = context.model?.id ?? "current";
-  const purpose = TOOL_MODEL_CALL_PURPOSE[toolName] ?? `${toolName} 内部模型处理`;
-
-  return {
-    calls,
-    context: {
-      ...context,
-      generateText: async (request) => {
-        const callNumber = ++nextCallNumber;
-        const startedAt = Date.now();
-        context.emitOutput?.(`内部模型调用 ${callNumber} 开始：${purpose}（${provider}/${model}）`);
-        try {
-          const generated = await generateText(request);
-          const durationMs = Math.max(0, Date.now() - startedAt);
-          calls.push({
-            id: `${toolName}:model-call:${callNumber}`,
-            sequence: callNumber,
-            purpose,
-            provider,
-            model,
-            status: "completed",
-            durationMs,
-            request: {
-              messageCount: request.messages.length,
-              ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-              ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
-            },
-            ...(generated.usage ? { usage: generated.usage } : {}),
-          });
-          const totalTokens = generated.usage?.totalTokens;
-          context.emitOutput?.(
-            `内部模型调用 ${callNumber} 完成：${durationMs}ms${totalTokens === undefined ? "" : `，${totalTokens} tokens`}`,
-          );
-          return generated;
-        } catch (error) {
-          const durationMs = Math.max(0, Date.now() - startedAt);
-          const message = error instanceof Error ? error.message : String(error);
-          calls.push({
-            id: `${toolName}:model-call:${callNumber}`,
-            sequence: callNumber,
-            purpose,
-            provider,
-            model,
-            status: "failed",
-            durationMs,
-            request: {
-              messageCount: request.messages.length,
-              ...(request.temperature === undefined ? {} : { temperature: request.temperature }),
-              ...(request.maxTokens === undefined ? {} : { maxTokens: request.maxTokens }),
-            },
-            error: message,
-          });
-          context.emitOutput?.(`内部模型调用 ${callNumber} 失败：${message}`);
-          throw error;
-        }
-      },
-    },
-  };
-}
-
-function attachModelCalls(
-  result: RuntimeToolResult,
-  calls: readonly SecondaryModelCallTrace[],
-): RuntimeToolResult {
-  if (calls.length === 0) return result;
-  const existingData = result.data;
-  const merged = existingData && typeof existingData === "object" && !Array.isArray(existingData)
-    ? { ...(existingData as Record<string, unknown>), modelCalls: calls }
-    : { value: existingData ?? null, modelCalls: calls };
-  const data = toPortableValue(merged);
-  return data === undefined ? result : { ...result, data };
-}
-
 async function executeReadyToolImpl(
   tool: NovelRuntimeToolCatalogEntry,
   input: Readonly<Record<string, unknown>>,
@@ -475,6 +369,10 @@ async function executeReadyToolImpl(
         ...(Array.isArray(injectedInput.acknowledgedSkills)
           ? { acknowledgedSkills: injectedInput.acknowledgedSkills as never }
           : {}),
+        ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
+        ...(typeof injectedInput.userDirectives === "string"
+          ? { taskText: injectedInput.userDirectives }
+          : {}),
       });
       const blockerText = preflight.blockers.length > 0
         ? ` blockers=${preflight.blockers.map((item) => item.code).join(",")}`
@@ -502,30 +400,6 @@ async function executeReadyToolImpl(
           ? { source: injectedInput.source as "accepted-resources" | "chapter-files" }
           : {}),
         ...(typeof injectedInput.dryRun === "boolean" ? { dryRun: injectedInput.dryRun } : {}),
-        llmExtractor: context.generateText
-          ? async ({ content, title, chapterNumber }) => {
-              const generated = await context.generateText!({
-                messages: [
-                  {
-                    role: "system",
-                    content: "从章节正文抽取叙事事件，返回 JSON 数组，每项含 eventType/subject/predicate/object/evidenceText/confidence。",
-                  },
-                  {
-                    role: "user",
-                    content: `第${chapterNumber}章 ${title ?? ""}\n\n${content.slice(0, 12000)}`,
-                  },
-                ],
-                temperature: 0.2,
-                maxTokens: 2000,
-              });
-              try {
-                const parsed = JSON.parse(generated.text) as unknown;
-                return Array.isArray(parsed) ? parsed as any : [];
-              } catch {
-                return [];
-              }
-            }
-          : undefined,
       });
       return toRuntimeToolResult({
         ok: result.ok,
@@ -697,6 +571,7 @@ async function executeReadyToolImpl(
         bookId: binding.bookId,
         content: typeof injectedInput.content === "string" ? injectedInput.content : "",
         ...(typeof injectedInput.chapterNumber === "number" ? { chapterNumber: injectedInput.chapterNumber } : {}),
+        ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
       }, { bookRoot: binding.root }));
     }
     if (matchesToolName(tool.name, "writing-skills.import_legacy")) {
@@ -773,9 +648,8 @@ async function executeReadyTool(
   input: Readonly<Record<string, unknown>>,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
-  const tracked = createTrackedToolContext(tool.name, context);
-  const result = await executeReadyToolImpl(tool, input, tracked.context);
-  return attachModelCalls(result, tracked.calls);
+  // 工具直接使用当前 Runtime Agent 上下文；禁止包装出任何内部模型调用链。
+  return executeReadyToolImpl(tool, input, context);
 }
 
 const READY_RUNTIME_TOOLS = NOVEL_RUNTIME_TOOL_CATALOG.filter(

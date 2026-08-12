@@ -30,6 +30,7 @@ export type {
   RuntimeTextGenerationResult,
   RuntimeTextGenerator,
   RuntimeResolveContext,
+  RuntimeLoadedSkill,
   ToolExecutionContext,
   RuntimeToolRisk,
   RuntimeToolDefinition,

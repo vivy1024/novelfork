@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  handleWritingSkillsCheckCompliance,
   handleWritingSkillsRead,
   handleWritingSkillsWrite,
 } from "./writing-skill-handlers.js";
@@ -101,6 +102,87 @@ describe("writing skill handlers use project disk state", () => {
       const saved = JSON.parse(await readFile(join(bookRoot, "book.json"), "utf8")) as Record<string, unknown>;
       expect(saved).toHaveProperty("enabledWritingSkillIds", ["stale-skill"]);
       expect(saved).toHaveProperty("enabledPresetIds", ["stale-preset"]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("check_compliance 对题材层技能校验「本体+通用依赖」加载完整性", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-compliance-deps-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-compliance-deps";
+    try {
+      // 题材包装层：引用通用技能，无 checks 声明。
+      await mkdir(join(home, ".novelfork", "skills", "topic-deps"), { recursive: true });
+      await writeFile(
+        join(home, ".novelfork", "skills", "topic-deps", "SKILL.md"),
+        `---
+id: topic-deps
+name: AI科幻-去AI味重写
+description: 题材包装层
+kind: revision
+mode: manual
+---
+
+对应通用 Skill：\`通用-去AI味重写\`。必须优先强制加载。
+`,
+        "utf8",
+      );
+      await mkdir(join(home, ".novelfork", "skills", "general-deps"), { recursive: true });
+      await writeFile(
+        join(home, ".novelfork", "skills", "general-deps", "SKILL.md"),
+        `---
+id: general-deps
+name: 通用-去AI味重写
+description: 通用方法论
+kind: revision
+mode: manual
+---
+
+四维病灶诊断。
+`,
+        "utf8",
+      );
+      await setupBook(bookRoot, bookId, { title: "依赖校验" });
+      await handleWritingSkillsWrite(
+        { bookId, addSkillIds: ["topic-deps"] },
+        { bookRoot, home },
+      );
+
+      // 只加载了本体、没加载通用依赖 → 上报 warning 违规。
+      const partial = await handleWritingSkillsCheckCompliance(
+        {
+          bookId,
+          content: "正文。",
+          loadedSkills: [{ name: "AI科幻-去AI味重写", loadedAt: "2026-08-10T00:00:00.000Z" }],
+        },
+        { bookRoot, home },
+      );
+      expect(partial.ok).toBe(true);
+      const partialViolations = (partial.data as { violations: Array<{ checkId: string; violation: string }> }).violations;
+      expect(partialViolations).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          checkId: "dependency-loaded",
+          violation: expect.stringContaining("通用-去AI味重写") as unknown,
+        }),
+      ]));
+
+      // 本体 + 通用依赖都加载 → 无依赖违规。
+      const complete = await handleWritingSkillsCheckCompliance(
+        {
+          bookId,
+          content: "正文。",
+          loadedSkills: [
+            { name: "AI科幻-去AI味重写", loadedAt: "2026-08-10T00:00:00.000Z" },
+            { name: "通用-去AI味重写", loadedAt: "2026-08-10T00:00:01.000Z" },
+          ],
+        },
+        { bookRoot, home },
+      );
+      expect(complete.ok).toBe(true);
+      const completeViolations = (complete.data as { violations: Array<{ checkId: string }> }).violations;
+      expect(completeViolations.some((violation) => violation.checkId === "dependency-loaded")).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -54,8 +54,6 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
 
   // Audit/quality tools
   { toolName: "chapter.audit", serviceKey: "inline", method: "auditChapter" },
-  { toolName: "rewrite.segment", serviceKey: "inline", method: "rewriteSegment" },
-  { toolName: "outline.suggest_next", serviceKey: "inline", method: "suggestNext" },
   { toolName: "character.check_consistency", serviceKey: "inline", method: "checkConsistency" },
   { toolName: "hooks.manage", serviceKey: "inline", method: "manageHooks" },
 

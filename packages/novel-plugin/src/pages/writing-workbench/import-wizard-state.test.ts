@@ -80,19 +80,6 @@ describe("tool payload building", () => {
     expect(input.splitPattern).toBe("^Chapter \\d+");
   });
 
-  it("returns style payload only when enabled and long enough", () => {
-    expect(buildStyleToolInput(stateWith({ plainText: "字".repeat(5000) }))).toBeNull();
-    const enabled = buildStyleToolInput(stateWith({
-      plainText: "字".repeat(5000),
-      options: { ...DEFAULT_IMPORT_OPTIONS, runStyleImport: true, sourceName: "仙逆" },
-    }));
-    expect(enabled).toMatchObject({ saveAsWritingSkill: true, enableOnBook: true, sourceName: "仙逆" });
-    const tooShort = buildStyleToolInput(stateWith({
-      plainText: "字".repeat(500),
-      options: { ...DEFAULT_IMPORT_OPTIONS, runStyleImport: true },
-    }));
-    expect(tooShort).toBeNull();
-  });
 });
 
 describe("preflight summary and next actions", () => {
@@ -116,7 +103,6 @@ describe("preflight summary and next actions", () => {
     const actions = suggestNextActions({
       preflight: { ok: true, light: "green", blockerCodes: [], warningCodes: [] },
       appliedDissectDraft: true,
-      ranStyleImport: true,
     });
     expect(actions[0]).toMatchObject({ id: "write-next", primary: true });
   });
@@ -125,10 +111,8 @@ describe("preflight summary and next actions", () => {
     const actions = suggestNextActions({
       preflight: { ok: false, light: "red", blockerCodes: ["empty-recent-progress"], warningCodes: [] },
       appliedDissectDraft: false,
-      ranStyleImport: false,
     });
     expect(actions[0]).toMatchObject({ id: "settle-range", primary: true });
-    expect(actions.some((action) => action.id === "run-style")).toBe(true);
   });
 });
 
@@ -136,8 +120,7 @@ describe("progress mapping", () => {
   it("increases monotonically across phases", () => {
     expect(progressForPhase("importing")).toBeLessThan(progressForPhase("settling"));
     expect(progressForPhase("settling")).toBeLessThan(progressForPhase("dissecting"));
-    expect(progressForPhase("dissecting")).toBeLessThan(progressForPhase("styling"));
-    expect(progressForPhase("styling")).toBeLessThan(progressForPhase("done"));
+    expect(progressForPhase("dissecting")).toBeLessThan(progressForPhase("done"));
     expect(progressForPhase("done")).toBe(100);
   });
 });

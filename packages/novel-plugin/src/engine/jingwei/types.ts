@@ -206,6 +206,10 @@ export interface JingweiReadableItem {
   aliases: string[];
   visibilityRule: JingweiVisibilityRule;
   priorityTier: JingweiPriorityTier;
+  /** 数据层（canon/dynamic/reference），检索结果展示用 */
+  layer?: JingweiLayer;
+  /** 条目状态（confirmed/draft/needs-review），检索结果展示用 */
+  status?: JingweiEntryStatus;
   score?: number;
   matchReason?: string;
 }

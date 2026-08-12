@@ -15,6 +15,7 @@ import {
   recommendWritingSkills,
 } from "../engine/writing-skills/recommend.js";
 import {
+  extractGeneralSkillReferences,
   loadProjectWritingSkills,
   readProjectWritingSkillRaw,
   syncProjectWritingSkills,
@@ -51,6 +52,8 @@ export interface WritingSkillsCheckComplianceInput {
   readonly bookId: string;
   readonly chapterNumber?: number;
   readonly content: string;
+  /** 当前 Runtime 会话已成功加载的技能证据；缺失时跳过依赖加载完整性检查。 */
+  readonly loadedSkills?: readonly { readonly name: string; readonly loadedAt: string; readonly contentHash?: string }[];
 }
 
 export interface WritingSkillsRecommendInput {
@@ -426,6 +429,9 @@ export async function handleWritingSkillsCheckCompliance(
     if (!content) return fail("invalid-input", "正文不能为空，无法执行 Writing Skills 合规检查。");
     const active = await loadActiveWritingSkillsForBook(input.bookId, options);
     const violations: WritingSkillComplianceViolation[] = [];
+    const loadedNames = new Set((input.loadedSkills ?? []).map((evidence) => evidence.name.trim()));
+    // 依赖名必须是技能库中真实存在的技能（过滤路径/模板名噪音）。
+    const knownSkillNames = new Set(active.skills.map((skill) => skill.name));
     for (const skill of active.skills) {
       const checks = skill.checks ?? [];
       for (const [index, check] of checks.entries()) {
@@ -442,6 +448,28 @@ export async function handleWritingSkillsCheckCompliance(
           explanation: check.message?.trim()
             || `Writing Skill「${skill.name}」声明了检查「${rule}」；当前正文不满足它，请按该 Skill 的方法调整或关闭这条 Skill。`,
         });
+      }
+
+      // 依赖加载完整性：作者显式启用的技能（mode != always）要求本体 + 直接引用的
+      // 通用依赖已在当前会话加载；always 技能自动生效，不要求会话加载证据。
+      // 缺失按 warning 上报（不阻断保存）。
+      if (skill.mode !== "always" && input.loadedSkills !== undefined) {
+        const rawDependencies = extractGeneralSkillReferences(skill.body ?? "");
+        const dependencies = [...new Set(rawDependencies)]
+          .filter((name) => name !== skill.name && knownSkillNames.has(name));
+        const requiredNames = [skill.name, ...dependencies];
+        const missing = requiredNames.filter((name) => !loadedNames.has(name));
+        if (missing.length > 0) {
+          violations.push({
+            skillId: skill.id,
+            skillName: skill.name,
+            checkId: "dependency-loaded",
+            rule: "技能依赖已加载",
+            violation: `当前会话未加载该技能及其依赖：${missing.join("、")}。`,
+            severity: "warning",
+            explanation: `「${skill.name}」要求连同依赖一起加载才能生效；请先读取 ${missing.join("、")} 再重写或重跑检查。`,
+          });
+        }
       }
     }
     const errorCount = violations.filter((violation) => violation.severity === "error").length;

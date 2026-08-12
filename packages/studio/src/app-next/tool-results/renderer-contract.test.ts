@@ -37,12 +37,9 @@ const GENERIC_BY_DESIGN = new Set<string>([
   // NarrativeLineCard 只覆盖 narrative.read_line 的只读快照，故此项仍显式走 generic。
   "narrative.mutationPreview",
   "narrative-memory.admin",
-  "outline.suggestions",
   "pipeline.import_chapters",
   "resource.manage",
-  "style.import",
   "tool.rewrite-apply",
-  "tool.rewrite-segment",
   // Writing Skills 迁移后的四个工具暫走 generic；H-3 提供专属卡后从这里删除。
   "writing-skills.compliance",
   "writing-skills.import",

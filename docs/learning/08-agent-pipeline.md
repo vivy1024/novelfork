@@ -38,7 +38,7 @@ routes:
 | `missing-directive` | 没有本章目标，且焦点也推不出默认句 | 补一句本章要发生什么 |
 | `empty-recent-progress` | 已有章节进度，但近章摘要/记忆为空 | `memory.settle_range` 回填；废稿先 `chapter.discard_range` |
 | `high-risk-pending` | 存在高风险待确认事件 | 先在经纬工作区「进度」分区确认或驳回 |
-| `skills-not-acknowledged` | 本书已启用 Writing Skills，但没提交原文引用 | 逐个读 `.novelfork/skills/<slug>/SKILL.md`，把一段 ≥30 字原文放进 `acknowledgedSkills` |
+| `skills-not-acknowledged` | 本书已启用 Writing Skills，但当前会话未先加载相关技能（提示项） | 先用 Skill 工具读取 `.novelfork/skills/<slug>/SKILL.md` 再写 |
 | `book-not-found` | 书籍绑定无效 | 检查 bookId |
 
 告警（不阻断，但要看）：`short-directive`、`focus-default-only`、`empty-chapter-summary`、`hooks-overdue`、`style-disabled`、`volume-focus-missing`、`platform-target-mismatch`。
@@ -56,38 +56,34 @@ routes:
 | `lore.read` | 读取作者确认的静态 Lore（brief/category/search） | read |
 | `memory.read` | 读取动态叙事记忆 ContextCard | read |
 | `pgi.ask` | 生成写前追问，补齐本章意图 | read |
-| `scene.spec` | 生成结构化写作蓝图 | read |
-| `pipeline.write` | 按 sceneSpec 生成正式章节结果并进行质量机制处理 | draft-write |
+| `scene.spec` | 校验 Runtime Agent 提交的结构化写作蓝图 | read |
+| `pipeline.write` | 校验并保存 Runtime Agent 提交的正文：写前门→落盘→章后结算 | draft-write |
 | `memory.events` | 写后整理章节摘要、关系变化、伏笔推进为 pending 事件 | draft-write |
 | `memory.settle_range` | 批量补结算历史章节的叙事记忆（填数据空洞） | confirmed-write |
 | `chapter.discard_range` | 试写整段作废：从正史抹去章节结果与章域记忆 | destructive |
 | `outline.volume` | 维护卷纲（get/suggest/set）；当前卷目标进入 preflight | read/write |
 | `arc.character` | 查角色弧停滞或回退 | read |
-| `book.dissect` | 拆已有旧书为续写知识包（产物为待确认档） | read/write |
-| `publish.check` | 发布前平台自检（敏感词/AI 率/格式/连续性） | read |
+| `book.dissect` | 按规则拆已有旧书为续写知识包（产物为待确认档） | read/write |
+| `publish.check` | 投稿风险自检（规则来源、敏感词/AI 味线索、格式/连续性证据） | read |
 | `chapter.audit` | 整章规则审计（不调模型） | read |
-| `rewrite.segment` | 对选中段落执行续写/扩写/风格改写（`continue`、`expand`、`restyle`） | read/write |
-| `rewrite.apply` | 按行范围把改写结果写回正文 | confirmed-write |
+| `rewrite.apply` | 按行范围把 Runtime Agent 提交的改写结果写回正文 | confirmed-write |
 | `writing-skills.check_compliance` | 按启用技能校验正文，硬性违规阻断保存 | read |
 
-去 AI 味没有独立工具：Writer 写作纪律已内置铁律，作者侧叠加 story-deslop Writing Skill。原修订管线工具与选段的去 AI 味模式与之重复，已下线。
+去 AI 味没有独立工具：由 story-deslop Writing Skill 承担。内部调模型的选段改写、文风导入与大纲建议等旧工具已下线，相关结果由同一 Runtime Agent 生成后直接落盘。
 
 ## `pipeline.write` 内部做什么？
 
 对外看是一次工具调用，内部会执行：
 
-1. 写前硬门：`write.preflight` 上下文门、Writing Skills 原文引用确认门（`skills-not-acknowledged`）、高风险 pending 事件策略、情节点预算复核（预算判 block 时直接返回 `beat-budget-invalid`，不浪费一次生成）。
-2. 组装 ContextCard：整合 sceneSpec、Lore、动态记忆、前文。Writing Skills 不走这条通道，由叙述者自己读 `.novelfork/skills/`。
-3. WriterAgent 三段式生成：creative → observer → settler。
-4. 质量检查：长度治理、动态词频提示、AI 痕迹规则维度。
-5. ContinuityAuditor / adversarial audit：连续性、叙事、文本多视角审查。
-6. Severity Gate：S1 阻断、S2 修订、S3/S4 警告。
-7. 保存前按启用技能做合规校验：硬性违规 `writing-skill-compliance-failed` 不保存，warning 级逐条进 `publishHint.warnings`。
-8. 生成正式章节 artifact，供前端画布审阅。
+1. 写前硬门：`write.preflight` 上下文门、相关 Writing Skills 加载提示、高风险 pending 事件策略、情节点预算复核（预算判 block 时直接返回 `beat-budget-invalid`，不浪费一次提交）。
+2. 组装 ContextCard：整合 sceneSpec、Lore、动态记忆、前文。Writing Skills 不走这条通道，由同一 Runtime 会话的 Skill 工具加载。
+3. 确定性章节审计（`chapter.audit` 规则）。
+4. 长度硬范围校验：超出本书硬区间返回 `length-out-of-range`，由当前 Agent 修订后重新提交。
+5. 保存前按启用技能做合规校验：硬性违规 `writing-skill-compliance-failed` 不保存，warning 级逐条进 `publishHint.warnings`。
+6. 投稿风险单章轻检：返回本地敏感词、AI 味、格式和连续性线索；只提示人工复核，不因平台口径阻断保存。
+7. 正文落盘为正式章节文件并更新索引，随后自动章后结算（确定性抽取叙事事件）。
 
-单章内部会发起多次模型调用（创作、状态结算、审计、必要时修订与长度归一化），对调用方是一次请求一次返回，无法中途介入。
-
-Writing Skills 的生效不靠提示词自觉：写前要交原文引用（≥30 字、必须是 SKILL.md 里的连续片段），写后按技能规则硬校验。两头都是机制，中间不猜。
+正文与蓝图必须由当前 Runtime Agent 显式提交；工具不在内部调用模型，也不另开 Writer/Auditor/Reviser Agent。写作技能的生效证据是同一会话的成功 Skill 调用记录，写后按技能规则硬校验。
 
 返回值里的可观测字段：
 

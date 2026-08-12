@@ -223,30 +223,47 @@ describe("lore-memory-boundary handlers", () => {
     expect(result.error).toBe("dynamic-memory-boundary");
   });
 
-  it("threads memoryContext into scene.spec fallback constraints", async () => {
-    const previousApiKey = process.env.NOVELFORK_LLM_API_KEY;
-    delete process.env.NOVELFORK_LLM_API_KEY;
-    try {
-      const { handleSceneSpec } = await import("./scene-spec-handler.js");
+  it("scene.spec 只校验 Agent 提交的蓝图，不做内部推断", async () => {
+    const { handleSceneSpec } = await import("./scene-spec-handler.js");
 
-      const result = await handleSceneSpec({
-        bookId: "book-1",
-        chapterNumber: 9,
-        userDirectives: "写韩立继续调查小瓶秘密",
-        memoryContext: {
-          sections: { facts: "韩立已经知道小瓶能催熟药草。" },
-          diagnostics: { warnings: ["facts channel token budget tight"] },
-        },
-      });
+    // 未提交蓝图：必须明确拒绝，而不是用 memoryContext 兜底生成。
+    const missing = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 9,
+      userDirectives: "写韩立继续调查小瓶秘密",
+      memoryContext: {
+        sections: { facts: "韩立已经知道小瓶能催熟药草。" },
+        diagnostics: { warnings: ["facts channel token budget tight"] },
+      },
+    });
+    expect(missing.ok).toBe(false);
+    if (missing.ok) return;
+    expect(missing.error).toBe("scene-spec-required");
 
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      expect(result.data.sceneSpec.constraints).toContain("Narrative Memory/facts：韩立已经知道小瓶能催熟药草。");
-      expect(result.data.sceneSpec.constraints).toContain("召回警告：facts channel token budget tight");
-    } finally {
-      if (previousApiKey) process.env.NOVELFORK_LLM_API_KEY = previousApiKey;
-      else delete process.env.NOVELFORK_LLM_API_KEY;
-    }
+    // 提交的蓝图原样通过校验，工具不注入也不改写 constraints。
+    const submitted = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 9,
+      userDirectives: "写韩立继续调查小瓶秘密",
+      sceneSpec: {
+        chapter: 9,
+        title: "小瓶秘密",
+        wordTarget: 3000,
+        scenes: [{
+          characters: ["韩立"],
+          location: "密室",
+          conflict: "调查小瓶秘密",
+          mood: "专注",
+          outcome: "发现新线索",
+          hooks_used: [],
+          hooks_planted: [],
+        }],
+        constraints: ["Narrative Memory/facts：韩立已经知道小瓶能催熟药草。"],
+      },
+    });
+    expect(submitted.ok).toBe(true);
+    if (!submitted.ok) return;
+    expect(submitted.data.sceneSpec.constraints).toContain("Narrative Memory/facts：韩立已经知道小瓶能催熟药草。");
   });
 
   it("creates pending memory events from explicit event payloads", async () => {

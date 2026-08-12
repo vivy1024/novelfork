@@ -54,7 +54,7 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     kind: "advisory",
     whatHappened: "本书没有启用任何 Writing Skills，style 通道为空。",
     whyItMatters: "缺少文风约束时，语言容易向模型默认腔调漂移，出现 AI 味。",
-    suggestedAction: "用 style.import 从参考文导入文风，或在 Writing Skills 面板启用 1–2 个技法。",
+    suggestedAction: "用 writing-skills.write 创建并启用文风技能，或在 Writing Skills 面板启用 1–2 个技法。",
   },
   "hooks-overdue": {
     kind: "advisory",

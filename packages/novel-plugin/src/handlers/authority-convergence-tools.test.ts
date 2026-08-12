@@ -63,7 +63,7 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
-describe("Authority Convergence: hooks.manage & outline.suggest_next", () => {
+describe("Authority Convergence: hooks.manage（经纬 DB 权威源）", () => {
   it("hooks.manage plants and pays off in Jingwei DB, and derives pending_hooks.md", async () => {
     // 1. plant
     const plantRes = await executeRuntimeDomainTool(
@@ -162,53 +162,4 @@ describe("Authority Convergence: hooks.manage & outline.suggest_next", () => {
     expect((listRes?.data as { hooks: unknown[] }).hooks).toHaveLength(0);
   });
 
-  it("outline.suggest_next reads only Jingwei DB and does not read Markdown files", async () => {
-    // 经纬中写入卷纲与伏笔
-    upsertLedgerEntry(activeStorage!, {
-      bookId: binding.bookId,
-      category: "outline",
-      title: "第一卷：降临",
-      contentMd: "主角来到新世界",
-      fields: { goal: "击败秘境BOSS" },
-    });
-    upsertLedgerEntry(activeStorage!, {
-      bookId: binding.bookId,
-      category: "foreshadowing",
-      title: "神秘钥匙",
-      contentMd: "在第三章获得",
-      fields: { status: "planted" },
-    });
-
-    // 写入干扰/冲突的 Markdown 卷纲文件，确保工具不读取它们
-    await writeFile(
-      join(testDir, "story", "volume_outline.md"),
-      "# 假的卷纲Markdown\n这里是错误的冲突故事走向",
-      "utf8",
-    );
-    await writeFile(
-      join(testDir, "story", "pending_hooks.md"),
-      "- [ ] 假伏笔文件",
-      "utf8",
-    );
-
-    let capturedPrompt = "";
-    const mockGenerator = async (request: { messages: Array<{ role: string; content: string }> }) => {
-      capturedPrompt = request.messages.map((m) => m.content).join("\n");
-      return { text: '[{"title":"方向一","summary":"摘要","hooks":"神秘钥匙"}]' };
-    };
-
-    const res = await executeRuntimeDomainTool(
-      "outline.suggest_next",
-      {},
-      binding,
-      { generateText: mockGenerator } as never,
-    );
-
-    expect(res?.ok).toBe(true);
-    expect(capturedPrompt).toContain("第一卷：降临");
-    expect(capturedPrompt).toContain("神秘钥匙");
-    // 不得读入 Markdown 中的冲突文案
-    expect(capturedPrompt).not.toContain("假的卷纲Markdown");
-    expect(capturedPrompt).not.toContain("假伏笔文件");
-  });
 });

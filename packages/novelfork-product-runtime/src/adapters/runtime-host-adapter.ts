@@ -1,4 +1,8 @@
+import { createHash } from "node:crypto";
 import {
+	db,
+	narratorToolCalls,
+	skillService,
 	type ContributedToolPermissionPolicy,
 	type RuntimeToolRisk,
 	type SessionPermissionMode,
@@ -9,6 +13,7 @@ import {
 	type ResolvedRuntimeContributions,
 	type RuntimeResolveContext,
 } from "@vivy1024/narrafork-runtime-bridge";
+import { and, desc, eq } from "@vivy1024/narrafork-runtime-bridge/runtime-db";
 import {
 	RuntimePluginHost,
 	type PortableJsonValue,
@@ -85,6 +90,58 @@ function isPortableJsonValue(value: unknown, ancestors = new WeakSet<object>()):
 	} finally {
 		ancestors.delete(value);
 	}
+}
+
+function skillNameFromToolInput(input: unknown): string | null {
+	if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+	const record = input as Record<string, unknown>;
+	const value = record.skill ?? record.name;
+	return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function contentHash(content: string): string {
+	return createHash("sha256").update(content).digest("hex");
+}
+
+/**
+ * Skill evidence is derived from successful Skill calls of this narrator, never
+ * from model-provided fields. The adapter snapshots it into the product tool
+ * context so writing tools can prove that the same Runtime Agent loaded a
+ * relevant skill earlier in this session.
+ */
+async function loadRuntimeLoadedSkills(
+	narratorId: string,
+	bookRoot: string,
+): Promise<readonly { name: string; loadedAt: string; contentHash?: string }[]> {
+	const rows = await db
+		.select({
+			inputJson: narratorToolCalls.inputJson,
+			completedAt: narratorToolCalls.completedAt,
+		})
+		.from(narratorToolCalls)
+		.where(and(
+			eq(narratorToolCalls.narratorId, narratorId),
+			eq(narratorToolCalls.toolName, "Skill"),
+			eq(narratorToolCalls.status, "success"),
+		))
+		.orderBy(desc(narratorToolCalls.completedAt))
+		.limit(200);
+
+	const loaded = new Map<string, { name: string; loadedAt: string; contentHash?: string }>();
+	for (const row of rows) {
+		const name = skillNameFromToolInput(row.inputJson);
+		if (!name || loaded.has(name)) continue;
+		const loadedAt = typeof row.completedAt === "string" && row.completedAt.trim()
+			? row.completedAt
+			: new Date(0).toISOString();
+		const skill = await skillService.loadSkillByName(bookRoot, name).catch(() => null);
+		loaded.set(name, {
+			name,
+			loadedAt,
+			...(skill?.content ? { contentHash: contentHash(skill.content) } : {}),
+		});
+	}
+	return [...loaded.values()];
 }
 
 /** Convert the Runtime bridge's broad binding payload into the portable plugin contract. */
@@ -435,9 +492,11 @@ export class NovelRuntimeHostAdapter {
 		};
 		try {
 			const hostExecution = typeof execution === "string" ? undefined : execution;
+			const loadedSkills = await loadRuntimeLoadedSkills(narratorId, context.resourceBindings["novel.book"]?.root ?? context.projectRoot);
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,
+				...(loadedSkills.length > 0 ? { loadedSkills } : {}),
 				...(hostExecution?.provider && hostExecution.model
 					? { model: { provider: hostExecution.provider, id: hostExecution.model } }
 					: {}),

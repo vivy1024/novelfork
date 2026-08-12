@@ -44,12 +44,9 @@ const CANONICAL_READY_TOOL_NAMES = [
   "chapter.write",
   "chapter.list",
   "chapter.audit",
-  "rewrite.segment",
   "rewrite.apply",
-  "style.import",
   "pipeline.import_chapters",
   "book.dissect",
-  "outline.suggest_next",
   "outline.volume",
   "arc.character",
   "publish.check",
@@ -242,39 +239,44 @@ describe("NovelRuntimeAdapter", () => {
 		).toBe(false);
 	});
 
-	test("passes the current Runtime model capability into migrated model tools", async () => {
+	test("validates the Runtime Agent scene blueprint without an internal model call", async () => {
 		bindNarrator();
-		const requests: Array<{ system: string; model: string }> = [];
+		let modelCallCount = 0;
 		const streamed: string[] = [];
 		const result = await adapter.hostAdapter.execute(
 			"scene.spec",
-			{ chapterNumber: 2, userDirectives: "让主角进入山门" },
+			{
+				chapterNumber: 2,
+				userDirectives: "让主角进入山门",
+				cockpitSnapshot: { bookConfig: { chapterWordCount: 3000 } },
+				sceneSpec: {
+					chapter: 2,
+					title: "山门试炼",
+					wordTarget: 3000,
+					beatBudget: [
+						{ summary: "进入山门", density: "normal", words: 900 },
+						{ summary: "守门人阻拦", density: "dense", words: 1200 },
+						{ summary: "取得资格", density: "dense", words: 900 },
+					],
+					scenes: [{
+						characters: ["主角"],
+						location: "山门",
+						conflict: "守门人阻拦",
+						mood: "紧张→坚定",
+						outcome: "取得资格",
+						hooks_used: [],
+						hooks_planted: [],
+					}],
+					constraints: [],
+				},
+			},
 			{
 				narratorId: "narrator-a",
 				provider: "test-provider",
 				model: "current-test-model",
-				generateText: async (request) => {
-					requests.push({
-						system: request.messages.find((message) => message.role === "system")?.content ?? "",
-						model: "current-test-model",
-					});
-					return {
-						text: JSON.stringify({
-							chapter: 2,
-							title: "山门试炼",
-							wordTarget: 3000,
-							scenes: [{
-								characters: ["主角"],
-								location: "山门",
-								conflict: "守门人阻拦",
-								mood: "紧张→坚定",
-								outcome: "取得资格",
-								hooks_used: [],
-								hooks_planted: [],
-							}],
-							constraints: [],
-						}),
-					};
+				generateText: async () => {
+					modelCallCount += 1;
+					throw new Error("scene.spec 不应内部调用模型");
 				},
 				emitOutput: (output) => streamed.push(output),
 			},
@@ -285,19 +287,10 @@ describe("NovelRuntimeAdapter", () => {
 			ok: true,
 			data: {
 				sceneSpec: { chapter: 2, title: "山门试炼" },
-				modelCalls: [{
-					purpose: "生成结构化写作蓝图",
-					provider: "test-provider",
-					model: "current-test-model",
-					status: "completed",
-				}],
 			},
 		});
-		expect(requests).toEqual([{ system: expect.stringContaining("Scene Spec"), model: "current-test-model" }]);
-		expect(streamed).toEqual([
-			expect.stringContaining("内部模型调用 1 开始：生成结构化写作蓝图（test-provider/current-test-model）"),
-			expect.stringMatching(/^内部模型调用 1 完成：\d+ms$/u),
-		]);
+		expect(modelCallCount).toBe(0);
+		expect(streamed).toEqual([]);
 	});
 
 	test("reads the trusted bound chapter without model-supplied book identity", async () => {

@@ -82,45 +82,39 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).toContain("narrativeSettlement");
   });
 
-  it("checks high-risk pending events before writer generation and follows saved blocking policy", async () => {
+  it("checks high-risk pending events before persisting and follows saved blocking policy", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
-    const pendingCheckIndex = source.indexOf("listHighRiskPendingNarrativeEvents");
-    const writerIndex = source.indexOf("const writer = new WriterAgent");
-
-    expect(pendingCheckIndex).toBeGreaterThan(-1);
-    expect(writerIndex).toBeGreaterThan(-1);
+    expect(source.indexOf("listHighRiskPendingNarrativeEvents")).toBeGreaterThan(-1);
     expect(source).toContain("continueWithHighRiskPending === undefined");
     expect(source).toContain("blockWriteOnHighRiskPending");
-    expect(pendingCheckIndex).toBeLessThan(writerIndex);
+    // pipeline.write 不再内部生成正文（无 WriterAgent）。
+    expect(source).not.toContain("const writer = new WriterAgent");
   });
 
-  it("runs write.preflight context gate before writer generation", async () => {
+  it("runs write.preflight context gate before persisting", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
-    const gateIndex = source.indexOf("handleWritePreflight");
-    const writerIndex = source.indexOf("const writer = new WriterAgent");
-    expect(gateIndex).toBeGreaterThan(-1);
+    expect(source.indexOf("handleWritePreflight")).toBeGreaterThan(-1);
     expect(source).toContain("context-not-ready");
     expect(source).toContain("empty-recent-progress");
     expect(source).toContain("explanationText");
-    expect(gateIndex).toBeLessThan(writerIndex);
+    expect(source).not.toContain("const writer = new WriterAgent");
   });
 
-  it("fails closed when preflight or skill verification cannot run", async () => {
+  it("fails closed when preflight cannot run; skill 生效证据由 loadedSkills 注入", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     expect(source).toContain("preflight-execution-failed");
-    expect(source).toContain("skill-verification-failed");
     expect(source).toContain("Context gate failed closed");
-    expect(source).toContain("Skill acknowledgement gate failed closed");
+    expect(source).toContain("loadedSkills");
     expect(source).not.toContain("Context gate skipped");
-    expect(source).not.toContain("Skill acknowledgement gate skipped");
+    expect(source).not.toContain("verifyWritingSkillAcknowledgements");
   });
 
-  it("passes the outline's real chapter ranges into Writer hook-health checks", async () => {
+  it("carries the outline's real chapter ranges and rejects out-of-range chapters", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     expect(source).toContain("const ranges = volumeContext.volumes.map((volume) => volume.chapterRange);");
     expect(source).toContain("volumeRanges = ranges.length > 0 ? ranges : undefined;");
-    expect(source).toContain("      volumeRanges,\n      chapterIntent,");
+    expect(source).toContain("volume-range-violation");
     expect(source).not.toContain("chaptersPerVolume: book.targetChapters");
   });
 
@@ -132,28 +126,25 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).toContain("publishHint");
   });
 
-  it("runs a platform publish check before saving and only blocks on sensitive block hits", async () => {
+  it("runs a submission risk check before saving without platform-rule blocking", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
     const publishIndex = source.indexOf("handlePublishCheck");
     const saveIndex = source.indexOf("await resourceService.create(bookId");
     expect(publishIndex).toBeGreaterThan(-1);
     expect(publishIndex).toBeLessThan(saveIndex);
-    expect(source).toContain("blockOnSensitiveBlock");
-    expect(source).toContain("publish-blocked");
-    expect(source).toContain("sensitiveScan.totalBlockCount");
+    expect(source).toContain("高风险线索");
+    expect(source).not.toContain("blockOnSensitiveBlock");
+    expect(source).not.toContain("publish-blocked");
   });
 
-  it("runs the fact-check specialist revise after the normal revise loop and before length recheck", async () => {
+  it("keeps fact-check result fields for the Agent-facing contract but never spawns a reviser", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
-    const loopEnd = source.indexOf("auditResult = await runAudit(finalContent); // re-audit 修订后的版本");
-    const factIndex = source.indexOf("factCheckAutoRevise) {");
-    const lengthRecheck = source.indexOf("let finalLengthCount = countChapterLength");
-    expect(loopEnd).toBeGreaterThan(-1);
-    expect(factIndex).toBeGreaterThan(loopEnd);
-    expect(lengthRecheck).toBeGreaterThan(factIndex);
-    expect(source).toContain("selectFactContinuityIssues");
-    expect(source).toContain("[事实核查专项]");
+    expect(source).toContain("factCheckRevised");
     expect(source).toContain("factCheckRound");
+    expect(source).toContain("handleChapterAuditV2");
+    expect(source).not.toContain("new ReviserAgent");
+    expect(source).not.toContain("new ContinuityAuditor");
+    expect(source).not.toContain("new LengthNormalizerAgent");
   });
 });
 
@@ -261,13 +252,9 @@ describe("pipeline.write narrative context integration helpers", () => {
 });
 
 describe("pipeline.write beat budget hard gate", () => {
-  it("rejects a block-level beat budget before writer generation and explains why", async () => {
+  it("rejects a block-level beat budget before persisting and explains why", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
-    const gateIndex = source.indexOf("code: \"beat-budget-invalid\"");
-    const writerIndex = source.indexOf("const writer = new WriterAgent");
-
-    expect(gateIndex).toBeGreaterThan(-1);
-    expect(gateIndex).toBeLessThan(writerIndex);
+    expect(source.indexOf("code: \"beat-budget-invalid\"")).toBeGreaterThan(-1);
     expect(source).toContain("checkBeatBudget");
     expect(source).toContain("为什么要看：");
     expect(source).toContain("建议怎么做：");
@@ -290,16 +277,13 @@ describe("pipeline.write settlement degradation", () => {
   });
 });
 
-describe("pipeline.write writing skill acknowledgement gate", () => {
-  it("verifies acknowledgements before writer generation", async () => {
+describe("pipeline.write writing skill evidence", () => {
+  it("接受 Runtime 注入的 loadedSkills，不再要求原文引用硬门", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
-    const gateIndex = source.indexOf("code: \"skills-not-acknowledged\"");
-    const writerIndex = source.indexOf("const writer = new WriterAgent");
-
-    expect(gateIndex).toBeGreaterThan(-1);
-    expect(gateIndex).toBeLessThan(writerIndex);
-    expect(source).toContain("verifyWritingSkillAcknowledgements");
-    expect(source).toContain("describeWritingSkillAcknowledgementRequirement");
+    expect(source).toContain("loadedSkills");
+    expect(source).not.toContain("code: \"skills-not-acknowledged\"");
+    expect(source).not.toContain("verifyWritingSkillAcknowledgements");
+    expect(source).not.toContain("Skill acknowledgement gate failed closed");
   });
 
   it("no longer injects writing skills through the style channel", async () => {

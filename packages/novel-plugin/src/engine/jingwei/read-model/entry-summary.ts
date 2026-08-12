@@ -100,6 +100,8 @@ export function toJingweiReadableItem(
     aliases: entry.aliases,
     visibilityRule: entry.visibilityRule,
     priorityTier,
+    layer: entry.layer,
+    status: entry.status,
   };
 }
 

@@ -41,12 +41,22 @@ packages/
 
 ## 开发流程
 
+日常小改动使用增量验证，避免每次触发私有 Runtime 全量测试：
+
 ```bash
 pnpm dev
-pnpm build
-pnpm test
-pnpm typecheck
+pnpm verify:changed          # 改动包测试 + 改动包及下游类型检查
+pnpm verify:changed --build  # 另加产品前端构建
 ```
+
+以下场景才运行全量门禁：
+
+```bash
+pnpm test                    # 公开包 + 私有 Runtime 全量测试
+pnpm typecheck               # 公开包 + 私有 Runtime 全量类型检查
+```
+
+`verify:changed` 会在根配置、依赖锁、TypeScript 配置、Runtime/overlay、测试/编译基础设施或启动入口变更时自动回退全量；可用 `pnpm verify:changed --dry-run` 只查看将执行的范围。
 
 如果你在做当前架构或文档相关工作，请优先阅读：
 - `docs/README.md`

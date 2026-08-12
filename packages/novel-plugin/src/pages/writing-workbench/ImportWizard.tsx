@@ -13,7 +13,6 @@ import {
   DEFAULT_IMPORT_OPTIONS,
   INITIAL_IMPORT_WIZARD_STATE,
   buildImportToolInput,
-  buildStyleToolInput,
   canLeaveInputStep,
   canStartImport,
   computeImportStats,
@@ -48,7 +47,6 @@ const PHASE_LABELS: Record<ImportPhase, string> = {
   importing: "导入章节",
   settling: "结算叙事记忆",
   dissecting: "抽取续写草案",
-  styling: "导入文风预设",
   done: "完成",
 };
 
@@ -60,7 +58,6 @@ export function ImportWizard({ bookId, invokeTool, onClose, onComplete, onNextAc
   const [state, setState] = useState<ImportWizardState>(INITIAL_IMPORT_WIZARD_STATE);
   const [analyzing, setAnalyzing] = useState(false);
   const [result, setResult] = useState<ImportWizardResult | null>(null);
-  const [ranStyleImport, setRanStyleImport] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const stats = useMemo(() => computeImportStats(state.previewChapters), [state.previewChapters]);
@@ -183,13 +180,6 @@ export function ImportWizard({ bookId, invokeTool, onClose, onComplete, onNextAc
         setState((prev) => ({ ...prev, progress: { phase: "dissecting", percent: progressForPhase("dissecting") } }));
       }
 
-      const stylePayload = buildStyleToolInput(state);
-      if (stylePayload) {
-        setState((prev) => ({ ...prev, progress: { phase: "styling", percent: progressForPhase("styling") } }));
-        await invokeTool("style.import", stylePayload).catch(() => undefined);
-        setRanStyleImport(true);
-      }
-
       const wizardResult: ImportWizardResult = {
         importedChapters: Number(payload.importedChapters ?? 0),
         totalWords: Number(payload.totalWords ?? 0),
@@ -213,8 +203,7 @@ export function ImportWizard({ bookId, invokeTool, onClose, onComplete, onNextAc
   const nextActions = useMemo(() => suggestNextActions({
     preflight: preflightSummary,
     appliedDissectDraft: state.options.applyDissectDraft,
-    ranStyleImport: ranStyleImport || state.options.runStyleImport,
-  }), [preflightSummary, ranStyleImport, state.options.applyDissectDraft, state.options.runStyleImport]);
+  }), [preflightSummary, state.options.applyDissectDraft]);
 
   return (
     <div className="flex h-full flex-col gap-4" data-slot="import-wizard" data-book-id={bookId}>
@@ -373,15 +362,6 @@ export function ImportWizard({ bookId, invokeTool, onClose, onComplete, onNextAc
                 aria-label="写入草案文件"
               />
             </div>
-            <div className="flex items-center justify-between">
-              <span>导入文风并启用</span>
-              <Switch
-                checked={state.options.runStyleImport}
-                onCheckedChange={(checked) => updateOptions({ runStyleImport: checked })}
-                aria-label="导入文风并启用"
-              />
-            </div>
-
             <dl className="grid grid-cols-3 gap-2 rounded-md border p-2">
               <div><dt className="text-muted-foreground">章数</dt><dd>{stats.chapterCount}</dd></div>
               <div><dt className="text-muted-foreground">总字数</dt><dd>{stats.totalWords}</dd></div>

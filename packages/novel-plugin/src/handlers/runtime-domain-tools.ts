@@ -7,7 +7,6 @@ import {
   StateManager,
   getStorageDatabase,
   type ChapterMeta,
-  type LLMClient,
 } from "@vivy1024/novelfork-core";
 import type {
   RuntimeTextGenerator,
@@ -26,6 +25,7 @@ import {
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
+import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { executePipelineWrite, type PipelineWriteInput } from "./pipeline-write-service.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import {
@@ -94,47 +94,15 @@ function trustedBookState(binding: TrustedRuntimeBookBinding): StateManager {
   });
 }
 
+/**
+ * 单项生成工具使用当前 Runtime 会话模型（context.generateText）：受权限、
+ * 工具记录与会话可见性约束，与前端 inline-write 调 LLM 同构，不构成第二套 Agent。
+ */
 function requireGenerator(context: ToolExecutionContext): RuntimeTextGenerator | RuntimeToolResult {
   return context.generateText ?? fail(
     "runtime-model-unavailable",
     "当前 Runtime 会话没有可用的文本生成能力，请先配置模型。",
   );
-}
-
-function hostClient(generateText: RuntimeTextGenerator): LLMClient {
-  return {
-    provider: "host",
-    apiFormat: "chat",
-    stream: false,
-    completion: async (_model, messages, options) => {
-      const generated = await generateText({
-        messages,
-        temperature: options.temperature,
-        maxTokens: options.maxTokens,
-      });
-      options.onStreamProgress?.({
-        elapsedMs: 0,
-        totalChars: generated.text.length,
-        chineseChars: (generated.text.match(/[\u4e00-\u9fff]/g) ?? []).length,
-        status: "done",
-      });
-      return {
-        content: generated.text,
-        usage: {
-          promptTokens: generated.usage?.promptTokens ?? 0,
-          completionTokens: generated.usage?.completionTokens ?? 0,
-          totalTokens: generated.usage?.totalTokens ?? 0,
-        },
-      };
-    },
-    defaults: {
-      temperature: 0.7,
-      maxTokens: 8192,
-      maxTokensCap: null,
-      thinkingBudget: 0,
-      extra: {},
-    },
-  };
 }
 
 async function readBookConfig(binding: TrustedRuntimeBookBinding): Promise<Record<string, unknown>> {
@@ -146,6 +114,17 @@ async function readBookConfig(binding: TrustedRuntimeBookBinding): Promise<Recor
 }
 
 async function readChapterIndex(binding: TrustedRuntimeBookBinding): Promise<ChapterIndexRecord[]> {
+  // 读取章节列表前先把遗留 accepted writing_resource 安全物化到正式文件层。
+  // 物化失败不吞掉已有文件索引，避免兼容迁移影响正常读取。
+  try {
+    const service = createWritingResourceService({
+      storage: getStorageDatabase(),
+      resolveBookDir: () => binding.root,
+    });
+    await service.list(binding.bookId, { type: "chapter", status: "accepted" });
+  } catch {
+    // 兼容读取继续走文件索引；写入路径会显式报告落盘错误。
+  }
   const indexed = await readChapterLayoutIndex(binding.root);
   if (indexed.length > 0) return indexed;
 
@@ -217,7 +196,7 @@ async function rewriteSegment(
   if (!chapterNumber || !start || !end || start > end || !["continue", "expand", "restyle"].includes(mode)) {
     return fail(
       "invalid-input",
-      "需要有效的 chapterNumber、selection.start/end 和改写模式（continue | expand | restyle）。去 AI 味已统一由 Writer 写作纪律与 story-deslop Writing Skill 承担，不再单独提供 reduce_ai 模式。",
+      "需要有效的 chapterNumber、selection.start/end 和改写模式（continue | expand | restyle）。去 AI 味已统一由 story-deslop Writing Skill 承担，不再单独提供 reduce_ai 模式。",
     );
   }
   const generator = requireGenerator(context);
@@ -284,141 +263,6 @@ async function rewriteApply(
       ? `已在第 ${end} 行后插入 ${inserted.length} 行。`
       : `已替换第 ${start}-${end} 行。`,
     { bookId: binding.bookId, chapterNumber, mode, linesAffected: inserted.length },
-  );
-}
-
-/** 只允许单段安全目录名；空结果由调用方回退到内容哈希。 */
-function writingSkillSlugFrom(value: string): string {
-  return value.trim().toLowerCase()
-    .replace(/[^a-z0-9-_]+/gu, "-")
-    .replace(/^-+|-+$/gu, "")
-    .slice(0, 64);
-}
-
-function yamlString(value: string): string {
-  return JSON.stringify(value);
-}
-
-async function styleImport(
-  input: Readonly<Record<string, unknown>>,
-  binding: TrustedRuntimeBookBinding,
-  context: ToolExecutionContext,
-): Promise<RuntimeToolResult> {
-  const referenceText = typeof input.referenceText === "string" ? input.referenceText : "";
-  const sourceName = typeof input.sourceName === "string" ? input.sourceName : undefined;
-  // 默认保存为 Writing Skill：governed 写作路径下 styleGuide 字段已固定为空占位，
-  // 只返回一段文本的旧路径没有任何下游注入点，等于静默无效。
-  const saveAsWritingSkill = input.saveAsWritingSkill !== false;
-  const enableOnBook = input.enableOnBook !== false;
-  const skillName = typeof input.skillName === "string" && input.skillName.trim()
-    ? input.skillName.trim()
-    : `导入文风${sourceName ? `·${sourceName}` : ""}`.slice(0, 40);
-  if (referenceText.length < 2000) return fail("text-too-short", "参考文本至少需要 2000 字。");
-  const generator = requireGenerator(context);
-  if (typeof generator !== "function") return generator;
-  const profile = analyzeStyle(referenceText, sourceName);
-  const generated = await generator({
-    messages: [
-      {
-        role: "system",
-        content: "你是小说文风分析师。输出 Markdown 文风指南，覆盖叙事声音、对话、场景描写、节奏、词汇、情绪表达和禁止漂移方向。不得模仿在世作者的独特风格，只提炼高层写作特征。",
-      },
-      {
-        role: "user",
-        content: `${sourceName ? `参考来源：${sourceName}\n\n` : ""}统计特征：${JSON.stringify(profile)}\n\n参考文本：\n${referenceText.slice(0, 12000)}`,
-      },
-    ],
-    temperature: 0.3,
-    maxTokens: 3000,
-  });
-  const styleGuide = generated.text.trim();
-  if (!styleGuide) return fail("empty-model-output", "Runtime 模型没有返回文风指南。");
-
-  let createdWritingSkill: {
-    id: string;
-    slug: string;
-    path: string;
-    enabled: boolean;
-    projectSkillSlugs?: readonly string[];
-  } | undefined;
-  if (saveAsWritingSkill) {
-    const { writeAuthorWritingSkill } = await import("../engine/writing-skills/loader.js");
-    const { handleWritingSkillsWrite, loadActiveWritingSkillsForBook } = await import("./writing-skill-handlers.js");
-    const baseSlug = writingSkillSlugFrom(sourceName ?? skillName);
-    const slug = `imported-style-${baseSlug || Date.now().toString(36)}`;
-    const skillId = `writing-skill-${slug}`;
-    const description = sourceName
-      ? `从「${sourceName}」参考文本导入的文风指南。`
-      : "由 style.import 从参考文本生成的文风指南。";
-    const content = [
-      "---",
-      `id: ${yamlString(skillId)}`,
-      `name: ${yamlString(skillName)}`,
-      `description: ${yamlString(description)}`,
-      "kind: prose",
-      "mode: manual",
-      "---",
-      "",
-      styleGuide,
-      "",
-    ].join("\n");
-    let path: string;
-    try {
-      path = await writeAuthorWritingSkill(slug, content, undefined);
-    } catch (error) {
-      return fail(
-        "writing-skill-write-failed",
-        `文风 Skill 写入失败：${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    createdWritingSkill = { id: skillId, slug, path, enabled: false };
-
-    if (enableOnBook) {
-      const active = await loadActiveWritingSkillsForBook(binding.bookId, { bookRoot: binding.root })
-        .catch(() => ({ projectSkillSlugs: [] as readonly string[] }));
-      const enabled = await handleWritingSkillsWrite(
-        {
-          bookId: binding.bookId,
-          ...(active.projectSkillSlugs.includes(slug) ? {} : { addSkillIds: [skillId] }),
-        },
-        { bookRoot: binding.root },
-      );
-      if (!enabled.ok) {
-        return fail(
-          enabled.error ?? "writing-skill-enable-failed",
-          `${enabled.summary} SKILL.md 已写入 ${path}，可在 Writing Skills 面板手动添加。`,
-        );
-      }
-      const data = enabled.data as { projectSkillSlugs?: readonly string[] } | undefined;
-      createdWritingSkill = {
-        ...createdWritingSkill,
-        enabled: Boolean(data?.projectSkillSlugs?.includes(slug)),
-        ...(data?.projectSkillSlugs ? { projectSkillSlugs: data.projectSkillSlugs } : {}),
-      };
-    }
-  }
-
-  return ok(
-    saveAsWritingSkill
-      ? `已生成并${createdWritingSkill?.enabled ? "启用" : "创建"}文风 Writing Skill${sourceName ? `（${sourceName}）` : ""}。`
-      : `已生成文风指南建议${sourceName ? `（${sourceName}）` : ""}，但它不会影响写作：文风只能通过已启用的 Writing Skill 进入写作上下文。要真正生效，请用 saveAsWritingSkill=true 重新导入，或用 writing-skills.write 手动落盘并启用。`,
-    {
-      bookId: binding.bookId,
-      kind: saveAsWritingSkill ? "writing-skill-created" : "style-suggestion",
-      profile,
-      styleGuide,
-      guidePreview: styleGuide.slice(0, 500),
-      createdWritingSkill,
-      ...(saveAsWritingSkill
-        ? {}
-        : {
-            notAppliedReason:
-              "写作管线只从已启用的 Writing Skills 读取文风；未保存为 Skill 的文风指南没有注入路径。",
-          }),
-      nextActions: saveAsWritingSkill
-        ? ["write.preflight", "pipeline.write"]
-        : ["writing-skills.write", "style.import(saveAsWritingSkill=true)"],
-    },
   );
 }
 
@@ -493,20 +337,7 @@ async function importChapters(
 
     if (autoSettle || extractBrief) {
       const { handleBookDissect } = await import("./book-dissect.js");
-      const generator = context.generateText
-        ? async (request: {
-            messages: Array<{ role: "system" | "user"; content: string }>;
-            temperature?: number;
-            maxTokens?: number;
-          }) => {
-            const generated = await context.generateText!({
-              messages: request.messages,
-              temperature: request.temperature,
-              maxTokens: request.maxTokens,
-            });
-            return { text: generated.text };
-          }
-        : undefined;
+      const generator = undefined;
       const dissected = await handleBookDissect({
         bookId: binding.bookId,
         bookRoot: binding.root,
@@ -549,7 +380,7 @@ async function importChapters(
         nextActions: [
           "write.preflight",
           "book.dissect",
-          "style.import",
+          "writing-skills.write",
           "scene.spec",
         ],
       },
@@ -566,20 +397,7 @@ async function bookDissect(
   const targets = Array.isArray(input.targets)
     ? input.targets.filter((item): item is string => typeof item === "string")
     : undefined;
-  const generator = context.generateText
-    ? async (request: {
-        messages: Array<{ role: "system" | "user"; content: string }>;
-        temperature?: number;
-        maxTokens?: number;
-      }) => {
-        const generated = await context.generateText!({
-          messages: request.messages,
-          temperature: request.temperature,
-          maxTokens: request.maxTokens,
-        });
-        return { text: generated.text };
-      }
-    : undefined;
+  const generator = undefined;
   const result = await handleBookDissect({
     bookId: binding.bookId,
     bookRoot: binding.root,
@@ -600,20 +418,7 @@ async function outlineVolume(
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
   const { handleOutlineVolume } = await import("./outline-volume.js");
-  const generator = context.generateText
-    ? async (request: {
-        messages: Array<{ role: "system" | "user"; content: string }>;
-        temperature?: number;
-        maxTokens?: number;
-      }) => {
-        const generated = await context.generateText!({
-          messages: request.messages,
-          temperature: request.temperature,
-          maxTokens: request.maxTokens,
-        });
-        return { text: generated.text };
-      }
-    : undefined;
+  const generator = undefined;
   const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
   const result = await handleOutlineVolume({
     bookId: binding.bookId,
@@ -646,7 +451,7 @@ async function arcCharacter(
     ...(typeof input.characterName === "string" ? { characterName: input.characterName } : {}),
     ...(typeof input.mode === "string" ? { mode: input.mode } : {}),
     ...(typeof input.stagnantThreshold === "number" ? { stagnantThreshold: input.stagnantThreshold } : {}),
-    generateText: context.generateText,
+    generateText: undefined,
   });
   if (!result.ok) return fail(result.error ?? "arc-character-failed", result.summary);
   return ok(result.summary, result);
@@ -669,85 +474,6 @@ async function publishCheck(
   });
   if (!result.ok) return fail(result.error ?? "publish-check-failed", result.summary);
   return ok(result.summary, result);
-}
-
-function parseSuggestions(text: string): unknown[] {
-  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
-  const candidate = fenced ?? text.match(/\[[\s\S]*\]/)?.[0] ?? text;
-  try {
-    const parsed = JSON.parse(candidate.trim()) as unknown;
-    return Array.isArray(parsed) ? parsed : [parsed];
-  } catch {
-    return [{ title: "建议", summary: text.trim() }];
-  }
-}
-
-async function outlineSuggestNext(
-  binding: TrustedRuntimeBookBinding,
-  context: ToolExecutionContext,
-): Promise<RuntimeToolResult> {
-  const generator = requireGenerator(context);
-  if (typeof generator !== "function") return generator;
-  const storage = getStorageDatabase();
-  const index = await readChapterIndex(binding);
-  const recentEntries = [...index]
-    .sort((left, right) => Number(left.number) - Number(right.number))
-    .slice(-2);
-  const recent: string[] = [];
-  for (const entry of recentEntries) {
-    const chapterNumber = positiveInteger(entry.number);
-    if (!chapterNumber) continue;
-    const chapter = await readBoundChapter(binding, chapterNumber);
-    if (chapter.ok && chapter.data) recent.push(`第${chapterNumber}章\n${chapter.data.content.slice(0, 2500)}`);
-  }
-
-  // 权威源：读取经纬 outline 与 foreshadowing，章摘要/章节索引，Narrative Memory
-  const outlineEntries = listLedgerEntries(storage, binding.bookId, "outline");
-  const foreshadowingEntries = listLedgerEntries(storage, binding.bookId, "foreshadowing");
-  const chapterSummaryEntries = listLedgerEntries(storage, binding.bookId, "chapter-summaries");
-
-  const storyContext: string[] = [];
-  if (outlineEntries.length > 0) {
-    storyContext.push(`## 卷纲/大纲\n${outlineEntries.map((e) => `### ${e.title}\n${e.contentMd}\n${JSON.stringify(e.fields)}`).join("\n\n")}`);
-  }
-  if (foreshadowingEntries.length > 0) {
-    const activeHooks = foreshadowingEntries.filter((e) => e.fields.status !== "paid_off" && e.fields.status !== "resolved");
-    storyContext.push(`## 待回收伏笔\n${activeHooks.map((e) => `- ${e.title} (${JSON.stringify(e.fields)})`).join("\n")}`);
-  }
-  if (chapterSummaryEntries.length > 0) {
-    const recentSummaries = chapterSummaryEntries.slice(-5);
-    storyContext.push(`## 近期章节摘要\n${recentSummaries.map((e) => `- ${e.title}: ${e.contentMd}`).join("\n")}`);
-  }
-
-  // 读取 Narrative Memory 事实与事件
-  try {
-    const { ensureNarrativeMemorySchema, queryNarrativeFacts, listPendingNarrativeEvents } = await import("../engine/narrative-memory/storage.js");
-    ensureNarrativeMemorySchema(storage);
-    const facts = queryNarrativeFacts(storage, { bookId: binding.bookId, limit: 10 });
-    if (facts.length > 0) {
-      storyContext.push(`## Narrative Memory 动态事实\n${facts.map((f) => `- [${f.category}] ${f.subject} ${f.predicate} ${f.object}`).join("\n")}`);
-    }
-    const events = listPendingNarrativeEvents(storage, { bookId: binding.bookId, limit: 5 });
-    if (events.length > 0) {
-      storyContext.push(`## Narrative Memory 未决事件\n${events.map((e) => `- 第${e.chapterNumber}章: ${e.subject} ${e.predicate} ${e.object}`).join("\n")}`);
-    }
-  } catch {
-    // 允许忽略 Narrative Memory 异常
-  }
-
-  const generated = await generator({
-    messages: [
-      { role: "system", content: "你是网文大纲编辑。返回严格 JSON 数组，每项包含 title、summary、hooks 三个字段。" },
-      {
-        role: "user",
-        content: `基于以下信息推荐下一章的 2-3 个方向。每个方向说明标题、50 字内摘要、推进的伏笔。\n\n${storyContext.join("\n\n") || "暂无经纬大纲信息"}\n\n## 最近章节\n${recent.join("\n\n---\n\n") || "暂无章节"}`,
-      },
-    ],
-    temperature: 0.6,
-    maxTokens: 2000,
-  });
-  const suggestions = parseSuggestions(generated.text);
-  return ok(`推荐 ${suggestions.length} 个下一章方向。`, { suggestions });
 }
 
 async function characterConsistency(
@@ -912,15 +638,15 @@ async function pipelineWrite(
   binding: TrustedRuntimeBookBinding,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
-  const generator = requireGenerator(context);
-  if (typeof generator !== "function") return generator;
   const sceneSpec = record(input.sceneSpec) as SceneSpec | undefined;
   if (!sceneSpec) return fail("invalid-input", "sceneSpec 必填。");
-  context.emitOutput?.("正在执行 Writer → Audit → Revise 写作管线…");
+  if (typeof input.content !== "string" || !input.content.trim()) return fail("content-required", "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。");
+  context.emitOutput?.("正在校验并保存 Runtime Agent 提交的章节正文…");
   const result = await executePipelineWrite(
     {
       bookId: binding.bookId,
       sceneSpec,
+      content: input.content,
       ...(typeof input.jingweiContext === "string" ? { jingweiContext: input.jingweiContext } : {}),
       ...(typeof input.previousChapterTail === "string" ? { previousChapterTail: input.previousChapterTail } : {}),
       autoRevise: input.autoRevise !== false,
@@ -932,6 +658,7 @@ async function pipelineWrite(
       ...(writingSkillAcknowledgements(input.acknowledgedSkills)
         ? { acknowledgedSkills: writingSkillAcknowledgements(input.acknowledgedSkills) }
         : {}),
+      ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
       ...(typeof input.requireFactCheckPass === "boolean" ? { requireFactCheckPass: input.requireFactCheckPass } : {}),
       ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
     },
@@ -941,8 +668,6 @@ async function pipelineWrite(
       // 凡是走 booksDir 的下游就会拼出 <bookRoot>/books/<bookId> 而找不到 book.json。
       root: context.projectRoot || binding.root,
       bookRoot: binding.root,
-      client: hostClient(generator),
-      model: context.model?.id ?? "runtime-current",
       onStream: context.emitOutput,
     },
   );
@@ -990,34 +715,28 @@ export async function executeRuntimeDomainTool(
   const normalized = toolName.replace(/\./g, "_");
   switch (normalized) {
     case "scene_spec":
-    case "scene.spec":
+    case "scene.spec": {
+      const sceneSpec = record(input.sceneSpec);
+      if (!sceneSpec) return fail("scene-spec-required", "scene.spec 必须接收当前 Runtime Agent 显式提交的 sceneSpec 蓝图；工具不会在内部调用模型生成。");
       return okResult(await handleSceneSpec({
         ...(input as unknown as Parameters<typeof handleSceneSpec>[0]),
+        sceneSpec,
         bookId: binding.bookId,
         bookRoot: binding.root,
-        generateText: context.generateText,
       }));
+    }
     case "chapter_audit":
     case "chapter.audit":
       return chapterAudit(input, binding);
-    case "rewrite_segment":
-    case "rewrite.segment":
-      return rewriteSegment(input, binding, context);
     case "rewrite_apply":
     case "rewrite.apply":
       return rewriteApply(input, binding);
-    case "style_import":
-    case "style.import":
-      return styleImport(input, binding, context);
     case "pipeline_import_chapters":
     case "pipeline.import_chapters":
       return importChapters(input, binding, context);
     case "book_dissect":
     case "book.dissect":
       return bookDissect(input, binding, context);
-    case "outline_suggest_next":
-    case "outline.suggest_next":
-      return outlineSuggestNext(binding, context);
     case "outline_volume":
     case "outline.volume":
       return outlineVolume(input, binding, context);
