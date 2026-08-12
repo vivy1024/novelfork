@@ -208,8 +208,11 @@ pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
 | `pnpm compile:linux` | Linux x64 + baseline + arm64 |
 | `pnpm compile:macos` | macOS arm64 + x64 |
 | `pnpm compile:all` | 全部 7 个平台并生成 `SHA256SUMS` |
-| `pnpm typecheck` | 各包类型检查 |
-| `pnpm test` | 根工作区递归测试 |
+| `pnpm typecheck` | 全量类型检查（发布/集成门禁） |
+| `pnpm test` | 全量工作区测试（发布/集成门禁） |
+| `pnpm typecheck:changed` | 按改动包及下游包执行增量类型检查；高影响改动自动回退全量 |
+| `pnpm test:changed` | 按改动包执行增量测试；高影响改动自动回退全量 |
+| `pnpm verify:changed` | 默认增量类型检查 + 测试；传 `--build` 时追加产品构建 |
 
 ---
 

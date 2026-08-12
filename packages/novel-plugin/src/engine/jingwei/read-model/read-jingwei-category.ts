@@ -62,13 +62,16 @@ export async function readJingweiCategory(input: ReadJingweiCategoryInput): Prom
   const currentChapter = input.chapterNumber ?? book.currentChapter;
   const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(input.bookId);
   const sectionById = new Map(sections.map((section) => [section.id, section]));
-  const entries = (await createStoryJingweiEntryRepository(storage).listForAi(input.bookId, sections.map((section) => section.id)))
+  const repo = createStoryJingweiEntryRepository(storage);
+
+  // 分类过滤下推到 SQL（避免全量载入后内存过滤）
+  const allEntries = (await repo.listForAi(input.bookId, sections.map((section) => section.id), { category }))
     .filter((entry) => isVisibleAtChapter(entry, currentChapter));
   const detailLevel = input.detailLevel ?? "summary";
   const sceneText = input.sceneText ?? "";
 
-  const entryById = new Map(entries.map((entry) => [entry.id, entry]));
-  const allItems = entries.map((entry) => {
+  const entryById = new Map(allEntries.map((entry) => [entry.id, entry]));
+  const allItems = allEntries.map((entry) => {
     const section = sectionById.get(entry.sectionId);
     if (!section) return null;
     return toJingweiReadableItem(entry, section, visibilitySource(entry), detailLevel);
@@ -76,21 +79,22 @@ export async function readJingweiCategory(input: ReadJingweiCategoryInput): Prom
     .filter((item) => item.category === category)
     .sort((a, b) => matchBoost(entryById.get(b.entryId)!, sceneText) - matchBoost(entryById.get(a.entryId)!, sceneText) || b.priority - a.priority || b.updatedAtMs - a.updatedAtMs || a.title.localeCompare(b.title));
 
-  const budgeted = input.tokenBudget ? applyTokenBudget(allItems, input.tokenBudget) : { items: allItems, estimatedTokens: allItems.reduce((sum, item) => sum + item.estimatedTokens, 0), droppedEntryIds: [] };
-  const paged = paginateItems(budgeted.items, input.page, input.limit);
+  // 先分页、后预算：预算只作用于当前页，被预算裁掉的条目不占用翻页名额
+  const paged = paginateItems(allItems, input.page, input.limit);
+  const budgeted = input.tokenBudget ? applyTokenBudget(paged.items, input.tokenBudget) : { items: paged.items, estimatedTokens: paged.items.reduce((sum, item) => sum + item.estimatedTokens, 0), droppedEntryIds: [] };
 
   return {
     ok: true,
     bookId: input.bookId,
     category,
-    items: paged.items,
+    items: budgeted.items,
     page: paged.page,
     limit: paged.limit,
-    totalAvailable: budgeted.items.length,
-    returnedCount: paged.items.length,
+    totalAvailable: allItems.length,
+    returnedCount: budgeted.items.length,
     hasMore: paged.hasMore,
     nextPage: paged.nextPage,
-    estimatedTokens: paged.items.reduce((sum, item) => sum + item.estimatedTokens, 0),
+    estimatedTokens: budgeted.items.reduce((sum, item) => sum + item.estimatedTokens, 0),
     droppedEntryIds: budgeted.droppedEntryIds,
   };
 }

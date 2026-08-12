@@ -1,5 +1,7 @@
 node_modules/
 dist/
+dist-archive-*/
+dist-release-*/
 target/
 /books/
 plugins/

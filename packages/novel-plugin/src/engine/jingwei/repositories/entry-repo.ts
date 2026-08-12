@@ -17,6 +17,7 @@ import type {
   JingweiRevisionRecord,
   JingweiRevisionSnapshot,
 } from "./collaborative-types.js";
+import { removeEntryFts, syncEntryFts, type FtsSyncFields } from "../search/fts-index.js";
 
 interface StoryJingweiEntryRow {
   id: string;
@@ -219,6 +220,22 @@ function resolveFields(input: { fields?: Record<string, unknown>; customFields?:
   return input.fields ?? input.customFields ?? fallback;
 }
 
+/** 把条目映射为 FTS 同步字段（写入侧与业务操作同一事务调用） */
+function toFtsFields(entry: StoryJingweiEntryRecord): FtsSyncFields {
+  return {
+    entryId: entry.id,
+    bookId: entry.bookId,
+    title: entry.title,
+    aliases: entry.aliases,
+    tags: entry.tags,
+    keywords: entry.visibilityRule.keywords ?? [],
+    summaryMd: entry.summaryMd ?? null,
+    contentMd: entry.contentMd,
+    updatedAt: entry.updatedAt,
+    status: entry.status,
+  };
+}
+
 export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
   const repo = {
     async create(input: CreateStoryJingweiEntryInput): Promise<StoryJingweiEntryRecord> {
@@ -226,9 +243,12 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       const sectionCategory = storage.sqlite.prepare(`
         SELECT "key", "builtin_kind" FROM "story_jingwei_section" WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
       `).get(input.bookId, input.sectionId) as { key: string; builtin_kind: string | null } | undefined;
-      const category = input.category
-        ?? (typeof fields.category === "string" && fields.category.trim() ? fields.category.trim() : undefined)
-        ?? resolveCategory(sectionCategory?.builtin_kind ?? sectionCategory?.key ?? "unclassified");
+      const category: string | null =
+        input.category && input.category.trim()
+          ? input.category.trim()
+          : (typeof fields.category === "string" && fields.category.trim()
+              ? fields.category.trim()
+              : (resolveCategory(sectionCategory?.builtin_kind ?? sectionCategory?.key ?? "unclassified") ?? null));
       storage.sqlite.prepare(`
         INSERT INTO "story_jingwei_entry" (
           "id", "book_id", "section_id", "title", "content_md", "summary_md", "category", "fields_json",
@@ -258,7 +278,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         serializeJson(input.relatedEntryIds),
         serializeJson(input.visibilityRule),
         input.participatesInAi ? 1 : 0,
-        input.tokenBudget,
+        input.tokenBudget ?? null,
         input.priorityTier ?? "auto",
         input.layer ?? "dynamic",
         typeof input.importance === "number" ? input.importance : 40,
@@ -271,11 +291,29 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       );
       const created = readEntry(storage, input.bookId, input.id);
       if (!created) throw new Error("Inserted story jingwei entry could not be read back.");
+      syncEntryFts(storage, toFtsFields(created));
       return created;
     },
 
     async getById(bookId: string, id: string): Promise<StoryJingweiEntryRecord | null> {
       return readEntry(storage, bookId, id);
+    },
+
+    /** 批量按 ID 取行（检索候选场景用，避免 N 次单条查询） */
+    async listByIds(bookId: string, ids: readonly string[]): Promise<Map<string, StoryJingweiEntryRecord>> {
+      const result = new Map<string, StoryJingweiEntryRecord>();
+      if (ids.length === 0) return result;
+      const placeholders = ids.map(() => "?").join(", ");
+      const rows = storage.sqlite.prepare(`
+        SELECT ${selectColumns}
+        FROM "story_jingwei_entry"
+        WHERE "book_id" = ? AND "id" IN (${placeholders}) AND "deleted_at" IS NULL
+      `).all(bookId, ...ids) as StoryJingweiEntryRow[];
+      for (const row of rows) {
+        const entry = toEntry(row);
+        result.set(entry.id, entry);
+      }
+      return result;
     },
 
     async listByBook(bookId: string): Promise<StoryJingweiEntryRecord[]> {
@@ -298,20 +336,35 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       return rows.map(toEntry);
     },
 
-    async listForAi(bookId: string, sectionIds: readonly string[]): Promise<StoryJingweiEntryRecord[]> {
+    async listForAi(
+      bookId: string,
+      sectionIds: readonly string[],
+      options: { category?: string | null; limit?: number; offset?: number } = {},
+    ): Promise<StoryJingweiEntryRecord[]> {
       if (sectionIds.length === 0) return [];
       const placeholders = sectionIds.map(() => "?").join(", ");
-      const rows = storage.sqlite.prepare(`
-        SELECT ${selectColumns}
-        FROM "story_jingwei_entry"
-        WHERE "book_id" = ?
-          AND "section_id" IN (${placeholders})
-          AND "deleted_at" IS NULL
-          AND "participates_in_ai" = 1
-          AND COALESCE("status", 'confirmed') = 'confirmed'
-          AND COALESCE("lifecycle", 'active') NOT IN ('archived', 'inactive', 'retired')
-        ORDER BY "sort_order" ASC, "updated_at" DESC, "title" ASC
-      `).all(bookId, ...sectionIds) as StoryJingweiEntryRow[];
+      const clauses = [
+        `"book_id" = ?`,
+        `"section_id" IN (${placeholders})`,
+        `"deleted_at" IS NULL`,
+        `"participates_in_ai" = 1`,
+        `COALESCE("status", 'confirmed') = 'confirmed'`,
+        `COALESCE("lifecycle", 'active') NOT IN ('archived', 'inactive', 'retired')`,
+      ];
+      const params: unknown[] = [bookId, ...sectionIds];
+      if (options.category !== undefined && options.category !== null) {
+        clauses.push(`COALESCE("category", 'unclassified') = ?`);
+        params.push(options.category);
+      }
+      const orderClause = `ORDER BY "sort_order" ASC, "updated_at" DESC, "title" ASC`;
+      let sql = `SELECT ${selectColumns}\nFROM "story_jingwei_entry"\nWHERE ${clauses.join("\n  AND ")}\n${orderClause}`;
+      if (options.limit !== undefined || options.offset !== undefined) {
+        const limit = options.limit ?? 1000;
+        const offset = options.offset ?? 0;
+        sql += `\nLIMIT ? OFFSET ?`;
+        params.push(limit, offset);
+      }
+      const rows = storage.sqlite.prepare(sql).all(...params) as StoryJingweiEntryRow[];
       return rows.map(toEntry);
     },
 
@@ -392,6 +445,8 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           bookId,
           id,
         );
+        const updated = readEntry(storage, bookId, id);
+        if (updated) syncEntryFts(storage, toFtsFields(updated));
       });
       run();
       return readEntry(storage, bookId, id);
@@ -465,6 +520,8 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           bookId,
           entryId,
         );
+        const reverted = readEntry(storage, bookId, entryId);
+        if (reverted) syncEntryFts(storage, toFtsFields(reverted));
       });
       run();
       return readEntry(storage, bookId, entryId);
@@ -491,6 +548,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
             "version" = COALESCE("version", 1) + 1, "updated_at" = ?
           WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
         `).run(retiredAt.getTime(), options.reason, retiredAt.getTime(), bookId, id);
+        removeEntryFts(storage, id);
       });
       run();
       return true;
@@ -505,7 +563,8 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           UPDATE "story_jingwei_entry"
           SET "deleted_at" = ?, "lifecycle" = 'archived', "version" = COALESCE("version", 1) + 1, "updated_at" = ?
           WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-        `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
+          `).run(deletedAt.getTime(), deletedAt.getTime(), bookId, id);
+        removeEntryFts(storage, id);
       });
       run();
       return true;

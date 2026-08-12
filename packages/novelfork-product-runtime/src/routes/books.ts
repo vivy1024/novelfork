@@ -342,8 +342,9 @@ bookDomainRoutes.put("/chapters/:chapterNumber", async (c) => {
 bookDomainRoutes.get("/files/tree", async (c) => {
 	const rawDepth = Number(c.req.query("depth") ?? 8);
 	const depth = Number.isFinite(rawDepth) ? rawDepth : 8;
+	const refresh = c.req.query("refresh") === "1";
 	return c.json(await novelForkProductBookService.getWorkspaceFileTree(
-		requiredParam(c, "bookId"), actor(c), depth,
+		requiredParam(c, "bookId"), actor(c), depth, { refresh },
 	));
 });
 

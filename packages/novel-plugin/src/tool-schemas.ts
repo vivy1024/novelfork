@@ -52,14 +52,15 @@ const memoryFilterSchema = {
 };
 
 const acknowledgedSkillsSchema = arraySchema(
-  "对本书已启用 Writing Skills 的原文引用确认。每项 {slug, quote}：quote 必须是该技能 SKILL.md 正文里不少于 30 字（去空白计）的连续原文，换行与缩进可不同。写章前必须逐个提交，否则会被 skills-not-acknowledged 阻断。",
+  "兼容字段：可记录模型希望采用的相关技能名称；真实生效证据由当前 Runtime narrator 的 Skill 调用提供。",
   {
     type: "object",
     properties: {
-      slug: stringSchema("技能 slug（取自 write.preflight 的 requiredSkillAcknowledgements）。"),
-      quote: stringSchema("该技能 SKILL.md 正文中的原文连续片段（≥30 字）。"),
+      slug: stringSchema("技能 slug（可选）。"),
+      name: stringSchema("技能名称（可选）。"),
+      quote: stringSchema("兼容旧客户端的引用字段，不参与门禁。"),
     },
-    required: ["slug", "quote"],
+    required: [],
     additionalProperties: false,
   },
 );
@@ -90,6 +91,17 @@ const sceneSpecSchema = {
     chapter: numberSchema("目标章节号。"),
     title: stringSchema("章节标题。"),
     wordTarget: numberSchema("目标字数。"),
+    beatBudget: arraySchema("情节点字数预算：密点展开、疏点带过，总和需覆盖整章。", {
+      type: "object",
+      properties: {
+        summary: stringSchema("这一拍具体发生什么。"),
+        density: enumSchema(["dense", "normal", "sparse"], "情节点密度。"),
+        words: numberSchema("分配字数。"),
+        function: stringSchema("功能标签（可选）。"),
+      },
+      required: ["summary", "density", "words"],
+      additionalProperties: false,
+    }),
     scenes: arraySchema("场景列表。", {
       type: "object",
       properties: {
@@ -270,19 +282,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
-  "rewrite.segment": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-      chapterNumber: numberSchema("章节序号。"),
-      selection: lineRangeSchema,
-      mode: stringSchema("改写模式：continue | expand | restyle。"),
-      styleHint: stringSchema("restyle 模式的风格提示（可选）。"),
-      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
-    },
-    required: ["bookId", "chapterNumber", "selection", "mode"],
-    additionalProperties: false,
-  },
   "rewrite.apply": {
     type: "object",
     properties: {
@@ -293,19 +292,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       mode: stringSchema("写入模式：replace（替换选中行，默认）、insert_after（在选中行后插入）。"),
     },
     required: ["bookId", "chapterNumber", "lineRange", "newText"],
-    additionalProperties: false,
-  },
-  "style.import": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-      referenceText: stringSchema("参考文本（至少 2000 字）。"),
-      sourceName: stringSchema("参考来源名称（可选，如「耳根《仙逆》」）。"),
-      saveAsWritingSkill: booleanSchema("是否把文风指南保存为作者级 Writing Skill（默认 true）。设为 false 只出建议，且该建议不会进入写作上下文。"),
-      enableOnBook: booleanSchema("saveAsWritingSkill=true 时是否立刻在本书启用（默认 true）。"),
-      skillName: stringSchema("Writing Skill 名称（可选）。"),
-    },
-    required: ["bookId", "referenceText"],
     additionalProperties: false,
   },
   "pipeline.import_chapters": {
@@ -405,7 +391,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     type: "object",
     properties: {
       bookId: stringSchema("书籍 ID。"),
-      platform: enumSchema(["qidian", "jjwxc", "fanqie", "qimao", "generic"], "覆盖平台（缺省按 book.platform 映射）。"),
+      platform: enumSchema(["qidian", "jjwxc", "fanqie", "qimao", "generic"], "选择对应平台的写作建议（缺省按 book.platform 映射；不代表官方审核规则）。"),
       chapterNumber: numberSchema("只检查单章（可选）。"),
       fromChapter: numberSchema("起始章（可选）。"),
       toChapter: numberSchema("结束章（可选）。"),
@@ -422,15 +408,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       targets: arraySchema("抽取目标：characters|world|hooks|summaries|style|all（默认 all）。", { type: "string" }),
       apply: booleanSchema("是否写入 story 草稿（默认 false，只返回草案）。"),
       settle: booleanSchema("是否先/同时对范围内章节 settle（默认 false）。"),
-    },
-    required: ["bookId"],
-    additionalProperties: false,
-  },
-  "outline.suggest_next": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("书籍 ID。"),
-      sessionId: stringSchema("当前会话 ID（用于获取模型配置）。"),
     },
     required: ["bookId"],
     additionalProperties: false,
@@ -503,6 +480,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     properties: {
       bookId: stringSchema("书籍 ID。"),
       sceneSpec: sceneSpecSchema,
+      content: stringSchema("当前 Runtime Agent 已完成的章节正文；pipeline.write 只做校验与保存，不在工具内部生成。"),
       jingweiContext: stringSchema("按 scene spec 补读的经纬上下文文本（可选）。"),
       previousChapterTail: stringSchema("前一章末尾 500 字（可选，用于衔接）。"),
       autoRevise: booleanSchema("是否自动修订审计不过的 critical 问题。默认 true。"),
@@ -513,7 +491,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       requireFactCheckPass: booleanSchema("若仍有 critical 事实/连续性 S1 未清，则拒绝保存正式章（默认 false，只标 needsHumanReview）。"),
       factCheckAutoRevise: booleanSchema("普通审修后若仍有 critical 事实/连续性问题，额外触发 1 轮事实专项 spot-fix + 复审（默认 false）。"),
     },
-    required: ["bookId", "sceneSpec"],
+    required: ["bookId", "sceneSpec", "content"],
     additionalProperties: false,
   },
   "jingwei.audit": {
@@ -559,6 +537,7 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       chapterNumber: numberSchema("目标章节序号。"),
       userDirectives: stringSchema("用户对本章的一句写作指示/方向（禁止塞写作理论长文）。"),
+      sceneSpec: sceneSpecSchema,
       acceptFocusDefault: booleanSchema("当 write.preflight 仅给出 focus 默认目标时，是否接受继续。"),
       cockpitSnapshot: { type: "object", description: "驾驶舱快照（可选，用于提取进度、伏笔、风险等上下文）。" },
       jingweiBrief: { type: "object", description: "兼容旧字段：经纬/Lore 核心包摘要（可选）。新调用优先使用 loreBrief。" },
@@ -588,7 +567,9 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       bookId: stringSchema("书籍 ID。"),
       scope: stringSchema("读取范围：brief（默认，核心包+目录）| category（分类读取）| search（搜索）。"),
       category: stringSchema("scope=category 时必填，要读取的经纬分类。"),
-      query: stringSchema("scope=search 时必填，搜索关键词。"),
+      query: stringSchema("scope=search 时必填，搜索关键词；支持空格分隔多个词（多词取 AND 语义），按标题/别名/标签/摘要/正文加权匹配。"),
+      categories: arraySchema("scope=search 时可选，限定搜索的分类列表（如 characters / factions）。", { type: "string" }),
+      includeUnconfirmed: booleanSchema("scope=search 时可选：是否纳入 draft / needs-review 条目。默认 false（只读已确认条目）；作者侧检索传 true。"),
       chapterNumber: numberSchema("当前章节号（可选）。"),
       sceneText: stringSchema("当前场景文本（可选，用于相关性排序）。"),
       chapterIntent: stringSchema("本章写作意图（可选，用于核心包优先选择）。"),

@@ -1,30 +1,33 @@
 /**
- * Writing Skill 生效强制机制 —— 不依赖模型自觉。
+ * Runtime Skill 生效记录。
  *
- * 问题：Skills 启用后物化到作品 `.novelfork/skills/`，Runtime 会把它们交给
- * 正在调用工具的 agent，但「交到了」不等于「读了并照做」。有些模型根本不主动
- * 打开 SKILL.md，写前提示词又无法强制。
- *
- * 做法：写章前要求调用方对每个已启用技能提交一段**原文引用**。引用必须是该
- * SKILL.md 正文里的连续子串且不短于下限——没真正读过文件就拿不出来。
- * 这里不用内容哈希：哈希需要由产品侧先算给模型，模型照抄即可通过，等于没门。
+ * Skill 的真实性由 Runtime narratorToolCalls 中同一 narrator 的成功 Skill 调用证明；
+ * 产品工具不再要求模型提交长原文引用，也不在工具内部再次调用模型。
  */
 
-/**
- * 单条引用的最小长度（按去空白后的字符数）。
- * 30 字的中文原句已经不可能靠猜命中，同时不会苛刻到逼作者的短条目无法引用。
- */
-export const MIN_SKILL_QUOTE_CHARS = 30;
+export const MIN_SKILL_QUOTE_CHARS = 0;
 
 export interface AcknowledgeableWritingSkill {
   readonly slug: string;
   readonly name: string;
-  readonly body: string;
+  readonly body?: string;
+  readonly description?: string;
+  readonly kind?: string;
+  readonly tags?: readonly string[];
+  readonly mode?: string;
 }
 
+/** 兼容旧客户端：quote 保留但不再参与门禁。 */
 export interface WritingSkillAcknowledgement {
-  readonly slug: string;
-  readonly quote: string;
+  readonly slug?: string;
+  readonly name?: string;
+  readonly quote?: string;
+}
+
+export interface RuntimeLoadedSkillEvidence {
+  readonly name: string;
+  readonly loadedAt: string;
+  readonly contentHash?: string;
 }
 
 export interface WritingSkillAcknowledgementRequirement {
@@ -35,107 +38,89 @@ export interface WritingSkillAcknowledgementRequirement {
 
 export interface WritingSkillAcknowledgementVerdict {
   readonly ok: boolean;
-  /** 完全没有提交引用的技能 slug。 */
+  /** 当前任务相关、但同一 Runtime narrator 尚未成功加载的技能。 */
   readonly missing: readonly string[];
-  /** 提交了但长度不足下限的技能 slug。 */
   readonly tooShort: readonly string[];
-  /** 提交了但在该技能正文中找不到的技能 slug（说明不是原文）。 */
   readonly notFound: readonly string[];
-  /** 提交了但本书并未启用该技能的 slug。 */
   readonly unknown: readonly string[];
+  readonly loaded: readonly string[];
+}
+
+function normalize(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function skillEvidenceMatches(skill: AcknowledgeableWritingSkill, evidence: RuntimeLoadedSkillEvidence): boolean {
+  const target = normalize(evidence.name);
+  return target === normalize(skill.name) || target === normalize(skill.slug);
 }
 
 /**
- * 比较前去掉全部空白。
- *
- * 只折叠成单空格不够：中文正文里换行处本来没有空格，模型按行复制后
- * 会在原文没有空白的位置多出一个空格，导致原文引用被误判为编造。
- * 直接剥离空白后比较，允许任意重新折行与缩进，但不允许改字。
+ * 按当前任务筛选相关技能。显式任务词命中名称/描述/kind/tags 的技能优先；
+ * always 技能始终相关；无法从任务文本判定时保留全部启用技能，避免误漏用户规则。
  */
-function normalizeForMatch(text: string): string {
-  return text.replace(/\s+/gu, "");
+export function selectRelevantWritingSkills(
+  skills: readonly AcknowledgeableWritingSkill[],
+  taskText = "",
+): readonly AcknowledgeableWritingSkill[] {
+  const text = normalize(taskText);
+  if (!text.trim()) return skills;
+  const matched = skills.filter((skill) => {
+    if (skill.mode === "always") return true;
+    const searchable = [skill.slug, skill.name, skill.description ?? "", skill.kind ?? "", ...(skill.tags ?? [])]
+      .map(normalize)
+      .filter(Boolean);
+    return searchable.some((token) => token.length >= 2 && text.includes(token));
+  });
+  return matched.length > 0 ? matched : skills;
 }
 
+/** 兼容旧字段名；现在只返回相关技能清单，不声明引用长度要求。 */
 export function describeWritingSkillAcknowledgementRequirement(
   skills: readonly AcknowledgeableWritingSkill[],
 ): readonly WritingSkillAcknowledgementRequirement[] {
-  return skills
-    .filter((skill) => normalizeForMatch(skill.body).length >= MIN_SKILL_QUOTE_CHARS)
-    .map((skill) => ({ slug: skill.slug, name: skill.name, minQuoteChars: MIN_SKILL_QUOTE_CHARS }));
+  return skills.map((skill) => ({ slug: skill.slug, name: skill.name, minQuoteChars: 0 }));
 }
 
 export function verifyWritingSkillAcknowledgements(params: {
   readonly skills: readonly AcknowledgeableWritingSkill[];
-  readonly acknowledged: readonly WritingSkillAcknowledgement[];
+  readonly acknowledged?: readonly WritingSkillAcknowledgement[];
+  readonly loadedSkills?: readonly RuntimeLoadedSkillEvidence[];
+  readonly taskText?: string;
 }): WritingSkillAcknowledgementVerdict {
-  const required = describeWritingSkillAcknowledgementRequirement(params.skills);
-  const bySlug = new Map(params.skills.map((skill) => [skill.slug, skill]));
-  const submitted = new Map<string, string>();
-  const unknown: string[] = [];
+  const relevant = selectRelevantWritingSkills(params.skills, params.taskText);
+  const loadedSkills = params.loadedSkills ?? [];
+  const missing = relevant
+    .filter((skill) => !loadedSkills.some((evidence) => skillEvidenceMatches(skill, evidence)))
+    .map((skill) => skill.slug);
+  const loaded = relevant
+    .filter((skill) => loadedSkills.some((evidence) => skillEvidenceMatches(skill, evidence)))
+    .map((skill) => skill.slug);
 
-  for (const item of params.acknowledged) {
-    const slug = item.slug?.trim();
-    if (!slug) continue;
-    if (!bySlug.has(slug)) {
-      unknown.push(slug);
-      continue;
-    }
-    submitted.set(slug, item.quote ?? "");
-  }
+  const known = new Set(params.skills.map((skill) => skill.slug));
+  const unknown = (params.acknowledged ?? [])
+    .filter((item) => typeof item.slug === "string" && item.slug.trim() && !known.has(item.slug.trim()))
+    .map((item) => item.slug!.trim());
 
-  const missing: string[] = [];
-  const tooShort: string[] = [];
-  const notFound: string[] = [];
-
-  for (const requirement of required) {
-    const quote = submitted.get(requirement.slug);
-    if (quote === undefined) {
-      missing.push(requirement.slug);
-      continue;
-    }
-    const normalizedQuote = normalizeForMatch(quote);
-    if (normalizedQuote.length < requirement.minQuoteChars) {
-      tooShort.push(requirement.slug);
-      continue;
-    }
-    const body = normalizeForMatch(bySlug.get(requirement.slug)?.body ?? "");
-    if (!body.includes(normalizedQuote)) notFound.push(requirement.slug);
-  }
-
-  return {
-    ok: missing.length === 0 && tooShort.length === 0 && notFound.length === 0 && unknown.length === 0,
-    missing,
-    tooShort,
-    notFound,
-    unknown,
-  };
+  return { ok: missing.length === 0 && unknown.length === 0, missing, tooShort: [], notFound: [], unknown, loaded };
 }
 
-/** 把判定结果写成可直接转述的三段式说明。 */
 export function explainWritingSkillAcknowledgementVerdict(params: {
   readonly verdict: WritingSkillAcknowledgementVerdict;
   readonly skills: readonly AcknowledgeableWritingSkill[];
 }): { readonly whatHappened: string; readonly whyItMatters: string; readonly suggestedAction: string } {
   const nameOf = (slug: string) => params.skills.find((skill) => skill.slug === slug)?.name ?? slug;
+  const missing = params.verdict.missing.map(nameOf);
+  const unknown = params.verdict.unknown;
   const parts: string[] = [];
-  if (params.verdict.missing.length > 0) {
-    parts.push(`未提交原文引用：${params.verdict.missing.map(nameOf).join("、")}`);
-  }
-  if (params.verdict.tooShort.length > 0) {
-    parts.push(`引用长度不足 ${MIN_SKILL_QUOTE_CHARS} 字：${params.verdict.tooShort.map(nameOf).join("、")}`);
-  }
-  if (params.verdict.notFound.length > 0) {
-    parts.push(`引用在该技能正文中找不到：${params.verdict.notFound.map(nameOf).join("、")}`);
-  }
-  if (params.verdict.unknown.length > 0) {
-    parts.push(`提交了本书未启用的技能：${params.verdict.unknown.join("、")}`);
-  }
+  if (missing.length > 0) parts.push(`当前任务相关技能尚未由本 Runtime Agent 加载：${missing.join("、")}`);
+  if (unknown.length > 0) parts.push(`提交了本书未启用的技能：${unknown.join("、")}`);
   return {
-    whatHappened: parts.join("；") || "已启用的 Writing Skills 尚未确认。",
-    whyItMatters:
-      "写章前必须确认已读过本书启用的写作技能。只靠提示词要求模型「记得看技能」不可靠：不读也能照写，作者定的文风与节奏就形同虚设。",
-    suggestedAction:
-      "逐个读取作品目录下 .novelfork/skills/<slug>/SKILL.md，把其中一段不少于 " +
-      `${MIN_SKILL_QUOTE_CHARS} 字的原文放进 acknowledgedSkills:[{slug,quote}] 再重试。引用需为原文连续片段，允许换行与缩进不同。`,
+    whatHappened: parts.join("；") || "当前任务相关 Writing Skills 已由同一 Runtime Agent 加载。",
+    whyItMatters:       "技能生效证据必须来自同一 narrator 会话的真实 Skill 调用，不能由模型自行伪造引用或由工具内部另开模型会话。",
+
+    suggestedAction: missing.length > 0
+      ? `请先在当前会话调用 Skill 读取：${missing.join("、")}，然后重试写作工具。`
+      : "可以继续执行当前写作工具。",
   };
 }

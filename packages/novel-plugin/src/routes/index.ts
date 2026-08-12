@@ -4,7 +4,6 @@
  * writing-modes, writing-tools, and context-manager.
  */
 
-export { createAIRouter } from "./ai.js";
 export {
   AUTHOR_REVIEW_FILES,
   buildRadarReviewMarkdown,

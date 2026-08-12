@@ -8,36 +8,21 @@
  * - 从 5 次 LLM 调用降到 2 次（Writer + AuditRevise）
  */
 
-import type { LLMClient, Logger, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
-import { StateManager, buildLengthSpec, countChapterLength, chooseNormalizeMode, isOutsideHardRange, loadRuntimeStateSnapshot, findKnowledgeViolations, findTimelineConflicts } from "@vivy1024/novelfork-core";
+import type { Logger, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
+import { StateManager, buildLengthSpec, countChapterLength, isOutsideHardRange, loadRuntimeStateSnapshot, findKnowledgeViolations, findTimelineConflicts } from "@vivy1024/novelfork-core";
 import type { BookConfig } from "@vivy1024/novelfork-core";
-import type { AgentContext } from "../engine/agents/base.js";
+import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 import type { AuditResult } from "../engine/agents/continuity.js";
-import { WriterAgent } from "../engine/agents/writer.js";
-import { LengthNormalizerAgent } from "../engine/agents/length-normalizer.js";
-import { ContinuityAuditor } from "../engine/agents/continuity.js";
-import { auditChapterAdversarial, type AdversarialAuditResult } from "../engine/agents/adversarial-audit.js";
 import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
-import { ReviserAgent } from "../engine/agents/reviser.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
 import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { renderBeatBudget, checkBeatBudget } from "./beat-budget.js";
 import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
-import {
-  handleWritingSkillsCheckCompliance,
-  loadActiveWritingSkillsForBook,
-} from "./writing-skill-handlers.js";
-import {
-  describeWritingSkillAcknowledgementRequirement,
-  explainWritingSkillAcknowledgementVerdict,
-  verifyWritingSkillAcknowledgements,
-  type AcknowledgeableWritingSkill,
-  type WritingSkillAcknowledgement,
-} from "./writing-skill-acknowledgement.js";
+import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js";
+import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
-import { createLLMChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
@@ -69,6 +54,8 @@ export interface PipelineCanvasArtifact {
 export interface PipelineWriteInput {
   readonly bookId: string;
   readonly sceneSpec: SceneSpec;
+  /** 当前 Runtime Agent 已完成的章节正文；pipeline.write 不再负责生成正文。 */
+  readonly content: string;
   readonly narrativeContext?: NarrativeContextPackage;
   readonly jingweiContext?: string;
   readonly previousChapterTail?: string;
@@ -91,11 +78,10 @@ export interface PipelineWriteInput {
    * 独立于 maxReviseRounds，默认 false。
    */
   readonly factCheckAutoRevise?: boolean;
-  /**
-   * 对本书已启用 Writing Skills 的原文引用确认（slug + 不少于 40 字的原文片段）。
-   * 由 write.preflight 的 requiredSkillAcknowledgements 指出需要哪些。
-   */
+  /** 兼容旧客户端；不再要求提交原文引用。 */
   readonly acknowledgedSkills?: readonly WritingSkillAcknowledgement[];
+  /** 当前 Runtime narrator 已成功读取的 Skill 证据。 */
+  readonly loadedSkills?: readonly RuntimeLoadedSkill[];
 }
 
 export interface PipelineAuditIssueCategories {
@@ -126,7 +112,7 @@ export interface PipelineWriteOutput {
   readonly narrativeSettlement?: ChapterSettlementResult;
   /** 写作前发现的高风险 pending NarrativeEvents 提醒 */
   readonly highRiskPendingReminder?: string;
-  /** 轻量发布向提示（默认只 warn；敏感 block 且平台要求时才拒绝保存） */
+  /** 轻量投稿风险提示：只提供本地线索与人工复核建议，不阻断保存。 */
   readonly publishHint?: {
     readonly status: "ready" | "has-warnings" | "blocked" | "skipped";
     readonly warnings: readonly string[];
@@ -159,8 +145,7 @@ export interface PipelineWriteError {
     | "preflight-execution-failed"
     | "skill-verification-failed"
     | "fact-check-failed"
-    | "volume-range-violation"
-    | "publish-blocked";
+    | "volume-range-violation";
   readonly error: string;
   readonly summary?: string;
   readonly explanation?: string;
@@ -185,24 +170,12 @@ export function summarizeAuditIssueCategories(issues: readonly { severity?: stri
 export type PipelineWriteResult = PipelineWriteOutput | PipelineWriteError;
 
 export interface PipelineWriteOptions {
-  /** Project root used for optional project-level agent resources. */
+  /** Project root used for state and storage resolution. */
   readonly root: string;
   /** Trusted bound book root; required for external workspace bindings. */
   readonly bookRoot?: string;
-  readonly client: LLMClient;
-  readonly model: string;
   readonly onStream?: (chunk: string) => void;
   readonly logger?: Logger;
-}
-
-function buildAgentCtx(options: PipelineWriteOptions, agentName: string, bookId: string): AgentContext {
-  return {
-    client: options.client,
-    model: options.model,
-    projectRoot: options.root,
-    bookId,
-    logger: options.logger,
-  };
 }
 
 /**
@@ -392,6 +365,8 @@ export async function executePipelineWrite(
             ?? "按场景蓝图推进本章",
           acceptFocusDefault: true,
           ...(input.acknowledgedSkills ? { acknowledgedSkills: input.acknowledgedSkills } : {}),
+          ...(input.loadedSkills ? { loadedSkills: input.loadedSkills } : {}),
+          taskText: sceneSpec.title ?? sceneSpec.constraints?.join(" ") ?? "",
           bookRoot: bookDir,
           cockpitState: {
             loadBookConfig: (id) => state.loadBookConfig(id),
@@ -402,7 +377,6 @@ export async function executePipelineWrite(
         const hard = preflight.blockers.filter((item) => (
           item.code === "empty-recent-progress"
           || item.code === "book-not-found"
-          || item.code === "skills-not-acknowledged"
         ));
         if (hard.length > 0) {
           const firstBlocker = hard[0];
@@ -430,51 +404,9 @@ export async function executePipelineWrite(
         };
       }
     }
-    // Skill 生效硬门：已启用技能就必须先提交原文引用，证明确实读过 SKILL.md。
-    // 与 preflight 同一实现，这里再校一次是信任边界：调用方可能绕过 preflight 直接写章。
-    if (!skipContextGate) {
-      let activeSkills: readonly AcknowledgeableWritingSkill[] = [];
-      try {
-        const active = await loadActiveWritingSkillsForBook(bookId, { bookRoot: bookDir });
-        activeSkills = active.skills.map((skill) => ({
-          slug: skill.slug,
-          name: skill.name,
-          body: skill.body ?? "",
-        }));
-      } catch (err) {
-        const detail = err instanceof Error ? err.message : String(err);
-        logger?.error(`[pipeline.write] Skill acknowledgement gate failed closed: ${detail}`);
-        return {
-          ok: false,
-          code: "skill-verification-failed",
-          error: `Writing Skills 确认门执行失败：${detail}`,
-          summary: "Writing Skills 无法可靠加载，已阻止生成。",
-          explanation: "系统无法确认当前启用技能的原文要求，继续写作可能绕过写作规范；请修复技能资源后重试。",
-        };
-      }
-      if (describeWritingSkillAcknowledgementRequirement(activeSkills).length > 0) {
-        const verdict = verifyWritingSkillAcknowledgements({
-          skills: activeSkills,
-          acknowledged: input.acknowledgedSkills ?? [],
-        });
-        if (!verdict.ok) {
-          const explanation = explainWritingSkillAcknowledgementVerdict({ verdict, skills: activeSkills });
-          const summaryMsg = `第${chapterNumber}章未通过 Writing Skills 确认门，未开始生成。`;
-          return {
-            ok: false,
-            code: "skills-not-acknowledged",
-            error: [
-              summaryMsg,
-              `发生了什么：${explanation.whatHappened}`,
-              `为什么要看：${explanation.whyItMatters}`,
-              `建议怎么做：${explanation.suggestedAction}`,
-            ].join("\n"),
-            summary: summaryMsg,
-            explanation: `${explanation.whatHappened}\n${explanation.whyItMatters}\n${explanation.suggestedAction}`,
-          };
-        }
-      }
-    }
+    // Skill 生效证据由 Runtime 注入 loadedSkills；缺失时只作为诊断信息，
+    // 不再要求模型提交长原文引用，也不在此工具内另开模型会话。
+
 
     // The persisted book setting is authoritative. SceneSpec is model-generated
     // planning input and must not lower or replace the book's hard target.
@@ -557,10 +489,6 @@ export async function executePipelineWrite(
       }
     }
 
-    // 2. Writer — generate chapter from scene spec
-    const writerCtx = buildAgentCtx(options, "writer", bookId);
-    const writer = new WriterAgent(writerCtx);
-
     // P0-2: 加载控制文档（全书长视野意图 + 近 1-3 章焦点），注入写作上下文。
     // 此前 author_intent 只被 planner 消化成 goal，原文不进 writer 上下文 → 长篇易跑偏。
     let authorIntentDoc = "";
@@ -633,36 +561,18 @@ export async function executePipelineWrite(
 
     const chapterIntent = `按照 Scene Spec 写第${chapterNumber}章「${sceneSpec.title}」`;
 
-    const writeOutput = await writer.writeChapter({
-      book,
-      bookDir,
-      chapterNumber,
-      volumeRanges,
-      chapterIntent,
-      contextPackage,
-      ruleStack,
-      externalContext: "",
-      lengthSpec,
-    });
-
-    logger?.info(`[pipeline.write] Writer done: "${writeOutput.title}" ${writeOutput.wordCount} words`);
-
-    // 2.2. Length governance (P0-1): Writer 输出漂出 hard 区间时先归一化；最终版本还会在保存前强制复核。
-    let governedContent = writeOutput.content;
-    let lengthWarning: string | undefined;
-    {
-      const count = countChapterLength(governedContent, lengthSpec.countingMode);
-      if (isOutsideHardRange(count, lengthSpec) && chooseNormalizeMode(count, lengthSpec) !== "none") {
-        logger?.info(`[pipeline.write] Length ${count} outside hard range ${lengthSpec.hardMin}-${lengthSpec.hardMax}, normalizing once`);
-        const normalizer = new LengthNormalizerAgent(buildAgentCtx(options, "length-normalizer", bookId));
-        const norm = await normalizer.normalizeChapter({ chapterContent: governedContent, lengthSpec, chapterIntent });
-        if (norm.applied) {
-          governedContent = norm.normalizedContent;
-          lengthWarning = norm.warning;
-          logger?.info(`[pipeline.write] Normalized to ${norm.finalCount} (${norm.mode})${norm.warning ? " — still out of range" : ""}`);
-        }
-      }
+    const governedContent = input.content.trim();
+    if (!governedContent) {
+      return { ok: false, code: "generation-failed", error: "pipeline.write 收到空正文；正文必须由当前 Runtime Agent 显式提交。" };
     }
+    const writeOutput = {
+      content: governedContent,
+      title: sceneSpec.title?.trim() || `第${chapterNumber}章`,
+      runtimeStateDelta: undefined,
+      settlementError: undefined,
+    };
+    const lengthWarning: string | undefined = undefined;
+    logger?.info(`[pipeline.write] Runtime Agent content received: "${writeOutput.title}"`);
 
     // 2.5. Pre-audit: zero-cost hard constraint check (H2 canon + H7 POV + soft constraints)
     const preAudit = handleChapterAuditV2({
@@ -676,91 +586,31 @@ export async function executePipelineWrite(
       logger?.warn(`[pipeline.write] Pre-audit hard violations: ${preAudit.hardViolations.map((v) => v.ruleId).join(", ")}`);
     }
 
-    // 3. Audit + 多轮自愈修订（P1-1 对抗审查 / P1-3 多轮）
-    const reviserCtx = buildAgentCtx(options, "reviser", bookId);
-    const auditOpts = { chapterIntent, contextPackage, ruleStack };
-
-    // 审查函数：对抗式（3 视角交叉）或单 agent（回退）
-    const runAudit = async (content: string): Promise<AuditResult> => {
-      if (adversarialAudit) {
-        return auditChapterAdversarial(
-          { bookDir, chapterContent: content, chapterNumber, genre: book.genre, ...auditOpts },
-          () => new ContinuityAuditor(buildAgentCtx(options, "auditor", bookId)),
-        );
-      }
-      return new ContinuityAuditor(buildAgentCtx(options, "auditor", bookId)).auditChapter(
-        bookDir, content, chapterNumber, book.genre, auditOpts,
-      );
+    // 3. 确定性审计：同一 Runtime Agent 已提交正文，工具只检查，不另开 Auditor/Reviser 模型。
+    const auditV2 = handleChapterAuditV2({
+      bookId,
+      chapterNumber,
+      content: governedContent,
+      sceneSpec,
+      wordTarget: book.chapterWordCount,
+    });
+    const auditResult: AuditResult = {
+      passed: auditV2.passed,
+      issues: [...auditV2.hardViolations, ...auditV2.softViolations].map((issue) => ({
+        severity: issue.severity === "hard" ? "critical" : "warning",
+        category: issue.ruleId,
+        description: issue.description,
+        suggestion: issue.suggestion ?? "请由当前 Runtime Agent 根据审计结果修订后重新提交。",
+      })),
+      summary: auditV2.summary,
     };
-
     let finalContent = governedContent;
-    let revised = false;
-    let reviseRounds = 0;
-    let auditResult: AuditResult = await runAudit(finalContent);
-    const maxRounds = Math.max(0, maxReviseRounds);
-
-    // 多轮自愈（P1-2 门禁）：S1/S2（critical）触发修订，spot-fix → re-audit，最多 maxRounds 轮
-    while (autoRevise && reviseRounds < maxRounds) {
-      const gate = evaluateGate(auditResult.issues);
-      if (!gate.hasRevisable) break;
-      const criticalIssues = auditResult.issues.filter((i) => i.severity === "critical");
-      reviseRounds += 1;
-      logger?.info(`[pipeline.write] Revise round ${reviseRounds}/${maxRounds}: S1=${gate.counts.S1} S2=${gate.counts.S2}`);
-      const reviseOutput = await new ReviserAgent(reviserCtx).reviseChapter(
-        bookDir, finalContent, chapterNumber, criticalIssues, "spot-fix", book.genre,
-        { chapterIntent, contextPackage, ruleStack, lengthSpec },
-      );
-      finalContent = reviseOutput.revisedContent;
-      revised = true;
-      auditResult = await runAudit(finalContent); // re-audit 修订后的版本
-    }
-
-    // 3.5. 事实/连续性专项修订（独立于 maxReviseRounds，最多 1 轮）
-    let factCheckRevised = false;
-    let factCheckRound = 0;
-    if (factCheckAutoRevise) {
-      const factIssues = selectFactContinuityIssues(auditResult.issues);
-      if (factIssues.length > 0) {
-        factCheckRound = 1;
-        logger?.info(`[pipeline.write] Fact-check revise: ${factIssues.length} critical fact/continuity issue(s)`);
-        const factIssuesForRevise = factIssues.map((issue) => ({
-          ...issue,
-          description: `[事实核查专项] ${issue.description}`,
-        }));
-        try {
-          const factRevise = await new ReviserAgent(reviserCtx).reviseChapter(
-            bookDir, finalContent, chapterNumber, factIssuesForRevise, "spot-fix", book.genre,
-            { chapterIntent, contextPackage, ruleStack, lengthSpec },
-          );
-          if (factRevise.revisedContent.trim()) {
-            finalContent = factRevise.revisedContent;
-            revised = true;
-            factCheckRevised = true;
-            auditResult = await runAudit(finalContent);
-            const remaining = selectFactContinuityIssues(auditResult.issues).length;
-            logger?.info(`[pipeline.write] Fact-check revise done, remaining fact issues: ${remaining}`);
-          }
-        } catch (factError) {
-          logger?.warn(`[pipeline.write] Fact-check revise failed: ${factError instanceof Error ? factError.message : String(factError)}`);
-        }
-      }
-    }
-
-    // Revisions can reintroduce length drift after the initial normalizer. The
-    // book's persisted hard range is checked again before any formal resource
-    // or Narrative Memory settlement is allowed.
-    let finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
-    if (isOutsideHardRange(finalLengthCount, lengthSpec)) {
-      logger?.info(`[pipeline.write] Final length ${finalLengthCount} outside hard range ${lengthSpec.hardMin}-${lengthSpec.hardMax}, normalizing once more`);
-      const normalizer = new LengthNormalizerAgent(buildAgentCtx(options, "length-normalizer", bookId));
-      const norm = await normalizer.normalizeChapter({ chapterContent: finalContent, lengthSpec, chapterIntent });
-      if (norm.applied) {
-        finalContent = norm.normalizedContent;
-        lengthWarning = norm.warning ?? lengthWarning;
-        auditResult = await runAudit(finalContent);
-      }
-      finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
-    }
+    const revised = false;
+    const reviseRounds = 0;
+    const factCheckRevised = false;
+    const factCheckRound = 0;
+    // 正式保存前只做长度硬校验；超出范围时返回错误，交由同一 Runtime Agent 修订后重试。
+    const finalLengthCount = countChapterLength(finalContent, lengthSpec.countingMode);
     if (isOutsideHardRange(finalLengthCount, lengthSpec)) {
       return {
         ok: false,
@@ -790,7 +640,12 @@ export async function executePipelineWrite(
     let writingSkillWarnings: WritingSkillComplianceWarning[] = [];
     try {
       const compliance = await handleWritingSkillsCheckCompliance(
-        { bookId, chapterNumber, content: finalContent },
+        {
+          bookId,
+          chapterNumber,
+          content: finalContent,
+          ...(input.loadedSkills ? { loadedSkills: input.loadedSkills } : {}),
+        },
         { bookRoot: bookDir },
       );
       if (!compliance.ok) {
@@ -877,21 +732,12 @@ export async function executePipelineWrite(
       if (publishResult.ok && publishResult.report) {
         publishStatus = publishResult.status;
         if (publishResult.blockCount > 0) {
-          publishWarnings.push(`${publishResult.platformLabel}：${publishResult.blockCount} 条阻断级问题。`);
+          publishWarnings.push(`${publishResult.platformLabel}：发现 ${publishResult.blockCount} 条高风险线索，建议人工复核。`);
         }
         if (publishResult.warnCount > 0) {
-          publishWarnings.push(`${publishResult.platformLabel}：${publishResult.warnCount} 条发布提醒。`);
+          publishWarnings.push(`${publishResult.platformLabel}：发现 ${publishResult.warnCount} 条投稿风险提醒。`);
         }
         if (publishResult.chapterTarget?.message) publishWarnings.push(publishResult.chapterTarget.message);
-
-        const sensitiveBlocks = publishResult.report.sensitiveScan.totalBlockCount;
-        if (sensitiveBlocks > 0 && publishResult.profile.blockOnSensitiveBlock) {
-          return {
-            ok: false,
-            code: "publish-blocked",
-            error: `第${chapterNumber}章触发 ${sensitiveBlocks} 条${publishResult.platformLabel}阻断级敏感命中；未保存正式章节。可先用 rewrite.segment + rewrite.apply 处理命中段落后重试，或调整书籍平台设置。`,
-          };
-        }
       } else {
         publishStatus = "skipped";
       }
@@ -988,31 +834,20 @@ export async function executePipelineWrite(
           storage,
           bookRoot: bookDir,
           config: memoryConfig ?? undefined,
-          llmExtractor: async (settlementInput) => {
-            const llmExtractor = createLLMChapterEventExtractor(options.client, options.model);
-            const llmDrafts = await llmExtractor(settlementInput).catch((error) => {
-              logger?.warn(`[pipeline.write] LLM settlement extraction failed: ${error instanceof Error ? error.message : String(error)}`);
-              return [];
-            });
-            return [
-              ...llmDrafts,
-              ...narrativeEvents.map((event) => ({
-                eventType: event.eventType,
-                subject: event.subject,
-                predicate: event.predicate,
-                object: event.object,
-                evidenceText: event.evidenceText || finalContent.slice(0, 1200),
-                confidence: event.confidence,
-                source: "settle",
-              })),
-            ];
-          },
         });
       } catch (settlementError) {
         logger?.warn(`[pipeline.write] Narrative Memory settlement failed: ${settlementError instanceof Error ? settlementError.message : String(settlementError)}`);
       }
     } catch (err) {
-      logger?.warn(`[pipeline.write] Failed to save formal chapter: ${err}`);
+      const detail = err instanceof Error ? err.message : String(err);
+      logger?.error(`[pipeline.write] Failed to save formal chapter: ${detail}`);
+      return {
+        ok: false,
+        code: "generation-failed",
+        error: `正式章节落盘失败，未返回成功：${detail}`,
+        summary: "正式章节保存失败。",
+        explanation: "正文未能可靠写入正式章节文件/索引；请修复存储后重试，不能把未落盘结果当作成功。",
+      };
     }
 
     const wordCount = finalLengthCount;

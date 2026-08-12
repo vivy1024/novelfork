@@ -130,8 +130,93 @@ describe("Jingwei indexed read model", () => {
 
       expect(result.returnedCount).toBe(1);
       expect(result.items[0]?.entryId).toBe("hanli");
-      expect(result.items[0]?.matchReason).toBe("别名命中");
+      expect(result.items[0]?.matchReason).toContain("aliases");
       expect(result.estimatedTokens).toBeLessThanOrEqual(100);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps exact title matches first when a search token budget is present", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await entries.create(entry({ id: "zhaoming", sectionId: "sec-people", title: "赵铭（标注组同事）", contentMd: "赵铭负责日常同事对话。" }));
+      await entries.create(entry({ id: "b17", sectionId: "sec-hooks", title: "B-17异常波形", contentMd: "B-17是当前卷核心伏笔。" }));
+      await entries.create(entry({
+        id: "generic-core",
+        sectionId: "sec-premise",
+        title: "当前卷核心资料",
+        contentMd: "本资料同时提及赵铭和B-17，也会多次提及韩立。韩立、韩立、韩立。",
+        visibilityRule: { type: "global" },
+        priorityTier: "core",
+        importance: 100,
+      }));
+
+      for (const [query, expectedId] of [["韩立", "hanli"], ["赵铭", "zhaoming"], ["B-17", "b17"]] as const) {
+        const result = await searchJingwei({ storage, bookId: "book-1", query, tokenBudget: 5_000 });
+        expect(result.items[0]?.entryId).toBe(expectedId);
+      }
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("searches multi-term queries with AND semantics", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      // 「韩立 小瓶」：hanli（别名/关键词）与 summary-11（正文同现）都是合法命中
+      const hit = await searchJingwei({ storage, bookId: "book-1", query: "韩立 小瓶" });
+      expect(hit.items.map((item) => item.entryId)).toEqual(expect.arrayContaining(["hanli", "summary-11"]));
+
+      // 反向：词都不在同一条目 → 0
+      const miss = await searchJingwei({ storage, bookId: "book-1", query: "韩立 太清门" });
+      expect(miss.returnedCount).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("includeUnconfirmed returns draft/needs-review entries for author-side search", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await entries.create(entry({ id: "draft-entry", sectionId: "sec-people", title: "草稿设定", contentMd: "待确认的设定草案。", aliases: ["草稿别名"] }));
+      await entries.create(entry({ id: "review-entry", sectionId: "sec-people", title: "待审设定", contentMd: "需作者审查的设定。", aliases: ["待审别名"] }));
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = 'draft' WHERE id = 'draft-entry'`).run();
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET status = 'needs-review' WHERE id = 'review-entry'`).run();
+
+      const agentView = await searchJingwei({ storage, bookId: "book-1", query: "草稿别名" });
+      expect(agentView.returnedCount).toBe(0);
+
+      const authorView = await searchJingwei({ storage, bookId: "book-1", query: "草稿别名", includeUnconfirmed: true });
+      expect(authorView.items.map((item) => item.entryId)).toEqual(["draft-entry"]);
+      expect(authorView.items[0]?.status ?? authorView.items[0]?.matchReason).toBeTruthy();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("filters by categories and drops bigram false positives", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      // 真命中：正文含「太清门」
+      await entries.create(entry({ id: "real-hit", sectionId: "sec-people", title: "太清门", contentMd: "太清门是青蛟岛第一大宗。" }));
+      // 假阳性构造：正文「太清。清门」相邻，bigram phrase 会命中，精确校验应剔除
+      await entries.create(entry({ id: "false-positive", sectionId: "sec-people", title: "断句条目", contentMd: "他登上太清。清门之外风雪交加。" }));
+
+      const hit = await searchJingwei({ storage, bookId: "book-1", query: "太清门" });
+      expect(hit.items.map((item) => item.entryId)).toEqual(["real-hit"]);
+      // 假阳性验证：断句条目含「太清。清门」，不含「太清门」连续词，不得进入结果
+      expect(hit.items.map((item) => item.entryId)).not.toContain("false-positive");
+
+      const byCategory = await searchJingwei({ storage, bookId: "book-1", query: "韩老魔", categories: ["foreshadowing"] });
+      expect(byCategory.returnedCount).toBe(0);
     } finally {
       storage.close();
     }

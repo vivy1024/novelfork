@@ -16,6 +16,8 @@ const OUT_FILE = join(OUT_DIR, "bundled-skills.generated.ts");
 interface BundledEntry {
   readonly slug: string;
   readonly content: string;
+  /** SKILL.md 之外的附件（references/ 等），相对路径 → 文本。空对象表示无附件。 */
+  readonly files: Readonly<Record<string, string>>;
   readonly provenance: { repo: string; license: string; upstreamPath?: string } | null;
 }
 
@@ -68,15 +70,39 @@ function parseProvenance(raw: string | null): BundledEntry["provenance"] {
   }
 }
 
+async function collectSkillFiles(dir: string, base: string): Promise<Record<string, string>> {
+  const files: Record<string, string> = {};
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  for (const entry of entries) {
+    const full = join(dir, entry.name);
+    const relative = `${base}/${entry.name}`;
+    if (entry.isDirectory()) {
+      Object.assign(files, await collectSkillFiles(full, relative));
+    } else if (entry.isFile()) {
+      const raw = await readFileSafe(full);
+      if (raw !== null) files[relative] = raw.replace(/\r\n/g, "\n");
+    }
+  }
+  return files;
+}
+
 async function collectBuiltinSkills(): Promise<ReadonlyArray<BundledEntry>> {
   const skills: BundledEntry[] = [];
   for (const slug of await readDirSafe(SKILLS_ROOT)) {
     const skillDir = join(SKILLS_ROOT, slug);
     const content = await readFileSafe(join(skillDir, "SKILL.md"));
     if (!content) continue;
+    // _source.json 是溯源元数据（provenance 已入类型），不随附件分发。
+    const files = await collectSkillFiles(skillDir, "");
+    delete files["/_source.json"];
+    const normalizedFiles: Record<string, string> = {};
+    for (const [path, text] of Object.entries(files)) {
+      normalizedFiles[path.replace(/^\/+/, "")] = text;
+    }
     skills.push({
       slug,
       content: content.replace(/\r\n/g, "\n"),
+      files: normalizedFiles,
       provenance: parseProvenance(await readFileSafe(join(skillDir, "_source.json"))),
     });
   }
@@ -95,6 +121,8 @@ async function main(): Promise<void> {
 export interface BundledWritingSkill {
   readonly slug: string;
   readonly content: string;
+  /** SKILL.md 之外的附件（references/ 等），相对路径 → 文本。 */
+  readonly files: Readonly<Record<string, string>>;
   readonly provenance: {
     readonly repo: string;
     readonly license: string;

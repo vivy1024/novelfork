@@ -68,7 +68,21 @@ interface MemoryEntry {
   object?: string;
   status?: string;
   category?: string;
+  eventType?: string;
+  layer?: string;
+  sourceType?: string;
+  sourceId?: string;
+  source?: string;
+  sourceChapter?: number;
+  evidenceText?: string;
+  confidence?: number;
+  riskLevel?: string;
   chapterNumber?: number;
+  validFromChapter?: number;
+  validUntilChapter?: number;
+  createdAt?: string;
+  updatedAt?: string;
+  appliedAt?: string;
 }
 
 interface MemorySearchResponse {
@@ -144,6 +158,27 @@ const CATEGORY_LABELS: Record<string, string> = {
   world_fact: "世界事实",
   conflict: "矛盾",
 };
+
+const EVENT_CATEGORY_BY_TYPE: Record<string, string> = {
+  character_state_changed: "character_state",
+  relationship_changed: "relationship",
+  hook_planted: "hook",
+  hook_triggered: "hook",
+  hook_paid_off: "hook",
+  timeline_advanced: "timeline",
+  location_changed: "location",
+  world_fact_changed: "world_fact",
+  conflict_changed: "conflict",
+};
+
+function entryCategory(entry: MemoryEntry): string | undefined {
+  return entry.category ?? (entry.eventType ? EVENT_CATEGORY_BY_TYPE[entry.eventType] : undefined);
+}
+
+function entryCategoryLabel(entry: MemoryEntry): string {
+  const category = entryCategory(entry);
+  return category ? (CATEGORY_LABELS[category] ?? category) : entry.kind;
+}
 
 function formatMs(value?: number) {
   return typeof value === "number" ? `${Math.round(value)}ms` : "—";
@@ -494,24 +529,36 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     }
   }, [bookId, load]);
 
-  const openSearchEntry = useCallback((entry: MemoryEntry) => {
+  const openSearchEntry = useCallback(async (entry: MemoryEntry) => {
+    let detailed = entry;
+    let detailError: string | undefined;
+    try {
+      const response = await fetch(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/entries/${encodeURIComponent(entry.kind)}/${encodeURIComponent(entry.id)}`,
+      );
+      if (!response.ok) throw new Error(`详情请求失败（${response.status}）`);
+      const payload = await response.json() as { entry?: MemoryEntry };
+      if (payload.entry) detailed = { ...entry, ...payload.entry, kind: entry.kind, id: entry.id };
+    } catch (cause) {
+      detailError = cause instanceof Error ? cause.message : "详情请求失败";
+    }
+
     onOpen?.({
-      id: `memory-${entry.kind}:${entry.id}`,
+      id: `memory-${detailed.kind}:${detailed.id}`,
       kind: "file",
-      title: entryTitle(entry),
-      content: entry.summary ?? entryPredicateText(entry),
+      title: entryTitle(detailed),
+      content: detailed.summary ?? entryPredicateText(detailed),
       capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
       metadata: {
+        ...detailed,
         isNarrativeMemoryEntry: true,
-        entryKind: entry.kind,
-        entryId: entry.id,
-        category: entry.category,
-        subject: entry.subject,
-        predicate: entry.predicate,
-        object: entry.object,
+        entryKind: detailed.kind,
+        entryId: detailed.id,
+        displayCategory: entryCategory(detailed),
+        ...(detailError ? { detailError } : {}),
       },
     });
-  }, [onOpen]);
+  }, [bookId, onOpen]);
 
   return (
     <NarrativeMemoryPanelShell
@@ -705,7 +752,7 @@ export function NarrativeMemoryPanelShell({
                   <span className="text-[10px] text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status}</span>
                 </div>
                 <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                  第 {entry.chapterNumber ?? "—"} 章 · {CATEGORY_LABELS[entry.category ?? ""] ?? entry.category ?? entry.kind}
+                  第 {entry.chapterNumber ?? "—"} 章 · {entryCategoryLabel(entry)}
                 </div>
               </button>
             ))}
@@ -788,7 +835,7 @@ export function NarrativeMemoryPanelShell({
                 </span>
               </div>
               <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                第 {entry.chapterNumber ?? "—"} 章 · {CATEGORY_LABELS[entry.category ?? ""] ?? entry.category ?? entry.kind}
+                第 {entry.chapterNumber ?? "—"} 章 · {entryCategoryLabel(entry)}
                 {entry.summary ? ` · ${entry.summary}` : ""}
               </div>
             </button>

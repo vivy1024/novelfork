@@ -18,6 +18,8 @@ export interface JingweiReadInput {
   scope?: "brief" | "category" | "search";
   category?: string;
   query?: string;
+  categories?: string[];
+  includeUnconfirmed?: boolean;
   chapterNumber?: number;
   sceneText?: string;
   chapterIntent?: string;
@@ -82,6 +84,8 @@ export async function handleJingweiRead(input: JingweiReadInput): Promise<Jingwe
       const searchInput: JingweiSearchInput = {
         bookId: input.bookId,
         query: input.query,
+        categories: input.categories,
+        includeUnconfirmed: input.includeUnconfirmed,
         chapterNumber: input.chapterNumber,
         tokenBudget: input.tokenBudget,
         limit: input.limit,

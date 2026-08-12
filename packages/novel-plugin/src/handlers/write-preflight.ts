@@ -9,6 +9,7 @@ import { join } from "node:path";
 
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 
 import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
@@ -27,6 +28,7 @@ import { loadActiveWritingSkillsForBook } from "./writing-skill-handlers.js";
 import {
   describeWritingSkillAcknowledgementRequirement,
   explainWritingSkillAcknowledgementVerdict,
+  selectRelevantWritingSkills,
   verifyWritingSkillAcknowledgements,
   type AcknowledgeableWritingSkill,
   type WritingSkillAcknowledgement,
@@ -63,11 +65,12 @@ export interface WritePreflightInput {
   readonly storage?: StorageDatabase;
   readonly cockpitState?: CockpitState;
   readonly now?: () => Date;
-  /**
-   * 对已启用 Writing Skills 的原文引用确认。缺失或对不上时 preflight 会以
-   * skills-not-acknowledged 阻断，避免模型跳过技能直接写章。
-   */
+  /** 兼容旧客户端；不再要求提交长原文引用。 */
   readonly acknowledgedSkills?: readonly WritingSkillAcknowledgement[];
+  /** 当前 Runtime narrator 会话已成功读取的 Skill 证据。 */
+  readonly loadedSkills?: readonly RuntimeLoadedSkill[];
+  /** 用于筛选当前任务相关技能的可信任务文本。 */
+  readonly taskText?: string;
 }
 
 export interface WritePreflightWarning {
@@ -115,11 +118,12 @@ export interface WritePreflightResult {
     readonly events: MemoryChannelHealth;
   };
   readonly blockers: readonly WritePreflightBlocker[];
-  /**
-   * 本书已启用、需要在写章前提交原文引用的 Writing Skills。
-   * 只给 slug/name/最小引用长度，不给正文：否则模型可以照抄 preflight 输出蒙过去。
-   */
+  /** 当前任务筛选出的 Writing Skills；minQuoteChars 保留为兼容字段，固定为 0。 */
   readonly requiredSkillAcknowledgements: readonly WritingSkillAcknowledgementRequirement[];
+  /** 同一 Runtime narrator 已加载的技能证据（不含正文）。 */
+  readonly loadedSkills: readonly RuntimeLoadedSkill[];
+  /** 当前任务相关但尚未加载的技能 slug，仅作提示，不构成原文引用硬门。 */
+  readonly missingRelevantSkills: readonly string[];
   /** 兼容旧字段：纯文本 warnings */
   readonly warnings: readonly string[];
   /** 结构化 warnings（主链硬化） */
@@ -332,6 +336,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       },
       blockers: [makeBlocker("book-not-found", "缺少 bookId。")],
       requiredSkillAcknowledgements: [],
+      loadedSkills: input.loadedSkills ?? [],
+      missingRelevantSkills: [],
       warnings: [],
       warningItems: [],
       cockpit: null,
@@ -405,6 +411,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       },
       blockers,
       requiredSkillAcknowledgements: [],
+      loadedSkills: input.loadedSkills ?? [],
+      missingRelevantSkills: [],
       warnings,
       warningItems,
       cockpit: null,
@@ -501,21 +509,22 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     styleHealth = "missing";
   }
 
-  // Skill 生效硬门：已启用技能就必须先确认读过，不能只靠提示词要求模型自觉。
-  const requiredSkillAcknowledgements = describeWritingSkillAcknowledgementRequirement(activeSkillsForAck);
-  if (requiredSkillAcknowledgements.length > 0) {
-    const verdict = verifyWritingSkillAcknowledgements({
-      skills: activeSkillsForAck,
-      acknowledged: input.acknowledgedSkills ?? [],
-    });
-    if (!verdict.ok) {
-      const explanation = explainWritingSkillAcknowledgementVerdict({ verdict, skills: activeSkillsForAck });
-      blockers.push({
-        code: "skills-not-acknowledged",
-        message: `${explanation.whatHappened} ${explanation.suggestedAction}`,
-        explanation,
-      });
-    }
+  // Skill 证据来自当前 Runtime narrator 的成功 Skill 调用；不再要求模型提交长原文引用。
+  const relevantSkills = selectRelevantWritingSkills(
+    activeSkillsForAck,
+    input.taskText ?? input.userDirectives ?? "",
+  );
+  const requiredSkillAcknowledgements = describeWritingSkillAcknowledgementRequirement(relevantSkills);
+  const skillVerdict = verifyWritingSkillAcknowledgements({
+    skills: relevantSkills,
+    acknowledged: input.acknowledgedSkills ?? [],
+    loadedSkills: input.loadedSkills,
+    taskText: input.taskText ?? input.userDirectives ?? "",
+  });
+  const missingRelevantSkills = skillVerdict.missing;
+  if (missingRelevantSkills.length > 0) {
+    const explanation = explainWritingSkillAcknowledgementVerdict({ verdict: skillVerdict, skills: relevantSkills });
+    pushWarning(warnings, warningItems, "other", `${explanation.whatHappened} ${explanation.suggestedAction}`);
   }
 
   const memoryHealth = {
@@ -665,6 +674,8 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     memoryHealth,
     blockers,
     requiredSkillAcknowledgements,
+    loadedSkills: input.loadedSkills ?? [],
+    missingRelevantSkills,
     warnings,
     warningItems,
     cockpit: {

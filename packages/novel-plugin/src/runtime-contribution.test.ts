@@ -352,7 +352,7 @@ describe("novel Runtime contribution", () => {
     try {
       const result = await executeRuntimeDomainTool(
         "pipeline.write",
-        { sceneSpec: pipelineSceneSpec, autoRevise: false },
+        { sceneSpec: pipelineSceneSpec, content: "过短正文" },
         { bookId: "trusted", root: trusted.bookRoot },
         trustedContext,
       );
@@ -564,48 +564,19 @@ describe("novel Runtime contribution", () => {
     try {
       expect(await tool("chapter.audit").handler({ chapterNumber: 1 }, trustedContext)).toMatchObject({ ok: true });
 
-      const rewrite = await tool("rewrite.segment").handler(
-        { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "restyle", styleHint: "更克制" },
-        trustedContext,
-      );
-      expect(rewrite).toMatchObject({
-        ok: true,
-        data: {
-          rewrittenText: "青铜铃骤然响起，林舟停下脚步。",
-          modelCalls: [{
-            purpose: "生成局部改写正文",
-            provider: "test-provider",
-            model: "test-current-model",
-            status: "completed",
-          }],
-        },
-      });
-
-      // 去 AI 味不再是独立改写模式。
-      expect(await tool("rewrite.segment").handler(
-        { chapterNumber: 1, selection: { start: 2, end: 2 }, mode: "reduce_ai" },
-        trustedContext,
-      )).toMatchObject({ ok: false, error: "invalid-input" });
-
       expect(await tool("rewrite.apply").handler(
         { chapterNumber: 1, lineRange: { start: 1, end: 1 }, newText: "青铜铃骤然响起。" },
         trustedContext,
       )).toMatchObject({ ok: true, data: { bookId: "trusted", chapterNumber: 1 } });
       expect(await readFile(join(trusted.bookRoot, "chapters", "卷01", "0001-test.md"), "utf8")).toContain("青铜铃骤然响起。");
 
-      // 默认落成 Writing Skill：只返回建议的旧默认在 governed 写作路径下没有注入点。
-      expect(await tool("style.import").handler(
-        { referenceText: "山风穿过松林，少年拾级而上。".repeat(180), sourceName: "测试样本" },
-        trustedContext,
-      )).toMatchObject({ ok: true, data: { bookId: "trusted", kind: "writing-skill-created" } });
-
-      // 显式关掉保存时必须说清「这份建议不会生效」。
-      const suggestionOnly = await tool("style.import").handler(
-        { referenceText: "山风穿过松林，少年拾级而上。".repeat(180), sourceName: "仅建议", saveAsWritingSkill: false },
-        trustedContext,
-      );
-      expect(suggestionOnly).toMatchObject({ ok: true, data: { kind: "style-suggestion" } });
-      expect((suggestionOnly as { data?: { notAppliedReason?: string } }).data?.notAppliedReason).toContain("没有注入路径");
+      // 内部调模型的 rewrite.segment / style.import / outline.suggest_next 已下线，
+      // 由当前 Runtime Agent 自行生成结果后直接 rewrite.apply / writing-skills.write 落盘。
+      expect(NOVEL_READY_RUNTIME_TOOL_NAMES).not.toEqual(expect.arrayContaining([
+        "rewrite.segment",
+        "style.import",
+        "outline.suggest_next",
+      ]));
 
       const importedText = `第1章 旧城\n${"旧城风雨。".repeat(120)}\n第2章 山门\n${"山门钟鸣。".repeat(120)}`;
       expect(await tool("pipeline.import_chapters").handler(
@@ -620,10 +591,6 @@ describe("novel Runtime contribution", () => {
           expect.objectContaining({ number: 3, fileName: "卷01/0003_山门.md" }),
         ]));
 
-      expect(await tool("outline.suggest_next").handler({}, trustedContext)).toMatchObject({
-        ok: true,
-        data: { suggestions: [{ title: "试炼开启" }] },
-      });
       expect(await tool("character.check_consistency").handler(
         { characterName: "林舟", chapterRange: { from: 1, to: 3 } },
         trustedContext,
@@ -651,14 +618,9 @@ describe("novel Runtime contribution", () => {
       );
       expect(settled.ok).toBe(true);
       expect((settled.data as { chaptersSettled?: number } | undefined)?.chaptersSettled).toBeGreaterThan(0);
-      const settledCalls = (settled.data as { modelCalls?: unknown[] } | undefined)?.modelCalls ?? [];
-      expect(settledCalls).toHaveLength(3);
-      expect(settledCalls).toEqual(expect.arrayContaining([expect.objectContaining({
-        purpose: "抽取章节叙事事件",
-        provider: "test-provider",
-        model: "test-current-model",
-        status: "completed",
-      })]));
+      // 结算走确定性抽取，不再在工具内部调用模型。
+      const settledData = settled.data as { modelCalls?: unknown[] } | undefined;
+      expect(settledData?.modelCalls ?? []).toHaveLength(0);
 
       // 若抽取结果偏少，直接插入一条 applied 事件保证 preflight 可观测到近章记忆。
       const eventCount = storage.sqlite.prepare(
@@ -682,50 +644,36 @@ describe("novel Runtime contribution", () => {
         trustedContext,
       )).toMatchObject({ ok: true });
 
-      expect(await tool("scene.spec").handler(
-        { chapterNumber: 4, userDirectives: "让林舟进入山门试炼，先过守门人这一关。" },
-        trustedContext,
-      )).toMatchObject({
-        ok: true,
-        data: {
-          sceneSpec: { title: "铃声之后" },
-          modelCalls: [{
-            purpose: "生成结构化写作蓝图",
-            provider: "test-provider",
-            model: "test-current-model",
-            status: "completed",
-          }],
+      const submittedSpec = { ...pipelineSceneSpec, chapter: 4, title: "铃声之后" };
+      const sceneSpecResult = await tool("scene.spec").handler(
+        {
+          chapterNumber: 4,
+          userDirectives: "让林舟进入山门试炼，先过守门人这一关。",
+          sceneSpec: submittedSpec,
         },
+        trustedContext,
+      );
+      expect(sceneSpecResult).toMatchObject({
+        ok: true,
+        data: { sceneSpec: { title: "铃声之后" } },
       });
+      const sceneSpecData = sceneSpecResult.data as { modelCalls?: unknown[] } | undefined;
+      expect(sceneSpecData?.modelCalls ?? []).toHaveLength(0);
 
+      const chapterText = "林舟沿石阶向上，青铜铃在风里发出清响。".repeat(150);
       const pipeline = await tool("pipeline.write").handler(
-        { sceneSpec: { ...pipelineSceneSpec, chapter: 4 }, autoRevise: false, adversarialAudit: true },
+        { sceneSpec: submittedSpec, content: chapterText },
         trustedContext,
       );
       expect(pipeline).toMatchObject({ ok: true, data: { chapterNumber: 4 } });
       expect((pipeline.data as { wordCount?: number } | undefined)?.wordCount).toBeGreaterThanOrEqual(2182);
-      const pipelineCalls = (pipeline.data as { modelCalls?: unknown[] } | undefined)?.modelCalls ?? [];
-      expect(pipelineCalls.length).toBeGreaterThanOrEqual(2);
-      expect(pipelineCalls).toEqual(expect.arrayContaining([
-        expect.objectContaining({
-          purpose: "执行章节生成、审计、修订与结算",
-          provider: "test-provider",
-          model: "test-current-model",
-          status: "completed",
-        }),
-      ]));
-      const pipelineCallRecords = pipelineCalls as Array<{ id?: string; sequence?: number }>;
-      expect(new Set(pipelineCallRecords.map((call) => call.id)).size).toBe(pipelineCalls.length);
-      expect(pipelineCallRecords.map((call) => call.sequence).sort((left, right) => Number(left) - Number(right)))
-        .toEqual(Array.from({ length: pipelineCalls.length }, (_, index) => index + 1));
+      const pipelineData = pipeline.data as { modelCalls?: unknown[] } | undefined;
+      expect(pipelineData?.modelCalls ?? []).toHaveLength(0);
 
-      expect(generatedSystems.some((system) => system.includes("结构化写作蓝图") || system.includes("章节规划专家"))).toBe(true);
-      expect(generatedSystems.some((system) => system.includes("文风分析师"))).toBe(true);
-      expect(generatedSystems.some((system) => system.includes("大纲编辑"))).toBe(true);
-      expect(generatedSystems.some((system) => system.includes("审稿编辑"))).toBe(true);
-      expect(outputs).toEqual(expect.arrayContaining([
-        expect.stringContaining("内部模型调用 1 开始"),
-        expect.stringContaining("内部模型调用 1 完成"),
+      // 工具不再内部调用模型：本测试注入的 generateText 不应被任何小说工具触发。
+      expect(generatedSystems).toHaveLength(0);
+      expect(outputs).not.toEqual(expect.arrayContaining([
+        expect.stringContaining("内部模型调用"),
       ]));
       expect(JSON.stringify({ generatedSystems, outputs })).not.toContain("apiKey");
     } finally {
@@ -764,6 +712,42 @@ describe("novel Runtime contribution", () => {
     const result = await tool("chapter.read").handler({ chapterNumber: 1 }, context(trusted.projectRoot));
 
     expect(result).toMatchObject({ ok: false, error: "missing-resource-binding" });
+  });
+
+  it("writes a new chapter and reads it back through chapter.list and chapter.read", async () => {
+    const trusted = await createBook("trusted", "旧正文。".repeat(1500));
+    const storage = initializeStorageDatabase({ databasePath: join(trusted.projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    storage.sqlite.prepare(`
+      INSERT INTO narrative_event (
+        id, book_id, chapter_number, event_type, subject, predicate, object,
+        evidence_text, confidence, source, status, risk_level, created_at, applied_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      "chain-seed", "trusted", 1, "timeline_advanced", "主角", "完成", "第一章",
+      "第一章已有正式进展。", 0.9, "settle", "applied", "low",
+      "2026-08-10T00:00:00.000Z", "2026-08-10T00:00:00.000Z",
+    );
+    const trustedContext = context(trusted.projectRoot, { bookId: "trusted", root: trusted.bookRoot });
+    const content = "新章节正文。".repeat(500);
+    try {
+      const written = await tool("pipeline.write").handler({
+        sceneSpec: { ...pipelineSceneSpec, chapter: 2 },
+        content,
+      }, trustedContext);
+      expect(written).toMatchObject({ ok: true, data: { chapterNumber: 2 } });
+
+      const listed = await tool("chapter.list").handler({}, trustedContext);
+      expect(listed).toMatchObject({ ok: true });
+      expect((listed.data as { chapters?: Array<{ number?: number }> }).chapters)
+        .toEqual(expect.arrayContaining([expect.objectContaining({ number: 2 })]));
+
+      const read = await tool("chapter.read").handler({ chapterNumber: 2 }, trustedContext);
+      expect(read).toMatchObject({ ok: true, data: { chapterNumber: 2, content } });
+    } finally {
+      closeStorageDatabase();
+    }
   });
 
   it("does not follow a legacy external root redirect for a trusted binding", async () => {

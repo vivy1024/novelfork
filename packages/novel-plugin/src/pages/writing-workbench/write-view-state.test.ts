@@ -45,7 +45,7 @@ describe("buildWriteViewModel", () => {
         explanation: {
           whatHappened: "本书没有启用任何文风预设。",
           whyItMatters: "语言容易向模型默认腔调漂移。",
-          suggestedAction: "用 style.import(applyPreset=true) 导入文风。",
+          suggestedAction: "用 writing-skills.write 创建并启用文风技能。",
         },
       }],
     });
@@ -57,7 +57,7 @@ describe("buildWriteViewModel", () => {
     // 旧 book.json 启用字段与「文风预设」（enabledPresetIds）已下线，标签不能再指向它。
     expect(warn?.label).toBe("Writing Skills");
     expect(warn?.fixAction).toBe("enable-style");
-    expect(warn?.explanation?.suggestedAction).toContain("style.import");
+    expect(warn?.explanation?.suggestedAction).toContain("writing-skills.write");
     expect(model.headline).toContain("1 条提醒");
   });
 

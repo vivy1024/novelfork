@@ -1,11 +1,8 @@
 /**
- * scene.spec handler — 生成结构化写作蓝图（Scene Spec）。
+ * scene.spec handler — 校验当前 Runtime Agent 提交的结构化写作蓝图（Scene Spec）。
  *
- * 包含角色、地点、冲突、情绪、结果等约束，是调用 pipeline.write 的硬前置条件。
- * 优先使用宿主注入的文本生成能力；宿主未提供时 fallback 到从输入推断。
+ * 蓝图必须由外层 Runtime Agent 显式提交；本工具只做确定性校验，不隐藏调用模型。
  */
-
-import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 
 import { checkBeatBudget, parseBeatBudget, type BeatBudgetItem, type BeatBudgetReport } from "./beat-budget.js";
 
@@ -53,8 +50,8 @@ export interface SceneSpecInput {
   memoryContext?: Record<string, unknown>;
   /** Trusted book root for preflight gate */
   bookRoot?: string;
-  /** 宿主注入的受控文本生成器 */
-  generateText?: RuntimeTextGenerator;
+  /** 当前 Runtime Agent 显式提交的蓝图；工具只校验，不替模型生成。 */
+  sceneSpec?: unknown;
 }
 
 export interface SceneSpecSuccess {
@@ -74,93 +71,6 @@ export interface SceneSpecFailure {
 }
 
 export type SceneSpecResult = SceneSpecSuccess | SceneSpecFailure;
-
-// ─── LLM Prompt ──────────────────────────────────────────────────────────────
-
-const SCENE_SPEC_SYSTEM_PROMPT = `你根据精确事实与用户一句本章指示，生成结构化写作蓝图（Scene Spec）。
-
-只输出严格 JSON：
-{
-  "chapter": 章节号,
-  "title": "章节标题",
-  "wordTarget": 目标字数,
-  "beatBudget": [
-    {
-      "summary": "具体发生什么（不能只写动词，要写清事件）",
-      "density": "dense | normal | sparse",
-      "words": 该点分配字数,
-      "function": "功能标签，如 信息揭示/冲突升级/情绪转折"
-    }
-  ],
-  "scenes": [
-    {
-      "characters": ["出场角色列表"],
-      "location": "场景地点",
-      "conflict": "本场景核心冲突/张力",
-      "mood": "情绪基调变化（如：紧张→释然）",
-      "outcome": "场景结果/转折",
-      "hooks_used": ["本场景回收的伏笔"],
-      "hooks_planted": ["本场景埋设的新伏笔"]
-    }
-  ],
-  "constraints": ["来自事实与用户指示的硬约束，禁止文论"]
-}
-
-规则：
-- scenes 至少 1 个，最多 4 个
-- 每个 scene 的 characters 至少 1 人
-- location 必须具体（不能是"某处"）
-- conflict 必须明确（不能是"待定"）
-- outcome 必须有方向性（不能是"待定"）
-- mood 用"起始→结束"格式
-
-beatBudget 规则（章内节奏，必须给）：
-- 拆 5-12 个情节点，覆盖整章
-- density=dense 用于爽点/反转/打脸/情绪高潮，字数不少于 250
-- density=sparse 用于过场/赶路/信息交代，字数不超过 150
-- 预算总和必须落在 [wordTarget, wordTarget×1.1] 之间
-- summary 写清具体事件（「在账单上发现4800元转出」），不要只写「发现线索」
-- 至少 1 个 dense 点；确为呼吸章时可以没有，但要在 constraints 里说明
-- 只根据用户指示 + 提供的进度/设定/记忆事实规划，禁止编造前文与写作理论
-- constraints 只写可执行事实约束，不要写传播力/思想核/文风大道理
-- 只输出 JSON，不要其他文字`;
-
-function buildSceneSpecUserPrompt(input: SceneSpecInput): string {
-  const parts: string[] = [];
-  parts.push(`## 写作意图\n${input.userDirectives}`);
-  parts.push(`\n## 章节信息\n- 章节号：${input.chapterNumber}`);
-
-  if (input.cockpitSnapshot) {
-    const snapshot = input.cockpitSnapshot;
-    if (snapshot.progress) parts.push(`- 当前进度：${JSON.stringify(snapshot.progress)}`);
-    const hooks = snapshot.openHooks as Array<{ description?: string }> | undefined;
-    if (Array.isArray(hooks) && hooks.length > 0) {
-      parts.push(`\n## 活跃伏笔\n${hooks.slice(0, 5).map((h) => `- ${h.description ?? ""}`).join("\n")}`);
-    }
-  }
-
-  const loreBrief = input.loreBrief ?? input.jingweiBrief;
-  if (loreBrief) {
-    const coreBrief = loreBrief.coreBrief as Array<{ title?: string; sectionName?: string; summaryMd?: string }> | undefined;
-    if (Array.isArray(coreBrief) && coreBrief.length > 0) {
-      parts.push(`\n## Lore 静态设定核心包\n${coreBrief.slice(0, 8).map((item) => `- 【${item.sectionName ?? ""}】${item.title ?? ""}：${(item.summaryMd ?? "").slice(0, 80)}`).join("\n")}`);
-    }
-  }
-
-  if (input.memoryContext) {
-    const diagnostics = input.memoryContext.diagnostics as { warnings?: string[]; totalEstimatedTokens?: number } | undefined;
-    const sections = input.memoryContext.sections as Record<string, string> | undefined;
-    const memoryLines = Object.entries(sections ?? {})
-      .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
-      .slice(0, 6)
-      .map(([key, value]) => `### ${key}\n${value.slice(0, 600)}`);
-    if (memoryLines.length > 0) parts.push(`\n## Narrative Memory 动态上下文\n${memoryLines.join("\n")}`);
-    if (diagnostics?.warnings?.length) parts.push(`\n## 召回警告\n${diagnostics.warnings.slice(0, 5).map((item) => `- ${item}`).join("\n")}`);
-  }
-
-  parts.push(`\n请生成第${input.chapterNumber}章的 Scene Spec JSON。`);
-  return parts.join("\n");
-}
 
 function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: number): SceneSpec | null {
   try {
@@ -194,68 +104,17 @@ function parseSceneSpecFromLLM(raw: string, chapterNumber: number, wordTarget: n
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function extractCharacters(loreBrief?: Record<string, unknown>): string[] {
-  if (!loreBrief) return [];
-  const coreBrief = loreBrief.coreBrief as Array<{ title?: string; sectionKey?: string; category?: string }> | undefined;
-  if (!Array.isArray(coreBrief)) return [];
-  return coreBrief
-    .filter((item) => item.sectionKey === "character" || item.sectionKey === "characters" || item.sectionKey === "people" || item.category === "characters")
-    .map((item) => item.title ?? "")
-    .filter(Boolean);
+function parseSceneSpecValue(value: unknown, chapterNumber: number, wordTarget: number): SceneSpec | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return parseSceneSpecFromLLM(JSON.stringify(value), chapterNumber, wordTarget);
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function extractWordTarget(cockpitSnapshot?: Record<string, unknown>): number {
   if (!cockpitSnapshot) return 3000;
   const bookConfig = cockpitSnapshot.bookConfig as { chapterWordCount?: number } | undefined;
   return bookConfig?.chapterWordCount ?? 3000;
-}
-
-function extractOpenHooks(cockpitSnapshot?: Record<string, unknown>): string[] {
-  if (!cockpitSnapshot) return [];
-  const hooks = cockpitSnapshot.openHooks as Array<{ description?: string; title?: string }> | undefined;
-  if (!Array.isArray(hooks)) return [];
-  return hooks.map((h) => h.description ?? h.title ?? "").filter(Boolean);
-}
-
-function extractMemoryConstraintLines(memoryContext?: Record<string, unknown>): string[] {
-  if (!memoryContext) return [];
-  const diagnostics = memoryContext.diagnostics as { warnings?: string[] } | undefined;
-  const sections = memoryContext.sections as Record<string, string> | undefined;
-  const sectionLines = Object.entries(sections ?? {})
-    .filter(([, value]) => typeof value === "string" && value.trim().length > 0)
-    .slice(0, 3)
-    .map(([key, value]) => `Narrative Memory/${key}：${value.trim().slice(0, 120)}`);
-  const warningLines = (diagnostics?.warnings ?? []).slice(0, 3).map((item) => `召回警告：${item}`);
-  return [...sectionLines, ...warningLines];
-}
-
-function buildFallbackSpec(input: SceneSpecInput): SceneSpec {
-  const characters = extractCharacters(input.loreBrief ?? input.jingweiBrief);
-  const wordTarget = extractWordTarget(input.cockpitSnapshot);
-  const openHooks = extractOpenHooks(input.cockpitSnapshot);
-  const memoryConstraints = extractMemoryConstraintLines(input.memoryContext);
-
-  return {
-    chapter: input.chapterNumber,
-    title: `第${input.chapterNumber}章`,
-    wordTarget,
-    scenes: [{
-      characters: characters.length > 0 ? characters.slice(0, 5) : ["主角"],
-      location: "待定",
-      conflict: input.userDirectives.slice(0, 100),
-      mood: "待定",
-      outcome: "待定",
-      hooks_used: openHooks.slice(0, 3),
-      hooks_planted: [],
-    }],
-    constraints: [
-      `用户指示：${input.userDirectives}`,
-      `目标字数：${wordTarget}`,
-      ...memoryConstraints,
-    ],
-  };
 }
 
 // ─── Handler ─────────────────────────────────────────────────────────────────
@@ -386,42 +245,16 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     };
   }
 
-  const gatedInput: SceneSpecInput = {
-    ...input,
-    userDirectives: resolvedDirectives,
-    cockpitSnapshot: enrichedCockpit,
-  };
-
   const wordTarget = extractWordTarget(enrichedCockpit ?? cockpitSnapshot);
-  let sceneSpec: SceneSpec | null = null;
-  let usedLLM = false;
-
-  // 尝试可信文本生成
-  try {
-    const generator = input.generateText;
-    if (generator) {
-      const userPrompt = buildSceneSpecUserPrompt(gatedInput);
-      const response = await generator({
-        messages: [
-          { role: "system", content: SCENE_SPEC_SYSTEM_PROMPT },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.7,
-        maxTokens: 2000,
-      });
-
-      if (response?.text) {
-        sceneSpec = parseSceneSpecFromLLM(response.text, chapterNumber, wordTarget);
-        if (sceneSpec) usedLLM = true;
-      }
-    }
-  } catch {
-    // 文本生成失败，fallback 到占位逻辑
-  }
-
-  // Fallback：从输入推断
+  const sceneSpec = parseSceneSpecValue(input.sceneSpec, chapterNumber, wordTarget);
   if (!sceneSpec) {
-    sceneSpec = buildFallbackSpec(gatedInput);
+    return {
+      ok: false,
+      error: input.sceneSpec === undefined ? "scene-spec-required" : "scene-spec-invalid",
+      summary: input.sceneSpec === undefined
+        ? "scene.spec 必须由当前 Runtime Agent 显式提交 sceneSpec 蓝图；工具不会在内部调用模型生成。"
+        : "sceneSpec 蓝图结构无效，请补齐 chapter/title/wordTarget/scenes/constraints 及每个场景的 characters/location/conflict/outcome。",
+    };
   }
 
   // H4 硬约束校验
@@ -445,7 +278,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     }
   }
 
-  const source = usedLLM ? "LLM 智能规划" : "输入推断（LLM 不可用）";
+  const source = "Runtime Agent 显式提交";
   // 调用方显式给的预算优先于 LLM 自拟，避免作者定好的节奏被覆盖。
   const explicitBudget = parseBeatBudget(input.beatBudget);
   if (explicitBudget.length > 0) sceneSpec.beatBudget = explicitBudget;

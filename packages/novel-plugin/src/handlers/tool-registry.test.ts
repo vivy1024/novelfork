@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { NOVEL_SESSION_TOOL_DEFINITIONS } from "./tool-registry";
 
@@ -76,7 +76,10 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(dissect).toContain("needs-review");
     expect(dissect).toContain("权威源");
     expect(tool("pipeline.import_chapters")?.description).toContain("autoSettle");
-    expect(tool("style.import")?.description).toContain("saveAsWritingSkill");
+    // 内部调模型的 style.import / rewrite.segment / outline.suggest_next 已下线
+    expect(tool("style.import")).toBeUndefined();
+    expect(tool("rewrite.segment")).toBeUndefined();
+    expect(tool("outline.suggest_next")).toBeUndefined();
   });
 
   it("registers volume outline, character arc and publish check tools", () => {
@@ -86,5 +89,42 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("arc.character")?.risk).toBe("confirmed-write");
     expect(tool("publish.check")?.description).toContain("敏感词");
     expect(tool("publish.check")?.risk).toBe("read");
+  });
+
+  it("forwards search category and author visibility filters through jingwei.read", async () => {
+    const handleJingweiSearch = vi.fn(async () => ({ ok: true, summary: "ok" }));
+    vi.resetModules();
+    vi.doMock("./jingwei-read.js", () => ({
+      handleJingweiReadBrief: vi.fn(async () => ({ ok: true, summary: "ok" })),
+      handleJingweiReadCategory: vi.fn(async () => ({ ok: true, summary: "ok" })),
+      handleJingweiSearch,
+    }));
+
+    try {
+      const { handleJingweiRead } = await import("./jingwei-read-unified.js");
+      await handleJingweiRead({
+        bookId: "book-1",
+        scope: "search",
+        query: "B-17",
+        categories: ["foreshadowing"],
+        includeUnconfirmed: true,
+        chapterNumber: 2,
+        tokenBudget: 800,
+        limit: 5,
+      });
+
+      expect(handleJingweiSearch).toHaveBeenCalledWith({
+        bookId: "book-1",
+        query: "B-17",
+        categories: ["foreshadowing"],
+        includeUnconfirmed: true,
+        chapterNumber: 2,
+        tokenBudget: 800,
+        limit: 5,
+      });
+    } finally {
+      vi.doUnmock("./jingwei-read.js");
+      vi.resetModules();
+    }
   });
 });

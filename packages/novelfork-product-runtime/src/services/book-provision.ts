@@ -217,8 +217,30 @@ export type ProductWorkspaceFileEntry = {
 	children?: ProductWorkspaceFileEntry[];
 };
 
+export type ProductWorkspaceFileTreeResult = {
+	root: string;
+	tree: ProductWorkspaceFileEntry[];
+	cache: {
+		hit: boolean;
+		stale: boolean;
+		refreshing: boolean;
+		generatedAt: string;
+	};
+};
+
+type WorkspaceFileTreeSnapshot = {
+	bookId: string;
+	root: string;
+	depth: number;
+	generation: number;
+	tree: ProductWorkspaceFileEntry[];
+	generatedAt: number;
+};
+
 const MAX_WORKSPACE_TREE_DEPTH = 16;
 const MAX_WORKSPACE_FILE_BYTES = 2_000_000;
+const WORKSPACE_FILE_TREE_CACHE_TTL_MS = 30_000;
+const MAX_WORKSPACE_FILE_TREE_CACHE_ENTRIES = 8;
 const PROTECTED_WORKSPACE_FILES = new Set(["book.json", "chapters/index.json"]);
 
 function pathIsContained(root: string, candidate: string): boolean {
@@ -930,6 +952,10 @@ function rawWritingResourceId(resourceId: string): string {
 }
 
 export class NovelForkProductBookService {
+	private readonly workspaceFileTreeCache = new Map<string, WorkspaceFileTreeSnapshot>();
+	private readonly workspaceFileTreeBuilds = new Map<string, Promise<WorkspaceFileTreeSnapshot>>();
+	private readonly workspaceFileTreeGenerations = new Map<string, number>();
+
 	async listReadyBooks(actor: ProductActor): Promise<ProductBookSummary[]> {
 		const operations = await productDb().query.bookProvisionOperations.findMany({
 			where: eq(bookProvisionOperations.state, READY_STATE),
@@ -995,6 +1021,7 @@ export class NovelForkProductBookService {
 		if (deleteWorkspace || (operation.inputJson as ProductBookInput).projectInit?.managedByNovelFork !== false) {
 			await rm(trustedBookRoot, { recursive: true, force: true });
 		}
+		this.invalidateWorkspaceFileTree(normalizedBookId);
 	}
 
 	async listBoundNarrators(actor: ProductActor): Promise<ProductNarratorSummary[]> {
@@ -1445,6 +1472,7 @@ export class NovelForkProductBookService {
 			},
 			errorMessage: null,
 		});
+		this.invalidateWorkspaceFileTree(normalizedBookId);
 
 		return {
 			bookId: normalizedBookId,
@@ -1527,6 +1555,7 @@ export class NovelForkProductBookService {
 		} catch {
 			// Best effort only; the product binding and book.json remain authoritative.
 		}
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return nextConfig;
 	}
 
@@ -1599,6 +1628,7 @@ export class NovelForkProductBookService {
 			...(aiTaste ? { aiTasteLevel: aiTaste } : {}),
 			...(writingPhilosophy ? { writingPhilosophy } : {}),
 		});
+		this.invalidateWorkspaceFileTree(normalizeBookId(bookId));
 
 		return {
 			ok: true,
@@ -1638,21 +1668,58 @@ export class NovelForkProductBookService {
 		}
 	}
 
-	async getWorkspaceFileTree(
+	private workspaceFileTreeGeneration(bookId: string): number {
+		return this.workspaceFileTreeGenerations.get(bookId) ?? 0;
+	}
+
+	private workspaceFileTreeKey(
 		bookId: string,
-		actor: ProductActor,
-		depth = 8,
-	): Promise<{ root: string; tree: ProductWorkspaceFileEntry[] }> {
-		const { root } = await this.getReadyBookRoot(bookId, actor);
-		const maxDepth = Math.max(0, Math.min(Math.floor(depth), MAX_WORKSPACE_TREE_DEPTH));
-		const walk = async (relativeDir: string, remainingDepth: number): Promise<ProductWorkspaceFileEntry[]> => {
-			const { absolutePath } = await resolveWorkspacePath(root, relativeDir, { allowRoot: true, requireExisting: true });
+		root: string,
+		depth: number,
+		generation: number,
+	): string {
+		return `${bookId}\u0000${root}\u0000${depth}\u0000${generation}`;
+	}
+
+	private invalidateWorkspaceFileTree(bookId: string): void {
+		this.workspaceFileTreeGenerations.set(bookId, this.workspaceFileTreeGeneration(bookId) + 1);
+		for (const [key, snapshot] of this.workspaceFileTreeCache) {
+			if (snapshot.bookId === bookId) this.workspaceFileTreeCache.delete(key);
+		}
+	}
+
+	private cacheWorkspaceFileTree(key: string, snapshot: WorkspaceFileTreeSnapshot): void {
+		this.workspaceFileTreeCache.delete(key);
+		this.workspaceFileTreeCache.set(key, snapshot);
+		while (this.workspaceFileTreeCache.size > MAX_WORKSPACE_FILE_TREE_CACHE_ENTRIES) {
+			const oldestKey = this.workspaceFileTreeCache.keys().next().value;
+			if (typeof oldestKey !== "string") break;
+			this.workspaceFileTreeCache.delete(oldestKey);
+		}
+	}
+
+	private async scanWorkspaceFileTree(
+		root: string,
+		maxDepth: number,
+	): Promise<ProductWorkspaceFileEntry[]> {
+		const walk = async (
+			relativeDir: string,
+			remainingDepth: number,
+		): Promise<ProductWorkspaceFileEntry[]> => {
+			const { absolutePath } = await resolveWorkspacePath(root, relativeDir, {
+				allowRoot: true,
+				requireExisting: true,
+			});
 			const entries = await readdir(absolutePath, { withFileTypes: true });
 			const result: ProductWorkspaceFileEntry[] = [];
-			for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, "zh-CN"))) {
+			for (const entry of entries.sort((left, right) =>
+				left.name.localeCompare(right.name, "zh-CN")
+			)) {
 				if (entry.isSymbolicLink()) continue;
 				const childPath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
-				const child = await resolveWorkspacePath(root, childPath, { requireExisting: true }).catch(() => null);
+				const child = await resolveWorkspacePath(root, childPath, { requireExisting: true }).catch(
+					() => null,
+				);
 				if (!child) continue;
 				const info = await stat(child.absolutePath).catch(() => null);
 				if (!info) continue;
@@ -1662,15 +1729,113 @@ export class NovelForkProductBookService {
 						path: childPath,
 						type: "directory",
 						mtime: info.mtime.toISOString(),
-						...(remainingDepth > 0 ? { children: await walk(childPath, remainingDepth - 1) } : {}),
+						...(remainingDepth > 0
+							? { children: await walk(childPath, remainingDepth - 1) }
+							: {}),
 					});
 				} else if (entry.isFile() && info.isFile()) {
-					result.push({ name: entry.name, path: childPath, type: "file", size: info.size, mtime: info.mtime.toISOString() });
+					result.push({
+						name: entry.name,
+						path: childPath,
+						type: "file",
+						size: info.size,
+						mtime: info.mtime.toISOString(),
+					});
 				}
 			}
 			return result;
 		};
-		return { root, tree: await walk("", maxDepth) };
+		return walk("", maxDepth);
+	}
+
+	private getOrBuildWorkspaceFileTree(
+		bookId: string,
+		root: string,
+		depth: number,
+		generation: number,
+		key: string,
+	): Promise<WorkspaceFileTreeSnapshot> {
+		const currentBuild = this.workspaceFileTreeBuilds.get(key);
+		if (currentBuild) return currentBuild;
+
+		const build = (async () => {
+			const snapshot: WorkspaceFileTreeSnapshot = {
+				bookId,
+				root,
+				depth,
+				generation,
+				tree: await this.scanWorkspaceFileTree(root, depth),
+				generatedAt: Date.now(),
+			};
+			if (this.workspaceFileTreeGeneration(bookId) === generation) {
+				this.cacheWorkspaceFileTree(key, snapshot);
+			}
+			return snapshot;
+		})();
+		this.workspaceFileTreeBuilds.set(key, build);
+		const clearBuild = () => {
+			if (this.workspaceFileTreeBuilds.get(key) === build) {
+				this.workspaceFileTreeBuilds.delete(key);
+			}
+		};
+		void build.then(clearBuild, clearBuild);
+		return build;
+	}
+
+	async getWorkspaceFileTree(
+		bookId: string,
+		actor: ProductActor,
+		depth = 8,
+		options: { refresh?: boolean } = {},
+	): Promise<ProductWorkspaceFileTreeResult> {
+		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
+		const normalizedBookId = operation.bookId;
+		const maxDepth = Math.max(0, Math.min(Math.floor(depth), MAX_WORKSPACE_TREE_DEPTH));
+		const generation = this.workspaceFileTreeGeneration(normalizedBookId);
+		const key = this.workspaceFileTreeKey(normalizedBookId, root, maxDepth, generation);
+		const cached = this.workspaceFileTreeCache.get(key);
+
+		if (!options.refresh && cached) {
+			this.cacheWorkspaceFileTree(key, cached);
+			const stale = Date.now() - cached.generatedAt >= WORKSPACE_FILE_TREE_CACHE_TTL_MS;
+			if (stale) {
+				void this.getOrBuildWorkspaceFileTree(
+					normalizedBookId,
+					root,
+					maxDepth,
+					generation,
+					key,
+				).catch(() => undefined);
+			}
+			return {
+				root: cached.root,
+				tree: cached.tree,
+				cache: {
+					hit: true,
+					stale,
+					refreshing: stale,
+					generatedAt: new Date(cached.generatedAt).toISOString(),
+				},
+			};
+		}
+
+		const snapshot = await this.getOrBuildWorkspaceFileTree(
+			normalizedBookId,
+			root,
+			maxDepth,
+			generation,
+			key,
+		);
+		return {
+			root: snapshot.root,
+			tree: snapshot.tree,
+			cache: {
+				hit: Boolean(cached),
+				stale: false,
+				refreshing: false,
+				generatedAt: new Date(snapshot.generatedAt).toISOString(),
+			},
+		};
 	}
 
 	async readWorkspaceFile(bookId: string, rawPath: string, actor: ProductActor): Promise<{ path: string; content: string }> {
@@ -1701,26 +1866,28 @@ export class NovelForkProductBookService {
 				"建议怎么做：拆分文件后分别保存，或先在外部编辑器中整理。",
 			].join("\n"));
 		}
-		const { root } = await this.getReadyBookRoot(bookId, actor);
+		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
 		const normalizedPath = normalizeWorkspacePath(rawPath);
 		assertMutableWorkspacePath(normalizedPath);
 		const target = await resolveWorkspacePath(root, normalizedPath, { requireExisting: false });
 		const info = await stat(target.absolutePath).catch(() => null);
 		if (info && !info.isFile()) throw new ValidationError("workspace path must identify a file");
 		await writeFile(target.absolutePath, content, "utf8");
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { path: target.relativePath };
 	}
 
 	async mkdirWorkspacePath(bookId: string, rawPath: string, actor: ProductActor): Promise<{ path: string }> {
-		const { root } = await this.getReadyBookRoot(bookId, actor);
+		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
 		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: false });
 		if (await stat(target.absolutePath).catch(() => null)) throw new ValidationError("workspace path already exists");
 		await mkdir(target.absolutePath);
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { path: target.relativePath };
 	}
 
 	async renameWorkspacePath(bookId: string, from: string, to: string, actor: ProductActor): Promise<{ from: string; to: string }> {
-		const { root } = await this.getReadyBookRoot(bookId, actor);
+		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
 		const source = await resolveWorkspacePath(root, from, { requireExisting: true });
 		const destinationPath = normalizeWorkspacePath(to);
 		assertMutableWorkspacePath(source.relativePath);
@@ -1728,14 +1895,16 @@ export class NovelForkProductBookService {
 		const destination = await resolveWorkspacePath(root, destinationPath, { requireExisting: false });
 		if (await stat(destination.absolutePath).catch(() => null)) throw new ValidationError("workspace destination already exists");
 		await rename(source.absolutePath, destination.absolutePath);
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { from: source.relativePath, to: destination.relativePath };
 	}
 
 	async deleteWorkspacePath(bookId: string, rawPath: string, actor: ProductActor): Promise<{ path: string }> {
-		const { root } = await this.getReadyBookRoot(bookId, actor);
+		const { root, operation } = await this.getReadyBookRoot(bookId, actor);
 		const target = await resolveWorkspacePath(root, rawPath, { requireExisting: true });
 		assertMutableWorkspacePath(target.relativePath);
 		await rm(target.absolutePath, { recursive: true, force: false });
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { path: target.relativePath };
 	}
 
@@ -1808,7 +1977,7 @@ export class NovelForkProductBookService {
 				`workspace content must be at most ${MAX_WORKSPACE_CONTENT_LENGTH} characters`,
 			);
 		}
-		const { root, config } = await this.getReadyBookRoot(bookId, actor);
+		const { root, config, operation } = await this.getReadyBookRoot(bookId, actor);
 		const service = createDomainWritingResourceService(bookId, root);
 		const chapterMatch = /^chapter:(\d{1,9})$/u.exec(resourceId);
 		const current = chapterMatch
@@ -1819,6 +1988,7 @@ export class NovelForkProductBookService {
 		}
 		const updated = await service.update(bookId, current.id, { content });
 		await updateBookTimestamp(root, config);
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { resource: toWorkspaceWritingResource(updated) };
 	}
 
@@ -1827,7 +1997,7 @@ export class NovelForkProductBookService {
 		input: { title?: string },
 		actor: ProductActor,
 	): Promise<{ resource: ProductWorkspaceResource }> {
-		const { root, config } = await this.getReadyBookRoot(bookId, actor);
+		const { root, config, operation } = await this.getReadyBookRoot(bookId, actor);
 		const requestedTitle = typeof input.title === "string" ? input.title.trim() : "";
 		if (requestedTitle.length > 200)
 			throw new ValidationError("chapter title must be at most 200 characters");
@@ -1848,6 +2018,7 @@ export class NovelForkProductBookService {
 			metadata: {},
 		});
 		await updateBookTimestamp(root, config);
+		this.invalidateWorkspaceFileTree(operation.bookId);
 		return { resource: toWorkspaceWritingResource(resource) };
 	}
 

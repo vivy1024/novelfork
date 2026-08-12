@@ -348,6 +348,26 @@ export function getWritingSkillRawContentSync(slug: string, home?: string): stri
   return BUNDLED_WRITING_SKILLS.find((entry) => entry.slug === slug)?.content ?? null;
 }
 
+/**
+ * 编译态 bundled 快照中的技能附件（references/ 等，相对路径 → 文本）。
+ * 开发态有磁盘目录时返回 null，调用方应直接递归复制目录。
+ */
+export function getBundledSkillFilesSync(slug: string): Readonly<Record<string, string>> | null {
+  if (!isSafeWritingSkillSlug(slug)) return null;
+  const entry = BUNDLED_WRITING_SKILLS.find((candidate) => candidate.slug === slug);
+  if (!entry) return null;
+  const files = entry.files;
+  return files && Object.keys(files).length > 0 ? files : null;
+}
+
+/** 附件相对路径必须是安全子路径：不允许绝对路径、反斜杠或 .. 回溯。 */
+export function isSafeSkillAttachmentPath(relativePath: string): boolean {
+  if (!relativePath || relativePath.startsWith("/") || relativePath.includes("\\")) return false;
+  const segments = relativePath.split("/");
+  if (segments.some((segment) => segment === ".." || segment === "." || !segment)) return false;
+  return true;
+}
+
 export async function forkWritingSkillForEditing(slug: string, home?: string): Promise<string | null> {
   if (!isSafeWritingSkillSlug(slug)) return null;
   const targetDir = join(authorWritingSkillsDir(home), slug);

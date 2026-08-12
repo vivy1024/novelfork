@@ -837,21 +837,35 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     }, 201);
   });
 
-  // --- Jingwei v2: Full-text search ---
+  // --- Jingwei v2: Search（作者视角，与 Agent 的 jingwei.read scope=search 同一实现） ---
   app.get("/api/books/:bookId/jingwei/search", async (c) => {
     const bookId = c.req.param("bookId");
     const q = c.req.query("q") ?? "";
     if (!q.trim()) return c.json({ results: [] });
 
     const storage = await resolveStorage(options);
-    const results = storage.sqlite.prepare(`
-      SELECT id, title, category, layer, status, substr(content_md, 1, 200) as preview
-      FROM story_jingwei_entry
-      WHERE book_id = ? AND deleted_at IS NULL
-      AND (title LIKE ? OR content_md LIKE ? OR aliases_json LIKE ?)
-      ORDER BY updated_at DESC LIMIT 50
-    `).all(bookId, `%${q}%`, `%${q}%`, `%${q}%`);
-    return c.json({ results });
+    await ensureBook(storage, bookId);
+    const { searchJingwei } = await import("../engine/jingwei/read-model/search-jingwei.js");
+    const result = await searchJingwei({
+      storage,
+      bookId,
+      query: q,
+      limit: 50,
+      // 作者视角：包含 draft / needs-review（Agent 侧默认排除）
+      includeUnconfirmed: true,
+    });
+    const results = result.items.map((item) => ({
+      id: item.id,
+      entryId: item.entryId,
+      title: item.title,
+      category: item.category,
+      layer: item.layer,
+      status: item.status,
+      preview: (item.summaryMd || item.contentMd).slice(0, 200),
+      score: item.score,
+      matchReason: item.matchReason,
+    }));
+    return c.json({ results, totalAvailable: result.totalAvailable });
   });
 
   // --- Jingwei v2: Bulk operations ---
@@ -1050,16 +1064,49 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
   app.post("/api/books/:bookId/jingwei/import", async (c) => {
     const bookId = c.req.param("bookId");
     const storage = await resolveStorage(options);
+    await ensureBook(storage, bookId);
     const body = await c.req.json<{ entries: Array<{ title: string; contentMd: string; category: string; layer?: string }> }>();
 
-    const now = Date.now();
+    // 走 repo.create（自动同步 FTS 索引 + 分类规范化），不再直插 SQL
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const { getCategoryDefaultLayer } = await import("../engine/jingwei/unified-categories.js");
+    const repo = createStoryJingweiEntryRepository(storage);
+    const now = new Date();
     let imported = 0;
     for (const entry of body.entries) {
-      const id = crypto.randomUUID();
-      storage.sqlite.prepare(`
-        INSERT INTO story_jingwei_entry (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json, related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai, layer, priority_tier, importance, category, status, version, created_at, updated_at)
-        VALUES (?, ?, '', ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 1, ?, 'auto', 40, ?, 'draft', 1, ?, ?)
-      `).run(id, bookId, entry.title, entry.contentMd, entry.layer ?? "dynamic", entry.category, now, now);
+      if (!entry.title.trim()) continue;
+      const layer = entry.layer === "canon" || entry.layer === "dynamic" || entry.layer === "reference"
+        ? entry.layer
+        : getCategoryDefaultLayer(entry.category || "unclassified");
+      await repo.create({
+        id: crypto.randomUUID(),
+        bookId,
+        sectionId: "",
+        title: entry.title,
+        contentMd: entry.contentMd,
+        category: entry.category || "unclassified",
+        fields: {},
+        customFields: {},
+        parentId: null,
+        sortOrder: 0,
+        lifecycle: "active",
+        status: "draft",
+        version: 1,
+        tags: [],
+        aliases: [],
+        relatedChapterNumbers: [],
+        relatedEntryIds: [],
+        visibilityRule: { type: "tracked" },
+        participatesInAi: true,
+        tokenBudget: null,
+        layer,
+        priorityTier: "auto",
+        importance: 40,
+        summaryL0: null,
+        source: "user",
+        createdAt: now,
+        updatedAt: now,
+      });
       imported++;
     }
     return c.json({ ok: true, imported });

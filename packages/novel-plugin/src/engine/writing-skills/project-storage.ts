@@ -1,9 +1,11 @@
 import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import {
+  getBundledSkillFilesSync,
   getWritingSkillRawContentSync,
   getWritingSkillSourceDirSync,
+  isSafeSkillAttachmentPath,
   parseWritingSkill,
 } from "./loader.js";
 import type { ParsedWritingSkill } from "./types.js";
@@ -220,6 +222,20 @@ export async function loadProjectWritingSkills(
   };
 }
 
+/**
+ * 提取技能正文中引用的「通用-X」技能名（题材包装层依赖的通用层）。
+ * 只匹配 `通用-` 开头、后跟非空白/标点的名称，去重后返回。
+ */
+export function extractGeneralSkillReferences(content: string): ReadonlyArray<string> {
+  const names = new Set<string>();
+  const pattern = /通用-[^\s`、，。；：（）()「」【】"'“”‘’*_#\-~]+/gu;
+  for (const match of content.matchAll(pattern)) {
+    const name = match[0].trim();
+    if (name.length > 2 && name.length <= 64) names.add(name);
+  }
+  return [...names];
+}
+
 async function materializeCatalogSkill(
   bookRoot: string,
   skill: ParsedWritingSkill,
@@ -239,6 +255,38 @@ async function materializeCatalogSkill(
   if (!raw) throw new Error(`无法读取 Writing Skill「${skill.slug}」的 SKILL.md 原文。`);
   await mkdir(canonicalDir, { recursive: true });
   await writeFile(canonicalFile, raw, "utf8");
+
+  // 编译态 bundled 快照没有可复制附件目录，但 files 里已带全 references/ 等附件。
+  const bundledFiles = getBundledSkillFilesSync(skill.slug);
+  if (bundledFiles) {
+    for (const [relativePath, content] of Object.entries(bundledFiles)) {
+      if (!isSafeSkillAttachmentPath(relativePath)) continue;
+      const target = join(canonicalDir, relativePath);
+      await mkdir(dirname(target), { recursive: true });
+      await writeFile(target, content, "utf8");
+    }
+  }
+}
+
+/**
+ * 题材包装层引用「通用-X」时，把被引用的通用技能也一起物化（一级依赖），
+ * 保证加载后不缺依赖。通用层之间的协作引用由 Agent 按 SKILL.md 指引加载，
+ * 并受 check_compliance 的依赖加载完整性校验兜底，不在此递归展开。
+ */
+async function materializeSkillWithDependencies(
+  bookRoot: string,
+  skill: ParsedWritingSkill,
+  selectableByName: ReadonlyMap<string, ParsedWritingSkill>,
+  options: SyncProjectWritingSkillsOptions = {},
+): Promise<void> {
+  await materializeCatalogSkill(bookRoot, skill, options.home);
+
+  const referenced = extractGeneralSkillReferences(skill.body ?? "");
+  for (const name of referenced) {
+    const dependency = selectableByName.get(name);
+    if (!dependency || dependency.slug === skill.slug) continue;
+    await materializeCatalogSkill(bookRoot, dependency, options.home);
+  }
 }
 
 /**
@@ -253,6 +301,8 @@ export async function syncProjectWritingSkills(
 ): Promise<SyncProjectWritingSkillsResult> {
   const selectable = skills.filter((skill) => skill.mode !== "always");
   const byId = new Map(selectable.map((skill) => [skill.id, skill]));
+  // 依赖查找覆盖全部技能（含 always），题材层引用的「通用-X」按 name 精确匹配。
+  const byName = new Map(skills.map((skill) => [skill.name, skill]));
   const addIds = [...new Set((changes.addSkillIds ?? []).map((id) => id.trim()).filter(Boolean))];
   const removeIds = [...new Set((changes.removeSkillIds ?? []).map((id) => id.trim()).filter(Boolean))];
   const refreshIds = [...new Set((changes.refreshSkillIds ?? []).map((id) => id.trim()).filter(Boolean))];
@@ -281,7 +331,7 @@ export async function syncProjectWritingSkills(
     const canonicalFile = projectWritingSkillFile(bookRoot, skill.slug);
     if (await pathIsFile(canonicalFile)) continue;
     await mkdir(projectWritingSkillsDir(bookRoot), { recursive: true });
-    await materializeCatalogSkill(bookRoot, skill, options.home);
+    await materializeSkillWithDependencies(bookRoot, skill, byName, options);
     createdSlugs.push(skill.slug);
   }
 
@@ -291,7 +341,7 @@ export async function syncProjectWritingSkills(
     const canonicalFile = projectWritingSkillFile(bookRoot, skill.slug);
     if (!(await pathIsFile(canonicalFile))) continue;
     await removeSkillDir(projectWritingSkillDir(bookRoot, skill.slug));
-    await materializeCatalogSkill(bookRoot, skill, options.home);
+    await materializeSkillWithDependencies(bookRoot, skill, byName, options);
     refreshedSlugs.push(skill.slug);
   }
 

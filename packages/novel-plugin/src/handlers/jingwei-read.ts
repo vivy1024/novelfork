@@ -76,6 +76,7 @@ export interface JingweiSearchInput {
   chapterNumber?: number;
   tokenBudget?: number;
   limit?: number;
+  includeUnconfirmed?: boolean;
 }
 
 export interface JingweiSearchResponse {

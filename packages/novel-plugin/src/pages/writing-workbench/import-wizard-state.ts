@@ -10,7 +10,7 @@ import type { ImportFormat, SplitChapter } from "@vivy1024/novelfork-core";
 
 export type ImportWizardStep = "input" | "preview" | "executing";
 export type ImportSourceType = "paste" | "file";
-export type ImportPhase = "importing" | "settling" | "dissecting" | "styling" | "done";
+export type ImportPhase = "importing" | "settling" | "dissecting" | "done";
 
 export interface ImportWizardOptions {
   readonly sourceName: string;
@@ -18,7 +18,6 @@ export interface ImportWizardOptions {
   readonly autoSettle: boolean;
   readonly extractBrief: boolean;
   readonly applyDissectDraft: boolean;
-  readonly runStyleImport: boolean;
   readonly splitPattern: string;
 }
 
@@ -44,7 +43,6 @@ export const DEFAULT_IMPORT_OPTIONS: ImportWizardOptions = {
   autoSettle: true,
   extractBrief: true,
   applyDissectDraft: false,
-  runStyleImport: false,
   splitPattern: "",
 };
 
@@ -130,19 +128,6 @@ export function buildImportToolInput(state: ImportWizardState): Record<string, u
   };
 }
 
-/** Payload for the optional follow-up `style.import` call. */
-export function buildStyleToolInput(state: ImportWizardState): Record<string, unknown> | null {
-  if (!state.options.runStyleImport) return null;
-  const referenceText = state.plainText.slice(0, 50_000);
-  if (referenceText.length < 2000) return null;
-  return {
-    referenceText,
-    sourceName: state.options.sourceName.trim() || state.fileName || "导入文本",
-    saveAsWritingSkill: true,
-    enableOnBook: true,
-  };
-}
-
 export interface ImportPreflightSummary {
   readonly ok: boolean;
   readonly light: "green" | "yellow" | "red";
@@ -172,7 +157,7 @@ export function summarizePreflight(preflight: unknown): ImportPreflightSummary {
 }
 
 export interface NextActionSuggestion {
-  readonly id: "write-next" | "view-dissect" | "run-style" | "settle-range" | "close";
+  readonly id: "write-next" | "view-dissect" | "settle-range" | "close";
   readonly label: string;
   readonly primary?: boolean;
 }
@@ -180,7 +165,6 @@ export interface NextActionSuggestion {
 export function suggestNextActions(input: {
   readonly preflight: ImportPreflightSummary;
   readonly appliedDissectDraft: boolean;
-  readonly ranStyleImport: boolean;
 }): NextActionSuggestion[] {
   const actions: NextActionSuggestion[] = [];
   if (input.preflight.ok) {
@@ -191,7 +175,6 @@ export function suggestNextActions(input: {
     actions.push({ id: "view-dissect", label: "查看拆书草案", primary: true });
   }
   if (!input.appliedDissectDraft) actions.push({ id: "view-dissect", label: "查看拆书草案" });
-  if (!input.ranStyleImport) actions.push({ id: "run-style", label: "导入文风预设" });
   actions.push({ id: "close", label: "关闭" });
   const seen = new Set<string>();
   return actions.filter((action) => {
@@ -207,7 +190,6 @@ export function progressForPhase(phase: ImportPhase): number {
     case "importing": return 25;
     case "settling": return 55;
     case "dissecting": return 80;
-    case "styling": return 92;
     case "done": return 100;
     default: return 0;
   }
