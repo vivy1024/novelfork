@@ -37,15 +37,6 @@ beforeEach(() => {
       };
     }
 
-    if (path === "/daily-stats") {
-      return {
-        data: { todayWords: 3200, todayChapters: 1, trend: [] },
-        loading: false,
-        error: null,
-        refetch: vi.fn(),
-      };
-    }
-
     return { data: null, loading: false, error: null, refetch: vi.fn() };
   });
 });
@@ -53,6 +44,12 @@ beforeEach(() => {
 describe("DashboardPage", () => {
   it("uses clear primary/outline semantics for create and import actions with disabled import submit states", () => {
     render(<DashboardPage />);
+
+    expect(useApiMock).not.toHaveBeenCalledWith("/daily-stats");
+    expect(screen.getByText("作品总数")).toBeTruthy();
+    expect(screen.getByText("总章节")).toBeTruthy();
+    expect(screen.getByText("总字数")).toBeTruthy();
+    expect(screen.getByText("6,200")).toBeTruthy();
 
     const importToggle = screen.getByRole("button", { name: "导入" });
     const createToggle = screen.getByRole("button", { name: "+ 创建新书" });

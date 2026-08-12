@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createFilterReportRepository, createStorageDatabase, runStorageMigrations, type StorageDatabase } from "../index.js";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createFilterReportRepository } from "./filter-report-repo.js";
 
 const tempDirs: string[] = [];
 

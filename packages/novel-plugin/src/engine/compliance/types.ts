@@ -1,8 +1,8 @@
 /**
  * Platform compliance types for NovelFork.
  *
- * Covers sensitive-word scanning, AI content ratio estimation,
- * format checking, publish-readiness assessment, and AI-usage disclosure.
+ * Covers local sensitive-word signals, AI-taste signals,
+ * format checking, publish-risk self-check, and AI-usage disclosure.
  */
 
 // ---------------------------------------------------------------------------
@@ -23,6 +23,33 @@ export type SensitiveWordCategory =
 export type SensitiveWordSeverity = "block" | "warn" | "suggest";
 
 export type SupportedPlatform = "qidian" | "jjwxc" | "fanqie" | "qimao" | "generic";
+
+export interface RulePackMetadata {
+  /** 稳定规则包标识，供 UI 和审计结果追溯来源。 */
+  readonly id: string;
+  readonly name: string;
+  readonly version: string;
+  readonly source: string;
+  readonly confidence: "high" | "medium" | "low";
+  readonly effectiveAt?: string;
+  readonly note?: string;
+}
+
+export interface ComplianceEvidence {
+  readonly ruleId: string;
+  /** 产出此证据的规则包；缺省时仅有 source 文本来源。 */
+  readonly rulePackId?: string;
+  readonly source: string;
+  readonly severity: "high" | "medium" | "low";
+  readonly chapterNumber?: number;
+  readonly chapterTitle?: string;
+  readonly message: string;
+  readonly matchedText?: string;
+  readonly offset?: number;
+  readonly paragraph?: number;
+  readonly context?: string;
+  readonly suggestion?: string;
+}
 
 export interface SensitiveWord {
   readonly word: string;
@@ -66,29 +93,26 @@ export interface BookSensitiveScanResult {
 }
 
 // ---------------------------------------------------------------------------
-// AI content ratio estimation
+// Local AI-taste signals (not generation-ratio estimation)
 // ---------------------------------------------------------------------------
 
-export interface ChapterAiEstimate {
+export interface ChapterAiTasteSignal {
   readonly chapterNumber: number;
   readonly chapterTitle: string;
   readonly wordCount: number;
   readonly aiTasteScore: number;
-  readonly estimatedAiRatio: number;
-  readonly isAboveThreshold: boolean;
-  readonly level: "safe" | "caution" | "danger";
+  readonly riskLevel: "low" | "medium" | "high";
+  readonly evidence?: ComplianceEvidence;
 }
 
-export interface BookAiRatioReport {
+export interface BookAiTasteReport {
   readonly bookId: string;
-  readonly chapters: ReadonlyArray<ChapterAiEstimate>;
+  readonly chapters: ReadonlyArray<ChapterAiTasteSignal>;
   readonly totalWords: number;
-  readonly overallAiRatio: number;
-  readonly overallLevel: "safe" | "caution" | "danger";
-  readonly platformThreshold: number;
-  readonly platformThresholds: Record<SupportedPlatform, number>;
+  readonly overallRiskLevel: "low" | "medium" | "high";
   readonly platform: SupportedPlatform;
   readonly methodology: string;
+  readonly rulePack: RulePackMetadata;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +152,7 @@ export interface FormatCheckResult {
 // Publish readiness
 // ---------------------------------------------------------------------------
 
-export type PublishReadinessStatus = "ready" | "has-warnings" | "blocked";
+export type PublishReadinessStatus = "ready" | "has-warnings" | "needs-review" | "skipped";
 
 export interface ContinuityIssue {
   readonly chapterNumber: number;
@@ -163,8 +187,10 @@ export type ContinuityCheckResult =
 export interface PublishReadinessReport {
   readonly platform: SupportedPlatform;
   readonly status: PublishReadinessStatus;
+  readonly rulePack: RulePackMetadata;
+  readonly evidence: ReadonlyArray<ComplianceEvidence>;
   readonly sensitiveScan: BookSensitiveScanResult;
-  readonly aiRatio: BookAiRatioReport;
+  readonly aiTaste: BookAiTasteReport;
   readonly formatCheck: FormatCheckResult;
   readonly continuity: ContinuityCheckResult;
   readonly totalBlockCount: number;
@@ -180,7 +206,7 @@ export interface AiDisclosure {
   readonly bookId: string;
   readonly platform: SupportedPlatform;
   readonly aiUsageTypes: ReadonlyArray<string>;
-  readonly estimatedAiRatio: number;
+  readonly aiTasteRiskLevel: "low" | "medium" | "high";
   readonly modelNames: ReadonlyArray<string>;
   readonly humanEditDescription: string;
   readonly markdownText: string;

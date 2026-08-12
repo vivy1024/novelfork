@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateChapterHooks, parseGeneratedHooks } from "../tools/chapter-hooks/hook-generator.js";
+import { generateChapterHooks, parseGeneratedHooks } from "./hook-generator.js";
 
 describe("chapter hook generator", () => {
   it("parses structured hook JSON", () => {

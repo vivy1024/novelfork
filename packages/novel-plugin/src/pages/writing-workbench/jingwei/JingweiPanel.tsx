@@ -15,11 +15,13 @@ interface JingweiPanelProps {
   bookId: string;
   /** 打开时直接定位到某个分类（如写作视图一键修跳「卷纲/大纲」）。 */
   initialCategory?: string;
+  /** 搜索或关联跳转时，在目标分类加载后直接选择该条目。 */
+  initialEntryId?: string;
 }
 
-export function JingweiPanel({ bookId, initialCategory }: JingweiPanelProps) {
+export function JingweiPanel({ bookId, initialCategory, initialEntryId }: JingweiPanelProps) {
   const [selectedCategory, setSelectedCategory] = useState(initialCategory ?? "characters");
-  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(null);
+  const [selectedEntryId, setSelectedEntryId] = useState<string | null>(initialEntryId ?? null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; title: string; category: string; preview: string }> | null>(null);
   const [showPreview, setShowPreview] = useState(false);
@@ -28,6 +30,11 @@ export function JingweiPanel({ bookId, initialCategory }: JingweiPanelProps) {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const { entries, loading, refresh, createEntry, updateEntry, deleteEntry } = useJingweiEntries(bookId, selectedCategory);
+
+  useEffect(() => {
+    if (initialCategory) setSelectedCategory(initialCategory);
+    setSelectedEntryId(initialEntryId ?? null);
+  }, [bookId, initialCategory, initialEntryId]);
 
   // Fetch entry counts for ALL categories (for sidebar display)
   const [entryCounts, setEntryCounts] = useState<Record<string, number>>({});

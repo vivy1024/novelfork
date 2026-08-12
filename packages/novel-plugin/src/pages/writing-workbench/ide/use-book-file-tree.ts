@@ -5,7 +5,7 @@
  * 唯一特化:chapters/ 目录下的 .md 文件识别为"章节",
  * 点击时用章节编辑器(含字数/AI检测等面板)打开,而非纯文本。
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { WorkbenchResourceNode, WorkbenchResourceKind } from "../useWorkbenchResources";
 
 interface TreeEntry {
@@ -89,6 +89,17 @@ export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): Workbe
 }
 
 
+interface TreeResponse {
+  tree?: TreeEntry[];
+  message?: string;
+  cache?: {
+    hit?: boolean;
+    stale?: boolean;
+    refreshing?: boolean;
+    generatedAt?: string;
+  };
+}
+
 export interface UseBookFileTreeResult {
   nodes: WorkbenchResourceNode[];
   loading: boolean;
@@ -102,31 +113,76 @@ export function useBookFileTree(bookId: string | undefined, enabled: boolean): U
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
+  const refreshBookRef = useRef<string | undefined>(undefined);
+  const renderedBookRef = useRef<string | undefined>(undefined);
 
-  const reload = useCallback(() => setReloadKey(k => k + 1), []);
+  const reload = useCallback(() => {
+    refreshBookRef.current = bookId;
+    setReloadKey(k => k + 1);
+  }, [bookId]);
 
   useEffect(() => {
-    if (!enabled || !bookId) return;
+    if (!enabled || !bookId) {
+      renderedBookRef.current = undefined;
+      setNodes([]);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    const controller = new AbortController();
     let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/books/${encodeURIComponent(bookId)}/files/tree?depth=8`)
-      .then(async r => {
-        const data = await r.json() as { tree?: TreeEntry[]; message?: string };
-        if (!r.ok) throw new Error(data.message ?? "无法读取书籍文件树");
-        return data;
-      })
-      .then((data: { tree?: TreeEntry[] }) => {
+    const forceRefresh = refreshBookRef.current === bookId;
+    if (forceRefresh) refreshBookRef.current = undefined;
+    if (renderedBookRef.current !== bookId) {
+      renderedBookRef.current = bookId;
+      setNodes([]);
+    }
+
+    const requestTree = async (refresh: boolean): Promise<TreeResponse> => {
+      const query = new URLSearchParams({ depth: "8" });
+      if (refresh) query.set("refresh", "1");
+      const response = await fetch(
+        `/api/books/${encodeURIComponent(bookId)}/files/tree?${query.toString()}`,
+        { signal: controller.signal },
+      );
+      const data = await response.json() as TreeResponse;
+      if (!response.ok) throw new Error(data.message ?? "无法读取书籍文件树");
+      return data;
+    };
+
+    const applyTree = (data: TreeResponse) => {
+      setNodes((data.tree ?? []).map(entry => mapBookFileEntryToNode(entry, bookId)));
+    };
+
+    void (async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await requestTree(forceRefresh);
         if (cancelled) return;
-        setNodes((data.tree ?? []).map(e => mapBookFileEntryToNode(e, bookId)));
-      })
-      .catch((e: unknown) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      })
-      .finally(() => {
+        applyTree(data);
+
+        // A stale cache is rendered immediately. Wait on the server's coalesced
+        // rebuild and replace it in place instead of making the explorer empty.
+        if (!forceRefresh && data.cache?.refreshing) {
+          const refreshed = await requestTree(true);
+          if (cancelled) return;
+          applyTree(refreshed);
+        }
+      } catch (cause) {
+        if (!cancelled && !controller.signal.aborted) {
+          setError(cause instanceof Error ? cause.message : String(cause));
+        }
+      } finally {
         if (!cancelled) setLoading(false);
-      });
-    return () => { cancelled = true; };
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [bookId, enabled, reloadKey]);
 
   return { nodes, loading, error, reload, refresh: reload };

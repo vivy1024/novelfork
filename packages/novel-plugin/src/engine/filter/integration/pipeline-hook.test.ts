@@ -4,15 +4,11 @@ import { tmpdir } from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  createBibleChapterSummaryRepository,
-  createBookRepository,
-  createFilterReportRepository,
-  createStorageDatabase,
-  runStorageMigrations,
-  scanChapterAndStoreFilterReport,
-  type StorageDatabase,
-} from "../index.js";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createBookRepository } from "../../jingwei/repositories/book-repo.js";
+import { createJingweiChapterSummaryRepository } from "../../jingwei/repositories/chapter-summary-repo.js";
+import { createFilterReportRepository } from "../repositories/filter-report-repo.js";
+import { scanChapterAndStoreFilterReport } from "./pipeline-hook.js";
 
 const tempDirs: string[] = [];
 
@@ -41,7 +37,7 @@ describe("filter pipeline hook", () => {
   it("stores filter report and writes filterReportId to chapter metadata with PGI flag", async () => {
     const storage = await createStorage();
     try {
-      await createBibleChapterSummaryRepository(storage).upsert({
+      await createJingweiChapterSummaryRepository(storage).upsert({
         id: "summary-1",
         bookId: "book-1",
         chapterNumber: 1,
@@ -63,7 +59,7 @@ describe("filter pipeline hook", () => {
       });
 
       const stored = await createFilterReportRepository(storage).latestByChapter("book-1", 1);
-      const summary = await createBibleChapterSummaryRepository(storage).getByChapter("book-1", 1);
+      const summary = await createJingweiChapterSummaryRepository(storage).getByChapter("book-1", 1);
       expect(stored).toMatchObject({ id: report.filterReportId, chapterNumber: 1, level: report.level });
       expect(JSON.parse(stored?.details ?? "{}")).toMatchObject({ pgiUsed: true });
       expect(JSON.parse(summary?.metadataJson ?? "{}")).toMatchObject({ filterReportId: report.filterReportId });

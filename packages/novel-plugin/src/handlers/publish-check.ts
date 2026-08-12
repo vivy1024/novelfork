@@ -1,8 +1,8 @@
 /**
- * publish.check — 平台发布向自检（敏感词 / AI 率 / 格式 / 连续性）。
+ * publish.check — 投稿风险自检（敏感词线索 / AI 味线索 / 格式 / 连续性）。
  *
- * 包装 engine/compliance 的 checkPublishReadiness；平台由书籍 platform 或显式入参解析。
- * 默认只报告；是否阻断保存由调用方（pipeline.write）按 profile 决定。
+ * 包装 engine/compliance 的 checkPublishReadiness；平台仅用于选择写作建议。
+ * 结果只用于作者人工复核，不能替代平台审核，也不会阻断正式章节保存。
  */
 
 import { readFile } from "node:fs/promises";
@@ -45,7 +45,7 @@ export interface PublishCheckResult {
   readonly profile: PlatformProfile;
   readonly chapterTarget: PlatformTargetCheck | null;
   readonly report: PublishReadinessReport | null;
-  readonly status: "ready" | "has-warnings" | "blocked" | "skipped";
+  readonly status: "ready" | "has-warnings" | "needs-review" | "skipped";
   readonly blockCount: number;
   readonly warnCount: number;
   readonly suggestCount: number;
@@ -171,9 +171,10 @@ export async function handlePublishCheck(input: PublishCheckInput): Promise<Publ
 
   const status = report.status;
   const summaryParts = [
-    `${profile.label} 发布自检：${status === "ready" ? "通过" : status === "has-warnings" ? "有提醒" : "存在阻断项"}`,
+    `${profile.label} 投稿风险自检：${status === "ready" ? "未发现明显线索" : status === "has-warnings" ? "有提醒" : "需人工复核"}`,
     `检查 ${chapters.length} 章`,
-    `block ${report.totalBlockCount} / warn ${report.totalWarnCount} / suggest ${report.totalSuggestCount}`,
+    `高风险线索 ${report.totalBlockCount} / 提醒 ${report.totalWarnCount} / 建议 ${report.totalSuggestCount}`,
+    `规则来源：${report.rulePack.name}（${report.rulePack.confidence} 可信度）`,
   ];
   if (chapterTarget?.message) summaryParts.push(chapterTarget.message);
 

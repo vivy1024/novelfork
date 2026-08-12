@@ -135,9 +135,9 @@ const GUIDE_QUESTIONS: GuideQuestion[] = [
   {
     id: "aiTaste",
     prompt: "对 AI 味的容忍度？",
-    presets: ["零容忍（必须过朱雀检测）", "低容忍（明显 AI 味需修改）", "中等（能读通就行）", "不在意"],
+    presets: ["零容忍（明显模板腔均需人工复核）", "低容忍（明显 AI 味需修改）", "中等（能读通就行）", "不在意"],
     allowCustom: true,
-    placeholder: "描述你对 AI 生成痕迹的要求…",
+    placeholder: "描述你希望重点人工复核的表达问题…",
     fieldPath: "aiTasteLevel",
   },
 ];

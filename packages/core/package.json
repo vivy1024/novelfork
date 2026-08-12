@@ -25,10 +25,6 @@
       "types": "./src/novel-index.ts",
       "import": "./dist/novel-index.js"
     },
-    "./compliance": {
-      "types": "./dist/compliance/index.d.ts",
-      "import": "./dist/compliance/index.js"
-    },
     "./models/status": {
       "types": "./dist/models/status.d.ts",
       "import": "./dist/models/status.js"

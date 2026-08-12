@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkFormat } from "../compliance/format-checker.js";
+import { checkFormat } from "./format-checker.js";
 
 describe("format checker", () => {
   it("detects empty chapters as blocking issues", () => {

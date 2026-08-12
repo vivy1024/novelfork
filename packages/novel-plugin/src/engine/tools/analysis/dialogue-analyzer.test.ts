@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeDialogue } from "../tools/analysis/dialogue-analyzer.js";
+import { analyzeDialogue } from "./dialogue-analyzer.js";
 
 describe("analyzeDialogue", () => {
   it("returns zero ratio for pure narration", () => {

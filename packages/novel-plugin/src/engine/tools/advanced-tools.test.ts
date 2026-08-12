@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import type { BibleConflictRecord } from "../jingwei/types.js";
-import { buildConflictMap, detectMainConflictDrift } from "../tools/conflicts/conflict-tracker.js";
-import { detectArcInconsistency, detectStagnantArc } from "../tools/arcs/character-arc-tracker.js";
-import { detectToneDrift, GENRE_TONE_MAP } from "../tools/tone/tone-drift-detector.js";
-import type { CharacterArc } from "../tools/arcs/arc-types.js";
+import type { BibleConflictRecord } from "../../jingwei/types.js";
+import { buildConflictMap, detectMainConflictDrift } from "./conflicts/conflict-tracker.js";
+import { detectArcInconsistency, detectStagnantArc } from "./arcs/character-arc-tracker.js";
+import { detectToneDrift, GENRE_TONE_MAP } from "./tone/tone-drift-detector.js";
+import type { CharacterArc } from "./arcs/arc-types.js";
 
 function makeConflict(overrides: Partial<BibleConflictRecord> = {}): BibleConflictRecord {
   return {

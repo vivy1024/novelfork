@@ -19,10 +19,7 @@ export interface CockpitProgressSummary {
   readonly totalWords: number;
   readonly approvedChapters: number;
   readonly failedChapters: number;
-  readonly todayWords: number;
-  readonly dailyTarget: number;
-  readonly streak: number;
-  readonly weeklyWords: number;
+  readonly chapterWordTarget: number;
   readonly reason?: string;
 }
 
@@ -120,8 +117,6 @@ export interface CockpitServiceOptions {
   readonly modelStatusResolver?: CockpitModelStatusResolver;
   readonly now?: () => Date;
 }
-
-const DEFAULT_DAILY_TARGET = 3000;
 
 export function createCockpitService(options: CockpitServiceOptions) {
   return new CockpitService(options);
@@ -345,10 +340,7 @@ function missingProgress(): CockpitProgressSummary {
     totalWords: 0,
     approvedChapters: 0,
     failedChapters: 0,
-    todayWords: 0,
-    dailyTarget: DEFAULT_DAILY_TARGET,
-    streak: 0,
-    weeklyWords: 0,
+    chapterWordTarget: 0,
   };
 }
 
@@ -360,10 +352,7 @@ function buildProgress(book: BookConfig, chapters: readonly ChapterMeta[]): Cock
     totalWords: chapters.reduce((sum, chapter) => sum + (chapter.wordCount ?? 0), 0),
     approvedChapters: chapters.filter((chapter) => chapter.status === "approved" || chapter.status === "published").length,
     failedChapters: chapters.filter((chapter) => chapter.status === "audit-failed" || chapter.status === "rejected").length,
-    todayWords: 0,
-    dailyTarget: book.chapterWordCount ?? DEFAULT_DAILY_TARGET,
-    streak: 0,
-    weeklyWords: 0,
+    chapterWordTarget: book.chapterWordCount,
     ...(chapters.length === 0 ? { reason: "暂无章节。" } : {}),
   };
 }

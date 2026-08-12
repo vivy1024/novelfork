@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { getZhuqueConfigFromKv, scanWithZhuque } from "../index.js";
+import { getZhuqueConfigFromKv, scanWithZhuque } from "./client.js";
 
 describe("Zhuque client", () => {
   it("parses successful Zhuque API responses", async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { analyzeRhythm } from "../tools/analysis/rhythm-analyzer.js";
+import { analyzeRhythm } from "./rhythm-analyzer.js";
 
 describe("analyzeRhythm", () => {
   it("flags uniform sentence lengths with low rhythm score", () => {

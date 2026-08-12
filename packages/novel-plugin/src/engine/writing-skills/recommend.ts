@@ -110,7 +110,7 @@ const PLATFORM_KEYWORDS: ReadonlyArray<{ readonly keywords: readonly string[]; r
 ];
 
 /** AI 味容忍度收紧时补一条去 AI 味/修订类 skill。 */
-const STRICT_AI_TASTE_KEYWORDS = ["零容忍", "低容忍", "朱雀", "严格"];
+const STRICT_AI_TASTE_KEYWORDS = ["零容忍", "低容忍", "人工复核", "严格"];
 
 function normalize(value: string | undefined): string {
   return (value ?? "").trim().toLowerCase();

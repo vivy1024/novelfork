@@ -16,12 +16,6 @@ interface BookItem {
   readonly progress?: number;
 }
 
-interface DailyStats {
-  readonly todayWords: number;
-  readonly todayChapters: number;
-  readonly trend: ReadonlyArray<{ date: string; words: number }>;
-}
-
 interface CreateBookForm {
   title: string;
   repositorySource: "new" | "existing" | "none";
@@ -70,7 +64,6 @@ const GENRE_LABELS: Record<string, string> = {
 
 export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const { data: booksData, loading: booksLoading, error: booksError, refetch: refetchBooks } = useApi<{ books: BookItem[] }>("/books");
-  const { data: statsData } = useApi<DailyStats>("/daily-stats");
 
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
@@ -79,6 +72,8 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
   const [createError, setCreateError] = useState<string | null>(null);
 
   const books = booksData?.books ?? [];
+  const totalChapters = books.reduce((sum, book) => sum + (book.totalChapters ?? 0), 0);
+  const totalWords = books.reduce((sum, book) => sum + (book.totalWords ?? 0), 0);
 
   const handleToggle = () => {
     setShowCreateForm((v) => !v);
@@ -191,12 +186,12 @@ export function DashboardPage({ onOpenBook }: DashboardPageProps) {
           <div className="mt-1 text-xl font-semibold">{books.length}</div>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <div className="text-xs text-muted-foreground">今日字数</div>
-          <div className="mt-1 text-xl font-semibold">{statsData?.todayWords ?? 0}</div>
+          <div className="text-xs text-muted-foreground">总章节</div>
+          <div className="mt-1 text-xl font-semibold">{totalChapters}</div>
         </div>
         <div className="rounded-lg border border-border p-3">
-          <div className="text-xs text-muted-foreground">今日章节</div>
-          <div className="mt-1 text-xl font-semibold">{statsData?.todayChapters ?? 0}</div>
+          <div className="text-xs text-muted-foreground">总字数</div>
+          <div className="mt-1 text-xl font-semibold">{totalWords.toLocaleString()}</div>
         </div>
       </div>
 

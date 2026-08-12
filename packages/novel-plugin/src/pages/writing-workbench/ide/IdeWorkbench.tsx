@@ -35,6 +35,12 @@ import { useIdeCommands } from "./use-ide-commands";
 import { ProblemsPanel, type EditorIssue } from "./ProblemsPanel";
 import { clearEditorState } from "./editor-state-cache";
 import { useWorkbenchDialogs } from "./use-workbench-dialogs";
+import {
+  ideLayoutSizesToArray,
+  loadIdeLayoutSizes,
+  mergeIdeLayoutSizes,
+  saveIdeLayoutSizes,
+} from "./ide-layout-state";
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
@@ -101,6 +107,21 @@ export type SidebarView =
   | "tools"
   | "search"
   | "narrative-memory";
+
+function createJingweiWorkspaceNode(bookId: string, category?: string, entryId?: string): WorkbenchResourceNode {
+  return {
+    id: "jingwei-workspace",
+    kind: "jingwei",
+    title: "经纬",
+    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+    metadata: {
+      bookId,
+      action: "open-jingwei-panel",
+      ...(category ? { jingweiCategory: category } : {}),
+      ...(entryId ? { jingweiEntryId: entryId } : {}),
+    },
+  };
+}
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -210,6 +231,17 @@ export function IdeWorkbench({
   const [sidebarVisible, setSidebarVisible] = useState(true);
   const [chatVisible, setChatVisible] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const layoutStorageId = bookId ?? "global";
+  const initialLayoutSizes = useMemo(() => loadIdeLayoutSizes(layoutStorageId), [layoutStorageId]);
+  const layoutSizesRef = useRef(initialLayoutSizes);
+  useEffect(() => {
+    layoutSizesRef.current = initialLayoutSizes;
+  }, [initialLayoutSizes]);
+  const handleOuterLayoutDragEnd = useCallback((sizes: number[]) => {
+    const next = mergeIdeLayoutSizes(sizes, layoutSizesRef.current);
+    layoutSizesRef.current = next;
+    saveIdeLayoutSizes(layoutStorageId, next);
+  }, [layoutStorageId]);
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
@@ -380,8 +412,9 @@ export function IdeWorkbench({
     narrativeMemorySections.forEach(walk);
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
+    if (bookId) map.set("jingwei-workspace", createJingweiWorkspaceNode(bookId));
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, bookId]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -450,6 +483,20 @@ export function IdeWorkbench({
   }, [ideTabs.closeTab, confirmDialog]);
 
   const handleOpen = useCallback((node: WorkbenchResourceNode) => {
+    // 经纬只有一个完整工作区。分类树、搜索和关联跳转都只更新它的定位目标，
+    // 不再为同一份 SQLite 数据另开第二套条目编辑前端。
+    if (node.kind === "jingwei-entry" && bookId) {
+      const category = typeof node.metadata?.category === "string" ? node.metadata.category : undefined;
+      const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
+      const workspace = createJingweiWorkspaceNode(bookId, category, entryId);
+      setLoadedFiles((previous) => new Map(previous).set(workspace.id, workspace));
+      showPanel("jingwei");
+      setSidebarVisible(true);
+      ideTabsRef.current.openTab(workspace.id, workspace.title, "other", "jingwei");
+      onOpen(workspace);
+      return;
+    }
+
     // 文件树节点：先加载内容
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
@@ -478,9 +525,24 @@ export function IdeWorkbench({
         });
       return;
     }
+    // 搜索/结算历史生成的叙事记忆详情节点不在静态资源树中；缓存完整节点，
+    // 否则 Tab 虽会激活，但 activeNode 无法解析，画布仍停留在旧面板而显示空白。
+    if (node.metadata?.isNarrativeMemoryEntry === true) {
+      setLoadedFiles((previous) => new Map(previous).set(node.id, node));
+    }
     if (node.capabilities.open) ideTabsRef.current.openTab(node.id, node.title, toTabKind(node), toTabView(node));
     onOpen(node);
-  }, [onOpen, bookId]);
+  }, [onOpen, bookId, showPanel]);
+
+  const openJingweiWorkspace = useCallback((category?: string, entryId?: string) => {
+    if (!bookId) return;
+    const workspace = createJingweiWorkspaceNode(bookId, category, entryId);
+    setLoadedFiles((previous) => new Map(previous).set(workspace.id, workspace));
+    showPanel("jingwei");
+    setSidebarVisible(true);
+    ideTabsRef.current.openTab(workspace.id, workspace.title, "other", "jingwei");
+    onOpen(workspace);
+  }, [bookId, onOpen, showPanel]);
 
   const handleOpenJingweiEntry = useCallback((entryId: string): boolean => {
     const findEntry = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -621,11 +683,15 @@ export function IdeWorkbench({
   const handleViewClick = useCallback((view: SidebarView) => {
     if (activeView === view && sidebarVisible) {
       setSidebarVisible(false);
-    } else {
-      showPanel(view as ViewId);
-      setSidebarVisible(true);
+      return;
     }
-  }, [activeView, sidebarVisible, showPanel]);
+    if (view === "jingwei") {
+      openJingweiWorkspace();
+      return;
+    }
+    showPanel(view as ViewId);
+    setSidebarVisible(true);
+  }, [activeView, sidebarVisible, showPanel, openJingweiWorkspace]);
 
   // ── 写作视图：只读就绪查询 + 少数一键修工具 ──
   const writeViewCallTool = useCallback(async (tool: string, input: Record<string, unknown>) => {
@@ -709,24 +775,9 @@ export function IdeWorkbench({
    * 所以这里走完整面板而不是切侧栏视图。
    */
   const handleOpenLorePanel = useCallback((category?: string) => {
-    if (!bookId) return;
-    const node: WorkbenchResourceNode = {
-      id: category ? `jingwei-panel-entry:${category}` : "jingwei-panel-entry",
-      kind: "jingwei",
-      title: category === "outline" ? "经纬 · 卷纲/大纲" : "经纬资料",
-      capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-      metadata: {
-        bookId,
-        action: "open-jingwei-panel",
-        ...(category ? { jingweiCategory: category } : {}),
-      },
-    };
-    // 该节点不来自资源树/文件树，activeNode 解析不到它；loadedFiles 是
-    // 优先级最高的节点补充源，登记后 Tab 才能渲染出面板。
-    setLoadedFiles((prev) => new Map(prev).set(node.id, node));
     setShowSettings(false);
-    handleOpen(node);
-  }, [bookId, handleOpen]);
+    openJingweiWorkspace(category);
+  }, [openJingweiWorkspace]);
 
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
@@ -1020,7 +1071,12 @@ export function IdeWorkbench({
 
       {/* ── Main Area（Sidebar + Editor + Chat） ── */}
       <div className="relative flex-1" style={{ minWidth: 0, minHeight: 0, height: "100%" }}>
-        <Allotment proportionalLayout={false}>
+        <Allotment
+          key={`outer-layout:${layoutStorageId}`}
+          proportionalLayout={false}
+          defaultSizes={ideLayoutSizesToArray(initialLayoutSizes)}
+          onDragEnd={handleOuterLayoutDragEnd}
+        >
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
           <Allotment.Pane minSize={150} preferredSize={220} visible={sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
@@ -1049,16 +1105,24 @@ export function IdeWorkbench({
               {panelsReady && getContainer("explorer") && createPortal(
                 explorerNodes.length > 0
                   ? <WorkbenchResourceTree nodes={explorerNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} cutNodeIds={fileClipboard?.mode === "cut" ? [fileClipboard.node.id] : []} sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:explorer`} />
-                  : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
+                  : fileTree.loading
+                    ? <div className="flex h-full items-center justify-center"><span role="status" aria-live="polite" className="text-xs text-muted-foreground">正在扫描文件…</span></div>
+                    : fileTree.error
+                      ? <div className="flex h-full items-center justify-center px-4 text-center"><span role="alert" className="break-words text-xs text-destructive">{fileTree.error}</span></div>
+                      : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
                 getContainer("explorer")!
               )}
               {panelsReady && getContainer("jingwei") && createPortal(
-                <WorkbenchResourceTree
-                  nodes={jingweiSections}
-                  selectedNodeId={activeNode?.id ?? null}
-                  onOpen={handleOpen}
-                  onAction={handleResourceAction}
-                />,
+                <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
+                  <Scroll className="size-6 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-foreground">经纬工作区已在主编辑区打开</p>
+                    <p className="text-[10px] leading-relaxed text-muted-foreground">分类、条目、搜索、导入和 AI 视角统一使用完整经纬界面。</p>
+                  </div>
+                  <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90" onClick={() => openJingweiWorkspace()}>
+                    打开经纬
+                  </button>
+                </div>,
                 getContainer("jingwei")!
               )}
               {/*
@@ -1087,7 +1151,13 @@ export function IdeWorkbench({
                 getContainer("tools")!
               )}
               {panelsReady && getContainer("search") && createPortal(
-                <SearchPanel nodes={fileTree.nodes} jingweiSections={jingweiSections} onOpen={handleOpen} />,
+                <SearchPanel
+                  nodes={nodes}
+                  fileNodes={fileTree.nodes}
+                  jingweiSections={jingweiSections}
+                  memorySections={narrativeMemorySections}
+                  onOpen={handleOpen}
+                />,
                 getContainer("search")!
               )}
 
@@ -1523,9 +1593,11 @@ interface SearchResultNode extends WorkbenchResourceNode {
   group: string;
 }
 
-function SearchPanel({ nodes, jingweiSections, onOpen }: {
+function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen }: {
   nodes: readonly WorkbenchResourceNode[];
+  fileNodes: readonly WorkbenchResourceNode[];
   jingweiSections: WorkbenchResourceNode[];
+  memorySections: WorkbenchResourceNode[];
   onOpen: (node: WorkbenchResourceNode) => void;
 }) {
   const [query, setQuery] = useState("");
@@ -1534,19 +1606,23 @@ function SearchPanel({ nodes, jingweiSections, onOpen }: {
   const resultsRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 收集所有可搜索节点（扁平化）
+  // 收集当前书籍所有可搜索节点。文件树只有路径元数据，语义资源才带正文；
+  // 同一 ID 出现两次时优先保留内容更完整的节点。
   const allNodes = useMemo(() => {
-    const list: WorkbenchResourceNode[] = [];
+    const byId = new Map<string, WorkbenchResourceNode>();
     const walk = (ns: readonly WorkbenchResourceNode[]) => {
-      for (const n of ns) {
-        list.push(n);
-        if (n.children) walk(n.children);
+      for (const node of ns) {
+        const previous = byId.get(node.id);
+        if (!previous || (!previous.content && node.content)) byId.set(node.id, node);
+        if (node.children) walk(node.children);
       }
     };
+    walk(fileNodes);
     walk(nodes);
     walk(jingweiSections);
-    return list;
-  }, [nodes, jingweiSections]);
+    walk(memorySections);
+    return [...byId.values()];
+  }, [fileNodes, nodes, jingweiSections, memorySections]);
 
   // 搜索逻辑（debounce 150ms）
   const doSearch = useCallback((q: string) => {
@@ -1555,15 +1631,19 @@ function SearchPanel({ nodes, jingweiSections, onOpen }: {
     const matched: SearchResultNode[] = [];
     for (const node of allNodes) {
       const title = node.title ?? "";
-      const content = node.content ?? "";
+      const path = node.path ?? (typeof node.metadata?.filePath === "string" ? node.metadata.filePath : "");
+      const metadataText = Object.values(node.metadata ?? {})
+        .filter((value): value is string | number => typeof value === "string" || typeof value === "number")
+        .join(" ");
+      const content = [node.content ?? "", path, metadataText].filter(Boolean).join("\n");
       if (title.toLowerCase().includes(lower)) {
-        matched.push({ ...node, matchType: "title", group: nodeKindToGroup(node.kind) });
+        matched.push({ ...node, matchType: "title", group: nodeKindToGroup(node) });
       } else if (content && content.toLowerCase().includes(lower)) {
         const idx = content.toLowerCase().indexOf(lower);
         const start = Math.max(0, idx - 30);
         const end = Math.min(content.length, idx + q.length + 30);
         const matchedLine = (start > 0 ? "..." : "") + content.slice(start, end) + (end < content.length ? "..." : "");
-        matched.push({ ...node, matchType: "content", matchedLine, group: nodeKindToGroup(node.kind) });
+        matched.push({ ...node, matchType: "content", matchedLine, group: nodeKindToGroup(node) });
       }
     }
     setResults(matched);
@@ -1608,16 +1688,21 @@ function SearchPanel({ nodes, jingweiSections, onOpen }: {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="搜索资源..."
+            placeholder="搜索当前书籍..."
             autoFocus
             className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground outline-none min-w-0"
           />
         </div>
+        <p className="mt-1 px-1 text-[10px] leading-relaxed text-muted-foreground">
+          范围：章节正文、工作区资源、经纬和叙事记忆
+        </p>
       </div>
       {/* 搜索结果列表 */}
       <div ref={resultsRef} className="flex-1 overflow-y-auto px-1 py-1">
         {query.trim() && results.length === 0 && (
-          <p className="px-2 py-4 text-center text-xs text-muted-foreground">无匹配结果</p>
+          <p className="px-2 py-4 text-center text-xs leading-relaxed text-muted-foreground">
+            当前书籍的章节正文、工作区资源、经纬和叙事记忆中没有匹配结果
+          </p>
         )}
         {[...grouped.entries()].map(([group, items]) => (
           <div key={group} className="mb-1">
@@ -1649,13 +1734,16 @@ function SearchPanel({ nodes, jingweiSections, onOpen }: {
   );
 }
 
-/** 节点 kind → 搜索结果分组名 */
-function nodeKindToGroup(kind: string): string {
-  switch (kind) {
+/** 节点 → 搜索结果分组名 */
+function nodeKindToGroup(node: WorkbenchResourceNode): string {
+  if (node.metadata?.isNarrativeMemoryEntry === true) return "叙事记忆";
+  switch (node.kind) {
     case "chapter": return "章节";
     case "jingwei-entry": return "经纬条目";
     case "jingwei-section":
     case "jingwei": return "经纬";
+    case "file":
+    case "story": return "工作区资源";
     default: return "其他";
   }
 }

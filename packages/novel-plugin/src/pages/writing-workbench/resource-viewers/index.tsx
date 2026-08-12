@@ -10,6 +10,7 @@ import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schem
 import { ChapterEditor } from "./ChapterEditor";
 import { getImageRawUrl, isImageResourceNode } from "./image-resource";
 import { submitNarrativeLineChange } from "../narrative-line-proposals";
+import { memoryFactLabel } from "../lore-workspace-split";
 
 export type ResourceViewerKind =
   | "chapter"
@@ -20,6 +21,7 @@ export type ResourceViewerKind =
   | "jingwei-entry"
   | "narrative-line"
   | "tool-result"
+  | "narrative-memory-entry"
   | "file"
   | "image"
   | "generic";
@@ -264,6 +266,100 @@ function renderTextFile(node: WorkbenchResourceNode, options: ResourceViewerRend
   return (
     <ViewerShell node={node} label={isNarrativeMemory ? "叙事记忆" : "Markdown 文件"}>
       <MarkdownResourceBody node={node} onContentChange={options.onContentChange} bookId={options.bookId} />
+    </ViewerShell>
+  );
+}
+
+const MEMORY_EVENT_CATEGORY: Record<string, string> = {
+  character_state_changed: "character_state",
+  relationship_changed: "relationship",
+  hook_planted: "hook",
+  hook_triggered: "hook",
+  hook_paid_off: "hook",
+  timeline_advanced: "timeline",
+  location_changed: "location",
+  world_fact_changed: "world_fact",
+  conflict_changed: "conflict",
+};
+
+function metadataText(metadata: Record<string, unknown>, key: string): string | undefined {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function metadataNumber(metadata: Record<string, unknown>, key: string): number | undefined {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+function renderNarrativeMemoryEntry(node: WorkbenchResourceNode) {
+  const metadata = node.metadata ?? {};
+  const eventType = metadataText(metadata, "eventType");
+  const category = metadataText(metadata, "category")
+    ?? metadataText(metadata, "displayCategory")
+    ?? (eventType ? MEMORY_EVENT_CATEGORY[eventType] : undefined);
+  const categoryLabel = category ? memoryFactLabel(category) : "叙事记忆";
+  const entryKind = metadataText(metadata, "entryKind") ?? "memory";
+  const detailError = metadataText(metadata, "detailError");
+  const subject = metadataText(metadata, "subject");
+  const predicate = metadataText(metadata, "predicate");
+  const object = metadataText(metadata, "object");
+  const evidence = metadataText(metadata, "evidenceText") ?? metadataText(metadata, "evidence");
+  const summary = metadataText(metadata, "summary") ?? node.content;
+  const fields = [
+    ["分类", categoryLabel],
+    ["类型", eventType ?? entryKind],
+    ["状态", metadataText(metadata, "status")],
+    ["章节", metadataNumber(metadata, "chapterNumber") ?? metadataNumber(metadata, "sourceChapter")],
+    ["主体", subject],
+    ["谓词", predicate],
+    ["客体", object],
+    ["层级", metadataText(metadata, "layer")],
+    ["来源", metadataText(metadata, "sourceType") ?? metadataText(metadata, "source")],
+    ["置信度", typeof metadata.confidence === "number" ? String(metadata.confidence) : undefined],
+    ["风险", metadataText(metadata, "riskLevel")],
+    ["有效起章", metadataNumber(metadata, "validFromChapter")],
+    ["有效止章", metadataNumber(metadata, "validUntilChapter")],
+    ["创建时间", metadataText(metadata, "createdAt")],
+    ["应用时间", metadataText(metadata, "appliedAt")],
+  ].filter(([, value]) => value !== undefined && value !== "");
+
+  return (
+    <ViewerShell node={node} label="叙事记忆详情">
+      <div className="space-y-3 p-4">
+        {detailError ? (
+          <div role="alert" className="rounded border border-yellow-500/30 bg-yellow-500/10 p-2 text-xs text-yellow-700 dark:text-yellow-300">
+            详情补充失败，当前显示列表摘要：{detailError}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge variant="outline" className="text-[10px]">{categoryLabel}</Badge>
+          {metadataText(metadata, "status") ? <Badge variant="secondary" className="text-[10px]">{metadataText(metadata, "status")}</Badge> : null}
+        </div>
+        {fields.length > 0 ? (
+          <div className="divide-y divide-border rounded-lg border border-border bg-card">
+            {fields.map(([label, value]) => (
+              <div key={label} className="flex gap-3 px-3 py-2 text-xs">
+                <span className="w-16 shrink-0 text-muted-foreground">{label}</span>
+                <span className="min-w-0 flex-1 break-words whitespace-pre-wrap">{String(value)}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {summary ? (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="mb-1 text-[10px] text-muted-foreground">摘要</div>
+            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{summary}</div>
+          </div>
+        ) : null}
+        {evidence ? (
+          <div className="rounded-lg border border-border bg-card p-3">
+            <div className="mb-1 text-[10px] text-muted-foreground">正文证据</div>
+            <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{evidence}</div>
+          </div>
+        ) : null}
+        {!summary && !evidence && fields.length === 0 ? <div className="py-8 text-center text-xs text-muted-foreground">暂无详情数据</div> : null}
+      </div>
     </ViewerShell>
   );
 }
@@ -786,6 +882,7 @@ export const resourceViewerRegistry: Record<ResourceViewerKind, ResourceViewerDe
   "jingwei-section": { kind: "jingwei-section", label: "经纬分区", render: renderJingweiCard },
   "jingwei-entry": { kind: "jingwei-entry", label: "经纬条目", render: renderJingweiCard },
   "narrative-line": { kind: "narrative-line", label: "叙事线", render: renderReadonlySummary },
+  "narrative-memory-entry": { kind: "narrative-memory-entry", label: "叙事记忆详情", render: renderNarrativeMemoryEntry },
   "tool-result": { kind: "tool-result", label: "工具结果", render: renderToolResult },
   file: { kind: "file", label: "文本文件", render: renderTextFile },
   image: { kind: "image", label: "图片预览", render: renderImageFile },
@@ -805,6 +902,9 @@ const viewerKinds = new Set<WorkbenchResourceKind | ResourceViewerKind>([
 ]);
 
 export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDefinition {
+  if (node.metadata?.isNarrativeMemoryEntry === true) {
+    return resourceViewerRegistry["narrative-memory-entry"];
+  }
   if (node.capabilities.unsupported) {
     return resourceViewerRegistry.generic;
   }

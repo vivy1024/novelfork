@@ -5,7 +5,6 @@ export default defineConfig({
     include: ["src/__tests__/**/*.test.ts"],
     exclude: [
       "src/__tests__/ai-tells.test.ts",
-      "src/__tests__/compliance-*.test.ts",
       "src/__tests__/continuity.test.ts",
       "src/__tests__/dialogue-generator.test.ts",
       "src/__tests__/fanfic-dimensions.test.ts",
@@ -26,7 +25,6 @@ export default defineConfig({
       "src/__tests__/style-drift-detector.test.ts",
       "src/__tests__/variant-generator.test.ts",
       "src/__tests__/writer*.test.ts",
-      "src/__tests__/writing-tools-*.test.ts",
     ],
   },
 });

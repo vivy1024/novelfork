@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { FILTER_RULES, mapAiTasteLevel, runFilter } from "../index.js";
+import { FILTER_RULES, mapAiTasteLevel, runFilter } from "./index.js";
 
 const positiveCases: Record<string, string[]> = {
   r01: ["综上所述，这是一段总结。", "总的来说，相关人士表示。", "需要指出的是，有关部门已经回应。"],
@@ -61,5 +61,23 @@ describe("AI taste filter rules", () => {
     expect(human.aiTasteScore).toBeLessThan(30);
     expect(gpt.aiTasteScore).toBeGreaterThan(50);
     expect(gpt.elapsedMs).toBeLessThan(200);
+  });
+
+  it("treats external scores as manual-review evidence, not a platform conclusion", async () => {
+    const report = await runFilter("韩立把药锄扛在肩上。", {
+      zhuqueConfig: {
+        apiKey: "key",
+        endpoint: "https://zhuque.local/scan",
+        fetchImpl: vi.fn().mockResolvedValue({ ok: true, json: async () => ({ score: 42 }) }),
+      },
+    });
+
+    expect(report.crossSpecHints).toEqual([expect.objectContaining({
+      type: "external-ai-signal",
+      message: expect.stringContaining("42/100"),
+      data: { zhuqueScore: 42 },
+    })]);
+    expect(report.crossSpecHints?.[0]?.message).toContain("人工复核");
+    expect(report.crossSpecHints?.[0]?.message).not.toContain("拒稿");
   });
 });

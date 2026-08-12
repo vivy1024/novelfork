@@ -4,7 +4,6 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import {
   buildStructuredErrorEnvelope,
-  createKvRepository,
   getStorageDatabase,
   requireModelForAiAction,
   type StyleProfile,
@@ -19,20 +18,12 @@ import {
   buildPovDashboard,
   detectToneDrift,
   generateChapterHooks,
-  getDailyProgress,
-  getProgressTrend,
   type DialogueChapterType,
-  type ProgressConfig,
 } from "../engine/index.js";
 import type { RouterContext } from "./context.js";
 import { listChapterFiles } from "../engine/writing-resource/chapter-layout.js";
 
-const PROGRESS_CONFIG_KEY = "writing-tools:progress-config";
-const DEFAULT_PROGRESS_CONFIG: ProgressConfig = { dailyTarget: 6000 };
-
 type JsonContext = { readonly req: { json: <T>() => Promise<T> } };
-type DateQueryOptions = { readonly today?: string; readonly totalChaptersWritten?: number };
-type DateSumTrendQuery = { readonly days?: number; readonly today?: string };
 
 type GeneratedHookPayload = {
   readonly id: string;
@@ -154,33 +145,6 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     return c.json({ dashboard });
   });
 
-  app.get("/api/progress", async (c) => {
-    const storage = getStorageDatabase();
-    const config = await loadProgressConfig(storage);
-    const options: DateQueryOptions = {
-      ...(c.req.query("today") ? { today: c.req.query("today") } : {}),
-      ...(readPositiveInteger(c.req.query("totalChaptersWritten")) !== undefined
-        ? { totalChaptersWritten: readPositiveInteger(c.req.query("totalChaptersWritten")) }
-        : {}),
-    };
-    const trendOptions: DateSumTrendQuery = {
-      ...(readPositiveInteger(c.req.query("days")) ? { days: readPositiveInteger(c.req.query("days")) } : {}),
-      ...(options.today ? { today: options.today } : {}),
-    };
-    const progress = await getDailyProgress(storage, config, options);
-    const trend = await getProgressTrend(storage, trendOptions.days ?? 30, trendOptions.today);
-    return c.json({ config, progress, trend });
-  });
-
-  app.put("/api/progress/config", async (c) => {
-    const storage = getStorageDatabase();
-    const body = await readJsonBody(c);
-    const current = await loadProgressConfig(storage);
-    const config = normalizeProgressConfig(body, current);
-    await createKvRepository(storage).set(PROGRESS_CONFIG_KEY, JSON.stringify(config));
-    return c.json({ config });
-  });
-
   app.post("/api/books/:bookId/chapters/:ch/rhythm", async (c) => {
     const body = await readJsonBody(c);
     const bookId = c.req.param("bookId");
@@ -220,8 +184,6 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const book = await ctx.state.loadBookConfig(bookId);
     const chapters = await readBookChapters(ctx, bookId);
     const storage = getStorageDatabase();
-    const config = await loadProgressConfig(storage);
-    const progress = await getDailyProgress(storage, config);
     const { createJingweiConflictRepository, createFilterReportRepository } = await import("../engine/index.js");
     const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
     const language = isRecord(book) && book.language === "en" ? "en" : "zh";
@@ -237,8 +199,7 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
       health: {
         totalChapters: measuredMetric(chapters.length, "chapter-files"),
         totalWords: measuredMetric(chapters.reduce((total, chapter) => total + countContentWords(chapter.content), 0), "chapter-files"),
-        dailyWords: measuredMetric(progress.today.written, "writing-log"),
-        dailyTarget: measuredMetric(progress.today.target, "progress-config"),
+        chapterWordTarget: measuredMetric(book.chapterWordCount, "book-config"),
         sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
         knownConflictCount: measuredMetric(conflicts.length, "jingwei-conflicts"),
         consistencyScore,
@@ -406,27 +367,6 @@ async function readStyleProfile(ctx: RouterContext, bookId: string): Promise<Sty
   } catch {
     return undefined;
   }
-}
-
-async function loadProgressConfig(storage: ReturnType<typeof getStorageDatabase>): Promise<ProgressConfig> {
-  const raw = await createKvRepository(storage).get(PROGRESS_CONFIG_KEY);
-  if (!raw) return DEFAULT_PROGRESS_CONFIG;
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    return isRecord(parsed) ? normalizeProgressConfig(parsed, DEFAULT_PROGRESS_CONFIG) : DEFAULT_PROGRESS_CONFIG;
-  } catch {
-    return DEFAULT_PROGRESS_CONFIG;
-  }
-}
-
-function normalizeProgressConfig(value: Record<string, unknown>, fallback: ProgressConfig): ProgressConfig {
-  const dailyTarget = readPositiveInteger(value.dailyTarget) ?? fallback.dailyTarget;
-  return {
-    dailyTarget,
-    ...(readPositiveInteger(value.weeklyTarget) !== undefined ? { weeklyTarget: readPositiveInteger(value.weeklyTarget) } : fallback.weeklyTarget ? { weeklyTarget: fallback.weeklyTarget } : {}),
-    ...(readPositiveInteger(value.totalChaptersTarget) !== undefined ? { totalChaptersTarget: readPositiveInteger(value.totalChaptersTarget) } : fallback.totalChaptersTarget ? { totalChaptersTarget: fallback.totalChaptersTarget } : {}),
-    ...(readPositiveInteger(value.avgWordsPerChapter) !== undefined ? { avgWordsPerChapter: readPositiveInteger(value.avgWordsPerChapter) } : fallback.avgWordsPerChapter ? { avgWordsPerChapter: fallback.avgWordsPerChapter } : {}),
-  };
 }
 
 function readPositiveInteger(value: unknown): number | undefined {

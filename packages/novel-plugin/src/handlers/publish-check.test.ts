@@ -53,7 +53,8 @@ describe("handlePublishCheck", () => {
     expect(result.platformLabel).toBe("番茄小说");
     expect(result.checkedChapters).toBe(1);
     expect(result.report).not.toBeNull();
-    expect(["ready", "has-warnings", "blocked"]).toContain(result.status);
+    expect(["ready", "has-warnings", "needs-review"]).toContain(result.status);
+    expect(result.report?.rulePack.name).toContain("投稿风险自检");
   });
 
   it("honors an explicit platform override", async () => {
@@ -63,7 +64,7 @@ describe("handlePublishCheck", () => {
     });
     const result = await handlePublishCheck({ bookId: "book-1", bookRoot, platform: "qidian" });
     expect(result.platform).toBe("qidian");
-    expect(result.profile.aiRatioTolerance).toBe(0);
+    expect(result.profile.notes.join(" ")).toContain("人工复核");
   });
 
   it("warns when the configured chapter target is outside the platform window", async () => {

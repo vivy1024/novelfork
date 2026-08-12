@@ -1,10 +1,9 @@
-/**
- * Publish-readiness aggregation.
- */
+/** 投稿风险自检聚合。 */
 
 import type {
-  BookAiRatioReport,
+  BookAiTasteReport,
   BookSensitiveScanResult,
+  ComplianceEvidence,
   ContinuityCheckResult,
   ContinuityIssue,
   FormatCheckResult,
@@ -12,8 +11,9 @@ import type {
   PublishReadinessStatus,
   SupportedPlatform,
 } from "./types.js";
-import { estimateBookAiRatio, type ChapterAiScoreInput } from "./ai-ratio-estimator.js";
+import { assessBookAiTaste, type ChapterAiTasteInput } from "./ai-taste-assessment.js";
 import { checkFormat, type BookFormatConfig, type FormatChapterInput } from "./format-checker.js";
+import { NOVELFORK_RISK_RULE_PACK, CHAPTER_AUDIT_RULE_SOURCE, LOCAL_FORMAT_RULE_SOURCE, LOCAL_SENSITIVE_RULE_SOURCE } from "./rule-pack.js";
 import { scanBook } from "./sensitive-scanner.js";
 
 export interface PublishReadinessChapterInput extends FormatChapterInput {
@@ -26,10 +26,71 @@ function countWords(text: string): number {
   return Array.from(text.replace(/\s/g, "")).length;
 }
 
-function resolveStatus(blockCount: number, warnCount: number): PublishReadinessStatus {
-  if (blockCount > 0) return "blocked";
+function resolveStatus(highRiskCount: number, warnCount: number): PublishReadinessStatus {
+  if (highRiskCount > 0) return "needs-review";
   if (warnCount > 0) return "has-warnings";
   return "ready";
+}
+
+function collectEvidence(
+  sensitiveScan: BookSensitiveScanResult,
+  aiTaste: BookAiTasteReport,
+  formatCheck: FormatCheckResult,
+  continuity: ContinuityCheckResult,
+): ComplianceEvidence[] {
+  const evidence: ComplianceEvidence[] = [];
+  for (const chapter of sensitiveScan.chapters) {
+    for (const hit of chapter.hits) {
+      for (const position of hit.positions) {
+        evidence.push({
+          ruleId: `sensitive:${hit.category}:${hit.word}`,
+          rulePackId: NOVELFORK_RISK_RULE_PACK.id,
+          source: LOCAL_SENSITIVE_RULE_SOURCE,
+          severity: hit.severity === "block" ? "high" : hit.severity === "warn" ? "medium" : "low",
+          chapterNumber: hit.chapterNumber,
+          chapterTitle: hit.chapterTitle,
+          message: `命中本地风险词“${hit.word}”。`,
+          matchedText: hit.word,
+          offset: position.offset,
+          paragraph: position.paragraph,
+          context: position.context,
+          ...(hit.suggestion ? { suggestion: hit.suggestion } : {}),
+        });
+      }
+    }
+  }
+
+  for (const chapter of aiTaste.chapters) {
+    if (chapter.evidence) evidence.push(chapter.evidence);
+  }
+
+  for (const issue of formatCheck.issues) {
+    evidence.push({
+      ruleId: `format:${issue.type}`,
+      rulePackId: NOVELFORK_RISK_RULE_PACK.id,
+      source: LOCAL_FORMAT_RULE_SOURCE,
+      severity: issue.severity === "block" ? "high" : issue.severity === "warn" ? "medium" : "low",
+      ...(issue.chapterNumber ? { chapterNumber: issue.chapterNumber } : {}),
+      message: issue.message,
+      ...(issue.detail ? { context: issue.detail } : {}),
+      ...(issue.suggestion ? { suggestion: issue.suggestion } : {}),
+    });
+  }
+
+  if (continuity.status === "has-issues") {
+    for (const issue of continuity.issues) {
+      evidence.push({
+        ruleId: `continuity:${issue.category}`,
+        rulePackId: NOVELFORK_RISK_RULE_PACK.id,
+        source: CHAPTER_AUDIT_RULE_SOURCE,
+        severity: issue.severity === "critical" ? "high" : "medium",
+        chapterNumber: issue.chapterNumber,
+        message: issue.message,
+        suggestion: "回到对应章节与经纬/叙事记忆核对后再决定是否修改。",
+      });
+    }
+  }
+  return evidence;
 }
 
 export function checkPublishReadiness(
@@ -38,7 +99,7 @@ export function checkPublishReadiness(
   chapters: ReadonlyArray<PublishReadinessChapterInput>,
   bookConfig: BookFormatConfig = {},
 ): PublishReadinessReport {
-  const sensitiveScan: BookSensitiveScanResult = scanBook(
+  const sensitiveScan = scanBook(
     chapters.map((chapter) => ({
       chapterNumber: chapter.chapterNumber,
       title: chapter.title,
@@ -47,30 +108,28 @@ export function checkPublishReadiness(
     platform,
   );
 
-  const aiInputs: ChapterAiScoreInput[] = chapters.map((chapter) => ({
+  const aiInputs: ChapterAiTasteInput[] = chapters.map((chapter) => ({
     chapterNumber: chapter.chapterNumber,
     chapterTitle: chapter.title,
     wordCount: countWords(chapter.content),
     aiTasteScore: chapter.aiTasteScore ?? 0,
   }));
-  const aiRatio: BookAiRatioReport = estimateBookAiRatio(bookId, aiInputs, platform);
-
-  const formatCheck: FormatCheckResult = checkFormat(chapters, bookConfig, platform);
-
+  const aiTaste = assessBookAiTaste(bookId, aiInputs, platform);
+  const formatCheck = checkFormat(chapters, bookConfig, platform);
   const continuity = buildContinuityCheck(chapters);
+  const evidence = collectEvidence(sensitiveScan, aiTaste, formatCheck, continuity);
 
-  const continuityBlockCount = continuity.status === "has-issues" ? continuity.blockCount : 0;
-  const continuityWarnCount = continuity.status === "has-issues" ? continuity.warnCount : 0;
-
-  const totalBlockCount = sensitiveScan.totalBlockCount + formatCheck.blockCount + continuityBlockCount;
-  const totalWarnCount = sensitiveScan.totalWarnCount + formatCheck.warnCount + aiRatio.chapters.filter((c) => c.isAboveThreshold).length + continuityWarnCount;
-  const totalSuggestCount = sensitiveScan.totalSuggestCount + formatCheck.suggestCount;
+  const totalBlockCount = evidence.filter((item) => item.severity === "high").length;
+  const totalWarnCount = evidence.filter((item) => item.severity === "medium").length;
+  const totalSuggestCount = evidence.filter((item) => item.severity === "low").length;
 
   return {
     platform,
     status: resolveStatus(totalBlockCount, totalWarnCount),
+    rulePack: NOVELFORK_RISK_RULE_PACK,
+    evidence,
     sensitiveScan,
-    aiRatio,
+    aiTaste,
     formatCheck,
     continuity,
     totalBlockCount,
@@ -82,37 +141,28 @@ export function checkPublishReadiness(
 const AUDIT_ISSUE_PATTERN = /^\[(critical|warning)\]\s*([^：:]+)[：:](.+)$/;
 
 function buildContinuityCheck(chapters: ReadonlyArray<PublishReadinessChapterInput>): ContinuityCheckResult {
-  const hasAnyAuditField = chapters.some((ch) => ch.auditIssues !== undefined);
-  if (!hasAnyAuditField) {
-    return { status: "unknown", reason: "缺少审计数据，连续性指标无法计算。" };
-  }
-
-  const hasMalformed = chapters.some((ch) => ch.auditIssues !== undefined && !Array.isArray(ch.auditIssues));
-  if (hasMalformed) {
+  const hasAnyAuditField = chapters.some((chapter) => chapter.auditIssues !== undefined);
+  if (!hasAnyAuditField) return { status: "unknown", reason: "缺少审计数据，连续性线索无法计算。" };
+  if (chapters.some((chapter) => chapter.auditIssues !== undefined && !Array.isArray(chapter.auditIssues))) {
     return { status: "unknown", reason: "审计数据格式不符合预期。" };
   }
 
-  const chaptersWithAudit = chapters.filter((ch) => Array.isArray(ch.auditIssues));
-  if (chaptersWithAudit.length === 0) {
-    return { status: "unknown", reason: "缺少审计数据，连续性指标无法计算。" };
-  }
+  const chaptersWithAudit = chapters.filter((chapter) => Array.isArray(chapter.auditIssues));
+  if (chaptersWithAudit.length === 0) return { status: "unknown", reason: "缺少审计数据，连续性线索无法计算。" };
 
   const issues: ContinuityIssue[] = [];
-  for (const ch of chaptersWithAudit) {
-    if (!Array.isArray(ch.auditIssues)) continue;
-    for (const raw of ch.auditIssues) {
-      if (typeof raw !== "string") {
-        return { status: "unknown", reason: "审计数据格式不符合预期。" };
-      }
+  for (const chapter of chaptersWithAudit) {
+    if (!Array.isArray(chapter.auditIssues)) continue;
+    for (const raw of chapter.auditIssues) {
+      if (typeof raw !== "string") return { status: "unknown", reason: "审计数据格式不符合预期。" };
       const match = raw.match(AUDIT_ISSUE_PATTERN);
-      if (match && match[1] === "critical") {
-        issues.push({
-          chapterNumber: ch.chapterNumber,
-          severity: "critical",
-          category: match[2].trim(),
-          message: match[3].trim(),
-        });
-      }
+      if (!match) continue;
+      issues.push({
+        chapterNumber: chapter.chapterNumber,
+        severity: match[1] === "critical" ? "critical" : "warning",
+        category: match[2].trim(),
+        message: match[3].trim(),
+      });
     }
   }
 
@@ -120,10 +170,8 @@ function buildContinuityCheck(chapters: ReadonlyArray<PublishReadinessChapterInp
     return { status: "passed", source: "chapter-audit-issues", checkedChapterCount: chaptersWithAudit.length, issueCount: 0, score: 1 };
   }
 
-  const blockCount = issues.filter((i) => i.severity === "critical").length;
-  const warnCount = issues.filter((i) => i.severity === "warning").length;
-  const score = 1 - issues.length / chaptersWithAudit.length;
-
+  const blockCount = issues.filter((issue) => issue.severity === "critical").length;
+  const warnCount = issues.filter((issue) => issue.severity === "warning").length;
   return {
     status: "has-issues",
     source: "chapter-audit-issues",
@@ -131,7 +179,7 @@ function buildContinuityCheck(chapters: ReadonlyArray<PublishReadinessChapterInp
     issueCount: issues.length,
     blockCount,
     warnCount,
-    score: Math.max(0, Math.min(1, score)),
+    score: Math.max(0, Math.min(1, 1 - issues.length / chaptersWithAudit.length)),
     issues,
   };
 }

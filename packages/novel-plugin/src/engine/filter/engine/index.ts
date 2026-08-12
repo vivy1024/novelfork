@@ -58,7 +58,11 @@ export async function runFilter(text: string, options: RunFilterOptions = {}): P
     tokensAnalyzed: tokenized.charCount,
     elapsedMs,
     pgiUsed: options.pgiUsed ?? false,
-    crossSpecHints: zhuque.status === "success" && (zhuque.score ?? 0) > 30 ? [{ type: "platform-risk", message: "朱雀评分超过 30%，平台拒稿风险升高。", data: { zhuqueScore: zhuque.score } }] : [],
+    crossSpecHints: zhuque.status === "success" && (zhuque.score ?? 0) > 30 ? [{
+      type: "external-ai-signal",
+      message: `外部检测服务返回 ${zhuque.score}/100 的文本特征分数；请结合正文人工复核，不代表平台审核或发布结果。`,
+      data: { zhuqueScore: zhuque.score },
+    }] : [],
   };
 }
 

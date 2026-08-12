@@ -6,7 +6,6 @@ import type {
   ChapterAuditLog,
   CharacterArc,
   ConflictDialecticExtension,
-  DailyProgress,
   DialogueAnalysis,
   GeneratedHook,
   HookGeneratorInput,
@@ -14,12 +13,11 @@ import type {
   PovCharacter,
   PovDashboard,
   PovWarning,
-  ProgressConfig,
   RhythmAnalysis,
   RhythmIssue,
   ToneDriftResult,
   WritingLog,
-} from "../tools/index.js";
+} from "./index.js";
 
 describe("writing tools type contracts", () => {
   it("exports task 1 writing tool types", () => {
@@ -65,19 +63,6 @@ describe("writing tools type contracts", () => {
       chapterNumber: 12,
       wordCount: 6200,
       completedAt: "2026-04-26T10:00:00.000Z",
-    };
-    const dailyProgress: DailyProgress = {
-      today: { written: 6200, target: 6000, completed: true },
-      thisWeek: { written: 24000, target: 42000 },
-      streak: 3,
-      last30Days: [{ date: "2026-04-26", wordCount: 6200 }],
-      estimatedCompletionDate: "2026-05-20",
-    };
-    const progressConfig: ProgressConfig = {
-      dailyTarget: 6000,
-      weeklyTarget: 42000,
-      totalChaptersTarget: 100,
-      avgWordsPerChapter: 3000,
     };
     const rhythmIssue: RhythmIssue = {
       type: "uniform-length",
@@ -183,8 +168,6 @@ describe("writing tools type contracts", () => {
     expect(hookInput.chapterNumber).toBe(12);
     expect(povDashboard.warnings).toHaveLength(1);
     expect(writingLog.wordCount).toBe(6200);
-    expect(dailyProgress.today.completed).toBe(true);
-    expect(progressConfig.dailyTarget).toBe(6000);
     expect(rhythm.issues[0]?.type).toBe("uniform-length");
     expect(dialogue.isHealthy).toBe(true);
     expect(auditLog.conflictsAdvanced).toEqual(["conflict-1"]);
