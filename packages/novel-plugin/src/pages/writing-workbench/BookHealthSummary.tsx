@@ -18,8 +18,7 @@ interface BookHealthResponse {
   readonly health: {
     readonly totalChapters: MeasuredMetric;
     readonly totalWords: MeasuredMetric;
-    readonly dailyWords: MeasuredMetric;
-    readonly dailyTarget: MeasuredMetric;
+    readonly chapterWordTarget: MeasuredMetric;
     readonly sensitiveWordCount: MeasuredMetric;
     readonly knownConflictCount: MeasuredMetric;
     readonly consistencyScore: MeasuredMetric | null;
@@ -88,9 +87,6 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
   }
 
   const h = data.health;
-  const dailyPercent = h.dailyTarget.value > 0
-    ? Math.round((h.dailyWords.value / h.dailyTarget.value) * 100)
-    : 0;
 
   // Compute overall score (0-100) from available dimensions
   const dimensions: { label: string; value: number; max: number }[] = [];
@@ -108,9 +104,6 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
   if (h.rhythmDiversity) {
     dimensions.push({ label: "节奏多样性", value: h.rhythmDiversity.value * 100, max: 100 });
   }
-
-  // Daily progress as a dimension
-  dimensions.push({ label: "今日进度", value: Math.min(dailyPercent, 100), max: 100 });
 
   const overallScore = dimensions.length > 0
     ? Math.round(dimensions.reduce((sum, d) => sum + (d.value / d.max) * 100, 0) / dimensions.length)
@@ -132,12 +125,8 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
       {/* Key metrics */}
       <div className="divide-y divide-border">
         <MetricRow label="总章节" value={String(h.totalChapters.value)} suffix="章" />
-        <MetricRow
-          label="今日字数"
-          value={String(h.dailyWords.value)}
-          suffix={`/ ${h.dailyTarget.value}`}
-          good={dailyPercent >= 100}
-        />
+        <MetricRow label="总字数" value={h.totalWords.value.toLocaleString()} suffix="字" />
+        <MetricRow label="每章目标" value={h.chapterWordTarget.value.toLocaleString()} suffix="字" />
         <MetricRow
           label="敏感词"
           value={String(h.sensitiveWordCount.value)}

@@ -93,7 +93,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 - 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
 - 中盘防跑偏：outline.volume 维护卷纲（当前卷目标会进 preflight 与 scene.spec）；arc.character 查角色弧停滞或回退。
 - 终局储备：outline.volume 的 endgameReserve 记底牌（宿敌/真相/金手指上限，逐卷解锁）与升级台阶（不越级）。返回的 overdraft 报「底牌提前动用」「越级/到顶」时必须如实转述并建议改纲，不得替作者打光底牌。
-- 发布前：publish.check 做平台自检（敏感词/AI 率/格式/连续性）。pipeline.write 保存前已做单章轻检，默认只提醒；平台要求且命中阻断级敏感词时会 publish-blocked 不保存。
+- 投稿前：publish.check 做投稿风险自检（敏感词线索/AI 味线索/格式/连续性）并返回可定位证据与规则来源。结果只供人工复核；pipeline.write 保存前的轻检只提醒，不会因平台口径阻断正文保存。
 
 当用户要求写一章完整的新正文时：先 write.preflight；ok 后用 Skill 读取相关写作技能，由你本人生成蓝图（scene.spec 校验）与完整正文（pipeline.write 校验、落盘并自动章后结算）。若 Runtime 没有可用文本模型，必须如实说明阻塞，绝不能改用 chapter.write 写入短文本充当新章节。chapter.write 只用于覆盖已存在的完整章节，并由服务端在写入前执行本书的硬长度与 Writing Skills 错误守卫；局部改写由你本人生成新文本后使用 rewrite.apply 落盘。所有写入仍会经过 Runtime 权限确认，模型不得自行创建文件、推断文件路径或传入书籍根目录。
 

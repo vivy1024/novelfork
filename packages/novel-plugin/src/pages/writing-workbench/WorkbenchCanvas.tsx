@@ -5,7 +5,7 @@ import type { RefObject } from "react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronDown, ChevronUp } from "lucide-react";
+import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronUp } from "lucide-react";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { isChapterWorkflowNode } from "./chapter-workflow-node";
@@ -24,7 +24,6 @@ import type { ToolPanelId } from "./useWorkbenchResources";
 // Lazy-loaded tool panels
 const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
-const DailyProgressCard = lazy(() => import("./DailyProgressCard").then(m => ({ default: m.DailyProgressCard })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
@@ -186,8 +185,6 @@ function ToolPanelView({ toolPanel, bookId, repositoryPath, onJumpToChapter }: {
       return <QualityPanel bookId={bookId} />;
     case "health":
       return <Suspense fallback={<ToolPanelLoading />}><BookHealthSummary bookId={bookId} /></Suspense>;
-    case "progress":
-      return <Suspense fallback={<ToolPanelLoading />}><DailyProgressCard /></Suspense>;
     case "arcs":
       return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "drift":
@@ -360,9 +357,16 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     const initialCategory = typeof node.metadata?.jingweiCategory === "string"
       ? node.metadata.jingweiCategory
       : undefined;
+    const initialEntryId = typeof node.metadata?.jingweiEntryId === "string"
+      ? node.metadata.jingweiEntryId
+      : undefined;
     return (
       <div className="flex h-full flex-col min-h-0">
-        <JingweiPanel bookId={bookId} {...(initialCategory ? { initialCategory } : {})} />
+        <JingweiPanel
+          bookId={bookId}
+          {...(initialCategory ? { initialCategory } : {})}
+          {...(initialEntryId ? { initialEntryId } : {})}
+        />
       </div>
     );
   }
@@ -651,7 +655,7 @@ interface OverviewStats {
   volumeProgress: { current: number; total: number; percent: number };
   foreshadowing: { planted: number; recovered: number; recoveryRate: number };
   activePlotLines: number;
-  wordCount: { today: number; total: number };
+  wordCount: { total: number };
   chapterCount: number;
 }
 
@@ -666,7 +670,7 @@ function StatCard({ label, value, sub, className, active, onClick }: {
     >
       <div className="flex items-center justify-between">
         <div className="text-[10px] text-muted-foreground">{label}</div>
-        {onClick && (active ? <ChevronUp className="size-3 text-muted-foreground" /> : <ChevronDown className="size-3 text-muted-foreground" />)}
+        {onClick && active ? <ChevronUp className="size-3 text-muted-foreground" /> : null}
       </div>
       <div className="text-lg font-semibold mt-0.5">{value}</div>
       {sub && <div className="text-[10px] text-muted-foreground mt-0.5">{sub}</div>}
@@ -674,7 +678,7 @@ function StatCard({ label, value, sub, className, active, onClick }: {
   );
 }
 
-type ExpandedPanel = "foreshadowing" | "quality" | "words" | null;
+type ExpandedPanel = "foreshadowing" | "quality" | null;
 
 function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJumpToChapter?: (chapterNumber: number) => void }) {
   const [stats, setStats] = useState<OverviewStats | null>(null);
@@ -712,10 +716,9 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
             onClick={() => togglePanel("foreshadowing")}
           />
           <StatCard
-            label="今日字数" value={`${stats.wordCount.today.toLocaleString()}`}
-            sub={`总计 ${(stats.wordCount.total / 10000).toFixed(1)} 万字`}
-            active={expandedPanel === "words"}
-            onClick={() => togglePanel("words")}
+            label="总字数"
+            value={stats.wordCount.total >= 10000 ? `${(stats.wordCount.total / 10000).toFixed(1)} 万字` : `${stats.wordCount.total.toLocaleString()} 字`}
+            sub="作品累计正文"
           />
           <div className="col-span-3 rounded-lg border border-border bg-card px-3 py-2">
             <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1">
@@ -735,7 +738,7 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
           <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-xs font-semibold text-foreground">
-                {expandedPanel === "foreshadowing" ? "伏笔详情" : expandedPanel === "quality" ? "质量监控" : "写作统计"}
+                {expandedPanel === "foreshadowing" ? "伏笔详情" : "质量监控"}
               </h3>
               <button type="button" onClick={() => setExpandedPanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronUp className="size-3.5" />
@@ -744,7 +747,6 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
             <Suspense fallback={<ToolPanelLoading />}>
               {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} onJumpToChapter={onJumpToChapter} />}
               {expandedPanel === "quality" && <QualityPanel bookId={bookId} />}
-              {expandedPanel === "words" && <DailyProgressCard />}
             </Suspense>
           </div>
         </div>

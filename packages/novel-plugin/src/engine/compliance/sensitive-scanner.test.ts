@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { loadDictionary, scanChapter, scanBook } from "../compliance/sensitive-scanner.js";
-import type { SensitiveWord } from "../compliance/types.js";
+import { loadDictionary, scanChapter, scanBook } from "./sensitive-scanner.js";
+import type { SensitiveWord } from "./types.js";
 
 describe("platform compliance sensitive scanner", () => {
   it("loads common and platform seed dictionaries", () => {

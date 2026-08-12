@@ -2,19 +2,15 @@
  * AI usage disclosure generator.
  */
 
-import type { AiDisclosure, BookAiRatioReport, SupportedPlatform } from "./types.js";
+import type { AiDisclosure, BookAiTasteReport, SupportedPlatform } from "./types.js";
 
 export interface AiDisclosureInput {
   readonly bookId: string;
   readonly platform: SupportedPlatform;
-  readonly aiRatioReport: BookAiRatioReport;
+  readonly aiTasteReport: BookAiTasteReport;
   readonly aiUsageTypes?: ReadonlyArray<string>;
   readonly modelNames?: ReadonlyArray<string>;
   readonly humanEditDescription?: string;
-}
-
-function formatPercent(value: number): string {
-  return `${Math.round(value * 100)}%`;
 }
 
 export function generateAiDisclosure(input: AiDisclosureInput): AiDisclosure {
@@ -29,18 +25,18 @@ export function generateAiDisclosure(input: AiDisclosureInput): AiDisclosure {
     `- 作品 ID：${input.bookId}`,
     `- 目标平台：${input.platform}`,
     `- AI 辅助类型：${aiUsageTypes.join("、")}`,
-    `- 估算 AI 辅助比例：${formatPercent(input.aiRatioReport.overallAiRatio)}`,
+    `- 本地 AI 味风险：${input.aiTasteReport.overallRiskLevel}`,
     `- 使用模型：${modelNames.join("、")}`,
     `- 人工修改说明：${humanEditDescription}`,
     "",
-    "说明：以上比例基于 AI 味特征的粗略估算，不代表精确 AI 生成比例；最终以平台审核和作者实际创作记录为准。",
+    "说明：AI 味风险只用于提示可能需要复核的表达特征，不能判断 AI 生成比例，也不代表平台审核结论。",
   ].join("\n");
 
   return {
     bookId: input.bookId,
     platform: input.platform,
     aiUsageTypes,
-    estimatedAiRatio: input.aiRatioReport.overallAiRatio,
+    aiTasteRiskLevel: input.aiTasteReport.overallRiskLevel,
     modelNames,
     humanEditDescription,
     markdownText,

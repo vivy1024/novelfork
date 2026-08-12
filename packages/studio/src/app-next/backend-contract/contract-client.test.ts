@@ -22,8 +22,8 @@ describe("contract client", () => {
     const client = createContractClient({ fetch: fetchMock });
 
     const result = await client.get<{ metrics: Array<{ name: string; value: number | null }>; streamSource: string; gate: null }>(
-      "/api/progress",
-      { capability: { id: "progress", status: "current" } },
+      "/api/books",
+      { capability: { id: "books.list", status: "current" } },
     );
 
     expect(result.ok).toBe(true);

@@ -165,48 +165,49 @@ describe("outline.volume 卷纲卡", () => {
   });
 });
 
-describe("publish.check 发布自检卡", () => {
-  it("展示状态与四个维度计数", () => {
+describe("publish.check 投稿风险自检卡", () => {
+  it("展示规则来源、复核状态与正文证据", () => {
     render(<>{renderToolResult({
       toolName: "publish.check",
       result: {
         renderer: "compliance.publish-readiness",
         data: {
-          ok: false,
-          status: "blocked",
+          ok: true,
+          status: "needs-review",
           platformLabel: "起点中文网",
           blockCount: 2,
           warnCount: 3,
           suggestCount: 1,
           checkedChapters: 12,
           report: {
-            status: "blocked",
-            aiRatio: { estimatedAiRatio: 0.42 },
-            formatCheck: { passed: false },
-            continuity: { passed: true },
+            status: "needs-review",
+            aiTaste: { overallRiskLevel: "high" },
+            rulePack: { name: "NovelFork 投稿风险自检规则", version: "2026.08", confidence: "medium", source: "本地规则" },
+            evidence: [{ ruleId: "sensitive:demo", message: "命中本地风险词", context: "…【示例词】…", suggestion: "人工判断语境" }],
           },
-          notes: ["第 3 章命中敏感词"],
+          notes: ["第 3 章命中本地风险词"],
         },
       },
     })}</>);
 
     expect(screen.getByTestId("tool-result-publish-readiness")).toBeTruthy();
-    expect(screen.getByText("不建议发布")).toBeTruthy();
+    expect(screen.getByText("需人工复核")).toBeTruthy();
     expect(screen.getByText("起点中文网")).toBeTruthy();
     expect(screen.getByText("已检 12 章")).toBeTruthy();
-    expect(screen.getByText("42%")).toBeTruthy();
-    expect(screen.getByText("格式：有问题")).toBeTruthy();
-    expect(screen.getByText("连续性：通过")).toBeTruthy();
-    expect(screen.getByText("第 3 章命中敏感词")).toBeTruthy();
+    expect(screen.getByText("AI 味线索")).toBeTruthy();
+    expect(screen.getByText(/NovelFork 投稿风险自检规则/)).toBeTruthy();
+    expect(screen.getByText("命中本地风险词")).toBeTruthy();
+    expect(screen.getByText("第 3 章命中本地风险词")).toBeTruthy();
   });
 
-  it("ready 状态显示可以发布", () => {
+  it("ready 状态不把结果表述为平台通过", () => {
     render(<>{renderToolResult({
       toolName: "publish.check",
       result: { renderer: "publish.check", data: { ok: true, status: "ready", blockCount: 0, warnCount: 0, suggestCount: 0 } },
     })}</>);
 
-    expect(screen.getByText("可以发布")).toBeTruthy();
+    expect(screen.getByText("未发现明显线索")).toBeTruthy();
+    expect(screen.queryByText("可以发布")).toBeNull();
   });
 });
 

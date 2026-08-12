@@ -151,10 +151,10 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
       },
       {
         id: "publish.check",
-        label: "发布自检（平台合规）",
+        label: "投稿风险自检",
         category: "写作",
         execute: () => options.sendToNarrator?.(
-          "请用 publish.check 对最近章节做发布前自检，并按平台要求报告敏感词、AI 率与格式问题。",
+          "请用 publish.check 对最近章节做投稿风险自检，展示规则来源、敏感词与 AI 味线索的正文证据，并给出人工复核建议。",
         ),
       },
       {

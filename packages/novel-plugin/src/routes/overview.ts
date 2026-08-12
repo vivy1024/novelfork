@@ -5,7 +5,7 @@ interface OverviewStats {
   volumeProgress: { current: number; total: number; percent: number };
   foreshadowing: { planted: number; revealed: number; recovered: number; abandoned: number; recoveryRate: number };
   activePlotLines: number;
-  wordCount: { today: number; total: number };
+  wordCount: { total: number };
   chapterCount: number;
 }
 
@@ -22,10 +22,6 @@ interface StatusCountRow {
 interface CountRow {
   count: number;
   totalWords: number;
-}
-
-interface TodayWordsRow {
-  todayWords: number;
 }
 
 
@@ -106,7 +102,6 @@ export function createOverviewRouter(): Hono {
     const chapterSectionIds = getSectionIds("chapter-summaries", "chapters");
     let chapterCount = 0;
     let totalWords = 0;
-    let todayWords = 0;
 
     if (chapterSectionIds.length > 0) {
       const placeholders = chapterSectionIds.map(() => "?").join(",");
@@ -118,20 +113,6 @@ export function createOverviewRouter(): Hono {
       ).all(bookId, ...chapterSectionIds) as CountRow[];
       chapterCount = row[0]?.count ?? 0;
       totalWords = row[0]?.totalWords ?? 0;
-
-      // Today's words: entries updated today
-      const todayStart = new Date();
-      todayStart.setHours(0, 0, 0, 0);
-      const todayStartMs = todayStart.getTime();
-
-      const todayRow = storage.sqlite.prepare(
-        `SELECT COALESCE(SUM(CAST(json_extract(custom_fields_json, '$.wordCount') AS INTEGER)), 0) as todayWords
-         FROM story_jingwei_entry
-         WHERE book_id = ? AND deleted_at IS NULL
-           AND section_id IN (${placeholders})
-           AND updated_at >= ?`
-      ).all(bookId, ...chapterSectionIds, todayStartMs) as TodayWordsRow[];
-      todayWords = todayRow[0]?.todayWords ?? 0;
     }
 
     // 5. Volume progress from outline
@@ -158,7 +139,7 @@ export function createOverviewRouter(): Hono {
       volumeProgress,
       foreshadowing,
       activePlotLines,
-      wordCount: { today: todayWords, total: totalWords },
+      wordCount: { total: totalWords },
       chapterCount,
     };
 

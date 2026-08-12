@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
-import type { ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
+import { chapterWordCount, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
 import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
   CreateWritingResourceInput,
@@ -14,6 +14,7 @@ import type {
 import { persistNarrativeEvents } from "../narrative-memory/events.js";
 import { applyNarrativeEvents, type ApplyNarrativeEventsResult } from "../narrative-memory/reducer.js";
 import { NarrativeEventSchema } from "../narrative-memory/types.js";
+import { recordChapterCompletion } from "../tools/writing-log.js";
 
 export type WritingResourceService = {
   readonly list: (bookId: string, filter?: ListWritingResourcesFilter) => Promise<WritingResource[]>;
@@ -70,28 +71,68 @@ export function createWritingResourceService(input: {
       })
     : undefined;
 
+  async function recordAcceptedChapterDelta(
+    bookId: string,
+    previous: WritingResource | null,
+    current: WritingResource,
+  ): Promise<void> {
+    if (current.type !== "chapter" || current.status !== "accepted" || !current.chapterNumber) return;
+    const hasBook = input.storage.sqlite.prepare("SELECT 1 AS present FROM book WHERE id = ?").get(bookId);
+    if (!hasBook) return;
+    const wordCount = Math.max(0, current.wordCount - (previous?.wordCount ?? 0));
+    if (wordCount <= 0) return;
+    const completedAt = new Date(current.updatedAt).toISOString();
+    await recordChapterCompletion(input.storage, {
+      bookId,
+      chapterNumber: current.chapterNumber,
+      wordCount,
+      completedAt,
+      date: completedAt.slice(0, 10),
+    });
+  }
+
   async function list(bookId: string, filter: ListWritingResourcesFilter = {}): Promise<WritingResource[]> {
     const databaseResources = repository.list(bookId, filter);
+    const formalDatabaseResources = fileStore
+      ? await Promise.all(databaseResources.map((resource) => materializeAcceptedChapter(bookId, resource)))
+      : databaseResources;
     const fileResources = fileStore
       ? await fileStore.list(bookId, filter).catch(() => [])
       : [];
-    return mergeResources(databaseResources, fileResources, filter);
+    return mergeResources(formalDatabaseResources, fileResources, filter);
+  }
+
+  async function materializeAcceptedChapter(
+    bookId: string,
+    resource: WritingResource,
+  ): Promise<WritingResource> {
+    if (!fileStore || resource.type !== "chapter" || resource.status !== "accepted" || !resource.chapterNumber) {
+      return resource;
+    }
+    const existing = await fileStore.findAcceptedChapter(bookId, resource.chapterNumber).catch(() => null);
+    if (existing) return existing;
+    return fileStore.create(bookId, {
+      ...resource,
+      id: `chapter:${resource.chapterNumber}`,
+      chapterNumber: resource.chapterNumber,
+      status: "accepted",
+      type: "chapter",
+    });
   }
 
   async function getById(bookId: string, id: string): Promise<WritingResource | null> {
     const databaseResource = repository.getById(bookId, id);
-    if (databaseResource) return databaseResource;
+    if (databaseResource) return materializeAcceptedChapter(bookId, databaseResource);
     return fileStore ? fileStore.getById(bookId, id) : null;
   }
 
   async function findAcceptedChapter(bookId: string, chapterNumber: number): Promise<WritingResource | null> {
-    const databaseResource = repository.findAcceptedChapter(bookId, chapterNumber);
     const fileResource = fileStore
       ? await fileStore.findAcceptedChapter(bookId, chapterNumber).catch(() => null)
       : null;
-    if (!databaseResource) return fileResource;
-    if (!fileResource) return databaseResource;
-    return fileResource.updatedAt > databaseResource.updatedAt ? fileResource : databaseResource;
+    if (fileResource) return fileResource;
+    const databaseResource = repository.findAcceptedChapter(bookId, chapterNumber);
+    return databaseResource ? materializeAcceptedChapter(bookId, databaseResource) : null;
   }
 
   return {
@@ -101,8 +142,8 @@ export function createWritingResourceService(input: {
 
     async create(bookId, resource) {
       const chapterNumber = resource.chapterNumber ?? await nextChapterNumber(list, bookId);
-      const useDatabase = repository.hasAny(bookId)
-        || !fileStore
+      // 正式章节文件是唯一权威源；SQLite writing_resource 只保留草稿/历史资源。
+      const useDatabase = !fileStore
         || resource.type !== "chapter"
         || resource.status !== "accepted";
       const timestamp = resource.updatedAt ?? now();
@@ -119,21 +160,40 @@ export function createWritingResourceService(input: {
         updatedAt: timestamp,
         acceptedAt: resource.acceptedAt ?? (resource.status === "accepted" ? timestamp : null),
       };
-      return useDatabase
+      const previous = prepared.type === "chapter" && prepared.status === "accepted" && prepared.chapterNumber
+        ? await findAcceptedChapter(bookId, prepared.chapterNumber)
+        : null;
+      const created = useDatabase
         ? repository.create(prepared)
-        : fileStore!.create(bookId, prepared);
+        : await fileStore!.create(bookId, prepared);
+      await recordAcceptedChapterDelta(bookId, previous, created);
+      return created;
     },
 
     async update(bookId, id, patch) {
       const databaseResource = repository.getById(bookId, id);
+      if (databaseResource?.type === "chapter" && databaseResource.status === "accepted" && fileStore) {
+        const formal = await materializeAcceptedChapter(bookId, databaseResource);
+        const updated = await fileStore.update(bookId, formal.id, { ...patch, updatedAt: patch.updatedAt ?? now() });
+        if (updated) {
+          await recordAcceptedChapterDelta(bookId, formal, updated);
+          return updated;
+        }
+        throw new Error(`Formal chapter file not found: ${formal.id}`);
+      }
       if (databaseResource) {
         const updated = repository.update(bookId, id, { ...patch, updatedAt: patch.updatedAt ?? now() });
         if (!updated) throw new Error(`Writing resource not found: ${id}`);
+        await recordAcceptedChapterDelta(bookId, databaseResource, updated);
         return updated;
       }
       if (fileStore) {
+        const previous = await fileStore.getById(bookId, id);
         const updated = await fileStore.update(bookId, id, { ...patch, updatedAt: patch.updatedAt ?? now() });
-        if (updated) return updated;
+        if (updated) {
+          await recordAcceptedChapterDelta(bookId, previous, updated);
+          return updated;
+        }
       }
       throw new Error(`Writing resource not found: ${id}`);
     },
@@ -173,12 +233,14 @@ export function createWritingResourceService(input: {
           status: "accepted",
           chapterNumber: action.chapterNumber,
           content,
+          wordCount: chapterWordCount(content),
           parentId,
           version,
           updatedAt: timestamp,
           acceptedAt: timestamp,
         });
         if (!accepted) throw new Error(`Writing resource not found: ${id}`);
+        await recordAcceptedChapterDelta(bookId, existing, accepted);
         return accepted;
       }
       if (action.action === "to-draft") {

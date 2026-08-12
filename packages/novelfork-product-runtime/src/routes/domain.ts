@@ -8,6 +8,7 @@ import {
 } from "@vivy1024/novelfork-core";
 import {
 	createComplianceRouter,
+	createFilterRouter,
 	createJingweiRouter,
 	createNarrativeLineRouter,
 	createNarrativeMemoryRouter,
@@ -119,6 +120,7 @@ novelDomainRoutes.route(
 	),
 );
 novelDomainRoutes.route("", asRuntimeRouter(createComplianceRouter(productRouterContext)));
+novelDomainRoutes.route("", asRuntimeRouter(createFilterRouter()));
 // Writing Skills 全局目录与作者副本编辑。内容权威源始终是 SKILL.md 文件，
 // 作品级生效状态由可信根目录 `.novelfork/skills` 自动扫描决定。
 novelDomainRoutes.route("", asRuntimeRouter(createWritingSkillsRouter()));

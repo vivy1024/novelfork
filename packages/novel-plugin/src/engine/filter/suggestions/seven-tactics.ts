@@ -11,7 +11,7 @@ export const SEVEN_TACTICS: SevenTacticSuggestion[] = [
   { tacticId: 2, name: "明确人格提示词", type: "preset-prompt", template: "你是中文网文作者，口吻具体、场景化、少总结。请重写：\n{text}", ruleIds: ["r01", "r02", "r03"] },
   { tacticId: 3, name: "屏蔽鼓励人格", type: "system-prompt-patch", template: "不需要鼓励性语言，只指出问题和修改方向。", ruleIds: ["r01", "r03"] },
   { tacticId: 4, name: "人工改写润色", type: "ui-action", template: "打开可编辑 diff，逐句替换空话、书面对白与形容词堆叠。", ruleIds: ["r04", "r09", "r10", "r11"] },
-  { tacticId: 5, name: "朱雀→降重→朱雀循环", type: "workflow", template: "先跑朱雀；按高亮处改写；二次朱雀复检。", ruleIds: ["r12"] },
+  { tacticId: 5, name: "外部评分与人工复核", type: "workflow", template: "如需使用外部检测服务，仅把评分和高亮作为复核线索；结合正文、人物声口与上下文人工决定是否改写。", ruleIds: ["r12"] },
   { tacticId: 6, name: "章节结尾钩子生成器", type: "preset-prompt", template: "为本章末尾生成一个具体动作驱动的钩子，不使用总结句。", ruleIds: ["r02", "r06"] },
   { tacticId: 7, name: "AI 使用标注", type: "metadata-action", template: "在章节 metadata 中记录 AI 辅助范围与人工改写说明。", ruleIds: ["r12"] },
 ];

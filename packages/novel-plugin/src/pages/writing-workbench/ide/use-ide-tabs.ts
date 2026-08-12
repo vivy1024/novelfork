@@ -24,6 +24,14 @@ export function normalizeTabView(value: unknown): TabView {
     : "explorer";
 }
 
+const LEGACY_JINGWEI_PANEL_PREFIX = "jingwei-panel-entry";
+const JINGWEI_WORKSPACE_TAB_ID = "jingwei-workspace";
+
+function migrateLegacyTabId(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return value.startsWith(LEGACY_JINGWEI_PANEL_PREFIX) ? JINGWEI_WORKSPACE_TAB_ID : value;
+}
+
 export interface TabState {
   id: string;
   nodeId: string;
@@ -213,8 +221,11 @@ function hasLegacyPersistedView(bookId: string): boolean {
     if (!raw) return false;
     const parsed = JSON.parse(raw) as PersistedState;
     const legacy = Object.keys(LEGACY_TAB_VIEWS);
-    return (parsed.tabs ?? []).some((t) => typeof t.view === "string" && legacy.includes(t.view))
-      || Object.keys(parsed.activeByView ?? {}).some((view) => legacy.includes(view));
+    return (parsed.tabs ?? []).some((t) =>
+      (typeof t.view === "string" && legacy.includes(t.view))
+      || t.id.startsWith(LEGACY_JINGWEI_PANEL_PREFIX)
+      || t.nodeId.startsWith(LEGACY_JINGWEI_PANEL_PREFIX)
+    ) || Object.keys(parsed.activeByView ?? {}).some((view) => legacy.includes(view));
   } catch {
     return false;
   }
@@ -228,15 +239,27 @@ export function loadState(bookId: string): IdeTabsState {
     const parsed: PersistedState = JSON.parse(raw);
     // 旧格式(无 activeByView)：清空,不迁移旧 tab 避免视图混乱
     if (!parsed.activeByView) return { tabs: [], activeByView: { ...EMPTY_ACTIVE } };
-    const tabs: TabState[] = (parsed.tabs || []).map((t) => ({
-      id: t.id, nodeId: t.nodeId, title: t.title, dirty: false, pinned: t.pinned === true, kind: t.kind ?? "other", view: normalizeTabView(t.view),
-    }));
+    const tabs: TabState[] = [];
+    for (const tab of parsed.tabs || []) {
+      const migratedId = migrateLegacyTabId(tab.id) ?? tab.id;
+      if (tabs.some((candidate) => candidate.id === migratedId)) continue;
+      const migratedJingweiPanel = migratedId === JINGWEI_WORKSPACE_TAB_ID;
+      tabs.push({
+        id: migratedId,
+        nodeId: migrateLegacyTabId(tab.nodeId) ?? tab.nodeId,
+        title: migratedJingweiPanel ? "经纬" : tab.title,
+        dirty: false,
+        pinned: tab.pinned === true,
+        kind: migratedJingweiPanel ? "other" : (tab.kind ?? "other"),
+        view: migratedJingweiPanel ? "jingwei" : normalizeTabView(tab.view),
+      });
+    }
     // 旧视图键先折叠到现视图，再按现视图校验激活项
     const persistedActive = parsed.activeByView ?? {};
     const migratedActive: Record<string, string | null> = {};
     for (const [view, tabId] of Object.entries(persistedActive)) {
       const target = normalizeTabView(view);
-      if (!migratedActive[target]) migratedActive[target] = tabId;
+      if (!migratedActive[target]) migratedActive[target] = migrateLegacyTabId(tabId);
     }
     const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...migratedActive };
     // 校验每个视图的激活 tab 仍存在

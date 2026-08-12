@@ -142,7 +142,7 @@ bun run typecheck
 | 章节 | `/api/books/:id/chapters`, `/api/books/:id/chapters/:num` |
 | 写作资源 | `/api/books/:id/resources`（正式章节资源） |
 | 写作模式 | `/api/books/:id/inline-write` 等 |
-| 写作工具 | `/api/books/:id/hooks`, `/api/progress` 等 |
+| 写作工具 | `/api/books/:id/hooks`, `/api/books/:id/health` 等 |
 | 经纬 | `/api/books/:id/bible/*`, `/api/books/:id/jingwei/*` |
 | 供应商 | `/api/providers` |
 | 会话 / session tools | `/api/sessions`, `/api/sessions/:id/chat`, `/api/sessions/:id/tools`, `/api/sessions/headless-chat`, `/api/sessions/:id/memory/status`, `/api/sessions/:id/memory` |

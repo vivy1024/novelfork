@@ -15,13 +15,7 @@ export interface BookFormatConfig {
   readonly synopsis?: string;
 }
 
-const PLATFORM_TOTAL_WORD_WARN: Record<SupportedPlatform, number> = {
-  qidian: 100_000,
-  jjwxc: 30_000,
-  fanqie: 20_000,
-  qimao: 20_000,
-  generic: 20_000,
-};
+const LOCAL_TOTAL_WORD_SUGGESTION = 20_000;
 
 function countChineseWords(text: string): number {
   return Array.from(text.replace(/\s/g, "")).length;
@@ -97,14 +91,13 @@ export function checkFormat(
     }
   }
 
-  const minWords = PLATFORM_TOTAL_WORD_WARN[platform];
-  if (totalWords < minWords) {
+  if (totalWords < LOCAL_TOTAL_WORD_SUGGESTION) {
     issues.push({
       type: "total-word-count",
       severity: "warn",
-      message: "全书总字数不足目标平台推荐检查线",
-      detail: `${totalWords} / ${minWords} 字`,
-      suggestion: "建议达到平台首秀/投稿推荐字数后再提交。",
+      message: "全书总字数低于 NovelFork 本地检查建议线",
+      detail: `${totalWords} / ${LOCAL_TOTAL_WORD_SUGGESTION} 字`,
+      suggestion: "这是本地编辑建议；请结合目标平台当前规则与投稿要求人工判断。",
     });
   }
 

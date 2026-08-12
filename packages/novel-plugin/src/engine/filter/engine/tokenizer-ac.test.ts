@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import { AhoCorasickMatcher, loadFilterDictionary, tokenizeChineseText } from "../index.js";
+import { AhoCorasickMatcher } from "./ac-matcher.js";
+import { loadFilterDictionary } from "./dictionaries.js";
+import { tokenizeChineseText } from "./tokenizer.js";
 
 describe("filter tokenizer", () => {
   it("splits Chinese text into paragraphs and sentences with offsets", () => {

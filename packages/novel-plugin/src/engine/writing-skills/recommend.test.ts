@@ -104,7 +104,7 @@ describe("recommendWritingSkills（合成用例）", () => {
   });
 
   it("AI 味收紧时补去 AI 味 skill，而不是大纲审阅", () => {
-    const strict = recommendWritingSkills({ aiTasteLevel: "零容忍（必须过朱雀检测）" }, fixture);
+    const strict = recommendWritingSkills({ aiTasteLevel: "零容忍（明显模板腔均需人工复核）" }, fixture);
     const ids = strict.recommended.map((item) => item.id);
     expect(ids).toContain("revision-deslop");
     expect(ids).not.toContain("revision-outline");
@@ -145,7 +145,7 @@ describe("recommendWritingSkills（合成用例）", () => {
       genre: "玄幻",
       platform: "番茄小说",
       complexity: "heavy",
-      aiTasteLevel: "零容忍（必须过朱雀检测）",
+      aiTasteLevel: "零容忍（明显模板腔均需人工复核）",
     }, fixture);
     expect(result.recommended.length).toBeLessThanOrEqual(MAX_RECOMMENDED_WRITING_SKILLS);
     for (const item of result.recommended) {
@@ -177,7 +177,7 @@ describe("recommendWritingSkills（真实内置 skills）", () => {
       tone: "热血爽文",
       platform: "番茄小说",
       complexity: "heavy",
-      aiTasteLevel: "零容忍（必须过朱雀检测）",
+      aiTasteLevel: "零容忍（明显模板腔均需人工复核）",
     }, realSkills);
 
     expect(result.matchedGenreCluster).toBe("异能志怪");

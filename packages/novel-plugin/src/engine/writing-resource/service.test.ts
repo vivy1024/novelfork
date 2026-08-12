@@ -55,6 +55,38 @@ describe("writing resource hybrid service", () => {
     }
   });
 
+  it("records accepted chapter word deltas in writing_log by book", async () => {
+    const storage = await createStorage();
+    const bookDir = await createBookDir();
+    try {
+      const timestamp = 1_700_000_000_000;
+      storage.sqlite.prepare(
+        "INSERT INTO book (id, name, jingwei_mode, current_chapter, created_at, updated_at) VALUES (?, ?, 'static', 0, ?, ?)",
+      ).run("book-1", "测试书籍", timestamp, timestamp);
+      const service = createWritingResourceService({ storage, resolveBookDir: () => bookDir, now: () => timestamp });
+      const created = await service.create("book-1", {
+        type: "chapter",
+        status: "accepted",
+        title: "第一章",
+        content: "字".repeat(2000),
+      });
+      await service.update("book-1", created.id, { content: "字".repeat(2500) });
+
+      const date = new Date(timestamp).toISOString().slice(0, 10);
+      const bookRow = storage.sqlite.prepare<{ total_words: number }>(
+        "SELECT COALESCE(SUM(word_count), 0) AS total_words FROM writing_log WHERE book_id = ? AND date = ?",
+      ).get("book-1", date);
+      const otherBookRow = storage.sqlite.prepare<{ total_words: number }>(
+        "SELECT COALESCE(SUM(word_count), 0) AS total_words FROM writing_log WHERE book_id = ? AND date = ?",
+      ).get("book-2", date);
+
+      expect(bookRow?.total_words).toBe(2500);
+      expect(otherBookRow?.total_words).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("supports database-backed candidate resources without a file-system resolver", async () => {
     const storage = await createStorage();
     try {

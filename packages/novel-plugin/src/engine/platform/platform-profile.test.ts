@@ -39,10 +39,9 @@ describe("platform profiles", () => {
     }
   });
 
-  it("keeps qidian at zero AI tolerance and generic non-blocking", () => {
-    expect(getPlatformProfile("qidian").aiRatioTolerance).toBe(0);
-    expect(getPlatformProfile("qidian").blockOnSensitiveBlock).toBe(true);
-    expect(getPlatformProfile("generic").blockOnSensitiveBlock).toBe(false);
+  it("keeps profiles limited to soft writing suggestions", () => {
+    expect("aiRatioTolerance" in getPlatformProfile("qidian")).toBe(false);
+    expect("blockOnSensitiveBlock" in getPlatformProfile("generic")).toBe(false);
   });
 
   it("resolves a profile straight from the book config", () => {

@@ -5,11 +5,11 @@ import { Hono } from "hono";
 import {
   checkFormat,
   checkPublishReadiness,
-  estimateBookAiRatio,
+  assessBookAiTaste,
   generateAiDisclosure,
   loadDictionary,
   scanBook,
-  type ChapterAiScoreInput,
+  type ChapterAiTasteInput,
   type FormatChapterInput,
   type PublishReadinessChapterInput,
   type SensitiveWord,
@@ -111,7 +111,7 @@ function toFormatChapters(chapters: ReadonlyArray<LoadedChapter>): ReadonlyArray
   }));
 }
 
-function toAiChapters(chapters: ReadonlyArray<LoadedChapter>): ReadonlyArray<ChapterAiScoreInput> {
+function toAiTasteChapters(chapters: ReadonlyArray<LoadedChapter>): ReadonlyArray<ChapterAiTasteInput> {
   return chapters.map((chapter) => ({
     chapterNumber: chapter.chapterNumber,
     chapterTitle: chapter.title,
@@ -212,14 +212,14 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     return c.json({ result: scanBook(toFormatChapters(chapters), platform, customWords) });
   });
 
-  app.post("/api/books/:bookId/compliance/ai-ratio", async (c) => {
+  app.post("/api/books/:bookId/compliance/ai-taste", async (c) => {
     const body = await readJsonBody(c);
     const platform = parsePlatform(body.platform);
     if (!platform) return invalidPlatformResponse(c, body.platform);
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const chapters = await loadChapters(ctx, bookId, body);
-    return c.json({ report: estimateBookAiRatio(bookId, toAiChapters(chapters), platform) });
+    return c.json({ report: assessBookAiTaste(bookId, toAiTasteChapters(chapters), platform) });
   });
 
   app.post("/api/books/:bookId/compliance/format-check", async (c) => {
@@ -258,12 +258,12 @@ export function createComplianceRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const chapters = await loadChapters(ctx, bookId, body);
-    const aiRatioReport = estimateBookAiRatio(bookId, toAiChapters(chapters), platform);
+    const aiTasteReport = assessBookAiTaste(bookId, toAiTasteChapters(chapters), platform);
     return c.json({
       disclosure: generateAiDisclosure({
         bookId,
         platform,
-        aiRatioReport,
+        aiTasteReport,
         aiUsageTypes: Array.isArray(body.aiUsageTypes) ? body.aiUsageTypes.map(String) : undefined,
         modelNames: Array.isArray(body.modelNames) ? body.modelNames.map(String) : undefined,
         humanEditDescription: typeof body.humanEditDescription === "string" ? body.humanEditDescription : undefined,

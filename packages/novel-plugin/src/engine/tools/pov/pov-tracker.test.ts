@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPovDashboard } from "../tools/pov/pov-tracker.js";
+import { buildPovDashboard } from "./pov-tracker.js";
 
 describe("buildPovDashboard", () => {
   it("tracks multi POV chapter distribution and warning gaps", () => {

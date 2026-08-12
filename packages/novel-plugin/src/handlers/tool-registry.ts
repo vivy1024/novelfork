@@ -281,7 +281,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "publish.check",
     description:
-      "平台发布向自检：敏感词、AI 率估算、格式规范、连续性汇总，并对照平台 profile 检查章字数目标。\n\n平台缺省按 book.platform 映射（tomato→番茄、qidian→起点、jjwxc→晋江、qimao→七猫，其余 generic）。\n\n只读报告：block/warn/suggest 计数与逐项明细。pipeline.write 成功后会自动做单章轻检并给 publishHint；此工具用于全书或指定范围的完整核验。",
+      "投稿风险自检：汇总本地敏感词线索、AI 味线索、正文完整性与连续性证据，并展示规则来源、版本与可信度。\n\n平台缺省按 book.platform 映射（tomato→番茄、qidian→起点、jjwxc→晋江、qimao→七猫，其余 generic），仅用于选择写作建议。\n\n只读报告：高风险线索/提醒/建议及可定位正文证据。结果不能替代平台审核，也不会阻断 pipeline.write 保存。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["publish.check"]),
     risk: "read",
     renderer: "compliance.publish-readiness",

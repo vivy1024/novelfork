@@ -114,7 +114,7 @@ export interface PipelineWriteOutput {
   readonly highRiskPendingReminder?: string;
   /** 轻量投稿风险提示：只提供本地线索与人工复核建议，不阻断保存。 */
   readonly publishHint?: {
-    readonly status: "ready" | "has-warnings" | "blocked" | "skipped";
+    readonly status: "ready" | "has-warnings" | "needs-review" | "skipped";
     readonly warnings: readonly string[];
     readonly platform?: string;
   };
@@ -716,7 +716,7 @@ export async function executePipelineWrite(
     if (knowledgeWarnings.length > 0) publishWarnings.push(`知识边界警告 ${knowledgeWarnings.length} 条。`);
     if (timelineWarnings.length > 0) publishWarnings.push(`时间线警告 ${timelineWarnings.length} 条。`);
 
-    let publishStatus: "ready" | "has-warnings" | "blocked" | "skipped" = "ready";
+    let publishStatus: "ready" | "has-warnings" | "needs-review" | "skipped" = "ready";
     let publishPlatform: string | undefined;
     try {
       const { handlePublishCheck } = await import("./publish-check.js");
@@ -754,7 +754,7 @@ export async function executePipelineWrite(
         : []),
     ];
     const publishHint = {
-      status: (hintWarnings.length > 0 && publishStatus === "ready" ? "has-warnings" : publishStatus) as "ready" | "has-warnings" | "blocked" | "skipped",
+      status: (hintWarnings.length > 0 && publishStatus === "ready" ? "has-warnings" : publishStatus) as "ready" | "has-warnings" | "needs-review" | "skipped",
       warnings: hintWarnings,
       ...(publishPlatform ? { platform: publishPlatform } : {}),
     };

@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "health" | "progress" | "arcs" | "drift" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version";
+export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version";
 
 export interface ToolNodeDef {
   id: string;
@@ -130,7 +130,6 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     id: "tool-group:progress",
     title: "📈 进度类",
     tools: [
-      { id: "tool:progress", title: "每日进度", toolPanel: "progress" },
       { id: "tool:health", title: "全书健康", toolPanel: "health" },
     ],
   },
@@ -140,7 +139,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     tools: [
       { id: "tool:quality", title: "质量监控", toolPanel: "quality" },
       { id: "tool:drift", title: "文风一致性", toolPanel: "drift" },
-      { id: "tool:compliance", title: "平台合规", toolPanel: "compliance" },
+      { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
     ],
   },
   {
