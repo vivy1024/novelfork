@@ -19,11 +19,13 @@ import { createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
+import type { JingweiEntrySavePayload } from "../JingweiEntryEditor";
 import { EditorTabs } from "./EditorTabs";
 import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
@@ -107,21 +109,6 @@ export type SidebarView =
   | "tools"
   | "search"
   | "narrative-memory";
-
-function createJingweiWorkspaceNode(bookId: string, category?: string, entryId?: string): WorkbenchResourceNode {
-  return {
-    id: "jingwei-workspace",
-    kind: "jingwei",
-    title: "经纬",
-    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-    metadata: {
-      bookId,
-      action: "open-jingwei-panel",
-      ...(category ? { jingweiCategory: category } : {}),
-      ...(entryId ? { jingweiEntryId: entryId } : {}),
-    },
-  };
-}
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -272,107 +259,135 @@ export function IdeWorkbench({
   // --- Lore / 叙事记忆分类树（始终加载,面板始终 mount） ---
   const [jingweiSections, setJingweiSections] = useState<WorkbenchResourceNode[]>([]);
   const [narrativeMemorySections, setNarrativeMemorySections] = useState<WorkbenchResourceNode[]>([]);
-  useEffect(() => {
+  const loadLoreSections = useCallback(async () => {
     if (!bookId) return;
-    let cancelled = false;
-    (async () => {
-      try {
-        const fetchJson = runtimeFetch ?? (async (input: string, init?: RequestInit) => {
-          const response = await fetch(input, init);
-          if (!response.ok) throw new Error(`请求失败：${response.status}`);
-          return response.json();
-        });
-        const [entRes, factsRes] = await Promise.all([
-          fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`),
-          fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).catch(() => ({ facts: [] })),
-        ]);
-        if (cancelled) return;
-        const entries: Array<{
-          id: string;
-          title: string;
-          category?: string;
-          contentMd?: string;
-          sectionId?: string;
-          fields?: Record<string, unknown>;
-          priorityTier?: "auto" | "core" | "relevant" | "reference";
-          relatedEntryIds?: string[];
-          status?: string;
-          layer?: string;
-          version?: number;
-          updatedAt?: string;
-          conflictStatus?: string;
-          conflictDetail?: string;
-        }> = entRes?.entries ?? [];
-        const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
+    try {
+      const fetchJson = runtimeFetch ?? (async (input: string, init?: RequestInit) => {
+        const response = await fetch(input, init);
+        if (!response.ok) throw new Error(`请求失败：${response.status}`);
+        return response.json();
+      });
+      const [entRes, factsRes] = await Promise.all([
+        fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`),
+        fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).catch(() => ({ facts: [] })),
+      ]);
+      const entries: Array<{
+        id: string;
+        title: string;
+        category?: string;
+        contentMd?: string;
+        sectionId?: string;
+        fields?: Record<string, unknown>;
+        priorityTier?: "auto" | "core" | "relevant" | "reference";
+        relatedEntryIds?: string[];
+        aliases?: string[];
+        visibility?: "global" | "tracked" | "nested";
+        visibleAfterChapter?: number | null;
+        visibleUntilChapter?: number | null;
+        parentId?: string | null;
+        status?: string;
+        layer?: string;
+        version?: number;
+        updatedAt?: string;
+        conflictStatus?: string;
+        conflictDetail?: string;
+      }> = entRes?.entries ?? [];
+      const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
 
-        const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
-          id: `jingwei-entry:${e.id}`,
-          kind: "jingwei-entry" as const,
-          title: e.title,
-          content: e.contentMd ?? "",
-          capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-          metadata: {
-            entryId: e.id,
-            sectionId: e.sectionId,
-            isJingweiEntry: true,
-            category: e.category,
-            fields: e.fields,
-            priorityTier: e.priorityTier,
-            relatedEntryIds: e.relatedEntryIds,
-            status: e.status,
-            layer: e.layer,
-            version: e.version,
-            updatedAt: e.updatedAt,
-            conflictStatus: e.conflictStatus,
-            conflictDetail: e.conflictDetail,
-          },
-        });
-        const toMemoryFactNode = (fact: typeof memoryFacts[number]): WorkbenchResourceNode => ({
-          id: `memory-fact:${fact.id}`,
-          kind: "file" as const,
-          title: fact.subject,
-          content: fact.object,
-          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-          metadata: { isNarrativeMemoryEntry: true, category: fact.category, sourceId: fact.sourceId, predicate: fact.predicate, evidenceText: fact.evidenceText },
-        });
+      const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
+        id: `jingwei-entry:${e.id}`,
+        kind: "jingwei-entry" as const,
+        title: e.title,
+        content: e.contentMd ?? "",
+        capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+        metadata: {
+          entryId: e.id,
+          sectionId: e.sectionId,
+          isJingweiEntry: true,
+          category: e.category,
+          fields: e.fields,
+          priorityTier: e.priorityTier,
+          relatedEntryIds: e.relatedEntryIds,
+          aliases: e.aliases,
+          visibility: e.visibility,
+          visibleAfterChapter: e.visibleAfterChapter,
+          visibleUntilChapter: e.visibleUntilChapter,
+          parentId: e.parentId,
+          status: e.status,
+          layer: e.layer,
+          version: e.version,
+          updatedAt: e.updatedAt,
+          conflictStatus: e.conflictStatus,
+          conflictDetail: e.conflictDetail,
+        },
+      });
+      const toMemoryFactNode = (fact: typeof memoryFacts[number]): WorkbenchResourceNode => ({
+        id: `memory-fact:${fact.id}`,
+        kind: "file" as const,
+        title: fact.subject,
+        content: fact.object,
+        capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        metadata: { isNarrativeMemoryEntry: true, category: fact.category, sourceId: fact.sourceId, predicate: fact.predicate, evidenceText: fact.evidenceText },
+      });
 
-        // 设定分区：层级归属由 CATEGORY_META.defaultLayer 表态（见 lore-workspace-split）
-        const nodes: WorkbenchResourceNode[] = groupEntriesByCategory(entries, "settings")
-          .map(group => ({
-            id: `jingwei-cat:${group.category}`,
-            kind: "group" as const,
-            title: `${group.name} (${group.entries.length})`,
-            capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-            metadata: { category: group.category },
-            children: group.entries.map(e => toEntryNode(e)),
-          }));
-        const factsByCategory = new Map<string, typeof memoryFacts>();
-        for (const fact of memoryFacts) {
-          const bucket = factsByCategory.get(fact.category);
-          if (bucket) bucket.push(fact);
-          else factsByCategory.set(fact.category, [fact]);
-        }
-        const memoryNodes: WorkbenchResourceNode[] = [...factsByCategory.entries()]
-          .sort(([a], [b]) => memoryFactLabel(a).localeCompare(memoryFactLabel(b), "zh-CN"))
-          .map(([category, facts]) => ({
-            id: `memory-cat:${category}`,
-            kind: "group" as const,
-            title: `${memoryFactLabel(category)} (${facts.length})`,
-            capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-            metadata: { category, isNarrativeMemoryEntry: true },
-            children: facts.map((fact) => toMemoryFactNode(fact)),
-          }));
-        setJingweiSections(nodes);
-        setNarrativeMemorySections(memoryNodes);
-      } catch {
-        if (!cancelled) {
-          setJingweiSections([]);
-          setNarrativeMemorySections([]);
-        }
+      // 经纬树分「设定」+「推进」两分区：层级归属由 CATEGORY_META.defaultLayer
+      // 表态（见 lore-workspace-split）。动态分类（卷纲/伏笔/章摘要等）进「推进」，
+      // 不混叙事记忆；一键修跳 outline 也定位到这里。
+      const toCategoryNode = (group: { category: string; name: string; entries: typeof entries }): WorkbenchResourceNode => ({
+        id: `jingwei-cat:${group.category}`,
+        kind: "group" as const,
+        title: `${group.name} (${group.entries.length})`,
+        capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        metadata: { category: group.category },
+        children: group.entries.map((e) => toEntryNode(e)),
+      });
+      const settingsGroups = groupEntriesByCategory(entries, "settings");
+      const progressGroups = groupEntriesByCategory(entries, "progress");
+      const nodes: WorkbenchResourceNode[] = [
+        ...(settingsGroups.length > 0 ? [{
+          id: "jingwei-workspace-settings",
+          kind: "group" as const,
+          title: "设定",
+          capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { workspace: "settings" as const },
+          children: settingsGroups.map((g) => toCategoryNode({ category: g.category, name: g.name, entries: g.entries as typeof entries })),
+        } satisfies WorkbenchResourceNode] : []),
+        ...(progressGroups.length > 0 ? [{
+          id: "jingwei-workspace-progress",
+          kind: "group" as const,
+          title: "推进",
+          capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { workspace: "progress" as const },
+          children: progressGroups.map((g) => toCategoryNode({ category: g.category, name: g.name, entries: g.entries as typeof entries })),
+        } satisfies WorkbenchResourceNode] : []),
+      ];
+      const factsByCategory = new Map<string, typeof memoryFacts>();
+      for (const fact of memoryFacts) {
+        const bucket = factsByCategory.get(fact.category);
+        if (bucket) bucket.push(fact);
+        else factsByCategory.set(fact.category, [fact]);
       }
-    })();
-    return () => { cancelled = true; };
+      const memoryNodes: WorkbenchResourceNode[] = [...factsByCategory.entries()]
+        .sort(([a], [b]) => memoryFactLabel(a).localeCompare(memoryFactLabel(b), "zh-CN"))
+        .map(([category, facts]) => ({
+          id: `memory-cat:${category}`,
+          kind: "group" as const,
+          title: `${memoryFactLabel(category)} (${facts.length})`,
+          capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { category, isNarrativeMemoryEntry: true },
+          children: facts.map((fact) => toMemoryFactNode(fact)),
+        }));
+      setJingweiSections(nodes);
+      setNarrativeMemorySections(memoryNodes);
+    } catch {
+      setJingweiSections([]);
+      setNarrativeMemorySections([]);
+    }
   }, [bookId, runtimeFetch]);
+
+  useEffect(() => {
+    void loadLoreSections();
+  }, [loadLoreSections]);
 
   // Runtime books use the same bound, server-authorized IDE filesystem gateway
   // as standalone books. The semantic workspace resources remain available to
@@ -412,9 +427,8 @@ export function IdeWorkbench({
     narrativeMemorySections.forEach(walk);
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
-    if (bookId) map.set("jingwei-workspace", createJingweiWorkspaceNode(bookId));
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, bookId]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -483,20 +497,6 @@ export function IdeWorkbench({
   }, [ideTabs.closeTab, confirmDialog]);
 
   const handleOpen = useCallback((node: WorkbenchResourceNode) => {
-    // 经纬只有一个完整工作区。分类树、搜索和关联跳转都只更新它的定位目标，
-    // 不再为同一份 SQLite 数据另开第二套条目编辑前端。
-    if (node.kind === "jingwei-entry" && bookId) {
-      const category = typeof node.metadata?.category === "string" ? node.metadata.category : undefined;
-      const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
-      const workspace = createJingweiWorkspaceNode(bookId, category, entryId);
-      setLoadedFiles((previous) => new Map(previous).set(workspace.id, workspace));
-      showPanel("jingwei");
-      setSidebarVisible(true);
-      ideTabsRef.current.openTab(workspace.id, workspace.title, "other", "jingwei");
-      onOpen(workspace);
-      return;
-    }
-
     // 文件树节点：先加载内容
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
@@ -527,22 +527,12 @@ export function IdeWorkbench({
     }
     // 搜索/结算历史生成的叙事记忆详情节点不在静态资源树中；缓存完整节点，
     // 否则 Tab 虽会激活，但 activeNode 无法解析，画布仍停留在旧面板而显示空白。
-    if (node.metadata?.isNarrativeMemoryEntry === true) {
+    if (node.metadata?.isNarrativeMemoryEntry === true || node.kind === "jingwei-entry") {
       setLoadedFiles((previous) => new Map(previous).set(node.id, node));
     }
     if (node.capabilities.open) ideTabsRef.current.openTab(node.id, node.title, toTabKind(node), toTabView(node));
     onOpen(node);
   }, [onOpen, bookId, showPanel]);
-
-  const openJingweiWorkspace = useCallback((category?: string, entryId?: string) => {
-    if (!bookId) return;
-    const workspace = createJingweiWorkspaceNode(bookId, category, entryId);
-    setLoadedFiles((previous) => new Map(previous).set(workspace.id, workspace));
-    showPanel("jingwei");
-    setSidebarVisible(true);
-    ideTabsRef.current.openTab(workspace.id, workspace.title, "other", "jingwei");
-    onOpen(workspace);
-  }, [bookId, onOpen, showPanel]);
 
   const handleOpenJingweiEntry = useCallback((entryId: string): boolean => {
     const findEntry = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -623,25 +613,45 @@ export function IdeWorkbench({
   const jingweiActions = useMemo(() => {
     if (!bookId) return undefined;
     return {
-      onSave: async (entryId: string, payload: { title: string; contentMd: string; priorityTier?: "auto" | "core" | "relevant" | "reference" }) => {
+      onSave: async (entryId: string, payload: JingweiEntrySavePayload) => {
+        const body: Record<string, unknown> = {
+          title: payload.title,
+          contentMd: payload.contentMd,
+        };
+        if (payload.priorityTier !== undefined) body.priorityTier = payload.priorityTier;
+        if (payload.layer !== undefined) body.layer = payload.layer;
+        if (payload.status !== undefined) body.status = payload.status;
+        if (payload.category !== undefined) body.category = payload.category;
+        if (payload.aliases !== undefined) body.aliases = payload.aliases;
+        if (payload.relatedEntryIds !== undefined) body.relatedEntryIds = payload.relatedEntryIds;
+        if (payload.visibility !== undefined || payload.visibleAfterChapter !== undefined || payload.visibleUntilChapter !== undefined) {
+          body.visibilityRule = {
+            type: payload.visibility ?? "tracked",
+            ...(payload.visibleAfterChapter != null ? { visibleAfterChapter: payload.visibleAfterChapter } : {}),
+            ...(payload.visibleUntilChapter != null ? { visibleUntilChapter: payload.visibleUntilChapter } : {}),
+          };
+        }
         const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(body),
         });
         if (!response.ok) {
           const data = await response.json().catch(() => null) as { error?: { message?: string } } | null;
           throw new Error(data?.error?.message ?? `经纬保存失败（${response.status}）`);
         }
+        // 保存后刷新侧栏树，避免改分类/状态/层级后树漂移
+        void loadLoreSections();
       },
       onDelete: async (entryId: string) => {
         const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`, {
           method: "DELETE",
         });
         if (!response.ok) throw new Error(`经纬删除失败（${response.status}）`);
+        void loadLoreSections();
       },
     };
-  }, [bookId]);
+  }, [bookId, loadLoreSections]);
 
   // ── 面包屑导航 ──
   const handleBreadcrumbNavigate = useCallback((segment: string, index: number) => {
@@ -685,13 +695,9 @@ export function IdeWorkbench({
       setSidebarVisible(false);
       return;
     }
-    if (view === "jingwei") {
-      openJingweiWorkspace();
-      return;
-    }
     showPanel(view as ViewId);
     setSidebarVisible(true);
-  }, [activeView, sidebarVisible, showPanel, openJingweiWorkspace]);
+  }, [activeView, sidebarVisible, showPanel]);
 
   // ── 写作视图：只读就绪查询 + 少数一键修工具 ──
   const writeViewCallTool = useCallback(async (tool: string, input: Record<string, unknown>) => {
@@ -768,16 +774,28 @@ export function IdeWorkbench({
   }, []);
 
   /**
-   * 写作视图「一键修」→ 打开经纬完整面板并定位分类。
+   * 写作视图「一键修」→ 切到侧栏经纬视图并定位分类。
    *
-   * preflight 的 currentFocus 来自经纬 SQLite（category focus/current-focus/outline），
-   * 而侧栏经纬树只挂静态设定层（outline 是 dynamic，压根不在树里），
-   * 所以这里走完整面板而不是切侧栏视图。
+   * 侧栏经纬树分「设定」「推进」两个顶层分区（见 loadLoreSections），
+   * 动态分类（outline 卷纲等）在「推进」分区下，同样可定位。
    */
   const handleOpenLorePanel = useCallback((category?: string) => {
     setShowSettings(false);
-    openJingweiWorkspace(category);
-  }, [openJingweiWorkspace]);
+    showPanel("jingwei");
+    setSidebarVisible(true);
+    if (category) {
+      const findCategory = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
+        for (const item of items) {
+          if (item.metadata?.category === category) return item;
+          const nested = item.children ? findCategory(item.children) : null;
+          if (nested) return nested;
+        }
+        return null;
+      };
+      const target = findCategory(jingweiSections);
+      if (target) onOpen(target);
+    }
+  }, [showPanel, jingweiSections, onOpen]);
 
   // ── 快捷键系统 ──
   const keybindingActions = useMemo(() => ({
@@ -1113,16 +1131,20 @@ export function IdeWorkbench({
                 getContainer("explorer")!
               )}
               {panelsReady && getContainer("jingwei") && createPortal(
-                <div className="flex h-full flex-col items-center justify-center gap-3 p-4 text-center">
-                  <Scroll className="size-6 text-muted-foreground" />
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium text-foreground">经纬工作区已在主编辑区打开</p>
-                    <p className="text-[10px] leading-relaxed text-muted-foreground">分类、条目、搜索、导入和 AI 视角统一使用完整经纬界面。</p>
-                  </div>
-                  <button type="button" className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90" onClick={() => openJingweiWorkspace()}>
-                    打开经纬
-                  </button>
-                </div>,
+                bookId
+                  ? <div className="flex h-full flex-col">
+                      <JingweiSidebarToolbar bookId={bookId} onChanged={() => void loadLoreSections()} />
+                      <WorkbenchResourceTree
+                        nodes={jingweiSections}
+                        selectedNodeId={activeNode?.id ?? null}
+                        onOpen={handleOpen}
+                        onAction={handleResourceAction}
+                        sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:jingwei`}
+                      />
+                    </div>
+                  : <div className="flex h-full items-center justify-center p-4 text-center">
+                      <span className="text-xs text-muted-foreground">先打开一本书，再回到经纬。</span>
+                    </div>,
                 getContainer("jingwei")!
               )}
               {/*

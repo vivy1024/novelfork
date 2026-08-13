@@ -89,6 +89,9 @@ async function collectSkillFiles(dir: string, base: string): Promise<Record<stri
 async function collectBuiltinSkills(): Promise<ReadonlyArray<BundledEntry>> {
   const skills: BundledEntry[] = [];
   for (const slug of await readDirSafe(SKILLS_ROOT)) {
+    // 只打包 NovelFork 自研 nf- 技能。外部聚合技能（无 nf- 前缀）保留在仓库
+    // 作为市场下载源，不进 EXE，规避 UNSPECIFIED / CC-BY-NC-SA 许可证风险。
+    if (!slug.startsWith("nf-")) continue;
     const skillDir = join(SKILLS_ROOT, slug);
     const content = await readFileSafe(join(skillDir, "SKILL.md"));
     if (!content) continue;

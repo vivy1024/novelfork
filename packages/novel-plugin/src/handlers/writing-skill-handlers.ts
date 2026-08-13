@@ -205,6 +205,10 @@ function toListItem(skill: ParsedWritingSkill, projectActive: boolean) {
   };
 }
 
+/**
+ * 技能来源说明：当前为本地自研体系（content/builtins 全量预置 + 作品目录 .novelfork/skills 启用物化）。
+ * 在线技能市场（用户间分享 / 按需下载外部技能）为后续规划，届时本模块需扩展远端来源与下载同步逻辑。
+ */
 export async function handleWritingSkillsRead(
   input: WritingSkillsReadInput,
   options: TrustedWritingSkillOptions,

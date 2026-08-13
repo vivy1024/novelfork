@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
@@ -10,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
-  Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw,
+  Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw, X,
 } from "lucide-react";
+import { CATEGORY_SCHEMAS } from "./jingwei/category-schemas";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -30,6 +32,11 @@ export interface JingweiEntryData {
   layer?: string;
   version?: number;
   relatedEntryIds?: string[];
+  aliases?: string[];
+  visibility?: "global" | "tracked" | "nested";
+  visibleAfterChapter?: number | null;
+  visibleUntilChapter?: number | null;
+  parentId?: string | null;
   /** @deprecated 历史 Tab 只读取 jingwei_revision API。 */
   revisionHistory?: JingweiRevision[];
   conflictStatus?: "none" | "pending" | "resolved";
@@ -67,12 +74,26 @@ interface RevisionRecord {
   created_at: number;
 }
 
+export interface JingweiEntrySavePayload {
+  title: string;
+  contentMd: string;
+  priorityTier?: JingweiPriorityTier;
+  layer?: string;
+  status?: string;
+  category?: string;
+  aliases?: string[];
+  relatedEntryIds?: string[];
+  visibility?: "global" | "tracked" | "nested";
+  visibleAfterChapter?: number | null;
+  visibleUntilChapter?: number | null;
+}
+
 export interface JingweiEntryEditorProps {
   entry: JingweiEntryData;
   bookId?: string;
   sectionLabel?: string;
   sourceLabel?: string;
-  onSave: (entryId: string, payload: { title: string; contentMd: string; priorityTier?: JingweiPriorityTier }) => Promise<void>;
+  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
   /** 关联条目列表（由父组件解析 ID → 标题后传入） */
   relatedEntries?: RelatedEntryItem[];
@@ -119,12 +140,24 @@ export function JingweiEntryEditor({
   relatedEntries,
   onNavigateToEntry,
 }: JingweiEntryEditorProps) {
+  const isJingweiEntry = sourceLabel === "经纬资料";
   const [title, setTitle] = useState(entry.title);
   const [content, setContent] = useState(entry.contentMd);
   const [priorityTier, setPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
+  const [layer, setLayer] = useState<string>(entry.layer ?? "dynamic");
+  const [visibility, setVisibility] = useState<"global" | "tracked" | "nested">(entry.visibility ?? "tracked");
+  const [status, setStatus] = useState<string>(entry.status ?? "confirmed");
+  const [category, setCategory] = useState<string>(entry.category ?? "unclassified");
+  const [aliases, setAliases] = useState<string[]>(entry.aliases ?? []);
+  const [aliasInput, setAliasInput] = useState("");
   const [savedTitle, setSavedTitle] = useState(entry.title);
   const [savedContent, setSavedContent] = useState(entry.contentMd);
   const [savedPriorityTier, setSavedPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
+  const [savedLayer, setSavedLayer] = useState<string>(entry.layer ?? "dynamic");
+  const [savedVisibility, setSavedVisibility] = useState<"global" | "tracked" | "nested">(entry.visibility ?? "tracked");
+  const [savedStatus, setSavedStatus] = useState<string>(entry.status ?? "confirmed");
+  const [savedCategory, setSavedCategory] = useState<string>(entry.category ?? "unclassified");
+  const [savedAliases, setSavedAliases] = useState<string[]>(entry.aliases ?? []);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -135,11 +168,19 @@ export function JingweiEntryEditor({
   const [revisionLoading, setRevisionLoading] = useState(false);
   const [revisionError, setRevisionError] = useState<string | null>(null);
   const [resolvedRelatedEntries, setResolvedRelatedEntries] = useState<RelatedEntryItem[]>([]);
+  const [relatedEntryIds, setRelatedEntryIds] = useState<string[]>(entry.relatedEntryIds ?? []);
+  const [savedRelatedEntryIds, setSavedRelatedEntryIds] = useState<string[]>(entry.relatedEntryIds ?? []);
+  const [relationSearch, setRelationSearch] = useState("");
+  const [relationSearchResults, setRelationSearchResults] = useState<RelatedEntryItem[]>([]);
+  const [relationAdding, setRelationAdding] = useState(false);
   const [conflictStatus, setConflictStatus] = useState(entry.conflictStatus ?? "none");
   const [conflictDetail, setConflictDetail] = useState(entry.conflictDetail);
   const [revertingRevisionId, setRevertingRevisionId] = useState<string | null>(null);
 
-  const dirty = title !== savedTitle || content !== savedContent || priorityTier !== savedPriorityTier;
+  const dirty = title !== savedTitle || content !== savedContent || priorityTier !== savedPriorityTier
+    || layer !== savedLayer || visibility !== savedVisibility || status !== savedStatus
+    || category !== savedCategory || aliases.join("\u0000") !== savedAliases.join("\u0000")
+    || relatedEntryIds.join("\u0000") !== savedRelatedEntryIds.join("\u0000");
   const relationItems = relatedEntries && relatedEntries.length > 0 ? relatedEntries : resolvedRelatedEntries;
   const historyCount = revisionRecords.length;
   const relatedEntryIdsKey = (entry.relatedEntryIds ?? []).join("\u0000");
@@ -195,9 +236,25 @@ export function JingweiEntryEditor({
     setTitle(entry.title);
     setContent(entry.contentMd);
     setPriorityTier(entry.priorityTier ?? "auto");
+    setLayer(entry.layer ?? "dynamic");
+    setVisibility(entry.visibility ?? "tracked");
+    setStatus(entry.status ?? "confirmed");
+    setCategory(entry.category ?? "unclassified");
+    setAliases(entry.aliases ?? []);
+    setRelatedEntryIds(entry.relatedEntryIds ?? []);
     setSavedTitle(entry.title);
     setSavedContent(entry.contentMd);
     setSavedPriorityTier(entry.priorityTier ?? "auto");
+    setSavedLayer(entry.layer ?? "dynamic");
+    setSavedVisibility(entry.visibility ?? "tracked");
+    setSavedStatus(entry.status ?? "confirmed");
+    setSavedCategory(entry.category ?? "unclassified");
+    setSavedAliases(entry.aliases ?? []);
+    setSavedRelatedEntryIds(entry.relatedEntryIds ?? []);
+    setAliasInput("");
+    setRelationSearch("");
+    setRelationAdding(false);
+    setRelationSearchResults([]);
     setPreviewMode(false);
     setConfirmDelete(false);
     setError(null);
@@ -206,7 +263,7 @@ export function JingweiEntryEditor({
     setConflictDetail(entry.conflictDetail);
   }, [entry.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function loadRevisions(): Promise<void> {
+  async function loadRevisions(isStale: () => boolean = () => false): Promise<void> {
     if (!bookId) {
       setRevisionRecords([]);
       return;
@@ -214,15 +271,18 @@ export function JingweiEntryEditor({
     setRevisionLoading(true);
     setRevisionError(null);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/revisions`);
-      if (!response.ok) throw new Error(`历史加载失败（${response.status}）`);
-      const data = await response.json() as { revisions?: RevisionRecord[] };
+      const data = await fetchJson<{ revisions?: RevisionRecord[] }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/revisions`,
+      );
+      if (isStale()) return;
       setRevisionRecords(Array.isArray(data.revisions) ? data.revisions : []);
     } catch (cause) {
+      if (isStale()) return;
       setRevisionRecords([]);
-      setRevisionError(cause instanceof Error ? cause.message : "历史加载失败");
+      const status = cause instanceof ApiRequestError ? cause.status : undefined;
+      setRevisionError(status ? `历史加载失败（${status}）` : cause instanceof Error ? cause.message : "历史加载失败");
     } finally {
-      setRevisionLoading(false);
+      if (!isStale()) setRevisionLoading(false);
     }
   }
 
@@ -234,10 +294,9 @@ export function JingweiEntryEditor({
       return;
     }
     let cancelled = false;
-    void loadRevisions();
+    void loadRevisions(() => cancelled);
     const base = `/api/books/${encodeURIComponent(bookId)}/jingwei`;
-    void fetch(`${base}/entries`)
-      .then((response) => response.ok ? response.json() : { entries: [] })
+    void fetchJson<{ entries?: Array<Record<string, unknown>> }>(`${base}/entries`)
       .catch(() => ({ entries: [] }))
       .then((entriesData) => {
         if (cancelled) return;
@@ -266,10 +325,25 @@ export function JingweiEntryEditor({
     setSaving(true);
     setError(null);
     try {
-      await onSave(entry.id, { title: title.trim(), contentMd: content, priorityTier });
+      await onSave(entry.id, {
+        title: title.trim(),
+        contentMd: content,
+        priorityTier,
+        layer,
+        status,
+        category,
+        aliases,
+        relatedEntryIds,
+        visibility,
+      });
       setSavedTitle(title.trim());
       setSavedContent(content);
       setSavedPriorityTier(priorityTier);
+      setSavedLayer(layer);
+      setSavedStatus(status);
+      setSavedCategory(category);
+      setSavedAliases(aliases);
+      setSavedRelatedEntryIds(relatedEntryIds);
       await loadRevisions();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存失败");
@@ -297,13 +371,14 @@ export function JingweiEntryEditor({
     setRevertingRevisionId(revision.id);
     setError(null);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/revert`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ revisionId: revision.id }),
-      });
-      if (!response.ok) throw new Error("回滚失败");
-      const data = await response.json() as { entry?: JingweiEntryData };
+      const data = await fetchJson<{ entry?: JingweiEntryData }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entry.id)}/revert`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ revisionId: revision.id }),
+        },
+      );
       const restored = data.entry;
       const restoredTitle = restored?.title ?? revision.snapshot?.title ?? title;
       const restoredContent = restored?.contentMd ?? revision.snapshot?.contentMd ?? revision.content_md;
@@ -314,6 +389,11 @@ export function JingweiEntryEditor({
       setSavedTitle(restoredTitle);
       setSavedContent(restoredContent);
       setSavedPriorityTier(restoredPriority);
+      if (restored?.layer) { setLayer(restored.layer); setSavedLayer(restored.layer); }
+      if (restored?.status) { setStatus(restored.status); setSavedStatus(restored.status); }
+      if (restored?.category) { setCategory(restored.category); setSavedCategory(restored.category); }
+      if (Array.isArray(restored?.aliases)) { setAliases(restored.aliases); setSavedAliases(restored.aliases); }
+      if (Array.isArray(restored?.relatedEntryIds)) { setRelatedEntryIds(restored.relatedEntryIds); setSavedRelatedEntryIds(restored.relatedEntryIds); }
       setConflictStatus(restored?.conflictStatus ?? "none");
       setConflictDetail(restored?.conflictDetail);
       await loadRevisions();
@@ -364,22 +444,71 @@ export function JingweiEntryEditor({
 
       {/* ─── Tab: 关联 ──────────────────────────────────────────────── */}
       {activeTab === "relations" && (
-        <div className="py-4 px-1">
+        <div className="py-4 px-1 space-y-3">
+          {isJingweiEntry && (
+            <div className="flex items-center gap-2">
+              <Button size="xs" variant="outline" onClick={() => setRelationAdding((v) => !v)}>
+                <Link2 className="size-3 mr-1" />{relationAdding ? "取消" : "添加关联"}
+              </Button>
+              <span className="text-[10px] text-muted-foreground">关联写回条目字段，AI 注入上下文时会一并带上关联条目</span>
+            </div>
+          )}
+          {isJingweiEntry && relationAdding && (
+            <div className="space-y-1 rounded-md border border-border p-2">
+              <Input
+                value={relationSearch}
+                onChange={(e) => {
+                  const q = e.target.value;
+                  setRelationSearch(q);
+                  if (!q.trim() || !bookId) { setRelationSearchResults([]); return; }
+                  fetchJson<{ results?: RelatedEntryItem[] }>(`/api/books/${encodeURIComponent(bookId)}/jingwei/search?q=${encodeURIComponent(q)}`)
+                    .then((d) => setRelationSearchResults((Array.isArray(d.results) ? d.results : []).filter((item) => item.id !== entry.id).slice(0, 8)))
+                    .catch(() => setRelationSearchResults([]));
+                }}
+                placeholder="搜索要关联的条目…"
+                className="h-7 text-xs"
+                autoFocus
+              />
+              {relationSearchResults.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (!relatedEntryIds.includes(item.id)) setRelatedEntryIds((prev) => [...prev, item.id]);
+                    setRelationSearch("");
+                    setRelationSearchResults([]);
+                    setRelationAdding(false);
+                  }}
+                  className="block w-full text-left text-xs px-2 py-1 rounded hover:bg-muted"
+                >
+                  {item.title}
+                </button>
+              ))}
+            </div>
+          )}
           {relationItems.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {relationItems.map((re) => (
-                <button
+                <span
                   key={re.id}
-                  type="button"
-                  onClick={() => onNavigateToEntry?.(re.id)}
                   className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs
-                             bg-secondary text-secondary-foreground hover:bg-secondary/80
-                             transition-colors cursor-pointer border border-border"
-                  title={`跳转到「${re.title}」`}
+                             bg-secondary text-secondary-foreground border border-border"
                 >
-                  <Link2 className="size-3 opacity-60" />
-                  {re.title}
-                </button>
+                  <button type="button" onClick={() => onNavigateToEntry?.(re.id)} className="inline-flex items-center gap-1 hover:underline" title={`跳转到「${re.title}」`}>
+                    <Link2 className="size-3 opacity-60" />
+                    {re.title}
+                  </button>
+                  {isJingweiEntry && (
+                    <button
+                      type="button"
+                      onClick={() => setRelatedEntryIds((prev) => prev.filter((id) => id !== re.id))}
+                      className="text-muted-foreground hover:text-destructive"
+                      title="移除关联"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </span>
               ))}
             </div>
           ) : (
@@ -496,6 +625,95 @@ export function JingweiEntryEditor({
             </Select>
             <p className="mt-1 text-[10px] text-muted-foreground">核心条目始终被 Agent 看到；参考条目仅在 full 模式下注入。</p>
           </div>
+
+          {isJingweiEntry && (
+            <>
+              {/* 分类 / 层级 / 可见性 / 状态 */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">分类</label>
+                  <Select value={category} onValueChange={(value) => setCategory(value)}>
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="选择分类" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CATEGORY_SCHEMAS.map((schema) => (
+                        <SelectItem key={schema.id} value={schema.id}>{schema.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">层级</label>
+                  <Select value={layer} onValueChange={(value) => setLayer(value)}>
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="选择层级" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="canon">Canon（权威设定）</SelectItem>
+                      <SelectItem value="dynamic">Dynamic（随剧情推进）</SelectItem>
+                      <SelectItem value="reference">Reference（参考）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">可见性</label>
+                  <Select value={visibility} onValueChange={(value) => setVisibility(value as "global" | "tracked" | "nested")}>
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="选择可见性" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="global">全局（始终可见）</SelectItem>
+                      <SelectItem value="tracked">追踪（按章节窗口）</SelectItem>
+                      <SelectItem value="nested">嵌套（随父条目）</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="text-xs text-muted-foreground mb-1 block">状态</label>
+                  <Select value={status} onValueChange={(value) => setStatus(value)}>
+                    <SelectTrigger className="w-full h-8 text-xs">
+                      <SelectValue placeholder="选择状态" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="confirmed">已确认</SelectItem>
+                      <SelectItem value="draft">未确认</SelectItem>
+                      <SelectItem value="needs-review">需审查</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* 别名 */}
+              <div>
+                <label className="text-xs text-muted-foreground mb-1 block">别名</label>
+                <div className="flex flex-wrap items-center gap-1 rounded-md border border-input bg-background px-2 py-1.5">
+                  {aliases.map((alias, index) => (
+                    <Badge key={`${alias}-${index}`} variant="secondary" className="text-[10px] gap-0.5 pr-1">
+                      {alias}
+                      <button type="button" onClick={() => setAliases((prev) => prev.filter((_, i) => i !== index))} className="ml-0.5 hover:text-destructive">
+                        <X className="size-2.5" />
+                      </button>
+                    </Badge>
+                  ))}
+                  <Input
+                    value={aliasInput}
+                    onChange={(e) => setAliasInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && aliasInput.trim()) {
+                        setAliases((prev) => [...prev, aliasInput.trim()]);
+                        setAliasInput("");
+                        e.preventDefault();
+                      }
+                    }}
+                    placeholder={aliases.length === 0 ? "回车添加别名" : "添加…"}
+                    className="h-6 w-28 text-[10px] border-none bg-transparent px-1 focus-visible:ring-0"
+                  />
+                </div>
+                <p className="mt-1 text-[10px] text-muted-foreground">别名用于经纬检索召回，多个别名回车分隔。</p>
+              </div>
+            </>
+          )}
 
           {/* 操作栏 */}
           <div className="flex items-center gap-2">

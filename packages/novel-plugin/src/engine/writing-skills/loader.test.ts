@@ -64,9 +64,9 @@ describe("writing skill loader", () => {
   it("拒绝越界 slug，且内置 bundle 可作为单一 fallback", () => {
     expect(parseWritingSkill(validSkill("越界"), "../escape", "user")).toBeNull();
     expect(getWritingSkillRawContentSync("../golden-opening")).toBeNull();
-    expect(getWritingSkillRawContentSync("golden-opening")).toContain("# 黄金三章");
+    expect(getWritingSkillRawContentSync("nf-golden-opening")).toContain("# 黄金三章");
 
     const skills = loadWritingSkillsSync();
-    expect(skills.some((skill) => skill.slug === "worldwonderer--story-review" && skill.provenance?.repo)).toBe(true);
+    expect(skills.some((skill) => skill.slug === "nf-worldwonderer--story-review" && skill.provenance?.repo)).toBe(true);
   });
 });

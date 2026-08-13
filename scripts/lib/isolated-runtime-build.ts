@@ -820,15 +820,28 @@ function cleanupIsolatedRuntimeWorkspace(workspaceRoot: string): void {
 	}
 }
 
+/**
+ * 隔离 Runtime 构建的临时工作目录。
+ * 默认使用仓库内 .build-tmp/（与代码同盘，避免系统盘空间不足）；
+ * 可用 NOVELFORK_BUILD_TEMP_DIR 覆盖（测试与特殊环境用）。
+ */
+export function isolatedRuntimeBuildTempDir(): string {
+	const override = process.env.NOVELFORK_BUILD_TEMP_DIR?.trim();
+	if (override) return resolve(override);
+	// 脚本位于 scripts/lib/，向上两级即仓库根。
+	return resolve(join(import.meta.dir, "..", "..", ".build-tmp"));
+}
+
 export async function createIsolatedRuntimeBuild(
 	sourceRuntimeRoot: string,
 ): Promise<IsolatedRuntimeBuild> {
 	assertRequiredRuntimeBunVersion();
 	const sourceRoot = resolve(sourceRuntimeRoot);
 	assertRuntimeSource(sourceRoot);
-	assertSufficientTemporaryDiskSpace();
+	const buildTempDir = isolatedRuntimeBuildTempDir();
+	assertSufficientTemporaryDiskSpace(buildTempDir);
 
-	const workspaceRoot = mkdtempSync(join(tmpdir(), "novelfork-product-runtime-"));
+	const workspaceRoot = mkdtempSync(join(buildTempDir, "novelfork-product-runtime-"));
 	let disposed = false;
 	try {
 		const root = copyIsolatedProductWorkspace(sourceRoot, workspaceRoot);

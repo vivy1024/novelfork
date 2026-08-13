@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import type { ReactNode } from "react";
 
 /**
  * Writing Skills 的作用域行为与文案。
@@ -12,6 +14,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * 这里用**真实的 useApi**、只替换全局 fetch —— mock 掉 useApi 会把
  * 「切 path 时旧 data 是否残留」这一关键行为一起 mock 掉，测试就失去意义。
  */
+
+// useApi 内部走 react-query，渲染前需要 provider。测试专用 client，关闭重试与缓存残留。
+const testQueryClient = new QueryClient({
+  defaultOptions: { queries: { retry: false, staleTime: 0, gcTime: 0 } },
+});
+function Providers({ children }: { children: ReactNode }) {
+  return <QueryClientProvider client={testQueryClient}>{children}</QueryClientProvider>;
+}
 
 /** bookId → 该项目磁盘中已发现的 skill slugs（充当服务端 `.novelfork/skills/` 扫描结果）。 */
 const projectEnabled: Record<string, string[]> = {};
@@ -33,6 +43,7 @@ function jsonResponse(body: unknown): Response {
 beforeEach(async () => {
   for (const key of Object.keys(projectEnabled)) delete projectEnabled[key];
   putCalls.length = 0;
+  testQueryClient.clear();
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
@@ -82,7 +93,7 @@ describe("WritingSkillsPanel 的作用域文案", () => {
     const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
 
     projectEnabled["book-a"] = ["a", "b"];
-    render(<WritingSkillsPanel bookId="book-a" />);
+    render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
 
     const hint = await waitFor(() => screen.getByTestId("writing-skills-scope-hint"));
     expect(hint.textContent).toContain("只对当前作品生效");
@@ -98,7 +109,7 @@ describe("WritingSkillsPanel 的作用域文案", () => {
     projectEnabled["book-a"] = ["a", "b"];
     projectEnabled["book-b"] = ["a"];
 
-    const view = render(<WritingSkillsPanel bookId="book-a" />);
+    const view = render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 2 个"));
 
     view.rerender(<WritingSkillsPanel bookId="book-b" />);
@@ -114,7 +125,7 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     projectEnabled["book-a"] = ["a", "b"];
     projectEnabled["book-b"] = [];
 
-    const view = render(<WritingSkillsPanel bookId="book-a" />);
+    const view = render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await waitFor(() => expect(enabledSkillNames(view.container).sort()).toEqual(["技能A", "技能B"]));
 
     // 切书：同一个组件实例换 bookId，与工作台切书的行为一致
@@ -129,7 +140,7 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     projectEnabled["book-a"] = ["a", "b"];
     projectEnabled["book-b"] = [];
 
-    const view = render(<WritingSkillsPanel bookId="book-a" />);
+    const view = render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await waitFor(() => expect(enabledSkillNames(view.container).sort()).toEqual(["技能A", "技能B"]));
 
     view.rerender(<WritingSkillsPanel bookId="book-b" />);
@@ -153,13 +164,13 @@ describe("WritingSkillsPanel 的书籍级隔离", () => {
     projectEnabled["book-a"] = ["b"];
     projectEnabled["book-b"] = [];
 
-    const view = render(<WritingSkillsPanel bookId="book-a" />);
+    const view = render(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await waitFor(() => expect(enabledSkillNames(view.container)).toEqual(["技能B"]));
 
     view.rerender(<WritingSkillsPanel bookId="book-b" />);
     await waitFor(() => expect(enabledSkillNames(view.container)).toEqual([]));
 
-    view.rerender(<WritingSkillsPanel bookId="book-a" />);
+    view.rerender(<WritingSkillsPanel bookId="book-a" />, { wrapper: Providers });
     await waitFor(() => expect(enabledSkillNames(view.container)).toEqual(["技能B"]));
   });
 });
