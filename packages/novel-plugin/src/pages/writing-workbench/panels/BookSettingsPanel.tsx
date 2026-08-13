@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
+import { fetchJson } from "@/hooks/use-api";
 import { WritingSkillsPanel } from "../WritingSkillsPanel";
 import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
 
@@ -71,8 +72,7 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
     let cancelled = false;
     setConfigLoading(true);
     setConfigError(null);
-    fetch(`/api/books/${encodeURIComponent(bookId)}`)
-      .then((response) => { if (!response.ok) throw new Error("无法加载书籍配置"); return response.json(); })
+    fetchJson<Record<string, unknown>>(`/api/books/${encodeURIComponent(bookId)}`)
       .then((data) => {
         if (cancelled) return;
         const book = data && typeof data === "object" && "book" in data && data.book && typeof data.book === "object"
@@ -98,12 +98,11 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   const saveConfig = useCallback(async (partial: Partial<BookConfig>) => {
     setSaveStatus("saving");
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}`, {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(partial),
       });
-      if (!response.ok) throw new Error(await response.text());
       setSaveStatus("saved");
       setTimeout(() => setSaveStatus("idle"), 1500);
     } catch {

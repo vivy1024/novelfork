@@ -3,6 +3,7 @@
  * 使用 @xyflow/react 展示条目间的关系网络
  */
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { fetchJson } from "@/hooks/use-api";
 import {
   ReactFlow,
   Background,
@@ -128,11 +129,8 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideT
   useEffect(() => {
     async function fetchRelations() {
       try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/relations`);
-        if (res.ok) {
-          const data = await res.json();
-          setRelations(Array.isArray(data.relations) ? data.relations : []);
-        }
+        const data = await fetchJson<{ relations?: JingweiRelation[] }>(`/api/books/${encodeURIComponent(bookId)}/jingwei/relations`);
+        setRelations(Array.isArray(data.relations) ? data.relations : []);
       } catch { /* ignore */ }
     }
     void fetchRelations();
@@ -202,19 +200,19 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideT
   async function handleCreateRelation() {
     if (!connectDialog) return;
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/relations`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sourceEntryId: connectDialog.source,
-          targetEntryId: connectDialog.target,
-          relationType: newRelationType,
-        }),
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setRelations((prev) => [...prev, data.relation]);
-      }
+      const data = await fetchJson<{ relation: JingweiRelation }>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/relations`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sourceEntryId: connectDialog.source,
+            targetEntryId: connectDialog.target,
+            relationType: newRelationType,
+          }),
+        },
+      );
+      setRelations((prev) => [...prev, data.relation]);
     } catch { /* ignore */ }
     setConnectDialog(null);
     setNewRelationType("ally");
@@ -222,13 +220,11 @@ export function JingweiGraphView({ bookId, entries, category, onNodeClick, hideT
 
   async function handleDeleteRelation(relationId: string) {
     try {
-      const res = await fetch(
+      await fetchJson(
         `/api/books/${encodeURIComponent(bookId)}/jingwei/relations/${encodeURIComponent(relationId)}`,
         { method: "DELETE" },
       );
-      if (res.ok) {
-        setRelations((prev) => prev.filter((r) => r.id !== relationId));
-      }
+      setRelations((prev) => prev.filter((r) => r.id !== relationId));
     } catch { /* ignore */ }
   }
 

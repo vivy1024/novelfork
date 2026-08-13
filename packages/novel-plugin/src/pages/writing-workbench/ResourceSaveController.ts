@@ -1,4 +1,5 @@
 import type { ResourceDomainClient } from "@/app-next/backend-contract";
+import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 import { applyResourceDetailToNode, loadResourceDetailState, resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -109,18 +110,15 @@ async function saveJingweiEntryAndHydrate(resource: ResourceDomainClient, bookId
 async function saveFileTreeFile(bookId: string, node: WorkbenchResourceNode, content: string): Promise<WorkbenchResourceNode> {
   const filePath = metadataString(node, "filePath");
   if (!filePath) throw new Error("文件缺少路径，无法保存");
-  const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/files`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: filePath, content }),
-  });
-  if (!res.ok) {
-    let message = `文件保存失败 (${res.status})`;
-    try {
-      const data = await res.json() as { error?: string; message?: string };
-      message = data.error ?? data.message ?? message;
-    } catch { /* ignore */ }
-    throw new Error(message);
+  try {
+    await fetchJson(`/api/books/${encodeURIComponent(bookId)}/files`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: filePath, content }),
+    });
+  } catch (cause) {
+    const status = cause instanceof ApiRequestError ? cause.status : undefined;
+    throw new Error(status ? `文件保存失败 (${status})` : cause instanceof Error ? cause.message : "文件保存失败");
   }
   // 文件树文件不需要 hydrate，直接返回更新后的节点
   return { ...node, content };

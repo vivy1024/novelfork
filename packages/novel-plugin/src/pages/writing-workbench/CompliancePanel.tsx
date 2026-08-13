@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, AlertTriangle, Copy, Check, Search } from "lucide-react";
-import { postApi } from "@/hooks/use-api";
+import { postApi, fetchJson } from "@/hooks/use-api";
 
 type RiskStatus = "clear" | "warning" | "needs-review" | "unknown";
 
@@ -150,9 +150,9 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
     setScanError(null);
     setScanResult(null);
     try {
-      const chapterRes = await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters/${scanChapter}`);
-      if (!chapterRes.ok) throw new Error(`章节 ${scanChapter} 不存在`);
-      const chapterData = await chapterRes.json() as { content: string };
+      const chapterData = await fetchJson<{ content: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/chapters/${scanChapter}`,
+      );
       const scanRes = await postApi<{ report: ChapterScanResult }>("/api/filter/scan", { text: chapterData.content });
       setScanResult(scanRes.report);
     } catch (cause) {

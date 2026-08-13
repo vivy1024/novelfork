@@ -105,7 +105,7 @@ import {
 } from "../components/onboarding/GettingStartedChecklist";
 import { GuidedTour } from "../components/onboarding/GuidedTour";
 import { HOME_TOUR_STEPS } from "../components/onboarding/tour-steps";
-import { useApi } from "../hooks/use-api";
+import { useApi, fetchJson } from "../hooks/use-api";
 import { ToastContainer } from "../components/ui/toast";
 import {
   Dialog,
@@ -401,7 +401,7 @@ function HomeRouteLive({
             else onNavigate({ kind: "settings" });
           }}
           onDismiss={() => {
-            void fetch("/api/onboarding/status", {
+            void fetchJson("/api/onboarding/status", {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ dismissedGettingStarted: true }),

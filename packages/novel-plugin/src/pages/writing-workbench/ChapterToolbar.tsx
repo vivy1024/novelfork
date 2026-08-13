@@ -8,6 +8,7 @@ import { useState } from "react";
 import { ChevronUp, ChevronDown, Activity, Droplets, Play, Loader2, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/hooks/use-api";
 
 import { ChapterHealthCard } from "./ChapterHealthCard";
 
@@ -75,9 +76,10 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
     setDetecting(true);
     setDetectResult(null);
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/detect/${chapterNumber}`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+      const data = await fetchJson<{ score?: number; details?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/detect/${chapterNumber}`,
+        { method: "POST" },
+      );
       setDetectResult(data);
     } catch (err) {
       setDetectResult({ details: err instanceof Error ? err.message : "检测失败" });
@@ -91,9 +93,10 @@ export function ChapterToolbar({ bookId, chapterNumber }: ChapterToolbarProps) {
     setAuditing(true);
     setAuditResult(null);
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/audit/${chapterNumber}`, { method: "POST" });
-      const data = await res.json().catch(() => ({})) as AuditResult;
-      if (!res.ok) throw new Error(data.error ?? `HTTP ${res.status}`);
+      const data = await fetchJson<AuditResult>(
+        `/api/books/${encodeURIComponent(bookId)}/audit/${chapterNumber}`,
+        { method: "POST" },
+      );
       setAuditResult(data);
     } catch (err) {
       setAuditResult({ error: err instanceof Error ? err.message : "章节审计失败" });

@@ -3,9 +3,10 @@
  *
  * 展示 3 个 tab：知识边界、时间线、资源账本
  */
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApi } from "@/hooks/use-api";
 
 type TabId = "knowledge" | "timeline" | "resources";
 
@@ -49,24 +50,7 @@ const TABS: { id: TabId; label: string }[] = [
 
 export function RuntimeStatePanel({ bookId }: RuntimeStatePanelProps) {
   const [tab, setTab] = useState<TabId>("knowledge");
-  const [data, setData] = useState<RuntimeState | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setError(null);
-    fetch(`/api/books/${encodeURIComponent(bookId)}/state`)
-      .then(async (res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<RuntimeState>;
-      })
-      .then((d) => { if (!cancelled) setData(d); })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : "加载失败"); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [bookId]);
+  const { data, loading, error } = useApi<RuntimeState>(`/api/books/${encodeURIComponent(bookId)}/state`);
 
   if (loading) {
     return (

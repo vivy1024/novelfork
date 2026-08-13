@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { RefreshCw } from "lucide-react";
+import { fetchJson } from "@/hooks/use-api";
 
 export interface CollaborationSession {
   id: string;
@@ -57,9 +58,11 @@ function errorMessage(label: string): string {
 }
 
 async function readJson<T>(url: string, label: string): Promise<T> {
-  const response = await fetch(url);
-  if (!response.ok) throw new Error(errorMessage(label));
-  return response.json() as Promise<T>;
+  try {
+    return await fetchJson<T>(url);
+  } catch {
+    throw new Error(errorMessage(label));
+  }
 }
 
 function formatLastModified(value: string): string {

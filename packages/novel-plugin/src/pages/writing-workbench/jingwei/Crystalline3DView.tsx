@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Brain, Sparkles, ExternalLink, HelpCircle, Eye, Info, Database, Layers, Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { fetchJson } from "@/hooks/use-api";
 
 interface NarrativeFact {
   id: string;
@@ -115,11 +116,7 @@ export function Crystalline3DView({ bookId }: Crystalline3DViewProps) {
     setLoading(true);
     setError(null);
 
-    fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        return r.json() as Promise<{ facts: NarrativeFact[] }>;
-      })
+    fetchJson<{ facts: NarrativeFact[] }>(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`)
       .then((data) => {
         if (cancelled) return;
         const list = Array.isArray(data.facts) ? data.facts : [];
@@ -438,6 +435,9 @@ export function Crystalline3DView({ bookId }: Crystalline3DViewProps) {
   // 键盘左右方向键支持
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // 输入框/文本域内移动光标时不拦截方向键
+      const active = document.activeElement;
+      if (active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement) return;
       if (e.key === "ArrowLeft") {
         rotateCarousel("prev");
       } else if (e.key === "ArrowRight") {

@@ -1,6 +1,7 @@
 import "./index.css";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { RouterProvider } from "@tanstack/react-router";
 import { router } from "./app-next/router";
 import { StudioNextApp } from "./app-next";
@@ -8,6 +9,7 @@ import { RuntimeAuthGate } from "./app-next/p0/RuntimeAuthGate";
 import { installRuntimeAuthenticatedFetch } from "./app-next/runtime/auth";
 import { RuntimeLocaleDocumentSync } from "./app-next/runtime/locale";
 import { initTheme } from "./hooks/use-theme";
+import { queryClient } from "./lib/query-client";
 
 // Apply stored theme immediately to prevent flash and route every retained
 // NovelFork same-origin API call through Runtime authentication.
@@ -20,9 +22,11 @@ installRuntimeAuthenticatedFetch();
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RuntimeAuthGate>
-      <RuntimeLocaleDocumentSync />
-      <RouterProvider router={router} defaultComponent={StudioNextApp} />
-    </RuntimeAuthGate>
+    <QueryClientProvider client={queryClient}>
+      <RuntimeAuthGate>
+        <RuntimeLocaleDocumentSync />
+        <RouterProvider router={router} defaultComponent={StudioNextApp} />
+      </RuntimeAuthGate>
+    </QueryClientProvider>
   </StrictMode>,
 );

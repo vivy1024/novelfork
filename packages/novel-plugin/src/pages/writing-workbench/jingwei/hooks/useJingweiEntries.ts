@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
 
 export interface JingweiEntry {
   id: string;
@@ -31,48 +32,34 @@ interface UseJingweiEntriesResult {
 }
 
 export function useJingweiEntries(bookId: string, category: string): UseJingweiEntriesResult {
-  const [entries, setEntries] = useState<JingweiEntry[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const listPath = bookId && category
+    ? `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=${encodeURIComponent(category)}`
+    : null;
 
-  const fetchEntries = useCallback(async () => {
-    if (!bookId || !category) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(
-        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=${encodeURIComponent(category)}`
-      );
-      if (!res.ok) throw new Error(`加载失败: ${res.status}`);
-      const data = await res.json();
-      setEntries(Array.isArray(data.entries) ? data.entries : Array.isArray(data) ? data : []);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载经纬条目失败");
-      setEntries([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [bookId, category]);
+  const { data, loading, error, refetch } = useApi<{ entries?: JingweiEntry[] } | JingweiEntry[]>(listPath);
 
-  useEffect(() => {
-    void fetchEntries();
-  }, [fetchEntries]);
+  const entries = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.entries)
+      ? data.entries
+      : [];
 
   const createEntry = useCallback(async (title: string, fields?: Record<string, unknown>, parentId?: string): Promise<JingweiEntry | null> => {
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ category, title, contentMd: "", fields: fields ?? {}, parentId: parentId ?? null }),
-      });
-      if (!res.ok) throw new Error(`创建失败: ${res.status}`);
-      const entry = await res.json();
-      await fetchEntries();
+      const entry = await fetchJson<JingweiEntry>(
+        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ category, title, contentMd: "", fields: fields ?? {}, parentId: parentId ?? null }),
+        },
+      );
+      invalidateApiPaths([`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`]);
       return entry;
     } catch {
       return null;
     }
-  }, [bookId, category, fetchEntries]);
+  }, [bookId, category]);
 
   const updateEntry = useCallback(async (entryId: string, payload: Partial<Pick<JingweiEntry, "title" | "contentMd" | "fields" | "visibility" | "aliases" | "relatedEntryIds" | "visibleAfterChapter" | "visibleUntilChapter">>): Promise<boolean> => {
     try {
@@ -91,35 +78,33 @@ export function useJingweiEntries(bookId: string, category: string): UseJingweiE
         };
       }
 
-      const res = await fetch(
+      await fetchJson(
         `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
-        }
+        },
       );
-      if (!res.ok) throw new Error(`更新失败: ${res.status}`);
-      await fetchEntries();
+      invalidateApiPaths([`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`]);
       return true;
     } catch {
       return false;
     }
-  }, [bookId, fetchEntries]);
+  }, [bookId]);
 
   const deleteEntry = useCallback(async (entryId: string): Promise<boolean> => {
     try {
-      const res = await fetch(
+      await fetchJson(
         `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}`,
-        { method: "DELETE" }
+        { method: "DELETE" },
       );
-      if (!res.ok) throw new Error(`删除失败: ${res.status}`);
-      await fetchEntries();
+      invalidateApiPaths([`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`]);
       return true;
     } catch {
       return false;
     }
-  }, [bookId, fetchEntries]);
+  }, [bookId]);
 
-  return { entries, loading, error, refresh: fetchEntries, createEntry, updateEntry, deleteEntry };
+  return { entries, loading, error, refresh: () => void refetch(), createEntry, updateEntry, deleteEntry };
 }
