@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import {
   DndContext,
   closestCenter,
@@ -19,8 +19,14 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
-import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical } from "lucide-react";
+import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical, Info } from "lucide-react";
 import { useApi, fetchJson } from "@/hooks/use-api";
+import {
+  computeForeshadowingDebt,
+  FORESHADOWING_DEBT_THRESHOLD,
+  type ForeshadowingDebt,
+} from "../../engine/jingwei/foreshadowing-debt";
+import { fetchFactsByEntity, type EntityFact } from "./narrative-fact-edits";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,7 +46,7 @@ interface EntriesResponse {
   readonly entries: readonly ForeshadowingEntry[];
 }
 
-interface ParsedForeshadowing {
+export interface ParsedForeshadowing {
   readonly id: string;
   readonly name: string;
   readonly description: string;
@@ -51,6 +57,10 @@ interface ParsedForeshadowing {
 
 export interface ForeshadowingBoardProps {
   readonly bookId: string;
+  /**
+   * 本书当前（最大已完成）章号。拿不到时必须传 undefined —— 组件会显式显示
+   * 「悬念未知」并说明原因，绝不用默认章号算出负数悬念让超期预警静默失效。
+   */
   readonly currentChapter?: number;
   /** 点击"目标: 第X章"时跳转到写作区打开该章节 */
   readonly onJumpToChapter?: (chapterNumber: number) => void;
@@ -67,7 +77,7 @@ const COLUMNS: readonly { status: ForeshadowingStatus; label: string; icon: Reac
   { status: "已废弃", label: "已废弃", icon: <Trash2 className="w-3.5 h-3.5" /> },
 ];
 
-const DEBT_THRESHOLD = 30;
+const SETTLED_STATUSES: readonly ForeshadowingStatus[] = ["已回收", "已废弃"];
 
 const VALID_STATUSES: readonly ForeshadowingStatus[] = ["已埋设", "部分揭示", "已回收", "已废弃"];
 
@@ -113,6 +123,32 @@ function findColumnByItemId(items: readonly ParsedForeshadowing[], itemId: strin
   return item?.status ?? null;
 }
 
+/** 看板内唯一的债务判定入口，阈值与文案都来自 foreshadowing-debt。 */
+export function debtOf(item: ParsedForeshadowing, currentChapter: number | undefined): ForeshadowingDebt {
+  return computeForeshadowingDebt({
+    plantedChapter: item.plantedChapter,
+    currentChapter: currentChapter ?? null,
+    settled: SETTLED_STATUSES.includes(item.status),
+  });
+}
+
+/**
+ * 记忆证据匹配：narrative_memory 的 hook fact 只是证据，不是权威源。
+ * 用伏笔名与 fact 的 object/subject 做包含匹配，够用且不会引入第二套 ID 体系。
+ */
+export function matchHookEvidence(
+  item: ParsedForeshadowing,
+  facts: readonly EntityFact[],
+): readonly EntityFact[] {
+  const name = item.name.trim();
+  if (!name || name === "未命名伏笔") return [];
+  return facts.filter((fact) => {
+    if (fact.category !== "hook") return false;
+    const haystack = `${fact.object ?? ""} ${fact.subject ?? ""} ${fact.predicate ?? ""}`;
+    return haystack.includes(name) || name.includes((fact.object ?? "").trim());
+  });
+}
+
 // ---------------------------------------------------------------------------
 // SortableCard component
 // ---------------------------------------------------------------------------
@@ -120,10 +156,12 @@ function findColumnByItemId(items: readonly ParsedForeshadowing[], itemId: strin
 function SortableForeshadowingCard({
   item,
   currentChapter,
+  evidence,
   onJumpToChapter,
 }: {
   item: ParsedForeshadowing;
-  currentChapter: number;
+  currentChapter: number | undefined;
+  evidence: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
 }) {
   const {
@@ -141,15 +179,18 @@ function SortableForeshadowingCard({
     opacity: isDragging ? 0.4 : 1,
   };
 
-  const suspenseDays = item.plantedChapter > 0 ? currentChapter - item.plantedChapter : 0;
-  const isOverdue = item.status === "已埋设" && suspenseDays > DEBT_THRESHOLD;
+  const debt = debtOf(item, currentChapter);
+  const isOverdue = debt.level === "overdue";
+  const isDueSoon = debt.level === "due-soon";
 
   return (
     <div
       ref={setNodeRef}
       style={style}
+      data-testid={`foreshadowing-card-${item.id}`}
+      data-debt-level={debt.level}
       className={`rounded-md border p-3 bg-card text-card-foreground shadow-sm space-y-1.5 ${
-        isOverdue ? "border-red-500 border-2" : "border-border"
+        isOverdue ? "border-red-500 border-2" : isDueSoon ? "border-amber-400/70 border-2" : "border-border"
       } ${isDragging ? "ring-2 ring-primary" : ""}`}
     >
       <div className="flex items-center gap-1.5">
@@ -161,7 +202,9 @@ function SortableForeshadowingCard({
         >
           <GripVertical className="w-3.5 h-3.5" />
         </button>
-        {isOverdue && <AlertTriangle className="w-3.5 h-3.5 text-red-500 shrink-0" />}
+        {(isOverdue || isDueSoon) && (
+          <AlertTriangle className={`w-3.5 h-3.5 shrink-0 ${isOverdue ? "text-red-500" : "text-amber-500"}`} />
+        )}
         <span className="text-sm font-medium truncate">{item.name}</span>
       </div>
       {item.description && (
@@ -183,12 +226,41 @@ function SortableForeshadowingCard({
             <span>目标: 第{item.targetChapter}章</span>
           )
         )}
-        {item.plantedChapter > 0 && (
-          <span className={isOverdue ? "text-red-500 font-medium" : ""}>
-            悬念: {suspenseDays}章
-          </span>
-        )}
+        <span
+          className={isOverdue ? "text-red-500 font-medium" : isDueSoon ? "text-amber-600 font-medium" : ""}
+          title={debt.explanation}
+        >
+          {debt.label}
+        </span>
       </div>
+      {(isOverdue || isDueSoon || debt.level === "unknown") && (
+        <p
+          data-testid={`foreshadowing-explanation-${item.id}`}
+          className={`text-[10px] leading-relaxed ${isOverdue ? "text-red-500" : isDueSoon ? "text-amber-600" : "text-muted-foreground"}`}
+        >
+          {debt.explanation}
+        </p>
+      )}
+      {evidence.length > 0 && <HookEvidenceList evidence={evidence} />}
+    </div>
+  );
+}
+
+/**
+ * 记忆证据：章后结算沉淀的 hook fact。只读展示，操作仍回到看板拖拽（经纬为源）。
+ */
+function HookEvidenceList({ evidence }: { evidence: readonly EntityFact[] }) {
+  return (
+    <div className="rounded border border-border/60 bg-muted/30 p-1.5 space-y-1" data-testid="hook-evidence">
+      <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+        <Info className="w-3 h-3 shrink-0" />
+        <span>记忆证据 {evidence.length} 条（章后结算沉淀，只读）</span>
+      </div>
+      {evidence.slice(0, 3).map((fact) => (
+        <div key={fact.id} className="text-[10px] text-muted-foreground truncate">
+          第 {fact.sourceChapter ?? fact.validFromChapter ?? "—"} 章 · {fact.subject} {fact.predicate} {fact.object}
+        </div>
+      ))}
     </div>
   );
 }
@@ -197,9 +269,8 @@ function SortableForeshadowingCard({
 // DragOverlay card (non-interactive snapshot shown during drag)
 // ---------------------------------------------------------------------------
 
-function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; currentChapter: number }) {
-  const suspenseDays = item.plantedChapter > 0 ? currentChapter - item.plantedChapter : 0;
-  const isOverdue = item.status === "已埋设" && suspenseDays > DEBT_THRESHOLD;
+function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; currentChapter: number | undefined }) {
+  const isOverdue = debtOf(item, currentChapter).level === "overdue";
 
   return (
     <div
@@ -223,7 +294,7 @@ function DragOverlayCard({ item, currentChapter }: { item: ParsedForeshadowing; 
 // Main component
 // ---------------------------------------------------------------------------
 
-export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter }: ForeshadowingBoardProps) {
+export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: ForeshadowingBoardProps) {
   const { data, loading, error } = useApi<EntriesResponse>(
     `/api/books/${bookId}/jingwei/entries?category=foreshadowing`,
   );
@@ -231,6 +302,21 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
   // Local entries state for optimistic UI updates
   const [entries, setEntries] = useState<ParsedForeshadowing[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
+  // 记忆证据（hook fact）：只作证据，取不到就静默降级为「无证据」。
+  const [hookFacts, setHookFacts] = useState<readonly EntityFact[]>([]);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchFactsByEntity(bookId)
+      .then((groups) => {
+        if (!alive) return;
+        setHookFacts(groups.flatMap((group) => group.facts).filter((fact) => fact.category === "hook"));
+      })
+      .catch(() => {
+        if (alive) setHookFacts([]);
+      });
+    return () => { alive = false; };
+  }, [bookId]);
 
   // Derive entries from API data (only when local state is null)
   const items = entries ?? (data?.entries ?? []).map(parseForeshadowing);
@@ -349,12 +435,25 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
     >
+      {currentChapter === undefined ? (
+        <div
+          data-testid="foreshadowing-unknown-chapter"
+          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 p-2 text-[11px] text-amber-700 dark:bg-amber-950/20 dark:text-amber-400"
+        >
+          <AlertTriangle className="mt-0.5 w-3.5 h-3.5 shrink-0" />
+          <span>
+            读不到本书当前章号，超期预警已暂停。为避免给出错误结论，这里不按默认章号推算悬念；先在资源树里刷新章节列表（或写入第一章）后再看
+            {FORESHADOWING_DEBT_THRESHOLD} 章超期提醒。
+          </span>
+        </div>
+      ) : null}
       <div className="grid grid-cols-4 gap-3 p-3 h-full overflow-auto">
         {grouped.map((col) => (
           <DroppableColumn
             key={col.status}
             column={col}
             currentChapter={currentChapter}
+            hookFacts={hookFacts}
             onJumpToChapter={onJumpToChapter}
           />
         ))}
@@ -375,10 +474,12 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
 function DroppableColumn({
   column,
   currentChapter,
+  hookFacts,
   onJumpToChapter,
 }: {
   column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
-  currentChapter: number;
+  currentChapter: number | undefined;
+  hookFacts: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
 }) {
   // SortableContext needs an array of IDs
@@ -400,6 +501,7 @@ function DroppableColumn({
               key={item.id}
               item={item}
               currentChapter={currentChapter}
+              evidence={matchHookEvidence(item, hookFacts)}
               onJumpToChapter={onJumpToChapter}
             />
           ))}

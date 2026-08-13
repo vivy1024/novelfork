@@ -23,9 +23,13 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    for (const label of ["故事状态", "结算历史", "关系图", "时间线", "角色弧线", "伏笔网络", "矛盾地图", "事件链"]) {
+    for (const label of ["故事状态", "结算历史", "关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]) {
       expect(html).toContain(label);
     }
+
+    // 伏笔已收敛到唯一入口「伏笔看板」（经纬为源），记忆面板不再提供伏笔视图。
+    expect(html).not.toContain("伏笔板");
+    expect(html).not.toContain("伏笔网络");
 
     expect(html).toContain("当前故事状态");
     expect(html).toContain("自动结算");

@@ -1,6 +1,7 @@
 import type { BookConfig, ChapterMeta } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { computeForeshadowingDebt, toCockpitHookRisk } from "../engine/jingwei/foreshadowing-debt.js";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
 
@@ -361,12 +362,10 @@ function normalizeLimit(value: unknown): number {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : 10;
 }
 
-function computeHookRisk(sourceChapter: number, currentChapter: number, threshold = 15): CockpitHookItem["status"] {
+/** 驾驶舱只做统计，阈值必须与伏笔看板同源（foreshadowing-debt）。 */
+function computeHookRisk(sourceChapter: number, currentChapter: number): CockpitHookItem["status"] {
   if (sourceChapter <= 0) return "open";
-  const gap = currentChapter - sourceChapter;
-  if (gap > threshold) return "expired-risk";
-  if (gap > threshold * 0.7) return "payoff-due";
-  return "open";
+  return toCockpitHookRisk(computeForeshadowingDebt({ plantedChapter: sourceChapter, currentChapter }));
 }
 
 function buildRecentChapterResults(bookId: string, chapters: readonly ChapterMeta[], limit?: number): CockpitListResult<CockpitChapterResultItem> {

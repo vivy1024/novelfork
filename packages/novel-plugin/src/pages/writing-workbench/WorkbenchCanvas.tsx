@@ -28,6 +28,7 @@ const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => (
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
+const NarrativeConsistencyPanel = lazy(() => import("./NarrativeConsistencyPanel").then(m => ({ default: m.NarrativeConsistencyPanel })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
@@ -179,7 +180,32 @@ function ToolPanelLoading() {
   return <div className="flex items-center justify-center py-12"><Loader2 className="size-5 animate-spin text-muted-foreground" /></div>;
 }
 
-function ToolPanelView({ toolPanel, bookId, repositoryPath, onJumpToChapter }: { toolPanel: ToolPanelId; bookId: string; repositoryPath?: string; onJumpToChapter?: (chapterNumber: number) => void }) {
+/**
+ * 本书当前（最大已完成）章号。权威源是资源树：book 节点带后端算出的 nextChapter
+ * （GET /api/books/:bookId 用最大章号 + 1），退化时用 chapter 节点的最大 chapterNumber。
+ * 两者都拿不到时返回 undefined —— 伏笔看板会显式显示「悬念未知」，不能编默认值。
+ */
+export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | undefined): number | undefined {
+  if (!nodes || nodes.length === 0) return undefined;
+  let maxChapter = 0;
+  let nextChapter: number | undefined;
+  const walk = (node: WorkbenchResourceNode) => {
+    if (node.kind === "book") {
+      const raw = Number(node.metadata?.nextChapter);
+      if (Number.isSafeInteger(raw) && raw > 0) nextChapter = raw;
+    }
+    const chapterNumber = Number(node.metadata?.chapterNumber);
+    if (Number.isSafeInteger(chapterNumber) && chapterNumber > maxChapter) maxChapter = chapterNumber;
+    node.children?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  if (maxChapter > 0) return maxChapter;
+  // nextChapter = 最大章号 + 1；只有 nextChapter 时反推已完成章号。
+  if (nextChapter !== undefined && nextChapter > 1) return nextChapter - 1;
+  return undefined;
+}
+
+function ToolPanelView({ toolPanel, bookId, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry }: { toolPanel: ToolPanelId; bookId: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean }) {
   switch (toolPanel) {
     case "quality":
       return <QualityPanel bookId={bookId} />;
@@ -191,8 +217,10 @@ function ToolPanelView({ toolPanel, bookId, repositoryPath, onJumpToChapter }: {
       return <Suspense fallback={<ToolPanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "compliance":
       return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
+    case "consistency":
+      return <Suspense fallback={<ToolPanelLoading />}><NarrativeConsistencyPanel bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} /></Suspense>;
     case "foreshadowing":
-      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} onJumpToChapter={onJumpToChapter} /></Suspense>;
+      return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "runtime":
       return <Suspense fallback={<ToolPanelLoading />}><RuntimeStatePanel bookId={bookId} /></Suspense>;
     case "coreshift":
@@ -325,7 +353,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
 
   if (!node) {
     if (bookId) {
-      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
+      return <DefaultCockpitViewWithGuide bookId={bookId} bookTitle={nodes.find(n => n.kind === "book")?.title ?? bookId} nodes={nodes} currentChapter={resolveCurrentChapter(nodes)} onGuideComplete={onGuideComplete} onJumpToChapter={onJumpToChapter} />;
     }
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -344,7 +372,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
             <h2 className="text-sm font-semibold">{node.title}</h2>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <ToolPanelView toolPanel={toolPanel} bookId={bookId} repositoryPath={repositoryPath} onJumpToChapter={onJumpToChapter} />
+            <ToolPanelView toolPanel={toolPanel} bookId={bookId} repositoryPath={repositoryPath} currentChapter={resolveCurrentChapter(nodes)} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} />
           </div>
         </div>
       );
@@ -609,7 +637,7 @@ function containsChapterNode(nodes: readonly WorkbenchResourceNode[] | undefined
   return nodes?.some((node) => node.kind === "chapter" || containsChapterNode(node.children)) ?? false;
 }
 
-function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; onGuideComplete?: (outcome?: GuidedSetupOutcome) => void; onJumpToChapter?: (chapterNumber: number) => void }) {
+function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, currentChapter, onGuideComplete, onJumpToChapter }: { bookId: string; bookTitle: string; nodes?: readonly WorkbenchResourceNode[]; currentChapter?: number; onGuideComplete?: (outcome?: GuidedSetupOutcome) => void; onJumpToChapter?: (chapterNumber: number) => void }) {
   const storageKey = `novelfork:guide-completed:${bookId}`;
   const hasChapters = containsChapterNode(nodes);
   const [guideCompleted, setGuideCompleted] = useState(() => {
@@ -629,7 +657,7 @@ function DefaultCockpitViewWithGuide({ bookId, bookTitle, nodes, onGuideComplete
   }, [storageKey, onGuideComplete]);
 
   return guideCompleted
-    ? <DefaultCockpitView bookId={bookId} onJumpToChapter={onJumpToChapter} />
+    ? <DefaultCockpitView bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />
     : <NewBookGuide bookId={bookId} bookTitle={bookTitle} onComplete={handleGuideComplete} />;
 }
 
@@ -666,7 +694,7 @@ function StatCard({ label, value, sub, className, active, onClick }: {
 
 type ExpandedPanel = "foreshadowing" | "quality" | null;
 
-function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJumpToChapter?: (chapterNumber: number) => void }) {
+function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookId: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void }) {
   const [stats, setStats] = useState<OverviewStats | null>(null);
   const [expandedPanel, setExpandedPanel] = useState<ExpandedPanel>(null);
 
@@ -730,7 +758,7 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
               </button>
             </div>
             <Suspense fallback={<ToolPanelLoading />}>
-              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} onJumpToChapter={onJumpToChapter} />}
+              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />}
               {expandedPanel === "quality" && <QualityPanel bookId={bookId} />}
             </Suspense>
           </div>
