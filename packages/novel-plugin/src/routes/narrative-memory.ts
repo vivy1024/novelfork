@@ -19,6 +19,7 @@ import {
   saveNarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import {
   correctNarrativeFact,
@@ -384,6 +385,40 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     const items = queryNarrativeFactHistory(storage(), { bookId, factId: c.req.param("factId") });
     if (items.length === 0) return c.json({ error: "not-found", summary: "找不到该叙事事实。" }, 404);
     return c.json({ items });
+  });
+
+  // 陈旧 fact 归档提示（P5 · 子项1）：动态状态超阈值未变动 → 提示可能已过时。
+  // 只读、只返回提示，绝不作废/隐藏；由作者决定是否处理。派生自当前视图 ledger，不落库。
+  app.get(`${base}/stale-facts`, (c) => {
+    const bookId = c.req.param("bookId");
+    const currentChapter = queryInteger(c, "currentChapter", "chapter", "asOfChapter");
+    if (currentChapter !== undefined && currentChapter < 0) {
+      return invalidQuery(c, "currentChapter 必须是非负整数。");
+    }
+    // asOfChapter 用于取「截至当前章的现状」；当前章号本身用于计算陈旧程度。
+    const asOfChapter = currentChapter;
+    const ledger = queryCurrentNarrativeLedger(storage(), {
+      bookId,
+      ...(asOfChapter !== undefined ? { asOfChapter } : {}),
+      limit: 500,
+    });
+    const reports = collectStaleFacts(ledger.items, currentChapter);
+    return c.json({
+      bookId,
+      currentChapter: currentChapter ?? null,
+      thresholdChapters: STALE_FACT_THRESHOLD,
+      staleCount: reports.length,
+      items: reports.map((report) => ({
+        kind: "fact" as const,
+        ...report.fact,
+        staleness: report.staleness,
+      })),
+      summary: currentChapter === undefined
+        ? "未提供 currentChapter，无法计算陈旧程度；请带上当前章号后重试。"
+        : reports.length === 0
+          ? `没有超过 ${STALE_FACT_THRESHOLD} 章未变动的动态状态。`
+          : `发现 ${reports.length} 条动态状态已超过 ${STALE_FACT_THRESHOLD} 章未变动，可能已过时，请复查。`,
+    });
   });
 
   // 经纬设定 × 叙事记忆现状 一致性检测（纰漏），只读不写。

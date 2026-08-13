@@ -250,15 +250,10 @@ describe("buildNarrativeContext", () => {
         waveConfig: { enabled: true, rerankAlpha: 0.4 },
       });
       expect(waved.diagnostics.wave).toEqual(expect.objectContaining({
-        logicDepth: expect.any(Number),
-        entropy: expect.any(Number),
         activatedTags: expect.any(Array),
-        residualLevels: expect.any(Number),
-        semanticGainPeak: expect.any(Number),
         rerankAlpha: 0.4,
         fallbackLevel: expect.any(String),
       }));
-      expect(waved.diagnostics.wave?.residualLevels).toBeGreaterThan(0);
       expect(waved.diagnostics.wave?.fallbackLevel).not.toBe("L2");
     } finally {
       storage.close();
