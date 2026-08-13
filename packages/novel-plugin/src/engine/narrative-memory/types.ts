@@ -240,36 +240,24 @@ export type NarrativeChannelStat = Readonly<{
 
 export const WaveMemoryConfigSchema = z.object({
   enabled: z.boolean().default(false),
-  epaEnabled: z.boolean().default(true),
-  residualPyramidEnabled: z.boolean().default(true),
   spikeRoutingEnabled: z.boolean().default(true),
   geodesicRerankEnabled: z.boolean().default(true),
   rerankAlpha: z.number().min(0).max(2).default(0.25),
 });
 export type WaveMemoryConfig = Readonly<{
   enabled: boolean;
-  epaEnabled: boolean;
-  residualPyramidEnabled: boolean;
   spikeRoutingEnabled: boolean;
   geodesicRerankEnabled: boolean;
   rerankAlpha: number;
 }>;
 
 export const WaveMemoryDiagnosticsSchema = z.object({
-  logicDepth: z.number().min(0).max(1),
-  entropy: z.number().min(0).max(1),
   activatedTags: z.array(z.string()).default([]),
-  residualLevels: nonNegativeInteger.default(0),
-  semanticGainPeak: z.number().min(0).max(1).default(0),
   rerankAlpha: z.number(),
   fallbackLevel: z.string(),
 });
 export type WaveMemoryDiagnostics = Readonly<{
-  logicDepth: number;
-  entropy: number;
   activatedTags: readonly string[];
-  residualLevels: number;
-  semanticGainPeak: number;
   rerankAlpha: number;
   fallbackLevel: string;
 }>;

@@ -85,4 +85,55 @@ describe("packNarrativeContext", () => {
     expect(result.injectedTokensByChannel.facts).toBeGreaterThan(0);
     expect(result.degradedCards.length + result.droppedCards.length).toBeGreaterThan(0);
   });
+
+  it("同配额下新近变动的 fact（高 score）胜出，旧 fact 被丢弃", () => {
+    const result = packNarrativeContext([
+      card({ id: "fact-new", channel: "facts", title: "新事实", content: "new full", summary: "new summary", brief: "n", estimatedTokens: 200, priority: 50, score: 80 }),
+      card({ id: "fact-old", channel: "facts", title: "旧事实", content: "old full", summary: "old summary", brief: "o", estimatedTokens: 200, priority: 50, score: 20 }),
+    ], {
+      maxTokens: 1,
+      channelBudgets: { facts: 1 },
+    });
+
+    expect(result.cards.map((item) => item.card.id)).toEqual(["fact-new"]);
+    expect(result.droppedCards.map((item) => item.id)).toEqual(["fact-old"]);
+  });
+
+  it("hard 卡片不因『旧』被丢弃，只降级（新近度负加权也不伤 canon）", () => {
+    const result = packNarrativeContext([
+      card({
+        id: "hard-old",
+        channel: "hard",
+        title: "旧硬约束",
+        content: "hard full",
+        normal: "hard normal",
+        summary: "hard summary",
+        brief: "h",
+        estimatedTokens: 500,
+        priority: 10,
+        score: 5,
+        scoreBreakdown: { recentChangeBoost: -20 },
+      }),
+    ], {
+      maxTokens: 1,
+      channelBudgets: { hard: 1 },
+    });
+
+    expect(result.cards.map((item) => item.card.id)).toEqual(["hard-old"]);
+    expect(result.droppedCards).toHaveLength(0);
+  });
+
+  it("因『旧』被丢弃/降级的卡片产出可解释 warning，且不指向 hard", () => {
+    const result = packNarrativeContext([
+      card({ id: "state-fresh", channel: "state", title: "新状态", content: "fresh full", summary: "fresh summary", brief: "f", estimatedTokens: 200, priority: 50, score: 80, scoreBreakdown: { recentChangeBoost: 20 } }),
+      card({ id: "state-aged", channel: "state", title: "旧状态", content: "aged full", summary: "aged summary", brief: "a", estimatedTokens: 200, priority: 50, score: 10, scoreBreakdown: { recentChangeBoost: -18 } }),
+    ], {
+      maxTokens: 1,
+      channelBudgets: { state: 1 },
+    });
+
+    expect(result.droppedCards.map((item) => item.id)).toContain("state-aged");
+    expect(result.warnings.some((w) => w.includes("state-aged") && w.includes("未变动"))).toBe(true);
+    expect(result.warnings.some((w) => w.includes("state-fresh"))).toBe(false);
+  });
 });

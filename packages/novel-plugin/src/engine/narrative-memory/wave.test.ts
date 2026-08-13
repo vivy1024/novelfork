@@ -12,8 +12,6 @@ import {
   calculateResidualAnchor,
   rebuildNarrativeTagGraph,
 } from "./wave/tag-graph.js";
-import { analyzeEPA } from "./wave/epa.js";
-import { buildResidualPyramid } from "./wave/residual-pyramid.js";
 import { routeNarrativeSpikes } from "./wave/spike-routing.js";
 import { rerankByGeodesicEnergy } from "./wave/geodesic-rerank.js";
 
@@ -95,30 +93,6 @@ describe("Wave tag graph and algorithms", () => {
     expect(anchored.residualVector[0]).toBeCloseTo(0, 5);
     expect(anchored.residualVector[1]).toBeCloseTo(1, 5);
     expect(calculateResidualAnchor([], [1, 0]).fallback).toBe("missing_vector");
-  });
-
-  it("returns deterministic EPA values and neutral fallback", () => {
-    const epa = analyzeEPA({ queryVector: [1, 0], tagVectors: [[1, 0], [0.2, 0.8], [0, 1]] });
-    expect(epa.entropy).toBeGreaterThanOrEqual(0);
-    expect(epa.entropy).toBeLessThanOrEqual(1);
-    expect(epa.logicDepth).toBeGreaterThanOrEqual(0);
-    expect(epa.logicDepth).toBeLessThanOrEqual(1);
-    expect(analyzeEPA({}).fallback).toBe("neutral");
-  });
-
-  it("builds residual pyramid for compound queries and stops on low residual energy", () => {
-    const result = buildResidualPyramid({
-      queryVector: [1, 1, 0],
-      facets: [
-        { tagId: "character:hanli", vector: [1, 0, 0] },
-        { tagId: "item:bottle", vector: [0, 1, 0] },
-        { tagId: "place:garden", vector: [0, 0, 1] },
-      ],
-      config: { maxLevels: 3, topK: 1, minEnergyRatio: 0.05 },
-    });
-    expect(result.levels.map((level) => level.facets[0]?.tagId)).toEqual(["character:hanli", "item:bottle"]);
-    expect(result.finalEnergyRatio).toBeLessThan(0.05);
-    expect(buildResidualPyramid({ queryVector: [], facets: [] }).fallback).toBe("missing_embedding");
   });
 
   it("routes narrative spikes with limits and logicDepth momentum", () => {

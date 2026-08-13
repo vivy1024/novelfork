@@ -27,10 +27,8 @@ import {
   type WaveMemoryConfig,
   type WaveMemoryDiagnostics,
 } from "./types.js";
-import { analyzeEPA } from "./wave/epa.js";
 import { rerankByGeodesicEnergy } from "./wave/geodesic-rerank.js";
-import { buildResidualPyramid } from "./wave/residual-pyramid.js";
-import { buildNarrativeTagGraph, calculateBellSemanticGain } from "./wave/tag-graph.js";
+import { buildNarrativeTagGraph } from "./wave/tag-graph.js";
 import { routeNarrativeSpikes } from "./wave/spike-routing.js";
 
 export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Readonly<{
@@ -115,28 +113,6 @@ function tagSeedIds(cards: readonly NarrativeContextCard[], entities: readonly s
     .map((tag) => tag.id);
 }
 
-function hashedVector(value: string, dim = 8): number[] {
-  const vector = Array.from({ length: dim }, () => 0);
-  const chars = [...value];
-  for (let index = 0; index < chars.length; index += 1) {
-    const code = chars[index]!.codePointAt(0) ?? 0;
-    vector[index % dim] += ((code % 31) + 1) / 31;
-  }
-  const norm = Math.sqrt(vector.reduce((sum, item) => sum + item * item, 0)) || 1;
-  return vector.map((item) => item / norm);
-}
-
-function dot(a: readonly number[], b: readonly number[]): number {
-  return a.reduce((sum, value, index) => sum + value * (b[index] ?? 0), 0);
-}
-
-function cosine(a: readonly number[], b: readonly number[]): number {
-  const normA = Math.sqrt(a.reduce((sum, value) => sum + value * value, 0));
-  const normB = Math.sqrt(b.reduce((sum, value) => sum + value * value, 0));
-  if (a.length === 0 || a.length !== b.length || normA <= 0 || normB <= 0) return 0;
-  return dot(a, b) / (normA * normB);
-}
-
 function applyWaveMemory(
   cards: readonly NarrativeContextCard[],
   entities: readonly string[],
@@ -146,21 +122,13 @@ function applyWaveMemory(
   const config = WaveMemoryConfigSchema.parse({ enabled: false, ...(configInput ?? {}) });
   if (!config.enabled) return { cards };
   const graph = buildNarrativeTagGraph(cards, { currentChapter });
-  const queryVector = hashedVector(entities.join(" ") || cards.map((card) => card.title).join(" "));
-  const tagVectors = graph.tags.map((tag) => hashedVector(`${tag.type} ${tag.label}`));
-  const epa = config.epaEnabled ? analyzeEPA({ queryVector, tagVectors }) : { entropy: 0.5, logicDepth: 0.5 };
-  const residual = config.residualPyramidEnabled
-    ? buildResidualPyramid({
-      queryVector,
-      facets: graph.tags.map((tag, index) => ({ tagId: tag.id, vector: tagVectors[index] ?? queryVector })),
-      config: { maxLevels: 3, topK: 1, minEnergyRatio: 0.05 },
-    })
-    : { levels: [], finalEnergyRatio: 1 };
-  const semanticGainPeak = tagVectors.length > 0 ? Math.max(...tagVectors.map((vector) => calculateBellSemanticGain(cosine(queryVector, vector)))) : 0;
+  // 脉冲传播的聚焦度（logicDepth）原来自 EPA 的输出。小说召回输入是结构化实体，
+  // 无「模糊 vs 明确」之分（EPA 的价值被场景消解），固定中性值即可：
+  // logicDepth < 0.7 → momentum 0.75，保留适度多跳联想。
+  const logicDepth = 0.5;
   const seedIds = tagSeedIds(cards, entities);
-  const spikeSeeds = seedIds.length > 0 ? seedIds : residual.levels.flatMap((level) => level.facets.map((facet) => facet.tagId));
   const spike = config.spikeRoutingEnabled
-    ? routeNarrativeSpikes({ seedTagIds: spikeSeeds, edges: graph.edges, logicDepth: epa.logicDepth })
+    ? routeNarrativeSpikes({ seedTagIds: seedIds, edges: graph.edges, logicDepth })
     : { activatedTags: [] };
   const tagById = new Map(graph.tags.map((tag) => [tag.id, tag]));
   const energyByTag: Record<string, number> = {};
@@ -179,11 +147,7 @@ function applyWaveMemory(
   return {
     cards: reranked.cards,
     diagnostics: {
-      logicDepth: epa.logicDepth,
-      entropy: epa.entropy,
       activatedTags: spike.activatedTags.map((tag) => tag.tagId),
-      residualLevels: residual.levels.length,
-      semanticGainPeak,
       rerankAlpha: config.rerankAlpha,
       fallbackLevel: reranked.fallbackLevel,
     },

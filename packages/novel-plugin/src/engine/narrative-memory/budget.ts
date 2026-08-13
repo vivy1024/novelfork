@@ -177,6 +177,12 @@ function dropGloballyIfNeeded(
   return { packed: packed.filter((item) => alive.has(item.card.id)), dropped };
 }
 
+/** 该卡片在打分时是否吃到了「旧」的负加权（新近变动加权为负）。用于可解释诊断。 */
+function isAgedDown(card: NarrativeContextCard): boolean {
+  const boost = card.scoreBreakdown?.recentChangeBoost;
+  return typeof boost === "number" && boost < 0;
+}
+
 export function packNarrativeContext(cards: readonly NarrativeContextCard[], policy: NarrativeBudgetPolicy = {}): NarrativeBudgetResult {
   const channelBudgets = resolveChannelBudgets(policy);
   const warnings: string[] = [];
@@ -202,6 +208,21 @@ export function packNarrativeContext(cards: readonly NarrativeContextCard[], pol
   const global = dropGloballyIfNeeded(packedCards, policy.maxTokens);
   const globalDroppedIds = new Set(global.dropped.map((card) => card.id));
   droppedCards.push(...global.dropped.filter((card) => !droppedCards.some((dropped) => dropped.id === card.id)));
+
+  // 可解释：新近变动加权（子项2）让长期未变动的旧内容在同配额竞争中吃负加权，
+  // 因而更容易被降级/丢弃。这里点名「谁因为旧而落选」，便于诊断与作者复查。
+  // hard 通道从不吃旧惩罚（canon 不失效），因此不会出现在这里。
+  const agedDroppedIds = droppedCards.filter(isAgedDown).map((card) => card.id);
+  if (agedDroppedIds.length > 0) {
+    warnings.push(`因长期未变动（新近度低）被丢弃 ${agedDroppedIds.length} 张卡片：${agedDroppedIds.join("、")}`);
+  }
+  const degradedIdSet = new Set(degradedCards.map((item) => item.id));
+  const agedDegradedIds = packedCards
+    .filter((item) => degradedIdSet.has(item.card.id) && isAgedDown(item.card) && !globalDroppedIds.has(item.card.id))
+    .map((item) => item.card.id);
+  if (agedDegradedIds.length > 0) {
+    warnings.push(`因长期未变动（新近度低）被降级 ${agedDegradedIds.length} 张卡片：${agedDegradedIds.join("、")}`);
+  }
 
   const finalCards = global.packed.sort((a, b) => (b.card.score ?? 0) - (a.card.score ?? 0) || b.card.priority - a.card.priority || a.card.id.localeCompare(b.card.id));
   const totalEstimatedTokens = finalCards.reduce((sum, item) => sum + item.estimatedTokens, 0);
