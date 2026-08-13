@@ -98,6 +98,45 @@ function defaultReason(action: PendingEventAction): string {
   return action === "approve" ? "工作台确认 Narrative Memory 事件" : "工作台拒绝 Narrative Memory 事件";
 }
 
+export type PendingEventBulkAction = "approve" | "delete";
+
+export interface PendingEventBulkResult {
+  readonly summary: string;
+  readonly approved?: string[];
+  readonly deleted?: string[];
+  readonly skipped?: string[];
+  readonly failed?: Array<{ id: string; error: string }>;
+}
+
+/**
+ * 待审队列批量操作：批准（与单条同语义）或物理丢弃待审事件。
+ *
+ * 单条通道（mutatePendingEvent）负责逐条精细处理；这里负责作者在待审队列上
+ * 「选中一批一起处理」的场景。delete 只作用于待审事件，已裁决的不会被动。
+ */
+export async function bulkMutatePendingEvents(
+  bookId: string,
+  action: PendingEventBulkAction,
+  eventIds: readonly string[],
+  options: { readonly reason?: string; readonly fetchImpl?: JsonFetch } = {},
+): Promise<PendingEventBulkResult> {
+  const doFetch = options.fetchImpl ?? fetch;
+  const response = await doFetch(`${memoryBase(bookId)}/events/bulk`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      action,
+      eventIds,
+      ...(options.reason ? { reason: options.reason } : {}),
+    }),
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { summary?: string; error?: string };
+    throw new Error(payload.summary ?? payload.error ?? `批量操作失败（${response.status}）`);
+  }
+  return await response.json() as PendingEventBulkResult;
+}
+
 export interface ChapterProposalGroups {
   /** 当前正在写的这一章提出的 */
   readonly current: readonly PendingEvent[];

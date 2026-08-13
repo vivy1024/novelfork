@@ -122,10 +122,19 @@ export function createNarrativeLineRouter(options: CreateNarrativeLineRouterOpti
         explanation: "limit 必须是 1 到 500 的整数；请去掉该参数或改成合法范围。",
       }, 400);
     }
+    const offsetRaw = c.req.query("offset");
+    const offset = offsetRaw ? Number(offsetRaw) : undefined;
+    if (offset !== undefined && (!Number.isInteger(offset) || offset < 0)) {
+      return c.json({
+        error: "invalid-query",
+        explanation: "offset 必须是非负整数；请去掉该参数或改成合法范围。",
+      }, 400);
+    }
     try {
       const approvals = await serviceFor(options, bookId).listApprovals({
         bookId,
         ...(limit !== undefined ? { limit } : {}),
+        ...(offset !== undefined ? { offset } : {}),
       });
       return c.json({ approvals });
     } catch (error) {

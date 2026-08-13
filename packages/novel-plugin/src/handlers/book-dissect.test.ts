@@ -99,6 +99,16 @@ describe("handleBookDissect", () => {
       apply: false,
       settle: true,
       storage: activeStorage,
+      // settle 只走 LLM 抽取（无规则兜底），测试注入 mock 抽取器。
+      llmExtractor: async () => [{
+        eventType: "location_changed",
+        subject: "韩立",
+        predicate: "抵达",
+        object: "药园",
+        evidenceText: "【地点】韩立抵达药园",
+        confidence: 0.9,
+        source: "settle",
+      }],
     });
     expect(result.ok).toBe(true);
     expect(result.applied).toBe(false);
@@ -118,6 +128,15 @@ describe("handleBookDissect", () => {
       apply: true,
       settle: true,
       storage: activeStorage,
+      llmExtractor: async (input) => [{
+        eventType: "location_changed",
+        subject: "韩立",
+        predicate: "回到",
+        object: "洞府",
+        evidenceText: input.content.includes("【地点】") ? "【地点】韩立回到洞府。秘密尚未揭开。" : input.content.trim(),
+        confidence: 0.9,
+        source: "settle",
+      }],
     });
     expect(result.ok).toBe(true);
     expect(result.applied).toBe(true);

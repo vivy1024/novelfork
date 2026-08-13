@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  bulkMutatePendingEvents,
   fetchPendingEvents,
   groupProposalsByChapter,
   mutatePendingEvent,
@@ -97,6 +98,39 @@ describe("mutatePendingEvent", () => {
     const fetchImpl = vi.fn(async () => new Response("nope", { status: 503 }));
 
     await expect(mutatePendingEvent("book-1", "e1", "reject", { fetchImpl })).rejects.toThrow("事件操作失败（503）");
+  });
+});
+
+describe("bulkMutatePendingEvents", () => {
+  it("posts bulk approve to the queue endpoint with ids and reason", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "ok", approved: ["e1", "e2"], skipped: [], failed: [] }));
+
+    const result = await bulkMutatePendingEvents("book-1", "approve", ["e1", "e2"], { reason: "批量确认", fetchImpl });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/book-1/narrative-memory/events/bulk");
+    expect(init.method).toBe("POST");
+    expect(JSON.parse(String(init.body))).toEqual({ action: "approve", eventIds: ["e1", "e2"], reason: "批量确认" });
+    expect(result.approved).toEqual(["e1", "e2"]);
+  });
+
+  it("posts bulk delete and returns the server summary", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已删 2", deleted: ["e3"] }));
+
+    const result = await bulkMutatePendingEvents("book-1", "delete", ["e3"], { fetchImpl });
+
+    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/api/books/book-1/narrative-memory/events/bulk");
+    expect(JSON.parse(String(init.body))).toEqual({ action: "delete", eventIds: ["e3"] });
+    expect(result.deleted).toEqual(["e3"]);
+  });
+
+  it("surfaces server-side rejection instead of returning a bare status", async () => {
+    const fetchImpl = vi.fn(async () => jsonResponse({ error: "invalid-input", summary: "eventIds 不能为空。" }, { status: 400 }));
+
+    await expect(bulkMutatePendingEvents("book-1", "approve", [], { fetchImpl }))
+      .rejects.toThrow(/eventIds 不能为空/u);
   });
 });
 

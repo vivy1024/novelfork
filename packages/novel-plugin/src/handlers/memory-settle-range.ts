@@ -41,6 +41,7 @@ export interface MemorySettleRangeResult {
   readonly chaptersAttempted: number;
   readonly chaptersSettled: number;
   readonly chaptersSkipped: number;
+  readonly chaptersFailed: number;
   readonly totalExtracted: number;
   readonly totalAutoApplied: number;
   readonly totalPending: number;
@@ -59,6 +60,7 @@ function fail(error: string, summary: string, partial?: Partial<MemorySettleRang
     chaptersAttempted: partial?.chaptersAttempted ?? 0,
     chaptersSettled: partial?.chaptersSettled ?? 0,
     chaptersSkipped: partial?.chaptersSkipped ?? 0,
+    chaptersFailed: partial?.chaptersFailed ?? 0,
     totalExtracted: partial?.totalExtracted ?? 0,
     totalAutoApplied: partial?.totalAutoApplied ?? 0,
     totalPending: partial?.totalPending ?? 0,
@@ -87,6 +89,7 @@ export async function handleMemorySettleRange(input: MemorySettleRangeInput): Pr
   const results: MemorySettleRangeChapterResult[] = [];
   let chaptersSettled = 0;
   let chaptersSkipped = 0;
+  let chaptersFailed = 0;
   let totalExtracted = 0;
   let totalAutoApplied = 0;
   let totalPending = 0;
@@ -149,6 +152,19 @@ export async function handleMemorySettleRange(input: MemorySettleRangeInput): Pr
       continue;
     }
 
+    // 单章抽取失败不阻断其余章节：失败章保持未结算，agent 重试同一范围时
+    // 幂等门会跳过已结算章，只补失败的那几章。
+    if (settlement.status === "failed") {
+      chaptersFailed += 1;
+      results.push({
+        chapterNumber,
+        ok: false,
+        reason: settlement.explanation?.whatHappened ?? settlement.error ?? "结算失败",
+        settlement,
+      });
+      continue;
+    }
+
     chaptersSettled += 1;
     totalExtracted += settlement.extracted;
     totalAutoApplied += settlement.autoApplied;
@@ -170,12 +186,16 @@ export async function handleMemorySettleRange(input: MemorySettleRangeInput): Pr
     chaptersAttempted,
     chaptersSettled,
     chaptersSkipped,
+    chaptersFailed,
     totalExtracted,
     totalAutoApplied,
     totalPending,
     results,
     summary: dryRun
       ? `dryRun：范围内 ${chaptersAttempted} 章，可结算 ${results.filter((item) => item.reason?.startsWith("dryRun")).length} 章，缺正文 ${results.filter((item) => item.skipped && !item.reason?.startsWith("dryRun")).length} 章。`
-      : `已结算 ${chaptersSettled}/${chaptersAttempted} 章：抽取 ${totalExtracted}，自动沉淀 ${totalAutoApplied}，pending ${totalPending}，跳过 ${chaptersSkipped}。`,
+      : [
+          `已结算 ${chaptersSettled}/${chaptersAttempted} 章：抽取 ${totalExtracted}，自动沉淀 ${totalAutoApplied}，pending ${totalPending}，跳过 ${chaptersSkipped}。`,
+          chaptersFailed > 0 ? `失败 ${chaptersFailed} 章（未写入记忆、未登记结算）；重新调用本工具重试，已结算章会被幂等跳过，只补失败章。` : "",
+        ].join(" "),
   };
 }

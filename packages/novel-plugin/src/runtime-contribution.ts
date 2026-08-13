@@ -24,7 +24,9 @@ import {
   handleJingweiAudit,
   handleJingweiRead,
   handleJingweiWrite,
+  handleLoreProgress,
   handleLoreRead,
+  handleLoreRelate,
   handleLoreWrite,
   handleMemoryBulkApprove,
   handleMemoryBulkDelete,
@@ -85,7 +87,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 ## 三层闭环：每次写作都让这本书更「记得住」
 - 写前必查：经纬查静态设定（新角色/新地点/新规则必须先查有没有既有设定），记忆查近章事实与状态。
 - 查不到就说缺：经纬没有该设定时如实说明「设定缺失」并建议补充，禁止现编一个当 canon 用。
-- 写后必沉淀：正文落盘后 pipeline.write 会自动发起一次 memory.settle_chapter 结算，这次调用在面板可见；结算失败时正文已保存，重试该工具即可（不会丢稿）。本章若出现新角色/新地点/新规则，用 lore.write 落经纬（draft/needs-review），由作者确认后才升 canon。
+- 写后必沉淀：正文落盘后 pipeline.write 会自动发起一次 memory.settle_chapter 结算，这次调用在面板可见；结算失败时正文已保存，重试该工具即可（不会丢稿）。本章若出现新角色/新地点/新规则，用 lore.write 落经纬（draft/needs-review），由作者确认后才升 canon。本章若出现角色/势力关系变化，用 lore.relate 落 relationships（needs-review）；伏笔/冲突/时间线等动态字段的推进用 lore.progress 写字段并留演变台账。
 - 技能闭环：写前 Skill 读技能 → 写中按技能执行 → 写后 check_compliance 校验，违规用 rewrite.apply 修正后再报完成。
 
 ## 写新章硬纪律（不可跳过）
@@ -95,7 +97,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 4. scene.spec 必须由你本人显式提交结构化蓝图（chapter/title/wordTarget/scenes/constraints/beatBudget），工具只做校验；pipeline.write 必须由你本人提交完整正文 content，工具负责校验、落盘与章后结算，不再内部生成。
 
 ## 长篇与平台
-- 经纬读写：查询使用 lore.read；录入或更新必须使用 lore.write（支持分类如 characters / world-model / factions / power-system / outline / foreshadowing）。严禁使用宿主通用 KnowledgeSearch/KnowledgeCreate 工具，也严禁擅自写入本地 md 文件充当经纬落库。
+- 经纬读写：查询使用 lore.read；录入或更新必须使用 lore.write（支持分类如 characters / world-model / factions / power-system / outline / foreshadowing）。关系变化用 lore.relate（relationships 分类），动态字段演变用 lore.progress。严禁使用宿主通用 KnowledgeSearch/KnowledgeCreate 工具，也严禁擅自写入本地 md 文件充当经纬落库。
 - 续写旧书：pipeline.import_chapters（默认 autoSettle+extractBrief）或 book.dissect(settle=true)；拆书产物是 draft/needs-review，确认后才 lore.write。
 - 中盘防跑偏：outline.volume 维护卷纲（当前卷目标会进 preflight 与 scene.spec）；arc.character 查角色弧停滞或回退。
 - 终局储备：outline.volume 的 endgameReserve 记底牌（宿敌/真相/金手指上限，逐卷解锁）与升级台阶（不越级）。返回的 overdraft 报「底牌提前动用」「越级/到顶」时必须如实转述并建议改纲，不得替作者打光底牌。
@@ -146,6 +148,8 @@ function bridgeLegacyHandler<TInput>(handler: (input: TInput) => Promise<unknown
 const READY_LEGACY_HANDLERS: Readonly<Record<Exclude<ReadyRuntimeToolName, CustomReadyRuntimeToolName>, LegacyReadHandler>> = {
   "lore.read": bridgeLegacyHandler(handleLoreRead),
   "lore.write": bridgeLegacyHandler(handleLoreWrite),
+  "lore.relate": bridgeLegacyHandler(handleLoreRelate),
+  "lore.progress": bridgeLegacyHandler(handleLoreProgress),
   "memory.read": bridgeLegacyHandler(handleMemoryRead),
   "memory.graph": bridgeLegacyHandler(handleMemoryGraph),
   "memory.events": bridgeLegacyHandler(handleMemoryEvents),
@@ -408,7 +412,8 @@ async function executeReadyToolImpl(
           ? { source: injectedInput.source as "accepted-resources" | "chapter-files" }
           : {}),
         ...(typeof injectedInput.dryRun === "boolean" ? { dryRun: injectedInput.dryRun } : {}),
-        // 补结算同样走 LLM 抽取：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+        // 补结算同样走 LLM 抽取：用 host 的 generateText 能力构造；缺失时抽取失败、
+        // 对应章保持未结算，agent 重新调用本工具即可补上。
         ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
       });
       return toRuntimeToolResult({

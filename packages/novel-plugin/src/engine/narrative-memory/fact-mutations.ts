@@ -42,7 +42,8 @@ export type CreateManualFactInput = Readonly<{
 export type CorrectFactInput = Readonly<{
   bookId: string;
   factId: string;
-  /** 纠正后的新值；缺省字段沿用旧 fact。 */
+  /** 纠正后的新值；缺省字段沿用旧 fact。主体改名会关闭旧实体下的事实，再在新实体下写入 manual 新值。 */
+  subject?: string;
   object?: string;
   predicate?: string;
   category?: string;
@@ -63,6 +64,18 @@ function nowIso(): string {
 
 function manualFactId(bookId: string): string {
   return `manual-fact:${bookId}:${crypto.randomUUID()}`;
+}
+
+const MANUAL_CORRECTION_SOURCE_PREFIX = "manual-correction:";
+
+function manualCorrectionSourceId(factId: string): string {
+  return `${MANUAL_CORRECTION_SOURCE_PREFIX}${factId}`;
+}
+
+function correctionParentId(sourceId: string | undefined): string | undefined {
+  if (!sourceId?.startsWith(MANUAL_CORRECTION_SOURCE_PREFIX)) return undefined;
+  const parentId = sourceId.slice(MANUAL_CORRECTION_SOURCE_PREFIX.length).trim();
+  return parentId || undefined;
 }
 
 function fail(error: string, summary: string): NarrativeFactMutationResult {
@@ -118,10 +131,16 @@ export function correctNarrativeFact(storage: StorageDatabase, input: CorrectFac
     return fail("already-closed", "该事实已被关闭，不能纠正历史值；如需改历史请手动新增并指定生效章节。");
   }
 
+  const nextSubject = input.subject?.trim() || existing.subject;
   const nextObject = input.object?.trim() || existing.object;
   const nextPredicate = input.predicate?.trim() || existing.predicate;
   const nextCategory = input.category?.trim() || existing.category;
-  if (nextObject === existing.object && nextPredicate === existing.predicate && nextCategory === existing.category) {
+  if (
+    nextSubject === existing.subject
+    && nextObject === existing.object
+    && nextPredicate === existing.predicate
+    && nextCategory === existing.category
+  ) {
     return fail("no-change", "新值与当前值一致，无需纠正。");
   }
 
@@ -134,12 +153,14 @@ export function correctNarrativeFact(storage: StorageDatabase, input: CorrectFac
   const next: NarrativeFact = {
     ...existing,
     id: manualFactId(input.bookId),
+    subject: nextSubject,
     predicate: nextPredicate,
     object: nextObject,
     category: nextCategory,
     confidence: input.confidence ?? 1,
     sourceType: "manual",
-    sourceId: undefined,
+    // 保留替代链：subject/predicate/category 改动会改变 slot，不能只靠 slot key 追溯。
+    sourceId: manualCorrectionSourceId(existing.id),
     evidenceText: input.evidenceText?.trim() || existing.evidenceText,
     validFromChapter: closeAt,
     validUntilChapter: undefined,
@@ -171,15 +192,30 @@ export function retireNarrativeFact(storage: StorageDatabase, input: RetireFactI
   return { ok: true, summary: `已作废：${existing.subject} / ${existing.predicate} / ${existing.object}`, fact: upsertNarrativeFact(storage, closed) };
 }
 
-/** 某 slot 的完整变迁史（含已关闭值），按生效章节升序。 */
+/** 某条 fact 的完整变迁史（含已关闭值），按替代链与 slot 兼容规则追溯。 */
 export function queryNarrativeFactHistory(storage: StorageDatabase, input: { bookId: string; factId: string }): NarrativeFact[] {
   ensureNarrativeMemorySchema(storage);
   const anchor = getNarrativeFactById(storage, input.bookId, input.factId);
   if (!anchor) return [];
-  const slot = narrativeFactSlotKey(anchor);
-  return queryNarrativeFacts(storage, { bookId: input.bookId, categories: [anchor.category], limit: 500 })
-    .filter((fact) => narrativeFactSlotKey(fact) === slot)
-    .sort((a, b) => (a.validFromChapter ?? a.sourceChapter ?? 0) - (b.validFromChapter ?? b.sourceChapter ?? 0) || a.createdAt.localeCompare(b.createdAt));
+  const candidates = queryNarrativeFacts(storage, { bookId: input.bookId, limit: 500 });
+  const byId = new Map(candidates.map((fact) => [fact.id, fact]));
+  const chain: NarrativeFact[] = [];
+  const seen = new Set<string>();
+  let current: NarrativeFact | undefined = anchor;
+  while (current && !seen.has(current.id)) {
+    chain.push(current);
+    seen.add(current.id);
+    const parentId = correctionParentId(current.sourceId);
+    current = parentId ? byId.get(parentId) : undefined;
+  }
+  // 兼容旧数据：没有替代链 sourceId 时，仍按原 slot 返回历史。
+  if (chain.length === 1 && !correctionParentId(anchor.sourceId)) {
+    const slot = narrativeFactSlotKey(anchor);
+    return candidates
+      .filter((fact) => narrativeFactSlotKey(fact) === slot)
+      .sort((a, b) => (a.validFromChapter ?? a.sourceChapter ?? 0) - (b.validFromChapter ?? b.sourceChapter ?? 0) || a.createdAt.localeCompare(b.createdAt));
+  }
+  return chain.reverse();
 }
 
 export type EntityFactsGroup = Readonly<{
@@ -187,12 +223,13 @@ export type EntityFactsGroup = Readonly<{
   facts: readonly NarrativeFact[];
 }>;
 
-/** 按实体（subject）聚合当前 open fact，供人物状态板使用。 */
+/** 按实体聚合当前 open fact；传 entity 时按 subject/object 双端匹配。 */
 export function queryFactsByEntity(storage: StorageDatabase, input: {
   bookId: string;
   asOfChapter?: number;
   categories?: readonly string[];
   limit?: number;
+  entity?: string;
 }): EntityFactsGroup[] {
   const ledger = queryCurrentNarrativeLedger(storage, {
     bookId: input.bookId,
@@ -200,6 +237,13 @@ export function queryFactsByEntity(storage: StorageDatabase, input: {
     categories: input.categories,
     limit: input.limit ?? 500,
   });
+  const target = input.entity?.trim();
+  if (target) {
+    const facts = ledger.items
+      .filter((fact) => fact.subject === target || fact.object === target)
+      .sort((a, b) => a.predicate.localeCompare(b.predicate));
+    return facts.length > 0 ? [{ entity: target, facts }] : [];
+  }
   const byEntity = new Map<string, NarrativeFact[]>();
   for (const fact of ledger.items) {
     const list = byEntity.get(fact.subject) ?? [];

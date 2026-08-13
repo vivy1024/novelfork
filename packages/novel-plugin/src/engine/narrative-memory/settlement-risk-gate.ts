@@ -39,7 +39,7 @@ export type SettlementRiskDecision = Readonly<{
  * （agent 重试、管线发起后又手动补一次、settle_range 扫到已结算章）都收敛到它。
  * 其余两个是既有的配置/空正文跳过原因。
  */
-export type ChapterSettlementSkipReason = "already-settled" | "settlement-disabled" | "empty-content";
+export type ChapterSettlementSkipReason = "already-settled" | "settlement-disabled" | "empty-content" | "extraction-disabled";
 
 /**
  * 本次结算与幂等台账的关系，供面板与 agent 判断「这次到底做了什么」。
@@ -78,7 +78,9 @@ export type ChapterSettlementResult = Readonly<{
   events: readonly NarrativeEvent[];
   /** status=skipped 时的机器可读原因；只用于去重与分流，展示一律读 explanation。 */
   skipReason?: ChapterSettlementSkipReason;
-  /** 跳过/重结算的人话解释（发生了什么 / 为什么要看 / 建议怎么做）。 */
+  /** status=failed 时的机器可读错误码；用于让 agent 重试工具调用。 */
+  error?: string;
+  /** 跳过/重结算/失败的人话解释（发生了什么 / 为什么要看 / 建议怎么做）。 */
   explanation?: DiagnosticExplanation;
   /** 本次结算与幂等台账的关系；skipped-duplicate 时说明「已结算过，本次跳过」。 */
   idempotency?: ChapterSettlementIdempotency;

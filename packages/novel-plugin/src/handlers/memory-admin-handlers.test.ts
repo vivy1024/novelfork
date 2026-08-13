@@ -172,6 +172,27 @@ describe("memory admin handlers", () => {
     ]));
   });
 
+  /**
+   * 搜索真分页：offset 跳过前 N 条，page 元信息回带 limit/offset/returned。
+   */
+  it("paginates search results by offset without re-scanning the first page", async () => {
+    const { handleMemorySearch } = await import("./memory-admin-handlers.js");
+
+    const firstPage = await handleMemorySearch({ bookId: "book-1", query: "韩立", limit: 2 });
+    expect(firstPage.ok).toBe(true);
+    if (!firstPage.ok) return;
+    const firstIds = (firstPage.data.entries as Array<{ id: string }>).map((entry) => entry.id);
+    expect(firstPage.data.page).toMatchObject({ limit: 2, offset: 0 });
+
+    const secondPage = await handleMemorySearch({ bookId: "book-1", query: "韩立", limit: 2, offset: 2 });
+    expect(secondPage.ok).toBe(true);
+    if (!secondPage.ok) return;
+    const secondIds = (secondPage.data.entries as Array<{ id: string }>).map((entry) => entry.id);
+    expect(secondPage.data.page).toMatchObject({ limit: 2, offset: 2 });
+    // 两页不重叠。
+    expect(secondIds.some((id) => firstIds.includes(id))).toBe(false);
+  });
+
   it("returns memory stats by kind and status", async () => {
     const { handleMemoryStats } = await import("./memory-admin-handlers.js");
 

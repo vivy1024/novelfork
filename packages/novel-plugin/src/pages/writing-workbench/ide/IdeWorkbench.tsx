@@ -25,6 +25,7 @@ import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { EntityDetailDrawer } from "../EntityDetailDrawer";
 import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
@@ -232,6 +233,7 @@ export function IdeWorkbench({
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
+  const [entityDetailEntity, setEntityDetailEntity] = useState<string | null>(null);
   const [fileClipboard, setFileClipboard] = useState<{ node: WorkbenchResourceNode; mode: "copy" | "cut" } | null>(null);
 
   // 文件/条目操作的产品内弹层，取代浏览器原生 confirm/prompt/alert。
@@ -1162,6 +1164,7 @@ export function IdeWorkbench({
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
                       onAction={handleResourceAction}
+                      onOpenEntityDetail={setEntityDetailEntity}
                     />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再回到叙事记忆。</span>
@@ -1346,6 +1349,14 @@ export function IdeWorkbench({
       placeholder={paletteMode === "commands" ? "输入命令..." : "输入文件名..."}
       mode={paletteMode}
     />
+    {bookId && entityDetailEntity && (
+      <EntityDetailDrawer
+        bookId={bookId}
+        entity={entityDetailEntity}
+        onClose={() => setEntityDetailEntity(null)}
+        onOpenJingweiEntry={handleOpenJingweiEntry}
+      />
+    )}
     {/* 文件/条目操作弹层（confirm/prompt/alert 的产品内实现） */}
       {dialogElement}
     </>

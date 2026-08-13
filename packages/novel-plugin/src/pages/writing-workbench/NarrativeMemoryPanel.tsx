@@ -6,12 +6,12 @@ import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 // 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
+  bulkMutatePendingEvents,
   mutatePendingEvent as mutatePendingEventRequest,
   riskLabel,
   type PendingEvent,
   type PendingEventEdit,
-} from "./narrative-pending-events";
-import {
+} from "./narrative-pending-events";import {
   correctFact,
   fetchFactsByEntity,
   retireFact,
@@ -115,6 +115,8 @@ interface NarrativeMemoryPanelProps {
   selectedNodeId?: string | null;
   onOpen?: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
+  /** 打开实体详情抽屉：作者与叙述者看到同一条实体状态入口。 */
+  onOpenEntityDetail?: (entity: string) => void;
 }
 
 interface NarrativeMemoryPanelShellProps {
@@ -144,10 +146,24 @@ interface NarrativeMemoryPanelShellProps {
   onSearch?: (query: string) => void;
   onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
   onReject?: (event: PendingEvent) => void;
+  /** 待审队列批量批准（与单条批准同一语义），成功返回后由外层刷新队列。 */
+  onBulkApprove?: (eventIds: readonly string[]) => Promise<void>;
+  /** 待审队列批量丢弃（物理删除待审事件，不留痕）。 */
+  onBulkDelete?: (eventIds: readonly string[]) => Promise<void>;
   onSearchEntryOpen?: (entry: MemoryEntry) => void;
+  onOpenEntityDetail?: (entity: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
   onRefresh: () => void;
+  /** 结算历史 / 审批台账 / 搜索的追加式分页。 */
+  historyHasMore?: boolean;
+  historyLoadingMore?: boolean;
+  onLoadMoreHistory?: () => void;
+  approvalsHasMore?: boolean;
+  approvalsLoadingMore?: boolean;
+  onLoadMoreApprovals?: () => void;
+  searchHasMore?: boolean;
+  onLoadMoreSearch?: () => void;
 }
 
 /**
@@ -167,7 +183,22 @@ const MEMORY_NAV_ITEMS = [
   "事件链",
 ] as const;
 
-type MemoryViewLabel = typeof MEMORY_NAV_ITEMS[number];
+type MemoryViewLabel = (typeof MEMORY_NAV_ITEMS)[number];
+
+/** 待审队列置信度筛选分段。无 confidence 的事件不属于任何具体段，只在「全部」显示。 */
+type PendingConfidenceFilter = "all" | "low" | "medium" | "high";
+
+const PENDING_CONFIDENCE_FILTERS: readonly { value: PendingConfidenceFilter; label: string }[] = [
+  { value: "all", label: "全部" },
+  { value: "low", label: "低置信 <0.6" },
+  { value: "medium", label: "中置信 0.6–0.75" },
+  { value: "high", label: "高置信 ≥0.75" },
+] as const;
+
+/** 真分页页大小：结算历史 / 审批台账 / 搜索各自独立 offset，追加式加载。 */
+const HISTORY_PAGE_SIZE = 50;
+const APPROVALS_PAGE_SIZE = 50;
+const SEARCH_PAGE_SIZE = 30;
 
 const GRAPH_VIEWS = new Set<MemoryViewLabel>(["关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]);
 
@@ -236,7 +267,12 @@ function WaveSummary({ wave }: { wave?: Record<string, unknown> | null }) {
   );
 }
 
-function MemoryNodeTree({ nodes, selectedNodeId, onOpen }: { nodes: WorkbenchResourceNode[]; selectedNodeId?: string | null; onOpen?: (node: WorkbenchResourceNode) => void }) {
+function MemoryNodeTree({ nodes, selectedNodeId, onOpen, onOpenEntityDetail }: {
+  nodes: WorkbenchResourceNode[];
+  selectedNodeId?: string | null;
+  onOpen?: (node: WorkbenchResourceNode) => void;
+  onOpenEntityDetail?: (entity: string) => void;
+}) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(nodes.map((node) => node.id)));
   useEffect(() => {
     setExpanded(new Set(nodes.map((node) => node.id)));
@@ -261,6 +297,9 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen }: { nodes: WorkbenchRes
           style={{ paddingLeft: `${depth * 12 + 8}px` }}
           onClick={() => {
             if (hasChildren) toggle(node);
+            else if (node.metadata?.isNarrativeMemoryEntry && typeof node.title === "string" && onOpenEntityDetail) {
+              onOpenEntityDetail(node.title);
+            }
             else onOpen?.(node);
           }}
         >
@@ -284,6 +323,7 @@ function StoryStatusSummary({
   factEditingId,
   factEditError,
   onOpenFact,
+  onOpenEntityDetail,
   onCorrectFact,
   onRetireFact,
 }: {
@@ -295,6 +335,7 @@ function StoryStatusSummary({
   factEditingId?: string | null;
   factEditError?: string | null;
   onOpenFact?: (entry: MemoryEntry) => void;
+  onOpenEntityDetail?: (entity: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
 }) {
@@ -344,6 +385,7 @@ function StoryStatusSummary({
           onCorrect={onCorrectFact}
           onRetire={onRetireFact}
           onOpen={onOpenFact}
+          onOpenEntityDetail={onOpenEntityDetail}
         />
       ) : (
         <div className="space-y-2">
@@ -381,6 +423,7 @@ function EntityStatusBoard({
   onCorrect,
   onRetire,
   onOpen,
+  onOpenEntityDetail,
 }: {
   bookId: string;
   groups: EntityFactsGroup[];
@@ -388,6 +431,7 @@ function EntityStatusBoard({
   onCorrect?: (fact: EntityFact, newObject: string) => void;
   onRetire?: (fact: EntityFact) => void;
   onOpen?: (entry: MemoryEntry) => void;
+  onOpenEntityDetail?: (entity: string) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -396,12 +440,18 @@ function EntityStatusBoard({
           <div className="flex items-center justify-between">
             <button
               type="button"
-              onClick={() => onOpen?.({
-                kind: "fact",
-                id: `entity:${group.entity}`,
-                subject: group.entity,
-                summary: `${group.facts.length} 条当前状态`,
-              } as MemoryEntry)}
+              onClick={() => {
+                if (onOpenEntityDetail) {
+                  onOpenEntityDetail(group.entity);
+                  return;
+                }
+                onOpen?.({
+                  kind: "fact",
+                  id: `entity:${group.entity}`,
+                  subject: group.entity,
+                  summary: `${group.facts.length} 条当前状态`,
+                } as MemoryEntry);
+              }}
               className="text-[11px] font-semibold hover:underline"
             >
               {group.entity}
@@ -498,7 +548,21 @@ function EditableFactRow({
   );
 }
 
-function SearchResults({ results, query, loading, onOpen }: { results: MemoryEntry[]; query: string; loading?: boolean; onOpen?: (entry: MemoryEntry) => void }) {
+function SearchResults({
+  results,
+  query,
+  loading,
+  hasMore,
+  onLoadMore,
+  onOpen,
+}: {
+  results: MemoryEntry[];
+  query: string;
+  loading?: boolean;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  onOpen?: (entry: MemoryEntry) => void;
+}) {
   if (!query) return null;
   return (
     <section className="rounded-lg border border-border bg-card p-3 space-y-2">
@@ -517,6 +581,16 @@ function SearchResults({ results, query, loading, onOpen }: { results: MemoryEnt
           <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.summary ?? entryPredicateText(entry)}</div>
         </button>
       ))}
+      {hasMore && (
+        <button
+          type="button"
+          disabled={loading}
+          onClick={onLoadMore}
+          className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+        >
+          {loading ? "加载中…" : "加载更多结果"}
+        </button>
+      )}
     </section>
   );
 }
@@ -581,15 +655,23 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
 /**
  * 待审事件卡片：支持直接批准/拒绝，或「改后批准」——展开编辑 subject/predicate/object
  * 再应用，机器抽错一个字不用整章重结。
+ *
+ * selectable=true 时出现批量选择框；无 id 的事件不可选（批量操作以 id 为键）。
  */
 function PendingEventCard({
   event,
   loading,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
   onApprove,
   onReject,
 }: {
   event: PendingEvent;
   loading: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (event: PendingEvent) => void;
   onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
   onReject?: (event: PendingEvent) => void;
 }) {
@@ -635,9 +717,20 @@ function PendingEventCard({
 
   return (
     <div className="rounded border border-border/60 p-2 space-y-1">
-      <div className="flex justify-between gap-2">
-        <span className="font-medium">{event.eventType ?? "event"}</span>
-        <span className={`text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-start gap-1.5">
+          {selectable && event.id && (
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={() => onToggleSelect?.(event)}
+              aria-label={`选择事件 ${event.entity ?? event.id}`}
+              className="mt-0.5 size-3.5 shrink-0 accent-primary"
+            />
+          )}
+          <span className="min-w-0 truncate font-medium">{event.eventType ?? "event"}</span>
+        </div>
+        <span className={`shrink-0 text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
       <div className="text-[10px] text-muted-foreground">
         {event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"} · 第 {event.chapterNumber ?? "—"} 章
@@ -786,7 +879,7 @@ function FactHistoryPanel({ bookId, fact, onClose }: { bookId: string; fact: Ent
   );
 }
 
-export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOpen, onAction }: NarrativeMemoryPanelProps) {
+export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOpen, onAction, onOpenEntityDetail }: NarrativeMemoryPanelProps) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSummary | null>(null);
   const [events, setEvents] = useState<PendingEvent[]>([]);
   const [historyEvents, setHistoryEvents] = useState<MemoryEntry[]>([]);
@@ -804,6 +897,15 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
   const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // 真分页状态：结算历史 / 审批台账 / 搜索各自维护 offset 与「还有更多」。
+  const [historyOffset, setHistoryOffset] = useState(0);
+  const [historyHasMore, setHistoryHasMore] = useState(false);
+  const [historyLoadingMore, setHistoryLoadingMore] = useState(false);
+  const [approvalsOffset, setApprovalsOffset] = useState(0);
+  const [approvalsHasMore, setApprovalsHasMore] = useState(false);
+  const [approvalsLoadingMore, setApprovalsLoadingMore] = useState(false);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [searchHasMore, setSearchHasMore] = useState(false);
   const generationRef = useRef(0);
   useEffect(() => () => { generationRef.current += 1; }, []);
 
@@ -824,10 +926,11 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         tolerate404(fetchJson<DiagnosticsResponse>(`${base}/diagnostics/latest`)),
         fetchJson<{ events?: PendingEvent[] }>(`${base}/events/pending`),
         tolerate404(fetchJson<MemoryStatsResponse>(`${base}/stats`)),
-        fetchJson<MemoryListResponse>(`${base}/list?kind=event&limit=40`).catch(() => null),
+        fetchJson<MemoryListResponse>(`${base}/list?kind=event&limit=${HISTORY_PAGE_SIZE}`).catch(() => null),
         // Story status intentionally reads the same current ledger as memory.read,
         // rather than the historical fact administration list.
-        fetchJson<CurrentLedgerResponse>(`${base}/current?limit=40`).catch(() => null),
+        // 不传 limit：让服务端按本书 ledger.currentViewLimit 配置取数。
+        fetchJson<CurrentLedgerResponse>(`${base}/current`).catch(() => null),
         fetchFactsByEntity(bookId).catch(() => []),
       ]);
       if (generation !== generationRef.current) return;
@@ -841,18 +944,23 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       const nextStats = statsPayload?.stats ?? null;
       setStats(nextStats);
 
-      const nextHistory = (historyPayload?.entries ?? [])
+      const rawHistory = historyPayload?.entries ?? [];
+      const nextHistory = rawHistory
         .filter((entry) => entry.status === "applied" || entry.status === "rejected");
       setHistoryEvents(nextHistory);
+      setHistoryOffset(rawHistory.length);
+      setHistoryHasMore(rawHistory.length >= HISTORY_PAGE_SIZE);
 
       const nextFacts = factsPayload?.items ?? factsPayload?.facts ?? [];
       setStateFacts(nextFacts);
       setEntityGroups(entityGroupsPayload);
 
       // 审批台账是附加视图：读不到不应让整个叙事记忆面板报错。
-      const nextApprovals = await fetchNarrativeLineApprovals(bookId, { limit: 40 }).catch(() => []);
+      const nextApprovals = await fetchNarrativeLineApprovals(bookId, { limit: APPROVALS_PAGE_SIZE }).catch(() => []);
       if (generation !== generationRef.current) return;
       setLineApprovals(nextApprovals);
+      setApprovalsOffset(nextApprovals.length);
+      setApprovalsHasMore(nextApprovals.length >= APPROVALS_PAGE_SIZE);
 
       setEmpty(
         nextEvents.length === 0
@@ -874,9 +982,50 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     void load();
   }, [load]);
 
+  /** 结算历史追加式分页：offset 递增，追加而非替换。 */
+  const loadMoreHistory = useCallback(async () => {
+    if (historyLoadingMore) return;
+    setHistoryLoadingMore(true);
+    try {
+      const payload = await fetchJson<MemoryListResponse>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/list?kind=event&limit=${HISTORY_PAGE_SIZE}&offset=${historyOffset}`,
+      );
+      const raw = payload.entries ?? [];
+      const more = raw.filter((entry) => entry.status === "applied" || entry.status === "rejected");
+      setHistoryEvents((previous) => [...previous, ...more]);
+      setHistoryOffset((previous) => previous + raw.length);
+      setHistoryHasMore(raw.length >= HISTORY_PAGE_SIZE);
+    } catch {
+      // 加载更多失败不破坏已有列表；下次点击重试。
+    } finally {
+      setHistoryLoadingMore(false);
+    }
+  }, [bookId, historyOffset, historyLoadingMore]);
+
+  /** 审批台账追加式分页。 */
+  const loadMoreApprovals = useCallback(async () => {
+    if (approvalsLoadingMore) return;
+    setApprovalsLoadingMore(true);
+    try {
+      const more = await fetchNarrativeLineApprovals(bookId, {
+        limit: APPROVALS_PAGE_SIZE,
+        offset: approvalsOffset,
+      });
+      setLineApprovals((previous) => [...previous, ...more]);
+      setApprovalsOffset((previous) => previous + more.length);
+      setApprovalsHasMore(more.length >= APPROVALS_PAGE_SIZE);
+    } catch {
+      // 加载更多失败不破坏已有列表；下次点击重试。
+    } finally {
+      setApprovalsLoadingMore(false);
+    }
+  }, [bookId, approvalsOffset, approvalsLoadingMore]);
+
   const search = useCallback(async (query: string) => {
     const normalized = query.trim();
     setSearchQuery(normalized);
+    setSearchOffset(0);
+    setSearchHasMore(false);
     if (!normalized) {
       setSearchResults([]);
       return;
@@ -885,16 +1034,38 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     setSearchLoading(true);
     try {
       const payload = await fetchJson<MemorySearchResponse>(
-        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(normalized)}&limit=30`,
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(normalized)}&limit=${SEARCH_PAGE_SIZE}`,
       );
       if (generation !== generationRef.current) return;
       setSearchResults(payload.entries ?? []);
+      setSearchOffset((payload.entries ?? []).length);
+      setSearchHasMore((payload.entries ?? []).length >= SEARCH_PAGE_SIZE);
     } catch {
       if (generation === generationRef.current) setSearchResults([]);
     } finally {
       if (generation === generationRef.current) setSearchLoading(false);
     }
   }, [bookId]);
+
+  /** 搜索结果追加式分页。 */
+  const loadMoreSearch = useCallback(async () => {
+    if (!searchQuery.trim() || searchLoading) return;
+    const generation = ++generationRef.current;
+    setSearchLoading(true);
+    try {
+      const payload = await fetchJson<MemorySearchResponse>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(searchQuery)}&limit=${SEARCH_PAGE_SIZE}&offset=${searchOffset}`,
+      );
+      if (generation !== generationRef.current) return;
+      setSearchResults((previous) => [...previous, ...(payload.entries ?? [])]);
+      setSearchOffset((previous) => previous + (payload.entries ?? []).length);
+      setSearchHasMore((payload.entries ?? []).length >= SEARCH_PAGE_SIZE);
+    } catch {
+      // 加载更多失败保留已有结果；下次点击重试。
+    } finally {
+      if (generation === generationRef.current) setSearchLoading(false);
+    }
+  }, [bookId, searchQuery, searchOffset, searchLoading]);
 
   const mutateEvent = useCallback(async (event: PendingEvent, action: "approve" | "reject", edit?: PendingEventEdit) => {
     if (!event.id) return;
@@ -965,6 +1136,17 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     });
   }, [bookId, onOpen]);
 
+  // 批量批准/丢弃：成功后刷新整队列（Shell 负责清空选择集）。
+  const bulkApprove = useCallback(async (eventIds: readonly string[]) => {
+    await bulkMutatePendingEvents(bookId, "approve", eventIds, { reason: "工作台批量批准" });
+    await load();
+  }, [bookId, load]);
+
+  const bulkDelete = useCallback(async (eventIds: readonly string[]) => {
+    await bulkMutatePendingEvents(bookId, "delete", eventIds, { reason: "工作台批量丢弃" });
+    await load();
+  }, [bookId, load]);
+
   return (
     <NarrativeMemoryPanelShell
       bookId={bookId}
@@ -992,10 +1174,21 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       onSearch={(query) => void search(query)}
       onApprove={(event, edit) => void mutateEvent(event, "approve", edit)}
       onReject={(event) => void mutateEvent(event, "reject")}
+      onBulkApprove={bulkApprove}
+      onBulkDelete={bulkDelete}
       onRefresh={() => void load()}
       onSearchEntryOpen={openSearchEntry}
+      onOpenEntityDetail={onOpenEntityDetail}
       onCorrectFact={(fact, newObject) => void correctFactRow(fact, newObject)}
       onRetireFact={(fact) => void retireFactRow(fact)}
+      historyHasMore={historyHasMore}
+      historyLoadingMore={historyLoadingMore}
+      onLoadMoreHistory={() => void loadMoreHistory()}
+      approvalsHasMore={approvalsHasMore}
+      approvalsLoadingMore={approvalsLoadingMore}
+      onLoadMoreApprovals={() => void loadMoreApprovals()}
+      searchHasMore={searchHasMore}
+      onLoadMoreSearch={() => void loadMoreSearch()}
     />
   );
 }
@@ -1025,19 +1218,95 @@ export function NarrativeMemoryPanelShell({
   onSearch,
   onApprove,
   onReject,
+  onBulkApprove,
+  onBulkDelete,
   onRefresh,
   onSearchEntryOpen,
+  onOpenEntityDetail,
   onCorrectFact,
   onRetireFact,
+  historyHasMore = false,
+  historyLoadingMore = false,
+  onLoadMoreHistory,
+  approvalsHasMore = false,
+  approvalsLoadingMore = false,
+  onLoadMoreApprovals,
+  searchHasMore = false,
+  onLoadMoreSearch,
 }: NarrativeMemoryPanelShellProps) {
   const [activeView, setActiveView] = useState<MemoryViewLabel>("故事状态");
   const [queryInput, setQueryInput] = useState(searchQuery);
   const [pendingOpen, setPendingOpen] = useState(false);
 
+  // 待审队列批量操作状态：置信度筛选 + 多选。
+  const [confidenceFilter, setConfidenceFilter] = useState<PendingConfidenceFilter>("all");
+  const [selectedEventIds, setSelectedEventIds] = useState<Set<string>>(new Set());
+  const [bulkLoading, setBulkLoading] = useState<"approve" | "delete" | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
   const highRiskEvents = events.filter((event) => event.risk === "high");
   const otherPending = events.filter((event) => event.risk !== "high");
-  const pendingToShow = pendingOpen ? events : highRiskEvents.length > 0 ? highRiskEvents : events.slice(0, 3);
   const allEntityFacts = useMemo(() => entityGroups.flatMap((group) => group.facts), [entityGroups]);
+
+  // 待审队列：置信度筛选 + 低置信靠前排序。无 confidence 的事件只在「全部」里出现。
+  const selectableEvents = useMemo(() => {
+    const byConfidence = (a: PendingEvent, b: PendingEvent) => {
+      if (a.confidence === undefined && b.confidence === undefined) return 0;
+      if (a.confidence === undefined) return 1;
+      if (b.confidence === undefined) return -1;
+      return a.confidence - b.confidence;
+    };
+    if (confidenceFilter === "all") return [...events].sort(byConfidence);
+    const predicate: Record<Exclude<PendingConfidenceFilter, "all">, (event: PendingEvent) => boolean> = {
+      low: (event) => event.confidence !== undefined && event.confidence < 0.6,
+      medium: (event) => event.confidence !== undefined && event.confidence >= 0.6 && event.confidence < 0.75,
+      high: (event) => event.confidence !== undefined && event.confidence >= 0.75,
+    };
+    return events.filter(predicate[confidenceFilter]).sort(byConfidence);
+  }, [events, confidenceFilter]);
+  const selectableIds = useMemo(() => new Set(selectableEvents.map((event) => event.id).filter((id): id is string => Boolean(id))), [selectableEvents]);
+  const allSelected = selectableIds.size > 0 && [...selectableIds].every((id) => selectedEventIds.has(id));
+  const pendingToShow = pendingOpen ? selectableEvents : (confidenceFilter === "all" && highRiskEvents.length > 0 ? highRiskEvents : selectableEvents.slice(0, 3));
+
+  const toggleSelect = useCallback((event: PendingEvent) => {
+    if (!event.id) return;
+    setSelectedEventIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(event.id!)) next.delete(event.id!);
+      else next.add(event.id!);
+      return next;
+    });
+  }, []);
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedEventIds((previous) => {
+      const next = new Set(previous);
+      if (allSelected) {
+        for (const id of selectableIds) next.delete(id);
+      } else {
+        for (const id of selectableIds) next.add(id);
+      }
+      return next;
+    });
+  }, [allSelected, selectableIds]);
+
+  const runBulk = useCallback(async (action: "approve" | "delete") => {
+    const ids = selectableEvents
+      .map((event) => event.id)
+      .filter((id): id is string => Boolean(id) && selectedEventIds.has(id));
+    if (ids.length === 0) return;
+    setBulkLoading(action);
+    setBulkError(null);
+    try {
+      if (action === "approve") await onBulkApprove?.(ids);
+      else await onBulkDelete?.(ids);
+      setSelectedEventIds(new Set());
+    } catch (cause) {
+      setBulkError(cause instanceof Error ? cause.message : "批量操作失败");
+    } finally {
+      setBulkLoading(null);
+    }
+  }, [selectableEvents, selectedEventIds, onBulkApprove, onBulkDelete]);
 
   if (loading) {
     return (
@@ -1129,7 +1398,14 @@ export function NarrativeMemoryPanelShell({
               <button type="submit" className="rounded bg-primary px-3 py-1 text-[11px] text-primary-foreground">搜索</button>
             </form>
           </section>
-          <SearchResults results={searchResults} query={searchQuery} loading={searchLoading} onOpen={onSearchEntryOpen} />
+          <SearchResults
+            results={searchResults}
+            query={searchQuery}
+            loading={searchLoading}
+            hasMore={searchHasMore}
+            onLoadMore={onLoadMoreSearch}
+            onOpen={onSearchEntryOpen}
+          />
         </>
       )}
 
@@ -1144,6 +1420,7 @@ export function NarrativeMemoryPanelShell({
             factEditingId={factEditingId}
             factEditError={factEditError}
             onOpenFact={onSearchEntryOpen}
+            onOpenEntityDetail={onOpenEntityDetail}
             onCorrectFact={onCorrectFact}
             onRetireFact={onRetireFact}
           />
@@ -1151,7 +1428,7 @@ export function NarrativeMemoryPanelShell({
           {memoryNodes.length > 0 && (
             <section className="rounded-lg border border-border bg-card p-2 space-y-2">
               <h3 className="px-1 text-xs font-semibold text-muted-foreground">状态树（只读）</h3>
-              <MemoryNodeTree nodes={memoryNodes} selectedNodeId={selectedNodeId} onOpen={onOpen} />
+              <MemoryNodeTree nodes={memoryNodes} selectedNodeId={selectedNodeId} onOpen={onOpen} onOpenEntityDetail={onOpenEntityDetail} />
             </section>
           )}
 
@@ -1182,7 +1459,7 @@ export function NarrativeMemoryPanelShell({
             ))}
           </section>
 
-          <section className="rounded-lg border border-border bg-card p-3 space-y-2">
+          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-pending">
             <div className="flex items-center justify-between gap-2">
               <h3 className="text-xs font-semibold text-muted-foreground">
                 待审事项 ({events.length})
@@ -1195,19 +1472,86 @@ export function NarrativeMemoryPanelShell({
               )}
             </div>
             <p className="text-[10px] text-muted-foreground">章后默认自动结算；这里通常只剩高风险/低置信度项，可不处理也不阻断写作。</p>
+
+            {/* 置信度筛选 + 全选：批量处理低置信抽取时先筛再选。 */}
+            <div className="flex flex-wrap items-center gap-1" aria-label="待审置信度筛选">
+              {PENDING_CONFIDENCE_FILTERS.map((filter) => (
+                <button
+                  key={filter.value}
+                  type="button"
+                  aria-pressed={confidenceFilter === filter.value}
+                  onClick={() => setConfidenceFilter(filter.value)}
+                  className={`rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+                    confidenceFilter === filter.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              ))}
+              {selectableIds.size > 0 && (
+                <label className="ml-auto flex items-center gap-1 text-[10px] text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    aria-label="全选当前筛选下的待审事件"
+                    className="size-3.5 accent-primary"
+                  />
+                  全选
+                </label>
+              )}
+            </div>
+
+            {selectedEventIds.size > 0 && (
+              <div className="flex flex-wrap items-center gap-1.5 rounded border border-primary/30 bg-primary/5 p-2">
+                <span className="text-[10px] text-muted-foreground">已选 {selectedEventIds.size} 条</span>
+                <button
+                  type="button"
+                  disabled={bulkLoading !== null}
+                  onClick={() => void runBulk("approve")}
+                  className="ml-auto rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {bulkLoading === "approve" ? "批准中…" : "批量批准"}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkLoading !== null}
+                  onClick={() => void runBulk("delete")}
+                  className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+                  title="物理删除选中的待审事件记录，不留痕；已批准/已拒绝的历史不受影响。"
+                >
+                  {bulkLoading === "delete" ? "丢弃中…" : "批量丢弃"}
+                </button>
+                <button
+                  type="button"
+                  disabled={bulkLoading !== null}
+                  onClick={() => setSelectedEventIds(new Set())}
+                  className="rounded px-2 py-1 text-[10px] text-muted-foreground hover:text-foreground disabled:opacity-50"
+                >
+                  取消选择
+                </button>
+              </div>
+            )}
+            {bulkError && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{bulkError}</div>}
+
             {actionError && <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{actionError}</div>}
             {events.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">没有待审事件。</p>
+            ) : pendingToShow.length === 0 ? (
+              <p className="text-[11px] text-muted-foreground">当前置信度筛选下没有待审事件。</p>
             ) : pendingToShow.map((event, index) => (
               <PendingEventCard
                 key={event.id ?? index}
                 event={event}
                 loading={actionLoadingId === event.id}
+                selectable
+                selected={Boolean(event.id && selectedEventIds.has(event.id))}
+                onToggleSelect={toggleSelect}
                 onApprove={onApprove}
                 onReject={onReject}
               />
             ))}
-            {!pendingOpen && otherPending.length > 0 && highRiskEvents.length > 0 && (
+            {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
               <p className="text-[10px] text-muted-foreground">另有 {otherPending.length} 条非高风险待审，已折叠。</p>
             )}
           </section>
@@ -1232,7 +1576,7 @@ export function NarrativeMemoryPanelShell({
           <p className="text-[10px] text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
           {historyEvents.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
-          ) : historyEvents.slice(0, 40).map((entry) => (
+          ) : historyEvents.map((entry) => (
             <button
               key={`${entry.kind}:${entry.id}`}
               type="button"
@@ -1251,6 +1595,16 @@ export function NarrativeMemoryPanelShell({
               </div>
             </button>
           ))}
+          {historyHasMore && (
+            <button
+              type="button"
+              disabled={historyLoadingMore}
+              onClick={onLoadMoreHistory}
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {historyLoadingMore ? "加载中…" : "加载更多历史"}
+            </button>
+          )}
         </section>
       )}
 
@@ -1266,7 +1620,7 @@ export function NarrativeMemoryPanelShell({
           <p className="text-[10px] text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
           {lineApprovals.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">暂无叙事线审批记录。在叙事线视图增删节点后会出现。</p>
-          ) : lineApprovals.slice(0, 40).map((approval) => (
+          ) : lineApprovals.map((approval) => (
             <div
               key={approval.previewId}
               className="rounded border border-border/60 p-2"
@@ -1286,6 +1640,16 @@ export function NarrativeMemoryPanelShell({
               )}
             </div>
           ))}
+          {approvalsHasMore && (
+            <button
+              type="button"
+              disabled={approvalsLoadingMore}
+              onClick={onLoadMoreApprovals}
+              className="w-full rounded border border-dashed border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+            >
+              {approvalsLoadingMore ? "加载中…" : "加载更多审批"}
+            </button>
+          )}
         </section>
       )}
     </div>

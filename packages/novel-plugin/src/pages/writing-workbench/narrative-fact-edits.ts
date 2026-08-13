@@ -49,12 +49,20 @@ function memoryBase(bookId: string): string {
   return `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
 }
 
-/** 按实体聚合当前 open fact（人物状态板数据源）。 */
+/**
+ * 按实体聚合当前 open fact。
+ *
+ * 不传 entity 时维持人物状态板的「按主体分组」视图；传 entity 时，后端同时匹配
+ * subject / object，供实体详情抽屉查看关系两端的完整动态状态。
+ */
 export async function fetchFactsByEntity(
   bookId: string,
-  options: { readonly asOfChapter?: number; readonly fetchImpl?: typeof fetch } = {},
+  options: { readonly asOfChapter?: number; readonly entity?: string; readonly fetchImpl?: typeof fetch } = {},
 ): Promise<EntityFactsGroup[]> {
-  const query = options.asOfChapter !== undefined ? `?asOfChapter=${encodeURIComponent(String(options.asOfChapter))}` : "";
+  const queryParts: string[] = [];
+  if (options.asOfChapter !== undefined) queryParts.push(`asOfChapter=${encodeURIComponent(String(options.asOfChapter))}`);
+  if (options.entity?.trim()) queryParts.push(`entity=${encodeURIComponent(options.entity.trim())}`);
+  const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
   const payload = await fetchJson<ByEntityResponse>(`${memoryBase(bookId)}/facts/by-entity${query}`, {}, { fetchImpl: options.fetchImpl });
   return payload.groups ?? [];
 }
@@ -66,6 +74,8 @@ export async function fetchFactsByEntity(
  * 归错，只能改 object 的话作者得先作废再手工新增，中间那条历史就断了。
  */
 export interface FactCorrectionPatch {
+  /** 改主体同样走替代语义：关闭原实体下的旧值，再写入目标实体的 manual 新值。 */
+  readonly subject?: string;
   readonly object?: string;
   readonly predicate?: string;
   readonly category?: string;

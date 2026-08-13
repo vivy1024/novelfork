@@ -227,6 +227,54 @@ describe("narrative memory observability router", () => {
     }
   });
 
+  /**
+   * 待审队列批量操作：作者选中多条一起批准/丢弃。
+   * 批量批准与单条批准走同一归约路径（manual 保护、重复跳过语义一致）。
+   */
+  it("bulk-approves and bulk-deletes pending events through the queue endpoint", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeEvent(storage, event({ id: "bulk-a", eventType: "location_changed", subject: "韩立", predicate: "抵达", object: "药园", riskLevel: "low" }));
+      insertNarrativeEvent(storage, event({ id: "bulk-b", eventType: "location_changed", subject: "韩立", predicate: "离开", object: "药园", riskLevel: "low" }));
+      insertNarrativeEvent(storage, event({ id: "bulk-c", eventType: "timeline_advanced", subject: "时间线", predicate: "三日后", object: "韩立完成试探", riskLevel: "low" }));
+      const app = createNarrativeMemoryRouter({ storage });
+
+      const approved = await app.request("http://localhost/api/books/book-1/narrative-memory/events/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "approve", eventIds: ["bulk-a", "bulk-b"], reason: "批量确认" }),
+      });
+      expect(approved.status).toBe(200);
+      const approvedPayload = await approved.json() as any;
+      expect(approvedPayload.approved).toEqual(["bulk-a", "bulk-b"]);
+      expect(approvedPayload.failed).toEqual([]);
+      // 批准后两条都写进事实。
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE book_id = 'book-1'").get()?.count).toBe(2);
+
+      const deleted = await app.request("http://localhost/api/books/book-1/narrative-memory/events/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "delete", eventIds: ["bulk-c"] }),
+      });
+      expect(deleted.status).toBe(200);
+      const deletedPayload = await deleted.json() as any;
+      expect(deletedPayload.deleted).toEqual(["bulk-c"]);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event WHERE id = 'bulk-c'").get()?.count).toBe(0);
+
+      // 已批准的事件不能被批量删除（裁决历史保护）。
+      const protect = await app.request("http://localhost/api/books/book-1/narrative-memory/events/bulk", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ action: "delete", eventIds: ["bulk-a"] }),
+      });
+      const protectPayload = await protect.json() as any;
+      expect(protectPayload.deleted).toEqual([]);
+      expect(protectPayload.skipped).toEqual(["bulk-a"]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("creates, corrects, retires facts and exposes entity/history reads", async () => {
     const storage = await createStorage();
     try {
@@ -244,17 +292,17 @@ describe("narrative memory observability router", () => {
       const corrected = await app.request(`http://localhost/api/books/book-1/narrative-memory/facts/${createdPayload.fact.id}/correct`, {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ object: "结丹期" }),
+        body: JSON.stringify({ subject: "林渊（更正）", predicate: "境界", object: "结丹期" }),
       });
       expect(corrected.status).toBe(200);
       const correctedPayload = await corrected.json() as any;
-      expect(correctedPayload.fact.object).toBe("结丹期");
+      expect(correctedPayload.fact).toEqual(expect.objectContaining({ subject: "林渊（更正）", predicate: "境界", object: "结丹期" }));
       expect(correctedPayload.superseded.object).toBe("筑基期");
 
-      const byEntity = await app.request("http://localhost/api/books/book-1/narrative-memory/facts/by-entity");
+      const byEntity = await app.request("http://localhost/api/books/book-1/narrative-memory/facts/by-entity?entity=%E6%9E%97%E6%B8%8A%EF%BC%88%E6%9B%B4%E6%AD%A3%EF%BC%89");
       expect(byEntity.status).toBe(200);
       const byEntityPayload = await byEntity.json() as any;
-      expect(byEntityPayload.groups).toEqual([expect.objectContaining({ entity: "林渊", facts: [expect.objectContaining({ object: "结丹期" })] })]);
+      expect(byEntityPayload.groups).toEqual([expect.objectContaining({ entity: "林渊（更正）", facts: [expect.objectContaining({ object: "结丹期" })] })]);
 
       const history = await app.request(`http://localhost/api/books/book-1/narrative-memory/facts/${correctedPayload.fact.id}/history`);
       expect(history.status).toBe(200);

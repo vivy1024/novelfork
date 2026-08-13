@@ -67,6 +67,8 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "pipeline.write",
   "lore.read",
   "lore.write",
+  "lore.relate",
+  "lore.progress",
   "memory.read",
   "memory.graph",
   "memory.events",
@@ -411,6 +413,51 @@ action=create | update | delete | retire。
 - 动态事实、章节后抽取事实、诊断结果、市场材料、Pending NarrativeEvents 不得直接写入 Lore canon。
 - 动态叙事事实应进入 memory.events / Narrative Memory 事件流程。`,
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.write"]),
+    risk: "draft-write",
+    renderer: "jingwei.write",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "lore.relate",
+    description: `经纬关系写入工具。把剧情中的角色/势力关系变化写进结构化字段，而不是只留在叙事记忆的自然语言里。
+
+与 lore.write 的区别：
+- 本工具只写 relationships 分类的动态关系状态（layer=dynamic、status=needs-review，作者确认后生效）。
+- 条目以「主体 × 客体」为稳定关联键：同一对关系的多次变化 upsert 同一条，不会每次剧情点新建。
+- 不碰 canon 设定；角色人设、世界规则等静态设定仍走 lore.write。
+
+使用时机：
+- 本章出现关系变化（结盟/敌对/师徒/情侣/决裂等），写完章或章后结算后落关系。
+- 角色间第一次建立关系时也要写（建条目）。
+
+不要用的时候：
+- 静态人设/规则写入：用 lore.write。
+- 只查询关系现状：用 lore.read。`,
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.relate"]),
+    risk: "draft-write",
+    renderer: "jingwei.write",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "lore.progress",
+    description: `经纬字段演变工具。对 dynamic 分类条目做字段级推进（如伏笔 status 由「已埋设」推进为「部分揭示」、冲突阶段变化），每次演变写入 jingwei_progressions 台账（旧值/新值/章号/依据），可完整回溯。
+
+约束：
+- 只允许推进 dynamic 分类条目（outline / relationships / conflicts / foreshadowing / timeline / chapter-summaries）。
+- canon/reference 分类（角色人设、世界规则等）拒绝推进：必须走 lore.write 并注明理由，经作者确认。
+- fieldKey 必须命中条目 fields_json 里的真实字段键；新值是本章剧情后的状态。
+
+使用时机：
+- 伏笔兑现/推进（但 hooks.manage 更适合伏笔标准操作，这里用于其它动态字段）。
+- 冲突/时间线/卷纲的状态字段随剧情演变。
+- 需要在结构化字段里留「第 N 章发生了什么变化」的推进痕迹。
+
+不要用的时候：
+- 静态设定修改：用 lore.write。
+- 伏笔的标准埋设/兑现：优先 hooks.manage。`,
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["lore.progress"]),
     risk: "draft-write",
     renderer: "jingwei.write",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,

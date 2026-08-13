@@ -309,15 +309,17 @@ export class NarrativeLineService {
     return { applied: true, preview, audit, snapshot, ...(checkpointId ? { checkpointId } : {}) };
   }
 
-  /** 审批台账：作者已批准/已驳回的叙事线变更历史。 */
+  /** 审批台账：作者已批准/已驳回的叙事线变更历史。offset 支持追加式分页。 */
   async listApprovals(input: {
     readonly bookId: string;
     readonly limit?: number;
+    readonly offset?: number;
   }): Promise<readonly NarrativeLineApplyAudit[]> {
     const store = await this.loadStore(input.bookId);
     const ordered = [...store.appliedMutations].reverse();
-    const limit = input.limit;
-    return typeof limit === "number" && limit > 0 ? ordered.slice(0, limit) : ordered;
+    const offset = typeof input.offset === "number" && input.offset > 0 ? Math.floor(input.offset) : 0;
+    const limit = typeof input.limit === "number" && input.limit > 0 ? input.limit : undefined;
+    return limit === undefined ? ordered.slice(offset) : ordered.slice(offset, offset + limit);
   }
 
   private async loadChapters(bookId: string): Promise<readonly ChapterMeta[]> {

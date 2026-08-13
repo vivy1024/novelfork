@@ -31,11 +31,33 @@ afterEach(async () => {
 });
 
 /**
- * 带 【地点】 标记行：规则兜底抽取器靠这类标记识别事件草案（与 memory-settle-range
+ * 带 【地点】 标记行：mock LLM 抽取器靠这类标记识别事件草案（与 memory-settle-range
  * 的测试同一约定）。没有标记时结算仍会 completed，但抽取数为 0，就看不出「结算真的
  * 写了记忆」还是「空跑」。
  */
 const CHAPTER_TEXT = `【地点】林舟抵达山门石阶。\n${"林舟沿石阶向上，青铜铃在风里发出清响。".repeat(150)}`;
+
+/** mock LLM 抽取器：把【地点】标记翻译成事件草案（结算只接受 LLM 抽取）。 */
+function markerExtractor(content: string) {
+  return async () => {
+    const drafts: Array<Record<string, unknown>> = [];
+    for (const line of content.split("\n")) {
+      const match = line.trim().match(/^【地点】(.+?)(?:抵达|来到|进入|到达)(.+)$/u);
+      if (match) {
+        drafts.push({
+          eventType: "location_changed",
+          subject: match[1]!.trim(),
+          predicate: "抵达",
+          object: match[2]!.trim().replace(/[。，].*$/u, ""),
+          evidenceText: line.trim(),
+          confidence: 0.9,
+          source: "settle",
+        });
+      }
+    }
+    return drafts;
+  };
+}
 
 const sceneSpec = {
   chapter: 4,
@@ -209,7 +231,7 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
 
     const result = await executePipelineWrite(
       { bookId: "trusted", sceneSpec, content: CHAPTER_TEXT },
-      { root: projectRoot, bookRoot },
+      { root: projectRoot, bookRoot, llmExtractor: markerExtractor(CHAPTER_TEXT) },
     );
 
     expect(result.ok).toBe(true);

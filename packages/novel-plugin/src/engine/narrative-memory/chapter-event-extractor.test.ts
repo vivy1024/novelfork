@@ -7,22 +7,28 @@ const baseInput = {
   chapterNumber: 12,
   title: "第十二章 药园试探",
   content: [
-    "【地点】韩立抵达药园",
-    "【伏笔】小瓶：韩立发现瓶中绿液能催熟药草",
-    "【时间线】三日后：韩立完成药园试探",
-    "正文继续。",
+    "韩立抵达药园，四处打量。",
+    "他发现瓶中绿液能催熟药草。",
+    "三日后，韩立完成药园试探。",
   ].join("\n"),
 };
 
+const baseDrafts = [
+  { eventType: "location_changed", subject: "韩立", predicate: "抵达", object: "药园", evidenceText: "韩立抵达药园", confidence: 0.88, source: "settle" },
+  { eventType: "hook_planted", subject: "小瓶", predicate: "埋设", object: "瓶中绿液能催熟药草", evidenceText: "他发现瓶中绿液能催熟药草", confidence: 0.82, source: "settle" },
+];
+
 describe("chapter event extractor", () => {
-  it("extracts structured chapter markers into narrative event drafts", async () => {
-    const result = await extractNarrativeEventsFromChapter(baseInput);
+  it("extracts LLM event drafts into validated narrative events", async () => {
+    const result = await extractNarrativeEventsFromChapter({
+      ...baseInput,
+      llmExtractor: async () => baseDrafts,
+    });
 
     expect(result.warnings).toEqual([]);
     expect(result.drafts).toEqual(expect.arrayContaining([
       expect.objectContaining({ eventType: "location_changed", subject: "韩立", predicate: "抵达", object: "药园", source: "settle" }),
-      expect.objectContaining({ eventType: "hook_planted", subject: "小瓶", predicate: "埋设", object: "韩立发现瓶中绿液能催熟药草", source: "settle" }),
-      expect.objectContaining({ eventType: "timeline_advanced", subject: "时间线", predicate: "三日后", object: "韩立完成药园试探", source: "settle" }),
+      expect.objectContaining({ eventType: "hook_planted", subject: "小瓶", predicate: "埋设", source: "settle" }),
     ]));
     expect(result.drafts.every((draft) => draft.evidenceText.length > 0)).toBe(true);
   });
@@ -30,7 +36,7 @@ describe("chapter event extractor", () => {
   it("merges duplicate drafts within the same chapter", async () => {
     const result = await extractNarrativeEventsFromChapter({
       ...baseInput,
-      content: "【地点】韩立抵达药园\n【地点】韩立抵达药园",
+      llmExtractor: async () => [baseDrafts[0], baseDrafts[0]],
     });
 
     expect(result.drafts).toHaveLength(1);
@@ -40,7 +46,6 @@ describe("chapter event extractor", () => {
   it("drops invalid LLM drafts without evidence", async () => {
     const result = await extractNarrativeEventsFromChapter({
       ...baseInput,
-      content: "正文没有结构化标记。",
       llmExtractor: async () => [{
         eventType: "relationship_changed",
         subject: "韩立",
@@ -56,15 +61,21 @@ describe("chapter event extractor", () => {
     expect(result.warnings.join("\n")).toContain("丢弃无效事件草案");
   });
 
-  it("uses rule fallback when LLM extraction fails", async () => {
-    const result = await extractNarrativeEventsFromChapter({
+  /**
+   * 抽取失败不再降级为规则兜底：错误向上抛，由结算服务转成 failed，
+   * agent 看到工具失败后二次调用重试。兜底会把「没抽到」伪装成成功。
+   */
+  it("propagates LLM extraction failures instead of falling back to rules", async () => {
+    await expect(extractNarrativeEventsFromChapter({
       ...baseInput,
       llmExtractor: async () => {
         throw new Error("LLM unavailable");
       },
-    });
+    })).rejects.toThrow("LLM unavailable");
+  });
 
-    expect(result.drafts).toEqual(expect.arrayContaining([expect.objectContaining({ eventType: "location_changed" })]));
-    expect(result.warnings.join("\n")).toContain("LLM 抽取失败");
+  it("rejects settlement without any LLM extractor", async () => {
+    await expect(extractNarrativeEventsFromChapter(baseInput))
+      .rejects.toThrow(/没有可用的 LLM 抽取器/u);
   });
 });

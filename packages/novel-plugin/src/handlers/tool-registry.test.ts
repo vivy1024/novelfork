@@ -19,6 +19,25 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(tool("jingwei.write")?.visibility).toBe("advanced");
   });
 
+  /**
+   * 剧情工具：lore.relate 写动态关系（needs-review），lore.progress 推进动态字段
+   * 并留演变台账。两者都是 agent 写剧情的结构化出口，不是静态设定工具。
+   */
+  it("registers lore.relate and lore.progress as story progress tools", () => {
+    expect(tool("lore.relate")?.description).toContain("relationships");
+    expect(tool("lore.relate")?.description).toContain("needs-review");
+    expect(tool("lore.relate")?.risk).toBe("draft-write");
+    expect(tool("lore.relate")?.renderer).toBe("jingwei.write");
+    expect(tool("lore.relate")?.visibility).toBe("author");
+    expect(tool("lore.relate")?.runtimeStatus).toBe("ready");
+
+    expect(tool("lore.progress")?.description).toContain("jingwei_progressions");
+    expect(tool("lore.progress")?.description).toContain("canon");
+    expect(tool("lore.progress")?.risk).toBe("draft-write");
+    expect(tool("lore.progress")?.renderer).toBe("jingwei.write");
+    expect(tool("lore.progress")?.runtimeStatus).toBe("ready");
+  });
+
   it("registers memory tools for dynamic retrieval, graph, pending events, and admin operations", () => {
     expect(tool("memory.read")?.description).toContain("动态叙事记忆");
     expect(tool("memory.graph")?.description).toContain("关系图");

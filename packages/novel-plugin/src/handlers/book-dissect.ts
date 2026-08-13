@@ -49,6 +49,8 @@ export interface BookDissectInput {
     temperature?: number;
     maxTokens?: number;
   }) => Promise<{ text: string }>;
+  /** settle=true 时叙事事件抽取器；缺失时对应章节结算失败（不落假账），可重试。 */
+  readonly llmExtractor?: import("../engine/narrative-memory/chapter-event-extractor.js").ChapterEventExtractorInput["llmExtractor"];
 }
 
 export interface DissectDraft {
@@ -287,6 +289,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
       fromChapter: range.from,
       toChapter: range.to,
       storage,
+      ...(input.llmExtractor ? { llmExtractor: input.llmExtractor } : {}),
     });
     settled = settlement.ok && settlement.chaptersSettled > 0;
     settlementSummary = settlement.summary;

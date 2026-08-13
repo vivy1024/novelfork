@@ -27,6 +27,16 @@ export {
 
 export { handleJingweiWrite } from "./jingwei-write-handler.js";
 export type { JingweiWriteInput, JingweiWriteResult, JingweiWriteSuccess, JingweiWriteFailure } from "./jingwei-write-handler.js";
+export {
+  handleLoreProgress,
+  handleLoreRelate,
+} from "./lore-story-progress.js";
+export type {
+  LoreProgressInput,
+  LoreProgressResult,
+  LoreRelateInput,
+  LoreRelateResult,
+} from "./lore-story-progress.js";
 export { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
 export { handleJingweiAudit } from "./jingwei-audit-handler.js";
 export type { JingweiAuditFinding, JingweiAuditInput, JingweiAuditResult, JingweiAuditSeverity } from "./jingwei-audit-handler.js";

@@ -23,6 +23,31 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+/**
+ * 模拟 LLM 抽取器：把测试正文里的【地点】标记翻译成事件草案。
+ * 结算只接受 LLM 抽取（不再有规则兜底），测试用这个 mock 表达「LLM 抽到了什么」。
+ */
+function markerExtractor(content: string) {
+  return async () => {
+    const drafts: Array<Record<string, unknown>> = [];
+    for (const line of content.split("\n")) {
+      const match = line.trim().match(/^【地点】(.+?)(?:抵达|来到|进入|到达)(.+)$/u);
+      if (match) {
+        drafts.push({
+          eventType: "location_changed",
+          subject: match[1]!.trim(),
+          predicate: "抵达",
+          object: match[2]!.trim(),
+          evidenceText: line.trim(),
+          confidence: 0.88,
+          source: "settle",
+        });
+      }
+    }
+    return drafts;
+  };
+}
+
 describe("chapter settlement service", () => {
   it("skips empty confirmed chapter content without writing events or facts", async () => {
     const storage = await createStorage();
@@ -40,13 +65,14 @@ describe("chapter settlement service", () => {
   it("auto-applies low-risk extracted events into narrative facts", async () => {
     const storage = await createStorage();
     try {
+      const content = "【地点】韩立抵达药园";
       const result = await settleConfirmedChapter({
         bookId: "book-1",
         chapterNumber: 12,
         title: "药园试探",
-        content: "【地点】韩立抵达药园",
+        content,
         confirmedAt: "2026-07-02T00:00:00.000Z",
-      }, { storage });
+      }, { storage, llmExtractor: markerExtractor(content) });
 
       expect(result).toMatchObject({ status: "completed", extracted: 1, autoApplied: 1, pending: 0, highRiskPending: 0 });
       expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE subject = ? AND object = ?").get("韩立", "药园")?.count).toBe(1);
@@ -59,13 +85,22 @@ describe("chapter settlement service", () => {
   it("keeps medium and high risk events pending while applying low risk events", async () => {
     const storage = await createStorage();
     try {
+      const content = "韩立抵达药园。\n韩立亲眼确认灵根可被后天逆转。\n韩立第一次把秘密交给厉飞雨保管。";
       const result = await settleConfirmedChapter({
         bookId: "book-1",
         chapterNumber: 13,
-        content: "【地点】韩立抵达药园\n韩立亲眼确认灵根可被后天逆转。\n韩立第一次把秘密交给厉飞雨保管。",
+        content,
       }, {
         storage,
         llmExtractor: async () => [{
+          eventType: "location_changed",
+          subject: "韩立",
+          predicate: "抵达",
+          object: "药园",
+          evidenceText: "韩立抵达药园。",
+          confidence: 0.92,
+          source: "settle",
+        }, {
           eventType: "world_fact_introduced",
           subject: "世界规则",
           predicate: "改变",
@@ -95,12 +130,13 @@ describe("chapter settlement service", () => {
   it("makes auto-applied facts available to the next memory.read context", async () => {
     const storage = await createStorage();
     try {
+      const content = "【地点】韩立抵达药园";
       await settleConfirmedChapter({
         bookId: "book-1",
         chapterNumber: 12,
         title: "药园试探",
-        content: "【地点】韩立抵达药园",
-      }, { storage });
+        content,
+      }, { storage, llmExtractor: markerExtractor(content) });
 
       const context = await buildNarrativeContext({
         storage,
@@ -130,14 +166,15 @@ describe("章后结算幂等", () => {
   const CONTENT = "【地点】韩立抵达药园";
 
   async function settle(storage: StorageDatabase, overrides: Partial<Parameters<typeof settleConfirmedChapter>[0]> = {}) {
+    const content = overrides.content ?? CONTENT;
     return settleConfirmedChapter({
       bookId: "book-1",
       chapterNumber: 12,
       title: "药园试探",
-      content: CONTENT,
+      content,
       confirmedAt: "2026-07-02T00:00:00.000Z",
       ...overrides,
-    }, { storage });
+    }, { storage, llmExtractor: markerExtractor(content) });
   }
 
   function factCount(storage: StorageDatabase): number {
@@ -417,6 +454,67 @@ describe("章后结算幂等", () => {
       expect(empty.idempotency).toBeUndefined();
       // 空正文不登记台账，否则后续补上正文会被误判成「已结算」。
       expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 5 })).toBeUndefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  /**
+   * 抽取只走 LLM：没有抽取器时必须失败而不是静默成功。
+   * 失败不能登记结算台账，否则幂等门会把漏抽的章锁死成「已结算」。
+   */
+  it("fails without an LLM extractor and never records the settlement", async () => {
+    const storage = await createStorage();
+    try {
+      const result = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 6, content: "韩立抵达药园。" },
+        { storage },
+      );
+
+      expect(result).toMatchObject({ status: "failed", error: "settlement-extractor-unavailable" });
+      expect(result.explanation?.suggestedAction).toBeTruthy();
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event").get()?.count).toBe(0);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact").get()?.count).toBe(0);
+      expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 6 })).toBeUndefined();
+
+      // 失败保持可重试：注入抽取器后再跑同一章，正常完成。
+      const retried = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 6, content: "韩立抵达药园。" },
+        {
+          storage,
+          llmExtractor: async () => [{
+            eventType: "location_changed",
+            subject: "韩立",
+            predicate: "抵达",
+            object: "药园",
+            evidenceText: "韩立抵达药园。",
+            confidence: 0.9,
+            source: "settle",
+          }],
+        },
+      );
+      expect(retried.status).toBe("completed");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("fails when the LLM extractor throws, without recording the settlement", async () => {
+    const storage = await createStorage();
+    try {
+      const result = await settleConfirmedChapter(
+        { bookId: "book-1", chapterNumber: 7, content: "韩立抵达药园。" },
+        {
+          storage,
+          llmExtractor: async () => {
+            throw new Error("LLM unavailable");
+          },
+        },
+      );
+
+      expect(result).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
+      expect(result.explanation?.whatHappened).toContain("LLM unavailable");
+      expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 7 })).toBeUndefined();
     } finally {
       storage.close();
     }
