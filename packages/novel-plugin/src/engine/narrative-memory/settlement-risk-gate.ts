@@ -1,3 +1,4 @@
+import type { DiagnosticExplanation } from "../../handlers/diagnostic-explanation.js";
 import type { NarrativeEvent, NarrativeEventRiskLevel, NarrativeEventType } from "./types.js";
 
 export type ChapterSettlementInput = Readonly<{
@@ -7,6 +8,11 @@ export type ChapterSettlementInput = Readonly<{
   title?: string;
   content: string;
   confirmedAt?: string;
+  /**
+   * 正文未变时强制重新结算（P5 幂等的逃生口）。
+   * 上一次抽取漏抽/抽错时用它重跑；默认 false，即同章同内容会被幂等跳过。
+   */
+  force?: boolean;
 }>;
 
 export type NarrativeEventDraft = Readonly<{
@@ -26,6 +32,39 @@ export type SettlementRiskDecision = Readonly<{
   reason: string;
 }>;
 
+/**
+ * 结算被跳过的原因。
+ *
+ * `already-settled` 是 P5 幂等的正常结果，不是错误：同一章 + 正文未变的重复结算
+ * （agent 重试、管线发起后又手动补一次、settle_range 扫到已结算章）都收敛到它。
+ * 其余两个是既有的配置/空正文跳过原因。
+ */
+export type ChapterSettlementSkipReason = "already-settled" | "settlement-disabled" | "empty-content";
+
+/**
+ * 本次结算与幂等台账的关系，供面板与 agent 判断「这次到底做了什么」。
+ * - first: 该章首次结算
+ * - resettled: 正文已改写（或被 force 要求），重新抽取
+ * - skipped-duplicate: 同章同内容，本次未写入任何东西
+ */
+export type ChapterSettlementIdempotencyOutcome = "first" | "resettled" | "skipped-duplicate";
+
+export type ChapterSettlementIdempotency = Readonly<{
+  outcome: ChapterSettlementIdempotencyOutcome;
+  /** 本次正文的内容指纹；幂等键是 (bookId, chapterNumber, contentFingerprint)。 */
+  contentFingerprint: string;
+  /** 该章累计结算次数（含本次）。 */
+  settlementCount: number;
+  /** 上一次结算时间（首次结算时无）。 */
+  previouslySettledAt?: string;
+  /** outcome=resettled 时，上一次结算所依据的正文指纹。 */
+  previousContentFingerprint?: string;
+  /** outcome=resettled 且由 force 触发（正文本身没变）时为 true。 */
+  forced?: boolean;
+  /** outcome=resettled 时，被保护而未再次归约的、作者已裁决事件数。 */
+  authorDecidedPreserved?: number;
+}>;
+
 export type ChapterSettlementResult = Readonly<{
   status: "skipped" | "completed" | "failed";
   bookId: string;
@@ -37,6 +76,12 @@ export type ChapterSettlementResult = Readonly<{
   highRiskPending: number;
   warnings: readonly string[];
   events: readonly NarrativeEvent[];
+  /** status=skipped 时的机器可读原因；只用于去重与分流，展示一律读 explanation。 */
+  skipReason?: ChapterSettlementSkipReason;
+  /** 跳过/重结算的人话解释（发生了什么 / 为什么要看 / 建议怎么做）。 */
+  explanation?: DiagnosticExplanation;
+  /** 本次结算与幂等台账的关系；skipped-duplicate 时说明「已结算过，本次跳过」。 */
+  idempotency?: ChapterSettlementIdempotency;
 }>;
 
 const REQUIRED_FIELDS: readonly (keyof Pick<NarrativeEventDraft, "subject" | "predicate" | "object" | "evidenceText">)[] = ["subject", "predicate", "object", "evidenceText"];

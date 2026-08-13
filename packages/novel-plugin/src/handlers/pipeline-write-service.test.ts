@@ -71,15 +71,30 @@ describe("pipeline.write canonical result contract", () => {
     expect(source).not.toContain("候选稿");
   });
 
-  it("settles Narrative Memory only after the formal chapter resource is saved", async () => {
+  /**
+   * 「保存先于结算」原来靠源码里 settleConfirmedChapter 的字符串位置断言。
+   * 结算改成工具调用后，这个函数名已不出现在本文件里，源码位置断言不但会失效，
+   * 本身也很弱：它只证明代码这么写，不证明运行时真的这么跑。
+   *
+   * 现在用**更强**的方式锁同一条纪律，分两层：
+   * 1. 结构层（本用例）：结算调用点必须在 resourceService.create 之后，
+   *    且管线不得把正文直接交给结算（否则又能绕过落盘）。
+   * 2. 行为层（下方 settlement dispatch 用例）：结算工具只读已落盘正文，
+   *    章节没落盘就必然结算失败——顺序变成数据依赖，而不是书写顺序的约定。
+   */
+  it("dispatches settlement only after the formal chapter resource is saved", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
 
     const saveIndex = source.indexOf("await resourceService.create(bookId");
-    const settlementIndex = source.indexOf("settleConfirmedChapter");
+    const settlementIndex = source.indexOf("dispatchChapterSettlement({");
 
     expect(saveIndex).toBeGreaterThan(-1);
     expect(settlementIndex).toBeGreaterThan(saveIndex);
     expect(source).toContain("narrativeSettlement");
+
+    // 管线不得把内存里的正文直接传给结算：结算的正文来源必须是已落盘章节。
+    expect(source).not.toContain("content: finalContent,\n        confirmedAt");
+    expect(source).not.toContain("settleConfirmedChapter");
   });
 
   it("checks high-risk pending events before persisting and follows saved blocking policy", async () => {
@@ -270,10 +285,21 @@ describe("pipeline.write beat budget hard gate", () => {
 });
 
 describe("pipeline.write settlement degradation", () => {
-  it("keeps the generated chapter when settlement fails and points at memory.settle_range", async () => {
+  it("keeps the generated chapter when settlement fails and tells the agent to retry the settlement tool", async () => {
     const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
-    expect(source).toContain("writeOutput.settlementError");
-    expect(source).toContain("memory.settle_range");
+
+    // 结算失败绝不能回滚/丢弃已保存的正文：失败只进 settlementError，不改 ok。
+    expect(source).toContain("settlementDispatch && !settlementDispatch.ok");
+    expect(source).toContain("正文已保存");
+    expect(source).toContain("重试不会丢稿");
+    // 失败路径不得返回错误码把整次写章判失败。
+    expect(source).not.toContain("code: \"settlement-failed\"");
+  });
+
+  it("never swallows a settlement failure into publishHint before the chapter is saved", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    // publishHint 在落盘前组装，结算在落盘后发生，二者不能再耦合。
+    expect(source).not.toContain("writeOutput.settlementError");
   });
 });
 

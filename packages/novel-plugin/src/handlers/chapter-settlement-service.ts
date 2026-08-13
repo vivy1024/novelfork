@@ -11,7 +11,22 @@ import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
-import { decideSettlementRisk, type ChapterSettlementInput, type ChapterSettlementResult, type NarrativeEventDraft, type SettlementRiskDecision } from "../engine/narrative-memory/settlement-risk-gate.js";
+import {
+  decideChapterSettlementIdempotency,
+  isTerminalSettlementStatus,
+  recordChapterSettlement,
+  type ChapterSettlementIdempotencyDecision,
+} from "../engine/narrative-memory/settlement-idempotency.js";
+import {
+  decideSettlementRisk,
+  type ChapterSettlementIdempotency,
+  type ChapterSettlementInput,
+  type ChapterSettlementResult,
+  type ChapterSettlementSkipReason,
+  type NarrativeEventDraft,
+  type SettlementRiskDecision,
+} from "../engine/narrative-memory/settlement-risk-gate.js";
+import type { DiagnosticExplanation } from "./diagnostic-explanation.js";
 
 export type ChapterSettlementOptions = Readonly<{
   storage?: StorageDatabase;
@@ -84,25 +99,60 @@ function readExistingEvent(storage: StorageDatabase, id: string): NarrativeEvent
   return NarrativeEventSchema.parse({ ...row, appliedAt: row.appliedAt ?? undefined });
 }
 
-function persistSettlementEvents(storage: StorageDatabase, events: readonly NarrativeEvent[], warnings: string[]): NarrativeEvent[] {
-  const persisted: NarrativeEvent[] = [];
+type PersistedSettlementEvents = Readonly<{
+  /** 需要走归约的事件（新插入的，或复用但尚未被作者裁决的）。 */
+  reducible: readonly NarrativeEvent[];
+  /** 本次涉及的全部事件（含被作者裁决保护、未再归约的）。 */
+  all: readonly NarrativeEvent[];
+  /** 因作者已裁决（applied/rejected）而未再归约的事件数。 */
+  authorDecidedPreserved: number;
+}>;
+
+/**
+ * 事件落库。事件 id 由 (bookId, chapterNumber, tuple) 决定，所以插入冲突意味着
+ * 「这条事件之前结算过」。此时不重复写，改为复用既有行；若既有行已是 applied/rejected
+ * （作者裁决过），进一步把它排除在归约之外——作者的裁决是终态，不能被重结算翻回去。
+ */
+function persistSettlementEvents(storage: StorageDatabase, events: readonly NarrativeEvent[], warnings: string[]): PersistedSettlementEvents {
+  const reducible: NarrativeEvent[] = [];
+  const all: NarrativeEvent[] = [];
+  let authorDecidedPreserved = 0;
+
   for (const event of events) {
     try {
-      persisted.push(insertNarrativeEvent(storage, event));
+      const inserted = insertNarrativeEvent(storage, event);
+      reducible.push(inserted);
+      all.push(inserted);
+      continue;
     } catch (error) {
       const existing = readExistingEvent(storage, event.id);
-      if (existing) {
-        persisted.push(existing);
-        warnings.push(`事件 ${event.id} 已存在，复用既有结算记录以保持幂等。`);
-      } else {
+      if (!existing) {
         warnings.push(`事件 ${event.id} 写入失败：${error instanceof Error ? error.message : String(error)}`);
+        continue;
+      }
+      all.push(existing);
+      if (isTerminalSettlementStatus(existing.status)) {
+        authorDecidedPreserved += 1;
+        warnings.push(`事件 ${event.id} 已由作者裁决为 ${existing.status}，本次重结算保留原裁决，不重新处理。`);
+      } else {
+        reducible.push(existing);
+        warnings.push(`事件 ${event.id} 已存在（${existing.status}），复用既有待审记录，不重复入队。`);
       }
     }
   }
-  return persisted;
+
+  return { reducible, all, authorDecidedPreserved };
 }
 
-function skipped(input: ChapterSettlementInput, warning: string): ChapterSettlementResult {
+function skipped(
+  input: ChapterSettlementInput,
+  warning: string,
+  extras: Readonly<{
+    skipReason: ChapterSettlementSkipReason;
+    explanation?: DiagnosticExplanation;
+    idempotency?: ChapterSettlementIdempotency;
+  }>,
+): ChapterSettlementResult {
   return {
     status: "skipped",
     bookId: input.bookId,
@@ -114,6 +164,44 @@ function skipped(input: ChapterSettlementInput, warning: string): ChapterSettlem
     highRiskPending: 0,
     warnings: [warning],
     events: [],
+    skipReason: extras.skipReason,
+    ...(extras.explanation ? { explanation: extras.explanation } : {}),
+    ...(extras.idempotency ? { idempotency: extras.idempotency } : {}),
+  };
+}
+
+/** 幂等跳过的人话解释：明确「已结算过、本次跳过」，既不假装成功也不报成错误。 */
+function explainAlreadySettled(
+  input: ChapterSettlementInput,
+  decision: ChapterSettlementIdempotencyDecision,
+): DiagnosticExplanation {
+  const counts = decision.existingEventCounts;
+  const settledAt = decision.record?.settledAt ?? "此前";
+  const breakdown = counts
+    ? `已沉淀 ${counts.applied} 条、待审 ${counts.pending} 条、已驳回 ${counts.rejected} 条`
+    : "既有结算结果保持不变";
+  return {
+    whatHappened: `第${input.chapterNumber}章的正文与上一次结算（${settledAt}）时完全一致，本次没有重新抽取，也没有写入任何叙事记忆。${breakdown}。`,
+    whyItMatters: "重复结算同一份正文只会反复写入同样的事实、反复往待审队列塞同样的条目。跳过是为了让台账与待审队列保持干净，这不是失败。",
+    suggestedAction: `无需处理，这一章的记忆已是最新。若正文确实改过请先保存再结算；若上次抽取有遗漏，用 force=true 强制重结算；若要处理待审条目，去叙事记忆面板或 memory.bulk_approve。`,
+  };
+}
+
+/** 改写后重结算的人话解释：告诉作者为什么这次没有被幂等挡住。 */
+function explainResettled(
+  input: ChapterSettlementInput,
+  decision: ChapterSettlementIdempotencyDecision,
+  authorDecidedPreserved: number,
+): DiagnosticExplanation {
+  const preserved = authorDecidedPreserved > 0
+    ? `你此前批准/驳回过的 ${authorDecidedPreserved} 条事件保留原裁决，未被本次结算改动。`
+    : "作者手动纠正过的事实（manual）不会被本次结算覆盖。";
+  return {
+    whatHappened: decision.forced
+      ? `第${input.chapterNumber}章正文未变，但本次以 force=true 强制重新结算。`
+      : `第${input.chapterNumber}章正文自上次结算后已被改写，因此本次重新抽取了叙事事件。`,
+    whyItMatters: "内容变了，旧的结算结论就不再对应当前正文；这种重结算是正常的，不属于重复结算。",
+    suggestedAction: `${preserved}检查新增的待审条目后批准或驳回即可。`,
   };
 }
 
@@ -131,11 +219,38 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   if (!config.settlement.enabled) {
-    return skipped(input, "叙事记忆结算已在本书配置中关闭。");
+    return skipped(input, "叙事记忆结算已在本书配置中关闭。", { skipReason: "settlement-disabled" });
   }
 
   if (!input.content.trim()) {
-    return skipped(input, "章节正文为空，跳过 Narrative Memory 结算。");
+    return skipped(input, "章节正文为空，跳过 Narrative Memory 结算。", { skipReason: "empty-content" });
+  }
+
+  // P5 幂等门：必须在任何抽取之前判定。
+  // 抽取走 LLM，同一正文两次输出未必一致；若先抽再去重，第二次会产出对不上去重键的
+  // 「新」事件，重复写入照旧发生。所以这里是前置门，不是事后清理。
+  const idempotency = decideChapterSettlementIdempotency(storage, {
+    bookId: input.bookId,
+    chapterNumber: input.chapterNumber,
+    content: input.content,
+    ...(input.force ? { force: true } : {}),
+  });
+
+  if (idempotency.decision === "skip") {
+    return skipped(
+      input,
+      `第${input.chapterNumber}章正文未变化，已结算过（第 ${idempotency.record?.settlementCount ?? 1} 次），本次跳过，未重复写入。`,
+      {
+        skipReason: "already-settled",
+        explanation: explainAlreadySettled(input, idempotency),
+        idempotency: {
+          outcome: "skipped-duplicate",
+          contentFingerprint: idempotency.fingerprint,
+          settlementCount: idempotency.record?.settlementCount ?? 1,
+          ...(idempotency.record?.settledAt ? { previouslySettledAt: idempotency.record.settledAt } : {}),
+        },
+      },
+    );
   }
 
   // 抽取前取出当前台账 open fact 快照，注入 LLM prompt 让其只抽增量、感知伏笔进度。
@@ -175,14 +290,14 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   const persisted = persistSettlementEvents(storage, events, warnings);
-  const eventResults = [...persisted];
+  const eventResults = [...persisted.all];
 
-  const applied = applyNarrativeEvents(storage, input.bookId, persisted, {
+  const applied = applyNarrativeEvents(storage, input.bookId, persisted.reducible, {
     closeSupersededFacts: config.ledger.closeSupersededFacts,
   });
   const downgradedPendingIds: string[] = [];
   for (const failed of applied.failedEvents) {
-    const failedEvent = persisted.find((event) => event.id === failed.id);
+    const failedEvent = persisted.reducible.find((event) => event.id === failed.id);
     if (failedEvent?.status === "applied") {
       const updated = updateNarrativeEventStatus(storage, { id: failed.id, status: "pending" });
       if (updated) {
@@ -196,6 +311,30 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     }
   }
 
+  // 结算真正跑完才登记台账：登记的是「这份正文已被结算」，下一次同内容调用据此跳过。
+  // 事件的 applied/pending/rejected 计数不落盘，读取时从 narrative_event 现算，
+  // 避免与作者后续的批准/驳回形成两份互相矛盾的计数。
+  const settledAt = (input.confirmedAt ? new Date(input.confirmedAt) : (options.now?.() ?? new Date())).toISOString();
+  const record = recordChapterSettlement(storage, {
+    bookId: input.bookId,
+    chapterNumber: input.chapterNumber,
+    contentFingerprint: idempotency.fingerprint,
+    eventIds: eventResults.map((event) => event.id),
+    settledAt,
+    ...(idempotency.record ? { previousRecord: idempotency.record } : {}),
+  });
+
+  const resettled = idempotency.decision === "resettle";
+  const idempotencyInfo: ChapterSettlementIdempotency = {
+    outcome: resettled ? "resettled" : "first",
+    contentFingerprint: idempotency.fingerprint,
+    settlementCount: record.settlementCount,
+    ...(idempotency.record?.settledAt ? { previouslySettledAt: idempotency.record.settledAt } : {}),
+    ...(resettled && idempotency.previousFingerprint ? { previousContentFingerprint: idempotency.previousFingerprint } : {}),
+    ...(idempotency.forced ? { forced: true } : {}),
+    ...(resettled ? { authorDecidedPreserved: persisted.authorDecidedPreserved } : {}),
+  };
+
   return {
     status: "completed",
     bookId: input.bookId,
@@ -207,5 +346,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     highRiskPending: eventResults.filter((event) => event.status === "pending" && event.riskLevel === "high").length,
     warnings,
     events: eventResults,
+    idempotency: idempotencyInfo,
+    ...(resettled ? { explanation: explainResettled(input, idempotency, persisted.authorDecidedPreserved) } : {}),
   };
 }

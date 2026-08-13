@@ -79,9 +79,12 @@ export interface PipelineWriteInput {
    * 独立于 maxReviseRounds，默认 false。
    */
   readonly factCheckAutoRevise?: boolean;
-  /** 兼容旧客户端；不再要求提交原文引用。 */
+  /** 兼容旧客户端；不再要求提交原文引用，也不参与任何门禁。 */
   readonly acknowledgedSkills?: readonly WritingSkillAcknowledgement[];
-  /** 当前 Runtime narrator 已成功读取的 Skill 证据。 */
+  /**
+   * 当前 Runtime narrator 已成功读取的 Skill 证据（Runtime 实测的强证据）。
+   * 仅用于出口合规检查里的依赖加载完整性提醒，不作为写章前的阻断条件。
+   */
   readonly loadedSkills?: readonly RuntimeLoadedSkill[];
 }
 
@@ -123,20 +126,25 @@ export interface PipelineWriteOutput {
   readonly factCheckRevised?: boolean;
   /** 事实专项修订轮数（0 或 1） */
   readonly factCheckRound?: number;
+  /** 章后结算这一步工具调用的发起结果（工具名、是否成功、是否走了宿主工具调用路径）。 */
+  readonly settlementDispatch?: PipelineSettlementDispatch;
   /**
    * 章后状态结算失败原因。正文已保存，但叙事记忆未更新；
-   * 需要用 memory.settle_range 对该章补结算。
+   * 重试 memory.settle_chapter 即可（正文已在库，重试不丢稿）。
    */
   readonly settlementError?: string;
 }
 
 export interface PipelineWriteError {
   readonly ok: false;
+  /**
+   * `skills-not-acknowledged` 已从失败码移除：入口不再因「未提交技能引用」拒绝写章。
+   * Writing Skills 的硬门只在出口按成品判定（`writing-skill-compliance-failed`）。
+   */
   readonly code:
     | "book-not-found"
     | "spec-invalid"
     | "beat-budget-invalid"
-    | "skills-not-acknowledged"
     | "generation-failed"
     | "timeout"
     | "high-risk-pending"
@@ -179,6 +187,135 @@ export interface PipelineWriteOptions {
   readonly logger?: Logger;
   /** LLM 章后事件抽取器；由 Runtime host 的 generateText 能力构造，缺省时回退规则兜底。 */
   readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
+  /**
+   * 由宿主注入的工具调用发起器：管线用它把章后结算作为一次**显式工具调用**发出，
+   * 从而在叙述者面板可见、可重试。缺省时退化为直接调用同一 handler（结算仍然发生，
+   * 只是不产生独立的面板记录），保证 CLI / 测试等无宿主环境下写章闭环不断。
+   */
+  readonly dispatchToolCall?: PipelineToolCallDispatcher;
+}
+
+/** 章后结算这一步工具调用的结果，供 Agent 与作者判断是否需要重试。 */
+export interface PipelineSettlementDispatch {
+  readonly toolName: string;
+  /** 该次结算工具调用是否成功。 */
+  readonly ok: boolean;
+  /** 结算是否作为独立工具调用发出（宿主可见），还是回退为进程内直接调用。 */
+  readonly dispatched: "tool-call" | "inline-fallback";
+  readonly summary: string;
+  readonly error?: string;
+  readonly settlement?: ChapterSettlementResult;
+}
+
+/**
+ * 宿主提供的工具调用发起能力。返回值沿用领域工具的 { ok, summary, data } 形态。
+ * 它只被用来发起产品自己注册的领域工具，不构成第二套 Agent 循环。
+ */
+export type PipelineToolCallDispatcher = (call: {
+  readonly toolName: string;
+  readonly input: Readonly<Record<string, unknown>>;
+}) => Promise<{
+  readonly ok: boolean;
+  readonly summary?: string;
+  readonly error?: string;
+  readonly data?: unknown;
+}>;
+
+/** 从工具调用返回的 data 里取回结算摘要；宿主可能已把它 JSON 序列化过一轮。 */
+function readSettlementFromToolData(data: unknown): ChapterSettlementResult | undefined {
+  if (!data || typeof data !== "object") return undefined;
+  const settlement = (data as { settlement?: unknown }).settlement;
+  if (!settlement || typeof settlement !== "object") return undefined;
+  const candidate = settlement as ChapterSettlementResult;
+  return typeof candidate.status === "string" && typeof candidate.chapterNumber === "number"
+    ? candidate
+    : undefined;
+}
+
+/**
+ * 正文落盘后发起章后结算。
+ *
+ * 结算被表达为一次 memory.settle_chapter 工具调用：
+ * - 有宿主 dispatcher 时走真正的工具调用路径，面板可见、失败可被 agent 重试；
+ * - 无宿主（CLI / 测试）时退化为进程内直接调用同一个 handler，行为一致，只是没有面板记录。
+ *
+ * 两条路径都不接受调用方传入正文：结算只读已落盘正文，因此「保存先于结算」是硬约束。
+ * 结算失败一律不影响已保存的正文，只把失败如实报告出去。
+ */
+async function dispatchChapterSettlement(input: {
+  readonly bookId: string;
+  readonly bookRoot: string;
+  readonly chapterNumber: number;
+  readonly title: string;
+  readonly storage: unknown;
+  readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
+  readonly dispatchToolCall?: PipelineToolCallDispatcher;
+  readonly logger?: Logger;
+}): Promise<PipelineSettlementDispatch> {
+  const { SETTLE_CHAPTER_TOOL_NAME } = await import("./memory-settle-chapter.js");
+  // 模型不可见字段（bookId/bookRoot）由可信绑定注入，这里只传领域参数。
+  const toolInput = { chapterNumber: input.chapterNumber, title: input.title };
+
+  if (input.dispatchToolCall) {
+    try {
+      const result = await input.dispatchToolCall({ toolName: SETTLE_CHAPTER_TOOL_NAME, input: toolInput });
+      const settlement = readSettlementFromToolData(result.data);
+      if (!result.ok) {
+        input.logger?.warn(`[pipeline.write] ${SETTLE_CHAPTER_TOOL_NAME} failed: ${result.error ?? result.summary ?? "unknown"}`);
+      }
+      return {
+        toolName: SETTLE_CHAPTER_TOOL_NAME,
+        ok: result.ok,
+        dispatched: "tool-call",
+        summary: result.summary ?? (result.ok ? "章后结算完成。" : "章后结算失败。"),
+        ...(result.error ? { error: result.error } : {}),
+        ...(settlement ? { settlement } : {}),
+      };
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      input.logger?.warn(`[pipeline.write] ${SETTLE_CHAPTER_TOOL_NAME} dispatch threw: ${detail}`);
+      return {
+        toolName: SETTLE_CHAPTER_TOOL_NAME,
+        ok: false,
+        dispatched: "tool-call",
+        summary: "章后结算工具调用未能完成。",
+        error: detail,
+      };
+    }
+  }
+
+  try {
+    const { handleMemorySettleChapter } = await import("./memory-settle-chapter.js");
+    const result = await handleMemorySettleChapter({
+      bookId: input.bookId,
+      bookRoot: input.bookRoot,
+      chapterNumber: input.chapterNumber,
+      title: input.title,
+      storage: input.storage as never,
+      ...(input.llmExtractor ? { llmExtractor: input.llmExtractor } : {}),
+    });
+    if (!result.ok) {
+      input.logger?.warn(`[pipeline.write] ${SETTLE_CHAPTER_TOOL_NAME} (inline) failed: ${result.error ?? result.summary}`);
+    }
+    return {
+      toolName: SETTLE_CHAPTER_TOOL_NAME,
+      ok: result.ok,
+      dispatched: "inline-fallback",
+      summary: result.summary,
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.settlement ? { settlement: result.settlement } : {}),
+    };
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    input.logger?.warn(`[pipeline.write] ${SETTLE_CHAPTER_TOOL_NAME} (inline) threw: ${detail}`);
+    return {
+      toolName: SETTLE_CHAPTER_TOOL_NAME,
+      ok: false,
+      dispatched: "inline-fallback",
+      summary: "章后结算未能完成。",
+      error: detail,
+    };
+  }
 }
 
 /**
@@ -227,8 +364,12 @@ function nonEmpty(value: string | undefined): string | undefined {
 }
 
 /**
- * Writing Skills 不再由管线注入上下文：启用即物化到作品 `.novelfork/skills/`，
- * 由 Runtime 的 Skill 机制交给正在调用工具的 agent；写章前用原文引用硬门确认已读。
+ * Writing Skills 正文不由管线注入上下文：启用即物化到作品 `.novelfork/skills/`，
+ * 由 Runtime 的 Skill 机制交给正在调用工具的 agent 自主选择读取。
+ *
+ * 管线只传结构化的「硬性约束摘要」（scene.spec 已把它并入 sceneSpec.constraints），
+ * 摘要与出口 `writing-skills.check_compliance` 读同一份 checks，保证不出现
+ * 「按摘要写却被出口拦」的分叉。
  */
 
 /** 截断控制文档到合理预算（~800 字），避免长视野文档占用过多上下文 */
@@ -407,8 +548,10 @@ export async function executePipelineWrite(
         };
       }
     }
-    // Skill 生效证据由 Runtime 注入 loadedSkills；缺失时只作为诊断信息，
-    // 不再要求模型提交长原文引用，也不在此工具内另开模型会话。
+    // Writing Skills 门禁只在出口：本函数末尾按启用技能声明的 checks 校验成品，
+    // 硬性违规以 writing-skill-compliance-failed 拒绝保存。入口既不要求原文引用，
+    // 也不因 loadedSkills 缺失阻断——「读过」不等于「写得合规」，能判定的只有成品。
+    // loadedSkills 仍会传给出口检查，用于依赖加载完整性的 warning 级提醒。
 
 
     // The persisted book setting is authoritative. SceneSpec is model-generated
@@ -572,7 +715,6 @@ export async function executePipelineWrite(
       content: governedContent,
       title: sceneSpec.title?.trim() || `第${chapterNumber}章`,
       runtimeStateDelta: undefined,
-      settlementError: undefined,
     };
     const lengthWarning: string | undefined = undefined;
     logger?.info(`[pipeline.write] Runtime Agent content received: "${writeOutput.title}"`);
@@ -749,12 +891,11 @@ export async function executePipelineWrite(
       logger?.debug(`[pipeline.write] Publish check skipped: ${publishError instanceof Error ? publishError.message : String(publishError)}`);
     }
 
+    // 章后结算发生在正文落盘之后，因此保存前的 publishHint 不可能包含结算结果。
+    // 结算失败通过返回值的 settlementError / narrativeSettlement 字段如实报告。
     const hintWarnings = [
       ...publishWarnings,
       ...(beatBudgetWarning ? [beatBudgetWarning] : []),
-      ...(writeOutput.settlementError
-        ? [`章后状态结算失败，叙事记忆未更新，请对第${chapterNumber}章执行 memory.settle_range 补结算。`]
-        : []),
     ];
     const publishHint = {
       status: (hintWarnings.length > 0 && publishStatus === "ready" ? "has-warnings" : publishStatus) as "ready" | "has-warnings" | "needs-review" | "skipped",
@@ -765,6 +906,7 @@ export async function executePipelineWrite(
     // 4. Save as formal chapter result
     const chapterId = `chapter:${chapterNumber}`;
     let narrativeSettlement: ChapterSettlementResult | undefined;
+    let settlementDispatch: PipelineSettlementDispatch | undefined;
     try {
       const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
       const storage = getStorageDatabase();
@@ -824,24 +966,24 @@ export async function executePipelineWrite(
         });
       }
 
-      try {
-        const { settleConfirmedChapter } = await import("./chapter-settlement-service.js");
-        narrativeSettlement = await settleConfirmedChapter({
-          bookId,
-          chapterId,
-          chapterNumber,
-          title: writeOutput.title,
-          content: finalContent,
-          confirmedAt: new Date().toISOString(),
-        }, {
-          storage,
-          bookRoot: bookDir,
-          config: memoryConfig ?? undefined,
-          llmExtractor: options.llmExtractor,
-        });
-      } catch (settlementError) {
-        logger?.warn(`[pipeline.write] Narrative Memory settlement failed: ${settlementError instanceof Error ? settlementError.message : String(settlementError)}`);
-      }
+      // 章后结算不再是本函数内的隐式副作用：正文落盘成功后，由管线显式发起一次
+      // memory.settle_chapter 工具调用。这样结算过程走工具调用路径，在叙述者面板
+      // 可见（renderer: narrative-memory.admin），失败也是一次工具调用失败，agent
+      // 天然会重试，而不是靠返回字段里一句人话提示。
+      //
+      // 顺序保证由数据依赖强制：settle_chapter 只结算已落盘正文，读不到就拒绝结算。
+      // 保存成功了才可能结算成功，不存在「记忆更新了但正文没保存」。
+      settlementDispatch = await dispatchChapterSettlement({
+        bookId,
+        bookRoot: bookDir,
+        chapterNumber,
+        title: writeOutput.title,
+        storage,
+        ...(options.llmExtractor ? { llmExtractor: options.llmExtractor } : {}),
+        ...(options.dispatchToolCall ? { dispatchToolCall: options.dispatchToolCall } : {}),
+        ...(logger ? { logger } : {}),
+      });
+      narrativeSettlement = settlementDispatch.settlement;
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       logger?.error(`[pipeline.write] Failed to save formal chapter: ${detail}`);
@@ -874,11 +1016,12 @@ export async function executePipelineWrite(
       ...(lengthWarning ? { lengthWarning } : {}),
       ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),
       ...(narrativeSettlement ? { narrativeSettlement } : {}),
-      ...(writeOutput.settlementError
+      ...(settlementDispatch ? { settlementDispatch } : {}),
+      ...(settlementDispatch && !settlementDispatch.ok
         ? {
             settlementError: [
-              `第${chapterNumber}章正文已保存，但章后状态结算失败：${writeOutput.settlementError}`,
-              "叙事记忆与伏笔状态未更新，请对该章执行 memory.settle_range 补结算。",
+              `第${chapterNumber}章正文已保存，但章后结算（${settlementDispatch.toolName}）失败：${settlementDispatch.error ?? settlementDispatch.summary}`,
+              `叙事记忆与伏笔状态未更新。请重试 ${settlementDispatch.toolName}（正文已在库，重试不会丢稿）；若该章需要连同前后章一并回填，用 memory.settle_range。`,
             ].join("\n"),
           }
         : {}),

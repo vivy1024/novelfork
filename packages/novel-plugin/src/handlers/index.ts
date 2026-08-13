@@ -176,6 +176,16 @@ export type {
   MemorySettleRangeChapterResult,
 } from "./memory-settle-range.js";
 
+export {
+  handleMemorySettleChapter,
+  SETTLE_CHAPTER_TOOL_NAME,
+  SETTLE_CHAPTER_TOOL_RENDERER,
+} from "./memory-settle-chapter.js";
+export type {
+  MemorySettleChapterInput,
+  MemorySettleChapterResult,
+} from "./memory-settle-chapter.js";
+
 export { handleChapterDiscardRange } from "./chapter-discard-range.js";
 export type {
   ChapterDiscardRangeInput,
