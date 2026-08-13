@@ -22,12 +22,20 @@ export function parseVisibilityRule(ruleJson: string | null | undefined): Visibi
 
     const visibleAfterChapter = readOptionalNumber(parsed.visibleAfterChapter ?? parsed.visible_after_chapter);
     const visibleUntilChapter = readOptionalNumber(parsed.visibleUntilChapter ?? parsed.visible_until_chapter);
+    const group = typeof parsed.group === "string" && parsed.group.trim()
+      ? parsed.group.trim()
+      : undefined;
+    const keywords = Array.isArray(parsed.keywords)
+      ? parsed.keywords.filter((item): item is string => typeof item === "string")
+      : undefined;
 
     if (parsed.type === "global" || parsed.type === "tracked") {
       return {
         type: parsed.type,
         ...(visibleAfterChapter === undefined ? {} : { visibleAfterChapter }),
         ...(visibleUntilChapter === undefined ? {} : { visibleUntilChapter }),
+        ...(group ? { group } : {}),
+        ...(keywords && keywords.length > 0 ? { keywords } : {}),
       };
     }
 
@@ -37,6 +45,8 @@ export function parseVisibilityRule(ruleJson: string | null | undefined): Visibi
         parentIds: Array.isArray(parsed.parentIds) ? parsed.parentIds.filter((id): id is string => typeof id === "string") : [],
         ...(visibleAfterChapter === undefined ? {} : { visibleAfterChapter }),
         ...(visibleUntilChapter === undefined ? {} : { visibleUntilChapter }),
+        ...(group ? { group } : {}),
+        ...(keywords && keywords.length > 0 ? { keywords } : {}),
       };
     }
   } catch {

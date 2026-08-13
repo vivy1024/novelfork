@@ -13,6 +13,7 @@ import { createStateChannel } from "./channels/state-channel.js";
 import { createStyleChannel, type StyleSnippet } from "./channels/style-channel.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
+import { buildStorylineStateCard } from "./storyline-state-card.js";
 import { mergeNarrativeContextCards } from "./merge.js";
 import {
   BuildNarrativeContextInputSchema,
@@ -287,7 +288,22 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     maxTokens: parsed.maxTokens,
     ...(input.budgetPolicy ?? {}),
   });
-  const sections = formatNarrativeSections(budget.cards);
+  const sections = { ...formatNarrativeSections(budget.cards) };
+  // 剧情线状态卡（宏观层轻量版）：从当前章有效事实按主体聚合现状，
+  // prepend 到 state section，让 Agent 写前看到每条剧情线停在哪。
+  try {
+    const storylineCard = buildStorylineStateCard(input.storage, {
+      bookId: parsed.bookId,
+      chapterNumber: currentChapter,
+    });
+    if (storylineCard) {
+      sections.state = sections.state.trim()
+        ? `${storylineCard}\n\n${sections.state}`
+        : storylineCard;
+    }
+  } catch {
+    // 状态卡是增强项，失败只跳过不阻断召回。
+  }
   const diagnostics = buildNarrativeRetrievalDiagnostics({
     startedAt,
     endedAt: performance.now(),

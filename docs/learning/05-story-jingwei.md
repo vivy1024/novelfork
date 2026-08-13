@@ -49,18 +49,30 @@ routes:
 AI 写作前会按链路读取：
 
 ```
-cockpit.snapshot → lore.read(scope=brief) → memory.read(purpose=write)
-  → pgi.ask → scene.spec
-  → lore.read(scope=category) + memory.read → pipeline.write
+write.preflight → lore.read(scope=brief) → memory.read(purpose=write)
+  → 读取写作技能（Skill 工具）→ scene.spec（叙述者提交蓝图）
+  → lore.read(scope=category) + memory.read → pipeline.write（叙述者提交正文）
 ```
 
-- `lore.read(scope=brief)`：读取静态设定核心摘要。
+- `lore.read(scope=brief)`：读取静态设定核心摘要（含剧情线状态卡）。
 - `lore.read(scope=category/search)`：按 scene.spec 中角色、地点、规则补读精确信息。
-- `memory.read(purpose=write)`：读取动态 ContextCard（时间线、伏笔、状态、事实等）。
+- `memory.read(purpose=write)`：读取动态 ContextCard（时间线、伏笔、状态、事实等）；state 通道首段为剧情线状态卡——从当前章有效事实按主体聚合"每条剧情线停在哪"。
+
+### 经纬智能注入
+
+- **关键词触发**：`visibilityRule.keywords` 命中场景文本/章节意图才注入（tracked 条目）。
+- **章号可见窗口**：`visibleAfterChapter` / `visibleUntilChapter` 控制条目只在指定章段参与 AI。
+- **关联级联**：条目通过 `relatedEntryIds` 关联的其他条目会随主条目自动带出（一级，防循环，上限 8 条）。
+- **同组互斥**：`visibilityRule.group` 相同的条目只注入优先级最高的一条——用来表达"重伤中/已痊愈"这类互斥状态，避免矛盾设定同时进上下文。
+- **Token 预算**：所有注入按优先级与重要性排序，超预算逐条降级（full→normal→summary→brief）再丢弃。
+
+### 剧情线状态卡
+
+叙事记忆的宏观层轻量版：写前从当前章有效的 `narrative_fact` 中，按主体（角色/势力/地点/道具）聚合出每个主体的最新事实（如「林舟：伤势已痊愈（第20章起）」），随 state 通道注入。纯确定性生成，不调用模型；写 200 章时叙述者一眼能看到每条剧情线停在哪，而不是只看到零散事实。
 
 ## Canon / Rules 写入门禁
 
-为了防止 AI 长对话中污染正史，v3.0.0 对静态 Lore 写入加了门禁：
+为了防止 AI 长对话中污染正史，静态 Lore 写入有以下门禁：
 
 - `lore.read` 默认排除 `archived` / `draft` / `needs-review` 条目。
 - `lore.write` 写 `canon` 或 `rules` 必须提供 `reason`、`source`、`evidence`。
@@ -72,8 +84,9 @@ cockpit.snapshot → lore.read(scope=brief) → memory.read(purpose=write)
 1. 建书时先维护少量核心 Lore：世界规则、主角、主要势力、关键术语。
 2. 把“会随剧情变化”的内容放到叙事记忆：关系、伏笔状态、章节后事实、时间线。
 3. 对正史/规则条目保持精简，避免把剧情进展塞进 canon。
-4. 使用经纬审计检查不参与 AI 的未确认/归档/待审核条目。
-5. 写作时让 Agent 通过 `lore.read + memory.read` 组合读取上下文。
+4. 用互斥组表达互斥状态（`visibilityRule.group`），用关联关系表达级联（`relatedEntryIds`）。
+5. 写作前用经纬侧栏的「AI 注入预览」按章检查叙述者会拿到哪些设定。
+6. 使用经纬审计检查不参与 AI 的未确认/归档/待审核条目。
 
 ## 常见坑
 
