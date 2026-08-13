@@ -120,68 +120,6 @@ function confidence(value: unknown, fallback = 0.82): number {
   return Math.min(1, Math.max(0, value));
 }
 
-function locationDraft(line: string): NarrativeEventDraft | null {
-  const body = line.replace(/^【地点】/u, "").trim();
-  const match = body.match(/^(.+?)(?:抵达|来到|进入|到达)(.+)$/u);
-  if (!match) return null;
-  return {
-    eventType: "location_changed",
-    subject: match[1]!.trim(),
-    predicate: "抵达",
-    object: match[2]!.trim(),
-    evidenceText: line,
-    confidence: 0.88,
-    source: "settle",
-  };
-}
-
-function hookDraft(line: string): NarrativeEventDraft | null {
-  const body = line.replace(/^【伏笔】/u, "").trim();
-  const match = body.match(/^(.+?)[：:](.+)$/u);
-  if (!match) return null;
-  return {
-    eventType: "hook_planted",
-    subject: match[1]!.trim(),
-    predicate: "埋设",
-    object: match[2]!.trim(),
-    evidenceText: line,
-    confidence: 0.82,
-    source: "settle",
-  };
-}
-
-function timelineDraft(line: string): NarrativeEventDraft | null {
-  const body = line.replace(/^【时间线】/u, "").trim();
-  const match = body.match(/^(.+?)[：:](.+)$/u);
-  if (!match) return null;
-  return {
-    eventType: "timeline_advanced",
-    subject: "时间线",
-    predicate: match[1]!.trim(),
-    object: match[2]!.trim(),
-    evidenceText: line,
-    confidence: 0.88,
-    source: "settle",
-  };
-}
-
-function extractStructuredDrafts(content: string): NarrativeEventDraft[] {
-  const drafts: NarrativeEventDraft[] = [];
-  for (const rawLine of content.split(/\r?\n/u)) {
-    const line = rawLine.trim();
-    if (!line) continue;
-    const draft = line.startsWith("【地点】")
-      ? locationDraft(line)
-      : line.startsWith("【伏笔】")
-        ? hookDraft(line)
-        : line.startsWith("【时间线】")
-          ? timelineDraft(line)
-          : null;
-    if (draft) drafts.push(draft);
-  }
-  return drafts;
-}
-
 function parseUnknownDraft(raw: unknown): NarrativeEventDraft | null {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
@@ -225,21 +163,32 @@ function dedupeDrafts(drafts: readonly NarrativeEventDraft[]): { drafts: Narrati
   return { drafts: result, deduped };
 }
 
+/**
+ * 从章节正文抽取叙事事件草案。
+ *
+ * 抽取只走 LLM：没有可用的 llmExtractor 或 LLM 调用失败时直接抛错，由上层把
+ * 结算表达为失败（agent 重试工具调用），绝不静默降级为规则兜底 —— 兜底会以
+ * 「抽到 0 条 / 抽偏」的假成功写进结算台账，下回同章幂等跳过，漏抽就再也补不回来。
+ */
 export async function extractNarrativeEventsFromChapter(input: ChapterEventExtractorInput): Promise<ChapterEventExtractionResult> {
-  const warnings: string[] = [];
-  const rawDrafts: NarrativeEventDraft[] = [...extractStructuredDrafts(input.content)];
+  if (!input.llmExtractor) {
+    throw new Error("当前会话没有可用的 LLM 抽取器（generateText 缺失），无法抽取叙事事件。");
+  }
 
-  if (input.llmExtractor) {
-    try {
-      const llmDrafts = await input.llmExtractor({ bookId: input.bookId, chapterNumber: input.chapterNumber, title: input.title, content: input.content });
-      for (const raw of llmDrafts) {
-        const draft = parseUnknownDraft(raw);
-        if (draft) rawDrafts.push(draft);
-        else warnings.push("丢弃无效事件草案：schema 不匹配。");
-      }
-    } catch (error) {
-      warnings.push(`LLM 抽取失败，已使用规则兜底：${error instanceof Error ? error.message : String(error)}`);
-    }
+  const warnings: string[] = [];
+  const rawDrafts: NarrativeEventDraft[] = [];
+
+  const llmDrafts = await input.llmExtractor({
+    bookId: input.bookId,
+    chapterNumber: input.chapterNumber,
+    title: input.title,
+    content: input.content,
+    currentLedger: input.currentLedger,
+  });
+  for (const raw of llmDrafts) {
+    const draft = parseUnknownDraft(raw);
+    if (draft) rawDrafts.push(draft);
+    else warnings.push("丢弃无效事件草案：schema 不匹配。");
   }
 
   const validDrafts: NarrativeEventDraft[] = [];

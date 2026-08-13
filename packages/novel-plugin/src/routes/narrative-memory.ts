@@ -301,6 +301,85 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
   app.post(`${base}/events/pending/:eventId/approve`, (c) => mutatePendingEvent(c, "approve"));
   app.post(`${base}/events/pending/:eventId/reject`, (c) => mutatePendingEvent(c, "reject"));
 
+  /**
+   * 待审队列批量操作（作者工作台专用）。
+   *
+   * approve：逐条复用与单条批准完全相同的 handleMemoryEvents 路径（manual 保护、
+   * closeSuperseded 配置、重复跳过语义一致），不会为批量另写一套归约逻辑。
+   * delete：物理删除待审事件记录（丢弃，不留痕）；只允许删除 status=pending 的行，
+   * 已 applied/rejected 的是裁决历史，不允许从这里抹掉。
+   */
+  app.post(`${base}/events/bulk`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJson(c);
+    const action = body.action === "delete" ? "delete" : "approve";
+    const eventIds = Array.isArray(body.eventIds)
+      ? body.eventIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0).map((id) => id.trim()).slice(0, 200)
+      : [];
+    if (eventIds.length === 0) {
+      return c.json({ error: "invalid-input", summary: "eventIds 不能为空。" }, 400);
+    }
+    const reason = typeof body.reason === "string" && body.reason.trim()
+      ? body.reason.trim()
+      : action === "approve" ? "工作台批量批准" : "工作台批量丢弃";
+
+    if (action === "approve") {
+      const approved: string[] = [];
+      const skipped: string[] = [];
+      const failed: Array<{ id: string; error: string }> = [];
+      for (const eventId of eventIds) {
+        const result = await handleMemoryEvents({
+          bookId,
+          action: "approve",
+          eventId,
+          reason,
+          bookRoot: optionalBookRootFor(bookId),
+        }, storage());
+        if (result.ok) {
+          const appliedData = result.data?.applied as { skippedEventIds?: unknown } | undefined;
+          if (Array.isArray(appliedData?.skippedEventIds) && appliedData.skippedEventIds.includes(eventId)) {
+            skipped.push(eventId);
+          } else {
+            approved.push(eventId);
+          }
+        } else {
+          failed.push({ id: eventId, error: result.error ?? "approve-failed" });
+        }
+      }
+      return c.json({
+        summary: `批量批准完成：${approved.length} 成功，${skipped.length} 跳过（事实已存在），${failed.length} 失败。`,
+        approved,
+        skipped,
+        failed,
+        reason,
+      });
+    }
+
+    const deleted: string[] = [];
+    const skipped: string[] = [];
+    const failed: Array<{ id: string; error: string }> = [];
+    for (const eventId of eventIds) {
+      const existing = storage().sqlite
+        .prepare<{ status: string }>("SELECT status FROM narrative_event WHERE id = ? AND book_id = ?")
+        .get(eventId, bookId);
+      if (!existing) { failed.push({ id: eventId, error: "not-found" }); continue; }
+      if (existing.status !== "pending") { skipped.push(eventId); continue; }
+      try {
+        storage().sqlite.prepare("DELETE FROM narrative_event WHERE id = ? AND book_id = ?").run(eventId, bookId);
+        deleted.push(eventId);
+      } catch (error) {
+        failed.push({ id: eventId, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    return c.json({
+      summary: `批量丢弃完成：${deleted.length} 已删除，${skipped.length} 跳过（非待审），${failed.length} 失败。`,
+      deleted,
+      skipped,
+      failed,
+      reason,
+    });
+  });
+
   app.get(`${base}/facts`, (c) => {
     const bookId = c.req.param("bookId");
     const asOfRaw = c.req.query("asOfChapter") ?? c.req.query("chapter");
@@ -338,6 +417,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     const result = correctNarrativeFact(storage(), {
       bookId,
       factId: c.req.param("factId"),
+      ...(typeof body.subject === "string" ? { subject: body.subject } : {}),
       ...(typeof body.object === "string" ? { object: body.object } : {}),
       ...(typeof body.predicate === "string" ? { predicate: body.predicate } : {}),
       ...(typeof body.category === "string" ? { category: body.category } : {}),
@@ -370,11 +450,13 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return invalidQuery(c, "asOfChapter 必须是非负整数。");
     }
     const categories = queryText(c, "categories")?.split(",").map((item) => item.trim()).filter(Boolean);
+    const entity = queryText(c, "entity");
     const groups = queryFactsByEntity(storage(), {
       bookId,
       ...(asOfChapter !== undefined ? { asOfChapter } : {}),
       ...(categories?.length ? { categories } : {}),
       ...(queryLimit(c) !== undefined ? { limit: queryLimit(c) } : {}),
+      ...(entity ? { entity } : {}),
     });
     return c.json({ groups, total: groups.reduce((sum, group) => sum + group.facts.length, 0) });
   });
@@ -475,12 +557,15 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     const statusValue = queryText(c, "status");
     if (kindValue && !parseKind(kindValue)) return invalidQuery(c, "kind 必须是 fact | event | log | vector。");
     if (statusValue && !parseStatus(statusValue)) return invalidQuery(c, "status 必须是 pending | applied | rejected。");
+    const offset = queryInteger(c, "offset");
+    if (offset !== undefined && offset < 0) return invalidQuery(c, "offset 必须是非负整数。");
     const result = await handleMemorySearch({
       bookId: c.req.param("bookId"),
       query: queryText(c, "query", "q") ?? "",
       kind: parseKind(kindValue),
       status: parseStatus(statusValue),
       limit: queryLimit(c),
+      ...(offset !== undefined ? { offset } : {}),
     }, storage());
     return respondHandler(c, result);
   };

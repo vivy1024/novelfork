@@ -82,10 +82,13 @@ async function explain(response: Response, fallback: string): Promise<string> {
  */
 export async function fetchNarrativeLineApprovals(
   bookId: string,
-  options: { readonly limit?: number; readonly fetchImpl?: JsonFetch } = {},
+  options: { readonly limit?: number; readonly offset?: number; readonly fetchImpl?: JsonFetch } = {},
 ): Promise<readonly NarrativeLineApproval[]> {
   const doFetch = options.fetchImpl ?? fetch;
-  const query = options.limit ? `?limit=${encodeURIComponent(String(options.limit))}` : "";
+  const queryParts: string[] = [];
+  if (options.limit) queryParts.push(`limit=${encodeURIComponent(String(options.limit))}`);
+  if (options.offset !== undefined && options.offset > 0) queryParts.push(`offset=${encodeURIComponent(String(options.offset))}`);
+  const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
   const response = await doFetch(`${lineBase(bookId)}/approvals${query}`);
   if (!response.ok) throw new Error(await explain(response, "读取叙事线审批台账失败"));
   const payload = await response.json() as { approvals?: readonly NarrativeLineApproval[] };

@@ -56,6 +56,28 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+/** mock LLM 抽取器：把【地点】标记翻译成事件草案（结算只接受 LLM 抽取）。 */
+function markerExtractor(content: string) {
+  return async () => {
+    const drafts: Array<Record<string, unknown>> = [];
+    for (const line of content.split("\n")) {
+      const match = line.trim().match(/^【地点】(.+?)(?:抵达|来到|进入|到达)(.+)$/u);
+      if (match) {
+        drafts.push({
+          eventType: "location_changed",
+          subject: match[1]!.trim(),
+          predicate: "抵达",
+          object: match[2]!.trim().replace(/[，。].*$/u, ""),
+          evidenceText: line.trim(),
+          confidence: 0.88,
+          source: "settle",
+        });
+      }
+    }
+    return drafts;
+  };
+}
+
 describe("memory.settle_chapter 工具注册", () => {
   it("以已在 Studio 表态过的 narrative-memory.admin 渲染，不引入未注册 renderer", () => {
     const entry = NOVEL_RUNTIME_TOOL_CATALOG.find((tool) => tool.name === SETTLE_CHAPTER_TOOL_NAME);
@@ -92,8 +114,9 @@ describe("memory.settle_chapter 顺序保证", () => {
   });
 
   it("章节落盘后结算成功，并写入 narrative events", async () => {
+    const content = "【地点】韩立抵达药园，发现小瓶能催熟药草。";
     const { bookRoot, storage } = await createBook([
-      { number: 12, content: "【地点】韩立抵达药园，发现小瓶能催熟药草。" },
+      { number: 12, content },
     ]);
     try {
       const result = await handleMemorySettleChapter({
@@ -102,6 +125,7 @@ describe("memory.settle_chapter 顺序保证", () => {
         chapterNumber: 12,
         title: "药园试探",
         storage,
+        llmExtractor: markerExtractor(content),
       });
 
       expect(result.ok).toBe(true);

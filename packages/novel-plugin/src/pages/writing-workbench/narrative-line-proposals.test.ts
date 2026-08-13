@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  fetchNarrativeLineApprovals,
   proposeNarrativeLineChange,
   submitNarrativeLineChange,
   type JsonFetch,
@@ -38,7 +39,8 @@ function recorder(handlers: Record<string, (body: Record<string, unknown>) => Re
   const fetchImpl: JsonFetch = async (url, init) => {
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : {};
     calls.push({ url, body });
-    const handler = Object.entries(handlers).find(([suffix]) => url.endsWith(suffix))?.[1];
+    const pathname = url.split("?")[0] ?? url;
+    const handler = Object.entries(handlers).find(([suffix]) => pathname.endsWith(suffix))?.[1];
     if (!handler) throw new Error(`unexpected request: ${url}`);
     return handler(body);
   };
@@ -139,5 +141,28 @@ describe("submitNarrativeLineChange", () => {
     expect(outcome.message).toContain("不会生效");
     // 仍要留痕：作者看过这条提议并且它没有被应用。
     expect(calls[1]?.body).toMatchObject({ decision: "rejected" });
+  });
+});
+
+describe("fetchNarrativeLineApprovals", () => {
+  it("passes limit and offset through for append-style pagination", async () => {
+    const { fetchImpl, calls } = recorder({
+      "/approvals": () => jsonResponse({ approvals: [] }),
+    });
+
+    await fetchNarrativeLineApprovals(BOOK_ID, { limit: 50, offset: 50, fetchImpl });
+    expect(calls[0]?.url).toBe("/api/books/book%2F1/narrative-line/approvals?limit=50&offset=50");
+
+    await fetchNarrativeLineApprovals(BOOK_ID, { fetchImpl });
+    expect(calls[1]?.url).toBe("/api/books/book%2F1/narrative-line/approvals");
+  });
+
+  it("returns the approvals array from the payload", async () => {
+    const { fetchImpl } = recorder({
+      "/approvals": () => jsonResponse({ approvals: [{ previewId: "p1", summary: "添加节点" }] }),
+    });
+
+    const approvals = await fetchNarrativeLineApprovals(BOOK_ID, { fetchImpl });
+    expect(approvals).toEqual([{ previewId: "p1", summary: "添加节点" }]);
   });
 });

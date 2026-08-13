@@ -338,6 +338,7 @@ async function importChapters(
 
     if (autoSettle || extractBrief) {
       const { handleBookDissect } = await import("./book-dissect.js");
+      const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
       const generator = undefined;
       const dissected = await handleBookDissect({
         bookId: binding.bookId,
@@ -348,6 +349,8 @@ async function importChapters(
         apply: applyDissectDraft,
         targets: ["all"],
         generateText: generator,
+        // autoSettle 的叙事事件抽取与 memory.settle_chapter 同源。
+        ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
       });
       settlementSummary = dissected.settlementSummary;
       dissectSummary = dissected.summary;
@@ -399,6 +402,8 @@ async function bookDissect(
     ? input.targets.filter((item): item is string => typeof item === "string")
     : undefined;
   const generator = undefined;
+  // settle=true 时叙事事件抽取与 memory.settle_chapter 同源：会话 generateText 构造。
+  const { createRuntimeChapterEventExtractor } = await import("../engine/narrative-memory/chapter-event-extractor.js");
   const result = await handleBookDissect({
     bookId: binding.bookId,
     bookRoot: binding.root,
@@ -408,6 +413,7 @@ async function bookDissect(
     apply: input.apply === true,
     settle: input.settle === true,
     generateText: generator,
+    ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
   });
   if (!result.ok) return fail(result.error ?? "dissect-failed", result.summary);
   return ok(result.summary, result);

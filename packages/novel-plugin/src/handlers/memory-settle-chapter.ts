@@ -133,6 +133,24 @@ export async function handleMemorySettleChapter(input: MemorySettleChapterInput)
     },
   );
 
+  // 抽取失败必须表达成工具失败：agent 看到 ok=false 会二次调用本工具重试。
+  // 若报成成功，管线会把「正文已保存但结算没做」藏进提醒里，漏抽更晚才暴露。
+  if (settlement.status === "failed") {
+    return {
+      ok: false,
+      error: settlement.error ?? "settlement-failed",
+      summary: settlement.explanation
+        ? [
+            `发生了什么：${settlement.explanation.whatHappened}`,
+            `为什么要看：${settlement.explanation.whyItMatters}`,
+            `建议怎么做：${settlement.explanation.suggestedAction}`,
+          ].join("\n")
+        : (settlement.warnings[0] ?? "结算失败，请重试。"),
+      chapterNumber,
+      settlement,
+    };
+  }
+
   const alreadySettled = settlement.status === "skipped" && settlement.skipReason === "already-settled";
   return {
     ok: true,

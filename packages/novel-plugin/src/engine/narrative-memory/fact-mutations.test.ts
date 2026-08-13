@@ -148,6 +148,37 @@ describe("narrative fact mutations", () => {
     }
   });
 
+  it("keeps the history chain when correcting subject or predicate", async () => {
+    const storage = await createStorage();
+    try {
+      const first = createManualNarrativeFact(storage, {
+        bookId: "book-1",
+        subject: "误写角色",
+        predicate: "实力",
+        object: "练气期",
+        category: "character_state",
+        validFromChapter: 1,
+      });
+      const corrected = correctNarrativeFact(storage, {
+        bookId: "book-1",
+        factId: first.fact!.id,
+        subject: "林渊",
+        predicate: "修为",
+        object: "筑基期",
+      });
+
+      expect(corrected.ok).toBe(true);
+      expect(corrected.fact).toMatchObject({ subject: "林渊", predicate: "修为", object: "筑基期" });
+      const history = queryNarrativeFactHistory(storage, { bookId: "book-1", factId: corrected.fact!.id });
+      expect(history.map((fact) => [fact.subject, fact.predicate, fact.object])).toEqual([
+        ["误写角色", "实力", "练气期"],
+        ["林渊", "修为", "筑基期"],
+      ]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("groups open facts by entity", async () => {
     const storage = await createStorage();
     try {

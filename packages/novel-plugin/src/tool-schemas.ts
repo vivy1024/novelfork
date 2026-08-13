@@ -768,6 +768,36 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "action"],
     additionalProperties: false,
   },
+  "lore.relate": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      sourceName: stringSchema("关系主体（角色/势力名，如 林渊）。"),
+      targetName: stringSchema("关系客体（角色/势力名，如 苏晴）。"),
+      relationType: stringSchema("关系类型（如 结盟 / 敌对 / 师徒 / 情侣 / 利益合作）。"),
+      description: stringSchema("关系现状的一句话描述（当前剧情状态，不是历史沿革）。"),
+      chapterNumber: numberSchema("发生本章关系变化的章节号（用于溯源）。"),
+      reason: stringSchema("变更原因/正文依据（必填）。"),
+    },
+    required: ["bookId", "sourceName", "targetName", "relationType"],
+    additionalProperties: false,
+  },
+  "lore.progress": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      entryId: stringSchema("要推进的经纬条目 ID（与 title 二选一）。"),
+      title: stringSchema("要推进的经纬条目标题（与 entryId 二选一，标题精确匹配）。"),
+      fieldKey: stringSchema("要推进的结构化字段键（如 status / phase / relationType）。"),
+      oldValue: stringSchema("旧值（可选；不传时按当前值记录）。"),
+      newValue: stringSchema("新值（必填）。"),
+      chapterNumber: numberSchema("发生变化的章节号（用于溯源）。"),
+      description: stringSchema("这次演变的一句话描述（如 伏笔由已埋设推进为部分揭示）。"),
+      reason: stringSchema("推进依据（必填，如 第 N 章正文证据）。"),
+    },
+    required: ["bookId", "fieldKey", "newValue", "reason"],
+    additionalProperties: false,
+  },
 };
 
 NOVEL_TOOL_SCHEMAS["lore.read"] = NOVEL_TOOL_SCHEMAS["jingwei.read"]!;

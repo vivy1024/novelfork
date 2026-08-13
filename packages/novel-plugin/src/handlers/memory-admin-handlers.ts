@@ -61,6 +61,7 @@ export interface MemorySearchInput extends MemoryBaseInput {
   readonly kind?: MemoryEntryKind;
   readonly status?: NarrativeEventStatus;
   readonly limit?: number;
+  readonly offset?: number;
 }
 
 export interface MemoryStatsInput extends MemoryBaseInput {}
@@ -556,9 +557,10 @@ export async function handleMemorySearch(input: MemorySearchInput, storageOverri
   if (isToolResult(kind)) return kind;
   const storage = getStorage(storageOverride);
   const limit = clampLimit(input.limit, 50, 500);
+  const offset = clampOffset(input.offset);
   const kinds: MemoryEntryKind[] = kind ? [kind] : ["fact", "event", "log", "vector"];
   const entries = kinds.flatMap((item) => {
-    const listInput: MemoryListInput = { bookId, kind: item, status: input.status, query, limit };
+    const listInput: MemoryListInput = { bookId, kind: item, status: input.status, query, limit: limit + offset };
     const records = item === "fact" ? listFacts(storage, listInput) : item === "event" ? listEvents(storage, listInput) : item === "log" ? listLogs(storage, listInput) : listVectors(storage, listInput);
     return records.map((record: any) => {
       const fields = item === "fact" ? ["subject", "predicate", "object", "category", "layer", "evidenceText"] : item === "event" ? ["eventType", "subject", "predicate", "object", "evidenceText", "status", "source", "riskLevel"] : item === "log" ? ["purpose"] : ["cardId", "embeddingModelId"];
@@ -567,8 +569,8 @@ export async function handleMemorySearch(input: MemorySearchInput, storageOverri
       if (item === "vector" && JSON.stringify((record as VectorRecord).sourceCard).includes(query)) extraFields.push("sourceCard");
       return toEntry(item, record, { matchedFields: Array.from(new Set(extraFields)), matchReason: `匹配关键词：${query}` });
     });
-  }).slice(0, limit);
-  return ok(`搜索到 ${entries.length} 条记忆。`, { entries, query });
+  }).slice(offset, offset + limit);
+  return ok(`搜索到 ${entries.length} 条记忆。`, { entries, query, page: { limit, offset, returned: entries.length } });
 }
 
 export async function handleMemoryStats(input: MemoryStatsInput, storageOverride?: StorageDatabase): Promise<ToolResult> {

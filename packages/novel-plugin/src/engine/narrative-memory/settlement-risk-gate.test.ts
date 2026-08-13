@@ -41,7 +41,7 @@ describe("settlement risk gate", () => {
   });
 
   it("exports settlement result shape used by chapter settlement service", () => {
-    const result: ChapterSettlementResult = {
+    const completed: ChapterSettlementResult = {
       status: "completed",
       bookId: "book-1",
       chapterNumber: 12,
@@ -49,10 +49,30 @@ describe("settlement risk gate", () => {
       autoApplied: 1,
       pending: 2,
       highRiskPending: 1,
-      warnings: ["LLM 抽取失败，已使用规则兜底。"],
+      warnings: ["丢弃无效事件草案：schema 不匹配。"],
       events: [],
     };
+    expect(completed).toMatchObject({ status: "completed", extracted: 3, autoApplied: 1, pending: 2, highRiskPending: 1 });
 
-    expect(result).toMatchObject({ status: "completed", extracted: 3, autoApplied: 1, pending: 2, highRiskPending: 1 });
+    // 抽取失败形态：带 error 码，供 agent 二次调用工具重试。
+    const failedResult: ChapterSettlementResult = {
+      status: "failed",
+      bookId: "book-1",
+      chapterNumber: 12,
+      extracted: 0,
+      autoApplied: 0,
+      pending: 0,
+      highRiskPending: 0,
+      warnings: ["第12章结算失败：LLM 事件抽取调用未完成。"],
+      events: [],
+      error: "settlement-extraction-failed",
+      explanation: {
+        whatHappened: "第12章结算失败：LLM 事件抽取调用未完成。",
+        whyItMatters: "本次未写入任何记忆，也未登记结算。",
+        suggestedAction: "重新调用结算工具重试。",
+      },
+    };
+    expect(failedResult).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
+    expect(failedResult.explanation?.suggestedAction).toBeTruthy();
   });
 });

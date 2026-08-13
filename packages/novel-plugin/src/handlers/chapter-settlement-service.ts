@@ -1,7 +1,7 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 
-import { extractNarrativeEventsFromChapter, type ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
+import { extractNarrativeEventsFromChapter, type ChapterEventExtractorInput, type ChapterEventExtractionResult } from "../engine/narrative-memory/chapter-event-extractor.js";
 import {
   DEFAULT_NARRATIVE_MEMORY_CONFIG,
   loadNarrativeMemoryConfig,
@@ -170,6 +170,33 @@ function skipped(
   };
 }
 
+/**
+ * 抽取失败：不写任何事件、不登记结算台账。
+ *
+ * 关键：绝不能走到 recordChapterSettlement —— 一旦把「没抽成」登记成「已结算」，
+ * 幂等门会把同章后续调用全部跳过，漏抽的章节就再也补不回来。失败必须保持可重试。
+ */
+function failed(
+  input: ChapterSettlementInput,
+  error: string,
+  explanation: DiagnosticExplanation,
+): ChapterSettlementResult {
+  return {
+    status: "failed",
+    bookId: input.bookId,
+    chapterId: input.chapterId,
+    chapterNumber: input.chapterNumber,
+    extracted: 0,
+    autoApplied: 0,
+    pending: 0,
+    highRiskPending: 0,
+    warnings: [explanation.whatHappened],
+    events: [],
+    error,
+    explanation,
+  };
+}
+
 /** 幂等跳过的人话解释：明确「已结算过、本次跳过」，既不假装成功也不报成错误。 */
 function explainAlreadySettled(
   input: ChapterSettlementInput,
@@ -264,14 +291,56 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     object: fact.object,
   }));
 
-  const extraction = await extractNarrativeEventsFromChapter({
-    bookId: input.bookId,
-    chapterNumber: input.chapterNumber,
-    title: input.title,
-    content: input.content,
-    currentLedger,
-    llmExtractor: config.settlement.useLlmExtraction ? options.llmExtractor : undefined,
-  });
+  // 作者在 book.json 里明确关闭了 LLM 抽取：不抽也不假装成功，跳过并说明。
+  if (!config.settlement.useLlmExtraction) {
+    return skipped(
+      input,
+      "本书配置已关闭 LLM 抽取（settlement.useLlmExtraction=false），本次结算未执行。",
+      {
+        skipReason: "extraction-disabled",
+        explanation: {
+          whatHappened: `第${input.chapterNumber}章未结算：这本书的叙事记忆配置关闭了 LLM 抽取。`,
+          whyItMatters: "没有 LLM 抽取就没有叙事事件来源；静默跳过比假结算更安全，本章记忆不会产生虚假记录。",
+          suggestedAction: "若确实需要结算，请在写作设置的叙事记忆配置里重新打开 LLM 抽取，再重新执行结算工具。",
+        },
+      },
+    );
+  }
+
+  if (!options.llmExtractor) {
+    return failed(
+      input,
+      "settlement-extractor-unavailable",
+      {
+        whatHappened: `第${input.chapterNumber}章结算失败：当前会话没有可用的 LLM 抽取器（generateText 缺失）。`,
+        whyItMatters: "叙事事件只能由 LLM 从正文抽取，没有抽取器就无法产生可信事实；本次未写入任何记忆，也未登记结算。",
+        suggestedAction: "检查会话模型配置后重新调用结算工具即可，本章仍保持未结算状态、可安全重试。",
+      },
+    );
+  }
+
+  let extraction: ChapterEventExtractionResult;
+  try {
+    extraction = await extractNarrativeEventsFromChapter({
+      bookId: input.bookId,
+      chapterNumber: input.chapterNumber,
+      title: input.title,
+      content: input.content,
+      currentLedger,
+      llmExtractor: options.llmExtractor,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return failed(
+      input,
+      "settlement-extraction-failed",
+      {
+        whatHappened: `第${input.chapterNumber}章结算失败：LLM 事件抽取调用未完成（${detail}）。`,
+        whyItMatters: "抽取失败时若继续结算，只能写进空账或错误事实；本次未写入任何记忆，也未登记结算。",
+        suggestedAction: "直接重新调用结算工具重试即可（例如 memory.settle_chapter 或 memory.settle_range），本章仍保持未结算状态。",
+      },
+    );
+  }
   const warnings = [...extraction.warnings];
   const events: NarrativeEvent[] = [];
 
