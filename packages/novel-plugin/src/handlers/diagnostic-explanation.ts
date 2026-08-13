@@ -98,6 +98,12 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
     whyItMatters: "写前只能依赖叙事记忆事件，前情颗粒度更粗。",
     suggestedAction: "用 book.dissect(apply=true) 或章后结算补齐章摘要。",
   },
+  "skills-not-acknowledged": {
+    kind: "advisory",
+    whatHappened: "本章相关的 Writing Skills 里，有一部分当前会话还没有实际加载过（Runtime 没有记录到对应的 Skill 调用）。",
+    whyItMatters: "这只是告知，不阻断写章：入口验证的是「读过没有」，而真正的把关在出口——章节保存前会按技能声明的检查项逐条校验，硬性违规会以 writing-skill-compliance-failed 拒绝保存。没读技能不等于写不合规，读了也不等于写得合规。",
+    suggestedAction: "按 description 判断哪些技能与本章确实相关，用 Skill 工具读取后再写；相关条目的可机器校验规则已随 writingSkillConstraints 一并给出，可直接按它写。",
+  },
   "audit-stale": {
     kind: "advisory",
     whatHappened: "有章节在审计之后又被修改过，现有审计结论已经不对应当前正文。",

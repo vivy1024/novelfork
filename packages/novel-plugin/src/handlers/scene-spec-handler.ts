@@ -5,6 +5,11 @@
  */
 
 import { checkBeatBudget, parseBeatBudget, type BeatBudgetItem, type BeatBudgetReport } from "./beat-budget.js";
+import {
+  EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST,
+  toSceneSpecConstraintLines,
+  type WritingSkillConstraintDigest,
+} from "../engine/writing-skills/compliance.js";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -61,6 +66,11 @@ export interface SceneSpecSuccess {
     sceneSpec: SceneSpec;
     /** 情节点预算校验结果；未提供 beatBudget 时也会给，用于提示未拆点。 */
     beatBudget?: BeatBudgetReport;
+    /**
+     * 已启用 Writing Skills 的硬性约束摘要，与出口合规校验同源。
+     * 已并入 sceneSpec.constraints，这里另给结构化版本便于渲染与下游复用。
+     */
+    writingSkillConstraints?: WritingSkillConstraintDigest;
   };
 }
 
@@ -169,6 +179,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
             needsUserConfirm: Boolean(preflight.needsUserConfirm),
             blockers: Array.isArray(preflight.blockers)
               ? preflight.blockers.map((item) => ({
+                  // skills-not-acknowledged 已降级为 warning，不再出现在 blockers 里。
                   code: item.code as
                     | "missing-directive"
                     | "empty-recent-progress"
@@ -221,6 +232,7 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
         openHooksForChapter?: Array<{ text?: string; description?: string }>;
         overdueHooks?: Array<{ text?: string }>;
         currentVolume?: { title?: string; goal?: string } | null;
+        writingSkillConstraints?: WritingSkillConstraintDigest;
       }
     | undefined;
   if (pf && !enrichedCockpit) {
@@ -278,6 +290,33 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
     }
   }
 
+  /*
+   * Writing Skills 的**硬性条目**进蓝图，技能正文不进。
+   *
+   * 这样做的理由：出口按 checks 硬拦成品，如果生成阶段完全不知道这些条目，
+   * 违规只能等到整章被打回。注入的是结构化规则（与出口同源），不是技能全文——
+   * 全文由 Runtime 的 Skill 机制交给 agent 自主选择读取，管线不代为注入上下文。
+   */
+  let writingSkillConstraints: WritingSkillConstraintDigest = pf?.writingSkillConstraints
+    ?? EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST;
+  if (writingSkillConstraints.items.length === 0 && input.bookRoot?.trim()) {
+    try {
+      const { loadWritingSkillConstraintDigestForBook } = await import("./writing-skill-handlers.js");
+      writingSkillConstraints = await loadWritingSkillConstraintDigestForBook(bookId, { bookRoot: input.bookRoot });
+    } catch {
+      // 摘要是增强项：读不到就按空处理，出口仍会按 checks 校验成品。
+      writingSkillConstraints = EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST;
+    }
+  }
+  const constraintLines = toSceneSpecConstraintLines(writingSkillConstraints);
+  if (constraintLines.length > 0) {
+    const existing = new Set(sceneSpec.constraints);
+    sceneSpec.constraints = [
+      ...sceneSpec.constraints,
+      ...constraintLines.filter((line) => !existing.has(line)),
+    ];
+  }
+
   const source = "Runtime Agent 显式提交";
   // 调用方显式给的预算优先于 LLM 自拟，避免作者定好的节奏被覆盖。
   const explicitBudget = parseBeatBudget(input.beatBudget);
@@ -293,9 +332,16 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   const gateNote = blockers.length > 0
     ? " 预算判为不合规，pipeline.write 会以 beat-budget-invalid 拒绝执行，请先重排预算再写章。"
     : "";
+  const skillNote = writingSkillConstraints.items.length > 0
+    ? ` 已并入 ${writingSkillConstraints.items.length} 条 Writing Skills 可机器校验约束（其中 ${writingSkillConstraints.blockingCount} 条硬性，保存前会逐条校验）。`
+    : "";
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}`,
-    data: { sceneSpec, beatBudget: budget },
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}`,
+    data: {
+      sceneSpec,
+      beatBudget: budget,
+      ...(writingSkillConstraints.items.length > 0 ? { writingSkillConstraints } : {}),
+    },
   };
 }

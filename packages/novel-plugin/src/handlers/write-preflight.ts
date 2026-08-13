@@ -27,6 +27,12 @@ import {
 } from "./cockpit-service.js";
 import { loadActiveWritingSkillsForBook } from "./writing-skill-handlers.js";
 import {
+  buildWritingSkillConstraintDigest,
+  EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST,
+  type WritingSkillConstraintDigest,
+} from "../engine/writing-skills/compliance.js";
+import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
+import {
   describeWritingSkillAcknowledgementRequirement,
   explainWritingSkillAcknowledgementVerdict,
   selectRelevantWritingSkills,
@@ -39,12 +45,16 @@ import {
 export type MemoryChannelHealth = "ok" | "empty" | "missing" | "disabled";
 
 export interface WritePreflightBlocker {
+  /**
+   * `skills-not-acknowledged` 已从 blocker 降级为 warning：
+   * 「交一段原文引用」验证的是读过，不是照做，而出口已有按技能声明逐条校验成品的
+   * 硬拦（writing-skill-compliance-failed）。入口不再用弱证据阻断写章。
+   */
   readonly code:
     | "missing-directive"
     | "empty-recent-progress"
     | "high-risk-pending"
-    | "book-not-found"
-    | "skills-not-acknowledged";
+    | "book-not-found";
   readonly message: string;
   /** 人话三段式：发生了什么 / 为什么要看 / 建议怎么做。前端不得按 code 自造文案。 */
   readonly explanation?: DiagnosticExplanation;
@@ -86,6 +96,8 @@ export interface WritePreflightWarning {
     | "platform-target-mismatch"
     | "audit-stale"
     | "volume-range-drift"
+    /** 相关技能未在本会话加载：只告知，不阻断（出口按成品硬拦）。 */
+    | "skills-not-acknowledged"
     | "other";
   readonly message: string;
   readonly explanation?: DiagnosticExplanation;
@@ -119,12 +131,20 @@ export interface WritePreflightResult {
     readonly events: MemoryChannelHealth;
   };
   readonly blockers: readonly WritePreflightBlocker[];
-  /** 当前任务筛选出的 Writing Skills；minQuoteChars 保留为兼容字段，固定为 0。 */
+  /**
+   * 当前任务筛选出的 Writing Skills：**告知**用途，不构成硬门。
+   * minQuoteChars 保留为兼容字段，固定为 0。
+   */
   readonly requiredSkillAcknowledgements: readonly WritingSkillAcknowledgementRequirement[];
   /** 同一 Runtime narrator 已加载的技能证据（不含正文）。 */
   readonly loadedSkills: readonly RuntimeLoadedSkill[];
   /** 当前任务相关但尚未加载的技能 slug，仅作提示，不构成原文引用硬门。 */
   readonly missingRelevantSkills: readonly string[];
+  /**
+   * 已启用技能的硬性约束摘要（结构化条目，不含技能正文）。
+   * 与出口 `writing-skills.check_compliance` 同源，可直接下发给 scene.spec / 修稿。
+   */
+  readonly writingSkillConstraints: WritingSkillConstraintDigest;
   /** 兼容旧字段：纯文本 warnings */
   readonly warnings: readonly string[];
   /** 结构化 warnings（主链硬化） */
@@ -278,18 +298,23 @@ function mergeRecentChapters(
     .map(([number, summary]) => ({ number, summary }));
 }
 
+/**
+ * warning 一律带人话三段式。`explanationOverride` 用于把动态细节（例如具体是哪些技能）
+ * 写进 whatHappened / suggestedAction，同时保留登记表里的 whyItMatters 口径。
+ */
 function pushWarning(
   warnings: string[],
   warningItems: WritePreflightWarning[],
   code: WritePreflightWarning["code"],
   message: string,
+  explanationOverride?: Partial<DiagnosticExplanation>,
 ): void {
   warnings.push(message);
   const explained = explainDiagnostic(code, message);
   warningItems.push({
     code,
     message,
-    explanation: explained.explanation,
+    explanation: { ...explained.explanation, ...explanationOverride },
     kind: explained.kind,
   });
 }
@@ -339,6 +364,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       requiredSkillAcknowledgements: [],
       loadedSkills: input.loadedSkills ?? [],
       missingRelevantSkills: [],
+      writingSkillConstraints: EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST,
       warnings: [],
       warningItems: [],
       cockpit: null,
@@ -414,6 +440,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       requiredSkillAcknowledgements: [],
       loadedSkills: input.loadedSkills ?? [],
       missingRelevantSkills: [],
+      writingSkillConstraints: EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST,
       warnings,
       warningItems,
       cockpit: null,
@@ -485,6 +512,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
 
   let styleHealth: MemoryChannelHealth = "empty";
   let activeSkillsForAck: readonly AcknowledgeableWritingSkill[] = [];
+  let activeWritingSkillList: readonly ParsedWritingSkill[] = [];
   try {
     if (!input.bookRoot?.trim()) {
       // 没有可信项目根时不能扫描作品 `.novelfork/skills`；不依赖 book.json 选择字段。
@@ -492,6 +520,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     } else {
       const activeWritingSkills = await loadActiveWritingSkillsForBook(bookId, { bookRoot: input.bookRoot });
       styleHealth = activeWritingSkills.skills.length > 0 ? "ok" : "disabled";
+      activeWritingSkillList = activeWritingSkills.skills;
       activeSkillsForAck = activeWritingSkills.skills.map((skill) => ({
         slug: skill.slug,
         name: skill.name,
@@ -510,7 +539,16 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     styleHealth = "missing";
   }
 
-  // Skill 证据来自当前 Runtime narrator 的成功 Skill 调用；不再要求模型提交长原文引用。
+  /*
+   * Writing Skills 入口策略：只告知，不阻断。
+   *
+   * 之所以不在这里硬拦：
+   * - agent 自称的「已读」（原文引用 / acknowledgedSkills）是弱证据，交一段原文并不等于照做；
+   * - loadedSkills 是 Runtime 实测的强证据，但「读过」同样不等于「写得合规」；
+   * - 真正可判定的是成品：章节保存前 writing-skills.check_compliance 会按技能声明的
+   *   checks 逐条校验，硬性违规以 writing-skill-compliance-failed 拒绝保存。
+   * 因此入口给清单 + 给可机器校验的约束条目，出口负责把关。
+   */
   const relevantSkills = selectRelevantWritingSkills(
     activeSkillsForAck,
     input.taskText ?? input.userDirectives ?? "",
@@ -523,9 +561,30 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     taskText: input.taskText ?? input.userDirectives ?? "",
   });
   const missingRelevantSkills = skillVerdict.missing;
+  // 硬性约束摘要只取 checks（出口判据），不含技能正文：正文由 Runtime 的 Skill
+  // 机制交给 agent 自主选择读取，管线不代为注入。
+  const relevantSlugs = new Set(relevantSkills.map((skill) => skill.slug));
+  const writingSkillConstraints = buildWritingSkillConstraintDigest(
+    activeWritingSkillList.filter((skill) => relevantSlugs.has(skill.slug) || skill.mode === "always"),
+  );
   if (missingRelevantSkills.length > 0) {
-    const explanation = explainWritingSkillAcknowledgementVerdict({ verdict: skillVerdict, skills: relevantSkills });
-    pushWarning(warnings, warningItems, "other", `${explanation.whatHappened} ${explanation.suggestedAction}`);
+    const verdictExplanation = explainWritingSkillAcknowledgementVerdict({ verdict: skillVerdict, skills: relevantSkills });
+    const nameOf = (slug: string) => relevantSkills.find((skill) => skill.slug === slug)?.name ?? slug;
+    const names = missingRelevantSkills.map(nameOf);
+    const preview = names.slice(0, 6).join("、");
+    const more = names.length > 6 ? ` 等 ${names.length} 个` : "";
+    pushWarning(
+      warnings,
+      warningItems,
+      "skills-not-acknowledged",
+      `本章相关的 Writing Skills 有 ${names.length} 个当前会话尚未加载（${preview}${more}）；仅提醒，不阻断写章。`,
+      {
+        whatHappened: verdictExplanation.whatHappened,
+        suggestedAction: writingSkillConstraints.items.length > 0
+          ? `可按 description 判断相关性后用 Skill 工具读取：${preview}${more}；本次已随 writingSkillConstraints 给出 ${writingSkillConstraints.items.length} 条可机器校验规则（其中 ${writingSkillConstraints.blockingCount} 条硬性），保存前会逐条校验。`
+          : `可按 description 判断相关性后用 Skill 工具读取：${preview}${more}。这些技能未声明可机器校验的检查项，是否采用由你判断。`,
+      },
+    );
   }
 
   const memoryHealth = {
@@ -692,6 +751,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
     requiredSkillAcknowledgements,
     loadedSkills: input.loadedSkills ?? [],
     missingRelevantSkills,
+    writingSkillConstraints,
     warnings,
     warningItems,
     cockpit: {
