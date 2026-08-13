@@ -10,6 +10,8 @@ export interface JingweiVisibilityRule {
   visibleUntilChapter?: number;
   keywords?: string[];
   parentEntryIds?: string[];
+  /** 互斥组：同组条目在注入时只保留优先级最高的一条（如角色状态组只能进一条）。 */
+  group?: string;
 }
 
 export interface JingweiFieldDefinition {

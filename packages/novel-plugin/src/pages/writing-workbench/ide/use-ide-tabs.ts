@@ -25,11 +25,11 @@ export function normalizeTabView(value: unknown): TabView {
 }
 
 const LEGACY_JINGWEI_PANEL_PREFIX = "jingwei-panel-entry";
-const JINGWEI_WORKSPACE_TAB_ID = "jingwei-workspace";
 
+/** 旧版条目标签页 `jingwei-panel-entry:<id>` 还原为当前 `jingwei-entry:<id>`。 */
 function migrateLegacyTabId(value: string | null | undefined): string | null {
   if (!value) return null;
-  return value.startsWith(LEGACY_JINGWEI_PANEL_PREFIX) ? JINGWEI_WORKSPACE_TAB_ID : value;
+  return value.startsWith(LEGACY_JINGWEI_PANEL_PREFIX) ? value.replace(LEGACY_JINGWEI_PANEL_PREFIX, "jingwei-entry") : value;
 }
 
 export interface TabState {
@@ -243,15 +243,14 @@ export function loadState(bookId: string): IdeTabsState {
     for (const tab of parsed.tabs || []) {
       const migratedId = migrateLegacyTabId(tab.id) ?? tab.id;
       if (tabs.some((candidate) => candidate.id === migratedId)) continue;
-      const migratedJingweiPanel = migratedId === JINGWEI_WORKSPACE_TAB_ID;
       tabs.push({
         id: migratedId,
         nodeId: migrateLegacyTabId(tab.nodeId) ?? tab.nodeId,
-        title: migratedJingweiPanel ? "经纬" : tab.title,
+        title: tab.title,
         dirty: false,
         pinned: tab.pinned === true,
-        kind: migratedJingweiPanel ? "other" : (tab.kind ?? "other"),
-        view: migratedJingweiPanel ? "jingwei" : normalizeTabView(tab.view),
+        kind: tab.kind ?? "other",
+        view: normalizeTabView(tab.view),
       });
     }
     // 旧视图键先折叠到现视图，再按现视图校验激活项

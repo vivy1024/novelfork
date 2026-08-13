@@ -324,6 +324,10 @@ export function WritingSkillsPanelShell({
   );
 }
 
+/**
+ * 技能面板：本地自研体系，content/builtins 全量预置，启用后物化到作品目录。
+ * 在线技能市场（浏览外部来源、按需下载、用户间分享）为后续规划，当前不做下载/同步。
+ */
 export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const { data, loading, error, refetch } = useApi<WritingSkillsResponse>("/writing-skills");
   const [projectSlugs, setProjectSlugs] = useState<string[]>([]);
@@ -336,6 +340,9 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  /** 列表分页：377 个技能一次全渲染会卡，默认先出 40 个。 */
+  const PAGE_SIZE = 40;
+  const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
   // 生效态由可信书籍根目录 `.novelfork/skills` 扫描结果提供。
   const {
@@ -488,6 +495,13 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     genre: filterGenre,
     query,
   });
+  const displayed = visible.slice(0, displayCount);
+  const hasMore = visible.length > displayCount;
+
+  // 筛选条件变化时重置分页，避免旧 displayCount 把新结果截掉
+  useEffect(() => {
+    setDisplayCount(PAGE_SIZE);
+  }, [filterKind, filterGenre, filterSource, query]);
 
   if (loading) {
     return (
@@ -624,7 +638,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       )}
 
       <div className="grid grid-cols-1 gap-2">
-        {visible.map((skill) => (
+        {displayed.map((skill) => (
           <div
             key={skill.id}
             className="flex items-start justify-between gap-2 rounded-lg border border-border p-2.5 hover:bg-muted/50 transition-colors"
@@ -675,6 +689,20 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
           </div>
         ))}
       </div>
+
+      {hasMore && (
+        <div className="flex justify-center pt-1">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="text-[11px] h-6"
+            onClick={() => setDisplayCount((count) => count + PAGE_SIZE)}
+            data-testid="writing-skills-load-more"
+          >
+            加载更多（{displayed.length} / {visible.length}）
+          </Button>
+        </div>
+      )}
 
       <Dialog open={viewing !== null} onOpenChange={(open) => !open && setViewing(null)}>
         <DialogContent className="max-w-2xl">

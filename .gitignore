@@ -111,3 +111,5 @@ session-error-root.png
 /.narrafork/h4-*.png
 dist-verify/
 dist-verify2/
+.build-tmp/
+dist-verify-nf/

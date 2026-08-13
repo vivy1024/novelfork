@@ -281,7 +281,12 @@ function loadWritingSkillsFromSources(home?: string): ReadonlyArray<ParsedWritin
 
   // 编译态使用单一内联快照；开发态的唯一 builtin root 覆盖同 slug 快照。
   addBundle(BUNDLED_WRITING_SKILLS);
-  for (const slug of listSkillSlugsSync(BUILTIN_WRITING_SKILLS_DIR)) {
+  const builtinSlugs = listSkillSlugsSync(BUILTIN_WRITING_SKILLS_DIR);
+  const convertedSlugs = new Set(builtinSlugs.filter((slug) => slug.startsWith("nf-")));
+  for (const slug of builtinSlugs) {
+    // 外部聚合技能已一对一转化为 nf- 版（功能相同）；两者并存时只暴露 nf- 版，
+    // 外部原版留在仓库作为市场下载源，不出现在内置列表。
+    if (!slug.startsWith("nf-") && convertedSlugs.has(`nf-${slug}`)) continue;
     const raw = tryReadFileSync(skillFile(BUILTIN_WRITING_SKILLS_DIR, slug));
     const parsed = raw ? parseWritingSkill(raw, slug, "builtin") : null;
     if (parsed) {
