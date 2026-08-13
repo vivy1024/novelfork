@@ -1,6 +1,14 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+/** 读取仓库内源码做契约断言；兼容 vitest 下 import.meta.url 非 file 协议的情况。 */
+function sourcePath(relativeFromPackageRoot: string): string {
+  return import.meta.url.startsWith("file:")
+    ? resolve(dirname(fileURLToPath(import.meta.url)), "../..", relativeFromPackageRoot)
+    : resolve(process.cwd(), relativeFromPackageRoot);
+}
 
 import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -255,6 +263,94 @@ describe("assertDirectiveReady", () => {
     });
     expect(accepted.ok).toBe(true);
     if (accepted.ok) expect(accepted.directive).toContain("药园试探");
+  });
+});
+
+describe("Writing Skills 入口只告知不阻断", () => {
+  it("skills-not-acknowledged 不再出现在 blockers 里", async () => {
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-20", chapterNumber: 10 }));
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-21", chapterNumber: 11 }));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+      // 故意不传 acknowledgedSkills / loadedSkills：入口不该因此拦人。
+    });
+
+    // 弱证据（agent 自称的原文引用）不再硬拦；技能是否生效由出口查成品。
+    expect(result.blockers.some((item) => item.code === "skills-not-acknowledged")).toBe(false);
+  });
+
+  it("缺技能引用与缺 loadedSkills 都不影响 ok", async () => {
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-22", chapterNumber: 10 }));
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-23", chapterNumber: 11 }));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it("若产出 skills-not-acknowledged 提醒，必须带 explanation 三段式", async () => {
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-24", chapterNumber: 10 }));
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-25", chapterNumber: 11 }));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+    });
+
+    const warning = result.warningItems.find((item) => item.code === "skills-not-acknowledged");
+    // 本书未启用技能时不产出该提醒；一旦产出就必须可直接转述，不许前端按 code 造文案。
+    if (warning) {
+      expect(warning.explanation?.whatHappened).toBeTruthy();
+      expect(warning.explanation?.whyItMatters).toBeTruthy();
+      expect(warning.explanation?.suggestedAction).toBeTruthy();
+    }
+  });
+
+  it("返回 writingSkillConstraints 摘要供 scene.spec 使用", async () => {
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-26", chapterNumber: 10 }));
+    insertNarrativeEvent(activeStorage!, appliedEvent({ id: "e-27", chapterNumber: 11 }));
+
+    const { handleWritePreflight } = await import("./write-preflight.js");
+    const result = await handleWritePreflight({
+      bookId: "book-1",
+      userDirectives: "继续写药园试探，推进小瓶秘密。",
+      storage: activeStorage,
+      cockpitState: cockpitState({ formalChapterCount: 11 }),
+    });
+
+    // 字段必须始终存在（未启用技能时为空摘要），否则下游要到处判 undefined。
+    expect(result.writingSkillConstraints).toBeTruthy();
+    expect(Array.isArray(result.writingSkillConstraints.items)).toBe(true);
+    expect(typeof result.writingSkillConstraints.blockingCount).toBe("number");
+  });
+});
+
+describe("审修阶段的技能约束来源", () => {
+  it("ReviserAgent 不保留无人传值的 writingSkillConstraints 死参数", async () => {
+    // 管线 v2 已把 Auditor+Reviser 合并为 chapter-audit-v2 的确定性审计，
+    // reviseChapter 没有生产调用方。约束改由 sceneSpec.constraints 流到审计，
+    // 这里锁死「不留永不生效的参数」——留着会让人误以为它在工作。
+    const source = await readFile(sourcePath("src/engine/agents/reviser.ts"), "utf8");
+    expect(source).not.toContain("writingSkillConstraints");
+  });
+
+  it("确定性审计接收 sceneSpec.constraints，约束经此进入审修", async () => {
+    const source = await readFile(sourcePath("src/handlers/chapter-audit-v2.ts"), "utf8");
+    expect(source).toContain("constraints");
   });
 });
 

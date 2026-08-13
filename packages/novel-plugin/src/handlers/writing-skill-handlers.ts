@@ -20,9 +20,16 @@ import {
   readProjectWritingSkillRaw,
   syncProjectWritingSkills,
 } from "../engine/writing-skills/project-storage.js";
+import {
+  buildWritingSkillConstraintDigest,
+  checkId,
+  checkSeverity,
+  describeCheck,
+  evaluateCheck,
+  type WritingSkillConstraintDigest,
+} from "../engine/writing-skills/compliance.js";
 import type {
   ParsedWritingSkill,
-  WritingSkillComplianceCheck,
 } from "../engine/writing-skills/types.js";
 
 export interface TrustedWritingSkillOptions {
@@ -363,65 +370,20 @@ export async function handleWritingSkillsRecommend(
   }
 }
 
-function occurrences(content: string, term: string): number {
-  if (!term) return 0;
-  let count = 0;
-  let index = content.indexOf(term);
-  while (index >= 0) {
-    count += 1;
-    index = content.indexOf(term, index + term.length);
-  }
-  return count;
-}
-
-function checkId(check: WritingSkillComplianceCheck, index: number): string {
-  return check.id?.trim() || `${check.type}-${index + 1}`;
-}
-
-function checkRule(check: WritingSkillComplianceCheck): string {
-  switch (check.type) {
-    case "required-terms": return `必须出现：${check.terms.join("、")}`;
-    case "forbidden-terms": return `不得出现：${check.terms.join("、")}`;
-    case "pattern": return `模式匹配：${check.pattern}`;
-  }
-}
-
 /**
- * loader 已在解析阶段拒绝 lookaround、回溯引用与嵌套量词，因此这里只按已校验的
- * 声明编译一次；仍旧不接受 g/y，避免有状态匹配。
+ * 读取一书当前生效技能的「硬性约束摘要」。
+ *
+ * 与出口硬拦同源：摘要只由 `ParsedWritingSkill.checks` 生成，且规则文案走
+ * `describeCheck`，与 `handleWritingSkillsCheckCompliance` 报出的 rule 完全一致。
+ * 读取失败时返回空摘要而不是抛错：约束摘要是增强项，缺它不该让写章不可用，
+ * 真正的把关在出口。
  */
-function compilePattern(check: { readonly pattern: string; readonly flags?: string }): RegExp | null {
-  try {
-    return new RegExp(check.pattern, `g${(check.flags ?? "").replace(/[^im]/gu, "")}`);
-  } catch {
-    return null;
-  }
-}
-
-/** 返回违规描述；通过检查时返回 null。 */
-function evaluateCheck(content: string, check: WritingSkillComplianceCheck): string | null {
-  if (check.type === "required-terms") {
-    const minimum = check.minOccurrences ?? 1;
-    const missing = check.terms.filter((term) => occurrences(content, term) < minimum);
-    return missing.length > 0
-      ? `缺少要求的词项：${missing.join("、")}${minimum > 1 ? `（每项至少 ${minimum} 次）` : ""}`
-      : null;
-  }
-  if (check.type === "forbidden-terms") {
-    const hits = check.terms.filter((term) => content.includes(term));
-    return hits.length > 0 ? `命中禁止词项：${hits.join("、")}` : null;
-  }
-  const pattern = compilePattern(check);
-  if (!pattern) return null;
-  const matches = content.match(pattern) ?? [];
-  const minMatches = check.minMatches ?? 1;
-  if (matches.length < minMatches) {
-    return `模式匹配 ${matches.length} 次，少于要求的 ${minMatches} 次`;
-  }
-  if (check.maxMatches !== undefined && matches.length > check.maxMatches) {
-    return `模式匹配 ${matches.length} 次，超过允许的 ${check.maxMatches} 次（例如「${matches[0]?.slice(0, 120) ?? ""}」）`;
-  }
-  return null;
+export async function loadWritingSkillConstraintDigestForBook(
+  bookId: string,
+  options: TrustedWritingSkillOptions,
+): Promise<WritingSkillConstraintDigest> {
+  const active = await loadActiveWritingSkillsForBook(bookId, options);
+  return buildWritingSkillConstraintDigest(active.skills);
 }
 
 export async function handleWritingSkillsCheckCompliance(
@@ -441,14 +403,14 @@ export async function handleWritingSkillsCheckCompliance(
       for (const [index, check] of checks.entries()) {
         const violation = evaluateCheck(content, check);
         if (!violation) continue;
-        const rule = checkRule(check);
+        const rule = describeCheck(check);
         violations.push({
           skillId: skill.id,
           skillName: skill.name,
           checkId: checkId(check, index),
           rule,
           violation,
-          severity: check.severity ?? "warning",
+          severity: checkSeverity(check),
           explanation: check.message?.trim()
             || `Writing Skill「${skill.name}」声明了检查「${rule}」；当前正文不满足它，请按该 Skill 的方法调整或关闭这条 Skill。`,
         });
