@@ -226,4 +226,48 @@ describe("narrative memory observability router", () => {
       storage.close();
     }
   });
+
+  it("creates, corrects, retires facts and exposes entity/history reads", async () => {
+    const storage = await createStorage();
+    try {
+      const app = createNarrativeMemoryRouter({ storage });
+
+      const created = await app.request("http://localhost/api/books/book-1/narrative-memory/facts", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ subject: "林渊", predicate: "修为", object: "筑基期", category: "character_state", validFromChapter: 10 }),
+      });
+      expect(created.status).toBe(200);
+      const createdPayload = await created.json() as any;
+      expect(createdPayload.fact).toEqual(expect.objectContaining({ subject: "林渊", predicate: "修为", object: "筑基期", sourceType: "manual" }));
+
+      const corrected = await app.request(`http://localhost/api/books/book-1/narrative-memory/facts/${createdPayload.fact.id}/correct`, {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ object: "结丹期" }),
+      });
+      expect(corrected.status).toBe(200);
+      const correctedPayload = await corrected.json() as any;
+      expect(correctedPayload.fact.object).toBe("结丹期");
+      expect(correctedPayload.superseded.object).toBe("筑基期");
+
+      const byEntity = await app.request("http://localhost/api/books/book-1/narrative-memory/facts/by-entity");
+      expect(byEntity.status).toBe(200);
+      const byEntityPayload = await byEntity.json() as any;
+      expect(byEntityPayload.groups).toEqual([expect.objectContaining({ entity: "林渊", facts: [expect.objectContaining({ object: "结丹期" })] })]);
+
+      const history = await app.request(`http://localhost/api/books/book-1/narrative-memory/facts/${correctedPayload.fact.id}/history`);
+      expect(history.status).toBe(200);
+      const historyPayload = await history.json() as any;
+      expect(historyPayload.items.map((item: any) => item.object)).toEqual(["筑基期", "结丹期"]);
+
+      const retired = await app.request(`http://localhost/api/books/book-1/narrative-memory/facts/${correctedPayload.fact.id}`, { method: "DELETE", body: JSON.stringify({}), headers: { "content-type": "application/json" } });
+      expect(retired.status).toBe(200);
+
+      const current = await app.request("http://localhost/api/books/book-1/narrative-memory/facts");
+      expect((await current.json()).facts).toEqual([]);
+    } finally {
+      storage.close();
+    }
+  });
 });

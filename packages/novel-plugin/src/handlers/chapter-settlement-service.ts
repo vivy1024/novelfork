@@ -8,6 +8,7 @@ import {
   type NarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
+import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { decideSettlementRisk, type ChapterSettlementInput, type ChapterSettlementResult, type NarrativeEventDraft, type SettlementRiskDecision } from "../engine/narrative-memory/settlement-risk-gate.js";
@@ -137,11 +138,23 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     return skipped(input, "章节正文为空，跳过 Narrative Memory 结算。");
   }
 
+  // 抽取前取出当前台账 open fact 快照，注入 LLM prompt 让其只抽增量、感知伏笔进度。
+  const currentLedger = queryCurrentNarrativeLedger(storage, {
+    bookId: input.bookId,
+    limit: 120,
+  }).items.map((fact) => ({
+    category: fact.category,
+    subject: fact.subject,
+    predicate: fact.predicate,
+    object: fact.object,
+  }));
+
   const extraction = await extractNarrativeEventsFromChapter({
     bookId: input.bookId,
     chapterNumber: input.chapterNumber,
     title: input.title,
     content: input.content,
+    currentLedger,
     llmExtractor: config.settlement.useLlmExtraction ? options.llmExtractor : undefined,
   });
   const warnings = [...extraction.warnings];

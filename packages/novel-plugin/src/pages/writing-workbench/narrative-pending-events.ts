@@ -15,6 +15,9 @@ export interface PendingEvent {
   eventType?: string;
   /** = event.subject，后端已做别名映射 */
   entity?: string;
+  subject?: string;
+  predicate?: string;
+  object?: string;
   confidence?: number;
   /** = event.riskLevel */
   risk?: string;
@@ -24,6 +27,14 @@ export interface PendingEvent {
 }
 
 export type PendingEventAction = "approve" | "reject";
+
+/** edit-approve：批准时覆盖原草案字段，机器抽错可随手改再应用。 */
+export interface PendingEventEdit {
+  readonly subject?: string;
+  readonly predicate?: string;
+  readonly object?: string;
+  readonly evidenceText?: string;
+}
 
 interface PendingEventsResponse {
   events?: PendingEvent[];
@@ -59,13 +70,23 @@ export async function mutatePendingEvent(
   bookId: string,
   eventId: string,
   action: PendingEventAction,
-  options: { readonly reason?: string; readonly fetchImpl?: JsonFetch } = {},
+  options: { readonly reason?: string; readonly edit?: PendingEventEdit; readonly fetchImpl?: JsonFetch } = {},
 ): Promise<void> {
   const doFetch = options.fetchImpl ?? fetch;
   const response = await doFetch(`${memoryBase(bookId)}/events/${encodeURIComponent(eventId)}/${action}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason: options.reason ?? defaultReason(action) }),
+    body: JSON.stringify({
+      reason: options.reason ?? defaultReason(action),
+      ...(action === "approve" && options.edit
+        ? {
+            ...(options.edit.subject?.trim() ? { editSubject: options.edit.subject.trim() } : {}),
+            ...(options.edit.predicate?.trim() ? { editPredicate: options.edit.predicate.trim() } : {}),
+            ...(options.edit.object?.trim() ? { editObject: options.edit.object.trim() } : {}),
+            ...(options.edit.evidenceText?.trim() ? { editEvidenceText: options.edit.evidenceText.trim() } : {}),
+          }
+        : {}),
+    }),
   });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { summary?: string; error?: string };

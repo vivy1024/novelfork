@@ -14,6 +14,7 @@ describe("NarrativeMemoryPanelShell", () => {
   it("exposes author-first story status and history without diagnosis or market tools", () => {
     const html = renderToStaticMarkup(
       <NarrativeMemoryPanelShell
+        bookId="book-1"
         diagnostics={null}
         empty
         error={null}
@@ -39,6 +40,7 @@ describe("NarrativeMemoryPanelShell", () => {
   it("shows story status, settlement history, and pending review actions", () => {
     const html = renderToStaticMarkup(
       <NarrativeMemoryPanelShell
+        bookId="book-1"
         diagnostics={{
           purpose: "write_chapter",
           chapterNumber: 12,
@@ -60,12 +62,12 @@ describe("NarrativeMemoryPanelShell", () => {
     );
 
     expect(html).toContain("当前故事状态");
-    expect(html).toContain("动态事实");
+    expect(html).toContain("作者可纠错");
     expect(html).toContain("韩立 状态 谨慎");
     expect(html).toContain("角色状态");
     expect(html).toContain("最近结算");
     expect(html).toContain("韩立 抵达 药园");
-    expect(html).toContain("批准并写入动态事实");
+    expect(html).toContain("改后批准");
     expect(html).toContain("拒绝");
     expect(html).toContain("正文证据");
     expect(html).toContain("章后默认自动结算");
@@ -83,6 +85,7 @@ describe("NarrativeMemoryPanelShell", () => {
   it("reaches the narrative line approval ledger from the settlement history view", () => {
     render(
       <NarrativeMemoryPanelShell
+        bookId="book-1"
         diagnostics={null}
         empty={false}
         error={null}
@@ -128,6 +131,7 @@ describe("NarrativeMemoryPanelShell", () => {
   it("explains the empty approval ledger instead of hiding the section", () => {
     render(
       <NarrativeMemoryPanelShell
+        bookId="book-1"
         diagnostics={null}
         empty={false}
         error={null}

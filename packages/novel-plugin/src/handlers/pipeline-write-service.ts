@@ -28,6 +28,7 @@ import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtim
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
+import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
 import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
 
@@ -176,6 +177,8 @@ export interface PipelineWriteOptions {
   readonly bookRoot?: string;
   readonly onStream?: (chunk: string) => void;
   readonly logger?: Logger;
+  /** LLM 章后事件抽取器；由 Runtime host 的 generateText 能力构造，缺省时回退规则兜底。 */
+  readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
 }
 
 /**
@@ -834,6 +837,7 @@ export async function executePipelineWrite(
           storage,
           bookRoot: bookDir,
           config: memoryConfig ?? undefined,
+          llmExtractor: options.llmExtractor,
         });
       } catch (settlementError) {
         logger?.warn(`[pipeline.write] Narrative Memory settlement failed: ${settlementError instanceof Error ? settlementError.message : String(settlementError)}`);

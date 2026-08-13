@@ -54,6 +54,11 @@ export interface MemoryEventsInput {
   layer?: NarrativeFactLayer;
   reason?: string;
   limit?: number;
+  /** approve 时覆盖原草案字段（edit-approve：机器抽错一个字不用整章重结）。 */
+  editSubject?: string;
+  editPredicate?: string;
+  editObject?: string;
+  editEvidenceText?: string;
   /** Trusted absolute book root injected by the Runtime/product router. */
   bookRoot?: string;
 }
@@ -247,10 +252,19 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
   if (action === "approve") {
     const event = getPendingEventByBook(storage, bookId, input.eventId);
     if (!event) return { ok: false, error: "event-not-found", summary: `Pending 事件 ${input.eventId} 不存在。` };
+    // edit-approve：作者批准时可覆盖草案字段，再应用修正后的值。
+    const approvedEvent: NarrativeEvent = {
+      ...event,
+      ...(input.editSubject?.trim() ? { subject: input.editSubject.trim() } : {}),
+      ...(input.editPredicate?.trim() ? { predicate: input.editPredicate.trim() } : {}),
+      ...(input.editObject?.trim() ? { object: input.editObject.trim() } : {}),
+      ...(input.editEvidenceText?.trim() ? { evidenceText: input.editEvidenceText.trim() } : {}),
+      status: "applied",
+    };
     const config = input.bookRoot?.trim()
       ? await loadNarrativeMemoryConfig(bookId, input.bookRoot).catch(() => null)
       : null;
-    const applied = applyNarrativeEvents(storage, bookId, [{ ...event, status: "applied" }], {
+    const applied = applyNarrativeEvents(storage, bookId, [approvedEvent], {
       closeSupersededFacts: config?.ledger.closeSupersededFacts ?? true,
     });
     if (applied.failedEvents.length > 0) {
@@ -258,13 +272,13 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
     }
     if (applied.skippedEventIds.includes(event.id)) {
       const updated = updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
-      return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}；对应事实已存在，跳过重复写入。`, data: { event: updated ?? event, applied, reason: input.reason } };
+      return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}；对应事实已存在，跳过重复写入。`, data: { event: updated ?? approvedEvent, applied, reason: input.reason } };
     }
     if (!applied.appliedEventIds.includes(event.id)) {
       return { ok: false, error: "event-not-applied", summary: `事件 ${event.id} 未写入 Narrative Memory facts，请检查事件状态与风险等级。` };
     }
     const updated = updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
-    return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}，并写入 Narrative Memory facts。`, data: { event: updated ?? event, applied, reason: input.reason } };
+    return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}，并写入 Narrative Memory facts。`, data: { event: updated ?? approvedEvent, applied, reason: input.reason } };
   }
   if (action === "reject") {
     const event = getPendingEventByBook(storage, bookId, input.eventId);

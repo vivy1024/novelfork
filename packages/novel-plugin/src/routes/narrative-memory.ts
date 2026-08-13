@@ -19,6 +19,14 @@ import {
   saveNarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
+import {
+  correctNarrativeFact,
+  createManualNarrativeFact,
+  queryFactsByEntity,
+  queryNarrativeFactHistory,
+  retireNarrativeFact,
+} from "../engine/narrative-memory/fact-mutations.js";
 import { getLatestNarrativeRetrievalLog } from "../engine/narrative-memory/storage.js";
 import {
   NarrativeEventStatusSchema,
@@ -276,6 +284,10 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       action,
       eventId: c.req.param("eventId"),
       reason: typeof body.reason === "string" ? body.reason : undefined,
+      ...(typeof body.editSubject === "string" ? { editSubject: body.editSubject } : {}),
+      ...(typeof body.editPredicate === "string" ? { editPredicate: body.editPredicate } : {}),
+      ...(typeof body.editObject === "string" ? { editObject: body.editObject } : {}),
+      ...(typeof body.editEvidenceText === "string" ? { editEvidenceText: body.editEvidenceText } : {}),
       bookRoot: optionalBookRootFor(bookId),
     }, storage());
     return respondHandler(c, result);
@@ -297,6 +309,92 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     }
     const ledger = queryCurrentNarrativeLedger(storage(), { bookId, asOfChapter, limit: 500 });
     return c.json({ facts: ledger.items, counts: ledger.counts, asOfChapter: ledger.asOfChapter });
+  });
+
+  // 作者手动新增一条叙事事实（sourceType=manual，享有结算覆盖保护）。
+  app.post(`${base}/facts`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJson(c);
+    const result = createManualNarrativeFact(storage(), {
+      bookId,
+      subject: typeof body.subject === "string" ? body.subject : "",
+      predicate: typeof body.predicate === "string" ? body.predicate : "",
+      object: typeof body.object === "string" ? body.object : "",
+      category: typeof body.category === "string" ? body.category : "",
+      ...(typeof body.confidence === "number" ? { confidence: body.confidence } : {}),
+      ...(typeof body.evidenceText === "string" ? { evidenceText: body.evidenceText } : {}),
+      ...(typeof body.validFromChapter === "number" ? { validFromChapter: body.validFromChapter } : {}),
+      ...(typeof body.closeSuperseded === "boolean" ? { closeSuperseded: body.closeSuperseded } : {}),
+    });
+    if (!result.ok) return c.json({ error: result.error, summary: result.summary }, 400);
+    return c.json({ fact: result.fact, summary: result.summary });
+  });
+
+  // 作者纠正：关闭旧值 + 写入 manual 新值（替代语义，历史可回溯）。
+  app.put(`${base}/facts/:factId/correct`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJson(c);
+    const result = correctNarrativeFact(storage(), {
+      bookId,
+      factId: c.req.param("factId"),
+      ...(typeof body.object === "string" ? { object: body.object } : {}),
+      ...(typeof body.predicate === "string" ? { predicate: body.predicate } : {}),
+      ...(typeof body.category === "string" ? { category: body.category } : {}),
+      ...(typeof body.confidence === "number" ? { confidence: body.confidence } : {}),
+      ...(typeof body.evidenceText === "string" ? { evidenceText: body.evidenceText } : {}),
+      ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+    });
+    if (!result.ok) return c.json({ error: result.error, summary: result.summary }, result.error === "not-found" ? 404 : 400);
+    return c.json({ fact: result.fact, superseded: result.superseded, summary: result.summary });
+  });
+
+  // 作者作废：关闭 open fact（不进当前视图，历史保留）。
+  app.delete(`${base}/facts/:factId`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const body = await readJson(c);
+    const result = retireNarrativeFact(storage(), {
+      bookId,
+      factId: c.req.param("factId"),
+      ...(typeof body.reason === "string" ? { reason: body.reason } : {}),
+    });
+    if (!result.ok) return c.json({ error: result.error, summary: result.summary }, result.error === "not-found" ? 404 : 400);
+    return c.json({ fact: result.fact, summary: result.summary });
+  });
+
+  // 按实体聚合当前 open fact（人物状态板数据源）。
+  app.get(`${base}/facts/by-entity`, (c) => {
+    const bookId = c.req.param("bookId");
+    const asOfChapter = queryInteger(c, "asOfChapter", "chapter");
+    if (asOfChapter !== undefined && asOfChapter < 0) {
+      return invalidQuery(c, "asOfChapter 必须是非负整数。");
+    }
+    const categories = queryText(c, "categories")?.split(",").map((item) => item.trim()).filter(Boolean);
+    const groups = queryFactsByEntity(storage(), {
+      bookId,
+      ...(asOfChapter !== undefined ? { asOfChapter } : {}),
+      ...(categories?.length ? { categories } : {}),
+      ...(queryLimit(c) !== undefined ? { limit: queryLimit(c) } : {}),
+    });
+    return c.json({ groups, total: groups.reduce((sum, group) => sum + group.facts.length, 0) });
+  });
+
+  // 某 slot 的完整变迁史（含已关闭值），按生效章节升序。
+  app.get(`${base}/facts/:factId/history`, (c) => {
+    const bookId = c.req.param("bookId");
+    const items = queryNarrativeFactHistory(storage(), { bookId, factId: c.req.param("factId") });
+    if (items.length === 0) return c.json({ error: "not-found", summary: "找不到该叙事事实。" }, 404);
+    return c.json({ items });
+  });
+
+  // 经纬设定 × 叙事记忆现状 一致性检测（纰漏），只读不写。
+  app.get(`${base}/consistency`, async (c) => {
+    const bookId = c.req.param("bookId");
+    const asOfChapter = queryInteger(c, "asOfChapter", "chapter");
+    const result = await runConsistencyCheck(storage(), {
+      bookId,
+      ...(asOfChapter !== undefined ? { asOfChapter } : {}),
+    });
+    return c.json(result);
   });
 
   const graphHandler = async (c: Context): Promise<Response> => {

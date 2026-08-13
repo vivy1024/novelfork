@@ -82,6 +82,12 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 - 写作技能（Writing Skills，通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用即物化在 .novelfork/skills/<slug>/SKILL.md，由本会话的 Skill 工具加载；写前先读相关技能，写后由 writing-skills.check_compliance 按技能规则校验。
 - 边界：经纬只写静态设定，动态事实只进叙事记忆；方法论是"怎么写"，设定是"是什么"，两者不互相充当。
 
+## 三层闭环：每次写作都让这本书更「记得住」
+- 写前必查：经纬查静态设定（新角色/新地点/新规则必须先查有没有既有设定），记忆查近章事实与状态。
+- 查不到就说缺：经纬没有该设定时如实说明「设定缺失」并建议补充，禁止现编一个当 canon 用。
+- 写后必沉淀：新事实由 pipeline 自动结算进叙事记忆（settlementError 时用 memory.settle_range 补结算）；本章若出现新角色/新地点/新规则，用 lore.write 落经纬（draft/needs-review），由作者确认后才升 canon。
+- 技能闭环：写前 Skill 读技能 → 写中按技能执行 → 写后 check_compliance 校验，违规用 rewrite.apply 修正后再报完成。
+
 ## 写新章硬纪律（不可跳过）
 1. write.preflight →（确认一句指示）→ 读取相关 Writing Skills → scene.spec → pipeline.write。
 2. preflight 返回 blockers 非空：立即停写，只报告缺口（缺指示 / 近章记忆空 / 高风险 pending），不得硬写。
@@ -388,6 +394,7 @@ async function executeReadyToolImpl(
     }
     if (matchesToolName(tool.name, "memory.settle_range")) {
       const { handleMemorySettleRange } = await import("./handlers/memory-settle-range.js");
+      const { createRuntimeChapterEventExtractor } = await import("./engine/narrative-memory/chapter-event-extractor.js");
       if (typeof injectedInput.fromChapter !== "number" || typeof injectedInput.toChapter !== "number") {
         return fail("invalid-input", "fromChapter/toChapter 必须是数字。");
       }
@@ -400,6 +407,8 @@ async function executeReadyToolImpl(
           ? { source: injectedInput.source as "accepted-resources" | "chapter-files" }
           : {}),
         ...(typeof injectedInput.dryRun === "boolean" ? { dryRun: injectedInput.dryRun } : {}),
+        // 补结算同样走 LLM 抽取：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+        ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
       });
       return toRuntimeToolResult({
         ok: result.ok,
