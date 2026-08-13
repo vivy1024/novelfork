@@ -77,6 +77,7 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "memory.export",
   "memory.stats",
   "memory.settle_range",
+  "memory.settle_chapter",
   "memory.update",
   "memory.delete",
   "memory.bulk_approve",
@@ -124,7 +125,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "write.preflight",
     description:
-      "写章前硬门预检：组装最小上下文包（currentFocus、近章摘要/事实、本章伏笔、resolvedDirective、memoryHealth），并对缺失输入硬拦截。\n\n使用时机：\n- 写新章前的第一步（先于 scene.spec / pipeline.write）\n- 用户说「继续写」「下一章」时先核验上下文是否就绪\n\n返回：\n- ok=false 时 blockers 含 missing-directive / empty-recent-progress / high-risk-pending / skills-not-acknowledged 等，必须停写并报告\n- requiredSkillAcknowledgements：本书已启用、需要在写章前确认的 Writing Skills。逐个读 .novelfork/skills/<slug>/SKILL.md，把其中一段 ≥30 字原文放进 acknowledgedSkills:[{slug,quote}] 再重试\n- ok=true 时可用 resolvedDirective 作为 scene.spec 的 userDirectives\n- needsUserConfirm=true：仅有 focus 默认句，需用户确认或 acceptFocusDefault=true\n\n不要用的时候：\n- 只是查询设定/进度（用 cockpit.snapshot / lore.read / memory.read）\n- 写后审修（chapter.audit / writing-skills.check_compliance / rewrite.*）\n\n纪律：禁止用写作理论或外部项目总结代替 memory/lore；引用必须是 SKILL.md 原文，编造会被判定不通过。",
+      "写章前硬门预检：组装最小上下文包（currentFocus、近章摘要/事实、本章伏笔、resolvedDirective、memoryHealth），并对缺失输入硬拦截。\n\n使用时机：\n- 写新章前的第一步（先于 scene.spec / pipeline.write）\n- 用户说「继续写」「下一章」时先核验上下文是否就绪\n\n返回：\n- ok=false 时 blockers 含 missing-directive / empty-recent-progress / high-risk-pending / book-not-found，必须停写并报告\n- ok=true 时可用 resolvedDirective 作为 scene.spec 的 userDirectives\n- needsUserConfirm=true：仅有 focus 默认句，需用户确认或 acceptFocusDefault=true\n\nWriting Skills 相关字段是告知，不是门禁：\n- requiredSkillAcknowledgements：本章相关的已启用技能清单。按各自 description 自行判断是否需要读；不读也能写章\n- writingSkillConstraints：这些技能声明的可机器校验条目（与保存前的合规校验同一份判据）。severity=error 的条目若不满足，章节保存时会被 writing-skill-compliance-failed 拒绝\n- warnings 里的 skills-not-acknowledged 只是提醒尚未加载哪些技能，不阻断\n\n不要用的时候：\n- 只是查询设定/进度（用 cockpit.snapshot / lore.read / memory.read）\n- 写后审修（chapter.audit / writing-skills.check_compliance / rewrite.*）\n\n纪律：禁止用写作理论或外部项目总结代替 memory/lore。技能是否生效看成品能否通过 writingSkillConstraints 的逐条校验，不看是否交过引用。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["write.preflight"]),
     risk: "read",
     renderer: "write.preflight",
@@ -140,6 +141,16 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     renderer: "narrative-memory.admin",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     visibility: "advanced",
+    scope: "novel",
+  }),
+  sessionTool({
+    name: "memory.settle_chapter",
+    description:
+      "单章章后结算：把刚落盘的一章正文抽成 NarrativeEvents，低风险直接应用，高风险进入待审。\n\n行为：只读取**已落盘**的正式章节正文（读不到就报 chapter-not-persisted 并拒绝结算），因此「先保存正文、再更新记忆」是硬约束而非约定。\n\n使用时机：\n- pipeline.write 保存成功后由管线自动发起，作为写章闭环的正常一步；结果在叙述者面板可见\n- 该次结算失败时重试同一章（结算失败不影响已保存的正文）\n\n不要用的时候：\n- 回填多章历史空洞：用 memory.settle_range\n- 正文尚未保存：先保存章节",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["memory.settle_chapter"]),
+    risk: "confirmed-write",
+    renderer: "narrative-memory.admin",
+    enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -363,7 +374,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   }),
   sessionTool({
     name: "pipeline.write",
-    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 先 write.preflight（blockers 非空禁止继续），按 requiredSkillAcknowledgements 逐个读 .novelfork/skills/<slug>/SKILL.md\n2. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）\n3. 传入蓝图与 acknowledgedSkills 后自动生成正文 → 一致性审计 → 定点修订\n4. 成功后自动章后结算 Narrative Memory\n\n硬门：\n- 已启用 Writing Skills 但未提交原文引用 → skills-not-acknowledged（先读 SKILL.md 再写）\n- 已有正式章但近章记忆/摘要为空 → context-not-ready（先 memory.settle_range 或 chapter.discard_range）\n- 情节点预算不合规（合计低于/高于书籍章目标）→ beat-budget-invalid（回 scene.spec 重排预算，不要硬写）\n- 保存前按启用技能做合规校验，硬性违规 → writing-skill-compliance-failed\n\n返回中的可观测字段：\n- publishHint.warnings：逐条列出违反了哪个技能的哪条要求\n- settlementError：正文已保存但章后结算失败，需对该章 memory.settle_range 补结算\n\n可选质量强化：\n- factCheckAutoRevise=true：审修后仍有事实/连续性 critical 时，额外做 1 轮事实专项 spot-fix + 复审\n- requireFactCheckPass=true：复审仍不过则 fact-check-failed 不保存\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」且 preflight ok 时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向\n- preflight blockers 非空时",
+    description: "写作管线（v2）：接受 scene.spec 生成的结构化蓝图，执行 Writer→ContinuityAudit→Revise 流程生成章节结果。\n\n使用流程：\n1. 先 write.preflight（blockers 非空禁止继续）；技能清单与 writingSkillConstraints 是参考，不需要为了通过门禁去逐个读技能\n2. 必须先调用 scene.spec 获得有效蓝图（硬前置条件，缺失会报错）；scene.spec 会把技能的硬性条目并入 sceneSpec.constraints\n3. 传入蓝图与正文 → 一致性审计 → 定点修订\n4. 正文落盘成功后自动发起一次 memory.settle_chapter 结算（面板可见的独立工具调用）\n\n硬门：\n- 已有正式章但近章记忆/摘要为空 → context-not-ready（先 memory.settle_range 或 chapter.discard_range）\n- 情节点预算不合规（合计低于/高于书籍章目标）→ beat-budget-invalid（回 scene.spec 重排预算，不要硬写）\n- 保存前按启用技能声明的 checks 校验成品，硬性违规 → writing-skill-compliance-failed（这是 Writing Skills 唯一的硬门；入口不再因「未提交技能引用」阻断）\n\n返回中的可观测字段：\n- publishHint.warnings：逐条列出违反了哪个技能的哪条要求\n- settlementDispatch：章后结算这一步工具调用的结果（工具名 / 是否成功）\n- settlementError：正文已保存但章后结算失败，重试 memory.settle_chapter 即可（正文已在库，不会丢稿）\n\n可选质量强化：\n- factCheckAutoRevise=true：审修后仍有事实/连续性 critical 时，额外做 1 轮事实专项 spot-fix + 复审\n- requireFactCheckPass=true：复审仍不过则 fact-check-failed 不保存\n\n使用时机：\n- 用户明确要求「写下一章」/「生成章节」且 preflight ok 时\n- 已有 scene.spec 蓝图准备就绪时\n\n不要用的时候：\n- 用户只是在问问题、查看设定、讨论方向\n- preflight blockers 非空时",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pipeline.write"]),
     risk: "confirmed-write",
     renderer: "pipeline.chapter-result",

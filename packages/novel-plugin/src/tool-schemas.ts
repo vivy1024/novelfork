@@ -52,7 +52,7 @@ const memoryFilterSchema = {
 };
 
 const acknowledgedSkillsSchema = arraySchema(
-  "兼容字段：可记录模型希望采用的相关技能名称；真实生效证据由当前 Runtime narrator 的 Skill 调用提供。",
+  "兼容字段：可记录模型希望采用的相关技能名称。不参与任何门禁——技能是否生效由章节保存前对成品的合规校验判定（writing-skills.check_compliance），不由此字段判定。",
   {
     type: "object",
     properties: {
@@ -156,6 +156,16 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       dryRun: booleanSchema("只扫描可结算章节，不写入记忆。默认 false。"),
     },
     required: ["bookId", "fromChapter", "toChapter"],
+    additionalProperties: false,
+  },
+  "memory.settle_chapter": {
+    type: "object",
+    properties: {
+      bookId: stringSchema("书籍 ID。"),
+      chapterNumber: numberSchema("要结算的章节号；该章正文必须已落盘。"),
+      title: stringSchema("章节标题，仅用于结算记录展示。"),
+    },
+    required: ["bookId", "chapterNumber"],
     additionalProperties: false,
   },
   "chapter.discard_range": {

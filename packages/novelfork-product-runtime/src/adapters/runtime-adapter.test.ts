@@ -35,6 +35,7 @@ const CANONICAL_READY_TOOL_NAMES = [
   "cockpit.snapshot",
   "write.preflight",
   "memory.settle_range",
+  "memory.settle_chapter",
   "chapter.discard_range",
   "pgi.ask",
   "narrative.read_line",

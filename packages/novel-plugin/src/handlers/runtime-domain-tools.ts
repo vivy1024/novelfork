@@ -26,7 +26,7 @@ import { handleChapterAuditV2 } from "./chapter-audit-v2.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
-import { executePipelineWrite, type PipelineWriteInput } from "./pipeline-write-service.js";
+import { executePipelineWrite, type PipelineWriteInput, type PipelineWriteOptions } from "./pipeline-write-service.js";
 import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import {
@@ -634,6 +634,61 @@ async function hooksManage(
   });
 }
 
+/**
+ * memory.settle_chapter — 单章章后结算。
+ *
+ * bookId / bookRoot 只来自可信绑定；模型只能指定 chapterNumber。
+ */
+async function memorySettleChapter(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
+): Promise<RuntimeToolResult> {
+  const chapterNumber = positiveInteger(input.chapterNumber);
+  if (chapterNumber === null) return fail("invalid-input", "chapterNumber 必须是 ≥1 的整数。");
+
+  const { handleMemorySettleChapter } = await import("./memory-settle-chapter.js");
+  const result = await handleMemorySettleChapter({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    chapterNumber,
+    ...(typeof input.title === "string" ? { title: input.title } : {}),
+    // 章后结算同样走 LLM 抽取：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+    ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
+  });
+
+  if (!result.ok) return fail(result.error ?? "settle-chapter-failed", result.summary);
+  return ok(result.summary, {
+    chapterNumber: result.chapterNumber,
+    settlement: result.settlement,
+  });
+}
+
+/**
+ * 把管线的章后结算表达成一次真实的领域工具调用。
+ *
+ * 复用 executeRuntimeDomainTool 的同一分派入口，因此结算与 agent 自己调用
+ * memory.settle_chapter 走完全相同的代码路径、权限与渲染约定，不是旁路。
+ */
+function createSettlementDispatcher(
+  binding: TrustedRuntimeBookBinding,
+  context: ToolExecutionContext,
+): PipelineWriteOptions["dispatchToolCall"] {
+  return async ({ toolName, input }) => {
+    context.emitOutput?.(`正在执行章后结算（${toolName}）…`);
+    const result = await executeRuntimeDomainTool(toolName, input, binding, context);
+    if (!result) {
+      return { ok: false, error: "settlement-tool-unavailable", summary: `章后结算工具 ${toolName} 不可用。` };
+    }
+    return {
+      ok: result.ok,
+      ...(result.summary ? { summary: result.summary } : {}),
+      ...(result.error ? { error: result.error } : {}),
+      ...(result.data === undefined ? {} : { data: result.data }),
+    };
+  };
+}
+
 async function pipelineWrite(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -673,12 +728,16 @@ async function pipelineWrite(
       bookRoot: binding.root,
       onStream: context.emitOutput,
       llmExtractor,
+      // 正文落盘后由管线显式发起 memory.settle_chapter，使结算在叙述者面板可见且可重试。
+      dispatchToolCall: createSettlementDispatcher(binding, context),
     },
   );
   if (!result.ok) return fail(result.code, result.error);
   const settlementSummary = result.narrativeSettlement
     ? ` Narrative Memory：抽取 ${result.narrativeSettlement.extracted} 条，自动沉淀 ${result.narrativeSettlement.autoApplied} 条，pending ${result.narrativeSettlement.pending} 条。`
-    : "";
+    : result.settlementDispatch && !result.settlementDispatch.ok
+      ? ` 章后结算未完成（${result.settlementDispatch.toolName}）：正文已保存，需重试结算。`
+      : "";
   const auditCat = result.auditIssueCategories;
   const auditSummary = auditCat
     ? ` critical=${auditCat.critical} warning=${auditCat.warning}`
@@ -696,6 +755,7 @@ async function pipelineWrite(
       revised: result.revised,
       chapterId: result.chapterId,
       narrativeSettlement: result.narrativeSettlement,
+      settlementDispatch: result.settlementDispatch,
       highRiskPendingReminder: result.highRiskPendingReminder,
       publishHint: result.publishHint,
       needsHumanReview: result.needsHumanReview,
@@ -756,6 +816,9 @@ export async function executeRuntimeDomainTool(
     case "hooks_manage":
     case "hooks.manage":
       return hooksManage(input, binding);
+    case "memory_settle_chapter":
+    case "memory.settle_chapter":
+      return memorySettleChapter(input, binding, context);
     case "pipeline_write":
     case "pipeline.write":
       return pipelineWrite(input, binding, context);
