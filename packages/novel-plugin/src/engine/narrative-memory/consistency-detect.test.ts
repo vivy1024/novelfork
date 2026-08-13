@@ -123,6 +123,9 @@ describe("narrative memory consistency detection", () => {
         entity: "林渊",
         jingweiValue: "结丹期",
         memoryValue: "筑基期",
+        // 前端要就地纠正就必须知道改哪条 slot、跳哪一章，不能靠猜。
+        memoryPredicate: "修为",
+        memoryChapter: 10,
       }));
     } finally {
       storage.close();
@@ -198,7 +201,62 @@ describe("narrative memory consistency detection", () => {
 
       const findings = await detectOrphanLocation(storage, { bookId: "book-1" });
       expect(findings).toHaveLength(1);
-      expect(findings[0]).toEqual(expect.objectContaining({ kind: "orphan-location", entity: "林渊" }));
+      expect(findings[0]).toEqual(expect.objectContaining({
+        kind: "orphan-location",
+        entity: "林渊",
+        memoryPredicate: "位于",
+        memoryChapter: 10,
+      }));
+    } finally {
+      storage.close();
+    }
+  });
+
+  /**
+   * 项目硬纪律：所有拦截与告警都必须带 explanation 三段式，前端只转述、不按 kind
+   * 自造文案。检测器少给一段，作者看到的就是没有处置建议的干瘪告警。
+   */
+  it("gives every finding a three-part explanation the UI can quote verbatim", async () => {
+    const storage = await createStorage();
+    try {
+      insertJingweiEntry(storage, {
+        id: "char-linyuan",
+        category: "characters",
+        title: "林渊",
+        fields: { realm: "结丹期" },
+      });
+      insertNarrativeFact(storage, fact({
+        id: "fact-realm",
+        subject: "林渊",
+        predicate: "修为",
+        object: "筑基期",
+        category: "character_state",
+      }));
+      insertJingweiEntry(storage, {
+        id: "loc-qingyun",
+        category: "locations",
+        title: "青云宗",
+        fields: { status: "已毁灭" },
+      });
+      insertNarrativeFact(storage, fact({
+        id: "fact-loc",
+        subject: "林渊",
+        predicate: "位于",
+        object: "青云宗",
+        category: "location",
+      }));
+
+      const result = await runConsistencyCheck(storage, { bookId: "book-1" });
+      expect(result.findings.map((finding) => finding.kind)).toEqual(["realm-drift", "orphan-location"]);
+      for (const finding of result.findings) {
+        expect(finding.explanation.whatHappened.length).toBeGreaterThan(8);
+        expect(finding.explanation.whyItMatters.length).toBeGreaterThan(8);
+        expect(finding.explanation.suggestedAction.length).toBeGreaterThan(8);
+      }
+      // 解释要落到具体对象上，不能是「检测到一个需要关注的问题」这类兜底话。
+      expect(result.findings[0]?.explanation.whatHappened).toContain("林渊");
+      expect(result.findings[0]?.explanation.suggestedAction).toContain("结丹期");
+      expect(result.findings[1]?.explanation.whatHappened).toContain("青云宗");
     } finally {
       storage.close();
     }

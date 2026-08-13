@@ -150,22 +150,26 @@ interface NarrativeMemoryPanelShellProps {
   onRefresh: () => void;
 }
 
+/**
+ * 伏笔不在这里出现。伏笔的唯一权威源是经纬 foreshadowing 条目，唯一操作入口是
+ * 「伏笔看板」（工具 › 结构类 › 伏笔看板）。记忆里的 hook fact 只是证据，已并入
+ * 看板卡片内的「记忆证据」区块 —— 所以原本的「伏笔板」「伏笔网络」两个视图一并下线，
+ * 不做新旧并存。
+ */
 const MEMORY_NAV_ITEMS = [
   "故事状态",
   "关系矩阵",
-  "伏笔板",
   "结算历史",
   "关系图",
   "时间线",
   "角色弧线",
-  "伏笔网络",
   "矛盾地图",
   "事件链",
 ] as const;
 
 type MemoryViewLabel = typeof MEMORY_NAV_ITEMS[number];
 
-const GRAPH_VIEWS = new Set<MemoryViewLabel>(["关系图", "时间线", "角色弧线", "伏笔网络", "矛盾地图", "事件链"]);
+const GRAPH_VIEWS = new Set<MemoryViewLabel>(["关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]);
 
 const CATEGORY_LABELS: Record<string, string> = {
   character_state: "角色状态",
@@ -742,45 +746,6 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
 }
 
 /**
- * 伏笔板：category=hook 的当前 open fact，按 object 分组。
- * 用 sourceChapter 判断「距今多久没推进」，超期（>20 章）自动标黄——这是长篇最易丢的东西。
- */
-function HookBoard({ facts, currentChapter }: { facts: EntityFact[]; currentChapter?: number }) {
-  const hooks = useMemo(() => {
-    const list = facts.filter((fact) => fact.category === "hook");
-    return list.sort((a, b) => (a.sourceChapter ?? a.validFromChapter ?? 0) - (b.sourceChapter ?? b.validFromChapter ?? 0));
-  }, [facts]);
-
-  if (hooks.length === 0) {
-    return <p className="text-[11px] text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
-  }
-
-  return (
-    <div className="space-y-1.5">
-      {hooks.map((hook) => {
-        const planted = hook.sourceChapter ?? hook.validFromChapter;
-        const stale = currentChapter !== undefined && planted !== undefined && currentChapter - planted > 20;
-        return (
-          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-amber-400/60 bg-amber-50 dark:bg-amber-950/20" : "border-border/60"}`}>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-[11px] font-medium">{hook.object}</div>
-              <div className="text-[10px] text-muted-foreground">
-                {hook.subject} · {hook.predicate} · 埋于第 {planted ?? "—"} 章
-              </div>
-            </div>
-            {stale ? (
-              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
-                超期未推进
-              </span>
-            ) : null}
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-/**
  * 变迁史：某 slot 的完整变迁轨迹（含已关闭值），点击事实后按章节升序展示。
  * 复用后端 /facts/:id/history，作者能回溯「这条状态从第几章变成了什么」。
  */
@@ -1258,16 +1223,6 @@ export function NarrativeMemoryPanelShell({
             <span className="text-[10px] text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
           </div>
           <RelationshipMatrix facts={allEntityFacts} />
-        </section>
-      )}
-
-      {activeView === "伏笔板" && (
-        <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-board">
-          <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold">伏笔板</h3>
-            <span className="text-[10px] text-muted-foreground">超 20 章未推进自动标黄</span>
-          </div>
-          <HookBoard facts={allEntityFacts} />
         </section>
       )}
 

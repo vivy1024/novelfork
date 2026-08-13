@@ -2,10 +2,14 @@
  * 叙事记忆 fact 的作者编辑前端通道。
  *
  * P1 落地了 fact 纠正/作废/新增的后端端点，这里是唯一的取数 + 写回封装，
- * 供叙事记忆面板与人物状态板共用，避免各组件自写 fetch 导致语义漂移。
+ * 供叙事记忆面板、人物状态板与叙事体检面板共用，避免各组件自写 fetch 导致
+ * 语义漂移。
  *
- * 编辑语义（与后端对齐）：纠正 = 关闭旧值 + 写入 manual 新值；作废 = 关闭
- * open fact（不进当前视图，历史保留）。
+ * 编辑语义（与后端对齐）：
+ * - 纠正 = 关闭旧值 + 写入 manual 新值（可同时改 predicate/category，抽错
+ *   谓词时不必先作废再新增）；
+ * - 作废 = 关闭 open fact（不进当前视图，历史保留）；
+ * - 新增 = 写入一条 manual fact，后端默认关闭同 slot 被顶替的旧值。
  */
 
 import { fetchJson } from "@/hooks/use-api";
@@ -55,17 +59,77 @@ export async function fetchFactsByEntity(
   return payload.groups ?? [];
 }
 
+/**
+ * 纠正补丁。字段与后端 correctNarrativeFact 一一对应。
+ *
+ * predicate/category 也开放：机器抽取常把「修为」抽成「实力」或把 category
+ * 归错，只能改 object 的话作者得先作废再手工新增，中间那条历史就断了。
+ */
+export interface FactCorrectionPatch {
+  readonly object?: string;
+  readonly predicate?: string;
+  readonly category?: string;
+  readonly confidence?: number;
+  readonly evidenceText?: string;
+  readonly reason?: string;
+}
+
+/** 作者手动新增一条 fact 的输入。layer 由后端固定为 dynamic，前端不得指定。 */
+export interface FactCreateInput {
+  readonly subject: string;
+  readonly predicate: string;
+  readonly object: string;
+  readonly category: string;
+  readonly confidence?: number;
+  readonly evidenceText?: string;
+  readonly validFromChapter?: number;
+  /** false 时保留同 slot 旧值不关闭；默认交给后端（关闭被顶替的旧值）。 */
+  readonly closeSuperseded?: boolean;
+}
+
+/** 去掉 undefined 字段，避免把 `{"object":undefined}` 序列化成缺字段的空补丁语义。 */
+function compact(patch: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(patch).filter(([, value]) => value !== undefined));
+}
+
 /** 作者纠正一条 fact：关闭旧值 + 写入 manual 新值。 */
 export async function correctFact(
   bookId: string,
   factId: string,
-  patch: { readonly object?: string; readonly predicate?: string; readonly reason?: string },
+  patch: FactCorrectionPatch,
   options: { readonly fetchImpl?: typeof fetch } = {},
 ): Promise<FactMutationResult> {
   return fetchJson<FactMutationResult>(`${memoryBase(bookId)}/facts/${encodeURIComponent(factId)}/correct`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(patch),
+    body: JSON.stringify(compact({ ...patch })),
+  }, { fetchImpl: options.fetchImpl });
+}
+
+/**
+ * 作者手动新增一条 fact（sourceType=manual，享有结算覆盖保护）。
+ *
+ * 用于机器把 subject 抽错这类「纠正救不回来」的情况：作废错的那条，再补一条
+ * 正确的。也是实体详情抽屉「手工补一条状态」的通道。
+ */
+export async function createFact(
+  bookId: string,
+  input: FactCreateInput,
+  options: { readonly fetchImpl?: typeof fetch } = {},
+): Promise<FactMutationResult> {
+  return fetchJson<FactMutationResult>(`${memoryBase(bookId)}/facts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(compact({
+      subject: input.subject.trim(),
+      predicate: input.predicate.trim(),
+      object: input.object.trim(),
+      category: input.category.trim(),
+      confidence: input.confidence,
+      evidenceText: input.evidenceText,
+      validFromChapter: input.validFromChapter,
+      closeSuperseded: input.closeSuperseded,
+    })),
   }, { fetchImpl: options.fetchImpl });
 }
 

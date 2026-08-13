@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Brain, Clock, GitBranch, Loader2, Network, RefreshCw, Route, Search, Sparkles, Swords } from "lucide-react";
+import { AlertTriangle, Brain, Clock, GitBranch, Loader2, Network, RefreshCw, Route, Search, Swords } from "lucide-react";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 interface NarrativeFact {
@@ -27,7 +27,13 @@ interface NarrativeEvent {
   evidenceText: string;
 }
 
-type NarrativeMemoryView = "relationship" | "timeline" | "character_arc" | "foreshadowing" | "conflict" | "event_chain" | "wave";
+/**
+ * 伏笔已收敛到唯一入口「伏笔看板」（ForeshadowingBoard，经纬 foreshadowing 为权威源）。
+ * 这里不再提供 foreshadowing 视图 —— 图谱只读关系/时间线/角色弧/矛盾/事件链等
+ * 无权威源冲突的动态视角，避免作者在两个地方看到互相矛盾的伏笔状态。
+ * 后端 /narrative-memory/graph 仍支持 foreshadowing 参数，供其它调用方使用。
+ */
+type NarrativeMemoryView = "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain" | "wave";
 
 interface NarrativeMemoryGraphResponse {
   view?: NarrativeMemoryView;
@@ -44,7 +50,6 @@ const VIEW_OPTIONS: ReadonlyArray<{ id: NarrativeMemoryView; label: string; icon
   { id: "relationship", label: "关系图", icon: Network },
   { id: "timeline", label: "时间线", icon: Clock },
   { id: "character_arc", label: "角色弧线", icon: GitBranch },
-  { id: "foreshadowing", label: "伏笔网络", icon: Sparkles },
   { id: "conflict", label: "矛盾地图", icon: Swords },
   { id: "event_chain", label: "事件链", icon: Route },
   { id: "wave", label: "浪潮视图", icon: Brain },
@@ -208,7 +213,7 @@ export function NarrativeMemoryGraphWorkspace({ bookId, onSelectNode }: Narrativ
   const facts = payload.facts ?? [];
   const events = payload.events ?? [];
   const selectedOption = VIEW_OPTIONS.find((option) => option.id === view);
-  const isGraphView = view === "relationship" || view === "foreshadowing" || view === "conflict" || view === "wave";
+  const isGraphView = view === "relationship" || view === "conflict" || view === "wave";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background text-xs" data-testid="narrative-memory-graph-workspace">
