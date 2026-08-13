@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
+
+import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 // 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
@@ -7,7 +9,15 @@ import {
   mutatePendingEvent as mutatePendingEventRequest,
   riskLabel,
   type PendingEvent,
+  type PendingEventEdit,
 } from "./narrative-pending-events";
+import {
+  correctFact,
+  fetchFactsByEntity,
+  retireFact,
+  type EntityFact,
+  type EntityFactsGroup,
+} from "./narrative-fact-edits";
 // 叙事线审批台账与章后结算历史是同一件事的两半：都要能回答「谁在什么时候
 // 批了什么」。共用 narrative-line-proposals 这一条通道。
 import {
@@ -108,18 +118,22 @@ interface NarrativeMemoryPanelProps {
 }
 
 interface NarrativeMemoryPanelShellProps {
+  bookId: string;
   diagnostics: DiagnosticsSummary | null;
   events: PendingEvent[];
   historyEvents?: MemoryEntry[];
   /** 叙事线的批准/驳回台账，与章后结算历史并列展示。 */
   lineApprovals?: readonly NarrativeLineApproval[];
   stateFacts?: MemoryEntry[];
+  entityGroups?: EntityFactsGroup[];
   stats?: MemoryStats | null;
   searchResults?: MemoryEntry[];
   searchQuery?: string;
   searchLoading?: boolean;
   actionLoadingId?: string | null;
+  factEditingId?: string | null;
   actionError?: string | null;
+  factEditError?: string | null;
   loading?: boolean;
   empty: boolean;
   error: string | null;
@@ -128,14 +142,18 @@ interface NarrativeMemoryPanelShellProps {
   onOpen?: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
   onSearch?: (query: string) => void;
-  onApprove?: (event: PendingEvent) => void;
+  onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
   onReject?: (event: PendingEvent) => void;
   onSearchEntryOpen?: (entry: MemoryEntry) => void;
+  onCorrectFact?: (fact: EntityFact, newObject: string) => void;
+  onRetireFact?: (fact: EntityFact) => void;
   onRefresh: () => void;
 }
 
 const MEMORY_NAV_ITEMS = [
   "故事状态",
+  "关系矩阵",
+  "伏笔板",
   "结算历史",
   "关系图",
   "时间线",
@@ -254,15 +272,27 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen }: { nodes: WorkbenchRes
 }
 
 function StoryStatusSummary({
+  bookId,
   stateFacts,
   events,
   historyEvents,
+  entityGroups = [],
+  factEditingId,
+  factEditError,
   onOpenFact,
+  onCorrectFact,
+  onRetireFact,
 }: {
+  bookId: string;
   stateFacts: MemoryEntry[];
   events: PendingEvent[];
   historyEvents: MemoryEntry[];
+  entityGroups?: EntityFactsGroup[];
+  factEditingId?: string | null;
+  factEditError?: string | null;
   onOpenFact?: (entry: MemoryEntry) => void;
+  onCorrectFact?: (fact: EntityFact, newObject: string) => void;
+  onRetireFact?: (fact: EntityFact) => void;
 }) {
   const highRiskCount = events.filter((event) => event.risk === "high").length;
   const factPreview = stateFacts.slice(0, 8);
@@ -281,7 +311,7 @@ function StoryStatusSummary({
     <section className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="narrative-memory-story-status">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-xs font-semibold">当前故事状态</h3>
-        <span className="text-[10px] text-muted-foreground">自动结算 · 作者回看</span>
+        <span className="text-[10px] text-muted-foreground">自动结算 · 作者可纠错</span>
       </div>
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded border border-border/60 p-2">
@@ -298,8 +328,19 @@ function StoryStatusSummary({
         </div>
       </div>
 
+      {factEditError ? <div className="rounded border border-destructive/30 bg-destructive/10 p-2 text-destructive">{factEditError}</div> : null}
+
       {factPreview.length === 0 ? (
         <p className="text-[11px] text-muted-foreground">还没有沉淀动态事实。写完一章后会自动出现角色状态、关系、伏笔等。</p>
+      ) : entityGroups.length > 0 ? (
+        <EntityStatusBoard
+          bookId={bookId}
+          groups={entityGroups}
+          editingId={factEditingId}
+          onCorrect={onCorrectFact}
+          onRetire={onRetireFact}
+          onOpen={onOpenFact}
+        />
       ) : (
         <div className="space-y-2">
           {grouped.map(([category, items]) => (
@@ -321,6 +362,135 @@ function StoryStatusSummary({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * 人物状态板：按实体聚合当前 open fact，每条 fact 支持内联纠正与作废。
+ * 长篇后期事实数以百计时，按实体卡片墙比平铺列表更可读，也更容易定位
+ * 「某个角色的当前状态」。
+ */
+function EntityStatusBoard({
+  bookId,
+  groups,
+  editingId,
+  onCorrect,
+  onRetire,
+  onOpen,
+}: {
+  bookId: string;
+  groups: EntityFactsGroup[];
+  editingId?: string | null;
+  onCorrect?: (fact: EntityFact, newObject: string) => void;
+  onRetire?: (fact: EntityFact) => void;
+  onOpen?: (entry: MemoryEntry) => void;
+}) {
+  return (
+    <div className="space-y-3">
+      {groups.map((group) => (
+        <div key={group.entity} className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => onOpen?.({
+                kind: "fact",
+                id: `entity:${group.entity}`,
+                subject: group.entity,
+                summary: `${group.facts.length} 条当前状态`,
+              } as MemoryEntry)}
+              className="text-[11px] font-semibold hover:underline"
+            >
+              {group.entity}
+            </button>
+            <span className="text-[10px] text-muted-foreground">{group.facts.length} 条</span>
+          </div>
+          <div className="space-y-1">
+            {group.facts.map((fact) => (
+              <EditableFactRow
+                key={fact.id}
+                bookId={bookId}
+                fact={fact}
+                editing={editingId === fact.id}
+                onCorrect={onCorrect}
+                onRetire={onRetire}
+              />
+            ))}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EditableFactRow({
+  bookId,
+  fact,
+  editing,
+  onCorrect,
+  onRetire,
+}: {
+  bookId: string;
+  fact: EntityFact;
+  editing: boolean;
+  onCorrect?: (fact: EntityFact, newObject: string) => void;
+  onRetire?: (fact: EntityFact) => void;
+}) {
+  const [draft, setDraft] = useState(fact.object);
+  const [open, setOpen] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  useEffect(() => {
+    if (!editing) setDraft(fact.object);
+  }, [editing, fact.object]);
+
+  if (open) {
+    return (
+      <div className="rounded border border-primary/40 bg-primary/5 p-2 space-y-1.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] font-medium">{fact.predicate}</span>
+          <span className="text-[10px] text-muted-foreground">{fact.category}</span>
+        </div>
+        <input
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          className="h-7 w-full rounded border border-border bg-background px-2 text-[11px] outline-none"
+          placeholder={fact.object}
+        />
+        <div className="flex justify-end gap-1.5">
+          <button type="button" onClick={() => setOpen(false)} className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted">取消</button>
+          <button
+            type="button"
+            disabled={!draft.trim() || draft.trim() === fact.object}
+            onClick={() => { onCorrect?.(fact, draft.trim()); setOpen(false); }}
+            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            保存纠正
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-1">
+      <div className="flex items-center gap-1.5 rounded border border-border/50 px-2 py-1">
+        <span className="shrink-0 text-[10px] text-muted-foreground">{fact.predicate}</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{fact.object}</span>
+        <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="查看变迁史">
+          历史
+        </button>
+        {onCorrect ? (
+          <button type="button" onClick={() => setOpen(true)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="纠正">
+            纠正
+          </button>
+        ) : null}
+        {onRetire ? (
+          <button type="button" onClick={() => onRetire(fact)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="作废">
+            作废
+          </button>
+        ) : null}
+      </div>
+      {showHistory ? <FactHistoryPanel bookId={bookId} fact={fact} onClose={() => setShowHistory(false)} /> : null}
+    </div>
   );
 }
 
@@ -404,77 +574,319 @@ function DiagnosticsAdvanced({ diagnostics }: { diagnostics: DiagnosticsSummary 
   );
 }
 
+/**
+ * 待审事件卡片：支持直接批准/拒绝，或「改后批准」——展开编辑 subject/predicate/object
+ * 再应用，机器抽错一个字不用整章重结。
+ */
+function PendingEventCard({
+  event,
+  loading,
+  onApprove,
+  onReject,
+}: {
+  event: PendingEvent;
+  loading: boolean;
+  onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
+  onReject?: (event: PendingEvent) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<PendingEventEdit>(() => ({
+    subject: event.subject ?? event.entity ?? "",
+    predicate: event.predicate ?? "",
+    object: event.object ?? "",
+    evidenceText: event.evidence ?? "",
+  }));
+
+  if (editing) {
+    return (
+      <div className="rounded border border-primary/40 bg-primary/5 p-2 space-y-1.5">
+        <div className="flex justify-between gap-2">
+          <span className="font-medium">{event.eventType ?? "event"}</span>
+          <button type="button" onClick={() => setEditing(false)} className="text-[10px] text-muted-foreground hover:text-foreground">取消编辑</button>
+        </div>
+        <EditField label="主体" value={draft.subject ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, subject: value }))} />
+        <EditField label="谓词" value={draft.predicate ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, predicate: value }))} />
+        <EditField label="客体/值" value={draft.object ?? ""} onChange={(value) => setDraft((prev) => ({ ...prev, object: value }))} />
+        <div className="flex justify-end gap-1.5 pt-1">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onReject?.(event)}
+            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+          >
+            拒绝
+          </button>
+          <button
+            type="button"
+            disabled={loading || !draft.object?.trim()}
+            onClick={() => onApprove?.(event, draft)}
+            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {loading ? "处理中…" : "保存修正并批准"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded border border-border/60 p-2 space-y-1">
+      <div className="flex justify-between gap-2">
+        <span className="font-medium">{event.eventType ?? "event"}</span>
+        <span className={`text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
+      </div>
+      <div className="text-[10px] text-muted-foreground">
+        {event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"} · 第 {event.chapterNumber ?? "—"} 章
+      </div>
+      {event.predicate || event.object ? (
+        <div className="text-[11px]">
+          {event.predicate ? `${event.predicate} ` : ""}{event.object ?? ""}
+        </div>
+      ) : null}
+      {event.evidence ? <div className="text-[11px] text-muted-foreground">{event.evidence}</div> : null}
+      {event.id ? (
+        <div className="flex justify-end gap-1.5 pt-1">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onReject?.(event)}
+            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+          >
+            拒绝
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => setEditing(true)}
+            className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
+          >
+            改后批准
+          </button>
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => onApprove?.(event)}
+            className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+          >
+            {loading ? "处理中…" : "批准"}
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function EditField({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="w-10 shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <input
+        value={value}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        className="h-6 min-w-0 flex-1 rounded border border-border bg-background px-2 text-[11px] outline-none"
+      />
+    </label>
+  );
+}
+
+/**
+ * 关系矩阵：把 category=relationship 的当前 open fact 排成（主体 × 客体）矩阵。
+ * 长篇后期关系成百上千时，矩阵比平铺列表更能一眼看清「谁和谁是什么关系」。
+ */
+function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
+  const rows = useMemo(() => {
+    const rels = facts.filter((fact) => fact.category === "relationship");
+    const subjects = [...new Set(rels.map((fact) => fact.subject))].sort();
+    const objects = [...new Set(rels.map((fact) => fact.object))].sort();
+    const index = new Map<string, string>();
+    for (const fact of rels) index.set(`${fact.subject}\u0000${fact.object}`, fact.predicate);
+    return { rels, subjects, objects, index };
+  }, [facts]);
+
+  if (rows.rels.length === 0) {
+    return <p className="text-[11px] text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
+  }
+  if (rows.subjects.length > 30 || rows.objects.length > 30) {
+    return <p className="text-[11px] text-muted-foreground">关系实体超过 30 个，建议用上方「关系图」图谱视图查看。</p>;
+  }
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-border/60">
+      <table className="w-full border-collapse text-[10px]">
+        <thead>
+          <tr>
+            <th className="sticky left-0 bg-card p-1.5 text-left font-medium text-muted-foreground">主体 \ 客体</th>
+            {rows.objects.map((object) => (
+              <th key={object} className="max-w-24 truncate bg-card p-1.5 text-left font-medium text-muted-foreground">{object}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.subjects.map((subject) => (
+            <tr key={subject}>
+              <th className="sticky left-0 max-w-24 truncate bg-card p-1.5 text-left font-medium">{subject}</th>
+              {rows.objects.map((object) => {
+                const value = rows.index.get(`${subject}\u0000${object}`);
+                return (
+                  <td key={object} className="border-t border-border/50 p-1.5">
+                    {value ? <span className="inline-block max-w-24 truncate rounded bg-muted px-1.5 py-0.5">{value}</span> : <span className="text-muted-foreground/40">—</span>}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/**
+ * 伏笔板：category=hook 的当前 open fact，按 object 分组。
+ * 用 sourceChapter 判断「距今多久没推进」，超期（>20 章）自动标黄——这是长篇最易丢的东西。
+ */
+function HookBoard({ facts, currentChapter }: { facts: EntityFact[]; currentChapter?: number }) {
+  const hooks = useMemo(() => {
+    const list = facts.filter((fact) => fact.category === "hook");
+    return list.sort((a, b) => (a.sourceChapter ?? a.validFromChapter ?? 0) - (b.sourceChapter ?? b.validFromChapter ?? 0));
+  }, [facts]);
+
+  if (hooks.length === 0) {
+    return <p className="text-[11px] text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
+  }
+
+  return (
+    <div className="space-y-1.5">
+      {hooks.map((hook) => {
+        const planted = hook.sourceChapter ?? hook.validFromChapter;
+        const stale = currentChapter !== undefined && planted !== undefined && currentChapter - planted > 20;
+        return (
+          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-amber-400/60 bg-amber-50 dark:bg-amber-950/20" : "border-border/60"}`}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[11px] font-medium">{hook.object}</div>
+              <div className="text-[10px] text-muted-foreground">
+                {hook.subject} · {hook.predicate} · 埋于第 {planted ?? "—"} 章
+              </div>
+            </div>
+            {stale ? (
+              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+                超期未推进
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 变迁史：某 slot 的完整变迁轨迹（含已关闭值），点击事实后按章节升序展示。
+ * 复用后端 /facts/:id/history，作者能回溯「这条状态从第几章变成了什么」。
+ */
+function FactHistoryPanel({ bookId, fact, onClose }: { bookId: string; fact: EntityFact; onClose: () => void }) {
+  const [items, setItems] = useState<EntityFact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    fetchJson<{ items?: EntityFact[] }>(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts/${encodeURIComponent(fact.id)}/history`)
+      .then((payload) => { if (alive) setItems(payload.items ?? []); })
+      .catch((cause: unknown) => { if (alive) setError(cause instanceof Error ? cause.message : "加载变迁史失败"); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [bookId, fact.id]);
+
+  return (
+    <div className="rounded-lg border border-border/60 p-2.5 space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-medium">{fact.subject} / {fact.predicate} 变迁史</span>
+        <button type="button" onClick={onClose} className="text-[10px] text-muted-foreground hover:text-foreground">收起</button>
+      </div>
+      {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-[11px] text-destructive">{error}</p> : items.length === 0 ? <p className="text-[11px] text-muted-foreground">暂无变迁记录。</p> : (
+        <div className="space-y-1">
+          {items.map((item, index) => (
+            <div key={item.id ?? index} className="flex items-center gap-2 text-[11px]">
+              <span className="shrink-0 text-[10px] text-muted-foreground">第 {item.validFromChapter ?? "—"} 章</span>
+              <span>{item.object}</span>
+              {item.validUntilChapter !== undefined ? <span className="text-[10px] text-muted-foreground">→ 第 {item.validUntilChapter} 章</span> : <span className="text-[10px] text-emerald-600">当前</span>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOpen, onAction }: NarrativeMemoryPanelProps) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSummary | null>(null);
   const [events, setEvents] = useState<PendingEvent[]>([]);
   const [historyEvents, setHistoryEvents] = useState<MemoryEntry[]>([]);
   const [lineApprovals, setLineApprovals] = useState<readonly NarrativeLineApproval[]>([]);
   const [stateFacts, setStateFacts] = useState<MemoryEntry[]>([]);
+  const [entityGroups, setEntityGroups] = useState<EntityFactsGroup[]>([]);
   const [stats, setStats] = useState<MemoryStats | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<MemoryEntry[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const [factEditingId, setFactEditingId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [factEditError, setFactEditError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [empty, setEmpty] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const generationRef = useRef(0);
+  useEffect(() => () => { generationRef.current += 1; }, []);
 
   const load = useCallback(async () => {
+    const generation = ++generationRef.current;
     setLoading(true);
     setError(null);
     setActionError(null);
     try {
-      const [diagRes, eventsRes, statsRes, historyRes, factsRes] = await Promise.all([
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/diagnostics/latest`),
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`),
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/stats`),
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/list?kind=event&limit=40`),
+      const base = `/api/books/${encodeURIComponent(bookId)}/narrative-memory`;
+      // 404 语义是「还没有数据」而非错误；其余失败按原语义抛出或降级为空列表。
+      const tolerate404 = <T,>(request: Promise<T>): Promise<T | null> =>
+        request.catch((cause: unknown) => {
+          if (cause instanceof ApiRequestError && cause.status === 404) return null;
+          throw cause;
+        });
+      const [diag, eventsPayload, statsPayload, historyPayload, factsPayload, entityGroupsPayload] = await Promise.all([
+        tolerate404(fetchJson<DiagnosticsResponse>(`${base}/diagnostics/latest`)),
+        fetchJson<{ events?: PendingEvent[] }>(`${base}/events/pending`),
+        tolerate404(fetchJson<MemoryStatsResponse>(`${base}/stats`)),
+        fetchJson<MemoryListResponse>(`${base}/list?kind=event&limit=40`).catch(() => null),
         // Story status intentionally reads the same current ledger as memory.read,
         // rather than the historical fact administration list.
-        fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/current?limit=40`),
+        fetchJson<CurrentLedgerResponse>(`${base}/current?limit=40`).catch(() => null),
+        fetchFactsByEntity(bookId).catch(() => []),
       ]);
+      if (generation !== generationRef.current) return;
 
-      let nextDiagnostics: DiagnosticsSummary | null = null;
-      if (diagRes.status === 404) setDiagnostics(null);
-      else if (!diagRes.ok) throw new Error(`diagnostics ${diagRes.status}`);
-      else {
-        nextDiagnostics = (await diagRes.json() as DiagnosticsResponse).summary ?? null;
-        setDiagnostics(nextDiagnostics);
-      }
+      const nextDiagnostics = diag?.summary ?? null;
+      setDiagnostics(nextDiagnostics);
 
-      if (!eventsRes.ok) throw new Error(`events ${eventsRes.status}`);
-      const nextEvents = (await eventsRes.json() as { events?: PendingEvent[] }).events ?? [];
+      const nextEvents = eventsPayload.events ?? [];
       setEvents(nextEvents);
 
-      let nextStats: MemoryStats | null = null;
-      if (statsRes.status === 404) setStats(null);
-      else if (!statsRes.ok) throw new Error(`stats ${statsRes.status}`);
-      else {
-        nextStats = (await statsRes.json() as MemoryStatsResponse).stats ?? null;
-        setStats(nextStats);
-      }
+      const nextStats = statsPayload?.stats ?? null;
+      setStats(nextStats);
 
-      let nextHistory: MemoryEntry[] = [];
-      if (historyRes.ok) {
-        const payload = await historyRes.json() as MemoryListResponse;
-        nextHistory = (payload.entries ?? []).filter((entry) => entry.status === "applied" || entry.status === "rejected");
-        setHistoryEvents(nextHistory);
-      } else {
-        setHistoryEvents([]);
-      }
+      const nextHistory = (historyPayload?.entries ?? [])
+        .filter((entry) => entry.status === "applied" || entry.status === "rejected");
+      setHistoryEvents(nextHistory);
 
-      let nextFacts: MemoryEntry[] = [];
-      if (factsRes.ok) {
-        const payload = await factsRes.json() as CurrentLedgerResponse;
-        nextFacts = payload.items ?? payload.facts ?? [];
-        setStateFacts(nextFacts);
-      } else {
-        setStateFacts([]);
-      }
+      const nextFacts = factsPayload?.items ?? factsPayload?.facts ?? [];
+      setStateFacts(nextFacts);
+      setEntityGroups(entityGroupsPayload);
 
       // 审批台账是附加视图：读不到不应让整个叙事记忆面板报错。
       const nextApprovals = await fetchNarrativeLineApprovals(bookId, { limit: 40 }).catch(() => []);
+      if (generation !== generationRef.current) return;
       setLineApprovals(nextApprovals);
 
       setEmpty(
@@ -486,9 +898,10 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         && (nextStats?.total ?? 0) === 0,
       );
     } catch (cause) {
+      if (generation !== generationRef.current) return;
       setError(cause instanceof Error ? cause.message : "加载叙事记忆失败");
     } finally {
-      setLoading(false);
+      if (generation === generationRef.current) setLoading(false);
     }
   }, [bookId]);
 
@@ -503,24 +916,27 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       setSearchResults([]);
       return;
     }
+    const generation = ++generationRef.current;
     setSearchLoading(true);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(normalized)}&limit=30`);
-      if (!response.ok) throw new Error(`search ${response.status}`);
-      setSearchResults((await response.json() as MemorySearchResponse).entries ?? []);
+      const payload = await fetchJson<MemorySearchResponse>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(normalized)}&limit=30`,
+      );
+      if (generation !== generationRef.current) return;
+      setSearchResults(payload.entries ?? []);
     } catch {
-      setSearchResults([]);
+      if (generation === generationRef.current) setSearchResults([]);
     } finally {
-      setSearchLoading(false);
+      if (generation === generationRef.current) setSearchLoading(false);
     }
   }, [bookId]);
 
-  const mutateEvent = useCallback(async (event: PendingEvent, action: "approve" | "reject") => {
+  const mutateEvent = useCallback(async (event: PendingEvent, action: "approve" | "reject", edit?: PendingEventEdit) => {
     if (!event.id) return;
     setActionLoadingId(event.id);
     setActionError(null);
     try {
-      await mutatePendingEventRequest(bookId, event.id, action);
+      await mutatePendingEventRequest(bookId, event.id, action, { edit });
       await load();
     } catch (cause) {
       setActionError(cause instanceof Error ? cause.message : "事件操作失败");
@@ -529,15 +945,39 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
     }
   }, [bookId, load]);
 
+  const correctFactRow = useCallback(async (fact: EntityFact, newObject: string) => {
+    setFactEditingId(fact.id);
+    setFactEditError(null);
+    try {
+      await correctFact(bookId, fact.id, { object: newObject, reason: "工作台纠正" });
+      await load();
+    } catch (cause) {
+      setFactEditError(cause instanceof Error ? cause.message : "纠正失败");
+    } finally {
+      setFactEditingId(null);
+    }
+  }, [bookId, load]);
+
+  const retireFactRow = useCallback(async (fact: EntityFact) => {
+    setFactEditingId(fact.id);
+    setFactEditError(null);
+    try {
+      await retireFact(bookId, fact.id, { reason: "工作台作废" });
+      await load();
+    } catch (cause) {
+      setFactEditError(cause instanceof Error ? cause.message : "作废失败");
+    } finally {
+      setFactEditingId(null);
+    }
+  }, [bookId, load]);
+
   const openSearchEntry = useCallback(async (entry: MemoryEntry) => {
     let detailed = entry;
     let detailError: string | undefined;
     try {
-      const response = await fetch(
+      const payload = await fetchJson<{ entry?: MemoryEntry }>(
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/entries/${encodeURIComponent(entry.kind)}/${encodeURIComponent(entry.id)}`,
       );
-      if (!response.ok) throw new Error(`详情请求失败（${response.status}）`);
-      const payload = await response.json() as { entry?: MemoryEntry };
       if (payload.entry) detailed = { ...entry, ...payload.entry, kind: entry.kind, id: entry.id };
     } catch (cause) {
       detailError = cause instanceof Error ? cause.message : "详情请求失败";
@@ -562,17 +1002,21 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
 
   return (
     <NarrativeMemoryPanelShell
+      bookId={bookId}
       diagnostics={diagnostics}
       events={events}
       historyEvents={historyEvents}
       lineApprovals={lineApprovals}
       stateFacts={stateFacts}
+      entityGroups={entityGroups}
       stats={stats}
       searchResults={searchResults}
       searchQuery={searchQuery}
       searchLoading={searchLoading}
       actionLoadingId={actionLoadingId}
+      factEditingId={factEditingId}
       actionError={actionError}
+      factEditError={factEditError}
       loading={loading}
       empty={empty}
       error={error}
@@ -581,26 +1025,32 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       onOpen={onOpen}
       onAction={onAction}
       onSearch={(query) => void search(query)}
-      onApprove={(event) => void mutateEvent(event, "approve")}
+      onApprove={(event, edit) => void mutateEvent(event, "approve", edit)}
       onReject={(event) => void mutateEvent(event, "reject")}
       onRefresh={() => void load()}
       onSearchEntryOpen={openSearchEntry}
+      onCorrectFact={(fact, newObject) => void correctFactRow(fact, newObject)}
+      onRetireFact={(fact) => void retireFactRow(fact)}
     />
   );
 }
 
 export function NarrativeMemoryPanelShell({
+  bookId,
   diagnostics,
   events,
   historyEvents = [],
   lineApprovals = [],
   stateFacts = [],
+  entityGroups = [],
   stats,
   searchResults = [],
   searchQuery = "",
   searchLoading,
   actionLoadingId,
+  factEditingId,
   actionError,
+  factEditError,
   loading,
   empty,
   error,
@@ -612,6 +1062,8 @@ export function NarrativeMemoryPanelShell({
   onReject,
   onRefresh,
   onSearchEntryOpen,
+  onCorrectFact,
+  onRetireFact,
 }: NarrativeMemoryPanelShellProps) {
   const [activeView, setActiveView] = useState<MemoryViewLabel>("故事状态");
   const [queryInput, setQueryInput] = useState(searchQuery);
@@ -620,6 +1072,7 @@ export function NarrativeMemoryPanelShell({
   const highRiskEvents = events.filter((event) => event.risk === "high");
   const otherPending = events.filter((event) => event.risk !== "high");
   const pendingToShow = pendingOpen ? events : highRiskEvents.length > 0 ? highRiskEvents : events.slice(0, 3);
+  const allEntityFacts = useMemo(() => entityGroups.flatMap((group) => group.facts), [entityGroups]);
 
   if (loading) {
     return (
@@ -718,10 +1171,16 @@ export function NarrativeMemoryPanelShell({
       {activeView === "故事状态" && (
         <>
           <StoryStatusSummary
+            bookId={bookId}
             stateFacts={stateFacts}
             events={events}
             historyEvents={historyEvents}
+            entityGroups={entityGroups}
+            factEditingId={factEditingId}
+            factEditError={factEditError}
             onOpenFact={onSearchEntryOpen}
+            onCorrectFact={onCorrectFact}
+            onRetireFact={onRetireFact}
           />
 
           {memoryNodes.length > 0 && (
@@ -775,36 +1234,13 @@ export function NarrativeMemoryPanelShell({
             {events.length === 0 ? (
               <p className="text-[11px] text-muted-foreground">没有待审事件。</p>
             ) : pendingToShow.map((event, index) => (
-              <div key={event.id ?? index} className="rounded border border-border/60 p-2 space-y-1">
-                <div className="flex justify-between gap-2">
-                  <span className="font-medium">{event.eventType ?? "event"}</span>
-                  <span className={`text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
-                </div>
-                <div className="text-[10px] text-muted-foreground">
-                  {event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"} · 第 {event.chapterNumber ?? "—"} 章
-                </div>
-                {event.evidence ? <div className="text-[11px]">{event.evidence}</div> : null}
-                {event.id ? (
-                  <div className="flex justify-end gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      disabled={actionLoadingId === event.id}
-                      onClick={() => onReject?.(event)}
-                      className="rounded border border-border px-2 py-1 text-[10px] hover:bg-muted disabled:opacity-50"
-                    >
-                      {actionLoadingId === event.id ? "处理中…" : "拒绝"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={actionLoadingId === event.id}
-                      onClick={() => onApprove?.(event)}
-                      className="rounded bg-primary px-2 py-1 text-[10px] text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {actionLoadingId === event.id ? "处理中…" : "批准并写入动态事实"}
-                    </button>
-                  </div>
-                ) : null}
-              </div>
+              <PendingEventCard
+                key={event.id ?? index}
+                event={event}
+                loading={actionLoadingId === event.id}
+                onApprove={onApprove}
+                onReject={onReject}
+              />
             ))}
             {!pendingOpen && otherPending.length > 0 && highRiskEvents.length > 0 && (
               <p className="text-[10px] text-muted-foreground">另有 {otherPending.length} 条非高风险待审，已折叠。</p>
@@ -813,6 +1249,26 @@ export function NarrativeMemoryPanelShell({
 
           {diagnostics && <DiagnosticsAdvanced diagnostics={diagnostics} />}
         </>
+      )}
+
+      {activeView === "关系矩阵" && (
+        <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-relationship-matrix">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold">关系矩阵</h3>
+            <span className="text-[10px] text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
+          </div>
+          <RelationshipMatrix facts={allEntityFacts} />
+        </section>
+      )}
+
+      {activeView === "伏笔板" && (
+        <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-board">
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold">伏笔板</h3>
+            <span className="text-[10px] text-muted-foreground">超 20 章未推进自动标黄</span>
+          </div>
+          <HookBoard facts={allEntityFacts} />
+        </section>
       )}
 
       {activeView === "结算历史" && (

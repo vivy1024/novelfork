@@ -420,6 +420,12 @@ export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
   return parsed;
 }
 
+export function getNarrativeFactById(storage: StorageDatabase, bookId: string, factId: string): NarrativeFact | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite.prepare<NarrativeFactRow>(`${FACT_SELECT} WHERE id = ? AND book_id = ?`).get(factId, bookId);
+  return row ? factRowToRecord(row) : undefined;
+}
+
 export function queryNarrativeFacts(storage: StorageDatabase, input: QueryNarrativeFactsInput): NarrativeFact[] {
   ensureNarrativeMemorySchema(storage);
   const parsed = QueryNarrativeFactsInputSchema.parse(input);

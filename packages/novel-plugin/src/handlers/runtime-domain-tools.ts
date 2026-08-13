@@ -27,6 +27,7 @@ import { handleChapterRead } from "./chapter-read.js";
 import { handleChapterWrite } from "./chapter-write.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { executePipelineWrite, type PipelineWriteInput } from "./pipeline-write-service.js";
+import { createRuntimeChapterEventExtractor } from "../engine/narrative-memory/chapter-event-extractor.js";
 import { handleSceneSpec, type SceneSpec } from "./scene-spec-handler.js";
 import {
   DEFAULT_VOLUME_DIRECTORY,
@@ -642,6 +643,8 @@ async function pipelineWrite(
   if (!sceneSpec) return fail("invalid-input", "sceneSpec 必填。");
   if (typeof input.content !== "string" || !input.content.trim()) return fail("content-required", "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。");
   context.emitOutput?.("正在校验并保存 Runtime Agent 提交的章节正文…");
+  // 章后叙事记忆结算的 LLM 抽取器：用 host 的 generateText 能力构造，缺省时回退规则兜底。
+  const llmExtractor = context.generateText ? createRuntimeChapterEventExtractor(context.generateText) : undefined;
   const result = await executePipelineWrite(
     {
       bookId: binding.bookId,
@@ -669,6 +672,7 @@ async function pipelineWrite(
       root: context.projectRoot || binding.root,
       bookRoot: binding.root,
       onStream: context.emitOutput,
+      llmExtractor,
     },
   );
   if (!result.ok) return fail(result.code, result.error);

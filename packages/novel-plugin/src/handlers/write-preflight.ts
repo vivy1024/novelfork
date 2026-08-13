@@ -12,6 +12,7 @@ import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { RuntimeLoadedSkill } from "@vivy1024/novelfork-core/plugins";
 
 import { ensureNarrativeMemorySchema, listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { ensureJingweiLedgerSchema } from "./jingwei-ledger-store.js";
 import { listStaleChapters } from "./audit-freshness.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
@@ -656,6 +657,21 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       "volume-range-drift",
       `第 ${chapterNumber} 章不在当前卷《${volumeContext.current.title}》区间（第 ${from}-${to} 章）内，pipeline.write 会以 volume-range-violation 拦下；请先用 outline.volume 修正卷区间或切换 active 卷。`,
     );
+  }
+
+  // 经纬设定 × 叙事记忆现状一致性（纰漏）软提醒：只提示分歧，不自动改任何一边。
+  try {
+    const consistency = await runConsistencyCheck(storage, { bookId, asOfChapter: chapterNumber });
+    for (const finding of consistency.findings.slice(0, 5)) {
+      pushWarning(
+        warnings,
+        warningItems,
+        "other",
+        `[设定/现状不一致] ${finding.title}：${finding.detail}`,
+      );
+    }
+  } catch {
+    // 一致性检测失败不阻断写前检查，只静默跳过。
   }
 
   return {

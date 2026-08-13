@@ -670,8 +670,19 @@ describe("novel Runtime contribution", () => {
       const pipelineData = pipeline.data as { modelCalls?: unknown[] } | undefined;
       expect(pipelineData?.modelCalls ?? []).toHaveLength(0);
 
-      // 工具不再内部调用模型：本测试注入的 generateText 不应被任何小说工具触发。
-      expect(generatedSystems).toHaveLength(0);
+      // 单一 Agent 契约：工具内部不得再起 Writer/Auditor/Reviser 这类创作 Agent 链。
+      // 章后结算的叙事记忆抽取是例外且是唯一例外：它用当前会话模型（context.generateText），
+      // 产出的只是 NarrativeEvent 草案，仍要过 settlement-risk-gate 才落库，创作决策不经它手。
+      expect(generatedSystems.filter((system) => !system.includes("叙事记忆结算器"))).toHaveLength(0);
+      expect(generatedSystems.some((system) =>
+        system.includes("章节规划专家")
+        || system.includes("结构化写作蓝图")
+        || system.includes("审稿编辑")
+        || system.includes("修稿编辑")
+        || system.includes("文风分析师")
+        || system.includes("大纲编辑")
+        || system.includes("网文改写编辑"),
+      )).toBe(false);
       expect(outputs).not.toEqual(expect.arrayContaining([
         expect.stringContaining("内部模型调用"),
       ]));
