@@ -15,6 +15,58 @@ interface EditorMinimapProps {
   width?: number;
 }
 
+const MIN_VIEWPORT_HEIGHT = 12;
+
+export interface EditorMinimapViewport {
+  top: number;
+  height: number;
+  maxTop: number;
+  maxScrollTop: number;
+}
+
+/** 将正文的真实滚动范围映射到 minimap 轨道。 */
+export function resolveEditorMinimapViewport({
+  canvasHeight,
+  scrollTop,
+  clientHeight,
+  scrollHeight,
+}: {
+  canvasHeight: number;
+  scrollTop: number;
+  clientHeight: number;
+  scrollHeight: number;
+}): EditorMinimapViewport {
+  const safeCanvasHeight = Math.max(0, canvasHeight);
+  const maxScrollTop = Math.max(0, scrollHeight - clientHeight);
+  if (safeCanvasHeight === 0 || maxScrollTop === 0 || scrollHeight <= 0) {
+    return { top: 0, height: safeCanvasHeight, maxTop: 0, maxScrollTop };
+  }
+
+  const height = Math.min(
+    safeCanvasHeight,
+    Math.max(MIN_VIEWPORT_HEIGHT, safeCanvasHeight * (clientHeight / scrollHeight)),
+  );
+  const maxTop = Math.max(0, safeCanvasHeight - height);
+  const clampedScrollTop = Math.min(maxScrollTop, Math.max(0, scrollTop));
+  return {
+    top: maxTop === 0 ? 0 : (clampedScrollTop / maxScrollTop) * maxTop,
+    height,
+    maxTop,
+    maxScrollTop,
+  };
+}
+
+/** 将 minimap viewport 的轨道位置映射回正文的 scrollTop，并保证不越界。 */
+export function resolveEditorMinimapScrollTop(viewport: EditorMinimapViewport, top: number): number {
+  if (viewport.maxTop <= 0 || viewport.maxScrollTop <= 0) return 0;
+  const clampedTop = Math.min(viewport.maxTop, Math.max(0, top));
+  return (clampedTop / viewport.maxTop) * viewport.maxScrollTop;
+}
+
+export function isEditorMinimapViewportHit(viewport: EditorMinimapViewport, y: number): boolean {
+  return y >= viewport.top && y <= viewport.top + viewport.height;
+}
+
 export function EditorMinimap({
   editor,
   scrollContainerRef,
@@ -23,7 +75,7 @@ export function EditorMinimap({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animRef = useRef<number>(0);
   const drawTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-  const isDragging = useRef(false);
+  const dragRef = useRef<{ pointerId: number; grabOffset: number } | null>(null);
 
   // 绘制 minimap
   const draw = useCallback(() => {
@@ -50,7 +102,7 @@ export function EditorMinimap({
 
     // 获取文档信息
     const contentHeight = editorEl.scrollHeight;
-    if (contentHeight <= 0) return;
+    if (contentHeight <= 0 || canvasHeight <= 0) return;
 
     const scale = canvasHeight / contentHeight;
 
@@ -93,17 +145,20 @@ export function EditorMinimap({
       y += blockHeight;
     }
 
-    // 绘制可视区域高亮
-    const scrollTop = scrollEl.scrollTop;
-    const viewportHeight = scrollEl.clientHeight;
-    const viewY = scrollTop * scale;
-    const viewH = Math.max(12, viewportHeight * scale);
+    // 绘制可视区域高亮。位置与拖拽逻辑共用同一映射，避免蓝色块看起来
+    // 在一个位置、实际点击/拖动却按另一套比例计算。
+    const viewport = resolveEditorMinimapViewport({
+      canvasHeight,
+      scrollTop: scrollEl.scrollTop,
+      clientHeight: scrollEl.clientHeight,
+      scrollHeight: scrollEl.scrollHeight,
+    });
 
     ctx.fillStyle = viewportColor;
-    ctx.fillRect(0, viewY, canvasWidth, viewH);
+    ctx.fillRect(0, viewport.top, canvasWidth, viewport.height);
     ctx.strokeStyle = viewportBorder;
     ctx.lineWidth = 1;
-    ctx.strokeRect(0.5, viewY + 0.5, canvasWidth - 1, viewH - 1);
+    ctx.strokeRect(0.5, viewport.top + 0.5, canvasWidth - 1, Math.max(0, viewport.height - 1));
   }, [scrollContainerRef, width]);
 
   // Debounced redraw on content change
@@ -155,51 +210,66 @@ export function EditorMinimap({
     return () => clearTimeout(timer);
   }, [draw]);
 
-  // 点击 minimap 跳转到对应位置
-  const handleClick = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      const scrollEl = scrollContainerRef.current;
-      const canvas = canvasRef.current;
-      if (!scrollEl || !canvas) return;
+  const getPointerY = useCallback((event: React.PointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    return event.clientY - rect.top;
+  }, []);
 
-      const rect = canvas.getBoundingClientRect();
-      const clickY = e.clientY - rect.top;
-      const scale = scrollEl.scrollHeight / canvas.clientHeight;
-      const targetScroll = clickY * scale - scrollEl.clientHeight / 2;
+  const getViewport = useCallback((canvas: HTMLCanvasElement, scrollEl: HTMLDivElement) => (
+    resolveEditorMinimapViewport({
+      canvasHeight: canvas.clientHeight,
+      scrollTop: scrollEl.scrollTop,
+      clientHeight: scrollEl.clientHeight,
+      scrollHeight: scrollEl.scrollHeight,
+    })
+  ), []);
 
-      scrollEl.scrollTo({ top: Math.max(0, targetScroll), behavior: "smooth" });
-    },
-    [scrollContainerRef],
-  );
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
+    const canvas = canvasRef.current;
+    const scrollEl = scrollContainerRef.current;
+    if (!canvas || !scrollEl) return;
 
-  // 拖拽滚动
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
-      isDragging.current = true;
-      handleClick(e);
+    const viewport = getViewport(canvas, scrollEl);
+    if (viewport.maxScrollTop <= 0) return;
 
-      const onMove = (ev: MouseEvent) => {
-        if (!isDragging.current) return;
-        const scrollEl = scrollContainerRef.current;
-        const canvas = canvasRef.current;
-        if (!scrollEl || !canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const y = ev.clientY - rect.top;
-        const scale = scrollEl.scrollHeight / canvas.clientHeight;
-        scrollEl.scrollTop = y * scale - scrollEl.clientHeight / 2;
-      };
+    const pointerY = getPointerY(event, canvas);
+    if (isEditorMinimapViewportHit(viewport, pointerY)) {
+      dragRef.current = { pointerId: event.pointerId, grabOffset: pointerY - viewport.top };
+      canvas.setPointerCapture?.(event.pointerId);
+      event.preventDefault();
+      return;
+    }
 
-      const onUp = () => {
-        isDragging.current = false;
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-      };
+    // 点击轨道空白处：让蓝色 viewport 的中心落到点击位置。
+    scrollEl.scrollTop = resolveEditorMinimapScrollTop(viewport, pointerY - viewport.height / 2);
+    event.preventDefault();
+  }, [getPointerY, getViewport, scrollContainerRef]);
 
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    },
-    [scrollContainerRef, handleClick],
-  );
+  const handlePointerMove = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const canvas = canvasRef.current;
+    const scrollEl = scrollContainerRef.current;
+    if (!canvas || !scrollEl) return;
+
+    const viewport = getViewport(canvas, scrollEl);
+    const pointerY = getPointerY(event, canvas);
+    scrollEl.scrollTop = resolveEditorMinimapScrollTop(viewport, pointerY - drag.grabOffset);
+    event.preventDefault();
+  }, [getPointerY, getViewport, scrollContainerRef]);
+
+  const finishPointerDrag = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    const drag = dragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    dragRef.current = null;
+    const canvas = canvasRef.current;
+    if (canvas?.hasPointerCapture?.(event.pointerId)) canvas.releasePointerCapture?.(event.pointerId);
+  }, []);
+
+  useEffect(() => () => {
+    dragRef.current = null;
+  }, []);
 
   return (
     <div
@@ -209,9 +279,19 @@ export function EditorMinimap({
     >
       <canvas
         ref={canvasRef}
-        style={{ width, height: "100%", display: "block", cursor: "pointer" }}
-        onClick={handleClick}
-        onMouseDown={handleMouseDown}
+        style={{
+          width,
+          height: "100%",
+          display: "block",
+          cursor: "pointer",
+          touchAction: "none",
+          userSelect: "none",
+        }}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={finishPointerDrag}
+        onPointerCancel={finishPointerDrag}
+        onLostPointerCapture={finishPointerDrag}
       />
     </div>
   );
