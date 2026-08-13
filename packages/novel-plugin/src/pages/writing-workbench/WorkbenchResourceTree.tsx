@@ -251,6 +251,16 @@ function TreeNode({ node, depth, selectedNodeId, onOpen, onContextMenu, onAction
     if (isSelected) itemRef.current?.scrollIntoView({ block: "nearest" });
   }, [isSelected]);
 
+  // 卸载时清理拖拽自动展开定时器，避免已卸载组件上的 setState。
+  useEffect(() => {
+    return () => {
+      if (expandTimerRef.current) {
+        clearTimeout(expandTimerRef.current);
+        expandTimerRef.current = null;
+      }
+    };
+  }, []);
+
   const handleContext = (e: React.MouseEvent) => {
     if (onContextMenu) { e.preventDefault(); onContextMenu(e, node); }
   };

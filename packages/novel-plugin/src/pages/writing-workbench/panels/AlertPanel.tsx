@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Loader2, AlertTriangle, BookOpen, Wind, CheckCircle2, Eye } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useApi } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,55 +49,35 @@ const ALERT_ICONS: Record<string, typeof AlertTriangle> = {
 // ---------------------------------------------------------------------------
 
 export function AlertPanel({ bookId }: AlertPanelProps) {
-  const [alerts, setAlerts] = useState<AlertItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { data, loading } = useApi<HealthResponse>(`/api/books/${bookId}/health`);
 
-  useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
+  const alerts = useMemo(() => {
+    if (!data) return [];
+    const collected: AlertItem[] = [];
 
-    fetch(`/api/books/${bookId}/health`)
-      .then((res) => {
-        if (!res.ok) throw new Error("API error");
-        return res.json() as Promise<HealthResponse>;
-      })
-      .then((data) => {
-        if (cancelled) return;
-        const collected: AlertItem[] = [];
-
-        // Audit failures
-        const chapters = data.health.chapters ?? [];
-        const failedChapters = chapters.filter((c) => c.auditStatus === "warn");
-        for (const ch of failedChapters) {
-          collected.push({
-            id: `audit-${ch.chapterNumber}`,
-            type: "audit",
-            description: `第${ch.chapterNumber}章审校未通过`,
-          });
-        }
-
-        // Warnings from health (style drift etc.)
-        const warnings = data.health.warnings ?? [];
-        for (const w of warnings) {
-          collected.push({
-            id: `warn-${w.type}-${w.message.slice(0, 20)}`,
-            type: "drift",
-            description: w.message,
-          });
-        }
-
-        setAlerts(collected);
-        setLoading(false);
-      })
-      .catch(() => {
-        if (!cancelled) {
-          setAlerts([]);
-          setLoading(false);
-        }
+    // Audit failures
+    const chapters = data.health.chapters ?? [];
+    const failedChapters = chapters.filter((c) => c.auditStatus === "warn");
+    for (const ch of failedChapters) {
+      collected.push({
+        id: `audit-${ch.chapterNumber}`,
+        type: "audit",
+        description: `第${ch.chapterNumber}章审校未通过`,
       });
+    }
 
-    return () => { cancelled = true; };
-  }, [bookId]);
+    // Warnings from health (style drift etc.)
+    const warnings = data.health.warnings ?? [];
+    for (const w of warnings) {
+      collected.push({
+        id: `warn-${w.type}-${w.message.slice(0, 20)}`,
+        type: "drift",
+        description: w.message,
+      });
+    }
+
+    return collected;
+  }, [data]);
 
   if (loading) {
     return (

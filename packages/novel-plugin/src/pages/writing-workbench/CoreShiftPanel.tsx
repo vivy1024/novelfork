@@ -3,10 +3,11 @@
  *
  * 展示提案卡片列表，支持接受/拒绝操作
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState } from "react";
 import { Loader2, Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
 
 interface CoreShift {
   id: string;
@@ -49,36 +50,18 @@ const TRIGGER_LABELS: Record<string, string> = {
 };
 
 export function CoreShiftPanel({ bookId }: CoreShiftPanelProps) {
-  const [shifts, setShifts] = useState<CoreShift[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { data, loading, error } = useApi<{ coreShifts: CoreShift[] }>(
+    `/api/books/${encodeURIComponent(bookId)}/core-shifts`,
+  );
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const fetchShifts = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/core-shifts`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json() as { coreShifts: CoreShift[] };
-      setShifts(data.coreShifts ?? []);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [bookId]);
-
-  useEffect(() => { void fetchShifts(); }, [fetchShifts]);
+  const shifts = data?.coreShifts ?? [];
 
   async function handleAction(id: string, action: "accept" | "reject") {
     setActionLoading(id);
     try {
-      const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/core-shifts/${id}/${action}`, { method: "POST" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      await fetchShifts();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "操作失败");
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/core-shifts/${id}/${action}`, { method: "POST" });
+      invalidateApiPaths([`/api/books/${encodeURIComponent(bookId)}/core-shifts`]);
     } finally {
       setActionLoading(null);
     }

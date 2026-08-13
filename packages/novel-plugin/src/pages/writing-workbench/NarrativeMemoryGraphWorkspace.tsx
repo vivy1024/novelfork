@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Brain, Clock, GitBranch, Loader2, Network, RefreshCw, Route, Search, Sparkles, Swords } from "lucide-react";
+import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 interface NarrativeFact {
   id: string;
@@ -189,12 +190,13 @@ export function NarrativeMemoryGraphWorkspace({ bookId, onSelectNode }: Narrativ
     try {
       const params = new URLSearchParams({ view });
       if (focusEntity.trim()) params.set("focusEntity", focusEntity.trim());
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?${params.toString()}`);
-      if (!response.ok) throw new Error(`加载 Narrative Memory 图谱失败（${response.status}）`);
-      const next = await response.json() as NarrativeMemoryGraphResponse;
+      const next = await fetchJson<NarrativeMemoryGraphResponse>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?${params.toString()}`,
+      );
       setPayload({ facts: Array.isArray(next.facts) ? next.facts : [], events: Array.isArray(next.events) ? next.events : [], view: next.view });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载 Narrative Memory 图谱失败");
+      const status = cause instanceof ApiRequestError ? cause.status : undefined;
+      setError(status ? `加载 Narrative Memory 图谱失败（${status}）` : cause instanceof Error ? cause.message : "加载 Narrative Memory 图谱失败");
       setPayload({ facts: [], events: [] });
     } finally {
       setLoading(false);

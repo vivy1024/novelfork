@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Sparkles, Pencil, Plus, Trash2 } from "lucide-react";
+import { fetchJson } from "@/hooks/use-api";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "../useWorkbenchResources";
 import { CATEGORY_SCHEMAS, type CategorySchema } from "../jingwei/category-schemas";
 import { ChapterEditor } from "./ChapterEditor";
@@ -164,13 +165,11 @@ function JingweiCardView({ node, onContentChange }: { node: WorkbenchResourceNod
                     setGeneratingSection(section.title);
                     setGenerationError(null);
                     try {
-                      const res = await fetch("/api/ai/generate", {
+                      const data = await fetchJson<{ content?: string; error?: string }>("/api/ai/generate", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ prompt: `请为小说的"${section.title}"部分生成详细内容。要求具体、生动、可直接用于写作。输出纯文本，不要解释。`, maxTokens: 1000 }),
                       });
-                      const data = await res.json() as { content?: string; error?: string };
-                      if (!res.ok) throw new Error(data.error || `AI 生成失败（${res.status}）`);
                       if (!data.content?.trim()) throw new Error("AI 没有返回可用内容。");
 
                       // Replace placeholder with generated content

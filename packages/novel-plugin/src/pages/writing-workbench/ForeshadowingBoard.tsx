@@ -20,7 +20,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
 import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical } from "lucide-react";
-import { useApi } from "@/hooks/use-api";
+import { useApi, fetchJson } from "@/hooks/use-api";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -235,11 +235,6 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
   // Derive entries from API data (only when local state is null)
   const items = entries ?? (data?.entries ?? []).map(parseForeshadowing);
 
-  // Sync from API when data changes and local state hasn't been modified
-  if (entries === null && data?.entries) {
-    // This runs on re-render; entries will be set on next state update if needed
-  }
-
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -292,7 +287,7 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
       // Fire-and-forget API update
       void (async () => {
         try {
-          const res = await fetch(
+          await fetchJson(
             `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(draggedId)}`,
             {
               method: "PUT",
@@ -300,11 +295,14 @@ export function ForeshadowingBoard({ bookId, currentChapter = 1, onJumpToChapter
               body: JSON.stringify({ customFields: { status: targetStatus } }),
             },
           );
-          if (!res.ok) {
-            throw new Error(`${res.status}`);
-          }
         } catch {
-          toast("伏笔状态保存失败，请重试", "error");
+          // 乐观更新失败需回滚，否则本地状态与服务端漂移
+          setEntries((prev) =>
+            (prev ?? items).map((item) =>
+              item.id === draggedId ? { ...item, status: sourceStatus } : item,
+            ),
+          );
+          toast("伏笔状态保存失败，已恢复原状态", "error");
         }
       })();
     },

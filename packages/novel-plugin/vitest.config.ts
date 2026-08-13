@@ -18,6 +18,8 @@ export default {
       // 第二个 React 实例，useRef 从空 dispatcher 上读取而报 null。
       // studio 装的是同版本 @tiptap/react、但链到 19.2.5，指向它即可回到单实例。
       "@tiptap/react": resolve(__dirname, "../studio/node_modules/@tiptap/react"),
+      // useApi 内部走 react-query，novel-plugin 自身未安装，测试里钉到 studio 那份（与 react 同款）。
+      "@tanstack/react-query": resolve(__dirname, "../studio/node_modules/@tanstack/react-query"),
       "@": resolve(__dirname, "../studio/src"),
     },
     dedupe: ["react", "react-dom", "@tiptap/react"],

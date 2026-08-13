@@ -5,8 +5,9 @@
  * 左侧：光标位置 · 章节字数
  * 右侧：保存状态 · 章数 · 警告数 · 设置齿轮
  */
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import { BookOpen, AlertTriangle, Cog } from "lucide-react";
+import { useApi } from "@/hooks/use-api";
 
 export interface StatusBarProps {
   bookId: string;
@@ -15,11 +16,6 @@ export interface StatusBarProps {
   wordCount?: number;
   saveStatus?: "saved" | "saving" | "dirty";
   onSettingsClick?: () => void;
-}
-
-interface HealthData {
-  chapterCount: number;
-  alertCount: number;
 }
 
 /** 保存状态指示器 */
@@ -57,32 +53,29 @@ export function StatusBar({
   saveStatus,
   onSettingsClick,
 }: StatusBarProps) {
-  const [health, setHealth] = useState<HealthData | null>(null);
+  const { data } = useApi<Record<string, unknown>>(`/api/books/${encodeURIComponent(bookId)}/health`);
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchHealth() {
-      try {
-        const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/health`);
-        if (res.ok) {
-          const data = await res.json();
-          if (!cancelled) {
-            const chapters = Array.isArray(data.health?.chapters) ? data.health.chapters : [];
-            const warnings = Array.isArray(data.health?.warnings) ? data.health.warnings : [];
-            const auditFails = chapters.filter((c: { auditStatus?: string }) => c.auditStatus === "warn").length;
+  const health = useMemo(() => {
+    if (!data) return null;
+    const healthObj = (data.health ?? {}) as {
+      chapters?: Array<{ auditStatus?: string }>;
+      warnings?: unknown[];
+      totalChapters?: { value?: number };
+    };
+    const chapters = Array.isArray(healthObj.chapters) ? healthObj.chapters : [];
+    const warnings = Array.isArray(healthObj.warnings) ? healthObj.warnings : [];
+    const auditFails = chapters.filter((c) => c.auditStatus === "warn").length;
 
-            setHealth({
-              chapterCount: typeof data.chapterCount === "number" ? data.chapterCount
-                : typeof data.health?.totalChapters?.value === "number" ? data.health.totalChapters.value : 0,
-              alertCount: auditFails + warnings.length,
-            });
-          }
-        }
-      } catch { /* keep placeholder */ }
-    }
-    void fetchHealth();
-    return () => { cancelled = true; };
-  }, [bookId]);
+    return {
+      chapterCount:
+        typeof data.chapterCount === "number"
+          ? data.chapterCount
+          : typeof healthObj.totalChapters?.value === "number"
+            ? healthObj.totalChapters.value
+            : 0,
+      alertCount: auditFails + warnings.length,
+    };
+  }, [data]);
 
   const chapterLabel = health ? `${health.chapterCount} 章` : "— 章";
   const alertLabel = health?.alertCount ? `⚠ ${health.alertCount}` : "";

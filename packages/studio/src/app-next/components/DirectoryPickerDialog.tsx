@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "re
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 interface DirectoryPickerDialogProps {
   readonly open: boolean;
@@ -106,10 +107,9 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
     try {
       const params = new URLSearchParams();
       if (path) params.set("path", path);
-      const res = await fetch(`/api/fs/browse?${params.toString()}`);
-      const data = (await res.json()) as BrowseResult;
-      if (!res.ok || data.error) {
-        setError(data.error || "无法访问该目录");
+      const data = await fetchJson<BrowseResult>(`/api/fs/browse?${params.toString()}`);
+      if (data.error) {
+        setError(data.error);
         return;
       }
       const resolvedPath = data.path ?? "";
@@ -127,11 +127,8 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
 
   const loadShortcuts = useCallback(async () => {
     try {
-      const res = await fetch("/api/fs/shortcuts");
-      if (res.ok) {
-        const data = (await res.json()) as { shortcuts: Shortcut[] };
-        setShortcuts(data.shortcuts);
-      }
+      const data = await fetchJson<{ shortcuts: Shortcut[] }>("/api/fs/shortcuts");
+      setShortcuts(data.shortcuts);
     } catch { /* ignore */ }
   }, []);
 
@@ -187,21 +184,17 @@ export function DirectoryPickerDialog({ open, onClose, onSelect, initialPath }: 
     const name = newFolderName.trim();
     if (!name || !currentPath) return;
     try {
-      const res = await fetch("/api/fs/mkdir", {
+      await fetchJson("/api/fs/mkdir", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ parent: currentPath, name }),
       });
-      if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setError(data.error || "无法创建文件夹");
-        return;
-      }
       setNewFolderMode(false);
       setNewFolderName("");
       browse(currentPath);
-    } catch {
-      setError("创建文件夹失败");
+    } catch (cause) {
+      const message = cause instanceof ApiRequestError ? cause.message : "创建文件夹失败";
+      setError(message || "无法创建文件夹");
     }
   };
 

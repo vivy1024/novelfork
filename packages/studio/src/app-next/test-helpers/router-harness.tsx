@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   RouterProvider,
   createRouter,
@@ -6,6 +7,8 @@ import {
   createRoute,
   createMemoryHistory,
 } from "@tanstack/react-router";
+
+import { queryClient } from "@/lib/query-client";
 
 /**
  * 测试用真实 Router 包裹。
@@ -35,5 +38,9 @@ export function createTestRouter(component: () => ReactNode, initialPath = "/nex
 /** 返回一个可直接 render 的 <RouterProvider>，包裹真实 router。 */
 export function RouterTestHarness({ component, initialPath }: { component: () => ReactNode; initialPath?: string }) {
   const router = createTestRouter(component, initialPath);
-  return <RouterProvider router={router} />;
+  return (
+    <QueryClientProvider client={queryClient}>
+      <RouterProvider router={router} />
+    </QueryClientProvider>
+  );
 }

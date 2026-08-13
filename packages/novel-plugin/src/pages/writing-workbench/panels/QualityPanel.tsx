@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Loader2, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/hooks/use-api";
 import {
   ChartContainer,
   ChartTooltip,
@@ -73,14 +74,8 @@ export function QualityPanel({ bookId }: QualityPanelProps) {
     setLoading(true);
 
     Promise.all([
-      fetch(`/api/books/${bookId}/quality-trend?limit=20`).then((r) => {
-        if (!r.ok) throw new Error("trend API error");
-        return r.json() as Promise<QualityTrendResponse>;
-      }),
-      fetch(`/api/books/${bookId}/health`).then((r) => {
-        if (!r.ok) throw new Error("health API error");
-        return r.json();
-      }),
+      fetchJson<QualityTrendResponse>(`/api/books/${bookId}/quality-trend?limit=20`),
+      fetchJson<{ health?: Record<string, HealthMetric | undefined> }>(`/api/books/${bookId}/health`),
     ])
       .then(([trendData, rawHealth]) => {
         if (cancelled) return;

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { fetchJson } from "@/hooks/use-api";
 
 /**
  * Hook to initialize and manage search index
@@ -18,17 +19,10 @@ export function useSearchIndex() {
     setError(null);
 
     try {
-      const response = await fetch('/api/search/index/rebuild', {
+      const data = await fetchJson<{ indexed?: number }>('/api/search/index/rebuild', {
         method: 'POST',
       });
-
-      if (response.ok) {
-        const data = await response.json();
-        setIndexed(data.indexed || 0);
-      } else {
-        const data = await response.json();
-        setError(data.error || 'Failed to rebuild index');
-      }
+      setIndexed(data.indexed || 0);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {

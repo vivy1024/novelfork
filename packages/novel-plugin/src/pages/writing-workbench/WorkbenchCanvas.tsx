@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronUp } from "lucide-react";
+import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
 import { isChapterWorkflowNode } from "./chapter-workflow-node";
@@ -13,8 +14,7 @@ import { ChapterActionsBar } from "./ChapterActionsBar";
 import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHistoryPanel";
 import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
-import { JingweiEntryEditor } from "./JingweiEntryEditor";
-import { JingweiPanel } from "./jingwei/JingweiPanel";
+import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
 import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
@@ -210,7 +210,7 @@ export interface ChapterActionHandlers {
 }
 
 export interface JingweiActionHandlers {
-  onSave: (entryId: string, payload: { title: string; contentMd: string; priorityTier?: "auto" | "core" | "relevant" | "reference" }) => Promise<void>;
+  onSave: (entryId: string, payload: JingweiEntrySavePayload) => Promise<void>;
   onDelete?: (entryId: string) => Promise<void>;
 }
 
@@ -351,26 +351,6 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     }
   }
 
-  // Jingwei panel entry — render JingweiPanel directly.
-  // metadata.jingweiCategory 允许调用方（如写作视图一键修）直接定位分类。
-  if (node.kind === "jingwei" && node.metadata?.action === "open-jingwei-panel" && bookId) {
-    const initialCategory = typeof node.metadata?.jingweiCategory === "string"
-      ? node.metadata.jingweiCategory
-      : undefined;
-    const initialEntryId = typeof node.metadata?.jingweiEntryId === "string"
-      ? node.metadata.jingweiEntryId
-      : undefined;
-    return (
-      <div className="flex h-full flex-col min-h-0">
-        <JingweiPanel
-          bookId={bookId}
-          {...(initialCategory ? { initialCategory } : {})}
-          {...(initialEntryId ? { initialEntryId } : {})}
-        />
-      </div>
-    );
-  }
-
   // Narrative Memory Graph — render NarrativeMemoryGraphWorkspace directly
   if (node.id === "narrative-memory-graph" && bookId) {
     return (
@@ -419,15 +399,15 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
             setSceneSpecLoading(true);
             try {
               const chapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : 1;
-              const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/scene-spec`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ chapterNumber, userDirectives: content.slice(0, 200) }),
-              });
-              if (res.ok) {
-                const data = await res.json();
-                if (data.data?.sceneSpec) { setSceneSpec(data.data.sceneSpec); setSceneSpecOpen(true); }
-              }
+              const data = await fetchJson<{ data?: { sceneSpec?: SceneSpec } }>(
+                `/api/books/${encodeURIComponent(bookId)}/scene-spec`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ chapterNumber, userDirectives: content.slice(0, 200) }),
+                },
+              );
+              if (data.data?.sceneSpec) { setSceneSpec(data.data.sceneSpec); setSceneSpecOpen(true); }
             } finally { setSceneSpecLoading(false); }
           }}
           title="生成章节蓝图"
@@ -548,6 +528,11 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
               layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
               version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
               relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
+              aliases: Array.isArray(node.metadata?.aliases) ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
+              visibility: node.metadata?.visibility === "global" || node.metadata?.visibility === "nested" ? node.metadata.visibility : "tracked",
+              visibleAfterChapter: typeof node.metadata?.visibleAfterChapter === "number" ? node.metadata.visibleAfterChapter : undefined,
+              visibleUntilChapter: typeof node.metadata?.visibleUntilChapter === "number" ? node.metadata.visibleUntilChapter : undefined,
+              parentId: typeof node.metadata?.parentId === "string" ? node.metadata.parentId : null,
               conflictStatus: node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none",
               conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
             }}
@@ -566,13 +551,14 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
           }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
             const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
             try {
-              const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ mode: "continuation", context: contextBefore, maxTokens: 80 }),
-              });
-              if (!res.ok) return null;
-              const data = await res.json();
+              const data = await fetchJson<{ text?: string; content?: string }>(
+                `/api/books/${encodeURIComponent(bookId)}/inline-write`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ mode: "continuation", context: contextBefore, maxTokens: 80 }),
+                },
+              );
               return data.text ?? data.content ?? null;
             } catch { return null; }
           } : undefined} />
@@ -687,8 +673,7 @@ function DefaultCockpitView({ bookId, onJumpToChapter }: { bookId: string; onJum
   // Fetch overview stats
   useEffect(() => {
     let active = true;
-    fetch(`/api/books/${encodeURIComponent(bookId)}/overview-stats`)
-      .then(r => r.ok ? r.json() : null)
+    fetchJson<OverviewStats>(`/api/books/${encodeURIComponent(bookId)}/overview-stats`)
       .then(data => { if (active && data) setStats(data); })
       .catch(() => {});
     return () => { active = false; };
@@ -784,8 +769,8 @@ function CockpitOverview({ bookId }: { bookId: string }) {
     let active = true;
     setLoading(true);
     Promise.all([
-      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/recent-chapter-results?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
-      fetch(`/api/books/${encodeURIComponent(bookId)}/cockpit/open-hooks?limit=8`).then(r => r.ok ? r.json() : null).catch(() => null),
+      fetchJson<{ items?: CockpitListItem[] }>(`/api/books/${encodeURIComponent(bookId)}/cockpit/recent-chapter-results?limit=8`).catch(() => null),
+      fetchJson<{ items?: CockpitListItem[] }>(`/api/books/${encodeURIComponent(bookId)}/cockpit/open-hooks?limit=8`).catch(() => null),
     ]).then(([chapters, hk]) => {
       if (!active) return;
       setChapterResults(Array.isArray(chapters?.items) ? chapters.items : []);

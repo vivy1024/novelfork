@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useCallback } from "react";
+import { fetchJson, invalidateApiPaths, useApi } from "@/hooks/use-api";
 
 export interface JingweiProgression {
   id: string;
@@ -25,36 +26,19 @@ interface UseJingweiProgressionsResult {
 }
 
 export function useJingweiProgressions(bookId: string, entryId: string | null): UseJingweiProgressionsResult {
-  const [progressions, setProgressions] = useState<JingweiProgression[]>([]);
-  const [loading, setLoading] = useState(false);
+  const listPath = bookId && entryId
+    ? `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}/progressions`
+    : null;
 
-  const fetchProgressions = useCallback(async () => {
-    if (!bookId || !entryId) {
-      setProgressions([]);
-      return;
-    }
-    setLoading(true);
-    try {
-      const res = await fetch(
-        `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}/progressions`,
-      );
-      if (res.ok) {
-        const data = await res.json();
-        setProgressions(Array.isArray(data.progressions) ? data.progressions : []);
-      }
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [bookId, entryId]);
+  const { data, loading, refetch } = useApi<{ progressions?: JingweiProgression[] }>(listPath);
 
-  useEffect(() => {
-    void fetchProgressions();
-  }, [fetchProgressions]);
+  const progressions = Array.isArray(data?.progressions) ? data.progressions : [];
 
   const addProgression = useCallback(
     async (data: { fieldKey: string; oldValue?: string; newValue: string; chapterNumber?: number; description?: string }) => {
       if (!bookId || !entryId) return false;
       try {
-        const res = await fetch(
+        await fetchJson(
           `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}/progressions`,
           {
             method: "POST",
@@ -62,15 +46,16 @@ export function useJingweiProgressions(bookId: string, entryId: string | null): 
             body: JSON.stringify(data),
           },
         );
-        if (res.ok) {
-          await fetchProgressions();
-          return true;
-        }
-      } catch { /* ignore */ }
-      return false;
+        invalidateApiPaths([
+          `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(entryId)}/progressions`,
+        ]);
+        return true;
+      } catch {
+        return false;
+      }
     },
-    [bookId, entryId, fetchProgressions],
+    [bookId, entryId],
   );
 
-  return { progressions, loading, addProgression, refresh: fetchProgressions };
+  return { progressions, loading, addProgression, refresh: () => void refetch() };
 }

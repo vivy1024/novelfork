@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { AlertCircle, BrainCircuit, Loader2, Sparkles, Wrench } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fetchJson } from "@/hooks/use-api";
 import { WritingSkillsPanel } from "../writing-workbench/WritingSkillsPanel";
 
 type ConfigTab = "skills" | "memory" | "tools";
@@ -108,9 +109,10 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`);
-      const payload = await response.json().catch(() => null) as { config?: NarrativeMemorySettings; error?: string } | null;
-      if (!response.ok || !payload?.config) throw new Error(payload?.error ?? "无法加载叙事记忆配置");
+      const payload = await fetchJson<{ config?: NarrativeMemorySettings; error?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`,
+      );
+      if (!payload.config) throw new Error(payload.error ?? "无法加载叙事记忆配置");
       setConfig(payload.config);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "无法加载叙事记忆配置");
@@ -131,13 +133,15 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     setSaving(true);
     setError(null);
     try {
-      const response = await fetch(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config }),
-      });
-      const payload = await response.json().catch(() => null) as { config?: NarrativeMemorySettings; error?: string } | null;
-      if (!response.ok || !payload?.config) throw new Error(payload?.error ?? "无法保存叙事记忆配置");
+      const payload = await fetchJson<{ config?: NarrativeMemorySettings; error?: string }>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config }),
+        },
+      );
+      if (!payload.config) throw new Error(payload.error ?? "无法保存叙事记忆配置");
       setConfig(payload.config);
       setSaved(true);
     } catch (cause) {
@@ -234,7 +238,7 @@ function ToolsTab({ sessionId }: { sessionId?: string }) {
     if (!sessionId) return;
     saveToolConfig(sessionId, enabledTools);
     const deny = OPTIONAL_TOOLS.map((tool) => tool.id).filter((id) => !enabledTools.has(id));
-    void fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+    void fetchJson(`/api/sessions/${encodeURIComponent(sessionId)}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ sessionConfig: { toolPolicy: { deny } } }),

@@ -5,6 +5,7 @@ import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
 import { Loader2 } from "lucide-react";
+import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension } from "../ide/SearchExtension";
 import { SearchBar } from "../ide/SearchBar";
 import { EditorMinimap } from "./EditorMinimap";
@@ -54,13 +55,14 @@ const ACTION_TO_MODE: Record<AiAction, string> = {
 
 async function callInlineWrite(bookId: string, action: AiAction, selectedText: string, context: string): Promise<string | null> {
   try {
-    const res = await fetch(`/api/books/${encodeURIComponent(bookId)}/inline-write`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode: ACTION_TO_MODE[action], selectedText, context, maxTokens: 300 }),
-    });
-    if (!res.ok) return null;
-    const data = await res.json() as { text?: string; content?: string };
+    const data = await fetchJson<{ text?: string; content?: string }>(
+      `/api/books/${encodeURIComponent(bookId)}/inline-write`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: ACTION_TO_MODE[action], selectedText, context, maxTokens: 300 }),
+      },
+    );
     return data.text ?? data.content ?? null;
   } catch {
     return null;

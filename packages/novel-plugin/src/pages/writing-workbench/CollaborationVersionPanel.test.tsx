@@ -81,6 +81,6 @@ describe("CollaborationVersionPanel", () => {
     // 断言绑定提示里带的正是仓库根路径。用整句匹配而不是裸 /D:\/bound-repo/：
     // 后者也会命中上面那条 worktree 路径，命中两处反而让断言失去意义。
     expect(screen.getByText(/仓库路径已绑定（D:\/bound-repo）/)).toBeTruthy();
-    expect(fetchMock).toHaveBeenCalledWith("/api/books/book-1/collaboration-context");
+    expect(fetchMock).toHaveBeenCalledWith("/api/books/book-1/collaboration-context", expect.anything());
   });
 });
