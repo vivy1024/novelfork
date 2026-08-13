@@ -94,6 +94,63 @@ function selectCoreCandidates(candidates: readonly CandidateItem[]): CandidateIt
   return selected;
 }
 
+/** 同互斥组（visibilityRule.group）只保留优先级最高的一条，防止矛盾状态同时注入。 */
+function applyMutexGroups(candidates: readonly CandidateItem[]): CandidateItem[] {
+  const groupTop = new Map<string, CandidateItem>();
+  for (const candidate of candidates) {
+    const group = candidate.entry.visibilityRule.group;
+    if (!group) continue;
+    const existing = groupTop.get(group);
+    if (!existing || candidate.priority > existing.priority
+      || (candidate.priority === existing.priority && candidate.id < existing.id)) {
+      groupTop.set(group, candidate);
+    }
+  }
+  if (groupTop.size === 0) return [...candidates];
+  const losers = new Set<string>();
+  for (const [group, top] of groupTop) {
+    for (const candidate of candidates) {
+      if (candidate.id !== top.id && candidate.entry.visibilityRule.group === group) losers.add(candidate.id);
+    }
+  }
+  return losers.size === 0
+    ? [...candidates]
+    : candidates.filter((candidate) => !losers.has(candidate.id));
+}
+
+const MAX_CASCADE_ENTRIES = 8;
+
+/**
+ * 一级级联：已选中条目通过 relatedEntryIds 引用的条目自动带入候选。
+ * 只展开一级并防循环，作为低优先级候选参与预算竞争，超预算照常降级/丢弃。
+ */
+function expandCascade(
+  selected: readonly CandidateItem[],
+  allEntries: readonly StoryJingweiEntryRecord[],
+  sectionById: ReadonlyMap<string, StoryJingweiSectionRecord>,
+): CandidateItem[] {
+  const selectedIds = new Set(selected.map((candidate) => candidate.id));
+  const entryById = new Map(allEntries.map((entry) => [entry.id, entry]));
+  const added: CandidateItem[] = [];
+  const visited = new Set<string>(selectedIds);
+
+  for (const candidate of selected) {
+    if (added.length >= MAX_CASCADE_ENTRIES) break;
+    for (const relatedId of candidate.entry.relatedEntryIds) {
+      if (added.length >= MAX_CASCADE_ENTRIES) break;
+      if (visited.has(relatedId)) continue;
+      visited.add(relatedId);
+      const related = entryById.get(relatedId);
+      const section = related ? sectionById.get(related.sectionId) : undefined;
+      if (!related || !section) continue;
+      // 级联条目只需满足"已关联 + 章号可见"，不再要求关键词命中。
+      const source = visibilitySource(related);
+      added.push(buildCandidate(related, section, source === "global" ? "global" : "nested"));
+    }
+  }
+  return added;
+}
+
 /** 按优先层决定初始注入详细度：core 给更多内容，reference 给一句话 */
 function initialDetailLevelForCandidate(candidate: CandidateItem): JingweiBudgetDetailLevel {
   const tier = candidate.entry.priorityTier ?? "auto";
@@ -161,12 +218,14 @@ export async function buildJingweiBrief(input: BuildJingweiBriefInput): Promise<
     }
   }
 
-  const selected = selectCoreCandidates(candidates);
+  const selected = applyMutexGroups(selectCoreCandidates(candidates));
+  const cascaded = expandCascade(selected, entries, sectionById);
+  const withCascade = cascaded.length > 0 ? [...selected, ...cascaded] : selected;
   const budget = input.tokenBudget ?? 4000;
 
   // Recall with Budget: 按层分配初始详细度，超预算逐条降级(L2→L1→L0)再丢弃
-  const candidateById = new Map(selected.map((c) => [c.id, c]));
-  const degradable = selected.map(toDegradableItem);
+  const candidateById = new Map(withCascade.map((c) => [c.id, c]));
+  const degradable = withCascade.map(toDegradableItem);
   const degraded = applyTokenBudgetWithDegradation(degradable, budget);
 
   const coreBrief = degraded.items.map((d) => {

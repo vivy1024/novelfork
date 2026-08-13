@@ -248,4 +248,76 @@ describe("Jingwei indexed read model", () => {
       storage.close();
     }
   });
+
+  it("级联：选中条目通过 relatedEntryIds 带出关联条目", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await entries.create(entry({
+        id: "guardian",
+        sectionId: "sec-people",
+        title: "守门人",
+        contentMd: "守门人保管青铜铃，沉默寡言。",
+        priorityTier: "relevant",
+      }));
+      // 让小瓶秘密条目关联守门人
+      const updated = await entries.update("book-1", "hook", { relatedEntryIds: ["guardian"] });
+      expect(updated?.relatedEntryIds).toEqual(["guardian"]);
+
+      const result = await buildJingweiBrief({
+        storage,
+        bookId: "book-1",
+        chapterNumber: 12,
+        sceneText: "韩立检查小瓶。",
+        tokenBudget: 4000,
+      });
+      const ids = result.coreBrief.map((item) => item.entryId);
+      expect(ids).toContain("hook");
+      // 级联带出的关联条目进入 coreBrief
+      expect(ids).toContain("guardian");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("互斥：同 group 只保留优先级最高的一条", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      await entries.create(entry({
+        id: "state-hurt",
+        sectionId: "sec-people",
+        title: "林舟：重伤",
+        contentMd: "林舟重伤未愈。",
+        visibilityRule: { type: "tracked", keywords: ["林舟"], group: "linzhou-state" },
+        priorityTier: "relevant",
+        importance: 50,
+      }));
+      await entries.create(entry({
+        id: "state-healed",
+        sectionId: "sec-people",
+        title: "林舟：痊愈",
+        contentMd: "林舟已经痊愈。",
+        visibilityRule: { type: "tracked", keywords: ["林舟"], group: "linzhou-state" },
+        priorityTier: "relevant",
+        importance: 90,
+      }));
+
+      const result = await buildJingweiBrief({
+        storage,
+        bookId: "book-1",
+        chapterNumber: 12,
+        sceneText: "林舟出现了。",
+        tokenBudget: 4000,
+      });
+      const ids = result.coreBrief.map((item) => item.entryId);
+      // 同组互斥：只保留 importance 更高的"痊愈"
+      expect(ids).toContain("state-healed");
+      expect(ids).not.toContain("state-hurt");
+    } finally {
+      storage.close();
+    }
+  });
 });

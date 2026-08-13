@@ -22,12 +22,12 @@
 
 ## Highlights
 
-- 🌌 **3D 结晶叙事记忆空间** — Canvas 2D 透视投影 · 测地线粒子网络 · 3D Fact Carousel
-- 🧠 **叙事记忆引擎** — 8 通道本地检索 · Wave 算法 · Pending Events 审批 · 管理工具集
-- 📚 **经纬 / Lore** — 静态设定库与动态记忆彻底分工 · Canon 保护 · retire 软下线
-- ✍️ **写作管线 & 技能落地** — Writing Skill 文件自动发现 (.novelfork/skills/) · scene.spec → pipeline.write · S1–S4 门禁
-- 🛠️ **套路与设置** — Skill 文件树折叠浏览 & 弹窗预览 · 供应商单行表格与隐藏模型批量切换 · 脏检测保存 (Dirty Bar) · 消息网关微信扫码 · Web xterm.js 交互终端 · 6 步 SetupWizard
-- 🖥️ **IDE 写作工作台** — 三栏布局 · Tab · 侧栏可配置显示/收纳 · 经纬/章节/工具面板
+- 🧠 **三层知识体系** — 经纬（静态设定：角色/世界观/力量/卷纲/伏笔）· 叙事记忆（动态事实：时间线/事件/状态）· 写作技能（通用方法论：文风/节奏/钩子/平台），写前查、写后沉淀、循环治愈长篇遗忘
+- 🗺️ **剧情线状态卡** — 从当前章有效事实按主体聚合"每条剧情线停在哪"，随写前上下文注入（宏观层轻量版）
+- 📚 **经纬智能注入** — 关键词触发 · 章号可见窗口 · 关联条目一级级联 · 同组互斥 · Token 预算逐条降级
+- ✍️ **写作管线 & 技能落地** — Runtime Agent 显式提交蓝图与正文 · 工具只校验落盘 · Writing Skills 物化 + 加载证据 + 写后合规校验
+- 📋 **投稿风险自检** — 敏感词/AI 味/格式/连续性证据化汇总，带规则来源与原文定位，只供人工复核不替平台做结论
+- 🖥️ **IDE 写作工作台** — 三栏布局 · Tab · 经纬侧栏（Markdown 导入 + AI 注入预览）
 - 🔌 **多模型** — Anthropic / OpenAI / DeepSeek / Codex / NUG 反代 / 兼容 API
 - 🔒 **本地优先** — 数据与密钥在本机；完整 Runtime 能力不随公开仓库分发
 
@@ -37,27 +37,21 @@
 
 | 版本 | 日期 | 主题 |
 |------|------|------|
-| **v3.6.0** | 2026-08-08 | 经纬权威源收敛 · 写作工作台重构 · 工具结果 Renderer · Runtime Overlay 与七平台发版门禁 |
-| **v3.5.1** | 2026-08-06 | Runtime v0.5.21 · 子代理压缩重启与 400 根因修复 · Writing Skills 硬门禁 |
-| **v3.5.0** | 2026-08-06 | 写作链路根因修复 · Writing Skills 物化 · 多平台编译 · 隔离验证 |
-| **v3.4.0** | 2026-08-06 | 七平台交叉编译 · Runtime Overlay 对齐 · 设置与 Provider 体验统一 |
-| **v3.3.x** | 2026-08-01 | Skill 文件树与物化 · 网关/终端/SetupWizard · Runtime v0.5.18 |
-| **v3.2.x** | 2026-07-21 | Runtime 产品化 · 叙事记忆管理 · 公开/私有源码边界 |
-| **v3.0.0** | 2026-06-25 | 3D 结晶叙事记忆 · 经纬/记忆架构闭合 |
-| **v1.x–v2.x** | 2026-05 至 2026-06 | Agent Runtime、经纬、IDE、资源系统、上下文与质量管线持续重构 |
+| **v0.0.2** | 2026-08-13 | 投稿风险自检重定位（移除 AI 率估算与保存硬阻断）· 每日进度下线 · 包边界整理 |
+| **v0.0.1** | 2026-08-12 | 版本自 v3.6.1 重起算 · 经纬中文 Bigram FTS5 · 写作管线收敛为 Runtime Agent 单环 · loadedSkills 技能证据 · 旧 /api/ai/* 与内部调模型工具下线 |
+| **v3.6.x 及更早** | 2026-05 至 2026-08 | 长期开发 Beta 期：Agent Runtime、经纬/叙事记忆架构、Writing Skills、七平台编译、写作工作台（详见 CHANGELOG） |
 
 完整记录见 [CHANGELOG.md](CHANGELOG.md)。
 
 ## 版本演进
 
-从 `v1.0.0` 到 `v3.6.0`，NovelFork 的主要演进可以概括为：
+版本号自 **v0.0.1** 重新起算：长期开发暴露出经纬检索、写作管线与 Runtime 边界的基础缺陷，继续沿用 v3.x 会错误传达产品成熟度。历史 v1.x–v3.x 追溯视为 Beta：
 
-- **v1.0–v1.4：基础 Runtime 与小说工作台**：完成独立项目发布、Agent Runtime 对齐、经纬与候选稿链路、PGI/UserQuestionGate、Recall、TaskCreate、ToolSearch 与基础安全隔离。
-- **v1.5–v1.8：约束写作与资源系统**：重写 System Prompt，统一工具命名与分层，建立 Scene Spec、Pipeline Write、Canon/Dynamic/Reference 分层、统一资源版本系统、IDE 工作台和插件 UI 注册。
-- **v1.9–v2.2：质量管线与上下文引擎**：加入对抗式审查、S1–S4 严重度门禁、资源账本、知识边界、时间线、伏笔追踪、上下文预算、推理强度和 Narrative Memory/Wave 检索。
-- **v3.0–v3.2：叙事记忆与 Runtime 产品化**：上线 3D 结晶记忆空间，收紧经纬与叙事记忆边界，接入私有 NarraFork Runtime，增加记忆管理工具，并确立公开产品树与私有 Runtime/Overlay 边界。
-- **v3.3–v3.5：技能化写作与跨平台交付**：Writing Skills 取代旧 Preset/Beat 入口并物化到作品目录，补齐网关、Web 终端、SetupWizard、Provider 设置与七平台交叉编译，强化写前/写后门禁、Runtime v0.5.21 和隔离验证。
-- **v3.6.0：权威源收敛与工作台重构**：统一经纬、章节摘要、写作资源和叙事记忆的权威路径，重构写作工作台与工具结果 Renderer，强化 Core/Bridge/Overlay 契约，并通过全量测试、Parity、七平台编译和当次 EXE 核验。
+- **Beta v1.0–v3.6**：完成 Agent Runtime 对齐、经纬与叙事记忆架构、Writing Skills 物化、S1–S4 门禁、七平台交叉编译与写作工作台重构（详见 CHANGELOG）。
+- **v0.0.1**：收敛写作管线为 Runtime Agent 单环（Agent 显式提交蓝图与正文，工具只校验落盘）；Skill 生效证据改为 Runtime 注入的 loadedSkills；下线旧 /api/ai/* 路由与内部调模型工具；经纬中文 Bigram FTS5 检索；正式章节文件权威源与遗留 accepted 资源安全物化。
+- **v0.0.2**：平台合规重定位为投稿风险自检（证据化、可定位、只供人工复核）；移除 AI 生成比例估算与保存硬阻断；每日进度下线；测试与包边界整理。
+- **当前（v0.0.2 之后）**：三层知识闭环提示词（查→写→沉淀→再查）；经纬关联级联与同组互斥注入；剧情线状态卡（叙事记忆宏观层轻量版）。
+
 
 ---
 
@@ -219,14 +213,14 @@ pnpm compile:all      # 七平台交叉编译 + 聚合 SHA256
 ## Writing Pipeline（概要）
 
 ```text
-cockpit / lore / memory / pgi
+写前：write.preflight → lore.read（经纬静态）→ memory.*（叙事记忆动态）→ Skill 读取写作技能
         ↓
-scene.spec → pipeline.write → 对抗审查 → S1–S4 门禁
+写作：Runtime Agent 显式提交 scene.spec 蓝图（工具校验）→ 生成正文提交 pipeline.write（校验+落盘+结算）
         ↓
-正式章节 · memory.events · 用户审阅
+写后：叙事记忆自动结算沉淀 → writing-skills.check_compliance 技能合规校验 → 新设定 lore.write 待作者确认
 ```
 
-核心领域工具包括：`lore.*`、`memory.*`、`scene.spec`、`pipeline.write`、`chapter.*`、`resource.manage`、`presets.*`、`hooks.manage` 等（以当前 `novel-plugin` 实现为准）。
+核心领域工具包括：`lore.*`、`memory.*`、`write.preflight`、`scene.spec`、`pipeline.write`、`chapter.*`、`rewrite.apply`、`writing-skills.*`、`hooks.manage`、`outline.volume`、`arc.character`、`book.dissect`、`publish.check`（投稿风险自检）等（以当前 `novel-plugin` 实现为准）。
 
 ---
 

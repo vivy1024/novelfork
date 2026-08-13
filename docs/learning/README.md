@@ -21,7 +21,7 @@ routes:
 | 02 | [AI 写作功能](./02-ai-writing.md) | 选段写作、变体、正式章节结果、预设、节拍 | `AI写作` `正式章节` `预设` |
 | 03 | [引导式生成](./03-guided-generation.md) | PGI 追问、AskUserQuestion、scene.spec 蓝图批准 | `PGI` `引导式生成` |
 | 04 | [叙述者对话](./04-narrator-conversation.md) | 会话界面、确认门、Slash 命令 | `叙述者` `对话` `确认门` |
-| 05 | [故事经纬](./05-story-jingwei.md) | 静态 Lore、Canon evidence 门禁、与叙事记忆边界 | `经纬` `Lore` `设定` |
+| 05 | [故事经纬](./05-story-jingwei.md) | 静态 Lore、Canon evidence 门禁、智能注入（触发/级联/互斥）、剧情线状态卡 | `经纬` `Lore` `设定` |
 | 06 | [设置与套路](./06-settings-and-routines.md) | 供应商、模型聚合、套路、MCP、Hooks | `设置` `供应商` `套路` |
 | 07 | [写作分析工具](./07-writing-tools.md) | AI 味检测、健康度、文风、弧线、合规导出 | `写作工具` `分析` |
 | 08 | [Agent 写作管线](./08-agent-pipeline.md) | cockpit/lore/memory/PGI/scene.spec/pipeline.write 工具链 | `Agent` `Pipeline` |
@@ -95,16 +95,17 @@ routes:
 
 | 术语 | 英文 | 说明 |
 |------|------|------|
-| 经纬 / Lore | Jingwei / Lore | 作者显式维护的静态设定库（人物、地点、规则、术语等） |
+| 经纬 / Lore | Jingwei / Lore | 作者显式维护的静态设定库（人物、地点、规则、术语等），支持触发词/章号窗口/级联/互斥智能注入 |
 | 叙述者 | Narrator | AI 对话助手，每本书有多个专职叙述者 |
-| 叙事记忆 | Narrative Memory | 动态事实、时间线、伏笔、角色弧线和召回诊断 |
-| 正式章节结果 | Formal Chapter Result | AI 生成并保存的章节正文结果 |
+| 叙事记忆 | Narrative Memory | 动态事实、时间线、伏笔、角色弧线和召回诊断；剧情线状态卡按主体聚合当前状态 |
+| 写作技能 | Writing Skills | 内置 377 个自研技能（nf- 编号，十类方法论），可组合启用（文风/节奏/钩子/平台），物化后由叙述者加载、带 checks 的按规则写后合规校验 |
+| 正式章节结果 | Formal Chapter Result | 叙述者提交正文、pipeline.write 校验落盘的章节结果 |
+| 三层闭环 | Knowledge Loop | 写前查经纬+记忆+技能 → 写后结算沉淀 → 下次再查，循环治愈长篇遗忘 |
 | 确认门 | Confirmation Gate | 写入正式资源前的审批机制 |
 | PGI | Pre-Generation Interview | 生成前追问 |
 | 套路 | Routines | Agent 行为规则集（命令/工具/权限/提示词/MCP） |
-| 管线 | Pipeline | 多 Agent 协作的执行流程 |
-| 预设 | Presets | 写作规则（53 条内置，覆盖去AI味/文风/流派等） |
-| 节拍 | Beats | 故事结构模板（5 个内置模板） |
+| 管线 | Pipeline | Runtime Agent 单环驱动的写作流程（蓝图与正文由 Agent 提交，工具校验落盘） |
+| 投稿风险自检 | Submission Risk Check | 敏感词/AI 味/格式/连续性证据化汇总，只供人工复核 |
 | 子代理 | Subagent | 独立执行子任务的 Agent（explore/plan/general/fork） |
 
 ---

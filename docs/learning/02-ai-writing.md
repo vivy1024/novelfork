@@ -20,7 +20,7 @@ routes:
 
 **写作预设**：已由 Writing Skills 统一取代，不再单独维护预设条目。
 
-**Writing Skills**：不是独立注入概念，就是一个技能市场加落盘。启用后物化到作品目录 `.novelfork/skills/<slug>/SKILL.md`，Runtime 自动扫描，叙述者按普通 Skill 读取。写章前由同一 Runtime 会话先调用 Skill 工具读取相关技能；写后按技能规则硬校验（`writing-skills.check_compliance`）。
+**Writing Skills**：不是独立注入概念，就是技能落盘加生效证据。NovelFork 内置 377 个自研技能（nf- 编号，覆盖开篇/节奏/人物/情节/文笔/审校/平台/包装/调研/流程十类），启用后物化到作品目录 `.novelfork/skills/<slug>/SKILL.md`（含 references 附件），Runtime 自动扫描，叙述者按普通 Skill 读取。写章前由同一 Runtime 会话先调用 Skill 工具读取相关技能；写后按技能规则硬校验（`writing-skills.check_compliance`）。带 `checks` 声明的技能（去AI味、元信息扫描、章末钩子等）可被机器逐条校验，其余方法论文本由 Agent 按技能执行。
 
 **节拍模板**：已由 Writing Skills 取代；旧数据可用 `writing-skills.import_legacy` 迁移。
 
