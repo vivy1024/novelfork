@@ -1293,7 +1293,7 @@ export function NarrativeMemoryPanelShell({
   const runBulk = useCallback(async (action: "approve" | "delete") => {
     const ids = selectableEvents
       .map((event) => event.id)
-      .filter((id): id is string => Boolean(id) && selectedEventIds.has(id));
+      .filter((id): id is string => id != null && selectedEventIds.has(id));
     if (ids.length === 0) return;
     setBulkLoading(action);
     setBulkError(null);
