@@ -27,11 +27,40 @@ function Providers({ children }: { children: ReactNode }) {
 const projectEnabled: Record<string, string[]> = {};
 /** 记录 PUT 文件操作，验证不会把旧项目的 Skill 带进新书。 */
 const putCalls: Array<{ bookId: string; body: Record<string, string[]> }> = [];
+const requestCalls: Array<{ url: string; method: string; body?: unknown }> = [];
 
 const SKILLS = [
   { id: "skill-a", slug: "a", name: "技能A", description: "d", kind: "opening", source: "builtin", editable: false },
-  { id: "skill-b", slug: "b", name: "技能B", description: "d", kind: "pacing", source: "builtin", editable: false },
+  {
+    id: "skill-b",
+    slug: "b",
+    name: "技能B",
+    description: "d",
+    kind: "pacing",
+    source: "builtin",
+    editable: false,
+    provenance: {
+      repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills",
+      license: "MIT",
+    },
+  },
 ];
+const PROJECT_ONLY_SKILL = {
+  id: "project-only",
+  slug: "project-only",
+  name: "项目额外技能",
+  description: "d",
+  kind: "prose",
+  source: "project",
+  editable: true,
+  body: "项目技能正文",
+  content: "---\nname: 项目额外技能\ndescription: d\n---\n\n项目技能正文",
+  provenance: {
+    repo: "https://github.com/lornshrimp/Lorn.NovelWriteSkills",
+    license: "MIT",
+  },
+};
+const PROJECT_SKILLS = [...SKILLS, PROJECT_ONLY_SKILL];
 
 function jsonResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -43,13 +72,27 @@ function jsonResponse(body: unknown): Response {
 beforeEach(async () => {
   for (const key of Object.keys(projectEnabled)) delete projectEnabled[key];
   putCalls.length = 0;
+  requestCalls.length = 0;
   testQueryClient.clear();
 
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : input.url;
+    const method = (init?.method ?? "GET").toUpperCase();
+    const parsedBody = typeof init?.body === "string" ? JSON.parse(init.body) as unknown : undefined;
+    requestCalls.push({ url, method, ...(parsedBody === undefined ? {} : { body: parsedBody }) });
+    const projectSkillMatch = url.match(/\/api\/books\/([^/]+)\/writing-skills\/([^/]+)$/u);
+    if (projectSkillMatch && method === "PUT") {
+      return jsonResponse({ ok: true, skill: { ...PROJECT_ONLY_SKILL, content: (parsedBody as { content?: string })?.content } });
+    }
+    if (projectSkillMatch && method === "DELETE") {
+      projectEnabled[projectSkillMatch[1]!] = (projectEnabled[projectSkillMatch[1]!] ?? [])
+        .filter((slug) => slug !== decodeURIComponent(projectSkillMatch[2]!));
+      return jsonResponse({ ok: true });
+    }
+
     const bookMatch = url.match(/\/api\/books\/([^/]+)\/writing-skills$/u);
 
-    if (bookMatch && (init?.method ?? "GET").toUpperCase() === "PUT") {
+    if (bookMatch && method === "PUT") {
       const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, string[]>;
       const current = new Set(projectEnabled[bookMatch[1]!] ?? []);
       for (const id of body.addSkillIds ?? []) {
@@ -65,7 +108,13 @@ beforeEach(async () => {
       return jsonResponse({ ok: true, projectSkillSlugs: [...current] });
     }
     if (bookMatch) {
-      return jsonResponse({ projectSkillSlugs: projectEnabled[bookMatch[1]!] ?? [] });
+      const projectSlugs = projectEnabled[bookMatch[1]!] ?? [];
+      return jsonResponse({
+        projectSkillSlugs: projectSlugs,
+        skills: projectSlugs
+          .map((slug) => PROJECT_SKILLS.find((skill) => skill.slug === slug))
+          .filter(Boolean),
+      });
     }
     if (url.endsWith("/api/writing-skills")) {
       return jsonResponse({ skills: SKILLS });
@@ -114,6 +163,86 @@ describe("WritingSkillsPanel 的作用域文案", () => {
 
     view.rerender(<WritingSkillsPanel bookId="book-b" />);
     await waitFor(() => expect(screen.getByTestId("writing-skills-scope-hint").textContent).toContain("当前目录已发现 1 个"));
+  });
+});
+
+describe("WritingSkillsPanel 的出处与作用范围", () => {
+  it("使用 NovelFork 原生与上游出处命名", async () => {
+    const { sourceLabel } = await import("./WritingSkillsPanel");
+
+    expect(sourceLabel("novelfork")).toBe("NovelFork 原生");
+    expect(sourceLabel("lornshrimp/Lorn.NovelWriteSkills"))
+      .toBe("上游 · lornshrimp/Lorn.NovelWriteSkills");
+  });
+
+  it("不把当前作品额外技能计入全局出处统计", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
+
+    projectEnabled["book-c"] = ["project-only"];
+    render(<WritingSkillsPanel bookId="book-c" />, { wrapper: Providers });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("writing-skills-scope-filter").textContent)
+        .toContain("全部 3");
+    });
+    expect(screen.getByTestId("writing-skills-scope-filter").textContent)
+      .toContain("全局技能库 2");
+    expect(screen.getByTestId("writing-skills-scope-filter").textContent)
+      .toContain("当前作品额外 1");
+    expect(screen.getByRole("button", {
+      name: "上游 · lornshrimp/Lorn.NovelWriteSkills 1",
+    })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "当前作品额外 1" }));
+    await waitFor(() => expect(screen.getByText("项目额外技能")).toBeTruthy());
+    expect(screen.getByText("当前作品")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "全局技能库 2" }));
+    await waitFor(() => expect(screen.queryByText("项目额外技能")).toBeNull());
+  });
+
+  it("编辑项目独有技能时只写当前作品接口", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
+
+    projectEnabled["book-c"] = ["project-only"];
+    render(<WritingSkillsPanel bookId="book-c" />, { wrapper: Providers });
+    await waitFor(() => expect(screen.getByText("项目额外技能")).toBeTruthy());
+
+    fireEvent.click(screen.getByRole("button", { name: "编辑写作技能 项目额外技能" }));
+    const editor = await screen.findByLabelText("写作技能正文");
+    fireEvent.change(editor, { target: { value: PROJECT_ONLY_SKILL.content.replace("项目技能正文", "当前作品已更新") } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(requestCalls.some((call) => (
+      call.method === "PUT" && call.url.endsWith("/api/books/book-c/writing-skills/project-only")
+    ))).toBe(true));
+    expect(requestCalls.some((call) => (
+      call.method === "PUT" && call.url.endsWith("/api/writing-skills/project-only")
+    ))).toBe(false);
+    expect(requestCalls.some((call) => (
+      call.method === "PUT"
+      && call.url.endsWith("/api/books/book-c/writing-skills/project-only")
+      && (call.body as { content?: string })?.content?.includes("当前作品已更新")
+    ))).toBe(true);
+  });
+
+  it("关闭项目独有技能时删除当前作品文件而不是发送 catalog ID", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WritingSkillsPanel } = await import("./WritingSkillsPanel");
+
+    projectEnabled["book-c"] = ["project-only"];
+    const view = render(<WritingSkillsPanel bookId="book-c" />, { wrapper: Providers });
+    await waitFor(() => expect(screen.getByText("项目额外技能")).toBeTruthy());
+    const toggle = view.container.querySelector('[role="switch"][aria-label="启用写作技能 项目额外技能"]');
+    expect(toggle).toBeTruthy();
+    fireEvent.click(toggle as Element);
+
+    await waitFor(() => expect(requestCalls.some((call) => (
+      call.method === "DELETE" && call.url.endsWith("/api/books/book-c/writing-skills/project-only")
+    ))).toBe(true));
+    expect(putCalls).toEqual([]);
   });
 });
 

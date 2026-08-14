@@ -4,6 +4,8 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
+  handleProjectWritingSkillDelete,
+  handleProjectWritingSkillUpdate,
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsRead,
   handleWritingSkillsWrite,
@@ -74,6 +76,35 @@ describe("writing skill handlers use project disk state", () => {
       expect(await exists(join(bookRoot, ".novelfork", "skills", "handler-skill"))).toBe(false);
       const savedBook = JSON.parse(await readFile(join(bookRoot, "book.json"), "utf8")) as Record<string, unknown>;
       expect(savedBook).not.toHaveProperty("enabledWritingSkillIds");
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("项目独有技能通过项目处理器更新和删除，不写作者全局目录", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-project-only-handler-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-project-only";
+    const slug = "project-only";
+    const projectDir = join(bookRoot, ".novelfork", "skills", slug);
+    try {
+      await setupBook(bookRoot, bookId, { title: "项目独有技能测试" });
+      await mkdir(projectDir, { recursive: true });
+      await writeFile(join(projectDir, "SKILL.md"), skillContent(slug, "项目独有技能"), "utf8");
+
+      const content = skillContent(slug, "项目独有技能（已更新）").replace("迁移正文。", "当前作品正文。");
+      const updated = await handleProjectWritingSkillUpdate(
+        { bookId, slug, content },
+        { bookRoot, home },
+      );
+      expect(updated.ok).toBe(true);
+      expect(await readFile(join(projectDir, "SKILL.md"), "utf8")).toBe(content);
+      expect(await exists(join(home, ".novelfork", "skills", slug, "SKILL.md"))).toBe(false);
+
+      const deleted = await handleProjectWritingSkillDelete({ bookId, slug }, { bookRoot, home });
+      expect(deleted.ok).toBe(true);
+      expect(await exists(projectDir)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

@@ -146,7 +146,18 @@ export function mapRuntimeWorkspaceToWorkbenchNodes(
     id: `book:${book.id}`,
     kind: "book",
     title: book.title,
-    metadata: { bookId, status: book.status },
+    // 画布状态栏通过 metadata.book.chapterWordCount 读取作者配置的单章目标字数，
+    // 之前这里只塞 bookId/status，导致编辑器目标字数恒显示"未设置"。
+    metadata: {
+      bookId,
+      status: book.status,
+      book: {
+        id: book.id,
+        title: book.title,
+        ...(typeof book.chapterWordCount === "number" ? { chapterWordCount: book.chapterWordCount } : {}),
+        ...(book.language === "zh" || book.language === "en" ? { language: book.language } : {}),
+      },
+    },
     capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
     children: fileTree,
   }];

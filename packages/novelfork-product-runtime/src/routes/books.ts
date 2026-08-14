@@ -1,5 +1,7 @@
 import { ValidationError } from "@vivy1024/narrafork-runtime-bridge";
 import {
+	handleProjectWritingSkillDelete,
+	handleProjectWritingSkillUpdate,
 	handleWritingSkillsRead,
 	handleWritingSkillsWrite,
 } from "../../../novel-plugin/src/handlers/writing-skill-handlers";
@@ -67,6 +69,10 @@ const writingSkillSelectionSchema = z
 		removeSkillIds: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
 		refreshSkillIds: z.array(z.string().trim().min(1).max(200)).max(200).optional(),
 	})
+	.strict();
+
+const projectWritingSkillUpdateSchema = z
+	.object({ content: z.string().min(1).max(2_000_000) })
 	.strict();
 
 const bookImportSchema = z
@@ -266,6 +272,28 @@ bookDomainRoutes.put("/writing-skills", async (c) => {
 			...(parsed.data.removeSkillIds === undefined ? {} : { removeSkillIds: parsed.data.removeSkillIds }),
 			...(parsed.data.refreshSkillIds === undefined ? {} : { refreshSkillIds: parsed.data.refreshSkillIds }),
 		},
+		{ bookRoot: root },
+	);
+	return c.json(handlerData(result));
+});
+
+bookDomainRoutes.put("/writing-skills/:slug", async (c) => {
+	const parsed = projectWritingSkillUpdateSchema.safeParse(await c.req.json().catch(() => ({})));
+	if (!parsed.success) throw new ValidationError(parsed.error.message);
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const result = await handleProjectWritingSkillUpdate(
+		{ bookId, slug: requiredParam(c, "slug"), content: parsed.data.content },
+		{ bookRoot: root },
+	);
+	return c.json(handlerData(result));
+});
+
+bookDomainRoutes.delete("/writing-skills/:slug", async (c) => {
+	const bookId = requiredParam(c, "bookId");
+	const { root } = await novelForkProductBookService.getTrustedBookConfiguration(bookId, actor(c));
+	const result = await handleProjectWritingSkillDelete(
+		{ bookId, slug: requiredParam(c, "slug") },
 		{ bookRoot: root },
 	);
 	return c.json(handlerData(result));

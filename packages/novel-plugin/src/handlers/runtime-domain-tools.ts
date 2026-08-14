@@ -171,6 +171,22 @@ async function chapterAudit(
     if (!chapter.ok || !chapter.data) return fail(chapter.error ?? "chapter-not-found", chapter.summary);
     content = chapter.data.content;
   }
+  // 字数目标 fallback：调用者显式 wordTarget > book.json chapterWordCount > 审计默认值。
+  // 之前不读书配置，导致 book.json=2000 的书也会被硬编码 3000 误报字数不足。
+  let bookWordTarget: number | undefined;
+  try {
+    const bookJson = JSON.parse(await readFile(join(binding.root, "book.json"), "utf8")) as { chapterWordCount?: unknown };
+    if (
+      typeof bookJson.chapterWordCount === "number"
+      && Number.isSafeInteger(bookJson.chapterWordCount)
+      && bookJson.chapterWordCount > 0
+    ) {
+      bookWordTarget = bookJson.chapterWordCount;
+    }
+  } catch {
+    // book.json 缺失/损坏不阻断审计，交回默认值
+  }
+  const effectiveWordTarget = typeof input.wordTarget === "number" ? input.wordTarget : bookWordTarget;
   const audit = handleChapterAuditV2({
     bookId: binding.bookId,
     chapterNumber,
@@ -178,7 +194,7 @@ async function chapterAudit(
     ...(record(input.sceneSpec) ? { sceneSpec: input.sceneSpec as never } : {}),
     ...(Array.isArray(input.canonEntries) ? { canonEntries: input.canonEntries as never } : {}),
     ...(typeof input.povCharacter === "string" ? { povCharacter: input.povCharacter } : {}),
-    ...(typeof input.wordTarget === "number" ? { wordTarget: input.wordTarget } : {}),
+    ...(typeof effectiveWordTarget === "number" ? { wordTarget: effectiveWordTarget } : {}),
     ...(Array.isArray(input.checks) ? { checks: stringArray(input.checks) } : {}),
   });
   return ok(audit.summary, audit);

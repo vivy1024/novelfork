@@ -296,6 +296,8 @@ export type {
 
 export { handlePgiAsk } from "./pgi-ask-handler.js";
 export {
+  handleProjectWritingSkillDelete,
+  handleProjectWritingSkillUpdate,
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsImportLegacy,
   handleWritingSkillsRead,
@@ -305,6 +307,8 @@ export {
 } from "./writing-skill-handlers.js";
 export type {
   LegacyWritingSkillsImportReport,
+  ProjectWritingSkillDeleteInput,
+  ProjectWritingSkillUpdateInput,
   TrustedWritingSkillOptions,
   WritingSkillComplianceViolation,
   WritingSkillProjectReport,

@@ -4,6 +4,7 @@ import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2,
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
+import type { NarrativeMemoryView } from "./narrative-memory-graph-model";
 // 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
   bulkMutatePendingEvents,
@@ -201,6 +202,14 @@ const APPROVALS_PAGE_SIZE = 50;
 const SEARCH_PAGE_SIZE = 30;
 
 const GRAPH_VIEWS = new Set<MemoryViewLabel>(["关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]);
+
+const GRAPH_VIEW_BY_LABEL: Partial<Record<MemoryViewLabel, NarrativeMemoryView>> = {
+  "关系图": "relationship",
+  "时间线": "timeline",
+  "角色弧线": "character_arc",
+  "矛盾地图": "conflict",
+  "事件链": "event_chain",
+};
 
 const CATEGORY_LABELS: Record<string, string> = {
   character_state: "角色状态",
@@ -1366,7 +1375,11 @@ export function NarrativeMemoryPanelShell({
               kind: "file",
               title: "叙事记忆图谱",
               capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-              metadata: { isNarrativeMemoryEntry: true, isNarrativeMemoryGraph: true, preferredView: activeView },
+              metadata: {
+                isNarrativeMemoryEntry: true,
+                isNarrativeMemoryGraph: true,
+                preferredView: GRAPH_VIEW_BY_LABEL[activeView] ?? "relationship",
+              },
             })}
             className="flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-center text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
           >

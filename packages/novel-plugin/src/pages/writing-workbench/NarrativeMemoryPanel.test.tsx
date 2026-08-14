@@ -41,6 +41,28 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).not.toContain("存储概览");
   });
 
+  it("opens graph views with the API view id expected by the independent page", () => {
+    const onOpen = vi.fn();
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        onOpen={onOpen}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "时间线" }));
+    fireEvent.click(screen.getByRole("button", { name: "打开 时间线" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
+      id: "narrative-memory-graph",
+      metadata: expect.objectContaining({ preferredView: "timeline" }),
+    }));
+  });
+
   it("shows story status, settlement history, and pending review actions", () => {
     const html = renderToStaticMarkup(
       <NarrativeMemoryPanelShell

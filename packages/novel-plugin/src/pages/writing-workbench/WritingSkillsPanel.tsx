@@ -95,29 +95,27 @@ export function repoLabel(repo: string): string {
 // Component
 // ---------------------------------------------------------------------------
 
-/** 自研内容所在分区的标识。 */
+/** NovelFork 原生技能的出处标识。 */
 export const OWN_SOURCE_KEY = "novelfork";
 
-/** 一条 skill 归哪个来源分区。自研的没有 provenance。 */
+/** 技能的出处归属；项目范围由 WritingSkillScope 单独表达。 */
 export function sourceKeyOf(skill: WritingSkillItem): string {
   return skill.provenance ? repoLabel(skill.provenance.repo) : OWN_SOURCE_KEY;
 }
 
-/** 分区标题：自研显示产品名，外部显示 owner/repo。 */
+/** 出处标题：原生内容与上游仓库明确区分。 */
 export function sourceLabel(key: string): string {
-  return key === OWN_SOURCE_KEY ? "NovelFork 自带" : key;
+  return key === OWN_SOURCE_KEY ? "NovelFork 原生" : `上游 · ${key}`;
 }
 
 /**
- * 一个来源分区。
+ * 一个出处分区。
  *
- * 分区与筛选是**两个平行的全局维度**，不是嵌套关系：
+ * 出处和作用范围是**两个平行维度**：
  *
- * - 「按来源浏览」：看某个仓库有什么，仓库是陈列单位
- * - 「按分类/题材/搜索」：在全部 skill 里找，跨仓库聚合
- *
- * 两者各自独立生效 —— 不选来源时筛选作用于全部 377 个；
- * 选了来源时分区视图本身就是结果，不需要再叠一层来源条件。
+ * - 「按出处浏览」：只统计全局 catalog 的原生/上游归属
+ * - 「按作用范围浏览」：区分全局技能库与当前作品额外技能
+ * - 「按分类/题材/搜索」：在当前作用范围内继续缩小结果
  */
 export interface SourceSection {
   readonly key: string;
@@ -176,6 +174,8 @@ export function genreOf(skill: WritingSkillItem): string | null {
   for (const tag of skill.tags ?? []) if (GENRE_TAGS.has(tag)) return tag;
   return null;
 }
+
+export type WritingSkillScope = "all" | "global" | "project";
 
 export interface WritingSkillFilters {
   readonly kind?: string | null;
@@ -333,6 +333,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const [projectSlugs, setProjectSlugs] = useState<string[]>([]);
   const [filterKind, setFilterKind] = useState<string | null>(null);
   const [filterSource, setFilterSource] = useState<string | null>(null);
+  const [filterScope, setFilterScope] = useState<WritingSkillScope>("all");
   const [filterGenre, setFilterGenre] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [viewing, setViewing] = useState<WritingSkillItem | null>(null);
@@ -340,7 +341,7 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
-  /** 列表分页：377 个技能一次全渲染会卡，默认先出 40 个。 */
+  /** 列表分页：全局 catalog 与当前作品额外技能合计可能超过 400 个，默认先出 40 个。 */
   const PAGE_SIZE = 40;
   const [displayCount, setDisplayCount] = useState(PAGE_SIZE);
 
@@ -364,14 +365,23 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       ? [...new Set([...projectSlugs, skillSlug])]
       : projectSlugs.filter((slug) => slug !== skillSlug);
     setProjectSlugs(nextSlugs);
+    setNotice(null);
     try {
       if (!skill) throw new Error("找不到要操作的 Writing Skill。");
-      await putApi(`/books/${bookId}/writing-skills`, enabled
-        ? { addSkillIds: [skill.id] }
-        : { removeSkillIds: [skill.id] });
+      if (skill.source === "project") {
+        if (enabled) throw new Error("项目独有技能只能由当前作品目录提供。");
+        await fetchJson(`/books/${bookId}/writing-skills/${encodeURIComponent(skill.slug)}`, {
+          method: "DELETE",
+        });
+      } else {
+        await putApi(`/books/${bookId}/writing-skills`, enabled
+          ? { addSkillIds: [skill.id] }
+          : { removeSkillIds: [skill.id] });
+      }
       refetchBook?.();
-    } catch {
+    } catch (toggleError) {
       setProjectSlugs(previous);
+      setNotice(toggleError instanceof Error ? toggleError.message : String(toggleError));
     }
   }
 
@@ -433,19 +443,27 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
     setBusy(true);
     setNotice(null);
     try {
-      await putApi(`/writing-skills/${encodeURIComponent(viewing.slug)}`, {
-        content: draft,
-      });
-      // 作者副本保存后，已存在的当前项目文件立即刷新；未进入项目的 Skill 不提前物化。
-      if (projectSlugs.includes(viewing.slug)) {
-        await putApi(`/books/${bookId}/writing-skills`, {
-          refreshSkillIds: [viewing.id],
+      if (viewing.source === "project") {
+        await putApi(`/books/${bookId}/writing-skills/${encodeURIComponent(viewing.slug)}`, {
+          content: draft,
         });
+        setNotice("已保存到当前作品的 .novelfork/skills/，不会影响其它作品。");
+        refetchBook?.();
+      } else {
+        await putApi(`/writing-skills/${encodeURIComponent(viewing.slug)}`, {
+          content: draft,
+        });
+        // 作者副本保存后，已存在的当前项目文件立即刷新；未进入项目的 Skill 不提前物化。
+        if (projectSlugs.includes(viewing.slug)) {
+          await putApi(`/books/${bookId}/writing-skills`, {
+            refreshSkillIds: [viewing.id],
+          });
+        }
+        setNotice("已保存到我的写作技能；当前项目文件已同步。");
+        refetch?.();
+        refetchBook?.();
       }
-      setNotice("已保存到我的写作技能；当前项目文件已同步。");
       setEditing(false);
-      refetch?.();
-      refetchBook?.();
     } catch (saveError) {
       setNotice(saveError instanceof Error ? saveError.message : String(saveError));
     } finally {
@@ -478,16 +496,22 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   }
 
   const catalogSkills = data?.skills ?? [];
-  const projectOnlySkills = (bookWritingSkills?.skills ?? []).filter((skill) => skill.source === "project");
-  const skills = [...catalogSkills, ...projectOnlySkills.filter(
-    (projectSkill) => !catalogSkills.some((catalogSkill) => catalogSkill.slug === projectSkill.slug),
-  )];
-  const sections = groupBySource(skills);
-  // 分区与筛选平行：进了分区就在该分区里筛，没进就在全部里筛。
-  // 切分区不清筛选条件 —— 作者可能想在另一个仓库里看同一类写作技能。
+  const projectOnlySkills = (bookWritingSkills?.skills ?? []).filter(
+    (skill) => skill.source === "project"
+      && !catalogSkills.some((catalogSkill) => catalogSkill.slug === skill.slug),
+  );
+  const skills = [...catalogSkills, ...projectOnlySkills];
+  // 出处统计只基于全局 catalog，项目-only 技能通过作用范围单独浏览。
+  const sourceSections = groupBySource(catalogSkills);
+  const scopedSkills = filterScope === "global"
+    ? catalogSkills
+    : filterScope === "project"
+      ? projectOnlySkills
+      : skills;
+  // 选择出处时自动进入全局范围，避免项目副本再次污染出处统计。
   const scope = filterSource
-    ? (sections.find((s) => s.key === filterSource)?.skills ?? [])
-    : skills;
+    ? catalogSkills.filter((skill) => sourceKeyOf(skill) === filterSource)
+    : scopedSkills;
   const kinds = [...new Set(scope.map((s) => s.kind))];
   const genres = [...new Set(scope.map((s) => genreOf(s)).filter((g): g is string => g !== null))];
   const visible = applyWritingSkillFilters(scope, {
@@ -497,11 +521,26 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
   });
   const displayed = visible.slice(0, displayCount);
   const hasMore = visible.length > displayCount;
+  const scopeOptions: ReadonlyArray<{ key: WritingSkillScope; label: string; count: number }> = [
+    { key: "all", label: "全部", count: skills.length },
+    { key: "global", label: "全局技能库", count: catalogSkills.length },
+    { key: "project", label: "当前作品额外", count: projectOnlySkills.length },
+  ];
+
+  function handleScopeChange(nextScope: WritingSkillScope) {
+    setFilterScope(nextScope);
+    if (nextScope !== "global") setFilterSource(null);
+  }
+
+  function handleSourceChange(nextSource: string) {
+    setFilterScope("global");
+    setFilterSource((current) => current === nextSource ? null : nextSource);
+  }
 
   // 筛选条件变化时重置分页，避免旧 displayCount 把新结果截掉
   useEffect(() => {
     setDisplayCount(PAGE_SIZE);
-  }, [filterKind, filterGenre, filterSource, query]);
+  }, [filterKind, filterGenre, filterScope, filterSource, query]);
 
   if (loading) {
     return (
@@ -533,7 +572,8 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
       */}
       <p className="text-[10px] text-muted-foreground" data-testid="writing-skills-scope-hint">
         技能库与作者覆盖全局共享；<span className="text-foreground">项目文件只对当前作品生效</span>
-        （当前目录已发现 {projectSlugs.length} 个）。勾选会写入 <code>.novelfork/skills/</code>，取消会删除对应项目副本；编辑时自动 fork 到 ~/.novelfork/skills/。
+        （当前目录已发现 {projectSlugs.length} 个）。勾选会写入 <code>.novelfork/skills/</code>        ，取消会删除对应项目副本；项目额外技能原地编辑，技能库条目则 fork 到 ~/.novelfork/skills/。
+
       </p>
 
       {/* 搜索：几百个 skill 平铺翻不动，先给关键词 */}
@@ -549,9 +589,29 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
         <span className="text-[10px] text-muted-foreground shrink-0">{visible.length}</span>
       </div>
 
-      {/* 来源分区：按仓库陈列，与筛选各自独立生效 */}
-      {sections.length > 1 && (
-        <div className="flex flex-wrap gap-1" data-testid="writing-skills-source-filter">
+      {/* 作用范围：全局 catalog 与当前作品额外文件分开统计 */}
+      <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-scope-filter">
+        <span className="text-[10px] text-muted-foreground mr-1">范围</span>
+        {scopeOptions.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            onClick={() => handleScopeChange(option.key)}
+            className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
+              filterScope === option.key
+                ? "bg-primary text-primary-foreground border-primary"
+                : "border-border text-muted-foreground hover:bg-muted"
+            }`}
+          >
+            {option.label} {option.count}
+          </button>
+        ))}
+      </div>
+
+      {/* 出处：只按全局 catalog 统计，项目-only 技能通过上面的范围筛选浏览 */}
+      {sourceSections.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1" data-testid="writing-skills-source-filter">
+          <span className="text-[10px] text-muted-foreground mr-1">出处</span>
           <button
             type="button"
             onClick={() => setFilterSource(null)}
@@ -561,14 +621,14 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
                 : "border-border text-muted-foreground hover:bg-muted"
             }`}
           >
-            全部 {skills.length}
+            全部
           </button>
-          {sections.map((section) => (
+          {sourceSections.map((section) => (
             <button
               key={section.key}
               type="button"
               title={section.repoUrl ?? section.key}
-              onClick={() => setFilterSource(section.key === filterSource ? null : section.key)}
+              onClick={() => handleSourceChange(section.key)}
               className={`text-[10px] px-2 py-0.5 rounded-full border transition-colors ${
                 filterSource === section.key
                   ? "bg-primary text-primary-foreground border-primary"
@@ -652,6 +712,11 @@ export function WritingSkillsPanel({ bookId }: WritingSkillsPanelProps) {
                 {skill.source === "user" && (
                   <Badge variant="outline" className="text-[9px] h-4">
                     已自定义
+                  </Badge>
+                )}
+                {skill.source === "project" && (
+                  <Badge variant="outline" className="text-[9px] h-4">
+                    当前作品
                   </Badge>
                 )}
               </div>

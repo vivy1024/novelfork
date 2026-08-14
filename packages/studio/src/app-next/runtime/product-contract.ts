@@ -96,6 +96,10 @@ export interface RuntimeBookSummary {
   readonly status?: string;
   readonly totalChapters?: number;
   readonly totalWords?: number;
+  /** 作者配置的单章目标字数（book.json chapterWordCount），编辑器状态栏需要它显示目标与差额。 */
+  readonly chapterWordCount?: number;
+  /** 书籍正文语言，决定章节长度按中文字数还是英文单词数统计。 */
+  readonly language?: "zh" | "en";
   readonly updatedAt?: string;
   readonly capabilities: RuntimeEntityCapabilities;
 }
@@ -299,6 +303,14 @@ function mapBook(value: unknown): RuntimeBookSummary | null {
       : {}),
     ...(typeof record?.totalWords === "number"
       ? { totalWords: record.totalWords }
+      : {}),
+    ...(typeof record?.chapterWordCount === "number"
+      && Number.isFinite(record.chapterWordCount)
+      && record.chapterWordCount > 0
+      ? { chapterWordCount: record.chapterWordCount }
+      : {}),
+    ...(record?.language === "zh" || record?.language === "en"
+      ? { language: record.language }
       : {}),
     ...(asString(record?.updatedAt)
       ? { updatedAt: asString(record?.updatedAt) }

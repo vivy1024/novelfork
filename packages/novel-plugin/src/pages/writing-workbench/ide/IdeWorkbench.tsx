@@ -1242,6 +1242,7 @@ export function IdeWorkbench({
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
+                              onOpenEntityDetail={setEntityDetailEntity}
                             />
                           </div>
                         ))}
@@ -1260,6 +1261,7 @@ export function IdeWorkbench({
                         toolbarSlotRef={toolbarSlotRef}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
+                        onOpenEntityDetail={setEntityDetailEntity}
                       />
                     ) : (
                       <ViewEmptyState view={activeView} />
@@ -1298,6 +1300,7 @@ export function IdeWorkbench({
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
+                        onOpenEntityDetail={setEntityDetailEntity}
                       />
                     </div>
                   </div>
