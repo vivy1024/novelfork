@@ -22,6 +22,10 @@ async function createTempDbPath() {
 
 const migrationsSourceDir = fileURLToPath(new URL("../storage/migrations/", import.meta.url));
 
+function normalizeMigrationSql(sql: string): string {
+  return sql.replace(/\r\n?/gu, "\n");
+}
+
 async function copyMigrationsBefore0027(destinationDir: string) {
   await mkdir(destinationDir, { recursive: true });
   const migrationFiles = (await readdir(migrationsSourceDir))
@@ -155,7 +159,7 @@ describe("storage SQLite database", () => {
     const embeddedMigration = embeddedMigrations.find(
       (migration) => migration.name === "0027_jingwei_authority_consolidation.sql",
     );
-    expect(embeddedMigration?.sql).toBe(migrationSql);
+    expect(normalizeMigrationSql(embeddedMigration?.sql ?? "")).toBe(normalizeMigrationSql(migrationSql));
 
     const filesystemDatabasePath = await createTempDbPath();
     const filesystemStorage = createStorageDatabase({ databasePath: filesystemDatabasePath });

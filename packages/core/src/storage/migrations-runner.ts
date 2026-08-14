@@ -42,8 +42,25 @@ function ensureMigrationTable(storage: StorageDatabase): void {
   `);
 }
 
+function normalizeSql(sql: string): string {
+  return sql.replace(/\r\n?/gu, "\n");
+}
+
 function hashSql(sql: string): string {
+  return createHash("sha256").update(normalizeSql(sql)).digest("hex");
+}
+
+function hashRawSql(sql: string): string {
   return createHash("sha256").update(sql).digest("hex");
+}
+
+function equivalentSqlHashes(sql: string): ReadonlySet<string> {
+  const normalized = normalizeSql(sql);
+  return new Set([
+    hashSql(normalized),
+    hashRawSql(sql),
+    hashRawSql(normalized.replace(/\n/gu, "\r\n")),
+  ]);
 }
 
 function listMigrationFiles(migrationsDir: string): string[] {
@@ -88,15 +105,17 @@ export function runStorageMigrations(
     for (const file of migrationFiles) {
       const sql = readFileSync(join(migrationsDir, file), "utf8");
       const hash = hashSql(sql);
+      const equivalentHashes = equivalentSqlHashes(sql);
       const existingHash = appliedByName.get(file);
       if (existingHash) {
-        if (existingHash !== hash) {
+        if (!equivalentHashes.has(existingHash)) {
           throw new Error(`Storage migration ${file} changed after it was applied.`);
         }
+        appliedByHash.set(hash, file);
         continue;
       }
 
-      if (appliedByHash.has(hash)) continue;
+      if ([...equivalentHashes].some((candidate) => appliedByHash.has(candidate))) continue;
 
       applyMigration(file, sql, hash);
       applied.push(file);
@@ -105,15 +124,17 @@ export function runStorageMigrations(
     // Embedded fallback (compiled binary mode)
     for (const migration of embeddedMigrations) {
       const hash = hashSql(migration.sql);
+      const equivalentHashes = equivalentSqlHashes(migration.sql);
       const existingHash = appliedByName.get(migration.name);
       if (existingHash) {
-        if (existingHash !== hash) {
+        if (!equivalentHashes.has(existingHash)) {
           throw new Error(`Storage migration ${migration.name} changed after it was applied.`);
         }
+        appliedByHash.set(hash, migration.name);
         continue;
       }
 
-      if (appliedByHash.has(hash)) continue;
+      if ([...equivalentHashes].some((candidate) => appliedByHash.has(candidate))) continue;
 
       applyMigration(migration.name, migration.sql, hash);
       applied.push(migration.name);
