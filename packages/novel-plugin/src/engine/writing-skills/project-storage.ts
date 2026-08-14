@@ -165,6 +165,41 @@ export async function readProjectWritingSkillRaw(bookRoot: string, slug: string)
   return null;
 }
 
+/** 更新当前作品自己的 SKILL.md；附件目录保持不动。 */
+export async function writeProjectWritingSkillRaw(
+  bookRoot: string,
+  slug: string,
+  content: string,
+): Promise<ParsedWritingSkill> {
+  const canonicalFile = projectWritingSkillFile(bookRoot, slug);
+  if (!canonicalFile) throw new Error("Writing Skill slug 不合法。");
+  const parsed = parseWritingSkill(content, slug, "project");
+  if (!parsed) {
+    throw new Error("SKILL.md 格式不合法：必须包含完整 frontmatter 与非空正文。");
+  }
+  if (!(await pathIsFile(canonicalFile))) {
+    throw new Error(`当前作品中不存在 Writing Skill「${slug}」。`);
+  }
+  await writeFile(canonicalFile, content, "utf8");
+  return parsed;
+}
+
+/** 删除当前作品自己的 Skill 目录；不会触碰全局 catalog 或作者副本。 */
+export async function removeProjectWritingSkill(bookRoot: string, slug: string): Promise<boolean> {
+  const canonicalDir = projectWritingSkillDir(bookRoot, slug);
+  const legacyDir = legacyProjectWritingSkillDir(bookRoot, slug);
+  const canonicalFile = projectWritingSkillFile(bookRoot, slug);
+  const legacyFile = legacyProjectWritingSkillFile(bookRoot, slug);
+  if (!canonicalDir || !legacyDir || !canonicalFile || !legacyFile) {
+    throw new Error("Writing Skill slug 不合法。");
+  }
+  const exists = await pathIsFile(canonicalFile) || await pathIsFile(legacyFile);
+  if (!exists) return false;
+  await removeSkillDir(canonicalDir);
+  await removeSkillDir(legacyDir);
+  return true;
+}
+
 /**
  * 用项目副本覆盖 catalog skill 的正文与项目级声明；项目文件是实际生效内容。
  * catalog 仅提供没有项目副本时的可用候选和元数据。

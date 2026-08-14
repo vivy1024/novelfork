@@ -4,6 +4,11 @@ import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 import { useEffect, useRef, useState, useCallback } from "react";
 import type { Editor } from "@tiptap/react";
+import {
+  countChapterLength,
+  resolveLengthCountingMode,
+  type LengthLanguage,
+} from "@vivy1024/novelfork-core/utils/length-metrics";
 import { Loader2 } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { SearchExtension } from "../ide/SearchExtension";
@@ -163,11 +168,8 @@ function cleanWhitespace(str: string): string {
   return (str || "").replace(/\r\n/g, "\n").trim();
 }
 
-function countWords(text: string): number {
-  if (!text) return 0;
-  const chineseChars = text.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
-  const englishWords = text.replace(/[\u4e00-\u9fa5]/g, " ").match(/[a-zA-Z0-9_-]+/g)?.length ?? 0;
-  return chineseChars + englishWords;
+function countWords(text: string, language: LengthLanguage): number {
+  return countChapterLength(text, resolveLengthCountingMode(language));
 }
 
 // ---------------------------------------------------------------------------
@@ -185,6 +187,8 @@ interface ChapterEditorProps {
   showMinimap?: boolean;
   /** 书籍 ID，用于 AI 浮动工具栏调用 inline-write API */
   bookId?: string;
+  /** 正文语言，决定长度按中文字符或英文单词统计。 */
+  language?: LengthLanguage;
 }
 
 export function ChapterEditor({
@@ -195,10 +199,13 @@ export function ChapterEditor({
   ariaLabel = "章节正文",
   showMinimap = true,
   bookId,
+  language = "zh",
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
   const [searchMode, setSearchMode] = useState<"search" | "replace" | null>(null);
   const isExternalUpdate = useRef(false);
+  const languageRef = useRef(language);
+  languageRef.current = language;
 
   // Task B: Minimap 需要的 ref
   const editorRef = useRef<HTMLDivElement>(null);
@@ -231,9 +238,9 @@ export function ChapterEditor({
       // Update word count and surface content changes immediately so the
       // containing canvas can mark the resource dirty without waiting for an
       // autosave debounce.
-      const text = ed.getText();
-      setWordCount(countWords(text));
-      onContentChange?.(ed.storage.markdown.getMarkdown() as string);
+      const markdown = ed.storage.markdown.getMarkdown() as string;
+      setWordCount(countWords(markdown, languageRef.current));
+      onContentChange?.(markdown);
     },
   });
 
@@ -256,16 +263,16 @@ export function ChapterEditor({
       isExternalUpdate.current = true;
       editor.commands.setContent(content || "");
       isExternalUpdate.current = false;
-      setWordCount(countWords(editor.getText()));
+      setWordCount(countWords(content, language));
     }
-  }, [editor, content]);
+  }, [editor, content, language]);
 
-  // Initial word count
+  // Initial word count and language changes both use the original Markdown source.
   useEffect(() => {
     if (editor) {
-      setWordCount(countWords(editor.getText()));
+      setWordCount(countWords(content, language));
     }
-  }, [editor]);
+  }, [editor, content, language]);
 
   // Ctrl+F / Ctrl+H keyboard shortcuts
   const handleKeyDown = useCallback(
@@ -322,7 +329,7 @@ export function ChapterEditor({
 
       {/* Footer: word count */}
       <div className="flex items-center justify-between px-3 py-1.5 border-t border-border text-[11px] text-muted-foreground">
-        <span>{wordCount} 字</span>
+        <span>{wordCount} {language === "en" ? "words" : "字"}</span>
       </div>
     </div>
   );

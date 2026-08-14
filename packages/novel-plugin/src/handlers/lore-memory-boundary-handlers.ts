@@ -37,7 +37,7 @@ export interface MemoryGraphInput {
   bookId: string;
   view: "relationship" | "timeline" | "character_arc" | "foreshadowing" | "conflict" | "event_chain" | "wave";
   focusEntity?: string;
-  chapterRange?: [number, number];
+  chapterRange?: readonly [number | undefined, number | undefined] | readonly number[];
 }
 
 export interface MemoryEventsInput {
@@ -151,10 +151,18 @@ function graphFactCategories(view: MemoryGraphInput["view"]): Set<string> | unde
   }
 }
 
-function withinChapterRange(chapterNumber: unknown, range?: readonly number[]): boolean {
-  if (!range || range.length < 2) return true;
+function withinChapterRange(
+  chapterNumber: unknown,
+  range?: readonly (number | undefined)[],
+): boolean {
+  if (!range) return true;
+  const from = typeof range[0] === "number" && Number.isFinite(range[0]) ? range[0] : undefined;
+  const to = typeof range[1] === "number" && Number.isFinite(range[1]) ? range[1] : undefined;
+  if (from === undefined && to === undefined) return true;
   const value = typeof chapterNumber === "number" ? chapterNumber : Number(chapterNumber);
-  return Number.isFinite(value) && value >= Number(range[0]) && value <= Number(range[1]);
+  return Number.isFinite(value)
+    && (from === undefined || value >= from)
+    && (to === undefined || value <= to);
 }
 
 function matchesFocus(event: Record<string, unknown>, focusEntity?: string): boolean {
@@ -176,7 +184,7 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
   const factCategoryFilter = graphFactCategories(input.view);
   const facts = queryNarrativeFacts(storage, { bookId, entities, limit: 200 })
     .filter((fact) => !factCategoryFilter || factCategoryFilter.has(fact.category))
-    .filter((fact) => withinChapterRange(fact.sourceChapter, input.chapterRange));
+    .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange));
   const allEvents = storage.sqlite.prepare(`
     SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
            evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt

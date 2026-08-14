@@ -31,6 +31,7 @@ export interface ResourceViewerRenderOptions {
   onContentChange?: (content: string) => void;
   onTabComplete?: (currentContent: string, cursorPosition: number) => Promise<string | null>;
   bookId?: string;
+  language?: "zh" | "en";
 }
 
 export interface ResourceViewerDefinition {
@@ -92,6 +93,7 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
         ariaLabel={editableLabels[node.kind] ?? "资源正文"}
         bookId={options.bookId}
+        language={options.language}
       />
     </ViewerShell>
   );
@@ -917,6 +919,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en" }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language })}</>;
 }

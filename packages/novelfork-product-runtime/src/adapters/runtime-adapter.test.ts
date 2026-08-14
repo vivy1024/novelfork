@@ -61,6 +61,8 @@ const CANONICAL_READY_TOOL_NAMES = [
   "pipeline.write",
   "lore.read",
   "lore.write",
+  "lore.relate",
+  "lore.progress",
   "memory.read",
   "memory.graph",
   "memory.events",

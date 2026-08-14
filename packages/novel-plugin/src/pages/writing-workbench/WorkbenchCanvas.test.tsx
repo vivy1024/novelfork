@@ -1,6 +1,14 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
+  NarrativeMemoryGraphWorkspace: ({ initialView, onOpenEntityDetail }: { initialView?: string; onOpenEntityDetail?: (entity: string) => void }) => (
+    <button type="button" data-testid="mock-narrative-memory-graph" onClick={() => onOpenEntityDetail?.("薛行之")}>
+      {initialView}
+    </button>
+  ),
+}));
+
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -65,6 +73,84 @@ describe("WorkbenchCanvas", () => {
     expect(within(status).getByText("还差 6 字")).toBeTruthy();
   });
 
+  it("字数统计与服务端长度门禁同口径：中文标点计入字数", () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          metadata: { isChapter: true, chapterNumber: 1, wordTarget: 10 },
+          content: "他停了，然后。",
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    // 5 个汉字 + 2 个中文标点 = 7；旧实现只数汉字会显示 5，导致编辑器值低于落盘判定值。
+    const status = screen.getByTestId("chapter-status-bar");
+    expect(within(status).getByText(/正文 7 \/ 目标 10 字/)).toBeTruthy();
+  });
+
+  it("字数统计排除 Markdown 元数据与章节标题", () => {
+    render(
+      <WorkbenchCanvas
+        node={node({
+          metadata: { isChapter: true, chapterNumber: 1, wordTarget: 10 },
+          content: "---\ntitle: 第1章 归来\n---\n# 第1章 归来\n\n他停了，然后。",
+        })}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const status = screen.getByTestId("chapter-status-bar");
+    expect(within(status).getByText(/正文 7 \/ 目标 10 字/)).toBeTruthy();
+  });
+
+  it("英文书按单词统计并排除 frontmatter、标题与代码块", () => {
+    const bookNode: WorkbenchResourceNode = {
+      id: "book:en-1",
+      kind: "book",
+      title: "English Book",
+      capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: { bookId: "en-1", book: { id: "en-1", title: "English Book", chapterWordCount: 10, language: "en" } },
+    };
+    render(
+      <WorkbenchCanvas
+        node={node({
+          metadata: { isChapter: true, chapterNumber: 1 },
+          content: "---\ntitle: Chapter One\n---\n# Chapter One\n\nHello, brave new world.\n\n```txt\nignored code words\n```",
+        })}
+        nodes={[bookNode]}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const status = screen.getByTestId("chapter-status-bar");
+    expect(within(status).getByText(/正文 4 \/ 目标 10 words/)).toBeTruthy();
+    expect(within(status).getByText("还差 6 words")).toBeTruthy();
+    expect(screen.getByText("4 words")).toBeTruthy();
+  });
+
+  it("章节自身无 wordTarget 时回落到书配置 chapterWordCount", () => {
+    const bookNode: WorkbenchResourceNode = {
+      id: "book:b1",
+      kind: "book",
+      title: "测试书",
+      capabilities: { open: false, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+      metadata: { bookId: "b1", book: { id: "b1", title: "测试书", chapterWordCount: 3000 } },
+    };
+
+    render(
+      <WorkbenchCanvas
+        node={node({ metadata: { isChapter: true, chapterNumber: 1 }, content: "初始正文" })}
+        nodes={[bookNode]}
+        onSave={vi.fn()}
+      />,
+    );
+
+    const status = screen.getByTestId("chapter-status-bar");
+    expect(within(status).getByText(/目标 3,000 字/)).toBeTruthy();
+    expect(within(status).queryByText("未设置")).toBeNull();
+  });
+
   it("只读资源禁用编辑和保存", () => {
     const onSave = vi.fn();
     render(
@@ -109,6 +195,30 @@ describe("WorkbenchCanvas", () => {
     render(<WorkbenchCanvas node={null} onSave={vi.fn()} />);
 
     expect(screen.getByText("请先选择或创建一本作品")).toBeTruthy();
+  });
+
+  it("图谱资源透传初始视图并复用实体详情抽屉回调", async () => {
+    const onOpenEntityDetail = vi.fn();
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "narrative-memory-graph",
+          kind: "file",
+          title: "叙事记忆图谱",
+          content: undefined,
+          metadata: { preferredView: "wave" },
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+        bookId="book-1"
+        onSave={vi.fn()}
+        onOpenEntityDetail={onOpenEntityDetail}
+      />,
+    );
+
+    const graph = await screen.findByTestId("mock-narrative-memory-graph");
+    expect(graph.textContent).toBe("wave");
+    fireEvent.click(graph);
+    expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之");
   });
 
   it("保存失败时保持 dirty 并显示真实错误", async () => {

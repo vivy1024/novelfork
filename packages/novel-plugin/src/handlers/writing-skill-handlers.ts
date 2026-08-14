@@ -18,7 +18,9 @@ import {
   extractGeneralSkillReferences,
   loadProjectWritingSkills,
   readProjectWritingSkillRaw,
+  removeProjectWritingSkill,
   syncProjectWritingSkills,
+  writeProjectWritingSkillRaw,
 } from "../engine/writing-skills/project-storage.js";
 import {
   buildWritingSkillConstraintDigest,
@@ -53,6 +55,17 @@ export interface WritingSkillsWriteInput {
   readonly removeSkillIds?: readonly string[];
   /** 作者副本更新后，覆盖当前项目中已经存在的对应文件。 */
   readonly refreshSkillIds?: readonly string[];
+}
+
+export interface ProjectWritingSkillUpdateInput {
+  readonly bookId: string;
+  readonly slug: string;
+  readonly content: string;
+}
+
+export interface ProjectWritingSkillDeleteInput {
+  readonly bookId: string;
+  readonly slug: string;
 }
 
 export interface WritingSkillsCheckComplianceInput {
@@ -308,6 +321,63 @@ export async function handleWritingSkillsWrite(
     return fail(
       "writing-skills-write-failed",
       `Writing Skills 设置失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/** 直接更新当前作品目录中的 project-only Skill，不写入作者全局目录。 */
+export async function handleProjectWritingSkillUpdate(
+  input: ProjectWritingSkillUpdateInput,
+  options: TrustedWritingSkillOptions,
+): Promise<HandlerResult> {
+  try {
+    const bookId = normalizeBookId(input.bookId);
+    const slug = input.slug.trim();
+    if (!slug || !input.content.trim()) {
+      return fail("invalid-input", "slug 与 content 不能为空。");
+    }
+    const skill = await writeProjectWritingSkillRaw(options.bookRoot, slug, input.content);
+    return {
+      ok: true,
+      summary: `已更新当前作品 Writing Skill：${skill.name}。`,
+      data: {
+        bookId,
+        projectSkillsDirectory: ".novelfork/skills",
+        skill: { ...toListItem(skill, true), body: skill.body, content: input.content },
+      },
+    };
+  } catch (error) {
+    return fail(
+      "project-writing-skill-update-failed",
+      `当前作品 Writing Skill 保存失败：${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
+
+/** 删除当前作品目录中的 project-only Skill，不触碰全局 catalog/作者副本。 */
+export async function handleProjectWritingSkillDelete(
+  input: ProjectWritingSkillDeleteInput,
+  options: TrustedWritingSkillOptions,
+): Promise<HandlerResult> {
+  try {
+    const bookId = normalizeBookId(input.bookId);
+    const slug = input.slug.trim();
+    if (!slug) return fail("invalid-input", "slug 不能为空。");
+    const removed = await removeProjectWritingSkill(options.bookRoot, slug);
+    if (!removed) return fail("project-writing-skill-not-found", `当前作品中不存在 Writing Skill「${slug}」。`);
+    return {
+      ok: true,
+      summary: `已从当前作品移除 Writing Skill：${slug}。`,
+      data: {
+        bookId,
+        slug,
+        projectSkillsDirectory: ".novelfork/skills",
+      },
+    };
+  } catch (error) {
+    return fail(
+      "project-writing-skill-delete-failed",
+      `当前作品 Writing Skill 删除失败：${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

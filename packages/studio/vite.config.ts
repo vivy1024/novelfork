@@ -45,11 +45,28 @@ export default defineConfig({
       "@vivy1024/novelfork-novel-plugin/pages/writing-workbench": resolve(__dirname, "../novel-plugin/src/pages/writing-workbench/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages/writing-config": resolve(__dirname, "../novel-plugin/src/pages/writing-config/index.ts"),
       "@vivy1024/novelfork-novel-plugin/pages": resolve(__dirname, "../novel-plugin/src/pages/index.ts"),
+      "@vivy1024/novelfork-core/utils/length-metrics": resolve(__dirname, "../core/src/utils/length-metrics.ts"),
       "@vivy1024/novelfork-core/registry/command-registry": resolve(__dirname, "../core/src/registry/command-registry.ts"),
       "@vivy1024/novelfork-core/registry/command-executor": resolve(__dirname, "../core/src/registry/command-executor.ts"),
       "@vivy1024/novelfork-core/i18n": resolve(__dirname, "../core/src/i18n/index.ts"),
       "@": resolve(__dirname, "src"),
     },
+  },
+  // Studio embeds the Runtime frontend and the Novel plugin, which currently use
+  // different Tiptap major versions. Let Vite resolve each package from its
+  // importing workspace instead of collapsing both versions into one optimized dep.
+  optimizeDeps: {
+    include: ["tiptap-markdown", "markdown-it-task-lists"],
+    exclude: [
+      "@tiptap/core",
+      "@tiptap/extension-code-block",
+      "@tiptap/extension-link",
+      "@tiptap/extension-placeholder",
+      "@tiptap/markdown",
+      "@tiptap/pm",
+      "@tiptap/react",
+      "@tiptap/starter-kit",
+    ],
   },
   build: {
     // Official artifacts are served by the private Runtime's only HTTP/WS process.

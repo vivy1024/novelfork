@@ -154,9 +154,26 @@ export type ProductBookSummary = {
 	id: string;
 	title: string;
 	status: string;
+	chapterWordCount?: number;
+	language?: "zh" | "en";
 	updatedAt: string;
 	capabilities: RuntimeEntityCapabilities;
 };
+
+export function getProductBookWritingConfig(
+	config: Record<string, unknown>,
+): Pick<ProductBookSummary, "chapterWordCount" | "language"> {
+	return {
+		...(typeof config.chapterWordCount === "number"
+			&& Number.isFinite(config.chapterWordCount)
+			&& config.chapterWordCount > 0
+			? { chapterWordCount: config.chapterWordCount }
+			: {}),
+		...(config.language === "zh" || config.language === "en"
+			? { language: config.language }
+			: {}),
+	};
+}
 
 export type ProductNarratorSummary = {
 	id: string;
@@ -973,7 +990,7 @@ export class NovelForkProductBookService {
 			);
 			const config = root ? await readBookConfig(root, operation.bookId).catch(() => null) : null;
 			if (!config) continue;
-			results.push(this.mapBook(operation));
+			results.push(this.mapBook(operation, config));
 		}
 		return results;
 	}
@@ -1916,7 +1933,7 @@ export class NovelForkProductBookService {
 		resources: ProductWorkspaceResource[];
 		capabilities: RuntimeEntityCapabilities;
 	}> {
-		const { operation, root } = await this.getReadyBookRoot(bookId, actor);
+		const { operation, root, config } = await this.getReadyBookRoot(bookId, actor);
 		const resources = (await createDomainWritingResourceService(bookId, root).list(bookId)).map(
 			toWorkspaceWritingResource,
 		);
@@ -1960,7 +1977,7 @@ export class NovelForkProductBookService {
 		}
 
 		return {
-			book: this.mapBook(operation),
+			book: this.mapBook(operation, config),
 			resources,
 			capabilities: { ...WORKSPACE_CAPABILITIES },
 		};
@@ -2051,11 +2068,15 @@ export class NovelForkProductBookService {
 			.where(eq(narrators.id, narratorId));
 	}
 
-	private mapBook(operation: ProvisionOperation): ProductBookSummary {
+	private mapBook(
+		operation: ProvisionOperation,
+		config: Record<string, unknown>,
+	): ProductBookSummary {
 		return {
 			id: operation.bookId,
 			title: operation.title,
 			status: READY_STATE,
+			...getProductBookWritingConfig(config),
 			updatedAt: operation.updatedAt,
 			capabilities: bookCapabilities(),
 		};

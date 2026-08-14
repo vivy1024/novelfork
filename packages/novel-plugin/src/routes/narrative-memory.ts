@@ -118,15 +118,27 @@ function queryLimit(c: { req: { query(name: string): string | undefined } }): nu
   return queryInteger(c, "limit");
 }
 
-function queryChapterRange(c: { req: { query(name: string): string | undefined } }): [number, number] | undefined {
+function queryChapterRange(
+  c: { req: { query(name: string): string | undefined } },
+): [number | undefined, number | undefined] | undefined {
   const from = queryInteger(c, "chapterFrom", "from");
   const to = queryInteger(c, "chapterTo", "to");
-  if (from !== undefined && to !== undefined) return [from, to];
+  if (from !== undefined || to !== undefined) return [from, to];
   const range = queryText(c, "chapterRange");
   if (!range) return undefined;
-  const parts = range.split(",").map((item) => Number(item.trim()));
-  if (parts.length < 2 || !parts.every((item) => Number.isSafeInteger(item))) return undefined;
-  return [parts[0]!, parts[1]!];
+  const [fromText = "", toText = ""] = range.split(",", 2).map((item) => item.trim());
+  const parsedFrom = fromText ? Number(fromText) : undefined;
+  const parsedTo = toText ? Number(toText) : undefined;
+  if (parsedFrom !== undefined && !Number.isSafeInteger(parsedFrom)) return undefined;
+  if (parsedTo !== undefined && !Number.isSafeInteger(parsedTo)) return undefined;
+  return parsedFrom === undefined && parsedTo === undefined ? undefined : [parsedFrom, parsedTo];
+}
+
+function queryCompleteChapterRange(
+  c: { req: { query(name: string): string | undefined } },
+): [number, number] | undefined {
+  const range = queryChapterRange(c);
+  return range?.[0] !== undefined && range[1] !== undefined ? [range[0], range[1]] : undefined;
 }
 
 function invalidQuery(c: { json(body: unknown, status?: number): Response }, message: string): Response {
@@ -542,7 +554,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       status: parseStatus(statusValue),
       layer: parseLayer(layerValue),
       category: queryText(c, "category"),
-      chapterRange: queryChapterRange(c),
+      chapterRange: queryCompleteChapterRange(c),
       query: queryText(c, "query", "q"),
       limit: queryLimit(c),
       offset: queryInteger(c, "offset"),

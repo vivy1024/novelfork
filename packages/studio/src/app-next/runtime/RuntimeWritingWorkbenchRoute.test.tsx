@@ -90,6 +90,23 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     expect(bookConfig?.capabilities).toMatchObject({ open: true, edit: false, readonly: true, unsupported: false, delete: false });
   });
 
+  it("把服务端书籍目标字数与语言透传到工作台根节点", () => {
+    const nodes = mapRuntimeWorkspaceToWorkbenchNodes("book-1", [], {
+      id: "book-1",
+      title: "英文测试作品",
+      chapterWordCount: 2400,
+      language: "en",
+      capabilities: { read: true },
+    });
+
+    expect(nodes[0]?.metadata?.book).toEqual({
+      id: "book-1",
+      title: "英文测试作品",
+      chapterWordCount: 2400,
+      language: "en",
+    });
+  });
+
   it("把工作台聊天槽交给同一 mount，唯一行为差异为 compact", async () => {
     const client = {
       getWorkspace: vi.fn(async () => ({

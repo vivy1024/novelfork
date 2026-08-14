@@ -54,7 +54,13 @@ function response(value: unknown) {
 describe("Runtime product contract", () => {
   it("maps bootstrap records and fails closed for omitted mutation capabilities", () => {
     const mapped = mapRuntimeBootstrap({
-      books: [{ id: "book", title: "书", capabilities: { read: true } }],
+      books: [{
+        id: "book",
+        title: "书",
+        chapterWordCount: 3600,
+        language: "en",
+        capabilities: { read: true },
+      }],
       narrators: [],
       model: {},
       capabilities: {
@@ -68,6 +74,7 @@ describe("Runtime product contract", () => {
     expect(mapped.capabilities.narrators.create).toBeUndefined();
     expect(mapped.books[0]?.capabilities.read).toBe(true);
     expect(mapped.books[0]?.capabilities.update).toBeUndefined();
+    expect(mapped.books[0]).toMatchObject({ chapterWordCount: 3600, language: "en" });
 
     const omittedReads = mapRuntimeBootstrap({
       books: [{ id: "book-no-read", title: "未授权" }],

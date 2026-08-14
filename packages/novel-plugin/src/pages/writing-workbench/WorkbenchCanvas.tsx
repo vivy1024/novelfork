@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import type { RefObject } from "react";
+import {
+  countChapterLength,
+  resolveLengthCountingMode,
+  type LengthLanguage,
+} from "@vivy1024/novelfork-core/utils/length-metrics";
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -36,6 +41,7 @@ import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
 import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
+import { isNarrativeMemoryView, type NarrativeMemoryView } from "./narrative-memory-graph-model";
 
 export interface WorkbenchCanvasContext extends CanvasContext {
   activeResourceId: string | null;
@@ -115,11 +121,13 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === "object" ? value as Record<string, unknown> : undefined;
 }
 
-function countEditorWords(text: string): number {
-  if (!text) return 0;
-  const chineseChars = text.match(/[\u4e00-\u9fa5]/g)?.length ?? 0;
-  const englishWords = text.replace(/[\u4e00-\u9fa5]/g, " ").match(/[a-zA-Z0-9_-]+/g)?.length ?? 0;
-  return chineseChars + englishWords;
+function countEditorWords(text: string, language: LengthLanguage): number {
+  return countChapterLength(text, resolveLengthCountingMode(language));
+}
+
+function resolveBookLanguage(nodes: readonly WorkbenchResourceNode[]): LengthLanguage {
+  const book = asRecord(nodes.find((candidate) => candidate.kind === "book")?.metadata?.book);
+  return book?.language === "en" ? "en" : "zh";
 }
 
 function resolveChapterWordTarget(node: WorkbenchResourceNode, nodes: readonly WorkbenchResourceNode[], sceneSpec: SceneSpec | null): number | undefined {
@@ -137,20 +145,23 @@ function ChapterStatusBar({
   chapterNumber,
   content,
   targetWords,
+  language,
   sceneSpec,
   onOpenBlueprint,
 }: {
   chapterNumber?: number;
   content: string;
   targetWords?: number;
+  language: LengthLanguage;
   sceneSpec: SceneSpec | null;
   onOpenBlueprint: () => void;
 }) {
-  const wordCount = countEditorWords(content);
+  const wordCount = countEditorWords(content, language);
+  const unit = language === "en" ? "words" : "字";
   const delta = typeof targetWords === "number" ? wordCount - targetWords : undefined;
-  const targetLabel = typeof targetWords === "number" ? `${targetWords.toLocaleString()} 字` : "未设置";
+  const targetLabel = typeof targetWords === "number" ? `${targetWords.toLocaleString()} ${unit}` : "未设置";
   const progressLabel = typeof delta === "number"
-    ? delta === 0 ? "正好达到目标" : delta > 0 ? `超出 ${delta.toLocaleString()} 字` : `还差 ${Math.abs(delta).toLocaleString()} 字`
+    ? delta === 0 ? "正好达到目标" : delta > 0 ? `超出 ${delta.toLocaleString()} ${unit}` : `还差 ${Math.abs(delta).toLocaleString()} ${unit}`
     : "暂无目标字数";
 
   return (
@@ -260,9 +271,11 @@ export interface WorkbenchCanvasProps {
   onJumpToChapter?: (chapterNumber: number) => void;
   /** 关联条目跳转；返回 false 表示目标资源不存在。 */
   onOpenJingweiEntry?: (entryId: string) => boolean;
+  /** 图谱节点打开实体详情抽屉。 */
+  onOpenEntityDetail?: (entity: string) => void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -379,11 +392,19 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
     }
   }
 
-  // Narrative Memory Graph — render NarrativeMemoryGraphWorkspace directly
+  // Narrative Memory Graph — render as a full independent canvas page.
   if (node.id === "narrative-memory-graph" && bookId) {
+    const preferredView = node.metadata?.preferredView;
+    const initialView: NarrativeMemoryView = isNarrativeMemoryView(preferredView) ? preferredView : "relationship";
     return (
-      <div className="flex h-full flex-col min-h-0">
-        <Suspense fallback={<ToolPanelLoading />}><NarrativeMemoryGraphWorkspace bookId={bookId} /></Suspense>
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <Suspense fallback={<ToolPanelLoading />}>
+          <NarrativeMemoryGraphWorkspace
+            bookId={bookId}
+            initialView={initialView}
+            onOpenEntityDetail={onOpenEntityDetail}
+          />
+        </Suspense>
       </div>
     );
   }
@@ -533,6 +554,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
           chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
           content={content}
           targetWords={resolveChapterWordTarget(node, nodes, sceneSpec)}
+          language={resolveBookLanguage(nodes)}
           sceneSpec={sceneSpec}
           onOpenBlueprint={() => setSceneSpecOpen(true)}
         />
@@ -572,7 +594,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
             }}
           />
         ) : (
-          <ResourceViewer node={{ ...node, content }} bookId={bookId} onContentChange={(nextContent) => {
+          <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onContentChange={(nextContent) => {
             setContent(nextContent);
             setDirty(nextContent !== normalizedBaseRef.current);
             setSaveError(null);

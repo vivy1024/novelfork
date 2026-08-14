@@ -61,7 +61,7 @@ function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subjec
     confidence: input.confidence ?? 0.8,
     sourceType: input.sourceType ?? "event",
     sourceId: input.sourceId,
-    sourceChapter: input.sourceChapter ?? 12,
+    sourceChapter: Object.hasOwn(input, "sourceChapter") ? input.sourceChapter : 12,
     evidenceText: input.evidenceText ?? "事实证据",
     validFromChapter: input.validFromChapter,
     validUntilChapter: input.validUntilChapter,
@@ -142,6 +142,42 @@ describe("narrative memory observability router", () => {
 
       const otherBook = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&kind=fact&limit=10");
       expect((await otherBook.json()).entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "fact-other-book" })]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("supports one-sided chapter bounds and keeps manual facts by validFromChapter", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeFact(storage, fact({ id: "fact-early", subject: "韩立", predicate: "敌对", object: "墨大夫", sourceChapter: 5 }));
+      insertNarrativeFact(storage, fact({
+        id: "fact-manual",
+        subject: "韩立",
+        predicate: "结盟",
+        object: "厉飞雨",
+        sourceType: "manual",
+        sourceChapter: undefined,
+        validFromChapter: 12,
+      }));
+      insertNarrativeFact(storage, fact({ id: "fact-late", subject: "韩立", predicate: "警惕", object: "古长老", sourceChapter: 30 }));
+      insertNarrativeEvent(storage, event({ id: "event-early", eventType: "relationship_changed", subject: "韩立", predicate: "敌对", object: "墨大夫", chapterNumber: 5 }));
+      insertNarrativeEvent(storage, event({ id: "event-late", eventType: "relationship_changed", subject: "韩立", predicate: "警惕", object: "古长老", chapterNumber: 30 }));
+
+      const app = createNarrativeMemoryRouter({ storage });
+      const lowerBound = await app.request("http://localhost/api/books/book-1/narrative-memory/graph?view=relationship&chapterFrom=10");
+      expect(lowerBound.status).toBe(200);
+      const lowerPayload = await lowerBound.json() as any;
+      expect(lowerPayload.facts.map((item: any) => item.id)).toEqual(expect.arrayContaining(["fact-manual", "fact-late"]));
+      expect(lowerPayload.facts.map((item: any) => item.id)).not.toContain("fact-early");
+      expect(lowerPayload.events.map((item: any) => item.id)).toEqual(["event-late"]);
+
+      const upperBound = await app.request("http://localhost/api/books/book-1/narrative-memory/graph?view=relationship&chapterTo=20");
+      expect(upperBound.status).toBe(200);
+      const upperPayload = await upperBound.json() as any;
+      expect(upperPayload.facts.map((item: any) => item.id)).toEqual(expect.arrayContaining(["fact-early", "fact-manual"]));
+      expect(upperPayload.facts.map((item: any) => item.id)).not.toContain("fact-late");
+      expect(upperPayload.events.map((item: any) => item.id)).toEqual(["event-early"]);
     } finally {
       storage.close();
     }

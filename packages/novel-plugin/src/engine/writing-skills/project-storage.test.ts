@@ -10,7 +10,9 @@ import {
   projectWritingSkillFile,
   projectWritingSkillsDir,
   readProjectWritingSkillSelection,
+  removeProjectWritingSkill,
   syncProjectWritingSkills,
+  writeProjectWritingSkillRaw,
 } from "./project-storage.js";
 
 const skillContent = (id: string, name = "测试技能"): string => `---
@@ -60,6 +62,30 @@ describe("project writing skill storage", () => {
       expect(await exists(projectWritingSkillFile(bookRoot, skill.slug)!)).toBe(false);
       // 取消项目启用不能删除作者级覆盖；重新启用仍可恢复作者版本。
       expect(await exists(join(sourceDir, "SKILL.md"))).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it("项目独有技能可原地更新与删除且保留附件", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-project-only-skill-"));
+    const bookRoot = join(root, "book");
+    const slug = "project-only";
+    const skillDir = join(projectWritingSkillsDir(bookRoot), slug);
+    try {
+      await mkdir(join(skillDir, "references"), { recursive: true });
+      await writeFile(join(skillDir, "SKILL.md"), skillContent(slug, "项目独有技能"), "utf8");
+      await writeFile(join(skillDir, "references", "note.md"), "附件\n", "utf8");
+
+      const updatedContent = skillContent(slug, "项目独有技能（已更新）").replace("项目级正文。", "只影响当前作品。");
+      const updated = await writeProjectWritingSkillRaw(bookRoot, slug, updatedContent);
+      expect(updated).toMatchObject({ slug, source: "project", name: "项目独有技能（已更新）" });
+      expect(await readFile(join(skillDir, "SKILL.md"), "utf8")).toBe(updatedContent);
+      expect(await readFile(join(skillDir, "references", "note.md"), "utf8")).toBe("附件\n");
+
+      expect(await removeProjectWritingSkill(bookRoot, slug)).toBe(true);
+      expect(await exists(skillDir)).toBe(false);
+      expect(await removeProjectWritingSkill(bookRoot, slug)).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

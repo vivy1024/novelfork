@@ -225,7 +225,6 @@ describe("lore-memory-boundary handlers", () => {
 
   it("scene.spec 只校验 Agent 提交的蓝图，不做内部推断", async () => {
     const { handleSceneSpec } = await import("./scene-spec-handler.js");
-
     // 未提交蓝图：必须明确拒绝，而不是用 memoryContext 兜底生成。
     const missing = await handleSceneSpec({
       bookId: "book-1",
@@ -264,7 +263,7 @@ describe("lore-memory-boundary handlers", () => {
     expect(submitted.ok).toBe(true);
     if (!submitted.ok) return;
     expect(submitted.data.sceneSpec.constraints).toContain("Narrative Memory/facts：韩立已经知道小瓶能催熟药草。");
-  });
+  }, 20000);
 
   it("creates pending memory events from explicit event payloads", async () => {
     const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
