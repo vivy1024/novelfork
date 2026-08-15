@@ -249,6 +249,37 @@ describe("Jingwei indexed read model", () => {
     }
   });
 
+  it("supports detailLevel='full' in search and category to return complete content without truncation", async () => {
+    const storage = await createStorage();
+    try {
+      await seedJingwei(storage);
+      const entries = createStoryJingweiEntryRepository(storage);
+      const longContent = "长设定正文：".repeat(100); // 700+ 字符
+      await entries.create(entry({
+        id: "long-lore",
+        sectionId: "sec-people",
+        title: "超长设定测试",
+        contentMd: longContent,
+        summaryMd: "简略摘要",
+      }));
+
+      // 默认 summary: contentMd 应该是 summaryMd 或截断
+      const searchSummary = await searchJingwei({ storage, bookId: "book-1", query: "超长设定测试" });
+      expect(searchSummary.items[0]?.contentMd).toBe("简略摘要");
+
+      // detailLevel = 'full': contentMd 必须是完整长正文
+      const searchFull = await searchJingwei({ storage, bookId: "book-1", query: "超长设定测试", detailLevel: "full" });
+      expect(searchFull.items[0]?.contentMd).toBe(longContent);
+
+      // readJingweiCategory with detailLevel = 'full'
+      const categoryFull = await readJingweiCategory({ storage, bookId: "book-1", category: "characters", detailLevel: "full" });
+      const found = categoryFull.items.find((item) => item.entryId === "long-lore");
+      expect(found?.contentMd).toBe(longContent);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("级联：选中条目通过 relatedEntryIds 带出关联条目", async () => {
     const storage = await createStorage();
     try {

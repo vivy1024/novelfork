@@ -23,6 +23,7 @@ export interface SearchJingweiInput {
   readonly tokenBudget?: number;
   readonly limit?: number;
   readonly storage?: StorageDatabase;
+  readonly detailLevel?: "summary" | "normal" | "full" | "brief";
   /**
    * 是否纳入非 confirmed 条目（draft / needs-review）。
    * 默认 false（AI 只读已确认条目）；作者侧搜索传 true。
@@ -130,6 +131,8 @@ export async function searchJingwei(input: SearchJingweiInput): Promise<JingweiS
   const sectionById = new Map(sections.map((section) => [section.id, section]));
   const categoryFilter = normalizeCategories(input.categories);
 
+  const detailLevel = input.detailLevel ?? "summary";
+
   // 4) 精确校验 + 过滤（status / participates_in_ai / lifecycle / 可见性 / 分类）
   const ranked: RankedItem[] = [];
   for (const candidate of candidates) {
@@ -141,7 +144,7 @@ export async function searchJingwei(input: SearchJingweiInput): Promise<JingweiS
     if (!isVisibleAtChapter(entry, currentChapter)) continue;
     const section = sectionById.get(entry.sectionId);
     if (!section) continue;
-    const readable = toJingweiReadableItem(entry, section, visibilitySource(entry), "summary");
+    const readable = toJingweiReadableItem(entry, section, visibilitySource(entry), detailLevel);
     if (categoryFilter && !categoryFilter.has(readable.category)) continue;
 
     const matchedFields = verifyMatch(query, entryFields(entry));
@@ -203,6 +206,7 @@ async function fallbackLikeSearch(
   candidateLimit: number,
   query: string,
 ): Promise<RankedItem[]> {
+  const detailLevel = input.detailLevel ?? "summary";
   const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(input.bookId);
   const entries = await repo.listForAi(input.bookId, sections.map((section) => section.id));
   const terms = query.split(/\s+/u).filter((part) => part.length > 0);
@@ -213,7 +217,7 @@ async function fallbackLikeSearch(
     if (!isVisibleAtChapter(entry, currentChapter)) continue;
     const section = sectionById.get(entry.sectionId);
     if (!section) continue;
-    const readable = toJingweiReadableItem(entry, section, visibilitySource(entry), "summary");
+    const readable = toJingweiReadableItem(entry, section, visibilitySource(entry), detailLevel);
     if (categoryFilter && !categoryFilter.has(readable.category)) continue;
     const matchedFields = verifyMatch(query, entryFields(entry));
     if (matchedFields.length === 0) continue;
