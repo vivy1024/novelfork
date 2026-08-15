@@ -77,6 +77,7 @@ export interface JingweiSearchInput {
   tokenBudget?: number;
   limit?: number;
   includeUnconfirmed?: boolean;
+  detailLevel?: "summary" | "normal" | "full";
 }
 
 export interface JingweiSearchResponse {

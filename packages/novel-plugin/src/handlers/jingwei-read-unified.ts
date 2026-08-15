@@ -89,6 +89,7 @@ export async function handleJingweiRead(input: JingweiReadInput): Promise<Jingwe
         chapterNumber: input.chapterNumber,
         tokenBudget: input.tokenBudget,
         limit: input.limit,
+        detailLevel: input.detailLevel,
       };
       return handleJingweiSearch(searchInput);
     }

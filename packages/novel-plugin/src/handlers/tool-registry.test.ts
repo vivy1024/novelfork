@@ -130,6 +130,7 @@ describe("novel tool registry lore/memory boundary", () => {
         chapterNumber: 2,
         tokenBudget: 800,
         limit: 5,
+        detailLevel: "full",
       });
 
       expect(handleJingweiSearch).toHaveBeenCalledWith({
@@ -140,6 +141,7 @@ describe("novel tool registry lore/memory boundary", () => {
         chapterNumber: 2,
         tokenBudget: 800,
         limit: 5,
+        detailLevel: "full",
       });
     } finally {
       vi.doUnmock("./jingwei-read.js");
