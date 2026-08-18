@@ -26,6 +26,7 @@ export interface EntityFact {
   validFromChapter?: number;
   validUntilChapter?: number;
   sourceChapter?: number;
+  evidenceText?: string;
 }
 
 export interface EntityFactsGroup {

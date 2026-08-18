@@ -11,6 +11,7 @@ import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
   Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine, Brain,
+  Users, Route,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
@@ -1574,10 +1575,13 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
 const VIEW_LABEL: Record<SidebarView, string> = {
   write: "写作",
   explorer: "资源管理器",
-  jingwei: "经纬",
-  tools: "工具",
+  "characters-lore": "角色与设定",
+  storyline: "故事脉络",
+  "skills-style": "技能与文风",
+  jingwei: "角色与设定",
+  tools: "分析工具",
   search: "搜索",
-  "narrative-memory": "叙事记忆",
+  "narrative-memory": "故事脉络",
 };
 
 function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {

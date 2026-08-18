@@ -42,8 +42,12 @@ function readProductMigrationFiles(migrationsDir?: string): readonly ProductMigr
 	throw new Error("NovelFork product migrations directory was not found.");
 }
 
+function normalizeMigrationSql(sql: string): string {
+	return sql.replace(/\r\n/g, "\n").trim();
+}
+
 function migrationHash(sql: string): string {
-	return createHash("sha256").update(sql).digest("hex");
+	return createHash("sha256").update(normalizeMigrationSql(sql)).digest("hex");
 }
 
 function isAlreadyAppliedStatementError(error: unknown): boolean {

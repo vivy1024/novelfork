@@ -30,7 +30,7 @@ import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 export interface StorylineAndPlanningSidebarPanelProps {
   bookId: string;
   outlineNodes?: readonly WorkbenchResourceNode[];
-  memoryNodes?: readonly WorkbenchResourceNode[];
+  memoryNodes?: WorkbenchResourceNode[];
   selectedNodeId: string | null;
   onOpen: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
@@ -40,7 +40,7 @@ export interface StorylineAndPlanningSidebarPanelProps {
 export function StorylineAndPlanningSidebarPanel({
   bookId,
   outlineNodes = [],
-  memoryNodes = [],
+  memoryNodes,
   selectedNodeId,
   onOpen,
   onAction,
