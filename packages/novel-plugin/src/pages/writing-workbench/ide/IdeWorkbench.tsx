@@ -25,6 +25,9 @@ import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
+import { CharactersAndLoreSidebarPanel } from "./CharactersAndLoreSidebarPanel";
+import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { EntityDetailDrawer } from "../EntityDetailDrawer";
 import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
@@ -106,9 +109,12 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 export type SidebarView =
   | "write"
   | "explorer"
-  | "jingwei"
+  | "characters-lore"
+  | "storyline"
+  | "skills-style"
   | "tools"
   | "search"
+  | "jingwei"
   | "narrative-memory";
 
 export interface IdeWorkbenchProps {
@@ -147,12 +153,12 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title
   { id: "write", icon: PenLine, label: "写作", title: "写作" },
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
-  // 经纬 = 作者维护的设定；叙事记忆 = 正文产生的事实流。
-  // 两者性质不同，各自独立入口 —— 曾经合成一个工作区，作者在「设定」里
-  // 看到「记忆」会多出一层不知所以的概念，已按作者反馈还原。
-  { id: "jingwei", icon: Scroll, label: "经纬", title: "经纬" },
-  { id: "tools", icon: Wrench, label: "工具", title: "工具" },
-  { id: "narrative-memory", icon: Brain, label: "叙事记忆", title: "叙事记忆" },
+  // 角色与设定 = 彻底统一经纬与角色时态
+  { id: "characters-lore", icon: Users, label: "角色设定", title: "角色与世界设定" },
+  // 故事脉络 = 汇聚大纲、伏笔看板、全景时间线与关系图谱
+  { id: "storyline", icon: Route, label: "故事脉络", title: "故事大纲与因果脉络" },
+  { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风" },
+  { id: "tools", icon: Wrench, label: "分析工具", title: "分析与质量工具" },
 ];
 
 // ── 过滤逻辑 ──
@@ -178,15 +184,16 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
     case "explorer":
       // 资源管理器显示全部内容（和 VS Code Explorer 一样）
       return [...children];
+    case "characters-lore":
     case "jingwei":
       return collectNodes(children, n => JINGWEI_KINDS.has(n.kind));
     case "tools":
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
     case "write":
     case "search":
-      return [];
+    case "storyline":
+    case "skills-style":
     case "narrative-memory":
-      // 叙事记忆是独立面板，正文事实流由面板自己拉取，不走资源树过滤。
       return [];
   }
 }
@@ -1132,34 +1139,28 @@ export function IdeWorkbench({
                       : <div className="flex h-full items-center justify-center"><span className="text-xs text-muted-foreground">暂无文件</span></div>,
                 getContainer("explorer")!
               )}
-              {panelsReady && getContainer("jingwei") && createPortal(
+              {/* 角色与设定：彻底统一经纬设定与角色当前时态 */}
+              {panelsReady && (getContainer("characters-lore") || getContainer("jingwei")) && createPortal(
                 bookId
-                  ? <div className="flex h-full flex-col">
-                      <JingweiSidebarToolbar bookId={bookId} onChanged={() => void loadLoreSections()} />
-                      <WorkbenchResourceTree
-                        nodes={jingweiSections}
-                        selectedNodeId={activeNode?.id ?? null}
-                        onOpen={handleOpen}
-                        onAction={handleResourceAction}
-                        sortStorageKey={`novelfork:resource-tree-sort:${bookId ?? "global"}:jingwei`}
-                      />
-                    </div>
-                  : <div className="flex h-full items-center justify-center p-4 text-center">
-                      <span className="text-xs text-muted-foreground">先打开一本书，再回到经纬。</span>
-                    </div>,
-                getContainer("jingwei")!
-              )}
-              {/*
-                叙事记忆挂完整面板，不是只读事实树。
-                只读树只能看事实，作者拿不到章后结算真正需要的动作：待审事件的
-                批准/拒绝、结算历史、叙事线审批台账、召回诊断、图谱入口。
-                这些能力都在 NarrativeMemoryPanel 里，此处是它唯一的挂载点。
-                事实树保留为面板内的「状态树」分区（memoryNodes）。
-              */}
-              {panelsReady && getContainer("narrative-memory") && createPortal(
-                bookId
-                  ? <NarrativeMemoryPanel
+                  ? <CharactersAndLoreSidebarPanel
                       bookId={bookId}
+                      nodes={jingweiSections}
+                      selectedNodeId={activeNode?.id ?? null}
+                      onOpen={handleOpen}
+                      onAction={handleResourceAction}
+                      onChanged={() => void loadLoreSections()}
+                    />
+                  : <div className="flex h-full items-center justify-center p-4 text-center">
+                      <span className="text-xs text-muted-foreground">先打开一本书，再查看角色与设定。</span>
+                    </div>,
+                (getContainer("characters-lore") || getContainer("jingwei"))!
+              )}
+              {/* 故事脉络：汇聚大纲、伏笔、时间线、关系图与待审队列 */}
+              {panelsReady && (getContainer("storyline") || getContainer("narrative-memory")) && createPortal(
+                bookId
+                  ? <StorylineAndPlanningSidebarPanel
+                      bookId={bookId}
+                      outlineNodes={jingweiSections.filter(n => n.metadata?.category === "outline")}
                       memoryNodes={narrativeMemorySections}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
@@ -1167,9 +1168,17 @@ export function IdeWorkbench({
                       onOpenEntityDetail={setEntityDetailEntity}
                     />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
-                      <span className="text-xs text-muted-foreground">先打开一本书，再回到叙事记忆。</span>
+                      <span className="text-xs text-muted-foreground">先打开一本书，再查看故事脉络。</span>
                     </div>,
-                getContainer("narrative-memory")!
+                (getContainer("storyline") || getContainer("narrative-memory"))!
+              )}
+              {panelsReady && getContainer("skills-style") && createPortal(
+                bookId
+                  ? <SkillsAndStyleSidebarPanel bookId={bookId} />
+                  : <div className="flex h-full items-center justify-center p-4 text-center">
+                      <span className="text-xs text-muted-foreground">先打开一本书，再查看技能与文风。</span>
+                    </div>,
+                getContainer("skills-style")!
               )}
               {panelsReady && getContainer("tools") && createPortal(
                 <WorkbenchResourceTree nodes={toolNodes} selectedNodeId={activeNode?.id ?? null} onOpen={handleOpen} onAction={handleResourceAction} />,
@@ -1243,6 +1252,7 @@ export function IdeWorkbench({
                               onJumpToChapter={handleJumpToChapter}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={setEntityDetailEntity}
+                              onSendToNarrator={onSendToNarrator}
                             />
                           </div>
                         ))}
@@ -1262,6 +1272,7 @@ export function IdeWorkbench({
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={setEntityDetailEntity}
+                        onSendToNarrator={onSendToNarrator}
                       />
                     ) : (
                       <ViewEmptyState view={activeView} />
@@ -1301,6 +1312,7 @@ export function IdeWorkbench({
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={setEntityDetailEntity}
+                        onSendToNarrator={onSendToNarrator}
                       />
                     </div>
                   </div>

@@ -56,7 +56,6 @@ describe("NarrativeMemoryPanelShell", () => {
     );
 
     fireEvent.click(screen.getByRole("button", { name: "时间线" }));
-    fireEvent.click(screen.getByRole("button", { name: "打开 时间线" }));
     expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
       id: "narrative-memory-graph",
       metadata: expect.objectContaining({ preferredView: "timeline" }),

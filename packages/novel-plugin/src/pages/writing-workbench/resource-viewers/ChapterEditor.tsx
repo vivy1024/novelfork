@@ -19,13 +19,30 @@ import { EditorMinimap } from "./EditorMinimap";
 // BubbleMenu AI actions
 // ---------------------------------------------------------------------------
 
-type AiAction = "continue" | "polish" | "rewrite" | "expand";
+type AiAction = "continue" | "polish" | "rewrite" | "expand" | "naturalize" | "compress";
 
 const AI_ACTION_LABELS: Record<AiAction, string> = {
   continue: "续写",
   polish: "润色",
   rewrite: "改写",
   expand: "扩写",
+  naturalize: "人味化",
+  compress: "精简",
+};
+
+/**
+ * 「人味化」走本地纯规则引擎，同步出候选，不依赖模型通道。
+ * 其余动作需要语义判断，交给叙述者执行 —— 产品 HTTP 适配层没有 Provider，
+ * 直接调 inline-write 只会拿到 prompt-preview，点了等于没反应。
+ */
+const LOCAL_RULE_ACTIONS = new Set<AiAction>(["naturalize"]);
+
+const NARRATOR_TASK_LABELS: Record<Exclude<AiAction, "naturalize">, string> = {
+  continue: "在选中位置之后自然续写 500-1500 字，保持人称、时态与文风一致",
+  polish: "润色选中段落，只优化表达不改情节，字数保持在 ±20%",
+  rewrite: "改写选中段落，含义不变但换全新表述，保持文风一致",
+  expand: "扩写选中段落，在感官、动作或环境维度补细节，扩到 1.5x-2x",
+  compress: "精简选中段落，删掉冗余修饰与解释性旁白，压到原文 50%-70%，保留全部情节节点与伏笔",
 };
 
 function BubbleButton({ onClick, disabled, children }: { onClick: () => void; disabled?: boolean; children: React.ReactNode }) {
@@ -41,37 +58,53 @@ function BubbleButton({ onClick, disabled, children }: { onClick: () => void; di
   );
 }
 
-/** Get surrounding text around the selection for context */
-function getSurroundingContext(editor: Editor, maxChars = 500): string {
-  const { from, to } = editor.state.selection;
-  const fullText = editor.state.doc.textContent;
-  const before = fullText.slice(Math.max(0, from - maxChars), from);
-  const after = fullText.slice(to, Math.min(fullText.length, to + maxChars));
-  return `${before}[选中]${after}`;
+interface DeslopManualFlag {
+  readonly rule: string;
+  readonly excerpt: string;
+  readonly reason: string;
+  readonly instruction: string;
 }
 
-/** Map frontend action names to backend inline-write mode names */
-const ACTION_TO_MODE: Record<AiAction, string> = {
-  continue: "continuation",
-  polish: "polish",
-  rewrite: "rewrite",
-  expand: "expansion",
-};
+interface DeslopResponse {
+  readonly result?: {
+    readonly text?: string;
+    readonly edits?: readonly { readonly rule: string; readonly reason: string }[];
+    readonly manualFlags?: readonly DeslopManualFlag[];
+  };
+}
 
-async function callInlineWrite(bookId: string, action: AiAction, selectedText: string, context: string): Promise<string | null> {
-  try {
-    const data = await fetchJson<{ text?: string; content?: string }>(
-      `/api/books/${encodeURIComponent(bookId)}/inline-write`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: ACTION_TO_MODE[action], selectedText, context, maxTokens: 300 }),
-      },
-    );
-    return data.text ?? data.content ?? null;
-  } catch {
-    return null;
+/** 纯规则去 AI 味：0 LLM，同步返回改写结果与需语义判断的标注。 */
+async function callDeslop(selectedText: string): Promise<DeslopResponse["result"]> {
+  const data = await fetchJson<DeslopResponse>("/api/filter/deslop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: selectedText }),
+  });
+  return data.result;
+}
+
+/** 把选段任务组装成叙述者指令，由 Runtime 的 Agent Loop 与权限确认执行。 */
+function buildSelectionInstruction(
+  action: Exclude<AiAction, "naturalize">,
+  selectedText: string,
+  chapterNumber: number | undefined,
+  manualFlags: readonly DeslopManualFlag[] = [],
+): string {
+  const lines = [
+    `请${NARRATOR_TASK_LABELS[action]}。`,
+    chapterNumber ? `目标章节：第 ${chapterNumber} 章。` : "",
+    "",
+    "选中原文：",
+    selectedText,
+  ];
+  if (manualFlags.length > 0) {
+    lines.push("", "本地规则已标出以下需要语义判断的问题，请一并处理：");
+    for (const flag of manualFlags) {
+      lines.push(`- 「${flag.excerpt}」：${flag.reason}。${flag.instruction}`);
+    }
   }
+  lines.push("", "改完请把结果给我确认，不要直接覆盖正文。");
+  return lines.filter((line) => line !== undefined).join("\n");
 }
 
 interface PendingInlineEdit {
@@ -80,12 +113,24 @@ interface PendingInlineEdit {
   readonly to: number;
   readonly sourceText: string;
   readonly text: string;
+  /** 纯规则改了几处。 */
+  readonly autoEditCount: number;
+  /** 规则没动、需要语义判断的项。 */
+  readonly manualFlags: readonly DeslopManualFlag[];
 }
 
-function AIBubbleMenu({ editor, bookId }: { editor: Editor; bookId: string }) {
+interface AIBubbleMenuProps {
+  editor: Editor;
+  bookId: string;
+  chapterNumber?: number;
+  onSendToNarrator?: (message: string) => Promise<void> | void;
+}
+
+function AIBubbleMenu({ editor, bookId, chapterNumber, onSendToNarrator }: AIBubbleMenuProps) {
   const [loading, setLoading] = useState<AiAction | null>(null);
   const [pending, setPending] = useState<PendingInlineEdit | null>(null);
   const [pendingError, setPendingError] = useState<string | null>(null);
+  const [handedOff, setHandedOff] = useState<AiAction | null>(null);
 
   const handleAction = useCallback(async (action: AiAction) => {
     const { from, to } = editor.state.selection;
@@ -94,17 +139,36 @@ function AIBubbleMenu({ editor, bookId }: { editor: Editor; bookId: string }) {
 
     setPending(null);
     setPendingError(null);
+    setHandedOff(null);
     setLoading(action);
     try {
-      const context = getSurroundingContext(editor);
-      const result = await callInlineWrite(bookId, action, selectedText, context);
-      if (!result) return;
-      // 生成只产生候选，不直接改编辑器；作者明确点击“应用”后才改变未保存正文。
-      setPending({ action, from, to, sourceText: selectedText, text: result });
+      if (LOCAL_RULE_ACTIONS.has(action)) {
+        const result = await callDeslop(selectedText);
+        const revised = result?.text ?? "";
+        const autoEditCount = result?.edits?.length ?? 0;
+        const manualFlags = result?.manualFlags ?? [];
+        if (autoEditCount === 0 && manualFlags.length === 0) {
+          setPendingError("本地规则没有发现可确定性改写的 AI 味特征。");
+          return;
+        }
+        // 只有确定性改写才产生候选；语义项单独列出，不混进候选正文。
+        setPending({ action, from, to, sourceText: selectedText, text: revised, autoEditCount, manualFlags });
+        return;
+      }
+
+      // 语义类动作交给叙述者：产品 HTTP 层没有 Provider，直接调模型拿不到结果。
+      if (!onSendToNarrator) {
+        setPendingError("当前视图没有可用的叙述者，无法执行该操作。");
+        return;
+      }
+      await onSendToNarrator(buildSelectionInstruction(action as Exclude<AiAction, "naturalize">, selectedText, chapterNumber));
+      setHandedOff(action);
+    } catch (cause) {
+      setPendingError(cause instanceof Error ? cause.message : "操作失败");
     } finally {
       setLoading(null);
     }
-  }, [editor, bookId]);
+  }, [editor, chapterNumber, onSendToNarrator]);
 
   const applyPending = useCallback(() => {
     if (!pending) return;
@@ -122,37 +186,83 @@ function AIBubbleMenu({ editor, bookId }: { editor: Editor; bookId: string }) {
     setPendingError(null);
   }, [editor, pending]);
 
+  /** 把规则没动的语义项连同原文一起交给叙述者。 */
+  const handOffManualFlags = useCallback(async () => {
+    if (!pending || !onSendToNarrator) return;
+    await onSendToNarrator(buildSelectionInstruction("polish", pending.sourceText, chapterNumber, pending.manualFlags));
+    setHandedOff("naturalize");
+    setPending(null);
+  }, [pending, onSendToNarrator, chapterNumber]);
+
   return (
     <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
       <div className="max-w-sm rounded-lg border bg-card p-1.5 shadow-lg">
         {pending ? (
           <div className="space-y-1.5">
             <div className="flex items-center justify-between gap-2 px-1">
-              <span className="text-[11px] font-medium">已生成{AI_ACTION_LABELS[pending.action]}候选</span>
+              <span className="text-[11px] font-medium">
+                {AI_ACTION_LABELS[pending.action]}：规则已改 {pending.autoEditCount} 处
+              </span>
               <span className="text-[10px] text-muted-foreground">不会自动覆盖正文</span>
             </div>
-            <div className="max-h-28 overflow-y-auto rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap">{pending.text}</div>
+            {pending.autoEditCount > 0 ? (
+              <div className="max-h-28 overflow-y-auto rounded bg-muted/50 p-2 text-xs whitespace-pre-wrap">{pending.text}</div>
+            ) : (
+              <div className="rounded bg-muted/50 px-2 py-1.5 text-[10px] text-muted-foreground">
+                没有可确定性改写的部分，以下问题需要语义判断。
+              </div>
+            )}
+            {pending.manualFlags.length > 0 ? (
+              <div className="space-y-1 rounded border border-amber-500/30 bg-amber-500/5 p-1.5">
+                <div className="text-[10px] font-medium text-amber-700 dark:text-amber-400">
+                  {pending.manualFlags.length} 处需语义判断，规则未改
+                </div>
+                <div className="max-h-20 space-y-0.5 overflow-y-auto">
+                  {pending.manualFlags.slice(0, 5).map((flag, index) => (
+                    <div key={`${flag.rule}-${index}`} className="text-[10px] text-muted-foreground">
+                      「{flag.excerpt}」{flag.reason}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {pendingError ? <div className="px-1 text-[10px] text-destructive">{pendingError}</div> : null}
             <div className="flex justify-end gap-1">
               <BubbleButton onClick={() => { setPending(null); setPendingError(null); }}>放弃</BubbleButton>
-              <BubbleButton onClick={applyPending}>应用候选</BubbleButton>
+              {pending.manualFlags.length > 0 && onSendToNarrator ? (
+                <BubbleButton onClick={() => void handOffManualFlags()}>交叙述者</BubbleButton>
+              ) : null}
+              {pending.autoEditCount > 0 ? (
+                <BubbleButton onClick={applyPending}>应用候选</BubbleButton>
+              ) : null}
+            </div>
+          </div>
+        ) : handedOff ? (
+          <div className="space-y-1 px-1 py-0.5">
+            <div className="text-[11px] font-medium">已把{AI_ACTION_LABELS[handedOff]}任务交给叙述者</div>
+            <div className="text-[10px] text-muted-foreground">在对话面板查看结果，确认后再回写正文。</div>
+            <div className="flex justify-end">
+              <BubbleButton onClick={() => setHandedOff(null)}>知道了</BubbleButton>
             </div>
           </div>
         ) : (
-          <div className="flex gap-1">
-            {(Object.keys(AI_ACTION_LABELS) as AiAction[]).map((action) => (
-              <BubbleButton
-                key={action}
-                onClick={() => void handleAction(action)}
-                disabled={loading !== null}
-              >
-                {loading === action ? (
-                  <Loader2 className="size-3 animate-spin inline" />
-                ) : (
-                  AI_ACTION_LABELS[action]
-                )}
-              </BubbleButton>
-            ))}
+          <div className="space-y-1">
+            <div className="flex gap-1">
+              {(Object.keys(AI_ACTION_LABELS) as AiAction[]).map((action) => (
+                <BubbleButton
+                  key={action}
+                  onClick={() => void handleAction(action)}
+                  disabled={loading !== null}
+                >
+                  {loading === action ? (
+                    <Loader2 className="size-3 animate-spin inline" />
+                  ) : (
+                    AI_ACTION_LABELS[action]
+                  )}
+                </BubbleButton>
+              ))}
+            </div>
+            {pendingError ? <div className="px-1 pb-0.5 text-[10px] text-destructive">{pendingError}</div> : null}
           </div>
         )}
       </div>
@@ -185,8 +295,15 @@ interface ChapterEditorProps {
   ariaLabel?: string;
   /** Minimap 功能开关（默认开启） */
   showMinimap?: boolean;
-  /** 书籍 ID，用于 AI 浮动工具栏调用 inline-write API */
+  /** 书籍 ID，用于选中浮出工具栏调用本地规则与叙述者。 */
   bookId?: string;
+  /** 当前章号，写进交给叙述者的选段指令。 */
+  chapterNumber?: number;
+  /**
+   * 语义类选段动作（续写/润色/改写/扩写/精简）的执行通道。
+   * 缺省时这些按钮会明确提示「没有可用叙述者」，而不是静默无反应。
+   */
+  onSendToNarrator?: (message: string) => Promise<void> | void;
   /** 正文语言，决定长度按中文字符或英文单词统计。 */
   language?: LengthLanguage;
 }
@@ -199,6 +316,8 @@ export function ChapterEditor({
   ariaLabel = "章节正文",
   showMinimap = true,
   bookId,
+  chapterNumber,
+  onSendToNarrator,
   language = "zh",
 }: ChapterEditorProps) {
   const [wordCount, setWordCount] = useState(0);
@@ -307,7 +426,12 @@ export function ChapterEditor({
     <div className="chapter-editor relative flex flex-col h-full min-h-0" onKeyDown={handleKeyDown}>
       {/* AI BubbleMenu — 选中文本后出现 */}
       {!readonly && bookId && editor && (
-        <AIBubbleMenu editor={editor} bookId={bookId} />
+        <AIBubbleMenu
+          editor={editor}
+          bookId={bookId}
+          chapterNumber={chapterNumber}
+          onSendToNarrator={onSendToNarrator}
+        />
       )}
 
       {/* Editor content with minimap */}

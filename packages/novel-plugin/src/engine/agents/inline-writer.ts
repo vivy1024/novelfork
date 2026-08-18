@@ -12,7 +12,9 @@ export type InlineWriteMode =
   | "variant"
   | "outline-branch"
   | "polish"
-  | "rewrite";
+  | "rewrite"
+  | "naturalize"
+  | "compress";
 
 export interface InlineWriteContext {
   bookId: string;
@@ -298,3 +300,87 @@ export function parseRewriteResult(
     mode: "rewrite",
   };
 }
+
+// ---- Naturalize (人味化 / 去AI味) ------------------------------------------
+
+export interface NaturalizeInput extends InlineWriteInput {
+  mode: "naturalize";
+}
+
+export function buildNaturalizePrompt(
+  input: NaturalizeInput,
+  context: InlineWriteContext,
+): string {
+  return [
+    "# 文本去AI味人味化任务",
+    "你是一位资深中文网文润色专家。请对选中文本进行人味化改写，彻底清除AI生成痕迹，使文字回归真实母语质感与自然呼吸感。",
+    CONTEXT_BLOCK(context),
+    `## 需要去AI味的选中文本\n${input.selectedText}`,
+    input.direction ? `## 额外指示\n${input.direction}` : "",
+    "## 必须执行的去AI味硬规则",
+    "1. 【打碎工整对仗】：打破连续相同长度的句子，制造长短错落。严禁连续3句句式对称。",
+    "2. 【清除套词】：严禁使用「眼中闪过一丝」「嘴角勾起一抹」「深吸一口气」「不由自主」「心中暗道」「心头一震」「仿佛……一般」等典型AI套话。",
+    "3. 【禁止议论式句式】：严禁使用「不是A，而是B」这类论文腔否定翻转句式，直接写后项或用动作呈现。",
+    "4. 【情绪外化】：把抽象的「他感到紧张/愤怒/伤心」替换为具体的生理反应或现场动作（手心冒汗、把烟掐灭、半天没说话）。",
+    "5. 【允许自然不完美】：适度保留母语习惯中的片段句（「行吧。」「算了。」）、语气词、口语重复和现场真实停顿，不要过度解释和面面俱到。",
+    "6. 【严禁章末大升华】：不要在结尾做哲理性总结或感慨（如「这一刻他终于明白……」）。",
+    "## 输出要求",
+    "- 直接输出去AI味后的纯正文，将替换原文",
+    "- 保持原文核心情节、人物动机和世界观设定完全不变",
+    "- 字数与原文接近（±20%）",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function parseNaturalizeResult(
+  response: string,
+  _input?: NaturalizeInput,
+): InlineWriteResult {
+  const content = response.trim();
+  return {
+    content,
+    wordCount: content.length,
+    mode: "naturalize",
+  };
+}
+
+// ---- Compress (精简 / 脱水) ------------------------------------------------
+
+export interface CompressInput extends InlineWriteInput {
+  mode: "compress";
+}
+
+export function buildCompressPrompt(
+  input: CompressInput,
+  context: InlineWriteContext,
+): string {
+  return [
+    "# 文本精简脱水任务",
+    "你是一位中文网文编辑。请对选中文本进行精炼压缩，删除废话、冗余描写和过度解释，保留核心情节与关键张力。",
+    CONTEXT_BLOCK(context),
+    `## 需要精简的选中文本\n${input.selectedText}`,
+    input.direction ? `## 额外指示\n${input.direction}` : "",
+    "## 精简要求",
+    "- 删掉冗余修饰词、套话副词和无意义动作清单",
+    "- 删掉解释性旁白，留给读者从动作中理解",
+    "- 压缩比例：压缩到原文的 50% - 70% 长度",
+    "- 保留所有关键情节节点、信息变化和伏笔",
+    "- 直接输出精简后的纯正文，将替换原文",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
+export function parseCompressResult(
+  response: string,
+  _input?: CompressInput,
+): InlineWriteResult {
+  const content = response.trim();
+  return {
+    content,
+    wordCount: content.length,
+    mode: "compress",
+  };
+}
+

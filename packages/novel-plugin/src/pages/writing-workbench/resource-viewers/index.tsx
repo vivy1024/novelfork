@@ -32,6 +32,8 @@ export interface ResourceViewerRenderOptions {
   onTabComplete?: (currentContent: string, cursorPosition: number) => Promise<string | null>;
   bookId?: string;
   language?: "zh" | "en";
+  /** 语义类选段动作的执行通道；缺省时选中浮出按钮会显式提示不可用。 */
+  onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
 export interface ResourceViewerDefinition {
@@ -93,6 +95,8 @@ function renderChapterEditor(node: WorkbenchResourceNode, options: ResourceViewe
         placeholder={`在此编辑${editableLabels[node.kind] ?? "内容"}…`}
         ariaLabel={editableLabels[node.kind] ?? "资源正文"}
         bookId={options.bookId}
+        chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+        onSendToNarrator={options.onSendToNarrator}
         language={options.language}
       />
     </ViewerShell>
@@ -919,6 +923,6 @@ export function getResourceViewer(node: WorkbenchResourceNode): ResourceViewerDe
   return resourceViewerRegistry[node.kind as ResourceViewerKind] ?? resourceViewerRegistry.generic;
 }
 
-export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en" }) {
-  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language })}</>;
+export function ResourceViewer({ node, onContentChange, onTabComplete, bookId, language, onSendToNarrator }: { node: WorkbenchResourceNode; onContentChange?: (content: string) => void; onTabComplete?: ResourceViewerRenderOptions["onTabComplete"]; bookId?: string; language?: "zh" | "en"; onSendToNarrator?: ResourceViewerRenderOptions["onSendToNarrator"] }) {
+  return <>{getResourceViewer(node).render(node, { onContentChange, onTabComplete, bookId, language, onSendToNarrator })}</>;
 }

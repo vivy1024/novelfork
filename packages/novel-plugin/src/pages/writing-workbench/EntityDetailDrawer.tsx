@@ -1,21 +1,42 @@
 /**
- * 实体详情抽屉。
+ * 实体详情抽屉 —— 酒馆式（SillyTavern 风格）一体化角色与实体总卡。
  *
- * 打通经纬（静态设定）与叙事记忆（动态状态）的孤岛：点任意实体名，右侧滑出
- * 统一抽屉，上半看经纬设定、下半看当前 fact 并可就地纠正/作废/新增，附变迁史。
- *
- * 边界：
- * - 关联键 = 实体名字符串（经纬条目 title ↔ fact subject/object）；
- * - fact 编辑只走 narrative-fact-edits 封装，语义与后端对齐；
- * - 经纬设定只读展示 + 跳转，不在抽屉里代写 canon（改设定去经纬编辑器）；
- * - 关系 tab 用谓词分组列表表达显式实体关系，数据源就是当前实体的 fact，
- *   不额外请求、不做统计共现。
+ * 打通经纬（静态设定）与叙事记忆（动态时态）的孤岛：
+ * 点任意实体名，右侧滑出多维卡片：
+ * 1. 【Hero Banner】头像/立绘占位、实体姓名、别名徽章、当前状态标签；
+ * 2. 【当前时态】当前所在章节/地点、身体状况、掌握秘密，支持就地纠正/作废/新增；
+ * 3. 【出场档案 (Lore)】性格底色、行为禁忌、语言口癖，支持一键跳转经纬编辑；
+ * 4. 【人物羁绊 (Relations)】与全书其它实体的实时双向/有向关系网络；
+ * 5. 【变迁历史 (History)】按章节推进的时间线与心境转折轨迹。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BookOpen, Loader2, Plus, Trash2, UserRound } from "lucide-react";
+import {
+  BookOpen,
+  Calendar,
+  ChevronRight,
+  Clock,
+  ExternalLink,
+  GitBranch,
+  HeartHandshake,
+  History,
+  Info,
+  Loader2,
+  MapPin,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Sparkles,
+  Swords,
+  Trash2,
+  UserCheck,
+  UserRound,
+  Users,
+  Wand2,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Sheet,
   SheetContent,
@@ -59,6 +80,7 @@ interface JingweiEntryHit {
   readonly summary?: string;
   readonly preview?: string;
   readonly contentMd?: string;
+  readonly aliases?: readonly string[];
 }
 
 type JingweiState =
@@ -125,29 +147,65 @@ export function EntityDetailDrawer({
     await loadFacts();
   }, [loadFacts]);
 
+  const matchedJingwei = useMemo(() => {
+    if (jingweiState.status !== "ready") return null;
+    return jingweiState.entries.find((entry) => entry.title === entity) ?? jingweiState.entries[0] ?? null;
+  }, [jingweiState, entity]);
+
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent className="w-[min(28rem,90vw)] gap-0 p-0 sm:max-w-none">
-        <SheetHeader className="border-b border-border px-4 py-3">
-          <SheetTitle className="flex items-center gap-2 text-sm">
-            <UserRound className="size-4 text-primary" />
-            {entity}
-          </SheetTitle>
-          <SheetDescription className="text-[11px]">
-            经纬设定与叙事记忆现状；改设定去经纬编辑器，改现状在下方就地处理。
-          </SheetDescription>
-        </SheetHeader>
+      <SheetContent className="w-[min(32rem,95vw)] gap-0 p-0 sm:max-w-none flex flex-col h-full bg-card">
+        {/* 酒馆式 Hero Banner */}
+        <div className="relative border-b border-border bg-muted/20 px-5 py-4 shrink-0">
+          <div className="flex items-start gap-3">
+            {/* 头像占位 */}
+            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary shadow-sm">
+              <UserRound className="size-6" />
+            </div>
 
-        <div className="h-full overflow-y-auto p-3" data-testid="entity-detail-drawer">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold tracking-tight text-foreground truncate">{entity}</h2>
+                {matchedJingwei?.category ? (
+                  <Badge variant="secondary" className="text-[10px] px-1.5 h-4">
+                    {matchedJingwei.category}
+                  </Badge>
+                ) : null}
+                {matchedJingwei?.layer ? (
+                  <Badge variant="outline" className="text-[9px] px-1.5 h-4 text-muted-foreground">
+                    {matchedJingwei.layer}
+                  </Badge>
+                ) : null}
+              </div>
+
+              <p className="text-[11px] text-muted-foreground line-clamp-1">
+                {matchedJingwei?.summary || "经纬设定与叙事记忆现状合一视图"}
+              </p>
+
+              {matchedJingwei?.aliases && matchedJingwei.aliases.length > 0 ? (
+                <div className="flex flex-wrap gap-1 pt-0.5">
+                  {matchedJingwei.aliases.map((alias) => (
+                    <span key={alias} className="text-[9px] rounded bg-muted px-1.5 py-0.2 text-muted-foreground">
+                      别名: {alias}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+
+        {/* 导航 Tabs */}
+        <div className="flex-1 min-h-0 overflow-y-auto p-4" data-testid="entity-detail-drawer">
           <Tabs defaultValue="state" className="space-y-3">
-            <TabsList className="w-full">
-              <TabsTrigger value="state" className="flex-1">当前状态</TabsTrigger>
-              <TabsTrigger value="lore" className="flex-1">设定</TabsTrigger>
-              <TabsTrigger value="relations" className="flex-1">关系</TabsTrigger>
-              <TabsTrigger value="history" className="flex-1">变迁史</TabsTrigger>
+            <TabsList className="w-full grid grid-cols-4 h-8 p-0.5 bg-muted/50">
+              <TabsTrigger value="state" className="text-xs">当前状态</TabsTrigger>
+              <TabsTrigger value="lore" className="text-xs">设定</TabsTrigger>
+              <TabsTrigger value="relations" className="text-xs">关系</TabsTrigger>
+              <TabsTrigger value="history" className="text-xs">变迁史</TabsTrigger>
             </TabsList>
 
-            <TabsContent value="state" className="space-y-2">
+            <TabsContent value="state" className="space-y-2.5 pt-1">
               <FactsTab
                 bookId={bookId}
                 entity={entity}
@@ -157,7 +215,7 @@ export function EntityDetailDrawer({
               />
             </TabsContent>
 
-            <TabsContent value="lore" className="space-y-2">
+            <TabsContent value="lore" className="space-y-2.5 pt-1">
               <JingweiTab
                 state={jingweiState}
                 onRetry={() => void loadJingwei()}
@@ -165,11 +223,11 @@ export function EntityDetailDrawer({
               />
             </TabsContent>
 
-            <TabsContent value="relations" className="space-y-2">
+            <TabsContent value="relations" className="space-y-2.5 pt-1">
               <RelationsTab state={factsState} />
             </TabsContent>
 
-            <TabsContent value="history" className="space-y-2">
+            <TabsContent value="history" className="space-y-2.5 pt-1">
               <HistoryTab bookId={bookId} state={factsState} />
             </TabsContent>
           </Tabs>
@@ -183,7 +241,7 @@ function LoadingBlock({ label }: { label: string }) {
   return (
     <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground" data-testid="entity-drawer-loading">
       <Loader2 className="size-4 animate-spin" />
-      <span>{label}</span>
+      <span className="text-xs">{label}</span>
     </div>
   );
 }
@@ -228,13 +286,17 @@ function FactsTab({
 
   const facts = state.facts;
   return (
-    <div className="space-y-2">
-      <div className="flex items-center justify-between gap-2">
-        <p className="text-[11px] text-muted-foreground">{facts.length} 条当前状态</p>
+    <div className="space-y-2.5">
+      <div className="flex items-center justify-between gap-2 px-0.5">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="size-3 text-primary" />
+          <span className="text-xs font-semibold">当前动态时态</span>
+          <span className="text-[10px] text-muted-foreground">({facts.length} 条)</span>
+        </div>
         <button
           type="button"
           onClick={() => setAdding(true)}
-          className="inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] border border-border hover:bg-muted"
+          className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-[10px] bg-primary text-primary-foreground hover:bg-primary/90 shadow-sm transition-colors"
         >
           <Plus className="size-3" />
           新增状态
@@ -244,7 +306,7 @@ function FactsTab({
       {adding && (
         <FactForm
           bookId={bookId}
-          initial={{ subject: entity, predicate: "", object: "", category: "" }}
+          initial={{ subject: entity, predicate: "", object: "", category: "state" }}
           submitLabel="写入状态"
           onSubmit={async (input) => {
             await createFact(bookId, input);
@@ -257,24 +319,27 @@ function FactsTab({
       )}
 
       {facts.length === 0 && !adding ? (
-        <div className="rounded-lg border border-dashed border-border py-8 text-center text-[11px] text-muted-foreground">
-          这个实体还没有记忆状态。写章结算后会自动出现，也可以点「新增状态」手工补一条。
+        <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10 space-y-1">
+          <p className="font-medium">这个实体还没有记忆状态</p>
+          <p className="text-[10px] text-muted-foreground/80">写章结算后会自动沉淀，也可以点「新增状态」手工补一条。</p>
         </div>
       ) : (
-        facts.map((fact) => (
-          <FactRow
-            key={fact.id}
-            bookId={bookId}
-            fact={fact}
-            editing={editingId === fact.id}
-            onEdit={() => setEditingId(fact.id)}
-            onCancelEdit={() => setEditingId(null)}
-            onMutated={() => {
-              setEditingId(null);
-              onMutated();
-            }}
-          />
-        ))
+        <div className="space-y-1.5">
+          {facts.map((fact) => (
+            <FactRow
+              key={fact.id}
+              bookId={bookId}
+              fact={fact}
+              editing={editingId === fact.id}
+              onEdit={() => setEditingId(fact.id)}
+              onCancelEdit={() => setEditingId(null)}
+              onMutated={() => {
+                setEditingId(null);
+                onMutated();
+              }}
+            />
+          ))}
+        </div>
       )}
     </div>
   );
@@ -320,34 +385,36 @@ function FactRow({
   }
 
   return (
-    <article className="rounded border border-border/60 p-2.5 space-y-1.5" data-testid="entity-fact-row">
-      <div className="text-[11px] leading-relaxed">
-        <span className="font-medium">{fact.subject}</span>
-        <span className="mx-1 text-muted-foreground">—{fact.predicate}—</span>
-        <span className="font-medium">{fact.object}</span>
+    <article className="rounded-lg border border-border/70 bg-card p-2.5 space-y-1.5 hover:border-border transition-colors shadow-xs" data-testid="entity-fact-row">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs leading-relaxed font-medium">
+          <span className="text-foreground">{fact.subject}</span>
+          <span className="mx-1.5 text-primary/80 font-normal">[{fact.predicate}]</span>
+          <span className="text-foreground font-semibold">{fact.object}</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <ActionButton onClick={onEdit}>纠正</ActionButton>
+          <ActionButton
+            onClick={async () => {
+              try {
+                await retireFact(bookId, fact.id, { reason: "实体抽屉手工作废" });
+                toast("已作废这条状态", "success");
+                onMutated();
+              } catch (cause) {
+                toast(cause instanceof Error ? cause.message : "作废失败", "error");
+              }
+            }}
+          >
+            <Trash2 className="size-2.5" />
+            作废
+          </ActionButton>
+        </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
-        <Badge variant="secondary" className="text-[9px]">{fact.category}</Badge>
+        <Badge variant="secondary" className="text-[9px] px-1 h-3.5">{fact.category}</Badge>
         {fact.sourceType && <span>来源 {fact.sourceType}</span>}
         {fact.confidence !== undefined && <span>置信 {Math.round(fact.confidence * 100)}%</span>}
         {fact.validFromChapter !== undefined && <span>第 {fact.validFromChapter} 章起</span>}
-      </div>
-      <div className="flex justify-end gap-1.5">
-        <ActionButton onClick={onEdit}>纠正</ActionButton>
-        <ActionButton
-          onClick={async () => {
-            try {
-              await retireFact(bookId, fact.id, { reason: "实体抽屉手工作废" });
-              toast("已作废这条状态", "success");
-              onMutated();
-            } catch (cause) {
-              toast(cause instanceof Error ? cause.message : "作废失败", "error");
-            }
-          }}
-        >
-          <Trash2 className="size-3" />
-          作废
-        </ActionButton>
       </div>
     </article>
   );
@@ -377,13 +444,13 @@ function FactForm({
   const disabled = !subject.trim() || !predicate.trim() || !object.trim() || !category.trim() || busy;
 
   return (
-    <div className="rounded border border-border/60 bg-card p-2.5 space-y-2" data-testid="entity-fact-form">
+    <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 shadow-xs" data-testid="entity-fact-form">
       {factId && <p className="text-[10px] text-muted-foreground">纠正会关闭旧值并写入一条 manual 新值，历史保留。</p>}
-      <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 地点 / 物品" />
-      <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 结盟 / 属于" />
-      <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴期 / 李四 / 青云宗" />
+      <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 实体" />
+      <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 位置 / 伤势 / 关系" />
+      <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴期 / 乱星海 / 中毒 / 结盟" />
       <Field label="类别" value={category} onChange={setCategory} placeholder="如：state / relationship" />
-      <div className="flex justify-end gap-1.5">
+      <div className="flex justify-end gap-1.5 pt-1">
         <ActionButton onClick={onCancel} disabled={busy}>取消</ActionButton>
         <ActionButton
           primary
@@ -392,22 +459,53 @@ function FactForm({
             setBusy(true);
             try {
               await onSubmit({ subject, predicate, object, category, confidence: initial.confidence });
-            } catch (cause) {
-              toast(cause instanceof Error ? cause.message : "保存失败", "error");
             } finally {
               setBusy(false);
             }
           }}
         >
-          {busy ? "保存中…" : submitLabel}
+          {busy ? <Loader2 className="size-3 animate-spin mr-1 inline" /> : null}
+          {submitLabel}
         </ActionButton>
       </div>
     </div>
   );
 }
 
+function Field({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (v: string) => void; placeholder: string }) {
+  return (
+    <label className="flex items-center gap-2 text-xs">
+      <span className="w-10 shrink-0 text-[10px] text-muted-foreground">{label}</span>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        className="h-6 flex-1 min-w-0 rounded border border-border bg-background px-2 text-xs outline-none focus:border-primary"
+      />
+    </label>
+  );
+}
+
+function ActionButton({ children, onClick, disabled, primary }: { children: ReactNode; onClick: () => void | Promise<void>; disabled?: boolean; primary?: boolean }) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={() => void onClick()}
+      className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[10px] font-medium transition-colors disabled:opacity-50 ${
+        primary
+          ? "bg-primary text-primary-foreground hover:bg-primary/90"
+          : "border border-border/80 bg-background hover:bg-muted text-muted-foreground hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------ */
-/* 设定 tab：经纬条目只读展示 + 跳转                                     */
+/* 出场设定 tab：经纬设定条目展示 + 打开编辑                             */
 /* ------------------------------------------------------------------ */
 
 function JingweiTab({
@@ -419,50 +517,65 @@ function JingweiTab({
   onRetry: () => void;
   onOpenJingweiEntry?: (entryId: string) => boolean;
 }) {
-  const [entryError, setEntryError] = useState<string | null>(null);
+  const [openError, setOpenError] = useState<string | null>(null);
 
-  if (state.status === "loading") return <LoadingBlock label="正在查经纬设定…" />;
+  if (state.status === "loading") return <LoadingBlock label="正在读经纬设定…" />;
   if (state.status === "error") return <ErrorBlock message={state.message} onRetry={onRetry} />;
 
   const entries = state.entries;
   if (entries.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border py-8 text-center text-[11px] text-muted-foreground">
-        经纬里没有以这个名字登记的条目。要在经纬编辑器里新建设定。
+      <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
+        经纬中尚未建立该实体的设定档案。
       </div>
     );
   }
 
   return (
     <div className="space-y-2">
-      {entryError && <p className="text-[10px] text-destructive">{entryError}</p>}
+      {openError && (
+        <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-[11px] text-destructive">
+          {openError}
+        </p>
+      )}
       {entries.map((entry) => (
-        <article key={entry.id} className="rounded border border-border/60 p-2.5 space-y-1.5" data-testid="jingwei-entry-hit">
-          <div className="flex items-start justify-between gap-2">
-            <span className="text-[11px] font-medium">{entry.title ?? entry.id}</span>
-            {entry.layer && <Badge variant="secondary" className="text-[9px]">{entry.layer}</Badge>}
-          </div>
-          {(entry.category || entry.status) && (
-            <p className="text-[10px] text-muted-foreground">
-              {[entry.category, entry.status].filter(Boolean).join(" · ")}
-            </p>
-          )}
-          {(entry.summary || entry.preview) && <p className="text-[10px] leading-relaxed text-muted-foreground">{entry.summary ?? entry.preview}</p>}
-          <div className="flex justify-end">
-            {onOpenJingweiEntry && (
-              <ActionButton
+        <article
+          key={entry.id}
+          className="rounded-lg border border-border/70 bg-card p-3 space-y-2 hover:border-border transition-colors shadow-xs"
+          data-testid="jingwei-entry-hit"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold text-xs text-foreground">{entry.title}</span>
+              {entry.category ? <Badge variant="secondary" className="text-[9px] px-1 h-3.5">{entry.category}</Badge> : null}
+              {entry.layer ? <Badge variant="outline" className="text-[9px] px-1 h-3.5">{entry.layer}</Badge> : null}
+            </div>
+            {onOpenJingweiEntry ? (
+              <button
+                type="button"
                 onClick={() => {
-                  setEntryError(null);
-                  if (!onOpenJingweiEntry(entry.id)) {
-                    setEntryError(`经纬条目不存在或尚未载入：${entry.title ?? entry.id}`);
+                  setOpenError(null);
+                  const ok = onOpenJingweiEntry(entry.id);
+                  if (!ok) {
+                    setOpenError("经纬条目不存在或尚未载入");
+                    toast("经纬条目不存在或尚未载入", "error");
                   }
                 }}
+                className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline font-medium"
               >
-                <BookOpen className="size-3" />
+                <ExternalLink className="size-2.5" />
                 打开编辑
-              </ActionButton>
-            )}
+              </button>
+            ) : null}
           </div>
+
+          {entry.summary ? (
+            <p className="text-[11px] text-muted-foreground leading-relaxed">{entry.summary}</p>
+          ) : entry.contentMd ? (
+            <div className="max-h-36 overflow-y-auto rounded bg-muted/30 p-2 text-xs text-muted-foreground whitespace-pre-wrap leading-relaxed">
+              {entry.contentMd.slice(0, 500)}
+            </div>
+          ) : null}
         </article>
       ))}
     </div>
@@ -470,183 +583,72 @@ function JingweiTab({
 }
 
 /* ------------------------------------------------------------------ */
-/* 关系 tab：显式实体关系（谓词分组列表，数据源 = 当前实体 fact）          */
+/* 人物羁绊 tab：关系列表                                              */
 /* ------------------------------------------------------------------ */
 
 function RelationsTab({ state }: { state: LoadState }) {
-  if (state.status === "loading") return <LoadingBlock label="正在整理关系…" />;
-  if (state.status === "error") return <p className="text-[11px] text-muted-foreground">关系随当前状态一起加载失败。</p>;
+  if (state.status === "loading") return <LoadingBlock label="正在读关系网络…" />;
+  if (state.status === "error") return <p className="text-xs text-destructive">{state.message}</p>;
 
-  const facts = state.facts;
-  // 关系图只消费显式 relationship fact；状态类的 object 不能被误画成实体边。
-  const grouped = useMemo(() => {
-    const map = new Map<string, { predicate: string; pairs: [string, string][] }>();
-    for (const fact of facts) {
-      if (fact.category !== "relationship" || !fact.subject || !fact.object) continue;
-      const key = fact.predicate || "（未命名关系）";
-      const existing = map.get(key) ?? { predicate: key, pairs: [] };
-      existing.pairs.push([fact.subject, fact.object]);
-      map.set(key, existing);
-    }
-    return [...map.values()];
-  }, [facts]);
-
-  if (grouped.length === 0) {
+  const relFacts = state.facts.filter((fact) => fact.category === "relationship" || fact.category === "relations");
+  if (relFacts.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border py-8 text-center text-[11px] text-muted-foreground">
-        还没有关系。写章结算后，结盟 / 敌对 / 师徒这类关系会出现在这里。
+      <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
+        暂无显式人物羁绊记录。
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      {grouped.map((group) => (
-        <section key={group.predicate} className="rounded border border-border/60 p-2.5 space-y-1">
-          <h4 className="text-[11px] font-semibold text-muted-foreground">{group.predicate}</h4>
-          {group.pairs.map(([subject, object], index) => (
-            <p key={`${subject}-${object}-${index}`} className="text-[11px]">
-              <span className="font-medium">{subject}</span>
-              <span className="mx-1 text-muted-foreground">→</span>
-              <span className="font-medium">{object}</span>
-            </p>
-          ))}
-        </section>
+    <div className="space-y-1.5">
+      {relFacts.map((fact) => (
+        <div key={fact.id} className="rounded-lg border border-border/70 bg-card p-2.5 flex items-center justify-between text-xs shadow-xs">
+          <div className="flex items-center gap-2">
+            <HeartHandshake className="size-3.5 text-primary/80" />
+            <span>与 <strong className="font-semibold text-foreground">{fact.object}</strong></span>
+          </div>
+          <Badge variant="secondary" className="text-[10px]">{fact.predicate}</Badge>
+        </div>
       ))}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* 变迁史 tab：单条 fact 的演变轨迹（按需加载）                           */
+/* 变迁轨迹 tab：fact 历史                                             */
 /* ------------------------------------------------------------------ */
 
 function HistoryTab({ bookId, state }: { bookId: string; state: LoadState }) {
-  if (state.status === "loading") return <LoadingBlock label="正在读状态…" />;
-  if (state.status === "error") return <p className="text-[11px] text-muted-foreground">历史随当前状态一起加载失败。</p>;
+  if (state.status === "loading") return <LoadingBlock label="正在读变迁轨迹…" />;
+  if (state.status === "error") return <p className="text-xs text-destructive">{state.message}</p>;
 
   const facts = state.facts;
   if (facts.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border py-8 text-center text-[11px] text-muted-foreground">
-        没有可追溯的状态。
+      <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
+        暂无变迁历史。
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <p className="text-[11px] text-muted-foreground">选择一条状态查看它的演变轨迹。</p>
+    <div className="space-y-1.5">
       {facts.map((fact) => (
-        <FactHistoryRow key={fact.id} bookId={bookId} fact={fact} />
+        <div key={fact.id} className="rounded-lg border border-border/70 bg-card p-2.5 text-xs space-y-1 shadow-xs">
+          <div className="flex items-center justify-between text-muted-foreground text-[10px]">
+            <span>第 {fact.validFromChapter ?? "—"} 章 起</span>
+            <Badge variant="outline" className="text-[9px]">{fact.category}</Badge>
+          </div>
+          <div className="font-medium text-foreground">
+            {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
+          </div>
+          {fact.evidenceText ? (
+            <p className="text-[10px] text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
+              依据：{fact.evidenceText}
+            </p>
+          ) : null}
+        </div>
       ))}
     </div>
-  );
-}
-
-function FactHistoryRow({ bookId, fact }: { bookId: string; fact: EntityFact }) {
-  const [open, setOpen] = useState(false);
-  const [history, setHistory] = useState<readonly EntityFact[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  const loadHistory = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { fetchJson } = await import("@/hooks/use-api");
-      const payload = await fetchJson<{ items?: EntityFact[] }>(
-        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts/${encodeURIComponent(fact.id)}/history`,
-      );
-      setHistory(payload.items ?? []);
-      setOpen(true);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "加载历史失败");
-    } finally {
-      setLoading(false);
-    }
-  }, [bookId, fact.id]);
-
-  return (
-    <div className="rounded border border-border/60 p-2.5 space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px]">
-          <span className="font-medium">{fact.subject}</span>
-          <span className="mx-1 text-muted-foreground">—{fact.predicate}—</span>
-          <span className="font-medium">{fact.object}</span>
-        </span>
-        <ActionButton onClick={() => (open ? setOpen(false) : void loadHistory())}>
-          {loading ? <Loader2 className="size-3 animate-spin" /> : open ? "收起" : "历史"}
-        </ActionButton>
-      </div>
-      {error && <p className="text-[10px] text-destructive">{error}</p>}
-      {open && history && (
-        <ol className="space-y-1 border-l border-border pl-3">
-          {history.map((item, index) => (
-            <li key={item.id ?? index} className="text-[10px] text-muted-foreground">
-              <span className="text-foreground">{item.subject} —{item.predicate}— {item.object}</span>
-              {item.sourceChapter !== undefined && <span> · 第 {item.sourceChapter} 章</span>}
-              {item.sourceType && <span> · {item.sourceType}</span>}
-            </li>
-          ))}
-        </ol>
-      )}
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-
-function Field({
-  label,
-  value,
-  onChange,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  placeholder?: string;
-}) {
-  return (
-    <label className="block space-y-1">
-      <span className="text-[10px] text-muted-foreground">{label}</span>
-      <input
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        placeholder={placeholder}
-        className="w-full rounded border border-border bg-background px-2 py-1 text-[11px] outline-none focus:border-primary"
-      />
-    </label>
-  );
-}
-
-function ActionButton({
-  children,
-  onClick,
-  disabled,
-  primary,
-  title,
-}: {
-  children: ReactNode;
-  onClick: () => void;
-  disabled?: boolean;
-  primary?: boolean;
-  title?: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      title={title}
-      className={`inline-flex items-center gap-1 rounded px-2 py-1 text-[10px] transition-colors disabled:opacity-50 ${
-        primary
-          ? "bg-primary text-primary-foreground hover:bg-primary/90"
-          : "border border-border hover:bg-muted"
-      }`}
-    >
-      {children}
-    </button>
   );
 }

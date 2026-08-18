@@ -1342,19 +1342,40 @@ export function NarrativeMemoryPanelShell({
       </div>
 
       <nav className="flex flex-wrap gap-1" aria-label="叙事记忆视图">
-        {MEMORY_NAV_ITEMS.map((label) => (
-          <button
-            key={label}
-            type="button"
-            aria-pressed={activeView === label}
-            onClick={() => setActiveView(label)}
-            className={`rounded-full px-2.5 py-1 text-[11px] transition-colors ${
-              activeView === label ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+        {MEMORY_NAV_ITEMS.map((label) => {
+          const isGraph = GRAPH_VIEWS.has(label);
+          return (
+            <button
+              key={label}
+              type="button"
+              aria-pressed={!isGraph && activeView === label}
+              onClick={() => {
+                if (isGraph) {
+                  onOpen?.({
+                    id: "narrative-memory-graph",
+                    kind: "file",
+                    title: `叙事记忆图谱 · ${label}`,
+                    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+                    metadata: {
+                      isNarrativeMemoryEntry: true,
+                      isNarrativeMemoryGraph: true,
+                      preferredView: GRAPH_VIEW_BY_LABEL[label] ?? "relationship",
+                    },
+                  });
+                } else {
+                  setActiveView(label);
+                }
+              }}
+              className={`rounded-full px-2.5 py-1 text-[11px] transition-colors ${
+                !isGraph && activeView === label
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {label}
+            </button>
+          );
+        })}
       </nav>
 
       {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
@@ -1362,31 +1383,6 @@ export function NarrativeMemoryPanelShell({
         <div className="rounded-lg border border-dashed border-border p-4 text-muted-foreground">
           还没有叙事记忆。写完一章后会自动结算；这里只展示动态状态，不读写经纬。
         </div>
-      )}
-
-      {GRAPH_VIEWS.has(activeView) && (
-        <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-active-view">
-          <h3 className="text-xs font-semibold">{activeView}</h3>
-          <p className="text-[11px] text-muted-foreground">从动态事实/事件读取，不混入经纬静态设定。</p>
-          <button
-            type="button"
-            onClick={() => onOpen?.({
-              id: "narrative-memory-graph",
-              kind: "file",
-              title: "叙事记忆图谱",
-              capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-              metadata: {
-                isNarrativeMemoryEntry: true,
-                isNarrativeMemoryGraph: true,
-                preferredView: GRAPH_VIEW_BY_LABEL[activeView] ?? "relationship",
-              },
-            })}
-            className="flex w-full items-center justify-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-center text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
-          >
-            <ExternalLink className="size-3.5" />
-            打开 {activeView}
-          </button>
-        </section>
       )}
 
       {(activeView === "故事状态" || activeView === "结算历史") && (

@@ -273,9 +273,14 @@ export interface WorkbenchCanvasProps {
   onOpenJingweiEntry?: (entryId: string) => boolean;
   /** 图谱节点打开实体详情抽屉。 */
   onOpenEntityDetail?: (entity: string) => void;
+  /**
+   * 选段语义动作（续写/润色/改写/扩写/精简）的执行通道。
+   * 产品 HTTP 适配层没有 Provider，这类动作必须由 Runtime 的叙述者执行。
+   */
+  onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onSendToNarrator }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -594,7 +599,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
             }}
           />
         ) : (
-          <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onContentChange={(nextContent) => {
+          <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} onContentChange={(nextContent) => {
             setContent(nextContent);
             setDirty(nextContent !== normalizedBaseRef.current);
             setSaveError(null);
@@ -645,7 +650,17 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
 
       {/* 章节体检工具栏（仅正式章节显示） */}
       {isChapterWorkflowNode(node) && bookId && (
-        <ChapterToolbar bookId={bookId} chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined} />
+        <ChapterToolbar
+          bookId={bookId}
+          chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
+          content={content}
+          onApplyContent={(nextContent) => {
+            setContent(nextContent);
+            setDirty(nextContent !== normalizedBaseRef.current);
+            setSaveError(null);
+          }}
+          onSendToNarrator={onSendToNarrator}
+        />
       )}
     </div>
   );

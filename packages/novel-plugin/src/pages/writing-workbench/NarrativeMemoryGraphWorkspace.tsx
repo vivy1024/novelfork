@@ -244,7 +244,7 @@ function toFlowNodes(model: NarrativeGraphModel, selectedNodeId: string | null, 
     id: node.id,
     type: "narrativeGraphNode",
     position: node.position,
-    draggable: false,
+    draggable: true,
     selectable: true,
     data: { model: node, muted: Boolean(selectedNodeId && !visible.has(node.id)), onOpenEntityDetail },
   }));
@@ -297,7 +297,7 @@ function GraphCanvas({ model, selectedNodeId, onSelectNode, onOpenEntityDetail }
       fitViewOptions={{ padding: 0.18 }}
       minZoom={0.16}
       maxZoom={2.4}
-      nodesDraggable={false}
+      nodesDraggable={true}
       nodesConnectable={false}
       elementsSelectable
       panOnDrag
@@ -321,7 +321,7 @@ function GraphCanvas({ model, selectedNodeId, onSelectNode, onOpenEntityDetail }
       />
       <Panel position="top-left" className="!m-4">
         <div className="rounded-lg border border-border/70 bg-card/85 px-3 py-2 text-[10px] text-muted-foreground shadow-sm backdrop-blur">
-          <div className="flex items-center gap-2"><Focus className="size-3 text-primary" />点击节点查看详情，拖动画布浏览关系</div>
+          <div className="flex items-center gap-2"><Focus className="size-3 text-primary" />点击节点查看详情，支持拖拽节点与画布浏览关系</div>
         </div>
       </Panel>
       <Panel position="top-right" className="!m-4">
