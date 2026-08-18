@@ -11,6 +11,17 @@ async function loadEngine(): Promise<EngineModule> {
   return import("../engine/index.js");
 }
 
+/**
+ * deslop 单独窄导入，不走 engine barrel。
+ *
+ * barrel 会连带加载 bundled-skills.generated.ts（20MB+ 的内置技能快照），
+ * 首次调用要几秒。去 AI 味是编辑器里的同步交互，不能背这个启动成本，而且
+ * 它对引擎其余部分没有任何依赖。
+ */
+async function loadDeslop(): Promise<typeof import("../engine/filter/deslop/index.js")> {
+  return import("../engine/filter/deslop/index.js");
+}
+
 async function resolveStorage(options: CreateFilterRouterOptions): Promise<StorageDatabase> {
   return options.storage ?? getStorageDatabase();
 }
@@ -41,6 +52,35 @@ function summarize(reports: Array<NonNullable<ReturnType<typeof serializeStoredR
 
 export function createFilterRouter(options: CreateFilterRouterOptions = {}): Hono {
   const app = new Hono();
+
+  /**
+   * 纯规则去 AI 味：0 LLM、同步返回。
+   *
+   * 返回体分两段：`text`/`edits` 是确定性改写结果，`manualFlags` 是需要语义
+   * 判断、规则**没有**动的项。前端据此决定「直接应用候选」还是「转交叙述者」。
+   */
+  app.post("/api/filter/deslop", async (c) => {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const text = typeof body.text === "string" ? body.text : "";
+    if (!text.trim()) {
+      return c.json({ error: "text is required" }, 400);
+    }
+    const whitelist = Array.isArray(body.whitelist)
+      ? body.whitelist.filter((item): item is string => typeof item === "string")
+      : undefined;
+    const budget = typeof body.weakAdverbBudgetPer1000 === "number"
+      && Number.isFinite(body.weakAdverbBudgetPer1000)
+      && body.weakAdverbBudgetPer1000 >= 0
+      ? body.weakAdverbBudgetPer1000
+      : undefined;
+
+    const { deslopText } = await loadDeslop();
+    const result = deslopText(text, {
+      ...(whitelist ? { whitelist } : {}),
+      ...(budget !== undefined ? { weakAdverbBudgetPer1000: budget } : {}),
+    });
+    return c.json({ result });
+  });
 
   app.post("/api/filter/scan", async (c) => {
     const body = await c.req.json<Record<string, unknown>>();

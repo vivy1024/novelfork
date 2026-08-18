@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { Hono } from "hono";
@@ -11,12 +11,15 @@ import {
   buildBridgePrompt,
   buildPolishPrompt,
   buildRewritePrompt,
+  buildNaturalizePrompt,
+  buildCompressPrompt,
   buildDialoguePrompt,
   buildVariantPrompts,
   buildBranchPrompt,
   parseFile,
   mergeStyleProfiles,
   detectStyleDrift,
+  distillStyleProfile,
   type InlineWriteContext,
   type ContinuationInput,
   type ExpansionInput,
@@ -25,6 +28,8 @@ import {
   type BridgePurpose,
   type PolishInput,
   type RewriteInput,
+  type NaturalizeInput,
+  type CompressInput,
   type DialogueInput,
   type DialogueCharacter,
   type VariantInput,
@@ -49,8 +54,8 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     const body = await readJsonBody(c);
     const bookId = c.req.param("bookId");
     const mode = asString(body.mode);
-    if (!mode || !["continuation", "expansion", "bridge", "polish", "rewrite"].includes(mode)) {
-      return c.json({ error: "Invalid mode. Must be continuation, expansion, bridge, polish, or rewrite." }, 400);
+    if (!mode || !["continuation", "expansion", "bridge", "polish", "rewrite", "naturalize", "compress"].includes(mode)) {
+      return c.json({ error: "Invalid mode. Must be continuation, expansion, bridge, polish, rewrite, naturalize, or compress." }, 400);
     }
 
     const context: InlineWriteContext = {
@@ -87,6 +92,12 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
     } else if (mode === "polish") {
       const input: PolishInput = { mode: "polish", selectedText, direction: asString(body.direction) };
       prompt = buildPolishPrompt(input, context);
+    } else if (mode === "naturalize") {
+      const input: NaturalizeInput = { mode: "naturalize", selectedText, direction: asString(body.direction) };
+      prompt = buildNaturalizePrompt(input, context);
+    } else if (mode === "compress") {
+      const input: CompressInput = { mode: "compress", selectedText, direction: asString(body.direction) };
+      prompt = buildCompressPrompt(input, context);
     } else {
       const input: RewriteInput = { mode: "rewrite", selectedText, direction: asString(body.direction) };
       prompt = buildRewritePrompt(input, context);
@@ -340,6 +351,46 @@ export function createWritingModesRouter(ctx: RouterContext): Hono {
 
     const result = parseFile(content, filename);
     return c.json({ ...result, filename });
+  });
+
+  // ---- GET /api/books/:bookId/style/profile ----
+  //
+  // 书籍级文风指纹的唯一权威源是 `story/style_profile.json`。节奏分析与漂移
+  // 检测都读它，因此这里读写的必须是同一个文件，不能另存一份前端状态。
+  app.get("/api/books/:bookId/style/profile", async (c) => {
+    const bookId = c.req.param("bookId");
+    const profilePath = join(ctx.state.bookDir(bookId), "story", "style_profile.json");
+    try {
+      const raw = await readFile(profilePath, "utf-8");
+      return c.json({ profile: JSON.parse(raw) as ImportStyleProfile, exists: true });
+    } catch {
+      // 尚未建立基线不是错误：前端据此显示「未设置」。
+      return c.json({ profile: null, exists: false });
+    }
+  });
+
+  // ---- POST /api/books/:bookId/style/distill ----
+  //
+  // 纯统计蒸馏：从作者提供的参考样文提取文风指纹并落盘。不调模型。
+  app.post("/api/books/:bookId/style/distill", async (c) => {
+    const body = await readJsonBody(c);
+    const bookId = c.req.param("bookId");
+    const samples = Array.isArray(body.samples)
+      ? body.samples.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+      : typeof body.text === "string" && body.text.trim() ? [body.text] : [];
+    if (samples.length === 0) {
+      return c.json({ error: "samples 至少需要一段非空参考正文。" }, 400);
+    }
+
+    const profile = distillStyleProfile(samples);
+    // persist 缺省为 true：作者点「提取并设为基准」就是要它生效。
+    const persist = body.persist !== false;
+    if (persist) {
+      const storyDir = join(ctx.state.bookDir(bookId), "story");
+      await mkdir(storyDir, { recursive: true });
+      await writeFile(join(storyDir, "style_profile.json"), `${JSON.stringify(profile, null, 2)}\n`, "utf-8");
+    }
+    return c.json({ profile, persisted: persist, bookId });
   });
 
   // ---- GET /api/style/personal-profile ----

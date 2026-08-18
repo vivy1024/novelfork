@@ -159,7 +159,7 @@ export const GENERATED_LEARNING_CONTRIBUTION: RuntimeLearningContribution = {
       workflow: [],
       bestPractices: [t("AI 味检测在初稿完成后立即跑，越早修正越省力"), t("文风检测前先在经纬中声明目标文风，否则无基准可比"), t("每次导出前运行投稿风险自检，并逐条查看规则来源和命中上下文"), t("大改前打 Checkpoint 快照，改坏了一键回滚")],
       pitfalls: [t("**AI 味检测结果为空** → 章节内容不足 500 字，本地规则需要最低文本量"), t("**文风检测不准** → 未在经纬中设置目标文风描述"), t("**导出格式异常** → 章节标题格式不统一，先跑投稿风险自检查看正文完整性提示")],
-      agentHints: [t("AI 味检测组件：`AiTasteReport`，12 条本地规则优先执行"), t("健康度组件：`ChapterHealthCard`（章节级）+ `BookHealthSummary`（全书级）"), t("文风漂移：`StyleDriftPanel`，对比当前章与目标文风的向量距离"), t("角色弧线：`CharacterArcsPanel`，从经纬角色设定 + 章节内容提取 arc beats"), t("投稿风险自检：`CompliancePanel` 展示规则来源与证据 → `ExportPanel` 输出"), t("Word 导出：零依赖 .docx 生成，直接构建 OpenXML 包"), t("Checkpoint：`CheckpointPanel`，快照存储在 SQLite，回滚恢复全部资源状态")],
+      agentHints: [t("AI 味检测组件：`AiTasteReport`，18 条本地规则优先执行（含爆发度、词汇丰富度、转折词密度）"), t("去 AI 味改写：`engine/filter/deslop`，确定性改写 + 需语义判断项只标注，0 LLM"), t("叙事结构审计：`nf-narrative-risk-audit` skill，交叙述者开零继承子代理跑两路九项风险卡"), t("健康度组件：`BookHealthSummary`（全书级）；章节级句长分布已并入技能文风面板"), t("文风指纹：`SkillsAndStyleSidebarPanel`，读写 `story/style_profile.json` 唯一权威源"), t("文风漂移：`StyleDriftPanel`，对比当前章与目标文风的向量距离"), t("角色弧线：`CharacterArcsPanel`，从经纬角色设定 + 章节内容提取 arc beats"), t("投稿风险自检：`CompliancePanel` 展示规则来源与证据 → `ExportPanel` 输出"), t("Word 导出：零依赖 .docx 生成，直接构建 OpenXML 包"), t("Checkpoint：`CheckpointPanel`，快照存储在 SQLite，回滚恢复全部资源状态")],
       actions: [
       { label: t("前往"), description: t("/next/books/:bookId"), href: "/next/books/:bookId" },
       ],

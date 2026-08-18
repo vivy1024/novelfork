@@ -52,8 +52,11 @@ routes:
 
 ## Agent 查阅提示
 
-- AI 味检测组件：`AiTasteReport`，12 条本地规则优先执行
-- 健康度组件：`ChapterHealthCard`（章节级）+ `BookHealthSummary`（全书级）
+- AI 味检测组件：`AiTasteReport`，18 条本地规则优先执行（含爆发度、词汇丰富度、转折词密度）
+- 去 AI 味改写：`engine/filter/deslop`，确定性改写 + 需语义判断项只标注，0 LLM
+- 叙事结构审计：`nf-narrative-risk-audit` skill，交叙述者开零继承子代理跑两路九项风险卡
+- 健康度组件：`BookHealthSummary`（全书级）；章节级句长分布已并入技能文风面板
+- 文风指纹：`SkillsAndStyleSidebarPanel`，读写 `story/style_profile.json` 唯一权威源
 - 文风漂移：`StyleDriftPanel`，对比当前章与目标文风的向量距离
 - 角色弧线：`CharacterArcsPanel`，从经纬角色设定 + 章节内容提取 arc beats
 - 投稿风险自检：`CompliancePanel` 展示规则来源与证据 → `ExportPanel` 输出

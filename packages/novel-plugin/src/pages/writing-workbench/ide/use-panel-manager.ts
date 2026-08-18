@@ -9,20 +9,35 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PanelManager, type PanelId } from "./panel-manager";
 
-/** 经纬（作者维护的设定）与叙事记忆（正文产生的事实流）各自独立入口。 */
+/**
+ * 面板视图标识。
+ *
+ * 彻底消除经纬与叙事记忆技术割裂：
+ * - `characters-lore`：角色与设定（人物卡、世界观、门派势力）
+ * - `storyline`：故事脉络（大纲、伏笔看板、全景时间线与关系图、章后事实待审）
+ *
+ * 保留 `jingwei` 与 `narrative-memory` 作为兼容别名。
+ */
 export type ViewId =
   | "write"
   | "explorer"
-  | "jingwei"
+  | "characters-lore"
+  | "storyline"
+  | "skills-style"
   | "tools"
   | "search"
+  | "jingwei"
   | "narrative-memory";
+
 const VIEW_IDS: ViewId[] = [
   "write",
   "explorer",
-  "jingwei",
+  "characters-lore",
+  "storyline",
+  "skills-style",
   "tools",
   "search",
+  "jingwei",
   "narrative-memory",
 ];
 

@@ -5,6 +5,14 @@ export { tokenizeChineseText, stdDev, variance, type TextSegment, type Tokenized
 export { scanChapterAndStoreFilterReport, type ScanChapterAndStoreFilterReportInput } from "./integration/pipeline-hook.js";
 export { createFilterReportRepository } from "./repositories/filter-report-repo.js";
 export { suggestSevenTactics, SEVEN_TACTICS, type SevenTacticSuggestion } from "./suggestions/seven-tactics.js";
+export { deslopText } from "./deslop/index.js";
+export type {
+  DeslopEdit,
+  DeslopManualFlag,
+  DeslopOptions,
+  DeslopResult,
+  DeslopStats,
+} from "./deslop/index.js";
 export { getZhuqueConfigFromKv, scanWithZhuque, type ZhuqueConfig } from "./zhuque/client.js";
 export type {
   AiTasteLevel,

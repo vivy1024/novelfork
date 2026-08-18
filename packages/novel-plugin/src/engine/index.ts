@@ -65,6 +65,10 @@ export {
   parsePolishResult,
   buildRewritePrompt,
   parseRewriteResult,
+  buildNaturalizePrompt,
+  parseNaturalizeResult,
+  buildCompressPrompt,
+  parseCompressResult,
 } from "./agents/inline-writer.js";
 export type {
   InlineWriteMode,
@@ -79,6 +83,8 @@ export type {
   BridgeInput,
   PolishInput,
   RewriteInput,
+  NaturalizeInput,
+  CompressInput,
 } from "./agents/inline-writer.js";
 export { buildDialoguePrompt, parseDialogueResult } from "./agents/dialogue-generator.js";
 export type { DialogueCharacter, DialogueInput, DialogueLine, DialogueResult } from "./agents/dialogue-generator.js";
@@ -109,6 +115,15 @@ export type {
   WritingSkillRecommendation,
   WritingSkillRecommendationInput,
 } from "./writing-skills/recommend.js";
+export {
+  importTavernPreset,
+  rebuildTavernPresetSkill,
+  toggleTavernPresetEntry,
+  TavernPresetImportError,
+  type TavernPresetImportResult,
+  type TavernPresetEntry,
+  type TavernPresetSamplerSettings,
+} from "./writing-skills/sillytavern-preset.js";
 export {
   WRITING_SKILL_COMPLIANCE_CHECK_TYPES,
   WRITING_SKILL_KINDS,

@@ -251,6 +251,42 @@ async function findSkillFiles(root: string): Promise<string[]> {
 	return found;
 }
 
+/**
+ * skill 附件里允许带进来的文件类型。
+ *
+ * 早期只收 `.md`，导致上游 `scripts/*.js` 全部丢失，而 SKILL.md 里
+ * 「必须先运行本 skill 自带脚本」的指令原样保留 —— 叙述者照做会直接
+ * 报文件不存在。这些脚本是确定性的本地 lint（只读正文、报告问题），
+ * 属于 skill 功能的一部分，必须一起导入。
+ */
+const COPYABLE_EXTENSIONS = [".md", ".js", ".mjs", ".cjs", ".json", ".txt", ".yaml", ".yml"];
+
+function isCopyableAttachment(name: string): boolean {
+	return COPYABLE_EXTENSIONS.some((extension) => name.endsWith(extension));
+}
+
+/**
+ * 给导入的 `scripts/` 目录划出 CommonJS 边界。
+ *
+ * 上游脚本用 `require()` 写成，但落地目录在 `packages/novel-plugin/` 下，
+ * 而该 package.json 声明了 `"type": "module"` —— Node 会按最近父级
+ * package.json 把 `.js` 当 ESM 解析，脚本一跑就 `require is not defined`。
+ *
+ * 放一个只声明 type 的 package.json 即可把这层边界拉回 CJS：`.mjs` 不受
+ * 影响（扩展名本身声明 ESM），也不需要改上游代码或 SKILL.md 里的引用路径。
+ */
+async function ensureCommonJsBoundary(scriptsDir: string): Promise<void> {
+	let entries;
+	try {
+		entries = await readdir(scriptsDir, { withFileTypes: true });
+	} catch {
+		return;
+	}
+	const hasCommonJsScript = entries.some((entry) => entry.isFile() && entry.name.endsWith(".js"));
+	if (!hasCommonJsScript) return;
+	await writeFile(join(scriptsDir, "package.json"), `{\n  "type": "commonjs"\n}\n`, "utf-8");
+}
+
 async function copyDir(from: string, to: string): Promise<number> {
 	let count = 0;
 	let entries;
@@ -265,7 +301,7 @@ async function copyDir(from: string, to: string): Promise<number> {
 		const dst = join(to, entry.name);
 		if (entry.isDirectory()) {
 			count += await copyDir(src, dst);
-		} else if (entry.name.endsWith(".md")) {
+		} else if (isCopyableAttachment(entry.name)) {
 			await writeFile(dst, await readFile(src, "utf-8"), "utf-8");
 			count += 1;
 		}
@@ -330,6 +366,11 @@ async function main(): Promise<void> {
 						"utf-8",
 					);
 					referenceCount = await copyDir(join(skillDir, "references"), join(target, "references"));
+					// 上游 skill 自带的确定性检查脚本（check-ai-patterns.js 等）。
+					// SKILL.md 把它们写成必跑步骤，漏掉会让叙述者执行时报文件不存在。
+					const scriptsTarget = join(target, "scripts");
+					await copyDir(join(skillDir, "scripts"), scriptsTarget);
+					await ensureCommonJsBoundary(scriptsTarget);
 					await writeFile(
 						join(target, "_source.json"),
 						`${JSON.stringify(

@@ -48,3 +48,5 @@ export type { StyleProfile as ImportStyleProfile, RangeStats, PersonalStyleProfi
 export { mergeStyleProfiles } from "./import/multi-work-style.js";
 export type { DriftResult } from "./import/style-drift-detector.js";
 export { detectStyleDrift } from "./import/style-drift-detector.js";
+export { distillStyleProfile, SENTENCE_LENGTH_BUCKETS } from "./import/style-distiller.js";
+export type { DistilledStyleProfile } from "./import/style-distiller.js";
