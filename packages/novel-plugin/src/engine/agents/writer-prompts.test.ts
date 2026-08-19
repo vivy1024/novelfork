@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { BookConfig, GenreProfile } from "@vivy1024/novelfork-core";
 import { buildLengthSpec } from "@vivy1024/novelfork-core";
 import { buildWriterSystemPrompt } from "./writer-prompts.js";
+import { NOVEL_RUNTIME_TOOL_CATALOG } from "../../handlers/tool-registry.js";
 import type { ParsedWritingSkill } from "../writing-skills/types.js";
 
 const BOOK: BookConfig = {
@@ -69,5 +70,32 @@ describe("writer prompt writing-skill/style channel boundary", () => {
     expect(prompt).not.toContain(STYLE_ONLY_SKILL.name);
     expect(prompt).not.toContain(STYLE_ONLY_SKILL.body);
     expect(prompt).not.toContain("## 文风规则");
+  });
+
+  it("covers every registered novel tool with orchestration guidance", () => {
+    const prompt = buildWriterSystemPrompt(
+      BOOK,
+      GENRE,
+      null,
+      "# Book Rules",
+      "# Genre Body",
+      "# Style Guide",
+      undefined,
+      3,
+      "creative",
+      undefined,
+      "zh",
+      "governed",
+      buildLengthSpec(2200, "zh"),
+    );
+
+    expect(prompt).toContain("## 工具编排 SOP");
+    expect(prompt).toContain("memory.settle_chapter");
+    expect(prompt).toContain("cockpit.snapshot");
+    expect(prompt).toContain("hooks.manage");
+
+    for (const tool of NOVEL_RUNTIME_TOOL_CATALOG) {
+      expect(prompt).toContain(`工具：${tool.name}；`);
+    }
   });
 });

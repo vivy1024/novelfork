@@ -37,14 +37,20 @@ export interface PhrasePattern {
   readonly reason: string;
 }
 
+function replaceNegationReversal(match: RegExpMatchArray): string {
+  const subject = match[1] ?? "";
+  const assertion = match[2] ?? "";
+  return subject ? `${subject}是${assertion}` : assertion;
+}
+
 /** 需要整段重组的确定性句式。 */
 export const PHRASE_PATTERNS: readonly PhrasePattern[] = [
   {
     rule: "negation-reversal",
-    // 「不是A，而是B」/「不是A，是B」→ 只留 B
-    pattern: /不是[^。！？；，]{1,30}[，,]\s*(?:而)?是([^。！？；]{1,40})/gu,
-    replace: (match) => match[1] ?? "",
-    reason: "否定翻转句式是最典型的 AI 议论腔，直接写后项即可",
+    // 「这/他不是A，而是B」→「这/他是B」；无前置主语时只留 B。
+    pattern: /(?:(这个|那个|这|那|它|他|她)(?=不是))?不是[^。！？；，,]{1,30}[，,]\s*(?:而)?是([^。！？；，,]{1,40})/gu,
+    replace: replaceNegationReversal,
+    reason: "否定翻转句式是最典型的 AI 议论腔，保留前置主语并直接写后项",
   },
   {
     rule: "eye-flash",

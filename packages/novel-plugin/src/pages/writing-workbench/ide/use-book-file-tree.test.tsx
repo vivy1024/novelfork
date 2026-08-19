@@ -47,6 +47,7 @@ describe("useBookFileTree", () => {
     expect(chapter?.kind).toBe("chapter");
     expect(chapter?.metadata?.isChapter).toBe(true);
     expect(chapter?.metadata?.isFile).toBe(true);
+    expect(chapter?.metadata?.chapterNumber).toBe(1);
 
     expect(storyFile?.kind).toBe("file");
     expect(storyFile?.metadata?.isChapter).toBeUndefined();

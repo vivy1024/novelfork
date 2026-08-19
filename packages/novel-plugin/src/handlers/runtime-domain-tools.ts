@@ -782,6 +782,9 @@ async function pipelineWrite(
       publishHint: result.publishHint,
       needsHumanReview: result.needsHumanReview,
       settlementError: result.settlementError,
+      // 上下文来源与真实阶段：让作者在结果卡里核对本章读了什么、管线走过哪几步。
+      contextSources: result.contextSources,
+      pipelineStages: result.pipelineStages,
       artifact: result.artifact,
     },
   );

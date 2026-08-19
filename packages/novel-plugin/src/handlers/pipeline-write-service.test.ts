@@ -203,6 +203,45 @@ describe("pipeline.write high-risk pending reminder", () => {
   });
 });
 
+describe("pipeline.write execution transparency", () => {
+  it("回传的上下文来源来自真实 selectedContext，不是另算一份", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+
+    // contextPackage 曾经算完就丢；这条锁定它必须被读出来变成 contextSources。
+    expect(source).toContain("contextSources = contextPackage.selectedContext.map(");
+    expect(source).toContain("chars: item.excerpt?.length ?? 0");
+    // 只回传字符数，不把摘录原文再吐一遍。
+    expect(source).not.toContain("excerpt: item.excerpt");
+  });
+
+  it("管线阶段全部由已算出的真实状态推导，没有硬编码的理想流程", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    const stagesBlock = source.slice(source.indexOf("const pipelineStages"), source.indexOf("return {\n      ok: true"));
+
+    // 每个阶段的判定依据都必须是函数内已存在的真实变量。
+    expect(stagesBlock).toContain("skipContextGate");
+    expect(stagesBlock).toContain("beatBudgetWarning");
+    expect(stagesBlock).toContain("finalLengthCount");
+    expect(stagesBlock).toContain("auditResult.passed");
+    expect(stagesBlock).toContain("auditIssueCategories");
+    expect(stagesBlock).toContain("finalGate.counts");
+    expect(stagesBlock).toContain("needsHumanReview");
+    expect(stagesBlock).toContain("writingSkillWarnings.length");
+    expect(stagesBlock).toContain("knowledgeWarnings.length");
+    expect(stagesBlock).toContain("timelineWarnings.length");
+    expect(stagesBlock).toContain("publishHint.status");
+    expect(stagesBlock).toContain("settlementDispatch");
+  });
+
+  it("成功返回同时带上 contextSources 与 pipelineStages", async () => {
+    const source = await readFile(SERVICE_SOURCE_PATH, "utf-8");
+    const successBlock = source.slice(source.indexOf("return {\n      ok: true"));
+
+    expect(successBlock).toContain("contextSources,");
+    expect(successBlock).toContain("pipelineStages,");
+  });
+});
+
 describe("pipeline.write narrative context integration helpers", () => {
   it("maps NarrativeContextPackage sections into Writer selectedContext", () => {
     const contextPackage = buildPipelineContextPackage({

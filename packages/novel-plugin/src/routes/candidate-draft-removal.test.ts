@@ -23,13 +23,18 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 
-describe("writing-resource compatibility", () => {
-  it("creates and lists candidate and draft resources through the unified domain route", async () => {
+/**
+ * 候选稿与草稿机制已下线：正文以章节 Markdown 为唯一权威源。
+ * 这些断言防止 candidate/draft 通过任何一条路径重新出现。
+ */
+describe("candidate and draft removal", () => {
+  it("always creates formal chapters, even when the request asks for candidate or draft", async () => {
     const app = createWritingResourceRouter({ resolveBookDir: (bookId) => join(root, "books", bookId) });
 
     for (const body of [
-      { type: "candidate", title: "候选稿", content: "候选正文" },
-      { type: "draft", title: "草稿", content: "草稿正文" },
+      { type: "candidate", title: "旧候选稿", content: "候选正文" },
+      { type: "draft", title: "旧草稿", content: "草稿正文" },
+      { title: "无类型请求", content: "默认正文" },
     ]) {
       const response = await app.request("http://localhost/api/books/book-1/resources", {
         method: "POST",
@@ -37,37 +42,38 @@ describe("writing-resource compatibility", () => {
         body: JSON.stringify(body),
       });
       expect(response.status).toBe(201);
+      expect(await response.json()).toMatchObject({
+        resource: { type: "chapter", status: "accepted" },
+      });
     }
 
     const listResponse = await app.request("http://localhost/api/books/book-1/resources");
     expect(listResponse.status).toBe(200);
-    const payload = await listResponse.json() as { resources: Array<{ type: string; title: string }> };
-    expect(payload.resources).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: "candidate", title: "候选稿" }),
-      expect.objectContaining({ type: "draft", title: "草稿" }),
-    ]));
+    const payload = await listResponse.json() as { resources: Array<{ type: string; status: string }> };
+    expect(payload.resources.length).toBeGreaterThan(0);
+    expect(payload.resources.every((resource) => resource.type === "chapter")).toBe(true);
+    expect(payload.resources.some((resource) => resource.status === "candidate" || resource.status === "draft")).toBe(false);
   });
 
-  it("accepts a candidate through the restored transition route", async () => {
+  it("no longer exposes a resource transition state machine", async () => {
     const app = createWritingResourceRouter({ resolveBookDir: (bookId) => join(root, "books", bookId) });
     const createResponse = await app.request("http://localhost/api/books/book-1/resources", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "candidate", title: "第一章候选", content: "正式章节" }),
+      body: JSON.stringify({ title: "第一章", content: "正式章节" }),
     });
     expect(createResponse.status).toBe(201);
     const created = await createResponse.json() as { resource: { id: string } };
 
-    const transitionResponse = await app.request(`http://localhost/api/books/book-1/resources/${created.resource.id}/transition`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "accept", chapterNumber: 1, mode: "new" }),
-    });
-
-    expect(transitionResponse.status).toBe(200);
-    expect(await transitionResponse.json()).toMatchObject({
-      resource: { type: "chapter", status: "accepted", chapterNumber: 1 },
-    });
+    for (const action of ["accept", "reject", "archive", "to-draft", "to-candidate", "restore"]) {
+      const response = await app.request(`http://localhost/api/books/book-1/resources/${created.resource.id}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, chapterNumber: 1, mode: "new" }),
+      });
+      expect(response.status).toBe(410);
+      expect(await response.json()).toMatchObject({ code: "WRITING_RESOURCE_TRANSITION_REMOVED" });
+    }
   });
 
   it("does not expose writing-modes candidate and draft entry points", async () => {

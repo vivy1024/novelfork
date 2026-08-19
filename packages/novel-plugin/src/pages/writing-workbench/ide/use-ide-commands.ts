@@ -3,9 +3,10 @@
  */
 import { useMemo } from "react";
 import type { PaletteCommand } from "./command-palette";
+import type { ViewId } from "./use-panel-manager";
 
 export interface IdeCommandOptions {
-  switchView: (view: "write" | "explorer" | "jingwei" | "tools" | "search") => void;
+  switchView: (view: ViewId) => void;
   toggleSidebar: () => void;
   toggleChat: () => void;
   setShowSettings: (v: boolean) => void;
@@ -32,11 +33,29 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         execute: () => options.switchView("explorer"),
       },
       {
-        id: "view.jingwei",
-        label: "显示: 经纬",
+        id: "view.characters-lore",
+        label: "显示: 角色与设定",
         category: "视图",
         shortcut: "Ctrl+2",
-        execute: () => options.switchView("jingwei"),
+        execute: () => options.switchView("characters-lore"),
+      },
+      {
+        id: "view.storyline",
+        label: "显示: 故事脉络",
+        category: "视图",
+        execute: () => options.switchView("storyline"),
+      },
+      {
+        id: "view.skills-style",
+        label: "显示: 技能与文风",
+        category: "视图",
+        execute: () => options.switchView("skills-style"),
+      },
+      {
+        id: "view.search",
+        label: "显示: 搜索",
+        category: "视图",
+        execute: () => options.switchView("search"),
       },
       {
         id: "view.tools",
@@ -106,9 +125,9 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         execute: () => {},
       },
       {
-        id: "jingwei.refresh",
-        label: "刷新经纬数据",
-        category: "经纬",
+        id: "characters-lore.refresh",
+        label: "刷新角色与设定数据",
+        category: "角色与设定",
         execute: () => window.location.reload(),
       },
       {

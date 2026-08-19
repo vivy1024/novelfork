@@ -3,7 +3,6 @@ import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import {
   createWritingResourceService,
   type CreateServiceInput,
-  type WritingResourceTransitionAction,
 } from "../engine/writing-resource/service.js";
 import { resolveChapterVolumeDirectory } from "../handlers/outline-volume.js";
 import type {
@@ -77,20 +76,11 @@ export function createWritingResourceRouter(options: WritingResourceRouterOption
     return c.json({ resource });
   });
 
-  app.post("/api/books/:bookId/resources/:resourceId/transition", async (c) => {
-    const bookId = c.req.param("bookId");
-    const body: Record<string, unknown> = await c.req.json<Record<string, unknown>>().catch(() => ({}));
-    const service = serviceForRequest();
-    const resourceId = c.req.param("resourceId");
-    const current = await service.getById(bookId, resourceId);
-    if (!current || current.deletedAt !== null) return c.json({ error: "Writing resource not found" }, 404);
-    try {
-      const resource = await service.transition(bookId, current.id, parseTransition(body));
-      return c.json({ resource });
-    } catch (cause) {
-      return c.json({ error: cause instanceof Error ? cause.message : "Transition failed" }, 400);
-    }
-  });
+  app.post("/api/books/:bookId/resources/:resourceId/transition", (c) => c.json({
+    error: "WRITING_RESOURCE_TRANSITION_REMOVED",
+    code: "WRITING_RESOURCE_TRANSITION_REMOVED",
+    summary: "候选稿与草稿机制已下线，不再有状态流转。请直接写入正式章节。",
+  }, 410));
 
   app.delete("/api/books/:bookId/resources/:resourceId", async (c) => {
     const bookId = c.req.param("bookId");
@@ -124,18 +114,11 @@ function parseFilter(query: Record<string, string>): ListWritingResourcesFilter 
 }
 
 function parseCreateInput(body: Record<string, unknown>): CreateServiceInput {
-  const type = isType(body.type) ? body.type : "candidate";
-  const status = isStatus(body.status)
-    ? body.status
-    : type === "draft"
-      ? "draft"
-      : type === "chapter"
-        ? "accepted"
-        : "candidate";
+  // 只支持正式章节：候选稿/草稿类型已下线。
   return {
     ...(typeof body.id === "string" && body.id.trim() ? { id: body.id.trim() } : {}),
-    type,
-    status,
+    type: "chapter",
+    status: "accepted",
     title: stringBody(body.title, "title"),
     content: typeof body.content === "string" ? body.content : "",
     chapterNumber: numberBody(body.chapterNumber) ?? numberBody(body.chapter_number),
@@ -143,20 +126,6 @@ function parseCreateInput(body: Record<string, unknown>): CreateServiceInput {
     source: typeof body.source === "string" ? body.source : "api:writing-resource",
     metadata: isRecord(body.metadata) ? body.metadata : {},
   };
-}
-
-function parseTransition(body: Record<string, unknown>): WritingResourceTransitionAction {
-  const action = body.action;
-  if (action === "accept") {
-    const chapterNumber = numberBody(body.chapterNumber);
-    if (!chapterNumber) throw new Error("Accept action requires chapterNumber.");
-    const mode = body.mode === "merge" || body.mode === "new" ? body.mode : "replace";
-    return { action, chapterNumber, mode };
-  }
-  if (action === "reject" || action === "archive" || action === "to-draft" || action === "to-candidate" || action === "restore") {
-    return { action };
-  }
-  throw new Error("Invalid transition action.");
 }
 
 function stringBody(value: unknown, field: string): string {
@@ -171,11 +140,11 @@ function numberBody(value: unknown): number | undefined {
 }
 
 function isType(value: unknown): value is WritingResourceType {
-  return value === "chapter" || value === "candidate" || value === "draft";
+  return value === "chapter";
 }
 
 function isStatus(value: unknown): value is WritingResourceStatus {
-  return value === "draft" || value === "candidate" || value === "accepted" || value === "rejected" || value === "archived";
+  return value === "accepted" || value === "archived";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

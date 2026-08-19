@@ -132,8 +132,8 @@ describe("planFixAction", () => {
   });
 
   it("routes review actions to sidebar views", () => {
-    // 待确认事件在合并后的经纬工作区，伏笔看板在工具视图
-    expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("jingwei");
+    // 待确认事件在故事脉络工作区，伏笔看板在工具视图
+    expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("storyline");
     expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("tools");
   });
 

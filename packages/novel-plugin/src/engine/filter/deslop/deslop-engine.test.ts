@@ -20,12 +20,23 @@ describe("确定性改写", () => {
     expect(result.stats.resultLength).toBeLessThan(result.stats.originalLength);
   });
 
-  it("否定翻转句式只保留后项", () => {
+  it("否定翻转句式保留前置主语并补回是", () => {
     const result = deslopText("他不是冷漠，而是绝望。");
 
+    expect(result.text).toBe("他是绝望。");
     expect(result.text).not.toContain("不是冷漠");
-    expect(result.text).toContain("绝望");
     expect(result.edits.some((edit) => edit.rule === "negation-reversal")).toBe(true);
+  });
+
+  it.each([
+    ["这不是简单的胜利，而是命运的馈赠。", "这是命运的馈赠。"],
+    ["那不是借口，而是事实。", "那是事实。"],
+    ["它不是故障，而是保护机制。", "它是保护机制。"],
+    ["这个不是终点，而是起点。", "这个是起点。"],
+    ["那个不是敌人，而是盟友。", "那个是盟友。"],
+    ["不是巧合，而是有人安排。", "有人安排。"],
+  ])("修复前置指代词残留：%s", (source, expected) => {
+    expect(deslopText(source).text).toBe(expected);
   });
 
   it("表情与心理套词换成可见动作", () => {

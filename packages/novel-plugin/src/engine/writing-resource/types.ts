@@ -1,5 +1,9 @@
-export type WritingResourceType = "chapter" | "candidate" | "draft";
-export type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
+/**
+ * 写作资源只保留正式章节。候选稿与草稿机制已下线：正文以章节 Markdown 文件为唯一权威源。
+ * `archived` 仅用于读取历史遗留行，产品流程不再写入。
+ */
+export type WritingResourceType = "chapter";
+export type WritingResourceStatus = "accepted" | "archived";
 
 /** 判断 source 是否为 AI 生成 */
 export function isAiGenerated(source: string | null): boolean {

@@ -87,20 +87,20 @@ describe("writing resource hybrid service", () => {
     }
   });
 
-  it("supports database-backed candidate resources without a file-system resolver", async () => {
+  it("stores chapters in the database when no file-system resolver is configured", async () => {
     const storage = await createStorage();
     try {
       const service = createWritingResourceService({ storage, now: () => 1_700_000_000_000 });
       const created = await service.create("book-1", {
-        type: "candidate",
-        status: "candidate",
-        title: "候选稿",
-        content: "数据库中的候选正文。",
+        type: "chapter",
+        status: "accepted",
+        title: "第一章",
+        content: "数据库中的章节正文。",
       });
 
-      expect(created).toEqual(expect.objectContaining({ bookId: "book-1", type: "candidate", status: "candidate" }));
+      expect(created).toEqual(expect.objectContaining({ bookId: "book-1", type: "chapter", status: "accepted" }));
       await expect(service.list("book-1")).resolves.toEqual([
-        expect.objectContaining({ id: created.id, title: "候选稿" }),
+        expect.objectContaining({ id: created.id, title: "第一章" }),
       ]);
     } finally {
       storage.close();

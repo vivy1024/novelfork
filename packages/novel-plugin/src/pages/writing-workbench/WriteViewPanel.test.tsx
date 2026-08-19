@@ -122,4 +122,31 @@ describe("WriteViewPanel 一键修落点", () => {
     // 旧「文风预设」（enabledPresetIds）已迁移下线，界面上不该再出现这个词
     expect(document.body.textContent).not.toContain("文风预设");
   });
+
+  it("填写至少 8 字指示后，刷新 preflight 会携带 userDirectives", async () => {
+    const { fireEvent, render, screen, waitFor } = await import("@testing-library/react");
+    const { WriteViewPanel } = await import("./WriteViewPanel");
+    const callTool = vi.fn(async () => preflightWith({}));
+    const directive = "让主角在雨夜查明旧案真相";
+
+    render(<WriteViewPanel bookId={BOOK_ID} callTool={callTool} />);
+    fireEvent.change(screen.getByTestId("write-directive-input"), {
+      target: { value: directive },
+    });
+    await waitFor(() => {
+      expect((screen.getByTestId("write-directive-input") as HTMLTextAreaElement).value).toBe(directive);
+    });
+    fireEvent.click(screen.getByTestId("write-refresh"));
+
+    await waitFor(() => {
+      const preflightCalls = callTool.mock.calls.filter(([tool]) => tool === "write.preflight");
+      expect(preflightCalls).toContainEqual([
+        "write.preflight",
+        {
+          userDirectives: directive,
+          acceptFocusDefault: false,
+        },
+      ]);
+    });
+  });
 });

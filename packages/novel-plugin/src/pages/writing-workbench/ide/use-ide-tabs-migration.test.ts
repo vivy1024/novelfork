@@ -1,12 +1,12 @@
 /**
- * 经纬与叙事记忆合并后的持久化迁移。
+ * 新旧侧栏视图合并后的持久化迁移。
  *
- * 合并前作者可能已经落盘了 view="narrative-memory" 的 tab。
- * 如果不迁移，这些 tab 会留在 localStorage 里但没有任何视图承载 —— 点不开也关不掉。
+ * 旧版本可能已经落盘了 `jingwei` 或 `narrative-memory` 视图的 tab。
+ * 如果不迁移，这些 tab 会留在 localStorage 里但没有新视图承载 —— 点不开也关不掉。
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { loadState, normalizeTabView, saveState } from "./use-ide-tabs";
+import { loadState, normalizePersistedTabView, saveState } from "./use-ide-tabs";
 
 const BOOK = "book-migration";
 const KEY = `nf:ide-tabs:${BOOK}`;
@@ -26,26 +26,30 @@ beforeEach(() => {
   });
 });
 
-describe("normalizeTabView", () => {
-  it("把已废弃的 narrative-memory 折叠到 jingwei", () => {
-    expect(normalizeTabView("narrative-memory")).toBe("jingwei");
+describe("normalizePersistedTabView", () => {
+  it("把已废弃的 jingwei 迁移到 characters-lore", () => {
+    expect(normalizePersistedTabView("jingwei")).toBe("characters-lore");
+  });
+
+  it("把已废弃的 narrative-memory 迁移到 storyline", () => {
+    expect(normalizePersistedTabView("narrative-memory")).toBe("storyline");
   });
 
   it("保留现存视图", () => {
-    for (const view of ["write", "explorer", "jingwei", "tools", "search"]) {
-      expect(normalizeTabView(view)).toBe(view);
+    for (const view of ["write", "explorer", "characters-lore", "storyline", "skills-style", "tools", "search"]) {
+      expect(normalizePersistedTabView(view)).toBe(view);
     }
   });
 
   it("未知或非法值退回 explorer", () => {
-    expect(normalizeTabView("what-is-this")).toBe("explorer");
-    expect(normalizeTabView(undefined)).toBe("explorer");
-    expect(normalizeTabView(42)).toBe("explorer");
+    expect(normalizePersistedTabView("what-is-this")).toBe("explorer");
+    expect(normalizePersistedTabView(undefined)).toBe("explorer");
+    expect(normalizePersistedTabView(42)).toBe("explorer");
   });
 });
 
 describe("loadState 迁移", () => {
-  it("旧 narrative-memory tab 迁到经纬工作区且仍可激活", () => {
+  it("旧视图 tab 分别迁到新工作区且仍可激活", () => {
     localStorage.setItem(KEY, JSON.stringify({
       tabs: [
         { id: "memory-fact:1", nodeId: "memory-fact:1", title: "林舟 持有 青铜镜", kind: "file", view: "narrative-memory" },
@@ -56,11 +60,13 @@ describe("loadState 迁移", () => {
 
     const state = loadState(BOOK);
 
-    expect(state.tabs.map((t) => t.view)).toEqual(["jingwei", "jingwei"]);
+    expect(state.tabs.map((t) => t.view)).toEqual(["storyline", "characters-lore"]);
     // 不再残留已废弃的视图键
     expect(Object.keys(state.activeByView)).not.toContain("narrative-memory");
+    expect(Object.keys(state.activeByView)).not.toContain("jingwei");
     // 激活项迁移过来，且指向仍然存在的 tab
-    expect(state.activeByView.jingwei).toBe("memory-fact:1");
+    expect(state.activeByView.storyline).toBe("memory-fact:1");
+    expect(state.activeByView["characters-lore"]).toBe("jingwei-entry:9");
   });
 
   it("两个旧视图都有激活项时不会产生悬空引用", () => {
@@ -73,8 +79,10 @@ describe("loadState 迁移", () => {
     }));
 
     const state = loadState(BOOK);
-    const active = state.activeByView.jingwei;
-    expect(state.tabs.some((t) => t.id === active)).toBe(true);
+    expect(state.activeByView["characters-lore"]).toBe("a");
+    expect(state.activeByView.storyline).toBe("b");
+    expect(state.tabs.some((t) => t.id === state.activeByView["characters-lore"])).toBe(true);
+    expect(state.tabs.some((t) => t.id === state.activeByView.storyline)).toBe(true);
   });
 
   it("激活项指向已消失的 tab 时回退到该视图第一个 tab", () => {
@@ -84,13 +92,13 @@ describe("loadState 迁移", () => {
     }));
 
     const state = loadState(BOOK);
-    expect(state.activeByView.jingwei).toBe("kept");
+    expect(state.activeByView.storyline).toBe("kept");
   });
 
   it("没有落盘数据时返回空状态", () => {
     const state = loadState(BOOK);
     expect(state.tabs).toEqual([]);
-    expect(state.activeByView.jingwei).toBeNull();
+    expect(state.activeByView["characters-lore"]).toBeNull();
   });
 
   it("旧格式（无 activeByView）不迁移，避免视图错乱", () => {
@@ -115,10 +123,10 @@ describe("loadState 迁移", () => {
     saveState(BOOK, loadState(BOOK));
 
     const persisted = JSON.parse(localStorage.getItem(KEY)!);
-    expect(persisted.tabs.map((t: { view: string }) => t.view)).toEqual(["jingwei"]);
+    expect(persisted.tabs.map((t: { view: string }) => t.view)).toEqual(["storyline"]);
     expect(Object.keys(persisted.activeByView)).not.toContain("narrative-memory");
-    expect(persisted.activeByView.jingwei).toBe("m1");
+    expect(persisted.activeByView.storyline).toBe("m1");
     // 再次加载已是稳定态
-    expect(loadState(BOOK).tabs[0]?.view).toBe("jingwei");
+    expect(loadState(BOOK).tabs[0]?.view).toBe("storyline");
   });
 });

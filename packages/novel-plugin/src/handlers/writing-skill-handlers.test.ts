@@ -110,6 +110,30 @@ describe("writing skill handlers use project disk state", () => {
     }
   });
 
+  it("导入项目独有技能时可直接创建 canonical Skill 文件", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-project-import-handler-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-project-import";
+    const slug = "st-sillytavern-preset";
+    const projectFile = join(bookRoot, ".novelfork", "skills", slug, "SKILL.md");
+    try {
+      await setupBook(bookRoot, bookId, { title: "酒馆预设导入测试" });
+      const content = skillContent(slug, "酒馆预设导入技能");
+
+      const imported = await handleProjectWritingSkillUpdate(
+        { bookId, slug, content },
+        { bookRoot, home },
+      );
+
+      expect(imported.ok).toBe(true);
+      expect(await readFile(projectFile, "utf8")).toBe(content);
+      expect(await exists(join(home, ".novelfork", "skills", slug, "SKILL.md"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it("项目目录文件优先，book.json 中的旧字段既不启用也不被清洗", async () => {
     const root = await mkdtemp(join(tmpdir(), "novelfork-writing-skill-authority-"));
     const home = join(root, "home");

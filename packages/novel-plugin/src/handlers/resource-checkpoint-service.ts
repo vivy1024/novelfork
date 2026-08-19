@@ -8,8 +8,6 @@ export type CheckpointResourceKind =
   | "truth"
   | "jingwei"
   | "narrative-line"
-  | "candidate"
-  | "draft"
   | "prompt-preview";
 
 export interface ResourceCheckpointTarget {
@@ -58,7 +56,7 @@ export interface ResourceCheckpointServiceOptions {
   readonly createId?: () => string;
 }
 
-const NON_FORMAL_RESOURCE_KINDS = new Set(["candidate", "draft", "prompt-preview"]);
+const NON_FORMAL_RESOURCE_KINDS = new Set(["prompt-preview"]);
 
 function sha256(content: string): string {
   return `sha256:${createHash("sha256").update(content).digest("hex")}`;

@@ -1,35 +1,19 @@
 /**
- * 故事脉络（Storyline & Planning）侧栏面板。
+ * 故事脉络（Storyline）侧栏面板。
  *
- * 汇聚长篇故事推进与因果脉络的核心资产：
- * 1. 剧情大纲与卷规划；
- * 2. 伏笔生命周期看板；
- * 3. 关系拓扑图与全景时间线（一键无缝打开全屏画布 Tab）；
- * 4. 章后待审事项队列（折叠展示，有待审时红点提示并支持批量批准）。
+ * 1. 提供关系网络、时间线、矛盾地图三个全景图谱入口，点击后在编辑区打开图谱 Tab；
+ * 2. 复用 NarrativeMemoryPanel，展示章后事实、待审队列与事实纠正能力。
  */
 
-import { useCallback, useState } from "react";
-import {
-  Brain,
-  Clock,
-  ExternalLink,
-  GitBranch,
-  Network,
-  RefreshCw,
-  Route,
-  Scroll,
-  ShieldAlert,
-  Swords,
-} from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { useCallback } from "react";
+import { Clock, Network, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
-import { WorkbenchResourceTree, type ResourceTreeAction } from "../WorkbenchResourceTree";
+import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
 export interface StorylineAndPlanningSidebarPanelProps {
   bookId: string;
-  outlineNodes?: readonly WorkbenchResourceNode[];
   memoryNodes?: WorkbenchResourceNode[];
   selectedNodeId: string | null;
   onOpen: (node: WorkbenchResourceNode) => void;
@@ -39,14 +23,12 @@ export interface StorylineAndPlanningSidebarPanelProps {
 
 export function StorylineAndPlanningSidebarPanel({
   bookId,
-  outlineNodes = [],
   memoryNodes,
   selectedNodeId,
   onOpen,
   onAction,
   onOpenEntityDetail,
 }: StorylineAndPlanningSidebarPanelProps) {
-  const [activeSubTab, setActiveSubTab] = useState<"story-state" | "planning">("story-state");
 
   const openGraphTab = useCallback(
     (view: "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain", label: string) => {

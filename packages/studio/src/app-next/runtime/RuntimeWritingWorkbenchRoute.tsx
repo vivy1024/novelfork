@@ -25,8 +25,6 @@ export interface RuntimeWritingWorkbenchRouteProps {
 
 function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: string): WorkbenchResourceNode {
   const isChapter = resource.kind === "chapter";
-  const isCandidate = resource.kind === "candidate";
-  const isDraft = resource.kind === "draft";
   const isReadableReference = resource.kind === "story"
     || resource.kind === "story-markdown"
     || resource.kind === "jingwei"
@@ -34,16 +32,12 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: stri
     || resource.kind === "chapter-index";
   const kind: WorkbenchResourceNode["kind"] = isChapter
     ? "chapter"
-    : isCandidate
-      ? "candidate"
-      : isDraft
-        ? "draft"
-        : isReadableReference
-          ? "story"
-          : "unsupported";
-  const supported = isChapter || isCandidate || isDraft || isReadableReference;
+    : isReadableReference
+      ? "story"
+      : "unsupported";
+  const supported = isChapter || isReadableReference;
   const canRead = resource.capabilities.read === true;
-  const canEdit = resource.capabilities.update === true && (isChapter || isDraft);
+  const canEdit = resource.capabilities.update === true && isChapter;
   const unsupportedReason = !supported
     ? `资源类型「${resource.kind}」当前没有接入 NovelFork 工作台查看器；文件仍保留在工作区，可用外部编辑器打开。`
     : undefined;
@@ -66,7 +60,7 @@ function toNode(bookId: string, resource: RuntimeWorkspaceResource, title?: stri
       unsupported: !supported,
       edit: canEdit,
       delete: resource.capabilities.delete === true,
-      apply: isCandidate || isDraft,
+      apply: false,
     },
   };
 }
@@ -154,6 +148,7 @@ export function mapRuntimeWorkspaceToWorkbenchNodes(
       book: {
         id: book.id,
         title: book.title,
+        ...(book.platform ? { platform: book.platform } : {}),
         ...(typeof book.chapterWordCount === "number" ? { chapterWordCount: book.chapterWordCount } : {}),
         ...(book.language === "zh" || book.language === "en" ? { language: book.language } : {}),
       },

@@ -229,6 +229,61 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByText("3000 tokens")).toBeTruthy();
     expect(screen.getByText("建议抽查关键事实。")).toBeTruthy();
   });
+
+  it("后端返回上下文来源与管线阶段时如实展示", () => {
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: {
+        renderer: "pipeline.chapter-result",
+        data: {
+          chapterNumber: 5,
+          title: "阻抗匹配",
+          wordCount: 3200,
+          auditPassed: true,
+          contextSources: [
+            { source: "scene.spec", reason: "本章写作蓝图与硬约束", chars: 812 },
+            { source: "narrative-memory/state", reason: "角色当前状态与位置", chars: 460 },
+          ],
+          pipelineStages: [
+            { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
+            { stage: "情节点预算", status: "warning", detail: "预算总和低于本章目标" },
+            { stage: "章后结算", status: "failed", detail: "memory.settle_chapter：写入失败" },
+          ],
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("pipeline-context-sources")).toBeTruthy();
+    expect(screen.getByText("本章实际注入的上下文（2 项）")).toBeTruthy();
+    expect(screen.getByText("scene.spec")).toBeTruthy();
+    expect(screen.getByText("角色当前状态与位置")).toBeTruthy();
+    expect(screen.getByText("812 字")).toBeTruthy();
+
+    expect(screen.getByTestId("pipeline-stages")).toBeTruthy();
+    expect(screen.getByText("写前预检")).toBeTruthy();
+    expect(screen.getByText("有提醒")).toBeTruthy();
+    expect(screen.getByText("失败")).toBeTruthy();
+    expect(screen.getByText("memory.settle_chapter：写入失败")).toBeTruthy();
+  });
+
+  it("后端没返回上下文来源与阶段时不渲染这两块，不伪造内容", () => {
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: {
+        renderer: "pipeline.chapter-result",
+        data: {
+          chapterNumber: 6,
+          title: "临界回损",
+          wordCount: 3050,
+          auditPassed: true,
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("tool-result-pipeline")).toBeTruthy();
+    expect(screen.queryByTestId("pipeline-context-sources")).toBeNull();
+    expect(screen.queryByTestId("pipeline-stages")).toBeNull();
+  });
 });
 
 describe("memory.read 召回卡", () => {

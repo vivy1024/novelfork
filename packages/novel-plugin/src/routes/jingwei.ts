@@ -1067,24 +1067,56 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     await ensureBook(storage, bookId);
     const body = await c.req.json<{ entries: Array<{ title: string; contentMd: string; category: string; layer?: string }> }>();
 
-    // 走 repo.create（自动同步 FTS 索引 + 分类规范化），不再直插 SQL
-    const { createStoryJingweiEntryRepository } = await loadEngine();
-    const { getCategoryDefaultLayer } = await import("../engine/jingwei/unified-categories.js");
+    // 走 repo.create（自动同步 FTS 索引 + 分类规范化），不再直插 SQL。
+    // sectionId 必须来自按 category 查找/创建的真实 section，不能再写空串。
+    const { createStoryJingweiEntryRepository, createStoryJingweiSectionRepository } = await loadEngine();
+    const { CATEGORY_META, getCategoryDefaultLayer } = await import("../engine/jingwei/unified-categories.js");
     const repo = createStoryJingweiEntryRepository(storage);
+    const sectionRepo = createStoryJingweiSectionRepository(storage);
     const now = new Date();
+    const sectionByKey = new Map((await sectionRepo.listByBook(bookId)).map((section) => [section.key, section]));
+
+    async function resolveImportSection(category: string) {
+      const existing = sectionByKey.get(category);
+      if (existing) return existing;
+      const meta = CATEGORY_META.find((candidate) => candidate.id === category);
+      const section = await sectionRepo.create({
+        id: crypto.randomUUID(),
+        bookId,
+        key: category,
+        name: meta?.name ?? category,
+        description: meta?.recommendedWhen ?? "",
+        icon: meta?.icon ?? null,
+        order: sectionByKey.size,
+        enabled: true,
+        showInSidebar: true,
+        participatesInAi: true,
+        defaultVisibility: meta?.defaultVisibility ?? "tracked",
+        fieldsJson: [],
+        builtinKind: meta ? category : null,
+        sourceTemplate: "import",
+        createdAt: now,
+        updatedAt: now,
+      });
+      sectionByKey.set(category, section);
+      return section;
+    }
+
     let imported = 0;
     for (const entry of body.entries) {
       if (!entry.title.trim()) continue;
+      const category = entry.category?.trim() || "unclassified";
+      const section = await resolveImportSection(category);
       const layer = entry.layer === "canon" || entry.layer === "dynamic" || entry.layer === "reference"
         ? entry.layer
-        : getCategoryDefaultLayer(entry.category || "unclassified");
+        : getCategoryDefaultLayer(category);
       await repo.create({
         id: crypto.randomUUID(),
         bookId,
-        sectionId: "",
+        sectionId: section.id,
         title: entry.title,
         contentMd: entry.contentMd,
-        category: entry.category || "unclassified",
+        category,
         fields: {},
         customFields: {},
         parentId: null,
@@ -1096,7 +1128,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
         aliases: [],
         relatedChapterNumbers: [],
         relatedEntryIds: [],
-        visibilityRule: { type: "tracked" },
+        visibilityRule: { type: section.defaultVisibility },
         participatesInAi: true,
         tokenBudget: null,
         layer,

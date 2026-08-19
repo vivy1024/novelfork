@@ -109,7 +109,8 @@ describe("resource tree contract adapter", () => {
         read: { status: "current" },
         edit: { status: "current" },
         delete: { status: "unsupported" },
-        apply: { status: "current" },
+        // 候选稿/草稿机制已下线：正式章节没有 apply 流转。
+        apply: { status: "unsupported" },
       },
     });
     expect(flat.get("story-file:pending_hooks.md")).toMatchObject({ capabilities: { read: { status: "current" }, edit: { status: "unsupported" }, delete: { status: "current" } } });

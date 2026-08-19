@@ -107,7 +107,60 @@ describe("Jingwei canonical entry routes", () => {
     const stillCanonical = await (await request(`/entries/${created.id}/revisions`)).json() as { revisions: unknown[] };
     expect(stillCanonical.revisions).toHaveLength(1);
   });
+});
 
+describe("Jingwei markdown import", () => {
+  it("按 category 创建 section 并写入真实 sectionId", async () => {
+    const response = await request("/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [{ title: "角色设定", contentMd: "这是用于导入测试的角色设定正文。", category: "characters" }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, imported: 1 });
+    const row = storage.sqlite.prepare<{ section_id: string; section_key: string }>(`
+      SELECT e.section_id, s.key AS section_key
+      FROM story_jingwei_entry e
+      JOIN story_jingwei_section s ON s.id = e.section_id
+      WHERE e.book_id = ? AND e.title = ?
+    `).get("book-1", "角色设定");
+
+    expect(row?.section_id).toBeTruthy();
+    expect(row?.section_id).not.toBe("");
+    expect(row?.section_key).toBe("characters");
+  });
+
+  it("已有同 category section 时复用而不是重复创建", async () => {
+    const existing = await postEntry();
+    const before = storage.sqlite.prepare<{ section_id: string }>(`
+      SELECT section_id FROM story_jingwei_entry WHERE id = ?
+    `).get(existing.id)!;
+
+    const response = await request("/import", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        entries: [{ title: "追加角色", contentMd: "追加导入的角色设定正文。", category: "characters" }],
+      }),
+    });
+
+    expect(response.status).toBe(200);
+    const imported = storage.sqlite.prepare<{ section_id: string }>(`
+      SELECT section_id FROM story_jingwei_entry WHERE book_id = ? AND title = ?
+    `).get("book-1", "追加角色");
+    const sectionCount = storage.sqlite.prepare<{ count: number }>(`
+      SELECT COUNT(*) AS count FROM story_jingwei_section WHERE book_id = ? AND key = ?
+    `).get("book-1", "characters");
+
+    expect(imported?.section_id).toBe(before.section_id);
+    expect(sectionCount?.count).toBe(1);
+  });
+});
+
+describe("Jingwei mutation routes", () => {
   it("records revisions for move and bulk mutations instead of bypassing the repository", async () => {
     const created = await postEntry();
     const moveResponse = await request(`/entries/${created.id}/move`, {

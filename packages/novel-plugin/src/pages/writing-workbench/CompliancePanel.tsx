@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert } from "@/components/ui/alert";
 import { Loader2, CheckCircle2, AlertTriangle, Copy, Check, Search } from "lucide-react";
 import { postApi, fetchJson } from "@/hooks/use-api";
+import { toCompliancePlatform } from "./compliance-platform";
 
 type RiskStatus = "clear" | "warning" | "needs-review" | "unknown";
 
@@ -69,6 +70,7 @@ interface ChapterScanResult {
 
 export interface CompliancePanelProps {
   bookId: string;
+  bookPlatform?: string;
   onClose: () => void;
 }
 
@@ -92,7 +94,8 @@ function statusFromCounts(high: number, medium: number): RiskStatus {
   return "clear";
 }
 
-export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
+export function CompliancePanel({ bookId, bookPlatform, onClose }: CompliancePanelProps) {
+  const compliancePlatform = toCompliancePlatform(bookPlatform);
   const [checking, setChecking] = useState(false);
   const [report, setReport] = useState<PublishReadinessReport | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,7 +115,7 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
     try {
       const res = await postApi<{ report: PublishReadinessReport }>(
         `/api/books/${bookId}/compliance/publish-readiness`,
-        { platform: "generic" },
+        { platform: compliancePlatform },
       );
       setReport(res.report);
     } catch (cause) {
@@ -128,7 +131,7 @@ export function CompliancePanel({ bookId, onClose }: CompliancePanelProps) {
     try {
       const res = await postApi<{ disclosure: DisclosureResult }>(
         `/api/books/${bookId}/compliance/ai-disclosure`,
-        { platform: "generic" },
+        { platform: compliancePlatform },
       );
       setDisclosure(res.disclosure);
     } catch (cause) {

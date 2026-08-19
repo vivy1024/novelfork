@@ -22,18 +22,19 @@ import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
 import type { JingweiEntrySavePayload } from "../JingweiEntryEditor";
 import { EditorTabs } from "./EditorTabs";
-import { useIdeTabs, normalizeTabView, type TabKind, type TabView } from "./use-ide-tabs";
+import { useIdeTabs, type TabKind, type TabView } from "./use-ide-tabs";
 import { useBookFileTree } from "./use-book-file-tree";
 import { BookSettingsPanel, type BookSettingsSection } from "../panels/BookSettingsPanel";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import { SkillsAndStyleSidebarPanel } from "./SkillsAndStyleSidebarPanel";
-import { CharactersAndLoreSidebarPanel } from "./CharactersAndLoreSidebarPanel";
+import { CharactersAndLoreSidebarPanel, type EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { EntityDetailDrawer } from "../EntityDetailDrawer";
 import { JingweiSidebarToolbar } from "../jingwei/JingweiSidebarToolbar";
 import { WriteViewPanel, WRITING_PROGRESS_EVENT } from "../WriteViewPanel";
 import type { GuidedSetupOutcome } from "../NewBookGuide";
 import { buildWriteRequestMessage } from "../write-request";
+import type { BeatBudgetItem } from "../../../handlers/beat-budget";
 import { buildOnboardingRequestMessage } from "../onboarding-request";
 import { useIdeKeybindings } from "./use-ide-keybindings";
 import { usePanelManager, type ViewId } from "./use-panel-manager";
@@ -64,9 +65,9 @@ function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区） */
 function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  // 叙事记忆条目属于经纬工作区的「进度」分区，与设定共用同一个 Tab 组
-  if (node.metadata?.isNarrativeMemoryEntry) return "jingwei";
-  if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "jingwei";
+  // 叙事记忆条目归入故事脉络工作区。
+  if (node.metadata?.isNarrativeMemoryEntry) return "storyline";
+  if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
   return "explorer";
 }
 
@@ -107,16 +108,7 @@ function copyDestinationFor(sourcePath: string, targetDir: string): string {
 
 // ── Types ──────────────────────────────────────────────
 
-export type SidebarView =
-  | "write"
-  | "explorer"
-  | "characters-lore"
-  | "storyline"
-  | "skills-style"
-  | "tools"
-  | "search"
-  | "jingwei"
-  | "narrative-memory";
+export type SidebarView = ViewId;
 
 export interface IdeWorkbenchProps {
   bookId?: string;
@@ -186,7 +178,6 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
       // 资源管理器显示全部内容（和 VS Code Explorer 一样）
       return [...children];
     case "characters-lore":
-    case "jingwei":
       return collectNodes(children, n => JINGWEI_KINDS.has(n.kind));
     case "tools":
       return collectNodes(children, n => TOOL_KINDS.has(n.kind));
@@ -194,7 +185,6 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
     case "search":
     case "storyline":
     case "skills-style":
-    case "narrative-memory":
       return [];
   }
 }
@@ -256,9 +246,8 @@ export function IdeWorkbench({
   const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer");
 
   // --- Tabs ---
-  // 叙事记忆有独立侧栏入口，但不是编辑器 Tab 归属值 —— 它的 Tab 仍归经纬工作区，
-  // 与 normalizeTabView 的落盘迁移契约一致（见 use-ide-tabs-migration.test.ts）。
-  const tabView = normalizeTabView(activeView);
+  // activeView 本身就是当前七个 ActivityBar ViewId 之一，直接作为 Tab 归属值。
+  const tabView: TabView = activeView;
   const ideTabs = useIdeTabs(bookId, tabView);
   const ideTabsRef = useRef(ideTabs);
   ideTabsRef.current = ideTabs;
@@ -269,6 +258,7 @@ export function IdeWorkbench({
   // --- Lore / 叙事记忆分类树（始终加载,面板始终 mount） ---
   const [jingweiSections, setJingweiSections] = useState<WorkbenchResourceNode[]>([]);
   const [narrativeMemorySections, setNarrativeMemorySections] = useState<WorkbenchResourceNode[]>([]);
+  const [entityFacts, setEntityFacts] = useState<readonly EntityFactLite[]>([]);
   const loadLoreSections = useCallback(async () => {
     if (!bookId) return;
     try {
@@ -389,9 +379,11 @@ export function IdeWorkbench({
         }));
       setJingweiSections(nodes);
       setNarrativeMemorySections(memoryNodes);
+      setEntityFacts(memoryFacts);
     } catch {
       setJingweiSections([]);
       setNarrativeMemorySections([]);
+      setEntityFacts([]);
     }
   }, [bookId, runtimeFetch]);
 
@@ -420,6 +412,16 @@ export function IdeWorkbench({
 
   // --- Derived ---
   const bookRoot = useMemo(() => nodes.find(n => n.kind === "book"), [nodes]);
+
+  /**
+   * 作者配置的单章目标字数（book.json chapterWordCount）。
+   * 只从 book 节点 metadata 里读真实值；读不到就是 0，由下游显示"未知"而不是编个默认值。
+   */
+  const bookChapterWordTarget = useMemo(() => {
+    const book = bookRoot?.metadata?.book as { chapterWordCount?: unknown } | undefined;
+    const target = Number(book?.chapterWordCount);
+    return Number.isFinite(target) && target > 0 ? target : 0;
+  }, [bookRoot]);
 
   // 工具面板节点（资源管理器"工具"视图 + Tab 解析都需要）
   const toolNodes = useMemo(() => {
@@ -705,7 +707,7 @@ export function IdeWorkbench({
       setSidebarVisible(false);
       return;
     }
-    showPanel(view as ViewId);
+    showPanel(view);
     setSidebarVisible(true);
   }, [activeView, sidebarVisible, showPanel]);
 
@@ -741,6 +743,7 @@ export function IdeWorkbench({
     chapterNumber: number;
     directive: string;
     acceptFocusDefault: boolean;
+    beatBudget?: readonly BeatBudgetItem[];
   }) => {
     void onSendToNarrator?.(buildWriteRequestMessage(payload));
   }, [onSendToNarrator]);
@@ -784,14 +787,14 @@ export function IdeWorkbench({
   }, []);
 
   /**
-   * 写作视图「一键修」→ 切到侧栏经纬视图并定位分类。
+   * 写作视图「一键修」→ 切到角色与设定视图并定位分类。
    *
-   * 侧栏经纬树分「设定」「推进」两个顶层分区（见 loadLoreSections），
+   * 角色与设定树分「设定」「推进」两个顶层分区（见 loadLoreSections），
    * 动态分类（outline 卷纲等）在「推进」分区下，同样可定位。
    */
   const handleOpenLorePanel = useCallback((category?: string) => {
     setShowSettings(false);
-    showPanel("jingwei");
+    showPanel("characters-lore");
     setSidebarVisible(true);
     if (category) {
       const findCategory = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
@@ -835,7 +838,7 @@ export function IdeWorkbench({
     },
     switchView: (view: SidebarView) => {
       setShowSettings(false);
-      showPanel(view as ViewId);
+      showPanel(view);
       setSidebarVisible(true);
     },
     openCommandPalette: () => {
@@ -1126,6 +1129,7 @@ export function IdeWorkbench({
                   onOpenLorePanel={handleOpenLorePanel}
                   onSendToNarrator={onSendToNarrator}
                   onRunWrite={handleRunWrite}
+                  chapterWordTarget={bookChapterWordTarget}
                   visible={activeView === "write" && sidebarVisible && !showSettings}
                 />,
                 getContainer("write")!
@@ -1141,11 +1145,12 @@ export function IdeWorkbench({
                 getContainer("explorer")!
               )}
               {/* 角色与设定：彻底统一经纬设定与角色当前时态 */}
-              {panelsReady && (getContainer("characters-lore") || getContainer("jingwei")) && createPortal(
+              {panelsReady && getContainer("characters-lore") && createPortal(
                 bookId
                   ? <CharactersAndLoreSidebarPanel
                       bookId={bookId}
                       nodes={jingweiSections}
+                      facts={entityFacts}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
                       onAction={handleResourceAction}
@@ -1154,14 +1159,13 @@ export function IdeWorkbench({
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看角色与设定。</span>
                     </div>,
-                (getContainer("characters-lore") || getContainer("jingwei"))!
+                getContainer("characters-lore")!
               )}
               {/* 故事脉络：汇聚大纲、伏笔、时间线、关系图与待审队列 */}
-              {panelsReady && (getContainer("storyline") || getContainer("narrative-memory")) && createPortal(
+              {panelsReady && getContainer("storyline") && createPortal(
                 bookId
                   ? <StorylineAndPlanningSidebarPanel
                       bookId={bookId}
-                      outlineNodes={jingweiSections.filter(n => n.metadata?.category === "outline")}
                       memoryNodes={narrativeMemorySections}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
@@ -1171,7 +1175,7 @@ export function IdeWorkbench({
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看故事脉络。</span>
                     </div>,
-                (getContainer("storyline") || getContainer("narrative-memory"))!
+                getContainer("storyline")!
               )}
               {panelsReady && getContainer("skills-style") && createPortal(
                 bookId
@@ -1578,10 +1582,8 @@ const VIEW_LABEL: Record<SidebarView, string> = {
   "characters-lore": "角色与设定",
   storyline: "故事脉络",
   "skills-style": "技能与文风",
-  jingwei: "角色与设定",
   tools: "分析工具",
   search: "搜索",
-  "narrative-memory": "故事脉络",
 };
 
 function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: {
@@ -1619,14 +1621,20 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: 
   );
 }
 
-// ── ViewEmptyState（经纬/工具视图无激活 Tab 时的空态） ──
+// ── ViewEmptyState（无激活 Tab 时的编辑区空态） ──
 
 function ViewEmptyState({ view }: { view: SidebarView }) {
-  const meta = view === "jingwei"
-    ? { icon: "📜", title: "经纬", desc: "从左侧选择一个分类或条目查看与编辑设定" }
+  const meta = view === "characters-lore"
+    ? { icon: "人", title: "角色与设定", desc: "从左侧选择一个分类或条目查看与编辑角色、世界设定" }
+    : view === "storyline"
+    ? { icon: "线", title: "故事脉络", desc: "从左侧故事脉络面板打开全景图谱或查看章后事实" }
+    : view === "skills-style"
+    ? { icon: "文", title: "技能与文风", desc: "从左侧面板管理写作技能与文风预设" }
     : view === "search"
-    ? { icon: "🔍", title: "搜索", desc: "在搜索面板中输入关键词查找资源" }
-    : { icon: "🔧", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、伏笔看板等）" };
+    ? { icon: "搜", title: "搜索", desc: "在搜索面板中输入关键词查找资源" }
+    : view === "write"
+    ? { icon: "写", title: "写作", desc: "从写作面板查看就绪状态并开始写章" }
+    : { icon: "工", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、伏笔看板等）" };
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-background p-8 text-center">
       <span className="text-3xl">{meta.icon}</span>

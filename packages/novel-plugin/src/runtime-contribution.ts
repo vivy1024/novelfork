@@ -610,14 +610,9 @@ async function executeReadyToolImpl(
         const filter = injectedInput.filter && typeof injectedInput.filter === "object"
           ? injectedInput.filter as Record<string, unknown>
           : {};
-        const type = filter.type === "chapter" || filter.type === "candidate" || filter.type === "draft"
-          ? filter.type
-          : undefined;
-        const status = filter.status === "draft"
-          || filter.status === "candidate"
-          || filter.status === "accepted"
-          || filter.status === "rejected"
-          || filter.status === "archived"
+        // 写作资源只有正式章节：候选稿/草稿过滤值已下线，旧参数按未指定处理。
+        const type = filter.type === "chapter" ? filter.type : undefined;
+        const status = filter.status === "accepted" || filter.status === "archived"
           ? filter.status
           : undefined;
         const resources = await service.list(binding.bookId, {
