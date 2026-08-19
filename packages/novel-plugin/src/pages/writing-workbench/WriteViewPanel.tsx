@@ -6,6 +6,10 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, BookOpen, CheckCircle2, ChevronDown, Loader2, RefreshCw, Sparkles, XCircle } from "lucide-react";
+import type { ViewId } from "./ide/use-panel-manager";
+
+import type { BeatBudgetItem } from "../../handlers/beat-budget";
+import { BeatBudgetEditor } from "./BeatBudgetEditor";
 
 import {
   buildWriteViewModel,
@@ -41,10 +45,10 @@ export interface WriteViewPanelProps {
   /** 只读就绪查询；由工作台注入（内部补 bookId 等可信上下文）。 */
   readonly callTool?: (tool: string, input: Record<string, unknown>) => Promise<unknown>;
   /** 切到别的侧栏视图（一键修的 view 类动作）。 */
-  readonly onSwitchView?: (view: "jingwei" | "tools" | "explorer") => void;
+  readonly onSwitchView?: (view: ViewId) => void;
   /** 打开写作设置并定位到指定分区（如 Writing Skills）。 */
   readonly onOpenSettings?: (section?: SettingsSectionId) => void;
-  /** 打开经纬完整面板并定位到指定分类（如 outline）。 */
+  /** 打开角色与设定完整面板并定位到指定分类（如 outline）。 */
   readonly onOpenLorePanel?: (category?: string) => void;
   /** 把需要写入的修复交给叙述者执行（走 Runtime 权限确认）。 */
   readonly onSendToNarrator?: (message: string) => Promise<void> | void;
@@ -55,7 +59,14 @@ export interface WriteViewPanelProps {
     readonly directive: string;
     readonly acceptFocusDefault: boolean;
     readonly preflight: unknown;
+    /** 作者在本面板编辑好的情节点预算；为空表示不干预模型自行拆点。 */
+    readonly beatBudget?: readonly BeatBudgetItem[];
   }) => void;
+  /**
+   * 作者配置的单章目标字数（book.json chapterWordCount）。
+   * 拿不到时传 0/不传：情节点预算编辑器会显示"未知"，不编造默认值。
+   */
+  readonly chapterWordTarget?: number;
   readonly formalChapterCount?: number;
   /**
    * 面板是否可见（写作视图为当前侧栏视图且侧栏展开）。
@@ -87,6 +98,7 @@ export function WriteViewPanel({
   onSendToNarrator,
   onRunWrite,
   formalChapterCount,
+  chapterWordTarget = 0,
   visible,
 }: WriteViewPanelProps) {
   const [raw, setRaw] = useState<unknown>(null);
@@ -94,6 +106,10 @@ export function WriteViewPanel({
   const [error, setError] = useState<string | null>(null);
   const [directiveDraft, setDirectiveDraft] = useState("");
   const [acceptFocusDefault, setAcceptFocusDefault] = useState(false);
+  const directiveDraftRef = useRef(directiveDraft);
+  const acceptFocusDefaultRef = useRef(acceptFocusDefault);
+  directiveDraftRef.current = directiveDraft;
+  acceptFocusDefaultRef.current = acceptFocusDefault;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [fixBusy, setFixBusy] = useState<WriteFixActionId | null>(null);
   const [fixNote, setFixNote] = useState<string | null>(null);
@@ -105,6 +121,9 @@ export function WriteViewPanel({
   // 卷驾驶舱：当前卷上下文，走 outline.volume(action=get) 只读通道。
   const [volumeRaw, setVolumeRaw] = useState<unknown>(null);
   const [volumeError, setVolumeError] = useState<string | null>(null);
+  // 作者编辑的情节点预算：默认折叠、默认为空（空=不干预模型自行拆点）。
+  const [beatBudget, setBeatBudget] = useState<readonly BeatBudgetItem[]>([]);
+  const [beatOpen, setBeatOpen] = useState(false);
 
   const model = useMemo(() => buildWriteViewModel(raw), [raw]);
   const volumeModel = useMemo<VolumeCockpitModel>(
@@ -120,7 +139,10 @@ export function WriteViewPanel({
     setLoading(true);
     setError(null);
     try {
-      setRaw(await callTool("write.preflight", {}));
+      setRaw(await callTool("write.preflight", {
+        userDirectives: directiveDraftRef.current,
+        acceptFocusDefault: acceptFocusDefaultRef.current,
+      }));
     } catch (err) {
       setError(err instanceof Error ? err.message : "预检失败");
     } finally {
@@ -220,7 +242,7 @@ export function WriteViewPanel({
     }
     if (plan.kind === "lore-panel") {
       if (!onOpenLorePanel) {
-        setFixNote(`当前环境无法打开经纬面板，请手动到经纬里处理「${plan.label}」。`);
+        setFixNote(`当前环境无法打开角色与设定面板，请手动到角色与设定里处理「${plan.label}」。`);
         return;
       }
       onOpenLorePanel(plan.loreCategory);
@@ -276,8 +298,9 @@ export function WriteViewPanel({
       directive: effectiveDirective,
       acceptFocusDefault,
       preflight: raw,
+      ...(beatBudget.length > 0 ? { beatBudget } : {}),
     });
-  }, [acceptFocusDefault, effectiveDirective, gate.ok, model.chapterNumber, onRunWrite, raw]);
+  }, [acceptFocusDefault, beatBudget, effectiveDirective, gate.ok, model.chapterNumber, onRunWrite, raw]);
 
   const light = LIGHT_STYLE[model.light];
   const LightIcon = light.icon;
@@ -464,6 +487,35 @@ export function WriteViewPanel({
 
       {/* 一句话指示 */}
       <div className="mt-auto flex flex-col gap-2">
+        {/*
+          情节点预算：作者可选地亲手排本章节奏。
+          编辑结果随写章请求交给叙述者，由它作为 scene.spec 的 beatBudget 传入；
+          本面板只做本地校验预览，不自行调用工具。
+        */}
+        <section className="rounded border border-border bg-card/40" data-testid="write-beat-budget">
+          <button
+            type="button"
+            onClick={() => setBeatOpen((open) => !open)}
+            className="flex w-full items-center justify-between px-2 py-1 text-[11px] font-medium text-foreground"
+            data-testid="write-beat-budget-toggle"
+          >
+            <span>
+              本章情节点预算（可选）
+              {beatBudget.length > 0 ? ` · ${beatBudget.length} 点` : ""}
+            </span>
+            <ChevronDown className={`size-3 shrink-0 text-muted-foreground transition-transform ${beatOpen ? "rotate-180" : ""}`} />
+          </button>
+          {beatOpen && (
+            <div className="border-t border-border/60 px-2 py-1.5">
+              <BeatBudgetEditor
+                chapterTarget={chapterWordTarget}
+                value={beatBudget}
+                onChange={setBeatBudget}
+              />
+            </div>
+          )}
+        </section>
+
         <label className="text-[11px] font-medium text-foreground" htmlFor="write-directive">
           第 {model.chapterNumber || "?"} 章要发生什么
         </label>

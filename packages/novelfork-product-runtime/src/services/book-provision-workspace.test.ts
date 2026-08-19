@@ -2,16 +2,17 @@ import { describe, expect, test } from "bun:test";
 import { getProductBookWritingConfig, isExternalBookWorkspace } from "./book-provision";
 
 describe("getProductBookWritingConfig", () => {
-	test("从真实 book.json 配置映射单章目标与正文语言", () => {
-		expect(getProductBookWritingConfig({ chapterWordCount: 3600, language: "en" })).toEqual({
-			chapterWordCount: 3600,
-			language: "en",
-		});
-	});
+  test("从真实 book.json 配置映射平台、单章目标与正文语言", () => {
+    expect(getProductBookWritingConfig({ platform: "tomato", chapterWordCount: 3600, language: "en" })).toEqual({
+      platform: "tomato",
+      chapterWordCount: 3600,
+      language: "en",
+    });
+  });
 
-	test("忽略无效目标字数与未知语言", () => {
-		expect(getProductBookWritingConfig({ chapterWordCount: 0, language: "ja" })).toEqual({});
-	});
+  test("忽略无效目标字数与未知语言", () => {
+    expect(getProductBookWritingConfig({ chapterWordCount: 0, language: "ja" })).toEqual({});
+  });
 });
 
 describe("isExternalBookWorkspace", () => {

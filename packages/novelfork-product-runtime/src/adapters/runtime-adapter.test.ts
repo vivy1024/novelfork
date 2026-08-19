@@ -242,6 +242,25 @@ describe("NovelRuntimeAdapter", () => {
 		).toBe(false);
 	});
 
+	test("injects the current project Writing Skill into the resolved prompt", async () => {
+		const skillDir = join(bookRoot, ".novelfork", "skills", "integration-style");
+		await mkdir(skillDir, { recursive: true });
+		await writeFile(join(skillDir, "SKILL.md"), `---
+id: writing-skill-integration-style
+name: 集成测试文风
+description: 验证 Runtime prompt 注入
+kind: prose
+mode: manual
+---
+
+RUNTIME_WRITING_SKILL_MARKER
+`, "utf8");
+		bindNarrator();
+
+		const extensions = await adapter.promptExtensions("narrator-skill");
+		expect(extensions.some((extension) => extension.includes("RUNTIME_WRITING_SKILL_MARKER"))).toBe(true);
+	});
+
 	test("validates the Runtime Agent scene blueprint without an internal model call", async () => {
 		bindNarrator();
 		let modelCallCount = 0;

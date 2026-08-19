@@ -325,7 +325,7 @@ export async function handleWritingSkillsWrite(
   }
 }
 
-/** 直接更新当前作品目录中的 project-only Skill，不写入作者全局目录。 */
+/** 保存当前作品目录中的 project-only Skill（可创建或更新），不写入作者全局目录。 */
 export async function handleProjectWritingSkillUpdate(
   input: ProjectWritingSkillUpdateInput,
   options: TrustedWritingSkillOptions,
@@ -339,7 +339,7 @@ export async function handleProjectWritingSkillUpdate(
     const skill = await writeProjectWritingSkillRaw(options.bookRoot, slug, input.content);
     return {
       ok: true,
-      summary: `已更新当前作品 Writing Skill：${skill.name}。`,
+      summary: `已保存当前作品 Writing Skill：${skill.name}。`,
       data: {
         bookId,
         projectSkillsDirectory: ".novelfork/skills",

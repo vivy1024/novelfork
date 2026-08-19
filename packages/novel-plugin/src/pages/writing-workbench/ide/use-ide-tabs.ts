@@ -1,27 +1,35 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import type { ViewId } from "./use-panel-manager";
 
 export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "tool" | "other";
 
-/** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab */
+/** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab。 */
 /**
- * 写作视图自身不承载编辑器 Tab，但需要作为合法的 Tab 归属值参与切换。
- *
- * 经纬与叙事记忆已合并为单一 `jingwei` 工作区；历史持久化里的
- * `narrative-memory` 会在读取时迁移过来，见 LEGACY_TAB_VIEWS。
+ * 写作视图和没有编辑器内容的侧栏也作为合法归属值参与切换。
+ * TabView 只允许当前 ActivityBar 的七个 ViewId；旧名称仅在读取旧持久化数据时处理。
  */
-export type TabView = "write" | "explorer" | "jingwei" | "tools" | "search";
+export type TabView = ViewId;
 
-/** 旧视图 → 现视图。用于迁移已落盘的 tab，避免变成点不开的孤儿。 */
-const LEGACY_TAB_VIEWS: Record<string, TabView> = {
-  "narrative-memory": "jingwei",
-};
+const TAB_VIEWS: readonly TabView[] = [
+  "write",
+  "explorer",
+  "characters-lore",
+  "storyline",
+  "skills-style",
+  "tools",
+  "search",
+];
 
-export function normalizeTabView(value: unknown): TabView {
+function isLegacyPersistedView(value: unknown): value is "jingwei" | "narrative-memory" {
+  return value === "jingwei" || value === "narrative-memory";
+}
+
+/** 只在 localStorage 迁移边界把旧数据归一为当前 ViewId；运行时不会产生旧 ViewId。 */
+export function normalizePersistedTabView(value: unknown): TabView {
+  if (value === "jingwei") return "characters-lore";
+  if (value === "narrative-memory") return "storyline";
   if (typeof value !== "string") return "explorer";
-  if (value in LEGACY_TAB_VIEWS) return LEGACY_TAB_VIEWS[value]!;
-  return (["write", "explorer", "jingwei", "tools", "search"] as const).includes(value as TabView)
-    ? (value as TabView)
-    : "explorer";
+  return TAB_VIEWS.includes(value as TabView) ? (value as TabView) : "explorer";
 }
 
 const LEGACY_JINGWEI_PANEL_PREFIX = "jingwei-panel-entry";
@@ -68,7 +76,15 @@ interface IdeTabsState {
   activeByView: Record<TabView, string | null>;
 }
 
-const EMPTY_ACTIVE: Record<TabView, string | null> = { write: null, explorer: null, jingwei: null, tools: null, search: null };
+const EMPTY_ACTIVE: Record<TabView, string | null> = {
+  write: null,
+  explorer: null,
+  "characters-lore": null,
+  storyline: null,
+  "skills-style": null,
+  tools: null,
+  search: null,
+};
 
 type IdeTabsAction =
   | { type: "LOAD"; state: IdeTabsState }
@@ -220,12 +236,11 @@ function hasLegacyPersistedView(bookId: string): boolean {
     const raw = localStorage.getItem(getStorageKey(bookId));
     if (!raw) return false;
     const parsed = JSON.parse(raw) as PersistedState;
-    const legacy = Object.keys(LEGACY_TAB_VIEWS);
     return (parsed.tabs ?? []).some((t) =>
-      (typeof t.view === "string" && legacy.includes(t.view))
+      isLegacyPersistedView(t.view)
       || t.id.startsWith(LEGACY_JINGWEI_PANEL_PREFIX)
       || t.nodeId.startsWith(LEGACY_JINGWEI_PANEL_PREFIX)
-    ) || Object.keys(parsed.activeByView ?? {}).some((view) => legacy.includes(view));
+    ) || Object.keys(parsed.activeByView ?? {}).some((view) => isLegacyPersistedView(view));
   } catch {
     return false;
   }
@@ -250,14 +265,14 @@ export function loadState(bookId: string): IdeTabsState {
         dirty: false,
         pinned: tab.pinned === true,
         kind: tab.kind ?? "other",
-        view: normalizeTabView(tab.view),
+        view: normalizePersistedTabView(tab.view),
       });
     }
     // 旧视图键先折叠到现视图，再按现视图校验激活项
     const persistedActive = parsed.activeByView ?? {};
     const migratedActive: Record<string, string | null> = {};
     for (const [view, tabId] of Object.entries(persistedActive)) {
-      const target = normalizeTabView(view);
+      const target = normalizePersistedTabView(view);
       if (!migratedActive[target]) migratedActive[target] = migrateLegacyTabId(tabId);
     }
     const activeByView: Record<TabView, string | null> = { ...EMPTY_ACTIVE, ...migratedActive };

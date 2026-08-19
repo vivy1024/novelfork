@@ -130,6 +130,11 @@ function resolveBookLanguage(nodes: readonly WorkbenchResourceNode[]): LengthLan
   return book?.language === "en" ? "en" : "zh";
 }
 
+function resolveBookPlatform(nodes: readonly WorkbenchResourceNode[]): string | undefined {
+  const book = asRecord(nodes.find((candidate) => candidate.kind === "book")?.metadata?.book);
+  return typeof book?.platform === "string" ? book.platform : undefined;
+}
+
 function resolveChapterWordTarget(node: WorkbenchResourceNode, nodes: readonly WorkbenchResourceNode[], sceneSpec: SceneSpec | null): number | undefined {
   if (sceneSpec?.wordTarget) return sceneSpec.wordTarget;
   const metadata = node.metadata ?? {};
@@ -216,7 +221,7 @@ export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | 
   return undefined;
 }
 
-function ToolPanelView({ toolPanel, bookId, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry }: { toolPanel: ToolPanelId; bookId: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean }) {
+function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean }) {
   switch (toolPanel) {
     case "quality":
       return <QualityPanel bookId={bookId} />;
@@ -227,7 +232,7 @@ function ToolPanelView({ toolPanel, bookId, repositoryPath, currentChapter, onJu
     case "drift":
       return <Suspense fallback={<ToolPanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "compliance":
-      return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} onClose={() => {}} /></Suspense>;
+      return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} bookPlatform={bookPlatform} onClose={() => {}} /></Suspense>;
     case "consistency":
       return <Suspense fallback={<ToolPanelLoading />}><NarrativeConsistencyPanel bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} /></Suspense>;
     case "foreshadowing":
@@ -390,7 +395,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
             <h2 className="text-sm font-semibold">{node.title}</h2>
           </header>
           <div className="flex-1 min-h-0 overflow-y-auto p-3">
-            <ToolPanelView toolPanel={toolPanel} bookId={bookId} repositoryPath={repositoryPath} currentChapter={resolveCurrentChapter(nodes)} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} />
+            <ToolPanelView toolPanel={toolPanel} bookId={bookId} bookPlatform={resolveBookPlatform(nodes)} repositoryPath={repositoryPath} currentChapter={resolveCurrentChapter(nodes)} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} />
           </div>
         </div>
       );
@@ -654,6 +659,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
           bookId={bookId}
           chapterNumber={typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined}
           content={content}
+          bookPlatform={resolveBookPlatform(nodes)}
           onApplyContent={(nextContent) => {
             setContent(nextContent);
             setDirty(nextContent !== normalizedBaseRef.current);

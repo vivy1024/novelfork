@@ -16,7 +16,6 @@ import { PanelManager, type PanelId } from "./panel-manager";
  * - `characters-lore`：角色与设定（人物卡、世界观、门派势力）
  * - `storyline`：故事脉络（大纲、伏笔看板、全景时间线与关系图、章后事实待审）
  *
- * 保留 `jingwei` 与 `narrative-memory` 作为兼容别名。
  */
 export type ViewId =
   | "write"
@@ -25,9 +24,7 @@ export type ViewId =
   | "storyline"
   | "skills-style"
   | "tools"
-  | "search"
-  | "jingwei"
-  | "narrative-memory";
+  | "search";
 
 const VIEW_IDS: ViewId[] = [
   "write",
@@ -37,8 +34,6 @@ const VIEW_IDS: ViewId[] = [
   "skills-style",
   "tools",
   "search",
-  "jingwei",
-  "narrative-memory",
 ];
 
 export interface UsePanelManagerReturn {

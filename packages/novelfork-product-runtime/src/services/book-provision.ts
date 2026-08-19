@@ -151,28 +151,32 @@ export type RuntimeEntityCapabilities = {
 };
 
 export type ProductBookSummary = {
-	id: string;
-	title: string;
-	status: string;
-	chapterWordCount?: number;
-	language?: "zh" | "en";
-	updatedAt: string;
-	capabilities: RuntimeEntityCapabilities;
+  id: string;
+  title: string;
+  status: string;
+  platform?: "tomato" | "feilu" | "qidian" | "other";
+  chapterWordCount?: number;
+  language?: "zh" | "en";
+  updatedAt: string;
+  capabilities: RuntimeEntityCapabilities;
 };
 
 export function getProductBookWritingConfig(
-	config: Record<string, unknown>,
-): Pick<ProductBookSummary, "chapterWordCount" | "language"> {
-	return {
-		...(typeof config.chapterWordCount === "number"
-			&& Number.isFinite(config.chapterWordCount)
-			&& config.chapterWordCount > 0
-			? { chapterWordCount: config.chapterWordCount }
-			: {}),
-		...(config.language === "zh" || config.language === "en"
-			? { language: config.language }
-			: {}),
-	};
+  config: Record<string, unknown>,
+): Pick<ProductBookSummary, "platform" | "chapterWordCount" | "language"> {
+  return {
+    ...(config.platform === "tomato" || config.platform === "feilu" || config.platform === "qidian" || config.platform === "other"
+      ? { platform: config.platform }
+      : {}),
+    ...(typeof config.chapterWordCount === "number"
+      && Number.isFinite(config.chapterWordCount)
+      && config.chapterWordCount > 0
+      ? { chapterWordCount: config.chapterWordCount }
+      : {}),
+    ...(config.language === "zh" || config.language === "en"
+      ? { language: config.language }
+      : {}),
+  };
 }
 
 export type ProductNarratorSummary = {
@@ -929,7 +933,7 @@ function workspaceResourceId(resource: WritingResource): string {
 }
 
 function toWorkspaceWritingResource(resource: WritingResource): ProductWorkspaceResource {
-	const editable = resource.status === "accepted" || resource.status === "draft";
+	const editable = resource.status === "accepted";
 	const chapterFileName = typeof resource.metadata.fileName === "string"
 		? resource.metadata.fileName.replaceAll("\\", "/").replace(/^chapters\//u, "")
 		: null;
@@ -2000,7 +2004,7 @@ export class NovelForkProductBookService {
 		const current = chapterMatch
 			? await service.findAcceptedChapter(bookId, Number(chapterMatch[1]))
 			: await service.getById(bookId, rawWritingResourceId(resourceId));
-		if (!current || (current.status !== "accepted" && current.status !== "draft")) {
+		if (!current || current.status !== "accepted") {
 			throw new NotFoundError("Writable workspace resource", resourceId);
 		}
 		const updated = await service.update(bookId, current.id, { content });

@@ -1,13 +1,13 @@
 /**
- * 实体详情抽屉 —— 酒馆式（SillyTavern 风格）一体化角色与实体总卡。
+ * 实体详情抽屉 —— 酒馆式（SillyTavern 风格）沉浸式多维角色档案页。
  *
- * 打通经纬（静态设定）与叙事记忆（动态时态）的孤岛：
- * 点任意实体名，右侧滑出多维卡片：
- * 1. 【Hero Banner】头像/立绘占位、实体姓名、别名徽章、当前状态标签；
- * 2. 【当前时态】当前所在章节/地点、身体状况、掌握秘密，支持就地纠正/作废/新增；
- * 3. 【出场档案 (Lore)】性格底色、行为禁忌、语言口癖，支持一键跳转经纬编辑；
- * 4. 【人物羁绊 (Relations)】与全书其它实体的实时双向/有向关系网络；
- * 5. 【变迁历史 (History)】按章节推进的时间线与心境转折轨迹。
+ * 彻底打通经纬静态设定与叙事记忆动态时态：
+ * 1. 【Hero Banner】图标徽章、实体姓名、别名徽章、门派分类、层级标签；
+ * 2. 【经典声口与口癖 (Voice Bubble)】解析展示角色的标志性台词或说话口癖，给作者和 AI 最直观的声音感知；
+ * 3. 【当前时态看板 (Live State)】实时展示所在位置、伤势状况、掌握秘密，支持就地新增/纠正/作废；
+ * 4. 【出场设定档案 (Persona)】性格底色、行事准则、能力背景，支持一键打开编辑器；
+ * 5. 【人物羁绊网络 (Bonds)】与全书其它实体的双向/有向关系网络，点击直接无缝跳转；
+ * 6. 【变迁历史轨迹 (Timeline)】按章节推进的时间线与心境转折大事记。
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -23,6 +23,7 @@ import {
   Info,
   Loader2,
   MapPin,
+  MessageSquareQuote,
   Pencil,
   Plus,
   RotateCcw,
@@ -33,6 +34,8 @@ import {
   UserRound,
   Users,
   Wand2,
+  X,
+  Zap,
 } from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
@@ -152,22 +155,39 @@ export function EntityDetailDrawer({
     return jingweiState.entries.find((entry) => entry.title === entity) ?? jingweiState.entries[0] ?? null;
   }, [jingweiState, entity]);
 
+  // 解析经典台词或口癖片段
+  const voiceQuote = useMemo(() => {
+    if (!matchedJingwei?.contentMd) return null;
+    const lines = matchedJingwei.contentMd.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if ((trimmed.startsWith("“") || trimmed.startsWith('"') || trimmed.startsWith("「")) && trimmed.length > 4) {
+        return trimmed;
+      }
+      if (trimmed.includes("口癖") || trimmed.includes("台词") || trimmed.includes("行事原则")) {
+        const next = lines[lines.indexOf(line) + 1]?.trim();
+        if (next) return next.replace(/^[-*]\s*/, "");
+      }
+    }
+    return null;
+  }, [matchedJingwei]);
+
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
-      <SheetContent className="w-[min(32rem,95vw)] gap-0 p-0 sm:max-w-none flex flex-col h-full bg-card">
-        {/* 酒馆式 Hero Banner */}
-        <div className="relative border-b border-border bg-muted/20 px-5 py-4 shrink-0">
-          <div className="flex items-start gap-3">
-            {/* 头像占位 */}
-            <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-primary/10 border border-primary/20 text-primary shadow-sm">
-              <UserRound className="size-6" />
+      <SheetContent className="w-[min(34rem,95vw)] gap-0 p-0 sm:max-w-none flex flex-col h-full bg-card border-l border-border">
+        {/* 酒馆式 Hero Banner 头部 */}
+        <div className="relative border-b border-border bg-muted/20 px-5 py-4 shrink-0 space-y-3">
+          <div className="flex items-start gap-3.5">
+            {/* 角色图标徽章 */}
+            <div className="flex size-14 shrink-0 items-center justify-center rounded-2xl bg-primary/10 border border-primary/25 text-primary shadow-sm">
+              <UserRound className="size-7" />
             </div>
 
             <div className="min-w-0 flex-1 space-y-1">
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold tracking-tight text-foreground truncate">{entity}</h2>
+                <h2 className="text-lg font-bold tracking-tight text-foreground truncate">{entity}</h2>
                 {matchedJingwei?.category ? (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 h-4">
+                  <Badge variant="secondary" className="text-[10px] px-1.5 h-4 font-normal">
                     {matchedJingwei.category}
                   </Badge>
                 ) : null}
@@ -178,8 +198,8 @@ export function EntityDetailDrawer({
                 ) : null}
               </div>
 
-              <p className="text-[11px] text-muted-foreground line-clamp-1">
-                {matchedJingwei?.summary || "经纬设定与叙事记忆现状合一视图"}
+              <p className="text-xs text-muted-foreground line-clamp-1">
+                {matchedJingwei?.summary || "酒馆式一体化人物与设定全景总卡"}
               </p>
 
               {matchedJingwei?.aliases && matchedJingwei.aliases.length > 0 ? (
@@ -193,6 +213,16 @@ export function EntityDetailDrawer({
               ) : null}
             </div>
           </div>
+
+          {/* 经典声口 / 口癖气泡 (Voice Bubble) */}
+          {voiceQuote ? (
+            <div className="rounded-lg border border-primary/20 bg-primary/[0.04] p-2.5 flex items-start gap-2 text-xs text-foreground/90 shadow-2xs">
+              <MessageSquareQuote className="size-4 text-primary shrink-0 mt-0.5" />
+              <p className="italic text-[11px] leading-relaxed text-muted-foreground line-clamp-2">
+                {voiceQuote}
+              </p>
+            </div>
+          ) : null}
         </div>
 
         {/* 导航 Tabs */}
@@ -446,10 +476,10 @@ function FactForm({
   return (
     <div className="rounded-lg border border-primary/30 bg-primary/5 p-3 space-y-2 shadow-xs" data-testid="entity-fact-form">
       {factId && <p className="text-[10px] text-muted-foreground">纠正会关闭旧值并写入一条 manual 新值，历史保留。</p>}
-      <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 实体" />
-      <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 位置 / 伤势 / 关系" />
-      <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴期 / 乱星海 / 中毒 / 结盟" />
-      <Field label="类别" value={category} onChange={setCategory} placeholder="如：state / relationship" />
+      <Field label="主体" value={subject} onChange={setSubject} placeholder="角色 / 主体" />
+      <Field label="谓词" value={predicate} onChange={setPredicate} placeholder="如：境界 / 谓词 / 位置" />
+      <Field label="宾语" value={object} onChange={setObject} placeholder="如：元婴 / 宾语 / 金丹" />
+      <Field label="类别" value={category} onChange={setCategory} placeholder="如：state / 类别 / relationship" />
       <div className="flex justify-end gap-1.5 pt-1">
         <ActionButton onClick={onCancel} disabled={busy}>取消</ActionButton>
         <ActionButton

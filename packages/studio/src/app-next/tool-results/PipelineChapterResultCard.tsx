@@ -42,6 +42,58 @@ function readAuditCounts(value: unknown): AuditCounts {
   };
 }
 
+interface ContextSourceRow {
+  readonly key: string;
+  readonly source: string;
+  readonly reason: string;
+  readonly chars: number;
+}
+
+interface StageRow {
+  readonly key: string;
+  readonly stage: string;
+  readonly status: "ok" | "skipped" | "warning" | "failed";
+  readonly detail: string;
+}
+
+function readContextSources(value: unknown): ContextSourceRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    const record = asRecord(item);
+    if (!record) return [];
+    const source = getString(record.source);
+    if (!source) return [];
+    return [{
+      key: `context-${index}-${source}`,
+      source,
+      reason: getString(record.reason),
+      chars: getNumber(record.chars) ?? 0,
+    }];
+  });
+}
+
+const STAGE_STATUS: Record<StageRow["status"], { readonly label: string; readonly className: string }> = {
+  ok: { label: "通过", className: "text-muted-foreground" },
+  skipped: { label: "跳过", className: "text-muted-foreground/70" },
+  warning: { label: "有提醒", className: "text-amber-600 dark:text-amber-400" },
+  failed: { label: "失败", className: "text-destructive" },
+};
+
+function readStages(value: unknown): StageRow[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    const record = asRecord(item);
+    if (!record) return [];
+    const stage = getString(record.stage);
+    if (!stage) return [];
+    const rawStatus = getString(record.status);
+    const status: StageRow["status"] = rawStatus === "skipped" || rawStatus === "warning" || rawStatus === "failed"
+      ? rawStatus
+      : "ok";
+    return [{ key: `stage-${index}-${stage}`, stage, status, detail: getString(record.detail) }];
+  });
+}
+
 /** pipeline.write 结果卡：展示真实管线阶段、审计分类、内部模型调用与章后结算，不伪造后端未返回的问题明细。 */
 export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResultRendererContext) => {
   const data = asRecord(getToolResultData(context.result));
@@ -65,6 +117,8 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
   const settlementError = getString(data.settlementError);
   const highRiskPendingReminder = getString(data.highRiskPendingReminder);
   const lengthWarning = getString(data.lengthWarning);
+  const contextSources = readContextSources(data.contextSources);
+  const stages = readStages(data.pipelineStages);
   const artifact = getToolResultArtifact(context.result);
 
   return (
@@ -118,6 +172,40 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
             <span>自动沉淀 {getNumber(settlement.autoApplied) ?? 0}</span>
             <span>待审 {getNumber(settlement.pending) ?? 0}</span>
           </div>
+        )}
+
+        {stages.length > 0 && (
+          <div className="flex flex-col gap-1 text-xs" data-testid="pipeline-stages">
+            <span className="font-medium text-foreground">管线阶段</span>
+            <ul className="flex flex-col gap-0.5">
+              {stages.map((item) => (
+                <li key={item.key} className="flex flex-wrap items-baseline gap-x-2">
+                  <span className="text-foreground">{item.stage}</span>
+                  <span className={STAGE_STATUS[item.status].className}>{STAGE_STATUS[item.status].label}</span>
+                  {item.detail && <span className="min-w-0 text-muted-foreground">{item.detail}</span>}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {contextSources.length > 0 && (
+          <details className="text-xs" data-testid="pipeline-context-sources">
+            <summary className="cursor-pointer text-muted-foreground">
+              本章实际注入的上下文（{contextSources.length} 项）
+            </summary>
+            <ul className="mt-1 flex flex-col gap-1">
+              {contextSources.map((item) => (
+                <li key={item.key} className="flex flex-col">
+                  <span className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="text-foreground">{item.source}</span>
+                    <span className="text-muted-foreground">{item.chars} 字</span>
+                  </span>
+                  {item.reason && <span className="text-muted-foreground">{item.reason}</span>}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
 
         <SecondaryModelCalls value={data.modelCalls} />

@@ -177,9 +177,7 @@ export async function writeProjectWritingSkillRaw(
   if (!parsed) {
     throw new Error("SKILL.md 格式不合法：必须包含完整 frontmatter 与非空正文。");
   }
-  if (!(await pathIsFile(canonicalFile))) {
-    throw new Error(`当前作品中不存在 Writing Skill「${slug}」。`);
-  }
+  await mkdir(dirname(canonicalFile), { recursive: true });
   await writeFile(canonicalFile, content, "utf8");
   return parsed;
 }

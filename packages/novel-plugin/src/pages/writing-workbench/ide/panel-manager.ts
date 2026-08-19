@@ -8,7 +8,7 @@
  * - React 完全不参与面板的显/隐决策
  *
  * 使用方式:
- * 1. 创建 manager: const pm = new PanelManager(containerEl, ["explorer","jingwei","tools"])
+ * 1. 创建 manager: const pm = new PanelManager(containerEl, ["explorer","characters-lore","tools"])
  * 2. 初始化: pm.show("explorer")
  * 3. 切换: pm.show("tools") — 同步 DOM 操作
  * 4. 获取容器: pm.getContainer("tools") — 用于 createPortal

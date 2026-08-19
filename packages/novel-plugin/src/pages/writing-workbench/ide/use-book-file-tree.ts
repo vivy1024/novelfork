@@ -48,6 +48,15 @@ function isChapterFile(path: string): boolean {
   return /^chapters\/.+\.md$/iu.test(path);
 }
 
+/** 从章节文件名恢复章节号，供章节读取、保存和发布检查共用。 */
+function chapterNumberFromFilePath(path: string): number | undefined {
+  const fileName = path.split("/").pop() ?? "";
+  const match = /^(\d+)(?:_|\.md$)/iu.exec(fileName);
+  if (!match) return undefined;
+  const chapterNumber = Number(match[1]);
+  return Number.isSafeInteger(chapterNumber) && chapterNumber > 0 ? chapterNumber : undefined;
+}
+
 export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): WorkbenchResourceNode {
   if (entry.type === "directory") {
     const children = (entry.children ?? []).map(c => mapBookFileEntryToNode(c, bookId));
@@ -73,7 +82,15 @@ export function mapBookFileEntryToNode(entry: TreeEntry, bookId: string): Workbe
       title: entry.name,
       path: entry.path,
       capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-      metadata: { filePath: entry.path, bookId, isFile: true, isChapter: true, mtime: entry.mtime, size: entry.size },
+      metadata: {
+        filePath: entry.path,
+        bookId,
+        isFile: true,
+        isChapter: true,
+        ...(chapterNumberFromFilePath(entry.path) !== undefined ? { chapterNumber: chapterNumberFromFilePath(entry.path) } : {}),
+        mtime: entry.mtime,
+        size: entry.size,
+      },
     };
   }
 

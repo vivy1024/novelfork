@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core";
 import { createWritingResourceFileStore, type WritingResourceFileStore } from "./file-store.js";
-import { chapterWordCount, type ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
+import type { ChapterVolumeDirectoryResolver } from "./chapter-layout.js";
 import { createWritingResourceRepository, type WritingResourceRepository } from "./repository.js";
 import type {
   CreateWritingResourceInput,
@@ -21,7 +21,6 @@ export type WritingResourceService = {
   readonly getById: (bookId: string, id: string) => Promise<WritingResource | null>;
   readonly create: (bookId: string, input: CreateServiceInput) => Promise<WritingResource>;
   readonly update: (bookId: string, id: string, input: UpdateWritingResourceInput) => Promise<WritingResource>;
-  readonly transition: (bookId: string, id: string, action: WritingResourceTransitionAction) => Promise<WritingResource>;
   readonly softDelete: (bookId: string, id: string) => Promise<WritingResource>;
   readonly getHistory: (bookId: string, id: string) => Promise<WritingResource[]>;
   readonly findAcceptedChapter: (bookId: string, chapterNumber: number) => Promise<WritingResource | null>;
@@ -33,28 +32,13 @@ export type CreateServiceInput = Omit<CreateWritingResourceInput, "id" | "bookId
   readonly updatedAt?: number;
 };
 
-export type WritingResourceTransitionAction =
-  | { readonly action: "accept"; readonly chapterNumber: number; readonly mode: "replace" | "merge" | "new" }
-  | { readonly action: "reject" }
-  | { readonly action: "archive" }
-  | { readonly action: "to-draft" }
-  | { readonly action: "to-candidate" }
-  | { readonly action: "restore" };
-
-const VALID_TRANSITIONS: Record<WritingResourceStatus, readonly WritingResourceTransitionAction["action"][]> = {
-  draft: ["accept", "to-candidate"],
-  candidate: ["accept", "reject", "archive", "to-draft"],
-  accepted: [],
-  rejected: ["to-draft"],
-  archived: ["restore"],
-};
-
 /**
  * Hybrid resource service used by the Runtime domain adapter.
  *
  * - Existing writing_resource rows remain readable and writable in place.
  * - Books that already use v3 chapter files continue to use those files.
  * - Lists merge both stores without migrating, resetting, or fabricating data.
+ * - 候选稿/草稿状态机已下线，因此没有 transition 流程：章节要么直接写入，要么不写。
  */
 export function createWritingResourceService(input: {
   readonly storage: StorageDatabase;
@@ -196,72 +180,6 @@ export function createWritingResourceService(input: {
         }
       }
       throw new Error(`Writing resource not found: ${id}`);
-    },
-
-    async transition(bookId, id, action) {
-      const resource = repository.getById(bookId, id);
-      if (!resource || resource.deletedAt !== null) throw new Error(`Writing resource not found: ${id}`);
-      if (!VALID_TRANSITIONS[resource.status].includes(action.action)) {
-        throw new Error(`Invalid writing resource transition: ${resource.status} -> ${action.action}`);
-      }
-      const timestamp = now();
-      if (action.action === "accept") {
-        if (!Number.isInteger(action.chapterNumber) || action.chapterNumber <= 0) {
-          throw new Error("Accept action requires a positive integer chapterNumber.");
-        }
-        const existing = await findAcceptedChapter(bookId, action.chapterNumber);
-        if (action.mode === "new" && existing) {
-          throw new Error(`Chapter ${action.chapterNumber} already exists.`);
-        }
-
-        let content = resource.content;
-        let version = 1;
-        let parentId = resource.parentId;
-        if (existing) {
-          if (action.mode === "merge") content = `${existing.content.trim()}\n\n${resource.content.trim()}`;
-          version = existing.version + 1;
-          parentId = existing.id;
-          if (repository.getById(bookId, existing.id)) {
-            repository.update(bookId, existing.id, { status: "archived", updatedAt: timestamp });
-          } else if (fileStore) {
-            await fileStore.softDelete(bookId, existing.id);
-          }
-        }
-
-        const accepted = repository.update(bookId, id, {
-          type: "chapter",
-          status: "accepted",
-          chapterNumber: action.chapterNumber,
-          content,
-          wordCount: chapterWordCount(content),
-          parentId,
-          version,
-          updatedAt: timestamp,
-          acceptedAt: timestamp,
-        });
-        if (!accepted) throw new Error(`Writing resource not found: ${id}`);
-        await recordAcceptedChapterDelta(bookId, existing, accepted);
-        return accepted;
-      }
-      if (action.action === "to-draft") {
-        const updated = repository.update(bookId, id, { type: "draft", status: "draft", updatedAt: timestamp });
-        if (!updated) throw new Error(`Writing resource not found: ${id}`);
-        return updated;
-      }
-      if (action.action === "to-candidate") {
-        const updated = repository.update(bookId, id, { type: "candidate", status: "candidate", updatedAt: timestamp });
-        if (!updated) throw new Error(`Writing resource not found: ${id}`);
-        return updated;
-      }
-      if (action.action === "restore") {
-        const updated = repository.update(bookId, id, { type: "candidate", status: "candidate", updatedAt: timestamp });
-        if (!updated) throw new Error(`Writing resource not found: ${id}`);
-        return updated;
-      }
-      const targetStatus = action.action === "reject" ? "rejected" : "archived";
-      const updated = repository.update(bookId, id, { status: targetStatus, updatedAt: timestamp });
-      if (!updated) throw new Error(`Writing resource not found: ${id}`);
-      return updated;
     },
 
     async softDelete(bookId, id) {

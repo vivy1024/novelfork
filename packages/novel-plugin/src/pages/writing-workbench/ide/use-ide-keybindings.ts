@@ -8,10 +8,11 @@
  * - Ctrl+J  切换 Chat Panel
  * - Ctrl+\  分屏（预留）
  * - Ctrl+Tab / Ctrl+Shift+Tab  切换 Tab
- * - Ctrl+1/2/3  切换到 资源管理器/经纬/工具 视图
+ * - Ctrl+1/2/3  切换到 资源管理器/角色与设定/分析工具 视图
  */
 import { useEffect } from "react";
 import { tinykeys } from "tinykeys";
+import type { ViewId } from "./use-panel-manager";
 
 /** Check if the currently focused element is an input/textarea/contenteditable */
 function isEditingContext(): boolean {
@@ -29,7 +30,7 @@ export interface IdeKeybindingActions {
   toggleChat: () => void;
   nextTab: () => void;
   prevTab: () => void;
-  switchView: (view: "explorer" | "jingwei" | "tools") => void;
+  switchView: (view: ViewId) => void;
   splitEditor?: () => void;
   openCommandPalette?: () => void;
   openQuickOpen?: () => void;
@@ -72,7 +73,7 @@ export function useIdeKeybindings(actions: IdeKeybindingActions) {
       },
       "$mod+Digit2": (e) => {
         e.preventDefault();
-        actions.switchView("jingwei");
+        actions.switchView("characters-lore");
       },
       "$mod+Digit3": (e) => {
         e.preventDefault();

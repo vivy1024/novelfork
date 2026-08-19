@@ -1,23 +1,23 @@
 /**
  * ChapterToolbar — 章节编辑器底部可展开工具栏
  *
- * 四个 Tab，各管一层不同的检查：
- * - AI 味：本地 18 条统计/词表规则打分定位
+ * 三个 Tab，各管一层不同的检查：
  * - 人味润色：本地 deslop 引擎确定性改写，0 LLM
  * - 叙事审计：交叙述者开零继承子代理，按九项风险卡查叙事结构
- * - 发布检查：发布就绪的规则/连续性门禁
+ * - 全书发布检查：发布就绪的规则/连续性门禁
  *
  * 早期这里还有一个「节奏」Tab（ChapterHealthCard），只展示静态统计数字、
  * 没有可执行动作，已按作者反馈下线。
  */
 import { useState } from "react";
-import { ChevronUp, ChevronDown, Sparkles, Droplets, Play, Loader2, ShieldCheck, CheckCircle2, ScanSearch } from "lucide-react";
+import { ChevronUp, ChevronDown, Sparkles, Loader2, ShieldCheck, CheckCircle2, ScanSearch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { buildNarrativeRiskAuditMessage } from "./narrative-risk-audit-request";
+import { toCompliancePlatform } from "./compliance-platform";
 
-type ToolbarTab = "humanize" | "ai-taste" | "narrative" | "audit";
+type ToolbarTab = "humanize" | "narrative" | "audit";
 
 interface DeslopManualFlag {
   readonly rule: string;
@@ -32,45 +32,115 @@ interface DeslopOutcome {
   readonly manualFlags: readonly DeslopManualFlag[];
 }
 
-type AuditIssue = {
-  readonly severity?: string;
-  readonly type?: string;
-  readonly description?: string;
+type ComplianceEvidence = {
+  readonly ruleId: string;
+  readonly rulePackId?: string;
+  readonly source: string;
+  readonly severity: "high" | "medium" | "low";
+  readonly chapterNumber?: number;
+  readonly chapterTitle?: string;
+  readonly message: string;
+  readonly context?: string;
   readonly suggestion?: string;
-  readonly location?: string;
 };
 
-type AuditResult = {
-  readonly passed?: boolean;
-  readonly issues?: readonly AuditIssue[];
-  readonly hardViolations?: readonly AuditIssue[];
-  readonly softViolations?: readonly AuditIssue[];
-  readonly error?: string;
+type PublishReadinessReport = {
+  readonly platform: string;
+  readonly status: "ready" | "has-warnings" | "needs-review" | "skipped";
+  readonly rulePack: { readonly id: string; readonly name: string; readonly version: string; readonly confidence: string; readonly source: string };
+  readonly evidence: readonly ComplianceEvidence[];
+  readonly totalBlockCount: number;
+  readonly totalWarnCount: number;
+  readonly totalSuggestCount: number;
+  readonly sensitiveScan: {
+    readonly totalBlockCount: number;
+    readonly totalWarnCount: number;
+    readonly totalSuggestCount: number;
+    readonly chapters: readonly { readonly chapterNumber: number; readonly chapterTitle: string; readonly blockCount: number; readonly warnCount: number; readonly suggestCount: number }[];
+  };
+  readonly formatCheck: { readonly blockCount: number; readonly warnCount: number; readonly suggestCount: number; readonly chapterCount: number };
+  readonly continuity: { readonly status: "passed" | "has-issues" | "unknown"; readonly blockCount?: number; readonly warnCount?: number; readonly reason?: string };
 };
 
-function AuditSummary({ result }: { result: AuditResult }) {
-  const hard = result.hardViolations ?? [];
-  const soft = result.softViolations ?? [];
-  const issues = result.issues ?? [];
-  const allIssues = [...hard, ...soft, ...issues];
-  const uniqueIssues = allIssues.filter((issue, index, items) => items.indexOf(issue) === index);
+function readinessStatusLabel(status: PublishReadinessReport["status"]): string {
+  switch (status) {
+    case "ready": return "全书可发布";
+    case "has-warnings": return "全书有提醒";
+    case "needs-review": return "全书需人工复核";
+    case "skipped": return "检查已跳过";
+  }
+}
+
+function evidenceKey(evidence: ComplianceEvidence): string {
+  return `${evidence.ruleId}:${evidence.chapterNumber ?? "book"}:${evidence.message}`;
+}
+
+function EvidenceList({ evidence }: { evidence: readonly ComplianceEvidence[] }) {
+  const unique = [...new Map(evidence.map((item) => [evidenceKey(item), item])).values()];
+  if (unique.length === 0) return <p className="text-[10px] text-muted-foreground">未发现可定位证据。</p>;
+  return (
+    <div className="max-h-36 space-y-1 overflow-y-auto">
+      {unique.slice(0, 12).map((item) => (
+        <div key={evidenceKey(item)} className="rounded border border-border/60 p-1.5">
+          <p className="font-medium">[{item.severity}] {item.message}</p>
+          <p className="mt-1 text-muted-foreground">
+            规则：{item.rulePackId ? `${item.rulePackId} · ` : ""}{item.ruleId} · 来源：{item.source}
+            {item.chapterNumber !== undefined ? ` · 第 ${item.chapterNumber} 章${item.chapterTitle ? `《${item.chapterTitle}》` : ""}` : " · 全书"}
+          </p>
+          {item.context && <p className="mt-1 break-words text-muted-foreground">正文摘录：{item.context}</p>}
+          {item.suggestion && <p className="mt-1 text-muted-foreground">建议：{item.suggestion}</p>}
+        </div>
+      ))}
+      {unique.length > 12 && <p className="text-[10px] text-muted-foreground">另有 {unique.length - 12} 条证据。</p>}
+    </div>
+  );
+}
+
+function PublishReadinessSummary({ report, chapterNumber }: { report: PublishReadinessReport; chapterNumber?: number }) {
+  const currentEvidence = chapterNumber === undefined
+    ? []
+    : report.evidence.filter((item) => item.chapterNumber === chapterNumber);
+  const otherEvidence = chapterNumber === undefined
+    ? report.evidence
+    : report.evidence.filter((item) => item.chapterNumber !== chapterNumber);
+  const continuityLabel = report.continuity.status === "passed"
+    ? "通过"
+    : report.continuity.status === "has-issues"
+      ? `有问题（${(report.continuity.blockCount ?? 0) + (report.continuity.warnCount ?? 0)} 条）`
+      : `未知${report.continuity.reason ? `：${report.continuity.reason}` : ""}`;
+
   return (
     <div className="space-y-2">
-      <p className={result.passed === false ? "font-medium text-destructive" : "font-medium text-emerald-600"}>
-        {result.passed === false ? `未通过：发现 ${uniqueIssues.length} 项问题` : "审计通过"}
+      <div className="flex flex-wrap items-center gap-2">
+        <p className={report.status === "ready" ? "font-medium text-emerald-600" : "font-medium text-destructive"}>
+          {readinessStatusLabel(report.status)}
+        </p>
+        <span className="text-[10px] text-muted-foreground">平台：{report.platform}</span>
+      </div>
+      <p className="rounded border border-border/60 bg-muted/30 p-2 text-[10px] text-muted-foreground">
+        本次检查扫描全书 {report.formatCheck.chapterCount} 章，不是只检查当前章；当前章节仅用于置顶本章证据。
       </p>
-      {uniqueIssues.length > 0 && (
-        <div className="max-h-32 space-y-1 overflow-y-auto">
-          {uniqueIssues.slice(0, 12).map((issue, index) => (
-            <details key={`${issue.type ?? "issue"}-${index}`} className="rounded border border-border/60 p-1.5">
-              <summary className="cursor-pointer">
-                {issue.severity ? `[${issue.severity}] ` : ""}{issue.description ?? issue.type ?? "未命名问题"}
-              </summary>
-              {issue.location && <p className="mt-1 text-muted-foreground">位置：{issue.location}</p>}
-              {issue.suggestion && <p className="mt-1 text-muted-foreground">建议：{issue.suggestion}</p>}
-            </details>
-          ))}
+      <div className="grid grid-cols-3 gap-1 text-[10px] text-muted-foreground">
+        <span>拦截 {report.totalBlockCount}</span>
+        <span>提醒 {report.totalWarnCount}</span>
+        <span>建议 {report.totalSuggestCount}</span>
+      </div>
+      <div className="grid gap-1 text-[10px] text-muted-foreground">
+        <span>敏感词：拦截 {report.sensitiveScan.totalBlockCount} · 提醒 {report.sensitiveScan.totalWarnCount} · 建议 {report.sensitiveScan.totalSuggestCount}</span>
+        <span>格式：拦截 {report.formatCheck.blockCount} · 提醒 {report.formatCheck.warnCount} · 建议 {report.formatCheck.suggestCount}</span>
+        <span>连续性：{continuityLabel}</span>
+      </div>
+      {currentEvidence.length > 0 && (
+        <div className="space-y-1 border-t border-border pt-2">
+          <p className="text-[10px] font-medium">本章证据（第 {chapterNumber} 章）</p>
+          <EvidenceList evidence={currentEvidence} />
         </div>
+      )}
+      {otherEvidence.length > 0 && (
+        <details className="border-t border-border pt-2">
+          <summary className="cursor-pointer text-[10px] font-medium">其他章节 / 全书证据（{otherEvidence.length} 条）</summary>
+          <div className="mt-1"><EvidenceList evidence={otherEvidence} /></div>
+        </details>
       )}
     </div>
   );
@@ -79,6 +149,8 @@ function AuditSummary({ result }: { result: AuditResult }) {
 export interface ChapterToolbarProps {
   bookId: string;
   chapterNumber?: number;
+  /** 书籍配置中的平台枚举，用于映射 compliance 规则包。 */
+  bookPlatform?: string;
   /** 当前编辑器里的正文；人味润色必须拿真实正文才能工作。 */
   content?: string;
   /** 作者确认后把去 AI 味结果写回编辑器。 */
@@ -87,13 +159,12 @@ export interface ChapterToolbarProps {
   onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent, onSendToNarrator }: ChapterToolbarProps) {
+export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, onApplyContent, onSendToNarrator }: ChapterToolbarProps) {
   const [expanded, setExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<ToolbarTab>("ai-taste");
-  const [detecting, setDetecting] = useState(false);
-  const [detectResult, setDetectResult] = useState<{ score?: number; details?: string } | null>(null);
+  const [activeTab, setActiveTab] = useState<ToolbarTab>("humanize");
   const [auditing, setAuditing] = useState(false);
-  const [auditResult, setAuditResult] = useState<AuditResult | null>(null);
+  const [auditResult, setAuditResult] = useState<PublishReadinessReport | null>(null);
+  const [auditError, setAuditError] = useState<string | null>(null);
   const [humanizing, setHumanizing] = useState(false);
   const [humanizeOutcome, setHumanizeOutcome] = useState<DeslopOutcome | null>(null);
   const [humanizeError, setHumanizeError] = useState<string | null>(null);
@@ -182,35 +253,22 @@ export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent,
     setHandedOff(true);
   };
 
-  const handleRunDetect = async () => {
-    if (!chapterNumber) return;
-    setDetecting(true);
-    setDetectResult(null);
-    try {
-      const data = await fetchJson<{ score?: number; details?: string }>(
-        `/api/books/${encodeURIComponent(bookId)}/detect/${chapterNumber}`,
-        { method: "POST" },
-      );
-      setDetectResult(data);
-    } catch (err) {
-      setDetectResult({ details: err instanceof Error ? err.message : "检测失败" });
-    } finally {
-      setDetecting(false);
-    }
-  };
-
   const handleRunAudit = async () => {
-    if (!chapterNumber) return;
     setAuditing(true);
     setAuditResult(null);
+    setAuditError(null);
     try {
-      const data = await fetchJson<AuditResult>(
-        `/api/books/${encodeURIComponent(bookId)}/audit/${chapterNumber}`,
-        { method: "POST" },
+      const data = await fetchJson<{ report: PublishReadinessReport }>(
+        `/api/books/${encodeURIComponent(bookId)}/compliance/publish-readiness`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ platform: toCompliancePlatform(bookPlatform) }),
+        },
       );
-      setAuditResult(data);
+      setAuditResult(data.report);
     } catch (err) {
-      setAuditResult({ error: err instanceof Error ? err.message : "章节审计失败" });
+      setAuditError(err instanceof Error ? err.message : "发布检查失败");
     } finally {
       setAuditing(false);
     }
@@ -233,15 +291,6 @@ export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent,
         {expanded && (
           <>
             <div className="mx-1 h-4 w-px bg-border" />
-            <Button
-              variant={activeTab === "ai-taste" ? "secondary" : "ghost"}
-              size="xs"
-              className="h-6 gap-1"
-              onClick={() => setActiveTab("ai-taste")}
-            >
-              <Droplets className="size-3" />
-              <span className="text-[10px]">AI味</span>
-            </Button>
             <Button
               variant={activeTab === "humanize" ? "secondary" : "ghost"}
               size="xs"
@@ -351,29 +400,6 @@ export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent,
               )}
             </div>
           )}
-          {activeTab === "ai-taste" && (
-            <div className="flex flex-col items-center justify-center py-6 text-muted-foreground">
-              <Droplets className="size-6 opacity-30 mb-2" />
-              <p className="text-xs">AI 味检测</p>
-              <p className="text-[10px] mt-1 opacity-60">保存章节后可运行检测</p>
-              <Button
-                variant="outline"
-                size="xs"
-                className="mt-3 gap-1"
-                disabled={detecting || !chapterNumber}
-                onClick={() => void handleRunDetect()}
-              >
-                {detecting ? <Loader2 className="size-3 animate-spin" /> : <Play className="size-3" />}
-                {detecting ? "检测中..." : "运行检测"}
-              </Button>
-              {detectResult && (
-                <div className="mt-3 text-xs text-center">
-                  {detectResult.score != null && <p>AI 味分数：<span className="font-semibold">{detectResult.score}</span></p>}
-                  {detectResult.details && <p className="mt-1 opacity-70">{detectResult.details}</p>}
-                </div>
-              )}
-            </div>
-          )}
           {activeTab === "narrative" && (
             <div className="space-y-2 py-1 text-xs">
               <div className="flex items-center justify-between gap-2">
@@ -415,8 +441,8 @@ export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent,
             <div className="space-y-3 py-2 text-xs">
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="font-medium">发布检查</p>
-                  <p className="text-[10px] text-muted-foreground">敏感词、格式与连续性门禁，判断能不能发；不修改正文。</p>
+                  <p className="font-medium">全书发布检查</p>
+                  <p className="text-[10px] text-muted-foreground">扫描本书全部章节的敏感词、格式与连续性门禁，不修改正文。</p>
                 </div>
                 <Button
                   variant="outline"
@@ -429,9 +455,9 @@ export function ChapterToolbar({ bookId, chapterNumber, content, onApplyContent,
                   {auditing ? "审计中..." : "运行审计"}
                 </Button>
               </div>
-              {auditResult?.error && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">{auditResult.error}</p>}
-              {auditResult && !auditResult.error && (
-                <AuditSummary result={auditResult} />
+              {auditError && <p role="alert" className="rounded border border-destructive/30 bg-destructive/5 p-2 text-destructive">{auditError}</p>}
+              {auditResult && (
+                <PublishReadinessSummary report={auditResult} chapterNumber={chapterNumber} />
               )}
             </div>
           )}

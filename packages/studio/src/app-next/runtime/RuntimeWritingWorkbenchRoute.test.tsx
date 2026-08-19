@@ -90,10 +90,11 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     expect(bookConfig?.capabilities).toMatchObject({ open: true, edit: false, readonly: true, unsupported: false, delete: false });
   });
 
-  it("把服务端书籍目标字数与语言透传到工作台根节点", () => {
+  it("把服务端书籍平台、目标字数与语言透传到工作台根节点", () => {
     const nodes = mapRuntimeWorkspaceToWorkbenchNodes("book-1", [], {
       id: "book-1",
       title: "英文测试作品",
+      platform: "tomato",
       chapterWordCount: 2400,
       language: "en",
       capabilities: { read: true },
@@ -102,6 +103,7 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     expect(nodes[0]?.metadata?.book).toEqual({
       id: "book-1",
       title: "英文测试作品",
+      platform: "tomato",
       chapterWordCount: 2400,
       language: "en",
     });

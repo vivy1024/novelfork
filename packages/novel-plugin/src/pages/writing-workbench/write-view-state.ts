@@ -5,6 +5,8 @@
  * 纪律：文案一律来自 preflight 的 explanation（人话三段式），此处不按 code 造词。
  */
 
+import type { ViewId } from "./ide/use-panel-manager";
+
 export type ReadyLight = "green" | "yellow" | "red" | "unknown";
 
 export interface ReadyCheckItem {
@@ -227,7 +229,7 @@ export interface FixActionPlan {
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
-  readonly view?: "jingwei" | "tools" | "explorer";
+  readonly view?: Extract<ViewId, "characters-lore" | "storyline" | "tools" | "explorer">;
   /** kind=settings 时要定位到的写作设置分区 */
   readonly settingsSection?: SettingsSectionId;
   /** kind=lore-panel 时要在经纬面板里定位的分类 */
@@ -256,9 +258,9 @@ export function planFixAction(
         message: "经纬里还没有卷纲。请用 outline.volume(action=suggest) 生成草案给我确认，我确认后再 set。",
         label: "生成卷纲草案",
       };
-    // 待确认事件在经纬工作区的「进度」分区
+    // 待确认事件属于故事脉络工作区的章后事实队列。
     case "review-pending":
-      return { kind: "view", view: "jingwei", label: "去处理待确认事件" };
+      return { kind: "view", view: "storyline", label: "去处理待确认事件" };
     case "review-hooks":
       return { kind: "view", view: "tools", label: "查看伏笔看板" };
     // 判据是当前项目 `.novelfork/skills/` 的实际文件，唯一能改它的界面是

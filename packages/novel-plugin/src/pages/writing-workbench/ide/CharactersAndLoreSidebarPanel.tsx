@@ -1,40 +1,157 @@
 /**
- * 角色与设定（Characters & Lore）侧栏面板。
+ * 角色与设定（Characters & Lore）侧栏面板 —— 酒馆（SillyTavern）风格卡片流。
  *
- * 彻底消除「经纬」和「叙事记忆」在前端的割裂感：
- * 1. 顶部保留「导入」与「AI 注入预览」快捷动作；
- * 2. 集中展示全书的角色册、世界观、势力、力量体系与设定词条；
- * 3. 点击任何角色条目直接弹出酒馆式多维卡片（静态档案 + 实时动态时态 + 羁绊网络）。
+ * 彻底颠覆传统的文件夹树结构：
+ * 1. 【角色册 (Characters)】：以角色为第一公民的卡片流，直观展示图标徽章、姓名、门派/阵营、当前最新时态（位置/伤势）；
+ * 2. 【世界录 (World Lore)】：门派势力、力量体系、法则规则、地理场景等设定词条卡；
+ * 3. 顶部支持实时搜索、分类过滤与「新建角色 / 导入酒馆预设与角色卡」。
  */
 
-import { useCallback, useState } from "react";
-import { BookOpen, Eye, Plus, Sparkles, Upload, Users, UserRound, X } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
+import {
+  BookOpen,
+  Eye,
+  HeartHandshake,
+  MapPin,
+  Plus,
+  Search,
+  Shield,
+  Sparkles,
+  Upload,
+  UserPlus,
+  UserRound,
+  Users,
+  Wand2,
+  X,
+  Zap,
+} from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
-import { WorkbenchResourceTree, type ResourceTreeAction } from "../WorkbenchResourceTree";
+import { type ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
+
+export interface EntityFactLite {
+  id?: string;
+  subject: string;
+  predicate: string;
+  object: string;
+  category?: string;
+  evidenceText?: string;
+  sourceId?: string;
+}
 
 export interface CharactersAndLoreSidebarPanelProps {
   bookId: string;
   nodes: readonly WorkbenchResourceNode[];
+  facts?: readonly EntityFactLite[];
   selectedNodeId: string | null;
   onOpen: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
   onChanged?: () => void;
 }
 
+type MainTab = "characters" | "world";
+
 export function CharactersAndLoreSidebarPanel({
   bookId,
   nodes,
+  facts = [],
   selectedNodeId,
   onOpen,
   onAction,
   onChanged,
 }: CharactersAndLoreSidebarPanelProps) {
+  const [activeTab, setActiveTab] = useState<MainTab>("characters");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [creatingChar, setCreatingChar] = useState(false);
+  const [newCharName, setNewCharName] = useState("");
+  const [newCharCategory, setNewCharCategory] = useState("characters");
+  const [creatingBusy, setCreatingBusy] = useState(false);
+
+  // 递归提取全部实体叶子节点
+  const allEntries = useMemo(() => {
+    const list: WorkbenchResourceNode[] = [];
+    const walk = (items: readonly WorkbenchResourceNode[]) => {
+      for (const item of items) {
+        if (item.kind === "jingwei-entry") {
+          list.push(item);
+        }
+        if (item.children) walk(item.children);
+      }
+    };
+    walk(nodes);
+    return list;
+  }, [nodes]);
+
+  const factsBySubject = useMemo(() => {
+    const map = new Map<string, EntityFactLite[]>();
+    for (const fact of facts) {
+      const subject = fact.subject.trim();
+      if (!subject) continue;
+      const bucket = map.get(subject);
+      if (bucket) bucket.push(fact);
+      else map.set(subject, [fact]);
+    }
+    return map;
+  }, [facts]);
+
+  // 拆分为：角色类 vs 世界设定类
+  const { charactersList, worldList } = useMemo(() => {
+    const chars: WorkbenchResourceNode[] = [];
+    const world: WorkbenchResourceNode[] = [];
+
+    for (const entry of allEntries) {
+      const cat = String(entry.metadata?.category ?? "").toLowerCase();
+      if (cat === "characters" || cat === "character" || cat === "factions" || cat === "faction" || cat === "roles") {
+        chars.push(entry);
+      } else {
+        world.push(entry);
+      }
+    }
+    return { charactersList: chars, worldList: world };
+  }, [allEntries]);
+
+  // 搜索过滤
+  const filteredList = useMemo(() => {
+    const source = activeTab === "characters" ? charactersList : worldList;
+    if (!searchQuery.trim()) return source;
+    const q = searchQuery.toLowerCase().trim();
+    return source.filter((item) => {
+      const titleMatch = item.title.toLowerCase().includes(q);
+      const contentMatch = (item.content ?? "").toLowerCase().includes(q);
+      const summaryMatch = String(item.metadata?.summary ?? "").toLowerCase().includes(q);
+      return titleMatch || contentMatch || summaryMatch;
+    });
+  }, [activeTab, charactersList, worldList, searchQuery]);
+
+  // 新建角色/条目
+  const handleCreateEntry = async () => {
+    if (!newCharName.trim() || creatingBusy) return;
+    setCreatingBusy(true);
+    try {
+      await fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newCharName.trim(),
+          category: activeTab === "characters" ? "characters" : newCharCategory,
+          contentMd: "",
+        }),
+      });
+      setNewCharName("");
+      setCreatingChar(false);
+      onChanged?.();
+    } catch {
+      // ignore
+    } finally {
+      setCreatingBusy(false);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="characters-and-lore-panel">
@@ -48,7 +165,7 @@ export function CharactersAndLoreSidebarPanel({
             className="h-6 text-xs gap-1"
           >
             <Upload className="size-3" />
-            导入设定
+            导入
           </Button>
           <Button
             size="xs"
@@ -57,11 +174,22 @@ export function CharactersAndLoreSidebarPanel({
             className="h-6 text-xs gap-1"
           >
             <Eye className="size-3" />
-            AI 注入预览
+            AI注入预览
           </Button>
         </div>
+
+        <Button
+          size="xs"
+          variant="ghost"
+          className="h-6 px-1.5 gap-1 text-primary hover:text-primary/90 font-medium"
+          onClick={() => setCreatingChar(true)}
+        >
+          <UserPlus className="size-3" />
+          {activeTab === "characters" ? "新角色" : "新设定"}
+        </Button>
       </div>
 
+      {/* 导入抽屉 */}
       {showImport && (
         <ImportSection
           bookId={bookId}
@@ -73,19 +201,261 @@ export function CharactersAndLoreSidebarPanel({
         />
       )}
 
+      {/* AI 注入预览 */}
       {showPreview && (
         <InjectionPreviewSection bookId={bookId} onClose={() => setShowPreview(false)} />
       )}
 
-      {/* 角色与设定主树 */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <WorkbenchResourceTree
-          nodes={nodes}
-          selectedNodeId={selectedNodeId}
-          onOpen={onOpen}
-          onAction={onAction}
-          sortStorageKey={`novelfork:resource-tree-sort:${bookId}:characters-lore`}
-        />
+      {/* 快速新建卡片栏 */}
+      {creatingChar && (
+        <div className="border-b border-primary/30 bg-primary/5 p-2 space-y-2 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-semibold text-foreground">
+              {activeTab === "characters" ? "新建角色卡" : "新建世界设定词条"}
+            </span>
+            <Button size="xs" variant="ghost" onClick={() => setCreatingChar(false)} className="h-4 w-4 p-0">
+              <X className="size-3" />
+            </Button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <Input
+              value={newCharName}
+              onChange={(e) => setNewCharName(e.target.value)}
+              placeholder={activeTab === "characters" ? "输入角色名（如：韩立）" : "输入设定名称"}
+              className="h-7 text-xs flex-1"
+              autoFocus
+              onKeyDown={(e) => { if (e.key === "Enter") void handleCreateEntry(); }}
+            />
+            {activeTab === "world" && (
+              <select
+                className="h-7 text-xs border border-border rounded px-1.5 bg-background text-muted-foreground"
+                value={newCharCategory}
+                onChange={(e) => setNewCharCategory(e.target.value)}
+              >
+                <option value="world-model">世界观</option>
+                <option value="power-system">力量体系</option>
+                <option value="rules">法则规则</option>
+                <option value="locations">地理场景</option>
+                <option value="props">重要物品</option>
+              </select>
+            )}
+            <Button size="xs" onClick={() => void handleCreateEntry()} disabled={!newCharName.trim() || creatingBusy}>
+              创建
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 主视图 Tab：【角色册】 vs 【世界录】 */}
+      <div className="shrink-0 flex items-center border-b border-border px-2 pt-1.5 gap-1 bg-muted/10">
+        <button
+          type="button"
+          onClick={() => setActiveTab("characters")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
+            activeTab === "characters"
+              ? "border-primary text-primary bg-background shadow-xs"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <Users className="size-3.5" />
+          <span>角色册 ({charactersList.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("world")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded-t-md text-xs font-semibold border-b-2 transition-colors ${
+            activeTab === "world"
+              ? "border-primary text-primary bg-background shadow-xs"
+              : "border-transparent text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          <BookOpen className="size-3.5" />
+          <span>世界录 ({worldList.length})</span>
+        </button>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="shrink-0 p-2 border-b border-border/60">
+        <div className="flex items-center gap-1.5 rounded-md border border-input bg-background px-2 h-7">
+          <Search className="size-3 text-muted-foreground shrink-0" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={activeTab === "characters" ? "搜索角色名、性格、口癖..." : "搜索世界设定、门派、体系..."}
+            className="w-full bg-transparent text-[11px] outline-none placeholder:text-muted-foreground/60"
+          />
+          {searchQuery && (
+            <button type="button" onClick={() => setSearchQuery("")} className="text-muted-foreground hover:text-foreground">
+              <X className="size-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* 卡片流展示区 */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
+        {filteredList.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground space-y-1.5">
+            <UserRound className="size-8 opacity-25" />
+            <p className="text-xs font-medium">
+              {searchQuery ? "没有找到匹配的条目" : activeTab === "characters" ? "暂无角色卡" : "暂无世界设定"}
+            </p>
+            <p className="text-[10px] text-muted-foreground/80 max-w-xs">
+              {activeTab === "characters" ? "点击右上角「新角色」或「导入」快速建立人物册" : "点击右上角「新设定」添加世界观与规则"}
+            </p>
+          </div>
+        ) : (
+          filteredList.map((entry) => (
+            <CharacterOrLoreCard
+              key={entry.id}
+              node={entry}
+              activeTab={activeTab}
+              facts={factsForNode(entry, factsBySubject)}
+              isSelected={selectedNodeId === entry.id}
+              onClick={() => onOpen(entry)}
+            />
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
+const TEMPORAL_PREDICATE_PRIORITY = new Map([
+  ["位置", 0],
+  ["所在", 0],
+  ["所在地", 0],
+  ["地点", 0],
+  ["伤势", 0],
+  ["伤情", 0],
+  ["境界", 0],
+  ["状态", 0],
+  ["当前状态", 0],
+  ["处境", 0],
+]);
+
+function factsForNode(
+  node: WorkbenchResourceNode,
+  factsBySubject: ReadonlyMap<string, readonly EntityFactLite[]>,
+): readonly EntityFactLite[] {
+  const title = node.title.trim();
+  const titleFacts = factsBySubject.get(title);
+  if (titleFacts && titleFacts.length > 0) return selectTemporalFacts(titleFacts);
+
+  const aliases = Array.isArray(node.metadata?.aliases)
+    ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string")
+    : [];
+  for (const alias of aliases) {
+    const aliasFacts = factsBySubject.get(alias.trim());
+    if (aliasFacts && aliasFacts.length > 0) return selectTemporalFacts(aliasFacts);
+  }
+  return [];
+}
+
+function selectTemporalFacts(facts: readonly EntityFactLite[]): readonly EntityFactLite[] {
+  return [...facts]
+    .sort((a, b) => (TEMPORAL_PREDICATE_PRIORITY.get(a.predicate.trim()) ?? 1) - (TEMPORAL_PREDICATE_PRIORITY.get(b.predicate.trim()) ?? 1))
+    .slice(0, 3);
+}
+
+/** 酒馆式单张角色/设定卡片 */
+function CharacterOrLoreCard({
+  node,
+  activeTab,
+  facts,
+  isSelected,
+  onClick,
+}: {
+  node: WorkbenchResourceNode;
+  activeTab: MainTab;
+  facts: readonly EntityFactLite[];
+  isSelected: boolean;
+  onClick: () => void;
+}) {
+  const meta = node.metadata ?? {};
+  const category = String(meta.category ?? "");
+  const layer = String(meta.layer ?? "");
+  const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
+  const preview = String(node.content?.slice(0, 120) || meta.summary || "暂无描述");
+
+  const isCharacter = activeTab === "characters" || category === "characters";
+
+  return (
+    <div
+      onClick={onClick}
+      className={`group relative rounded-lg border p-2.5 transition-all cursor-pointer shadow-xs ${
+        isSelected
+          ? "border-primary bg-primary/5 ring-1 ring-primary/40"
+          : "border-border/80 bg-card hover:border-border hover:shadow-sm"
+      }`}
+    >
+      <div className="flex items-start gap-2.5">
+        {/* 角色图标徽章 */}
+        <div
+          className={`flex size-9 shrink-0 items-center justify-center rounded-lg border text-xs font-semibold shadow-2xs ${
+            isCharacter
+              ? "bg-primary/10 border-primary/20 text-primary"
+              : "bg-muted border-border/80 text-muted-foreground"
+          }`}
+        >
+          {isCharacter ? <UserRound className="size-4.5" /> : <BookOpen className="size-4" />}
+        </div>
+
+        {/* 核心信息与时态标签 */}
+        <div className="flex-1 min-w-0 space-y-1">
+          <div className="flex items-center justify-between gap-1">
+            <span className="font-semibold text-xs text-foreground truncate group-hover:text-primary transition-colors">
+              {node.title}
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              {category && category !== "characters" && (
+                <Badge variant="secondary" className="text-[9px] px-1 h-3.5">
+                  {category}
+                </Badge>
+              )}
+              {layer && (
+                <Badge variant="outline" className="text-[8px] px-1 h-3.5 text-muted-foreground">
+                  {layer}
+                </Badge>
+              )}
+            </div>
+          </div>
+
+          {/* 别名标签 */}
+          {aliases.length > 0 && (
+            <div className="flex flex-wrap gap-1">
+              {aliases.slice(0, 2).map((alias, i) => (
+                <span key={i} className="text-[9px] rounded bg-muted/70 px-1 py-0.2 text-muted-foreground">
+                  {alias}
+                </span>
+              ))}
+              {aliases.length > 2 && (
+                <span className="text-[9px] text-muted-foreground">+{aliases.length - 2}</span>
+              )}
+            </div>
+          )}
+
+          {facts.length > 0 && (
+            <div className="flex flex-wrap gap-1" data-testid="character-temporal-facts">
+              {facts.map((fact, index) => (
+                <Badge
+                  key={`${fact.predicate}-${fact.object}-${index}`}
+                  variant="outline"
+                  className="max-w-full truncate border-primary/30 bg-primary/5 px-1 text-[9px] font-normal text-primary"
+                  data-testid="character-temporal-fact"
+                >
+                  {fact.predicate}: {fact.object}
+                </Badge>
+              ))}
+            </div>
+          )}
+
+          {/* 经典人设简述 */}
+          <p className="text-[10px] text-muted-foreground line-clamp-2 leading-relaxed">
+            {preview}
+          </p>
+        </div>
       </div>
     </div>
   );
@@ -133,7 +503,7 @@ function ImportSection({ bookId, onClose, onImported }: { bookId: string; onClos
           });
         }
       } catch {
-        // 不是有效单角色 JSON，回退到普通文本解析
+        // 回退到普通文本解析
       }
     }
 

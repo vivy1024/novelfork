@@ -354,7 +354,7 @@ function TavernPresetImportSection({
     if (!parsedResult || saving) return;
     setSaving(true);
     try {
-      await putApi(`/api/books/${encodeURIComponent(bookId)}/writing-skills/custom/${encodeURIComponent(parsedResult.skill.slug)}`, {
+      await putApi(`/api/books/${encodeURIComponent(bookId)}/writing-skills/${encodeURIComponent(parsedResult.skill.slug)}`, {
         content: parsedResult.skill.content,
       });
       onSuccess();

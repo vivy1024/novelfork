@@ -133,6 +133,29 @@ export interface PipelineWriteOutput {
    * 重试 memory.settle_chapter 即可（正文已在库，重试不丢稿）。
    */
   readonly settlementError?: string;
+  /**
+   * 本章实际注入的上下文来源。
+   *
+   * 直接来自 buildPipelineContextPackage 的 selectedContext：只回传来源、入选理由与
+   * 字符数，不回传正文摘录本身（摘录已经进过 prompt，再回传一遍会撑爆结果体积）。
+   * 作者据此能核对「这一章到底读了什么」，而不是只看到一个黑箱结果。
+   */
+  readonly contextSources?: readonly {
+    readonly source: string;
+    readonly reason: string;
+    readonly chars: number;
+  }[];
+  /**
+   * 本次管线真实走过的阶段。
+   *
+   * 每一项都由函数内已经算出的真实状态推导（预检是否跳过、审计计数、门禁计数、
+   * 发布检查状态、结算派发结果等），不是一条硬编码的理想流程。
+   */
+  readonly pipelineStages?: readonly {
+    readonly stage: string;
+    readonly status: "ok" | "skipped" | "warning" | "failed";
+    readonly detail?: string;
+  }[];
 }
 
 export interface PipelineWriteError {
@@ -998,6 +1021,65 @@ export async function executePipelineWrite(
 
     const wordCount = finalLengthCount;
 
+    // 上下文来源：把已经注入 prompt 的 selectedContext 如实回传（只给来源/理由/字符数）。
+    const contextSources = contextPackage.selectedContext.map((item) => ({
+      source: item.source,
+      reason: item.reason,
+      chars: item.excerpt?.length ?? 0,
+    }));
+
+    // 管线阶段：逐项由上面真实算出的状态推导，没有依据的阶段不输出。
+    const pipelineStages: {
+      readonly stage: string;
+      readonly status: "ok" | "skipped" | "warning" | "failed";
+      readonly detail?: string;
+    }[] = [
+      skipContextGate
+        ? { stage: "写前预检", status: "skipped", detail: "调用方显式跳过上下文门禁" }
+        : { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
+      beatBudgetWarning
+        ? { stage: "情节点预算", status: "warning", detail: beatBudgetWarning }
+        : { stage: "情节点预算", status: "ok", detail: sceneSpec.beatBudget ? `${sceneSpec.beatBudget.length} 个情节点` : undefined },
+      { stage: "正文接收", status: "ok", detail: `${finalLengthCount}${lengthSpec.countingMode === "en_words" ? " words" : "字"}（目标 ${lengthSpec.target}）` },
+      {
+        stage: "一致性审计",
+        status: auditResult.passed ? "ok" : "warning",
+        detail: `critical ${auditIssueCategories.critical} / warning ${auditIssueCategories.warning} / info ${auditIssueCategories.info}`,
+      },
+      {
+        stage: "严重度门禁",
+        status: needsHumanReview ? "warning" : "ok",
+        detail: `S1 ${finalGate.counts.S1} / S2 ${finalGate.counts.S2}`,
+      },
+      writingSkillWarnings.length > 0
+        ? { stage: "Skills 合规", status: "warning", detail: `${writingSkillWarnings.length} 条技能提醒` }
+        : { stage: "Skills 合规", status: "ok" },
+      ...(knowledgeWarnings.length > 0 || timelineWarnings.length > 0
+        ? [{
+            stage: "知识/时间线校验",
+            status: "warning" as const,
+            detail: `知识越界 ${knowledgeWarnings.length} / 时间线冲突 ${timelineWarnings.length}`,
+          }]
+        : []),
+      {
+        stage: "发布检查",
+        status: publishHint.status === "skipped"
+          ? "skipped"
+          : publishHint.status === "ready" ? "ok" : "warning",
+        detail: publishHint.platform ? `平台 ${publishHint.platform} · ${publishHint.status}` : publishHint.status,
+      },
+      { stage: "正文落盘", status: "ok", detail: chapterId },
+      ...(settlementDispatch
+        ? [{
+            stage: "章后结算",
+            status: (settlementDispatch.ok ? "ok" : "failed") as "ok" | "failed",
+            detail: settlementDispatch.ok
+              ? settlementDispatch.toolName
+              : `${settlementDispatch.toolName}：${settlementDispatch.error ?? settlementDispatch.summary}`,
+          }]
+        : [{ stage: "章后结算", status: "skipped" as const, detail: "本次未派发结算" }]),
+    ];
+
     return {
       ok: true,
       content: finalContent,
@@ -1012,6 +1094,8 @@ export async function executePipelineWrite(
       publishHint,
       factCheckRevised,
       factCheckRound,
+      contextSources,
+      pipelineStages,
       ...(needsHumanReview ? { needsHumanReview: true } : {}),
       ...(lengthWarning ? { lengthWarning } : {}),
       ...(highRiskPendingReminder ? { highRiskPendingReminder } : {}),

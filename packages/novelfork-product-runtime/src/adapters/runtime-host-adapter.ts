@@ -25,6 +25,8 @@ import {
 import {
 	NOVEL_RUNTIME_CONTRIBUTION,
 	getNovelToolPermissionPolicy,
+	loadProjectWritingSkillInjection,
+	mergeLoadedSkillEvidence,
 } from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
 
@@ -317,6 +319,18 @@ export class NovelRuntimeHostAdapter {
 			return null;
 		}
 
+		const basePromptExtensions = resolved.promptExtensions.map((extension: { readonly content: string }) => ({
+			...extension,
+			content: this.toModelFacingText(extension.content),
+		}));
+		const bookBinding = context?.resourceBindings["novel.book"];
+		const projectSkillInjection = bookBinding
+			&& bookBinding.kind === "novel.book"
+			&& typeof bookBinding.root === "string"
+			&& typeof bookBinding.bookId === "string"
+			? await loadProjectWritingSkillInjection(bookBinding.root).catch(() => null)
+			: null;
+
 		// Runtime later validates the final provider-facing name with
 		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
 		// here rather than letting dotted catalog names disappear at the last step.
@@ -329,10 +343,9 @@ export class NovelRuntimeHostAdapter {
 					name: this.toWireToolName(tool.definition.name),
 				},
 			})),
-			promptExtensions: resolved.promptExtensions.map((extension) => ({
-				...extension,
-				content: this.toModelFacingText(extension.content),
-			})),
+			promptExtensions: projectSkillInjection?.prompt
+				? [...basePromptExtensions, { content: projectSkillInjection.prompt }]
+				: basePromptExtensions,
 		};
 	}
 
@@ -492,7 +505,15 @@ export class NovelRuntimeHostAdapter {
 		};
 		try {
 			const hostExecution = typeof execution === "string" ? undefined : execution;
-			const loadedSkills = await loadRuntimeLoadedSkills(narratorId, context.resourceBindings["novel.book"]?.root ?? context.projectRoot);
+			const bookRoot = context.resourceBindings["novel.book"]?.root ?? context.projectRoot;
+			const [runtimeLoadedSkills, projectSkillInjection] = await Promise.all([
+				loadRuntimeLoadedSkills(narratorId, bookRoot),
+				loadProjectWritingSkillInjection(bookRoot).catch(() => null),
+			]);
+			const loadedSkills = mergeLoadedSkillEvidence(
+				runtimeLoadedSkills,
+				projectSkillInjection?.loadedSkills ?? [],
+			);
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,

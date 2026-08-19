@@ -13,8 +13,6 @@ export type ContractResourceKind =
   | "book"
   | "group"
   | "chapter"
-  | "candidate"
-  | "draft"
   | "story"
   | "jingwei"
   | "jingwei-section"
@@ -47,8 +45,9 @@ export interface ContractResourceTreeLoadResult {
   errors: ContractResourceNode[];
 }
 
-type WritingResourceType = "chapter" | "candidate" | "draft";
-type WritingResourceStatus = "draft" | "candidate" | "accepted" | "rejected" | "archived";
+// 候选稿/草稿已下线：写作资源只有正式章节，archived 仅用于读取历史遗留行。
+type WritingResourceType = "chapter";
+type WritingResourceStatus = "accepted" | "archived";
 interface WritingResource {
   readonly id: string;
   readonly bookId: string;
@@ -144,8 +143,6 @@ export async function loadResourceTreeFromContract(
 
   const resourceGroups = writingResources ? buildWritingResourceGroups(writingResources.resources) : {
     chapters: bookResult.data.chapters.map((chapter) => toChapterNode(book.id, chapter)),
-    candidates: [],
-    drafts: [],
     archived: [],
   };
 
@@ -164,8 +161,6 @@ export async function loadResourceTreeFromContract(
       children: [
         ...errors,
         group("group:chapters", "章节", resourceGroups.chapters),
-        group("group:candidates", "候选稿", resourceGroups.candidates),
-        group("group:drafts", "草稿", resourceGroups.drafts),
         group("group:archived", "已归档", resourceGroups.archived),
         group("group:story-files", "大纲与设定", nonJingweiStoryFiles.map((file) => toStoryFileNode(book.id, file))),
         jingweiPanelEntryNode(),
@@ -180,8 +175,6 @@ export async function loadResourceTreeFromContract(
 
 function buildWritingResourceGroups(resources: readonly WritingResource[]): {
   chapters: ContractResourceNode[];
-  candidates: ContractResourceNode[];
-  drafts: ContractResourceNode[];
   archived: ContractResourceNode[];
 } {
   const active = resources.filter((resource) => resource.deletedAt === null);
@@ -190,16 +183,8 @@ function buildWritingResourceGroups(resources: readonly WritingResource[]): {
       .filter((resource) => resource.type === "chapter" && resource.status === "accepted")
       .sort(compareResourceChapter)
       .map(toWritingResourceNode),
-    candidates: active
-      .filter((resource) => resource.type === "candidate" && resource.status === "candidate")
-      .sort(compareResourceUpdatedDesc)
-      .map(toWritingResourceNode),
-    drafts: active
-      .filter((resource) => resource.type === "draft" && resource.status === "draft")
-      .sort(compareResourceUpdatedDesc)
-      .map(toWritingResourceNode),
     archived: active
-      .filter((resource) => resource.status === "archived" || resource.status === "rejected")
+      .filter((resource) => resource.status === "archived")
       .sort(compareResourceUpdatedDesc)
       .map(toWritingResourceNode),
   };
@@ -226,8 +211,6 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
     ...resource.metadata,
     bookId: resource.bookId,
     resourceId: resource.id,
-    candidateId: resource.type === "candidate" ? resource.id : undefined,
-    draftId: resource.type === "draft" ? resource.id : undefined,
     chapterNumber: resource.chapterNumber ?? undefined,
     isChapter: resource.type === "chapter",
     status: resource.status,
@@ -247,15 +230,13 @@ function toWritingResourceNode(resource: WritingResource): ContractResourceNode 
     content: resource.content,
     capabilities: {
       read: CURRENT_READ("writing-resources.read"),
-      edit: resource.status === "draft" || resource.status === "accepted"
+      edit: resource.status === "accepted"
         ? CURRENT_EDIT("writing-resources.update")
         : UNSUPPORTED("writing-resources.edit"),
       delete: resource.status === "accepted"
         ? UNSUPPORTED("writing-resources.delete")
         : CURRENT_DELETE("writing-resources.delete"),
-      apply: resource.status === "candidate" || resource.status === "draft"
-        ? CURRENT_APPLY("writing-resources.transition")
-        : CURRENT_APPLY("writing-resources.variant"),
+      apply: UNSUPPORTED("writing-resources.apply"),
     },
     metadata,
   };

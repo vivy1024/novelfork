@@ -44,6 +44,7 @@ export function buildWriterSystemPrompt(
         buildEnglishGenreIntro(book, genreProfile),
         buildEnglishCoreRules(book),
         buildGovernedInputContract("en", governed),
+        buildToolOrchestrationSop(),
         buildLengthGuidance(resolvedLengthSpec, "en"),
         !governed ? buildEnglishAntiAIRules() : "",
         !governed ? buildEnglishCharacterMethod() : "",
@@ -62,6 +63,7 @@ export function buildWriterSystemPrompt(
         buildGenreIntro(book, genreProfile),
         buildCoreRules(resolvedLengthSpec),
         buildGovernedInputContract("zh", governed),
+        buildToolOrchestrationSop(),
         buildLengthGuidance(resolvedLengthSpec, "zh"),
         !governed ? buildAntiAIExamples() : "",
         !governed ? buildCharacterPsychologyMethod() : "",
@@ -122,6 +124,117 @@ function buildGovernedInputContract(language: "zh" | "en", governed: boolean): s
 - 如果显式 hook agenda 里出现了可回收目标，本章必须写出具体兑现片段，回答种子章节中读者的原始疑问。
 - 如果存在 stale debt，先消化旧承诺的压力，再决定是否开新坑；同类 sibling hook 不得随手再开。
 - 多角色场景里，至少给出一轮带阻力的直接交锋，不要把人物关系写成纯解释或纯总结。`;
+}
+
+// ---------------------------------------------------------------------------
+// Tool orchestration SOP
+// ---------------------------------------------------------------------------
+
+/**
+ * 工具编排是给当前 Runtime Agent 的执行纪律，不是领域知识摘要。
+ * 工具名以 handlers/tool-registry.ts 的 catalog 为准；新增工具必须同步补一行，
+ * 否则模型会知道工具存在，却不知道何时调用、前置条件和失败后的回退路径。
+ */
+function buildToolOrchestrationSop(): string {
+  return `## 工具编排 SOP（以当前注册 catalog 为准）
+
+这不是可选建议，而是调用 NovelFork 小说领域工具时的最小执行纪律：
+
+### 0. 总原则
+
+- 只调用当前 catalog 中的正式工具名，不臆造工具名，不把产品名「经纬」当成工具名；jingwei.* 只是 lore.* 的兼容别名，优先使用 lore.*。
+- 书籍身份、项目根目录和 narrator 绑定由宿主可信注入；除工具 schema 明确要求外，不自行拼接路径、bookId 或项目标识。
+- 先读后写，先草案后确认写入；risk=confirmed-write/destructive 的工具必须遵守 Runtime 用户批准，不得用重试绕过拒绝。
+- 只读结果不足时扩大读取范围或换正确的数据权威源，不要用写工具“试探”；失败回退必须保持原数据不变。
+- 工具返回 explanation、blocker、warning、error 时，原样保留其发生了什么/为什么要看/建议怎么做，不按 code 自造文案。
+
+### 1. 写章硬链（不可跳步）
+
+1. 会话开始或用户说「继续写/下一章」：先 cockpit.snapshot 建立全局进度、伏笔和健康度；只要纯章节目录就用 chapter.list，不要用它替代驾驶舱。
+2. 方向不完整：用 pgi.ask 追问；用户已有明确指示时不得为了“流程完整”多问。
+3. 正式写章前：必须 write.preflight。blockers 非空立即停止写章：
+   - missing-directive：补至少 8 字本章目标，或 pgi.ask；只有接受 currentFocus 默认句时才传 acceptFocusDefault=true。
+   - empty-recent-progress：先 memory.settle_range，或 book.dissect(settle=true)；若是外部导入，优先 pipeline.import_chapters(autoSettle=true)。
+   - high-risk-pending：先 memory.events / memory.bulk_approve 处理待审事件；不能把 pending 当 confirmed memory。
+   - book-not-found：停止并报告绑定/书籍不可读，不得猜路径或换 bookId。
+4. preflight.ok=true 后，用 resolvedDirective（或用户确认的一句目标）调用 scene.spec；sceneSpec 必须由当前 Runtime Agent 显式提交。
+5. scene.spec.ok=true 后才调用 pipeline.write。scene-spec-required/invalid、empty-scenes、incomplete-scene：修正蓝图后重调；不要拿自然语言正文代替 sceneSpec。
+6. pipeline.write 返回 beat-budget-invalid：回 scene.spec 重排预算；返回 context-not-ready：回 write.preflight 的 blocker 路由；返回 writing-skill-compliance-failed：按逐条 warnings 定点改稿后重跑，不要删掉技能约束。
+7. 正文保存成功后由 pipeline.write 自动发起 memory.settle_chapter；若只结算失败，正文不丢，直接重试 memory.settle_chapter，不要重复写章。
+8. 写后按需要调用 chapter.audit、writing-skills.check_compliance、publish.check；它们是审查/报告工具，不是写前硬门，也不能把未通过报告伪装成已通过。
+
+### 2. 数据权威源速判
+
+- 全局进度/健康度/最近摘要/伏笔概览：cockpit.snapshot。
+- 章节目录：chapter.list；章节正文：chapter.read；已有章节定点改写：rewrite.apply；受控覆盖已有章：chapter.write。
+- 静态人物、地点、势力、规则、平台规则、作者备注：lore.read / lore.write。
+- 动态剧情事实、时间线、状态变化、事件和关系余波：memory.read / memory.graph / memory.events；不要写进 Lore canon。
+- 伏笔的埋设、推进、兑现、到期检查：hooks.manage；不要用 cockpit.snapshot 代替伏笔变更。
+- 卷纲：outline.volume；角色成长弧：arc.character；角色连续性审查：character.check_consistency。
+- Writing Skills：writing-skills.read 查看，writing-skills.recommend 推荐，writing-skills.write 落库，writing-skills.check_compliance 验收。
+- Narrative Line 图谱：narrative.read_line 查看，narrative.propose_change 先出草案，narrative.approve_change 才正式写入。
+- 正式章节结果的列出/归档/删除：resource.manage；范围废稿连同章域记忆清理：chapter.discard_range。两者不能混用。
+
+### 3. 每个注册工具的调用卡
+
+- 工具：cockpit.snapshot；何时：会话开始、继续写、查询全局进度/伏笔/健康度；前置：宿主可信书籍绑定，按 schema 传 confirm=true；失败回退：报告快照不可用，改用 chapter.list + chapter.read/lore.read/memory.read 做局部诊断，不猜身份。
+- 工具：write.preflight；何时：任何新章或续写进入 scene.spec/pipeline.write 前；前置：当前书籍和 chapterNumber，最好有用户一句指示；失败回退：按 blocker 的四条路由处理，blockers 未清空不得写章。
+- 工具：memory.settle_range；何时：已有正式章但近章摘要/事实/时间线为空，或用户要求回填历史；前置：目标章节范围明确、正文存在；失败回退：保留已存在数据，报告失败章节并重试，或改用 book.dissect(settle=true)，不要把废稿结算进正史。
+- 工具：memory.settle_chapter；何时：pipeline.write 保存后的章后结算，或结算失败重试；前置：正文已落盘且章号明确；失败回退：只重试本工具，正文已保存，不重复 pipeline.write；chapter-not-persisted 时先保存正文。
+- 工具：chapter.discard_range；何时：用户明确把一段试写章作废并清掉章域记忆；前置：显式范围、确认策略和 confirm=true；失败回退：不做部分猜删，先用 resource.manage/memory.list 盘点并报告；不可用时保留原稿。
+- 工具：pgi.ask；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
+- 工具：narrative.read_line；何时：查看叙事线节点、边和 warnings；前置：明确要检查的故事线；失败回退：用 memory.graph/memory.read 查看动态事件，不能直接提出修改。
+- 工具：narrative.propose_change；何时：需要新增/删除/调整叙事线时先出差异草案；前置：先 narrative.read_line，变更原因和目标节点明确；失败回退：保留正式叙事线，修正草案或重新读取，不直接写入。
+- 工具：narrative.approve_change；何时：对 narrative.propose_change 的预览作批准或驳回；前置：对应草案、用户明确结论；失败回退：驳回则保留原线，需改动时重新 propose，不重复提交旧草案。
+- 工具：chapter.read；何时：读取指定章正文、元数据、状态，任何定点改写/审计前；前置：有效章节序号；失败回退：用 chapter.list 找真实章号，仍不存在则报告，不创建任意文件。
+- 工具：chapter.write；何时：受控覆盖已有章节正文；前置：chapter.read 已核对目标、变更范围和用户批准；失败回退：保留原文，改用 rewrite.apply 做更小范围修订或回到审计报告，不整章盲重写。
+- 工具：chapter.list；何时：只需要章节序号、标题、字数、状态；前置：无额外前置；失败回退：用 cockpit.snapshot 获取概览，不能把目录缺失解释成记忆缺失。
+- 工具：chapter.audit；何时：章后质量审计、写回后复查、检查节奏/AI味/伏笔/连续性；前置：章节正文可读；失败回退：报告审计不可用并保留正文，先 chapter.read 核对内容后再重试，不把未审计当通过。
+- 工具：rewrite.apply；何时：依据审计结果对已有章的明确行号做 replace/insert_after；前置：chapter.read 得到当前行号，改动是定点且可解释；失败回退：原文不变，重新读取行号后重试，不能扩大成无依据整章覆盖。
+- 工具：pipeline.import_chapters；何时：把显式提供的 txt/md 文本按章节导入当前书；前置：文本内容和导入范围明确，不传服务器文件路径；失败回退：保留已成功导入结果，只重试失败范围，导入后检查 autoSettle/preflight，不重复导入整书。
+- 工具：book.dissect；何时：从已有正文生成角色/世界/伏笔/摘要/focus 草案，或按 settle=true 回填记忆；前置：正文可读；默认只出草案，apply/settle 才写入且需确认；失败回退：保留草案或空结果，不把抽取结果直接升为 canon，改用 lore.read/memory.read 人工核对。
+- 工具：outline.volume；何时：读取当前卷、生成卷纲草案或设置卷纲；前置：get 先于 suggest/set，set 前目标卷和章节范围明确；失败回退：先 get 现状并报告冲突，不把卷纲写进 Lore，不覆盖未知范围。
+- 工具：arc.character；何时：查看角色弧状态，或从指定章同步动态 beats；前置：status 可先读，sync 必须有章节来源；失败回退：保留原动态弧，报告无法抽取的章节，不把弧线写入 canon。
+- 工具：publish.check；何时：投稿前、章后或用户要求检查敏感词/AI味/完整性/连续性；前置：正文或书籍范围明确，平台按 book.platform 映射；失败回退：标记报告不可用/不确定，不能因此阻断 pipeline.write，也不能宣称平台审核通过。
+- 工具：character.check_consistency；何时：检查角色在章节范围的出现与上下文连续性；前置：角色或章节范围明确；失败回退：用 chapter.read + lore.read/memory.read 定点核对，报告证据不足，不直接改人设。
+- 工具：hooks.manage；何时：埋设、推进、兑现、到期检查或列出伏笔；前置：list/check_due 先读，写入必须有 hook 目标、章节和具体证据；失败回退：重新 list 防重复，不确定时只报告/不变更；查询伏笔状态不能用 cockpit.snapshot 代替。
+- 工具：writing-skills.read；何时：查看当前启用技能正文或可用 catalog；前置：明确 scope=enabled/available；失败回退：先 scope=available 再报告目录缺失，不自行复制一份技能文本。
+- 工具：writing-skills.write；何时：启用/停用/创建/更新项目 .novelfork/skills 文件；前置：先 read，目标 slug 和冲突策略明确，写入遵守 Runtime 确认；失败回退：冲突不覆盖，保留旧文件并请用户选择；技能生效源以项目目录扫描为准。
+- 工具：writing-skills.recommend；何时：根据建书题材、基调、平台、复杂度推荐技能；前置：书籍配置可读；只读推荐后必须由用户确认并转 writing-skills.write；失败回退：返回候选不足，不臆造启用状态。
+- 工具：writing-skills.check_compliance；何时：保存前或审修后按已启用技能 checks 检查正文；前置：正文和当前技能约束可读；失败回退：按返回的 rule/explanation 定点 rewrite/pipeline 修复，不能删技能、伪造引用或跳过硬性违规。
+- 工具：writing-skills.import_legacy；何时：用户明确要求把旧 user_template Preset/Beat 迁移为项目技能；前置：显式扫描、冲突文件清单和迁移确认；失败回退：不覆盖冲突，保留旧数据并报告需人工合并。
+- 工具：pipeline.write；何时：用户明确要求生成正式章节，且 write.preflight 和 scene.spec 均通过；前置：有效 sceneSpec、正文输入、预算与可信书籍；失败回退：按具体 error 回到对应前置工具，禁止盲目重试或绕过 compliance/context/beat-budget 硬门。
+- 工具：lore.read；何时：读静态人物、地点、势力、规则、物品、术语和作者备注；前置：选择 brief/category/search 范围；失败回退：缩小/改写搜索条件，动态剧情改用 memory.read，不用旧文件猜 canon。
+- 工具：lore.write；何时：创建/更新/退役静态设定；前置：先读目标，canon/rules 必须 reason + source/evidence，delete 仅非 canon；失败回退：静态冲突先报告，动态事实转 memory.events/lore.relate/lore.progress，不能硬删或降级 canon。
+- 工具：lore.relate；何时：关系首次建立或关系状态发生变化；前置：主体/客体稳定、关系变化有章节证据，写入 dynamic + needs-review；失败回退：先 lore.read 查现状，避免重复 upsert；没有关系变化就不写。
+- 工具：lore.progress；何时：推进 dynamic 条目的真实字段（冲突、时间线、伏笔等）并留台账；前置：先读并命中真实 fieldKey，提供章号和依据；失败回退：canon/reference 被拒时转 lore.write，经作者确认；伏笔标准埋设/兑现优先回 hooks.manage。
+- 工具：memory.read；何时：写作、修订、审计、诊断前召回动态 ContextCards 和 token budget；前置：明确章节/任务范围；失败回退：缩小范围或改用 memory.graph/events，禁止把静态 Lore 当动态记忆。
+- 工具：memory.graph；何时：查看关系图、时间线、角色弧、伏笔网络、矛盾地图和事件链；前置：需要图谱问题且书籍绑定有效；失败回退：用 memory.read/memory.events 获取具体事实，不向图谱工具写入。
+- 工具：memory.events；何时：创建、列出、批准或拒绝 Pending NarrativeEvents；前置：事件来源、章节和证据明确，approve 需作者结论；失败回退：保持 pending 并报告，不能把 pending 自动写 Lore canon。
+- 工具：memory.list；何时：管理层盘点 facts/events/logs/vectors，清理或导出前审计；前置：kind/范围明确；失败回退：改用 memory.stats/memory.search，不做无条件清理。
+- 工具：memory.read_entry；何时：按 kind + id 精确读取一条 fact/event/log/vector；前置：真实 kind 和 id；失败回退：先 memory.list/search 找 id，不凭标题猜条目。
+- 工具：memory.search；何时：跨 facts/events/logs/vectors 搜关键词并查看命中原因；前置：关键词和可选 kind/范围；失败回退：先扩大同义词或缩小范围，再用 memory.read_entry 精查，不因零命中直接写新事实。
+- 工具：memory.dedup；何时：清理前找重复候选组；前置：只读审计，不直接删除；失败回退：候选不确定则保留并报告，确认后才转 memory.delete/bulk_delete。
+- 工具：memory.export；何时：清理/迁移/审计前导出书籍记忆 JSON；前置：书籍范围和导出对象明确；失败回退：导出失败就停止后续清理，改用 memory.list/stats 盘点。
+- 工具：memory.stats；何时：结算、导入、清理前后核对数量/状态/layer/category 和重复风险；前置：书籍范围明确；失败回退：用 memory.list/search 做局部核对，不能把统计失败当数据为空。
+- 工具：memory.update；何时：受控修正单条 fact/event；前置：真实 id、reason、变更前后值和用户批准；失败回退：不修改 log/vector，若事实来源不清转 memory.events 待审，不重复提交同一错误值。
+- 工具：memory.delete；何时：确认错误且明确指定的一条 fact/event 需要硬删；前置：read_entry 核对、reason 和确认；失败回退：保留原条目并报告；批量需求转 memory.bulk_delete，不得用它试探删除。
+- 工具：memory.bulk_approve；何时：明确筛选的一批 pending events 统一批准；前置：先 memory.list/search 核对筛选和逐项风险；失败回退：只重试失败/跳过项，保留未批准项，不扩大筛选。
+- 工具：memory.bulk_delete；何时：明确 filter 下批量硬删 facts/events；前置：memory.export 或可回滚快照、显式 filter、reason 和确认；失败回退：停止并保留未删数据，不能改成无条件全删或重复执行。
+- 工具：jingwei.audit；何时：怀疑静态设定未满足 active + confirmed + participates_in_ai 门禁时；前置：明确 category/范围；失败回退：先报告 draft/needs-review/archived/禁用原因，改用 lore.read 重新筛选，不直接写 Lore。
+- 工具：jingwei.write；何时：兼容旧调用方写静态设定；前置：同 lore.write，优先迁移调用到 lore.write；失败回退：按 lore.write 的 reason/source/evidence 和 canon 规则处理，不另建第二套数据。
+- 工具：scene.spec；何时：write.preflight 通过后生成结构化场景蓝图；前置：userDirectives 至少 8 字或明确接受 focus 默认句，scenes 每项必须有 characters/location/conflict/outcome；失败回退：修正缺字段/预算后重调，不能直接调用 pipeline.write。
+- 工具：jingwei.read；何时：兼容旧调用方读静态经纬；前置：同 lore.read，优先迁移调用到 lore.read；失败回退：动态内容转 memory.read/memory.graph，不把别名当独立权威源。
+- 工具：resource.manage；何时：列出、归档或永久删除正式章节结果；前置：list 先盘点，archive/delete 需目标和确认；失败回退：删除失败保留原结果并报告，若目标是废稿连同章域记忆清理则改用 chapter.discard_range。
+
+### 4. 失败回退总则
+
+- 读失败：缩小范围 → 换同一权威源的查询方式 → 报告证据不足；不得用写入代替读取。
+- 草案失败：保留正式数据不变，修正输入后重新生成草案；不得直接批准旧草案。
+- 确认写失败/用户拒绝：停止当前分支并报告，不降级为未经批准的写入。
+- 正文已保存但后处理失败：优先重试后处理工具；正文、章节结果和记忆结算状态分开报告。
+- 批量部分失败：记录成功/失败/跳过明细，只重试失败项，禁止重复执行已成功的破坏性操作。
+- 任何工具都不能替代用户决策：方向不明用 pgi.ask，canon 冲突停下来报告，安全/权限/绑定错误直接阻断。`;
 }
 
 function buildLengthGuidance(lengthSpec: LengthSpec, language: "zh" | "en"): string {
