@@ -7,7 +7,7 @@ const repositoryRoot = resolve(import.meta.dir, "..");
 const migrationsRoot = join(
 	repositoryRoot,
 	"packages",
-	"narrafork-runtime-overlay",
+	"narrafork-runtime-private",
 	"runtime-migrations",
 );
 const migrationJournal = join(migrationsRoot, "meta", "_journal.json");
@@ -23,7 +23,7 @@ const workspaceTestTempRoot = mkdtempSync(join(tmpdir(), "novelfork-workspace-te
 function assertRuntimeMigrationAssets(): void {
 	if (!existsSync(migrationJournal) || !statSync(migrationJournal).isFile()) {
 		throw new Error(
-			`Runtime test migrations are missing: ${migrationJournal}. Initialize the private Runtime overlay before running tests.`,
+			`Runtime test migrations are missing: ${migrationJournal}. Materialize the derived private Runtime before running tests.`,
 		);
 	}
 

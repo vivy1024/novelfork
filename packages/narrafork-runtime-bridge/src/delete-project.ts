@@ -21,7 +21,6 @@ import {
 	portAllocations,
 	projects,
 	terminals,
-	terminalTabs,
 	terminalViewState,
 } from "../../narrafork-runtime-private/server/db/schema";
 import { NotFoundError } from "../../narrafork-runtime-private/server/lib/errors";
@@ -113,7 +112,6 @@ export async function deleteProjectById(id: string): Promise<void> {
 				tx.delete(terminalViewState)
 					.where(inArray(terminalViewState.narratorId, allNarratorIds))
 					.run();
-				tx.delete(terminalTabs).where(inArray(terminalTabs.narratorId, allNarratorIds)).run();
 				tx.delete(terminals).where(inArray(terminals.narratorId, allNarratorIds)).run();
 				tx.delete(narratorToolCalls)
 					.where(inArray(narratorToolCalls.narratorId, allNarratorIds))
@@ -130,7 +128,6 @@ export async function deleteProjectById(id: string): Promise<void> {
 			tx.delete(terminalViewState)
 				.where(inArray(terminalViewState.chapterId, remainingChapterIds))
 				.run();
-			tx.delete(terminalTabs).where(inArray(terminalTabs.chapterId, remainingChapterIds)).run();
 			tx.delete(terminals).where(inArray(terminals.chapterId, remainingChapterIds)).run();
 			tx.delete(containerInstances)
 				.where(inArray(containerInstances.chapterId, remainingChapterIds))

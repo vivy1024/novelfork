@@ -42,12 +42,7 @@ describe("isolated Runtime build", () => {
 		const root = await createDirectory("novelfork-runtime-migration-history-");
 		const workspaceRoot = join(root, "workspace");
 		const runtimeRoot = join(workspaceRoot, "packages", "narrafork-runtime-private");
-		const migrationsRoot = join(
-			workspaceRoot,
-			"packages",
-			"narrafork-runtime-overlay",
-			"runtime-migrations",
-		);
+		const migrationsRoot = join(runtimeRoot, "runtime-migrations");
 
 		try {
 			await mkdir(join(migrationsRoot, "meta"), { recursive: true });
@@ -78,12 +73,7 @@ describe("isolated Runtime build", () => {
 		const root = await createDirectory("novelfork-runtime-migration-history-incomplete-");
 		const workspaceRoot = join(root, "workspace");
 		const runtimeRoot = join(workspaceRoot, "packages", "narrafork-runtime-private");
-		const migrationsRoot = join(
-			workspaceRoot,
-			"packages",
-			"narrafork-runtime-overlay",
-			"runtime-migrations",
-		);
+		const migrationsRoot = join(runtimeRoot, "runtime-migrations");
 
 		try {
 			await mkdir(join(migrationsRoot, "meta"), { recursive: true });

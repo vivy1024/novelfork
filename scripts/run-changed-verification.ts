@@ -28,10 +28,6 @@ function collectChangedFiles(): string[] {
 	return [...new Set([...lines(trackedChanges), ...lines(stagedChanges), ...lines(untrackedChanges)])];
 }
 
-function hasDirtySubmodule(path: string): boolean {
-	return Boolean(gitOutput(["status", "--porcelain"], join(repositoryRoot, path)));
-}
-
 function packageNameForDirectory(directory: string, root = repositoryRoot): string | null {
 	const manifestPath = join(root, "packages", directory, "package.json");
 	if (!existsSync(manifestPath)) return null;
@@ -56,7 +52,7 @@ export function changedPackageNames(files: readonly string[], root = repositoryR
 		.filter((name): name is string => Boolean(name));
 }
 
-export function fullCheckReasons(files: readonly string[], dirtyOverlay = false): string[] {
+export function fullCheckReasons(files: readonly string[]): string[] {
 	const reasons = new Set<string>();
 	for (const file of files) {
 		if (/^(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$/.test(file) || /(^|\/)package\.json$/.test(file)) {
@@ -66,12 +62,11 @@ export function fullCheckReasons(files: readonly string[], dirtyOverlay = false)
 		if (/^scripts\/(run-workspace|run-changed|runtime|import-narrafork-runtime|materialize-runtime-overlay|compile)/.test(file)) {
 			reasons.add("测试、Runtime 或编译基础设施变更");
 		}
-		if (/^packages\/narrafork-runtime-(private|overlay)(\/|$)/.test(file)) {
-			reasons.add("Runtime 或 overlay 变更");
+		if (/^packages\/narrafork-runtime-private(\/|$)/.test(file)) {
+			reasons.add("派生 Runtime 变更");
 		}
 		if (file === "main.ts") reasons.add("产品启动入口变更");
 	}
-	if (dirtyOverlay) reasons.add("overlay 子仓库存在未提交改动");
 	return [...reasons];
 }
 
@@ -113,9 +108,9 @@ async function main(): Promise<void> {
 	const dryRun = args.has("--dry-run");
 	const files = collectChangedFiles();
 	const packageNames = changedPackageNames(files).filter(
-		(name) => !name.includes("narrafork-runtime-private") && !name.includes("narrafork-runtime-overlay"),
+		(name) => !name.includes("narrafork-runtime-private"),
 	);
-	const fullReasons = fullCheckReasons(files, hasDirtySubmodule("packages/narrafork-runtime-overlay"));
+	const fullReasons = fullCheckReasons(files);
 	const hasRelevantPackageChange = packageNames.length > 0;
 
 	if (fullReasons.length > 0) {
