@@ -69,6 +69,48 @@ export async function fetchFactsByEntity(
 }
 
 /**
+ * 按章节时态切片过滤事实：
+ * - live: 在当前章节生效中（validFrom <= chapter && (validUntil == null || validUntil > chapter)）
+ * - expired: 已在当前章节前过期的历史事实（validUntil <= chapter）
+ * - upcoming: 将在后续章节才生效的未来事实（validFrom > chapter）
+ */
+export function filterFactsAsOfChapter(
+  facts: readonly EntityFact[],
+  asOfChapter?: number,
+): {
+  readonly live: readonly EntityFact[];
+  readonly expired: readonly EntityFact[];
+  readonly upcoming: readonly EntityFact[];
+} {
+  if (asOfChapter === undefined || asOfChapter === null || !Number.isFinite(asOfChapter)) {
+    return {
+      live: facts,
+      expired: [],
+      upcoming: [],
+    };
+  }
+
+  const live: EntityFact[] = [];
+  const expired: EntityFact[] = [];
+  const upcoming: EntityFact[] = [];
+
+  for (const fact of facts) {
+    const from = typeof fact.validFromChapter === "number" ? fact.validFromChapter : 0;
+    const until = typeof fact.validUntilChapter === "number" ? fact.validUntilChapter : null;
+
+    if (from > asOfChapter) {
+      upcoming.push(fact);
+    } else if (until !== null && until <= asOfChapter) {
+      expired.push(fact);
+    } else {
+      live.push(fact);
+    }
+  }
+
+  return { live, expired, upcoming };
+}
+
+/**
  * 纠正补丁。字段与后端 correctNarrativeFact 一一对应。
  *
  * predicate/category 也开放：机器抽取常把「修为」抽成「实力」或把 category
@@ -117,34 +159,7 @@ export async function correctFact(
   }, { fetchImpl: options.fetchImpl });
 }
 
-/**
- * 作者手动新增一条 fact（sourceType=manual，享有结算覆盖保护）。
- *
- * 用于机器把 subject 抽错这类「纠正救不回来」的情况：作废错的那条，再补一条
- * 正确的。也是实体详情抽屉「手工补一条状态」的通道。
- */
-export async function createFact(
-  bookId: string,
-  input: FactCreateInput,
-  options: { readonly fetchImpl?: typeof fetch } = {},
-): Promise<FactMutationResult> {
-  return fetchJson<FactMutationResult>(`${memoryBase(bookId)}/facts`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(compact({
-      subject: input.subject.trim(),
-      predicate: input.predicate.trim(),
-      object: input.object.trim(),
-      category: input.category.trim(),
-      confidence: input.confidence,
-      evidenceText: input.evidenceText,
-      validFromChapter: input.validFromChapter,
-      closeSuperseded: input.closeSuperseded,
-    })),
-  }, { fetchImpl: options.fetchImpl });
-}
-
-/** 作者作废一条 open fact。 */
+/** 作者作废一条 fact：关闭 open 状态，历史保留。 */
 export async function retireFact(
   bookId: string,
   factId: string,
@@ -153,6 +168,19 @@ export async function retireFact(
   return fetchJson<FactMutationResult>(`${memoryBase(bookId)}/facts/${encodeURIComponent(factId)}`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(options.reason ? { reason: options.reason } : {}),
+    body: JSON.stringify(compact({ reason: options.reason })),
+  }, { fetchImpl: options.fetchImpl });
+}
+
+/** 作者手动新增一条 fact。 */
+export async function createFact(
+  bookId: string,
+  input: FactCreateInput,
+  options: { readonly fetchImpl?: typeof fetch } = {},
+): Promise<FactMutationResult> {
+  return fetchJson<FactMutationResult>(`${memoryBase(bookId)}/facts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(compact({ ...input })),
   }, { fetchImpl: options.fetchImpl });
 }

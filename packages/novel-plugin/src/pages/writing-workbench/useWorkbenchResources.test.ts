@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
 import type { ContractResourceNode } from "@/app-next/backend-contract/resource-tree-adapter";
-import { buildWorkbenchResourceTree, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
+import { buildWorkbenchResourceTree, createStoryMapNode, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
 const current = (id: string) => normalizeCapability({ id, status: "current" });
 const unsupported = (id: string) => normalizeCapability({ id, status: "unsupported" });
@@ -85,6 +85,28 @@ describe("buildWorkbenchResourceTree", () => {
       title: "协作与版本",
       metadata: { toolPanel: "collaboration-version" },
       capabilities: expect.objectContaining({ open: true, readonly: true }),
+    });
+  });
+
+  it("createStoryMapNode 创建合法且只读的故事主支线合成节点", () => {
+    const node = createStoryMapNode("book-42");
+
+    expect(node).toEqual({
+      id: "story-map:book-42",
+      kind: "story-map",
+      title: "故事主支线",
+      capabilities: {
+        open: true,
+        readonly: true,
+        unsupported: false,
+        edit: false,
+        delete: false,
+        apply: false,
+      },
+      metadata: {
+        isStoryMap: true,
+        bookId: "book-42",
+      },
     });
   });
 

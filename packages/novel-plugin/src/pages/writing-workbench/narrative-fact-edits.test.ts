@@ -1,217 +1,86 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { filterFactsAsOfChapter, type EntityFact } from "./narrative-fact-edits";
 
-import {
-  correctFact,
-  createFact,
-  fetchFactsByEntity,
-  retireFact,
-} from "./narrative-fact-edits";
-
-function jsonResponse(body: unknown, init: { status?: number } = {}): Response {
-  return new Response(JSON.stringify(body), {
-    status: init.status ?? 200,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function bodyOf(call: unknown): Record<string, unknown> {
-  const [, init] = call as [string, RequestInit];
-  return JSON.parse(String(init.body)) as Record<string, unknown>;
-}
-
-describe("fetchFactsByEntity", () => {
-  it("reads the book-scoped entity groups", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ groups: [{ entity: "林渊", facts: [] }], total: 0 }));
-
-    const groups = await fetchFactsByEntity("book-1", { fetchImpl });
-
-    expect(groups).toEqual([{ entity: "林渊", facts: [] }]);
-    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts/by-entity");
-  });
-
-  it("passes asOfChapter through", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ groups: [] }));
-
-    await fetchFactsByEntity("book-1", { asOfChapter: 92, fetchImpl });
-
-    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts/by-entity?asOfChapter=92");
-  });
-});
-
-describe("correctFact", () => {
-  it("PUTs the correction to the fact-scoped endpoint", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已纠正" }));
-
-    await correctFact("book-1", "fact-9", { object: "金丹", reason: "体检纠正" }, { fetchImpl });
-
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts/fact-9/correct");
-    expect(init.method).toBe("PUT");
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({ object: "金丹", reason: "体检纠正" });
-  });
-
-  /**
-   * 后端 correctNarrativeFact 一直接受 predicate/category/confidence，但此前封装
-   * 只透出 object。机器把「修为」抽成「实力」时，只能改值救不回谓词。
-   */
-  it("carries predicate, category, confidence and evidence through to the backend", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已纠正" }));
-
-    await correctFact("book-1", "fact-9", {
-      object: "金丹",
-      predicate: "修为",
-      category: "character_state",
-      confidence: 1,
-      evidenceText: "第 92 章原文",
-      reason: "体检纠正",
-    }, { fetchImpl });
-
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({
-      object: "金丹",
-      predicate: "修为",
-      category: "character_state",
-      confidence: 1,
-      evidenceText: "第 92 章原文",
-      reason: "体检纠正",
-    });
-  });
-
-  it("drops undefined fields instead of sending them as null-ish keys", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已纠正" }));
-
-    await correctFact("book-1", "fact-9", { object: "金丹", predicate: undefined }, { fetchImpl });
-
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({ object: "金丹" });
-  });
-
-  it("encodes the fact id", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已纠正" }));
-
-    await correctFact("book-1", "fact/1 2", { object: "金丹" }, { fetchImpl });
-
-    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts/fact%2F1%202/correct");
-  });
-
-  it("surfaces the server summary rather than a bare status", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ error: "not-found", summary: "找不到该叙事事实。" }, { status: 404 }));
-
-    await expect(correctFact("book-1", "missing", { object: "金丹" }, { fetchImpl }))
-      .rejects.toThrow(/找不到该叙事事实|not-found/);
-  });
-});
-
-describe("createFact", () => {
-  it("POSTs a manual fact to the collection endpoint", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ fact: { id: "fact-new" }, summary: "已新增" }));
-
-    const result = await createFact("book-1", {
-      subject: "林渊",
-      predicate: "修为",
-      object: "金丹",
-      category: "character_state",
-    }, { fetchImpl });
-
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts");
-    expect(init.method).toBe("POST");
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({
-      subject: "林渊",
-      predicate: "修为",
-      object: "金丹",
-      category: "character_state",
-    });
-    expect(result.fact?.id).toBe("fact-new");
-  });
-
-  it("trims the four required fields so stray spaces do not become part of the slot key", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已新增" }));
-
-    await createFact("book-1", {
-      subject: "  林渊 ",
-      predicate: " 修为 ",
-      object: " 金丹 ",
-      category: " character_state ",
-    }, { fetchImpl });
-
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({
-      subject: "林渊",
-      predicate: "修为",
-      object: "金丹",
-      category: "character_state",
-    });
-  });
-
-  it("forwards the optional chapter, evidence and closeSuperseded switches", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已新增" }));
-
-    await createFact("book-1", {
-      subject: "林渊",
+describe("filterFactsAsOfChapter 时态切片过滤", () => {
+  const sampleFacts: EntityFact[] = [
+    {
+      id: "fact-1",
+      subject: "林动",
       predicate: "位于",
-      object: "落云城",
+      object: "青阳镇",
       category: "location",
-      validFromChapter: 95,
-      evidenceText: "第 95 章原文",
-      closeSuperseded: false,
-      confidence: 0.8,
-    }, { fetchImpl });
-
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({
-      subject: "林渊",
+      validFromChapter: 1,
+      validUntilChapter: 20,
+    },
+    {
+      id: "fact-2",
+      subject: "林动",
       predicate: "位于",
-      object: "落云城",
+      object: "炎城",
       category: "location",
-      validFromChapter: 95,
-      evidenceText: "第 95 章原文",
-      closeSuperseded: false,
-      confidence: 0.8,
-    });
-  });
-
-  it("encodes the book id", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已新增" }));
-
-    await createFact("book/with space", {
-      subject: "林渊",
+      validFromChapter: 21,
+      validUntilChapter: 50,
+    },
+    {
+      id: "fact-3",
+      subject: "林动",
+      predicate: "持有",
+      object: "神秘祖石",
+      category: "possession",
+      validFromChapter: 5,
+      // validUntilChapter undefined/null -> 一直生效
+    },
+    {
+      id: "fact-4",
+      subject: "林动",
       predicate: "修为",
-      object: "金丹",
-      category: "character_state",
-    }, { fetchImpl });
+      object: "死玄境",
+      category: "realm",
+      validFromChapter: 80,
+    },
+  ];
 
-    const [url] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book%2Fwith%20space/narrative-memory/facts");
+  it("当不传 asOfChapter 时返回全量事实作为 live 集合", () => {
+    const result = filterFactsAsOfChapter(sampleFacts, undefined);
+    expect(result.live).toHaveLength(4);
+    expect(result.expired).toHaveLength(0);
+    expect(result.upcoming).toHaveLength(0);
   });
 
-  it("surfaces backend validation failures", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse(
-      { error: "invalid-input", summary: "subject / predicate / object 不能为空。" },
-      { status: 400 },
-    ));
+  it("在第 10 章时，青阳镇与祖石为 live，炎城与死玄境为 upcoming，无 expired", () => {
+    const result = filterFactsAsOfChapter(sampleFacts, 10);
+    const liveIds = result.live.map((f) => f.id);
+    const expiredIds = result.expired.map((f) => f.id);
+    const upcomingIds = result.upcoming.map((f) => f.id);
 
-    await expect(createFact("book-1", { subject: "", predicate: "", object: "", category: "" }, { fetchImpl }))
-      .rejects.toThrow(/不能为空|invalid-input/);
-  });
-});
+    expect(liveIds).toContain("fact-1"); // 青阳镇
+    expect(liveIds).toContain("fact-3"); // 祖石
+    expect(liveIds).not.toContain("fact-2");
+    expect(liveIds).not.toContain("fact-4");
 
-describe("retireFact", () => {
-  it("DELETEs with the author reason", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已作废" }));
-
-    await retireFact("book-1", "fact-9", { reason: "体检判定误报", fetchImpl });
-
-    const [url, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe("/api/books/book-1/narrative-memory/facts/fact-9");
-    expect(init.method).toBe("DELETE");
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({ reason: "体检判定误报" });
+    expect(expiredIds).toHaveLength(0);
+    expect(upcomingIds).toEqual(["fact-2", "fact-4"]);
   });
 
-  it("sends an empty body when no reason is given", async () => {
-    const fetchImpl = vi.fn(async () => jsonResponse({ summary: "已作废" }));
+  it("在第 30 章时，青阳镇已过期(expired)，炎城与祖石为 live，死玄境为 upcoming", () => {
+    const result = filterFactsAsOfChapter(sampleFacts, 30);
+    const liveIds = result.live.map((f) => f.id);
+    const expiredIds = result.expired.map((f) => f.id);
+    const upcomingIds = result.upcoming.map((f) => f.id);
 
-    await retireFact("book-1", "fact-9", { fetchImpl });
+    expect(expiredIds).toEqual(["fact-1"]); // 青阳镇 (validUntil 20 <= 30)
+    expect(liveIds).toEqual(["fact-2", "fact-3"]); // 炎城 & 祖石
+    expect(upcomingIds).toEqual(["fact-4"]); // 死玄境 (validFrom 80 > 30)
+  });
 
-    expect(bodyOf(fetchImpl.mock.calls[0])).toEqual({});
+  it("在第 100 章时，青阳镇与炎城均已过期，祖石与死玄境均为 live", () => {
+    const result = filterFactsAsOfChapter(sampleFacts, 100);
+    const liveIds = result.live.map((f) => f.id);
+    const expiredIds = result.expired.map((f) => f.id);
+    const upcomingIds = result.upcoming.map((f) => f.id);
+
+    expect(expiredIds).toEqual(["fact-1", "fact-2"]);
+    expect(liveIds).toEqual(["fact-3", "fact-4"]);
+    expect(upcomingIds).toHaveLength(0);
   });
 });

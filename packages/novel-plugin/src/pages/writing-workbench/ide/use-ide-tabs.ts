@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
 import type { ViewId } from "./use-panel-manager";
 
-export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "tool" | "other";
+export type TabKind = "chapter" | "jingwei-entry" | "memory-entry" | "file" | "story-map" | "tool" | "other";
 
 /** ActivityBar 视图 —— 每个视图是独立工作区，各自维护一组 Tab。 */
 /**

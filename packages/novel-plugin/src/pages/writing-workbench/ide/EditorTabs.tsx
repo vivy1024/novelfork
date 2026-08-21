@@ -1,7 +1,7 @@
 import { DndContext, closestCenter, PointerSensor, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, horizontalListSortingStrategy, useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { X, FileText, FileEdit, FileCheck2, Scroll, File as FileIcon, Wrench, Pin, MoreHorizontal, Brain } from "lucide-react";
+import { X, FileText, FileEdit, FileCheck2, Scroll, File as FileIcon, Wrench, Pin, MoreHorizontal, Brain, GitFork } from "lucide-react";
 import { useEffect, useRef, type RefObject } from "react";
 import {
   ContextMenu,
@@ -52,6 +52,7 @@ function tabIcon(kind: TabKind, view?: TabView) {
     case "chapter": return { Icon: FileText, color: "text-sky-500" };
     case "jingwei-entry": return { Icon: Scroll, color: "text-violet-500" };
     case "file": return { Icon: FileIcon, color: "text-sky-600" };
+    case "story-map": return { Icon: GitFork, color: "text-emerald-500" };
     case "tool": return { Icon: Wrench, color: "text-muted-foreground" };
     default: return { Icon: FileIcon, color: "text-muted-foreground" };
   }
