@@ -2,6 +2,12 @@ import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 
+import {
+  CharacterKernelConfigSchema,
+  DEFAULT_CHARACTER_KERNEL_CONFIG,
+  type CharacterKernelConfig,
+} from "./types.js";
+
 const DEFAULT_SETTLEMENT_CONFIG = {
   enabled: true,
   autoApplyLowRisk: true,
@@ -73,9 +79,12 @@ export const NarrativeMemoryConfigSchema = z.object({
   settlement: SettlementConfigSchema,
   ledger: LedgerConfigSchema,
   retrieval: RetrievalConfigSchema,
+  characterKernel: CharacterKernelConfigSchema.default(DEFAULT_CHARACTER_KERNEL_CONFIG),
 });
 
-export type NarrativeMemoryConfig = z.infer<typeof NarrativeMemoryConfigSchema>;
+export type NarrativeMemoryConfig = z.infer<typeof NarrativeMemoryConfigSchema> & {
+  characterKernel: CharacterKernelConfig;
+};
 
 export type NarrativeMemoryConfigPatch = {
   version?: 1;
@@ -84,6 +93,7 @@ export type NarrativeMemoryConfigPatch = {
   retrieval?: Omit<Partial<NarrativeMemoryConfig["retrieval"]>, "channels"> & {
     channels?: Partial<NarrativeMemoryConfig["retrieval"]["channels"]>;
   };
+  characterKernel?: Partial<CharacterKernelConfig>;
 };
 
 export const DEFAULT_NARRATIVE_MEMORY_CONFIG: NarrativeMemoryConfig =
@@ -109,6 +119,7 @@ function deepMergeConfig(
         ...(patch.retrieval?.channels ?? {}),
       },
     },
+    characterKernel: { ...base.characterKernel, ...(patch.characterKernel ?? {}) },
   });
 }
 

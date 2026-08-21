@@ -9,6 +9,7 @@ export const NarrativeContextSourceTypeSchema = z.enum([
   "hook",
   "style",
   "scene-spec",
+  "character-kernel",
 ]);
 export type NarrativeContextSourceType = z.infer<typeof NarrativeContextSourceTypeSchema>;
 
@@ -21,6 +22,7 @@ export const NarrativeContextChannelSchema = z.enum([
   "facts",
   "style",
   "semantic",
+  "character-kernel",
 ]);
 export type NarrativeContextChannel = z.infer<typeof NarrativeContextChannelSchema>;
 
@@ -315,6 +317,7 @@ export const NarrativeContextPackageSchema = z.object({
     facts: z.string().default(""),
     style: z.string().default(""),
     semantic: z.string().default(""),
+    "character-kernel": z.string().default(""),
   }),
   diagnostics: NarrativeRetrievalDiagnosticsSchema,
 });
@@ -331,6 +334,87 @@ export type NarrativeContextPackage = Readonly<{
     facts: string;
     style: string;
     semantic: string;
+    "character-kernel": string;
   }>;
   diagnostics: NarrativeRetrievalDiagnostics;
 }>;
+
+// ─── 角色内核（Character Kernel）─────────────────────────────────────
+
+/**
+ * 内核字段形态：UI 形态与校验只由 kind 决定，不存业务枚举——
+ * 字段列表完全由作品级配置决定（见 CharacterKernelConfig.fields），
+ * 书中想加「境界」「伤势」「婚约状态」等任意键只需在配置里加一行。
+ */
+export const KernelFieldKindSchema = z.enum(["short_text", "long_text", "list"]);
+export type KernelFieldKind = z.infer<typeof KernelFieldKindSchema>;
+
+export const KernelFieldSpecSchema = z.object({
+  key: nonEmptyString,
+  label: nonEmptyString,
+  kind: KernelFieldKindSchema,
+  /** true = 结算时由 LLM 生成；false = 仅作者手填 */
+  llmExtract: z.boolean(),
+  /** true = 写章时注入 prompt */
+  injectOnWrite: z.boolean(),
+  /** 注入优先级；预算不足时按此升序裁剪（值越小越先被删除） */
+  injectPriority: z.number().int().min(0),
+});
+export type KernelFieldSpec = Readonly<z.infer<typeof KernelFieldSpecSchema>>;
+
+export const CharacterKernelConfigSchema = z.object({
+  /** 总开关；默认关闭（不改老书行为、不消耗 LLM 预算） */
+  enabled: z.boolean(),
+  /** 重算 prompt 覆盖；null = 用内置模板 */
+  promptTemplate: z.string().nullable(),
+  /** 写章注入预算（占总召回预算比例 0–0.5） */
+  injectBudgetRatio: z.number().min(0).max(0.5),
+  /** 每角色 stateSummary 类长字段截断上限（字）；0 = 不截断 */
+  stateSummaryMaxChars: nonNegativeInteger,
+  /** 触发结算重算的事件类型；空数组 = 任意事件类型都触发 */
+  triggerEventTypes: z.array(z.string()),
+  /** 字段定义；空数组 = 用内核代码内置默认 */
+  fields: z.array(KernelFieldSpecSchema),
+});
+export type CharacterKernelConfig = Readonly<z.infer<typeof CharacterKernelConfigSchema>>;
+
+export const DEFAULT_CHARACTER_KERNEL_CONFIG: CharacterKernelConfig = {
+  enabled: false,
+  promptTemplate: null,
+  injectBudgetRatio: 0.1,
+  stateSummaryMaxChars: 200,
+  triggerEventTypes: [],
+  fields: [],
+};
+
+/** 内置默认字段集（配置 fields=[] 时生效；都可以被配置覆盖）。 */
+export const DEFAULT_KERNEL_FIELDS: readonly KernelFieldSpec[] = [
+  { key: "motivation", label: "核心动机", kind: "short_text", llmExtract: true, injectOnWrite: true, injectPriority: 100 },
+  { key: "emotionalCenter", label: "情绪重心", kind: "short_text", llmExtract: true, injectOnWrite: true, injectPriority: 90 },
+  { key: "conflictAxis", label: "主要矛盾轴", kind: "short_text", llmExtract: true, injectOnWrite: true, injectPriority: 80 },
+  { key: "stateSummary", label: "当前状态摘要", kind: "long_text", llmExtract: true, injectOnWrite: true, injectPriority: 70 },
+  { key: "activeScars", label: "活跃心理伤痕", kind: "list", llmExtract: false, injectOnWrite: true, injectPriority: 50 },
+  { key: "notes", label: "作者备注", kind: "long_text", llmExtract: false, injectOnWrite: false, injectPriority: 0 },
+];
+
+export const CharacterKernelOriginSchema = z.enum(["settle", "manual", "import"]);
+export type CharacterKernelOrigin = z.infer<typeof CharacterKernelOriginSchema>;
+
+/** fields 的值形态：由 KernelFieldSpec.kind 决定（list 用 string[]，其余用 string）。 */
+export const KernelFieldValueSchema = z.union([z.string(), z.array(z.string())]);
+export type KernelFieldValue = z.infer<typeof KernelFieldValueSchema>;
+
+export const CharacterKernelSchema = z.object({
+  id: nonEmptyString,
+  bookId: nonEmptyString,
+  characterId: nonEmptyString,
+  entryStatus: z.enum(["active", "archived"]),
+  /** 键值对；键在配置的 fields 里注册，值形态由 kind 决定 */
+  fields: z.record(nonEmptyString, KernelFieldValueSchema).default({}),
+  /** 结算证据：参考了哪些 fact/event（[{id, excerpt}]） */
+  evidence: z.array(z.object({ id: nonEmptyString, excerpt: z.string().optional() })).default([]),
+  updatedChapter: nonNegativeInteger,
+  updatedAt: nonEmptyString,
+  origin: CharacterKernelOriginSchema,
+});
+export type CharacterKernel = Readonly<z.infer<typeof CharacterKernelSchema>>;

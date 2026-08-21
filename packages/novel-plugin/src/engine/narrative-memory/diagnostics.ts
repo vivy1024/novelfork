@@ -21,9 +21,10 @@ const SECTION_BY_CHANNEL = {
   facts: { key: "facts", tag: "known_facts" },
   style: { key: "style", tag: "style_rules" },
   semantic: { key: "semantic", tag: "semantic_memory" },
+  "character-kernel": { key: "character-kernel", tag: "character_kernel" },
 } as const;
 
-const SECTION_ORDER = ["hard", "state", "timeline", "hooks", "facts", "style", "semantic"] as const;
+const SECTION_ORDER = ["hard", "character-kernel", "state", "timeline", "hooks", "facts", "style", "semantic"] as const;
 
 type SectionKey = keyof NarrativeContextPackage["sections"];
 
@@ -87,6 +88,7 @@ export function formatNarrativeSections(cards: readonly PackedNarrativeContextCa
     facts: [],
     style: [],
     semantic: [],
+    "character-kernel": [],
   };
 
   for (const item of cards) {
