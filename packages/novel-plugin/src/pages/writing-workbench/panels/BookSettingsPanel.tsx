@@ -5,7 +5,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
-import { WritingSkillsPanel } from "../WritingSkillsPanel";
 import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
 
 interface BookConfig {
@@ -21,6 +20,9 @@ interface BookConfig {
 
 /** 可被外部直接定位的分区（写作视图一键修用）。 */
 export type BookSettingsSection = "basic" | "writing-skills" | "narrative-memory";
+
+/** 本面板实际存在的、可被滚动定位的分区。 */
+const KNOWN_SECTIONS: readonly BookSettingsSection[] = ["basic", "narrative-memory"];
 
 export interface BookSettingsPanelProps {
   bookId: string;
@@ -60,10 +62,10 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const sectionRefs = useRef<Partial<Record<BookSettingsSection, HTMLElement | null>>>({});
 
-  // 从写作视图「一键修」跳进来时，直接滚到目标分区，
-  // 否则作者要在长表单里自己找 Writing Skills 开关。
+  // 从写作视图「一键修」跳进来时，直接滚到目标分区；
+  // 未知/未注册的分区（如历史上的 "writing-skills"）只定位失败，不报错。
   useEffect(() => {
-    if (!initialSection) return;
+    if (!initialSection || !KNOWN_SECTIONS.includes(initialSection)) return;
     const target = sectionRefs.current[initialSection];
     if (target) target.scrollIntoView({ block: "start" });
   }, [initialSection]);
@@ -149,26 +151,6 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
             <label className="block space-y-1 text-xs text-muted-foreground">角色弧线追踪<Select value={config.arcTrackingMode} onValueChange={(value) => updateConfig("arcTrackingMode", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ARC_TRACKING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1 text-xs text-muted-foreground">敏感词（每行一个）<Textarea value={config.customSensitiveWords} onChange={(event) => updateConfig("customSensitiveWords", event.target.value)} className="min-h-20" /></label>
           </div>}
-        </section>
-
-        <section
-          className="space-y-3"
-          data-settings-section="writing-skills"
-          ref={(node) => { sectionRefs.current["writing-skills"] = node; }}
-        >
-          {/*
-            作用域必须一句讲清：开关是本书独有的，技能库与作者副本是全局共享的。
-            旧文案「统一管理全局技能目录、书籍启用状态以及作者副本」把三者混在一句里，
-            作者会读成「这里配的是全局设置」，进而以为所有书共用同一套启用项。
-          */}
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">Writing Skills</h2>
-            <p className="text-xs text-muted-foreground">
-              下面的开关<strong className="font-medium text-foreground">只作用于当前这本书</strong>，切换作品后各自独立。
-              技能库本身与你的编辑副本是全局共享的，改了技能正文会影响所有启用它的书。
-            </p>
-          </div>
-          <WritingSkillsPanel bookId={bookId} />
         </section>
 
         <section
