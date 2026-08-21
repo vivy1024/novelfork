@@ -677,6 +677,8 @@ async function memorySettleChapter(
     ...(typeof input.title === "string" ? { title: input.title } : {}),
     // 章后结算同样走 LLM 抽取：用 host 的 generateText 能力构造，缺省时回退规则兜底。
     ...(context.generateText ? { llmExtractor: createRuntimeChapterEventExtractor(context.generateText) } : {}),
+    // 角色内核重算与事件抽取同源（同一 generateText）；config.characterKernel.enabled=false 时 reconciler 内部直接跳过。
+    ...(context.generateText ? { kernelGenerateText: context.generateText } : {}),
   });
 
   if (!result.ok) return fail(result.error ?? "settle-chapter-failed", result.summary);
