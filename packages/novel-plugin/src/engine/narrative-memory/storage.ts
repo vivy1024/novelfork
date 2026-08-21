@@ -8,6 +8,8 @@ import {
   NarrativeFactSchema,
   NarrativeRetrievalDiagnosticsSchema,
   NarrativeRetrievalPurposeSchema,
+  CharacterKernelSchema,
+  type CharacterKernel,
   type NarrativeContextVector,
   type NarrativeEvent,
   type NarrativeEventStatus,
@@ -374,6 +376,20 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_tag_book_type ON narrative_tag(book_id, type);
     CREATE INDEX IF NOT EXISTS idx_narrative_card_tag_book_card ON narrative_card_tag(book_id, card_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_tag_edge_book_source ON narrative_tag_edge(book_id, source_tag_id);
+
+    CREATE TABLE IF NOT EXISTS character_kernel (
+      id TEXT PRIMARY KEY,
+      book_id TEXT NOT NULL,
+      character_id TEXT NOT NULL,
+      entry_status TEXT NOT NULL,
+      fields_json TEXT NOT NULL,
+      evidence_json TEXT NOT NULL,
+      updated_chapter INTEGER NOT NULL,
+      updated_at TEXT NOT NULL,
+      origin TEXT NOT NULL
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_character_kernel_unique ON character_kernel(book_id, character_id);
   `);
 }
 
@@ -687,4 +703,113 @@ export function queryNarrativeContextVectors(storage: StorageDatabase, input: Qu
   }
 
   return { vectors, dimensionMismatchCardIds };
+}
+
+// ─── 角色内核（character_kernel）────────────────────────────────────────
+
+export interface CharacterKernelRow {
+  id: string;
+  bookId: string;
+  characterId: string;
+  entryStatus: "active" | "archived";
+  fieldsJson: string;
+  evidenceJson: string;
+  updatedChapter: number;
+  updatedAt: string;
+  origin: "settle" | "manual" | "import";
+}
+
+function kernelRowToRecord(row: CharacterKernelRow): CharacterKernel {
+  return CharacterKernelSchema.parse({
+    id: row.id,
+    bookId: row.bookId,
+    characterId: row.characterId,
+    entryStatus: row.entryStatus,
+    fields: JSON.parse(row.fieldsJson),
+    evidence: JSON.parse(row.evidenceJson),
+    updatedChapter: row.updatedChapter,
+    updatedAt: row.updatedAt,
+    origin: row.origin,
+  });
+}
+
+export function upsertCharacterKernel(storage: StorageDatabase, kernel: CharacterKernel): CharacterKernel {
+  ensureNarrativeMemorySchema(storage);
+  const parsed = CharacterKernelSchema.parse(kernel);
+  storage.sqlite.prepare(`
+    INSERT INTO character_kernel (
+      id, book_id, character_id, entry_status, fields_json, evidence_json, updated_chapter, updated_at, origin
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(book_id, character_id) DO UPDATE SET
+      entry_status = excluded.entry_status,
+      fields_json = excluded.fields_json,
+      evidence_json = excluded.evidence_json,
+      updated_chapter = excluded.updated_chapter,
+      updated_at = excluded.updated_at,
+      origin = excluded.origin
+  `).run(
+    parsed.id,
+    parsed.bookId,
+    parsed.characterId,
+    parsed.entryStatus,
+    JSON.stringify(parsed.fields),
+    JSON.stringify(parsed.evidence),
+    parsed.updatedChapter,
+    parsed.updatedAt,
+    parsed.origin,
+  );
+  return parsed;
+}
+
+export function getCharacterKernel(
+  storage: StorageDatabase,
+  bookId: string,
+  characterId: string,
+): CharacterKernel | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite.prepare(`
+    SELECT id, book_id AS bookId, character_id AS characterId, entry_status AS entryStatus,
+           fields_json AS fieldsJson, evidence_json AS evidenceJson,
+           updated_chapter AS updatedChapter, updated_at AS updatedAt, origin
+    FROM character_kernel WHERE book_id = ? AND character_id = ?
+  `).get(bookId, characterId) as CharacterKernelRow | undefined;
+  return row ? kernelRowToRecord(row) : undefined;
+}
+
+export function listCharacterKernels(
+  storage: StorageDatabase,
+  input: { bookId: string; characterIds?: readonly string[]; includeArchived?: boolean },
+): CharacterKernel[] {
+  ensureNarrativeMemorySchema(storage);
+  const clauses: string[] = ["book_id = ?"];
+  const params: unknown[] = [input.bookId];
+  if (!input.includeArchived) clauses.push("entry_status = 'active'");
+  if (input.characterIds && input.characterIds.length > 0) {
+    clauses.push(`character_id IN (${input.characterIds.map(() => "?").join(",")})`);
+    params.push(...input.characterIds);
+  }
+  const rows = storage.sqlite.prepare(`
+    SELECT id, book_id AS bookId, character_id AS characterId, entry_status AS entryStatus,
+           fields_json AS fieldsJson, evidence_json AS evidenceJson,
+           updated_chapter AS updatedChapter, updated_at AS updatedAt, origin
+    FROM character_kernel WHERE ${clauses.join(" AND ")}
+    ORDER BY updated_at DESC
+  `).all(...params) as CharacterKernelRow[];
+  return rows.map(kernelRowToRecord);
+}
+
+export function archiveCharacterKernel(storage: StorageDatabase, bookId: string, characterId: string): boolean {
+  ensureNarrativeMemorySchema(storage);
+  const result = storage.sqlite.prepare(`
+    UPDATE character_kernel SET entry_status = 'archived', updated_at = ? WHERE book_id = ? AND character_id = ?
+  `).run(new Date().toISOString(), bookId, characterId);
+  return result.changes > 0;
+}
+
+export function deleteCharacterKernel(storage: StorageDatabase, bookId: string, characterId: string): boolean {
+  ensureNarrativeMemorySchema(storage);
+  const result = storage.sqlite.prepare(`
+    DELETE FROM character_kernel WHERE book_id = ? AND character_id = ?
+  `).run(bookId, characterId);
+  return result.changes > 0;
 }

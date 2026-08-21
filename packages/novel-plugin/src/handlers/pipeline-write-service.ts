@@ -422,6 +422,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   facts: "Narrative Memory facts：结构化叙事事实与一跳扩展。",
   style: "Narrative Memory style：文风、Writing Skills 与合规风格提示。",
   semantic: "Narrative Memory semantic：语义记忆召回。",
+  "character-kernel": "Narrative Memory character kernel：出场角色的动机/情绪/矛盾轴/状态摘要。",
 };
 
 function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
