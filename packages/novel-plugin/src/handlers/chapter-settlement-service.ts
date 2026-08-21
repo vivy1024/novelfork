@@ -10,6 +10,7 @@ import {
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import {
   decideChapterSettlementIdempotency,
@@ -36,6 +37,15 @@ export type ChapterSettlementOptions = Readonly<{
   bookRoot?: string;
   /** Preloaded config; when omitted and bookRoot is set, loaded from book.json. */
   config?: NarrativeMemoryConfig;
+  /**
+   * 角色内核重算用的文本生成能力；与 llmExtractor 同源（Runtime host 的
+   * generateText）。缺省时内核重算静默跳过（warn），不阻断结算。
+   */
+  kernelGenerateText?: (request: {
+    messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+  }) => Promise<{ text: string }>;
 }>;
 
 function idPart(value: string): string {
@@ -392,6 +402,43 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     settledAt,
     ...(idempotency.record ? { previousRecord: idempotency.record } : {}),
   });
+
+  // 角色内核重算（CharacterKernelConfig.enabled 时才生效）。
+  // 失败只 warn 不阻断：内核是增强信息，结算主体（facts/events）已成功落库。
+  if (config.characterKernel.enabled) {
+    if (!options.kernelGenerateText) {
+      warnings.push("角色内核已启用但当前会话没有可用的 generateText，本章内核未重算。");
+    } else {
+      const chapterCharacters = new Set<string>();
+      for (const event of eventResults) {
+        chapterCharacters.add(event.subject);
+        chapterCharacters.add(event.object);
+      }
+      for (const character of chapterCharacters) {
+        if (!character.trim()) continue;
+        try {
+          const result = await reconcileCharacterKernel({
+            storage,
+            bookId: input.bookId,
+            chapterNumber: input.chapterNumber,
+            characterId: character,
+            config: config.characterKernel,
+            chapterExcerpt: input.content,
+            relatedRecords: pickRelatedRecords(eventResults, character),
+            generateText: options.kernelGenerateText,
+            ...(options.now ? { now: options.now } : {}),
+          });
+          if (!result.ok && result.reason === "llm-failed") {
+            warnings.push(`角色「${character}」内核重算 LLM 调用失败：${result.error ?? "unknown"}`);
+          } else if (!result.ok && result.reason === "parse-failed") {
+            warnings.push(`角色「${character}」内核重算输出无法解析：${result.error ?? "unknown"}`);
+          }
+        } catch (error) {
+          warnings.push(`角色「${character}」内核重算异常：${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
 
   const resettled = idempotency.decision === "resettle";
   const idempotencyInfo: ChapterSettlementIdempotency = {

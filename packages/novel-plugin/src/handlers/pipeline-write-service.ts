@@ -211,6 +211,21 @@ export interface PipelineWriteOptions {
   /** LLM 章后事件抽取器；由 Runtime host 的 generateText 能力构造，缺省时回退规则兜底。 */
   readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
   /**
+   * 角色内核重算的文本生成能力；与 llmExtractor 同源（Runtime host generateText）。
+   * 缺省时若 config.characterKernel.enabled，结算 warnings 会提示内核未重算。
+   */
+  readonly kernelGenerateText?: (request: {
+    messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+  }) => Promise<{ text: string }>;
+  /** 结算派发（工具调用路径）携带的同一能力，透传给 memory.settle_chapter。 */
+  readonly dispatchKernelGenerateText?: (request: {
+    messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+  }) => Promise<{ text: string }>;
+  /**
    * 由宿主注入的工具调用发起器：管线用它把章后结算作为一次**显式工具调用**发出，
    * 从而在叙述者面板可见、可重试。缺省时退化为直接调用同一 handler（结算仍然发生，
    * 只是不产生独立的面板记录），保证 CLI / 测试等无宿主环境下写章闭环不断。
@@ -272,6 +287,7 @@ async function dispatchChapterSettlement(input: {
   readonly title: string;
   readonly storage: unknown;
   readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
+  readonly kernelGenerateText?: PipelineWriteOptions["kernelGenerateText"];
   readonly dispatchToolCall?: PipelineToolCallDispatcher;
   readonly logger?: Logger;
 }): Promise<PipelineSettlementDispatch> {
@@ -316,6 +332,7 @@ async function dispatchChapterSettlement(input: {
       title: input.title,
       storage: input.storage as never,
       ...(input.llmExtractor ? { llmExtractor: input.llmExtractor } : {}),
+      ...(input.kernelGenerateText ? { kernelGenerateText: input.kernelGenerateText } : {}),
     });
     if (!result.ok) {
       input.logger?.warn(`[pipeline.write] ${SETTLE_CHAPTER_TOOL_NAME} (inline) failed: ${result.error ?? result.summary}`);
@@ -1004,6 +1021,8 @@ export async function executePipelineWrite(
         title: writeOutput.title,
         storage,
         ...(options.llmExtractor ? { llmExtractor: options.llmExtractor } : {}),
+        // 角色内核重算：优先走 dispatch 路径的宿主能力，否则退回管线直传的 kernelGenerateText。
+        ...(options.kernelGenerateText ? { kernelGenerateText: options.kernelGenerateText } : {}),
         ...(options.dispatchToolCall ? { dispatchToolCall: options.dispatchToolCall } : {}),
         ...(logger ? { logger } : {}),
       });

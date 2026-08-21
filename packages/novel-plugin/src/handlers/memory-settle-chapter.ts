@@ -37,6 +37,12 @@ export interface MemorySettleChapterInput {
   readonly force?: boolean;
   readonly storage?: StorageDatabase;
   readonly llmExtractor?: ChapterEventExtractorInput["llmExtractor"];
+  /** 角色内核重算用的文本生成能力；缺省时内核重算静默跳过。 */
+  readonly kernelGenerateText?: (request: {
+    messages: ReadonlyArray<{ role: "system" | "user" | "assistant"; content: string }>;
+    temperature?: number;
+    maxTokens?: number;
+  }) => Promise<{ text: string }>;
   readonly now?: () => Date;
 }
 
@@ -129,6 +135,7 @@ export async function handleMemorySettleChapter(input: MemorySettleChapterInput)
       storage,
       bookRoot: input.bookRoot,
       ...(input.llmExtractor ? { llmExtractor: input.llmExtractor } : {}),
+      ...(input.kernelGenerateText ? { kernelGenerateText: input.kernelGenerateText } : {}),
       ...(input.now ? { now: input.now } : {}),
     },
   );
