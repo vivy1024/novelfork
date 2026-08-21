@@ -11,12 +11,12 @@ import "allotment/dist/style.css";
 import {
   Files, Scroll, Wrench, Settings, X,
   Clock, PlusCircle, Search, Sparkles, Lightbulb, ChevronRight, MessageSquare, PenLine, Brain,
-  Users, Route,
+  BookOpen, Route,
 } from "lucide-react";
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-import { createToolSectionNodes } from "../useWorkbenchResources";
+import { createStoryMapNode, createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
@@ -43,6 +43,7 @@ import { useIdeCommands } from "./use-ide-commands";
 import { ProblemsPanel, type EditorIssue } from "./ProblemsPanel";
 import { clearEditorState } from "./editor-state-cache";
 import { useWorkbenchDialogs } from "./use-workbench-dialogs";
+import { toast } from "@/components/ui/toast";
 import {
   ideLayoutSizesToArray,
   loadIdeLayoutSizes,
@@ -52,6 +53,7 @@ import {
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
 function toTabKind(node: WorkbenchResourceNode): TabKind {
+  if (node.kind === "story-map" || node.metadata?.isStoryMap) return "story-map";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
@@ -65,8 +67,8 @@ function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区） */
 function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  // 叙事记忆条目归入故事脉络工作区。
-  if (node.metadata?.isNarrativeMemoryEntry) return "storyline";
+  // 故事主支线与叙事记忆条目归入故事推进工作区。
+  if (node.kind === "story-map" || node.metadata?.isStoryMap || node.metadata?.isNarrativeMemoryEntry) return "storyline";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
   return "explorer";
 }
@@ -146,10 +148,9 @@ const SIDEBAR_VIEWS: { id: SidebarView; icon: typeof Files; label: string; title
   { id: "write", icon: PenLine, label: "写作", title: "写作" },
   { id: "explorer", icon: Files, label: "资源管理器", title: "资源管理器" },
   { id: "search", icon: Search, label: "搜索", title: "全局搜索" },
-  // 角色与设定 = 彻底统一经纬与角色时态
-  { id: "characters-lore", icon: Users, label: "角色设定", title: "角色与世界设定" },
-  // 故事脉络 = 汇聚大纲、伏笔看板、全景时间线与关系图谱
-  { id: "storyline", icon: Route, label: "故事脉络", title: "故事大纲与因果脉络" },
+  // 作者语言入口：作品基础统一角色册与世界录，故事推进统一章节/语境/演进。
+  { id: "characters-lore", icon: BookOpen, label: "作品基础", title: "角色册与世界录" },
+  { id: "storyline", icon: Route, label: "故事推进", title: "章节、语境与故事演进" },
   { id: "skills-style", icon: Sparkles, label: "技能文风", title: "写作技能与文风" },
   { id: "tools", icon: Wrench, label: "分析工具", title: "分析与质量工具" },
 ];
@@ -187,6 +188,43 @@ function filterByView(children: readonly WorkbenchResourceNode[], view: SidebarV
     case "skills-style":
       return [];
   }
+}
+
+function filePathOf(node: WorkbenchResourceNode): string {
+  return String(node.metadata?.filePath ?? node.path ?? "").replace(/\\/g, "/");
+}
+
+/** 只从文件树裁剪 chapters/，不读取正文，也不带入其它目录。 */
+function collectChapterTreeNodes(
+  nodes: readonly WorkbenchResourceNode[],
+  withinChapters = false,
+): WorkbenchResourceNode[] {
+  const result: WorkbenchResourceNode[] = [];
+  for (const node of nodes) {
+    const path = filePathOf(node);
+    const inChapters = withinChapters || path === "chapters" || path.startsWith("chapters/");
+    const children = node.children ? collectChapterTreeNodes(node.children, inChapters) : [];
+    if (!inChapters) continue;
+    if (node.kind === "chapter" || node.metadata?.isDirectory === true || children.length > 0) {
+      result.push(children.length > 0 ? { ...node, children } : node);
+    }
+  }
+  return result;
+}
+
+function collectCategoryNodes(
+  nodes: readonly WorkbenchResourceNode[],
+  category: string,
+): WorkbenchResourceNode[] {
+  const result: WorkbenchResourceNode[] = [];
+  for (const node of nodes) {
+    if (node.metadata?.category === category) {
+      result.push(node);
+      continue;
+    }
+    if (node.children) result.push(...collectCategoryNodes(node.children, category));
+  }
+  return result;
 }
 
 // ── Main Component ──────────────────────────────────────
@@ -429,6 +467,23 @@ export function IdeWorkbench({
     return root.children ?? [];
   }, []);
 
+  const chapterTreeNodes = useMemo(() => collectChapterTreeNodes(fileTree.nodes), [fileTree.nodes]);
+  const outlineTreeNodes = useMemo(() => collectCategoryNodes(jingweiSections, "outline"), [jingweiSections]);
+  const storyMapNode = useMemo(() => (bookId ? createStoryMapNode(bookId) : null), [bookId]);
+  const foreshadowingNode = useMemo(() => {
+    const walk = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
+      for (const item of items) {
+        if (item.id === "tool:foreshadowing") return item;
+        if (item.children) {
+          const found = walk(item.children);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+    return walk(toolNodes);
+  }, [toolNodes]);
+
   const resourceMap = useMemo(() => {
     const map = new Map<string, WorkbenchResourceNode>();
     const walk = (n: WorkbenchResourceNode) => { map.set(n.id, n); n.children?.forEach(walk); };
@@ -439,8 +494,9 @@ export function IdeWorkbench({
     narrativeMemorySections.forEach(walk);
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
+    if (storyMapNode) map.set(storyMapNode.id, storyMapNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -892,7 +948,7 @@ export function IdeWorkbench({
           items.push({
             id: `qo:${entry.id}`,
             label: entry.title,
-            category: "经纬",
+            category: "作品基础",
             execute: () => handleOpen(entry),
           });
         }
@@ -944,7 +1000,7 @@ export function IdeWorkbench({
     } else if (type === "create") {
       // 经纬条目创建
       if (node.kind === "jingwei-section" && bookId) {
-        const title = await promptDialog({ title: "新建经纬条目", placeholder: "条目标题", confirmLabel: "创建" });
+        const title = await promptDialog({ title: "新建设定条目", placeholder: "条目标题", confirmLabel: "创建" });
         if (!title) return;
         const category = node.metadata?.category ?? node.id.replace("jingwei-section:", "");
         try {
@@ -952,7 +1008,7 @@ export function IdeWorkbench({
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ title, category, contentMd: "" }),
-          }), "创建经纬条目失败");
+          }), "创建设定条目失败");
         } catch (err) {
           await alertDialog({ title: "操作失败", description: err instanceof Error ? err.message : "未知错误", destructive: true });
         }
@@ -1044,8 +1100,53 @@ export function IdeWorkbench({
     } else if (type === "generate-variant" || type === "scene-spec") {
       // 章节专属操作：打开章节文件，用户通过编辑器工具栏操作
       handleOpen(node);
+    } else if (type === "promote-outline") {
+      // 大纲节点一键提拔至手稿章节 (OpenWrite 风格)
+      const outlineTitle = node.title.replace(/^第\s*\d+\s*[章卷节篇幕]\s*[:：\s]*/u, "").trim() || node.title;
+      const targetTitle = await promptDialog({
+        title: "将大纲提拔为新章节",
+        description: `将大纲「${node.title}」作为新章节立项，内容将自动载入写作蓝图。`,
+        defaultValue: outlineTitle,
+        confirmLabel: "创建章节",
+      });
+      if (!targetTitle) return;
+
+      try {
+        const createRes = await ensureOk(
+          await fetch(`/api/books/${encodeURIComponent(bookId)}/chapters`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              title: targetTitle,
+              content: node.content ? `# ${targetTitle}\n\n${node.content}` : `# ${targetTitle}\n\n`,
+            }),
+          }),
+          "创建手稿章节失败",
+        );
+        const chapterData = await createRes.json() as { chapter?: { id: string; chapterNumber?: number; title?: string } };
+        toast("已提拔为手稿章节", "success");
+        refreshFileTree();
+
+        // 自动定位并切到写作视图
+        showPanel("write");
+        setSidebarVisible(true);
+        if (chapterData.chapter?.id) {
+          handleOpen({
+            id: `chapter:${chapterData.chapter.id}`,
+            kind: "chapter",
+            title: chapterData.chapter.title ?? targetTitle,
+            capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+          });
+        }
+      } catch (err) {
+        await alertDialog({
+          title: "提拔章节失败",
+          description: err instanceof Error ? err.message : "未知错误",
+          destructive: true,
+        });
+      }
     }
-  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen, confirmDialog, promptDialog, alertDialog]);
+  }, [bookId, fileClipboard, refreshFileTree, setSplitNodeId, handleOpen, showPanel, confirmDialog, promptDialog, alertDialog]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -1161,19 +1262,24 @@ export function IdeWorkbench({
                     </div>,
                 getContainer("characters-lore")!
               )}
-              {/* 故事脉络：汇聚大纲、伏笔、时间线、关系图与待审队列 */}
+               {/* 故事推进：汇聚大纲、伏笔、时间线、关系图与待审队列 */}
               {panelsReady && getContainer("storyline") && createPortal(
                 bookId
                   ? <StorylineAndPlanningSidebarPanel
                       bookId={bookId}
+                      chapterTreeNodes={chapterTreeNodes}
+                      outlineTreeNodes={outlineTreeNodes}
                       memoryNodes={narrativeMemorySections}
+                      foreshadowingNode={foreshadowingNode}
+                      storyMapNode={storyMapNode}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
+                      onSwitchView={(view) => keybindingActions.switchView(view)}
                       onAction={handleResourceAction}
                       onOpenEntityDetail={setEntityDetailEntity}
                     />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
-                      <span className="text-xs text-muted-foreground">先打开一本书，再查看故事脉络。</span>
+                      <span className="text-xs text-muted-foreground">先打开一本书，再查看故事推进。</span>
                     </div>,
                 getContainer("storyline")!
               )}
@@ -1247,6 +1353,7 @@ export function IdeWorkbench({
                               nodes={nodes}
                               bookId={bookId}
                               repositoryPath={repositoryPath}
+                              runtimeFetch={runtimeFetch}
                               onSave={handleSaveWithProgress}
                               onCanvasContextChange={tabId === ideTabs.activeTabId ? handleCanvasContextChange : undefined}
                               onGuideComplete={handleGuideCompleteWithOnboarding}
@@ -1258,6 +1365,9 @@ export function IdeWorkbench({
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={setEntityDetailEntity}
                               onSendToNarrator={onSendToNarrator}
+                              onPromoteOutline={(outlineNode) => {
+                                void handleResourceAction({ type: "promote-outline", node: outlineNode });
+                              }}
                             />
                           </div>
                         ))}
@@ -1268,6 +1378,7 @@ export function IdeWorkbench({
                         nodes={nodes}
                         bookId={bookId}
                         repositoryPath={repositoryPath}
+                        runtimeFetch={runtimeFetch}
                         onSave={handleSaveWithProgress}
                         onCanvasContextChange={handleCanvasContextChange}
                         onGuideComplete={handleGuideCompleteWithOnboarding}
@@ -1278,6 +1389,9 @@ export function IdeWorkbench({
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={setEntityDetailEntity}
                         onSendToNarrator={onSendToNarrator}
+                        onPromoteOutline={(outlineNode) => {
+                          void handleResourceAction({ type: "promote-outline", node: outlineNode });
+                        }}
                       />
                     ) : (
                       <ViewEmptyState view={activeView} />
@@ -1310,6 +1424,7 @@ export function IdeWorkbench({
                         nodes={nodes}
                         bookId={bookId}
                         repositoryPath={repositoryPath}
+                        runtimeFetch={runtimeFetch}
                         onSave={handleSaveWithProgress}
                         onCanvasContextChange={() => {}}
                         chapterActions={chapterActions}
@@ -1318,6 +1433,9 @@ export function IdeWorkbench({
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={setEntityDetailEntity}
                         onSendToNarrator={onSendToNarrator}
+                        onPromoteOutline={(outlineNode) => {
+                          void handleResourceAction({ type: "promote-outline", node: outlineNode });
+                        }}
                       />
                     </div>
                   </div>
@@ -1502,14 +1620,14 @@ function formatRelativeTime(dateStr: string): string {
 
 const EMPTY_TIPS: { text: string }[] = [
   { text: "第一次使用？在「学习中心」查看完整教程，5 分钟上手" },
-  { text: "新建书籍后，先录入核心设定到经纬系统，AI 写作会更准确" },
+  { text: "新建书籍后，先录入核心设定到作品基础，AI 写作会更准确" },
   { text: "试试说「帮我写下一章」，AI 会根据大纲和设定自动生成" },
   { text: "写作管线会生成正式章节结果，可在章节编辑器里继续修订" },
   { text: "可以用预设控制写作风格——武侠、言情、悬疑各有模板" },
   { text: "写作卡壳？说「给我三个推进方向」让 AI 帮你打开思路" },
   { text: "直接粘贴大纲，AI 会帮你拆分成章节结构" },
-  { text: "经纬系统是静态设定库；时间线、关系变化和伏笔推进在叙事记忆里管理" },
-  { text: "静态 Lore 写入 canon/rules 需有来源；动态事实先进入待确认叙事事件" },
+  { text: "作品基础管理静态设定；时间线、关系变化和伏笔推进在故事推进里管理" },
+  { text: "静态作品设定写入核心规则需有来源；动态事实先进入待确认故事事件" },
   { text: "用「检查一致性」让 AI 做 37 维连续性审查，找出逻辑漏洞" },
   { text: "节奏分析、POV 视角、伏笔追踪——写作工具栏里都有" },
   { text: "书籍健康度面板能一眼看出哪章需要修订" },
@@ -1536,8 +1654,8 @@ function ChatEmptyTip() {
 
 const KIND_LABEL: Record<string, string> = {
   chapter: "章节",
-  "jingwei-entry": "经纬",
-  jingwei: "经纬",
+  "jingwei-entry": "作品设定",
+  jingwei: "作品基础",
   tool: "工具",
   "tool-result": "工具",
   book: "书籍",
@@ -1553,10 +1671,10 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
     return [bookTitle || "NovelFork", ...parts];
   }
 
-  // 经纬条目：书 › 经纬 › 分类 › 条目
+  // 作品设定条目：书 › 作品基础 › 分类 › 条目
   const category = node.metadata?.category;
   if (node.kind === "jingwei-entry" || node.kind === "jingwei") {
-    segments.push("经纬");
+    segments.push("作品基础");
     if (typeof category === "string" && category) {
       segments.push(CATEGORY_META.find(m => m.id === normalizeCategory(category).category)?.name ?? category);
     }
@@ -1566,7 +1684,7 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
 
   // 章节等：书 › 类型 › 标题
   if (node.metadata?.isNarrativeMemoryEntry) {
-    segments.push("叙事记忆");
+    segments.push("故事推进");
     segments.push(node.title);
     return segments;
   }
@@ -1579,8 +1697,8 @@ function breadcrumbSegments(bookTitle: string | undefined, node: WorkbenchResour
 const VIEW_LABEL: Record<SidebarView, string> = {
   write: "写作",
   explorer: "资源管理器",
-  "characters-lore": "角色与设定",
-  storyline: "故事脉络",
+  "characters-lore": "作品基础",
+  storyline: "故事推进",
   "skills-style": "技能与文风",
   tools: "分析工具",
   search: "搜索",
@@ -1625,9 +1743,9 @@ function EditorBreadcrumbs({ bookTitle, node, view, showSettings, onNavigate }: 
 
 function ViewEmptyState({ view }: { view: SidebarView }) {
   const meta = view === "characters-lore"
-    ? { icon: "人", title: "角色与设定", desc: "从左侧选择一个分类或条目查看与编辑角色、世界设定" }
+     ? { icon: "人", title: "作品基础", desc: "从左侧选择角色册或世界录中的分类与条目" }
     : view === "storyline"
-    ? { icon: "线", title: "故事脉络", desc: "从左侧故事脉络面板打开全景图谱或查看章后事实" }
+    ? { icon: "线", title: "故事推进", desc: "从左侧打开章节、大纲、故事演进或章后事实" }
     : view === "skills-style"
     ? { icon: "文", title: "技能与文风", desc: "从左侧面板管理写作技能与文风预设" }
     : view === "search"
@@ -1754,14 +1872,14 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
           />
         </div>
         <p className="mt-1 px-1 text-[10px] leading-relaxed text-muted-foreground">
-          范围：章节正文、工作区资源、经纬和叙事记忆
+          范围：章节正文、工作区资源、作品基础和故事推进
         </p>
       </div>
       {/* 搜索结果列表 */}
       <div ref={resultsRef} className="flex-1 overflow-y-auto px-1 py-1">
         {query.trim() && results.length === 0 && (
           <p className="px-2 py-4 text-center text-xs leading-relaxed text-muted-foreground">
-            当前书籍的章节正文、工作区资源、经纬和叙事记忆中没有匹配结果
+            当前书籍的章节正文、工作区资源、作品基础和故事推进中没有匹配结果
           </p>
         )}
         {[...grouped.entries()].map(([group, items]) => (
@@ -1796,12 +1914,12 @@ function SearchPanel({ nodes, fileNodes, jingweiSections, memorySections, onOpen
 
 /** 节点 → 搜索结果分组名 */
 function nodeKindToGroup(node: WorkbenchResourceNode): string {
-  if (node.metadata?.isNarrativeMemoryEntry === true) return "叙事记忆";
+  if (node.metadata?.isNarrativeMemoryEntry === true) return "故事推进";
   switch (node.kind) {
     case "chapter": return "章节";
-    case "jingwei-entry": return "经纬条目";
+    case "jingwei-entry": return "设定条目";
     case "jingwei-section":
-    case "jingwei": return "经纬";
+    case "jingwei": return "作品基础";
     case "file":
     case "story": return "工作区资源";
     default: return "其他";

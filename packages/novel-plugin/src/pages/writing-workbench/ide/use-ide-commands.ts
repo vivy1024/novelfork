@@ -34,14 +34,14 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
       },
       {
         id: "view.characters-lore",
-        label: "显示: 角色与设定",
+        label: "显示: 作品基础",
         category: "视图",
         shortcut: "Ctrl+2",
         execute: () => options.switchView("characters-lore"),
       },
       {
         id: "view.storyline",
-        label: "显示: 故事脉络",
+        label: "显示: 故事推进",
         category: "视图",
         execute: () => options.switchView("storyline"),
       },

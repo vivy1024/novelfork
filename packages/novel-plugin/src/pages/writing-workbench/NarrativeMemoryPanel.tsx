@@ -1321,7 +1321,7 @@ export function NarrativeMemoryPanelShell({
     return (
       <div className="flex h-full items-center justify-center gap-2 text-xs text-muted-foreground">
         <Loader2 className="size-4 animate-spin" />
-        加载叙事记忆...
+        加载故事状态...
       </div>
     );
   }
@@ -1332,16 +1332,16 @@ export function NarrativeMemoryPanelShell({
         <div className="space-y-0.5">
           <div className="flex items-center gap-2 font-medium">
             <Brain className="size-4 text-primary" />
-            叙事记忆
+            章后事实与故事状态
           </div>
-          <p className="text-[10px] text-muted-foreground">看当前状态与结算历史；不编辑经纬静态设定。</p>
+          <p className="text-[10px] text-muted-foreground">查看当前状态与结算历史；不编辑作品基础设定。</p>
         </div>
         <button type="button" onClick={onRefresh} className="rounded p-1 hover:bg-muted" title="刷新">
           <RefreshCw className="size-3.5" />
         </button>
       </div>
 
-      <nav className="flex flex-wrap gap-1" aria-label="叙事记忆视图">
+      <nav className="flex flex-wrap gap-1" aria-label="故事状态视图">
         {MEMORY_NAV_ITEMS.map((label) => {
           const isGraph = GRAPH_VIEWS.has(label);
           return (
@@ -1354,7 +1354,7 @@ export function NarrativeMemoryPanelShell({
                   onOpen?.({
                     id: "narrative-memory-graph",
                     kind: "file",
-                    title: `叙事记忆图谱 · ${label}`,
+                    title: `故事图谱 · ${label}`,
                     capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
                     metadata: {
                       isNarrativeMemoryEntry: true,
@@ -1381,7 +1381,7 @@ export function NarrativeMemoryPanelShell({
       {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
       {empty && (
         <div className="rounded-lg border border-dashed border-border p-4 text-muted-foreground">
-          还没有叙事记忆。写完一章后会自动结算；这里只展示动态状态，不读写经纬。
+          还没有章后事实。写完一章后会自动结算；这里只展示动态状态，不编辑作品基础。
         </div>
       )}
 

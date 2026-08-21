@@ -1,4 +1,4 @@
-import { cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { CharactersAndLoreSidebarPanel } from "./CharactersAndLoreSidebarPanel";
@@ -7,13 +7,20 @@ import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
 const capabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
 
-function characterNode(title: string, aliases: string[] = []): WorkbenchResourceNode {
+function entryNode(title: string, category: string, content = "条目正文"): WorkbenchResourceNode {
   return {
     id: `jingwei-entry:${title}`,
     kind: "jingwei-entry",
     title,
-    content: "角色设定正文",
+    content,
     capabilities,
+    metadata: { category },
+  };
+}
+
+function characterNode(title: string, aliases: string[] = []): WorkbenchResourceNode {
+  return {
+    ...entryNode(title, "characters", "角色设定正文"),
     metadata: { category: "characters", aliases },
   };
 }
@@ -66,5 +73,46 @@ describe("CharactersAndLoreSidebarPanel 时态事实", () => {
     renderPanel([characterNode("无事实角色")], []);
 
     expect(screen.queryByTestId("character-temporal-facts")).toBeNull();
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
+  it("动态推进条目不进入角色册或世界录，势力归入世界录", () => {
+    renderPanel(
+      [
+        characterNode("主角"),
+        entryNode("青云宗", "factions"),
+        entryNode("第一章摘要", "chapter-summaries"),
+        entryNode("悬念伏笔", "foreshadowing"),
+      ],
+      [],
+    );
+
+    expect(screen.getByText("主角")).toBeTruthy();
+    expect(screen.queryByText("青云宗")).toBeNull();
+    expect(screen.queryByText("第一章摘要")).toBeNull();
+    expect(screen.queryByText("悬念伏笔")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    expect(screen.getByText("青云宗")).toBeTruthy();
+    expect(screen.queryByText("第一章摘要")).toBeNull();
+    expect(screen.queryByText("悬念伏笔")).toBeNull();
+  });
+
+  it("按共享分类元数据显示中文标签并支持筛选", () => {
+    renderPanel(
+      [entryNode("宗门", "factions"), entryNode("青云山", "locations")],
+      [],
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    expect(screen.getByTestId("world-category-filter")).toBeTruthy();
+    expect(screen.getByRole("button", { name: /势力/ })).toBeTruthy();
+    expect(screen.getByRole("button", { name: /地点/ })).toBeTruthy();
+    expect(screen.getAllByText("势力").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: /地点/ }));
+    expect(screen.getByText("青云山")).toBeTruthy();
+    expect(screen.queryByText("宗门")).toBeNull();
   });
 });

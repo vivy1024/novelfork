@@ -54,6 +54,7 @@ import {
   correctFact,
   createFact,
   fetchFactsByEntity,
+  filterFactsAsOfChapter,
   retireFact,
   type EntityFact,
 } from "./narrative-fact-edits";
@@ -240,6 +241,7 @@ export function EntityDetailDrawer({
                 bookId={bookId}
                 entity={entity}
                 state={factsState}
+                currentChapter={currentChapter}
                 onRetry={() => void loadFacts()}
                 onMutated={() => void handleMutated()}
               />
@@ -254,11 +256,11 @@ export function EntityDetailDrawer({
             </TabsContent>
 
             <TabsContent value="relations" className="space-y-2.5 pt-1">
-              <RelationsTab state={factsState} />
+              <RelationsTab state={factsState} currentChapter={currentChapter} />
             </TabsContent>
 
             <TabsContent value="history" className="space-y-2.5 pt-1">
-              <HistoryTab bookId={bookId} state={factsState} />
+              <HistoryTab bookId={bookId} state={factsState} currentChapter={currentChapter} />
             </TabsContent>
           </Tabs>
         </div>
@@ -299,12 +301,14 @@ function FactsTab({
   bookId,
   entity,
   state,
+  currentChapter,
   onRetry,
   onMutated,
 }: {
   bookId: string;
   entity: string;
   state: LoadState;
+  currentChapter?: number;
   onRetry: () => void;
   onMutated: () => void;
 }) {
@@ -314,14 +318,16 @@ function FactsTab({
   if (state.status === "loading") return <LoadingBlock label="正在读当前状态…" />;
   if (state.status === "error") return <ErrorBlock message={state.message} onRetry={onRetry} />;
 
-  const facts = state.facts;
+  const { live: liveFacts } = filterFactsAsOfChapter(state.facts, currentChapter);
   return (
     <div className="space-y-2.5">
       <div className="flex items-center justify-between gap-2 px-0.5">
         <div className="flex items-center gap-1.5">
           <Sparkles className="size-3 text-primary" />
           <span className="text-xs font-semibold">当前动态时态</span>
-          <span className="text-[10px] text-muted-foreground">({facts.length} 条)</span>
+          <span className="text-[10px] text-muted-foreground">
+            ({liveFacts.length} 条{currentChapter !== undefined ? ` · 截至第 ${currentChapter} 章` : ""})
+          </span>
         </div>
         <button
           type="button"
@@ -339,7 +345,10 @@ function FactsTab({
           initial={{ subject: entity, predicate: "", object: "", category: "state" }}
           submitLabel="写入状态"
           onSubmit={async (input) => {
-            await createFact(bookId, input);
+            await createFact(bookId, {
+              ...input,
+              validFromChapter: currentChapter,
+            });
             toast("已写入这条状态", "success");
             setAdding(false);
             onMutated();
@@ -348,14 +357,14 @@ function FactsTab({
         />
       )}
 
-      {facts.length === 0 && !adding ? (
+      {liveFacts.length === 0 && !adding ? (
         <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10 space-y-1">
           <p className="font-medium">这个实体还没有记忆状态</p>
           <p className="text-[10px] text-muted-foreground/80">写章结算后会自动沉淀，也可以点「新增状态」手工补一条。</p>
         </div>
       ) : (
         <div className="space-y-1.5">
-          {facts.map((fact) => (
+          {liveFacts.map((fact) => (
             <FactRow
               key={fact.id}
               bookId={bookId}
@@ -616,11 +625,12 @@ function JingweiTab({
 /* 人物羁绊 tab：关系列表                                              */
 /* ------------------------------------------------------------------ */
 
-function RelationsTab({ state }: { state: LoadState }) {
+function RelationsTab({ state, currentChapter }: { state: LoadState; currentChapter?: number }) {
   if (state.status === "loading") return <LoadingBlock label="正在读关系网络…" />;
   if (state.status === "error") return <p className="text-xs text-destructive">{state.message}</p>;
 
-  const relFacts = state.facts.filter((fact) => fact.category === "relationship" || fact.category === "relations");
+  const { live: liveFacts } = filterFactsAsOfChapter(state.facts, currentChapter);
+  const relFacts = liveFacts.filter((fact) => fact.category === "relationship" || fact.category === "relations");
   if (relFacts.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
@@ -648,11 +658,11 @@ function RelationsTab({ state }: { state: LoadState }) {
 /* 变迁轨迹 tab：fact 历史                                             */
 /* ------------------------------------------------------------------ */
 
-function HistoryTab({ bookId, state }: { bookId: string; state: LoadState }) {
+function HistoryTab({ bookId, state, currentChapter }: { bookId: string; state: LoadState; currentChapter?: number }) {
   if (state.status === "loading") return <LoadingBlock label="正在读变迁轨迹…" />;
   if (state.status === "error") return <p className="text-xs text-destructive">{state.message}</p>;
 
-  const facts = state.facts;
+  const facts = [...state.facts].sort((a, b) => (a.validFromChapter ?? 0) - (b.validFromChapter ?? 0));
   if (facts.length === 0) {
     return (
       <div className="rounded-lg border border-dashed border-border/80 p-6 text-center text-xs text-muted-foreground bg-muted/10">
@@ -663,22 +673,39 @@ function HistoryTab({ bookId, state }: { bookId: string; state: LoadState }) {
 
   return (
     <div className="space-y-1.5">
-      {facts.map((fact) => (
-        <div key={fact.id} className="rounded-lg border border-border/70 bg-card p-2.5 text-xs space-y-1 shadow-xs">
-          <div className="flex items-center justify-between text-muted-foreground text-[10px]">
-            <span>第 {fact.validFromChapter ?? "—"} 章 起</span>
-            <Badge variant="outline" className="text-[9px]">{fact.category}</Badge>
+      {facts.map((fact) => {
+        const isCurrent = currentChapter !== undefined &&
+          (fact.validFromChapter ?? 0) <= currentChapter &&
+          (fact.validUntilChapter == null || fact.validUntilChapter > currentChapter);
+
+        return (
+          <div
+            key={fact.id}
+            className={`rounded-lg border p-2.5 text-xs space-y-1 shadow-xs transition-colors ${
+              isCurrent
+                ? "border-primary/50 bg-primary/[0.03]"
+                : "border-border/70 bg-card"
+            }`}
+          >
+            <div className="flex items-center justify-between text-muted-foreground text-[10px]">
+              <div className="flex items-center gap-1.5">
+                <span>第 {fact.validFromChapter ?? "—"} 章 起</span>
+                {fact.validUntilChapter !== undefined ? <span>(至第 {fact.validUntilChapter} 章止)</span> : null}
+                {isCurrent ? <Badge variant="secondary" className="text-[8px] h-3.5 px-1 bg-primary/10 text-primary">当前有效</Badge> : null}
+              </div>
+              <Badge variant="outline" className="text-[9px]">{fact.category}</Badge>
+            </div>
+            <div className="font-medium text-foreground">
+              {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
+            </div>
+            {fact.evidenceText ? (
+              <p className="text-[10px] text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
+                依据：{fact.evidenceText}
+              </p>
+            ) : null}
           </div>
-          <div className="font-medium text-foreground">
-            {fact.subject} · {fact.predicate} → <span className="text-primary font-semibold">{fact.object}</span>
-          </div>
-          {fact.evidenceText ? (
-            <p className="text-[10px] text-muted-foreground line-clamp-2 bg-muted/30 p-1.5 rounded">
-              依据：{fact.evidenceText}
-            </p>
-          ) : null}
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

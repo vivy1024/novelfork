@@ -293,7 +293,7 @@ export function RuntimeWritingWorkbenchRoute({
   return (
     <section className="flex h-full min-h-0 flex-1 flex-col" data-testid="runtime-writing-workbench">
       <div className="flex items-center border-b border-border px-4 py-2">
-        <p className="text-sm text-muted-foreground">章节、经纬、写作资源与叙事记忆</p>
+        <p className="text-sm text-muted-foreground">章节、作品基础、写作资源与故事推进</p>
       </div>
       {loading ? <p className="p-4 text-sm text-muted-foreground" role="status">正在加载工作台…</p> : null}
       {error ? <p className="p-4 text-sm text-destructive" role="alert">工作台加载失败：{error}</p> : null}

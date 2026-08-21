@@ -232,7 +232,7 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    const nav = screen.getByRole("navigation", { name: "叙事记忆视图" });
+    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
 
     fireEvent.click(screen.getByRole("button", { name: "加载更多历史" }));
@@ -274,7 +274,7 @@ describe("NarrativeMemoryPanelShell", () => {
     // 默认在「故事状态」，台账还不该出现。
     expect(screen.queryByTestId("narrative-line-approvals")).toBeNull();
 
-    const nav = screen.getByRole("navigation", { name: "叙事记忆视图" });
+    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
 
     const ledger = screen.getByTestId("narrative-line-approvals");
@@ -301,7 +301,7 @@ describe("NarrativeMemoryPanelShell", () => {
     );
 
     // 「结算历史」既是导航项也是摘要区的「查看全部」目标，这里限定导航区。
-    const nav = screen.getByRole("navigation", { name: "叙事记忆视图" });
+    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
     expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("在叙事线视图增删节点后会出现");
   });

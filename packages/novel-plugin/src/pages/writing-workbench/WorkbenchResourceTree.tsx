@@ -2,13 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench } from "lucide-react";
+import { ChevronRight, ChevronDown, FileText, BookOpen, Scroll, Globe, Sparkles, Layers, PenLine, BookMarked, Route, FolderOpen, Plus, Wrench, GitFork } from "lucide-react";
 import type { WorkbenchResourceNode, WorkbenchResourceKind } from "./useWorkbenchResources";
 import { JingweiEmptyState } from "./JingweiEmptyState";
 import { getResourceContextMenuItems } from "./ide/context-menu-registry";
 
 export interface ResourceTreeAction {
-  type: "create" | "create-file" | "create-folder" | "rename" | "delete" | "open-side" | "copy-path" | "copy" | "cut" | "paste" | "generate-variant" | "scene-spec" | "move";
+  type: "create" | "create-file" | "create-folder" | "rename" | "delete" | "open-side" | "copy-path" | "copy" | "cut" | "paste" | "generate-variant" | "scene-spec" | "move" | "promote-outline";
   node: WorkbenchResourceNode;
   targetNode?: WorkbenchResourceNode;
   /** 内联编辑提供的名称（重命名/新建文件/新建文件夹） */
@@ -34,6 +34,7 @@ function NodeIcon({ kind }: { kind: WorkbenchResourceKind }) {
     case "story": return <Globe className="size-4 text-green-500" />;
     case "jingwei-section": case "jingwei-entry": return <BookMarked className="size-4 text-teal-500" />;
     case "narrative-line": return <Route className="size-4 text-rose-500" />;
+    case "story-map": return <GitFork className="size-4 text-emerald-500" />;
     case "tool": return <Wrench className="size-4 text-indigo-500" />;
     case "tool-group": return <FolderOpen className="size-4 text-indigo-400" />;
     default: return <Sparkles className="size-4 text-muted-foreground" />;

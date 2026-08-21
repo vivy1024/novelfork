@@ -28,6 +28,7 @@ import type { ToolPanelId } from "./useWorkbenchResources";
 
 // Lazy-loaded tool panels
 const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
+const StoryMapCanvas = lazy(() => import("./StoryMapCanvas").then(m => ({ default: m.StoryMapCanvas })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
@@ -263,6 +264,7 @@ export interface WorkbenchCanvasProps {
   nodes?: readonly WorkbenchResourceNode[];
   bookId?: string;
   repositoryPath?: string;
+  runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
   onSave: (node: WorkbenchResourceNode, content: string) => Promise<void> | void;
   onCanvasContextChange?: (context: WorkbenchCanvasContext) => void;
   onGuideComplete?: (outcome?: GuidedSetupOutcome) => void;
@@ -278,6 +280,8 @@ export interface WorkbenchCanvasProps {
   onOpenJingweiEntry?: (entryId: string) => boolean;
   /** 图谱节点打开实体详情抽屉。 */
   onOpenEntityDetail?: (entity: string) => void;
+  /** 大纲/规划节点一键提拔落稿为手稿章节 */
+  onPromoteOutline?: (node: WorkbenchResourceNode) => void;
   /**
    * 选段语义动作（续写/润色/改写/扩写/精简）的执行通道。
    * 产品 HTTP 适配层没有 Provider，这类动作必须由 Runtime 的叙述者执行。
@@ -285,7 +289,7 @@ export interface WorkbenchCanvasProps {
   onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onSendToNarrator }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -400,6 +404,32 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
         </div>
       );
     }
+  }
+
+  // Story Map — 渲染为全功能网文故事主支线 DAG 画布
+  if ((node.kind === "story-map" || node.id.startsWith("story-map:") || node.metadata?.isStoryMap) && bookId) {
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <Suspense fallback={<ToolPanelLoading />}>
+          <StoryMapCanvas
+            bookId={bookId}
+            runtimeFetch={runtimeFetch}
+            onOpenChapter={onJumpToChapter}
+            onPromote={(storyMapNode) => {
+              if (onPromoteOutline) {
+                onPromoteOutline({
+                  id: storyMapNode.id,
+                  kind: "story",
+                  title: storyMapNode.title,
+                  content: storyMapNode.summary,
+                  capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+                });
+              }
+            }}
+          />
+        </Suspense>
+      </div>
+    );
   }
 
   // Narrative Memory Graph — render as a full independent canvas page.
@@ -596,7 +626,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, onSa
               conflictStatus: node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none",
               conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
             }}
-            sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "叙事记忆" : "经纬资料"}
+            sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "故事推进" : "作品基础资料"}
             onSave={jingweiActions.onSave}
             onDelete={jingweiActions.onDelete}
             onNavigateToEntry={(entryId) => {

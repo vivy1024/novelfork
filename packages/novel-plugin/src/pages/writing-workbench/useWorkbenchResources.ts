@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "file" | "storyline" | "tool-result" | "tool" | "tool-group";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "file" | "storyline" | "story-map" | "tool-result" | "tool" | "tool-group";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -186,5 +186,28 @@ export function createToolSectionNodes(): WorkbenchResourceNode {
     title: "🔧 工具",
     capabilities: groupCaps,
     children,
+  };
+}
+
+/**
+ * 创建全景故事主支线（Story Map）只读合成资源节点。
+ */
+export function createStoryMapNode(bookId: string): WorkbenchResourceNode {
+  return {
+    id: `story-map:${bookId}`,
+    kind: "story-map",
+    title: "故事主支线",
+    capabilities: {
+      open: true,
+      readonly: true,
+      unsupported: false,
+      edit: false,
+      delete: false,
+      apply: false,
+    },
+    metadata: {
+      isStoryMap: true,
+      bookId,
+    },
   };
 }

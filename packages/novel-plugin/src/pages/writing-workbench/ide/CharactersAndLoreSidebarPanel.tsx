@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
+import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
+import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
@@ -48,29 +50,41 @@ export interface CharactersAndLoreSidebarPanelProps {
   nodes: readonly WorkbenchResourceNode[];
   facts?: readonly EntityFactLite[];
   selectedNodeId: string | null;
+  currentChapter?: number;
   onOpen: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
   onChanged?: () => void;
 }
 
 type MainTab = "characters" | "world";
+type WorldCategoryFilter = JingweiCategory | "all";
+
+const WORLD_CREATE_CATEGORY_META = CATEGORY_META.filter(
+  (meta) => workspaceForCategory(meta.id) === "settings" && meta.allowCanon && meta.id !== "characters",
+);
+
+function entryCategory(node: WorkbenchResourceNode): JingweiCategory {
+  return normalizeCategory(String(node.metadata?.category ?? "unclassified")).category;
+}
 
 export function CharactersAndLoreSidebarPanel({
   bookId,
   nodes,
   facts = [],
   selectedNodeId,
+  currentChapter,
   onOpen,
   onAction,
   onChanged,
 }: CharactersAndLoreSidebarPanelProps) {
   const [activeTab, setActiveTab] = useState<MainTab>("characters");
+  const [worldCategoryFilter, setWorldCategoryFilter] = useState<WorldCategoryFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [showImport, setShowImport] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [creatingChar, setCreatingChar] = useState(false);
   const [newCharName, setNewCharName] = useState("");
-  const [newCharCategory, setNewCharCategory] = useState("characters");
+  const [newCharCategory, setNewCharCategory] = useState<string>(WORLD_CREATE_CATEGORY_META[0]?.id ?? "world-model");
   const [creatingBusy, setCreatingBusy] = useState(false);
 
   // 递归提取全部实体叶子节点
@@ -93,32 +107,48 @@ export function CharactersAndLoreSidebarPanel({
     for (const fact of facts) {
       const subject = fact.subject.trim();
       if (!subject) continue;
+      // 时态有效性过滤（如果传入了当前章节）
+      if (currentChapter !== undefined && Number.isFinite(currentChapter)) {
+        // 如果 fact 携带了时态信息，则过滤不在当前章节区间的事实
+        // @ts-expect-error validFromChapter/validUntilChapter may exist on fact
+        const from = typeof fact.validFromChapter === "number" ? fact.validFromChapter : 0;
+        // @ts-expect-error validFromChapter/validUntilChapter may exist on fact
+        const until = typeof fact.validUntilChapter === "number" ? fact.validUntilChapter : null;
+        if (from > currentChapter || (until !== null && until <= currentChapter)) {
+          continue;
+        }
+      }
       const bucket = map.get(subject);
       if (bucket) bucket.push(fact);
       else map.set(subject, [fact]);
     }
     return map;
-  }, [facts]);
+  }, [facts, currentChapter]);
 
-  // 拆分为：角色类 vs 世界设定类
+  // 只把静态设定送进作品基础；动态推进条目归故事推进，不在这里混合展示。
   const { charactersList, worldList } = useMemo(() => {
     const chars: WorkbenchResourceNode[] = [];
     const world: WorkbenchResourceNode[] = [];
 
     for (const entry of allEntries) {
-      const cat = String(entry.metadata?.category ?? "").toLowerCase();
-      if (cat === "characters" || cat === "character" || cat === "factions" || cat === "faction" || cat === "roles") {
-        chars.push(entry);
-      } else {
-        world.push(entry);
-      }
+      const category = entryCategory(entry);
+      if (workspaceForCategory(category) !== "settings") continue;
+      if (category === "characters") chars.push(entry);
+      else world.push(entry);
     }
     return { charactersList: chars, worldList: world };
   }, [allEntries]);
 
-  // 搜索过滤
+  const worldCategoryOptions = useMemo(
+    () => CATEGORY_META.filter((meta) => worldList.some((entry) => entryCategory(entry) === meta.id)),
+    [worldList],
+  );
+
+  // 搜索 + 世界录分类过滤
   const filteredList = useMemo(() => {
-    const source = activeTab === "characters" ? charactersList : worldList;
+    const source = activeTab === "characters"
+      ? charactersList
+      : worldList.filter((entry) => worldCategoryFilter === "all" || entryCategory(entry) === worldCategoryFilter);
     if (!searchQuery.trim()) return source;
     const q = searchQuery.toLowerCase().trim();
     return source.filter((item) => {
@@ -127,7 +157,7 @@ export function CharactersAndLoreSidebarPanel({
       const summaryMatch = String(item.metadata?.summary ?? "").toLowerCase().includes(q);
       return titleMatch || contentMatch || summaryMatch;
     });
-  }, [activeTab, charactersList, worldList, searchQuery]);
+  }, [activeTab, charactersList, worldList, worldCategoryFilter, searchQuery]);
 
   // 新建角色/条目
   const handleCreateEntry = async () => {
@@ -232,11 +262,9 @@ export function CharactersAndLoreSidebarPanel({
                 value={newCharCategory}
                 onChange={(e) => setNewCharCategory(e.target.value)}
               >
-                <option value="world-model">世界观</option>
-                <option value="power-system">力量体系</option>
-                <option value="rules">法则规则</option>
-                <option value="locations">地理场景</option>
-                <option value="props">重要物品</option>
+                {WORLD_CREATE_CATEGORY_META.map((meta) => (
+                  <option key={meta.id} value={meta.id}>{meta.name}</option>
+                ))}
               </select>
             )}
             <Button size="xs" onClick={() => void handleCreateEntry()} disabled={!newCharName.trim() || creatingBusy}>
@@ -273,6 +301,35 @@ export function CharactersAndLoreSidebarPanel({
           <span>世界录 ({worldList.length})</span>
         </button>
       </div>
+
+      {activeTab === "world" && worldCategoryOptions.length > 0 && (
+        <div className="shrink-0 flex gap-1 overflow-x-auto border-b border-border/60 px-2 py-1.5" data-testid="world-category-filter">
+          <button
+            type="button"
+            onClick={() => setWorldCategoryFilter("all")}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+              worldCategoryFilter === "all" ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            全部 ({worldList.length})
+          </button>
+          {worldCategoryOptions.map((meta) => {
+            const count = worldList.filter((entry) => entryCategory(entry) === meta.id).length;
+            return (
+              <button
+                key={meta.id}
+                type="button"
+                onClick={() => setWorldCategoryFilter(meta.id)}
+                className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] transition-colors ${
+                  worldCategoryFilter === meta.id ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {meta.name} ({count})
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* 搜索框 */}
       <div className="shrink-0 p-2 border-b border-border/60">
@@ -374,12 +431,12 @@ function CharacterOrLoreCard({
   onClick: () => void;
 }) {
   const meta = node.metadata ?? {};
-  const category = String(meta.category ?? "");
-  const layer = String(meta.layer ?? "");
+  const category = entryCategory(node);
+  const categoryMeta = CATEGORY_META.find((item) => item.id === category);
   const aliases = Array.isArray(meta.aliases) ? meta.aliases : [];
   const preview = String(node.content?.slice(0, 120) || meta.summary || "暂无描述");
 
-  const isCharacter = activeTab === "characters" || category === "characters";
+  const isCharacter = activeTab === "characters";
 
   return (
     <div
@@ -409,14 +466,9 @@ function CharacterOrLoreCard({
               {node.title}
             </span>
             <div className="flex items-center gap-1 shrink-0">
-              {category && category !== "characters" && (
+              {!isCharacter && categoryMeta && (
                 <Badge variant="secondary" className="text-[9px] px-1 h-3.5">
-                  {category}
-                </Badge>
-              )}
-              {layer && (
-                <Badge variant="outline" className="text-[8px] px-1 h-3.5 text-muted-foreground">
-                  {layer}
+                  {categoryMeta.name}
                 </Badge>
               )}
             </div>
