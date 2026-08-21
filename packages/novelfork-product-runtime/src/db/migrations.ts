@@ -50,6 +50,19 @@ function migrationHash(sql: string): string {
 	return createHash("sha256").update(normalizeMigrationSql(sql)).digest("hex");
 }
 
+function rawMigrationHash(sql: string): string {
+	return createHash("sha256").update(sql).digest("hex");
+}
+
+function equivalentMigrationHashes(sql: string): ReadonlySet<string> {
+	const normalized = normalizeMigrationSql(sql);
+	return new Set([
+		migrationHash(normalized),
+		rawMigrationHash(sql),
+		rawMigrationHash(normalized.replace(/\n/g, "\r\n")),
+	]);
+}
+
 function isAlreadyAppliedStatementError(error: unknown): boolean {
 	const message = String(error).toLowerCase();
 	return message.includes("already exists") || message.includes("duplicate column name");
@@ -100,9 +113,10 @@ export function runNovelForkProductMigrations(
 
 	for (const file of files) {
 		const hash = migrationHash(file.content);
+		const equivalentHashes = equivalentMigrationHashes(file.content);
 		const existingHash = appliedByName.get(file.name);
 		if (existingHash) {
-			if (existingHash !== hash) {
+			if (!equivalentHashes.has(existingHash)) {
 				throw new Error(`NovelFork product migration ${file.name} changed after it was applied.`);
 			}
 			continue;

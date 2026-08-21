@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { createHash } from "node:crypto";
 import { Database } from "bun:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -52,6 +53,28 @@ describe("NovelFork product migrations", () => {
 				)
 				.get(),
 		).toEqual({ count: 1 });
+		expect(runNovelForkProductMigrations(storage).applied).toEqual([]);
+	});
+
+	test("accepts legacy raw CRLF hashes recorded by older Windows builds", () => {
+		const storage = createStorage();
+		const sql = readFileSync(join(import.meta.dir, "migrations", "0000_high_sage.sql"), "utf8");
+		const legacyCrLfSql = sql.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n");
+		const legacyHash = createHash("sha256").update(legacyCrLfSql).digest("hex");
+		storage.sqlite.exec(`
+			CREATE TABLE novelfork_product_migrations (
+				id INTEGER PRIMARY KEY AUTOINCREMENT,
+				hash TEXT NOT NULL UNIQUE,
+				name TEXT NOT NULL UNIQUE,
+				created_at INTEGER NOT NULL
+			);
+		`);
+		storage.sqlite
+			.prepare(
+				`INSERT INTO novelfork_product_migrations (hash, name, created_at) VALUES (?, ?, ?)`,
+			)
+			.run(legacyHash, "0000_high_sage.sql", Date.now());
+
 		expect(runNovelForkProductMigrations(storage).applied).toEqual([]);
 	});
 

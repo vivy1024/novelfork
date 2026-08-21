@@ -42,13 +42,12 @@ describe("改动范围分层验证选择器", () => {
 			"scripts/run-workspace-tests.ts",
 			"packages/narrafork-runtime-private/server/index.ts",
 			"main.ts",
-		], true)).toEqual([
+		])).toEqual([
 			"工作区依赖或包清单变更",
 			"TypeScript 配置变更",
 			"测试、Runtime 或编译基础设施变更",
-			"Runtime 或 overlay 变更",
+			"派生 Runtime 变更",
 			"产品启动入口变更",
-			"overlay 子仓库存在未提交改动",
 		]);
 	});
 });

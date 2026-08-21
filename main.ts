@@ -12,7 +12,7 @@ const runtimeDir = process.env.NOVELFORK_RUNTIME_DIR ?? process.env.NARRAFORK_HO
 const runtimeMigrationsDir = resolve(
   import.meta.dir,
   "packages",
-  "narrafork-runtime-overlay",
+  "narrafork-runtime-private",
   "runtime-migrations",
 );
 

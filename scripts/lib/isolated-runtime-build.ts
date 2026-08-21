@@ -15,11 +15,6 @@ import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-import {
-	readRuntimeOverlayManifest,
-	replayRuntimeOverlay,
-} from "../runtime-overlay.ts";
-
 export const REQUIRED_RUNTIME_BUN_VERSION = "1.3.13";
 export const MINIMUM_ISOLATED_RUNTIME_FREE_BYTES = 10 * 1024 ** 3;
 
@@ -290,110 +285,6 @@ function readRuntimeUpstreamIdentity(runtimeRoot: string): RuntimeUpstreamIdenti
 	return { repository: lock.repository, commit: lock.commit, tree: lock.tree };
 }
 
-/**
- * A checked-in Runtime source may already contain earlier overlay operations,
- * while a newly-added generic host operation is still pending. Reconcile the
- * disposable copy only: verified applied operations stay untouched; operations
- * still at their exact base revision are replayed through the normal fail-closed
- * overlay implementation.
- */
-async function reconcileSandboxRuntimeOverlay(
-	workspaceRoot: string,
-	runtimeRoot: string,
-): Promise<void> {
-	const overlayRoot = join(workspaceRoot, "packages", "narrafork-runtime-overlay");
-	const manifestPath = join(overlayRoot, "runtime-overlay.manifest.json");
-	if (!existsSync(overlayRoot) || !statSync(overlayRoot).isDirectory()) {
-		throw new Error(`Runtime overlay directory is missing: ${overlayRoot}`);
-	}
-	const originalManifest = readFileSync(manifestPath, "utf8");
-	const manifest = await readRuntimeOverlayManifest(overlayRoot);
-	const upstream = readRuntimeUpstreamIdentity(runtimeRoot);
-	if (
-		manifest.upstream.repository !== upstream.repository ||
-		manifest.upstream.commit !== upstream.commit ||
-		manifest.upstream.tree !== upstream.tree
-	) {
-		throw new Error(
-			`Runtime overlay identity does not match the isolated Runtime source: ${upstream.repository}@${upstream.commit.slice(0, 12)}`,
-		);
-	}
-
-	// A target may have an exact dependency-ordered patch chain. Inspect the
-	// materialized file once per target and treat a later operation's result as an
-	// already-applied prefix, rather than rejecting the earlier operation because the
-	// file has advanced beyond its own result hash.
-	const patchOperationsByTarget = new Map<
-		string,
-		Array<Extract<(typeof manifest.operations)[number], { type: "patch" }>>
-	>();
-	for (const operation of manifest.operations) {
-		if (operation.type !== "patch") continue;
-		const operations = patchOperationsByTarget.get(operation.target) ?? [];
-		operations.push(operation);
-		patchOperationsByTarget.set(operation.target, operations);
-	}
-
-	const patchPendingFromByTarget = new Map<string, number>();
-	for (const [targetName, operations] of patchOperationsByTarget) {
-		const target = join(runtimeRoot, targetName);
-		if (!existsSync(target) || !statSync(target).isFile()) {
-			throw new Error(`Isolated Runtime overlay patch target is missing: ${targetName}`);
-		}
-		const actualHash = sha256File(target);
-		let pendingFrom: number | undefined;
-		for (const [index, operation] of operations.entries()) {
-			if (actualHash === operation.baseSha256) {
-				pendingFrom = pendingFrom === undefined ? index : Math.min(pendingFrom, index);
-			}
-			if (actualHash === operation.resultSha256) {
-				const nextIndex = index + 1;
-				pendingFrom = pendingFrom === undefined ? nextIndex : Math.max(pendingFrom, nextIndex);
-			}
-		}
-		if (pendingFrom === undefined) {
-			throw new Error(
-				`Isolated Runtime overlay patch target has unexpected content: ${targetName}`,
-			);
-		}
-		patchPendingFromByTarget.set(targetName, pendingFrom);
-	}
-
-	const pendingOperations = manifest.operations.filter((operation) => {
-		if (operation.type === "copy") return false;
-		const target = join(runtimeRoot, operation.target);
-		if (operation.type === "add") {
-			if (!existsSync(target)) return true;
-			if (sha256File(target) === operation.sha256) return false;
-			throw new Error(
-				`Isolated Runtime overlay add target has unexpected content: ${operation.target}`,
-			);
-		}
-
-		const operations = patchOperationsByTarget.get(operation.target) ?? [];
-		const pendingFrom = patchPendingFromByTarget.get(operation.target);
-		return operations.indexOf(operation) >= (pendingFrom ?? operations.length);
-	});
-	if (pendingOperations.length === 0) return;
-
-	try {
-		// Replay accepts a source archive. The sandbox instead contains a verified
-		// mix of pre-applied and pending operations, so temporarily expose only the
-		// pending subset to preserve the same exact-hash application guarantees.
-		writeFileSync(
-			manifestPath,
-			`${JSON.stringify({ ...manifest, operations: pendingOperations }, null, 2)}\n`,
-		);
-		await replayRuntimeOverlay({
-			overlayRoot,
-			stagingRoot: runtimeRoot,
-			upstream,
-		});
-	} finally {
-		writeFileSync(manifestPath, originalManifest);
-	}
-}
-
 type DrizzleMigrationJournal = {
 	readonly entries: ReadonlyArray<{ readonly tag?: unknown }>;
 };
@@ -407,12 +298,7 @@ type DrizzleMigrationJournal = {
  * partial migration never added.
  */
 export function seedSandboxRuntimeMigrationHistory(workspaceRoot: string, runtimeRoot: string): void {
-	const sourceRoot = join(
-		workspaceRoot,
-		"packages",
-		"narrafork-runtime-overlay",
-		"runtime-migrations",
-	);
+	const sourceRoot = join(runtimeRoot, "runtime-migrations");
 	const journalPath = join(sourceRoot, "meta", "_journal.json");
 	if (!existsSync(journalPath) || !statSync(journalPath).isFile()) {
 		throw new Error(`Verified Runtime migration journal is missing: ${journalPath}`);
@@ -845,10 +731,8 @@ export async function createIsolatedRuntimeBuild(
 	let disposed = false;
 	try {
 		const root = copyIsolatedProductWorkspace(sourceRoot, workspaceRoot);
-		// Overlay reconciliation compares package.json against exact overlay hashes,
-		// so it must run before any sandbox-only dependency injection rewrites that
-		// file. Injecting first makes the hash unrecognizable and fails the check.
-		await reconcileSandboxRuntimeOverlay(workspaceRoot, root);
+		// The derived Runtime already contains the merged upstream/product source tree;
+		// only sandbox dependency injection and immutable migration seeding remain.
 		ensureSandboxRuntimeDependencies(root);
 		seedSandboxRuntimeMigrationHistory(workspaceRoot, root);
 		const environment = createRuntimeBuildEnvironment(process.env, root);

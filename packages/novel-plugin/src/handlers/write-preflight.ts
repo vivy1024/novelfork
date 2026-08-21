@@ -488,7 +488,7 @@ export async function handleWritePreflight(input: WritePreflightInput): Promise<
       );
     }
   } else {
-    blockers.push(makeBlocker("missing-directive", "无用户本章指示，且经纬中无可用 currentFocus/大纲，无法确定写章方向。"));
+    blockers.push(makeBlocker("missing-directive", "无用户本章指示，且作品基础中无可用当前焦点/大纲，无法确定写章方向。"));
   }
 
   const memorySummaries = listRecentMemoryChapterSummaries(storage, bookId, 2);
