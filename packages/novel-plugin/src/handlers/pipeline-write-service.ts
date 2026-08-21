@@ -670,6 +670,8 @@ export async function executePipelineWrite(
           enabledChannels: memoryConfig?.retrieval.channels,
           waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
           semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+          // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
+          ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
         });
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
