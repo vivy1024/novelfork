@@ -96,6 +96,8 @@ session-error-root.png
 # Local Runtime diagnostics, clean upstream checkout, and browser-verification artifacts.
 /.novelfork-debug/
 /narrafork-private-main/
+/.runtime-backup-v0.5.24/
+/tmp-fork-upgrade/
 /tmp-*.png
 /tmp-gemini-stub.ts
 
@@ -113,3 +115,4 @@ dist-verify/
 dist-verify2/
 .build-tmp/
 dist-verify-nf/
+.tmp-fork-upgrade/
