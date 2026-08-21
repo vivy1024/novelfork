@@ -112,6 +112,8 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     enabledChannels: memoryConfig?.retrieval.channels,
     waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
     semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+    // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
+    ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
   });
 
   return {

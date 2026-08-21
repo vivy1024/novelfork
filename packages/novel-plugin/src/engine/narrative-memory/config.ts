@@ -24,14 +24,13 @@ const DEFAULT_LEDGER_CONFIG = {
 };
 
 const DEFAULT_RETRIEVAL_CHANNELS_CONFIG = {
-  // Hard constraints remain permanently enabled: they are a safety boundary,
-  // not an optional convenience channel.
   state: true,
   timeline: true,
   hooks: true,
   facts: true,
   style: true,
   semantic: true,
+  "character-kernel": true,
 };
 
 const DEFAULT_RETRIEVAL_CONFIG = {
@@ -63,6 +62,7 @@ const RetrievalChannelsConfigSchema = z.object({
   facts: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.facts),
   style: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.style),
   semantic: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.semantic),
+  "character-kernel": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["character-kernel"]),
 }).default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG);
 
 const RetrievalConfigSchema = z.object({

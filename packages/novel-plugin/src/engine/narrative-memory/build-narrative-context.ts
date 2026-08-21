@@ -12,6 +12,7 @@ import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channe
 import { createStateChannel } from "./channels/state-channel.js";
 import { createStyleChannel, type StyleSnippet } from "./channels/style-channel.js";
 import { createTimelineChannel } from "./channels/timeline-channel.js";
+import { buildKernelCards, type KernelChannelInput } from "./channels/kernel-channel.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
 import { buildStorylineStateCard } from "./storyline-state-card.js";
 import { mergeNarrativeContextCards } from "./merge.js";
@@ -19,7 +20,9 @@ import {
   BuildNarrativeContextInputSchema,
   NarrativeContextPackageSchema,
   WaveMemoryConfigSchema,
+  DEFAULT_KERNEL_FIELDS,
   type BuildNarrativeContextInput,
+  type CharacterKernelConfig,
   type NarrativeContextCard,
   type NarrativeContextChannel,
   type NarrativeContextPackage,
@@ -47,6 +50,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   waveConfig?: Partial<WaveMemoryConfig>;
   /** Book-level switches for optional recall channels. `hard` is never switchable. */
   enabledChannels?: Partial<Record<NarrativeContextChannel, boolean>>;
+  /** 角色内核配置；enabled=false 或缺省时 character-kernel 通道跳过。 */
+  characterKernelConfig?: CharacterKernelConfig;
 }>;
 
 function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult {
@@ -241,6 +246,22 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         complianceRules: input.complianceRules,
       }, timeoutMs)
       : disabledChannelResult("style"),
+    // 角色内核通道：config.characterKernel.enabled 且本书 channels["character-kernel"] 未关闭时注入。
+    // 字段集合由 config.characterKernel.fields 决定（空 = 内置默认），预算按 injectBudgetRatio 参与统一分配。
+    input.characterKernelConfig?.enabled && isOptionalChannelEnabled(input, "character-kernel")
+      ? runChannel({
+        name: "character-kernel",
+        run: (kernelInput: KernelChannelInput) => ({
+          cards: buildKernelCards(kernelInput),
+        }),
+      }, {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        characterIds: entities,
+        fields: input.characterKernelConfig.fields.length > 0 ? input.characterKernelConfig.fields : DEFAULT_KERNEL_FIELDS,
+        stateSummaryMaxChars: input.characterKernelConfig.stateSummaryMaxChars,
+      }, timeoutMs)
+      : disabledChannelResult("character-kernel"),
   ]);
 
   const merged = mergeNarrativeContextCards(channelResults.flatMap((result) => result.cards), {
