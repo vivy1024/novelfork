@@ -32,5 +32,5 @@ export async function fetchCharacterKernels(
   options: { readonly fetchImpl?: typeof fetch } = {},
 ): Promise<CharacterKernelSummary[]> {
   const payload = await fetchJson<KernelsResponse>(kernelBase(bookId), {}, { fetchImpl: options.fetchImpl });
-  return payload.kernels ?? [];
+  return [...(payload.kernels ?? [])];
 }

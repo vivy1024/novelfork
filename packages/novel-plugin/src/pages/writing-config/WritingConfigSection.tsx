@@ -6,6 +6,8 @@ import { AlertCircle, BrainCircuit, Loader2, Sparkles, Wrench } from "lucide-rea
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { WritingSkillsPanel } from "../writing-workbench/WritingSkillsPanel";
+import { CharacterKernelFieldsEditor, effectiveKernelFields } from "./CharacterKernelFieldsEditor";
+import type { KernelFieldSpec } from "../../engine/narrative-memory/types";
 
 type ConfigTab = "skills" | "memory" | "tools";
 
@@ -77,6 +79,13 @@ type NarrativeMemorySettings = {
     waveEnabled: boolean;
     semanticEnabled: boolean;
   };
+  characterKernel: {
+    enabled: boolean;
+    injectBudgetRatio: number;
+    stateSummaryMaxChars: number;
+  };
+  /** 仅前端草稿态：保存时并入 PUT body 的 characterKernel.fields，后端 zod 负责最终校验。 */
+  characterKernelFields?: KernelFieldSpec[];
 };
 
 function NarrativeMemoryToggle({ label, description, checked, onCheckedChange, disabled }: {
@@ -97,6 +106,16 @@ function NarrativeMemoryToggle({ label, description, checked, onCheckedChange, d
   );
 }
 
+/** 传给 effectiveKernelFields 的完整配置视图；前端 settings 类型只保留三个标量，其余以默认值补齐。 */
+const DEFAULT_KERNEL_CONFIG_VIEW = {
+  fields: [] as never[],
+  enabled: false,
+  promptTemplate: null,
+  injectBudgetRatio: 0.1,
+  stateSummaryMaxChars: 200,
+  triggerEventTypes: [] as string[],
+};
+
 /** Book-scoped narrative memory settings, reusable from both configuration surfaces. */
 export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
   const [config, setConfig] = useState<NarrativeMemorySettings | null>(null);
@@ -104,6 +123,18 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // 字段草稿：config.fields 为空时展示引擎内置默认集（首次编辑即固化为显式配置）。
+  // 必须与上面的 hooks 同层无条件调用——本组件在 hooks 之后有早退 return，
+  // 若把 useState/useEffect 放到 return 之后，config 从 null 变为加载完成时会
+  // 触发 Rules of Hooks 错误并卸载整棵组件树。
+  const [kernelFieldsDraft, setKernelFieldsDraft] = useState<readonly KernelFieldSpec[]>(() =>
+    effectiveKernelFields(DEFAULT_KERNEL_CONFIG_VIEW),
+  );
+  useEffect(() => {
+    if (!config) return;
+    const view = { ...DEFAULT_KERNEL_CONFIG_VIEW, ...(config.characterKernel ?? {}) };
+    setKernelFieldsDraft(effectiveKernelFields(view));
+  }, [config]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -133,12 +164,18 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     setSaving(true);
     setError(null);
     try {
+      // 字段草稿并入 characterKernel.fields 一起提交；后端 deepMerge + zod 负责合并与校验。
+      const { characterKernelFields, ...rest } = config;
+      const body = {
+        ...rest,
+        ...(characterKernelFields ? { characterKernel: { ...rest.characterKernel, fields: characterKernelFields } } : {}),
+      };
       const payload = await fetchJson<{ config?: NarrativeMemorySettings; error?: string }>(
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/config`,
         {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config }),
+          body: JSON.stringify({ config: body }),
         },
       );
       if (!payload.config) throw new Error(payload.error ?? "无法保存叙事记忆配置");
@@ -169,6 +206,14 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
     ...current,
     retrieval: { ...current.retrieval, channels: { ...current.retrieval.channels, [channel]: checked } },
   }));
+  const updateKernel = (patch: Partial<NarrativeMemorySettings["characterKernel"]>) => update((current) => ({
+    ...current,
+    characterKernel: { ...current.characterKernel, ...patch },
+  }));
+  const updateKernelFields = (fields: NarrativeMemorySettings["characterKernelFields"]) => update((current) => ({
+    ...current,
+    characterKernelFields: fields,
+  }));
 
   return (
     <div data-slot="narrative-memory-settings" className="flex flex-col gap-4">
@@ -198,6 +243,27 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
       <div className="space-y-2">
         <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">当前故事状态</p>
         <NarrativeMemoryToggle label="关闭被新事实取代的旧记录" description="同一实体、主题的新状态落库时，将旧事实标记为在当前章失效，保证账本收敛。" checked={config.ledger.closeSupersededFacts} onCheckedChange={(checked) => updateLedger({ closeSupersededFacts: checked })} />
+      </div>
+
+      <div className="space-y-2">
+        <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">角色内核（Character Kernel）</p>
+        <NarrativeMemoryToggle
+          label="启用角色内核"
+          description="章节结算时由 LLM 为出场角色重算动机、心境等长期状态；下一章写作前注入对应卡片。默认关闭，不影响既有书籍。"
+          checked={config.characterKernel.enabled}
+          onCheckedChange={(checked) => updateKernel({ enabled: checked })}
+        />
+        {config.characterKernel.enabled && (
+          <div data-slot="kernel-fields-section" className="rounded-md border border-border p-2.5">
+            <CharacterKernelFieldsEditor
+              fields={kernelFieldsDraft}
+              onChange={(fields) => {
+                setKernelFieldsDraft(fields);
+                updateKernelFields(fields as unknown as NarrativeMemorySettings["characterKernelFields"]);
+              }}
+            />
+          </div>
+        )}
       </div>
 
       <div className="space-y-2">
