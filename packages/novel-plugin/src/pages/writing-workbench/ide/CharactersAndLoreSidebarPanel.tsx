@@ -7,7 +7,7 @@
  * 3. 顶部支持实时搜索、分类过滤与「新建角色 / 导入酒馆预设与角色卡」。
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BookOpen,
   Eye,
@@ -30,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchJson } from "@/hooks/use-api";
+import { fetchCharacterKernels, type CharacterKernelSummary } from "../character-kernel-client";
 import { CATEGORY_META, normalizeCategory, type JingweiCategory } from "../../../engine/jingwei/unified-categories";
 import { workspaceForCategory } from "../lore-workspace-split";
 import { type ResourceTreeAction } from "../WorkbenchResourceTree";
@@ -86,6 +87,29 @@ export function CharactersAndLoreSidebarPanel({
   const [newCharName, setNewCharName] = useState("");
   const [newCharCategory, setNewCharCategory] = useState<string>(WORLD_CREATE_CATEGORY_META[0]?.id ?? "world-model");
   const [creatingBusy, setCreatingBusy] = useState(false);
+
+  // 角色当前内核（每个角色的当前动机/情绪一行摘要），来自结算后写入的 character_kernel。
+  // 这个角色册面板就是作者查「这个角色现在是谁」的地方——顺带把内核贴上来，不必再翻叙事记忆面板。
+  const [kernelsByCharacterId, setKernelsByCharacterId] = useState<ReadonlyMap<string, CharacterKernelSummary>>(new Map());
+  useEffect(() => {
+    if (!bookId) return;
+    let cancelled = false;
+    void fetchCharacterKernels(bookId)
+      .then((list) => {
+        if (cancelled) return;
+        const map = new Map<string, CharacterKernelSummary>();
+        for (const item of list) {
+          if (item.entryStatus === "active") map.set(item.characterId, item);
+        }
+        setKernelsByCharacterId(map);
+      })
+      .catch(() => setKernelsByCharacterId(new Map()));
+    return () => { cancelled = true; };
+  }, [bookId]);
+
+  const showKernel = useCallback((characterId: string): CharacterKernelSummary | undefined => {
+    return kernelsByCharacterId.get(characterId);
+  }, [kernelsByCharacterId]);
 
   // 递归提取全部实体叶子节点
   const allEntries = useMemo(() => {
@@ -370,6 +394,7 @@ export function CharactersAndLoreSidebarPanel({
               activeTab={activeTab}
               facts={factsForNode(entry, factsBySubject)}
               isSelected={selectedNodeId === entry.id}
+              kernel={activeTab === "characters" ? showKernel(entry.title) : undefined}
               onClick={() => onOpen(entry)}
             />
           ))
@@ -422,12 +447,15 @@ function CharacterOrLoreCard({
   activeTab,
   facts,
   isSelected,
+  kernel,
   onClick,
 }: {
   node: WorkbenchResourceNode;
   activeTab: MainTab;
   facts: readonly EntityFactLite[];
   isSelected: boolean;
+  /** 结算沉淀的"当前是谁"摘要；仅 characters tab 有值。 */
+  kernel?: CharacterKernelSummary;
   onClick: () => void;
 }) {
   const meta = node.metadata ?? {};
@@ -485,6 +513,24 @@ function CharacterOrLoreCard({
               {aliases.length > 2 && (
                 <span className="text-[9px] text-muted-foreground">+{aliases.length - 2}</span>
               )}
+            </div>
+          )}
+
+          {isCharacter && kernel && (
+            <div className="rounded-md bg-primary/[0.04] border border-primary/20 px-1.5 py-1 space-y-0.5" data-testid="character-kernel-summary">
+              {(typeof kernel.fields["motivation"] === "string" && kernel.fields["motivation"]) && (
+                <p className="text-[10px] text-foreground/90 leading-snug">
+                  <span className="text-primary font-medium">动机</span> {kernel.fields["motivation"]}
+                </p>
+              )}
+              {(typeof kernel.fields["emotionalCenter"] === "string" && kernel.fields["emotionalCenter"]) && (
+                <p className="text-[10px] text-muted-foreground leading-snug">
+                  <span className="text-primary/70 font-medium">心境</span> {kernel.fields["emotionalCenter"]}
+                </p>
+              )}
+              <p className="text-[9px] text-muted-foreground">
+                内核更新于第 {kernel.updatedChapter} 章
+              </p>
             </div>
           )}
 

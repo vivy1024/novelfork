@@ -21,6 +21,7 @@ import {
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
+import { listCharacterKernels, getCharacterKernel } from "../engine/narrative-memory/storage.js";
 import {
   correctNarrativeFact,
   createManualNarrativeFact,
@@ -471,6 +472,31 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       ...(entity ? { entity } : {}),
     });
     return c.json({ groups, total: groups.reduce((sum, group) => sum + group.facts.length, 0) });
+  });
+
+  // 角色内核：全部活跃内核的摘要，供角色册/详情页把"这个角色当前是谁"挂到节点上。
+  app.get(`${base}/kernels`, (c) => {
+    const bookId = c.req.param("bookId");
+    const items = listCharacterKernels(storage(), { bookId });
+    const kernels = items.map((kernel) => ({
+      characterId: kernel.characterId,
+      entryStatus: kernel.entryStatus,
+      fields: kernel.fields,
+      evidence: kernel.evidence,
+      updatedChapter: kernel.updatedChapter,
+      updatedAt: kernel.updatedAt,
+      origin: kernel.origin,
+    }));
+    return c.json({ kernels, total: kernels.length });
+  });
+
+  // 单个角色的完整内核读取。
+  app.get(`${base}/kernels/:characterId`, (c) => {
+    const bookId = c.req.param("bookId");
+    const characterId = c.req.param("characterId");
+    const kernel = getCharacterKernel(storage(), bookId, decodeURIComponent(characterId));
+    if (!kernel) return c.json({ error: "not-found", summary: "该角色没有内核记录。" }, 404);
+    return c.json({ kernel });
   });
 
   // 某 slot 的完整变迁史（含已关闭值），按生效章节升序。
