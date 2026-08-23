@@ -7,6 +7,7 @@ import {
 	StateManager,
 } from "@vivy1024/novelfork-core";
 import {
+	createCockpitRouter,
 	createComplianceRouter,
 	createFilterRouter,
 	createJingweiRouter,
@@ -98,6 +99,8 @@ novelDomainRoutes.route(
 );
 novelDomainRoutes.route("", asRuntimeRouter(createOverviewRouter()));
 novelDomainRoutes.route("", asRuntimeRouter(createJingweiRouter()));
+// 驾驶舱「近期章节结果 + 待回收伏笔」轻声提示面板。复用 CockpitService 的只读查询。
+novelDomainRoutes.route("", asRuntimeRouter(createCockpitRouter(productRouterContext)));
 // 叙事线快照 + proposal 审批。propose 只算预览，apply 才写入并留审批台账。
 novelDomainRoutes.route(
 	"",

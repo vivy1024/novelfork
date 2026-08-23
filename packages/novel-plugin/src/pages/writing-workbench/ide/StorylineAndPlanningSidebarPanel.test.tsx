@@ -54,7 +54,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
 
     expect(screen.getByRole("button", { name: "章节与大纲" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "章后事实" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "全景图谱" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "故事画布" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "伏笔账本" })).toBeTruthy();
     expect(screen.getByText("当前语境")).toBeTruthy();
     expect(screen.getByText("第 1 章")).toBeTruthy();
@@ -66,19 +66,47 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
     expect(onOpen).toHaveBeenCalledWith(outline);
   });
 
-  it("切换到全景图谱 Tab 展示具体图谱入口，点击打开对应 preferredView", () => {
+  it("切换到故事画布 Tab 展示三个大屏画布主入口，点击打开统一画布 Tab 并携带 preferredView", () => {
+    const { onOpen } = renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
+
+    // 三个大屏画布主入口
+    expect(screen.getByTestId("storyline-canvas-entries")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: /大纲总览画布/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        id: "story-progression:book-1",
+        kind: "story-progression",
+        title: "故事画布",
+        metadata: expect.objectContaining({ isStoryProgression: true, bookId: "book-1", preferredView: "outline" }),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /故事地图画布/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ preferredView: "map" }),
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /发展历程画布/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ preferredView: "evolution" }),
+      }),
+    );
+  });
+
+  it("经典独立图谱视图入口保留在高级折叠区，点击打开对应 preferredView", () => {
     const { onOpen, storyMapNode } = renderPanel();
 
-    // 点击全景图谱 Tab
-    fireEvent.click(screen.getByRole("button", { name: "全景图谱" }));
+    fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
 
-    // 子入口展现
+    // 经典入口仍在折叠区内
     expect(screen.getByRole("button", { name: "关系网络" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "时间线" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "矛盾冲突" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "故事演进" })).toBeTruthy();
 
-    // 点击关系网络
     fireEvent.click(screen.getByRole("button", { name: "关系网络" }));
     expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -87,8 +115,8 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
       })
     );
 
-    // 点击故事地图
-    fireEvent.click(screen.getByRole("button", { name: "打开全屏故事地图 (DAG)" }));
+    // 独立全屏故事地图 (DAG) 保留
+    fireEvent.click(screen.getByRole("button", { name: "独立全屏故事地图 (DAG)" }));
     expect(onOpen).toHaveBeenCalledWith(storyMapNode);
   });
 

@@ -13,9 +13,9 @@
     "test": "bun test src"
   },
   "dependencies": {
-    "@vivy1024/narrafork-runtime-bridge": "0.0.3",
-    "@vivy1024/novelfork-core": "0.0.3",
-    "@vivy1024/novelfork-novel-plugin": "0.0.3",
+    "@vivy1024/narrafork-runtime-bridge": "workspace:*",
+    "@vivy1024/novelfork-core": "workspace:*",
+    "@vivy1024/novelfork-novel-plugin": "workspace:*",
     "hono": "^4.12.14",
     "zod": "4.3.6"
   },

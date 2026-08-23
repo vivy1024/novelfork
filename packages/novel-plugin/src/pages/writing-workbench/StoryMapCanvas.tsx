@@ -384,6 +384,10 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote 
           fitView
           minZoom={0.2}
           maxZoom={1.8}
+          /* 只读叙事画布：节点可拖拽/缩放/点击，但停用连线手柄等未使用的写操作 */
+          nodesConnectable={false}
+          edgesFocusable={false}
+          zoomOnDoubleClick={false}
         >
           <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
           <Controls />

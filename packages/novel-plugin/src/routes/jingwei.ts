@@ -110,13 +110,19 @@ function parseObjectJson(value: string | null | undefined): Record<string, unkno
   }
 }
 
-function normalizeEntryFields(body: Record<string, unknown>): Record<string, unknown> | undefined {
-  if (Object.prototype.hasOwnProperty.call(body, "fields")) return objectRecord(body.fields);
+/**
+ * 规范化请求体中的条目 fields。
+ * merge=true 表示调用方只想改部分键（fieldsPatch / 紧凑的 customFields 局部更新），
+ * 落库时必须就地合并现值；merge=false 表示调用方给的是完整字段集，整体替换。
+ */
+function normalizeEntryFields(body: Record<string, unknown>): { value: Record<string, unknown>; merge: boolean } | undefined {
+  if (Object.prototype.hasOwnProperty.call(body, "fields")) return { value: objectRecord(body.fields), merge: false };
   if (Object.prototype.hasOwnProperty.call(body, "fieldsJson")) {
-    if (typeof body.fieldsJson === "string") return parseObjectJson(body.fieldsJson);
-    return objectRecord(body.fieldsJson);
+    if (typeof body.fieldsJson === "string") return { value: parseObjectJson(body.fieldsJson), merge: false };
+    return { value: objectRecord(body.fieldsJson), merge: false };
   }
-  if (Object.prototype.hasOwnProperty.call(body, "customFields")) return objectRecord(body.customFields);
+  if (Object.prototype.hasOwnProperty.call(body, "fieldsPatch")) return { value: objectRecord(body.fieldsPatch), merge: true };
+  if (Object.prototype.hasOwnProperty.call(body, "customFields")) return { value: objectRecord(body.customFields), merge: true };
   return undefined;
 }
 
@@ -357,7 +363,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     }
     if (!section) throw new ApiError(400, "JINGWEI_SECTION_ID_REQUIRED", "Jingwei sectionId or category is required.");
 
-    const fields = normalizeEntryFields(body) ?? {};
+    const fields = normalizeEntryFields(body)?.value ?? {};
     const category = requestedCategory
       ?? (typeof fields.category === "string" && fields.category.trim() ? fields.category.trim() : undefined)
       ?? section.key;
@@ -401,7 +407,8 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     const bookId = c.req.param("bookId");
     await ensureBook(storage, bookId);
     const body = await readJson(c);
-    const fields = normalizeEntryFields(body);
+    const normalizedFields = normalizeEntryFields(body);
+    const fields = normalizedFields?.value;
     const legacyCategory = fields && typeof fields.category === "string" ? fields.category.trim() : undefined;
     const legacyLayer = fields ? normalizeEntryLayer(fields.layer) : undefined;
     const legacyStatus = fields ? normalizeEntryStatus(fields.status) : undefined;
@@ -414,7 +421,11 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       ...(typeof body.contentMd === "string" ? { contentMd: body.contentMd } : {}),
       ...(typeof body.summaryMd === "string" || body.summaryMd === null ? { summaryMd: optionalNullableText(body.summaryMd) } : {}),
       ...(typeof body.category === "string" ? { category: body.category.trim() } : legacyCategory ? { category: legacyCategory } : {}),
-      ...(fields ? { fields, customFields: fields } : {}),
+      ...(normalizedFields
+        ? (normalizedFields.merge
+          ? { fieldsPatch: normalizedFields.value }
+          : { fields: normalizedFields.value, customFields: normalizedFields.value })
+        : {}),
       ...(body.parentId === null || typeof body.parentId === "string" ? { parentId: optionalNullableText(body.parentId) } : {}),
       ...(typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {}),
       ...(normalizeEntryLifecycle(body.lifecycle) ? { lifecycle: normalizeEntryLifecycle(body.lifecycle)! } : {}),

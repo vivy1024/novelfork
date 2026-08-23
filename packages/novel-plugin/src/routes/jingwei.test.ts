@@ -207,4 +207,56 @@ describe("Jingwei mutation routes", () => {
       version: 3,
     });
   });
+
+  it("PUT fieldsPatch 只增量合并 status，保留 name/description/章节字段（伏笔拖拽场景）", async () => {
+    const created = await postEntry();
+    // 模拟有完整伏笔字段的条目
+    await request(`/entries/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        fields: {
+          name: "血仇伏笔",
+          description: "墨大夫夺舍之恨",
+          plantedChapter: 3,
+          targetChapter: 40,
+          status: "已埋设",
+        },
+      }),
+    });
+
+    const dragResponse = await request(`/entries/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fieldsPatch: { status: "已回收" } }),
+    });
+    expect(dragResponse.status).toBe(200);
+    // PUT 响应即最终落库数据（条目没有单独的 GET 详情接口）
+    const detail = await dragResponse.json() as {
+      entry: { fields: Record<string, unknown>; customFields: Record<string, unknown> };
+    };
+    expect(detail.entry.fields).toEqual({
+      name: "血仇伏笔",
+      description: "墨大夫夺舍之恨",
+      plantedChapter: 3,
+      targetChapter: 40,
+      status: "已回收",
+    });
+    expect(detail.entry.customFields).toEqual(detail.entry.fields);
+  });
+
+  it("PUT 仅传 customFields 局部对象时同样合并不替换（旧客户端形状兜底）", async () => {
+    const created = await postEntry();
+
+    const response = await request(`/entries/${created.id}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ customFields: { status: "已回收" } }),
+    });
+    expect(response.status).toBe(200);
+    const detail = await response.json() as {
+      entry: { fields: Record<string, unknown> };
+    };
+    expect(detail.entry.fields).toEqual({ phase: "canonical", status: "已回收" });
+  });
 });
