@@ -1,15 +1,18 @@
 /**
  * 故事脉络（Storyline）侧栏面板。
  *
- * 1. 提供关系网络、时间线、矛盾地图三个全景图谱入口，点击后在编辑区打开图谱 Tab；
- * 2. 复用 NarrativeMemoryPanel，展示章后事实、待审队列与事实纠正能力。
+ * 1. 「故事画布」提供大纲总览 / 故事地图 / 发展历程三个大屏画布入口，
+ *    点击后在编辑区打开统一的 StoryProgressionCanvas Tab（同一本书共用一个 Tab，内部切换视图）；
+ * 2. 复用 NarrativeMemoryPanel，展示章后事实、待审队列与事实纠正能力；
+ * 3. 经典独立图谱入口（关系网络/时间线/矛盾冲突/故事演进/DAG 地图）保留为高级快捷方式。
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bookmark, BookOpen, ChevronDown, ChevronRight, Clock, FilePlus2, FileText, GitBranch, GitFork, ListTree, Network, Sparkles, Swords } from "lucide-react";
+import { Bookmark, BookOpen, ChevronDown, ChevronRight, Clock, FilePlus2, FileText, GitBranch, GitFork, ListTree, Map as MapIcon, Network, ScrollText, Sparkles, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
+import { createStoryProgressionNode } from "../useWorkbenchResources";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
@@ -135,6 +138,14 @@ export function StorylineAndPlanningSidebarPanel({
     [onOpen]
   );
 
+  /** 跳转到统一的大屏「故事画布」：同一本书共用一个 Tab，画布内部切换 outline/map/evolution 视图。 */
+  const openProgressionCanvas = useCallback(
+    (view: "outline" | "map" | "evolution") => {
+      onOpen(createStoryProgressionNode(bookId, view));
+    },
+    [bookId, onOpen]
+  );
+
   const handleSubTabChange = (tab: StorylineSubTab) => {
     setActiveSubTab(tab);
     if (tab === "foreshadowing" && foreshadowingNode) {
@@ -194,8 +205,8 @@ export function StorylineAndPlanningSidebarPanel({
             )}
             onClick={() => handleSubTabChange("graph")}
           >
-            <Network className="size-3.5 text-primary" />
-            <span className="truncate">全景图谱</span>
+            <MapIcon className="size-3.5 text-primary" />
+            <span className="truncate">故事画布</span>
           </Button>
 
           <Button
@@ -212,26 +223,46 @@ export function StorylineAndPlanningSidebarPanel({
           </Button>
         </div>
 
-        {/* 当处于图谱 Tab 时，展示具体的图谱快捷视图切换 */}
+        {/* 当处于故事画布 Tab 时：三个大屏画布主入口 + 经典独立视图快捷方式 */}
         {activeSubTab === "graph" && (
-          <div className="grid grid-cols-2 gap-1 pt-1 border-t border-border/50">
-            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("relationship", "关系网络")}>
-              <Network className="size-3 text-primary" />关系网络
+          <div className="space-y-1.5 pt-1 border-t border-border/50" data-testid="storyline-canvas-entries">
+            <Button size="xs" variant="outline" className="h-7 w-full justify-start gap-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400" onClick={() => openProgressionCanvas("outline")}>
+              <ListTree className="size-3 text-sky-500" />
+              大纲总览画布 · 全屏编辑
             </Button>
-            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("timeline", "时间线")}>
-              <Clock className="size-3 text-ring" />时间线
+            <Button size="xs" variant="outline" className="h-7 w-full justify-start gap-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400" onClick={() => openProgressionCanvas("map")}>
+              <GitFork className="size-3 text-emerald-600" />
+              故事地图画布 · 剧情节点 DAG
             </Button>
-            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("conflict", "矛盾冲突")}>
-              <Swords className="size-3 text-destructive" />矛盾冲突
+            <Button size="xs" variant="outline" className="h-7 w-full justify-start gap-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-600/10 dark:text-emerald-400" onClick={() => openProgressionCanvas("evolution")}>
+              <ScrollText className="size-3 text-amber-500" />
+              发展历程画布 · 事件与演化
             </Button>
-            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("event_chain", "故事演进")}>
-              <GitBranch className="size-3 text-rose-500" />故事演进
-            </Button>
-            {storyMapNode && (
-              <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px] col-span-2 text-emerald-600 dark:text-emerald-400" onClick={() => onOpen(storyMapNode)}>
-                <GitFork className="size-3" />打开全屏故事地图 (DAG)
-              </Button>
-            )}
+            <details className="group mt-1">
+              <summary className="flex cursor-pointer list-none items-center gap-1 rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:bg-muted">
+                <ChevronRight className="size-3 transition-transform group-open:rotate-90" />
+                经典独立图谱视图
+              </summary>
+              <div className="mt-0.5 grid grid-cols-2 gap-1 pl-2">
+                <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("relationship", "关系网络")}>
+                  <Network className="size-3 text-primary" />关系网络
+                </Button>
+                <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("timeline", "时间线")}>
+                  <Clock className="size-3 text-ring" />时间线
+                </Button>
+                <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("conflict", "矛盾冲突")}>
+                  <Swords className="size-3 text-destructive" />矛盾冲突
+                </Button>
+                <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("event_chain", "故事演进")}>
+                  <GitBranch className="size-3 text-rose-500" />故事演进
+                </Button>
+                {storyMapNode && (
+                  <Button size="xs" variant="ghost" className="h-6 col-span-2 justify-start gap-1 text-[10px] text-emerald-600 dark:text-emerald-400" onClick={() => onOpen(storyMapNode)}>
+                    <GitFork className="size-3" />独立全屏故事地图 (DAG)
+                  </Button>
+                )}
+              </div>
+            </details>
           </div>
         )}
       </div>
@@ -275,9 +306,12 @@ export function StorylineAndPlanningSidebarPanel({
 
         {activeSubTab === "graph" && (
           <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
-            <Network className="size-8 text-primary/60" />
-            <p className="text-xs font-medium text-foreground">全景图谱工作区</p>
-            <p className="text-[11px]">点击上方具体图谱入口，即可在中央编辑区打开对应全屏图谱 Tab。</p>
+            <MapIcon className="size-8 text-primary/60" />
+            <p className="text-xs font-medium text-foreground">故事推进大屏画布</p>
+            <p className="text-[11px]">
+              大纲总览 / 故事地图 / 发展历程三视图统一在一个画布 Tab 中切换；
+              点击上方入口即可在中央编辑区打开对应全屏画布。
+            </p>
           </div>
         )}
 

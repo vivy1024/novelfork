@@ -7,7 +7,7 @@ import {
   type ResourceDomainClient,
 } from "@/app-next/backend-contract/resource-tree-adapter";
 
-export type WorkbenchResourceKind = ContractResourceNode["kind"] | "file" | "storyline" | "story-map" | "tool-result" | "tool" | "tool-group";
+export type WorkbenchResourceKind = ContractResourceNode["kind"] | "file" | "storyline" | "story-map" | "story-progression" | "tool-result" | "tool" | "tool-group";
 
 export interface WorkbenchResourceCapabilities {
   open: boolean;
@@ -208,6 +208,40 @@ export function createStoryMapNode(bookId: string): WorkbenchResourceNode {
     metadata: {
       isStoryMap: true,
       bookId,
+    },
+  };
+}
+
+/** 故事推进画布的合法初始视图。 */
+export type StoryProgressionPreferredView = "outline" | "map" | "evolution";
+
+/**
+ * 创建「故事推进大屏画布」合成资源节点。
+ *
+ * 同一本书共用一个 tab（id 固定为 story-progression:{bookId}），
+ * 不同视图（outline/map/evolution）通过 metadata.preferredView 表达，
+ * 由 StoryProgressionCanvas 内部切换，避免侧栏跳转堆出多个垂直 tab。
+ */
+export function createStoryProgressionNode(
+  bookId: string,
+  preferredView: StoryProgressionPreferredView = "outline",
+): WorkbenchResourceNode {
+  return {
+    id: `story-progression:${bookId}`,
+    kind: "story-progression",
+    title: "故事画布",
+    capabilities: {
+      open: true,
+      readonly: true,
+      unsupported: false,
+      edit: false,
+      delete: false,
+      apply: false,
+    },
+    metadata: {
+      isStoryProgression: true,
+      bookId,
+      preferredView,
     },
   };
 }
