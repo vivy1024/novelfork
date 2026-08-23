@@ -4,7 +4,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CharactersAndLoreSidebarPanel } from "./CharactersAndLoreSidebarPanel";
 import type { EntityFactLite } from "./CharactersAndLoreSidebarPanel";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-
 const capabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
 
 function entryNode(title: string, category: string, content = "条目正文"): WorkbenchResourceNode {
@@ -25,16 +24,17 @@ function characterNode(title: string, aliases: string[] = []): WorkbenchResource
   };
 }
 
-function renderPanel(nodes: readonly WorkbenchResourceNode[], facts: readonly EntityFactLite[]) {
-  return render(
+function renderPanel(nodes: readonly WorkbenchResourceNode[], facts: readonly EntityFactLite[], onOpen = vi.fn()) {
+  const utils = render(
     <CharactersAndLoreSidebarPanel
       bookId="book-1"
       nodes={nodes}
       facts={facts}
       selectedNodeId={null}
-      onOpen={vi.fn()}
+      onOpen={onOpen}
     />,
   );
+  return { ...utils, onOpen };
 }
 
 afterEach(() => cleanup());
@@ -114,5 +114,28 @@ describe("CharactersAndLoreSidebarPanel 作品基础分类", () => {
     fireEvent.click(screen.getByRole("button", { name: /地点/ }));
     expect(screen.getByText("青云山")).toBeTruthy();
     expect(screen.queryByText("宗门")).toBeNull();
+  });
+});
+
+describe("CharactersAndLoreSidebarPanel 点击打开", () => {
+  it("点击角色卡时以该节点为参数调用 onOpen（由上层 openTab 打开主区 Tab）", () => {
+    const node = characterNode("薛行之");
+    const { onOpen } = renderPanel([node], []);
+
+    fireEvent.click(screen.getByText("薛行之"));
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(node);
+  });
+
+  it("点击世界录条目时同样调用 onOpen", () => {
+    const node = entryNode("青云山", "locations");
+    const { onOpen } = renderPanel([node], []);
+
+    fireEvent.click(screen.getByRole("button", { name: /世界录/ }));
+    fireEvent.click(screen.getByText("青云山"));
+
+    expect(onOpen).toHaveBeenCalledTimes(1);
+    expect(onOpen).toHaveBeenCalledWith(node);
   });
 });

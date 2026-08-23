@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Bookmark, BookOpen, ChevronDown, ChevronRight, Clock, FilePlus2, FileText, GitBranch, GitFork, ListTree, Network, Sparkles, Swords } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import { NarrativeMemoryPanel } from "../NarrativeMemoryPanel";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -100,6 +101,8 @@ function StorylineResourceTree({
   return nodes.length > 0 ? <div className="space-y-0.5">{nodes.map((node) => renderNode(node))}</div> : <p className="px-1 py-2 text-[10px] text-muted-foreground">{emptyLabel}</p>;
 }
 
+type StorylineSubTab = "outline" | "memory" | "graph" | "foreshadowing";
+
 export function StorylineAndPlanningSidebarPanel({
   bookId,
   chapterTreeNodes = [],
@@ -113,6 +116,7 @@ export function StorylineAndPlanningSidebarPanel({
   onAction,
   onOpenEntityDetail,
 }: StorylineAndPlanningSidebarPanelProps) {
+  const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>("outline");
 
   const openGraphTab = useCallback(
     (view: "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain", label: string) => {
@@ -131,21 +135,21 @@ export function StorylineAndPlanningSidebarPanel({
     [onOpen]
   );
 
-  const memorySectionRef = useRef<HTMLDivElement>(null);
-  const scrollToMemory = useCallback(() => {
-    memorySectionRef.current?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }, []);
+  const handleSubTabChange = (tab: StorylineSubTab) => {
+    setActiveSubTab(tab);
+    if (tab === "foreshadowing" && foreshadowingNode) {
+      onOpen(foreshadowingNode);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
-      <div className="shrink-0 border-b border-border bg-muted/15 p-2 space-y-2">
+      {/* 顶部子标签切换导航（带常亮高亮） */}
+      <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
         <div className="flex items-center justify-between px-0.5">
-          <div>
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
-              <Sparkles className="size-3.5 text-primary" />
-              <span>故事支撑</span>
-            </div>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">写作前看方向，写作后看变化。</p>
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold text-foreground">
+            <Sparkles className="size-3.5 text-primary" />
+            <span>故事推进</span>
           </div>
           <Button size="xs" variant="ghost" className="h-6 text-[10px]" onClick={() => onSwitchView("write")}>
             <BookOpen className="size-3" />
@@ -153,107 +157,137 @@ export function StorylineAndPlanningSidebarPanel({
           </Button>
         </div>
 
+        {/* 4 个核心功能 Tab 切换（带明确的高亮状态） */}
         <div className="grid grid-cols-2 gap-1.5">
           <Button
             size="xs"
-            variant="outline"
-            className="h-8 justify-start gap-1.5 bg-card/80 text-[10px]"
-            disabled={!storyMapNode}
-            onClick={() => { if (storyMapNode) onOpen(storyMapNode); }}
-          >
-            <GitFork className="size-3.5 text-emerald-500" />
-            <span className="truncate">故事主支线</span>
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            className="h-8 justify-start gap-1.5 bg-card/80 text-[10px]"
-            onClick={() => document.getElementById("storyline-chapter-outline")?.scrollIntoView({ block: "start", behavior: "smooth" })}
+            variant={activeSubTab === "outline" ? "default" : "outline"}
+            className={cn(
+              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              activeSubTab === "outline" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
+            )}
+            onClick={() => handleSubTabChange("outline")}
           >
             <ListTree className="size-3.5 text-sky-500" />
             <span className="truncate">章节与大纲</span>
           </Button>
+
           <Button
             size="xs"
-            variant="outline"
-            className="h-8 justify-start gap-1.5 bg-card/80 text-[10px]"
-            onClick={() => openGraphTab("event_chain", "故事演进")}
-          >
-            <GitBranch className="size-3.5 text-rose-500" />
-            <span className="truncate">故事演进</span>
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            className="h-8 justify-start gap-1.5 bg-card/80 text-[10px]"
-            disabled={!foreshadowingNode}
-            onClick={() => { if (foreshadowingNode) onOpen(foreshadowingNode); }}
-          >
-            <Bookmark className="size-3.5 text-indigo-500" />
-            <span className="truncate">伏笔账本</span>
-          </Button>
-          <Button
-            size="xs"
-            variant="outline"
-            className="h-8 justify-start gap-1.5 bg-card/80 text-[10px] col-span-2"
-            onClick={scrollToMemory}
+            variant={activeSubTab === "memory" ? "default" : "outline"}
+            className={cn(
+              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              activeSubTab === "memory" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
+            )}
+            onClick={() => handleSubTabChange("memory")}
           >
             <Sparkles className="size-3.5 text-amber-500" />
             <span className="truncate">章后事实</span>
           </Button>
+
+          <Button
+            size="xs"
+            variant={activeSubTab === "graph" ? "default" : "outline"}
+            className={cn(
+              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              activeSubTab === "graph" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
+            )}
+            onClick={() => handleSubTabChange("graph")}
+          >
+            <Network className="size-3.5 text-primary" />
+            <span className="truncate">全景图谱</span>
+          </Button>
+
+          <Button
+            size="xs"
+            variant={activeSubTab === "foreshadowing" ? "default" : "outline"}
+            className={cn(
+              "h-8 justify-start gap-1.5 text-[11px] font-medium transition-colors",
+              activeSubTab === "foreshadowing" ? "bg-primary text-primary-foreground shadow-xs" : "bg-card/80 text-foreground hover:bg-muted"
+            )}
+            onClick={() => handleSubTabChange("foreshadowing")}
+          >
+            <Bookmark className="size-3.5 text-indigo-500" />
+            <span className="truncate">伏笔账本</span>
+          </Button>
         </div>
 
-        <div className="grid grid-cols-2 gap-1">
-          <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("relationship", "关系图")}>
-            <Network className="size-3 text-primary" />关系图
-          </Button>
-          <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("timeline", "时间线")}>
-            <Clock className="size-3 text-ring" />时间线
-          </Button>
-          <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("conflict", "矛盾地图")}>
-            <Swords className="size-3 text-destructive" />冲突地图
-          </Button>
-        </div>
+        {/* 当处于图谱 Tab 时，展示具体的图谱快捷视图切换 */}
+        {activeSubTab === "graph" && (
+          <div className="grid grid-cols-2 gap-1 pt-1 border-t border-border/50">
+            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("relationship", "关系网络")}>
+              <Network className="size-3 text-primary" />关系网络
+            </Button>
+            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("timeline", "时间线")}>
+              <Clock className="size-3 text-ring" />时间线
+            </Button>
+            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("conflict", "矛盾冲突")}>
+              <Swords className="size-3 text-destructive" />矛盾冲突
+            </Button>
+            <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px]" onClick={() => openGraphTab("event_chain", "故事演进")}>
+              <GitBranch className="size-3 text-rose-500" />故事演进
+            </Button>
+            {storyMapNode && (
+              <Button size="xs" variant="ghost" className="h-6 justify-start gap-1 text-[10px] col-span-2 text-emerald-600 dark:text-emerald-400" onClick={() => onOpen(storyMapNode)}>
+                <GitFork className="size-3" />打开全屏故事地图 (DAG)
+              </Button>
+            )}
+          </div>
+        )}
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto p-2 space-y-2">
-        <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-              <ListTree className="size-3.5 text-sky-500" />
-              <span>章节与大纲</span>
+      {/* 主体内容区：根据选中的 SubTab 互斥渲染，不再重叠堆积 */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-2">
+        {activeSubTab === "outline" && (
+          <section id="storyline-chapter-outline" className="rounded-lg border border-border bg-card p-2 space-y-2" data-testid="storyline-chapter-outline">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                <ListTree className="size-3.5 text-sky-500" />
+                <span>章节与大纲</span>
+              </div>
+              <span className="text-[10px] text-muted-foreground">章节 {chapterTreeNodes.length} · 大纲 {outlineTreeNodes.length}</span>
             </div>
-            <span className="text-[10px] text-muted-foreground">章节 {chapterTreeNodes.length} · 大纲 {outlineTreeNodes.length}</span>
-          </div>
-          <div className="space-y-2">
-            <div>
-              <div className="mb-1 text-[10px] font-medium text-muted-foreground">章节树</div>
-              <StorylineResourceTree nodes={chapterTreeNodes} emptyLabel="暂无章节文件" onOpen={onOpen} onAction={onAction} />
+            <div className="space-y-2">
+              <div>
+                <div className="mb-1 text-[10px] font-medium text-muted-foreground">章节树</div>
+                <StorylineResourceTree nodes={chapterTreeNodes} emptyLabel="暂无章节文件" onOpen={onOpen} onAction={onAction} />
+              </div>
+              <div>
+                <div className="mb-1 text-[10px] font-medium text-muted-foreground">大纲</div>
+                <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" onOpen={onOpen} onAction={onAction} />
+              </div>
             </div>
-            <div>
-              <div className="mb-1 text-[10px] font-medium text-muted-foreground">大纲</div>
-              <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" onOpen={onOpen} onAction={onAction} />
-            </div>
-          </div>
-        </section>
-
-        <div ref={memorySectionRef} data-testid="storyline-memory-section">
-          <section className="mb-2 rounded-lg border border-border bg-card px-3 py-2">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold">
-              <Sparkles className="size-3.5 text-amber-500" />
-              <span>章后事实与故事状态</span>
-            </div>
-            <p className="mt-0.5 text-[10px] text-muted-foreground">写完一章后查看当前事实、待审变化和结算历史。</p>
           </section>
-          <NarrativeMemoryPanel
-            bookId={bookId}
-            memoryNodes={memoryNodes}
-            selectedNodeId={selectedNodeId}
-            onOpen={onOpen}
-            onAction={onAction}
-            onOpenEntityDetail={onOpenEntityDetail}
-          />
-        </div>
+        )}
+
+        {activeSubTab === "memory" && (
+          <div data-testid="storyline-memory-section">
+            <NarrativeMemoryPanel
+              bookId={bookId}
+              memoryNodes={memoryNodes}
+              selectedNodeId={selectedNodeId}
+              onOpen={onOpen}
+              onAction={onAction}
+              onOpenEntityDetail={onOpenEntityDetail}
+            />
+          </div>
+        )}
+
+        {activeSubTab === "graph" && (
+          <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
+            <Network className="size-8 text-primary/60" />
+            <p className="text-xs font-medium text-foreground">全景图谱工作区</p>
+            <p className="text-[11px]">点击上方具体图谱入口，即可在中央编辑区打开对应全屏图谱 Tab。</p>
+          </div>
+        )}
+
+        {activeSubTab === "foreshadowing" && (
+          <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
+            <Bookmark className="size-8 text-indigo-500/60" />
+            <p className="text-xs font-medium text-foreground">伏笔账本</p>
+            <p className="text-[11px]">已在中央编辑区打开全屏伏笔看板。</p>
+          </div>
+        )}
       </div>
     </div>
   );

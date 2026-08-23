@@ -229,8 +229,17 @@ describe("narrative-memory-graph-model", () => {
 
   it("视图值和中文入口映射明确", () => {
     expect(isNarrativeMemoryView("wave")).toBe(true);
+    expect(isNarrativeMemoryView("anchor")).toBe(true);
     expect(isNarrativeMemoryView("浪潮视图")).toBe(false);
     expect(viewFromLabel("矛盾地图")).toBe("conflict");
+    expect(viewFromLabel("锚点时间线")).toBe("anchor");
     expect(viewFromLabel("不存在")).toBeUndefined();
+  });
+
+  it("anchor 视图复用时间线数据并保持事件布局", () => {
+    const anchor = buildNarrativeGraphModel({ facts, events, view: "anchor" });
+    const timeline = buildNarrativeGraphModel({ facts, events, view: "timeline" });
+    expect(anchor.nodes.map((node) => node.id)).toEqual(timeline.nodes.map((node) => node.id));
+    expect(anchor.edges.map((edge) => edge.id)).toEqual(timeline.edges.map((edge) => edge.id));
   });
 });

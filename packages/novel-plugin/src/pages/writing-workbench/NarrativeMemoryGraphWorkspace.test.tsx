@@ -190,4 +190,39 @@ describe("NarrativeMemoryGraphWorkspace", () => {
     rerender(<NarrativeMemoryGraphWorkspace bookId="book-2" />);
     expect(await screen.findByText("还没有可展示的叙事记忆")).toBeTruthy();
   });
+
+  it("发展历程模式保留五个固定主题，并支持 anchor 章节/角色导航", async () => {
+    const onOpenEntityDetail = vi.fn();
+    render(
+      <NarrativeMemoryGraphWorkspace
+        bookId="book-1"
+        mode="development"
+        initialView="timeline"
+        currentChapter={3}
+        onOpenEntityDetail={onOpenEntityDetail}
+      />,
+    );
+
+    await screen.findByTestId("react-flow-canvas");
+    expect(String(fetchJsonMock.mock.calls.at(-1)?.[0] ?? "")).toContain("scope=read");
+    for (const label of ["简途径层", "彻底轨迹层", "骨架关系层", "矛盾时间线层", "结算流水层"]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "打开锚点导航" }));
+    expect(screen.getByTestId("narrative-memory-graph-anchor")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "第 3 章 · 当前" }));
+    await waitFor(() => {
+      const latestUrl = String(fetchJsonMock.mock.calls.at(-1)?.[0] ?? "");
+      expect(latestUrl).toContain("view=timeline");
+      expect(latestUrl).toContain("chapterFrom=3");
+      expect(latestUrl).toContain("chapterTo=3");
+    });
+    // 章节筛选会重建画布，重新打开右上角 anchor 后再切换到角色维度。
+    await screen.findByTestId("react-flow-canvas");
+    fireEvent.click(screen.getByRole("button", { name: "打开锚点导航" }));
+    fireEvent.click(screen.getByRole("button", { name: "角色" }));
+    fireEvent.click(screen.getByRole("button", { name: "薛行之" }));
+    expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之");
+  });
 });

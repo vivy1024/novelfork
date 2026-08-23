@@ -4,6 +4,8 @@ export * from "./ChapterActionsBar";
 export * from "./ResourceHistoryPanel";
 export * from "./CheckpointPanel";
 export * from "./JingweiEntryEditor";
+export * from "./CharacterCardPage";
+export * from "./development-timeline";
 export * from "./NewBookGuide";
 export { buildOnboardingRequestMessage } from "./onboarding-request";
 export type { OnboardingRecommendedSkill, OnboardingRequestPayload } from "./onboarding-request";

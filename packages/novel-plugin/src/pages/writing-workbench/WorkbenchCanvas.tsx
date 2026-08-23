@@ -38,6 +38,7 @@ const NarrativeConsistencyPanel = lazy(() => import("./NarrativeConsistencyPanel
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
+const CharacterCardPage = lazy(() => import("./CharacterCardPage").then(m => ({ default: m.CharacterCardPage })));
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
@@ -602,38 +603,58 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
 
       {/* Editor */}
       <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
-        {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (
-          <JingweiEntryEditor
-            bookId={bookId}
-            entry={{
-              id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
-              title: node.title,
-              contentMd: content,
-              sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
-              updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
-              category: typeof node.metadata?.category === "string" ? node.metadata.category : undefined,
-              fields: asRecord(node.metadata?.fields),
-              priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
-              status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
-              layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
-              version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
-              relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
-              aliases: Array.isArray(node.metadata?.aliases) ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
-              visibility: node.metadata?.visibility === "global" || node.metadata?.visibility === "nested" ? node.metadata.visibility : "tracked",
-              visibleAfterChapter: typeof node.metadata?.visibleAfterChapter === "number" ? node.metadata.visibleAfterChapter : undefined,
-              visibleUntilChapter: typeof node.metadata?.visibleUntilChapter === "number" ? node.metadata.visibleUntilChapter : undefined,
-              parentId: typeof node.metadata?.parentId === "string" ? node.metadata.parentId : null,
-              conflictStatus: node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none",
-              conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
-            }}
-            sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "故事推进" : "作品基础资料"}
-            onSave={jingweiActions.onSave}
-            onDelete={jingweiActions.onDelete}
-            onNavigateToEntry={(entryId) => {
-              if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
-            }}
-          />
-        ) : (
+        {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (() => {
+          // 角色类目 → 酒馆风格大屏角色卡（参考 SillyTavern）
+          const entryCategory = typeof node.metadata?.category === "string" ? node.metadata.category : "";
+          const entryData = {
+            id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
+            title: node.title,
+            contentMd: content,
+            sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
+            updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
+            category: entryCategory || undefined,
+            fields: asRecord(node.metadata?.fields),
+            priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
+            status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
+            layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
+            version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
+            relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
+            aliases: Array.isArray(node.metadata?.aliases) ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
+            visibility: (node.metadata?.visibility === "global" || node.metadata?.visibility === "nested" ? node.metadata.visibility : "tracked") as "global" | "nested" | "tracked",
+            visibleAfterChapter: typeof node.metadata?.visibleAfterChapter === "number" ? node.metadata.visibleAfterChapter : undefined,
+            visibleUntilChapter: typeof node.metadata?.visibleUntilChapter === "number" ? node.metadata.visibleUntilChapter : undefined,
+            parentId: typeof node.metadata?.parentId === "string" ? node.metadata.parentId : null,
+            conflictStatus: (node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none") as "pending" | "resolved" | "none",
+            conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
+          };
+          if (entryCategory === "characters") {
+            return (
+              <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">加载角色卡...</div>}>
+                <CharacterCardPage
+                  entry={entryData}
+                  bookId={bookId}
+                  saving={false}
+                  onSave={async (entryId, payload) => {
+                    // fields 类型在 JingweiEntrySavePayload 里不在类型上,但后端接受; 通过 unknown 类型转换传递
+                    await jingweiActions.onSave(entryId, payload as unknown as Parameters<typeof jingweiActions.onSave>[1]);
+                  }}
+                />
+              </Suspense>
+            );
+          }
+          return (
+            <JingweiEntryEditor
+              bookId={bookId}
+              entry={entryData}
+              sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "故事推进" : "作品基础资料"}
+              onSave={jingweiActions.onSave}
+              onDelete={jingweiActions.onDelete}
+              onNavigateToEntry={(entryId) => {
+                if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
+              }}
+            />
+          );
+        })() : (
           <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} onContentChange={(nextContent) => {
             setContent(nextContent);
             setDirty(nextContent !== normalizedBaseRef.current);

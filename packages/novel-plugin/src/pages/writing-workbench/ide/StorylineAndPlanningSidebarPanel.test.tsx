@@ -49,25 +49,47 @@ afterEach(() => {
 });
 
 describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
-  it("展示作者任务入口和章节/大纲只读树，并点击叶子复用 onOpen", () => {
-    const { onOpen, chapter, outline, storyMapNode } = renderPanel();
+  it("默认展示章节与大纲 Tab，并点击叶子复用 onOpen", () => {
+    const { onOpen, chapter, outline } = renderPanel();
 
-    expect(screen.getByRole("button", { name: "故事主支线" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "章节与大纲" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "章后事实" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "全景图谱" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "伏笔账本" })).toBeTruthy();
     expect(screen.getByText("当前语境")).toBeTruthy();
-    expect(screen.getByText("故事演进")).toBeTruthy();
-    expect(screen.getByText("伏笔账本")).toBeTruthy();
-    expect(screen.getByText("章后事实")).toBeTruthy();
     expect(screen.getByText("第 1 章")).toBeTruthy();
     expect(screen.getByText("第一卷：起点")).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "故事主支线" }));
-    expect(onOpen).toHaveBeenCalledWith(storyMapNode);
 
     fireEvent.click(screen.getByRole("button", { name: "第 1 章" }));
     fireEvent.click(screen.getByRole("button", { name: "第一卷：起点" }));
     expect(onOpen).toHaveBeenCalledWith(chapter);
     expect(onOpen).toHaveBeenCalledWith(outline);
+  });
+
+  it("切换到全景图谱 Tab 展示具体图谱入口，点击打开对应 preferredView", () => {
+    const { onOpen, storyMapNode } = renderPanel();
+
+    // 点击全景图谱 Tab
+    fireEvent.click(screen.getByRole("button", { name: "全景图谱" }));
+
+    // 子入口展现
+    expect(screen.getByRole("button", { name: "关系网络" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "时间线" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "矛盾冲突" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "故事演进" })).toBeTruthy();
+
+    // 点击关系网络
+    fireEvent.click(screen.getByRole("button", { name: "关系网络" }));
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "narrative-memory-graph",
+        metadata: expect.objectContaining({ preferredView: "relationship" }),
+      })
+    );
+
+    // 点击故事地图
+    fireEvent.click(screen.getByRole("button", { name: "打开全屏故事地图 (DAG)" }));
+    expect(onOpen).toHaveBeenCalledWith(storyMapNode);
   });
 
   it("当前语境切换到写作视图，伏笔账本打开已有工具节点", () => {
@@ -78,34 +100,5 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
 
     expect(onSwitchView).toHaveBeenCalledWith("write");
     expect(onOpen).toHaveBeenCalledWith(foreshadowingNode);
-  });
-
-  it("图谱入口使用对应 preferredView，章后事实入口滚动到状态区域", () => {
-    const scrollIntoView = vi.fn();
-    Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: scrollIntoView });
-    const { onOpen } = renderPanel();
-
-    fireEvent.click(screen.getByRole("button", { name: "故事演进" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ preferredView: "event_chain" }),
-    }));
-
-    fireEvent.click(screen.getByRole("button", { name: "关系图" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ preferredView: "relationship" }),
-    }));
-
-    fireEvent.click(screen.getByRole("button", { name: "时间线" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ preferredView: "timeline" }),
-    }));
-
-    fireEvent.click(screen.getByRole("button", { name: "冲突地图" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-      metadata: expect.objectContaining({ preferredView: "conflict" }),
-    }));
-
-    fireEvent.click(screen.getByRole("button", { name: "章后事实" }));
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" });
   });
 });

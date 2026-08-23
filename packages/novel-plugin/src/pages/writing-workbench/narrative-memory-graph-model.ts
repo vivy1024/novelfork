@@ -1,4 +1,4 @@
-export type NarrativeMemoryView = "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain" | "wave";
+export type NarrativeMemoryView = "relationship" | "timeline" | "character_arc" | "conflict" | "event_chain" | "wave" | "anchor";
 
 export interface NarrativeFact {
   id: string;
@@ -510,14 +510,16 @@ function createModel(nodes: GraphNodeModel[], edges: GraphEdgeModel[], facts: re
 export function buildNarrativeGraphModel(input: BuildGraphModelInput): NarrativeGraphModel {
   const facts = uniqueFacts(input.facts);
   const events = uniqueEvents(input.events);
-  if (input.view === "relationship" || input.view === "conflict" || input.view === "wave") {
-    return buildEntityGraph(facts, events, input.view, input.focusEntity);
+  // anchor 是发展历程的章节锚定时间线：它复用 timeline 的布局和现有数据接口。
+  const resolvedView = input.view === "anchor" ? "timeline" : input.view;
+  if (resolvedView === "relationship" || resolvedView === "conflict" || resolvedView === "wave") {
+    return buildEntityGraph(facts, events, resolvedView, input.focusEntity);
   }
-  return buildSequenceGraph(facts, events, input.view);
+  return buildSequenceGraph(facts, events, resolvedView);
 }
 
 export function isNarrativeMemoryView(value: unknown): value is NarrativeMemoryView {
-  return value === "relationship" || value === "timeline" || value === "character_arc" || value === "conflict" || value === "event_chain" || value === "wave";
+  return value === "relationship" || value === "timeline" || value === "character_arc" || value === "conflict" || value === "event_chain" || value === "wave" || value === "anchor";
 }
 
 export function viewLabel(view: NarrativeMemoryView): string {
@@ -528,6 +530,7 @@ export function viewLabel(view: NarrativeMemoryView): string {
     case "conflict": return "矛盾地图";
     case "event_chain": return "事件链";
     case "wave": return "浪潮视图";
+    case "anchor": return "锚点时间线";
   }
 }
 
@@ -535,6 +538,7 @@ export function viewFromLabel(label: unknown): NarrativeMemoryView | undefined {
   switch (label) {
     case "关系图": return "relationship";
     case "时间线": return "timeline";
+    case "锚点时间线": return "anchor";
     case "角色弧线": return "character_arc";
     case "矛盾地图": return "conflict";
     case "事件链": return "event_chain";
