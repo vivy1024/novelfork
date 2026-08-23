@@ -59,9 +59,21 @@ import {
   viewLabel,
 } from "./narrative-memory-graph-model";
 
+export type NarrativeMemoryGraphWorkspaceMode = "standard" | "development";
+export type NarrativeMemoryGraphDataScope = "read";
+
 export interface NarrativeMemoryGraphWorkspaceProps {
   bookId: string;
   initialView?: NarrativeMemoryView;
+  /** standard 保持旧图谱页；development 仅呈现发展历程的五个固定主题。 */
+  mode?: NarrativeMemoryGraphWorkspaceMode;
+  /** 图谱只读数据源标识；复用既有 /graph 接口，不新增后端契约。 */
+  dataScope?: NarrativeMemoryGraphDataScope;
+  /** 最近一次 memory.read 关联的章节，用于标记当前写作锚点。 */
+  currentChapter?: number;
+  /** 外部锚点导航可将当前图谱限定到一个实体或章节。 */
+  initialFocusEntity?: string;
+  initialChapter?: number;
   onSelectNode?: (nodeId: string) => void;
   onOpenEntityDetail?: (entity: string) => void;
 }
@@ -77,13 +89,24 @@ type LoadState =
   | { status: "error"; message: string }
   | { status: "ready"; payload: NarrativeGraphResponse };
 
-const VIEW_OPTIONS: ReadonlyArray<{ id: NarrativeMemoryView; label: string; icon: typeof Network; description: string }> = [
+type ViewOption = { id: NarrativeMemoryView; label: string; icon: typeof Network; description: string };
+
+const VIEW_OPTIONS: ReadonlyArray<ViewOption> = [
   { id: "relationship", label: "关系图", icon: Network, description: "实体与动态关系" },
   { id: "timeline", label: "时间线", icon: Clock, description: "按章节展开事件" },
   { id: "character_arc", label: "角色弧线", icon: GitBranch, description: "角色状态推进" },
   { id: "conflict", label: "矛盾地图", icon: Swords, description: "冲突两侧与风险" },
   { id: "event_chain", label: "事件链", icon: Route, description: "事件前后关系" },
   { id: "wave", label: "浪潮视图", icon: Radio, description: "从中心向外传播" },
+];
+
+/** 发展历程固定呈现原有五个图谱，按作者理解故事推进的顺序重新命名。 */
+const DEVELOPMENT_VIEW_OPTIONS: ReadonlyArray<ViewOption> = [
+  { id: "timeline", label: "简途径层", icon: Clock, description: "按章节展开故事事件" },
+  { id: "character_arc", label: "彻底轨迹层", icon: GitBranch, description: "追踪角色状态推进" },
+  { id: "relationship", label: "骨架关系层", icon: Network, description: "查看实体与动态关系" },
+  { id: "conflict", label: "矛盾时间线层", icon: Swords, description: "查看冲突两侧与风险" },
+  { id: "event_chain", label: "结算流水层", icon: Route, description: "回放事件前后关系" },
 ];
 
 const NODE_ACCENTS: Record<GraphNodeModel["kind"], string> = {
@@ -128,6 +151,7 @@ interface FlowNodeData {
   [key: string]: unknown;
   model: GraphNodeModel;
   muted: boolean;
+  currentChapter?: number;
   onOpenEntityDetail?: (entity: string) => void;
 }
 
@@ -145,11 +169,12 @@ function NarrativeGraphNode({ data, selected }: NodeProps<FlowNode>) {
   const node = data.model;
   const canOpen = node.kind === "entity" && Boolean(node.entityName && data.onOpenEntityDetail);
   const risk = isHighRisk(node.riskLevel);
+  const isCurrentChapter = node.chapterNumber !== undefined && node.chapterNumber === data.currentChapter;
   return (
     <Card
       className={`group relative rounded-lg border px-3 py-2.5 shadow-sm motion-safe:transition-all motion-safe:duration-200 ${NODE_ACCENTS[node.kind]} ${
         selected ? "z-20 scale-[1.03] border-primary bg-primary/10 shadow-lg shadow-primary/10" : "motion-safe:hover:z-10 motion-safe:hover:-translate-y-0.5 hover:shadow-md"
-      } ${data.muted ? "opacity-35 saturate-50" : "opacity-100"} ${risk ? "border-destructive/60 bg-destructive/[0.08]" : ""}`}
+      } ${data.muted ? "opacity-35 saturate-50" : "opacity-100"} ${risk ? "border-destructive/60 bg-destructive/[0.08]" : ""} ${isCurrentChapter ? "ring-2 ring-primary/50 ring-offset-2 ring-offset-background" : ""}`}
       style={{ width: node.width, minHeight: node.height }}
       data-slot="narrative-memory-graph-node"
       data-node-kind={node.kind}
@@ -231,7 +256,12 @@ function NarrativeGraphEdge({ sourceX, sourceY, sourcePosition, targetX, targetY
 const nodeTypes = { narrativeGraphNode: NarrativeGraphNode };
 const edgeTypes = { narrativeGraphEdge: NarrativeGraphEdge };
 
-function toFlowNodes(model: NarrativeGraphModel, selectedNodeId: string | null, onOpenEntityDetail?: (entity: string) => void): FlowNode[] {
+function toFlowNodes(
+  model: NarrativeGraphModel,
+  selectedNodeId: string | null,
+  currentChapter?: number,
+  onOpenEntityDetail?: (entity: string) => void,
+): FlowNode[] {
   const visible = new Set<string>();
   if (selectedNodeId) {
     visible.add(selectedNodeId);
@@ -246,7 +276,7 @@ function toFlowNodes(model: NarrativeGraphModel, selectedNodeId: string | null, 
     position: node.position,
     draggable: true,
     selectable: true,
-    data: { model: node, muted: Boolean(selectedNodeId && !visible.has(node.id)), onOpenEntityDetail },
+    data: { model: node, muted: Boolean(selectedNodeId && !visible.has(node.id)), currentChapter, onOpenEntityDetail },
   }));
 }
 
@@ -272,9 +302,123 @@ function toFlowEdges(model: NarrativeGraphModel, selectedNodeId: string | null):
   }));
 }
 
-function GraphCanvas({ model, selectedNodeId, onSelectNode, onOpenEntityDetail }: { model: NarrativeGraphModel; selectedNodeId: string | null; onSelectNode: (nodeId: string) => void; onOpenEntityDetail?: (entity: string) => void }) {
+type AnchorDimension = "chapter" | "entity";
+
+/**
+ * anchor 是图谱右上角的线程导航视图：它不触发新的图谱类型或接口，
+ * 只从当前已读取的图模型派生章节/角色锚点，把作者带回同一份动态数据。
+ */
+function GraphAnchorNavigator({
+  model,
+  currentChapter,
+  onSelectChapter,
+  onSelectEntity,
+}: {
+  model: NarrativeGraphModel;
+  currentChapter?: number;
+  onSelectChapter: (chapter: number) => void;
+  onSelectEntity: (entity: string) => void;
+}) {
+  const [dimension, setDimension] = useState<AnchorDimension>("chapter");
+  const chapters = useMemo(
+    () => [...new Set(model.nodes.map((node) => node.chapterNumber).filter((chapter): chapter is number => chapter !== undefined))].sort((a, b) => a - b),
+    [model.nodes],
+  );
+  const entities = useMemo(
+    () => [...new Set(model.nodes.map((node) => node.entityName).filter((entity): entity is string => Boolean(entity)))].sort((a, b) => a.localeCompare(b)),
+    [model.nodes],
+  );
+
+  return (
+    <div
+      data-slot="narrative-memory-graph-anchor"
+      data-view="anchor"
+      data-testid="narrative-memory-graph-anchor"
+      className="mt-2 w-56 rounded-lg border border-border/80 bg-card/95 p-2 shadow-lg backdrop-blur"
+    >
+      <div className="mb-2 flex items-center gap-1 rounded-md bg-muted/60 p-0.5" aria-label="锚点导航维度">
+        <Button
+          type="button"
+          variant={dimension === "chapter" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-6 flex-1 px-2 text-[10px]"
+          aria-pressed={dimension === "chapter"}
+          onClick={() => setDimension("chapter")}
+        >
+          章节
+        </Button>
+        <Button
+          type="button"
+          variant={dimension === "entity" ? "secondary" : "ghost"}
+          size="sm"
+          className="h-6 flex-1 px-2 text-[10px]"
+          aria-pressed={dimension === "entity"}
+          onClick={() => setDimension("entity")}
+        >
+          角色
+        </Button>
+      </div>
+      {dimension === "chapter" ? (
+        chapters.length > 0 ? (
+          <div className="flex max-h-44 flex-wrap gap-1 overflow-y-auto pr-0.5">
+            {chapters.map((chapter) => (
+              <Button
+                key={chapter}
+                type="button"
+                variant={chapter === currentChapter ? "secondary" : "outline"}
+                size="sm"
+                className="h-6 px-1.5 text-[10px]"
+                onClick={() => onSelectChapter(chapter)}
+              >
+                第 {chapter} 章{chapter === currentChapter ? " · 当前" : ""}
+              </Button>
+            ))}
+          </div>
+        ) : <p className="py-1 text-[10px] text-muted-foreground">当前图谱没有章节锚点。</p>
+      ) : entities.length > 0 ? (
+        <div className="grid max-h-44 grid-cols-2 gap-1 overflow-y-auto pr-0.5">
+          {entities.map((entity) => (
+            <Button
+              key={entity}
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 justify-start truncate px-2 text-[10px]"
+              title={`聚焦并查看 ${entity} 的详情`}
+              onClick={() => onSelectEntity(entity)}
+            >
+              {entity}
+            </Button>
+          ))}
+        </div>
+      ) : <p className="py-1 text-[10px] text-muted-foreground">当前图谱没有角色锚点。</p>}
+    </div>
+  );
+}
+
+function GraphCanvas({
+  model,
+  selectedNodeId,
+  currentChapter,
+  onSelectNode,
+  onAnchorChapter,
+  onAnchorEntity,
+  onOpenEntityDetail,
+}: {
+  model: NarrativeGraphModel;
+  selectedNodeId: string | null;
+  currentChapter?: number;
+  onSelectNode: (nodeId: string) => void;
+  onAnchorChapter: (chapter: number) => void;
+  onAnchorEntity: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string) => void;
+}) {
   const { fitView } = useReactFlow<FlowNode, FlowEdge>();
-  const nodes = useMemo(() => toFlowNodes(model, selectedNodeId, onOpenEntityDetail), [model, onOpenEntityDetail, selectedNodeId]);
+  const [anchorOpen, setAnchorOpen] = useState(false);
+  const nodes = useMemo(
+    () => toFlowNodes(model, selectedNodeId, currentChapter, onOpenEntityDetail),
+    [currentChapter, model, onOpenEntityDetail, selectedNodeId],
+  );
   const edges = useMemo(() => toFlowEdges(model, selectedNodeId), [model, selectedNodeId]);
   const resetViewport = useCallback(() => {
     void fitView({ padding: 0.18, duration: 250 });
@@ -325,9 +469,31 @@ function GraphCanvas({ model, selectedNodeId, onSelectNode, onOpenEntityDetail }
         </div>
       </Panel>
       <Panel position="top-right" className="!m-4">
-        <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card/90 text-[10px] shadow-sm backdrop-blur" onClick={resetViewport} aria-label="重置视口">
-          <RotateCcw className="size-3.5" />重置视口
-        </Button>
+        <div className="flex flex-col items-end">
+          <div className="flex gap-1.5">
+            <Button
+              variant={anchorOpen ? "secondary" : "outline"}
+              size="sm"
+              className="h-8 gap-1.5 bg-card/90 text-[10px] shadow-sm backdrop-blur"
+              onClick={() => setAnchorOpen((open) => !open)}
+              aria-label="打开锚点导航"
+              aria-pressed={anchorOpen}
+            >
+              <Focus className="size-3.5" />锚点
+            </Button>
+            <Button variant="outline" size="sm" className="h-8 gap-1.5 bg-card/90 text-[10px] shadow-sm backdrop-blur" onClick={resetViewport} aria-label="重置视口">
+              <RotateCcw className="size-3.5" />重置视口
+            </Button>
+          </div>
+          {anchorOpen ? (
+            <GraphAnchorNavigator
+              model={model}
+              currentChapter={currentChapter}
+              onSelectChapter={onAnchorChapter}
+              onSelectEntity={onAnchorEntity}
+            />
+          ) : null}
+        </div>
       </Panel>
     </ReactFlow>
   );
@@ -416,14 +582,30 @@ function EmptyState({ hasFilters, onReset }: { hasFilters: boolean; onReset: () 
   );
 }
 
-export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relationship", onSelectNode, onOpenEntityDetail }: NarrativeMemoryGraphWorkspaceProps) {
+export function NarrativeMemoryGraphWorkspace({
+  bookId,
+  initialView = "relationship",
+  mode = "standard",
+  dataScope = "read",
+  currentChapter,
+  initialFocusEntity,
+  initialChapter,
+  onSelectNode,
+  onOpenEntityDetail,
+}: NarrativeMemoryGraphWorkspaceProps) {
   const [view, setView] = useState<NarrativeMemoryView>(initialView);
-  const [focusEntity, setFocusEntity] = useState("");
-  const [focusInput, setFocusInput] = useState("");
-  const [chapterFrom, setChapterFrom] = useState("");
-  const [chapterTo, setChapterTo] = useState("");
-  const [chapterFromInput, setChapterFromInput] = useState("");
-  const [chapterToInput, setChapterToInput] = useState("");
+  const [focusEntity, setFocusEntity] = useState(initialFocusEntity ?? "");
+  const [focusInput, setFocusInput] = useState(initialFocusEntity ?? "");
+  const [chapterFrom, setChapterFrom] = useState(
+    initialChapter !== undefined
+      ? String(initialChapter)
+      : currentChapter !== undefined && mode === "development"
+        ? ""
+        : "",
+  );
+  const [chapterTo, setChapterTo] = useState(initialChapter !== undefined ? String(initialChapter) : "");
+  const [chapterFromInput, setChapterFromInput] = useState(initialChapter !== undefined ? String(initialChapter) : "");
+  const [chapterToInput, setChapterToInput] = useState(initialChapter !== undefined ? String(initialChapter) : "");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -432,9 +614,28 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
   const workspaceRef = useRef<HTMLDivElement>(null);
   const requestGeneration = useRef(0);
 
+  const availableViewOptions = mode === "development" ? DEVELOPMENT_VIEW_OPTIONS : VIEW_OPTIONS;
+
   useEffect(() => {
     setView(initialView);
   }, [initialView]);
+
+  useEffect(() => {
+    if (initialFocusEntity !== undefined) {
+      setFocusEntity(initialFocusEntity);
+      setFocusInput(initialFocusEntity);
+    }
+  }, [initialFocusEntity]);
+
+  useEffect(() => {
+    if (initialChapter !== undefined) {
+      const ch = String(initialChapter);
+      setChapterFrom(ch);
+      setChapterTo(ch);
+      setChapterFromInput(ch);
+      setChapterToInput(ch);
+    }
+  }, [initialChapter]);
 
   useEffect(() => {
     const element = workspaceRef.current;
@@ -460,7 +661,8 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
     const generation = ++requestGeneration.current;
     setLoadState({ status: "loading" });
     setSelectedNodeId(null);
-    const params = new URLSearchParams({ view });
+    // anchor 是前端线程导航视图，服务端仍按既有 timeline 数据契约取数。
+    const params = new URLSearchParams({ view: view === "anchor" ? "timeline" : view, scope: dataScope });
     if (focusEntity.trim()) params.set("focusEntity", focusEntity.trim());
     if (chapterFrom.trim()) params.set("chapterFrom", chapterFrom.trim());
     if (chapterTo.trim()) params.set("chapterTo", chapterTo.trim());
@@ -474,7 +676,7 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
       if (generation !== requestGeneration.current) return;
       setLoadState({ status: "error", message: graphErrorMessage(cause) });
     }
-  }, [bookId, chapterFrom, chapterTo, focusEntity, view]);
+  }, [bookId, chapterFrom, chapterTo, dataScope, focusEntity, view]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -490,13 +692,31 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
 
   const selectedNode = model?.nodes.find((node) => node.id === selectedNodeId);
   const hasFilters = Boolean(focusEntity.trim() || chapterFrom.trim() || chapterTo.trim());
-  const activeOption = VIEW_OPTIONS.find((option) => option.id === view)!;
+  const activeOption = availableViewOptions.find((option) => option.id === view)
+    ?? VIEW_OPTIONS.find((option) => option.id === view)
+    ?? { id: "anchor" as const, label: "锚点导航", icon: Focus, description: "按章节或角色聚焦同一份图谱数据" };
   const inspectorInSidebar = containerWidth >= INSPECTOR_SIDEBAR_MIN_CONTAINER_WIDTH;
 
   const selectNode = useCallback((nodeId: string) => {
     setSelectedNodeId(nodeId || null);
     if (nodeId) onSelectNode?.(nodeId);
   }, [onSelectNode]);
+
+  const selectAnchorChapter = useCallback((chapter: number) => {
+    const value = String(chapter);
+    setChapterFrom(value);
+    setChapterTo(value);
+    setChapterFromInput(value);
+    setChapterToInput(value);
+  }, []);
+
+  const selectAnchorEntity = useCallback((entity: string) => {
+    // 角色锚点是「跳到详情卡片」而不是重新请求一张过滤后的图，
+    // 因此选中节点可立即保留在检查器中，并复用统一实体抽屉。
+    const entityNode = model?.nodes.find((node) => node.kind === "entity" && node.entityName === entity);
+    if (entityNode) selectNode(entityNode.id);
+    onOpenEntityDetail?.(entity);
+  }, [model, onOpenEntityDetail, selectNode]);
 
   const resetFilters = useCallback(() => {
     setFocusInput("");
@@ -529,13 +749,20 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
 
   return (
     <TooltipProvider>
-      <div ref={workspaceRef} className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-xs" data-slot="narrative-memory-graph-workspace" data-testid="narrative-memory-graph-workspace">
+      <div
+        ref={workspaceRef}
+        className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-xs"
+        data-slot="narrative-memory-graph-workspace"
+        data-testid="narrative-memory-graph-workspace"
+        data-source-scope={dataScope}
+        data-workspace-mode={mode}
+      >
         <header data-slot="narrative-memory-graph-header" className="shrink-0 border-b border-border bg-background/95 backdrop-blur">
           <div className="flex items-center justify-between gap-4 px-5 py-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"><Brain className="size-5" /></div>
               <div className="min-w-0">
-                <div className="flex items-center gap-2"><h1 className="truncate text-base font-semibold">叙事记忆图谱</h1><Badge variant="secondary" className="text-[10px]">动态数据</Badge></div>
+                <div className="flex items-center gap-2"><h1 className="truncate text-base font-semibold">{mode === "development" ? "发展历程" : "叙事记忆图谱"}</h1><Badge variant="secondary" className="text-[10px]">动态数据</Badge></div>
                 <p className="mt-0.5 truncate text-[11px] text-muted-foreground">{activeOption.description} · 只读 Narrative Memory，不改经纬 Lore</p>
               </div>
             </div>
@@ -546,7 +773,7 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
             </div>
           </div>
           <div data-slot="narrative-memory-graph-view-switcher" className="flex items-center gap-1 overflow-x-auto border-t border-border/70 px-4 py-2">
-            {VIEW_OPTIONS.map((option) => {
+            {availableViewOptions.map((option) => {
               const Icon = option.icon;
               return <Button key={option.id} variant={view === option.id ? "secondary" : "ghost"} size="sm" className={`shrink-0 gap-1.5 text-[11px] ${view === option.id ? "text-primary" : "text-muted-foreground"}`} onClick={() => changeView(option.id)}><Icon className="size-3.5" />{option.label}</Button>;
             })}
@@ -577,7 +804,15 @@ export function NarrativeMemoryGraphWorkspace({ bookId, initialView = "relations
               <div className="flex h-full min-h-[360px] flex-col items-center justify-center px-6 text-center"><AlertTriangle className="mb-3 size-8 text-destructive/70" /><p className="text-sm font-medium">图谱暂时无法加载</p><p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">{loadState.message}</p><Button className="mt-4 gap-2" size="sm" onClick={() => void load()}><RefreshCw className="size-3.5" />重试</Button></div>
             ) : !model || model.nodes.length === 0 ? <EmptyState hasFilters={hasFilters} onReset={resetFilters} /> : (
               <ReactFlowProvider>
-                <GraphCanvas model={model} selectedNodeId={selectedNodeId} onSelectNode={selectNode} onOpenEntityDetail={onOpenEntityDetail} />
+                <GraphCanvas
+                  model={model}
+                  selectedNodeId={selectedNodeId}
+                  currentChapter={currentChapter}
+                  onSelectNode={selectNode}
+                  onAnchorChapter={selectAnchorChapter}
+                  onAnchorEntity={selectAnchorEntity}
+                  onOpenEntityDetail={onOpenEntityDetail}
+                />
               </ReactFlowProvider>
             )}
             {inspectorOpen && selectedNode && !inspectorInSidebar ? (

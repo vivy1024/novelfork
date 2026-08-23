@@ -51,21 +51,29 @@ import {
   saveIdeLayoutSizes,
 } from "./ide-layout-state";
 
-/** WorkbenchResourceNode.kind → Tab 图标用的 TabKind */
-function toTabKind(node: WorkbenchResourceNode): TabKind {
+/** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */
+export function toTabKind(node: WorkbenchResourceNode): TabKind {
   if (node.kind === "story-map" || node.metadata?.isStoryMap) return "story-map";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
     case "chapter": return "chapter";
+    case "jingwei":
+    case "jingwei-section":
     case "jingwei-entry": return "jingwei-entry";
-    case "tool": return "tool";
+    // 大纲/设定 markdown 按文档呈现
+    case "story": return "file";
+    // 叙事线/故事脉络类挂到 story-map 图谱图标
+    case "narrative-line":
+    case "storyline": return "story-map";
+    case "tool":
+    case "tool-group": return "tool";
     default: return "other";
   }
 }
 
-/** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区） */
-function toTabView(node: WorkbenchResourceNode): TabView {
+/** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区；导出仅供测试核对映射表） */
+export function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
   // 故事主支线与叙事记忆条目归入故事推进工作区。
   if (node.kind === "story-map" || node.metadata?.isStoryMap || node.metadata?.isNarrativeMemoryEntry) return "storyline";
@@ -282,6 +290,10 @@ export function IdeWorkbench({
 
   // --- 命令式面板管理(纯 DOM 操作,学 VS Code CompositePart) ---
   const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer");
+  // handleOpen 需要在不重建 callback 链的前提下读取当前视图（它被 handleOpenJingweiEntry/
+  // handleJumpToChapter/handleResourceAction 等层层引用，activeView 进依赖会全链路重建）。
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
 
   // --- Tabs ---
   // activeView 本身就是当前七个 ActivityBar ViewId 之一，直接作为 Tab 归属值。
@@ -565,11 +577,22 @@ export function IdeWorkbench({
   }, [ideTabs.closeTab, confirmDialog]);
 
   const handleOpen = useCallback((node: WorkbenchResourceNode) => {
+    // 核心不变量：Tab 按 toTabView(node) 归属到对应工作区，而 EditorTabs/主区只渲染
+    // 当前 ActivityBar 视图的 tab。因此打开后必须把侧栏切到 tab 归属的工作区，
+    // 否则跨视图点击（写作页/搜索/故事推进里点角色卡、章节、伏笔等）tab 隐身，
+    // 主区看起来"没有反应"。
+    const revealTab = (kind: TabKind, view: TabView) => {
+      ideTabsRef.current.openTab(node.id, node.title, kind, view);
+      if (view !== activeViewRef.current) {
+        showPanel(view);
+        setSidebarVisible(true);
+      }
+    };
     // 文件树节点：先加载内容
     if (node.metadata?.isFile && bookId && typeof node.metadata.filePath === "string") {
       const filePath = node.metadata.filePath;
       if (isImageFilePath(filePath)) {
-        ideTabsRef.current.openTab(node.id, node.title, "file", "explorer");
+        revealTab("file", "explorer");
         onOpen(node);
         return;
       }
@@ -584,11 +607,11 @@ export function IdeWorkbench({
           }
           const loaded: WorkbenchResourceNode = { ...node, content };
           setLoadedFiles(prev => new Map(prev).set(node.id, loaded));
-          ideTabsRef.current.openTab(node.id, node.title, "file", "explorer");
+          revealTab("file", "explorer");
           onOpen(loaded);
         })
         .catch(() => {
-          ideTabsRef.current.openTab(node.id, node.title, "file", "explorer");
+          revealTab("file", "explorer");
           onOpen(node);
         });
       return;
@@ -598,7 +621,7 @@ export function IdeWorkbench({
     if (node.metadata?.isNarrativeMemoryEntry === true || node.kind === "jingwei-entry") {
       setLoadedFiles((previous) => new Map(previous).set(node.id, node));
     }
-    if (node.capabilities.open) ideTabsRef.current.openTab(node.id, node.title, toTabKind(node), toTabView(node));
+    if (node.capabilities.open) revealTab(toTabKind(node), toTabView(node));
     onOpen(node);
   }, [onOpen, bookId, showPanel]);
 

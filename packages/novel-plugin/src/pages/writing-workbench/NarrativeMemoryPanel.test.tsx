@@ -2,13 +2,78 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { NarrativeMemoryPanelShell } from "./NarrativeMemoryPanel";
+import { NarrativeMemoryPanel, NarrativeMemoryPanelShell } from "./NarrativeMemoryPanel";
 
 // 本包没开 vitest globals，RTL 的自动 cleanup 不会注册；不清理会让多次 render
 // 的 DOM 累积，按 role 定位时命中上一个用例留下的节点。
 afterEach(() => {
   cleanup();
 });
+
+// ---------------------------------------------------------------------------
+// 容器组件（NarrativeMemoryPanel）竞态回归测试
+//
+// 历史 bug：load() 与 search()/loadMoreSearch() 共用同一个 generationRef。
+// 搜索提交会自增 generation，若随后面板刷新/审批触发 load，在途搜索回来时
+// 守卫判定「已被取代」→ 结果丢弃，且 finally 里的条件清锁一并失效 ——
+// setSearchLoading(false) 永远等不到，搜索区永久转圈；反向交错同理威胁 load
+// 的 setLoading(false)。修复：链路各自持有 loadGenerationRef /
+// searchGenerationRef，load 的 finally 无条件清锁。
+// ---------------------------------------------------------------------------
+
+const apiMock = vi.hoisted(() => ({
+  fetchJsonImpl: undefined as undefined | ((path: string) => Promise<unknown>),
+}));
+
+vi.mock("@/hooks/use-api", () => ({
+  // tolerate404 靠 instanceof ApiRequestError 判定，语义与真实类一致即可。
+  ApiRequestError: class ApiRequestError extends Error {
+    readonly code?: string;
+    readonly status?: number;
+    constructor(message: string, options?: { code?: string; status?: number }) {
+      super(message);
+      this.name = "ApiRequestError";
+      this.code = options?.code;
+      this.status = options?.status;
+    }
+  },
+  fetchJson: (path: string) => {
+    if (!apiMock.fetchJsonImpl) return Promise.reject(new Error(`unexpected fetchJson: ${path}`));
+    return apiMock.fetchJsonImpl(path);
+  },
+}));
+
+function deferred<T = unknown>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
+/** load() 的六路并发取数：全部给最小空 payload；非 load 路由返回 null 由调用方处置。 */
+function emptyLoadPayload(path: string): unknown | null {
+  if (path.includes("/search?")) return null;
+  if (path.includes("/diagnostics/latest")) return {};
+  if (path.includes("/events/pending")) return { events: [] };
+  if (path.includes("/stats")) return { stats: null };
+  if (path.includes("/list?kind=event")) return { entries: [] };
+  if (path.includes("/current")) return { items: [] };
+  if (path.includes("/facts/by-entity")) return { groups: [] };
+  return null;
+}
+
+function installRouter(overrides: (path: string) => Promise<unknown> | undefined) {
+  apiMock.fetchJsonImpl = (path) => {
+    const overridden = overrides(path);
+    if (overridden) return overridden;
+    const payload = emptyLoadPayload(path);
+    if (payload === null) return Promise.reject(new Error(`unexpected fetchJson: ${path}`));
+    return Promise.resolve(payload);
+  };
+}
 
 describe("NarrativeMemoryPanelShell", () => {
   it("exposes author-first story status and history without diagnosis or market tools", () => {
@@ -23,7 +88,7 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    for (const label of ["故事状态", "结算历史", "关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]) {
+    for (const label of ["故事状态", "关系矩阵", "结算历史", "📋 大纲", "📜 发展历程", "📌 伏笔账本"]) {
       expect(html).toContain(label);
     }
 
@@ -41,8 +106,7 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).not.toContain("存储概览");
   });
 
-  it("opens graph views with the API view id expected by the independent page", () => {
-    const onOpen = vi.fn();
+  it("switches between 3 main tabs: 大纲, 发展历程, 伏笔账本", async () => {
     render(
       <NarrativeMemoryPanelShell
         bookId="book-1"
@@ -50,16 +114,49 @@ describe("NarrativeMemoryPanelShell", () => {
         empty={false}
         error={null}
         events={[]}
-        onOpen={onOpen}
+        stateFacts={[
+          { kind: "fact", id: "f-hook", title: "伏笔：神秘石符", category: "hook", evidenceText: "石符泛起微光" },
+        ]}
         onRefresh={() => undefined}
       />,
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "时间线" }));
-    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-      id: "narrative-memory-graph",
-      metadata: expect.objectContaining({ preferredView: "timeline" }),
-    }));
+    // 默认在大纲：显示故事状态
+    expect(screen.getByText("当前故事状态")).toBeTruthy();
+
+    // 切换到「发展历程」
+    fireEvent.click(screen.getByRole("button", { name: "📜 发展历程" }));
+    expect(await screen.findByTestId("development-timeline-view")).toBeTruthy();
+
+    // 切换到「伏笔账本」
+    fireEvent.click(screen.getByRole("button", { name: "📌 伏笔账本" }));
+    const ledger = await screen.findByTestId("narrative-memory-hook-ledger");
+    expect(ledger).toBeTruthy();
+    expect(within(ledger).getByText("伏笔：神秘石符")).toBeTruthy();
+    expect(within(ledger).getByText("证据：石符泛起微光")).toBeTruthy();
+
+    // 切回「大纲」
+    fireEvent.click(screen.getByRole("button", { name: "📋 大纲" }));
+    expect(screen.getByText("当前故事状态")).toBeTruthy();
+  });
+
+  it("在发展历程内部保留五个固定图谱层", async () => {
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        events={[]}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "📜 发展历程" }));
+    await screen.findByTestId("development-timeline-view");
+    for (const label of ["简途径层", "彻底轨迹层", "骨架关系层", "矛盾时间线层", "结算流水层"]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
+    }
   });
 
   it("shows story status, settlement history, and pending review actions", () => {
@@ -232,7 +329,7 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
+    const nav = screen.getByRole("navigation", { name: "大纲子视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
 
     fireEvent.click(screen.getByRole("button", { name: "加载更多历史" }));
@@ -274,7 +371,7 @@ describe("NarrativeMemoryPanelShell", () => {
     // 默认在「故事状态」，台账还不该出现。
     expect(screen.queryByTestId("narrative-line-approvals")).toBeNull();
 
-    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
+    const nav = screen.getByRole("navigation", { name: "大纲子视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
 
     const ledger = screen.getByTestId("narrative-line-approvals");
@@ -301,8 +398,97 @@ describe("NarrativeMemoryPanelShell", () => {
     );
 
     // 「结算历史」既是导航项也是摘要区的「查看全部」目标，这里限定导航区。
-    const nav = screen.getByRole("navigation", { name: "故事状态视图" });
+    const nav = screen.getByRole("navigation", { name: "大纲子视图" });
     fireEvent.click(within(nav).getByRole("button", { name: "结算历史" }));
     expect(screen.getByTestId("narrative-line-approvals").textContent).toContain("在叙事线视图增删节点后会出现");
+  });
+});
+
+describe("NarrativeMemoryPanel（容器）generation 竞态", () => {
+  it("搜索在途时插入整面板 load（刷新）不再废掉搜索：共用 generation 时此场景搜索区永久转圈", async () => {
+    const searchGate = deferred();
+    installRouter((path) => {
+      if (path.includes("/search?")) return searchGate.promise;
+      return undefined;
+    });
+
+    render(<NarrativeMemoryPanel bookId="book-1" />);
+    // 初始 load 完成，面板出现在眼前（搜索框与刷新按钮都在）。
+    await screen.findByText("章后事实与故事状态");
+
+    const input = screen.getByPlaceholderText("搜索角色、关系、伏笔、证据...");
+    fireEvent.change(input, { target: { value: "韩立" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    // 搜索已提交、响应在途。
+    await screen.findByText("搜索结果");
+
+    // 搜索还没回来，作者点了刷新 → 一次完整的 load 插进来并跑完。
+    fireEvent.click(screen.getByTitle("刷新"));
+    await screen.findByText("章后事实与故事状态");
+
+    // 搜索响应此刻才到。旧实现里它的 generation 已被 load 推高：
+    // 结果被守卫丢弃、finally 里的 setSearchLoading(false) 同样被守卫挡住 ——
+    // 「N 条」计数徽章永远不会出现。分离 ref 后，load 不再搅动搜索链路。
+    searchGate.resolve({ entries: [{ kind: "event", id: "s-1", title: "韩立 抵达 药园" }] });
+    await screen.findByText("1 条");
+    expect(screen.getByText("韩立 抵达 药园")).toBeTruthy();
+  });
+
+  it("load 结束无条件退出「加载中」：bookId 切换后迟到的旧 load 不覆盖新面板、也不留下转圈", async () => {
+    const book1Gate = deferred();
+    installRouter((path) => {
+      // book-1 的整轮 load 挂起，book-2 立即放行。
+      if (path.includes("/books/book-1/")) return book1Gate.promise;
+      return undefined;
+    });
+
+    const { rerender } = render(<NarrativeMemoryPanel bookId="book-1" />);
+    // book-1 的 load 在途：整屏加载。
+    expect(await screen.findByText("加载故事状态...")).toBeTruthy();
+
+    rerender(<NarrativeMemoryPanel bookId="book-2" />);
+    // book-2 的 load 完成 → 新一代面板出现、加载屏消失。
+    await screen.findByText("章后事实与故事状态");
+
+    // 旧 load 这才回来：守卫（loadGenerationRef）丢弃其结果；finally 无条件
+    // setLoading(false) —— 即使守卫判定「已被取代」，清锁也不会被跳过。
+    book1Gate.resolve({});
+    await waitFor(() => {
+      expect(screen.queryByText("加载故事状态...")).toBeNull();
+    });
+    expect(screen.getByText("章后事实与故事状态")).toBeTruthy();
+  });
+
+  it("搜索链路内部仍互相取消：连续搜索时迟到的上一代响应不回盖最新结果", async () => {
+    const firstGate = deferred();
+    const secondGate = deferred();
+    let searchCalls = 0;
+    installRouter((path) => {
+      if (path.includes("/search?")) {
+        searchCalls += 1;
+        return searchCalls === 1 ? firstGate.promise : secondGate.promise;
+      }
+      return undefined;
+    });
+
+    render(<NarrativeMemoryPanel bookId="book-1" />);
+    const input = await screen.findByPlaceholderText("搜索角色、关系、伏笔、证据...");
+
+    fireEvent.change(input, { target: { value: "韩立" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+    fireEvent.change(input, { target: { value: "南宫" } });
+    fireEvent.click(screen.getByRole("button", { name: "搜索" }));
+
+    // 新搜索先回来：展示它的结果。
+    secondGate.resolve({ entries: [{ kind: "event", id: "s-2", title: "南宫婉 赠丹" }] });
+    await screen.findByText("南宫婉 赠丹");
+
+    // 旧搜索最后才回来：守卫丢弃，新鲜结果不被回盖，加载态也已复位。
+    firstGate.resolve({ entries: [{ kind: "event", id: "s-1", title: "韩立 抵达 药园" }] });
+    await waitFor(() => {
+      expect(screen.getByText("南宫婉 赠丹")).toBeTruthy();
+      expect(screen.queryByText("韩立 抵达 药园")).toBeNull();
+    });
+    expect(screen.getByText("1 条")).toBeTruthy();
   });
 });

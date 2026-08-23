@@ -123,7 +123,12 @@ function ideTabsReducer(state: IdeTabsState, action: IdeTabsAction): IdeTabsStat
     case "OPEN": {
       const existing = state.tabs.find((t) => t.nodeId === action.nodeId);
       if (existing) {
-        return { ...state, activeByView: { ...state.activeByView, [existing.view]: existing.id } };
+        // 单例 tab（如全景图谱 narrative-memory-graph）会以同一 nodeId 但不同标题重复打开：
+        // 只激活不同步标题会让 tab 停留在第一次打开的标题，故这里顺手校正。
+        const tabs = existing.title === action.title
+          ? state.tabs
+          : state.tabs.map((t) => (t.id === existing.id ? { ...t, title: action.title } : t));
+        return { ...state, tabs, activeByView: { ...state.activeByView, [existing.view]: existing.id } };
       }
       const newTab: TabState = { id: action.nodeId, nodeId: action.nodeId, title: action.title, dirty: false, pinned: false, kind: action.kind, view: action.view };
       return {

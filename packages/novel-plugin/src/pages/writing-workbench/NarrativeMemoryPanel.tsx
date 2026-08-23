@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
-import type { NarrativeMemoryView } from "./narrative-memory-graph-model";
+import { DevelopmentTimelineView } from "./development-timeline";
 // 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
   bulkMutatePendingEvents,
@@ -168,23 +169,32 @@ interface NarrativeMemoryPanelShellProps {
 }
 
 /**
- * 伏笔不在这里出现。伏笔的唯一权威源是经纬 foreshadowing 条目，唯一操作入口是
- * 「伏笔看板」（工具 › 结构类 › 伏笔看板）。记忆里的 hook fact 只是证据，已并入
- * 看板卡片内的「记忆证据」区块 —— 所以原本的「伏笔板」「伏笔网络」两个视图一并下线，
- * 不做新旧并存。
+ * 收敛后的 3 个清晰入口主导航项：
+ * 1. 📋 大纲（core-plan）：故事状态、关系矩阵、结算历史与待审队列
+ * 2. 📜 发展历程（timeline-evolution）：5层全息聚合时间线（简途径/角色弧线/骨架关系/矛盾/因果流水）
+ * 3. 📌 伏笔账本（hook-ledger）：伏笔记忆证据与兑现追踪
  */
-const MEMORY_NAV_ITEMS = [
+export interface NarrativeMemoryNavTab {
+  label: string;
+  view: "core-plan" | "timeline-evolution" | "hook-ledger";
+  description: string;
+  component?: typeof DevelopmentTimelineView;
+}
+
+export const MEMORY_NAV_ITEMS_NEW: readonly NarrativeMemoryNavTab[] = [
+  { label: "📋 大纲", view: "core-plan", description: "故事状态、关系矩阵与章后待审" },
+  { label: "📜 发展历程", view: "timeline-evolution", component: DevelopmentTimelineView, description: "5层时间线/角色弧/关系/矛盾/因果全息聚合" },
+  { label: "📌 伏笔账本", view: "hook-ledger", description: "伏笔记忆证据与兑现追踪" },
+] as const;
+
+const CORE_PLAN_NAV_ITEMS = [
   "故事状态",
   "关系矩阵",
   "结算历史",
-  "关系图",
-  "时间线",
-  "角色弧线",
-  "矛盾地图",
-  "事件链",
 ] as const;
 
-type MemoryViewLabel = (typeof MEMORY_NAV_ITEMS)[number];
+type MemoryViewLabel = (typeof CORE_PLAN_NAV_ITEMS)[number];
+type MainNavView = "core-plan" | "timeline-evolution" | "hook-ledger";
 
 /** 待审队列置信度筛选分段。无 confidence 的事件不属于任何具体段，只在「全部」显示。 */
 type PendingConfidenceFilter = "all" | "low" | "medium" | "high";
@@ -200,16 +210,6 @@ const PENDING_CONFIDENCE_FILTERS: readonly { value: PendingConfidenceFilter; lab
 const HISTORY_PAGE_SIZE = 50;
 const APPROVALS_PAGE_SIZE = 50;
 const SEARCH_PAGE_SIZE = 30;
-
-const GRAPH_VIEWS = new Set<MemoryViewLabel>(["关系图", "时间线", "角色弧线", "矛盾地图", "事件链"]);
-
-const GRAPH_VIEW_BY_LABEL: Partial<Record<MemoryViewLabel, NarrativeMemoryView>> = {
-  "关系图": "relationship",
-  "时间线": "timeline",
-  "角色弧线": "character_arc",
-  "矛盾地图": "conflict",
-  "事件链": "event_chain",
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   character_state: "角色状态",
@@ -813,7 +813,7 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
     return <p className="text-[11px] text-muted-foreground">还没有关系事实。角色间关系变化会在章后结算自动沉淀。</p>;
   }
   if (rows.subjects.length > 30 || rows.objects.length > 30) {
-    return <p className="text-[11px] text-muted-foreground">关系实体超过 30 个，建议用上方「关系图」图谱视图查看。</p>;
+    return <p className="text-[11px] text-muted-foreground">关系实体超过 30 个，建议切到「发展历程 › 骨架关系层」查看。</p>;
   }
 
   return (
@@ -915,11 +915,19 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
   const [approvalsLoadingMore, setApprovalsLoadingMore] = useState(false);
   const [searchOffset, setSearchOffset] = useState(0);
   const [searchHasMore, setSearchHasMore] = useState(false);
-  const generationRef = useRef(0);
-  useEffect(() => () => { generationRef.current += 1; }, []);
+  // load 与 search 各用各的 generation 计数器。共用一个计数器时，搜索提交会自增
+  // generation，使仍在途的 load 守卫失效（结果丢弃），finally 里的条件清锁也会跟着
+  // 失效 —— setLoading(false) 被跳过，面板永久卡在「加载中」。拆开之后两条链路互不
+  // 干扰，各自只取消「自己上一代」的请求。
+  const loadGenerationRef = useRef(0);
+  const searchGenerationRef = useRef(0);
+  useEffect(() => () => {
+    loadGenerationRef.current += 1;
+    searchGenerationRef.current += 1;
+  }, []);
 
   const load = useCallback(async () => {
-    const generation = ++generationRef.current;
+    const generation = ++loadGenerationRef.current;
     setLoading(true);
     setError(null);
     setActionError(null);
@@ -942,7 +950,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         fetchJson<CurrentLedgerResponse>(`${base}/current`).catch(() => null),
         fetchFactsByEntity(bookId).catch(() => []),
       ]);
-      if (generation !== generationRef.current) return;
+      if (generation !== loadGenerationRef.current) return;
 
       const nextDiagnostics = diag?.summary ?? null;
       setDiagnostics(nextDiagnostics);
@@ -966,7 +974,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
 
       // 审批台账是附加视图：读不到不应让整个叙事记忆面板报错。
       const nextApprovals = await fetchNarrativeLineApprovals(bookId, { limit: APPROVALS_PAGE_SIZE }).catch(() => []);
-      if (generation !== generationRef.current) return;
+      if (generation !== loadGenerationRef.current) return;
       setLineApprovals(nextApprovals);
       setApprovalsOffset(nextApprovals.length);
       setApprovalsHasMore(nextApprovals.length >= APPROVALS_PAGE_SIZE);
@@ -980,10 +988,13 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
         && (nextStats?.total ?? 0) === 0,
       );
     } catch (cause) {
-      if (generation !== generationRef.current) return;
+      if (generation !== loadGenerationRef.current) return;
       setError(cause instanceof Error ? cause.message : "加载叙事记忆失败");
     } finally {
-      if (generation === generationRef.current) setLoading(false);
+      // 无条件清锁：load 结束（成功/失败/被新一代取代）都必须退出「加载中」。
+      // 被取代时结果已被守卫丢弃，这里只负责不留下转圈；若在 finally 里再守
+      // generation，被取代的那一代会漏掉清锁，loading 卡死。
+      setLoading(false);
     }
   }, [bookId]);
 
@@ -1039,40 +1050,42 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       setSearchResults([]);
       return;
     }
-    const generation = ++generationRef.current;
+    // 搜索链路用独立的 searchGenerationRef：自增只取消上一代搜索/搜索分页，
+    // 不会波及在途的 load（反之亦然）。
+    const generation = ++searchGenerationRef.current;
     setSearchLoading(true);
     try {
       const payload = await fetchJson<MemorySearchResponse>(
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(normalized)}&limit=${SEARCH_PAGE_SIZE}`,
       );
-      if (generation !== generationRef.current) return;
+      if (generation !== searchGenerationRef.current) return;
       setSearchResults(payload.entries ?? []);
       setSearchOffset((payload.entries ?? []).length);
       setSearchHasMore((payload.entries ?? []).length >= SEARCH_PAGE_SIZE);
     } catch {
-      if (generation === generationRef.current) setSearchResults([]);
+      if (generation === searchGenerationRef.current) setSearchResults([]);
     } finally {
-      if (generation === generationRef.current) setSearchLoading(false);
+      if (generation === searchGenerationRef.current) setSearchLoading(false);
     }
   }, [bookId]);
 
   /** 搜索结果追加式分页。 */
   const loadMoreSearch = useCallback(async () => {
     if (!searchQuery.trim() || searchLoading) return;
-    const generation = ++generationRef.current;
+    const generation = ++searchGenerationRef.current;
     setSearchLoading(true);
     try {
       const payload = await fetchJson<MemorySearchResponse>(
         `/api/books/${encodeURIComponent(bookId)}/narrative-memory/search?q=${encodeURIComponent(searchQuery)}&limit=${SEARCH_PAGE_SIZE}&offset=${searchOffset}`,
       );
-      if (generation !== generationRef.current) return;
+      if (generation !== searchGenerationRef.current) return;
       setSearchResults((previous) => [...previous, ...(payload.entries ?? [])]);
       setSearchOffset((previous) => previous + (payload.entries ?? []).length);
       setSearchHasMore((payload.entries ?? []).length >= SEARCH_PAGE_SIZE);
     } catch {
       // 加载更多失败保留已有结果；下次点击重试。
     } finally {
-      if (generation === generationRef.current) setSearchLoading(false);
+      if (generation === searchGenerationRef.current) setSearchLoading(false);
     }
   }, [bookId, searchQuery, searchOffset, searchLoading]);
 
@@ -1243,6 +1256,7 @@ export function NarrativeMemoryPanelShell({
   searchHasMore = false,
   onLoadMoreSearch,
 }: NarrativeMemoryPanelShellProps) {
+  const [mainTab, setMainTab] = useState<MainNavView>("core-plan");
   const [activeView, setActiveView] = useState<MemoryViewLabel>("故事状态");
   const [queryInput, setQueryInput] = useState(searchQuery);
   const [pendingOpen, setPendingOpen] = useState(false);
@@ -1256,6 +1270,8 @@ export function NarrativeMemoryPanelShell({
   const highRiskEvents = events.filter((event) => event.risk === "high");
   const otherPending = events.filter((event) => event.risk !== "high");
   const allEntityFacts = useMemo(() => entityGroups.flatMap((group) => group.facts), [entityGroups]);
+  const hookFacts = useMemo(() => stateFacts.filter((fact) => entryCategory(fact) === "hook"), [stateFacts]);
+  const hookHistory = useMemo(() => historyEvents.filter((entry) => entryCategory(entry) === "hook"), [historyEvents]);
 
   // 待审队列：置信度筛选 + 低置信靠前排序。无 confidence 的事件只在「全部」里出现。
   const selectableEvents = useMemo(() => {
@@ -1341,42 +1357,51 @@ export function NarrativeMemoryPanelShell({
         </button>
       </div>
 
-      <nav className="flex flex-wrap gap-1" aria-label="故事状态视图">
-        {MEMORY_NAV_ITEMS.map((label) => {
-          const isGraph = GRAPH_VIEWS.has(label);
+      {/* 三个主入口：图谱主题全部收进「发展历程」内部。 */}
+      <nav className="flex flex-wrap items-center gap-1.5 border-b border-border/60 pb-2" aria-label="叙事记忆主视图" data-slot="narrative-memory-main-nav" data-testid="narrative-memory-main-nav">
+        {MEMORY_NAV_ITEMS_NEW.map((tab) => {
+          const isSelected = mainTab === tab.view;
           return (
-            <button
+            <Button
+              key={tab.view}
+              type="button"
+              variant={isSelected ? "default" : "outline"}
+              size="sm"
+              aria-pressed={isSelected}
+              onClick={() => {
+                setMainTab(tab.view);
+                if (tab.view === "core-plan") setActiveView("故事状态");
+              }}
+              title={tab.description}
+              className={`h-8 text-xs ${isSelected ? "shadow-sm" : "bg-muted/60 text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+            >
+              {tab.label}
+            </Button>
+          );
+        })}
+      </nav>
+
+      {mainTab === "core-plan" ? (
+        <nav className="flex flex-wrap gap-1" aria-label="大纲子视图" data-slot="narrative-memory-core-plan-nav">
+          {CORE_PLAN_NAV_ITEMS.map((label) => (
+            <Button
               key={label}
               type="button"
-              aria-pressed={!isGraph && activeView === label}
-              onClick={() => {
-                if (isGraph) {
-                  onOpen?.({
-                    id: "narrative-memory-graph",
-                    kind: "file",
-                    title: `故事图谱 · ${label}`,
-                    capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-                    metadata: {
-                      isNarrativeMemoryEntry: true,
-                      isNarrativeMemoryGraph: true,
-                      preferredView: GRAPH_VIEW_BY_LABEL[label] ?? "relationship",
-                    },
-                  });
-                } else {
-                  setActiveView(label);
-                }
-              }}
-              className={`rounded-full px-2.5 py-1 text-[11px] transition-colors ${
-                !isGraph && activeView === label
-                  ? "bg-primary text-primary-foreground"
+              variant={activeView === label ? "secondary" : "ghost"}
+              size="xs"
+              aria-pressed={activeView === label}
+              onClick={() => setActiveView(label)}
+              className={`h-7 rounded-full px-2.5 text-[11px] ${
+                activeView === label
+                  ? "text-primary"
                   : "bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
               {label}
-            </button>
-          );
-        })}
-      </nav>
+            </Button>
+          ))}
+        </nav>
+      ) : null}
 
       {error && <div className="rounded border border-destructive/30 bg-destructive/10 p-3 text-destructive">加载失败：{error}</div>}
       {empty && (
@@ -1385,7 +1410,85 @@ export function NarrativeMemoryPanelShell({
         </div>
       )}
 
-      {(activeView === "故事状态" || activeView === "结算历史") && (
+      {/* 视图 1：发展历程大空间 —— 默认对齐最近一次 memory.read 的章节。 */}
+      {mainTab === "timeline-evolution" && (
+        <DevelopmentTimelineView
+          bookId={bookId}
+          currentChapter={diagnostics?.chapterNumber}
+          scope="read"
+          onOpenEntityDetail={onOpenEntityDetail}
+        />
+      )}
+
+      {/* 视图 2：伏笔账本。权威编辑仍落在既有的经纬伏笔看板，避免双写。 */}
+      {mainTab === "hook-ledger" && (
+        <section className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="narrative-memory-hook-ledger">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h3 className="text-xs font-semibold">伏笔账本</h3>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">动态记忆证据与章后触发流水</p>
+            </div>
+            {onOpen ? (
+              <Button
+                type="button"
+                variant="outline"
+                size="xs"
+                className="h-7 text-[10px] text-primary"
+                onClick={() => onOpen({
+                  id: "tool:foreshadowing",
+                  kind: "tool",
+                  title: "伏笔看板",
+                  metadata: { toolPanel: "foreshadowing" },
+                  capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+                })}
+              >
+                打开伏笔看板
+              </Button>
+            ) : null}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            伏笔主设定仍由经纬「伏笔看板」维护；这里不新建接口，只汇总 Narrative Memory 中已经结算的 hook 证据。
+          </p>
+
+          {hookFacts.length === 0 && hookHistory.length === 0 ? (
+            <p className="rounded border border-dashed border-border p-3 text-[11px] text-muted-foreground">暂无伏笔相关记忆。写完章节并完成结算后，已埋设、触发或回收的证据会出现在这里。</p>
+          ) : (
+            <div className="space-y-2">
+              {hookFacts.map((fact) => (
+                <button
+                  key={fact.id}
+                  type="button"
+                  onClick={() => onSearchEntryOpen?.(fact)}
+                  className="block w-full rounded border border-border/60 p-2 text-left text-[11px] hover:bg-muted"
+                >
+                  <div className="flex items-center justify-between gap-2 font-medium">
+                    <span className="truncate">{entryTitle(fact)}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">第 {fact.validFromChapter ?? fact.sourceChapter ?? "—"} 章</span>
+                  </div>
+                  {fact.evidenceText ? <p className="mt-1 line-clamp-2 text-[10px] text-muted-foreground">证据：{fact.evidenceText}</p> : null}
+                </button>
+              ))}
+              {hookHistory.map((entry) => (
+                <button
+                  key={`${entry.kind}:${entry.id}`}
+                  type="button"
+                  onClick={() => onSearchEntryOpen?.(entry)}
+                  className="block w-full rounded border border-border/60 bg-muted/20 p-2 text-left text-[11px] hover:bg-muted"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate font-medium">{entryTitle(entry)}</span>
+                    <span className="shrink-0 text-[10px] text-muted-foreground">第 {entry.chapterNumber ?? "—"} 章</span>
+                  </div>
+                  <p className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground">{entry.summary ?? entryPredicateText(entry)}</p>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* 视图 3：大纲 / 核心规划（原故事状态、关系矩阵、结算历史） */}
+      {mainTab === "core-plan" && (activeView === "故事状态" || activeView === "结算历史") && (
         <>
           <section className="rounded-lg border border-border bg-card p-3 space-y-2">
             <form
@@ -1418,7 +1521,7 @@ export function NarrativeMemoryPanelShell({
         </>
       )}
 
-      {activeView === "故事状态" && (
+      {mainTab === "core-plan" && activeView === "故事状态" && (
         <>
           <StoryStatusSummary
             bookId={bookId}
@@ -1569,7 +1672,7 @@ export function NarrativeMemoryPanelShell({
         </>
       )}
 
-      {activeView === "关系矩阵" && (
+      {mainTab === "core-plan" && activeView === "关系矩阵" && (
         <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-relationship-matrix">
           <div className="flex items-center justify-between">
             <h3 className="text-xs font-semibold">关系矩阵</h3>
@@ -1579,7 +1682,7 @@ export function NarrativeMemoryPanelShell({
         </section>
       )}
 
-      {activeView === "结算历史" && (
+      {mainTab === "core-plan" && activeView === "结算历史" && (
         <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history">
           <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
           <p className="text-[10px] text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
@@ -1623,7 +1726,7 @@ export function NarrativeMemoryPanelShell({
         任何入口 —— 作者无法回答「这个节点是谁改的、什么时候批的、理由是什么」。
         与章后结算历史并列，因为两者回答的是同一类问题。
       */}
-      {activeView === "结算历史" && (
+      {mainTab === "core-plan" && activeView === "结算历史" && (
         <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-line-approvals">
           <h3 className="text-xs font-semibold">叙事线审批 ({lineApprovals.length})</h3>
           <p className="text-[10px] text-muted-foreground">叙事线节点与关系的变更审批记录，批准与驳回都会留痕。</p>
