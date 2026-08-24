@@ -218,13 +218,36 @@ export async function loadEvolution(
     .slice(-10);
 }
 
+/**
+ * 经纬条目标题常带括号注释后缀（如「薛行之（主角权威统一版·立场修正版）」），
+ * 而叙事记忆结算出的 subject 是正文中出现的纯名（「薛行之」）。
+ * 查询动态记忆时按 候选名列表 依次尝试，命中即返回，避免因标题装饰导致整卡为空。
+ */
+function characterNameCandidates(rawName: string, aliases?: readonly string[]): string[] {
+  const trimmed = rawName.trim();
+  const candidates: string[] = [];
+  const push = (value: string | undefined) => {
+    const name = value?.trim();
+    if (name && !candidates.includes(name)) candidates.push(name);
+  };
+  push(trimmed);
+  for (const alias of aliases ?? []) push(alias);
+  // 剥离各类括号注释：「薛行之（xxx）」「薛行之[xxx]」「薛行之【xxx】」→「薛行之」
+  const stripped = trimmed.replace(/[（(【\[][^（）()【】\[\]]*[）)】\]]/g, "").replace(/[·•—\-–].*$/u, "").trim();
+  if (stripped && stripped !== trimmed && stripped.length >= 2) push(stripped);
+  return candidates;
+}
+
 async function loadCharacterDevelopment(
   bookId: string,
   characterName: string,
   uptoChapter?: number,
   force = false,
+  aliases?: readonly string[],
 ): Promise<CharacterDevelopmentSnapshot> {
-  const cacheKey = `${bookId}::${characterName}::${uptoChapter ?? "latest"}`;
+  const candidateNames = characterNameCandidates(characterName, aliases);
+  const primaryName = candidateNames[0] ?? characterName.trim();
+  const cacheKey = `${bookId}::${primaryName}::${uptoChapter ?? "latest"}::${candidateNames.length}`;
   const cached = developmentCache.get(cacheKey);
   if (!force && cached && cached.expiresAt > Date.now()) return cached.snapshot;
   if (!force) {
@@ -232,33 +255,49 @@ async function loadCharacterDevelopment(
     if (existing) return existing;
   }
 
-  const request = Promise.all([
-    loadEvolution(bookId, characterName, uptoChapter),
+  /** 依次用候选名请求三路接口，返回第一个非空结果；全部为空时返回最后一份空快照。 */
+  const requestOne = async (name: string): Promise<{ evolution: EvolutionStep[]; factsPayload: { groups?: Array<{ entity?: string; facts?: NarrativeFactRecord[] }> }; relationshipPayload: NarrativeGraphResponse }> => Promise.all([
+    loadEvolution(bookId, name, uptoChapter),
     fetchJson<{ groups?: Array<{ entity?: string; facts?: NarrativeFactRecord[] }> }>(
-      `${narrativeMemoryBase(bookId)}/facts/by-entity?entity=${encodeURIComponent(characterName.trim())}${uptoChapter !== undefined ? `&asOfChapter=${encodeURIComponent(String(uptoChapter))}` : ""}`,
+      `${narrativeMemoryBase(bookId)}/facts/by-entity?entity=${encodeURIComponent(name)}${uptoChapter !== undefined ? `&asOfChapter=${encodeURIComponent(String(uptoChapter))}` : ""}`,
     ),
     fetchJson<NarrativeGraphResponse>(
-      `${narrativeMemoryBase(bookId)}/graph?view=relationship&focusEntity=${encodeURIComponent(characterName.trim())}${uptoChapter !== undefined ? `&chapterTo=${encodeURIComponent(String(uptoChapter))}` : ""}`,
+      `${narrativeMemoryBase(bookId)}/graph?view=relationship&focusEntity=${encodeURIComponent(name)}${uptoChapter !== undefined ? `&chapterTo=${encodeURIComponent(String(uptoChapter))}` : ""}`,
     ),
-  ]).then(([evolution, factsPayload, relationshipPayload]) => {
-    const groups = factsPayload.groups ?? [];
+  ]).then(([evolution, factsPayload, relationshipPayload]) => ({ evolution, factsPayload, relationshipPayload }));
+
+  const request = (async () => {
+    let lastResult: Awaited<ReturnType<typeof requestOne>> | undefined;
+    for (const name of candidateNames) {
+      try {
+        const result = await requestOne(name);
+        lastResult = result;
+        const factCount = (result.factsPayload.groups ?? []).reduce((total, group) => total + (group.facts?.length ?? 0), 0);
+        // 命中任一数据源即视为成功，不再尝试后续候选名。
+        if (result.evolution.length > 0 || factCount > 0 || (result.relationshipPayload.events?.length ?? 0) + (result.relationshipPayload.facts?.length ?? 0) > 0) {
+          return result;
+        }
+      } catch {
+        // 单个候选名失败（如 404/网络抖动）不中断整体流程，继续尝试下一候选。
+      }
+    }
+    return lastResult ?? { evolution: [], factsPayload: {}, relationshipPayload: {} as NarrativeGraphResponse };
+  })();
+
+  developmentRequests.set(cacheKey, request);
+  try {
+    const resolved = await request;
+    const groups = resolved.factsPayload.groups ?? [];
     const facts = groups.flatMap((group) => group.facts ?? []);
     const relationships = [
-      ...(relationshipPayload.facts ?? []).map(relationshipFromRecord),
-      ...(relationshipPayload.events ?? []).map(relationshipFromRecord),
+      ...(resolved.relationshipPayload.facts ?? []).map(relationshipFromRecord),
+      ...(resolved.relationshipPayload.events ?? []).map(relationshipFromRecord),
     ]
       .filter((item): item is DynamicRelationship => item !== null)
       .sort((left, right) => (right.chapter ?? 0) - (left.chapter ?? 0))
       .filter((item, index, all) => all.findIndex((candidate) => relationshipKey(candidate) === relationshipKey(item)) === index)
       .slice(0, 8);
-    return { evolution, state: extractDynamicState(facts), relationships };
-  });
-
-  developmentRequests.set(cacheKey, request);
-  try {
-    const snapshot = await request;
-    developmentCache.set(cacheKey, { expiresAt: Date.now() + DEVELOPMENT_CACHE_TTL_MS, snapshot });
-    return snapshot;
+    return { evolution: resolved.evolution, state: extractDynamicState(facts), relationships };
   } finally {
     developmentRequests.delete(cacheKey);
   }
@@ -326,10 +365,11 @@ function useDebouncedValue<T>(value: T, delayMs: number): T {
   return debounced;
 }
 
-function useCharacterDevelopment(bookId: string | undefined, characterName: string, uptoChapter?: number) {
+function useCharacterDevelopment(bookId: string | undefined, characterName: string, uptoChapter?: number, aliases?: readonly string[]) {
   const [loadState, setLoadState] = useState<CharacterDevelopmentLoadState>({ status: "idle" });
   const requestIdRef = useRef(0);
   const debouncedName = useDebouncedValue(characterName.trim(), 300);
+  const aliasesKey = (aliases ?? []).join("|");
   const load = useCallback(async (force = false) => {
     const requestId = ++requestIdRef.current;
     if (!bookId?.trim() || !debouncedName) {
@@ -340,14 +380,15 @@ function useCharacterDevelopment(bookId: string | undefined, characterName: stri
     }
     setLoadState({ status: "loading" });
     try {
-      const snapshot = await loadCharacterDevelopment(bookId, debouncedName, uptoChapter, force);
+      const aliasList = aliasesKey ? aliasesKey.split("|") : undefined;
+      const snapshot = await loadCharacterDevelopment(bookId, debouncedName, uptoChapter, force, aliasList);
       if (requestId !== requestIdRef.current) return;
       setLoadState({ status: "ready", snapshot });
     } catch (cause) {
       if (requestId !== requestIdRef.current) return;
       setLoadState({ status: "error", message: cause instanceof Error ? cause.message : "动态人物数据加载失败" });
     }
-  }, [bookId, debouncedName, uptoChapter]);
+  }, [bookId, debouncedName, uptoChapter, aliasesKey]);
 
   useEffect(() => () => {
     requestIdRef.current += 1;
@@ -380,12 +421,14 @@ function DevelopmentSection({
   bookId,
   characterName,
   uptoChapter,
+  aliases,
 }: {
   bookId?: string;
   characterName: string;
   uptoChapter?: number;
+  aliases?: readonly string[];
 }) {
-  const { loadState, refresh } = useCharacterDevelopment(bookId, characterName, uptoChapter);
+  const { loadState, refresh } = useCharacterDevelopment(bookId, characterName, uptoChapter, aliases);
   const snapshot = loadState.status === "ready" ? loadState.snapshot : undefined;
   const state = snapshot?.state;
 
@@ -824,7 +867,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
             </CardContent>
           </Card>
 
-          <DevelopmentSection bookId={props.bookId} characterName={title} />
+          <DevelopmentSection bookId={props.bookId} characterName={title} aliases={aliasesParsed.length > 0 ? aliasesParsed : undefined} />
 
           {/* ─── 4️⃣ 羁绊 ─── */}
           <Card>
