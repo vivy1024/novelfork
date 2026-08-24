@@ -468,7 +468,9 @@ function buildSequenceGraph(facts: readonly NarrativeFact[], events: readonly Na
   const edges: GraphEdgeModel[] = [];
   const laneByNodeId = new Map<string, string>();
   for (const node of eventNodes) laneByNodeId.set(node.id, node.entityName ?? "事件");
-  if (view === "character_arc") {
+  if (view === "character_arc" || view === "timeline" || view === "event_chain") {
+    // 按实体泳道分组、组内按章节串联——形成多条并行链（树状网络），而不是
+    // 全部实体串成一条几十节点的长链（视觉堆叠的根源）。跨泳道不连线。
     const grouped = new Map<string, GraphNodeModel[]>();
     for (const node of eventNodes) {
       const lane = node.entityName ?? "事件";
@@ -492,7 +494,7 @@ function buildSequenceGraph(facts: readonly NarrativeFact[], events: readonly Na
       edges.push({ id: `${source.id}->${target.id}`, source: source.id, target: target.id, label: "下一事件", displayLabel: "下一事件", kind: "sequence", animated: true });
     }
   }
-  layoutSequenceNodes(eventNodes, view === "character_arc" ? laneByNodeId : undefined);
+  layoutSequenceNodes(eventNodes, view !== "conflict" ? laneByNodeId : undefined);
   return createModel(eventNodes, edges, facts, events);
 }
 
