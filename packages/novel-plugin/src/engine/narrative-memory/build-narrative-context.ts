@@ -7,6 +7,7 @@ import { runChannelWithTimeout, type ChannelResult, type NarrativeRetrievalChann
 import { createFactsChannel } from "./channels/facts-channel.js";
 import { createHardChannel } from "./channels/hard-channel.js";
 import { createHooksChannel } from "./channels/hooks-channel.js";
+import { createRecentSummaryChannel } from "./channels/recent-summary-channel.js";
 import { createSceneSpecChannel } from "./channels/scene-spec-channel.js";
 import { createSemanticChannel, type NarrativeEmbeddingProvider } from "./channels/semantic-channel.js";
 import { createStateChannel } from "./channels/state-channel.js";
@@ -262,6 +263,15 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         stateSummaryMaxChars: input.characterKernelConfig.stateSummaryMaxChars,
       }, timeoutMs)
       : disabledChannelResult("character-kernel"),
+    // 近章手动剧情摘要通道：读经纬 chapter-summaries 类目，按章节号倒序注入最近几章，
+    // 保证作者手动维护的前情摘要进入写作上下文。
+    isOptionalChannelEnabled(input, "recent-summary")
+      ? runChannel(createRecentSummaryChannel(), {
+        storage: input.storage,
+        bookId: parsed.bookId,
+        currentChapter,
+      }, timeoutMs)
+      : disabledChannelResult("recent-summary"),
   ]);
 
   const merged = mergeNarrativeContextCards(channelResults.flatMap((result) => result.cards), {

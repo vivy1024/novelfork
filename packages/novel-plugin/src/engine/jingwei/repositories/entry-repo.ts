@@ -216,8 +216,20 @@ function insertRevision(
   return revisionId;
 }
 
-function resolveFields(input: { fields?: Record<string, unknown>; customFields?: Record<string, unknown> }, fallback: Record<string, unknown>): Record<string, unknown> {
-  return input.fields ?? input.customFields ?? fallback;
+/**
+ * 解析写入的 fields：
+ * - `fields`：显式整体替换（编辑器提交完整字段集的场景，语义最强）
+ * - `fieldsPatch` / `customFields`：增量合并 —— 只覆盖给定键，绝不清掉 fallback 里的其他键。
+ *   伏笔看板拖拽等局部更新走这条路；整删替换会把 name/description/plantedChapter 等未传入字段全部抹掉。
+ */
+function resolveFields(
+  input: { fields?: Record<string, unknown>; customFields?: Record<string, unknown>; fieldsPatch?: Record<string, unknown> },
+  fallback: Record<string, unknown>,
+): Record<string, unknown> {
+  if (input.fields) return input.fields;
+  if (input.fieldsPatch) return { ...fallback, ...input.fieldsPatch };
+  if (input.customFields) return { ...fallback, ...input.customFields };
+  return fallback;
 }
 
 /** 把条目映射为 FTS 同步字段（写入侧与业务操作同一事务调用） */

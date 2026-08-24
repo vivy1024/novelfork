@@ -1,6 +1,36 @@
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
 
 /**
+ * 从经纬条目 fields_json 解析结构化字段；损坏的 JSON 返回空对象（不抛出）。
+ */
+function parseEntryFields(raw: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function readFieldString(fields: Record<string, unknown>, key: string): string {
+  const value = fields[key];
+  return typeof value === "string" ? value.trim() : "";
+}
+
+/** classic_quotes 只取第一句；兼容 string[] 与 "A, B" / "A\nB" 形态的字符串。 */
+function readFirstQuote(fields: Record<string, unknown>): string {
+  const raw = fields.classic_quotes;
+  if (Array.isArray(raw)) {
+    const first = raw.find((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return (first ?? "").trim();
+  }
+  if (typeof raw === "string" && raw.trim()) {
+    return raw.split(/[,，\n]/u)[0]?.trim() ?? "";
+  }
+  return "";
+}
+
+/**
  * Generate a structured briefing for the AI before writing a chapter.
  * This is injected into the system prompt.
  */
@@ -23,8 +53,27 @@ export async function buildChapterBriefing(bookId: string, chapterNumber: number
 
   if (activeChars.length > 0) {
     const charLines = activeChars.map(c => {
-      const fields = JSON.parse(c.fields_json || "{}");
-      return `- ${c.title}：${fields.realm || ""}${fields.goal ? "，目标：" + fields.goal : ""}`;
+      const fields = parseEntryFields(c.fields_json);
+      // 角色内核输出：动机/恐惧/执念/信奉/性格/口头禅。空字段整段省略。
+      const realm = readFieldString(fields, "realm");
+      // goal 是旧字段：core_motive 缺失时才兜底，两者都有时只输出 core_motive。
+      const motive = readFieldString(fields, "core_motive") || readFieldString(fields, "goal");
+      const fear = readFieldString(fields, "core_fear");
+      const obsession = readFieldString(fields, "core_obsession");
+      const belief = readFieldString(fields, "core_belief");
+      const personality = readFieldString(fields, "personality");
+      const quote = readFirstQuote(fields);
+
+      const nameWithRealm = realm ? `${c.title}（${realm}）` : c.title;
+      const parts = [
+        motive ? `动机: ${motive}` : "",
+        fear ? `恐惧: ${fear}` : "",
+        obsession ? `执念: ${obsession}` : "",
+        belief ? `信奉: ${belief}` : "",
+        personality ? `性格: ${personality}` : "",
+        quote ? `口头禅: "${quote}"` : "",
+      ].filter(Boolean);
+      return `- ${nameWithRealm}${parts.length > 0 ? `｜${parts.join("｜")}` : ""}`;
     });
     sections.push(`【活跃角色】\n${charLines.join("\n")}`);
   }

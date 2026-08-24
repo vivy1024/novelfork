@@ -2,10 +2,13 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { SceneSpec } from "../../handlers/scene-spec-handler.js";
+import { createBookRepository } from "../jingwei/repositories/book-repo.js";
+import { createStoryJingweiEntryRepository } from "../jingwei/repositories/entry-repo.js";
+import { createStoryJingweiSectionRepository } from "../jingwei/repositories/section-repo.js";
 import { buildNarrativeContext } from "./build-narrative-context.js";
 import { upsertNarrativeFact } from "./facts.js";
 import { upsertNarrativeContextVector } from "./storage.js";
@@ -255,6 +258,85 @@ describe("buildNarrativeContext", () => {
         fallbackLevel: expect.any(String),
       }));
       expect(waved.diagnostics.wave?.fallbackLevel).not.toBe("L2");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("injects recent manual chapter summaries via the recent-summary channel", async () => {
+    const storage = await createStorage();
+    try {
+      // 经纬表（book/story_jingwei_section/story_jingwei_entry）由 SQL 迁移文件建表。
+      runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+      const now = new Date("2026-06-22T00:00:00.000Z");
+      await createBookRepository(storage).create({
+        id: "book-1",
+        name: "凡人修仙录",
+        jingweiMode: "dynamic",
+        currentChapter: 26,
+        createdAt: now,
+        updatedAt: now,
+      });
+      await createStoryJingweiSectionRepository(storage).create({
+        id: "sec-summary",
+        bookId: "book-1",
+        key: "chapter-summary",
+        name: "章节摘要",
+        description: "",
+        icon: null,
+        order: 1,
+        enabled: true,
+        showInSidebar: true,
+        participatesInAi: true,
+        defaultVisibility: "global",
+        fieldsJson: [],
+        builtinKind: "chapter-summary",
+        sourceTemplate: null,
+        createdAt: now,
+        updatedAt: now,
+      });
+      const entries = createStoryJingweiEntryRepository(storage);
+      const summaryInput = (id: string, fields: Record<string, unknown>) => ({
+        id,
+        bookId: "book-1",
+        sectionId: "sec-summary",
+        title: typeof fields.title === "string" ? fields.title : id,
+        contentMd: "",
+        summaryMd: "",
+        tags: [],
+        aliases: [],
+        customFields: {},
+        relatedChapterNumbers: [],
+        relatedEntryIds: [],
+        visibilityRule: { type: "global" } as const,
+        participatesInAi: true,
+        tokenBudget: null,
+        priorityTier: "reference" as const,
+        importance: 40,
+        summaryL0: "",
+        createdAt: now,
+        updatedAt: now,
+        category: "chapter-summaries",
+        fields,
+      });
+      await entries.create(summaryInput("sum-25", { chapterNumber: 25, title: "夺丹", summary: "韩立夺得筑基丹。" }));
+      await entries.create(summaryInput("sum-24", { chapterNumber: "24", title: "围杀", summary: "墨大夫设局围杀。" }));
+
+      const result = await buildNarrativeContext({
+        storage,
+        bookId: "book-1",
+        purpose: "write_chapter",
+        chapterNumber: 26,
+        sceneSpec,
+        entities: ["韩立"],
+      });
+
+      expect(result.sections["recent-summary"]).toContain("<recent_chapter_summaries>");
+      expect(result.sections["recent-summary"]).toContain("第25章《夺丹》：韩立夺得筑基丹。");
+      expect(result.sections["recent-summary"]).toContain("第24章《围杀》：墨大夫设局围杀。");
+      expect(result.diagnostics.channelStats).toEqual(expect.arrayContaining([
+        expect.objectContaining({ channel: "recent-summary", status: "ok" }),
+      ]));
     } finally {
       storage.close();
     }

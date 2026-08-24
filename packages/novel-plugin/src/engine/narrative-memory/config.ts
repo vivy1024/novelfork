@@ -31,6 +31,7 @@ const DEFAULT_RETRIEVAL_CHANNELS_CONFIG = {
   style: true,
   semantic: true,
   "character-kernel": true,
+  "recent-summary": true,
 };
 
 const DEFAULT_RETRIEVAL_CONFIG = {
@@ -63,6 +64,7 @@ const RetrievalChannelsConfigSchema = z.object({
   style: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.style),
   semantic: z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG.semantic),
   "character-kernel": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["character-kernel"]),
+  "recent-summary": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["recent-summary"]),
 }).default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG);
 
 const RetrievalConfigSchema = z.object({
