@@ -1420,34 +1420,17 @@ export function NarrativeMemoryPanelShell({
         />
       )}
 
-      {/* 视图 2：伏笔账本。权威编辑仍落在既有的经纬伏笔看板，避免双写。 */}
+      {/* 视图 2：伏笔账本（只读证据汇总）。权威编辑统一走侧栏「伏笔账本」入口，这里不再放第二个跳转按钮，消除双入口。 */}
       {mainTab === "hook-ledger" && (
         <section className="rounded-lg border border-border bg-card p-3 space-y-3" data-testid="narrative-memory-hook-ledger">
           <div className="flex items-center justify-between gap-2">
             <div>
-              <h3 className="text-xs font-semibold">伏笔账本</h3>
-              <p className="mt-0.5 text-[10px] text-muted-foreground">动态记忆证据与章后触发流水</p>
+              <h3 className="text-xs font-semibold">伏笔记忆证据</h3>
+              <p className="mt-0.5 text-[10px] text-muted-foreground">章后结算出的埋设/触发/回收流水（只读）</p>
             </div>
-            {onOpen ? (
-              <Button
-                type="button"
-                variant="outline"
-                size="xs"
-                className="h-7 text-[10px] text-primary"
-                onClick={() => onOpen({
-                  id: "tool:foreshadowing",
-                  kind: "tool",
-                  title: "伏笔看板",
-                  metadata: { toolPanel: "foreshadowing" },
-                  capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-                })}
-              >
-                打开伏笔看板
-              </Button>
-            ) : null}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            伏笔主设定仍由经纬「伏笔看板」维护；这里不新建接口，只汇总 Narrative Memory 中已经结算的 hook 证据。
+            编辑与管理请使用左侧「伏笔账本」入口打开全屏看板；此处仅汇总 Narrative Memory 已结算的 hook 证据。
           </p>
 
           {hookFacts.length === 0 && hookHistory.length === 0 ? (
