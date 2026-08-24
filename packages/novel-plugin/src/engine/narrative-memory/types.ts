@@ -23,6 +23,7 @@ export const NarrativeContextChannelSchema = z.enum([
   "style",
   "semantic",
   "character-kernel",
+  "recent-summary",
 ]);
 export type NarrativeContextChannel = z.infer<typeof NarrativeContextChannelSchema>;
 
@@ -324,6 +325,7 @@ export const NarrativeContextPackageSchema = z.object({
     style: z.string().default(""),
     semantic: z.string().default(""),
     "character-kernel": z.string().default(""),
+    "recent-summary": z.string().default(""),
   }),
   diagnostics: NarrativeRetrievalDiagnosticsSchema,
 });
@@ -341,6 +343,7 @@ export type NarrativeContextPackage = Readonly<{
     style: string;
     semantic: string;
     "character-kernel": string;
+    "recent-summary": string;
   }>;
   diagnostics: NarrativeRetrievalDiagnostics;
 }>;

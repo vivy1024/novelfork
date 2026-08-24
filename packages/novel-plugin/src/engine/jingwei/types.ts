@@ -144,6 +144,8 @@ export type CreateStoryJingweiEntryInput =
 export type UpdateStoryJingweiEntryInput = Partial<Omit<CreateStoryJingweiEntryInput, "id" | "bookId" | "createdAt">> & {
   revisionReason?: string;
   changedBy?: string;
+  /** 增量合并键值：只覆盖传入的字段，保留 fields_json 中其余字段（拖拽等局部更新用）。 */
+  fieldsPatch?: Record<string, unknown>;
 };
 
 export type JingweiContextSource = "global" | "tracked" | "nested";

@@ -53,6 +53,100 @@ afterEach(async () => {
   await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
+describe("story jingwei entry fields merge semantics", () => {
+  async function createForeshadowingEntry(storage: StorageDatabase) {
+    return createStoryJingweiEntryRepository(storage).create({
+      id: "entry-foreshadowing",
+      bookId: "book-1",
+      sectionId: "section-1",
+      title: "血仇伏笔",
+      contentMd: "韩立的血仇伏笔",
+      tags: [],
+      aliases: [],
+      fields: {
+        name: "血仇伏笔",
+        description: "墨大夫夺舍之恨",
+        plantedChapter: 3,
+        targetChapter: 40,
+        status: "已埋设",
+      },
+      customFields: {
+        name: "血仇伏笔",
+        description: "墨大夫夺舍之恨",
+        plantedChapter: 3,
+        targetChapter: 40,
+        status: "已埋设",
+      },
+      relatedChapterNumbers: [],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" },
+      participatesInAi: true,
+      tokenBudget: null,
+      createdAt: new Date("2026-08-01T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T01:00:00.000Z"),
+    });
+  }
+
+  it("fieldsPatch 只增量合并传入键，保留其余 fields（伏笔拖拽改状态不丢数据）", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await createForeshadowingEntry(storage);
+
+    await repo.update("book-1", "entry-foreshadowing", {
+      fieldsPatch: { status: "已回收" },
+      source: "user",
+    });
+
+    const entry = await repo.getById("book-1", "entry-foreshadowing");
+    expect(entry?.fields).toEqual({
+      name: "血仇伏笔",
+      description: "墨大夫夺舍之恨",
+      plantedChapter: 3,
+      targetChapter: 40,
+      status: "已回收",
+    });
+    const row = storage.sqlite.prepare<{ fields_json: string; custom_fields_json: string }>(`
+      SELECT fields_json, custom_fields_json FROM story_jingwei_entry WHERE id = ?
+    `).get("entry-foreshadowing");
+    expect(JSON.parse(row!.fields_json)).toEqual(entry!.fields);
+    expect(JSON.parse(row!.custom_fields_json)).toEqual(entry!.fields);
+  });
+
+  it("customFields-only 更新同样是合并而非整体替换", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await createForeshadowingEntry(storage);
+
+    await repo.update("book-1", "entry-foreshadowing", {
+      customFields: { status: "已废弃" },
+      source: "user",
+    });
+
+    const entry = await repo.getById("book-1", "entry-foreshadowing");
+    expect(entry?.fields).toEqual({
+      name: "血仇伏笔",
+      description: "墨大夫夺舍之恨",
+      plantedChapter: 3,
+      targetChapter: 40,
+      status: "已废弃",
+    });
+  });
+
+  it("fields 显式提供时仍整体替换（编辑器全量提交语义不变）", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    await createForeshadowingEntry(storage);
+
+    await repo.update("book-1", "entry-foreshadowing", {
+      fields: { status: "已回收", note: "只保留这两个键" },
+      source: "user",
+    });
+
+    const entry = await repo.getById("book-1", "entry-foreshadowing");
+    expect(entry?.fields).toEqual({ status: "已回收", note: "只保留这两个键" });
+  });
+});
+
 describe("story jingwei entry authority and revisions", () => {
   async function createEntry(storage: StorageDatabase) {
     return createStoryJingweiEntryRepository(storage).create({

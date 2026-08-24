@@ -15,6 +15,7 @@ const CHANNEL_BOOST: Record<string, number> = {
   relationship: 55,
   style: 20,
   semantic: 35,
+  "recent-summary": 50,
 };
 
 /**
