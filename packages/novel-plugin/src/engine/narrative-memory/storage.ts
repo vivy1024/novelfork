@@ -270,6 +270,8 @@ const EVENT_SELECT = `
     source,
     status,
     risk_level AS riskLevel,
+    subject_entry_id AS subjectEntryId,
+    object_entry_id AS objectEntryId,
     created_at AS createdAt,
     applied_at AS appliedAt
   FROM narrative_event
@@ -317,12 +319,16 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       source TEXT NOT NULL,
       status TEXT NOT NULL,
       risk_level TEXT NOT NULL,
+      subject_entry_id TEXT,
+      object_entry_id TEXT,
       created_at TEXT NOT NULL,
       applied_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_chapter ON narrative_event(book_id, chapter_number);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_status ON narrative_event(book_id, status);
+    CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_narrative_event_object_entry ON narrative_event(book_id, object_entry_id);
 
     CREATE TABLE IF NOT EXISTS narrative_retrieval_log (
       id TEXT PRIMARY KEY,
@@ -391,6 +397,16 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_character_kernel_unique ON character_kernel(book_id, character_id);
   `);
+
+  // 实体身份链：旧库的 narrative_event 缺 subject_entry_id / object_entry_id 列，逐列补齐。
+  // CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，因此这里显式 ALTER（重复执行报 duplicate column 时忽略）。
+  for (const column of ["subject_entry_id", "object_entry_id"]) {
+    try {
+      storage.sqlite.exec(`ALTER TABLE narrative_event ADD COLUMN ${column} TEXT`);
+    } catch {
+      // 列已存在——预期路径，静默跳过。
+    }
+  }
 }
 
 export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFact): NarrativeFact {
@@ -503,9 +519,11 @@ export function insertNarrativeEvent(storage: StorageDatabase, event: NarrativeE
       source,
       status,
       risk_level,
+      subject_entry_id,
+      object_entry_id,
       created_at,
       applied_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     parsed.id,
     parsed.bookId,
@@ -519,6 +537,8 @@ export function insertNarrativeEvent(storage: StorageDatabase, event: NarrativeE
     parsed.source,
     parsed.status,
     parsed.riskLevel,
+    parsed.subjectEntryId ?? null,
+    parsed.objectEntryId ?? null,
     parsed.createdAt,
     parsed.appliedAt ?? null,
   );

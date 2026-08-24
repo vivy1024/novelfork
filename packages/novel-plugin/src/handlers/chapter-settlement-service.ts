@@ -10,6 +10,7 @@ import {
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
 import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import {
@@ -80,6 +81,8 @@ function materializeEvent(input: ChapterSettlementInput, draft: NarrativeEventDr
     source: "settle",
     status,
     riskLevel: decision.riskLevel,
+    ...(draft.subjectEntryId ? { subjectEntryId: draft.subjectEntryId } : {}),
+    ...(draft.objectEntryId ? { objectEntryId: draft.objectEntryId } : {}),
     createdAt,
     appliedAt: status === "applied" ? createdAt : undefined,
   });
@@ -331,12 +334,16 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
 
   let extraction: ChapterEventExtractionResult;
   try {
+    // 实体身份链：结算前从经纬构建实体字典，注入抽取 prompt 并在写入端归一化。
+    // 字典为空（书还没有实体条目/表未建）时 extractNarrativeEventsFromChapter 内部按无字典降级。
+    const entityDictionary = buildEntityDictionary(storage, input.bookId);
     extraction = await extractNarrativeEventsFromChapter({
       bookId: input.bookId,
       chapterNumber: input.chapterNumber,
       title: input.title,
       content: input.content,
       currentLedger,
+      entityDictionary,
       llmExtractor: options.llmExtractor,
     });
   } catch (error) {

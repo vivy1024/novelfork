@@ -2,6 +2,7 @@ import { chatCompletion, type LLMClient } from "@vivy1024/novelfork-core";
 
 import { NarrativeEventTypeSchema } from "./types.js";
 import type { NarrativeEventDraft } from "./settlement-risk-gate.js";
+import { formatEntityDictionaryForPrompt, resolveEntity, type EntityDictionary } from "./entity-dictionary.js";
 
 /** 当前台账中的一条 open fact，注入抽取 prompt 让 LLM 感知已有状态，只抽增量。 */
 export type CurrentLedgerFactSnapshot = Readonly<{
@@ -11,6 +12,9 @@ export type CurrentLedgerFactSnapshot = Readonly<{
   object: string;
 }>;
 
+/** 实体字典的传输形态（handler 层构建后传入，extractor 只读）。 */
+export type EntityDictionaryInput = EntityDictionary;
+
 export type ChapterEventExtractorInput = Readonly<{
   bookId: string;
   chapterNumber: number;
@@ -18,7 +22,14 @@ export type ChapterEventExtractorInput = Readonly<{
   content: string;
   /** 当前叙事记忆台账的 open fact 快照；用于让 LLM 只抽取相对已有状态的增量变化。 */
   currentLedger?: readonly CurrentLedgerFactSnapshot[];
-  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[] }>) => Promise<readonly unknown[]>;
+  /**
+   * 经纬实体字典（身份链）。提供时：
+   * 1. prompt 注入官方实体名单约束 LLM 用名；
+   * 2. 抽取结果对 subject/object 归一化为 canonical 名并回填 entryId。
+   * 缺省时行为与旧版一致（不做注入与归一化）。
+   */
+  entityDictionary?: EntityDictionaryInput;
+  llmExtractor?: (input: Readonly<{ bookId: string; chapterNumber: number; title?: string; content: string; currentLedger?: readonly CurrentLedgerFactSnapshot[]; entityDictionary?: EntityDictionaryInput }>) => Promise<readonly unknown[]>;
 }>;
 
 export type ChapterEventExtractionResult = Readonly<{
@@ -43,19 +54,12 @@ export function parseLLMNarrativeEventDrafts(content: string): readonly unknown[
   }
 }
 
-type ExtractorInput = Readonly<{
-  bookId: string;
-  chapterNumber: number;
-  title?: string;
-  content: string;
-  currentLedger?: readonly CurrentLedgerFactSnapshot[];
-}>;
-
 const EXTRACTOR_SYSTEM_PROMPT = [
   "你是网文小说叙事记忆结算器。只从用户提供的正式章节正文中抽取动态叙事变化。",
   "返回严格 JSON 数组，不要输出解释。每项字段：eventType, subject, predicate, object, evidenceText, confidence, source。",
   "eventType 只能是 character_state_changed, relationship_changed, location_changed, hook_planted, hook_progressed, hook_resolved, world_fact_introduced, timeline_advanced。",
   "evidenceText 必须是章节正文中的原文短摘录，source 固定为 settle。没有证据就不要输出该事件。",
+  "若用户消息提供了「官方实体名单」：subject 与 object（关系对象、地点宾语）必须优先使用名单中的名字或其列出的称呼；名单中没有的新实体才使用正文原名称。",
   "不要写入静态 Lore/canon；只提出 NarrativeEvent 草案。",
   "若提供了「当前叙事记忆台账」，只抽取相对台账发生变化或新增的状态；与台账一致、本章未改变的内容不要重复输出。",
   "对状态类变化（修为/位置/关系/情绪等），subject+predicate 标识状态槽位，object 是本章后的新值；同一槽位的新值会由系统自动作废旧值，你只需给出新值。",
@@ -69,11 +73,14 @@ function formatCurrentLedger(ledger: readonly CurrentLedgerFactSnapshot[]): stri
     .join("\n");
 }
 
-function buildExtractorUserPrompt(input: ExtractorInput): string {
+function buildExtractorUserPrompt(input: ChapterEventExtractorInput): string {
   const ledgerBlock = input.currentLedger
     ? `\n\n当前叙事记忆台账（已知的最新状态，仅供判断增量，不要复述）：\n${formatCurrentLedger(input.currentLedger)}`
     : "";
-  return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
+  const entityBlock = formatEntityDictionaryForPrompt(input.entityDictionary)
+    ? `\n\n${formatEntityDictionaryForPrompt(input.entityDictionary)}`
+    : "";
+  return `bookId: ${input.bookId}\nchapterNumber: ${input.chapterNumber}\ntitle: ${input.title ?? ""}${entityBlock}${ledgerBlock}\n\n正式章节正文：\n${input.content.slice(0, 20_000)}`;
 }
 
 export function createLLMChapterEventExtractor(client: LLMClient, model: string): NonNullable<ChapterEventExtractorInput["llmExtractor"]> {
@@ -170,6 +177,29 @@ function dedupeDrafts(drafts: readonly NarrativeEventDraft[]): { drafts: Narrati
  * 结算表达为失败（agent 重试工具调用），绝不静默降级为规则兜底 —— 兜底会以
  * 「抽到 0 条 / 抽偏」的假成功写进结算台账，下回同章幂等跳过，漏抽就再也补不回来。
  */
+/**
+ * 身份链归一化：subject/object 命中实体字典时改写为 canonical 名并回填 entryId。
+ * 未命中保持原文——新登场实体、非实体的状态值（"兴奋""重伤"）都不强行映射。
+ * relationship_changed / location_changed 的 object 端同样是实体，一并处理。
+ */
+function normalizeDraftEntities(draft: NarrativeEventDraft, dictionary: EntityDictionary | undefined): NarrativeEventDraft {
+  if (!dictionary || dictionary.entries.length === 0) return draft;
+  const subjectHit = resolveEntity(dictionary, draft.subject);
+  const objectHit = resolveEntity(dictionary, draft.object);
+  return {
+    ...draft,
+    ...(subjectHit ? { subject: subjectHit.entry.canonicalName, subjectEntryId: subjectHit.entry.entryId } : {}),
+    ...(objectHit ? { object: objectHit.entry.canonicalName, objectEntryId: objectHit.entry.entryId } : {}),
+  };
+}
+
+/**
+ * 从章节正文抽取叙事事件草案。
+ *
+ * 抽取只走 LLM：没有可用的 llmExtractor 或 LLM 调用失败时直接抛错，由上层把
+ * 结算表达为失败（agent 重试工具调用），绝不静默降级为规则兜底 —— 兜底会以
+ * 「抽到 0 条 / 抽偏」的假成功写进结算台账，下回同章幂等跳过，漏抽就再也补不回来。
+ */
 export async function extractNarrativeEventsFromChapter(input: ChapterEventExtractorInput): Promise<ChapterEventExtractionResult> {
   if (!input.llmExtractor) {
     throw new Error("当前会话没有可用的 LLM 抽取器（generateText 缺失），无法抽取叙事事件。");
@@ -184,6 +214,7 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
     title: input.title,
     content: input.content,
     currentLedger: input.currentLedger,
+    entityDictionary: input.entityDictionary,
   });
   for (const raw of llmDrafts) {
     const draft = parseUnknownDraft(raw);
@@ -194,7 +225,7 @@ export async function extractNarrativeEventsFromChapter(input: ChapterEventExtra
   const validDrafts: NarrativeEventDraft[] = [];
   for (const draft of rawDrafts) {
     if (isValidDraft(draft, input.content)) {
-      validDrafts.push(draft);
+      validDrafts.push(normalizeDraftEntities(draft, input.entityDictionary));
     } else {
       warnings.push("丢弃无效事件草案：缺少 subject/predicate/object/evidenceText，或 evidenceText 不是正文原文摘录。");
     }
