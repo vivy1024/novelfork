@@ -422,6 +422,24 @@ function DevelopmentSection({
             </div>
           ) : (
             <>
+              {/*
+               * 空数据诚实诊断：当三路请求全部返回空时，明确告知用户原因——
+               * 该角色从未被章后结算器记录过（未出场/未被识别），不是功能故障。
+               * 同时给出有数据的角色作为对照，让用户能立即自证功能是好的。
+               */}
+              {!snapshot?.evolution.length && !state?.realm && !state?.injury && !state?.resources.length && !snapshot?.relationships.length ? (
+                <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.05] px-4 py-5 text-center space-y-2" data-testid="character-development-empty-diagnosis">
+                  <p className="text-sm font-medium text-amber-700 dark:text-amber-400">该角色暂无任何章后结算记录</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground max-w-md mx-auto">
+                    叙事记忆只收录<strong>正文中实际出场</strong>并经章后结算的角色动态。
+                    「{characterName.trim() || "该角色"}」可能尚未正式登场，或结算器未从正文识别到 TA 的状态变化。
+                    经纬静态设定不受影响，写作召回仍会携带本卡的内核字段。
+                  </p>
+                  <p className="text-[10px] text-muted-foreground/80">
+                    想验证动态功能？打开一位已出场主角（如「薛行之」）即可看到发展历程与关系演化。
+                  </p>
+                </div>
+              ) : null}
               <section className="space-y-2" aria-labelledby="character-current-state-title">
                 <div className="flex items-center gap-2">
                   <Clock3 className="size-3.5 text-emerald-600" />

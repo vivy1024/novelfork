@@ -148,8 +148,13 @@ export function StorylineAndPlanningSidebarPanel({
 
   const handleSubTabChange = (tab: StorylineSubTab) => {
     setActiveSubTab(tab);
+    // 伏笔账本与故事画布都是"点击即在中央打开大屏"，侧栏只保留入口说明，不再堆叠第二份功能面板。
     if (tab === "foreshadowing" && foreshadowingNode) {
       onOpen(foreshadowingNode);
+    }
+    if (tab === "graph") {
+      // 直接打开大屏画布（默认大纲总览视图），消除"点了只看到一段说明文字"的空转。
+      openProgressionCanvas("outline");
     }
   };
 
@@ -307,11 +312,19 @@ export function StorylineAndPlanningSidebarPanel({
         {activeSubTab === "graph" && (
           <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
             <MapIcon className="size-8 text-primary/60" />
-            <p className="text-xs font-medium text-foreground">故事推进大屏画布</p>
-            <p className="text-[11px]">
-              大纲总览 / 故事地图 / 发展历程三视图统一在一个画布 Tab 中切换；
-              点击上方入口即可在中央编辑区打开对应全屏画布。
-            </p>
+            <p className="text-xs font-medium text-foreground">故事画布已在中央打开</p>
+            <div className="grid w-full grid-cols-1 gap-1.5 pt-2">
+              {([
+                ["outline", "📊 大纲总览"],
+                ["map", "🗺️ 故事地图"],
+                ["evolution", "📈 发展历程"],
+              ] as const).map(([view, label]) => (
+                <Button key={view} size="xs" variant="outline" className="h-7 justify-start text-[11px]" onClick={() => openProgressionCanvas(view)}>
+                  {label}
+                </Button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground/70">三个视图共用同一个画布 Tab，在内部切换。</p>
           </div>
         )}
 

@@ -455,7 +455,15 @@ function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly Narr
 }
 
 function buildSequenceGraph(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], view: NarrativeMemoryView): NarrativeGraphModel {
-  const sourceEvents = uniqueEvents(events);
+  // 时间线视图若一次性铺开全书事件，画布会宽达数千像素、fitView 后节点小到不可读。
+  // 这里对 timeline 收敛为「最近 8 章」，其余视图保持全量。
+  const TIMELINE_WINDOW_CHAPTERS = 8;
+  let sourceEvents = uniqueEvents(events);
+  if (view === "timeline" && sourceEvents.length > 0) {
+    const maxChapter = Math.max(...sourceEvents.map((event) => event.chapterNumber ?? 0));
+    const windowed = sourceEvents.filter((event) => (event.chapterNumber ?? 0) > maxChapter - TIMELINE_WINDOW_CHAPTERS);
+    if (windowed.length > 0) sourceEvents = windowed;
+  }
   const eventNodes = sourceEvents.length > 0 ? sourceEvents.map(createEventNode) : uniqueFacts(facts).map(createFactNode);
   const edges: GraphEdgeModel[] = [];
   const laneByNodeId = new Map<string, string>();
