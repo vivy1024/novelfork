@@ -164,6 +164,9 @@ export const NarrativeEventSchema = z.object({
   source: z.enum(["settle", "manual", "import"]),
   status: NarrativeEventStatusSchema,
   riskLevel: NarrativeEventRiskLevelSchema,
+  /** 实体身份链：subject/object 命中经纬实体字典时回填的 story_jingwei_entry.id。 */
+  subjectEntryId: z.string().optional(),
+  objectEntryId: z.string().optional(),
   createdAt: nonEmptyString,
   appliedAt: z.string().optional(),
 });
@@ -180,6 +183,9 @@ export type NarrativeEvent = Readonly<{
   source: "settle" | "manual" | "import";
   status: NarrativeEventStatus;
   riskLevel: NarrativeEventRiskLevel;
+  /** 实体身份链：subject/object 对应的经纬条目 id（命中字典时回填）。 */
+  subjectEntryId?: string;
+  objectEntryId?: string;
   createdAt: string;
   appliedAt?: string;
 }>;

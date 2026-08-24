@@ -24,6 +24,12 @@ export type NarrativeEventDraft = Readonly<{
   confidence: number;
   riskLevel?: NarrativeEventRiskLevel;
   source: "settle";
+  /**
+   * 实体身份链：subject/object 命中经纬实体字典时回填的条目 id。
+   * 未命中（新实体/非实体宾语）时缺省；写入 narrative_event 时透传落库。
+   */
+  subjectEntryId?: string;
+  objectEntryId?: string;
 }>;
 
 export type SettlementRiskDecision = Readonly<{
