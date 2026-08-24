@@ -148,7 +148,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     title: "📐 结构类",
     tools: [
       { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
-      { id: "tool:foreshadowing", title: "伏笔看板", toolPanel: "foreshadowing" },
+      // 伏笔看板已收敛到「故事推进」侧栏唯一入口，不再作为工具面板条目重复出现。
       { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
     ],
   },

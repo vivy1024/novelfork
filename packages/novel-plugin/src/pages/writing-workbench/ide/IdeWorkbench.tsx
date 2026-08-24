@@ -16,7 +16,7 @@ import {
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-import { createStoryMapNode, createToolSectionNodes } from "../useWorkbenchResources";
+import { createStoryMapNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
@@ -54,6 +54,7 @@ import {
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */
 export function toTabKind(node: WorkbenchResourceNode): TabKind {
   if (node.kind === "story-map" || node.metadata?.isStoryMap) return "story-map";
+  if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "story-map";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
   switch (node.kind) {
@@ -75,8 +76,9 @@ export function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区；导出仅供测试核对映射表） */
 export function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  // 故事主支线与叙事记忆条目归入故事推进工作区。
+  // 故事主支线、故事推进大屏画布与叙事记忆条目归入故事推进工作区。
   if (node.kind === "story-map" || node.metadata?.isStoryMap || node.metadata?.isNarrativeMemoryEntry) return "storyline";
+  if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "storyline";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
   return "explorer";
 }
@@ -482,19 +484,22 @@ export function IdeWorkbench({
   const chapterTreeNodes = useMemo(() => collectChapterTreeNodes(fileTree.nodes), [fileTree.nodes]);
   const outlineTreeNodes = useMemo(() => collectCategoryNodes(jingweiSections, "outline"), [jingweiSections]);
   const storyMapNode = useMemo(() => (bookId ? createStoryMapNode(bookId) : null), [bookId]);
-  const foreshadowingNode = useMemo(() => {
-    const walk = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
-      for (const item of items) {
-        if (item.id === "tool:foreshadowing") return item;
-        if (item.children) {
-          const found = walk(item.children);
-          if (found) return found;
-        }
+  // 故事推进大屏画布的默认节点（outline 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
+  const storyProgressionNode = useMemo(() => (bookId ? createStoryProgressionNode(bookId) : null), [bookId]);
+  // 伏笔看板唯一入口在「故事推进」侧栏；工具面板已不再收录该条目（避免双入口），
+  // 因此这里直接构造节点而非从 toolNodes 中查找。
+  const foreshadowingNode = useMemo<WorkbenchResourceNode | null>(() => (
+    bookId
+      ? {
+        id: "tool:foreshadowing",
+        kind: "tool",
+        title: "伏笔看板",
+        content: "",
+        capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        metadata: { toolPanel: "foreshadowing", bookId },
       }
-      return null;
-    };
-    return walk(toolNodes);
-  }, [toolNodes]);
+      : null
+  ), [bookId]);
 
   const resourceMap = useMemo(() => {
     const map = new Map<string, WorkbenchResourceNode>();
@@ -507,8 +512,9 @@ export function IdeWorkbench({
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
     if (storyMapNode) map.set(storyMapNode.id, storyMapNode);
+    if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode, storyProgressionNode]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -618,7 +624,13 @@ export function IdeWorkbench({
     }
     // 搜索/结算历史生成的叙事记忆详情节点不在静态资源树中；缓存完整节点，
     // 否则 Tab 虽会激活，但 activeNode 无法解析，画布仍停留在旧面板而显示空白。
-    if (node.metadata?.isNarrativeMemoryEntry === true || node.kind === "jingwei-entry") {
+    if (
+      node.metadata?.isNarrativeMemoryEntry === true ||
+      node.kind === "jingwei-entry" ||
+      // 故事画布节点不在静态资源树中（preferredView 随点击变化），必须缓存完整节点：
+      // 否则同一 tab 二次跳转时 activeNode 解析回 resourceMap 默认视图，视图切换失效。
+      node.metadata?.isStoryProgression === true
+    ) {
       setLoadedFiles((previous) => new Map(previous).set(node.id, node));
     }
     if (node.capabilities.open) revealTab(toTabKind(node), toTabView(node));
