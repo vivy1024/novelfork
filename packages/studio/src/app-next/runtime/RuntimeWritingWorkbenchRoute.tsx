@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { IdeWorkbench } from "@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide";
 import type {
@@ -232,6 +232,39 @@ export function RuntimeWritingWorkbenchRoute({
     void reload();
   }, [reload]);
 
+  // ── 写作完成后自动刷新（免 F5）────────────────────────────────
+  // pipeline.write / chapter.write / rewrite.apply 等落盘动作在 Runtime 侧
+  // 完成后，前端没有事件推送，只能靠轮询感知。这里用「tab 可见 + 轻量探测」：
+  // 每 5 秒查一次最新章号/资源指纹，有变化才触发完整 reload，避免无谓开销。
+  const latestChapterFingerprintRef = useRef<string | null>(null);
+
+  const probeWorkspaceChange = useCallback(async () => {
+    try {
+      const workspace = await client.getWorkspace(bookId);
+      const fingerprint = [
+        workspace.resources.length,
+        ...workspace.resources.slice(-3).map((r) => `${r.id}:${r.updatedAt ?? ""}`),
+      ].join("|");
+      if (latestChapterFingerprintRef.current === null) {
+        latestChapterFingerprintRef.current = fingerprint;
+        return;
+      }
+      if (fingerprint !== latestChapterFingerprintRef.current) {
+        latestChapterFingerprintRef.current = fingerprint;
+        void reload();
+      }
+    } catch {
+      // 探测失败静默跳过——下一轮再试，不影响主流程。
+    }
+  }, [bookId, client, reload]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void probeWorkspaceChange();
+    }, 5_000);
+    return () => window.clearInterval(interval);
+  }, [probeWorkspaceChange]);
+
   const handleSave = useCallback(async (node: WorkbenchResourceNode, content: string) => {
     if (!node.capabilities.edit) throw new Error("此 Runtime 资源不可编辑");
     const result = await client.saveWorkspaceResource(bookId, node.id, content);
@@ -326,7 +359,9 @@ export function RuntimeWritingWorkbenchRoute({
           }))}
           activeSessionId={activeNarrator?.id ?? null}
           onSwitchSession={setActiveNarratorId}
-          onCreateSession={activeNarrator ? () => void handleCreateSession() : undefined}
+          // 始终允许新建（即使当前没有活跃会话），且显式绑定 bookId——
+          // 修复右侧面板新建会话不绑书、变成全局游离会话的 bug。
+          onCreateSession={creatingSession ? undefined : () => void handleCreateSession()}
         />
       ) : null}
     </section>

@@ -34,17 +34,19 @@ describe("narrative memory config", () => {
     const config = await loadNarrativeMemoryConfig("book-1", root);
     expect(config).toEqual(DEFAULT_NARRATIVE_MEMORY_CONFIG);
     expect(config.settlement.autoApplyMediumRisk).toBe(true);
+    expect(config.settlement.autoChapterSummary).toBe(true);
     expect(config.retrieval.waveEnabled).toBe(false);
     expect(config.retrieval.channels.facts).toBe(true);
   });
 
   it("merges partial stored config and persists patches", async () => {
     const root = await tempBook("book-1", {
-      narrativeMemory: { settlement: { autoApplyMediumRisk: false, minConfidence: 0.9 } },
+      narrativeMemory: { settlement: { autoApplyMediumRisk: false, minConfidence: 0.9, autoChapterSummary: false } },
     });
     const loaded = await loadNarrativeMemoryConfig("book-1", root);
     expect(loaded.settlement.autoApplyMediumRisk).toBe(false);
     expect(loaded.settlement.minConfidence).toBe(0.9);
+    expect(loaded.settlement.autoChapterSummary).toBe(false);
     expect(loaded.settlement.enabled).toBe(true);
 
     const saved = await saveNarrativeMemoryConfig("book-1", root, {

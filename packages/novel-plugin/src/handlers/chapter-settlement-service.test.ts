@@ -2,9 +2,10 @@ import { mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { createManualNarrativeFact } from "../engine/narrative-memory/fact-mutations.js";
 import { readChapterSettlementRecord } from "../engine/narrative-memory/settlement-idempotency.js";
@@ -17,6 +18,20 @@ async function createStorage(): Promise<StorageDatabase> {
   await mkdir(dir, { recursive: true });
   tempDirs.push(dir);
   return createStorageDatabase({ databasePath: join(dir, "novelfork.db") });
+}
+
+async function createSummaryStorage(): Promise<StorageDatabase> {
+  const storage = await createStorage();
+  runStorageMigrations(storage, { migrationsDir: join(process.cwd(), "../core/src/storage/migrations") });
+  await createBookRepository(storage).create({
+    id: "book-1",
+    name: "测试书",
+    jingweiMode: "dynamic",
+    currentChapter: 20,
+    createdAt: new Date("2026-06-22T00:00:00.000Z"),
+    updatedAt: new Date("2026-06-22T00:00:00.000Z"),
+  });
+  return storage;
 }
 
 afterEach(async () => {
@@ -77,6 +92,86 @@ describe("chapter settlement service", () => {
       expect(result).toMatchObject({ status: "completed", extracted: 1, autoApplied: 1, pending: 0, highRiskPending: 0 });
       expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE subject = ? AND object = ?").get("韩立", "药园")?.count).toBe(1);
       expect(storage.sqlite.prepare<{ status: string; riskLevel: string }>("SELECT status, risk_level AS riskLevel FROM narrative_event LIMIT 1").get()).toEqual({ status: "applied", riskLevel: "low" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("结算后自动生成章摘要与 tension_score，并在重结算时幂等更新", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const content = "【地点】韩立抵达药园";
+      const responses = [
+        '{"summary":"韩立抵达药园查探小瓶，暂未发现异常，局势维持紧张。","tensionScore":7}',
+        "韩立在药园确认小瓶仍在，暂时没有新的冲突。",
+      ];
+      const prompts: string[] = [];
+      const kernelGenerateText = async (request: { messages: ReadonlyArray<{ role: string; content: string }> }) => {
+        prompts.push(request.messages.map((message) => message.content).join("\n"));
+        return { text: responses.shift() ?? "" };
+      };
+
+      const first = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        title: "药园试探",
+        content,
+      }, { storage, llmExtractor: markerExtractor(content), kernelGenerateText });
+
+      expect(first.status).toBe("completed");
+      let rows = storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      expect(rows?.count).toBe(1);
+      let row = storage.sqlite.prepare<{ content_md: string; fields_json: string }>(
+        "SELECT content_md, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries'",
+      ).get("book-1");
+      expect(row?.content_md).toContain("韩立抵达药园");
+      expect(JSON.parse(row?.fields_json ?? "{}")).toMatchObject({ chapterNumber: 12, title: "药园试探", tension_score: 7 });
+      expect(prompts[0]).toContain(content);
+
+      const second = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        title: "药园试探",
+        content,
+        force: true,
+      }, { storage, llmExtractor: markerExtractor(content), kernelGenerateText });
+
+      expect(second.status).toBe("completed");
+      rows = storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      expect(rows?.count).toBe(1);
+      row = storage.sqlite.prepare<{ content_md: string; fields_json: string }>(
+        "SELECT content_md, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries'",
+      ).get("book-1");
+      expect(row?.content_md).toContain("暂时没有新的冲突");
+      expect(JSON.parse(row?.fields_json ?? "{}").tension_score).toBeUndefined();
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("自动摘要 LLM 失败只产生 warning，不阻断已完成结算", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const content = "【地点】韩立抵达药园";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content,
+      }, {
+        storage,
+        llmExtractor: markerExtractor(content),
+        kernelGenerateText: async () => { throw new Error("summary unavailable"); },
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.warnings.some((warning) => warning.includes("自动摘要生成失败"))).toBe(true);
+      expect(storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE category = 'chapter-summaries'",
+      ).get()?.count).toBe(0);
     } finally {
       storage.close();
     }

@@ -1,4 +1,4 @@
-import type { BookConfig, ChapterMeta } from "@vivy1024/novelfork-core";
+import type { BookConfig, ChapterMeta, StorageDatabase } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { computeForeshadowingDebt, toCockpitHookRisk } from "../engine/jingwei/foreshadowing-debt.js";
@@ -117,6 +117,11 @@ export interface CockpitServiceOptions {
   readonly state: CockpitState;
   readonly modelStatusResolver?: CockpitModelStatusResolver;
   readonly now?: () => Date;
+  /**
+   * 可注入的存储；缺省回落到进程级 getStorageDatabase() 单例。
+   * 仅测试与隔离环境需要穿透这个默认值。
+   */
+  readonly storage?: StorageDatabase;
 }
 
 export function createCockpitService(options: CockpitServiceOptions) {
@@ -127,11 +132,13 @@ export class CockpitService {
   private readonly state: CockpitState;
   private readonly modelStatusResolver: CockpitModelStatusResolver | undefined;
   private readonly now: () => Date;
+  private readonly storageOverride: StorageDatabase | undefined;
 
   constructor(options: CockpitServiceOptions) {
     this.state = options.state;
     this.modelStatusResolver = options.modelStatusResolver;
     this.now = options.now ?? (() => new Date());
+    this.storageOverride = options.storage;
   }
 
   async getSnapshot(input: { readonly bookId: string; readonly includeModelStatus?: boolean }): Promise<CockpitSnapshot> {
@@ -202,7 +209,7 @@ export class CockpitService {
   // ── SQLite Jingwei 数据源 ──
 
   private getStorage() {
-    return getStorageDatabase();
+    return this.storageOverride ?? getStorageDatabase();
   }
 
   private async readCurrentFocusFromJingwei(bookId: string): Promise<CockpitCurrentFocusSummary> {
