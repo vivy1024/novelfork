@@ -13,6 +13,7 @@ import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEvent
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
+import { scoreChapterTension, TENSION_UNEVALUATED, type TensionDimensions } from "./chapter-tension-scoring.js";
 import {
   decideChapterSettlementIdempotency,
   isTerminalSettlementStatus,
@@ -160,7 +161,9 @@ async function upsertChapterSummaryEntry(input: {
   chapterNumber: number;
   title?: string;
   summary: string;
+  /** 0-10 综合分；-1 = 已尝试评分但失败（未评估哨兵），缺省 = 从未评过。 */
   tensionScore?: number;
+  tensionDims?: TensionDimensions;
   now: Date;
 }): Promise<void> {
   const sectionId = ensureChapterSummarySection(input.storage, input.bookId, input.now);
@@ -171,6 +174,7 @@ async function upsertChapterSummaryEntry(input: {
     title: input.title ?? "",
     summary: input.summary,
     ...(input.tensionScore !== undefined ? { tension_score: input.tensionScore } : {}),
+    ...(input.tensionDims ? { tension_dims: input.tensionDims } : {}),
   };
   const entryId = findChapterSummaryEntryId(input.storage, input.bookId, input.chapterNumber);
   const common = {
@@ -616,9 +620,11 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     }
   }
 
-  // 章级摘要自生产（闭环灵魂）：结算完成后用轻量 LLM 调用生成 50-100 字剧情摘要
-  // + 张力评分（0-10），写入经纬 chapter-summaries 类目。下一章写前的 recent-summary
-  // 通道会自动召回最近几章摘要——形成「写→结算→摘要→喂下章」的自进化环。
+  // 章级摘要自生产（闭环灵魂）：结算完成后用轻量 LLM 调用生成 50-100 字剧情摘要，
+  // 写入经纬 chapter-summaries 类目。下一章写前的 recent-summary 通道会自动召回——
+  // 形成「写→结算→摘要→喂下章」的自进化环。
+  // T1 张力评分与摘要解耦为第二个独立调用（墨枢方案）：模型经常在混合契约里丢掉
+  // tensionScore 导致断流；独立小调用 + 容错解析 + -1 未评估哨兵根治该问题。
   // 失败只 warn 不阻断：摘要是增强信息，结算主体（facts/events）已成功落库。
   if (config.settlement.autoChapterSummary === false) {
     // 作者显式关闭时不调用 LLM，也不产生额外告警。
@@ -632,8 +638,8 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
             role: "system",
             content: [
               "你是网文章节摘要器。阅读章节正文，输出严格 JSON（不要解释、不要代码块围栏）：",
-              '{"summary":"50-100字的剧情要点总结，涵盖关键人物/事件/结果","tensionScore":0到10的整数表示本章张力强度}',
-              "summary 必须是独立可读的一段话；tensionScore 反映冲突烈度与情绪张力（日常过渡≈3，高潮大战≈9）。",
+              '{"summary":"50-100字的剧情要点总结，涵盖关键人物/事件/结果"}',
+              "summary 必须是独立可读的一段话。不要输出张力评分——评分由独立的评估器负责。",
             ].join("\n"),
           },
           { role: "user", content: `第${input.chapterNumber}章${input.title ? `《${input.title}》` : ""}正文：\n${input.content.slice(0, 3000)}` },
@@ -642,33 +648,66 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         maxTokens: 300,
       });
       let summaryText = "";
-      let tensionScore: number | undefined;
       try {
         const fenced = summaryResponse.text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
         const text = fenced ?? summaryResponse.text.trim();
         const start = text.indexOf("{");
         const end = text.lastIndexOf("}");
         const raw = start >= 0 && end > start ? text.slice(start, end + 1) : text;
-        const parsed = JSON.parse(raw) as { summary?: unknown; tensionScore?: unknown };
+        const parsed = JSON.parse(raw) as { summary?: unknown };
         if (typeof parsed.summary === "string" && parsed.summary.trim()) summaryText = parsed.summary.trim();
-        const score = typeof parsed.tensionScore === "number" ? parsed.tensionScore : Number(parsed.tensionScore);
-        if (Number.isInteger(score) && score >= 0 && score <= 10) tensionScore = score;
       } catch {
-        // JSON 解析失败：只把原始文本当摘要使用，不伪造张力分。
+        // JSON 解析失败：只把原始文本当摘要使用。
         if (summaryResponse.text.trim()) summaryText = summaryResponse.text.trim().slice(0, 200);
       }
-      if (summaryText) {
-        await upsertChapterSummaryEntry({
-          storage,
-          bookId: input.bookId,
-          chapterNumber: input.chapterNumber,
-          title: input.title,
-          summary: summaryText,
-          ...(tensionScore !== undefined ? { tensionScore } : {}),
-          now: options.now?.() ?? new Date(),
-        });
+      if (!summaryText) {
+        warnings.push("本章自动摘要生成结果为空，已跳过写入（张力评分随之跳过）。");
       } else {
-        warnings.push("本章自动摘要生成结果为空，已跳过写入。");
+        // T1 独立张力评分：前章基线取上一章权威摘要的 tension_score（负值哨兵不算基线）。
+        const previousEntryId = findChapterSummaryEntryId(storage, input.bookId, input.chapterNumber - 1);
+        let previousScore100: number | undefined;
+        if (previousEntryId) {
+          const row = storage.sqlite.prepare<{ fields_json: string | null }>(
+            "SELECT fields_json FROM story_jingwei_entry WHERE id = ? AND deleted_at IS NULL",
+          ).get(previousEntryId);
+          const prevScore = parseSummaryFields(row?.fields_json).tension_score;
+          if (typeof prevScore === "number" && prevScore >= 0) previousScore100 = Math.round(prevScore * 10);
+        }
+
+        const scored = await scoreChapterTension(
+          {
+            chapterNumber: input.chapterNumber,
+            ...(input.title ? { title: input.title } : {}),
+            content: input.content,
+            ...(previousScore100 !== undefined ? { previousScore100 } : {}),
+          },
+          options.kernelGenerateText,
+        );
+
+        if (scored.status === "evaluated") {
+          await upsertChapterSummaryEntry({
+            storage,
+            bookId: input.bookId,
+            chapterNumber: input.chapterNumber,
+            title: input.title,
+            summary: summaryText,
+            tensionScore: scored.composite,
+            tensionDims: scored.dims,
+            now: options.now?.() ?? new Date(),
+          });
+        } else {
+          // -1 哨兵持久化：前端据此区分「低分」与「评分失败」，绝不伪造中性分。
+          await upsertChapterSummaryEntry({
+            storage,
+            bookId: input.bookId,
+            chapterNumber: input.chapterNumber,
+            title: input.title,
+            summary: summaryText,
+            tensionScore: TENSION_UNEVALUATED,
+            now: options.now?.() ?? new Date(),
+          });
+          warnings.push(`本章张力评分失败，已标记未评估（${TENSION_UNEVALUATED}）：${scored.reason}`);
+        }
       }
     } catch (error) {
       warnings.push(`本章自动摘要生成失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);

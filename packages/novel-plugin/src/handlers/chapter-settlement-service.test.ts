@@ -97,13 +97,17 @@ describe("chapter settlement service", () => {
     }
   });
 
-  it("结算后自动生成章摘要与 tension_score，并在重结算时幂等更新", async () => {
+  it("结算后自动生成章摘要与张力分（T1 双调用解耦），重结算幂等且携带前章基线", async () => {
     const storage = await createSummaryStorage();
     try {
       const content = "【地点】韩立抵达药园";
       const responses = [
-        '{"summary":"韩立抵达药园查探小瓶，暂未发现异常，局势维持紧张。","tensionScore":7}',
-        "韩立在药园确认小瓶仍在，暂时没有新的冲突。",
+        '{"summary":"韩立初到药园查探小瓶，暂未发现异常。"}',
+        '{"plot_tension":72,"emotional_tension":70,"pacing_tension":66}',
+        '{"summary":"韩立在药园确认小瓶仍在，暂时没有新的冲突。"}',
+        '{"plot_tension":40,"emotional_tension":38,"pacing_tension":41}',
+        '{"summary":"重结算后的新摘要。"}',
+        '{"plot_tension":50,"emotional_tension":45,"pacing_tension":47}',
       ];
       const prompts: string[] = [];
       const kernelGenerateText = async (request: { messages: ReadonlyArray<{ role: string; content: string }> }) => {
@@ -111,25 +115,40 @@ describe("chapter settlement service", () => {
         return { text: responses.shift() ?? "" };
       };
 
-      const first = await settleConfirmedChapter({
-        bookId: "book-1",
-        chapterNumber: 12,
-        title: "药园试探",
-        content,
-      }, { storage, llmExtractor: markerExtractor(content), kernelGenerateText });
+      // 先结算第 11 章（产生 7.0 基线），再结算第 12 章。
+      await settleConfirmedChapter({ bookId: "book-1", chapterNumber: 11, title: "边界封锁", content }, { storage, llmExtractor: markerExtractor(content), kernelGenerateText });
+      await settleConfirmedChapter({ bookId: "book-1", chapterNumber: 12, title: "药园试探", content }, { storage, llmExtractor: markerExtractor(content), kernelGenerateText });
 
-      expect(first.status).toBe("completed");
+      // 摘要与评分是两次独立调用；摘要契约不再包含张力字段。
+      expect(prompts[0]).toContain("章节摘要器");
+      expect(prompts[0]).not.toContain("tension");
+      expect(prompts[1]).toContain("张力评分器");
+      expect(prompts[1]).toContain("反中庸铁律");
+      expect(prompts[1]).not.toContain("前章综合张力"); // 第 11 章无更早基线
+
       let rows = storage.sqlite.prepare<{ count: number }>(
         "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
       ).get("book-1");
-      expect(rows?.count).toBe(1);
-      let row = storage.sqlite.prepare<{ content_md: string; fields_json: string }>(
-        "SELECT content_md, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries'",
-      ).get("book-1");
-      expect(row?.content_md).toContain("韩立抵达药园");
-      expect(JSON.parse(row?.fields_json ?? "{}")).toMatchObject({ chapterNumber: 12, title: "药园试探", tension_score: 7 });
-      expect(prompts[0]).toContain(content);
+      expect(rows?.count).toBe(2);
 
+      // 第 12 章评分 prompt 携带第 11 章基线：7.0×10 = 70/100。
+      expect(prompts[3]).toContain("前章综合张力 70/100");
+
+      const byChapter = (chapter: number) => {
+        const rowsAll = storage.sqlite.prepare<{ fields_json: string; content_md: string }>(
+          "SELECT fields_json, content_md FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+        ).all("book-1");
+        return rowsAll.map((row) => ({ fields: JSON.parse(row.fields_json ?? "{}") as Record<string, unknown>, content: row.content_md }))
+          .find((item) => item.fields.chapterNumber === chapter);
+      };
+
+      // 加权 0.4*72+0.3*70+0.3*66 = 69.6 → 7.0
+      expect(byChapter(11)?.fields.tension_score).toBe(7);
+      expect(byChapter(11)?.fields.tension_dims).toMatchObject({ plot: 72, emotional: 70, pacing: 66 });
+      // 加权 0.4*40+0.3*38+0.3*41 = 39.5 → 4.0
+      expect(byChapter(12)?.fields.tension_score).toBe(4);
+
+      // 强制重结算：幂等更新同一条目，且基线仍指向上一次评出的 70/100。
       const second = await settleConfirmedChapter({
         bookId: "book-1",
         chapterNumber: 12,
@@ -142,12 +161,75 @@ describe("chapter settlement service", () => {
       rows = storage.sqlite.prepare<{ count: number }>(
         "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
       ).get("book-1");
-      expect(rows?.count).toBe(1);
-      row = storage.sqlite.prepare<{ content_md: string; fields_json: string }>(
-        "SELECT content_md, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries'",
+      expect(rows?.count).toBe(2);
+      const reSettled = byChapter(12);
+      expect(reSettled?.content).toContain("重结算后的新摘要");
+      // 加权 0.4*50+0.3*45+0.3*47 = 47.6 → 4.8
+      expect(reSettled?.fields.tension_score).toBe(4.8);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("T1: 评分响应彻底不可解析时持久化 -1 哨兵并告警，摘要不丢", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const content = "【地点】韩立抵达药园";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        title: "药园试探",
+        content,
+      }, {
+        storage,
+        llmExtractor: markerExtractor(content),
+        kernelGenerateText: async (request) => {
+          const prompt = request.messages.map((message) => message.content).join("\n");
+          if (prompt.includes("张力评分器")) return { text: "模型这次拒答了，没有任何 JSON。" };
+          return { text: '{"summary":"韩立抵达药园查探小瓶。"}' };
+        },
+      });
+
+      expect(result.status).toBe("completed");
+      expect(result.warnings.some((warning) => warning.includes("标记未评估"))).toBe(true);
+      const row = storage.sqlite.prepare<{ summary_md: string | null; fields_json: string }>(
+        "SELECT summary_md, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
       ).get("book-1");
-      expect(row?.content_md).toContain("暂时没有新的冲突");
-      expect(JSON.parse(row?.fields_json ?? "{}").tension_score).toBeUndefined();
+      expect(row?.summary_md).toContain("韩立抵达药园");
+      expect(JSON.parse(row?.fields_json ?? "{}").tension_score).toBe(-1);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("T1: 数值字段被写成评语时容错取首个数字，单维度缺失按权重归一", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const content = "【地点】韩立抵达药园";
+      await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content,
+      }, {
+        storage,
+        llmExtractor: markerExtractor(content),
+        kernelGenerateText: async (request) => {
+          const prompt = request.messages.map((message) => message.content).join("\n");
+          if (prompt.includes("张力评分器")) {
+            // plot 带评语取 72；emotional 字段整体缺失 → 只剩两维，权重 0.4/0.7 归一。
+            return { text: '前置解释 {"plot_tension":"约72分","pacing_tension":50} 后缀' };
+          }
+          return { text: '{"summary":"韩立抵达药园查探小瓶。"}' };
+        },
+      });
+
+      const row = storage.sqlite.prepare<{ fields_json: string }>(
+        "SELECT fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      const fields = JSON.parse(row?.fields_json ?? "{}") as { tension_score?: number; tension_dims?: { plot: number; emotional: number; pacing: number } };
+      // 归一：72*(0.4/0.7) + 50*(0.3/0.7) = 41.14 + 21.43 = 62.57 → 6.3 → 综合 6.3？round1(6.257…)=6.3
+      expect(fields.tension_score).toBeCloseTo(6.3, 5);
+      expect(fields.tension_dims).toMatchObject({ plot: 72, emotional: 50, pacing: 50 });
     } finally {
       storage.close();
     }
@@ -212,7 +294,11 @@ describe("chapter settlement service", () => {
       }, {
         storage,
         llmExtractor: markerExtractor(content),
-        kernelGenerateText: async () => ({ text: '{"summary":"韩立抵达药园查探小瓶。","tensionScore":6}' }),
+        kernelGenerateText: async (request) => {
+          const prompt = request.messages.map((message) => message.content).join("\n");
+          if (prompt.includes("张力评分器")) return { text: '{"plot_tension":60,"emotional_tension":55,"pacing_tension":58}' };
+          return { text: '{"summary":"韩立抵达药园查探小瓶。"}' };
+        },
       });
 
       expect(result.status).toBe("completed");
@@ -227,7 +313,8 @@ describe("chapter settlement service", () => {
       expect(row?.id).toBe("legacy-summary-12");
       expect(row?.title).toBe("第12章");
       expect(row?.source).toBe("auto-settle");
-      expect(JSON.parse(row?.fields_json ?? "{}")).toMatchObject({ chapterNumber: 12, tension_score: 6 });
+      // 加权 0.4*60+0.3*55+0.3*58 = 57.9 → 5.8
+      expect(JSON.parse(row?.fields_json ?? "{}")).toMatchObject({ chapterNumber: 12, tension_score: 5.8 });
     } finally {
       storage.close();
     }
