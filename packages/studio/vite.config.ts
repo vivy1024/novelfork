@@ -129,6 +129,14 @@ export default defineConfig({
           if (normalizedId.includes("@modelcontextprotocol") || normalizedId.includes("eventsource")) {
             return "vendor-mcp";
           }
+          // F3 首屏瘦身：图表与流程图库体量大且只被懒加载路由消费，
+          // 独立成桶避免灌大主入口（recharts 曾把 index 顶到 1.1MB）。
+          if (normalizedId.includes("recharts") || normalizedId.includes("d3-") || normalizedId.includes("/d3/") || normalizedId.includes("victory-vendor")) {
+            return "vendor-charts";
+          }
+          if (normalizedId.includes("@xyflow")) {
+            return "vendor-flow";
+          }
           // Match pnpm-hoisted bare react / react-dom / scheduler packages only.
           // Avoid matching scoped packages like @tiptap/react which would cause
           // circular chunks between vendor-react and vendor-editor.
