@@ -51,8 +51,18 @@ import {
   saveIdeLayoutSizes,
 } from "./ide-layout-state";
 
-/** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */
-export function toTabKind(node: WorkbenchResourceNode): TabKind {
+/**
+ * T3 · 提拔回写的大纲 fields 合并：保留 volumeNumber/goal 等既有字段，
+ * 仅写入 targetChapterNumber。纯函数，供回写链路与单测共用。
+ */
+export function buildTargetChapterFields(
+  existing: Record<string, unknown> | undefined,
+  chapterNumber: number,
+): Record<string, unknown> {
+  return { ...(existing ?? {}), targetChapterNumber: chapterNumber };
+}
+
+/** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */export function toTabKind(node: WorkbenchResourceNode): TabKind {
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "story-map";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
@@ -1171,6 +1181,33 @@ export function IdeWorkbench({
         const chapterData = await createRes.json() as { chapter?: { id: string; chapterNumber?: number; title?: string } };
         toast("已提拔为手稿章节", "success");
         refreshFileTree();
+
+        // T3 身份链回写：把新章号写进大纲条目 fields.targetChapterNumber，
+        // 大纲与章节从此可互相推导（drafted 徽标、防重复提拔）。失败不阻断已建章节。
+        const entryId = typeof node.metadata?.entryId === "string" ? node.metadata.entryId : undefined;
+        const promotedChapterNumber = chapterData.chapter?.chapterNumber;
+        if (entryId && typeof promotedChapterNumber === "number") {
+          try {
+            const encodedEntry = encodeURIComponent(entryId);
+            const entryRes = await ensureOk(
+              await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodedEntry}`),
+              "读取大纲条目失败",
+            );
+            const entryPayload = await entryRes.json() as { entry?: { fields?: Record<string, unknown> } };
+            const nextFields = buildTargetChapterFields(entryPayload.entry?.fields, promotedChapterNumber);
+            await ensureOk(
+              await fetch(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodedEntry}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ fields: nextFields, source: "user", revisionReason: "promote-outline" }),
+              }),
+              "回写大纲目标章号失败",
+            );
+            void loadLoreSections();
+          } catch (writeBackErr) {
+            toast(`章节已创建，但大纲目标章号回写失败：${writeBackErr instanceof Error ? writeBackErr.message : String(writeBackErr)}`, "error");
+          }
+        }
 
         // 自动定位并切到写作视图
         showPanel("write");
