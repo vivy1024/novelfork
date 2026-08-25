@@ -35,6 +35,14 @@ export default defineConfig({
       "@tanstack/react-router",
     ],
     alias: {
+      // node 内置浏览器桩：core 的 server 侧模块会经根入口进入前端模块图，
+      // 其具名 fs/crypto/module 导入若在摇树后幸存，撞上 vite 的
+      // __vite-browser-external 空壳会让整个构建硬崩（且是否幸存取决于
+      // 摇树运气）。alias 到显式抛错的桩模块，构建稳定、误调用可诊断。
+      "node:fs/promises": resolve(__dirname, "src/lib/browser-node-stubs.ts"),
+      "node:fs": resolve(__dirname, "src/lib/browser-node-stubs.ts"),
+      "node:crypto": resolve(__dirname, "src/lib/browser-node-stubs.ts"),
+      "node:module": resolve(__dirname, "src/lib/browser-node-stubs.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel": resolve(runtimePaths.frontendRoot, "components/narrator/EmbeddedNarratorDockHost.tsx"),
       "@vivy1024/narrafork-runtime-bridge/frontend/query-client": resolve(runtimePaths.frontendRoot, "lib/query-client.ts"),
       "@vivy1024/narrafork-runtime-bridge/frontend/provider-settings": resolve(runtimePaths.frontendRoot, "components/providers/EmbeddedProviderSettingsHost.tsx"),
