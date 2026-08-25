@@ -13,6 +13,7 @@ import { ensureNarrativeMemorySchema, insertNarrativeEvent, updateNarrativeEvent
 import { buildEntityDictionary } from "../engine/narrative-memory/entity-dictionary.js";
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
+import { foreshadowPhase } from "../engine/narrative-memory/foreshadow-phase.js";
 import { scoreChapterTension, TENSION_UNEVALUATED, type TensionDimensions } from "./chapter-tension-scoring.js";
 import {
   decideChapterSettlementIdempotency,
@@ -29,6 +30,7 @@ import {
   type NarrativeEventDraft,
   type SettlementRiskDecision,
 } from "../engine/narrative-memory/settlement-risk-gate.js";
+import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 import type { DiagnosticExplanation } from "./diagnostic-explanation.js";
@@ -50,6 +52,11 @@ export type ChapterSettlementOptions = Readonly<{
     temperature?: number;
     maxTokens?: number;
   }) => Promise<{ text: string }>;
+  /**
+   * T2 收敛沙漏分母（BookConfig.targetChapters）。调用方可从 book.json 透传；
+   * 缺省时沙漏守卫按 development 跳过（诚实不猜）。
+   */
+  targetChapters?: number;
 }>;
 
 function idPart(value: string): string {
@@ -532,9 +539,53 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     );
   }
   const warnings = [...extraction.warnings];
+  let draftPool = extraction.drafts;
+
+  // T2 收敛沙漏：CONVERGENCE（≥75%）禁开新坑——hook_planted 草稿直接丢弃并告警；
+  // FINALE（≥95%）列出全部未回收伏笔，提示作者集中安排回收（只提示不代收）。
+  // 分母 targetChapters 由调用方从 BookConfig 透传；缺省时诚实跳过守卫。
+  try {
+    if (options.targetChapters !== undefined && options.targetChapters > 0) {
+      const phase = foreshadowPhase(input.chapterNumber, options.targetChapters);
+      if (phase !== "development") {
+        const plantedDrafts = draftPool.filter((draft) => draft.eventType === "hook_planted");
+        if (plantedDrafts.length > 0) {
+          const pct = Math.round((input.chapterNumber / Math.max(1, options.targetChapters)) * 100);
+          draftPool = draftPool.filter((draft) => draft.eventType !== "hook_planted");
+          warnings.push(
+            `收敛沙漏：叙事已进入${phase === "finale" ? "终局" : "收敛"}期（进度 ${pct}%），已拦截 ${plantedDrafts.length} 条新伏笔草案——请优先回收既有坑。`,
+          );
+        }
+        if (phase === "finale") {
+          const openStatuses = ["已埋设", "部分揭示", "唤醒中"];
+          const categories = getJingweiCategoryAliases("foreshadowing");
+          const openRows = storage.sqlite.prepare<{ title: string; fields_json: string | null }>(`
+            SELECT title, fields_json FROM story_jingwei_entry
+            WHERE book_id = ? AND category IN (${sqlInPlaceholders(categories)}) AND deleted_at IS NULL
+          `).all(input.bookId, ...categories) as Array<{ title: string; fields_json: string | null }>;
+          const openTitles = openRows
+            .filter((row) => {
+              try {
+                const fields = JSON.parse(row.fields_json ?? "{}") as { status?: unknown };
+                return !fields.status || openStatuses.includes(String(fields.status));
+              } catch {
+                return true;
+              }
+            })
+            .map((row) => row.title);
+          if (openTitles.length > 0) {
+            warnings.push(`终局回收提醒：仍有 ${openTitles.length} 个未回收伏笔——${openTitles.slice(0, 8).join("、")}${openTitles.length > 8 ? " 等" : ""}。`);
+          }
+        }
+      }
+    }
+  } catch (error) {
+    warnings.push(`收敛沙漏检查失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
+  }
+
   const events: NarrativeEvent[] = [];
 
-  for (const draft of extraction.drafts) {
+  for (const draft of draftPool) {
     const decision = decideSettlementRisk(draft, {
       minConfidence: config.settlement.minConfidence,
       autoApplyLowRisk: config.settlement.autoApplyLowRisk,
@@ -730,7 +781,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     bookId: input.bookId,
     chapterId: input.chapterId,
     chapterNumber: input.chapterNumber,
-    extracted: extraction.drafts.length,
+    extracted: draftPool.length,
     autoApplied: applied.appliedEventIds.length,
     pending: applied.pendingEventIds.length + downgradedPendingIds.length,
     highRiskPending: eventResults.filter((event) => event.status === "pending" && event.riskLevel === "high").length,

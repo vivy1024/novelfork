@@ -27,6 +27,9 @@ import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js"
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
@@ -429,6 +432,8 @@ type BuildPipelineContextPackageInput = Readonly<{
   narrativeContext?: NarrativeContextPackage;
   jingweiContext?: string;
   previousChapterTail?: string;
+  /** T2 到期窗口伏笔（已由 collectDueHooks 筛选排序），激活 runtime/hook_debt 死管道。 */
+  dueHooks?: ReadonlyArray<{ title: string; excerpt: string; dueChapter: number }>;
 }>;
 
 const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"], string> = {
@@ -448,6 +453,44 @@ function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): Co
   return (Object.entries(narrativeContext.sections) as [keyof NarrativeContextPackage["sections"], string][])
     .filter(([, excerpt]) => excerpt.trim().length > 0)
     .map(([section, excerpt]) => ({ source: `narrative-memory/${section}`, reason: NARRATIVE_SECTION_REASONS[section], excerpt }));
+}
+
+/**
+ * T2 到期窗口取数：读 foreshadowing 条目（含第五态唤醒中），
+ * 交给 selectDueHooks 纯函数筛选排序。字典式失败容错：查不到返回空。
+ */
+function collectDueHooks(storage: StorageDatabase, bookId: string, currentChapter: number): Array<{ title: string; excerpt: string; dueChapter: number }> {
+  try {
+    const categories = getJingweiCategoryAliases("foreshadowing");
+    const rows = storage.sqlite.prepare<{ title: string; content_md: string | null; fields_json: string | null }>(`
+      SELECT title, content_md, fields_json
+      FROM story_jingwei_entry
+      WHERE book_id = ? AND category IN (${sqlInPlaceholders(categories)}) AND deleted_at IS NULL
+    `).all(bookId, ...categories);
+
+    const inputs: DueHookInput[] = rows.map((row) => {
+      let fields: Record<string, unknown> = {};
+      try {
+        fields = JSON.parse(row.fields_json ?? "{}") as Record<string, unknown>;
+      } catch {
+        fields = {};
+      }
+      const name = typeof fields.name === "string" && fields.name.trim() ? fields.name.trim() : row.title;
+      return {
+        title: name,
+        status: typeof fields.status === "string" ? fields.status : "已埋设",
+        targetChapter: typeof fields.targetChapter === "number" ? fields.targetChapter : undefined,
+        seedText: String(row.content_md ?? "").slice(0, 120) || undefined,
+      };
+    });
+    return selectDueHooks(inputs, currentChapter).map((hook) => ({
+      title: hook.title,
+      excerpt: hook.seedText ?? "（无种子文本，详见伏笔看板）",
+      dueChapter: hook.dueChapter,
+    }));
+  } catch {
+    return [];
+  }
 }
 
 export function buildPipelineContextPackage(input: BuildPipelineContextPackageInput): ContextPackage {
@@ -470,6 +513,13 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
           }]
         : []),
       ...narrativeSectionContext(input.narrativeContext),
+      ...(input.dueHooks && input.dueHooks.length > 0
+        ? input.dueHooks.map((hook) => ({
+            source: `runtime/hook_debt#${hook.title}`,
+            reason: "本章应推进的伏笔（到期窗口内，强制关注）",
+            excerpt: `[第${hook.dueChapter}章应推进] ${hook.title} — ${hook.excerpt}`,
+          }))
+        : []),
       ...(input.jingweiContext ? [{ source: "jingwei", reason: "经纬上下文：人物/设定/伏笔/前情（legacy compatibility）", excerpt: input.jingweiContext }] : []),
       ...(input.previousChapterTail ? [{ source: "prev_chapter_tail", reason: "前章末尾，保持开篇连贯", excerpt: input.previousChapterTail }] : []),
     ],
@@ -726,6 +776,18 @@ export async function executePipelineWrite(
     }
 
     // Build structured ContextPackage (优先 Narrative Memory，保留 legacy jingweiContext 兼容路径)
+    // T2：到期窗口伏笔注入——激活 runtime/hook_debt 渲染管道（writer/reviser 的 Hook Debt 简报）。
+    let dueHooks: ReadonlyArray<{ title: string; excerpt: string; dueChapter: number }> = [];
+    try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      dueHooks = collectDueHooks(getStorageDatabase(), bookId, chapterNumber);
+      if (dueHooks.length > 0) {
+        logger?.info(`[pipeline.write] Due hooks in window: ${dueHooks.map((hook) => `${hook.title}@${hook.dueChapter}`).join(", ")}`);
+      }
+    } catch (err) {
+      logger?.warn(`[pipeline.write] Due hooks lookup failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     const contextPackage = buildPipelineContextPackage({
       chapterNumber,
       sceneSpec,
@@ -735,6 +797,7 @@ export async function executePipelineWrite(
       narrativeContext,
       jingweiContext,
       previousChapterTail,
+      dueHooks,
     });
 
     // Build structured RuleStack（此前传字符串 + as any，Writer 访问 .activeOverrides 会出错）
