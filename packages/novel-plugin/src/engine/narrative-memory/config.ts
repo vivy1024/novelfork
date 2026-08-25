@@ -16,6 +16,7 @@ const DEFAULT_SETTLEMENT_CONFIG = {
   minConfidence: 0.75,
   blockWriteOnHighRiskPending: false,
   useLlmExtraction: true,
+  autoChapterSummary: true,
 };
 
 const DEFAULT_LEDGER_CONFIG = {
@@ -49,6 +50,7 @@ const SettlementConfigSchema = z.object({
   minConfidence: z.number().min(0).max(1).default(DEFAULT_SETTLEMENT_CONFIG.minConfidence),
   blockWriteOnHighRiskPending: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.blockWriteOnHighRiskPending),
   useLlmExtraction: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.useLlmExtraction),
+  autoChapterSummary: z.boolean().default(DEFAULT_SETTLEMENT_CONFIG.autoChapterSummary),
 }).default(DEFAULT_SETTLEMENT_CONFIG);
 
 const LedgerConfigSchema = z.object({

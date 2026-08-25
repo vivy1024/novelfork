@@ -9,6 +9,28 @@ vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
   ),
 }));
 
+vi.mock("./StoryProgressionCanvas", () => ({
+  StoryProgressionCanvas: ({
+    initialView,
+    bookId,
+    currentChapter,
+    onOpenEntityDetail,
+  }: {
+    initialView?: string;
+    bookId?: string;
+    currentChapter?: number;
+    onOpenEntityDetail?: (entity: string) => void;
+  }) => (
+    <button
+      type="button"
+      data-testid="mock-story-progression"
+      onClick={() => onOpenEntityDetail?.("薛行之")}
+    >
+      {`${initialView}:${bookId}:${currentChapter ?? ""}`}
+    </button>
+  ),
+}));
+
 import { WorkbenchCanvas } from "./WorkbenchCanvas";
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
 
@@ -350,5 +372,32 @@ describe("WorkbenchCanvas", () => {
     expect(onSave).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "保存" })).toHaveProperty("disabled", true);
     expect(screen.getByRole("alert").textContent).toMatch(/详情.*未加载|hydrate/);
+  });
+
+  it("故事画布节点渲染为统一大屏工作台，透传视图/书籍/章节上下文与实体详情回调", async () => {
+    const onOpenEntityDetail = vi.fn();
+    render(
+      <WorkbenchCanvas
+        bookId="book-1"
+        node={node({
+          id: "story-progression:book-1",
+          kind: "story-progression",
+          title: "故事画布",
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+          metadata: { isStoryProgression: true, bookId: "book-1", preferredView: "evolution" },
+        })}
+        nodes={[node({ id: "chapter:2", kind: "chapter", title: "第 2 章", content: "", metadata: { isChapter: true, chapterNumber: 2 } })]}
+        onSave={vi.fn()}
+        onOpenEntityDetail={onOpenEntityDetail}
+      />,
+    );
+
+    const canvas = await screen.findByTestId("mock-story-progression");
+    // initialView=evolution + 当前章节锚点（resolveCurrentChapter → 2）透传
+    expect(canvas.textContent).toBe("evolution:book-1:2");
+
+    // 节点点击 → 实体详情抽屉协同（Phase 2）
+    fireEvent.click(canvas);
+    expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之");
   });
 });

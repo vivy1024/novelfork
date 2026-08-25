@@ -1,8 +1,30 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, afterEach } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { debtOf, matchHookEvidence, type ParsedForeshadowing } from "./ForeshadowingBoard";
+import { debtOf, matchHookEvidence, ForeshadowingBoard, type ParsedForeshadowing } from "./ForeshadowingBoard";
 import { FORESHADOWING_DEBT_THRESHOLD } from "../../engine/jingwei/foreshadowing-debt";
 import type { EntityFact } from "./narrative-fact-edits";
+
+// 渲染用例只关心条目数据本身，useApi 与记忆证据取数全部钉死。
+vi.mock("@/hooks/use-api", () => ({
+  useApi: () => ({
+    data: {
+      entries: [
+        { id: "fs-1", title: "断剑之谜", customFields: { status: "已埋设", plantedChapter: 10 } },
+      ],
+    },
+    loading: false,
+    error: null,
+    refetch: vi.fn(),
+  }),
+  fetchJson: vi.fn(async () => ({})),
+}));
+vi.mock("./narrative-fact-edits", async (importOriginal) => {
+  const original = await importOriginal<typeof import("./narrative-fact-edits")>();
+  return { ...original, fetchFactsByEntity: vi.fn(async () => []) };
+});
+
+afterEach(() => cleanup());
 
 function entry(patch: Partial<ParsedForeshadowing> = {}): ParsedForeshadowing {
   return {
@@ -78,5 +100,27 @@ describe("matchHookEvidence", () => {
 
   it("没有对应证据时返回空数组而非报错", () => {
     expect(matchHookEvidence(entry({ name: "完全不相干的伏笔" }), facts)).toHaveLength(0);
+  });
+});
+
+describe("ForeshadowingBoard 看板列 droppable 注册", () => {
+  it("四个状态列全部注册为拖拽目标，空列也能接住卡片", () => {
+    // 回归：列容器此前只有 SortableContext（其 id 不参与碰撞检测），
+    // 空列没有任何 droppable 目标，卡片永远拖不进空列。
+    render(<ForeshadowingBoard bookId="book-1" currentChapter={20} />);
+    for (const status of ["已埋设", "部分揭示", "已回收", "已废弃"]) {
+      expect(screen.getByTestId(`foreshadowing-column-${status}`)).toBeTruthy();
+    }
+    // 数据里只有 1 张「已埋设」卡片，其余 3 列均为空列，容器仍必须存在。
+    expect(screen.getByTestId("foreshadowing-card-fs-1")).toBeTruthy();
+  });
+
+  it("顶部显示本章建议推进横幅，并可关闭本次建议", () => {
+    render(<ForeshadowingBoard bookId="book-1" currentChapter={20} />);
+    expect(screen.getByTestId("foreshadowing-suggestions")).toBeTruthy();
+    expect(screen.getByTestId("foreshadowing-suggestion-fs-1")).toBeTruthy();
+
+    fireEvent.click(screen.getByTestId("foreshadowing-suggestions-close"));
+    expect(screen.queryByTestId("foreshadowing-suggestions")).toBeNull();
   });
 });

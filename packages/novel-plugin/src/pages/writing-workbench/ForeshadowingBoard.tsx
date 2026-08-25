@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -6,6 +6,7 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  useDroppable,
   DragOverlay,
   type DragStartEvent,
   type DragEndEvent,
@@ -158,11 +159,13 @@ function SortableForeshadowingCard({
   currentChapter,
   evidence,
   onJumpToChapter,
+  highlighted,
 }: {
   item: ParsedForeshadowing;
   currentChapter: number | undefined;
   evidence: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
+  highlighted?: boolean;
 }) {
   const {
     attributes,
@@ -186,12 +189,13 @@ function SortableForeshadowingCard({
   return (
     <div
       ref={setNodeRef}
+      id={`foreshadowing-card-${item.id}`}
       style={style}
       data-testid={`foreshadowing-card-${item.id}`}
       data-debt-level={debt.level}
       className={`rounded-md border p-3 bg-card text-card-foreground shadow-sm space-y-1.5 ${
         isOverdue ? "border-red-500 border-2" : isDueSoon ? "border-amber-400/70 border-2" : "border-border"
-      } ${isDragging ? "ring-2 ring-primary" : ""}`}
+      } ${isDragging ? "ring-2 ring-primary" : ""} ${highlighted ? "ring-2 ring-primary ring-offset-2" : ""}`}
     >
       <div className="flex items-center gap-1.5">
         <button
@@ -304,6 +308,8 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
   const [activeId, setActiveId] = useState<string | null>(null);
   // 记忆证据（hook fact）：只作证据，取不到就静默降级为「无证据」。
   const [hookFacts, setHookFacts] = useState<readonly EntityFact[]>([]);
+  const [suggestionsDismissed, setSuggestionsDismissed] = useState(false);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -318,8 +324,33 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
     return () => { alive = false; };
   }, [bookId]);
 
+  useEffect(() => {
+    setSuggestionsDismissed(false);
+    setHighlightedId(null);
+  }, [bookId]);
+
   // Derive entries from API data (only when local state is null)
   const items = entries ?? (data?.entries ?? []).map(parseForeshadowing);
+  const suggestedItems = useMemo(
+    () => currentChapter === undefined
+      ? []
+      : items
+        .filter((item) => !SETTLED_STATUSES.includes(item.status))
+        .map((item) => ({ ...item, suspenseChapters: currentChapter - item.plantedChapter }))
+        .filter((item) => item.plantedChapter > 0 && item.suspenseChapters >= 3)
+        .sort((left, right) => right.suspenseChapters - left.suspenseChapters)
+        .slice(0, 3),
+    [currentChapter, items],
+  );
+
+  const handleSuggestionClick = useCallback((itemId: string) => {
+    const target = document.getElementById(`foreshadowing-card-${itemId}`);
+    target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    setHighlightedId(itemId);
+    window.setTimeout(() => {
+      setHighlightedId((current) => current === itemId ? null : current);
+    }, 1600);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -370,7 +401,8 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
       // Toast feedback
       toast(`伏笔状态已更新：${sourceStatus} → ${targetStatus}`, "success");
 
-      // Fire-and-forget API update
+      // Fire-and-forget API update：只增量补丁 status，绝不整体提交 customFields
+      // （后端对 fields/完整字段集才整体替换；整包提交会把 name/description/plantedChapter 抹掉）。
       void (async () => {
         try {
           await fetchJson(
@@ -378,7 +410,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
             {
               method: "PUT",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ customFields: { status: targetStatus } }),
+              body: JSON.stringify({ fieldsPatch: { status: targetStatus } }),
             },
           );
         } catch {
@@ -447,6 +479,42 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
           </span>
         </div>
       ) : null}
+      {!suggestionsDismissed && suggestedItems.length > 0 ? (
+        <section
+          className="mx-3 mt-3 flex items-start gap-2 rounded-md border border-amber-400/60 bg-amber-50 px-2.5 py-2 text-[11px] text-amber-800 dark:bg-amber-950/20 dark:text-amber-300"
+          data-testid="foreshadowing-suggestions"
+        >
+          <span className="shrink-0 text-sm leading-none" aria-hidden="true">💡</span>
+          <div className="min-w-0 flex-1">
+            <span className="font-medium">本章建议推进：</span>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {suggestedItems.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handleSuggestionClick(item.id)}
+                  className="inline-flex max-w-full items-center gap-1 rounded-full border border-amber-400/70 bg-background/70 px-2 py-0.5 text-[10px] text-amber-800 hover:bg-amber-100 dark:text-amber-200 dark:hover:bg-amber-900/30"
+                  title={`定位到「${item.name}」`}
+                  data-testid={`foreshadowing-suggestion-${item.id}`}
+                >
+                  <span className="max-w-40 truncate">{item.name}</span>
+                  <span className="shrink-0 text-[9px] opacity-80">已{item.suspenseChapters}章</span>
+                </button>
+              ))}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSuggestionsDismissed(true)}
+            className="shrink-0 rounded px-1 text-base leading-none text-muted-foreground hover:bg-amber-100 hover:text-foreground dark:hover:bg-amber-900/30"
+            aria-label="关闭本章建议"
+            title="关闭本次建议"
+            data-testid="foreshadowing-suggestions-close"
+          >
+            ×
+          </button>
+        </section>
+      ) : null}
       <div className="grid grid-cols-4 gap-3 p-3 h-full overflow-auto">
         {grouped.map((col) => (
           <DroppableColumn
@@ -455,6 +523,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
             currentChapter={currentChapter}
             hookFacts={hookFacts}
             onJumpToChapter={onJumpToChapter}
+            highlightedId={highlightedId}
           />
         ))}
       </div>
@@ -476,14 +545,20 @@ function DroppableColumn({
   currentChapter,
   hookFacts,
   onJumpToChapter,
+  highlightedId,
 }: {
   column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
   currentChapter: number | undefined;
   hookFacts: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
+  highlightedId?: string | null;
 }) {
   // SortableContext needs an array of IDs
   const itemIds = column.items.map((i) => i.id);
+
+  // 列本体必须注册为 droppable：SortableContext 的 id 不参与碰撞检测，
+  // 不注册的话空列没有任何可命中目标，卡片永远拖不进空列。
+  const { setNodeRef, isOver } = useDroppable({ id: column.status });
 
   return (
     <div className="flex flex-col min-w-0">
@@ -495,7 +570,14 @@ function DroppableColumn({
         </Badge>
       </div>
       <SortableContext id={column.status} items={itemIds} strategy={verticalListSortingStrategy}>
-        <div className="flex flex-col gap-2 flex-1 min-h-[60px]">
+        <div
+          ref={setNodeRef}
+          data-testid={`foreshadowing-column-${column.status}`}
+          data-drop-target={isOver ? "true" : undefined}
+          className={`flex flex-col gap-2 flex-1 min-h-[60px] rounded-md transition-colors ${
+            isOver ? "bg-primary/5 ring-1 ring-primary/30" : ""
+          }`}
+        >
           {column.items.map((item) => (
             <SortableForeshadowingCard
               key={item.id}
@@ -503,6 +585,7 @@ function DroppableColumn({
               currentChapter={currentChapter}
               evidence={matchHookEvidence(item, hookFacts)}
               onJumpToChapter={onJumpToChapter}
+              highlighted={highlightedId === item.id}
             />
           ))}
         </div>
