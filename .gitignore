@@ -116,3 +116,8 @@ dist-verify2/
 .build-tmp/
 dist-verify-nf/
 .tmp-fork-upgrade/
+
+# 本地参考/备份副本（不入库；混入会让 vitest 按子串匹配产生大量假失败）
+/酒馆预设兼容/
+/长篇工坊-源码/
+讨论.txt
