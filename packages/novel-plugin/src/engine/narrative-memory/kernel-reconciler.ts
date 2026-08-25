@@ -18,6 +18,10 @@ import {
   upsertCharacterKernel,
 } from "./storage.js";
 import {
+  buildEntityDictionary,
+  resolveEntity,
+} from "./entity-dictionary.js";
+import {
   DEFAULT_KERNEL_FIELDS,
   type CharacterKernel,
   type CharacterKernelConfig,
@@ -132,9 +136,22 @@ export async function reconcileCharacterKernel(input: KernelReconcilerInput): Pr
     return { ok: false, reason: "skipped-no-fields" };
   }
 
-  const existing = getCharacterKernel(input.storage, input.bookId, input.characterId);
+  // 实体身份链：调用方传入的 characterId 可能是别名/装饰标题（「薛小爷」「薛行之（xxx版）」），
+  // 用字典归一化为 canonical 名，确保同一角色的内核不会被拆成多份。
+  let characterId = input.characterId.trim();
+  if (characterId) {
+    try {
+      const dictionary = buildEntityDictionary(input.storage, input.bookId);
+      const resolution = resolveEntity(dictionary, characterId);
+      if (resolution) characterId = resolution.entry.canonicalName;
+    } catch {
+      // 字典构建失败不阻断 kernel 重算，退回原始名。
+    }
+  }
+
+  const existing = getCharacterKernel(input.storage, input.bookId, characterId);
   const system = input.config.promptTemplate?.trim() || DEFAULT_RECONCILE_PROMPT;
-  const user = buildUserPrompt(input, fields, existing);
+  const user = buildUserPrompt({ ...input, characterId }, fields, existing);
 
   let rawText: string;
   try {
@@ -175,9 +192,9 @@ export async function reconcileCharacterKernel(input: KernelReconcilerInput): Pr
 
   const now = (input.now?.() ?? new Date()).toISOString();
   const kernel: CharacterKernel = {
-    id: existing?.id ?? `kernel:${input.bookId}:${input.characterId}`,
+    id: existing?.id ?? `kernel:${input.bookId}:${characterId}`,
     bookId: input.bookId,
-    characterId: input.characterId,
+    characterId,
     entryStatus: existing?.entryStatus ?? "active",
     fields: mergedFields,
     evidence: parsed.evidence,
@@ -197,6 +214,8 @@ export function pickRelatedRecords(
 ): { id: string; brief: string }[] {
   const hits: { id: string; brief: string }[] = [];
   for (const event of events) {
+    // 身份链：event 的 subjectEntryId/objectEntryId 已在写入端归一化，
+    // 但旧数据可能没有——同时匹配字符串名作为兜底。
     if (event.subject !== characterId && event.object !== characterId) continue;
     hits.push({ id: event.id, brief: `${event.subject} / ${event.predicate} / ${event.object}` });
     if (hits.length >= limit) break;
