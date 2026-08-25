@@ -8,7 +8,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@vivy1024/novelfork-core": "0.0.3"
+    "@vivy1024/novelfork-core": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

@@ -15,6 +15,13 @@ export interface DevelopmentTimelineViewProps {
   readonly scope?: "read";
   readonly onSelectNode?: (nodeId: string) => void;
   readonly onOpenEntityDetail?: (entity: string) => void;
+  /**
+   * 外层容器高度类。默认保持面板内嵌的 72vh 高度；
+   * 大屏画布（StoryProgressionCanvas）传入 "h-full min-h-[80vh]" 以铺满流视图标准。
+   */
+  readonly frameClassName?: string;
+  /** 初始聚焦实体（角色名等），透传给底层图谱工作区。 */
+  readonly initialFocusEntity?: string;
 }
 
 export function DevelopmentTimelineView({
@@ -23,12 +30,14 @@ export function DevelopmentTimelineView({
   scope = "read",
   onSelectNode,
   onOpenEntityDetail,
+  frameClassName = "h-[min(72vh,720px)] min-h-[440px]",
+  initialFocusEntity,
 }: DevelopmentTimelineViewProps) {
   const initialView: NarrativeMemoryView = "timeline";
 
   return (
     <section
-      className="h-[min(72vh,720px)] min-h-[440px]"
+      className={frameClassName}
       data-slot="development-timeline-view"
       data-testid="development-timeline-view"
       data-source-scope={scope}
@@ -39,6 +48,7 @@ export function DevelopmentTimelineView({
         mode="development"
         dataScope={scope}
         currentChapter={currentChapter}
+        initialFocusEntity={initialFocusEntity}
         onSelectNode={onSelectNode}
         onOpenEntityDetail={onOpenEntityDetail}
       />

@@ -140,7 +140,10 @@ export function JingweiEntryEditor({
   relatedEntries,
   onNavigateToEntry,
 }: JingweiEntryEditorProps) {
-  const isJingweiEntry = sourceLabel === "经纬资料";
+  // 不能用 sourceLabel 判断：父组件（WorkbenchCanvas）只会传「故事推进」/「作品基础资料」，
+  // sourceLabel === "经纬资料" 恒为 false，分类/关联/可见性编辑面板曾是死 UI。
+  // 经纬条目一定挂在某个分区下（sectionId），叙事记忆条目没有 sectionId —— 用它做判别。
+  const isJingweiEntry = entry.sectionId != null;
   const [title, setTitle] = useState(entry.title);
   const [content, setContent] = useState(entry.contentMd);
   const [priorityTier, setPriorityTier] = useState<JingweiPriorityTier>(entry.priorityTier ?? "auto");
@@ -335,6 +338,10 @@ export function JingweiEntryEditor({
         aliases,
         relatedEntryIds,
         visibility,
+        // 章节窗口不在编辑器里修改，但保存时必须带上原值：
+        // 服务端会把 visibilityRule 整体重写，漏传就会把已有的窗口字段清掉。
+        visibleAfterChapter: entry.visibleAfterChapter ?? null,
+        visibleUntilChapter: entry.visibleUntilChapter ?? null,
       });
       setSavedTitle(title.trim());
       setSavedContent(content);

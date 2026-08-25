@@ -440,6 +440,7 @@ const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"
   style: "Narrative Memory style：文风、Writing Skills 与合规风格提示。",
   semantic: "Narrative Memory semantic：语义记忆召回。",
   "character-kernel": "Narrative Memory character kernel：出场角色的动机/情绪/矛盾轴/状态摘要。",
+  "recent-summary": "Narrative Memory recent-summary：最近章节的手动剧情摘要（chapter-summaries 类目），保持前情连续。",
 };
 
 function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
