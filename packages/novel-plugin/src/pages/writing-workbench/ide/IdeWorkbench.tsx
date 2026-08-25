@@ -344,7 +344,7 @@ export function IdeWorkbench({
         conflictStatus?: string;
         conflictDetail?: string;
       }> = entRes?.entries ?? [];
-      const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string }> = factsRes?.facts ?? [];
+      const memoryFacts: Array<{ id: string; subject: string; predicate: string; object: string; category: string; evidenceText?: string; sourceId?: string; sourceChapter?: number }> = factsRes?.facts ?? [];
 
       const toEntryNode = (e: typeof entries[number]): WorkbenchResourceNode => ({
         id: `jingwei-entry:${e.id}`,

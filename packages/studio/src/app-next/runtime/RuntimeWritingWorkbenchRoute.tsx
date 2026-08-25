@@ -241,9 +241,10 @@ export function RuntimeWritingWorkbenchRoute({
   const probeWorkspaceChange = useCallback(async () => {
     try {
       const workspace = await client.getWorkspace(bookId);
+      // updatedAt 在服务端载荷的 metadata 里（见 book-provision toWorkspaceWritingResource），不在资源顶层。
       const fingerprint = [
         workspace.resources.length,
-        ...workspace.resources.slice(-3).map((r) => `${r.id}:${r.updatedAt ?? ""}`),
+        ...workspace.resources.slice(-3).map((r) => `${r.id}:${typeof r.metadata?.updatedAt === "string" ? r.metadata.updatedAt : ""}`),
       ].join("|");
       if (latestChapterFingerprintRef.current === null) {
         latestChapterFingerprintRef.current = fingerprint;
