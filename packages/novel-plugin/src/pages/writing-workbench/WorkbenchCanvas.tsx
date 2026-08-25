@@ -649,6 +649,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
           {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (() => {
             // 角色类目 → 酒馆风格大屏角色卡（参考 SillyTavern）
             const entryCategory = typeof node.metadata?.category === "string" ? node.metadata.category : "";
+            const rawPriorityTier = node.metadata?.priorityTier;
+            const priorityTier: "core" | "relevant" | "reference" | "auto" =
+              rawPriorityTier === "core" || rawPriorityTier === "relevant" || rawPriorityTier === "reference" ? rawPriorityTier : "auto";
             const entryData = {
               id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
               title: node.title,
@@ -657,7 +660,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
               updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
               category: entryCategory || undefined,
               fields: asRecord(node.metadata?.fields),
-              priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
+              priorityTier,
               status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
               layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
               version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,

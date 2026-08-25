@@ -44,6 +44,8 @@ export interface EntityFactLite {
   category?: string;
   evidenceText?: string;
   sourceId?: string;
+  /** 事实来源章节（narrative-memory facts API 返回），用于「最后出场」推算。 */
+  sourceChapter?: number;
 }
 
 export interface CharactersAndLoreSidebarPanelProps {

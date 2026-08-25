@@ -282,22 +282,30 @@ async function loadCharacterDevelopment(
       }
     }
     return lastResult ?? { evolution: [], factsPayload: {}, relationshipPayload: {} as NarrativeGraphResponse };
-  })();
+  })()
+    .then((resolved): CharacterDevelopmentSnapshot => {
+      const groups = resolved.factsPayload.groups ?? [];
+      const facts = groups.flatMap((group) => group.facts ?? []);
+      const relationships = [
+        ...(resolved.relationshipPayload.facts ?? []).map(relationshipFromRecord),
+        ...(resolved.relationshipPayload.events ?? []).map(relationshipFromRecord),
+      ]
+        .filter((item): item is DynamicRelationship => item !== null)
+        .sort((left, right) => (right.chapter ?? 0) - (left.chapter ?? 0))
+        .filter((item, index, all) => all.findIndex((candidate) => relationshipKey(candidate) === relationshipKey(item)) === index)
+        .slice(0, 8);
+      const snapshot: CharacterDevelopmentSnapshot = {
+        evolution: resolved.evolution,
+        state: extractDynamicState(facts),
+        relationships,
+      };
+      developmentCache.set(cacheKey, { expiresAt: Date.now() + DEVELOPMENT_CACHE_TTL_MS, snapshot });
+      return snapshot;
+    });
 
   developmentRequests.set(cacheKey, request);
   try {
-    const resolved = await request;
-    const groups = resolved.factsPayload.groups ?? [];
-    const facts = groups.flatMap((group) => group.facts ?? []);
-    const relationships = [
-      ...(resolved.relationshipPayload.facts ?? []).map(relationshipFromRecord),
-      ...(resolved.relationshipPayload.events ?? []).map(relationshipFromRecord),
-    ]
-      .filter((item): item is DynamicRelationship => item !== null)
-      .sort((left, right) => (right.chapter ?? 0) - (left.chapter ?? 0))
-      .filter((item, index, all) => all.findIndex((candidate) => relationshipKey(candidate) === relationshipKey(item)) === index)
-      .slice(0, 8);
-    return { evolution: resolved.evolution, state: extractDynamicState(facts), relationships };
+    return await request;
   } finally {
     developmentRequests.delete(cacheKey);
   }

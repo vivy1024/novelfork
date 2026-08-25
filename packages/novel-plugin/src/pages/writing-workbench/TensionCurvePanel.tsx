@@ -1,6 +1,7 @@
 /**
  * 张力心电图——按章节展示 AI 结算时评出的 tensionScore（0-10）。
- * 数据源：chapter-summaries 类目的 fields.tensionScore（E批自动写入）。
+ * 数据源：chapter-summaries 类目的 fields.tension_score（E批自动写入，snake_case）。
+ * 兼容读 fields.tensionScore（camelCase 旧键）。
  * 零外部图表库依赖，用纯 CSS 竖条渲染。
  */
 
@@ -38,7 +39,9 @@ export function TensionCurvePanel({ bookId, className }: TensionCurvePanelProps)
         .map((e) => {
           const fields = typeof e.fields === "object" && e.fields !== null ? e.fields : {};
           const chapterNumber = Number(fields.chapterNumber);
-          const score = Number(fields.tensionScore);
+          // 结算端写入的是 tension_score（snake_case）；tensionScore 为旧键兼容。
+          const rawScore = fields.tension_score ?? fields.tensionScore;
+          const score = Number(rawScore);
           return { chapterNumber, tensionScore: score };
         })
         .filter((e) => Number.isFinite(e.chapterNumber) && Number.isFinite(e.tensionScore))
