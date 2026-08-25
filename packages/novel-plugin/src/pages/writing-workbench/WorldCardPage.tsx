@@ -20,6 +20,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 
+import { useDebouncedValue } from "./use-debounced-value";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -241,7 +243,9 @@ function WorldDynamicsSection({
   entityName: string;
   presentation: CategoryPresentation;
 }) {
-  const { state, refresh } = useWorldDynamics(bookId, entityName, presentation.stateKeywords);
+  // entityName 来自标题输入框实时值：不防抖的话每敲一个字就触发三路 fetch。
+  const debouncedEntityName = useDebouncedValue(entityName.trim(), 300);
+  const { state, refresh } = useWorldDynamics(bookId, debouncedEntityName, presentation.stateKeywords);
   const snapshot = state.status === "ready" ? state.snapshot : undefined;
   const isEmpty = snapshot
     && snapshot.stateFacts.length === 0

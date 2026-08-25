@@ -15,6 +15,8 @@ import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
 
+import { useDebouncedValue } from "./use-debounced-value";
+
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -362,15 +364,6 @@ function normalizeAliases(input: string): string[] {
 
 function formatAliases(aliases?: string[]): string {
   return (aliases ?? []).join(" / ");
-}
-
-function useDebouncedValue<T>(value: T, delayMs: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = window.setTimeout(() => setDebounced(value), delayMs);
-    return () => window.clearTimeout(timer);
-  }, [delayMs, value]);
-  return debounced;
 }
 
 function useCharacterDevelopment(bookId: string | undefined, characterName: string, uptoChapter?: number, aliases?: readonly string[]) {

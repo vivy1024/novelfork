@@ -11,6 +11,12 @@ import {
 	resolveEntity,
 	type EntityDictionary,
 } from "../packages/novel-plugin/src/engine/narrative-memory/entity-dictionary.js";
+import {
+	deleteCharacterKernel,
+	getCharacterKernel,
+	listCharacterKernels,
+	upsertCharacterKernel,
+} from "../packages/novel-plugin/src/engine/narrative-memory/storage.js";
 
 const bookId = process.argv[2];
 if (!bookId?.trim()) {
@@ -82,4 +88,34 @@ for (const row of facts) {
 
 console.log(`narrative_event: 扫描 ${eventScanned} 条，回填 subject ${eventSubjectBackfilled} / object ${eventObjectBackfilled}`);
 console.log(`narrative_fact:  扫描 ${factScanned} 条，回填 subject ${factSubjectBackfilled}`);
+
+// ── 迁移 character_kernel 孤儿记录（装饰标题 → canonical 名）──────────────
+// kernel 归一化上线后新写入用 canonical 名；旧记录以装饰标题为 character_id，
+// getCharacterKernel(canonical) 永远读不到它们。这里按字典重命名；
+// 目标名已存在内核时不自动合并（字段语义不同不可盲合），报告后由作者决定。
+const kernels = listCharacterKernels(storage, { bookId, includeArchived: true });
+let kernelScanned = 0;
+let kernelRenamed = 0;
+let kernelConflictSkipped = 0;
+
+for (const kernel of kernels) {
+	kernelScanned++;
+	const hit = resolveEntity(dictionary, kernel.characterId);
+	if (!hit || hit.entry.canonicalName === kernel.characterId) continue;
+	const canonical = hit.entry.canonicalName;
+	if (getCharacterKernel(storage, bookId, canonical)) {
+		kernelConflictSkipped++;
+		console.warn(`⚠️ 跳过「${kernel.characterId}」：canonical 名「${canonical}」已有内核，请手动合并。`);
+		continue;
+	}
+	upsertCharacterKernel(storage, {
+		...kernel,
+		id: `kernel:${bookId}:${canonical}`,
+		characterId: canonical,
+	});
+	deleteCharacterKernel(storage, bookId, kernel.characterId);
+	kernelRenamed++;
+}
+
+console.log(`character_kernel: 扫描 ${kernelScanned} 条，迁移 ${kernelRenamed} 条，冲突跳过 ${kernelConflictSkipped} 条`);
 console.log("\n回填完成。");

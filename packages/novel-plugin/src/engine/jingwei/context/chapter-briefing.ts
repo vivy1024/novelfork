@@ -1,4 +1,5 @@
 import type { BookConfig, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
+import { computeForeshadowingDebt } from "../foreshadowing-debt.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
 
 /**
@@ -74,12 +75,26 @@ export type ChapterBriefingOptions = Readonly<{
 const RESOLVED_CONTRACT_STATES = new Set(["resolved", "closed", "completed", "done", "settled", "已解决", "已回收"]);
 const OPEN_CONTRACT_STATES = new Set(["open", "active", "progressing", "planted", "overdue", "待回收", "已埋设"]);
 
+export type ContractStateClass = "resolved" | "open" | "other";
+
+/**
+ * 叙事契约状态的唯一分类口径（briefing 与治理驾驶舱共用）。
+ * 无法识别 / 缺失的状态返回 other，不计入命中率分母——不伪造数据。
+ */
+export function classifyContractState(value: unknown): ContractStateClass {
+  if (typeof value !== "string") return "other";
+  const normalized = value.trim().toLowerCase();
+  if (RESOLVED_CONTRACT_STATES.has(normalized)) return "resolved";
+  if (OPEN_CONTRACT_STATES.has(normalized)) return "open";
+  return "other";
+}
+
 function isResolvedContractState(value: unknown): boolean {
-  return typeof value === "string" && RESOLVED_CONTRACT_STATES.has(value.trim().toLowerCase());
+  return classifyContractState(value) === "resolved";
 }
 
 function isOpenContractState(value: unknown): boolean {
-  return typeof value === "string" && OPEN_CONTRACT_STATES.has(value.trim().toLowerCase());
+  return classifyContractState(value) === "open";
 }
 
 /**
@@ -141,8 +156,12 @@ export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId
       }
       if (!isOpenContractState(status)) continue;
       const planted = Number(fields.plantedChapter ?? fields.planted_chapter);
-      const overdueByChapter = currentChapter !== undefined && Number.isFinite(planted) && planted > 0 && currentChapter - planted > 20;
-      if (String(fields.urgency ?? "").toLowerCase() === "overdue" || status === "overdue" || overdueByChapter) openOverdueCount += 1;
+      // 超期判定走 foreshadowing-debt 唯一阈值口径，与治理驾驶舱同源。
+      const debt = computeForeshadowingDebt({
+        plantedChapter: Number.isFinite(planted) && planted > 0 ? planted : null,
+        currentChapter,
+      });
+      if (String(fields.urgency ?? "").toLowerCase() === "overdue" || status === "overdue" || debt.level === "overdue") openOverdueCount += 1;
     }
   } catch {
     // 旧库可能尚未创建经纬表；无数据时按 null 返回。
