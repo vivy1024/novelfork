@@ -19,6 +19,7 @@ import {
   saveNarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
 import { listCharacterKernels, getCharacterKernel } from "../engine/narrative-memory/storage.js";
@@ -208,6 +209,24 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return c.json({ config });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  // T8 · 存量事件身份链回填：用实体字典把旧事件的 subject/object 挂到经纬条目。
+  // 幂等，只补缺失列；解析不到的行保持原样。返回计数供前端提示。
+  app.post(`${base}/backfill-entity-ids`, (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const result = backfillNarrativeEventEntityIds(storage(), bookId);
+      return c.json({
+        ok: true,
+        ...result,
+        summary: result.scanned === 0
+          ? "没有需要回填的事件（全部已有身份链或字典为空）。"
+          : `扫描 ${result.scanned} 条缺失事件：主体回填 ${result.subjectBackfilled}，客体回填 ${result.objectBackfilled}，未命中 ${result.unresolved}。`,
+      });
+    } catch (error) {
+      return c.json({ error: "backfill-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
