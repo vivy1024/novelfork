@@ -14,7 +14,7 @@ export interface DevelopmentTimelineViewProps {
   readonly currentChapter?: number;
   readonly scope?: "read";
   readonly onSelectNode?: (nodeId: string) => void;
-  readonly onOpenEntityDetail?: (entity: string) => void;
+  readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /**
    * 外层容器高度类。默认保持面板内嵌的 72vh 高度；
    * 大屏画布（StoryProgressionCanvas）传入 "h-full min-h-[80vh]" 以铺满流视图标准。

@@ -75,7 +75,8 @@ export interface NarrativeMemoryGraphWorkspaceProps {
   initialFocusEntity?: string;
   initialChapter?: number;
   onSelectNode?: (nodeId: string) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  /** entryId 来自实体身份链；宿主可据此直跳角色卡，缺省回落实体详情抽屉。 */
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }
 
 interface NarrativeGraphResponse {
@@ -152,7 +153,7 @@ interface FlowNodeData {
   model: GraphNodeModel;
   muted: boolean;
   currentChapter?: number;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }
 
 interface FlowEdgeData {
@@ -207,10 +208,13 @@ function NarrativeGraphNode({ data, selected }: NodeProps<FlowNode>) {
           className="nodrag nopan mt-2 inline-flex items-center gap-1 text-[10px] font-medium text-primary opacity-0 transition-opacity hover:underline group-hover:opacity-100"
           onClick={(event) => {
             event.stopPropagation();
-            if (node.entityName) data.onOpenEntityDetail?.(node.entityName);
+            if (!node.entityName) return;
+            // entryId 缺省时不显式传 undefined，保持回调旧契约（单参）。
+            if (node.entryId) data.onOpenEntityDetail?.(node.entityName, node.entryId);
+            else data.onOpenEntityDetail?.(node.entityName);
           }}
         >
-          查看实体详情 <ChevronRight className="size-3" />
+          {node.entryId ? "打开关联条目卡" : "查看实体详情"} <ChevronRight className="size-3" />
         </button>
       ) : null}
     </Card>
@@ -260,7 +264,7 @@ function toFlowNodes(
   model: NarrativeGraphModel,
   selectedNodeId: string | null,
   currentChapter?: number,
-  onOpenEntityDetail?: (entity: string) => void,
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void,
 ): FlowNode[] {
   const visible = new Set<string>();
   if (selectedNodeId) {
@@ -411,7 +415,7 @@ function GraphCanvas({
   onSelectNode: (nodeId: string) => void;
   onAnchorChapter: (chapter: number) => void;
   onAnchorEntity: (entity: string) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }) {
   const { fitView } = useReactFlow<FlowNode, FlowEdge>();
   const [anchorOpen, setAnchorOpen] = useState(false);
@@ -499,7 +503,7 @@ function GraphCanvas({
   );
 }
 
-function Inspector({ node, onClose, onOpenEntityDetail }: { node: GraphNodeModel | undefined; onClose: () => void; onOpenEntityDetail?: (entity: string) => void }) {
+function Inspector({ node, onClose, onOpenEntityDetail }: { node: GraphNodeModel | undefined; onClose: () => void; onOpenEntityDetail?: (entity: string, entryId?: string) => void }) {
   if (!node) {
     return (
       <div data-slot="narrative-memory-graph-inspector" className="flex h-full flex-col items-center justify-center px-6 text-center text-muted-foreground">
@@ -535,8 +539,15 @@ function Inspector({ node, onClose, onOpenEntityDetail }: { node: GraphNodeModel
         {node.description ? <DetailBlock label="对象 / 内容" content={node.description} /> : null}
         {node.evidenceText ? <DetailBlock label="证据" content={node.evidenceText} /> : null}
         {node.entityName && onOpenEntityDetail ? (
-          <Button className="w-full gap-2" onClick={() => onOpenEntityDetail(node.entityName!)}>
-            <Info className="size-3.5" /> 查看实体完整详情
+          <Button
+            className="w-full gap-2"
+            onClick={() => {
+              if (!node.entityName) return;
+              if (node.entryId) onOpenEntityDetail(node.entityName, node.entryId);
+              else onOpenEntityDetail(node.entityName);
+            }}
+          >
+            <Info className="size-3.5" /> {node.entryId ? "打开关联条目卡" : "查看实体完整详情"}
           </Button>
         ) : null}
       </div>

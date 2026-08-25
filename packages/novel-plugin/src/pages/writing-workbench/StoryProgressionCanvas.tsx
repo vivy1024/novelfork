@@ -68,8 +68,8 @@ export interface StoryProgressionCanvasProps {
   readonly onOpenChapter?: (chapterNumber: number) => void;
   /** 地图大纲节点 → 提升为正式大纲条目。 */
   readonly onPromoteOutlineNode?: (node: StoryMapNodeData) => void;
-  /** 发展历程节点点击 → 打开实体详情抽屉。 */
-  readonly onOpenEntityDetail?: (entity: string) => void;
+  /** 发展历程节点点击 → 打开实体详情抽屉；带 entryId 时宿主可直接跳角色卡。 */
+  readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /**
    * 大纲条目保存通道。宿主（WorkbenchCanvas）传入 jingweiActions.onSave，
    * 会同时刷新资源树；未提供时回落到内置 REST PUT。

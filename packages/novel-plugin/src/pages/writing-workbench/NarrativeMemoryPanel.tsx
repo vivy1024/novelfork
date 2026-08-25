@@ -117,8 +117,8 @@ interface NarrativeMemoryPanelProps {
   selectedNodeId?: string | null;
   onOpen?: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
-  /** 打开实体详情抽屉：作者与叙述者看到同一条实体状态入口。 */
-  onOpenEntityDetail?: (entity: string) => void;
+  /** 打开实体详情抽屉：作者与叙述者看到同一条实体状态入口；带 entryId 时宿主可直接跳角色卡。 */
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }
 
 interface NarrativeMemoryPanelShellProps {
@@ -153,7 +153,7 @@ interface NarrativeMemoryPanelShellProps {
   /** 待审队列批量丢弃（物理删除待审事件，不留痕）。 */
   onBulkDelete?: (eventIds: readonly string[]) => Promise<void>;
   onSearchEntryOpen?: (entry: MemoryEntry) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
   onRefresh: () => void;
@@ -280,7 +280,7 @@ function MemoryNodeTree({ nodes, selectedNodeId, onOpen, onOpenEntityDetail }: {
   nodes: WorkbenchResourceNode[];
   selectedNodeId?: string | null;
   onOpen?: (node: WorkbenchResourceNode) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set(nodes.map((node) => node.id)));
   useEffect(() => {
@@ -344,7 +344,7 @@ function StoryStatusSummary({
   factEditingId?: string | null;
   factEditError?: string | null;
   onOpenFact?: (entry: MemoryEntry) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
 }) {
@@ -440,7 +440,7 @@ function EntityStatusBoard({
   onCorrect?: (fact: EntityFact, newObject: string) => void;
   onRetire?: (fact: EntityFact) => void;
   onOpen?: (entry: MemoryEntry) => void;
-  onOpenEntityDetail?: (entity: string) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
 }) {
   return (
     <div className="space-y-3">

@@ -513,8 +513,11 @@ export function IdeWorkbench({
     toolNodes.forEach(walk);
     if (storyMapNode) map.set(storyMapNode.id, storyMapNode);
     if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
+    // 伏笔看板节点不在 toolNodes 里（入口收敛到故事推进侧栏），但 ?panel=foreshadowing
+    // 直达与 activeNode 解析仍需能取到它。
+    if (foreshadowingNode) map.set(foreshadowingNode.id, foreshadowingNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode, storyProgressionNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode, storyProgressionNode, foreshadowingNode]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -651,6 +654,13 @@ export function IdeWorkbench({
     handleOpen(target);
     return true;
   }, [handleOpen, jingweiSections]);
+
+  // 图谱实体节点点击：身份链命中（带 entryId）时直接打开对应经纬条目卡
+  // （角色类目落角色卡、世界侧落世界卡）；未命中回落实体详情抽屉。
+  const handleOpenEntityFromGraph = useCallback((entity: string, entryId?: string) => {
+    if (entryId && handleOpenJingweiEntry(entryId)) return;
+    setEntityDetailEntity(entity);
+  }, [handleOpenJingweiEntry]);
 
   // 伏笔看板"目标章节"跳转：按章节号在资源/文件树中找到章节节点并打开
   const handleJumpToChapter = useCallback((chapterNumber: number) => {
@@ -1311,7 +1321,7 @@ export function IdeWorkbench({
                       onOpen={handleOpen}
                       onSwitchView={(view) => keybindingActions.switchView(view)}
                       onAction={handleResourceAction}
-                      onOpenEntityDetail={setEntityDetailEntity}
+                      onOpenEntityDetail={handleOpenEntityFromGraph}
                     />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看故事推进。</span>
@@ -1398,7 +1408,7 @@ export function IdeWorkbench({
                               isActive={tabId === ideTabs.activeTabId}
                               onJumpToChapter={handleJumpToChapter}
                               onOpenJingweiEntry={handleOpenJingweiEntry}
-                              onOpenEntityDetail={setEntityDetailEntity}
+                              onOpenEntityDetail={handleOpenEntityFromGraph}
                               onSendToNarrator={onSendToNarrator}
                               onPromoteOutline={(outlineNode) => {
                                 void handleResourceAction({ type: "promote-outline", node: outlineNode });
@@ -1422,7 +1432,7 @@ export function IdeWorkbench({
                         toolbarSlotRef={toolbarSlotRef}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
-                        onOpenEntityDetail={setEntityDetailEntity}
+                        onOpenEntityDetail={handleOpenEntityFromGraph}
                         onSendToNarrator={onSendToNarrator}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });
@@ -1466,7 +1476,7 @@ export function IdeWorkbench({
                         jingweiActions={jingweiActions}
                         onJumpToChapter={handleJumpToChapter}
                         onOpenJingweiEntry={handleOpenJingweiEntry}
-                        onOpenEntityDetail={setEntityDetailEntity}
+                        onOpenEntityDetail={handleOpenEntityFromGraph}
                         onSendToNarrator={onSendToNarrator}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });

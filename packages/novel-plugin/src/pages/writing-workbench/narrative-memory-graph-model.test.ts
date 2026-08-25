@@ -156,15 +156,29 @@ describe("narrative-memory-graph-model", () => {
   });
 
   it.each<[NarrativeMemoryView, "entity" | "event", number]>([
-    ["timeline", "event", 2],
+    // 泳道重构后（88c081ee）：夹具 3 事件分属「薛行之」「周工离职」两条泳道，
+    // 泳道内串联产生 1 条边，跨泳道不连线——不再是全局线性链的 n-1 条。
+    ["timeline", "event", 1],
     ["character_arc", "event", 1],
-    ["event_chain", "event", 2],
+    ["event_chain", "event", 1],
     ["conflict", "entity", 4],
   ])("为 %s 生成专属节点与连线", (view, kind, minimumEdges) => {
     const model = buildNarrativeGraphModel({ facts, events, view });
     expect(model.nodes.some((node) => node.kind === kind)).toBe(true);
     expect(model.edges.length).toBeGreaterThanOrEqual(minimumEdges);
     expectFiniteUniqueLayout(model.nodes);
+  });
+
+  it("泳道分组：同一实体的事件按章节串联，跨泳道不连线", () => {
+    for (const view of ["timeline", "character_arc", "event_chain"] as const) {
+      const model = buildNarrativeGraphModel({ facts, events, view });
+      const sequenceEdges = model.edges.filter((edge) => edge.kind === "sequence");
+      expect(sequenceEdges, `${view} 应只有薛之行泳道内的 1 条串联边`).toHaveLength(1);
+      const laneOf = new Map(model.nodes.map((node) => [node.id, node.entityName ?? node.title]));
+      for (const edge of sequenceEdges) {
+        expect(laneOf.get(edge.source)).toBe(laneOf.get(edge.target));
+      }
+    }
   });
 
   it("角色弧按角色分 lane 并按章节向右推进", () => {
@@ -241,5 +255,20 @@ describe("narrative-memory-graph-model", () => {
     const timeline = buildNarrativeGraphModel({ facts, events, view: "timeline" });
     expect(anchor.nodes.map((node) => node.id)).toEqual(timeline.nodes.map((node) => node.id));
     expect(anchor.edges.map((edge) => edge.id)).toEqual(timeline.edges.map((edge) => edge.id));
+  });
+
+  it("实体身份链：实体节点从 facts/events 提取 entryId，供图谱直跳条目卡", () => {
+    const withIds: NarrativeFact[] = [
+      { ...facts[0]!, subjectEntryId: "entry-xuejianguo" },
+      { ...facts[1]!, subjectEntryId: "entry-xuezhihang" },
+      { ...facts[3]!, objectEntryId: "entry-archive" },
+    ];
+    const model = buildNarrativeGraphModel({ facts: withIds, events, view: "relationship" });
+    const byName = (name: string) => model.nodes.find((node) => node.kind === "entity" && node.entityName === name);
+    expect(byName("薛建国")?.entryId).toBe("entry-xuejianguo");
+    expect(byName("薛行之")?.entryId).toBe("entry-xuezhihang");
+    expect(byName("只可作为未解异常现象归档")?.entryId).toBe("entry-archive");
+    // 未命中身份链的实体不携带 entryId（点击回落实体详情抽屉）。
+    expect(byName("鼻血")?.entryId).toBeUndefined();
   });
 });

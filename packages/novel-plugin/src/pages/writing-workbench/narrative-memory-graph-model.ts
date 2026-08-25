@@ -10,6 +10,9 @@ export interface NarrativeFact {
   confidence: number;
   sourceChapter?: number;
   evidenceText?: string;
+  /** 实体身份链：命中经纬实体字典时回填的条目 id（API 已透传）。 */
+  subjectEntryId?: string;
+  objectEntryId?: string;
 }
 
 export interface NarrativeEvent {
@@ -23,6 +26,9 @@ export interface NarrativeEvent {
   status: string;
   riskLevel: string;
   evidenceText: string;
+  /** 实体身份链：命中经纬实体字典时回填的条目 id（API 已透传）。 */
+  subjectEntryId?: string;
+  objectEntryId?: string;
 }
 
 export type GraphNodeKind = "entity" | "fact" | "event";
@@ -41,6 +47,8 @@ export interface GraphNodeModel {
   subtitle?: string;
   description?: string;
   entityName?: string;
+  /** 实体身份链：subject/object 命中经纬实体字典时回填的 story_jingwei_entry.id（仅 entity 节点）。 */
+  entryId?: string;
   category?: string;
   layer?: string;
   chapterNumber?: number;
@@ -256,22 +264,51 @@ function createFactEdges(facts: readonly NarrativeFact[]): GraphEdgeModel[] {
   return edges;
 }
 
-function createEntityNodes(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[] = []): GraphNodeModel[] {
+/**
+ * 实体身份链：从 facts/events 的 subjectEntryId/objectEntryId 提取
+ * 「canonical 实体名 → 经纬条目 id」映射，供图谱节点直跳角色卡。
+ * 同名实体取最新一条命中的 entryId（事件按章号降序遍历）。
+ */
+export function buildEntityEntryIdIndex(
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[],
+): Map<string, string> {
+  const index = new Map<string, string>();
+  const record = (name: string, entryId?: string) => {
+    if (!name.trim() || !entryId?.trim()) return;
+    index.set(entityName(name), entryId);
+  };
+  for (const fact of facts) {
+    record(fact.subject, fact.subjectEntryId);
+    record(fact.object, fact.objectEntryId);
+  }
+  for (const event of [...events].sort((a, b) => b.chapterNumber - a.chapterNumber)) {
+    record(event.subject, event.subjectEntryId);
+    record(event.object, event.objectEntryId);
+  }
+  return index;
+}
+
+function createEntityNodes(
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[] = [],
+  entryIds: ReadonlyMap<string, string> = new Map(),
+): GraphNodeModel[] {
   const nodes = new Map<string, GraphNodeModel>();
   for (const fact of facts) {
     for (const name of [fact.subject, fact.object]) {
       const normalized = entityName(name);
       const id = stableId("entity", normalized);
-      if (!nodes.has(id)) nodes.set(id, createEntityNode(normalized, fact.category));
+      if (!nodes.has(id)) nodes.set(id, { ...createEntityNode(normalized, fact.category), entryId: entryIds.get(normalized) });
     }
   }
   for (const event of events) {
     const normalized = entityName(event.subject);
     const id = stableId("entity", normalized);
-    if (!nodes.has(id)) nodes.set(id, createEntityNode(normalized, "character_state"));
+    if (!nodes.has(id)) nodes.set(id, { ...createEntityNode(normalized, "character_state"), entryId: entryIds.get(normalized) });
     const object = entityName(event.object);
     const objectId = stableId("entity", object);
-    if (!nodes.has(objectId)) nodes.set(objectId, createEntityNode(object, "timeline"));
+    if (!nodes.has(objectId)) nodes.set(objectId, { ...createEntityNode(object, "timeline"), entryId: entryIds.get(object) });
   }
   return [...nodes.values()];
 }
@@ -430,7 +467,9 @@ function layoutSequenceNodes(nodes: GraphNodeModel[], laneByNodeId?: Map<string,
 }
 
 function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], view: NarrativeMemoryView, focusEntity?: string): NarrativeGraphModel {
-  const entityNodes = createEntityNodes(facts, view === "wave" ? events : []);
+  // 身份链索引从全部 facts+events 提取（不随视图裁剪），保证任何视图下实体节点都带得上 entryId。
+  const entryIds = buildEntityEntryIdIndex(facts, events);
+  const entityNodes = createEntityNodes(facts, view === "wave" ? events : [], entryIds);
   const edges = createFactEdges(facts);
   const eventNodes = view === "wave" ? uniqueEvents(events).map(createEventNode) : [];
   const allNodes = [...entityNodes, ...eventNodes];
