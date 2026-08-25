@@ -8,7 +8,7 @@
  * 4. 「伏笔账本」：点击即在中央打开全屏看板（★伏笔唯一权威入口）。
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bookmark, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -30,11 +30,14 @@ export interface StorylineAndPlanningSidebarPanelProps {
 function StorylineResourceTree({
   nodes,
   emptyLabel,
+  draftedChapters,
   onOpen,
   onAction,
 }: {
   nodes: readonly WorkbenchResourceNode[];
   emptyLabel: string;
+  /** 已落稿章号集合（由章节树推导），用于大纲条目的 ✓/🗺 徽标与提拔守卫。 */
+  draftedChapters?: ReadonlySet<number>;
   onOpen: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
 }) {
@@ -61,6 +64,17 @@ function StorylineResourceTree({
     const hasChildren = (node.children?.length ?? 0) > 0;
     const isExpanded = expanded.has(node.id);
     const isOutline = node.kind === "jingwei-entry" || node.kind === "story";
+    // T3 身份链：fields.targetChapterNumber + 章节树存在性 → drafted/planned 推导。
+    const targetChapter = Number((node.metadata?.fields as Record<string, unknown> | undefined)?.targetChapterNumber);
+    const outlineState: "drafted" | "planned" | null =
+      isOutline && Number.isInteger(targetChapter) && targetChapter > 0
+        ? (draftedChapters?.has(targetChapter) ? "drafted" : "planned")
+        : null;
+    const stateBadge = outlineState === "drafted"
+      ? <span className="shrink-0 text-[9px] text-emerald-600 dark:text-emerald-400" title={`已对应第 ${targetChapter} 章`}>✓已落稿</span>
+      : outlineState === "planned"
+        ? <span className="shrink-0 text-[9px] text-muted-foreground" title={`规划为第 ${targetChapter} 章，尚未落稿`}>🗺规划中</span>
+        : null;
     return (
       <div key={node.id}>
         <div className="group/node flex items-center justify-between gap-1 rounded hover:bg-muted pr-1">
@@ -73,10 +87,11 @@ function StorylineResourceTree({
             {hasChildren ? (isExpanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />) : <span className="w-3 shrink-0" />}
             {node.kind === "chapter" ? <FileText className="size-3 shrink-0 text-blue-500" /> : <ListTree className="size-3 shrink-0 text-sky-500" />}
             <span className="min-w-0 flex-1 truncate">{node.title}</span>
+            {stateBadge}
           </button>
 
-          {/* 大纲节点一键提拔落稿到手稿章节 */}
-          {isOutline && onAction ? (
+          {/* 大纲节点一键提拔落稿到手稿章节；已落稿的条目不再重复提拔（T3 守卫） */}
+          {isOutline && onAction && outlineState !== "drafted" ? (
             <button
               type="button"
               title="将大纲提拔至手稿章节"
@@ -137,6 +152,17 @@ export function StorylineAndPlanningSidebarPanel({
       openProgressionCanvas("evolution");
     }
   };
+
+  const draftedChapters = useMemo(() => {
+    const out = new Set<number>();
+    const walk = (node: WorkbenchResourceNode): void => {
+      const num = Number(node.metadata?.chapterNumber);
+      if (Number.isInteger(num) && num > 0) out.add(num);
+      node.children?.forEach(walk);
+    };
+    chapterTreeNodes.forEach(walk);
+    return out;
+  }, [chapterTreeNodes]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
@@ -227,7 +253,7 @@ export function StorylineAndPlanningSidebarPanel({
               </div>
               <div>
                 <div className="mb-1 text-[10px] font-medium text-muted-foreground">大纲</div>
-                <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" onOpen={onOpen} onAction={onAction} />
+                <StorylineResourceTree nodes={outlineTreeNodes} emptyLabel="暂无大纲条目" draftedChapters={draftedChapters} onOpen={onOpen} onAction={onAction} />
               </div>
             </div>
           </section>
