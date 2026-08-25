@@ -80,11 +80,18 @@ function readFieldAliases(fields: Record<string, unknown> | undefined): string[]
 export function expandEntityLookupKeys(input: {
   title: string;
   fields?: Record<string, unknown> | undefined;
+  /** 经纬条目第一类别名（aliases_json 列）——与 fields 内别名字段同等参与匹配。 */
+  aliasColumn?: readonly string[] | undefined;
 }): string[] {
   const seeds = [input.title];
   const fieldName = input.fields?.name;
   if (typeof fieldName === "string" && fieldName.trim()) seeds.push(fieldName.trim());
   seeds.push(...readFieldAliases(input.fields));
+  if (input.aliasColumn) {
+    for (const alias of input.aliasColumn) {
+      if (typeof alias === "string" && alias.trim()) seeds.push(alias.trim());
+    }
+  }
 
   const expanded: string[] = [];
   for (const seed of seeds) {
@@ -110,6 +117,7 @@ interface JingweiEntryRowLike {
   category: string;
   title: string;
   fields_json?: string | null;
+  aliases_json?: string | null;
 }
 
 /** 从 story_jingwei_entry 表读取实体条目行（只取身份链需要的最小列）。 */
@@ -117,7 +125,7 @@ function loadEntityRows(storage: StorageDatabase, bookId: string): readonly Jing
   try {
     const placeholders = ENTITY_DICTIONARY_CATEGORIES.map(() => "?").join(", ");
     return storage.sqlite.prepare(
-      `SELECT id, category, title, fields_json
+      `SELECT id, category, title, fields_json, aliases_json
        FROM story_jingwei_entry
        WHERE book_id = ? AND category IN (${placeholders})
          AND deleted_at IS NULL`,
@@ -144,9 +152,16 @@ export function buildEntityDictionary(storage: StorageDatabase, bookId: string):
     } catch {
       fields = undefined;
     }
+    let aliasColumn: string[] | undefined;
+    try {
+      const parsed = row.aliases_json ? (JSON.parse(row.aliases_json) as unknown) : null;
+      if (Array.isArray(parsed)) aliasColumn = parsed.filter((item): item is string => typeof item === "string");
+    } catch {
+      aliasColumn = undefined;
+    }
     const title = row.title.trim();
     if (!title) continue;
-    const lookupKeys = expandEntityLookupKeys({ title, fields });
+    const lookupKeys = expandEntityLookupKeys({ title, fields, ...(aliasColumn ? { aliasColumn } : {}) });
     if (lookupKeys.length === 0) continue;
     const canonicalName = stripParentheticalSuffix(title) || title;
     const entry: EntityDictionaryEntry = {
