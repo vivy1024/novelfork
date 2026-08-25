@@ -1,3 +1,4 @@
+import type { BookConfig, StateManager, StorageDatabase } from "@vivy1024/novelfork-core";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../category-compat.js";
 
 /**
@@ -30,29 +31,195 @@ function readFirstQuote(fields: Record<string, unknown>): string {
   return "";
 }
 
+function readStringArray(raw: unknown): string[] {
+  if (Array.isArray(raw)) return raw.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim());
+  if (typeof raw === "string" && raw.trim()) return raw.split(/[,，\n]/u).map((item) => item.trim()).filter(Boolean);
+  return [];
+}
+
+function parseJsonStringArray(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    return readStringArray(JSON.parse(raw));
+  } catch {
+    return [];
+  }
+}
+
+function stripNameDecoration(value: string): string {
+  return value.trim().replace(/\s*[（(][^）)]*[）)]\s*$/u, "").trim();
+}
+
+function matchesNarrativeSubject(subject: string, names: readonly string[]): boolean {
+  const normalizedSubject = subject.trim();
+  return names.some((rawName) => {
+    const name = stripNameDecoration(rawName);
+    if (!name) return false;
+    return normalizedSubject === rawName.trim()
+      || normalizedSubject === name
+      || normalizedSubject.startsWith(`${name}（`)
+      || normalizedSubject.startsWith(`${name}(`);
+  });
+}
+
+export type ChapterBriefingOptions = Readonly<{
+  /** 测试/隔离环境注入的存储；生产环境缺省使用进程级单例。 */
+  storage?: StorageDatabase;
+  /** 通过 StateManager.loadBookConfig 读取书籍配置。 */
+  state?: Pick<StateManager, "loadBookConfig">;
+  /** 已加载的配置，优先于 state，便于调用方复用已有读取结果。 */
+  bookConfig?: Partial<Pick<BookConfig, "narrativeContract">>;
+}>;
+
+const RESOLVED_CONTRACT_STATES = new Set(["resolved", "closed", "completed", "done", "settled", "已解决", "已回收"]);
+const OPEN_CONTRACT_STATES = new Set(["open", "active", "progressing", "planted", "overdue", "待回收", "已埋设"]);
+
+function isResolvedContractState(value: unknown): boolean {
+  return typeof value === "string" && RESOLVED_CONTRACT_STATES.has(value.trim().toLowerCase());
+}
+
+function isOpenContractState(value: unknown): boolean {
+  return typeof value === "string" && OPEN_CONTRACT_STATES.has(value.trim().toLowerCase());
+}
+
+/**
+ * 叙事契约命中率：已解决数量 ÷（已解决数量 + 超期未回收数量）。
+ * 没有可计算数据时返回 null，而不是伪造 0%。
+ */
+export function computePromiseHitRate(resolvedCount: number, openOverdueCount: number): number | null {
+  const denominator = resolvedCount + openOverdueCount;
+  return denominator > 0 ? resolvedCount / denominator : null;
+}
+
+/**
+ * 从叙事记忆存储统计粗略叙事契约命中率。
+ */
+export function computeNarrativeContractHitRate(storage: StorageDatabase, bookId: string, currentChapter?: number): number | null {
+  let resolvedCount = 0;
+  let openOverdueCount = 0;
+
+  try {
+    const chains = storage.sqlite.prepare<{
+      status: string;
+      urgency: string | null;
+      trigger_chapter: number;
+      last_progress_chapter: number | null;
+    }>(`
+      SELECT status, urgency, trigger_chapter, last_progress_chapter
+      FROM jingwei_causal_chains
+      WHERE book_id = ?
+    `).all(bookId);
+    for (const chain of chains) {
+      if (isResolvedContractState(chain.status)) {
+        resolvedCount += 1;
+        continue;
+      }
+      if (!isOpenContractState(chain.status)) continue;
+      const lastActive = chain.last_progress_chapter ?? chain.trigger_chapter;
+      const overdueByChapter = currentChapter !== undefined && currentChapter - lastActive >= 100;
+      if (chain.urgency === "overdue" || overdueByChapter) openOverdueCount += 1;
+    }
+  } catch {
+    // 旧库可能尚未创建因果链表；继续统计经纬伏笔。
+  }
+
+  try {
+    const foreshadowCategories = getJingweiCategoryAliases("foreshadowing");
+    const rows = storage.sqlite.prepare<{ fields_json: string | null; lifecycle: string | null }>(`
+      SELECT fields_json, lifecycle
+      FROM story_jingwei_entry
+      WHERE book_id = ?
+        AND category IN (${sqlInPlaceholders(foreshadowCategories)})
+        AND deleted_at IS NULL
+    `).all(bookId, ...foreshadowCategories);
+    for (const row of rows) {
+      const fields = parseEntryFields(row.fields_json ?? "{}");
+      const status = fields.status ?? fields.state ?? row.lifecycle;
+      if (isResolvedContractState(status)) {
+        resolvedCount += 1;
+        continue;
+      }
+      if (!isOpenContractState(status)) continue;
+      const planted = Number(fields.plantedChapter ?? fields.planted_chapter);
+      const overdueByChapter = currentChapter !== undefined && Number.isFinite(planted) && planted > 0 && currentChapter - planted > 20;
+      if (String(fields.urgency ?? "").toLowerCase() === "overdue" || status === "overdue" || overdueByChapter) openOverdueCount += 1;
+    }
+  } catch {
+    // 旧库可能尚未创建经纬表；无数据时按 null 返回。
+  }
+
+  return computePromiseHitRate(resolvedCount, openOverdueCount);
+}
+
+function buildAppearanceWarnings(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+  characters: readonly { title: string; fields_json: string; aliases_json?: string | null }[],
+): string[] {
+  try {
+    const events = storage.sqlite.prepare<{ subject: string; last_chapter: number | null }>(`
+      SELECT subject, MAX(chapter_number) AS last_chapter
+      FROM narrative_event
+      WHERE book_id = ?
+      GROUP BY subject
+    `).all(bookId);
+    const warnings: string[] = [];
+    for (const character of characters) {
+      const fields = parseEntryFields(character.fields_json);
+      const names = [
+        character.title,
+        stripNameDecoration(character.title),
+        ...parseJsonStringArray(character.aliases_json),
+        ...readStringArray(fields.aliases),
+      ].filter(Boolean);
+      const lastChapter = events
+        .filter((event) => matchesNarrativeSubject(event.subject, names))
+        .reduce((max, event) => Math.max(max, event.last_chapter ?? 0), 0);
+      const gap = chapterNumber - lastChapter;
+      if (lastChapter > 0 && gap >= 10) warnings.push(`- ⚠️ ${character.title} 已 ${gap} 章未出场`);
+    }
+    return warnings;
+  } catch {
+    // briefing 是增强信息，叙事事件表缺失/损坏时跳过告警，不阻断写作。
+    return [];
+  }
+}
+
 /**
  * Generate a structured briefing for the AI before writing a chapter.
  * This is injected into the system prompt.
  */
-export async function buildChapterBriefing(bookId: string, chapterNumber: number): Promise<string> {
-  const { getStorageDatabase } = await import("@vivy1024/novelfork-core/storage");
-  const storage = getStorageDatabase();
+export async function buildChapterBriefing(
+  bookId: string,
+  chapterNumber: number,
+  options: ChapterBriefingOptions = {},
+): Promise<string> {
+  const storage = options.storage ?? (await import("@vivy1024/novelfork-core/storage")).getStorageDatabase();
+  let bookConfig = options.bookConfig;
+  if (!bookConfig && options.state) {
+    try {
+      bookConfig = await options.state.loadBookConfig(bookId);
+    } catch {
+      bookConfig = undefined;
+    }
+  }
 
   const sections: string[] = [];
 
   // 1. Active characters (lifecycle = 'active')
   const characterCategories = getJingweiCategoryAliases("characters");
   const activeChars = storage.sqlite.prepare(
-    `SELECT title, fields_json FROM story_jingwei_entry
+    `SELECT title, fields_json, aliases_json FROM story_jingwei_entry
      WHERE book_id = ?
        AND category IN (${sqlInPlaceholders(characterCategories)})
        AND lifecycle = 'active'
        AND deleted_at IS NULL
-     ORDER BY sort_order LIMIT 10`
-  ).all(bookId, ...characterCategories) as Array<{ title: string; fields_json: string }>;
+     ORDER BY sort_order`
+  ).all(bookId, ...characterCategories) as Array<{ title: string; fields_json: string; aliases_json?: string | null }>;
 
   if (activeChars.length > 0) {
-    const charLines = activeChars.map(c => {
+    const charLines = activeChars.slice(0, 10).map(c => {
       const fields = parseEntryFields(c.fields_json);
       // 角色内核输出：动机/恐惧/执念/信奉/性格/口头禅。空字段整段省略。
       const realm = readFieldString(fields, "realm");
@@ -78,6 +245,9 @@ export async function buildChapterBriefing(bookId: string, chapterNumber: number
     sections.push(`【活跃角色】\n${charLines.join("\n")}`);
   }
 
+  const appearanceWarnings = buildAppearanceWarnings(storage, bookId, chapterNumber, activeChars);
+  if (appearanceWarnings.length > 0) sections.push(`【登场告警】\n${appearanceWarnings.join("\n")}`);
+
   // 2. Overdue causal chains
   const overdueChains = storage.sqlite.prepare(
     `SELECT trigger_event, trigger_chapter, urgency FROM jingwei_causal_chains
@@ -93,18 +263,28 @@ export async function buildChapterBriefing(bookId: string, chapterNumber: number
   }
 
   // 3. Active foreshadowing
+  const foreshadowCategories = getJingweiCategoryAliases("foreshadowing");
   const foreshadows = storage.sqlite.prepare(
     `SELECT title, fields_json FROM story_jingwei_entry
-     WHERE book_id = ? AND category = 'foreshadowing' AND lifecycle = 'active' AND deleted_at IS NULL
+     WHERE book_id = ? AND category IN (${sqlInPlaceholders(foreshadowCategories)}) AND lifecycle = 'active' AND deleted_at IS NULL
      ORDER BY sort_order LIMIT 5`
-  ).all(bookId) as Array<{ title: string; fields_json: string }>;
+  ).all(bookId, ...foreshadowCategories) as Array<{ title: string; fields_json: string }>;
 
   if (foreshadows.length > 0) {
     const fLines = foreshadows.map(f => {
-      const fields = JSON.parse(f.fields_json || "{}");
-      return `- ${f.title}${fields.status ? "（" + fields.status + "）" : ""}`;
+      const fields = parseEntryFields(f.fields_json);
+      return `- ${f.title}${fields.status ? "（" + String(fields.status) + "）" : ""}`;
     });
     sections.push(`【活跃伏笔】\n${fLines.join("\n")}`);
+  }
+
+  const hitRate = computeNarrativeContractHitRate(storage, bookId, chapterNumber);
+  if (hitRate !== null) sections.push(`【叙事契约命中率】粗略命中率 ${Math.round(hitRate * 100)}%（已解决 / 已解决+超期未回收）`);
+
+  const revealBudget = bookConfig?.narrativeContract?.revealBudget;
+  if (revealBudget) {
+    const description = revealBudget.description?.trim();
+    sections.push(`【本章揭示预算】当前允许揭示至第 ${revealBudget.level} 层底牌${description ? `（${description}）` : ""}，勿越级揭底`);
   }
 
   // 4. Hard constraints (global visibility)

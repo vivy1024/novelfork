@@ -19,6 +19,21 @@ export type BookStatus = z.infer<typeof BookStatusSchema>;
 export const FanficModeSchema = z.enum(["canon", "au", "ooc", "cp"]);
 export type FanficMode = z.infer<typeof FanficModeSchema>;
 
+export const NarrativeContractSchema = z.object({
+  /** 书名/简介对读者作出的核心承诺。 */
+  titlePromise: z.string().optional(),
+  /** 驱动主线的核心问题。 */
+  coreQuestion: z.string().optional(),
+  /** 贯穿全书的主题锚点。 */
+  themeAnchors: z.array(z.string()).optional(),
+  /** 章内允许揭示的底牌层级。 */
+  revealBudget: z.object({
+    level: z.number().int().min(0),
+    description: z.string().optional(),
+  }).optional(),
+});
+export type NarrativeContract = z.infer<typeof NarrativeContractSchema>;
+
 export const BookConfigSchema = z.object({
   id: z.string().min(1),
   title: z.string().min(1),
@@ -38,6 +53,8 @@ export const BookConfigSchema = z.object({
   complexity: z.enum(["light", "medium", "heavy"]).optional(),
   /** 作者手动覆盖的可见经纬分类（覆盖模板默认） */
   visibleCategories: z.array(z.string()).optional(),
+  /** 叙事契约：全书承诺、核心问题、主题锚点与揭示预算。 */
+  narrativeContract: NarrativeContractSchema.optional(),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;

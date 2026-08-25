@@ -28,6 +28,8 @@ import {
   type NarrativeEventDraft,
   type SettlementRiskDecision,
 } from "../engine/narrative-memory/settlement-risk-gate.js";
+import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
 import type { DiagnosticExplanation } from "./diagnostic-explanation.js";
 
 export type ChapterSettlementOptions = Readonly<{
@@ -51,6 +53,136 @@ export type ChapterSettlementOptions = Readonly<{
 
 function idPart(value: string): string {
   return value.trim().replace(/\s+/gu, "-").replace(/[^\p{L}\p{N}_:-]+/gu, "").slice(0, 48) || "value";
+}
+
+function parseSummaryFields(raw: string | null | undefined): Record<string, unknown> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function ensureChapterSummarySection(storage: StorageDatabase, bookId: string, now: Date): string {
+  const existing = storage.sqlite.prepare<{ id: string }>(`
+    SELECT "id"
+    FROM "story_jingwei_section"
+    WHERE "book_id" = ? AND "key" = 'chapter-summaries' AND "deleted_at" IS NULL
+    LIMIT 1
+  `).get(bookId);
+  if (existing?.id) return existing.id;
+
+  const sectionId = `chapter-summaries:${idPart(bookId)}`;
+  try {
+    storage.sqlite.prepare(`
+      INSERT INTO "story_jingwei_section" (
+        "id", "book_id", "key", "name", "description", "order", "enabled", "show_in_sidebar",
+        "participates_in_ai", "default_visibility", "fields_json", "builtin_kind", "source_template",
+        "created_at", "updated_at", "deleted_at"
+      ) VALUES (?, ?, 'chapter-summaries', '章节摘要', '章后自动生成的剧情摘要与张力评分', 90, 1, 0, 1, 'nested', '[]', 'chapter-summaries', NULL, ?, ?, NULL)
+    `).run(sectionId, bookId, now.getTime(), now.getTime());
+  } catch {
+    // 并发结算可能同时创建 section；只要最终能读到即可继续。
+    const concurrent = storage.sqlite.prepare<{ id: string }>(`
+      SELECT "id"
+      FROM "story_jingwei_section"
+      WHERE "book_id" = ? AND "key" = 'chapter-summaries' AND "deleted_at" IS NULL
+      LIMIT 1
+    `).get(bookId);
+    if (concurrent?.id) return concurrent.id;
+    throw new Error("无法创建 chapter-summaries 经纬分区。");
+  }
+  return sectionId;
+}
+
+function findChapterSummaryEntryId(storage: StorageDatabase, bookId: string, chapterNumber: number): string | undefined {
+  const categories = getJingweiCategoryAliases("chapter-summaries");
+  const stableId = `summary:${idPart(bookId)}:${chapterNumber}`;
+  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null }>(`
+    SELECT "id", "title", "fields_json"
+    FROM "story_jingwei_entry"
+    WHERE "book_id" = ?
+      AND "category" IN (${sqlInPlaceholders(categories)})
+      AND "deleted_at" IS NULL
+  `).all(bookId, ...categories) as Array<{ id: string; title: string; fields_json: string | null }>;
+
+  const stable = rows.find((row) => row.id === stableId);
+  if (stable) return stable.id;
+  const byChapter = rows.find((row) => {
+    const fields = parseSummaryFields(row.fields_json);
+    const value = fields.chapterNumber ?? fields.chapter_number;
+    if (typeof value === "number") return value === chapterNumber;
+    if (typeof value === "string") return Number(value) === chapterNumber;
+    return new RegExp(`^第\\s*${chapterNumber}\\s*章(?:$|[：:《])`, "u").test(row.title);
+  });
+  return byChapter?.id;
+}
+
+async function upsertChapterSummaryEntry(input: {
+  storage: StorageDatabase;
+  bookId: string;
+  chapterNumber: number;
+  title?: string;
+  summary: string;
+  tensionScore?: number;
+  now: Date;
+}): Promise<void> {
+  const sectionId = ensureChapterSummarySection(input.storage, input.bookId, input.now);
+  const entryRepo = createStoryJingweiEntryRepository(input.storage);
+  const stableId = `summary:${idPart(input.bookId)}:${input.chapterNumber}`;
+  const fields = {
+    chapterNumber: input.chapterNumber,
+    title: input.title ?? "",
+    summary: input.summary,
+    ...(input.tensionScore !== undefined ? { tension_score: input.tensionScore } : {}),
+  };
+  const entryId = findChapterSummaryEntryId(input.storage, input.bookId, input.chapterNumber);
+  const common = {
+    sectionId,
+    title: `第${input.chapterNumber}章`,
+    contentMd: input.summary,
+    summaryMd: input.summary,
+    category: "chapter-summaries",
+    fields,
+    customFields: fields,
+    relatedChapterNumbers: [input.chapterNumber],
+    visibilityRule: { type: "nested" as const },
+    participatesInAi: true,
+    priorityTier: "relevant" as const,
+    layer: "dynamic" as const,
+    importance: 70,
+    summaryL0: input.summary.slice(0, 180),
+    lifecycle: "active" as const,
+    status: "confirmed" as const,
+    source: "auto-settle" as const,
+    changedBy: "auto-settle",
+    revisionReason: "auto-chapter-summary",
+    updatedAt: input.now,
+  };
+
+  if (entryId) {
+    const updated = await entryRepo.update(input.bookId, entryId, common);
+    if (!updated) throw new Error(`章节摘要条目 ${entryId} 更新后无法读取。`);
+    return;
+  }
+
+  await entryRepo.create({
+    id: stableId,
+    bookId: input.bookId,
+    ...common,
+    tags: ["chapter-summary", "auto-settle"],
+    aliases: [],
+    relatedEntryIds: [],
+    tokenBudget: null,
+    parentId: null,
+    sortOrder: input.chapterNumber,
+    version: 1,
+    createdAt: input.now,
+  });
 }
 
 function eventId(input: ChapterSettlementInput, draft: NarrativeEventDraft): string {
@@ -444,6 +576,65 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
           warnings.push(`角色「${character}」内核重算异常：${error instanceof Error ? error.message : String(error)}`);
         }
       }
+    }
+  }
+
+  // 章级摘要自生产（闭环灵魂）：结算完成后用轻量 LLM 调用生成 50-100 字剧情摘要
+  // + 张力评分（0-10），写入经纬 chapter-summaries 类目。下一章写前的 recent-summary
+  // 通道会自动召回最近几章摘要——形成「写→结算→摘要→喂下章」的自进化环。
+  // 失败只 warn 不阻断：摘要是增强信息，结算主体（facts/events）已成功落库。
+  if (config.settlement.autoChapterSummary === false) {
+    // 作者显式关闭时不调用 LLM，也不产生额外告警。
+  } else if (!options.kernelGenerateText) {
+    warnings.push("本章自动摘要已启用但当前会话没有可用的 generateText，已跳过摘要生成。");
+  } else {
+    try {
+      const summaryResponse = await options.kernelGenerateText({
+        messages: [
+          {
+            role: "system",
+            content: [
+              "你是网文章节摘要器。阅读章节正文，输出严格 JSON（不要解释、不要代码块围栏）：",
+              '{"summary":"50-100字的剧情要点总结，涵盖关键人物/事件/结果","tensionScore":0到10的整数表示本章张力强度}',
+              "summary 必须是独立可读的一段话；tensionScore 反映冲突烈度与情绪张力（日常过渡≈3，高潮大战≈9）。",
+            ].join("\n"),
+          },
+          { role: "user", content: `第${input.chapterNumber}章${input.title ? `《${input.title}》` : ""}正文：\n${input.content.slice(0, 3000)}` },
+        ],
+        temperature: 0.2,
+        maxTokens: 300,
+      });
+      let summaryText = "";
+      let tensionScore: number | undefined;
+      try {
+        const fenced = summaryResponse.text.match(/```(?:json)?\s*([\s\S]*?)```/iu)?.[1]?.trim();
+        const text = fenced ?? summaryResponse.text.trim();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        const raw = start >= 0 && end > start ? text.slice(start, end + 1) : text;
+        const parsed = JSON.parse(raw) as { summary?: unknown; tensionScore?: unknown };
+        if (typeof parsed.summary === "string" && parsed.summary.trim()) summaryText = parsed.summary.trim();
+        const score = typeof parsed.tensionScore === "number" ? parsed.tensionScore : Number(parsed.tensionScore);
+        if (Number.isInteger(score) && score >= 0 && score <= 10) tensionScore = score;
+      } catch {
+        // JSON 解析失败：只把原始文本当摘要使用，不伪造张力分。
+        if (summaryResponse.text.trim()) summaryText = summaryResponse.text.trim().slice(0, 200);
+      }
+      if (summaryText) {
+        await upsertChapterSummaryEntry({
+          storage,
+          bookId: input.bookId,
+          chapterNumber: input.chapterNumber,
+          title: input.title,
+          summary: summaryText,
+          ...(tensionScore !== undefined ? { tensionScore } : {}),
+          now: options.now?.() ?? new Date(),
+        });
+      } else {
+        warnings.push("本章自动摘要生成结果为空，已跳过写入。");
+      }
+    } catch (error) {
+      warnings.push(`本章自动摘要生成失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

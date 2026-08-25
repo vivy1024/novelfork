@@ -10,7 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronUp } from "lucide-react";
+import { Save, FileText, AlertCircle, Loader2, GitCompare, ChevronLeft, ChevronRight, ChevronUp } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
 import { resourceNeedsDetailHydration } from "./ResourceDetailLoader";
 import { ResourceViewer } from "./resource-viewers";
@@ -20,6 +20,7 @@ import { ResourceHistoryPanel, type ResourceHistoryEntry } from "./ResourceHisto
 import { saveEditorState, getEditorState } from "./ide/editor-state-cache";
 
 import { JingweiEntryEditor, type JingweiEntrySavePayload } from "./JingweiEntryEditor";
+import { ChapterContextRail } from "./ChapterContextRail";
 import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
@@ -29,6 +30,7 @@ import type { ToolPanelId } from "./useWorkbenchResources";
 // Lazy-loaded tool panels
 const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
 const StoryMapCanvas = lazy(() => import("./StoryMapCanvas").then(m => ({ default: m.StoryMapCanvas })));
+const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").then(m => ({ default: m.StoryProgressionCanvas })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
@@ -302,6 +304,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
   const [sceneSpecOpen, setSceneSpecOpen] = useState(false);
   const [sceneSpec, setSceneSpec] = useState<SceneSpec | null>(null);
   const [sceneSpecLoading, setSceneSpecLoading] = useState(false);
+  const [contextRailOpen, setContextRailOpen] = useState(true);
   // TipTap 可能规范化 markdown，但 dirty 基准必须始终从当前资源正文开始，
   // 不能把第一次真实编辑误当成规范化基准值。
   const normalizedBaseRef = useRef(node?.content ?? "");
@@ -314,6 +317,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     setHistoryError(null);
     setSceneSpec(null);
     setSceneSpecOpen(false);
+    setContextRailOpen(true);
     normalizedBaseRef.current = node?.content ?? ""; // reset on node change
   }, [node]);
 
@@ -405,6 +409,38 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         </div>
       );
     }
+  }
+
+  // 故事推进大屏画布 — 大纲/地图/发展历程三融合统一工作台（独立「故事画布」视图入口）
+  if ((node.kind === "story-progression" || node.id.startsWith("story-progression:") || node.metadata?.isStoryProgression) && bookId) {
+    const preferredView = node.metadata?.preferredView;
+    const progressionView = preferredView === "map" || preferredView === "evolution" ? preferredView : "outline";
+    return (
+      <div className="flex h-full min-h-0 flex-col overflow-hidden">
+        <Suspense fallback={<ToolPanelLoading />}>
+          <StoryProgressionCanvas
+            bookId={bookId}
+            initialView={progressionView}
+            currentChapter={resolveCurrentChapter(nodes)}
+            runtimeFetch={runtimeFetch}
+            onOpenChapter={onJumpToChapter}
+            onOpenEntityDetail={onOpenEntityDetail}
+            onPromoteOutlineNode={(storyMapNode) => {
+              if (onPromoteOutline) {
+                onPromoteOutline({
+                  id: storyMapNode.id,
+                  kind: "story",
+                  title: storyMapNode.title,
+                  content: storyMapNode.summary,
+                  capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
+                });
+              }
+            }}
+            onSaveEntry={jingweiActions?.onSave}
+          />
+        </Suspense>
+      </div>
+    );
   }
 
   // Story Map — 渲染为全功能网文故事主支线 DAG 画布
@@ -508,6 +544,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     </div>
   );
 
+  const contextChapterNumber = typeof node.metadata?.chapterNumber === "number" ? node.metadata.chapterNumber : undefined;
+  const showContextRail = Boolean(bookId) && isChapterWorkflowNode(node);
+
   return (
     <div className="flex h-full flex-col min-h-0">
       {/* Header（IDE 模式下 toolbar 通过 portal 渲染到 EditorTabs 右侧） */}
@@ -601,79 +640,115 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         />
       )}
 
-      {/* Editor */}
-      <div ref={containerRef} className="flex-1 min-h-0 overflow-y-auto">
-        {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (() => {
-          // 角色类目 → 酒馆风格大屏角色卡（参考 SillyTavern）
-          const entryCategory = typeof node.metadata?.category === "string" ? node.metadata.category : "";
-          const entryData = {
-            id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
-            title: node.title,
-            contentMd: content,
-            sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
-            updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
-            category: entryCategory || undefined,
-            fields: asRecord(node.metadata?.fields),
-            priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
-            status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
-            layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
-            version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
-            relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
-            aliases: Array.isArray(node.metadata?.aliases) ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
-            visibility: (node.metadata?.visibility === "global" || node.metadata?.visibility === "nested" ? node.metadata.visibility : "tracked") as "global" | "nested" | "tracked",
-            visibleAfterChapter: typeof node.metadata?.visibleAfterChapter === "number" ? node.metadata.visibleAfterChapter : undefined,
-            visibleUntilChapter: typeof node.metadata?.visibleUntilChapter === "number" ? node.metadata.visibleUntilChapter : undefined,
-            parentId: typeof node.metadata?.parentId === "string" ? node.metadata.parentId : null,
-            conflictStatus: (node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none") as "pending" | "resolved" | "none",
-            conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
-          };
-          if (entryCategory === "characters") {
-            return (
-              <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">加载角色卡...</div>}>
-                <CharacterCardPage
-                  entry={entryData}
-                  bookId={bookId}
-                  saving={false}
-                  onSave={async (entryId, payload) => {
-                    // fields 类型在 JingweiEntrySavePayload 里不在类型上,但后端接受; 通过 unknown 类型转换传递
-                    await jingweiActions.onSave(entryId, payload as unknown as Parameters<typeof jingweiActions.onSave>[1]);
-                  }}
-                />
-              </Suspense>
-            );
-          }
-          return (
-            <JingweiEntryEditor
-              bookId={bookId}
-              entry={entryData}
-              sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "故事推进" : "作品基础资料"}
-              onSave={jingweiActions.onSave}
-              onDelete={jingweiActions.onDelete}
-              onNavigateToEntry={(entryId) => {
-                if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
-              }}
-            />
-          );
-        })() : (
-          <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} onContentChange={(nextContent) => {
-            setContent(nextContent);
-            setDirty(nextContent !== normalizedBaseRef.current);
-            setSaveError(null);
-          }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
-            const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
-            try {
-              const data = await fetchJson<{ text?: string; content?: string }>(
-                `/api/books/${encodeURIComponent(bookId)}/inline-write`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ mode: "continuation", context: contextBefore, maxTokens: 80 }),
-                },
+      {/* Editor + 本章上下文侧栏 */}
+      <div ref={containerRef} className={`flex-1 min-h-0 ${showContextRail ? "flex overflow-hidden" : "overflow-y-auto"}`}>
+        <div className={showContextRail ? "min-w-0 min-h-0 flex-1 overflow-y-auto" : "h-full"}>
+          {needsHydration ? null : node.kind === "jingwei-entry" && jingweiActions && !node.metadata?.fileName ? (() => {
+            // 角色类目 → 酒馆风格大屏角色卡（参考 SillyTavern）
+            const entryCategory = typeof node.metadata?.category === "string" ? node.metadata.category : "";
+            const entryData = {
+              id: String(node.metadata?.entryId ?? node.id.replace("jingwei-entry:", "")),
+              title: node.title,
+              contentMd: content,
+              sectionId: typeof node.metadata?.sectionId === "string" ? node.metadata.sectionId : undefined,
+              updatedAt: typeof node.metadata?.updatedAt === "string" ? node.metadata.updatedAt : undefined,
+              category: entryCategory || undefined,
+              fields: asRecord(node.metadata?.fields),
+              priorityTier: node.metadata?.priorityTier === "core" || node.metadata?.priorityTier === "relevant" || node.metadata?.priorityTier === "reference" ? node.metadata.priorityTier : "auto",
+              status: typeof node.metadata?.status === "string" ? node.metadata.status : undefined,
+              layer: typeof node.metadata?.layer === "string" ? node.metadata.layer : undefined,
+              version: typeof node.metadata?.version === "number" ? node.metadata.version : undefined,
+              relatedEntryIds: Array.isArray(node.metadata?.relatedEntryIds) ? node.metadata.relatedEntryIds.filter((id): id is string => typeof id === "string") : undefined,
+              aliases: Array.isArray(node.metadata?.aliases) ? node.metadata.aliases.filter((alias): alias is string => typeof alias === "string") : undefined,
+              visibility: (node.metadata?.visibility === "global" || node.metadata?.visibility === "nested" ? node.metadata.visibility : "tracked") as "global" | "nested" | "tracked",
+              visibleAfterChapter: typeof node.metadata?.visibleAfterChapter === "number" ? node.metadata.visibleAfterChapter : undefined,
+              visibleUntilChapter: typeof node.metadata?.visibleUntilChapter === "number" ? node.metadata.visibleUntilChapter : undefined,
+              parentId: typeof node.metadata?.parentId === "string" ? node.metadata.parentId : null,
+              conflictStatus: (node.metadata?.conflictStatus === "pending" || node.metadata?.conflictStatus === "resolved" ? node.metadata.conflictStatus : "none") as "pending" | "resolved" | "none",
+              conflictDetail: typeof node.metadata?.conflictDetail === "string" ? node.metadata.conflictDetail : undefined,
+            };
+            if (entryCategory === "characters") {
+              return (
+                <Suspense fallback={<div className="flex items-center justify-center h-full text-muted-foreground">加载角色卡...</div>}>
+                  <CharacterCardPage
+                    entry={entryData}
+                    bookId={bookId}
+                    saving={false}
+                    onSave={async (entryId, payload) => {
+                      // fields 类型在 JingweiEntrySavePayload 里不在类型上,但后端接受; 通过 unknown 类型转换传递
+                      await jingweiActions.onSave(entryId, payload as unknown as Parameters<typeof jingweiActions.onSave>[1]);
+                    }}
+                  />
+                </Suspense>
               );
-              return data.text ?? data.content ?? null;
-            } catch { return null; }
-          } : undefined} />
-        )}
+            }
+            return (
+              <JingweiEntryEditor
+                bookId={bookId}
+                entry={entryData}
+                sourceLabel={node.metadata?.isNarrativeMemoryEntry ? "故事推进" : "作品基础资料"}
+                onSave={jingweiActions.onSave}
+                onDelete={jingweiActions.onDelete}
+                onNavigateToEntry={(entryId) => {
+                  if (!onOpenJingweiEntry?.(entryId)) setSaveError(`关联条目不存在或尚未载入：${entryId}`);
+                }}
+              />
+            );
+          })() : (
+            <ResourceViewer node={{ ...node, content }} bookId={bookId} language={resolveBookLanguage(nodes)} onSendToNarrator={onSendToNarrator} onContentChange={(nextContent) => {
+              setContent(nextContent);
+              setDirty(nextContent !== normalizedBaseRef.current);
+              setSaveError(null);
+            }} onTabComplete={bookId && isChapterWorkflowNode(node) ? async (currentContent, cursorPosition) => {
+              const contextBefore = currentContent.slice(Math.max(0, cursorPosition - 500), cursorPosition);
+              try {
+                const data = await fetchJson<{ text?: string; content?: string }>(
+                  `/api/books/${encodeURIComponent(bookId)}/inline-write`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ mode: "continuation", context: contextBefore, maxTokens: 80 }),
+                  },
+                );
+                return data.text ?? data.content ?? null;
+              } catch { return null; }
+            } : undefined} />
+          )}
+        </div>
+
+        {showContextRail ? (
+          contextRailOpen ? (
+            <div className="relative flex min-h-0 shrink-0 border-l border-border">
+              <ChapterContextRail
+                bookId={bookId!}
+                chapterNumber={contextChapterNumber}
+                onOpenJingweiEntry={onOpenJingweiEntry}
+                className="border-0"
+              />
+              <button
+                type="button"
+                onClick={() => setContextRailOpen(false)}
+                className="absolute left-0 top-2 z-10 -translate-x-1/2 rounded-full border border-border bg-card p-1 text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
+                title="收起本章上下文"
+                aria-label="收起本章上下文"
+                data-testid="chapter-context-collapse"
+              >
+                <ChevronLeft className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setContextRailOpen(true)}
+              className="flex w-7 shrink-0 items-start justify-center border-l border-border bg-card pt-2 text-muted-foreground hover:bg-accent hover:text-foreground"
+              title="展开本章上下文"
+              aria-label="展开本章上下文"
+              data-testid="chapter-context-expand"
+            >
+              <ChevronRight className="size-3.5" aria-hidden="true" />
+            </button>
+          )
+        ) : null}
       </div>
 
       {/* 变体面板（右侧抽屉） */}
