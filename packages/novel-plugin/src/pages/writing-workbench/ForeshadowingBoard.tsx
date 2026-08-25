@@ -20,7 +20,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/toast";
-import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical, Info } from "lucide-react";
+import { AlertTriangle, Loader2, Eye, EyeOff, Trash2, BookOpen, GripVertical, Info, Zap } from "lucide-react";
 import { useApi, fetchJson } from "@/hooks/use-api";
 import {
   computeForeshadowingDebt,
@@ -33,7 +33,7 @@ import { fetchFactsByEntity, type EntityFact } from "./narrative-fact-edits";
 // Types
 // ---------------------------------------------------------------------------
 
-type ForeshadowingStatus = "已埋设" | "部分揭示" | "已回收" | "已废弃";
+type ForeshadowingStatus = "已埋设" | "部分揭示" | "唤醒中" | "已回收" | "已废弃";
 
 interface ForeshadowingEntry {
   readonly id: string;
@@ -74,13 +74,15 @@ export interface ForeshadowingBoardProps {
 const COLUMNS: readonly { status: ForeshadowingStatus; label: string; icon: React.ReactNode }[] = [
   { status: "已埋设", label: "已埋设", icon: <BookOpen className="w-3.5 h-3.5" /> },
   { status: "部分揭示", label: "部分揭示", icon: <Eye className="w-3.5 h-3.5" /> },
+  // T2 第五态：临近回收（1-2 章内兑现）——对应墨枢 awakening。
+  { status: "唤醒中", label: "唤醒中", icon: <Zap className="w-3.5 h-3.5 text-amber-500" /> },
   { status: "已回收", label: "已回收", icon: <EyeOff className="w-3.5 h-3.5" /> },
   { status: "已废弃", label: "已废弃", icon: <Trash2 className="w-3.5 h-3.5" /> },
 ];
 
 const SETTLED_STATUSES: readonly ForeshadowingStatus[] = ["已回收", "已废弃"];
 
-const VALID_STATUSES: readonly ForeshadowingStatus[] = ["已埋设", "部分揭示", "已回收", "已废弃"];
+const VALID_STATUSES: readonly ForeshadowingStatus[] = ["已埋设", "部分揭示", "唤醒中", "已回收", "已废弃"];
 
 const DROPPABLE_IDS = COLUMNS.map((c) => c.status) as string[];
 
@@ -124,6 +126,82 @@ function findColumnByItemId(items: readonly ParsedForeshadowing[], itemId: strin
   return item?.status ?? null;
 }
 
+/**
+ * T2 目标章号行内编辑：到期窗口（selectDueHooks）依赖该字段。
+ * 展示态=跳章按钮（沿用原交互）；点击铅笔进入数字输入，失焦/回车提交 fieldsPatch。
+ */
+function TargetChapterEditor({
+  item,
+  onJumpToChapter,
+  onSaveTargetChapter,
+}: {
+  item: ParsedForeshadowing;
+  onJumpToChapter?: (chapterNumber: number) => void;
+  onSaveTargetChapter?: (id: string, value: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<string>(String(item.targetChapter || ""));
+
+  useEffect(() => {
+    setDraft(String(item.targetChapter || ""));
+  }, [item.targetChapter]);
+
+  if (editing) {
+    return (
+      <input
+        type="number"
+        min={1}
+        autoFocus
+        value={draft}
+        onChange={(event) => setDraft(event.currentTarget.value)}
+        onBlur={() => {
+          setEditing(false);
+          const parsed = Number(draft);
+          if (Number.isInteger(parsed) && parsed > 0 && parsed !== item.targetChapter) {
+            onSaveTargetChapter?.(item.id, parsed);
+          }
+        }}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") event.currentTarget.blur();
+          if (event.key === "Escape") {
+            setDraft(String(item.targetChapter || ""));
+            setEditing(false);
+          }
+        }}
+        className="w-14 h-4 text-[11px] rounded border border-border bg-background px-1"
+        aria-label={`编辑「${item.name}」目标章号`}
+      />
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1">
+      {item.targetChapter > 0 && onJumpToChapter ? (
+        <button
+          type="button"
+          onClick={() => onJumpToChapter(item.targetChapter)}
+          className="cursor-pointer text-primary hover:underline underline-offset-2 transition-colors"
+          title={`跳转到第${item.targetChapter}章`}
+        >
+          目标: 第{item.targetChapter}章
+        </button>
+      ) : (
+        <span>目标: {item.targetChapter > 0 ? `第${item.targetChapter}章` : "未排期"}</span>
+      )}
+      {onSaveTargetChapter && (
+        <button
+          type="button"
+          className="opacity-0 group-hover/foreshadow-card:opacity-100 text-muted-foreground hover:text-foreground transition-opacity"
+          title="编辑目标章号（用于到期召回）"
+          onClick={() => setEditing(true)}
+        >
+          ✎
+        </button>
+      )}
+    </span>
+  );
+}
+
 /** 看板内唯一的债务判定入口，阈值与文案都来自 foreshadowing-debt。 */
 export function debtOf(item: ParsedForeshadowing, currentChapter: number | undefined): ForeshadowingDebt {
   return computeForeshadowingDebt({
@@ -160,12 +238,17 @@ function SortableForeshadowingCard({
   evidence,
   onJumpToChapter,
   highlighted,
+  bookId,
+  onSaveTargetChapter,
 }: {
   item: ParsedForeshadowing;
   currentChapter: number | undefined;
   evidence: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
   highlighted?: boolean;
+  bookId: string;
+  /** T2 行内编辑目标章号：失焦提交 fieldsPatch {targetChapter}。 */
+  onSaveTargetChapter?: (id: string, value: number) => void;
 }) {
   const {
     attributes,
@@ -193,7 +276,7 @@ function SortableForeshadowingCard({
       style={style}
       data-testid={`foreshadowing-card-${item.id}`}
       data-debt-level={debt.level}
-      className={`rounded-md border p-3 bg-card text-card-foreground shadow-sm space-y-1.5 ${
+      className={`group/foreshadow-card rounded-md border p-3 bg-card text-card-foreground shadow-sm space-y-1.5 ${
         isOverdue ? "border-red-500 border-2" : isDueSoon ? "border-amber-400/70 border-2" : "border-border"
       } ${isDragging ? "ring-2 ring-primary" : ""} ${highlighted ? "ring-2 ring-primary ring-offset-2" : ""}`}
     >
@@ -216,20 +299,11 @@ function SortableForeshadowingCard({
       )}
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
         {item.plantedChapter > 0 && <span>埋设: 第{item.plantedChapter}章</span>}
-        {item.targetChapter > 0 && (
-          onJumpToChapter ? (
-            <button
-              type="button"
-              onClick={() => onJumpToChapter(item.targetChapter)}
-              className="cursor-pointer text-primary hover:underline underline-offset-2 transition-colors"
-              title={`跳转到第${item.targetChapter}章`}
-            >
-              目标: 第{item.targetChapter}章
-            </button>
-          ) : (
-            <span>目标: 第{item.targetChapter}章</span>
-          )
-        )}
+        <TargetChapterEditor
+          item={item}
+          onJumpToChapter={onJumpToChapter}
+          onSaveTargetChapter={onSaveTargetChapter}
+        />
         <span
           className={isOverdue ? "text-red-500 font-medium" : isDueSoon ? "text-amber-600 font-medium" : ""}
           title={debt.explanation}
@@ -362,6 +436,30 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
   const handleDragStart = useCallback((event: DragStartEvent) => {
     setActiveId(String(event.active.id));
   }, []);
+
+  /** T2 目标章号行内保存：乐观更新 + fieldsPatch 增量提交（与拖拽同一纪律）。 */
+  const saveTargetChapter = useCallback(
+    (id: string, value: number) => {
+      const previous = items.find((item) => item.id === id)?.targetChapter ?? 0;
+      setEntries((prev) => (prev ?? items).map((item) => (item.id === id ? { ...item, targetChapter: value } : item)));
+      void (async () => {
+        try {
+          await fetchJson(
+            `/api/books/${encodeURIComponent(bookId)}/jingwei/entries/${encodeURIComponent(id)}`,
+            {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ fieldsPatch: { targetChapter: value } }),
+            },
+          );
+        } catch {
+          setEntries((prev) => (prev ?? items).map((item) => (item.id === id ? { ...item, targetChapter: previous } : item)));
+          toast("目标章号保存失败，已回滚", "error");
+        }
+      })();
+    },
+    [bookId, items],
+  );
 
   const handleDragEnd = useCallback(
     (event: DragEndEvent) => {
@@ -515,7 +613,7 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
           </button>
         </section>
       ) : null}
-      <div className="grid grid-cols-4 gap-3 p-3 h-full overflow-auto">
+      <div className="grid grid-cols-5 gap-3 p-3 h-full overflow-auto">
         {grouped.map((col) => (
           <DroppableColumn
             key={col.status}
@@ -524,6 +622,8 @@ export function ForeshadowingBoard({ bookId, currentChapter, onJumpToChapter }: 
             hookFacts={hookFacts}
             onJumpToChapter={onJumpToChapter}
             highlightedId={highlightedId}
+            bookId={bookId}
+            onSaveTargetChapter={saveTargetChapter}
           />
         ))}
       </div>
@@ -546,12 +646,16 @@ function DroppableColumn({
   hookFacts,
   onJumpToChapter,
   highlightedId,
+  bookId,
+  onSaveTargetChapter,
 }: {
   column: { status: ForeshadowingStatus; label: string; icon: React.ReactNode; items: readonly ParsedForeshadowing[] };
   currentChapter: number | undefined;
   hookFacts: readonly EntityFact[];
   onJumpToChapter?: (chapterNumber: number) => void;
   highlightedId?: string | null;
+  bookId: string;
+  onSaveTargetChapter?: (id: string, value: number) => void;
 }) {
   // SortableContext needs an array of IDs
   const itemIds = column.items.map((i) => i.id);
@@ -586,6 +690,8 @@ function DroppableColumn({
               evidence={matchHookEvidence(item, hookFacts)}
               onJumpToChapter={onJumpToChapter}
               highlighted={highlightedId === item.id}
+              bookId={bookId}
+              onSaveTargetChapter={onSaveTargetChapter}
             />
           ))}
         </div>
