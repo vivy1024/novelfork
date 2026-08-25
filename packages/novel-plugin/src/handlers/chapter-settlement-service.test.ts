@@ -177,6 +177,116 @@ describe("chapter settlement service", () => {
     }
   });
 
+  it("T7: 旧版『第N章摘要：X』条目被原地更新，不再另建新条造成双轨", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      // 分区行先落位，满足条目表对 section_id 的外键约束。
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_section
+          (id, book_id, key, name, description, "order", enabled, show_in_sidebar,
+           participates_in_ai, default_visibility, fields_json, builtin_kind, source_template,
+           created_at, updated_at, deleted_at)
+        VALUES ('chapter-summaries:book-1', 'book-1', 'chapter-summaries', '章节摘要', '测试', 90, 1, 0,
+                1, 'nested', '[]', 'chapter-summaries', NULL, 1755000000000, 1755000000000, NULL)
+      `).run();
+      // 模拟存量：agent-write 时代产生的旧标题摘要（无 chapterNumber 字段）。
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_entry
+          (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json,
+           related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai,
+           category, fields_json, sort_order, lifecycle, layer, importance, source, revision_history,
+           conflict_status, status, version, created_at, updated_at)
+        VALUES
+          ('legacy-summary-12', 'book-1', 'chapter-summaries:book-1', '第12章摘要：药园试探',
+           '韩立抵达药园的旧版人工摘要。', '[]', '[]', '{}', '[]', '[]', '{"type":"nested"}', 1,
+           'chapter-summaries', '{}', 12, 'active', 'dynamic', 70, 'agent-write', '[]',
+           'none', 'confirmed', 1, 1755000000000, 1755000000000)
+      `).run();
+
+      const content = "【地点】韩立抵达药园";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        title: "药园试探",
+        content,
+      }, {
+        storage,
+        llmExtractor: markerExtractor(content),
+        kernelGenerateText: async () => ({ text: '{"summary":"韩立抵达药园查探小瓶。","tensionScore":6}' }),
+      });
+
+      expect(result.status).toBe("completed");
+      // 关键断言：没有另建新条目，旧条目被原地收编为权威摘要。
+      const rows = storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      expect(rows?.count).toBe(1);
+      const row = storage.sqlite.prepare<{ id: string; title: string; source: string; fields_json: string }>(
+        "SELECT id, title, source, fields_json FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      expect(row?.id).toBe("legacy-summary-12");
+      expect(row?.title).toBe("第12章");
+      expect(row?.source).toBe("auto-settle");
+      expect(JSON.parse(row?.fields_json ?? "{}")).toMatchObject({ chapterNumber: 12, tension_score: 6 });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("T7: 同章新旧两条并存时，结算自愈去重只留权威一条", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const stableId = "summary:book-1:13";
+      storage.sqlite.prepare(`
+        INSERT INTO story_jingwei_section
+          (id, book_id, key, name, description, "order", enabled, show_in_sidebar,
+           participates_in_ai, default_visibility, fields_json, builtin_kind, source_template,
+           created_at, updated_at, deleted_at)
+        VALUES ('chapter-summaries:book-1', 'book-1', 'chapter-summaries', '章节摘要', '测试', 90, 1, 0,
+                1, 'nested', '[]', 'chapter-summaries', NULL, 1755000000000, 1755000000000, NULL)
+      `).run();
+      // 并存双轨：stable-id 权威条 + 旧版标题条。
+      for (const [id, title] of [[stableId, "第13章"], ["legacy-summary-13", "第13章摘要：协议裂变"]] as const) {
+        storage.sqlite.prepare(`
+          INSERT INTO story_jingwei_entry
+            (id, book_id, section_id, title, content_md, tags_json, aliases_json, custom_fields_json,
+             related_chapter_numbers_json, related_entry_ids_json, visibility_rule_json, participates_in_ai,
+             category, fields_json, sort_order, lifecycle, layer, importance, source, revision_history,
+             conflict_status, status, version, created_at, updated_at)
+          VALUES
+            (?, 'book-1', 'chapter-summaries:book-1', ?, '内容占位。', '[]', '[]', '{}', '[13]', '[]',
+             '{"type":"nested"}', 1, 'chapter-summaries', '{}', 13, 'active', 'dynamic', 70, 'auto-settle',
+             '[]', 'none', 'confirmed', 1, 1755000000000, 1755000000000)
+        `).run(id, title);
+      }
+
+      const content = "【地点】韩立抵达药园";
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 13,
+        title: "谐振感知",
+        content,
+      }, {
+        storage,
+        llmExtractor: markerExtractor(content),
+        kernelGenerateText: async () => ({ text: '{"summary":"韩立抵达药园再探。","tensionScore":5}' }),
+      });
+
+      expect(result.status).toBe("completed");
+      const rows = storage.sqlite.prepare<{ count: number }>(
+        "SELECT COUNT(*) AS count FROM story_jingwei_entry WHERE book_id = ? AND category = 'chapter-summaries' AND deleted_at IS NULL",
+      ).get("book-1");
+      expect(rows?.count).toBe(1);
+      const survivor = storage.sqlite.prepare<{ id: string; deleted_id: string | null }>(
+        "SELECT id, (SELECT deleted_at IS NOT NULL FROM story_jingwei_entry WHERE id = 'legacy-summary-13') AS deletedId FROM story_jingwei_entry WHERE id = ?",
+      ).get(stableId);
+      expect(survivor?.id).toBe(stableId);
+      expect(Boolean(survivor?.deletedId)).toBe(true);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("keeps medium and high risk events pending while applying low risk events", async () => {
     const storage = await createStorage();
     try {

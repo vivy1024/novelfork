@@ -99,6 +99,17 @@ function ensureChapterSummarySection(storage: StorageDatabase, bookId: string, n
   return sectionId;
 }
 
+/**
+ * 章摘要条目标题是否属于指定章节。
+ *
+ * 两种历史形态都要命中，否则同一章会出现两条摘要（双轨制根因）：
+ * - 旧版 agent-write：「第12章摘要：通道授权」
+ * - 新版 auto-settle：「第12章」
+ */
+export function matchesChapterSummaryTitle(title: string, chapterNumber: number): boolean {
+  return new RegExp(`^第\\s*${chapterNumber}\\s*章(?:摘要)?(?:$|[：:《])`, "u").test(title);
+}
+
 function findChapterSummaryEntryId(storage: StorageDatabase, bookId: string, chapterNumber: number): string | undefined {
   const categories = getJingweiCategoryAliases("chapter-summaries");
   const stableId = `summary:${idPart(bookId)}:${chapterNumber}`;
@@ -117,9 +128,30 @@ function findChapterSummaryEntryId(storage: StorageDatabase, bookId: string, cha
     const value = fields.chapterNumber ?? fields.chapter_number;
     if (typeof value === "number") return value === chapterNumber;
     if (typeof value === "string") return Number(value) === chapterNumber;
-    return new RegExp(`^第\\s*${chapterNumber}\\s*章(?:$|[：:《])`, "u").test(row.title);
+    return matchesChapterSummaryTitle(row.title, chapterNumber);
   });
   return byChapter?.id;
+}
+
+/** 同章其余重复摘要条目（双轨自愈：upsert 时软删，保证每章只留一条权威摘要）。 */
+function findDuplicateChapterSummaryIds(storage: StorageDatabase, bookId: string, chapterNumber: number, keepId: string): string[] {
+  const categories = getJingweiCategoryAliases("chapter-summaries");
+  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null }>(`
+    SELECT "id", "title", "fields_json"
+    FROM "story_jingwei_entry"
+    WHERE "book_id" = ?
+      AND "category" IN (${sqlInPlaceholders(categories)})
+      AND "deleted_at" IS NULL
+      AND "id" != ?
+  `).all(bookId, ...categories, keepId) as Array<{ id: string; title: string; fields_json: string | null }>;
+
+  return rows.filter((row) => {
+    const fields = parseSummaryFields(row.fields_json);
+    const value = fields.chapterNumber ?? fields.chapter_number;
+    if (typeof value === "number") return value === chapterNumber;
+    if (typeof value === "string") return Number(value) === chapterNumber;
+    return matchesChapterSummaryTitle(row.title, chapterNumber);
+  }).map((row) => row.id);
 }
 
 async function upsertChapterSummaryEntry(input: {
@@ -167,22 +199,27 @@ async function upsertChapterSummaryEntry(input: {
   if (entryId) {
     const updated = await entryRepo.update(input.bookId, entryId, common);
     if (!updated) throw new Error(`章节摘要条目 ${entryId} 更新后无法读取。`);
-    return;
+  } else {
+    await entryRepo.create({
+      id: stableId,
+      bookId: input.bookId,
+      ...common,
+      tags: ["chapter-summary", "auto-settle"],
+      aliases: [],
+      relatedEntryIds: [],
+      tokenBudget: null,
+      parentId: null,
+      sortOrder: input.chapterNumber,
+      version: 1,
+      createdAt: input.now,
+    });
   }
 
-  await entryRepo.create({
-    id: stableId,
-    bookId: input.bookId,
-    ...common,
-    tags: ["chapter-summary", "auto-settle"],
-    aliases: [],
-    relatedEntryIds: [],
-    tokenBudget: null,
-    parentId: null,
-    sortOrder: input.chapterNumber,
-    version: 1,
-    createdAt: input.now,
-  });
+  // 双轨自愈：同章若残留旧版「第N章摘要：…」等重复条目，软删除，保证每章只留一条权威摘要。
+  const survivorId = entryId ?? stableId;
+  for (const duplicateId of findDuplicateChapterSummaryIds(input.storage, input.bookId, input.chapterNumber, survivorId)) {
+    await entryRepo.softDelete(input.bookId, duplicateId, input.now);
+  }
 }
 
 function eventId(input: ChapterSettlementInput, draft: NarrativeEventDraft): string {
