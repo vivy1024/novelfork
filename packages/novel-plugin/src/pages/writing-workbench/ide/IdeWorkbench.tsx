@@ -1664,7 +1664,7 @@ const EMPTY_TIPS: { text: string }[] = [
   { text: "作品基础管理静态设定；时间线、关系变化和伏笔推进在故事推进里管理" },
   { text: "静态作品设定写入核心规则需有来源；动态事实先进入待确认故事事件" },
   { text: "用「检查一致性」让 AI 做 37 维连续性审查，找出逻辑漏洞" },
-  { text: "节奏分析、POV 视角、伏笔追踪——写作工具栏里都有" },
+  { text: "节奏分析、POV 视角——写作工具栏里都有" },
   { text: "书籍健康度面板能一眼看出哪章需要修订" },
   { text: "每本书可以有多个对话，写作对话和讨论对话分开更清晰" },
   { text: "长对话变慢时，新建一个对话——AI 会自动继承上下文" },
@@ -1787,7 +1787,7 @@ function ViewEmptyState({ view }: { view: SidebarView }) {
     ? { icon: "搜", title: "搜索", desc: "在搜索面板中输入关键词查找资源" }
     : view === "write"
     ? { icon: "写", title: "写作", desc: "从写作面板查看就绪状态并开始写章" }
-    : { icon: "工", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、伏笔看板等）" };
+    : { icon: "工", title: "工具", desc: "从左侧选择一个工具面板（质量监控、角色弧线、状态总览等）" };
   return (
     <div className="flex h-full flex-col items-center justify-center gap-2 bg-background p-8 text-center">
       <span className="text-3xl">{meta.icon}</span>
