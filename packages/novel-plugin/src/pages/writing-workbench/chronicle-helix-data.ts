@@ -163,7 +163,9 @@ export function extractChronicleBeats(entries: readonly ChronicleSummaryInput[])
     if (chapterNumber === undefined) continue;
     const summary = resolveSummary(entry, fields);
     const rawTension = fields.tension_score ?? fields.tensionScore;
-    const tensionScore = toNumber(rawTension);
+    const parsedTension = toNumber(rawTension);
+    // T1 哨兵语义：负值 = 已尝试评分但失败（未评估），与「从未评分」同样按缺省处理。
+    const tensionScore = parsedTension !== undefined && parsedTension >= 0 ? parsedTension : undefined;
     const beat: ChronicleBeat = {
       chapterNumber,
       summary,

@@ -77,6 +77,23 @@ describe("chronicle-helix-data", () => {
     expect(tensioned[0]?.tensionScore).toBe(7);
   });
 
+  it("T1哨兵：tension_score=-1（评分失败）按未评估处理，不进点径与峰值判定", () => {
+    const beats = extractChronicleBeats([
+      { title: "第12章", fields: { chapterNumber: 12, summary: "评分失败的章节。", tension_score: -1 } },
+      { title: "第13章", fields: { chapterNumber: 13, summary: "正常高分章。", tension_score: 9 } },
+    ]);
+    expect(beats.find((beat) => beat.chapterNumber === 12)?.tensionScore).toBeUndefined();
+    expect(beats.find((beat) => beat.chapterNumber === 13)?.tensionScore).toBe(9);
+
+    // 未评估章节不触发张力峰值交叉点。
+    const model = buildChronicleHelixModel(
+      [{ title: "第12章", fields: { chapterNumber: 12, summary: "评分失败。" }, relatedChapterNumbers: [12] }],
+      { events: [] },
+    );
+    expect(model.strandA.get(12)?.tensionScore).toBeUndefined();
+    expect(model.intersections).toHaveLength(0);
+  });
+
   it("splits composite subjects joined by 与/和/、/，/及/跟 into separate names", () => {
     expect(splitCompositeSubject("薛行之与方工")).toEqual(["薛行之", "方工"]);
     expect(splitCompositeSubject("薛行之、方工，韩立")).toEqual(["薛行之", "方工", "韩立"]);
