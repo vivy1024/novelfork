@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { normalizeCapability } from "@/app-next/backend-contract/capability-status";
 import type { ContractResourceNode } from "@/app-next/backend-contract/resource-tree-adapter";
-import { buildWorkbenchResourceTree, createStoryMapNode, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
+import { buildWorkbenchResourceTree, createMemoryCenterNode, createToolSectionNodes, flattenWorkbenchResourceTree, loadWorkbenchResourcesFromContract, useWorkbenchResources } from "./useWorkbenchResources";
 
 const current = (id: string) => normalizeCapability({ id, status: "current" });
 const unsupported = (id: string) => normalizeCapability({ id, status: "unsupported" });
@@ -88,13 +88,13 @@ describe("buildWorkbenchResourceTree", () => {
     });
   });
 
-  it("createStoryMapNode 创建合法且只读的故事主支线合成节点", () => {
-    const node = createStoryMapNode("book-42");
+  it("createMemoryCenterNode 创建合法且只读的章后事实中央面板合成节点", () => {
+    const node = createMemoryCenterNode("book-42");
 
     expect(node).toEqual({
-      id: "story-map:book-42",
-      kind: "story-map",
-      title: "故事主支线",
+      id: "memory-center:book-42",
+      kind: "file",
+      title: "章后事实",
       capabilities: {
         open: true,
         readonly: true,
@@ -104,7 +104,7 @@ describe("buildWorkbenchResourceTree", () => {
         apply: false,
       },
       metadata: {
-        isStoryMap: true,
+        isMemoryCenter: true,
         bookId: "book-42",
       },
     });

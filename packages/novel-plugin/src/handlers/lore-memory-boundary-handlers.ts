@@ -189,6 +189,7 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
     .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange));
   const allEvents = storage.sqlite.prepare(`
     SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
+           subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
            evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt
     FROM narrative_event
     WHERE book_id = ?

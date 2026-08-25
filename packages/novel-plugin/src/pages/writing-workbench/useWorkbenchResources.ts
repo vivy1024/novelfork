@@ -191,13 +191,16 @@ export function createToolSectionNodes(): WorkbenchResourceNode {
 }
 
 /**
- * 创建全景故事主支线（Story Map）只读合成资源节点。
+ * 创建「章后事实」中央面板只读合成资源节点。
+ *
+ * IA 收敛后的唯一权威入口：侧栏「章后事实」只放轻量摘要卡，
+ * 完整的故事状态/关系矩阵/结算历史/待审队列在中央 Tab 打开。
  */
-export function createStoryMapNode(bookId: string): WorkbenchResourceNode {
+export function createMemoryCenterNode(bookId: string): WorkbenchResourceNode {
   return {
-    id: `story-map:${bookId}`,
-    kind: "story-map",
-    title: "故事主支线",
+    id: `memory-center:${bookId}`,
+    kind: "file",
+    title: "章后事实",
     capabilities: {
       open: true,
       readonly: true,
@@ -207,25 +210,25 @@ export function createStoryMapNode(bookId: string): WorkbenchResourceNode {
       apply: false,
     },
     metadata: {
-      isStoryMap: true,
+      isMemoryCenter: true,
       bookId,
     },
   };
 }
 
-/** 故事推进画布的合法初始视图。 */
-export type StoryProgressionPreferredView = "outline" | "map" | "evolution";
+/** 故事推进画布的合法初始视图（大纲总览已收敛至侧栏「章节与大纲」）。 */
+export type StoryProgressionPreferredView = "map" | "evolution" | "chronicle";
 
 /**
  * 创建「故事推进大屏画布」合成资源节点。
  *
  * 同一本书共用一个 tab（id 固定为 story-progression:{bookId}），
- * 不同视图（outline/map/evolution）通过 metadata.preferredView 表达，
+ * 不同视图（map/evolution/chronicle）通过 metadata.preferredView 表达，
  * 由 StoryProgressionCanvas 内部切换，避免侧栏跳转堆出多个垂直 tab。
  */
 export function createStoryProgressionNode(
   bookId: string,
-  preferredView: StoryProgressionPreferredView = "outline",
+  preferredView: StoryProgressionPreferredView = "evolution",
 ): WorkbenchResourceNode {
   return {
     id: `story-progression:${bookId}`,

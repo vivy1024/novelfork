@@ -112,6 +112,20 @@ export function resolveStoryMapLane(nodeType: NarrativeNodeType): StoryMapLane {
 }
 
 /**
+ * 快照里是否存在「规划类」节点（角色支线/冲突/伏笔等）。
+ *
+ * IA 收敛后的空态纪律：只有章节节点时 DAG 没有信息量（纯跳转卡），
+ * 此时故事地图显示明确空态引导，而不是渲染一张假功能的画布。
+ */
+export function hasPlanningNodes(snapshot: NarrativeLineSnapshot | null | undefined): boolean {
+  if (!snapshot || !Array.isArray(snapshot.nodes)) return false;
+  return snapshot.nodes.some((node) => {
+    const lane = resolveStoryMapLane(node.type);
+    return lane !== "main" || (node.type !== "chapter" && node.type !== "event");
+  });
+}
+
+/**
  * 纯函数：将 NarrativeLineSnapshot 转换成 React Flow 的 nodes 与 edges。
  */
 export function snapshotToFlowElements(
@@ -364,6 +378,29 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote 
           <p className="text-xs font-medium text-foreground">暂无故事主支线数据</p>
           <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
             当前书籍尚未生成章节或叙事线节点。开始写作或在大纲中添加规划后将自动生成主支线图。
+          </p>
+        </div>
+        <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
+          <RotateCcw className="size-3" />
+          刷新
+        </Button>
+      </div>
+    );
+  }
+
+  // 只有章节节点、没有任何规划节点：DAG 退化为纯跳转卡，没有信息量 —— 显示诚实空态引导。
+  if (!hasPlanningNodes(snapshot)) {
+    const chapterCount = nodes.length;
+    return (
+      <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center bg-background" data-testid="story-map-empty-planning">
+        <div className="flex size-10 items-center justify-center rounded-full bg-muted/80 text-muted-foreground">
+          <GitFork className="size-5" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-xs font-medium text-foreground">叙事线暂无规划节点</p>
+          <p className="text-[11px] text-muted-foreground max-w-sm leading-relaxed">
+            当前快照仅包含 {chapterCount} 个章节节点。在对话中让叙述者规划叙事线的
+            事件 / 冲突 / 伏笔节点后，这里会展示完整的主支线 DAG 与一键提拔落稿。
           </p>
         </div>
         <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>

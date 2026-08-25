@@ -29,9 +29,8 @@ import type { ToolPanelId } from "./useWorkbenchResources";
 import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
 
 // Lazy-loaded tool panels
-const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
-const StoryMapCanvas = lazy(() => import("./StoryMapCanvas").then(m => ({ default: m.StoryMapCanvas })));
 const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").then(m => ({ default: m.StoryProgressionCanvas })));
+const NarrativeMemoryPanel = lazy(() => import("./NarrativeMemoryPanel").then(m => ({ default: m.NarrativeMemoryPanel })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
@@ -45,8 +44,7 @@ const CharacterCardPage = lazy(() => import("./CharacterCardPage").then(m => ({ 
 import { VariantsPanel } from "./VariantsPanel";
 import { SceneSpecPanel, type SceneSpec } from "./SceneSpecPanel";
 import type { CanvasContext, OpenResourceTab, WorkspaceResourceRef, WorkspaceResourceViewKind } from "@/shared/agent-native-workspace";
-import type { WorkbenchResourceKind, WorkbenchResourceNode } from "./useWorkbenchResources";
-import { isNarrativeMemoryView, type NarrativeMemoryView } from "./narrative-memory-graph-model";
+import { createStoryProgressionNode, type WorkbenchResourceKind, type WorkbenchResourceNode } from "./useWorkbenchResources";
 
 export interface WorkbenchCanvasContext extends CanvasContext {
   activeResourceId: string | null;
@@ -289,13 +287,18 @@ export interface WorkbenchCanvasProps {
   /** 大纲/规划节点一键提拔落稿为手稿章节 */
   onPromoteOutline?: (node: WorkbenchResourceNode) => void;
   /**
+   * 章后事实面板的轻量跳转通道：打开发展历程（故事画布）/伏笔账本等合成节点。
+   * 由宿主传入 handleOpen，保证跳转走统一的 Tab 打开链路。
+   */
+  onOpenResourceNode?: (node: WorkbenchResourceNode) => void;
+  /**
    * 选段语义动作（续写/润色/改写/扩写/精简）的执行通道。
    * 产品 HTTP 适配层没有 Provider，这类动作必须由 Runtime 的叙述者执行。
    */
   onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator }: WorkbenchCanvasProps) {
+export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runtimeFetch, onSave, onCanvasContextChange = () => undefined, onGuideComplete, chapterActions, jingweiActions, toolbarSlotRef, isActive = true, onJumpToChapter, onOpenJingweiEntry, onOpenEntityDetail, onPromoteOutline, onSendToNarrator, onOpenResourceNode }: WorkbenchCanvasProps) {
   const [content, setContent] = useState(node?.content ?? "");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -414,10 +417,10 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
     }
   }
 
-  // 故事推进大屏画布 — 大纲/地图/发展历程三融合统一工作台（独立「故事画布」视图入口）
+  // 故事推进大屏画布 — 地图/发展历程/双螺旋三视图统一工作台（独立「故事画布」视图入口）
   if ((node.kind === "story-progression" || node.id.startsWith("story-progression:") || node.metadata?.isStoryProgression) && bookId) {
     const preferredView = node.metadata?.preferredView;
-    const progressionView = preferredView === "map" || preferredView === "evolution" ? preferredView : "outline";
+    const progressionView = preferredView === "map" || preferredView === "chronicle" ? preferredView : "evolution";
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <Suspense fallback={<ToolPanelLoading />}>
@@ -439,50 +442,28 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
                 });
               }
             }}
-            onSaveEntry={jingweiActions?.onSave}
           />
         </Suspense>
       </div>
     );
   }
 
-  // Story Map — 渲染为全功能网文故事主支线 DAG 画布
-  if ((node.kind === "story-map" || node.id.startsWith("story-map:") || node.metadata?.isStoryMap) && bookId) {
+  // 章后事实中央面板 — IA 收敛后的唯一权威入口（侧栏只放轻量摘要卡）。
+  if (node.metadata?.isMemoryCenter && bookId) {
     return (
       <div className="flex h-full min-h-0 flex-col overflow-hidden">
         <Suspense fallback={<ToolPanelLoading />}>
-          <StoryMapCanvas
+          <NarrativeMemoryPanel
             bookId={bookId}
-            runtimeFetch={runtimeFetch}
-            onOpenChapter={onJumpToChapter}
-            onPromote={(storyMapNode) => {
-              if (onPromoteOutline) {
-                onPromoteOutline({
-                  id: storyMapNode.id,
-                  kind: "story",
-                  title: storyMapNode.title,
-                  content: storyMapNode.summary,
-                  capabilities: { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false },
-                });
-              }
-            }}
-          />
-        </Suspense>
-      </div>
-    );
-  }
-
-  // Narrative Memory Graph — render as a full independent canvas page.
-  if (node.id === "narrative-memory-graph" && bookId) {
-    const preferredView = node.metadata?.preferredView;
-    const initialView: NarrativeMemoryView = isNarrativeMemoryView(preferredView) ? preferredView : "relationship";
-    return (
-      <div className="flex h-full min-h-0 flex-col overflow-hidden">
-        <Suspense fallback={<ToolPanelLoading />}>
-          <NarrativeMemoryGraphWorkspace
-            bookId={bookId}
-            initialView={initialView}
-            onOpenEntityDetail={onOpenEntityDetail}
+            onOpenDevelopmentTimeline={() => onOpenResourceNode?.(createStoryProgressionNode(bookId, "evolution"))}
+            onOpenForeshadowingLedger={() => onOpenResourceNode?.({
+              id: "tool:foreshadowing",
+              kind: "tool",
+              title: "伏笔看板",
+              content: "",
+              capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+              metadata: { toolPanel: "foreshadowing", bookId },
+            })}
           />
         </Suspense>
       </div>
@@ -867,7 +848,7 @@ function StatCard({ label, value, sub, className, active, onClick }: {
   );
 }
 
-type ExpandedPanel = "foreshadowing" | "quality" | null;
+type ExpandedPanel = "quality" | null;
 
 function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookId: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void }) {
   const [stats, setStats] = useState<OverviewStats | null>(null);
@@ -918,20 +899,17 @@ function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookI
         </div>
       )}
 
-      {/* 可展开的详情面板（Task D: StatCard 点击联动） */}
+      {/* 可展开的详情面板（Task D: StatCard 点击联动）；伏笔详情已收敛至侧栏「伏笔账本」唯一入口 */}
       {expandedPanel && (
         <div className="shrink-0 border-b border-border px-3 pb-2">
           <div className="rounded-lg border border-border bg-card p-3">
             <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-foreground">
-                {expandedPanel === "foreshadowing" ? "伏笔详情" : "质量监控"}
-              </h3>
+              <h3 className="text-xs font-semibold text-foreground">质量监控</h3>
               <button type="button" onClick={() => setExpandedPanel(null)} className="text-muted-foreground hover:text-foreground transition-colors">
                 <ChevronUp className="size-3.5" />
               </button>
             </div>
             <Suspense fallback={<ToolPanelLoading />}>
-              {expandedPanel === "foreshadowing" && <ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} />}
               {expandedPanel === "quality" && <QualityPanel bookId={bookId} />}
             </Suspense>
           </div>

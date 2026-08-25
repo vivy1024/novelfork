@@ -44,6 +44,8 @@ function event(input: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "sub
     source: input.source ?? "settle",
     status: input.status ?? "pending",
     riskLevel: input.riskLevel ?? "high",
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     appliedAt: input.appliedAt,
   };
@@ -142,6 +144,27 @@ describe("narrative memory observability router", () => {
 
       const otherBook = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&kind=fact&limit=10");
       expect((await otherBook.json()).entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "fact-other-book" })]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("event_chain view returns all event types with camelCase subjectEntryId/objectEntryId", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeEvent(storage, event({ id: "event-arc", eventType: "character_state_changed", subject: "韩立", predicate: "状态", object: "觉醒", subjectEntryId: "entry-han", chapterNumber: 3 }));
+      insertNarrativeEvent(storage, event({ id: "event-rel", eventType: "relationship_changed", subject: "韩立", predicate: "敌对", object: "墨大夫", objectEntryId: "entry-mo", chapterNumber: 4 }));
+      insertNarrativeEvent(storage, event({ id: "event-timeline", eventType: "timeline_advanced", subject: "书", predicate: "推进", object: "主线", chapterNumber: 5 }));
+
+      const app = createNarrativeMemoryRouter({ storage });
+      const graph = await app.request("http://localhost/api/books/book-1/narrative-memory/graph?view=event_chain");
+      expect(graph.status).toBe(200);
+      const payload = await graph.json() as any;
+      const byId = new Map(payload.events.map((item: any) => [item.id, item]));
+      expect([...byId.keys()].sort()).toEqual(["event-arc", "event-rel", "event-timeline"]);
+      // graph 事件 SELECT 必须把身份链列暴露为 camelCase，前端（如 G9 双螺旋）依赖该契约。
+      expect(byId.get("event-arc").subjectEntryId).toBe("entry-han");
+      expect(byId.get("event-rel").objectEntryId).toBe("entry-mo");
     } finally {
       storage.close();
     }
