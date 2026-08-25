@@ -894,8 +894,6 @@ function DefaultCockpitView({ bookId, currentChapter, onJumpToChapter }: { bookI
           <StatCard
             label="伏笔回收" value={`${stats.foreshadowing.recoveryRate}%`}
             sub={`埋 ${stats.foreshadowing.planted} / 收 ${stats.foreshadowing.recovered}`}
-            active={expandedPanel === "foreshadowing"}
-            onClick={() => togglePanel("foreshadowing")}
           />
           <StatCard
             label="总字数"
