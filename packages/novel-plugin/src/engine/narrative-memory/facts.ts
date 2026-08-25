@@ -69,9 +69,11 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
       evidence_text,
       valid_from_chapter,
       valid_until_chapter,
+      subject_entry_id,
+      object_entry_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       book_id = excluded.book_id,
       subject = excluded.subject,
@@ -86,6 +88,8 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
       evidence_text = excluded.evidence_text,
       valid_from_chapter = excluded.valid_from_chapter,
       valid_until_chapter = excluded.valid_until_chapter,
+      subject_entry_id = excluded.subject_entry_id,
+      object_entry_id = excluded.object_entry_id,
       updated_at = excluded.updated_at
   `).run(
     fact.id,
@@ -102,6 +106,8 @@ function insertOrUpdateFact(storage: StorageDatabase, fact: NarrativeFact): void
     fact.evidenceText ?? null,
     fact.validFromChapter ?? null,
     fact.validUntilChapter ?? null,
+    fact.subjectEntryId ?? null,
+    fact.objectEntryId ?? null,
     fact.createdAt,
     fact.updatedAt,
   );

@@ -45,6 +45,8 @@ function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subjec
     evidenceText: input.evidenceText,
     validFromChapter: input.validFromChapter,
     validUntilChapter: input.validUntilChapter,
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     updatedAt: input.updatedAt ?? "2026-06-22T00:00:00.000Z",
   };
@@ -64,6 +66,8 @@ function event(input: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "sub
     source: input.source ?? "settle",
     status: input.status ?? "pending",
     riskLevel: input.riskLevel ?? "low",
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     appliedAt: input.appliedAt,
   };
@@ -88,6 +92,110 @@ describe("Narrative Memory storage", () => {
         "narrative_tag",
         "narrative_tag_edge",
       ]);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("upgrades an existing narrative_event table before creating identity indexes", async () => {
+    const storage = await createStorage();
+    try {
+      storage.sqlite.exec(`
+        CREATE TABLE narrative_event (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          chapter_number INTEGER NOT NULL,
+          event_type TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          predicate TEXT NOT NULL,
+          object TEXT NOT NULL,
+          evidence_text TEXT NOT NULL,
+          confidence REAL NOT NULL,
+          source TEXT NOT NULL,
+          status TEXT NOT NULL,
+          risk_level TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          applied_at TEXT
+        )
+      `);
+
+      ensureNarrativeMemorySchema(storage);
+
+      const columns = storage.sqlite
+        .prepare<{ name: string }>("PRAGMA table_info(narrative_event)")
+        .all()
+        .map((row) => row.name);
+      expect(columns).toContain("subject_entry_id");
+      expect(columns).toContain("object_entry_id");
+
+      const migrated = insertNarrativeEvent(storage, event({
+        id: "legacy-e-1",
+        subject: "韩立",
+        predicate: "关联",
+        object: "小瓶",
+        subjectEntryId: "entry-character-hanli",
+        objectEntryId: "entry-prop-vial",
+      }));
+      expect(migrated.subjectEntryId).toBe("entry-character-hanli");
+      expect(migrated.objectEntryId).toBe("entry-prop-vial");
+
+      const updated = updateNarrativeEventStatus(storage, {
+        id: "legacy-e-1",
+        status: "applied",
+      });
+      expect(updated?.subjectEntryId).toBe("entry-character-hanli");
+      expect(updated?.objectEntryId).toBe("entry-prop-vial");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("upgrades an existing narrative_fact table and round-trips identity entry ids", async () => {
+    const storage = await createStorage();
+    try {
+      storage.sqlite.exec(`
+        CREATE TABLE narrative_fact (
+          id TEXT PRIMARY KEY,
+          book_id TEXT NOT NULL,
+          subject TEXT NOT NULL,
+          predicate TEXT NOT NULL,
+          object TEXT NOT NULL,
+          category TEXT NOT NULL,
+          layer TEXT NOT NULL,
+          confidence REAL NOT NULL,
+          source_type TEXT NOT NULL,
+          source_id TEXT,
+          source_chapter INTEGER,
+          evidence_text TEXT,
+          valid_from_chapter INTEGER,
+          valid_until_chapter INTEGER,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+      `);
+
+      ensureNarrativeMemorySchema(storage);
+
+      insertNarrativeFact(storage, fact({
+        id: "legacy-f-1",
+        subject: "韩立",
+        predicate: "持有",
+        object: "小瓶",
+        subjectEntryId: "entry-character-hanli",
+        objectEntryId: "entry-prop-vial",
+      }));
+
+      const queried = queryNarrativeFacts(storage, { bookId: "book-1", entities: ["韩立"] });
+      expect(queried).toHaveLength(1);
+      expect(queried[0]?.subjectEntryId).toBe("entry-character-hanli");
+      expect(queried[0]?.objectEntryId).toBe("entry-prop-vial");
+
+      const factColumns = storage.sqlite
+        .prepare<{ name: string }>("PRAGMA table_info(narrative_fact)")
+        .all()
+        .map((row) => row.name);
+      expect(factColumns).toContain("subject_entry_id");
+      expect(factColumns).toContain("object_entry_id");
     } finally {
       storage.close();
     }

@@ -130,6 +130,9 @@ export const NarrativeFactSchema = z.object({
   evidenceText: z.string().optional(),
   validFromChapter: nonNegativeInteger.optional(),
   validUntilChapter: nonNegativeInteger.optional(),
+  /** 实体身份链：subject/object 命中经纬实体字典时回填的 story_jingwei_entry.id。 */
+  subjectEntryId: z.string().optional(),
+  objectEntryId: z.string().optional(),
   createdAt: nonEmptyString,
   updatedAt: nonEmptyString,
 });
@@ -148,6 +151,9 @@ export type NarrativeFact = Readonly<{
   evidenceText?: string;
   validFromChapter?: number;
   validUntilChapter?: number;
+  /** 实体身份链：subject/object 对应的经纬条目 id（命中字典时回填）。 */
+  subjectEntryId?: string;
+  objectEntryId?: string;
   createdAt: string;
   updatedAt: string;
 }>;
