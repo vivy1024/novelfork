@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "consistency" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance";
+export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "consistency" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
 
 export interface ToolNodeDef {
   id: string;
@@ -131,6 +131,8 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     title: "📈 进度类",
     tools: [
       { id: "tool:health", title: "全书健康", toolPanel: "health" },
+      // F1 张力曲线复活：孤儿组件挂回工具树，答「节奏是否崩了」。
+      { id: "tool:tension", title: "张力曲线", toolPanel: "tension" },
     ],
   },
   {

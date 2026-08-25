@@ -92,4 +92,36 @@ describe("ChronicleHelixCanvas", () => {
     // B 链必须走 event_chain 视图（timeline 视图不含角色状态/关系变化事件）。
     expect(fetchJson).toHaveBeenCalledWith(expect.stringContaining("narrative-memory/graph?view=event_chain"));
   });
+
+  it("F1 图例聚焦：点击角色徽标进入单角色聚焦，再点取消", async () => {
+    mockResponses(
+      { entries: [{ fields: { chapterNumber: 1, summary: "开局" }, contentMd: "开局正文" }] },
+      {
+        events: [
+          { subject: "薛行之", eventType: "character_state_changed", chapterNumber: 1, evidenceText: "觉醒" },
+          { subject: "方工", eventType: "character_state_changed", chapterNumber: 1, evidenceText: "盯上波形" },
+        ],
+      },
+    );
+    render(<ChronicleHelixCanvas bookId="book-1" />);
+
+    const xue = await screen.findByTestId("chronicle-focus-薛行之");
+    const fang = screen.getByTestId("chronicle-focus-方工");
+    expect(screen.queryByTestId("chronicle-focus-active")).toBeNull();
+
+    // 点击进入聚焦
+    fireEvent.click(xue);
+    expect(xue.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("chronicle-focus-active").textContent).toContain("薛行之");
+
+    // 切换聚焦到另一角色
+    fireEvent.click(fang);
+    expect(fang.getAttribute("aria-pressed")).toBe("true");
+    expect(xue.getAttribute("aria-pressed")).toBe("false");
+
+    // 再点取消
+    fireEvent.click(fang);
+    expect(fang.getAttribute("aria-pressed")).toBe("false");
+    expect(screen.queryByTestId("chronicle-focus-active")).toBeNull();
+  });
 });

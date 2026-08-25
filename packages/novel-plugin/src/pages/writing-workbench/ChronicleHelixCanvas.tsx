@@ -169,6 +169,8 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
   const hoverPointsRef = useRef<ReadonlyArray<HoverTarget>>([]);
   const [hover, setHover] = useState<HoverTarget | null>(null);
   const [selected, setSelected] = useState<HoverTarget | null>(null);
+  /** F1 图例聚焦：单角色弧线高亮，其余节点降透明度；再点取消。 */
+  const [focusCharacter, setFocusCharacter] = useState<string | null>(null);
 
   const characterColor = useMemo(() => {
     if (state.status !== "ready") return new Map<string, string>();
@@ -282,7 +284,9 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
         });
       }
 
-      // B 链角色节点
+      // B 链角色节点（聚焦模式下非聚焦角色降透明度）
+      const alphaFor = (name: string): number =>
+        focusCharacter && name !== focusCharacter ? 0.15 : 1;
       for (const [chapter, events] of model.strandB) {
         const visible = events.slice(0, MAX_ARC_NODES_PER_CHAPTER);
         visible.forEach((event, slot) => {
@@ -292,8 +296,10 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
           const color = characterColor.get(event.characterName) ?? "#94a3b8";
           ctx.beginPath();
           ctx.arc(point.x, y, 3.5, 0, Math.PI * 2);
+          ctx.globalAlpha = alphaFor(event.characterName);
           ctx.fillStyle = color;
           ctx.fill();
+          ctx.globalAlpha = 1;
           hoverTargets.push({
             x: point.x, y, kind: "arc", chapterNumber: chapter,
             title: `第 ${chapter} 章 · ${event.characterName}`,
@@ -346,7 +352,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
     const observer = new ResizeObserver(() => draw());
     observer.observe(wrap);
     return () => observer.disconnect();
-  }, [state, characterColor, currentChapter]);
+  }, [state, characterColor, currentChapter, focusCharacter]);
 
   const pickTarget = useCallback((clientX: number, clientY: number): HoverTarget | null => {
     const wrap = wrapRef.current;
@@ -412,12 +418,29 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
           <span className="inline-block size-2 rotate-45" style={{ background: INTERSECTION_COLOR }} /> 冲突 / 转折交叉点
         </span>
         <span className="ml-auto inline-flex items-center gap-1">
-          {model.topCharacters.slice(0, 6).map((character) => (
-            <Badge key={character.name} variant="outline" className="gap-1 text-[10px] font-normal">
-              <span className="inline-block size-2 rounded-full" style={{ background: characterColor.get(character.name) ?? "#94a3b8" }} />
-              {character.name}
+          {model.topCharacters.slice(0, 6).map((character) => {
+            const active = focusCharacter === character.name;
+            return (
+              <Button
+                key={character.name}
+                variant={active ? "secondary" : "outline"}
+                size="xs"
+                className="h-5 gap-1 px-1.5 text-[10px] font-normal"
+                aria-pressed={active}
+                data-testid={`chronicle-focus-${character.name}`}
+                title={active ? "取消聚焦" : "聚焦该角色弧线"}
+                onClick={() => setFocusCharacter((value) => (value === character.name ? null : character.name))}
+              >
+                <span className="inline-block size-2 rounded-full" style={{ background: characterColor.get(character.name) ?? "#94a3b8" }} />
+                {character.name}
+              </Button>
+            );
+          })}
+          {focusCharacter && (
+            <Badge variant="outline" className="gap-1 text-[10px] font-normal text-primary" data-testid="chronicle-focus-active">
+              聚焦 {focusCharacter}
             </Badge>
-          ))}
+          )}
           <Button variant="ghost" size="icon" className="size-7" onClick={refresh} aria-label="刷新编年史"><RefreshCw className="size-3.5" /></Button>
         </span>
       </div>

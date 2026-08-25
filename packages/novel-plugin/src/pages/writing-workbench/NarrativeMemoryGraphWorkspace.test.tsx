@@ -205,7 +205,7 @@ describe("NarrativeMemoryGraphWorkspace", () => {
 
     await screen.findByTestId("react-flow-canvas");
     expect(String(fetchJsonMock.mock.calls.at(-1)?.[0] ?? "")).toContain("scope=read");
-    for (const label of ["简途径层", "彻底轨迹层", "骨架关系层", "矛盾时间线层", "结算流水层"]) {
+    for (const label of ["事件流层", "关系演化层", "矛盾冲突层"]) {
       expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
 

@@ -33,6 +33,7 @@ const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").the
 const NarrativeMemoryPanel = lazy(() => import("./NarrativeMemoryPanel").then(m => ({ default: m.NarrativeMemoryPanel })));
 const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
+const TensionCurvePanel = lazy(() => import("./TensionCurvePanel").then(m => ({ default: m.TensionCurvePanel })));
 const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
@@ -230,6 +231,8 @@ function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, curren
       return <QualityPanel bookId={bookId} />;
     case "health":
       return <Suspense fallback={<ToolPanelLoading />}><BookHealthSummary bookId={bookId} /></Suspense>;
+    case "tension":
+      return <Suspense fallback={<ToolPanelLoading />}><TensionCurvePanel bookId={bookId} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "arcs":
       return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "drift":
