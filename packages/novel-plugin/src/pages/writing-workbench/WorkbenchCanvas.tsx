@@ -26,6 +26,7 @@ import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
 import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
+import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
 
 // Lazy-loaded tool panels
 const NarrativeMemoryGraphWorkspace = lazy(() => import("./NarrativeMemoryGraphWorkspace").then(m => ({ default: m.NarrativeMemoryGraphWorkspace })));
@@ -241,6 +242,8 @@ function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, curren
       return <Suspense fallback={<ToolPanelLoading />}><NarrativeConsistencyPanel bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} /></Suspense>;
     case "foreshadowing":
       return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} /></Suspense>;
+    case "governance":
+      return <GovernanceCockpitPanel bookId={bookId} />;
     case "runtime":
       return <Suspense fallback={<ToolPanelLoading />}><RuntimeStatePanel bookId={bookId} /></Suspense>;
     case "coreshift":

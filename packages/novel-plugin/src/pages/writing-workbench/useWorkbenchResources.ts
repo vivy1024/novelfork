@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "consistency" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version";
+export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "consistency" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance";
 
 export interface ToolNodeDef {
   id: string;
@@ -150,6 +150,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
       { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
       // 伏笔看板已收敛到「故事推进」侧栏唯一入口，不再作为工具面板条目重复出现。
       { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
+      { id: "tool:governance", title: "叙事治理", toolPanel: "governance" },
     ],
   },
   {
