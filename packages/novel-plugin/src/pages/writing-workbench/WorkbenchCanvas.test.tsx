@@ -1,10 +1,10 @@
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
-  NarrativeMemoryGraphWorkspace: ({ initialView, onOpenEntityDetail }: { initialView?: string; onOpenEntityDetail?: (entity: string) => void }) => (
-    <button type="button" data-testid="mock-narrative-memory-graph" onClick={() => onOpenEntityDetail?.("薛行之")}>
-      {initialView}
+vi.mock("./NarrativeMemoryPanel", () => ({
+  NarrativeMemoryPanel: ({ bookId, onOpenDevelopmentTimeline }: { bookId?: string; onOpenDevelopmentTimeline?: () => void }) => (
+    <button type="button" data-testid="mock-narrative-memory-panel" onClick={() => onOpenDevelopmentTimeline?.()}>
+      {bookId}
     </button>
   ),
 }));
@@ -219,28 +219,32 @@ describe("WorkbenchCanvas", () => {
     expect(screen.getByText("请先选择或创建一本作品")).toBeTruthy();
   });
 
-  it("图谱资源透传初始视图并复用实体详情抽屉回调", async () => {
-    const onOpenEntityDetail = vi.fn();
+  it("章后事实中央面板渲染，轻量跳转经 onOpenResourceNode 打开发展历程画布", async () => {
+    const onOpenResourceNode = vi.fn();
     render(
       <WorkbenchCanvas
         node={node({
-          id: "narrative-memory-graph",
+          id: "memory-center:book-1",
           kind: "file",
-          title: "叙事记忆图谱",
+          title: "章后事实",
           content: undefined,
-          metadata: { preferredView: "wave" },
+          metadata: { isMemoryCenter: true, bookId: "book-1" },
           capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
         })}
         bookId="book-1"
         onSave={vi.fn()}
-        onOpenEntityDetail={onOpenEntityDetail}
+        onOpenResourceNode={onOpenResourceNode}
       />,
     );
 
-    const graph = await screen.findByTestId("mock-narrative-memory-graph");
-    expect(graph.textContent).toBe("wave");
-    fireEvent.click(graph);
-    expect(onOpenEntityDetail).toHaveBeenCalledWith("薛行之");
+    const panel = await screen.findByTestId("mock-narrative-memory-panel");
+    expect(panel.textContent).toBe("book-1");
+    fireEvent.click(panel);
+    expect(onOpenResourceNode).toHaveBeenCalledTimes(1);
+    const opened = onOpenResourceNode.mock.calls[0]![0] as WorkbenchResourceNode;
+    // 跳转目标是发展历程权威入口（故事画布 + evolution 视图）
+    expect(opened.id).toBe("story-progression:book-1");
+    expect(opened.metadata?.preferredView).toBe("evolution");
   });
 
   it("保存失败时保持 dirty 并显示真实错误", async () => {

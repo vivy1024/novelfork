@@ -5,7 +5,11 @@ import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarP
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
 
 vi.mock("../NarrativeMemoryPanel", () => ({
-  NarrativeMemoryPanel: () => <div data-testid="mock-narrative-memory" />,
+  NarrativeMemorySummary: ({ onOpenCenter }: { onOpenCenter?: () => void }) => (
+    <button type="button" data-testid="mock-memory-summary" onClick={() => onOpenCenter?.()}>
+      章后事实摘要
+    </button>
+  ),
 }));
 
 const capabilities = { open: true, readonly: false, unsupported: false, edit: true, delete: true, apply: false };
@@ -25,22 +29,17 @@ function renderPanel() {
   const onSwitchView = vi.fn();
   const chapter = node("chapter:1", "第 1 章", "chapter");
   const outline = node("outline:1", "第一卷：起点", "jingwei-entry");
-  const foreshadowingNode = node("tool:foreshadowing", "伏笔看板", "tool");
-  const storyMapNode = node("story-map:book-1", "故事主支线", "story-map");
   render(
     <StorylineAndPlanningSidebarPanel
       bookId="book-1"
       chapterTreeNodes={[node("chapters", "章节", "group", [chapter])]}
       outlineTreeNodes={[node("outline", "卷纲", "group", [outline])]}
-      memoryNodes={[]}
-      foreshadowingNode={foreshadowingNode}
-      storyMapNode={storyMapNode}
       selectedNodeId={null}
       onOpen={onOpen}
       onSwitchView={onSwitchView}
     />,
   );
-  return { onOpen, onSwitchView, chapter, outline, foreshadowingNode, storyMapNode };
+  return { onOpen, onSwitchView, chapter, outline };
 }
 
 afterEach(() => {
@@ -48,7 +47,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
+describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）", () => {
   it("默认展示章节与大纲 Tab，并点击叶子复用 onOpen", () => {
     const { onOpen, chapter, outline } = renderPanel();
 
@@ -66,67 +65,60 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口", () => {
     expect(onOpen).toHaveBeenCalledWith(outline);
   });
 
-  it("切换到故事画布 Tab 展示三个大屏画布主入口，点击打开统一画布 Tab 并携带 preferredView", () => {
+  it("章后事实 Tab 只渲染轻量摘要卡，点击摘要直达中央面板节点", () => {
+    const { onOpen } = renderPanel();
+
+    fireEvent.click(screen.getByRole("button", { name: "章后事实" }));
+
+    // 摘要卡渲染，且完整面板不在侧栏内嵌
+    fireEvent.click(screen.getByTestId("mock-memory-summary"));
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "memory-center:book-1",
+        metadata: expect.objectContaining({ isMemoryCenter: true, bookId: "book-1" }),
+      }),
+    );
+  });
+
+  it("故事画布 Tab 点击即在中央打开画布（默认发展历程），并提供编年史快捷入口；经典图谱入口已移除", () => {
     const { onOpen } = renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
 
-    // 三个大屏画布主入口
-    expect(screen.getByTestId("storyline-canvas-entries")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: /大纲总览画布/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        id: "story-progression:book-1",
-        kind: "story-progression",
-        title: "故事画布",
-        metadata: expect.objectContaining({ isStoryProgression: true, bookId: "book-1", preferredView: "outline" }),
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /故事地图画布/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ preferredView: "map" }),
-      }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: /发展历程画布/ }));
-    expect(onOpen).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        metadata: expect.objectContaining({ preferredView: "evolution" }),
-      }),
-    );
-  });
-
-  it("经典独立图谱视图入口保留在高级折叠区，点击打开对应 preferredView", () => {
-    const { onOpen, storyMapNode } = renderPanel();
-
-    fireEvent.click(screen.getByRole("button", { name: "故事画布" }));
-
-    // 经典入口仍在折叠区内
-    expect(screen.getByRole("button", { name: "关系网络" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "时间线" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "矛盾冲突" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "故事演进" })).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { name: "关系网络" }));
+    // 点击 tab 本身即打开 evolution 权威入口
     expect(onOpen).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "narrative-memory-graph",
-        metadata: expect.objectContaining({ preferredView: "relationship" }),
-      })
+        id: "story-progression:book-1",
+        metadata: expect.objectContaining({ isStoryProgression: true, preferredView: "evolution" }),
+      }),
     );
 
-    // 独立全屏故事地图 (DAG) 保留
-    fireEvent.click(screen.getByRole("button", { name: "独立全屏故事地图 (DAG)" }));
-    expect(onOpen).toHaveBeenCalledWith(storyMapNode);
+    // 侧栏只保留两个轻量快捷入口，不再堆叠全部视图按钮与经典图谱折叠区
+    expect(screen.queryByTestId("storyline-canvas-entries")).toBeNull();
+    expect(screen.queryByRole("button", { name: "关系网络" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /独立全屏故事地图/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /大纲总览/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /打开双螺旋编年史/ }));
+    expect(onOpen).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ preferredView: "chronicle" }),
+      }),
+    );
   });
 
-  it("当前语境切换到写作视图，伏笔账本打开已有工具节点", () => {
-    const { onOpen, onSwitchView, foreshadowingNode } = renderPanel();
+  it("当前语境切换到写作视图，伏笔账本打开全屏看板工具节点", () => {
+    const { onOpen, onSwitchView } = renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "当前语境" }));
     fireEvent.click(screen.getByRole("button", { name: "伏笔账本" }));
 
     expect(onSwitchView).toHaveBeenCalledWith("write");
-    expect(onOpen).toHaveBeenCalledWith(foreshadowingNode);
+    expect(onOpen).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "tool:foreshadowing",
+        metadata: expect.objectContaining({ toolPanel: "foreshadowing" }),
+      }),
+    );
   });
 });

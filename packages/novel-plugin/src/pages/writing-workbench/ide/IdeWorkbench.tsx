@@ -16,7 +16,7 @@ import {
 import { WorkbenchCanvas, type WorkbenchCanvasContext } from "../WorkbenchCanvas";
 import { WorkbenchResourceTree } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
-import { createStoryMapNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
+import { createMemoryCenterNode, createStoryProgressionNode, createToolSectionNodes } from "../useWorkbenchResources";
 import { CATEGORY_META, normalizeCategory } from "../../../engine/jingwei/unified-categories";
 import { groupEntriesByCategory, memoryFactLabel } from "../lore-workspace-split";
 import type { ChapterActionHandlers } from "../WorkbenchCanvas";
@@ -53,7 +53,6 @@ import {
 
 /** WorkbenchResourceNode.kind → Tab 图标用的 TabKind（导出仅供测试核对映射表） */
 export function toTabKind(node: WorkbenchResourceNode): TabKind {
-  if (node.kind === "story-map" || node.metadata?.isStoryMap) return "story-map";
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "story-map";
   if (node.metadata?.isNarrativeMemoryEntry) return "memory-entry";
   if (node.metadata?.isFile && !node.metadata?.isChapter) return "file";
@@ -76,8 +75,8 @@ export function toTabKind(node: WorkbenchResourceNode): TabKind {
 /** WorkbenchResourceNode → 归属的 ActivityBar 视图（决定 Tab 落在哪个工作区；导出仅供测试核对映射表） */
 export function toTabView(node: WorkbenchResourceNode): TabView {
   if (node.kind === "tool" || node.kind === "tool-group") return "tools";
-  // 故事主支线、故事推进大屏画布与叙事记忆条目归入故事推进工作区。
-  if (node.kind === "story-map" || node.metadata?.isStoryMap || node.metadata?.isNarrativeMemoryEntry) return "storyline";
+  // 故事推进大屏画布与叙事记忆条目归入故事推进工作区。
+  if (node.metadata?.isNarrativeMemoryEntry) return "storyline";
   if (node.kind === "story-progression" || node.metadata?.isStoryProgression) return "storyline";
   if (node.kind === "jingwei" || node.kind === "jingwei-section" || node.kind === "jingwei-entry") return "characters-lore";
   return "explorer";
@@ -483,8 +482,9 @@ export function IdeWorkbench({
 
   const chapterTreeNodes = useMemo(() => collectChapterTreeNodes(fileTree.nodes), [fileTree.nodes]);
   const outlineTreeNodes = useMemo(() => collectCategoryNodes(jingweiSections, "outline"), [jingweiSections]);
-  const storyMapNode = useMemo(() => (bookId ? createStoryMapNode(bookId) : null), [bookId]);
-  // 故事推进大屏画布的默认节点（outline 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
+  // 章后事实中央面板节点（IA 收敛后的唯一权威入口；侧栏只放轻量摘要卡）。
+  const memoryCenterNode = useMemo(() => (bookId ? createMemoryCenterNode(bookId) : null), [bookId]);
+  // 故事推进大屏画布的默认节点（evolution 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
   const storyProgressionNode = useMemo(() => (bookId ? createStoryProgressionNode(bookId) : null), [bookId]);
   // 伏笔看板唯一入口在「故事推进」侧栏；工具面板已不再收录该条目（避免双入口），
   // 因此这里直接构造节点而非从 toolNodes 中查找。
@@ -511,13 +511,13 @@ export function IdeWorkbench({
     narrativeMemorySections.forEach(walk);
     // 工具节点也加入，使点击工具能解析 activeNode → 渲染真实工具面板
     toolNodes.forEach(walk);
-    if (storyMapNode) map.set(storyMapNode.id, storyMapNode);
+    if (memoryCenterNode) map.set(memoryCenterNode.id, memoryCenterNode);
     if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
     // 伏笔看板节点不在 toolNodes 里（入口收敛到故事推进侧栏），但 ?panel=foreshadowing
     // 直达与 activeNode 解析仍需能取到它。
     if (foreshadowingNode) map.set(foreshadowingNode.id, foreshadowingNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, storyMapNode, storyProgressionNode, foreshadowingNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode, foreshadowingNode]);
 
   // 文件树节点点击后加载的内容缓存
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
@@ -1316,7 +1316,6 @@ export function IdeWorkbench({
                       outlineTreeNodes={outlineTreeNodes}
                       memoryNodes={narrativeMemorySections}
                       foreshadowingNode={foreshadowingNode}
-                      storyMapNode={storyMapNode}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
                       onSwitchView={(view) => keybindingActions.switchView(view)}
@@ -1410,6 +1409,7 @@ export function IdeWorkbench({
                               onOpenJingweiEntry={handleOpenJingweiEntry}
                               onOpenEntityDetail={handleOpenEntityFromGraph}
                               onSendToNarrator={onSendToNarrator}
+                              onOpenResourceNode={handleOpen}
                               onPromoteOutline={(outlineNode) => {
                                 void handleResourceAction({ type: "promote-outline", node: outlineNode });
                               }}
@@ -1478,6 +1478,7 @@ export function IdeWorkbench({
                         onOpenJingweiEntry={handleOpenJingweiEntry}
                         onOpenEntityDetail={handleOpenEntityFromGraph}
                         onSendToNarrator={onSendToNarrator}
+                        onOpenResourceNode={handleOpen}
                         onPromoteOutline={(outlineNode) => {
                           void handleResourceAction({ type: "promote-outline", node: outlineNode });
                         }}
