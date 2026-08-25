@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 
 import { computeForeshadowingDebt } from "../../engine/jingwei/foreshadowing-debt";
+import { classifyContractState } from "../../engine/jingwei/context/chapter-briefing";
 
 // ─── 数据契约（对齐既有响应体，字段全部可选防御） ─────────────────────
 
@@ -113,8 +114,11 @@ export interface PromiseHitRateResult {
 /**
  * 承诺命中率 = 已回收 / (已回收 + 超期未回收)。
  *
- * 「超期」复用 engine/jingwei/foreshadowing-debt 的唯一阈值口径（20 章），
- * 不在前端另写一套字面量；拿不到当前章号时 debt 返回 unknown，不计入超期。
+ * 口径与 chapter-briefing 的 computeNarrativeContractHitRate 同源：
+ *  - 状态分类用 engine 的 classifyContractState（唯一权威，含中英文状态集）；
+ *    无法识别/缺失的状态返回 other，不计入分母——不伪造数据。
+ *  - 「超期」复用 engine/jingwei/foreshadowing-debt 的唯一阈值口径（20 章），
+ *    不在前端另写一套字面量；拿不到当前章号时 debt 返回 unknown，不计入超期。
  */
 export function computePromiseHitRate(
   entries: readonly JingweiEntryRecord[],
@@ -124,17 +128,17 @@ export function computePromiseHitRate(
   let overdue = 0;
   for (const entry of entries) {
     const fields = readEntryFields(entry);
-    const status = typeof fields.status === "string" ? fields.status : "已埋设";
-    const plantedChapter = typeof fields.plantedChapter === "number" ? fields.plantedChapter : 0;
-    const settled = status === "已回收" || status === "已废弃";
-    if (status === "已回收") {
+    const status = typeof fields.status === "string" ? fields.status : undefined;
+    const stateClass = classifyContractState(status);
+    if (stateClass === "resolved") {
       resolved += 1;
       continue;
     }
+    if (stateClass !== "open") continue;
+    const plantedChapter = typeof fields.plantedChapter === "number" ? fields.plantedChapter : 0;
     const debt = computeForeshadowingDebt({
-      plantedChapter,
+      plantedChapter: plantedChapter > 0 ? plantedChapter : null,
       currentChapter: currentChapter ?? null,
-      settled,
     });
     if (debt.level === "overdue") overdue += 1;
   }
