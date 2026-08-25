@@ -395,6 +395,7 @@ export function CharactersAndLoreSidebarPanel({
               facts={factsForNode(entry, factsBySubject)}
               isSelected={selectedNodeId === entry.id}
               kernel={activeTab === "characters" ? showKernel(entry.title) : undefined}
+              currentChapter={currentChapter}
               onClick={() => onOpen(entry)}
             />
           ))
@@ -448,6 +449,7 @@ function CharacterOrLoreCard({
   facts,
   isSelected,
   kernel,
+  currentChapter,
   onClick,
 }: {
   node: WorkbenchResourceNode;
@@ -456,6 +458,7 @@ function CharacterOrLoreCard({
   isSelected: boolean;
   /** 结算沉淀的"当前是谁"摘要；仅 characters tab 有值。 */
   kernel?: CharacterKernelSummary;
+  currentChapter?: number;
   onClick: () => void;
 }) {
   const meta = node.metadata ?? {};
@@ -532,6 +535,25 @@ function CharacterOrLoreCard({
                 内核更新于第 {kernel.updatedChapter} 章
               </p>
             </div>
+          )}
+
+          {isCharacter && currentChapter !== undefined && (
+            <p className="text-[9px] text-muted-foreground" data-testid="character-last-appearance">
+              {(() => {
+                const lastCh = kernel?.updatedChapter
+                  ?? (facts.length > 0 ? Math.max(...facts.map((f) => f.sourceChapter ?? 0)) : undefined);
+                if (!lastCh || lastCh <= 0) return null;
+                const gap = currentChapter - lastCh;
+                return (
+                  <>
+                    最后出场 第{lastCh}章
+                    {gap >= 15 && (
+                      <Badge variant="destructive" className="ml-1 text-[8px] px-1 py-0">⚠️ {gap}章未出场</Badge>
+                    )}
+                  </>
+                );
+              })()}
+            </p>
           )}
 
           {facts.length > 0 && (
