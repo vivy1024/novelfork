@@ -101,13 +101,11 @@ const VIEW_OPTIONS: ReadonlyArray<ViewOption> = [
   { id: "wave", label: "浪潮视图", icon: Radio, description: "从中心向外传播" },
 ];
 
-/** 发展历程固定呈现原有五个图谱，按作者理解故事推进的顺序重新命名。 */
+/** 发展历程三层（F1 收敛）：角色轨迹由双螺旋编年史 B 链承担、结算流水并入事件流——各答一问不重叠。 */
 const DEVELOPMENT_VIEW_OPTIONS: ReadonlyArray<ViewOption> = [
-  { id: "timeline", label: "简途径层", icon: Clock, description: "按章节展开故事事件" },
-  { id: "character_arc", label: "彻底轨迹层", icon: GitBranch, description: "追踪角色状态推进" },
-  { id: "relationship", label: "骨架关系层", icon: Network, description: "查看实体与动态关系" },
-  { id: "conflict", label: "矛盾时间线层", icon: Swords, description: "查看冲突两侧与风险" },
-  { id: "event_chain", label: "结算流水层", icon: Route, description: "回放事件前后关系" },
+  { id: "timeline", label: "事件流层", icon: Clock, description: "按章节展开故事事件" },
+  { id: "relationship", label: "关系演化层", icon: Network, description: "查看实体与动态关系" },
+  { id: "conflict", label: "矛盾冲突层", icon: Swords, description: "冲突两侧与风险" },
 ];
 
 const NODE_ACCENTS: Record<GraphNodeModel["kind"], string> = {
