@@ -111,7 +111,7 @@ export function useWorkbenchResources(nodes: readonly ContractResourceNode[]) {
 // Tool section — 工具分区节点（供资源树使用）
 // ---------------------------------------------------------------------------
 
-export type ToolPanelId = "quality" | "health" | "arcs" | "drift" | "compliance" | "consistency" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
+export type ToolPanelId = "quality" | "arcs" | "compliance" | "foreshadowing" | "runtime" | "coreshift" | "collaboration-version" | "governance" | "tension";
 
 export interface ToolNodeDef {
   id: string;
@@ -139,9 +139,8 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     id: "tool-group:quality",
     title: "🔍 质量类",
     tools: [
-      { id: "tool:quality", title: "质量监控", toolPanel: "quality" },
-      { id: "tool:consistency", title: "叙事体检", toolPanel: "consistency" },
-      { id: "tool:drift", title: "文风一致性", toolPanel: "drift" },
+      // F2 收敛：趋势/指标/文风检测/一致性体检统一进「质量中心」单面板。
+      { id: "tool:quality", title: "质量中心", toolPanel: "quality" },
       { id: "tool:compliance", title: "投稿风险自检", toolPanel: "compliance" },
     ],
   },

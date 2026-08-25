@@ -24,6 +24,7 @@ import { ChapterContextRail } from "./ChapterContextRail";
 import { NewBookGuide, type GuidedSetupOutcome } from "./NewBookGuide";
 import { StatusBar } from "./StatusBar";
 import { ChapterToolbar } from "./ChapterToolbar";
+import { QualityCenterPanel } from "./panels/QualityCenterPanel";
 import { QualityPanel } from "./panels/QualityPanel";
 import type { ToolPanelId } from "./useWorkbenchResources";
 import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
@@ -31,13 +32,10 @@ import { GovernanceCockpitPanel } from "./GovernanceCockpitPanel";
 // Lazy-loaded tool panels
 const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").then(m => ({ default: m.StoryProgressionCanvas })));
 const NarrativeMemoryPanel = lazy(() => import("./NarrativeMemoryPanel").then(m => ({ default: m.NarrativeMemoryPanel })));
-const BookHealthSummary = lazy(() => import("./BookHealthSummary").then(m => ({ default: m.BookHealthSummary })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const TensionCurvePanel = lazy(() => import("./TensionCurvePanel").then(m => ({ default: m.TensionCurvePanel })));
-const StyleDriftPanel = lazy(() => import("./StyleDriftPanel").then(m => ({ default: m.StyleDriftPanel })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
-const NarrativeConsistencyPanel = lazy(() => import("./NarrativeConsistencyPanel").then(m => ({ default: m.NarrativeConsistencyPanel })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
 const CoreShiftPanel = lazy(() => import("./CoreShiftPanel").then(m => ({ default: m.CoreShiftPanel })));
 const CollaborationVersionPanel = lazy(() => import("./CollaborationVersionPanel").then(m => ({ default: m.CollaborationVersionPanel })));
@@ -228,19 +226,22 @@ export function resolveCurrentChapter(nodes: readonly WorkbenchResourceNode[] | 
 function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, currentChapter, onJumpToChapter, onOpenJingweiEntry }: { toolPanel: ToolPanelId; bookId: string; bookPlatform?: string; repositoryPath?: string; currentChapter?: number; onJumpToChapter?: (chapterNumber: number) => void; onOpenJingweiEntry?: (entryId: string) => boolean }) {
   switch (toolPanel) {
     case "quality":
-      return <QualityPanel bookId={bookId} />;
-    case "health":
-      return <Suspense fallback={<ToolPanelLoading />}><BookHealthSummary bookId={bookId} /></Suspense>;
+      return (
+        <Suspense fallback={<ToolPanelLoading />}>
+          <QualityCenterPanel
+            bookId={bookId}
+            currentChapter={resolveCurrentChapter(nodes)}
+            onJumpToChapter={onJumpToChapter}
+            onOpenJingweiEntry={onOpenJingweiEntry}
+          />
+        </Suspense>
+      );
     case "tension":
       return <Suspense fallback={<ToolPanelLoading />}><TensionCurvePanel bookId={bookId} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "arcs":
       return <Suspense fallback={<ToolPanelLoading />}><CharacterArcsPanel bookId={bookId} onClose={() => {}} /></Suspense>;
-    case "drift":
-      return <Suspense fallback={<ToolPanelLoading />}><StyleDriftPanel bookId={bookId} onClose={() => {}} /></Suspense>;
     case "compliance":
       return <Suspense fallback={<ToolPanelLoading />}><CompliancePanel bookId={bookId} bookPlatform={bookPlatform} onClose={() => {}} /></Suspense>;
-    case "consistency":
-      return <Suspense fallback={<ToolPanelLoading />}><NarrativeConsistencyPanel bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} onOpenJingweiEntry={onOpenJingweiEntry} /></Suspense>;
     case "foreshadowing":
       return <Suspense fallback={<ToolPanelLoading />}><ForeshadowingBoard bookId={bookId} currentChapter={currentChapter} onJumpToChapter={onJumpToChapter} /></Suspense>;
     case "governance":
