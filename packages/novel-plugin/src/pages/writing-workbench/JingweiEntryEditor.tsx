@@ -14,6 +14,7 @@ import {
   Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw, X,
 } from "lucide-react";
 import { CATEGORY_SCHEMAS } from "./jingwei/category-schemas";
+import { WorldCardPage, isWorldCardCategory } from "./WorldCardPage";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -130,7 +131,19 @@ function parseStringArray(value: unknown): string[] {
 
 // ─── Component ────────────────────────────────────────────────────────────
 
-export function JingweiEntryEditor({
+/**
+ * 世界设定类分类（world-model/locations/factions/power-system/props）路由到世界卡。
+ * 用无 hooks 的薄包装做分流，而不是在本组件 hooks 之后条件 return——
+ * 同一实例内 category 变化时，提前 return 会改变 hook 调用数直接崩溃。
+ */
+export function JingweiEntryEditor(props: JingweiEntryEditorProps) {
+  if (isWorldCardCategory(props.entry.category)) {
+    return <WorldCardPage {...props} />;
+  }
+  return <JingweiEntryEditorForm {...props} />;
+}
+
+function JingweiEntryEditorForm({
   entry,
   bookId,
   sectionLabel,

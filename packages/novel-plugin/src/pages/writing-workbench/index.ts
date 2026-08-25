@@ -5,6 +5,8 @@ export * from "./ResourceHistoryPanel";
 export * from "./CheckpointPanel";
 export * from "./JingweiEntryEditor";
 export * from "./CharacterCardPage";
+export * from "./WorldCardPage";
+export * from "./GovernanceCockpitPanel";
 export * from "./development-timeline";
 export * from "./NewBookGuide";
 export { buildOnboardingRequestMessage } from "./onboarding-request";
