@@ -557,13 +557,19 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     if (!GRAPH_VIEWS.includes(view as MemoryGraphInput["view"])) {
       return invalidQuery(c, "view 必须是 relationship | timeline | character_arc | foreshadowing | conflict | event_chain | wave。");
     }
-    const result = await handleMemoryGraph({
-      bookId: c.req.param("bookId"),
-      view: view as MemoryGraphInput["view"],
-      focusEntity: queryText(c, "focusEntity", "focus"),
-      chapterRange: queryChapterRange(c),
-    }, storage());
-    return respondHandler(c, result);
+    try {
+      const result = await handleMemoryGraph({
+        bookId: c.req.param("bookId"),
+        view: view as MemoryGraphInput["view"],
+        focusEntity: queryText(c, "focusEntity", "focus"),
+        chapterRange: queryChapterRange(c),
+      }, storage());
+      return respondHandler(c, result);
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      console.error(`[narrative-memory] graph ${view} 500: ${detail}`);
+      return c.json({ error: "graph-query-failed", detail }, 500);
+    }
   };
   app.get(`${base}/graph`, graphHandler);
 
