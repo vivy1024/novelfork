@@ -33,6 +33,8 @@ interface NarrativeFactRow {
   evidenceText: string | null;
   validFromChapter: number | null;
   validUntilChapter: number | null;
+  subjectEntryId: string | null;
+  objectEntryId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -50,6 +52,8 @@ interface NarrativeEventRow {
   source: NarrativeEvent["source"];
   status: NarrativeEventStatus;
   riskLevel: NarrativeEvent["riskLevel"];
+  subjectEntryId: string | null;
+  objectEntryId: string | null;
   createdAt: string;
   appliedAt: string | null;
 }
@@ -187,6 +191,8 @@ function factRowToRecord(row: NarrativeFactRow): NarrativeFact {
     evidenceText: row.evidenceText ?? undefined,
     validFromChapter: row.validFromChapter ?? undefined,
     validUntilChapter: row.validUntilChapter ?? undefined,
+    subjectEntryId: row.subjectEntryId ?? undefined,
+    objectEntryId: row.objectEntryId ?? undefined,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   });
@@ -206,6 +212,8 @@ function eventRowToRecord(row: NarrativeEventRow): NarrativeEvent {
     source: row.source,
     status: row.status,
     riskLevel: row.riskLevel,
+    subjectEntryId: row.subjectEntryId ?? undefined,
+    objectEntryId: row.objectEntryId ?? undefined,
     createdAt: row.createdAt,
     appliedAt: row.appliedAt ?? undefined,
   });
@@ -251,6 +259,8 @@ const FACT_SELECT = `
     evidence_text AS evidenceText,
     valid_from_chapter AS validFromChapter,
     valid_until_chapter AS validUntilChapter,
+    subject_entry_id AS subjectEntryId,
+    object_entry_id AS objectEntryId,
     created_at AS createdAt,
     updated_at AS updatedAt
   FROM narrative_fact
@@ -294,6 +304,8 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
       evidence_text TEXT,
       valid_from_chapter INTEGER,
       valid_until_chapter INTEGER,
+      subject_entry_id TEXT,
+      object_entry_id TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -327,8 +339,6 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
 
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_chapter ON narrative_event(book_id, chapter_number);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_status ON narrative_event(book_id, status);
-    CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);
-    CREATE INDEX IF NOT EXISTS idx_narrative_event_object_entry ON narrative_event(book_id, object_entry_id);
 
     CREATE TABLE IF NOT EXISTS narrative_retrieval_log (
       id TEXT PRIMARY KEY,
@@ -398,15 +408,31 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE UNIQUE INDEX IF NOT EXISTS idx_character_kernel_unique ON character_kernel(book_id, character_id);
   `);
 
-  // 实体身份链：旧库的 narrative_event 缺 subject_entry_id / object_entry_id 列，逐列补齐。
-  // CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，因此这里显式 ALTER（重复执行报 duplicate column 时忽略）。
-  for (const column of ["subject_entry_id", "object_entry_id"]) {
-    try {
-      storage.sqlite.exec(`ALTER TABLE narrative_event ADD COLUMN ${column} TEXT`);
-    } catch {
-      // 列已存在——预期路径，静默跳过。
+  // 实体身份链：旧库的 narrative_event / narrative_fact 缺 subject_entry_id / object_entry_id 列，逐表逐列补齐。
+  // CREATE TABLE IF NOT EXISTS 不会给已存在的表加列，因此这里显式 ALTER。
+  // 注意：必须先补列，再创建依赖这些列的索引；否则旧库会在索引语句处提前失败。
+  const existingColumns = (table: string): Set<string> =>
+    new Set(
+      storage.sqlite
+        .prepare<{ name: string }>(`PRAGMA table_info(${table})`)
+        .all()
+        .map((row) => row.name),
+    );
+  for (const table of ["narrative_event", "narrative_fact"]) {
+    const columns = existingColumns(table);
+    for (const column of ["subject_entry_id", "object_entry_id"]) {
+      if (!columns.has(column)) {
+        storage.sqlite.exec(`ALTER TABLE ${table} ADD COLUMN ${column} TEXT`);
+      }
     }
   }
+
+  storage.sqlite.exec(`
+    CREATE INDEX IF NOT EXISTS idx_narrative_event_subject_entry ON narrative_event(book_id, subject_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_narrative_event_object_entry ON narrative_event(book_id, object_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_subject_entry ON narrative_fact(book_id, subject_entry_id);
+    CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_object_entry ON narrative_fact(book_id, object_entry_id);
+  `);
 }
 
 export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFact): NarrativeFact {
@@ -428,9 +454,11 @@ export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
       evidence_text,
       valid_from_chapter,
       valid_until_chapter,
+      subject_entry_id,
+      object_entry_id,
       created_at,
       updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     parsed.id,
     parsed.bookId,
@@ -446,6 +474,8 @@ export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFac
     parsed.evidenceText ?? null,
     parsed.validFromChapter ?? null,
     parsed.validUntilChapter ?? null,
+    parsed.subjectEntryId ?? null,
+    parsed.objectEntryId ?? null,
     parsed.createdAt,
     parsed.updatedAt,
   );

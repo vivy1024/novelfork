@@ -93,6 +93,8 @@ function eventToFact(event: NarrativeEvent): NarrativeFact {
     sourceChapter: event.chapterNumber,
     evidenceText: event.evidenceText,
     validFromChapter: event.chapterNumber,
+    ...(event.subjectEntryId ? { subjectEntryId: event.subjectEntryId } : {}),
+    ...(event.objectEntryId ? { objectEntryId: event.objectEntryId } : {}),
     createdAt: event.createdAt,
     updatedAt: now,
   };
