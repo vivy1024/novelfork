@@ -446,6 +446,12 @@ export const chapterAuditLogs = sqliteTable(
     sensitiveWordCount: integer("sensitive_word_count").notNull().default(0),
     rhythmDiversityScore: integer("rhythm_diversity_score").notNull().default(0),
     summary: text("summary").notNull().default(""),
+    /** T4b：完整审计 issue 明细（每条带稳定 issue_id），JSON 序列化。 */
+    issuesJson: text("issues_json"),
+    /** T4b：审计时的正文指纹，用于改章 stale 判定。 */
+    contentFingerprint: text("content_fingerprint"),
+    /** T4b：正文变更后旧审计是否已过期（0/1）。 */
+    stale: integer("stale", { mode: "boolean" }).notNull().default(false),
   },
   (table) => [
     index("chapter_audit_log_book_chapter_idx").on(table.bookId, table.chapterNumber),

@@ -19,7 +19,9 @@ import {
   saveNarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { readChapterSettlementRecord, chapterContentFingerprint } from "../engine/narrative-memory/settlement-idempotency.js";
 import { readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
+import { readLatestAuditIssues, markChapterAuditStale } from "../engine/tools/health/audit-log-persist.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
@@ -227,6 +229,60 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return c.json({ ok: true, chapterNumber: chapter, ...payload });
     } catch (error) {
       return c.json({ error: "artifact-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // T4b 审计 issue 生命周期读取：某章最新审计的明细 + stale 标记。
+  app.get(`${base}/audit-issues`, (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterRaw = c.req.query("chapter");
+    const chapter = Number(chapterRaw);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      return invalidQuery(c, "chapter 必须是正整数。");
+    }
+    try {
+      const payload = readLatestAuditIssues(storage(), bookId, chapter);
+      if (!payload) return c.json({ error: "not-found", summary: "该章尚无审计记录。" }, 404);
+      return c.json({ ok: true, chapterNumber: chapter, ...payload });
+    } catch (error) {
+      return c.json({ error: "audit-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
+    }
+  });
+
+  // T4b 改章 stale 比对：前端传当前正文，后端用同一指纹算法对比已结算台账。
+  app.post(`${base}/settlement-status`, async (c) => {
+    const bookId = c.req.param("bookId");
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const chapterNumber = Number(body.chapterNumber);
+      const content = typeof body.content === "string" ? body.content : "";
+      if (!Number.isInteger(chapterNumber) || chapterNumber <= 0) {
+        return invalidQuery(c, "chapterNumber 必须是正整数。");
+      }
+      if (!content.trim()) {
+        return invalidQuery(c, "content 不能为空。");
+      }
+      const record = readChapterSettlementRecord(storage(), { bookId, chapterNumber });
+      if (!record) {
+        return c.json({ ok: true, changed: false, recordExists: false, summary: "该章尚未结算过，无 stale 可言。" });
+      }
+      const currentFingerprint = chapterContentFingerprint(content);
+      const changed = currentFingerprint !== record.contentFingerprint;
+      if (changed) {
+        // 改章联动：正文变了 → 同步翻转该章审计行 stale 标记。
+        try { markChapterAuditStale(storage(), bookId, chapterNumber, currentFingerprint); } catch { /* 审计行可能不存在 */ }
+      }
+      return c.json({
+        ok: true,
+        changed,
+        recordExists: true,
+        settledAt: record.settledAt,
+        summary: changed
+          ? "本章正文在结算后已被修改，叙事记忆可能过期——建议重新结算。"
+          : "本章与最近一次结算内容一致，记忆仍然新鲜。",
+      });
+    } catch (error) {
+      return c.json({ error: "settlement-status-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 

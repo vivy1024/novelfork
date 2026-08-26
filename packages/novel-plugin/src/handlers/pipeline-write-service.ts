@@ -27,6 +27,7 @@ import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js"
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
+import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
 import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
@@ -1093,6 +1094,19 @@ export async function executePipelineWrite(
         ...(logger ? { logger } : {}),
       });
       narrativeSettlement = settlementDispatch.settlement;
+
+      // T4b：审计落盘——auditResult 明细+正文指纹随正式章保存写入 chapter_audit_log，
+      // 激活审计 issue 生命周期（此前 persistChapterAuditLog 是死管道无人调用）。
+      try {
+        persistChapterAuditLog(storage, {
+          bookId,
+          chapterNumber,
+          auditResult,
+          content: finalContent,
+        });
+      } catch (err) {
+        logger?.warn(`[pipeline.write] 审计日志落盘失败（不影响章节）：${err instanceof Error ? err.message : String(err)}`);
+      }
     } catch (err) {
       const detail = err instanceof Error ? err.message : String(err);
       logger?.error(`[pipeline.write] Failed to save formal chapter: ${detail}`);
