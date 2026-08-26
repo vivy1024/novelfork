@@ -540,6 +540,19 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
   const warnings = [...extraction.warnings];
   let draftPool = extraction.drafts;
+  /** T4 证据链：逐草案决策记录（含沙漏拦截），结算成功后随指纹落盘。 */
+  const evidenceDrafts: Array<{
+    eventType: string;
+    subject: string;
+    predicate: string;
+    object: string;
+    confidence?: number;
+    riskLevel?: string;
+    outcome: string;
+    reason?: string;
+    eventId?: string;
+  }> = [];
+  let sandboxIntercepted = 0;
 
   // T2 收敛沙漏：CONVERGENCE（≥75%）禁开新坑——hook_planted 草稿直接丢弃并告警；
   // FINALE（≥95%）列出全部未回收伏笔，提示作者集中安排回收（只提示不代收）。
@@ -552,6 +565,18 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         if (plantedDrafts.length > 0) {
           const pct = Math.round((input.chapterNumber / Math.max(1, options.targetChapters)) * 100);
           draftPool = draftPool.filter((draft) => draft.eventType !== "hook_planted");
+          sandboxIntercepted += plantedDrafts.length;
+          for (const draft of plantedDrafts) {
+            evidenceDrafts.push({
+              eventType: draft.eventType,
+              subject: draft.subject,
+              predicate: draft.predicate,
+              object: draft.object,
+              ...(draft.confidence !== undefined ? { confidence: draft.confidence } : {}),
+              outcome: "intercepted-by-convergence",
+              reason: `收敛沙漏拦截（进度 ${pct}%）`,
+            });
+          }
           warnings.push(
             `收敛沙漏：叙事已进入${phase === "finale" ? "终局" : "收敛"}期（进度 ${pct}%），已拦截 ${plantedDrafts.length} 条新伏笔草案——请优先回收既有坑。`,
           );
@@ -594,9 +619,29 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     });
     if (decision.decision === "reject") {
       warnings.push(`丢弃事件草案：${decision.reason}`);
+      evidenceDrafts.push({
+        eventType: draft.eventType,
+        subject: draft.subject,
+        predicate: draft.predicate,
+        object: draft.object,
+        ...(draft.confidence !== undefined ? { confidence: draft.confidence } : {}),
+        outcome: "rejected",
+        reason: decision.reason,
+      });
       continue;
     }
-    events.push(materializeEvent(input, draft, decision, options.now?.() ?? new Date()));
+    const event = materializeEvent(input, draft, decision, options.now?.() ?? new Date());
+    evidenceDrafts.push({
+      eventType: draft.eventType,
+      subject: draft.subject,
+      predicate: draft.predicate,
+      object: draft.object,
+      ...(draft.confidence !== undefined ? { confidence: draft.confidence } : {}),
+      ...(decision.riskLevel ? { riskLevel: decision.riskLevel } : {}),
+      outcome: decision.decision === "auto_apply" ? "auto-apply" : "pending-review",
+      eventId: event.id,
+    });
+    events.push(event);
   }
 
   const persisted = persistSettlementEvents(storage, events, warnings);
@@ -633,6 +678,38 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     settledAt,
     ...(idempotency.record ? { previousRecord: idempotency.record } : {}),
   });
+
+  // T4 证据链落盘：原始草案+逐条决策随指纹持久化，回答「为什么抽出这些事件」。
+  // 同一指纹重结算覆盖（INSERT OR REPLACE 幂等）；失败仅告警不阻断。
+  try {
+    const appliedById = new Map(eventResults.map((event) => [event.id, event.status] as const));
+    const artifact = {
+      chapterNumber: input.chapterNumber,
+      chapterTitle: input.title ?? null,
+      settledAt,
+      sandboxIntercepted,
+      drafts: evidenceDrafts.map((entry) => {
+        const eventStatus = entry.eventId ? appliedById.get(entry.eventId) : undefined;
+        return {
+          ...entry,
+          ...(eventStatus ? { eventStatus } : {}),
+        };
+      }),
+    };
+    storage.sqlite.prepare(`
+      INSERT OR REPLACE INTO narrative_settlement_artifact
+        (book_id, chapter_number, content_fingerprint, artifact_json, created_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(
+      input.bookId,
+      input.chapterNumber,
+      idempotency.fingerprint,
+      JSON.stringify(artifact),
+      settledAt,
+    );
+  } catch (error) {
+    warnings.push(`结算证据链落盘失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
+  }
 
   // 角色内核重算（CharacterKernelConfig.enabled 时才生效）。
   // 失败只 warn 不阻断：内核是增强信息，结算主体（facts/events）已成功落库。
