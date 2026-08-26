@@ -340,6 +340,20 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_chapter ON narrative_event(book_id, chapter_number);
     CREATE INDEX IF NOT EXISTS idx_narrative_event_book_status ON narrative_event(book_id, status);
 
+    -- T4 证据链：每次结算把「原始草案 + 逐条决策」序列化落盘，
+    -- 回答作者「为什么抽出这些事件」。同一指纹重写即覆盖（幂等）。
+    CREATE TABLE IF NOT EXISTS narrative_settlement_artifact (
+      book_id TEXT NOT NULL,
+      chapter_number INTEGER NOT NULL,
+      content_fingerprint TEXT NOT NULL,
+      artifact_json TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (book_id, chapter_number, content_fingerprint)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_narrative_settlement_artifact_chapter
+      ON narrative_settlement_artifact(book_id, chapter_number, created_at DESC);
+
     CREATE TABLE IF NOT EXISTS narrative_retrieval_log (
       id TEXT PRIMARY KEY,
       book_id TEXT NOT NULL,
@@ -433,6 +447,36 @@ export function ensureNarrativeMemorySchema(storage: StorageDatabase): void {
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_subject_entry ON narrative_fact(book_id, subject_entry_id);
     CREATE INDEX IF NOT EXISTS idx_narrative_fact_book_object_entry ON narrative_fact(book_id, object_entry_id);
   `);
+}
+
+/** T4 证据链读取：某章最新一次结算的证据 artifact（按 created_at 取最新）。 */
+export function readLatestSettlementArtifact(
+  storage: StorageDatabase,
+  bookId: string,
+  chapterNumber: number,
+): { fingerprint: string; artifact: Record<string, unknown>; createdAt: string } | null {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite.prepare<{
+    content_fingerprint: string;
+    artifact_json: string;
+    created_at: string;
+  }>(`
+    SELECT content_fingerprint, artifact_json, created_at
+    FROM narrative_settlement_artifact
+    WHERE book_id = ? AND chapter_number = ?
+    ORDER BY created_at DESC
+    LIMIT 1
+  `).get(bookId, chapterNumber);
+  if (!row) return null;
+  try {
+    return {
+      fingerprint: row.content_fingerprint,
+      artifact: JSON.parse(row.artifact_json) as Record<string, unknown>,
+      createdAt: row.created_at,
+    };
+  } catch {
+    return null;
+  }
 }
 
 export function insertNarrativeFact(storage: StorageDatabase, fact: NarrativeFact): NarrativeFact {

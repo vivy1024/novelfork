@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AlertTriangle, Brain, ChevronDown, ChevronRight, ExternalLink, Loader2, RefreshCw, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
@@ -1561,7 +1562,10 @@ export function NarrativeMemoryPanelShell({
           </section>
 
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history-full">
-          <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold">结算历史 ({historyEvents.length})</h3>
+            <EvidenceChainLookup bookId={bookId} />
+          </div>
           <p className="text-[10px] text-muted-foreground">已自动应用或已拒绝的章后事件，按最近优先展示。</p>
           {historyEvents.length === 0 ? (
             <p className="text-[11px] text-muted-foreground">暂无结算历史。写下一章后会自动出现。</p>
@@ -1657,6 +1661,111 @@ function approvalScopeText(approval: NarrativeLineApproval): string {
     (approval.removedEdgeIds?.length ?? 0) > 0 ? `删除关系 ${approval.removedEdgeIds!.length}` : "",
   ].filter(Boolean);
   return parts.length > 0 ? ` · ${parts.join(" / ")}` : "";
+}
+
+// ---------------------------------------------------------------------------
+// T4 证据链查询（结算历史头部）：按章号拉取最新结算 artifact 并渲染草案+决策。
+// ---------------------------------------------------------------------------
+
+interface SettlementArtifactPayload {
+  chapterNumber: number;
+  fingerprint: string;
+  createdAt: string;
+  artifact: {
+    sandboxIntercepted?: number;
+    drafts?: ReadonlyArray<{
+      eventType?: string;
+      subject?: string;
+      predicate?: string;
+      object?: string;
+      outcome?: string;
+      reason?: string;
+      riskLevel?: string;
+      eventStatus?: string;
+    }>;
+  };
+}
+
+const OUTCOME_LABELS: Record<string, string> = {
+  "auto-apply": "自动应用",
+  "pending-review": "进入待审",
+  rejected: "已驳回",
+  "intercepted-by-convergence": "沙漏拦截",
+};
+
+export function EvidenceChainLookup({ bookId }: { bookId: string }) {
+  const [chapterInput, setChapterInput] = useState("");
+  const [payload, setPayload] = useState<SettlementArtifactPayload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const lookup = async () => {
+    const chapter = Number(chapterInput);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      setError("请输入有效章号");
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchJson<SettlementArtifactPayload & { ok?: boolean }>(
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/settlement-artifact?chapter=${chapter}`,
+      );
+      setPayload(data);
+    } catch (cause) {
+      setPayload(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-1.5" data-testid="evidence-chain-lookup">
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          min={1}
+          value={chapterInput}
+          onChange={(event) => setChapterInput(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void lookup();
+          }}
+          placeholder="章号"
+          aria-label="证据链查询章号"
+          className="h-6 w-16 rounded border border-border bg-background px-1 text-[10px]"
+        />
+        <Button type="button" size="xs" variant="outline" className="h-6 text-[10px]" onClick={() => void lookup()} disabled={loading}>
+          {loading ? <Loader2 className="size-3 animate-spin" /> : <Search className="size-3" />}
+          查证据链
+        </Button>
+      </div>
+      {error && <p className="text-[10px] text-destructive">{error}</p>}
+      {payload && (
+        <div className="rounded border border-border/60 bg-muted/20 p-2 text-[10px] space-y-1" data-testid="evidence-chain-result">
+          <p className="font-medium text-foreground">
+            第 {payload.chapterNumber} 章证据链
+            <span className="ml-1 font-normal text-muted-foreground">指纹 {payload.fingerprint.slice(0, 8)}…</span>
+          </p>
+          {(payload.artifact.sandboxIntercepted ?? 0) > 0 && (
+            <p className="text-amber-600 dark:text-amber-400">收敛沙漏拦截 {payload.artifact.sandboxIntercepted} 条</p>
+          )}
+          {(payload.artifact.drafts ?? []).map((draft, index) => (
+            <div key={index} className="flex items-start gap-1.5">
+              <Badge variant="outline" className="shrink-0 text-[9px] px-1 py-0 h-4">
+                {OUTCOME_LABELS[draft.outcome ?? ""] ?? draft.outcome}
+              </Badge>
+              <span className="min-w-0 flex-1 truncate">
+                {draft.subject} {draft.predicate} {draft.object}
+                {draft.eventStatus ? <span className="text-muted-foreground"> · {draft.eventStatus}</span> : null}
+                {draft.reason ? <span className="text-muted-foreground"> · {draft.reason}</span> : null}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

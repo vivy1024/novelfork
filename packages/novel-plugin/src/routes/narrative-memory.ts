@@ -19,6 +19,7 @@ import {
   saveNarrativeMemoryConfig,
 } from "../engine/narrative-memory/config.js";
 import { queryCurrentNarrativeLedger } from "../engine/narrative-memory/ledger.js";
+import { readLatestSettlementArtifact } from "../engine/narrative-memory/storage.js";
 import { backfillNarrativeEventEntityIds } from "../engine/narrative-memory/entity-id-backfill.js";
 import { collectStaleFacts, STALE_FACT_THRESHOLD } from "../engine/narrative-memory/staleness.js";
 import { runConsistencyCheck } from "../engine/narrative-memory/consistency-detect.js";
@@ -209,6 +210,23 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
       return c.json({ config });
     } catch (error) {
       return c.json({ error: error instanceof Error ? error.message : String(error) }, 400);
+    }
+  });
+
+  // T4 证据链读取：某章最新一次结算的「草案+决策」artifact。
+  app.get(`${base}/settlement-artifact`, (c) => {
+    const bookId = c.req.param("bookId");
+    const chapterRaw = c.req.query("chapter");
+    const chapter = Number(chapterRaw);
+    if (!Number.isInteger(chapter) || chapter <= 0) {
+      return invalidQuery(c, "chapter 必须是正整数。");
+    }
+    try {
+      const payload = readLatestSettlementArtifact(storage(), bookId, chapter);
+      if (!payload) return c.json({ error: "not-found", summary: "该章尚无结算证据记录。" }, 404);
+      return c.json({ ok: true, chapterNumber: chapter, ...payload });
+    } catch (error) {
+      return c.json({ error: "artifact-read-failed", detail: error instanceof Error ? error.message : String(error) }, 500);
     }
   });
 
