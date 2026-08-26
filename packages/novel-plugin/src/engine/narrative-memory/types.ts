@@ -408,6 +408,8 @@ export const DEFAULT_KERNEL_FIELDS: readonly KernelFieldSpec[] = [
   { key: "emotionalCenter", label: "情绪重心", kind: "short_text", llmExtract: true, injectOnWrite: true, injectPriority: 90 },
   { key: "conflictAxis", label: "主要矛盾轴", kind: "short_text", llmExtract: true, injectOnWrite: true, injectPriority: 80 },
   { key: "stateSummary", label: "当前状态摘要", kind: "long_text", llmExtract: true, injectOnWrite: true, injectPriority: 70 },
+  // T5 情绪弧线：LLM 从正文提取情绪节点序列（章/情绪/触发/强度）。
+  { key: "emotionalArc", label: "情绪弧线", kind: "list", llmExtract: true, injectOnWrite: true, injectPriority: 60 },
   { key: "activeScars", label: "活跃心理伤痕", kind: "list", llmExtract: false, injectOnWrite: true, injectPriority: 50 },
   { key: "notes", label: "作者备注", kind: "long_text", llmExtract: false, injectOnWrite: false, injectPriority: 0 },
 ];

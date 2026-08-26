@@ -14,6 +14,7 @@ import { buildEntityDictionary } from "../engine/narrative-memory/entity-diction
 import { reconcileCharacterKernel, pickRelatedRecords } from "../engine/narrative-memory/kernel-reconciler.js";
 import { NarrativeEventSchema, type NarrativeEvent } from "../engine/narrative-memory/types.js";
 import { foreshadowPhase } from "../engine/narrative-memory/foreshadow-phase.js";
+import { classifyOOC } from "../engine/narrative-memory/character-psychology.js";
 import { scoreChapterTension, TENSION_UNEVALUATED, type TensionDimensions } from "./chapter-tension-scoring.js";
 import {
   decideChapterSettlementIdempotency,
@@ -740,6 +741,18 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
             warnings.push(`角色「${character}」内核重算 LLM 调用失败：${result.error ?? "unknown"}`);
           } else if (!result.ok && result.reason === "parse-failed") {
             warnings.push(`角色「${character}」内核重算输出无法解析：${result.error ?? "unknown"}`);
+          } else if (result.ok) {
+            // T5 OOC 三分类：内核重算成功后检查行为是否偏离心理内核。
+            const oocResult = classifyOOC({
+              scars: [],
+              motivations: [],
+              behaviorSummary: input.content.slice(0, 500),
+              currentChapter: input.chapterNumber,
+            });
+            if (oocResult === "ooc") {
+              warnings.push(`OOC 预警：角色「${character}」本章行为缺乏心理支撑（无活跃伤痕或高执念驱动），建议复查。`);
+            }
+            // breakout（合理偏离/高光）不告警——那是好故事。
           }
         } catch (error) {
           warnings.push(`角色「${character}」内核重算异常：${error instanceof Error ? error.message : String(error)}`);
