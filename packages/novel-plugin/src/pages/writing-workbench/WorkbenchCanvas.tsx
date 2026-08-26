@@ -34,6 +34,7 @@ const StoryProgressionCanvas = lazy(() => import("./StoryProgressionCanvas").the
 const NarrativeMemoryPanel = lazy(() => import("./NarrativeMemoryPanel").then(m => ({ default: m.NarrativeMemoryPanel })));
 const CharacterArcsPanel = lazy(() => import("./CharacterArcsPanel").then(m => ({ default: m.CharacterArcsPanel })));
 const TensionCurvePanel = lazy(() => import("./TensionCurvePanel").then(m => ({ default: m.TensionCurvePanel })));
+const ChapterSettlementBanner = lazy(() => import("./ChapterSettlementBanner").then(m => ({ default: m.ChapterSettlementBanner })));
 const CompliancePanel = lazy(() => import("./CompliancePanel").then(m => ({ default: m.CompliancePanel })));
 const ForeshadowingBoard = lazy(() => import("./ForeshadowingBoard").then(m => ({ default: m.ForeshadowingBoard })));
 const RuntimeStatePanel = lazy(() => import("./RuntimeStatePanel").then(m => ({ default: m.RuntimeStatePanel })));
@@ -768,6 +769,18 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             </div>
           </SheetContent>
         </Sheet>
+      )}
+
+      {/* T4b 改章 stale 横幅：dirty 时防抖比对指纹，提示重结算 */}
+      {isChapterWorkflowNode(node) && bookId && dirty && typeof node.metadata?.chapterNumber === "number" && content.trim() && (
+        <Suspense fallback={null}>
+          <ChapterSettlementBanner
+            bookId={bookId}
+            chapterNumber={node.metadata.chapterNumber}
+            content={content}
+            onAskResettle={() => onSendToNarrator?.(`请对第 ${node.metadata?.chapterNumber} 章重新执行 memory.settle_chapter（force=true），正文已修改需要刷新叙事记忆。`)}
+          />
+        </Suspense>
       )}
 
       {/* 章节体检工具栏（仅正式章节显示） */}
