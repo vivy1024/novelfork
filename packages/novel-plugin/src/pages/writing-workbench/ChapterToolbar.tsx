@@ -1,23 +1,31 @@
 /**
  * ChapterToolbar — 章节编辑器底部可展开工具栏
  *
- * 三个 Tab，各管一层不同的检查：
+ * 四个 Tab，各管一层不同的检查：
  * - 人味润色：本地 deslop 引擎确定性改写，0 LLM
  * - 叙事审计：交叙述者开零继承子代理，按九项风险卡查叙事结构
+ * - 本章审稿：落盘 audit-issues 的定位原文 + auto_fixable 修订提案
  * - 全书发布检查：发布就绪的规则/连续性门禁
  *
  * 早期这里还有一个「节奏」Tab（ChapterHealthCard），只展示静态统计数字、
  * 没有可执行动作，已按作者反馈下线。
  */
-import { useState } from "react";
-import { ChevronUp, ChevronDown, Sparkles, Loader2, ShieldCheck, CheckCircle2, ScanSearch } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronUp, ChevronDown, Sparkles, Loader2, ShieldCheck, CheckCircle2, ScanSearch, ListChecks } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fetchJson } from "@/hooks/use-api";
 import { buildNarrativeRiskAuditMessage } from "./narrative-risk-audit-request";
 import { toCompliancePlatform } from "./compliance-platform";
+import {
+  buildAuditFixProposalMessage,
+  dispatchLocateInEditor,
+  isAutoFixableIssue,
+  locateAuditIssueQuote,
+  type AuditIssueLite,
+} from "./audit-issue-actions";
 
-type ToolbarTab = "humanize" | "narrative" | "audit";
+type ToolbarTab = "humanize" | "narrative" | "issues" | "audit";
 
 interface DeslopManualFlag {
   readonly rule: string;
@@ -171,6 +179,36 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
   const [handedOff, setHandedOff] = useState(false);
   const [narrativeSent, setNarrativeSent] = useState(false);
   const [narrativeError, setNarrativeError] = useState<string | null>(null);
+  const [issues, setIssues] = useState<readonly AuditIssueLite[]>([]);
+  const [issuesStale, setIssuesStale] = useState(false);
+  const [issuesError, setIssuesError] = useState<string | null>(null);
+  const [issuesLoading, setIssuesLoading] = useState(false);
+  const [issueNote, setIssueNote] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!chapterNumber) {
+      setIssues([]);
+      return;
+    }
+    let cancelled = false;
+    setIssuesLoading(true);
+    setIssuesError(null);
+    void fetchJson<{ issues?: readonly AuditIssueLite[]; stale?: boolean }>(
+      `/api/books/${encodeURIComponent(bookId)}/narrative-memory/audit-issues?chapter=${chapterNumber}`,
+    ).then((payload) => {
+      if (cancelled) return;
+      setIssues(payload.issues ?? []);
+      setIssuesStale(payload.stale === true);
+    }).catch((cause) => {
+      if (cancelled) return;
+      setIssues([]);
+      const status = cause && typeof cause === "object" && "status" in cause ? Number((cause as { status?: number }).status) : undefined;
+      setIssuesError(status === 404 ? null : cause instanceof Error ? cause.message : "读取审稿记录失败");
+    }).finally(() => {
+      if (!cancelled) setIssuesLoading(false);
+    });
+    return () => { cancelled = true; };
+  }, [bookId, chapterNumber]);
 
   /**
    * 叙事审计交给叙述者执行：零继承子代理需要 Agent Loop 与 Provider，
@@ -310,6 +348,15 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
               <span className="text-[10px]">叙事审计</span>
             </Button>
             <Button
+              variant={activeTab === "issues" ? "secondary" : "ghost"}
+              size="xs"
+              className="h-6 gap-1"
+              onClick={() => setActiveTab("issues")}
+            >
+              <ListChecks className="size-3" />
+              <span className="text-[10px]">本章审稿{issues.length > 0 ? ` ${issues.length}` : ""}</span>
+            </Button>
+            <Button
               variant={activeTab === "audit" ? "secondary" : "ghost"}
               size="xs"
               className="h-6 gap-1"
@@ -435,6 +482,79 @@ export function ChapterToolbar({ bookId, chapterNumber, bookPlatform, content, o
                   已交给叙述者。它会开一个零继承子代理只读本章正文，结果在对话面板查看。
                 </p>
               )}
+            </div>
+          )}
+          {activeTab === "issues" && (
+            <div className="space-y-2 py-1 text-xs" data-testid="chapter-audit-issues">
+              <div>
+                <p className="font-medium">本章审稿意见</p>
+                <p className="text-[10px] text-muted-foreground">定位原文高亮编辑器选区；可自动修的条目生成修订提案交给叙述者，不直接覆盖正文。</p>
+              </div>
+              {issuesStale ? <p className="text-[10px] text-amber-600 dark:text-amber-400">正文在审计后改过，意见可能过期。</p> : null}
+              {issuesLoading ? <p className="text-[10px] text-muted-foreground">正在读取审稿记录…</p> : null}
+              {issuesError ? <p role="alert" className="text-[10px] text-destructive">{issuesError}</p> : null}
+              {issueNote ? <p className="text-[10px] text-muted-foreground">{issueNote}</p> : null}
+              {!issuesLoading && issues.length === 0 && !issuesError ? (
+                <p className="text-[10px] text-muted-foreground">本章还没有落盘的审稿意见。先跑叙事审计或写章管线。</p>
+              ) : null}
+              <ul className="space-y-1.5">
+                {issues.map((issue, index) => {
+                  const locate = locateAuditIssueQuote(content ?? "", issue);
+                  const autoFixable = isAutoFixableIssue(issue, locate);
+                  return (
+                    <li
+                      key={issue.issueId ?? `${issue.category}-${index}`}
+                      className="rounded border border-border/70 bg-card/50 px-2 py-1.5"
+                      data-testid="chapter-audit-issue"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-medium text-foreground">{issue.category ?? "审稿"}</span>
+                        <span className="text-[10px] text-muted-foreground">{issue.severity ?? "warning"}</span>
+                      </div>
+                      <p className="mt-0.5 text-[10px] leading-5 text-muted-foreground">{issue.description}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          disabled={!locate.quote}
+                          data-testid="audit-issue-locate"
+                          onClick={() => {
+                            if (!locate.quote) {
+                              setIssueNote("这条意见在正文里找不到可定位片段。");
+                              return;
+                            }
+                            dispatchLocateInEditor(locate.quote);
+                            setIssueNote(`已定位：${locate.quote}`);
+                          }}
+                        >
+                          定位原文
+                        </Button>
+                        <Button
+                          size="xs"
+                          variant="outline"
+                          disabled={!autoFixable || !onSendToNarrator}
+                          data-testid="audit-issue-autofix"
+                          onClick={() => {
+                            if (!autoFixable || !locate.quote || !onSendToNarrator) {
+                              setIssueNote("这条不能自动修：无法定位，或属于结构类/info。");
+                              return;
+                            }
+                            void Promise.resolve(
+                              onSendToNarrator(buildAuditFixProposalMessage({
+                                chapterNumber,
+                                issue,
+                                quote: locate.quote,
+                              })),
+                            ).then(() => setIssueNote("已把定点修订提案交给叙述者，请在对话里确认。"));
+                          }}
+                        >
+                          生成修订提案
+                        </Button>
+                      </div>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
           {activeTab === "audit" && (
