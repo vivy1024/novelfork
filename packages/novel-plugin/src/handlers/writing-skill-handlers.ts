@@ -28,6 +28,7 @@ import {
   checkSeverity,
   describeCheck,
   evaluateCheck,
+  isProseCheck,
   type WritingSkillConstraintDigest,
 } from "../engine/writing-skills/compliance.js";
 import type {
@@ -469,7 +470,9 @@ export async function handleWritingSkillsCheckCompliance(
     // 依赖名必须是技能库中真实存在的技能（过滤路径/模板名噪音）。
     const knownSkillNames = new Set(active.skills.map((skill) => skill.name));
     for (const skill of active.skills) {
-      const checks = skill.checks ?? [];
+      // 只校验作用于正文的 checks；target=card 的设定卡检查不参与章节出口，
+      // 否则 required-terms 会把人设字段当成正文必现词。
+      const checks = (skill.checks ?? []).filter(isProseCheck);
       for (const [index, check] of checks.entries()) {
         const violation = evaluateCheck(content, check);
         if (!violation) continue;

@@ -25,8 +25,6 @@ import {
 import {
 	NOVEL_RUNTIME_CONTRIBUTION,
 	getNovelToolPermissionPolicy,
-	loadProjectWritingSkillInjection,
-	mergeLoadedSkillEvidence,
 } from "@vivy1024/novelfork-novel-plugin";
 import { z } from "zod/v4";
 
@@ -323,13 +321,6 @@ export class NovelRuntimeHostAdapter {
 			...extension,
 			content: this.toModelFacingText(extension.content),
 		}));
-		const bookBinding = context?.resourceBindings["novel.book"];
-		const projectSkillInjection = bookBinding
-			&& bookBinding.kind === "novel.book"
-			&& typeof bookBinding.root === "string"
-			&& typeof bookBinding.bookId === "string"
-			? await loadProjectWritingSkillInjection(bookBinding.root).catch(() => null)
-			: null;
 
 		// Runtime later validates the final provider-facing name with
 		// /^[A-Za-z0-9_-]{1,64}$/, so the product boundary must expose wire names
@@ -343,9 +334,7 @@ export class NovelRuntimeHostAdapter {
 					name: this.toWireToolName(tool.definition.name),
 				},
 			})),
-			promptExtensions: projectSkillInjection?.prompt
-				? [...basePromptExtensions, { content: projectSkillInjection.prompt }]
-				: basePromptExtensions,
+			promptExtensions: basePromptExtensions,
 		};
 	}
 
@@ -506,14 +495,9 @@ export class NovelRuntimeHostAdapter {
 		try {
 			const hostExecution = typeof execution === "string" ? undefined : execution;
 			const bookRoot = context.resourceBindings["novel.book"]?.root ?? context.projectRoot;
-			const [runtimeLoadedSkills, projectSkillInjection] = await Promise.all([
-				loadRuntimeLoadedSkills(narratorId, bookRoot),
-				loadProjectWritingSkillInjection(bookRoot).catch(() => null),
-			]);
-			const loadedSkills = mergeLoadedSkillEvidence(
-				runtimeLoadedSkills,
-				projectSkillInjection?.loadedSkills ?? [],
-			);
+			// Skill 生效证据只承认原生 Runtime Skill 工具在实际会话中的成功调用；
+			// 项目目录里存在的文件不再被当作已加载（那会把目录当隐形 prompt）。
+			const loadedSkills = await loadRuntimeLoadedSkills(narratorId, bookRoot);
 			const toolContext: PluginToolExecutionContext = {
 				...pluginContext,
 				sessionId: narratorId,

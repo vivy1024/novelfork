@@ -13,6 +13,7 @@ import {
   checkSeverity,
   describeCheck,
   evaluateCheck,
+  isProseCheck,
   renderWritingSkillConstraintDigest,
   toSceneSpecConstraintLines,
   DEFAULT_CONSTRAINT_DIGEST_LIMIT,
@@ -82,6 +83,24 @@ describe("Writing Skills 约束摘要", () => {
 
   it("空技能列表得到 EMPTY 摘要", () => {
     expect(buildWritingSkillConstraintDigest([])).toEqual(EMPTY_WRITING_SKILL_CONSTRAINT_DIGEST);
+  });
+
+  it("target=card 的设定卡检查不进约束摘要——模型不该被「正文必须出现人设词」指挥", () => {
+    const cardCheck: WritingSkillComplianceCheck = {
+      type: "required-terms",
+      terms: ["理智", "温和", "独立", "乐观", "诚实"],
+      target: "card",
+      message: "人物基线字段检查针对经纬人设卡，不是正文。",
+    };
+    expect(isProseCheck(cardCheck)).toBe(false);
+
+    const digest = buildWritingSkillConstraintDigest([skill("persona", [cardCheck, forbidden])]);
+    expect(digest.items.some((item) => item.rule.includes("理智"))).toBe(false);
+    expect(digest.items.some((item) => item.rule.includes("忽然之间"))).toBe(true);
+
+    const cardOnly = buildWritingSkillConstraintDigest([skill("persona", [cardCheck])]);
+    expect(cardOnly.skillCount).toBe(0);
+    expect(cardOnly.items).toHaveLength(0);
   });
 });
 

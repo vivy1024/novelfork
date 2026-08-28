@@ -38,6 +38,14 @@ export const WRITING_SKILL_COMPLIANCE_CHECK_TYPES = [
 export type WritingSkillComplianceCheckType =
   (typeof WRITING_SKILL_COMPLIANCE_CHECK_TYPES)[number];
 
+/**
+ * 检查作用目标。缺省 `prose`（对章节正文生效）；
+ * `card` 表示面向设定卡/设计文档的检查（如人物基线、情感弧设计），
+ * 不会进章节正文校验、也不会进 scene.spec 的写作约束摘要——
+ * 否则模型会为通过 required-terms 把「理智/温和…」这种人设字段写进正文。
+ */
+export type WritingSkillCheckTarget = "prose" | "card";
+
 interface WritingSkillComplianceCheckBase {
   /** 可选的稳定标识，便于执行结果回写到声明的检查项。 */
   readonly id?: string;
@@ -45,6 +53,8 @@ interface WritingSkillComplianceCheckBase {
   readonly message?: string;
   /** 缺省为 `warning`：只有显式声明 `error` 才会阻断保存。 */
   readonly severity?: "warning" | "error";
+  /** 缺省为 `prose`；见 WritingSkillCheckTarget。 */
+  readonly target?: WritingSkillCheckTarget;
 }
 
 export interface WritingSkillRequiredTermsCheck extends WritingSkillComplianceCheckBase {

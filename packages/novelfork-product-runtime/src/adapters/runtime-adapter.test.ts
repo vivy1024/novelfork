@@ -242,13 +242,13 @@ describe("NovelRuntimeAdapter", () => {
 		).toBe(false);
 	});
 
-	test("injects the current project Writing Skill into the resolved prompt", async () => {
+	test("does NOT inject project Writing Skill bodies into the prompt (native Skill tool only)", async () => {
 		const skillDir = join(bookRoot, ".novelfork", "skills", "integration-style");
 		await mkdir(skillDir, { recursive: true });
 		await writeFile(join(skillDir, "SKILL.md"), `---
 id: writing-skill-integration-style
 name: 集成测试文风
-description: 验证 Runtime prompt 注入
+description: 验证不进 system prompt
 kind: prose
 mode: manual
 ---
@@ -257,8 +257,11 @@ RUNTIME_WRITING_SKILL_MARKER
 `, "utf8");
 		bindNarrator();
 
+		// Writing Skills 生效只由原生 Runtime Skill 工具按需加载；
+		// 项目目录里的文件不得悄悄进入 system prompt 污染每一轮上下文。
 		const extensions = await adapter.promptExtensions("narrator-skill");
-		expect(extensions.some((extension) => extension.includes("RUNTIME_WRITING_SKILL_MARKER"))).toBe(true);
+		expect(extensions.some((extension) => extension.includes("RUNTIME_WRITING_SKILL_MARKER"))).toBe(false);
+		expect(extensions).toHaveLength(1);
 	});
 
 	test("validates the Runtime Agent scene blueprint without an internal model call", async () => {

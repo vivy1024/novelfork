@@ -18,6 +18,15 @@ export function checkSeverity(check: WritingSkillComplianceCheck): "warning" | "
   return check.severity ?? "warning";
 }
 
+/**
+ * 判定检查是否作用于章节正文。`target: "card"` 的检查面向设定卡/设计文档，
+ * 出口 check_compliance（核对正文）与写前约束摘要一律跳过，
+ * 避免模型为通过 required-terms 把人设/弧标签写进正文（第 28/29 章事故根因）。
+ */
+export function isProseCheck(check: WritingSkillComplianceCheck): boolean {
+  return check.target !== "card";
+}
+
 /** 稳定的 check 标识；出口违规回报与摘要引用同一套 id。 */
 export function checkId(check: WritingSkillComplianceCheck, index: number): string {
   return check.id?.trim() || `${check.type}-${index + 1}`;
@@ -134,7 +143,9 @@ export function buildWritingSkillConstraintDigest(
   const all: WritingSkillConstraintItem[] = [];
   let skillCount = 0;
   for (const skill of skills) {
-    const checks = skill.checks ?? [];
+    // 摘要与写章同源：只收作用于正文的 checks。card 目标（设定卡/人设卡）
+    // 不约束正文字面，不得被模型当成写作硬约束。
+    const checks = (skill.checks ?? []).filter(isProseCheck);
     if (checks.length === 0) continue;
     skillCount += 1;
     for (const [index, check] of checks.entries()) {
