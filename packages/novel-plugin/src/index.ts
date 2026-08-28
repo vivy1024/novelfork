@@ -195,15 +195,6 @@ export const NOVEL_PLUGIN_MANIFEST: PluginManifest = {
 
 export { NOVEL_RUNTIME_CONTRIBUTION, NOVEL_RUNTIME_SYSTEM_PROMPT } from "./runtime-contribution.js";
 export { NOVEL_LEARNING_CONTRIBUTION } from "./learning-contribution.js";
-export {
-  buildProjectWritingSkillsPrompt,
-  loadProjectWritingSkillInjection,
-  mergeLoadedSkillEvidence,
-} from "./engine/writing-skills/prompt-injection.js";
-export type {
-  ProjectWritingSkillInjection,
-  WritingSkillLoadedEvidence,
-} from "./engine/writing-skills/prompt-injection.js";
 export type { NovelBookRuntimeBinding } from "./runtime-contribution.js";
 
 export default NOVEL_PLUGIN_MANIFEST;

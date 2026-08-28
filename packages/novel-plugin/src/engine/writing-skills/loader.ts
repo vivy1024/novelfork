@@ -161,10 +161,12 @@ function parseComplianceChecks(value: unknown): ReadonlyArray<WritingSkillCompli
     const id = asString(record.id);
     const message = asString(record.message);
     const severity = asString(record.severity) === "error" ? "error" as const : undefined;
+    const target = asString(record.target) === "card" ? "card" as const : undefined;
     const common = {
       ...(id ? { id } : {}),
       ...(message ? { message } : {}),
       ...(severity ? { severity } : {}),
+      ...(target ? { target } : {}),
     };
 
     if (type === "required-terms") {
