@@ -81,7 +81,7 @@ describe("tool renderer 契约", () => {
   });
 
   it("S3 的四个专属 renderer 确实注册了", () => {
-    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "compliance.publish-readiness"]) {
+    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "compliance.publish-readiness", "publish.export"]) {
       expect(isRegistered(renderer), `${renderer} 未注册`).toBe(true);
     }
   });

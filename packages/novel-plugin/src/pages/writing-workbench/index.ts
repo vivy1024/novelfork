@@ -22,3 +22,4 @@ export * from "./resource-viewers";
 export * from "./useWorkbenchResources";
 export * from "./RuntimeStatePanel";
 export * from "./CoreShiftPanel";
+export * from "./CreativeCompassPanel";

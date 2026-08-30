@@ -108,6 +108,94 @@ describe("NarrativeEvent reducer", () => {
     }
   });
 
+  it("keeps facts distinct when long event fields share a prefix", async () => {
+    const storage = await createStorage();
+    try {
+      const prefix = "非常长的主体".repeat(10);
+      const events = [
+        event({ id: "long-a", eventType: "location_changed", subject: `${prefix}甲`, predicate: "抵达", object: "药园", status: "applied", riskLevel: "low" }),
+        event({ id: "long-b", eventType: "location_changed", subject: `${prefix}乙`, predicate: "抵达", object: "药园", status: "applied", riskLevel: "low" }),
+      ];
+      persistNarrativeEvents(storage, events);
+      const result = applyNarrativeEvents(storage, "book-1", events);
+      expect(result.appliedEventIds).toEqual(["long-a", "long-b"]);
+      const factRows = storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE category = 'location'").get();
+      expect(factRows?.count).toBe(2);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("keeps a machine event pending when an older manual fact is beyond the former scan window", async () => {
+    const storage = await createStorage();
+    try {
+      for (let index = 0; index < 205; index += 1) {
+        persistNarrativeEvents(storage, [event({
+          id: `noise-${index}`,
+          eventType: "character_state_changed",
+          subject: `角色-${index}`,
+          predicate: "状态",
+          object: "稳定",
+          status: "applied",
+          riskLevel: "low",
+        })]);
+      }
+      const manual = {
+        id: "manual-authority",
+        bookId: "book-1",
+        subject: "韩立",
+        predicate: "状态",
+        object: "作者确认值",
+        category: "character_state",
+        layer: "dynamic" as const,
+        confidence: 1,
+        sourceType: "manual" as const,
+        sourceChapter: 1,
+        validFromChapter: 1,
+        createdAt: "2026-06-22T00:00:00.000Z",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      };
+      storage.sqlite.prepare(`
+        INSERT INTO narrative_fact (
+          id, book_id, subject, predicate, object, category, layer, confidence,
+          source_type, source_chapter, valid_from_chapter, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        manual.id,
+        manual.bookId,
+        manual.subject,
+        manual.predicate,
+        manual.object,
+        manual.category,
+        manual.layer,
+        manual.confidence,
+        manual.sourceType,
+        manual.sourceChapter,
+        manual.validFromChapter,
+        manual.createdAt,
+        manual.updatedAt,
+      );
+      const incoming = event({
+        id: "machine-after-manual",
+        eventType: "character_state_changed",
+        subject: "韩立",
+        predicate: "状态",
+        object: "机器抽取值",
+        status: "applied",
+        riskLevel: "low",
+      });
+      persistNarrativeEvents(storage, [incoming]);
+
+      const result = applyNarrativeEvents(storage, "book-1", [incoming]);
+
+      expect(result.pendingEventIds).toEqual([incoming.id]);
+      expect(result.appliedEventIds).toEqual([]);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE source_id = ?").get(incoming.id)?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("captures reducer errors instead of throwing", async () => {
     const storage = await createStorage();
     try {

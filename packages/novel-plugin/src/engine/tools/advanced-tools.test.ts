@@ -1,67 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { BibleConflictRecord } from "../../jingwei/types.js";
-import { buildConflictMap, detectMainConflictDrift } from "./conflicts/conflict-tracker.js";
 import { detectArcInconsistency, detectStagnantArc } from "./arcs/character-arc-tracker.js";
 import { detectToneDrift, GENRE_TONE_MAP } from "./tone/tone-drift-detector.js";
 import type { CharacterArc } from "./arcs/arc-types.js";
-
-function makeConflict(overrides: Partial<BibleConflictRecord> = {}): BibleConflictRecord {
-  return {
-    id: "conflict-1",
-    bookId: "book-1",
-    name: "主线冲突",
-    type: "external",
-    scope: "global",
-    priority: 1,
-    protagonistSideJson: JSON.stringify("凡人"),
-    antagonistSideJson: JSON.stringify("仙道"),
-    stakes: "生死",
-    rootCauseJson: "[]",
-    evolutionPathJson: JSON.stringify([
-      { chapter: 1, state: "latent" },
-      { chapter: 5, state: "escalating", trigger: "宗门审判" },
-    ]),
-    resolutionState: "escalating",
-    resolutionChapter: null,
-    relatedConflictIdsJson: "[]",
-    visibilityRuleJson: JSON.stringify({ type: "global" }),
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    deletedAt: null,
-    ...overrides,
-  };
-}
-
-describe("conflict-tracker", () => {
-  it("buildConflictMap returns entries with dialectic info", () => {
-    const conflicts = [makeConflict()];
-    const map = buildConflictMap(conflicts);
-    expect(map).toHaveLength(1);
-    expect(map[0]!.id).toBe("conflict-1");
-    expect(map[0]!.dialectic?.rank).toBe("primary");
-    expect(map[0]!.dialectic?.sides).toEqual(["凡人", "仙道"]);
-    expect(map[0]!.lastAdvancedChapter).toBe(5);
-  });
-
-  it("detectMainConflictDrift returns null when within threshold", () => {
-    const result = detectMainConflictDrift([makeConflict()], 8, 5);
-    expect(result).toBeNull();
-  });
-
-  it("detectMainConflictDrift detects drift when stalled >= threshold", () => {
-    const result = detectMainConflictDrift([makeConflict()], 12, 5);
-    expect(result).not.toBeNull();
-    expect(result!.stalledChapters).toBe(7);
-    expect(result!.conflictId).toBe("conflict-1");
-  });
-
-  it("detectMainConflictDrift ignores resolved conflicts", () => {
-    const resolved = makeConflict({ resolutionState: "resolved" });
-    const result = detectMainConflictDrift([resolved], 20, 5);
-    expect(result).toBeNull();
-  });
-});
 
 describe("character-arc-tracker", () => {
   const baseArc: CharacterArc = {

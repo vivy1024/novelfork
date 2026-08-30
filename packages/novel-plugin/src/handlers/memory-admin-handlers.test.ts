@@ -254,6 +254,23 @@ describe("memory admin handlers", () => {
     expect(reread.data.entry.status).toBe("pending");
   });
 
+  it("strictly validates event source and required fields on update", async () => {
+    const { handleMemoryUpdate, handleMemoryReadEntry } = await import("./memory-admin-handlers.js");
+
+    const badSource = await handleMemoryUpdate({ bookId: "book-1", kind: "event", id: "event-1", reason: "非法来源", patch: { source: "ai" } });
+    const nullSubject = await handleMemoryUpdate({ bookId: "book-1", kind: "event", id: "event-1", reason: "清空主体", patch: { subject: null } });
+    const emptyEvidence = await handleMemoryUpdate({ bookId: "book-1", kind: "event", id: "event-1", reason: "清空证据", patch: { evidenceText: "   " } });
+    const valid = await handleMemoryUpdate({ bookId: "book-1", kind: "event", id: "event-1", reason: "改为导入来源", patch: { source: "import", object: "催熟灵药" } });
+    const reread = await handleMemoryReadEntry({ bookId: "book-1", kind: "event", id: "event-1" });
+
+    expect(badSource.ok).toBe(false);
+    expect(nullSubject.ok).toBe(false);
+    expect(emptyEvidence.ok).toBe(false);
+    expect(valid.ok).toBe(true);
+    if (!reread.ok) return;
+    expect(reread.data.entry).toMatchObject({ source: "import", object: "催熟灵药", status: "pending" });
+  });
+
   it("deletes fact and event entries with a required reason", async () => {
     const { handleMemoryDelete, handleMemoryReadEntry } = await import("./memory-admin-handlers.js");
 
@@ -290,6 +307,21 @@ describe("memory admin handlers", () => {
     if (!byIds.ok) return;
     expect(byIds.data.approved).toEqual([expect.objectContaining({ id: "event-1" })]);
     expect(byIds.data.skipped).toHaveLength(0);
+  });
+
+  it("does not swallow pending events during bulk approve", async () => {
+    const { handleMemoryBulkApprove, handleMemoryReadEntry } = await import("./memory-admin-handlers.js");
+    insertNarrativeFact(activeStorage!, fact({ id: "manual-lock", subject: "墨大夫", predicate: "状态", object: "盟友", category: "character_state", sourceType: "manual", sourceChapter: 1 }));
+    insertNarrativeEvent(activeStorage!, event({ id: "event-high", subject: "墨大夫", predicate: "状态", object: "敌对", eventType: "character_state_changed", source: "settle", riskLevel: "low" }));
+
+    const result = await handleMemoryBulkApprove({ bookId: "book-1", eventIds: ["event-high"], reason: "批量确认" });
+    const reread = await handleMemoryReadEntry({ bookId: "book-1", kind: "event", id: "event-high" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || !reread.ok) return;
+    expect(result.data.approved).toHaveLength(0);
+    expect(result.data.pending).toEqual([expect.objectContaining({ id: "event-high" })]);
+    expect(reread.data.entry.status).toBe("pending");
   });
 
   it("bulk deletes only explicitly filtered facts or events", async () => {

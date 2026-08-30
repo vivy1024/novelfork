@@ -137,12 +137,6 @@ export function useIdeCommands(options: IdeCommandOptions): PaletteCommand[] {
         execute: () => options.switchView("tools"),
       },
       {
-        id: "tools.foreshadowing",
-        label: "打开: 伏笔看板",
-        category: "工具",
-        execute: () => options.switchView("tools"),
-      },
-      {
         id: "view.write",
         label: "显示: 写作",
         category: "视图",

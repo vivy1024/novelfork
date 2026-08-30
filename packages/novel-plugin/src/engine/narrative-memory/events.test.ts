@@ -61,6 +61,36 @@ describe("Narrative events", () => {
     expect(event.createdAt).toBe("2026-06-22T00:00:00.000Z");
   });
 
+  it("does not collide when long event fields share the first 48 characters", () => {
+    const commonPrefix = "非常长的事件主体".repeat(8);
+    const first = createNarrativeEvent({
+      bookId: "book-1",
+      chapterNumber: 12,
+      eventType: "timeline_advanced",
+      subject: `${commonPrefix}甲`,
+      predicate: "推进到",
+      object: "药园试探",
+      evidenceText: "证据一",
+      confidence: 0.9,
+      layer: "dynamic",
+      source: "settle",
+    });
+    const second = createNarrativeEvent({
+      bookId: "book-1",
+      chapterNumber: 12,
+      eventType: "timeline_advanced",
+      subject: `${commonPrefix}乙`,
+      predicate: "推进到",
+      object: "药园试探",
+      evidenceText: "证据二",
+      confidence: 0.9,
+      layer: "dynamic",
+      source: "settle",
+    });
+
+    expect(first.id).not.toBe(second.id);
+  });
+
   it("persists narrative events into the event log", async () => {
     const storage = await createStorage();
     try {

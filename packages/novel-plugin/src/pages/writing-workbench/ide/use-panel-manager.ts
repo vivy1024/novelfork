@@ -45,25 +45,27 @@ export interface UsePanelManagerReturn {
   ready: boolean;
 }
 
-export function usePanelManager(initial: ViewId = "explorer"): UsePanelManagerReturn {
+export function usePanelManager(initial: ViewId = "explorer", layoutKey = "split"): UsePanelManagerReturn {
   const hostRef = useRef<HTMLDivElement>(null);
   const managerRef = useRef<PanelManager | null>(null);
   const [activeView, setActiveView] = useState<ViewId>(initial);
   const [ready, setReady] = useState(false);
+  const activeViewRef = useRef(activeView);
+  activeViewRef.current = activeView;
 
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
     const manager = new PanelManager(host, VIEW_IDS);
-    manager.show(initial);
+    manager.show(activeViewRef.current);
     managerRef.current = manager;
-    setReady(true); // trigger re-render so portals can mount
+    setReady(true);
     return () => {
       manager.dispose();
       managerRef.current = null;
       setReady(false);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [layoutKey]);
 
   const showPanel = useCallback((id: ViewId) => {
     managerRef.current?.show(id);

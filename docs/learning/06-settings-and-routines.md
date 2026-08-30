@@ -71,7 +71,7 @@ routes:
 ```json
 {
   "commandId": "/novel:write-next",
-  "steps": ["cockpit.snapshot", "pgi.ask", "AskUserQuestion", "scene.spec", "pipeline.write"]
+  "steps": ["cockpit.snapshot", "AskUserQuestion", "scene.spec", "pipeline.write"]
 }
 ```
 

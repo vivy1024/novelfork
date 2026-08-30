@@ -10,7 +10,6 @@ import { MemoryGraphCard } from "./MemoryGraphCard";
 import { MemoryReadCard } from "./MemoryReadCard";
 import { NarrativeLineCard } from "./NarrativeLineCard";
 import { OutlineVolumeCard } from "./OutlineVolumeCard";
-import { PgiCard } from "./PgiCard";
 import { PipelineChapterResultCard } from "./PipelineChapterResultCard";
 import { PublishReadinessCard } from "./PublishReadinessCard";
 import { QuestionnaireCard } from "./QuestionnaireCard";
@@ -24,7 +23,6 @@ const customRenderers = new Map<string, ToolResultRenderer>();
 export const RESERVED_TOOL_RESULT_RENDERERS = [
   "cockpit",
   "questionnaire",
-  "pgi",
   "guided",
   "narrative",
   "workflow",
@@ -43,7 +41,6 @@ export const RESERVED_TOOL_RESULT_RENDERERS = [
 const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number], ToolResultRenderer> = {
   cockpit: CockpitSnapshotCard,
   questionnaire: QuestionnaireCard,
-  pgi: PgiCard,
   guided: GuidedPlanCard,
   narrative: NarrativeLineCard,
   workflow: WorkflowProgressRenderer,
@@ -63,9 +60,6 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   cockpit: "cockpit",
   "cockpit.snapshot": "cockpit",
   questionnaire: "questionnaire",
-  pgi: "pgi",
-  // pgi.ask 工具声明的 renderer 就是 "pgi.ask"，此前解析表只认 "pgi" 导致静默退回 generic。
-  "pgi.ask": "pgi",
   guided: "guided",
   narrative: "narrative",
   // narrative.read_line 声明 renderer="narrative.line"，同样此前未登记。

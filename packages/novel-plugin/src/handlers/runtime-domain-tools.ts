@@ -42,8 +42,13 @@ export interface TrustedRuntimeBookBinding {
   readonly root: string;
 }
 
-function fail(error: string, summary: string): RuntimeToolResult {
-  return { ok: false, error, summary };
+function fail(error: string, summary: string, data?: unknown): RuntimeToolResult {
+  return {
+    ok: false,
+    error,
+    summary,
+    ...(data === undefined ? {} : { data: JSON.parse(JSON.stringify(data)) }),
+  };
 }
 
 function ok(summary: string, data?: unknown): RuntimeToolResult {
@@ -480,6 +485,23 @@ async function arcCharacter(
   return ok(result.summary, result);
 }
 
+async function publishExport(
+  input: Readonly<Record<string, unknown>>,
+  binding: TrustedRuntimeBookBinding,
+): Promise<RuntimeToolResult> {
+  const { handlePublishExport } = await import("./publish-export.js");
+  const result = await handlePublishExport({
+    bookId: binding.bookId,
+    bookRoot: binding.root,
+    ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
+    ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
+    ...(typeof input.includeAdvice === "boolean" ? { includeAdvice: input.includeAdvice } : {}),
+    ...(typeof input.platform === "string" ? { platform: input.platform } : {}),
+  });
+  if (!result.ok) return fail(result.error ?? "publish-export-failed", result.summary);
+  return ok(result.summary, result);
+}
+
 async function publishCheck(
   input: Readonly<Record<string, unknown>>,
   binding: TrustedRuntimeBookBinding,
@@ -719,8 +741,20 @@ async function pipelineWrite(
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
   const sceneSpec = record(input.sceneSpec) as SceneSpec | undefined;
-  if (!sceneSpec) return fail("invalid-input", "sceneSpec 必填。");
-  if (typeof input.content !== "string" || !input.content.trim()) return fail("content-required", "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。");
+  if (!sceneSpec) {
+    return fail("invalid-input", "sceneSpec 必填。", {
+      ok: false,
+      code: "invalid-input",
+      error: "sceneSpec 必填。",
+    });
+  }
+  if (typeof input.content !== "string" || !input.content.trim()) {
+    return fail("content-required", "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。", {
+      ok: false,
+      code: "content-required",
+      error: "pipeline.write 必须接收当前 Runtime Agent 已完成的正文 content；工具不会在内部生成正文。",
+    });
+  }
   context.emitOutput?.("正在校验并保存 Runtime Agent 提交的章节正文…");
   // 章后叙事记忆结算的 LLM 抽取器：用 host 的 generateText 能力构造，缺省时回退规则兜底。
   const llmExtractor = context.generateText ? createRuntimeChapterEventExtractor(context.generateText) : undefined;
@@ -743,6 +777,10 @@ async function pipelineWrite(
       ...(context.loadedSkills ? { loadedSkills: context.loadedSkills } : {}),
       ...(typeof input.requireFactCheckPass === "boolean" ? { requireFactCheckPass: input.requireFactCheckPass } : {}),
       ...(typeof input.factCheckAutoRevise === "boolean" ? { factCheckAutoRevise: input.factCheckAutoRevise } : {}),
+      ...(typeof input.expectedHash === "string" ? { expectedHash: input.expectedHash } : {}),
+      ...(typeof input.expectedVersion === "number" ? { expectedVersion: input.expectedVersion } : {}),
+      ...(typeof input.expectedChapterHash === "string" ? { expectedChapterHash: input.expectedChapterHash } : {}),
+      ...(typeof input.expectedChapterVersion === "number" ? { expectedChapterVersion: input.expectedChapterVersion } : {}),
     },
     {
       // root 是项目根（books/ 的父目录），bookRoot 才是这本书的目录。
@@ -756,40 +794,52 @@ async function pipelineWrite(
       dispatchToolCall: createSettlementDispatcher(binding, context),
     },
   );
-  if (!result.ok) return fail(result.code, result.error);
-  const settlementSummary = result.narrativeSettlement
-    ? ` Narrative Memory：抽取 ${result.narrativeSettlement.extracted} 条，自动沉淀 ${result.narrativeSettlement.autoApplied} 条，pending ${result.narrativeSettlement.pending} 条。`
-    : result.settlementDispatch && !result.settlementDispatch.ok
-      ? ` 章后结算未完成（${result.settlementDispatch.toolName}）：正文已保存，需重试结算。`
+  if (!result.ok) {
+    return fail(result.code, result.error, {
+      ok: false,
+      code: result.code,
+      error: result.error,
+      ...(result.summary ? { summary: result.summary } : {}),
+      ...(result.explanation ? { explanation: result.explanation } : {}),
+    });
+  }
+  const settlementFailed = result.settlementDispatch !== undefined && !result.settlementDispatch.ok;
+  const settlementSummary = settlementFailed
+    ? ` 章后结算未完成（${result.settlementDispatch.toolName}）：正文已保存，需重试结算。`
+    : result.narrativeSettlement
+      ? ` Narrative Memory：抽取 ${result.narrativeSettlement.extracted} 条，自动沉淀 ${result.narrativeSettlement.autoApplied} 条，pending ${result.narrativeSettlement.pending} 条。`
       : "";
   const auditCat = result.auditIssueCategories;
   const auditSummary = auditCat
     ? ` critical=${auditCat.critical} warning=${auditCat.warning}`
     : "";
-  return ok(
-    `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : ""}`,
-    {
-      chapterNumber: result.chapterNumber,
-      title: result.title,
-      wordCount: result.wordCount,
-      auditPassed: result.auditResult.passed,
-      auditIssueCategories: result.auditIssueCategories,
-      factCheckRevised: result.factCheckRevised,
-      factCheckRound: result.factCheckRound,
-      revised: result.revised,
-      chapterId: result.chapterId,
-      narrativeSettlement: result.narrativeSettlement,
-      settlementDispatch: result.settlementDispatch,
-      highRiskPendingReminder: result.highRiskPendingReminder,
-      publishHint: result.publishHint,
-      needsHumanReview: result.needsHumanReview,
-      settlementError: result.settlementError,
-      // 上下文来源与真实阶段：让作者在结果卡里核对本章读了什么、管线走过哪几步。
-      contextSources: result.contextSources,
-      pipelineStages: result.pipelineStages,
-      artifact: result.artifact,
-    },
-  );
+  const resultData = {
+    saved: true,
+    chapterNumber: result.chapterNumber,
+    title: result.title,
+    wordCount: result.wordCount,
+    auditPassed: result.auditResult.passed,
+    auditIssueCategories: result.auditIssueCategories,
+    factCheckRevised: result.factCheckRevised,
+    factCheckRound: result.factCheckRound,
+    revised: result.revised,
+    chapterId: result.chapterId,
+    narrativeSettlement: result.narrativeSettlement,
+    settlementDispatch: result.settlementDispatch,
+    highRiskPendingReminder: result.highRiskPendingReminder,
+    publishHint: result.publishHint,
+    needsHumanReview: result.needsHumanReview,
+    settlementError: result.settlementError,
+    // 上下文来源与真实阶段：让作者在结果卡里核对本章读了什么、管线走过哪几步。
+    contextSources: result.contextSources,
+    pipelineStages: result.pipelineStages,
+    artifact: result.artifact,
+    ...(settlementFailed ? { code: "settlement-pending", needsSettlementRetry: true } : {}),
+  };
+  const summary = `第${result.chapterNumber}章「${result.title}」生成完成（${result.wordCount}字）。审计：${result.auditResult.passed ? "通过" : "未通过"}${auditSummary}${result.revised ? "，已自动修订" : ""}。${settlementSummary}${result.highRiskPendingReminder ? `\n${result.highRiskPendingReminder}` : ""}`;
+  return settlementFailed
+    ? fail("settlement-pending", summary, resultData)
+    : ok(summary, resultData);
 }
 
 /**
@@ -837,6 +887,9 @@ export async function executeRuntimeDomainTool(
     case "publish_check":
     case "publish.check":
       return publishCheck(input, binding);
+    case "publish_export":
+    case "publish.export":
+      return publishExport(input, binding);
     case "character_check_consistency":
     case "character.check_consistency":
       return characterConsistency(input, binding);

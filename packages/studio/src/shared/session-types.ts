@@ -344,7 +344,6 @@ export interface ToolCall {
   artifact?: AgentNativeToolMetadata["artifact"];
   confirmation?: AgentNativeToolMetadata["confirmation"];
   guided?: AgentNativeToolMetadata["guided"];
-  pgi?: AgentNativeToolMetadata["pgi"];
   narrative?: AgentNativeToolMetadata["narrative"];
   allowed?: boolean;
   confirmationRequired?: boolean;

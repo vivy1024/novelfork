@@ -37,7 +37,6 @@ const CANONICAL_READY_TOOL_NAMES = [
   "memory.settle_range",
   "memory.settle_chapter",
   "chapter.discard_range",
-  "pgi.ask",
   "narrative.read_line",
   "narrative.propose_change",
   "narrative.approve_change",
@@ -81,6 +80,9 @@ const CANONICAL_READY_TOOL_NAMES = [
   "scene.spec",
   "jingwei.read",
   "resource.manage",
+  "market.scan",
+  "market.query",
+  "market.sample_public_chapters",
 ];
 
 const READY_TOOL_NAMES = CANONICAL_READY_TOOL_NAMES.map(toRuntimeToolName);
@@ -465,14 +467,6 @@ RUNTIME_WRITING_SKILL_MARKER
 			);
 			expect(loreReadResult.isError).toBe(false);
 			expect(loreReadResult.output).toContain("wire alias lore");
-
-			const pgiResult = await adapter.execute(
-				"pgi.ask",
-				{ chapterNumber: 1, chapterIntent: "主角进入山门" },
-				"narrator-a",
-			);
-			expect(pgiResult.isError).toBe(false);
-			expect(JSON.parse(pgiResult.output)).toMatchObject({ ok: true });
 
 			// Writing Skills 的内容权威源是 SKILL.md 文件；这里只验证可信绑定下的
 			// 书籍级启用读写闭环，不再有第二套 Preset/Beat 存储。

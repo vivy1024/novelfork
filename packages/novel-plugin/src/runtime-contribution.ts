@@ -41,12 +41,14 @@ import {
   handleMemorySearch,
   handleMemoryStats,
   handleMemoryUpdate,
-  handlePgiAsk,
   handleWritingSkillsCheckCompliance,
   handleWritingSkillsImportLegacy,
   handleWritingSkillsRead,
   handleWritingSkillsRecommend,
   handleWritingSkillsWrite,
+  handleMarketQuery,
+  handleMarketSamplePublicChapters,
+  handleMarketScan,
   type CockpitState,
   type NarrativeLineState,
 } from "./handlers/index.js";
@@ -137,7 +139,10 @@ type CustomReadyRuntimeToolName =
   | "hooks.manage"
   | "pipeline.write"
   | "memory.settle_range"
-  | "memory.settle_chapter";
+  | "memory.settle_chapter"
+  | "market.scan"
+  | "market.query"
+  | "market.sample_public_chapters";
 type LegacyReadHandler = (input: Record<string, unknown>) => Promise<unknown> | unknown;
 
 /** The Runtime schema validates model input; this adapter adds only trusted binding fields for legacy handlers. */
@@ -166,7 +171,6 @@ const READY_LEGACY_HANDLERS: Readonly<Record<Exclude<ReadyRuntimeToolName, Custo
   "jingwei.audit": bridgeLegacyHandler(handleJingweiAudit),
   "jingwei.write": bridgeLegacyHandler(handleJingweiWrite),
   "jingwei.read": bridgeLegacyHandler(handleJingweiRead),
-  "pgi.ask": bridgeLegacyHandler(handlePgiAsk),
 };
 
 function fail(error: string, summary: string): RuntimeToolResult {
@@ -332,11 +336,56 @@ function toRuntimeToolResult(result: unknown): RuntimeToolResult {
   }
 }
 
+function isMarketTool(name: string): boolean {
+  return matchesToolName(name, "market.scan")
+    || matchesToolName(name, "market.query")
+    || matchesToolName(name, "market.sample_public_chapters");
+}
+
+async function executeMarketTool(
+  tool: NovelRuntimeToolCatalogEntry,
+  input: Readonly<Record<string, unknown>>,
+): Promise<RuntimeToolResult> {
+  if (containsHostControlledField(input)) {
+    return fail("forged-host-field", "bookId、sessionId 和 bookRoot 只能由可信宿主绑定，不能由模型提供。");
+  }
+  try {
+    if (matchesToolName(tool.name, "market.scan")) {
+      return toRuntimeToolResult(await handleMarketScan({
+        ...(typeof input.platform === "string" ? { platform: input.platform as "qidian" | "fanqie" | "all" } : {}),
+        ...(Array.isArray(input.rankTypes) ? { rankTypes: input.rankTypes.filter((item): item is string => typeof item === "string") } : {}),
+        ...(typeof input.maxPages === "number" ? { maxPages: input.maxPages } : {}),
+      }));
+    }
+    if (matchesToolName(tool.name, "market.query")) {
+      return toRuntimeToolResult(await handleMarketQuery({
+        ...(typeof input.platform === "string" ? { platform: input.platform as "qidian" | "fanqie" } : {}),
+        ...(typeof input.rankType === "string" ? { rankType: input.rankType } : {}),
+        ...(typeof input.fromDate === "string" ? { fromDate: input.fromDate } : {}),
+        ...(typeof input.toDate === "string" ? { toDate: input.toDate } : {}),
+        ...(typeof input.analyze === "boolean" ? { analyze: input.analyze } : {}),
+      }));
+    }
+    if (typeof input.fanqieBookId !== "string" || !input.fanqieBookId.trim()) {
+      return fail("invalid-input", "market.sample_public_chapters 需要番茄公开书籍 fanqieBookId。");
+    }
+    return toRuntimeToolResult(await handleMarketSamplePublicChapters({
+      fanqieBookId: input.fanqieBookId,
+      ...(typeof input.maxChapters === "number" ? { maxChapters: input.maxChapters } : {}),
+    }));
+  } catch (error) {
+    return fail("handler-failed", `市场工具执行失败：${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 async function executeReadyToolImpl(
   tool: NovelRuntimeToolCatalogEntry,
   input: Readonly<Record<string, unknown>>,
   context: ToolExecutionContext,
 ): Promise<RuntimeToolResult> {
+  if (isMarketTool(tool.name)) {
+    return executeMarketTool(tool, input);
+  }
   const binding = trustedBookBinding(context);
   if (!binding) {
     return fail("missing-resource-binding", "缺少可信的 novel.book 资源绑定，拒绝执行小说工具。");

@@ -130,7 +130,6 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     id: "tool-group:progress",
     title: "📈 进度类",
     tools: [
-      { id: "tool:health", title: "全书健康", toolPanel: "health" },
       // F1 张力曲线复活：孤儿组件挂回工具树，答「节奏是否崩了」。
       { id: "tool:tension", title: "张力曲线", toolPanel: "tension" },
     ],
@@ -149,7 +148,7 @@ const TOOL_GROUPS: ToolGroupDef[] = [
     title: "📐 结构类",
     tools: [
       { id: "tool:arcs", title: "角色弧线", toolPanel: "arcs" },
-      // 伏笔看板已收敛到「故事推进」侧栏唯一入口，不再作为工具面板条目重复出现。
+      // 伏笔不在工具区：唯一入口在「故事推进」侧栏就地渲染的伏笔账本，不做跨面板跳转。
       { id: "tool:runtime", title: "状态总览", toolPanel: "runtime" },
       { id: "tool:governance", title: "叙事治理", toolPanel: "governance" },
     ],

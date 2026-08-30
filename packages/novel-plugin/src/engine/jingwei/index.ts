@@ -25,7 +25,7 @@ export { composeJingweiContext, formatJingweiContextItem, type ComposableJingwei
 export { resolveNestedRefs, type NestedRefEntry, type ResolveNestedRefsOptions } from "./context/nested-resolver.js";
 export { formatJingweiContextForPrompt, mergeJingweiContextWithExternalContext } from "./context/pipeline-bridge.js";
 export { formatDescriptor, hasDescriptorContent, safeParseDescriptor } from "./context/format-descriptor.js";
-export { detectStalledConflict, detectStalledConflicts, getStalledConflicts, type StalledConflictWarning } from "./context/stalled-detector.js";
+
 export { applyTokenBudget, estimateTokens, sortByContextPriority, type BudgetedJingweiContextItem, type TokenBudgetResult } from "./context/token-budget.js";
 export { filterEntriesVisibleAtChapter, getVisibilityRule, isVisibleAtChapter, parseVisibilityRule, type VisibilityRuleEntry } from "./context/visibility-filter.js";
 
@@ -33,22 +33,11 @@ export { filterEntriesVisibleAtChapter, getVisibilityRule, isVisibleAtChapter, p
 export { acceptCoreShift, proposeCoreShift, rejectCoreShift, type ProposeCoreShiftInput } from "./core-shift/core-shift-service.js";
 export { analyzeCoreShiftImpact, type AnalyzeCoreShiftImpactInput, type CoreShiftImpactAnalysis } from "./core-shift/impact-analysis.js";
 
-// Questionnaires
-export { suggestQuestionnaireAnswer, type SuggestQuestionnaireAnswerInput, type SuggestQuestionnaireAnswerResult } from "./questionnaires/ai-suggest.js";
-export { applyQuestionnaireMappings, type QuestionnaireAnswers } from "./questionnaires/apply-mapping.js";
-export { createRatifyQuestionnaireForChapter, type RatifyCandidate, type RatifyQuestionnaire } from "./questionnaires/ratify-questionnaire.js";
-export { loadBuiltinQuestionnaireTemplates, seedQuestionnaireTemplates, type SeedQuestionnaireTemplatesResult } from "./questionnaires/seed/index.js";
-export { submitQuestionnaireResponse, type SubmitQuestionnaireResponseInput, type SubmitQuestionnaireResponseResult } from "./questionnaires/submit-response.js";
-export { validateQuestionnaireTemplate } from "./questionnaires/template-validator.js";
-
 // Long-novel coherence
 export { buildChangeExtractionPrompt, applyChapterChanges, type ChapterChange } from "./context/auto-update.js";
 export { buildChapterBriefing } from "./context/chapter-briefing.js";
 export { updateCausalChainUrgency, createCausalChain, progressCausalChain, type CausalChain, type CausalChainStatus, type CausalChainUrgency } from "./context/causal-chains.js";
 export { updateCharacterLifecycles } from "./context/lifecycle-manager.js";
-
-// PGI
-export { generatePGIQuestions, formatPGIAnswersForPrompt, type GeneratePGIQuestionsInput, type GeneratePGIQuestionsResult, type PGIQuestion } from "./pgi/pgi-engine.js";
 
 // Preset reflection
 export { buildPresetReflectionPrompt, parsePresetSuggestions, type PresetSuggestion } from "./context/preset-reflection.js";
@@ -66,8 +55,6 @@ export { createJingweiConflictRepository } from "./repositories/conflict-repo.js
 export { createCoreShiftRepository } from "./repositories/core-shift-repo.js";
 export { createJingweiEventRepository } from "./repositories/event-repo.js";
 export { createJingweiPremiseRepository } from "./repositories/premise-repo.js";
-export { createQuestionnaireResponseRepository } from "./repositories/questionnaire-response-repo.js";
-export { createQuestionnaireTemplateRepository } from "./repositories/questionnaire-template-repo.js";
 export { createJingweiSettingRepository } from "./repositories/setting-repo.js";
 export { createJingweiWorldModelRepository } from "./repositories/world-model-repo.js";
 export { createJingweiChapterSummaryRepository } from "./repositories/chapter-summary-repo.js";

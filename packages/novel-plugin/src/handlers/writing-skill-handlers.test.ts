@@ -242,4 +242,48 @@ mode: manual
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it("check_compliance 不把人设卡 required-terms 当成正文必现词", async () => {
+    const root = await mkdtemp(join(tmpdir(), "novelfork-compliance-persona-"));
+    const home = join(root, "home");
+    const bookRoot = join(root, "book");
+    const bookId = "book-compliance-persona";
+    try {
+      await mkdir(join(home, ".novelfork", "skills", "persona-card"), { recursive: true });
+      await writeFile(
+        join(home, ".novelfork", "skills", "persona-card", "SKILL.md"),
+        `---
+id: persona-card
+name: 人物一致性守则
+description: 人设卡检查
+kind: character
+mode: manual
+checks:
+  - type: required-terms
+    target: card
+    terms: ["理智", "温和", "独立", "乐观", "诚实"]
+    message: 人物基线字段检查针对经纬人设卡，不是正文。
+---
+
+# 人物一致性守则
+`,
+        "utf8",
+      );
+      await setupBook(bookRoot, bookId, { title: "人设词不扫正文" });
+      await handleWritingSkillsWrite(
+        { bookId, addSkillIds: ["persona-card"] },
+        { bookRoot, home },
+      );
+
+      const result = await handleWritingSkillsCheckCompliance(
+        { bookId, content: "薛行之把鼻血擦掉，继续看那条波形。" },
+        { bookRoot, home },
+      );
+      expect(result.ok).toBe(true);
+      const violations = (result.data as { violations: Array<{ rule: string; violation: string }> }).violations;
+      expect(violations.some((item) => item.rule.includes("理智") || item.violation.includes("理智"))).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });

@@ -2,6 +2,7 @@ packages:
   - "packages/*"
   - "!packages/desktop"
   - "!packages/narrafork-runtime-private"
+  - "!packages/narrafork-runtime-overlay"
 
 onlyBuiltDependencies:
   - better-sqlite3

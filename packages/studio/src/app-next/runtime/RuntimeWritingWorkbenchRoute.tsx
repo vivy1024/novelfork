@@ -186,15 +186,40 @@ export function RuntimeWritingWorkbenchRoute({
   const [loading, setLoading] = useState(true);
   const [creatingSession, setCreatingSession] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const reloadGenerationRef = useRef(0);
+  const reloadAbortRef = useRef<AbortController | null>(null);
+  const probeGenerationRef = useRef(0);
+  const probeAbortRef = useRef<AbortController | null>(null);
+  const latestChapterFingerprintRef = useRef<string | null>(null);
+  const actionGenerationRef = useRef(0);
+  const actionControllersRef = useRef(new Set<AbortController>());
+  const currentBookIdRef = useRef(bookId);
+  currentBookIdRef.current = bookId;
+
+  const abortActions = useCallback(() => {
+    actionGenerationRef.current += 1;
+    for (const controller of actionControllersRef.current) controller.abort();
+    actionControllersRef.current.clear();
+  }, []);
+
+  useEffect(() => abortActions, [abortActions, bookId]);
+  useEffect(() => {
+    setCreatingSession(false);
+  }, [bookId]);
 
   const reload = useCallback(async () => {
+    const generation = ++reloadGenerationRef.current;
+    reloadAbortRef.current?.abort();
+    const controller = new AbortController();
+    reloadAbortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
       const [workspace, narrators] = await Promise.all([
-        client.getWorkspace(bookId),
-        client.listNarrators(bookId),
+        client.getWorkspace(bookId, { signal: controller.signal }),
+        client.listNarrators(bookId, { signal: controller.signal }),
       ]);
+      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return;
       const nextNodes = mapRuntimeWorkspaceToWorkbenchNodes(bookId, workspace.resources, workspace.book);
       const readableNarrators = narrators.filter((candidate) => candidate.capabilities.read === true);
       const defaultNarrator = readableNarrators.find((candidate) => candidate.status !== "archived") ?? readableNarrators[0];
@@ -217,30 +242,46 @@ export function RuntimeWritingWorkbenchRoute({
         };
         return flatten(nextNodes);
       });
+      latestChapterFingerprintRef.current = [
+        workspace.resources.length,
+        ...workspace.resources.slice(-3).map((r) => `${r.id}:${typeof r.metadata?.updatedAt === "string" ? r.metadata.updatedAt : ""}`),
+      ].join("|");
     } catch (cause) {
+      if (controller.signal.aborted || generation !== reloadGenerationRef.current) return;
       setNodes([]);
       setNarrators([]);
       setActiveNarratorId(null);
       setSelectedNode(null);
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setLoading(false);
+      if (generation === reloadGenerationRef.current && reloadAbortRef.current === controller) {
+        reloadAbortRef.current = null;
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
   }, [bookId, client]);
 
   useEffect(() => {
+    latestChapterFingerprintRef.current = null;
     void reload();
+    return () => {
+      reloadGenerationRef.current += 1;
+      reloadAbortRef.current?.abort();
+    };
   }, [reload]);
 
   // ── 写作完成后自动刷新（免 F5）────────────────────────────────
   // pipeline.write / chapter.write / rewrite.apply 等落盘动作在 Runtime 侧
   // 完成后，前端没有事件推送，只能靠轮询感知。这里用「tab 可见 + 轻量探测」：
   // 每 5 秒查一次最新章号/资源指纹，有变化才触发完整 reload，避免无谓开销。
-  const latestChapterFingerprintRef = useRef<string | null>(null);
-
   const probeWorkspaceChange = useCallback(async () => {
+    const generation = ++probeGenerationRef.current;
+    probeAbortRef.current?.abort();
+    const controller = new AbortController();
+    probeAbortRef.current = controller;
     try {
-      const workspace = await client.getWorkspace(bookId);
+      const workspace = await client.getWorkspace(bookId, { signal: controller.signal });
+      if (controller.signal.aborted || generation !== probeGenerationRef.current) return;
       // updatedAt 在服务端载荷的 metadata 里（见 book-provision toWorkspaceWritingResource），不在资源顶层。
       const fingerprint = [
         workspace.resources.length,
@@ -256,6 +297,8 @@ export function RuntimeWritingWorkbenchRoute({
       }
     } catch {
       // 探测失败静默跳过——下一轮再试，不影响主流程。
+    } finally {
+      if (probeAbortRef.current === controller) probeAbortRef.current = null;
     }
   }, [bookId, client, reload]);
 
@@ -263,50 +306,86 @@ export function RuntimeWritingWorkbenchRoute({
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") void probeWorkspaceChange();
     }, 5_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      window.clearInterval(interval);
+      probeGenerationRef.current += 1;
+      probeAbortRef.current?.abort();
+    };
   }, [probeWorkspaceChange]);
 
   const handleSave = useCallback(async (node: WorkbenchResourceNode, content: string) => {
     if (!node.capabilities.edit) throw new Error("此 Runtime 资源不可编辑");
-    const result = await client.saveWorkspaceResource(bookId, node.id, content);
-    const saved = toNode(bookId, result.resource);
-    setNodes((current) => replaceNode(current, saved));
-    setSelectedNode((current) => current?.id === saved.id ? saved : current);
+    const generation = actionGenerationRef.current;
+    const controller = new AbortController();
+    actionControllersRef.current.add(controller);
+    try {
+      const result = await client.saveWorkspaceResource(bookId, node.id, content, { signal: controller.signal });
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
+      const saved = toNode(bookId, result.resource);
+      setNodes((current) => replaceNode(current, saved));
+      setSelectedNode((current) => current?.id === saved.id ? saved : current);
+    } finally {
+      actionControllersRef.current.delete(controller);
+    }
   }, [bookId, client]);
 
   const handleCreateSession = useCallback(async () => {
     if (creatingSession) return;
+    const generation = actionGenerationRef.current;
+    const controller = new AbortController();
+    actionControllersRef.current.add(controller);
     setCreatingSession(true);
     setError(null);
     try {
-      const created = await client.createNarrator(bookId, { title: "新建对话" });
+      const created = await client.createNarrator(bookId, { title: "新建对话" }, { signal: controller.signal });
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
       setNarrators((current) => [
         ...current.filter((candidate) => candidate.id !== created.id),
         created,
       ]);
       setActiveNarratorId(created.id);
-      await onChanged?.();
+      if (generation === actionGenerationRef.current && currentBookIdRef.current === bookId) {
+        await onChanged?.();
+      }
     } catch (cause) {
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
       setError(cause instanceof Error ? cause.message : String(cause));
     } finally {
-      setCreatingSession(false);
+      actionControllersRef.current.delete(controller);
+      if (generation === actionGenerationRef.current && currentBookIdRef.current === bookId) {
+        setCreatingSession(false);
+      }
     }
   }, [bookId, client, creatingSession, onChanged]);
 
   const activeNarrator = narrators.find((candidate) => candidate.id === activeNarratorId) ?? null;
 
   /**
-   * 写作视图的动作按钮：把已确认的写章请求交给当前叙述者。
-   * 走 Runtime 既有的 book-scoped narrator 消息契约，工具执行与权限确认仍在 Runtime 侧。
+   * 写作视图的动作按钮：把已确认的写章请求交给当前书籍已授权的叙述者。
+   * 消息发送走 Runtime 的 canonical narrator API；bookId 只用于前端绑定校验，工具执行与权限确认仍在 Runtime 侧。
    */
   const handleSendToNarrator = useCallback(async (message: string) => {
-    if (!activeNarrator) throw new Error("当前没有可用的叙述者会话。");
-    await runtimeJson(`/api/narrators/${encodeURIComponent(activeNarrator.id)}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message }),
-    });
-  }, [activeNarrator]);
+    if (!activeNarrator || activeNarrator.bookId !== bookId) {
+      throw new Error("当前没有属于此书的可用叙述者会话。");
+    }
+    const generation = actionGenerationRef.current;
+    const controller = new AbortController();
+    actionControllersRef.current.add(controller);
+    try {
+      await runtimeJson(`/api/narrators/${encodeURIComponent(activeNarrator.id)}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message }),
+        signal: controller.signal,
+      });
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
+    } catch (cause) {
+      if (controller.signal.aborted || generation !== actionGenerationRef.current || currentBookIdRef.current !== bookId) return;
+      throw cause;
+    } finally {
+      actionControllersRef.current.delete(controller);
+    }
+  }, [activeNarrator, bookId]);
 
   /**
    * 建书十一问完成 → 刷新工作台资源。

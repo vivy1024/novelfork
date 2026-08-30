@@ -79,10 +79,10 @@ const DESCRIPTORS: readonly WritingActionDescriptor[] = [
   {
     id: "session-native.write-next",
     label: "Session-native 写下一章",
-    entry: "cockpit.snapshot → pgi.ask → AskUserQuestion → pipeline.write",
+    entry: "cockpit.snapshot → AskUserQuestion → pipeline.write",
     outputBoundary: "chapter-artifact",
     writesFormalChapter: true,
-    chain: ["cockpit.snapshot", "pgi.ask", "AskUserQuestion", "pipeline.write"],
+    chain: ["cockpit.snapshot", "AskUserQuestion", "pipeline.write"],
     capability: normalizeCapability({ id: "session-native.write-next", status: "current" }),
   },
   {

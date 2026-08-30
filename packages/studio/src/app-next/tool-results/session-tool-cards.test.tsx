@@ -6,10 +6,6 @@ import { renderToolResult, resolveToolResultRendererKey } from "./registry";
 afterEach(() => cleanup());
 
 describe("renderer key 错配修正", () => {
-  it("pgi.ask 声明的 renderer 命中 PgiCard，不再退回 generic", () => {
-    expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { renderer: "pgi.ask" } })).toBe("pgi");
-  });
-
   it("narrative.read_line 声明的 renderer 命中 NarrativeLineCard", () => {
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");
   });
@@ -24,36 +20,6 @@ describe("renderer key 错配修正", () => {
 
   it("narrative.mutationPreview 仍显式走 generic（无差异预览卡）", () => {
     expect(resolveToolResultRendererKey({ toolName: "narrative.propose_change", result: { renderer: "narrative.mutationPreview" } })).toBe("generic");
-  });
-});
-
-describe("pgi.ask 追问卡", () => {
-  it("展示问题与追问理由", () => {
-    render(<>{renderToolResult({
-      toolName: "pgi.ask",
-      result: {
-        renderer: "pgi.ask",
-        data: {
-          questions: [
-            { id: "foreshadow-payoff:1", prompt: "本章是否兑现旧伤伏笔？", reason: "检测到临近回收伏笔。", options: ["兑现", "延后"] },
-          ],
-        },
-      },
-    })}</>);
-
-    expect(screen.getByTestId("tool-result-pgi")).toBeTruthy();
-    expect(screen.getByText("本章是否兑现旧伤伏笔？")).toBeTruthy();
-    expect(screen.getByText("检测到临近回收伏笔。")).toBeTruthy();
-    expect(screen.getByText("选项：兑现 / 延后")).toBeTruthy();
-  });
-
-  it("无追问时给出下一步", () => {
-    render(<>{renderToolResult({
-      toolName: "pgi.ask",
-      result: { renderer: "pgi.ask", data: { questions: [], skippedReason: "no-questions" } },
-    })}</>);
-
-    expect(screen.getByText(/本章无需追问/)).toBeTruthy();
   });
 });
 
@@ -357,7 +323,7 @@ describe("memory.events 事件流卡", () => {
 
 describe("新卡片健壮性", () => {
   it("载荷缺失时退回 generic 而不是崩", () => {
-    for (const renderer of ["scene.spec", "chapter.audit", "narrative-memory.read", "narrative-memory.graph", "narrative-memory.events", "pgi.ask", "narrative.line"]) {
+    for (const renderer of ["scene.spec", "chapter.audit", "narrative-memory.read", "narrative-memory.graph", "narrative-memory.events", "narrative.line"]) {
       cleanup();
       render(<>{renderToolResult({ toolName: renderer, result: { renderer, data: null } })}</>);
       expect(screen.getByTestId("tool-result-generic")).toBeTruthy();

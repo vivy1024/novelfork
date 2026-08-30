@@ -104,11 +104,11 @@ Windows 用户优先选择 `windows-x64.exe`；不支持 AVX2 的旧 CPU 或部�
 git clone https://github.com/vivy1024/novelfork.git
 cd novelfork
 
-# 私有 overlay 子仓库（需要仓库权限）
-git submodule update --init --recursive
-
-# 本地需已存在可运行的 Runtime 物化树：
+# Runtime 来源：先在私有 fork 合并上游，再物化到本地（需要仓库权限）
+# NarraFork/novelfork-runtime-private
+# 分支：novelfork/integration-v0.5.23
 # packages/narrafork-runtime-private/  （Git 忽略，不随 clone 提供）
+# packages/narrafork-runtime-overlay/ 仅作本地历史归档，不初始化、不参与生产链
 
 pnpm install
 pnpm dev              # 开发模式
@@ -144,7 +144,7 @@ NovelFork Studio（产品壳）
   ├─ 嵌入叙述者面板（运行时复用 Runtime 宿主）
   └─ /api · WebSocket → Runtime
 
-NarraFork Runtime（本地 ignore 物化树 + 私有 overlay 子仓库）
+NarraFork Runtime（私有 fork 合并后本地 ignore 物化树）
   ├─ Agent Loop · Provider · 权限 · 会话 · 工具 · WebSocket
   └─ Product Host SPI → 调用产品能力
 
@@ -163,8 +163,8 @@ NovelFork Product Runtime + Novel Plugin + Core
 | `packages/novelfork-product-runtime/` | 产品 Runtime 适配 | 公开跟踪 |
 | `packages/narrafork-runtime-bridge/` | 与 Runtime 的窄契约 | 公开跟踪 |
 | `packages/fitness-plugin/` | 示例插件 | 公开跟踪 |
-| `packages/narrafork-runtime-overlay/` | Runtime 适配补丁 / 嵌入面板 | **私有 submodule** |
-| `packages/narrafork-runtime-private/` | 完整可运行 Runtime 树 | **本地 ignore** |
+| `packages/narrafork-runtime-overlay/` | 旧 overlay 历史归档，不是 workspace、导入源或编译输入 | **本地 ignore** |
+| `packages/narrafork-runtime-private/` | 私有 fork 的完整可运行 Runtime 物化树（唯一生产来源） | **本地 ignore** |
 
 ### Project Structure
 
@@ -177,8 +177,8 @@ novelfork/
 │   ├── novelfork-product-runtime/
 │   ├── narrafork-runtime-bridge/
 │   ├── fitness-plugin/
-│   ├── narrafork-runtime-overlay/   # private submodule
-│   └── narrafork-runtime-private/   # local only (gitignored)
+│   ├── narrafork-runtime-overlay/   # local history archive only (gitignored)
+│   └── narrafork-runtime-private/   # fork materialization only (gitignored)
 ├── scripts/
 ├── docs/
 ├── CLAUDE.md                        # 维护者开发约定

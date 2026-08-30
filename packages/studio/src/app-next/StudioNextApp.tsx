@@ -49,6 +49,11 @@ const ScheduledTasksPageLazy = lazy(() =>
     default: m.ScheduledTasksPage,
   })),
 );
+const MarketResearchPageLazy = lazy(() =>
+  import("./market/MarketResearchPage").then((m) => ({
+    default: m.MarketResearchPage,
+  })),
+);
 const RuntimeNarratorConversationLoaderLazy = lazy(() =>
   import("./runtime/RuntimeNarratorConversationRoute").then((m) => ({
     default: m.RuntimeNarratorConversationLoader,
@@ -692,6 +697,14 @@ function RouteMountPoint({
         <LazyErrorBoundary fallbackLabel="学习中心">
           <Suspense fallback={<LazyFallback />}>
             <LearnPageLazy />
+          </Suspense>
+        </LazyErrorBoundary>
+      );
+    case "market":
+      return (
+        <LazyErrorBoundary fallbackLabel="市场研究">
+          <Suspense fallback={<LazyFallback />}>
+            <MarketResearchPageLazy />
           </Suspense>
         </LazyErrorBoundary>
       );

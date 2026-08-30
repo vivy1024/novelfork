@@ -15,6 +15,7 @@ describe("Agent Shell route parsing", () => {
     expect(parseShellRoute("/next/scheduled-tasks")).toEqual({ kind: "scheduled-tasks" });
     expect(parseShellRoute("/next/settings")).toEqual({ kind: "settings" });
     expect(parseShellRoute("/next/learn")).toEqual({ kind: "learn" });
+    expect(parseShellRoute("/next/market")).toEqual({ kind: "market" });
   });
 
   it("normalizes slashes, query strings, hashes, and encoded ids", () => {
@@ -39,6 +40,7 @@ describe("Agent Shell route parsing", () => {
     expect(toShellPath({ kind: "scheduled-tasks" })).toBe("/next/scheduled-tasks");
     expect(toShellPath({ kind: "settings" })).toBe("/next/settings");
     expect(toShellPath({ kind: "learn" })).toBe("/next/learn");
+    expect(toShellPath({ kind: "market" })).toBe("/next/market");
   });
 
   it("marks sidebar nav items active from route kind and params", () => {
@@ -48,5 +50,7 @@ describe("Agent Shell route parsing", () => {
     expect(isShellNavItemActive(items.find((item) => item.id === "narrator:s1")!, { kind: "narrator", sessionId: "s1" })).toBe(true);
     expect(isShellNavItemActive(items.find((item) => item.id === "search")!, { kind: "search" })).toBe(true);
     expect(isShellNavItemActive(items.find((item) => item.id === "routines")!, { kind: "settings" })).toBe(false);
+    expect(items.find((item) => item.id === "market")?.label).toBe("市场");
+    expect(isShellNavItemActive(items.find((item) => item.id === "market")!, { kind: "market" })).toBe(true);
   });
 });

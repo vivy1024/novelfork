@@ -69,7 +69,8 @@ export const QueryNarrativeFactsInputSchema = z.object({
   predicates: z.array(z.string()).optional(),
   layer: NarrativeFactSchema.shape.layer.optional(),
   currentChapter: positiveInteger.optional(),
-  limit: positiveInteger.max(500).optional(),
+  // limit=0 is an internal full-scan mode used by ledger reconciliation.
+  limit: z.number().int().min(0).max(500).optional(),
 });
 export type QueryNarrativeFactsInput = Readonly<{
   bookId: string;
@@ -566,13 +567,13 @@ export function queryNarrativeFacts(storage: StorageDatabase, input: QueryNarrat
     params.push(visibleChapter, visibleChapter, visibleChapter);
   }
 
-  const limit = Math.max(1, Math.min(parsed.limit ?? 100, 500));
+  const limit = parsed.limit === 0 ? undefined : Math.max(1, Math.min(parsed.limit ?? 100, 500));
   const rows = storage.sqlite.prepare<NarrativeFactRow>(`
     ${FACT_SELECT}
     WHERE ${clauses.join(" AND ")}
     ORDER BY confidence DESC, updated_at DESC, id ASC
-    LIMIT ?
-  `).all(...params, limit);
+    ${limit === undefined ? "" : "LIMIT ?"}
+  `).all(...params, ...(limit === undefined ? [] : [limit]));
   return rows.map(factRowToRecord);
 }
 
@@ -630,6 +631,58 @@ export function updateNarrativeEventStatus(storage: StorageDatabase, input: Upda
   `).run(parsed.status, appliedAt ?? null, parsed.id);
   if (result.changes === 0) return undefined;
   const row = storage.sqlite.prepare<NarrativeEventRow>(`${EVENT_SELECT} WHERE id = ?`).get(parsed.id);
+  return row ? eventRowToRecord(row) : undefined;
+}
+
+export function getNarrativeEventById(storage: StorageDatabase, bookId: string, eventId: string): NarrativeEvent | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const row = storage.sqlite.prepare<NarrativeEventRow>(`${EVENT_SELECT} WHERE book_id = ? AND id = ?`).get(bookId, eventId);
+  return row ? eventRowToRecord(row) : undefined;
+}
+
+/**
+ * Update the editable fields of an event as one schema-validated row write.
+ * This is used by edit-approve so the persisted event stays identical to the
+ * event that is reduced into Narrative Memory facts.
+ */
+export function updateNarrativeEvent(storage: StorageDatabase, event: NarrativeEvent): NarrativeEvent | undefined {
+  ensureNarrativeMemorySchema(storage);
+  const parsed = NarrativeEventSchema.parse(event);
+  const result = storage.sqlite.prepare(`
+    UPDATE narrative_event
+    SET chapter_number = ?,
+        event_type = ?,
+        subject = ?,
+        predicate = ?,
+        object = ?,
+        evidence_text = ?,
+        confidence = ?,
+        source = ?,
+        status = ?,
+        risk_level = ?,
+        subject_entry_id = ?,
+        object_entry_id = ?,
+        applied_at = ?
+    WHERE book_id = ? AND id = ?
+  `).run(
+    parsed.chapterNumber,
+    parsed.eventType,
+    parsed.subject,
+    parsed.predicate,
+    parsed.object,
+    parsed.evidenceText,
+    parsed.confidence,
+    parsed.source,
+    parsed.status,
+    parsed.riskLevel,
+    parsed.subjectEntryId ?? null,
+    parsed.objectEntryId ?? null,
+    parsed.appliedAt ?? null,
+    parsed.bookId,
+    parsed.id,
+  );
+  if (result.changes === 0) return undefined;
+  const row = storage.sqlite.prepare<NarrativeEventRow>(`${EVENT_SELECT} WHERE book_id = ? AND id = ?`).get(parsed.bookId, parsed.id);
   return row ? eventRowToRecord(row) : undefined;
 }
 

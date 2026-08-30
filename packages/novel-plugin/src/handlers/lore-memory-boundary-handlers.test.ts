@@ -55,6 +55,8 @@ function event(input: Partial<NarrativeEvent> & Pick<NarrativeEvent, "id" | "sub
     source: input.source ?? "settle",
     status: input.status ?? "pending",
     riskLevel: input.riskLevel ?? "low",
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     appliedAt: input.appliedAt,
   };
@@ -132,6 +134,27 @@ describe("lore-memory-boundary handlers", () => {
     expect(retained?.validUntilChapter).toBeUndefined();
   });
 
+  it("persists edit-approve fields before writing the matching narrative fact", async () => {
+    const { handleMemoryEvents } = await import("./lore-memory-boundary-handlers.js");
+    insertNarrativeEvent(activeStorage!, event({ id: "e-edit", subject: "韩立", predicate: "状态", object: "谨慎", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious" }));
+
+    const result = await handleMemoryEvents({
+      bookId: "book-1",
+      action: "approve",
+      eventId: "e-edit",
+      editSubject: "韩立（伪装）",
+      editPredicate: "心理状态",
+      editObject: "更加谨慎",
+      editEvidenceText: "韩立收敛气息，决定继续隐忍。",
+    });
+
+    expect(result.ok).toBe(true);
+    const persisted = activeStorage!.sqlite.prepare(`SELECT subject, predicate, object, evidence_text AS evidenceText, subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId, status FROM narrative_event WHERE id = 'e-edit'`).get() as Record<string, unknown>;
+    expect(persisted).toMatchObject({ subject: "韩立（伪装）", predicate: "心理状态", object: "更加谨慎", evidenceText: "韩立收敛气息，决定继续隐忍。", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious", status: "applied" });
+    const written = queryNarrativeFacts(activeStorage!, { bookId: "book-1", entities: ["韩立（伪装）"] }).find((item) => item.sourceId === "e-edit");
+    expect(written).toMatchObject({ subject: "韩立（伪装）", predicate: "心理状态", object: "更加谨慎", evidenceText: "韩立收敛气息，决定继续隐忍。", subjectEntryId: "entry-hanli", objectEntryId: "entry-cautious" });
+  });
+
   it("applies trusted book retrieval settings in memory.read", async () => {
     const { handleMemoryRead } = await import("./lore-memory-boundary-handlers.js");
     const bookRoot = await createBookRoot({
@@ -175,6 +198,100 @@ describe("lore-memory-boundary handlers", () => {
     if (!result.ok) return;
     expect((result.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["e-rel"]);
     expect((result.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-rel"]);
+  });
+
+  it("filters the complete graph before applying the response page", async () => {
+    const { handleMemoryGraph } = await import("./lore-memory-boundary-handlers.js");
+    // 旧实现先取前 200 条事实/500 条事件，再按 view 过滤；这些目标记录故意排在旧上限之外。
+    for (let index = 0; index < 210; index += 1) {
+      insertNarrativeFact(activeStorage!, fact({
+        id: `noise-fact-${index}`,
+        subject: `角色-${index}`,
+        predicate: "状态",
+        object: "稳定",
+        category: "character_state",
+        confidence: 1,
+      }));
+    }
+    insertNarrativeFact(activeStorage!, fact({
+      id: "late-relationship-fact",
+      subject: "韩立",
+      predicate: "敌对",
+      object: "墨大夫",
+      category: "relationship",
+      confidence: 0.01,
+    }));
+    for (let index = 0; index < 505; index += 1) {
+      insertNarrativeEvent(activeStorage!, event({
+        id: `noise-event-${index}`,
+        eventType: "timeline_advanced",
+        subject: "时间线",
+        predicate: "推进",
+        object: `第${index + 100}章`,
+        chapterNumber: index + 100,
+      }));
+    }
+    insertNarrativeEvent(activeStorage!, event({
+      id: "late-relationship-event",
+      eventType: "relationship_changed",
+      subject: "韩立",
+      predicate: "敌对",
+      object: "墨大夫",
+      chapterNumber: 1,
+    }));
+
+    const result = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntity: "韩立" });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect((result.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["late-relationship-fact"]);
+    expect((result.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["late-relationship-event"]);
+    expect(result.data.pagination).toEqual({
+      facts: expect.objectContaining({ total: 1, returned: 1, truncated: false }),
+      events: expect.objectContaining({ total: 1, truncated: false }),
+    });
+  });
+
+  it("reports graph pagination and supports an explicit full scan", async () => {
+    const { handleMemoryGraph } = await import("./lore-memory-boundary-handlers.js");
+    for (let index = 0; index < 205; index += 1) {
+      insertNarrativeFact(activeStorage!, fact({
+        id: `paged-fact-${index}`,
+        subject: "韩立",
+        predicate: `关系-${index}`,
+        object: "墨大夫",
+        category: "relationship",
+        confidence: 0.5,
+      }));
+      insertNarrativeEvent(activeStorage!, event({
+        id: `paged-event-${index}`,
+        eventType: "relationship_changed",
+        subject: "韩立",
+        predicate: `关系-${index}`,
+        object: "墨大夫",
+        chapterNumber: index + 1,
+      }));
+    }
+
+    const paged = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntity: "韩立" });
+    expect(paged.ok).toBe(true);
+    if (!paged.ok) return;
+    expect((paged.data.facts as unknown[]).length).toBe(200);
+    expect((paged.data.events as unknown[]).length).toBe(200);
+    expect(paged.data.pagination).toEqual({
+      facts: expect.objectContaining({ total: 205, offset: 0, limit: 200, truncated: true }),
+      events: expect.objectContaining({ total: 205, offset: 0, limit: 200, truncated: true }),
+    });
+
+    const full = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntity: "韩立", limit: 0 });
+    expect(full.ok).toBe(true);
+    if (!full.ok) return;
+    expect((full.data.facts as unknown[]).length).toBe(205);
+    expect((full.data.events as unknown[]).length).toBe(205);
+    expect(full.data.pagination).toEqual({
+      facts: expect.objectContaining({ total: 205, offset: 0, limit: null, truncated: false }),
+      events: expect.objectContaining({ total: 205, offset: 0, limit: null, truncated: false }),
+    });
   });
 
   it("does not reject pending events from another book", async () => {

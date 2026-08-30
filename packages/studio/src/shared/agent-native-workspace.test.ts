@@ -73,7 +73,7 @@ const guidedQuestionContract = {
   options: ["立即回收", "继续悬置"],
   reason: "上一章留下了即将触发的伏笔。",
   required: true,
-  source: "pgi",
+  source: "agent",
   mapping: {
     target: "writer-context",
     fieldPath: "chapter.hookPayoffDecision",
@@ -178,10 +178,6 @@ const sessionToolExecutionResultContract = {
       status: guidedStateContract.status,
       plan: guidedPlanContract,
     },
-    pgi: {
-      used: false,
-      skippedReason: "no-questions",
-    },
     narrative: {
       snapshot: narrativeSnapshotContract,
     },
@@ -202,10 +198,6 @@ const toolCallContract = {
     status: guidedStateContract.status,
     plan: guidedPlanContract,
   },
-  pgi: {
-    used: false,
-    skippedReason: "no-questions",
-  },
   narrative: {
     snapshot: narrativeSnapshotContract,
   },
@@ -223,10 +215,6 @@ const chatMessageContract = {
     confirmation: confirmationContract,
     guided: {
       state: guidedStateContract,
-    },
-    pgi: {
-      used: false,
-      skippedReason: "no-questions",
     },
     narrative: {
       snapshot: narrativeSnapshotContract,

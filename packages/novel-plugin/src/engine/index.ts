@@ -4,7 +4,7 @@
  * Subdirectories:
  * - pipeline/ — writing pipeline, scheduling, detection
  * - agents/ — planner, composer, writer, auditor, reviser, etc.
- * - jingwei/ — worldbuilding, questionnaires, PGI, causal chains
+ * - jingwei/ — worldbuilding, causal chains
  * - filter/ — AI taste detection, Zhuque integration
  * - writing-skills/ — file-based writing skill loading and validation
  * - compliance/ — sensitive word scanning, publish readiness

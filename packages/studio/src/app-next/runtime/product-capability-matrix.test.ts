@@ -181,13 +181,29 @@ describe("NovelFork Runtime product capability matrix", () => {
 				"frontend",
 				"components",
 				"narrator",
-				"ToolCallCard.tsx",
+				"vlist",
+				"render",
+				"RenderToolCall.tsx",
+			),
+			"utf8",
+		);
+		const nativeMessageListSource = await readFile(
+			join(
+				process.cwd(),
+				"..",
+				"narrafork-runtime-private",
+				"frontend",
+				"components",
+				"narrator",
+				"vlist",
+				"PretextExactMessageList.tsx",
 			),
 			"utf8",
 		);
 		expect(mountSource).toContain("toolResultRenderer={renderToolResult}");
 		expect(nativeToolCardSource).toContain("runtimeRenderer");
 		expect(nativeToolCardSource).toContain("data-runtime-renderer");
+		expect(nativeMessageListSource).toContain("useRuntimeToolResultRenderer");
 	});
 
 	it("keeps native NarraFork navigation inside the NovelFork product shell", async () => {

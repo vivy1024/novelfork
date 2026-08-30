@@ -283,6 +283,16 @@ export type {
 } from "./chapter-audit-v2.js";
 
 export { handleSceneSpec } from "./scene-spec-handler.js";
+export {
+  handleMarketQuery,
+  handleMarketSamplePublicChapters,
+  handleMarketScan,
+} from "./market-handlers.js";
+export type {
+  MarketQueryToolInput,
+  MarketSampleToolInput,
+  MarketScanToolInput,
+} from "./market-handlers.js";
 export { executeRuntimeDomainTool } from "./runtime-domain-tools.js";
 export type { TrustedRuntimeBookBinding } from "./runtime-domain-tools.js";
 export type {
@@ -294,7 +304,6 @@ export type {
   SceneSpecFailure,
 } from "./scene-spec-handler.js";
 
-export { handlePgiAsk } from "./pgi-ask-handler.js";
 export {
   handleProjectWritingSkillDelete,
   handleProjectWritingSkillUpdate,
@@ -318,11 +327,3 @@ export type {
   WritingSkillsRecommendInput,
   WritingSkillsWriteInput,
 } from "./writing-skill-handlers.js";
-export type {
-  PgiAskInput,
-  PgiAskResult,
-  PgiAskSuccess,
-  PgiAskFailure,
-  PgiAskQuestionItem,
-  AskUserQuestionInputItem,
-} from "./pgi-ask-handler.js";

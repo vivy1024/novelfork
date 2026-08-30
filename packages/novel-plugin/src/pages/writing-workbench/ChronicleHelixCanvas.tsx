@@ -1,9 +1,9 @@
 /**
- * G9 双螺旋编年史 · ChronicleHelixCanvas
+ * 编年史对照条 · ChronicleHelixCanvas
  *
- * 主线剧情线（A 链，翡翠色）与角色弧线（B 链，按 Top 角色着色）沿章节轴
- * 以正弦相位差交缠推进；交叉点（冲突事实 / high 风险事件 / 张力≥8 章）
- * 以金色菱形标记在轴上。纯 Canvas 2D 渲染，零图表库依赖。
+ * 表世界（A，章摘要）与里世界（B，角色内在变化）沿章节轴分居上下两条水平轨。
+ * 交叉点（冲突事实 / high 风险事件 / 张力≥8 章）标在中间轴上。
+ * 不再画正弦交缠。纯 Canvas 2D 渲染。
  *
  * 数据三态独立容错：任一接口失败不连坐整体（缺哪条链就画哪条）。
  */
@@ -32,10 +32,10 @@ const INTERSECTION_COLOR = "#f5b301";
 const AXIS_COLOR = "rgba(128,128,128,0.35)";
 
 const CANVAS_HEIGHT = 380;
-const AMPLITUDE = 96;
+const TRACK_OFFSET = 56;
 const MIN_CHAPTER_GAP = 30;
 const MAX_CHAPTER_GAP = 64;
-const EDGE_PADDING = 48;
+const EDGE_PADDING = 72;
 
 type LoadState =
   | { status: "idle" | "loading" }
@@ -139,14 +139,12 @@ function buildGeometry(chapters: readonly number[]): HelixGeometry {
   const width = EDGE_PADDING * 2 + (count - 1) * gap;
   const midY = CANVAS_HEIGHT / 2;
   const indexByChapter = new Map(chapters.map((chapter, index) => [chapter, index]));
-  // 两链相位差 π：同章分居轴两侧，相邻章各自过轴一次——形成交缠视觉。
-  const phase = (index: number) => (index / Math.max(1, count - 1)) * Math.PI * 3;
 
-  const pointFor = (chapterNumber: number, offset: number): ScreenPoint => {
+  const pointFor = (chapterNumber: number, y: number): ScreenPoint => {
     const index = indexByChapter.get(chapterNumber) ?? 0;
     return {
       x: EDGE_PADDING + index * gap,
-      y: midY + AMPLITUDE * Math.sin(phase(index) + offset),
+      y,
       chapterNumber,
     };
   };
@@ -156,8 +154,8 @@ function buildGeometry(chapters: readonly number[]): HelixGeometry {
     gap,
     indexByChapter,
     centerX: (chapterNumber) => EDGE_PADDING + (indexByChapter.get(chapterNumber) ?? 0) * gap,
-    pointA: (chapterNumber) => pointFor(chapterNumber, 0),
-    pointB: (chapterNumber) => pointFor(chapterNumber, Math.PI),
+    pointA: (chapterNumber) => pointFor(chapterNumber, midY - TRACK_OFFSET),
+    pointB: (chapterNumber) => pointFor(chapterNumber, midY + TRACK_OFFSET),
   };
 }
 
@@ -229,27 +227,23 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
         ctx.fillText(`当前 ${currentChapter}`, x, 14);
       }
 
-      // 正弦链骨架（细线）：每 4px 采样
-      const sampleStrand = (offset: number, color: string) => {
-        if (model.chapters.length < 2) return;
+      const drawTrack = (y: number, color: string, label: string) => {
         ctx.strokeStyle = color;
-        ctx.globalAlpha = 0.35;
-        ctx.lineWidth = 2;
+        ctx.globalAlpha = 0.28;
+        ctx.lineWidth = 8;
+        ctx.lineCap = "round";
         ctx.beginPath();
-        const firstX = geometry.centerX(model.chapters[0]!);
-        const lastX = geometry.centerX(model.chapters[model.chapters.length - 1]!);
-        for (let px = firstX; px <= lastX; px += 4) {
-          // 与 buildGeometry 的 phase 一致：t∈[0,1] → 相位 t·3π。
-          const t = (px - firstX) / Math.max(1, lastX - firstX);
-          const y = midY + AMPLITUDE * Math.sin(t * Math.PI * 3 + offset);
-          if (px === firstX) ctx.moveTo(px, y);
-          else ctx.lineTo(px, y);
-        }
+        ctx.moveTo(EDGE_PADDING / 2, y);
+        ctx.lineTo(geometry.width - EDGE_PADDING / 2, y);
         ctx.stroke();
         ctx.globalAlpha = 1;
+        ctx.fillStyle = color;
+        ctx.font = "10px sans-serif";
+        ctx.textAlign = "left";
+        ctx.fillText(label, 8, y + 3);
       };
-      sampleStrand(0, STRAND_A_COLOR);
-      sampleStrand(Math.PI, "#8b5cf6");
+      drawTrack(midY - TRACK_OFFSET, STRAND_A_COLOR, "表世界");
+      drawTrack(midY + TRACK_OFFSET, "#8b5cf6", "里世界");
 
       // 章节号刻度
       ctx.fillStyle = "rgba(128,128,128,0.75)";
@@ -276,7 +270,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
         ctx.shadowBlur = 0;
         hoverTargets.push({
           x: point.x, y: point.y, kind: "beat", chapterNumber: chapter,
-          title: `第 ${chapter} 章 · 主线`,
+          title: `第 ${chapter} 章 · 表世界`,
           lines: [
             beat.summary ? beat.summary.slice(0, 80) : "暂无摘要",
             beat.tensionScore !== undefined ? `张力 ${beat.tensionScore}/10` : "未评张力",
@@ -376,7 +370,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
   if (!bookId?.trim()) {
     return (
       <div className="flex h-full min-h-[80vh] items-center justify-center text-sm text-muted-foreground" data-testid="chronicle-helix-empty">
-        先打开一本书，再查看双螺旋编年史。
+        先打开一本书，再查看里世界 / 表世界对照。
       </div>
     );
   }
@@ -391,7 +385,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
   if (state.status !== "ready") {
     return (
       <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground" data-testid="chronicle-helix-loading">
-        <Loader2 className="h-4 w-4 animate-spin" /> 正在编织双螺旋…
+        <Loader2 className="h-4 w-4 animate-spin" /> 正在铺开里/表世界对照…
       </div>
     );
   }
@@ -409,13 +403,13 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
           </Badge>
         ) : null}
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block size-2.5 rounded-full" style={{ background: STRAND_A_COLOR }} /> 主线剧情链
+          <span className="inline-block size-2.5 rounded-full" style={{ background: STRAND_A_COLOR }} /> 表世界（章面）
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block size-2.5 rounded-full bg-violet-500" /> 角色弧线链
+          <span className="inline-block size-2.5 rounded-full bg-violet-500" /> 里世界（角色内在）
         </span>
         <span className="inline-flex items-center gap-1.5">
-          <span className="inline-block size-2 rotate-45" style={{ background: INTERSECTION_COLOR }} /> 冲突 / 转折交叉点
+          <span className="inline-block size-2 rotate-45" style={{ background: INTERSECTION_COLOR }} /> 表里交汇
         </span>
         <span className="ml-auto inline-flex items-center gap-1">
           {model.topCharacters.slice(0, 6).map((character) => {
@@ -459,7 +453,7 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
               还没有可编织的章节摘要或事件。先结算几章再来。
             </div>
           ) : null}
-          <canvas ref={canvasRef} className={isEmpty ? "hidden" : "block"} role="img" aria-label="主线与角色弧线的双螺旋编年史图谱" />
+          <canvas ref={canvasRef} className={isEmpty ? "hidden" : "block"} role="img" aria-label="里世界与表世界对照条" />
           {hover ? (
             <div
               className="pointer-events-none absolute z-10 max-w-64 rounded-md border bg-popover px-2.5 py-1.5 text-[11px] shadow-md"
@@ -503,9 +497,9 @@ export function ChronicleHelixCanvas({ bookId, currentChapter, onOpenEntityDetai
           ) : (
             <div className="space-y-2 text-xs leading-5 text-muted-foreground">
               <p className="font-medium text-foreground">如何阅读这张图</p>
-              <p>翡翠色链是<strong>主线剧情</strong>：每章一个节拍，点越大张力越高。</p>
-              <p>彩色链是<strong>角色弧线</strong>：颜色对应上方图例中的高频角色。</p>
-              <p>金色菱形是<strong>关键冲突 / 转折</strong>：两链在此交汇的章节。</p>
+              <p>上轨是<strong>表世界</strong>：读者看见的章面推进，点越大张力越高。</p>
+              <p>下轨是<strong>里世界</strong>：角色内在变化，颜色对应上方图例。</p>
+              <p>中间金色菱形是<strong>表里交汇</strong>：冲突、高风险或张力峰值落在这一章。</p>
               <p>悬停查看详情，点击固定到右侧检查器。</p>
             </div>
           )}

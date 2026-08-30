@@ -87,6 +87,7 @@
   "workspaces": [
     "packages/*",
     "!packages/desktop",
-    "!packages/narrafork-runtime-private"
+    "!packages/narrafork-runtime-private",
+    "!packages/narrafork-runtime-overlay"
   ]
 }

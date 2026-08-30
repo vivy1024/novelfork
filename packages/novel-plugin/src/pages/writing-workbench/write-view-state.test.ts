@@ -33,6 +33,21 @@ describe("buildWriteViewModel", () => {
     expect(model.checks.filter((item) => item.state === "ok").map((item) => item.label))
       .toEqual(["本章指示", "近章记忆"]);
     expect(model.headline).toContain("可以开写第 47 章");
+    expect(model.alreadyWritten).toBe(false);
+    expect(model.wordTarget).toBe(0);
+  });
+
+  it("推荐章已落稿时标记 alreadyWritten，并带上平台目标字数", () => {
+    const model = buildWriteViewModel({
+      ...readyPreflight,
+      chapterNumber: 46,
+      formalChapterCount: 46,
+      platform: { label: "番茄小说", chapterTargetStatus: "ok", recommendedChapterWords: { min: 2000, ideal: 3000, max: 4000 } },
+    });
+    expect(model.alreadyWritten).toBe(true);
+    expect(model.wordTarget).toBe(3000);
+    expect(model.formalChapterCount).toBe(46);
+    expect(model.headline).toContain("已有正文");
   });
 
   it("turns yellow and keeps warning explanations", () => {
@@ -132,9 +147,9 @@ describe("planFixAction", () => {
   });
 
   it("routes review actions to sidebar views", () => {
-    // 待确认事件在故事脉络工作区，伏笔看板在工具视图
+    // 待确认事件与伏笔账本都在故事推进侧栏（伏笔不在工具区，就地渲染）
     expect(planFixAction("review-pending", { chapterNumber: 5 }).view).toBe("storyline");
-    expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("tools");
+    expect(planFixAction("review-hooks", { chapterNumber: 5 }).view).toBe("storyline");
   });
 
   /**
@@ -149,13 +164,12 @@ describe("planFixAction", () => {
     expect(plan.view).toBeUndefined();
   });
 
-  it("open-focus 打开经纬 outline 分类，而不是 story/current_focus.md", () => {
+  it("open-focus 留在写作视图填写创作罗盘，而不是跳去 story/current_focus.md 或卷纲", () => {
     const plan = planFixAction("open-focus", { chapterNumber: 5 });
-    expect(plan.kind).toBe("lore-panel");
-    expect(plan.loreCategory).toBe("outline");
-    // preflight 的 currentFocus 走 cockpit 的 readCurrentFocusFromJingwei（经纬 SQLite），
-    // story/current_focus.md 只在 pipeline.write 注入上下文时读；引导改 md 修不掉 blocker。
+    expect(plan.kind).toBe("write-compass");
+    expect(plan.label).toBe("填写创作罗盘");
     expect(JSON.stringify(plan)).not.toContain("current_focus.md");
+    expect(plan.loreCategory).toBeUndefined();
   });
 
   it("三个 directive 类 code 都映射到 open-focus，且都落在经纬面板", () => {
@@ -167,7 +181,7 @@ describe("planFixAction", () => {
       });
       const check = model.checks.find((item) => item.code === code);
       expect(check?.fixAction).toBe("open-focus");
-      expect(planFixAction(check!.fixAction!, { chapterNumber: 5 }).kind).toBe("lore-panel");
+      expect(planFixAction(check!.fixAction!, { chapterNumber: 5 }).kind).toBe("write-compass");
     }
   });
 });

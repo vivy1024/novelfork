@@ -47,6 +47,12 @@ export interface WriteViewModel {
   readonly checks: readonly ReadyCheckItem[];
   /** 顶部一句话：当前能不能写、缺什么 */
   readonly headline: string;
+  /** 已落稿正式章数；推荐章号 ≤ 此值则该章已有正文。 */
+  readonly formalChapterCount: number;
+  /** 平台/书籍推荐的单章目标字数；缺省 0。 */
+  readonly wordTarget: number;
+  /** 推荐章号对应的正文是否已经落稿。 */
+  readonly alreadyWritten: boolean;
 }
 
 interface RawExplanation {
@@ -155,6 +161,9 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
       recentChapters: [],
       checks: [],
       headline: "尚未检查写前状态，点「检查就绪」开始。",
+      formalChapterCount: 0,
+      wordTarget: 0,
+      alreadyWritten: false,
     };
   }
 
@@ -192,18 +201,33 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
   const platform = record.platform as { label?: unknown; chapterTargetStatus?: unknown } | null | undefined;
 
   const chapterNumber = Number(record.chapterNumber);
+  const resolvedChapter = Number.isFinite(chapterNumber) && chapterNumber > 0 ? chapterNumber : 0;
+  const formalChapterCountRaw = Number(record.formalChapterCount);
+  const formalChapterCount = Number.isFinite(formalChapterCountRaw) && formalChapterCountRaw > 0
+    ? formalChapterCountRaw
+    : 0;
+  const recommendedWords = (platform as { recommendedChapterWords?: { ideal?: unknown } } | null | undefined)
+    ?.recommendedChapterWords;
+  const wordTargetRaw = Number(recommendedWords?.ideal);
+  const wordTarget = Number.isFinite(wordTargetRaw) && wordTargetRaw > 0 ? wordTargetRaw : 0;
+  const alreadyWritten = resolvedChapter > 0 && (
+    formalChapterCount >= resolvedChapter
+    || recentChapters.some((item) => item.number === resolvedChapter)
+  );
   const light: ReadyLight = ok ? (warnings.length > 0 ? "yellow" : "green") : "red";
-  const headline = ok
-    ? warnings.length > 0
-      ? `可以开写第 ${chapterNumber} 章，有 ${warnings.length} 条提醒。`
-      : `可以开写第 ${chapterNumber} 章。`
-    : blockers[0]?.message
-      ?? "写前上下文未就绪，请先处理阻断项。";
+  const headline = alreadyWritten
+    ? `第 ${resolvedChapter} 章已有正文，可直接打开继续改。`
+    : ok
+      ? warnings.length > 0
+        ? `可以开写第 ${resolvedChapter} 章，有 ${warnings.length} 条提醒。`
+        : `可以开写第 ${resolvedChapter} 章。`
+      : blockers[0]?.message
+        ?? "写前上下文未就绪，请先处理阻断项。";
 
   return {
     light,
     canWrite: ok,
-    chapterNumber: Number.isFinite(chapterNumber) ? chapterNumber : 0,
+    chapterNumber: resolvedChapter,
     resolvedDirective,
     needsUserConfirm: record.needsUserConfirm === true,
     volumeLabel: volumeTitle ? (volumeGoal ? `${volumeTitle} · ${volumeGoal}` : volumeTitle) : null,
@@ -211,6 +235,9 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
     recentChapters,
     checks,
     headline,
+    formalChapterCount,
+    wordTarget,
+    alreadyWritten,
   };
 }
 
@@ -218,14 +245,14 @@ export function buildWriteViewModel(preflight: unknown): WriteViewModel {
  * 一键修动作 → 下一步怎么走。
  *
  * 纪律：任何会写入的修复都必须经叙述者与 Runtime 权限确认（kind="narrator"），
- * 前端不得静默 POST 写数据；只有导航类动作（view / settings / lore-panel）
- * 才由前端直接完成。
+ * 前端不得静默 POST 写数据；只有导航类动作（view / settings / lore-panel /
+ * write-compass）才由前端直接完成。
  *
  * 导航目标必须与 preflight 的判据同源，否则作者点完按钮改了东西、重跑
  * preflight 却发现问题还在。参见 CHECK_META 上方注释。
  */
 export interface FixActionPlan {
-  readonly kind: "narrator" | "view" | "settings" | "lore-panel";
+  readonly kind: "narrator" | "view" | "settings" | "lore-panel" | "write-compass";
   /** kind=narrator 时发给叙述者的请求文本 */
   readonly message?: string;
   /** kind=view 时要切到的侧栏视图 */
@@ -261,8 +288,9 @@ export function planFixAction(
     // 待确认事件属于故事脉络工作区的章后事实队列。
     case "review-pending":
       return { kind: "view", view: "storyline", label: "去处理待确认事件" };
+    // 伏笔账本唯一入口在故事推进侧栏（就地渲染，不在工具区）。
     case "review-hooks":
-      return { kind: "view", view: "tools", label: "查看伏笔看板" };
+      return { kind: "view", view: "storyline", label: "去查看伏笔账本" };
     // 判据是当前项目 `.novelfork/skills/` 的实际文件，唯一能改它的界面是
     // 写作设置里的 Writing Skills 面板。切「工具」视图只有诊断面板，改不了这项。
     case "enable-style":
@@ -270,11 +298,10 @@ export function planFixAction(
     case "adjust-word-target":
       return { kind: "view", view: "explorer", label: "调整章字数目标" };
     // preflight 的 currentFocus 来自 cockpit 的 readCurrentFocusFromJingwei，
-    // 查的是经纬 SQLite（category IN focus/current-focus/outline），不是
-    // story/current_focus.md —— 那个 md 只在 pipeline.write 注入上下文时读，
-    // 改它不会让 missing-directive 消失。所以这里落到经纬 outline 分类。
+    // 权威源是经纬 current-focus 创作罗盘（写作侧栏常驻），不是
+    // story/current_focus.md。一键修应留在写作视图填罗盘，而不是跳去卷纲。
     case "open-focus":
-      return { kind: "lore-panel", loreCategory: "outline", label: "编辑卷纲/当前焦点" };
+      return { kind: "write-compass", label: "填写创作罗盘" };
     default:
       return { kind: "view", view: "tools", label: "查看详情" };
   }

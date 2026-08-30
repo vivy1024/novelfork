@@ -93,7 +93,7 @@ describe("RuntimeSettings configuration model", () => {
           "toolPolicy.deny": { value: ["chapter.overwrite"], status: "current" },
           "mcp.servers": { value: [{ id: "github", url: "stdio://gh-mcp" }], status: "current" },
           "subagent.writer": { value: { modelId: "claude-sonnet-4", role: "writer" }, status: "current" },
-          "workflow.write-next": { value: { steps: ["context", "pgi", "plan", "write"] }, status: "current" },
+          "workflow.write-next": { value: { steps: ["context", "plan", "write"] }, status: "current" },
           "command./novel:write-next": { value: { handler: "novel-write-next", status: "current" }, status: "current" },
           "skill.continuity-audit": { value: { source: "builtin" }, status: "current" },
           "hook.onSessionStart": { value: { handler: "load-context" }, status: "planned" },

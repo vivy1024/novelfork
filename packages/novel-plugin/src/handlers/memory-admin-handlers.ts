@@ -6,8 +6,11 @@ import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { ensureNarrativeMemorySchema, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import {
   NarrativeEventRiskLevelSchema,
+  NarrativeEventSchema,
+  NarrativeEventSourceSchema,
   NarrativeEventTypeSchema,
   NarrativeFactLayerSchema,
+  NarrativeFactSchema,
   NarrativeFactSourceTypeSchema,
   type NarrativeEvent,
   type NarrativeEventRiskLevel,
@@ -207,6 +210,10 @@ function isIntegerOrNull(value: unknown): value is number | null {
 }
 
 function validatePatchValue(kind: Extract<MemoryEntryKind, "fact" | "event">, key: string, value: unknown): ToolFailure | undefined {
+  const requiredEventField = kind === "event" && ["chapterNumber", "eventType", "subject", "predicate", "object", "evidenceText", "confidence", "source", "riskLevel"].includes(key);
+  if (requiredEventField && (value === null || value === undefined || (typeof value === "string" && value.trim() === ""))) {
+    return fail("invalid-patch", `${key} 是 event 必填字段，不能为 null 或空值。`);
+  }
   if (key === "confidence" && (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 1)) {
     return fail("invalid-patch", "confidence 必须是 0 到 1 之间的数字。");
   }
@@ -218,6 +225,9 @@ function validatePatchValue(kind: Extract<MemoryEntryKind, "fact" | "event">, ke
   }
   if (kind === "event" && key === "eventType" && !NarrativeEventTypeSchema.safeParse(value).success) {
     return fail("invalid-patch", "eventType 不合法。");
+  }
+  if (kind === "event" && key === "source" && !NarrativeEventSourceSchema.safeParse(value).success) {
+    return fail("invalid-patch", "source 必须是 settle | manual | import。");
   }
   if (kind === "event" && key === "riskLevel" && !NarrativeEventRiskLevelSchema.safeParse(value).success) {
     return fail("invalid-patch", "riskLevel 必须是 low | medium | high。");
@@ -726,6 +736,12 @@ export async function handleMemoryUpdate(input: MemoryUpdateInput): Promise<Tool
     params.push(value ?? null);
   }
   if (assignments.length === 0) return fail("invalid-input", "patch 至少需要一个字段。");
+
+  // 先合并并按完整 schema 校验，再执行 SQL，避免把 null/空值或非法枚举写进数据库。
+  const candidate = Object.fromEntries(Object.entries({ ...before, ...patch }).map(([key, value]) => [key, value === null ? undefined : value]));
+  const parsed = kind === "fact" ? NarrativeFactSchema.safeParse(candidate) : NarrativeEventSchema.safeParse(candidate);
+  if (!parsed.success) return fail("invalid-patch", `${kind} 更新后不符合 Narrative Memory schema。`, { issues: parsed.error.issues });
+
   if (kind === "fact") {
     assignments.push("updated_at = ?");
     params.push(new Date().toISOString());
@@ -804,6 +820,7 @@ export async function handleMemoryBulkApprove(input: MemoryBulkApproveInput): Pr
   if (ids.length === 0) return fail("invalid-input", "memory.bulk_approve 需要 eventIds 或能匹配事件的 filter。");
   const closeSupersededFacts = await shouldCloseSupersededFacts(input);
   const approved: any[] = [];
+  const pending: any[] = [];
   const skipped: any[] = [];
   const failed: any[] = [];
   for (const id of ids) {
@@ -815,10 +832,23 @@ export async function handleMemoryBulkApprove(input: MemoryBulkApproveInput): Pr
       failed.push({ id, error: applied.failedEvents[0]?.error ?? "apply-failed" });
       continue;
     }
-    updateNarrativeEventStatus(storage, { id, status: "applied" });
+    if (applied.pendingEventIds.includes(id)) {
+      // reducer 认为事件仍需人工确认时，绝不能把它伪装成成功或强行标 applied。
+      pending.push({ id, applied });
+      continue;
+    }
+    if (applied.skippedEventIds.includes(id)) {
+      updateNarrativeEventStatus(storage, { id, status: "applied" });
+      skipped.push({ id, reason: "duplicate-fact", applied });
+      continue;
+    }
+    if (!applied.appliedEventIds.includes(id)) {
+      failed.push({ id, error: "event-not-applied" });
+      continue;
+    }
     approved.push({ id, applied });
   }
-  return ok(`批量批准完成：${approved.length} 成功，${skipped.length} 跳过，${failed.length} 失败。`, { approved, skipped, failed, reason });
+  return ok(`批量批准完成：${approved.length} 成功，${pending.length} 待确认，${skipped.length} 跳过，${failed.length} 失败。`, { approved, pending, skipped, failed, reason });
 }
 
 function hasDeleteFilter(kind: Extract<MemoryEntryKind, "fact" | "event">, filter: MemoryFilter | undefined): boolean {

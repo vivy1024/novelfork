@@ -1,11 +1,11 @@
 /**
  * G9 全息编年史双螺旋 · 数据聚合层（纯函数，零副作用）。
  *
- * 两条链的数据来源：
- *  - A 主线剧情线：chapter-summaries 类目条目（章号 + 摘要 + 张力分）
- *  - B 角色弧线：narrative-memory event_chain 视图（返回全部事件类型，
+ * 两条轨的数据来源：
+ *  - 表世界（A）：chapter-summaries 类目条目（章号 + 摘要 + 张力分）
+ *  - 里世界（B）：narrative-memory event_chain 视图（返回全部事件类型，
  *    由 extractChronicleArcEvents 过滤 character_state_changed / relationship_changed）
- * 交叉点 = 关键冲突/转折章节：conflict 类目事实、high 风险事件、张力≥8 任一命中。
+ * 交汇点 = 关键冲突/转折章节：conflict 类目事实、high 风险事件、张力≥8 任一命中。
  */
 
 export interface ChronicleSummaryInput {

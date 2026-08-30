@@ -42,7 +42,6 @@ export interface NovelRuntimeToolCatalogEntry extends NovelSessionToolDefinition
 export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "cockpit.snapshot",
   "write.preflight",
-  "pgi.ask",
   "narrative.read_line",
   "narrative.propose_change",
   "narrative.approve_change",
@@ -89,6 +88,9 @@ export const NOVEL_READY_RUNTIME_TOOL_NAMES = [
   "jingwei.read",
   "resource.manage",
   "scene.spec",
+  "market.scan",
+  "market.query",
+  "market.sample_public_chapters",
 ] as const;
 
 const READY_RUNTIME_TOOL_NAMES = new Set<string>(NOVEL_READY_RUNTIME_TOOL_NAMES);
@@ -164,15 +166,6 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
     renderer: "chapter.discard_range",
     enabledForModes: WRITE_SESSION_PERMISSION_MODES,
     visibility: "advanced",
-    scope: "novel",
-  }),
-  sessionTool({
-    name: "pgi.ask",
-    description: "PGI 追问工具（三合一）：生成追问问题 + 返回 AskUserQuestion 格式 + 格式化用户回答为写作指示。替代旧的 pgi.generate_questions/record_answers/format_answers_for_prompt。\n\n使用时机：\n- 需要向用户确认写作方向/选择时\n- 用户指令模糊需要追问时\n\n不要用的时候：\n- 用户已经给了明确完整的指令（直接执行，不要多此一问）\n- 用户说「继续」/「接着写」（方向已确定，先 write.preflight 再 scene.spec）",
-    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["pgi.ask"]),
-    risk: "read",
-    renderer: "pgi.ask",
-    enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
   }),
   sessionTool({
@@ -666,6 +659,33 @@ scope=search：关键词搜索静态设定。
     renderer: "resource.manage",
     enabledForModes: ALL_SESSION_PERMISSION_MODES,
     scope: "novel",
+  }),
+  sessionTool({
+    name: "market.scan",
+    description: "扫描起点/番茄公开榜单并落历史快照。纯 HTTP，不登录、不绕验证码、不走 CDP。每平台每次最多 2 个榜单。数据写入 ~/.novelfork/market/snapshots/，与经纬/Lore 分离，禁止把榜单材料写入 lore.write。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["market.scan"]),
+    risk: "read",
+    renderer: "market.scan",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "universal",
+  }),
+  sessionTool({
+    name: "market.query",
+    description: "查询已落盘的公开榜单历史快照，可选生成题材/标题/字数分析。只读本地快照，不访问经纬或 Narrative Memory。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["market.query"]),
+    risk: "read",
+    renderer: "market.query",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "universal",
+  }),
+  sessionTool({
+    name: "market.sample_public_chapters",
+    description: "采样番茄公开免费章节的结构指标（字数、段落、对话比、问句/叹号、系统/冲突/金手指词）。参数 fanqieBookId 是番茄站公开书籍 ID，不是当前作品。最多 3 章，正文只用于计算后立即丢弃，不入库。",
+    inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["market.sample_public_chapters"]),
+    risk: "read",
+    renderer: "market.sample_public_chapters",
+    enabledForModes: ALL_SESSION_PERMISSION_MODES,
+    scope: "universal",
   }),
 ] as const;
 

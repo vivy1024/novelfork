@@ -16,7 +16,7 @@ routes:
 用户请求写下一章
   → write.preflight            ← 硬门：不通过就停下，不许先写
   →（缺上下文时）memory.settle_range / outline.volume
-  → pgi.ask（意图仍模糊时）
+  → 方向不明时 AskUserQuestion
   → scene.spec(userDirectives = resolvedDirective)
   → pipeline.write
   → 正式章节结果 + 章后自动结算
@@ -55,7 +55,7 @@ routes:
 | `cockpit.snapshot` | 获取当前书籍、章节和资源状态快照 | read |
 | `lore.read` | 读取作者确认的静态 Lore（brief/category/search） | read |
 | `memory.read` | 读取动态叙事记忆 ContextCard | read |
-| `pgi.ask` | 生成写前追问，补齐本章意图 | read |
+| `AskUserQuestion` | 方向不明时向作者追问 | read |
 | `scene.spec` | 校验 Runtime Agent 提交的结构化写作蓝图 | read |
 | `pipeline.write` | 校验并保存 Runtime Agent 提交的正文：写前门→落盘→章后结算 | draft-write |
 | `memory.events` | 写后整理章节摘要、关系变化、伏笔推进为 pending 事件 | draft-write |

@@ -233,7 +233,7 @@ export type GuidedGenerationStatus =
 
 export type GuidedGenerationTarget = "book-foundation" | "chapter-result" | "jingwei-update" | "rewrite" | "audit";
 export type GuidedQuestionType = "single" | "multi" | "text" | "ranged-number" | "ai-suggest";
-export type GuidedQuestionSource = "questionnaire" | "pgi" | "agent";
+export type GuidedQuestionSource = "questionnaire" | "agent";
 
 export type GuidedContextSource = {
   readonly id: string;
@@ -305,27 +305,6 @@ export type GuidedGenerationState = {
   readonly updatedAt: string;
 };
 
-export type PgiQuestionMetadata = {
-  readonly id: string;
-  readonly prompt: string;
-  readonly reason: string;
-  readonly required?: boolean;
-  readonly heuristicsTriggered?: readonly string[];
-};
-
-export type PgiMetadata =
-  | {
-      readonly used: true;
-      readonly questions: readonly PgiQuestionMetadata[];
-      readonly answers: Record<string, unknown> | readonly unknown[];
-      readonly heuristicsTriggered: readonly string[];
-    }
-  | {
-      readonly used: false;
-      readonly skippedReason: "user-skipped" | "no-questions" | "unsupported";
-      readonly questions?: readonly PgiQuestionMetadata[];
-      readonly heuristicsTriggered?: readonly string[];
-    };
 
 export type NarrativeNodeType = "chapter" | "event" | "conflict" | "foreshadow" | "payoff" | "character-arc" | "setting";
 export type NarrativeEdgeType = "causes" | "reveals" | "escalates" | "resolves" | "foreshadows" | "pays-off" | "contradicts" | "supports";
@@ -446,7 +425,6 @@ export type AgentNativeToolMetadata = {
   readonly confirmation?: ToolConfirmationRequest;
   readonly confirmationAudit?: ToolConfirmationAudit;
   readonly guided?: GuidedToolMetadata;
-  readonly pgi?: PgiMetadata;
   readonly narrative?: NarrativeToolMetadata;
 };
 

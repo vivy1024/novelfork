@@ -39,6 +39,9 @@ export type NarrativeRetrievalPurpose = z.infer<typeof NarrativeRetrievalPurpose
 export const NarrativeEventStatusSchema = z.enum(["pending", "applied", "rejected"]);
 export type NarrativeEventStatus = z.infer<typeof NarrativeEventStatusSchema>;
 
+export const NarrativeEventSourceSchema = z.enum(["settle", "manual", "import"]);
+export type NarrativeEventSource = z.infer<typeof NarrativeEventSourceSchema>;
+
 export const NarrativeEventRiskLevelSchema = z.enum(["low", "medium", "high"]);
 export type NarrativeEventRiskLevel = z.infer<typeof NarrativeEventRiskLevelSchema>;
 
@@ -168,7 +171,7 @@ export const NarrativeEventSchema = z.object({
   object: nonEmptyString,
   evidenceText: nonEmptyString,
   confidence: confidenceScore,
-  source: z.enum(["settle", "manual", "import"]),
+  source: NarrativeEventSourceSchema,
   status: NarrativeEventStatusSchema,
   riskLevel: NarrativeEventRiskLevelSchema,
   /** 实体身份链：subject/object 命中经纬实体字典时回填的 story_jingwei_entry.id。 */
@@ -187,7 +190,7 @@ export type NarrativeEvent = Readonly<{
   object: string;
   evidenceText: string;
   confidence: number;
-  source: "settle" | "manual" | "import";
+  source: NarrativeEventSource;
   status: NarrativeEventStatus;
   riskLevel: NarrativeEventRiskLevel;
   /** 实体身份链：subject/object 对应的经纬条目 id（命中字典时回填）。 */

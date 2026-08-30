@@ -59,7 +59,7 @@ export function fullCheckReasons(files: readonly string[]): string[] {
 			reasons.add("工作区依赖或包清单变更");
 		}
 		if (/(^|\/)tsconfig[^/]*\.json$/.test(file)) reasons.add("TypeScript 配置变更");
-		if (/^scripts\/(run-workspace|run-changed|runtime|import-narrafork-runtime|materialize-runtime-overlay|compile)/.test(file)) {
+		if (/^scripts\/(run-workspace|run-changed|runtime|import-narrafork-runtime|compile)/.test(file)) {
 			reasons.add("测试、Runtime 或编译基础设施变更");
 		}
 		if (/^packages\/narrafork-runtime-private(\/|$)/.test(file)) {

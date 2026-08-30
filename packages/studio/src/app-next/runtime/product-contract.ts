@@ -237,6 +237,10 @@ export interface RuntimeProductClientOptions {
   readonly fetch?: RuntimeFetchOptions;
 }
 
+export interface RuntimeRequestOptions {
+  readonly signal?: AbortSignal;
+}
+
 export interface RuntimeRebindBookWorkspaceResult {
   readonly bookId: string;
   readonly runtimeProjectId: string;
@@ -858,11 +862,12 @@ export function createRuntimeProductClient(
       ),
     listNarrators: async (
       bookId: string,
+      requestOptions: RuntimeRequestOptions = {},
     ): Promise<readonly RuntimeNarratorSummary[]> =>
       unwrapNarrators(
         await runtimeJson<unknown>(
           buildBookScopedNarratorPath(bookId),
-          {},
+          { signal: requestOptions.signal },
           fetchOptions,
         ),
       )
@@ -873,6 +878,7 @@ export function createRuntimeProductClient(
     createNarrator: async (
       bookId: string,
       input: RuntimeCreateNarratorInput,
+      requestOptions: RuntimeRequestOptions = {},
     ): Promise<RuntimeNarratorSummary> => {
       const title = input.title.trim();
       if (!title || title.length > 200) {
@@ -885,16 +891,20 @@ export function createRuntimeProductClient(
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ title }),
+            signal: requestOptions.signal,
           },
           fetchOptions,
         ),
       );
     },
-    getWorkspace: async (bookId: string): Promise<RuntimeWorkspaceSnapshot> =>
+    getWorkspace: async (
+      bookId: string,
+      requestOptions: RuntimeRequestOptions = {},
+    ): Promise<RuntimeWorkspaceSnapshot> =>
       mapRuntimeWorkspaceSnapshot(
         await runtimeJson<unknown>(
           buildBookWorkspacePath(bookId),
-          {},
+          { signal: requestOptions.signal },
           fetchOptions,
         ),
       ),
@@ -922,6 +932,7 @@ export function createRuntimeProductClient(
       bookId: string,
       resourceId: string,
       content: string,
+      requestOptions: RuntimeRequestOptions = {},
     ): Promise<RuntimeWorkspaceResourceMutation> => {
       if (typeof content !== "string" || content.length > 2_000_000) {
         throw new Error("章节正文必须为长度不超过 2000000 的字符串");
@@ -933,6 +944,7 @@ export function createRuntimeProductClient(
             method: "PUT",
             headers: { "content-type": "application/json" },
             body: JSON.stringify({ content }),
+            signal: requestOptions.signal,
           },
           fetchOptions,
         ),

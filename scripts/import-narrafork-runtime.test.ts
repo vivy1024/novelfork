@@ -15,6 +15,7 @@ import {
 	analyzeNarraForkRuntimeImpact,
 	importNarraForkRuntime,
 	parseCliArgs,
+	validateRuntimeSourceIdentity,
 	type UpstreamLock,
 } from "./import-narrafork-runtime.ts";
 
@@ -23,7 +24,6 @@ interface Fixture {
 	readonly outer: string;
 	readonly source: string;
 	readonly target: string;
-	readonly overlay: string;
 }
 
 let fixture: Fixture;
@@ -53,112 +53,12 @@ async function exists(path: string): Promise<boolean> {
 	);
 }
 
-function sha256(value: string): string {
-	return createHash("sha256").update(value).digest("hex");
-}
-
-async function writeOverlayManifest(
-	fixture: Pick<Fixture, "source" | "overlay">,
-): Promise<void> {
-	const [commit, tree] = await Promise.all([
-		command(["git", "rev-parse", "HEAD"], fixture.source),
-		command(["git", "rev-parse", "HEAD^{tree}"], fixture.source),
-	]);
-	const journal = '{"entries":[]}\n';
-	const appBase = 'export const mode = "upstream";\n';
-	const appResult = 'export const mode = "overlay";\n';
-	const patch = [
-		"diff --git a/server/app.ts b/server/app.ts",
-		"index 1111111..2222222 100644",
-		"--- a/server/app.ts",
-		"+++ b/server/app.ts",
-		"@@ -1 +1 @@",
-		'-export const mode = "upstream";',
-		'+export const mode = "overlay";',
-		"",
-	].join("\n");
-	const addContent =
-		"export interface RuntimeProductIntegration { readonly id: string; }\n";
-	const migrationTreeHash = createHash("sha256")
-		.update(`meta/_journal.json\0${sha256(journal)}\n`)
-		.digest("hex");
-	await mkdir(join(fixture.overlay, "runtime-migrations", "meta"), {
-		recursive: true,
-	});
-	await mkdir(join(fixture.overlay, "files", "server", "lib", "product-host"), {
-		recursive: true,
-	});
-	await mkdir(join(fixture.overlay, "patches"), { recursive: true });
-	await writeFile(
-		join(fixture.overlay, "runtime-migrations", "meta", "_journal.json"),
-		journal,
-	);
-	await writeFile(
-		join(
-			fixture.overlay,
-			"files",
-			"server",
-			"lib",
-			"product-host",
-			"contracts.ts",
-		),
-		addContent,
-	);
-	await writeFile(
-		join(fixture.overlay, "patches", "server-app.product-host.patch"),
-		patch,
-	);
-	await writeFile(
-		join(fixture.overlay, "runtime-overlay.manifest.json"),
-		`${JSON.stringify(
-			{
-				schemaVersion: 1,
-				upstream: { repository: "example/private-runtime", commit, tree },
-				operations: [
-					{
-						id: "product-host-contract",
-						type: "add",
-						target: "server/lib/product-host/contracts.ts",
-						source: "files/server/lib/product-host/contracts.ts",
-						sha256: sha256(addContent),
-						reason:
-							"Expose the product-neutral Runtime product integration contract.",
-					},
-					{
-						id: "product-route-hooks",
-						type: "patch",
-						target: "server/app.ts",
-						patch: "patches/server-app.product-host.patch",
-						patchSha256: sha256(patch),
-						baseSha256: sha256(appBase),
-						resultSha256: sha256(appResult),
-						reason:
-							"Mount optional authenticated routes through the generic host integration.",
-					},
-					{
-						id: "runtime-migrations",
-						type: "copy",
-						target: "runtime-migrations",
-						source: "runtime-migrations",
-						sha256: migrationTreeHash,
-						role: "external-migration-assets",
-						reason:
-							"Keep immutable Runtime migration assets outside the replaceable Runtime tree.",
-					},
-				],
-			},
-			null,
-			2,
-		)}\n`,
-	);
-}
 
 async function createFixture(): Promise<Fixture> {
 	const root = await mkdtemp(join(tmpdir(), "novelfork-import-test-"));
 	const outer = join(root, "novelfork");
 	const source = join(root, "upstream");
 	const target = join(outer, "packages", "narrafork-runtime-private");
-	const overlay = join(outer, "packages", "narrafork-runtime-overlay");
 	await mkdir(join(outer, "packages"), { recursive: true });
 	await mkdir(source, { recursive: true });
 
@@ -172,7 +72,10 @@ async function createFixture(): Promise<Fixture> {
 	await command(["git", "add", ".gitignore"], outer);
 	await command(["git", "commit", "-m", "ignore private import paths"], outer);
 
-	await command(["git", "init"], source);
+	await command(
+		["git", "init", "--initial-branch", "novelfork/integration-v0.5.23"],
+		source,
+	);
 	await command(["git", "config", "user.name", "Importer Test"], source);
 	await command(
 		["git", "config", "user.email", "importer@example.test"],
@@ -185,7 +88,7 @@ async function createFixture(): Promise<Fixture> {
 			"remote",
 			"add",
 			"origin",
-			"git@github.com:example/private-runtime.git",
+			"git@github.com:NarraFork/novelfork-runtime-private.git",
 		],
 		source,
 	);
@@ -196,6 +99,11 @@ async function createFixture(): Promise<Fixture> {
 		'{"name":"private-runtime","version":"0.5.4"}\n',
 	);
 	await writeFile(join(source, ".gitignore"), "node_modules/\n*.secret\n");
+	for (const markerPath of ["runtime-migrations/0000_fantastic_orphan.sql"]) {
+		const markerFile = join(source, markerPath);
+		await mkdir(dirname(markerFile), { recursive: true });
+		await writeFile(markerFile, `// fork marker: ${markerPath}\n`);
+	}
 	await writeFile(
 		join(source, "src", "tracked.ts"),
 		"export const value = 1;\n",
@@ -210,15 +118,15 @@ async function createFixture(): Promise<Fixture> {
 			"add",
 			".gitignore",
 			"package.json",
+			"runtime-migrations/0000_fantastic_orphan.sql",
 			"src/tracked.ts",
 			"server/app.ts",
 		],
 		source,
 	);
 	await command(["git", "commit", "-m", "fixture"], source);
-	await writeOverlayManifest({ source, overlay });
-
-	return { root, outer, source, target, overlay };
+	
+	return { root, outer, source, target };
 }
 
 beforeEach(async () => {
@@ -229,7 +137,187 @@ afterEach(async () => {
 	await rm(fixture.root, { recursive: true, force: true });
 });
 
+describe("validateRuntimeSourceIdentity", () => {
+	const validTrackedPaths = ["runtime-migrations/0000_fantastic_orphan.sql"] as const;
+
+	test("接受 NovelFork Runtime fork 的 origin、集成分支和 marker", () => {
+		expect(
+			validateRuntimeSourceIdentity({
+				remote: "git@github.com:NarraFork/novelfork-runtime-private.git",
+				branch: "novelfork/integration-v0.5.23",
+				trackedPaths: validTrackedPaths,
+			}),
+		).toEqual({
+			source: "novelfork-runtime-private",
+			repository: "NarraFork/novelfork-runtime-private",
+			branch: "novelfork/integration-v0.5.23",
+			markerPaths: [...validTrackedPaths],
+		});
+	});
+
+	test("拒绝 NarraFork/narrafork-private 裸 upstream 并给出 checkout 提示", () => {
+		expect(() =>
+			validateRuntimeSourceIdentity({
+				remote: "git@github.com:NarraFork/narrafork-private.git",
+				branch: "novelfork/integration-v0.5.23",
+				trackedPaths: validTrackedPaths,
+			}),
+		).toThrow(/缺少 NarraFork\/novelfork-runtime-private fork checkout/);
+	});
+
+	test("拒绝非集成分支和错误 marker", () => {
+		expect(() =>
+			validateRuntimeSourceIdentity({
+				remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+				branch: "develop",
+				trackedPaths: validTrackedPaths,
+			}),
+		).toThrow(/novelfork\/integration-v0\.5\.23 分支/);
+		expect(() =>
+			validateRuntimeSourceIdentity({
+				remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+				branch: "novelfork/integration-v0.5.23",
+				trackedPaths: validTrackedPaths.slice(0, -1),
+			}),
+		).toThrow(/fork marker/);
+	});
+});
+
 describe("importNarraForkRuntime", () => {
+	test("拒绝 NarraFork/narrafork-private 裸 upstream 作为生产 Runtime source", async () => {
+		await command(
+			[
+				"git",
+				"remote",
+				"set-url",
+				"origin",
+				"git@github.com:NarraFork/narrafork-private.git",
+			],
+			fixture.source,
+		);
+		await expect(
+			importNarraForkRuntime({
+				source: fixture.source,
+				target: fixture.target,
+				repositoryRoot: fixture.outer,
+			}),
+		).rejects.toThrow(/缺少 NarraFork\/novelfork-runtime-private fork checkout/);
+	});
+
+	test("真实 fork 形态允许 tracked source lock，但导入时重建目标 lock", async () => {
+		const sourceCommit = await command(["git", "rev-parse", "HEAD"], fixture.source);
+		const sourceTree = await command(
+			["git", "rev-parse", "HEAD^{tree}"],
+			fixture.source,
+		);
+		await writeFile(
+			join(fixture.source, "UPSTREAM.lock.json"),
+			`${JSON.stringify(
+				{
+					schemaVersion: 1,
+					repository: "NarraFork/novelfork-runtime-private",
+					remote: "https://github.com/NarraFork/novelfork-runtime-private.git",
+					commit: sourceCommit,
+					tree: sourceTree,
+					branch: "novelfork/integration-v0.5.23",
+					version: "0.5.3",
+					importedAt: "2026-01-01T00:00:00.000Z",
+					trackedFileCount: 5,
+					importMethod: "git-archive",
+				},
+				null,
+				2,
+			)}\n`,
+		);
+		await command(["git", "add", "UPSTREAM.lock.json"], fixture.source);
+		await command(["git", "commit", "-m", "source lock"], fixture.source);
+
+		const result = await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+		});
+		const sourceLock = JSON.parse(
+			await readFile(join(fixture.source, "UPSTREAM.lock.json"), "utf8"),
+		) as UpstreamLock;
+		const targetLock = JSON.parse(
+			await readFile(join(fixture.target, "UPSTREAM.lock.json"), "utf8"),
+		) as UpstreamLock;
+				expect(targetLock.commit).not.toBe(sourceLock.commit);
+		expect(targetLock.commit).toBe(
+			await command(["git", "rev-parse", "HEAD"], fixture.source),
+		);
+		expect(targetLock.trackedFileCount).toBe(5);
+		expect(targetLock.managedOverlay).toBeUndefined();
+		expect(await exists(join(fixture.target, "UPSTREAM.lock.json"))).toBe(true);
+		expect(await exists(join(fixture.target, "runtime-migrations", "0000_fantastic_orphan.sql"))).toBe(true);
+		expect(await exists(join(fixture.target, "server", "lib", "product-host", "contracts.ts"))).toBe(false);
+		expect(await readFile(join(fixture.target, "server", "app.ts"), "utf8")).toBe(
+			'export const mode = "upstream";\n',
+		);
+	});
+
+	test("迁移期读取旧 managedOverlay 只豁免精确旧输出，且新 lock 不再写回", async () => {
+		await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+		});
+		const legacyPath = "server/lib/product-host/contracts.ts";
+		const legacyContent = "export const legacy = true;\n";
+		await mkdir(dirname(join(fixture.target, legacyPath)), { recursive: true });
+		await writeFile(join(fixture.target, legacyPath), legacyContent);
+		const lockPath = join(fixture.target, "UPSTREAM.lock.json");
+		const lock = JSON.parse(await readFile(lockPath, "utf8")) as UpstreamLock;
+		await writeFile(
+			lockPath,
+			`${JSON.stringify({
+				...lock,
+				managedOverlay: {
+					operations: [{
+						id: "legacy-output",
+						target: legacyPath,
+						sha256: createHash("sha256").update(legacyContent).digest("hex"),
+					}],
+				},
+			}, null, 2)}\n`,
+		);
+		const report = await analyzeNarraForkRuntimeImpact({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+			reportOnly: true,
+		});
+		expect(report.targetModifications.map((item) => item.path)).not.toContain(legacyPath);
+		const nextSource = join(fixture.source, "src", "next.ts");
+		await writeFile(nextSource, "export const next = true;\n");
+		await command(["git", "add", "src/next.ts"], fixture.source);
+		await command(["git", "commit", "-m", "fork update"], fixture.source);
+		const result = await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+			replace: true,
+		});
+		expect(result.lock.managedOverlay).toBeUndefined();
+	}, 20_000);
+
+	test("report-only 不要求 overlayRoot 存在", async () => {
+		await importNarraForkRuntime({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+		});
+				const report = await analyzeNarraForkRuntimeImpact({
+			source: fixture.source,
+			target: fixture.target,
+			repositoryRoot: fixture.outer,
+			reportOnly: true,
+		});
+		expect(report.changedFiles).toEqual([]);
+		expect(report.targetModifications).toEqual([]);
+	});
+
 	test("拒绝非 Git source", async () => {
 		const nonGit = join(fixture.root, "not-a-repo");
 		await mkdir(nonGit);
@@ -297,27 +385,18 @@ describe("importNarraForkRuntime", () => {
 		) as UpstreamLock;
 		expect(lock).toMatchObject({
 			schemaVersion: 1,
-			repository: "example/private-runtime",
-			remote: "git@github.com:example/private-runtime.git",
+			repository: "NarraFork/novelfork-runtime-private",
+			remote: "git@github.com:NarraFork/novelfork-runtime-private.git",
 			version: "0.5.4",
-			trackedFileCount: 4,
+			trackedFileCount: 5,
 			importMethod: "git-archive",
 		});
+		expect(lock.managedOverlay).toBeUndefined();
 		expect(lock.commit).toMatch(/^[0-9a-f]{40}$/);
 		expect(lock.tree).toMatch(/^[0-9a-f]{40}$/);
 		expect(lock.branch.length).toBeGreaterThan(0);
 		expect(Number.isNaN(Date.parse(lock.importedAt))).toBe(false);
-		expect(lock.managedOverlay?.operations).toEqual([
-			expect.objectContaining({
-				id: "product-host-contract",
-				target: "server/lib/product-host/contracts.ts",
-			}),
-			expect.objectContaining({
-				id: "product-route-hooks",
-				target: "server/app.ts",
-			}),
-		]);
-
+		
 		const outerStatus = await command(
 			["git", "status", "--porcelain", "--untracked-files=all"],
 			fixture.outer,
@@ -330,146 +409,6 @@ describe("importNarraForkRuntime", () => {
 		).toBe(false);
 	});
 
-	test("replace 接受由 lock 记录的受管 overlay 输出", async () => {
-		await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-		});
-
-		const report = await analyzeNarraForkRuntimeImpact({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-			reportOnly: true,
-		});
-		expect(report.targetModifications).toEqual([]);
-
-		const result = await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-			replace: true,
-		});
-		expect(result.replaced).toBe(true);
-		expect(
-			await readFile(join(fixture.target, "server", "app.ts"), "utf8"),
-		).toBe('export const mode = "overlay";\n');
-	}, 20_000);
-
-	test("replace 接受与下一版已验证 overlay 完全匹配的待物化输出", async () => {
-		await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-		});
-
-		const extraContent = "declare module \"@server/generated/next\" {}\n";
-		const extraTarget = "server/types/novelfork-generated-modules.d.ts";
-		const extraSource = "files/server/types/novelfork-generated-modules.d.ts";
-		await mkdir(dirname(join(fixture.overlay, extraSource)), { recursive: true });
-		await writeFile(join(fixture.overlay, extraSource), extraContent);
-		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
-		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
-			operations: unknown[];
-		};
-		manifest.operations.push({
-			id: "next-managed-output",
-			type: "add",
-			target: extraTarget,
-			source: extraSource,
-			sha256: sha256(extraContent),
-			reason: "Allow a verified pending overlay output to be atomically materialized.",
-		});
-		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-		await mkdir(dirname(join(fixture.target, extraTarget)), { recursive: true });
-		await writeFile(join(fixture.target, extraTarget), extraContent);
-
-		const report = await analyzeNarraForkRuntimeImpact({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-			reportOnly: true,
-		});
-		expect(report.targetModifications).toEqual([]);
-
-		const result = await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-			replace: true,
-		});
-		expect(result.replaced).toBe(true);
-		expect(await readFile(join(fixture.target, extraTarget), "utf8")).toBe(
-			extraContent,
-		);
-		expect(result.lock.managedOverlay?.operations).toContainEqual(
-			expect.objectContaining({
-			id: "next-managed-output",
-			target: extraTarget,
-			sha256: sha256(extraContent),
-		}),
-		);
-	}, 20_000);
-
-	test("replace 接受尚未物化的下一版 overlay 新增输出", async () => {
-		await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-		});
-
-		const extraContent = "declare module \"@server/generated/missing\" {}\n";
-		const extraTarget = "server/types/novelfork-generated-modules.d.ts";
-		const extraSource = "files/server/types/novelfork-generated-modules.d.ts";
-		await mkdir(dirname(join(fixture.overlay, extraSource)), { recursive: true });
-		await writeFile(join(fixture.overlay, extraSource), extraContent);
-		const manifestPath = join(fixture.overlay, "runtime-overlay.manifest.json");
-		const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as {
-			operations: unknown[];
-		};
-		manifest.operations.push({
-			id: "missing-managed-output",
-			type: "add",
-			target: extraTarget,
-			source: extraSource,
-			sha256: sha256(extraContent),
-			reason: "Materialize a verified overlay output only during replacement.",
-		});
-		await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-
-		const result = await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-			replace: true,
-		});
-		expect(result.replaced).toBe(true);
-		expect(await readFile(join(fixture.target, extraTarget), "utf8")).toBe(
-			extraContent,
-		);
-	}, 20_000);
-
-	test("replace 拒绝已偏离受管 overlay 输出的 target", async () => {
-		await importNarraForkRuntime({
-			source: fixture.source,
-			target: fixture.target,
-			repositoryRoot: fixture.outer,
-		});
-		await writeFile(
-			join(fixture.target, "server", "app.ts"),
-			'export const mode = "tampered";\n',
-		);
-
-		await expect(
-			importNarraForkRuntime({
-				source: fixture.source,
-				target: fixture.target,
-				repositoryRoot: fixture.outer,
-				replace: true,
-			}),
-		).rejects.toThrow(/已修改|拒绝覆盖/);
-	}, 20_000);
 
 	test("target 已存在且无 replace 时拒绝", async () => {
 		await mkdir(fixture.target, { recursive: true });
@@ -498,8 +437,7 @@ describe("importNarraForkRuntime", () => {
 		);
 		await command(["git", "add", "src/tracked.ts"], fixture.source);
 		await command(["git", "commit", "-m", "upstream update"], fixture.source);
-		await writeOverlayManifest(fixture);
-
+		
 		const result = await importNarraForkRuntime({
 			source: fixture.source,
 			target: fixture.target,
@@ -571,8 +509,7 @@ describe("importNarraForkRuntime", () => {
 		);
 		await command(["git", "add", "src/tracked.ts"], fixture.source);
 		await command(["git", "commit", "-m", "upstream update"], fixture.source);
-		await writeOverlayManifest(fixture);
-
+		
 		await expect(
 			importNarraForkRuntime({
 				source: fixture.source,
@@ -600,8 +537,7 @@ describe("importNarraForkRuntime", () => {
 			["git", "commit", "-m", "track upstream maintenance plan"],
 			fixture.source,
 		);
-		await writeOverlayManifest(fixture);
-		await importNarraForkRuntime({
+				await importNarraForkRuntime({
 			source: fixture.source,
 			target: fixture.target,
 			repositoryRoot: fixture.outer,
@@ -746,18 +682,23 @@ describe("parseCliArgs", () => {
 		expect(
 			parseCliArgs([
 				"--source",
-				"upstream",
+				"fork",
 				"--target",
 				"private",
 				"--dry-run",
 				"--replace",
 			]),
 		).toEqual({
-			source: "upstream",
+			source: "fork",
 			target: "private",
 			dryRun: true,
 			replace: true,
 		});
+	});
+
+	test("拒绝已退役的 --overlay CLI", () => {
+		expect(() => parseCliArgs(["--source", "fork", "--overlay", "overlay"]))
+			.toThrow(/overlay 更新链已退役，请直接使用 fork checkout/);
 	});
 
 	test("解析 report-only/impact-report 并拒绝覆盖型参数组合", () => {

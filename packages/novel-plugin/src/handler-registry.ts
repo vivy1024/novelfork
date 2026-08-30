@@ -21,9 +21,6 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
   // Cockpit tools
   { toolName: "cockpit.snapshot", serviceKey: "cockpit", method: "getSnapshot" },
 
-  // PGI tools
-  { toolName: "pgi.ask", serviceKey: "direct", method: "handlePgiAsk" },
-
   // Narrative tools
   { toolName: "narrative.read_line", serviceKey: "narrative", method: "readLine" },
   { toolName: "narrative.propose_change", serviceKey: "narrative", method: "proposeChange" },
@@ -69,6 +66,11 @@ export const NOVEL_HANDLER_DECLARATIONS: readonly NovelHandlerDeclaration[] = [
 
   // Resource management
   { toolName: "resource.manage", serviceKey: "inline", method: "manageResource" },
+
+  // Market research
+  { toolName: "market.scan", serviceKey: "direct", method: "handleMarketScan" },
+  { toolName: "market.query", serviceKey: "direct", method: "handleMarketQuery" },
+  { toolName: "market.sample_public_chapters", serviceKey: "direct", method: "handleMarketSamplePublicChapters" },
 ];
 
 /**

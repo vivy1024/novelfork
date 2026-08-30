@@ -68,8 +68,8 @@ export function queryCurrentNarrativeLedger(
   const facts = queryNarrativeFacts(storage, {
     bookId: input.bookId,
     categories: input.categories ? [...input.categories] : undefined,
-    // Pull a wider set then collapse to current slots.
-    limit: 500,
+    // Fold the complete matching history to current slots before limiting.
+    limit: 0,
     ...(input.asOfChapter !== undefined ? { currentChapter: input.asOfChapter + 1 } : {}),
   });
 
@@ -115,7 +115,7 @@ export function closeSupersededNarrativeFacts(
   const candidates = queryNarrativeFacts(storage, {
     bookId: next.bookId,
     categories: [next.category],
-    limit: 200,
+    limit: 0,
   }).filter(
     (fact) =>
       fact.id !== next.id &&

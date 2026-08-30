@@ -1,18 +1,25 @@
 /**
- * 故事脉络（Storyline）侧栏面板 —— IA 收敛后的纯导航形态。
+ * 故事脉络（Storyline）侧栏面板 —— 推进中心形态。
  *
- * 每个能力只有一个权威入口，侧栏只负责导航与轻量摘要：
+ * 顶部是所有 tab 共享的「推进驾驶舱」：
+ * 1. 位置锚定条：当前第 N 章 / 目标 M 章 · 进度%（打开即见，无需切 tab）；
+ * 2. NEXT 下一步卡：readiness 五级规则推导唯一最高优先级动作，点击直达。
+ *
+ * 四个能力 tab 保持单一权威入口：
  * 1. 「章节与大纲」：章节树 + 大纲树 + 一键提拔（★大纲唯一权威入口）；
  * 2. 「章后事实」：轻量摘要卡（待审/高风险计数），完整面板在中央 Tab 打开；
  * 3. 「故事画布」：单按钮打开中央画布（发展历程/双螺旋/地图在画布内切换）；
- * 4. 「伏笔账本」：点击即在中央打开全屏看板（★伏笔唯一权威入口）。
+ * 4. 「进度账本」：伏笔 / 冲突 / 债务进度表（tab id 仍是 foreshadowing）。
  */
 
 import { useEffect, useMemo, useState } from "react";
 import { Bookmark, BookOpen, ChevronDown, ChevronRight, FilePlus2, FileText, ListTree, Map as MapIcon, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useApi } from "@/hooks/use-api";
+import { computeForeshadowingDebt, type ForeshadowingDebt } from "../../../engine/jingwei/foreshadowing-debt";
 import { NarrativeMemorySummary } from "../NarrativeMemoryPanel";
+import { LedgerProgressTable } from "../LedgerProgressTable";
 import { createMemoryCenterNode, createStoryProgressionNode } from "../useWorkbenchResources";
 import type { ResourceTreeAction } from "../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
@@ -25,6 +32,13 @@ export interface StorylineAndPlanningSidebarPanelProps {
   onOpen: (node: WorkbenchResourceNode) => void;
   onSwitchView: (view: "write") => void;
   onAction?: (action: ResourceTreeAction) => void;
+  onOpenEntityDetail?: (entity: string, entryId?: string) => void;
+  /** 叙述者通道：NEXT 卡的「让叙述者生成卷纲」等 seed 动作经由它一键发送。 */
+  onSendToNarrator?: (message: string) => Promise<void> | void;
+  /** 本书目标总章数（来自 book 配置），用于进度百分比；缺省时只显示当前章号。 */
+  bookTargetChapters?: number;
+  /** 进度账本行上的来源/到期章跳转。 */
+  onJumpToChapter?: (chapterNumber: number) => void;
 }
 
 function StorylineResourceTree({
@@ -118,6 +132,204 @@ function StorylineResourceTree({
 
 type StorylineSubTab = "outline" | "memory" | "canvas" | "foreshadowing";
 
+interface StorylineForeshadowingEntry {
+  id: string;
+  title: string;
+  contentMd?: string;
+  customFields?: Record<string, unknown>;
+  fieldsJson?: string;
+}
+
+export interface StorylineForeshadowItem {
+  id: string;
+  title: string;
+  name: string;
+  description: string;
+  status: string;
+  plantedChapter: number;
+  targetChapter: number;
+  debt: ForeshadowingDebt;
+}
+
+const FORESHADOW_SETTLED = new Set(["已回收", "已废弃"]);
+
+/**
+ * 故事侧栏伏笔数据源（单一请求，驾驶舱 chips 与账本列表共享）。
+ * currentChapter 必须由调用方传真实值——债务判定依赖它，传 undefined 会静默失效。
+ */
+function useStorylineForeshadowing(bookId: string, currentChapter: number | undefined) {
+  const { data, loading, error, refetch } = useApi<{ entries?: StorylineForeshadowingEntry[] }>(
+    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=foreshadowing`,
+  );
+
+  const items = useMemo<StorylineForeshadowItem[]>(() => {
+    return (data?.entries ?? []).map((entry) => {
+      let fields: Record<string, unknown> = {};
+      if (entry.customFields && typeof entry.customFields === "object") {
+        fields = entry.customFields;
+      } else if (entry.fieldsJson) {
+        try {
+          fields = JSON.parse(entry.fieldsJson);
+        } catch {
+          // ignore
+        }
+      }
+      const name = (typeof fields.name === "string" ? fields.name : "") || entry.title || "未命名伏笔";
+      const status = typeof fields.status === "string" ? fields.status : "已埋设";
+      const plantedChapter = typeof fields.plantedChapter === "number" ? fields.plantedChapter : 0;
+      const targetChapter = typeof fields.targetChapter === "number" ? fields.targetChapter : 0;
+      const settled = FORESHADOW_SETTLED.has(status);
+      const debt = computeForeshadowingDebt({
+        plantedChapter,
+        currentChapter: currentChapter ?? null,
+        settled,
+      });
+      return {
+        id: entry.id,
+        title: entry.title,
+        name,
+        description: (typeof fields.description === "string" ? fields.description : "") || entry.contentMd || "",
+        status,
+        plantedChapter,
+        targetChapter,
+        debt,
+      };
+    });
+  }, [data, currentChapter]);
+
+  /** 承诺口径统计：未回收总数 + 本章到期数（目标章 ≤ 当前章+1 的未回收伏笔）。 */
+  const stats = useMemo(() => {
+    const open = items.filter((item) => !FORESHADOW_SETTLED.has(item.status));
+    const dueNow = open.filter(
+      (item) => item.targetChapter > 0 && currentChapter !== undefined && item.targetChapter <= currentChapter + 1,
+    );
+    return { openCount: open.length, dueNowCount: dueNow.length };
+  }, [items, currentChapter]);
+
+  return { items, stats, loading, error, refetch };
+}
+
+// ---------------------------------------------------------------------------
+// 推进驾驶舱：位置锚定 + NEXT 五级规则
+// ---------------------------------------------------------------------------
+
+/** 从章节树推导当前最大章号（与 WorkbenchCanvas.resolveCurrentChapter 同口径的轻量版）。 */
+function maxChapterFromTree(nodes: readonly WorkbenchResourceNode[]): number {
+  let max = 0;
+  const walk = (node: WorkbenchResourceNode): void => {
+    const num = Number(node.metadata?.chapterNumber);
+    if (Number.isInteger(num) && num > 0 && num > max) max = num;
+    node.children?.forEach(walk);
+  };
+  nodes.forEach(walk);
+  return max;
+}
+
+/** 大纲树里「规划中未落稿」条目数：有目标章号且该章尚未落稿。 */
+function countPlannedOutlineNodes(
+  outlineTreeNodes: readonly WorkbenchResourceNode[],
+  draftedChapters: ReadonlySet<number>,
+): number {
+  let count = 0;
+  const walk = (node: WorkbenchResourceNode): void => {
+    const isOutline = node.kind === "jingwei-entry" || node.kind === "story";
+    const target = Number((node.metadata?.fields as Record<string, unknown> | undefined)?.targetChapterNumber);
+    if (isOutline && Number.isInteger(target) && target > 0 && !draftedChapters.has(target)) count += 1;
+    node.children?.forEach(walk);
+  };
+  outlineTreeNodes.forEach(walk);
+  return count;
+}
+
+/** NEXT 建议的唯一动作形态。 */
+interface NextAction {
+  readonly key: "outline-empty" | "promote-outline" | "review-pending" | "foreshadow-due" | "all-set";
+  readonly label: string;
+  /** 点击后切到哪个 tab；undefined 表示纯叙述者 seed 动作或只读状态。 */
+  readonly tab?: StorylineSubTab;
+}
+
+/** 待审事件计数 hook：与 NarrativeMemorySummary 同一接口，只取 length。 */
+function usePendingEventCount(bookId: string) {
+  const { data } = useApi<{ events?: ReadonlyArray<{ id?: string }> }>(
+    `/api/books/${encodeURIComponent(bookId)}/narrative-memory/events/pending`,
+  );
+  return data?.events?.length ?? 0;
+}
+
+const OUTLINE_SEED_MESSAGE =
+  "请为我生成第一卷卷纲草案（outline.volume action=suggest），生成后给我确认，确认前不要直接写入。";
+
+/**
+ * NEXT 五级规则：按序取第一个命中，永远只给一条建议。
+ * 1 缺纲 → 叙述者 seed；2 有规划未落稿 → 提拔；3 有待审 → 章后事实；
+ * 4 有到期伏笔 → 账本；5 默认就绪态（只读文案，写作入口在写作视图避免双入口）。
+ */
+export function resolveNextAction(input: {
+  readonly hasOutline: boolean;
+  readonly plannedCount: number;
+  readonly pendingCount: number;
+  readonly dueNowCount: number;
+}): NextAction {
+  if (!input.hasOutline) return { key: "outline-empty", label: "让叙述者生成第一卷卷纲" };
+  if (input.plannedCount > 0) return { key: "promote-outline", tab: "outline", label: `提拔规划中的大纲落稿（${input.plannedCount} 条）` };
+  if (input.pendingCount > 0) return { key: "review-pending", tab: "memory", label: `处理章后待审事件（${input.pendingCount} 条）` };
+  if (input.dueNowCount > 0) return { key: "foreshadow-due", tab: "foreshadowing", label: `本章有 ${input.dueNowCount} 条伏笔到期` };
+  return { key: "all-set", label: "一切就绪 · 继续写下一章" };
+}
+
+function StorylineCockpit({
+  currentChapter,
+  targetChapters,
+  next,
+  onActivate,
+}: {
+  currentChapter: number;
+  targetChapters?: number;
+  next: NextAction;
+  onActivate: (next: NextAction) => void;
+}) {
+  const percent = targetChapters !== undefined && targetChapters > 0
+    ? Math.min(100, Math.round((currentChapter / targetChapters) * 100))
+    : undefined;
+
+  return (
+    <div className="shrink-0 border-b border-border bg-muted/20 px-2 py-1.5 space-y-1.5" data-testid="storyline-cockpit">
+      {/* 行 A · 位置锚定 */}
+      <div className="flex items-center gap-2" data-testid="storyline-position-bar">
+        <span className="text-[11px] font-medium text-foreground">📍 第 {currentChapter} 章</span>
+        {targetChapters !== undefined && targetChapters > 0 ? (
+          <>
+            <span className="text-[10px] text-muted-foreground">/ 目标 {targetChapters} 章</span>
+            <div className="h-1 flex-1 rounded-full bg-muted overflow-hidden min-w-8">
+              <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${percent}%` }} />
+            </div>
+            <span className="text-[10px] tabular-nums text-muted-foreground">{percent}%</span>
+          </>
+        ) : null}
+      </div>
+
+      {/* 行 B · NEXT 下一步卡 */}
+      <button
+        type="button"
+        data-testid={`storyline-next-${next.key}`}
+        onClick={() => onActivate(next)}
+        disabled={next.key === "all-set"}
+        className={cn(
+          "w-full flex items-center gap-1.5 rounded-md border px-2 py-1.5 text-left text-[11px] transition-colors",
+          next.key === "all-set"
+            ? "border-border bg-card/60 text-muted-foreground cursor-default"
+            : "border-primary/40 bg-primary/5 text-foreground hover:bg-primary/10",
+        )}
+      >
+        <Sparkles className={cn("size-3 shrink-0", next.key === "all-set" ? "text-muted-foreground" : "text-primary")} />
+        <span className="min-w-0 flex-1 truncate">{next.label}</span>
+        {next.key !== "all-set" ? <ChevronRight className="size-3 shrink-0 text-muted-foreground" /> : null}
+      </button>
+    </div>
+  );
+}
+
 export function StorylineAndPlanningSidebarPanel({
   bookId,
   chapterTreeNodes = [],
@@ -126,6 +338,9 @@ export function StorylineAndPlanningSidebarPanel({
   onOpen,
   onSwitchView,
   onAction,
+  onSendToNarrator,
+  bookTargetChapters,
+  onJumpToChapter,
 }: StorylineAndPlanningSidebarPanelProps) {
   const [activeSubTab, setActiveSubTab] = useState<StorylineSubTab>("outline");
 
@@ -136,17 +351,6 @@ export function StorylineAndPlanningSidebarPanel({
 
   const handleSubTabChange = (tab: StorylineSubTab) => {
     setActiveSubTab(tab);
-    // 伏笔账本与故事画布都是"点击即在中央打开大屏"，侧栏只保留入口说明。
-    if (tab === "foreshadowing") {
-      onOpen({
-        id: "tool:foreshadowing",
-        kind: "tool",
-        title: "伏笔看板",
-        content: "",
-        capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-        metadata: { toolPanel: "foreshadowing", bookId },
-      });
-    }
     if (tab === "canvas") {
       // 直接打开大屏画布（默认发展历程视图），消除"点了只看到一段说明文字"的空转。
       openProgressionCanvas("evolution");
@@ -164,8 +368,45 @@ export function StorylineAndPlanningSidebarPanel({
     return out;
   }, [chapterTreeNodes]);
 
+  // ── 驾驶舱数据 ──
+  const currentChapter = useMemo(() => maxChapterFromTree(chapterTreeNodes), [chapterTreeNodes]);
+  const pendingCount = usePendingEventCount(bookId);
+  // 驾驶舱需要伏笔统计，账本也需要同一份数据：hook 在顶层调用一次共享。
+  const foreshadow = useStorylineForeshadowing(bookId, currentChapter);
+
+  const plannedCount = useMemo(
+    () => countPlannedOutlineNodes(outlineTreeNodes, draftedChapters),
+    [outlineTreeNodes, draftedChapters],
+  );
+  const next = useMemo(
+    () => resolveNextAction({
+      hasOutline: outlineTreeNodes.length > 0,
+      plannedCount,
+      pendingCount,
+      dueNowCount: foreshadow.stats.dueNowCount,
+    }),
+    [outlineTreeNodes.length, plannedCount, pendingCount, foreshadow.stats.dueNowCount],
+  );
+
+  /** NEXT 卡点击的唯一入口：tab 类动作切 tab；叙述者 seed 动作一键发送。 */
+  const handleNextActivate = (action: NextAction) => {
+    if (action.tab) {
+      handleSubTabChange(action.tab);
+      return;
+    }
+    if (action.key === "outline-empty") void onSendToNarrator?.(OUTLINE_SEED_MESSAGE);
+  };
+
   return (
     <div className="flex h-full flex-col overflow-hidden bg-card text-xs" data-testid="storyline-and-planning-panel">
+      {/* 推进驾驶舱：所有 tab 共享的位置锚定与下一步引导 */}
+      <StorylineCockpit
+        currentChapter={currentChapter}
+        targetChapters={bookTargetChapters}
+        next={next}
+        onActivate={handleNextActivate}
+      />
+
       {/* 顶部子标签切换导航（带常亮高亮） */}
       <div className="shrink-0 border-b border-border bg-muted/20 p-2 space-y-2">
         <div className="flex items-center justify-between px-0.5">
@@ -230,7 +471,7 @@ export function StorylineAndPlanningSidebarPanel({
             onClick={() => handleSubTabChange("foreshadowing")}
           >
             <Bookmark className="size-3.5 text-indigo-500" />
-            <span className="truncate">伏笔账本</span>
+            <span className="truncate">进度账本</span>
           </Button>
         </div>
       </div>
@@ -285,11 +526,12 @@ export function StorylineAndPlanningSidebarPanel({
         )}
 
         {activeSubTab === "foreshadowing" && (
-          <div className="flex flex-col items-center justify-center p-6 text-center space-y-2 text-muted-foreground">
-            <Bookmark className="size-8 text-indigo-500/60" />
-            <p className="text-xs font-medium text-foreground">伏笔账本</p>
-            <p className="text-[11px]">已在中央编辑区打开全屏伏笔看板。</p>
-          </div>
+          <LedgerProgressTable
+            bookId={bookId}
+            currentChapter={currentChapter > 0 ? currentChapter : undefined}
+            onOpen={onOpen}
+            onJumpToChapter={onJumpToChapter}
+          />
         )}
       </div>
     </div>

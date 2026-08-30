@@ -10,10 +10,12 @@ import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
 import {
   detectCrossChapterRepetition,
+  detectIntraChapterDupParagraphs,
   detectParagraphLengthDrift,
   validatePostWrite,
   type PostWriteViolation,
 } from "./post-write-validator.js";
+import { detectPressureLedgerIssues } from "./pressure-ledger-gate.js";
 import { analyzeAITells } from "./ai-tells.js";
 import type { ChapterTrace, ContextPackage, RuleStack } from "@vivy1024/novelfork-core";
 import type { LengthSpec } from "@vivy1024/novelfork-core";
@@ -337,10 +339,19 @@ export class WriterAgent extends BaseAgent {
       : [];
 
     // ── Post-write validation (regex + rule-based, zero LLM cost) ──
+    const snapshot = runtimeStateArtifacts?.snapshot ?? settlement.runtimeStateSnapshot;
     const ruleViolations = [
       ...validatePostWrite(creative.content, genreProfile, bookRules, resolvedLanguage),
       ...detectCrossChapterRepetition(creative.content, fingerprintChapters, resolvedLanguage),
+      ...detectIntraChapterDupParagraphs(creative.content),
       ...detectParagraphLengthDrift(creative.content, fingerprintChapters, resolvedLanguage),
+      ...detectPressureLedgerIssues({
+        chapterNumber,
+        content: creative.content,
+        hooks: snapshot?.hooks.hooks,
+        resources: snapshot?.resourceLedger.resources,
+        delta: resolvedRuntimeStateDelta,
+      }),
     ];
     const aiTellIssues = analyzeAITells(creative.content, resolvedLanguage).issues;
 

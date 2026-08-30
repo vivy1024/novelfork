@@ -227,7 +227,26 @@
 
 ---
 
-## 9. Agent Prompt Guide
+## 9. Motion（gstack consultation token）
+
+全站默认 **intentional**：入场短、状态切换有意义、不做散弹特效。
+
+| 档 | 时长 | 用途 |
+|----|------|------|
+| micro | 50–100ms | hover 放大、按钮 active |
+| short | 150–250ms | 面板展开、点亮淡入 |
+| medium | 250–400ms | 传播一跳 |
+| long | 400–700ms | 仅编排高潮，禁止循环 |
+
+Easing：enter `ease-out` / exit `ease-in` / move `ease-in-out`。
+
+**故事世界网点云**是目前唯一的编排高潮：点击注入能量，沿边按 hop 错开点亮（每跳 +90ms，上限 400ms）。未点击时只有极弱呼吸。尊重 `prefers-reduced-motion`：传播瞬间到位。
+
+不要：紫色粒子雨、全图力导向跳动、每条边都发光。
+
+---
+
+## 10. Agent Prompt Guide
 
 当 AI 生成 NovelFork Studio 的 UI 代码时：
 

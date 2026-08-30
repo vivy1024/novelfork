@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
     bookSessions?: readonly { id: string; title: string; updatedAt?: string }[];
     activeSessionId?: string | null;
     onCreateSession?: () => void;
+    onSendToNarrator?: (message: string) => Promise<void> | void;
     runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
   }>,
 }));
@@ -30,6 +31,7 @@ vi.mock("@vivy1024/novelfork-novel-plugin/pages/writing-workbench/ide", () => ({
     return (
       <div data-testid="ide-workbench-mock">
         <button type="button" aria-label="创建书籍会话" onClick={() => props.onCreateSession?.()} />
+        <button type="button" aria-label="发送给叙述者" onClick={() => void props.onSendToNarrator?.("梳理主线")} />
         {props.chatSlot}
       </div>
     );
@@ -175,6 +177,141 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     await waitFor(() => expect(mocks.workbenchProps.at(-1)?.runtimeFetch).toBe(firstRuntimeFetch));
   });
 
+  it("切书时中止旧请求，旧书响应不能覆盖新书", async () => {
+    const deferred = <T,>() => {
+      let resolve!: (value: T) => void;
+      const promise = new Promise<T>((resolvePromise) => {
+        resolve = resolvePromise;
+      });
+      return { promise, resolve };
+    };
+    const oldWorkspace = deferred({
+      book: { id: "book-1", title: "旧书", capabilities: { read: true } },
+      resources: [],
+      capabilities: { read: true, create: true, update: true },
+    });
+    const newWorkspace = deferred({
+      book: { id: "book-2", title: "新书", capabilities: { read: true } },
+      resources: [],
+      capabilities: { read: true, create: true, update: true },
+    });
+    const oldNarrators = deferred([narrator]);
+    const newNarrator: RuntimeNarratorSummary = {
+      ...narrator,
+      id: "narrator-2",
+      bookId: "book-2",
+      title: "新书叙述者",
+    };
+    const newNarrators = deferred([newNarrator]);
+    const client = {
+      getWorkspace: vi.fn((id: string) => id === "book-1" ? oldWorkspace.promise : newWorkspace.promise),
+      listNarrators: vi.fn((id: string) => id === "book-1" ? oldNarrators.promise : newNarrators.promise),
+    };
+    const { rerender } = render(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-1"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(client.getWorkspace).toHaveBeenCalledWith(
+        "book-1",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+    rerender(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-2"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+    await waitFor(() => {
+      expect(client.getWorkspace).toHaveBeenCalledWith(
+        "book-2",
+        expect.objectContaining({ signal: expect.any(AbortSignal) }),
+      );
+    });
+
+    const oldWorkspaceSignal = (client.getWorkspace.mock.calls[0]?.[1] as { signal: AbortSignal }).signal;
+    const newWorkspaceSignal = (client.getWorkspace.mock.calls[1]?.[1] as { signal: AbortSignal }).signal;
+    expect(oldWorkspaceSignal.aborted).toBe(true);
+    expect(newWorkspaceSignal.aborted).toBe(false);
+
+    oldWorkspace.resolve({
+      book: { id: "book-1", title: "旧书响应", capabilities: { read: true } },
+      resources: [],
+      capabilities: { read: true, create: true, update: true },
+    });
+    oldNarrators.resolve([narrator]);
+    newWorkspace.resolve({
+      book: { id: "book-2", title: "新书响应", capabilities: { read: true } },
+      resources: [],
+      capabilities: { read: true, create: true, update: true },
+    });
+    newNarrators.resolve([newNarrator]);
+
+    await waitFor(() => {
+      expect(mocks.workbenchProps.at(-1)?.bookId).toBe("book-2");
+      expect(mocks.workbenchProps.at(-1)?.nodes).toEqual([
+        expect.objectContaining({ id: "book:book-2", title: "新书响应" }),
+      ]);
+    });
+    expect(mocks.workbenchProps.at(-1)?.nodes).not.toEqual([
+      expect.objectContaining({ id: "book:book-1" }),
+    ]);
+  });
+
+  it("切书时旧建会话响应不能写入新书状态", async () => {
+    let resolveCreated!: (value: RuntimeNarratorSummary) => void;
+    const createdPromise = new Promise<RuntimeNarratorSummary>((resolve) => {
+      resolveCreated = resolve;
+    });
+    const client = {
+      getWorkspace: vi.fn(async (id: string) => ({
+        book: { id, title: id === "book-1" ? "旧书" : "新书", capabilities: { read: true } },
+        resources: [],
+        capabilities: { read: true, create: true, update: true },
+      })),
+      listNarrators: vi.fn(async (id: string) => id === "book-1" ? [narrator] : []),
+      createNarrator: vi.fn(() => createdPromise),
+    };
+    const { rerender } = render(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-1"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+    await screen.findByTestId("runtime-narrator-panel-mount-mock");
+    fireEvent.click(screen.getByRole("button", { name: "创建书籍会话" }));
+    await waitFor(() => expect(client.createNarrator).toHaveBeenCalledWith(
+      "book-1",
+      { title: "新建对话" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ));
+
+    rerender(
+      <RuntimeWritingWorkbenchRoute
+        bookId="book-2"
+        onCanvasContextChange={vi.fn()}
+        onNavigateToConversation={vi.fn()}
+        client={client as never}
+      />,
+    );
+    await waitFor(() => expect(mocks.workbenchProps.at(-1)?.bookId).toBe("book-2"));
+    resolveCreated({ ...narrator, id: "old-book-session", title: "旧书会话" });
+    await Promise.resolve();
+    expect(mocks.workbenchProps.at(-1)?.bookSessions ?? []).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: "old-book-session" })]),
+    );
+  });
+
   it("已有书籍会话历史时仍显示全部会话并通过书籍作用域创建新会话", async () => {
     const createdNarrator: RuntimeNarratorSummary = {
       ...narrator,
@@ -209,7 +346,11 @@ describe("RuntimeWritingWorkbenchRoute", () => {
     ]);
 
     fireEvent.click(screen.getByRole("button", { name: "创建书籍会话" }));
-    await waitFor(() => expect(client.createNarrator).toHaveBeenCalledWith("book-1", { title: "新建对话" }));
+    await waitFor(() => expect(client.createNarrator).toHaveBeenCalledWith(
+      "book-1",
+      { title: "新建对话" },
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    ));
     await waitFor(() => expect(mocks.mountProps.at(-1)?.narrator).toEqual(createdNarrator));
     expect(mocks.workbenchProps.at(-1)?.activeSessionId).toBe(createdNarrator.id);
     expect(onChanged).toHaveBeenCalledTimes(1);

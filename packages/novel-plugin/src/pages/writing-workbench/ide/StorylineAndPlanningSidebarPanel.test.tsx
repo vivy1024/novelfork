@@ -1,10 +1,54 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
+import { resolveNextAction, StorylineAndPlanningSidebarPanel } from "./StorylineAndPlanningSidebarPanel";
 import { buildTargetChapterFields } from "./IdeWorkbench";
 import type { ResourceTreeAction } from "../../WorkbenchResourceTree";
 import type { WorkbenchResourceNode } from "../useWorkbenchResources";
+
+vi.mock("@/hooks/use-api", () => ({
+  fetchJson: vi.fn(async () => ({})),
+  useApi: (path: string | null) => {
+    if (path?.includes("category=foreshadowing")) {
+      return {
+        data: {
+          entries: [
+            { id: "fs-1", title: "青铜戒指之谜", customFields: { status: "已埋设", plantedChapter: 5, targetChapter: 12 } },
+            { id: "fs-2", title: "已回收伏笔", customFields: { status: "已回收", plantedChapter: 1 } },
+          ],
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(async () => undefined),
+      };
+    }
+    if (path?.includes("category=conflicts")) {
+      return {
+        data: {
+          entries: [
+            { id: "cf-1", title: "通道授权争夺", customFields: { status: "进行中", chapterStart: 8, chapterEnd: 10 } },
+          ],
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(async () => undefined),
+      };
+    }
+    if (path?.endsWith("/state")) {
+      return {
+        data: {
+          resourceLedger: {
+            resources: [{ resourceId: "debt-1", name: "实验债", balance: 3, lastChapter: 2 }],
+          },
+        },
+        loading: false,
+        error: null,
+        refetch: vi.fn(async () => undefined),
+      };
+    }
+    return { data: undefined, loading: false, error: null, refetch: vi.fn(async () => undefined) };
+  },
+}));
 
 vi.mock("../NarrativeMemoryPanel", () => ({
   NarrativeMemorySummary: ({ onOpenCenter }: { onOpenCenter?: () => void }) => (
@@ -29,9 +73,13 @@ function node(id: string, title: string, kind: WorkbenchResourceNode["kind"] = "
 function renderPanel(options: {
   onAction?: (action: ResourceTreeAction) => void;
   extraOutlineNodes?: WorkbenchResourceNode[];
+  onSendToNarrator?: (message: string) => void;
+  bookTargetChapters?: number;
+  outlineTreeNodes?: WorkbenchResourceNode[];
 } = {}) {
   const onOpen = vi.fn();
   const onSwitchView = vi.fn();
+  const onSendToNarrator = options.onSendToNarrator ?? vi.fn();
   const chapter = node("chapter:12", "第 12 章", "chapter");
   (chapter as WorkbenchResourceNode & { metadata?: Record<string, unknown> }).metadata = { chapterNumber: 12 };
   const outline = node("outline:1", "第一卷：起点", "jingwei-entry");
@@ -39,14 +87,16 @@ function renderPanel(options: {
     <StorylineAndPlanningSidebarPanel
       bookId="book-1"
       chapterTreeNodes={[node("chapters", "章节", "group", [chapter])]}
-      outlineTreeNodes={[node("outline", "卷纲", "group", [outline, ...(options.extraOutlineNodes ?? [])])]}
+      outlineTreeNodes={options.outlineTreeNodes ?? [node("outline", "卷纲", "group", [outline, ...(options.extraOutlineNodes ?? [])])]}
       selectedNodeId={null}
       onOpen={onOpen}
       onSwitchView={onSwitchView}
       onAction={options.onAction}
+      onSendToNarrator={onSendToNarrator}
+      bookTargetChapters={options.bookTargetChapters}
     />,
   );
-  return { onOpen, onSwitchView, chapter, outline };
+  return { onOpen, onSwitchView, onSendToNarrator, chapter, outline };
 }
 
 afterEach(() => {
@@ -61,7 +111,7 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     expect(screen.getByRole("button", { name: "章节与大纲" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "章后事实" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "故事画布" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "伏笔账本" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "进度账本" })).toBeTruthy();
     expect(screen.getByText("当前语境")).toBeTruthy();
     expect(screen.getByText("第 12 章")).toBeTruthy();
     expect(screen.getByText("第一卷：起点")).toBeTruthy();
@@ -160,18 +210,44 @@ describe("StorylineAndPlanningSidebarPanel 故事推进入口（IA 收敛后）"
     );
   });
 
-  it("当前语境切换到写作视图，伏笔账本打开全屏看板工具节点", () => {
+  it("当前语境切换到写作视图，进度账本就地渲染伏笔/冲突/债务，点看板才打开 tool 节点", async () => {
     const { onOpen, onSwitchView } = renderPanel();
 
     fireEvent.click(screen.getByRole("button", { name: "当前语境" }));
-    fireEvent.click(screen.getByRole("button", { name: "伏笔账本" }));
-
     expect(onSwitchView).toHaveBeenCalledWith("write");
-    expect(onOpen).toHaveBeenCalledWith(
-      expect.objectContaining({
-        id: "tool:foreshadowing",
-        metadata: expect.objectContaining({ toolPanel: "foreshadowing" }),
-      }),
-    );
+
+    fireEvent.click(screen.getByRole("button", { name: "进度账本" }));
+    expect(screen.getByTestId("ledger-progress-table")).toBeTruthy();
+    expect(screen.getByText("青铜戒指之谜")).toBeTruthy();
+    expect(screen.getByText("通道授权争夺")).toBeTruthy();
+    expect(screen.getByText("实验债")).toBeTruthy();
+    expect(onOpen).not.toHaveBeenCalledWith(expect.objectContaining({ id: "tool:foreshadowing" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "打开看板" }));
+    expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ id: "tool:foreshadowing" }));
+  });
+
+  it("驾驶舱显示位置锚定条，并把目标章数渲染为进度", () => {
+    renderPanel({ bookTargetChapters: 200 });
+    expect(screen.getByTestId("storyline-cockpit")).toBeTruthy();
+    expect(screen.getByTestId("storyline-position-bar")).toBeTruthy();
+    expect(screen.getByText("📍 第 12 章")).toBeTruthy();
+    expect(screen.getByText("/ 目标 200 章")).toBeTruthy();
+    expect(screen.getByText("6%")).toBeTruthy();
+  });
+
+  it("NEXT 缺纲时点击把卷纲 seed 发给叙述者", () => {
+    const onSendToNarrator = vi.fn();
+    renderPanel({ outlineTreeNodes: [], onSendToNarrator });
+    fireEvent.click(screen.getByTestId("storyline-next-outline-empty"));
+    expect(onSendToNarrator).toHaveBeenCalledWith(expect.stringContaining("outline.volume"));
+  });
+
+  it("resolveNextAction 五级规则只返回最高优先级一条", () => {
+    expect(resolveNextAction({ hasOutline: false, plannedCount: 3, pendingCount: 2, dueNowCount: 1 }).key).toBe("outline-empty");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 2, pendingCount: 9, dueNowCount: 4 }).key).toBe("promote-outline");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 3, dueNowCount: 4 }).key).toBe("review-pending");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 2 }).key).toBe("foreshadow-due");
+    expect(resolveNextAction({ hasOutline: true, plannedCount: 0, pendingCount: 0, dueNowCount: 0 }).key).toBe("all-set");
   });
 });

@@ -3,7 +3,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
-const repositoryRoot = join(import.meta.dir, "..");
+function findRepositoryRoot(start: string): string {
+  let directory = start;
+  while (true) {
+    if (
+      existsSync(join(directory, "main.ts")) &&
+      existsSync(join(directory, "packages", "narrafork-runtime-private", "server"))
+    ) {
+      return directory;
+    }
+    const parent = dirname(directory);
+    if (parent === directory) throw new Error("Unable to locate NovelFork repository root");
+    directory = parent;
+  }
+}
+
+const repositoryRoot = findRepositoryRoot(import.meta.dir);
 const packageJson = JSON.parse(readFileSync(join(repositoryRoot, "package.json"), "utf8")) as {
   version: string;
   packageManager?: string;
@@ -46,32 +61,26 @@ const releaseArtifactScript = readFileSync(
   join(repositoryRoot, "scripts", "lib", "prepare-runtime-release-artifacts.ts"),
   "utf8",
 );
-const runtimeMigrationsOverlayPatch = readFileSync(
+const runtimeMigrationsSource = readFileSync(
   join(
     repositoryRoot,
     "packages",
-    "narrafork-runtime-overlay",
-    "patches",
-    "server-run-migrations.external-assets.patch",
+    "narrafork-runtime-private",
+    "server",
+    "db",
+    "run-migrations.ts",
   ),
   "utf8",
 );
-const runtimeFrontendOverlayPatch = readFileSync(
-  join(
-    repositoryRoot,
-    "packages",
-    "narrafork-runtime-overlay",
-    "patches",
-    "server-main.product-host.patch",
-  ),
+const runtimeMainSource = readFileSync(
+  join(repositoryRoot, "packages", "narrafork-runtime-private", "server", "main.ts"),
   "utf8",
 );
 const generatedModuleDeclaration = readFileSync(
   join(
     repositoryRoot,
     "packages",
-    "narrafork-runtime-overlay",
-    "files",
+    "narrafork-runtime-private",
     "server",
     "types",
     "novelfork-generated-modules.d.ts",
@@ -182,6 +191,10 @@ describe("根 Host 编译契约", () => {
     expect(productCompileScript).toContain("runtimeRoot: isolatedRuntime.root");
     expect(productCompileScript).not.toContain("build-cross-platform.ts");
     expect(productCompileScript).not.toContain("NARRAFORK_MIGRATIONS_DIR");
+    expect(productCompileScript).not.toContain("runtime-overlay");
+    expect(productCompileScript).not.toContain("materialize-runtime-overlay");
+    expect(isolatedRuntimeBuildScript).not.toContain("runtime-overlay");
+    expect(isolatedRuntimeBuildScript).not.toContain("materialize-runtime-overlay");
     expect(productFrontendBuildScript).toContain('Bun.spawnSync([process.execPath, "run", "build"], {');
     expect(productFrontendBuildScript).not.toContain('Bun.spawnSync(["bun", "run", "build"], {');
     expect(productFrontendBuildScript).toContain("NOVELFORK_PRODUCT_RUNTIME_ROOT");
@@ -255,16 +268,12 @@ describe("根 Host 编译契约", () => {
     expect(buildScript).not.toContain("--dist=");
     expect(releaseArtifactScript).toContain("embedded-frontend.ts");
     expect(releaseArtifactScript).toContain("embedded-migrations-data.ts");
-    expect(runtimeMigrationsOverlayPatch).toContain('import("@server/generated/embedded-migrations-data")');
-    expect(runtimeMigrationsOverlayPatch).not.toContain(
-      "+\t\tconst generatedMigrationsDataModulePath",
-    );
-    expect(runtimeFrontendOverlayPatch).toContain(
-      'import("@server/generated/embedded-frontend")',
-    );
-    expect(runtimeFrontendOverlayPatch).not.toContain(
-      "+\t\t\tconst generatedFrontendModulePath",
-    );
+    expect(runtimeMigrationsSource).toContain('import("@server/generated/embedded-migrations-data")');
+    expect(runtimeMigrationsSource).toContain("materializeEmbeddedMigrations");
+    expect(runtimeMigrationsSource).toContain("embeddedMigrationSqlFiles");
+    expect(runtimeMainSource).toContain("getRuntimeProductIntegration");
+    expect(runtimeMainSource).toContain("PLUGIN_UI_RUNTIME_JS_URL");
+    expect(runtimeMainSource).toContain("PLUGIN_UI_RUNTIME_CSS_URL");
     expect(releaseArtifactScript).toContain("embedded-changelog.ts");
     expect(releaseArtifactScript).toContain("build-info.ts");
     expect(releaseArtifactScript).toContain("parcel-native-loader.ts");

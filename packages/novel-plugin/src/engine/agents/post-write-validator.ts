@@ -281,6 +281,49 @@ export function validatePostWrite(
 }
 
 /**
+ * Detect intra-chapter duplicate paragraphs: consecutive or near-consecutive identical
+ * paragraphs within the same chapter. Catches copy-paste drift (e.g. 第57-62行一份照单)
+ * that cross-chapter checks never see.
+ */
+export function detectIntraChapterDupParagraphs(
+  content: string,
+  options?: { readonly minParagraphChars?: number },
+): ReadonlyArray<PostWriteViolation> {
+  const violations: PostWriteViolation[] = [];
+  const minChars = options?.minParagraphChars ?? 20;
+
+  const paragraphs = content
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p.length >= minChars);
+
+  const seen = new Map<string, number>();
+  const duplicates: { text: string; count: number }[] = [];
+
+  for (const paragraph of paragraphs) {
+    const next = (seen.get(paragraph) ?? 0) + 1;
+    seen.set(paragraph, next);
+    if (next === 2) {
+      duplicates.push({ text: paragraph, count: 2 });
+    }
+  }
+
+  if (duplicates.length > 0) {
+    violations.push({
+      rule: "章内重复段落",
+      severity: "error",
+      description: `本章存在 ${duplicates.length} 组同段重复：同一段文字在同一章内出现了两次及以上。${duplicates
+        .slice(0, 2)
+        .map((d) => `「${d.text.slice(0, 30)}…」(×${d.count})`)
+        .join("、")}`,
+      suggestion: "删除重复段落，或把其中一段改为不同立意的叙述；如属有意重复，需改写以形成对外差异。",
+    });
+  }
+
+  return violations;
+}
+
+/**
  * Cross-chapter repetition check.
  * Detects phrases from the current chapter that also appeared in recent chapters.
  */

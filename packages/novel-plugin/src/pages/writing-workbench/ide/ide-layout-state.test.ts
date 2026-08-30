@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import {
+  defaultIdePaneVisibility,
+  ideLayoutModeFromWidth,
   ideLayoutSizesToArray,
+  idePanesUseOverlay,
+  initialIdeLayoutMode,
   loadIdeLayoutSizes,
   mergeIdeLayoutSizes,
   normalizeIdeLayoutSizes,
@@ -35,5 +39,25 @@ describe("ide layout state", () => {
   it("keeps the previous size when Allotment reports a hidden pane as zero", () => {
     const previous = { sidebar: 250, editor: 760, chat: 330 };
     expect(mergeIdeLayoutSizes([0, 810, 0], previous)).toEqual({ sidebar: 250, editor: 810, chat: 330 });
+  });
+
+  it("maps workbench width to pane visibility without stacking columns", () => {
+    expect(ideLayoutModeFromWidth(1200)).toBe("comfortable");
+    expect(ideLayoutModeFromWidth(1099)).toBe("compact");
+    expect(ideLayoutModeFromWidth(780)).toBe("compact");
+    expect(ideLayoutModeFromWidth(779)).toBe("narrow");
+    expect(ideLayoutModeFromWidth(0)).toBe("comfortable");
+    expect(defaultIdePaneVisibility("comfortable")).toEqual({ sidebar: true, chat: true });
+    expect(defaultIdePaneVisibility("compact")).toEqual({ sidebar: true, chat: false });
+    expect(defaultIdePaneVisibility("narrow")).toEqual({ sidebar: false, chat: false });
+    expect(idePanesUseOverlay("narrow")).toBe(true);
+    expect(idePanesUseOverlay("compact")).toBe(false);
+    expect(idePanesUseOverlay("comfortable")).toBe(false);
+  });
+
+  it("subtracts the desktop shell rail when guessing the first layout mode", () => {
+    expect(initialIdeLayoutMode(1400)).toBe("comfortable");
+    expect(initialIdeLayoutMode(1100)).toBe("compact");
+    expect(initialIdeLayoutMode(767)).toBe("narrow");
   });
 });
