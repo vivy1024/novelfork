@@ -31,6 +31,7 @@ import {
   riskLabel,
   type PendingEvent,
 } from "./narrative-pending-events";
+import { CreativeCompassPanel } from "./CreativeCompassPanel";
 
 /**
  * 写作进度事件：章节保存/结算完成后由工作台派发，写作视图据此自动刷新
@@ -68,6 +69,8 @@ export interface WriteViewPanelProps {
    */
   readonly chapterWordTarget?: number;
   readonly formalChapterCount?: number;
+  /** 推荐章已有正文时，打开该章编辑器。 */
+  readonly onJumpToChapter?: (chapterNumber: number) => void;
   /**
    * 面板是否可见（写作视图为当前侧栏视图且侧栏展开）。
    * 由 false→true 时自动刷新一次，作者写完回到写作视图即拿到最新状态，
@@ -99,6 +102,7 @@ export function WriteViewPanel({
   onRunWrite,
   formalChapterCount,
   chapterWordTarget = 0,
+  onJumpToChapter,
   visible,
 }: WriteViewPanelProps) {
   const [raw, setRaw] = useState<unknown>(null);
@@ -124,6 +128,7 @@ export function WriteViewPanel({
   // 作者编辑的情节点预算：默认折叠、默认为空（空=不干预模型自行拆点）。
   const [beatBudget, setBeatBudget] = useState<readonly BeatBudgetItem[]>([]);
   const [beatOpen, setBeatOpen] = useState(false);
+  const compassRef = useRef<HTMLDivElement>(null);
 
   const model = useMemo(() => buildWriteViewModel(raw), [raw]);
   const volumeModel = useMemo<VolumeCockpitModel>(
@@ -240,6 +245,13 @@ export function WriteViewPanel({
       onOpenSettings(plan.settingsSection);
       return;
     }
+    if (plan.kind === "write-compass") {
+      compassRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const goal = compassRef.current?.querySelector<HTMLTextAreaElement>("[data-testid='creative-compass-goal']");
+      goal?.focus();
+      setFixNote("请在上方创作罗盘填写本章目标；保存后会注入写章上下文。");
+      return;
+    }
     if (plan.kind === "lore-panel") {
       if (!onOpenLorePanel) {
         setFixNote(`当前环境无法打开角色与设定面板，请手动到角色与设定里处理「${plan.label}」。`);
@@ -291,6 +303,10 @@ export function WriteViewPanel({
   );
 
   const start = useCallback((mode: "blueprint" | "chapter") => {
+    if (model.alreadyWritten) {
+      if (model.chapterNumber > 0) onJumpToChapter?.(model.chapterNumber);
+      return;
+    }
     if (!gate.ok) return;
     onRunWrite?.({
       mode,
@@ -300,7 +316,9 @@ export function WriteViewPanel({
       preflight: raw,
       ...(beatBudget.length > 0 ? { beatBudget } : {}),
     });
-  }, [acceptFocusDefault, beatBudget, effectiveDirective, gate.ok, model.chapterNumber, onRunWrite, raw]);
+  }, [acceptFocusDefault, beatBudget, effectiveDirective, gate.ok, model.alreadyWritten, model.chapterNumber, onJumpToChapter, onRunWrite, raw]);
+
+  const effectiveWordTarget = chapterWordTarget > 0 ? chapterWordTarget : model.wordTarget;
 
   const light = LIGHT_STYLE[model.light];
   const LightIcon = light.icon;
@@ -353,6 +371,13 @@ export function WriteViewPanel({
         onCreateVolume={() => void handleFix("set-volume")}
         creating={fixBusy === "set-volume"}
       />
+
+      <div ref={compassRef}>
+        <CreativeCompassPanel
+          bookId={bookId}
+          onFillDirective={(goal) => setDirectiveDraft(goal)}
+        />
+      </div>
 
       {/* 检查项清单 */}
       {model.checks.length > 0 && (
@@ -508,7 +533,7 @@ export function WriteViewPanel({
           {beatOpen && (
             <div className="border-t border-border/60 px-2 py-1.5">
               <BeatBudgetEditor
-                chapterTarget={chapterWordTarget}
+                chapterTarget={effectiveWordTarget}
                 value={beatBudget}
                 onChange={setBeatBudget}
               />
@@ -516,9 +541,16 @@ export function WriteViewPanel({
           )}
         </section>
 
-        <label className="text-[11px] font-medium text-foreground" htmlFor="write-directive">
-          第 {model.chapterNumber || "?"} 章要发生什么
-        </label>
+        <div className="flex items-baseline justify-between gap-2">
+          <label className="text-[11px] font-medium text-foreground" htmlFor="write-directive">
+            第 {model.chapterNumber || "?"} 章要发生什么
+          </label>
+          {effectiveWordTarget > 0 ? (
+            <span className="text-[10px] tabular-nums text-muted-foreground" data-testid="write-word-target">
+              目标 {effectiveWordTarget.toLocaleString()} 字
+            </span>
+          ) : null}
+        </div>
         <textarea
           id="write-directive"
           value={directiveDraft}
@@ -539,27 +571,39 @@ export function WriteViewPanel({
             采用当前焦点的默认目标
           </label>
         )}
-        {!gate.ok && <p className="text-[10px] text-amber-600 dark:text-amber-400">{gate.reason}</p>}
-        <div className="flex gap-2">
-          <button
-            type="button"
-            onClick={() => start("blueprint")}
-            disabled={!gate.ok}
-            className="flex-1 rounded border border-border px-2 py-1.5 text-[11px] hover:bg-accent disabled:opacity-40"
-            data-testid="write-blueprint"
-          >
-            生成蓝图
-          </button>
+        {!gate.ok && !model.alreadyWritten && <p className="text-[10px] text-amber-600 dark:text-amber-400">{gate.reason}</p>}
+        {model.alreadyWritten ? (
           <button
             type="button"
             onClick={() => start("chapter")}
-            disabled={!gate.ok}
-            className="flex-1 rounded bg-primary px-2 py-1.5 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
-            data-testid="write-chapter"
+            disabled={!onJumpToChapter || model.chapterNumber <= 0}
+            className="rounded bg-primary px-2 py-1.5 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+            data-testid="write-open-chapter"
           >
-            直接写章
+            打开第 {model.chapterNumber} 章正文
           </button>
-        </div>
+        ) : (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => start("blueprint")}
+              disabled={!gate.ok}
+              className="flex-1 rounded border border-border px-2 py-1.5 text-[11px] hover:bg-accent disabled:opacity-40"
+              data-testid="write-blueprint"
+            >
+              生成蓝图
+            </button>
+            <button
+              type="button"
+              onClick={() => start("chapter")}
+              disabled={!gate.ok}
+              className="flex-1 rounded bg-primary px-2 py-1.5 text-[11px] text-primary-foreground hover:bg-primary/90 disabled:opacity-40"
+              data-testid="write-chapter"
+            >
+              写第 {model.chapterNumber || "?"} 章
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

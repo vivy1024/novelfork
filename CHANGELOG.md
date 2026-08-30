@@ -38,10 +38,13 @@ NovelFork 目前仍处于**初始开发与工程验证阶段**，尚未达到正
 - 为默认虚拟列表接入 `pipeline.chapter-result` 产品结果 Renderer，使 `contextSources`、`pipelineStages` 等结构化字段在真实工具结果中可见。
 - 收紧 Studio、Novel Plugin 与 Product Runtime 的契约、类型和路由边界，清理已下线的旧 IDE 视图与悬空状态分支。
 - 修复经纬搜索与读取正文截断、资源文件布局、Windows 路径/换行哈希兼容及若干前端运行时类型问题。
+- Runtime 更新链改为 fork-only：生产来源仅 `NarraFork/novelfork-runtime-private`；导入脚本默认不再 replay overlay，旧 overlay 子模块从公开 gitlink/workspace 退役。
+- 新增内置市场研究模块：起点/番茄公开榜单采集、历史快照与题材分析；侧栏「市场」页可自行扫榜并留存在 `~/.novelfork/market/snapshots/`，Agent 工具 `market.scan` / `market.query` / `market.sample_public_chapters` 读同一份数据。
+- 写作工作台继续收敛故事推进视图（情节板、对照条、点云），并下线 PGI 问卷/ask 旧入口。
 
 ### 版本与验证范围
 
-- 根产品版本 `0.0.4`；本次按发布要求只编译 Windows x64 单文件二进制。
+- 根产品版本 `0.0.3`；本次按发布要求只编译 Windows x64 单文件二进制。
 - 角色内核 UI 与叙事记忆回归测试通过（写作配置 3/3、角色册 5/5、叙事记忆 152/152、全仓 typecheck 绿）；真实书场结算质量待用户实测。
 
 ## v0.0.2 (2026-08-14) — 投稿风险自检重构、叙事记忆全链路、作品级写作技能与经纬收敛

@@ -30,7 +30,6 @@ export {
   handleMemoryDelete,
   handleMemoryBulkApprove,
   handleMemoryBulkDelete,
-  handlePgiAsk,
   handleWritingSkillsRead,
   handleWritingSkillsWrite,
   handleWritingSkillsRecommend,
@@ -76,12 +75,6 @@ export type {
   MemorySearchInput,
   MemoryStatsInput,
   MemoryUpdateInput,
-  PgiAskInput,
-  PgiAskResult,
-  PgiAskSuccess,
-  PgiAskFailure,
-  PgiAskQuestionItem,
-  AskUserQuestionInputItem,
   LegacyWritingSkillsImportReport,
   TrustedWritingSkillOptions,
   WritingSkillComplianceViolation,
@@ -111,7 +104,6 @@ export const NOVEL_TOOL_NAMES: readonly string[] = Object.keys(NOVEL_TOOL_SCHEMA
 /** Tool descriptions for manifest (brief summaries) */
 const NOVEL_TOOL_DESCRIPTIONS: Record<string, string> = {
   "cockpit.snapshot": "获取驾驶舱快照（进度、伏笔、章节概览）",
-  "pgi.ask": "PGI 追问引擎（生成追问 + 格式化回答）",
   "narrative.read_line": "读取叙事线",
   "narrative.propose_change": "提议叙事线变更",
   "narrative.approve_change": "审批叙事线变更（批准或驳回）",

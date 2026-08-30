@@ -198,10 +198,10 @@ describe("writing resource chapter-result narrative events", () => {
     }
   });
 
-  it("does not throw when narrativeEvents were already persisted", async () => {
+  it("does not reduce a partial batch when event persistence fails", async () => {
     const storage = await createStorage();
     try {
-      const event = createNarrativeEvent({
+      const first = createNarrativeEvent({
         bookId: "book-1",
         chapterNumber: 12,
         eventType: "location_changed",
@@ -213,9 +213,13 @@ describe("writing resource chapter-result narrative events", () => {
         layer: "dynamic",
         source: "settle",
       });
-      await applyNarrativeEventsForChapterResult(storage, "book-1", { narrativeEvents: [event] });
+      const duplicate = { ...first, subject: "南宫婉" };
 
-      await expect(applyNarrativeEventsForChapterResult(storage, "book-1", { narrativeEvents: [event] })).resolves.toEqual(expect.objectContaining({ failedEvents: [] }));
+      await expect(applyNarrativeEventsForChapterResult(storage, "book-1", { narrativeEvents: [first, duplicate] })).rejects.toThrow();
+      const eventRows = storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event").get();
+      const factRows = storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact").get();
+      expect(eventRows?.count).toBe(0);
+      expect(factRows?.count).toBe(0);
     } finally {
       storage.close();
     }

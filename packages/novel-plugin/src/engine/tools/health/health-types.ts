@@ -1,5 +1,4 @@
 import type { AuditIssue } from "../../agents/continuity.js";
-import type { StalledConflictWarning } from "../../jingwei/context/stalled-detector.js";
 import type { HookRecord } from "@vivy1024/novelfork-core";
 import type { LongSpanFatigueIssue } from "@vivy1024/novelfork-core";
 
@@ -34,15 +33,10 @@ export interface BookHealthSummary {
   readonly pacingDiversityScore: number;
   readonly emotionCurve: ReadonlyArray<string>;
   readonly sensitiveWordTotal: number;
-  readonly stalledConflicts: ReadonlyArray<StalledConflictWarning>;
   readonly hookDebtWarnings: ReadonlyArray<AuditIssue>;
   readonly fatigueWarnings: ReadonlyArray<LongSpanFatigueIssue>;
   readonly povGapWarnings: ReadonlyArray<{
     readonly character: string;
     readonly gap: number;
   }>;
-  readonly mainConflictDrift?: {
-    readonly conflictId: string;
-    readonly stalledChapters: number;
-  };
 }

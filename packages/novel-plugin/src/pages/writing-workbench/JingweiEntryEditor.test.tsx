@@ -88,4 +88,48 @@ describe("JingweiEntryEditor canonical history", () => {
 
     expect((await screen.findByRole("alert")).textContent).toContain("历史加载失败（500）");
   });
+
+  it("冲突分类画出正方/反方/赌注/收束，保存时把 fields 一并写回", async () => {
+    const onSave = vi.fn(async () => undefined);
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/revisions")) {
+        return new Response(JSON.stringify({ revisions: [] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({ entries: [] }), { status: 200, headers: { "content-type": "application/json" } });
+    }));
+
+    render(
+      <JingweiEntryEditor
+        bookId="book-1"
+        entry={{
+          id: "cf-1",
+          title: "通道授权",
+          contentMd: "争夺通道",
+          sectionId: "sec-1",
+          category: "conflicts",
+          fields: { protagonistSide: "林舟", antagonistSide: "周衡", stakes: "通道" },
+        }}
+        onSave={onSave}
+      />,
+    );
+
+    expect(await screen.findByTestId("jingwei-entry-fields")).toBeTruthy();
+    expect(screen.getByLabelText(/正方/)).toBeTruthy();
+    expect(screen.getByLabelText(/反方/)).toBeTruthy();
+    expect(screen.getByLabelText(/赌注/)).toBeTruthy();
+    expect(screen.getByLabelText(/收束状态/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/赌注/), { target: { value: "失去北境通道" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalled());
+    expect(onSave).toHaveBeenCalledWith("cf-1", expect.objectContaining({
+      title: "通道授权",
+      fields: expect.objectContaining({
+        protagonistSide: "林舟",
+        antagonistSide: "周衡",
+        stakes: "失去北境通道",
+        name: "通道授权",
+      }),
+    }));
+  });
 });

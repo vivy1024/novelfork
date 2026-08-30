@@ -11,7 +11,6 @@ describe("tool-results registry", () => {
     expect(resolveToolResultRendererKey({ toolName: "pipeline.write", result: { data: {} } })).toBe("pipeline");
     // 补了专属卡后，这些工具名也会解析到对应保留键（不再退回 generic）。
     expect(resolveToolResultRendererKey({ toolName: "chapter.audit", result: { data: {} } })).toBe("chapter-audit");
-    expect(resolveToolResultRendererKey({ toolName: "pgi.ask", result: { data: {} } })).toBe("pgi");
     // narrative.read_line 的 renderer 值是 "narrative.line"，工具名本身仍未登记，按名解析回落 generic。
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { data: {} } })).toBe("generic");
     expect(resolveToolResultRendererKey({ toolName: "narrative.read_line", result: { renderer: "narrative.line" } })).toBe("narrative");

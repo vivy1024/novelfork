@@ -77,6 +77,11 @@ const learnRoute = createRoute({
   path: "/learn",
 });
 
+const marketRoute = createRoute({
+  getParentRoute: () => nextRoute,
+  path: "/market",
+});
+
 // Native NarraFork components keep their canonical navigation targets. These
 // compatibility routes translate them into the NovelFork product shell instead
 // of letting the catch-all discard narrator/settings intent.
@@ -160,6 +165,7 @@ const routeTree = rootRoute.addChildren([
     settingsRoute,
     settingsSectionRoute,
     learnRoute,
+    marketRoute,
   ]),
   nativeNarratorRoute,
   nativeNarratorsRoute,
@@ -181,4 +187,4 @@ declare module "@tanstack/react-router" {
   }
 }
 
-export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, booksListRoute, sessionsRoute, searchRoute, routinesRoute, knowledgeRoute, scheduledTasksRoute, settingsRoute, settingsSectionRoute, learnRoute };
+export { rootRoute, nextRoute, homeRoute, narratorRoute, bookRoute, booksListRoute, sessionsRoute, searchRoute, routinesRoute, knowledgeRoute, scheduledTasksRoute, settingsRoute, settingsSectionRoute, learnRoute, marketRoute };

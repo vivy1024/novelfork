@@ -84,12 +84,33 @@ export interface GraphStats {
   entityCount: number;
 }
 
+export interface SequenceLaneHeader {
+  /** 实体泳道名（通常是角色/主体名）。 */
+  name: string;
+  /** 该泳道第一条子泳道的中心 Y（与 nodePosition 入参同口径）。 */
+  y: number;
+  /** 泳道内事件数，用于行头频次展示。 */
+  eventCount: number;
+  /** 行头色点（由实体名稳定哈希）。 */
+  color: string;
+}
+
+export interface SequenceLayoutMeta {
+  chapters: readonly number[];
+  lanes: readonly SequenceLaneHeader[];
+  chapterStep: number;
+  originX: number;
+  originY: number;
+}
+
 export interface NarrativeGraphModel {
   nodes: GraphNodeModel[];
   edges: GraphEdgeModel[];
   stats: GraphStats;
   focusNodeId?: string;
   focusLabel?: string;
+  /** 仅 sequence 视图（时间线 / 角色弧 / 事件链）携带，供行头与缩放使用。 */
+  sequence?: SequenceLayoutMeta;
 }
 
 export interface BuildGraphModelInput {
@@ -97,6 +118,10 @@ export interface BuildGraphModelInput {
   events: readonly NarrativeEvent[];
   view: NarrativeMemoryView;
   focusEntity?: string;
+  /** 时间线 X 步长（px/章）。缺省 280；滚轮缩放时由画布传入。 */
+  chapterStep?: number;
+  /** 前端隐藏的角色泳道；布局时不占高度。 */
+  hiddenLanes?: ReadonlySet<string>;
 }
 
 const ENTITY_WIDTH = 196;
@@ -106,6 +131,27 @@ const FACT_HEIGHT = 100;
 const EVENT_WIDTH = 244;
 const EVENT_HEIGHT = 112;
 const PLACEHOLDER_ENTITY = "未命名实体";
+
+/** 时间线 X 步长（px/章）：默认 280，滚轮在 [140, 560] 间缩放。 */
+export const SEQUENCE_CHAPTER_STEP_DEFAULT = 280;
+export const SEQUENCE_CHAPTER_STEP_MIN = 140;
+export const SEQUENCE_CHAPTER_STEP_MAX = 560;
+export const SEQUENCE_ORIGIN_X = 220;
+export const SEQUENCE_ORIGIN_Y = 150;
+/** 同章子泳道纵向步长：必须 ≥ 事件高度，避免 offset*28 把卡片叠在一起。 */
+const SEQUENCE_SUB_LANE_STRIDE = EVENT_HEIGHT + 16;
+const SEQUENCE_ENTITY_LANE_GAP = 40;
+
+const LANE_COLORS = [
+  "#2563eb",
+  "#7c3aed",
+  "#db2777",
+  "#dc2626",
+  "#d97706",
+  "#059669",
+  "#0891b2",
+  "#65a30d",
+] as const;
 
 const CATEGORY_LABELS: Record<string, string> = {
   relationship: "关系",
@@ -446,24 +492,177 @@ function layoutWaveNodes(entityNodes: GraphNodeModel[], eventNodes: GraphNodeMod
   );
 }
 
-function layoutSequenceNodes(nodes: GraphNodeModel[], laneByNodeId?: Map<string, string>): void {
+export function clampChapterStep(value: number | undefined): number {
+  if (!Number.isFinite(value) || value === undefined) return SEQUENCE_CHAPTER_STEP_DEFAULT;
+  return Math.min(SEQUENCE_CHAPTER_STEP_MAX, Math.max(SEQUENCE_CHAPTER_STEP_MIN, Math.round(value)));
+}
+
+export function laneColor(name: string): string {
+  let hash = 0;
+  for (let index = 0; index < name.length; index += 1) {
+    hash = (hash * 31 + name.charCodeAt(index)) | 0;
+  }
+  return LANE_COLORS[Math.abs(hash) % LANE_COLORS.length]!;
+}
+
+/**
+ * 实体泳道排序：出场频次降序（主角置顶），同频次按名 localeCompare 保稳定。
+ */
+export function sortLanesByFrequency(lanes: readonly string[], counts: ReadonlyMap<string, number>): string[] {
+  return [...lanes].sort((a, b) => (counts.get(b) ?? 0) - (counts.get(a) ?? 0) || a.localeCompare(b));
+}
+
+/**
+ * foliantica 式贪心子泳道：同一实体泳道内，同章多事件各占一条子泳道，
+ * 跨章可复用已空闲的子泳道（按章号升序分配，同章按标题稳定）。
+ *
+ * 泳道选择用最小堆（按 untilChapter 升序）：取堆顶即「结束最早」的泳道，
+ * 复杂度从 findIndex 全扫描 O(k) 降到 O(log k)。同章复用判据为
+ * `untilChapter < chapter`（严格不等）：同章事件必须占不同子泳道，
+ * 否则 x 坐标相同会在视觉上重叠。
+ *
+ * fallbackChapter：无 chapterNumber 的游离节点（如跨章钩子）的落位章号，
+ * 必须与 layoutSequenceNodes 的 x 轴回退（全书最大章）一致——不一致时
+ * 这种节点排序在无穷远却能复用 slot 0，而 x 被画到最后一章，
+ * 正好压在该章 slot-0 已有节点的位置上造成重叠。
+ *
+ * 返回 nodeId → 子泳道下标。
+ */
+export function assignSubLanes(
+  nodes: readonly GraphNodeModel[],
+  laneByNodeId?: Map<string, string>,
+  fallbackChapter?: number,
+): Map<string, number> {
+  const grouped = new Map<string, GraphNodeModel[]>();
+  for (const node of nodes) {
+    const lane = laneByNodeId?.get(node.id) ?? node.entityName ?? "事件";
+    const group = grouped.get(lane) ?? [];
+    group.push(node);
+    grouped.set(lane, group);
+  }
+  const resolveChapter = (node: GraphNodeModel): number =>
+    node.chapterNumber ?? fallbackChapter ?? Number.MAX_SAFE_INTEGER;
+  const assigned = new Map<string, number>();
+  for (const group of grouped.values()) {
+    const sorted = [...group].sort(
+      (a, b) => resolveChapter(a) - resolveChapter(b) || a.title.localeCompare(b.title),
+    );
+    // 最小堆：按 untilChapter 取「结束最早」的泳道。堆顶不可复用则没有泳道可复用。
+    const heap: Array<{ untilChapter: number; slot: number }> = [];
+    let laneCount = 0;
+    for (const node of sorted) {
+      const chapter = resolveChapter(node);
+      const head = heap[0];
+      let slot: number;
+      if (head && head.untilChapter < chapter) {
+        // 复用堆顶泳道（O(log k)）：弹出、更新占用章、重新入堆。
+        slot = head.slot;
+        heap[0] = { untilChapter: chapter, slot };
+        heapSinkDown(heap, 0);
+      } else {
+        slot = laneCount;
+        laneCount += 1;
+        heapPush(heap, { untilChapter: chapter, slot });
+      }
+      assigned.set(node.id, slot);
+    }
+  }
+  return assigned;
+}
+
+/** 堆上浮：新元素按 untilChapter 升序归位。 */
+function heapPush(heap: Array<{ untilChapter: number; slot: number }>, item: { untilChapter: number; slot: number }): void {
+  heap.push(item);
+  let index = heap.length - 1;
+  while (index > 0) {
+    const parent = (index - 1) >> 1;
+    if (heap[parent]!.untilChapter <= item.untilChapter) break;
+    heap[index] = heap[parent]!;
+    index = parent;
+  }
+  heap[index] = item;
+}
+
+/** 堆下沉：堆顶被替换后按 untilChapter 下沉归位。 */
+function heapSinkDown(heap: Array<{ untilChapter: number; slot: number }>, index: number): void {
+  const item = heap[index]!;
+  const half = heap.length >> 1;
+  while (index < half) {
+    const left = index * 2 + 1;
+    const right = left + 1;
+    const smaller = right < heap.length && heap[right]!.untilChapter < heap[left]!.untilChapter ? right : left;
+    if (item.untilChapter <= heap[smaller]!.untilChapter) break;
+    heap[index] = heap[smaller]!;
+    index = smaller;
+  }
+  heap[index] = item;
+}
+
+export function nodeLaneName(node: GraphNodeModel, laneByNodeId?: Map<string, string>): string {
+  return laneByNodeId?.get(node.id) ?? node.entityName ?? node.lane ?? "事件";
+}
+
+function layoutSequenceNodes(
+  nodes: GraphNodeModel[],
+  laneByNodeId: Map<string, string> | undefined,
+  chapterStep: number,
+  hiddenLanes?: ReadonlySet<string>,
+): SequenceLayoutMeta {
   const chapters = [...new Set(nodes.map((node) => node.chapterNumber).filter((chapter): chapter is number => chapter !== undefined))].sort((a, b) => a - b);
   const chapterIndex = new Map(chapters.map((chapter, index) => [chapter, index]));
-  const lanes = [...new Set(nodes.map((node) => laneByNodeId?.get(node.id) ?? node.entityName ?? "事件"))].sort((a, b) => a.localeCompare(b));
-  const laneIndex = new Map(lanes.map((lane, index) => [lane, index]));
-  const chapterBuckets = new Map<string, number>();
-  const sorted = [...nodes].sort((a, b) => (a.chapterNumber ?? Number.MAX_SAFE_INTEGER) - (b.chapterNumber ?? Number.MAX_SAFE_INTEGER) || a.title.localeCompare(b.title));
+  const visibleNodes = hiddenLanes && hiddenLanes.size > 0
+    ? nodes.filter((node) => !hiddenLanes.has(nodeLaneName(node, laneByNodeId)))
+    : nodes;
+  const counts = new Map<string, number>();
+  for (const node of visibleNodes) {
+    const lane = nodeLaneName(node, laneByNodeId);
+    counts.set(lane, (counts.get(lane) ?? 0) + 1);
+  }
+  const lanes = sortLanesByFrequency(
+    [...new Set(visibleNodes.map((node) => nodeLaneName(node, laneByNodeId)))],
+    counts,
+  );
+  // 游离节点（无 chapterNumber）的落位必须与下方 x 轴回退一致：
+  // 都用「全书最大章」，否则子泳道分配把它排在无穷远、渲染却画在最后一章。
+  const fallbackChapter = chapters[chapters.length - 1] ?? 0;
+  const subLanes = assignSubLanes(visibleNodes, laneByNodeId, fallbackChapter);
+  const maxSubByLane = new Map<string, number>();
+  for (const node of visibleNodes) {
+    const lane = nodeLaneName(node, laneByNodeId);
+    maxSubByLane.set(lane, Math.max(maxSubByLane.get(lane) ?? 0, subLanes.get(node.id) ?? 0));
+  }
+  const laneBaseY = new Map<string, number>();
+  let cursorY = SEQUENCE_ORIGIN_Y;
+  for (const lane of lanes) {
+    laneBaseY.set(lane, cursorY);
+    const subCount = (maxSubByLane.get(lane) ?? 0) + 1;
+    cursorY += subCount * SEQUENCE_SUB_LANE_STRIDE + SEQUENCE_ENTITY_LANE_GAP;
+  }
+  const sorted = [...visibleNodes].sort(
+    (a, b) => (a.chapterNumber ?? Number.MAX_SAFE_INTEGER) - (b.chapterNumber ?? Number.MAX_SAFE_INTEGER)
+      || a.title.localeCompare(b.title),
+  );
   for (const node of sorted) {
-    const lane = laneByNodeId?.get(node.id) ?? node.entityName ?? "事件";
-    const chapter = node.chapterNumber ?? chapters[chapters.length - 1] ?? 0;
-    const chapterKey = `${lane}|${chapter}`;
-    const offset = chapterBuckets.get(chapterKey) ?? 0;
-    chapterBuckets.set(chapterKey, offset + 1);
-    const x = 220 + (chapterIndex.get(chapter) ?? 0) * 280;
-    const y = 150 + (laneIndex.get(lane) ?? 0) * 170 + offset * 28;
+    const lane = nodeLaneName(node, laneByNodeId);
+    const chapter = node.chapterNumber ?? fallbackChapter;
+    const sub = subLanes.get(node.id) ?? 0;
+    const x = SEQUENCE_ORIGIN_X + (chapterIndex.get(chapter) ?? 0) * chapterStep;
+    const y = (laneBaseY.get(lane) ?? SEQUENCE_ORIGIN_Y) + sub * SEQUENCE_SUB_LANE_STRIDE;
     node.lane = lane;
     node.position = nodePosition(x, y, node.width, node.height);
   }
+  return {
+    chapters,
+    chapterStep,
+    originX: SEQUENCE_ORIGIN_X,
+    originY: SEQUENCE_ORIGIN_Y,
+    lanes: lanes.map((name) => ({
+      name,
+      y: laneBaseY.get(name) ?? SEQUENCE_ORIGIN_Y,
+      eventCount: counts.get(name) ?? 0,
+      color: laneColor(name),
+    })),
+  };
 }
 
 function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], view: NarrativeMemoryView, focusEntity?: string): NarrativeGraphModel {
@@ -493,16 +692,16 @@ function buildEntityGraph(facts: readonly NarrativeFact[], events: readonly Narr
   return createModel(allNodes, edges, facts, events, focusNodeId, focusEntity);
 }
 
-function buildSequenceGraph(facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], view: NarrativeMemoryView): NarrativeGraphModel {
-  // 时间线视图若一次性铺开全书事件，画布会宽达数千像素、fitView 后节点小到不可读。
-  // 这里对 timeline 收敛为「最近 8 章」，其余视图保持全量。
-  const TIMELINE_WINDOW_CHAPTERS = 8;
-  let sourceEvents = uniqueEvents(events);
-  if (view === "timeline" && sourceEvents.length > 0) {
-    const maxChapter = Math.max(...sourceEvents.map((event) => event.chapterNumber ?? 0));
-    const windowed = sourceEvents.filter((event) => (event.chapterNumber ?? 0) > maxChapter - TIMELINE_WINDOW_CHAPTERS);
-    if (windowed.length > 0) sourceEvents = windowed;
-  }
+function buildSequenceGraph(
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[],
+  view: NarrativeMemoryView,
+  chapterStep: number,
+  hiddenLanes?: ReadonlySet<string>,
+): NarrativeGraphModel {
+  // 全量铺开（不再截断最近 8 章）：可读性由 GraphCanvas 的「打开定位当前章 +
+  // HEAD 竖线」承担，作者平移/缩放即可回看全书；截断会让历史不可达。
+  const sourceEvents = uniqueEvents(events);
   const eventNodes = sourceEvents.length > 0 ? sourceEvents.map(createEventNode) : uniqueFacts(facts).map(createFactNode);
   const edges: GraphEdgeModel[] = [];
   const laneByNodeId = new Map<string, string>();
@@ -533,11 +732,28 @@ function buildSequenceGraph(facts: readonly NarrativeFact[], events: readonly Na
       edges.push({ id: `${source.id}->${target.id}`, source: source.id, target: target.id, label: "下一事件", displayLabel: "下一事件", kind: "sequence", animated: true });
     }
   }
-  layoutSequenceNodes(eventNodes, view !== "conflict" ? laneByNodeId : undefined);
-  return createModel(eventNodes, edges, facts, events);
+  const sequence = layoutSequenceNodes(eventNodes, view !== "conflict" ? laneByNodeId : undefined, chapterStep, hiddenLanes);
+  // 隐藏泳道必须按名字过滤，不能用 sequence.lanes.length 回退：
+  // 把最后一条泳道关掉后 lanes 为空，旧逻辑会把全部节点又画回来。
+  const visibleNodes = hiddenLanes && hiddenLanes.size > 0
+    ? eventNodes.filter((node) => !hiddenLanes.has(nodeLaneName(node, laneByNodeId)))
+    : eventNodes;
+  const visibleIds = new Set(visibleNodes.map((node) => node.id));
+  const visibleEdges = visibleNodes.length === eventNodes.length
+    ? edges
+    : edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target));
+  return createModel(visibleNodes, visibleEdges, facts, events, undefined, undefined, sequence);
 }
 
-function createModel(nodes: GraphNodeModel[], edges: GraphEdgeModel[], facts: readonly NarrativeFact[], events: readonly NarrativeEvent[], focusNodeId?: string, focusLabel?: string): NarrativeGraphModel {
+function createModel(
+  nodes: GraphNodeModel[],
+  edges: GraphEdgeModel[],
+  facts: readonly NarrativeFact[],
+  events: readonly NarrativeEvent[],
+  focusNodeId?: string,
+  focusLabel?: string,
+  sequence?: SequenceLayoutMeta,
+): NarrativeGraphModel {
   const entityCount = nodes.filter((node) => node.kind === "entity").length;
   const chapters = new Set([...facts.map((fact) => fact.sourceChapter), ...events.map((event) => event.chapterNumber)].filter((chapter): chapter is number => chapter !== undefined));
   return {
@@ -545,6 +761,7 @@ function createModel(nodes: GraphNodeModel[], edges: GraphEdgeModel[], facts: re
     edges,
     focusNodeId,
     focusLabel,
+    ...(sequence ? { sequence } : {}),
     stats: {
       nodeCount: nodes.length,
       edgeCount: edges.length,
@@ -564,7 +781,7 @@ export function buildNarrativeGraphModel(input: BuildGraphModelInput): Narrative
   if (resolvedView === "relationship" || resolvedView === "conflict" || resolvedView === "wave") {
     return buildEntityGraph(facts, events, resolvedView, input.focusEntity);
   }
-  return buildSequenceGraph(facts, events, resolvedView);
+  return buildSequenceGraph(facts, events, resolvedView, clampChapterStep(input.chapterStep), input.hiddenLanes);
 }
 
 export function isNarrativeMemoryView(value: unknown): value is NarrativeMemoryView {

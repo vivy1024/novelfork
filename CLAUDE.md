@@ -24,8 +24,8 @@ NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在本仓库
 ```text
 本仓库（NovelFork 产品）
 ├─ 公开跟踪：产品代码、Bridge、构建与发布脚本
-├─ 私有子仓库：packages/narrafork-runtime-overlay/（历史 overlay 资产，fork 化后存档）
-└─ 本地存在、Git 忽略：packages/narrafork-runtime-private/
+├─ 本地历史归档：packages/narrafork-runtime-overlay/（Git 忽略，不参与生产链）
+└─ 本地存在、Git 忽略：packages/narrafork-runtime-private/（唯一生产 Runtime 来源）
 
 私有 fork 仓库（Runtime 源头权威，不在本仓库内）
 └─ NarraFork/novelfork-runtime-private @ novelfork/integration-v0.5.23
@@ -45,7 +45,7 @@ NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在本仓库
 | `packages/novelfork-product-runtime/` | 产品 Runtime 适配、书籍绑定、产品路由 | 跟踪（公开） |
 | `packages/narrafork-runtime-bridge/` | Studio/产品层与 Runtime 的窄契约 | 跟踪（公开） |
 | `packages/fitness-plugin/` | 示例/扩展插件 | 跟踪（公开） |
-| `packages/narrafork-runtime-overlay/` | 历史 overlay 资产（fork 化后存档参考） | **私有 submodule** |
+| `packages/narrafork-runtime-overlay/` | 本地历史归档（不参与 workspace、导入、编译或测试） | **Git 忽略** |
 | `packages/narrafork-runtime-private/` | 可运行的完整 Runtime 物化树（= 私有 fork 分支内容） | **ignore，仅本地** |
 | `NarraFork/novelfork-runtime-private` | Runtime fork 权威仓库，分支 `novelfork/integration-v0.5.23` | **独立私有仓库（不在本仓库内）** |
 | `narrafork-private-main/` | 上游私有 Runtime 完整 Git checkout | **ignore，仅本地** |
@@ -53,7 +53,7 @@ NovelFork 是网文小说 AI 辅助创作工作台。本文件描述在本仓库
 ### 公开边界（硬约束）
 
 - **不公开**完整 NarraFork Runtime 源码树。
-- **不公开** Runtime overlay 实现（补丁上下文、嵌入 Narrator 面板、Provider、Runtime 迁移等）；overlay 走私有子仓库。
+- **不公开**完整 Runtime 实现（Product Host、嵌入 Narrator 面板、Provider、Runtime 迁移等）；它们只存在于私有 fork 和本地 ignore 物化树。旧 overlay 归档即使本地存在，也不进入公开树。
 - 公开树可包含产品代码与 Bridge 契约；不得把 `packages/narrafork-runtime-private/` 重新加入跟踪。
 - 仅把当前 tip 改公开**不够**：若 Git 历史仍含 Runtime/overlay 源码，公开 clone 仍会泄露。公开前必须确认历史已清理，或改用无敏感历史的公开镜像。
 - 公开 GitHub Actions **不负责**完整 Runtime 构建。发版门禁是：主仓库本地完整测试 + 本地编译发布产物 + 用 Windows EXE 做功能核验（详见「多平台发版流程」）。
@@ -66,8 +66,8 @@ packages/novel-plugin/               小说领域：写作、章节、Lore、Nar
 packages/core/                       通用基础设施
 packages/novelfork-product-runtime/  产品 Runtime 适配、书籍绑定与领域路由
 packages/narrafork-runtime-bridge/   Runtime 与产品层之间的受控契约（可公开）
-packages/narrafork-runtime-overlay/  私有 submodule：Runtime 通用 overlay
-packages/narrafork-runtime-private/  本地 ignore：完整 Runtime 物化树
+packages/narrafork-runtime-overlay/  本地历史归档：不属于 workspace、导入源或编译输入
+packages/narrafork-runtime-private/  本地 ignore：唯一生产 Runtime 物化树
 ```
 
 - NovelFork 产品前端和写作工作台保持为产品界面。
@@ -82,8 +82,8 @@ packages/narrafork-runtime-private/  本地 ignore：完整 Runtime 物化树
 
 1. 工作目录确认在仓库根：`D:\DESKTOP\novelfork`。
 2. 需要完整本地可运行能力时，确认：
-   - `packages/narrafork-runtime-private/` 已物化存在（当前基线：上游 v0.6.1，fork 分支 31ce7ab6）；
-   - `packages/narrafork-runtime-overlay/` 子仓库已初始化（历史资产，`git submodule update --init --recursive`）。
+   - `packages/narrafork-runtime-private/` 已物化存在（唯一生产 Runtime，来源为 `NarraFork/novelfork-runtime-private` fork 分支）；
+   - `packages/narrafork-runtime-overlay/` 即使存在也只是本地历史归档，不初始化、不解析为 workspace。
 3. 先读当前用户目标与相关源码/报错；不要假设旁路仓库或历史计划就是待办。
 
 ### 2. 改哪里
@@ -201,7 +201,7 @@ NarraFork/narrafork-private          上游 main（domexie 维护）
 NarraFork/novelfork-runtime-private  私有 fork，分支 novelfork/integration-v0.5.23
         │                             （fork 层 = product-host SPI + runtime-migrations + 宿主组件）
 本地物化 packages/narrafork-runtime-private/   从 fork 分支复制而来（gitignore，不进公开仓库）
-packages/narrafork-runtime-overlay/  私有 submodule（历史 overlay 资产；fork 化后仅存档参考）
+packages/narrafork-runtime-overlay/  本地历史归档（不参与导入、物化、编译、测试或 workspace）
 ```
 
 - fork 层内容以 `novelfork/integration-v0.5.23` 分支上的 `feat(runtime): materialize` 提交为准。
@@ -215,7 +215,7 @@ packages/narrafork-runtime-overlay/  私有 submodule（历史 overlay 资产；
 3. 补齐上游缺失项（上游可能不带 drizzle 迁移：用 Terminal 交互跑 `bunx drizzle-kit generate`，产物同步进 `drizzle/` 与 `runtime-migrations/` 两处并提交）。
 4. 验证：`bun run typecheck`（注意 runtime 用 tsgo、bridge 用 tsc，tsc 更严格会暴露 tsgo 漏报的上游缺陷）；权限/agent 工具测试套件；失败项须在旧基线 worktree 复跑对比，确认是否为 Windows EBUSY 环境既有问题。
 5. 推送 fork 分支 → 备份旧物化目录 → 复制新树到 `packages/narrafork-runtime-private/`（排除 .git/node_modules/dist）→ 更新其 `UPSTREAM.lock.json` 元数据（fork 化后此文件仅作参考标注）→ 物化目录内 `bun install` + typecheck + 冒烟测试 → 全工作区 `bun run typecheck`。
-6. 已知基线：上游 v0.6.1（5c6f9cdc），fork 分支头 31ce7ab6（2026-08-21）。
+6. 已知基线：上游 v0.6.3（5580e441 / tag `v0.6.3`），fork 分支头 `d6df4b78`（2026-08-29）。
 
 ### 早期 overlay 重放流程（已废弃，仅历史排查时参考）
 
@@ -462,5 +462,6 @@ D:/DESKTOP/novelfork-video/
 | 函数位置、调用链、影响范围 | 代码图谱工具或 `docs/codegraph/CODEMAP.md` |
 | 小说写作流程 | `packages/novel-plugin/` 的当前实现与测试 |
 | Runtime 行为 | 本地 `packages/narrafork-runtime-private/`（勿提交） |
-| Overlay 定义 | 私有 submodule `packages/narrafork-runtime-overlay/` |
+| Runtime fork 身份与导入 | `scripts/import-narrafork-runtime.ts` + `NarraFork/novelfork-runtime-private` checkout |
+| 旧 overlay 历史 | `packages/narrafork-runtime-overlay/`（仅本地归档，不是生产来源） |
 | 历史背景 | Kiro、Engram 与历史计划，且须与当前指令核对 |

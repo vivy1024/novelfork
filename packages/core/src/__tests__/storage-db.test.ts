@@ -260,6 +260,59 @@ describe("storage SQLite database", () => {
     }
   });
 
+  it("keeps chapter audit issue lifecycle migration identical in filesystem and embedded modes", async () => {
+    const migrationSql = await readFile(
+      join(migrationsSourceDir, "0029_chapter_audit_issue_lifecycle.sql"),
+      "utf-8",
+    );
+    const embeddedMigration = embeddedMigrations.find(
+      (migration) => migration.name === "0029_chapter_audit_issue_lifecycle.sql",
+    );
+    expect(embeddedMigration).toBeDefined();
+    expect(normalizeMigrationSql(embeddedMigration?.sql ?? "")).toBe(normalizeMigrationSql(migrationSql));
+
+    const filesystemDatabasePath = await createTempDbPath();
+    const filesystemStorage = createStorageDatabase({ databasePath: filesystemDatabasePath });
+    try {
+      runStorageMigrations(filesystemStorage);
+      const filesystemColumns = filesystemStorage.sqlite
+        .prepare<{ name: string; notnull: number; dflt_value: string | null }>(
+          `PRAGMA table_info("chapter_audit_log")`,
+        )
+        .all();
+      expect(filesystemColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+        "issues_json",
+        "content_fingerprint",
+        "stale",
+      ]));
+      expect(filesystemColumns.find((column) => column.name === "stale")).toMatchObject({ notnull: 1, dflt_value: "0" });
+    } finally {
+      filesystemStorage.close();
+    }
+
+    const embeddedDatabasePath = await createTempDbPath();
+    const embeddedStorage = createStorageDatabase({ databasePath: embeddedDatabasePath });
+    try {
+      const result = runStorageMigrations(embeddedStorage, {
+        migrationsDir: join(embeddedDatabasePath, "missing-migrations"),
+      });
+      const embeddedColumns = embeddedStorage.sqlite
+        .prepare<{ name: string; notnull: number; dflt_value: string | null }>(
+          `PRAGMA table_info("chapter_audit_log")`,
+        )
+        .all();
+      expect(result.applied).toContain("0029_chapter_audit_issue_lifecycle.sql");
+      expect(embeddedColumns.map((column) => column.name)).toEqual(expect.arrayContaining([
+        "issues_json",
+        "content_fingerprint",
+        "stale",
+      ]));
+      expect(embeddedColumns.find((column) => column.name === "stale")).toMatchObject({ notnull: 1, dflt_value: "0" });
+    } finally {
+      embeddedStorage.close();
+    }
+  });
+
   it("does not create user_template while preserving a legacy table for plugin-owned read-only probing", async () => {
     const databasePath = await createTempDbPath();
     const storage = createStorageDatabase({ databasePath });

@@ -14,7 +14,6 @@ import {
     analyzeBookRhythm,
     analyzeSensitiveWords,
 
-  buildConflictMap,
   buildPovDashboard,
   detectToneDrift,
   generateChapterHooks,
@@ -184,11 +183,10 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const book = await ctx.state.loadBookConfig(bookId);
     const chapters = await readBookChapters(ctx, bookId);
     const storage = getStorageDatabase();
-    const { createJingweiConflictRepository, createFilterReportRepository } = await import("../engine/index.js");
-    const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
+    const { createFilterReportRepository } = await import("../engine/index.js");
     const language = isRecord(book) && book.language === "en" ? "en" : "zh";
     const sensitiveWordCount = chapters.reduce((total, chapter) => total + countSensitiveHits(chapter.content, language), 0);
-    const warnings = buildHealthWarnings(sensitiveWordCount, conflicts.length);
+    const warnings = buildHealthWarnings(sensitiveWordCount);
 
     const consistencyScore = await computeConsistencyScore(ctx, bookId);
     const hookRecoveryRate = await computeHookRecoveryRate(ctx, bookId);
@@ -201,7 +199,6 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
         totalWords: measuredMetric(chapters.reduce((total, chapter) => total + countContentWords(chapter.content), 0), "chapter-files"),
         chapterWordTarget: measuredMetric(book.chapterWordCount, "book-config"),
         sensitiveWordCount: measuredMetric(sensitiveWordCount, "sensitive-word-scan"),
-        knownConflictCount: measuredMetric(conflicts.length, "jingwei-conflicts"),
         consistencyScore,
         hookRecoveryRate,
         aiTasteMean,
@@ -209,15 +206,6 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
         warnings,
       },
     });
-  });
-
-  app.get("/api/books/:bookId/conflicts/map", async (c) => {
-    const bookId = c.req.param("bookId");
-    await ctx.state.loadBookConfig(bookId);
-    const storage = getStorageDatabase();
-    const { createJingweiConflictRepository } = await import("../engine/index.js");
-    const conflicts = await createJingweiConflictRepository(storage).listByBook(bookId);
-    return c.json({ conflicts: buildConflictMap(conflicts) });
   });
 
   app.get("/api/books/:bookId/arcs", async (c) => {
@@ -281,13 +269,10 @@ function countSensitiveHits(content: string, language: "zh" | "en"): number {
   return analyzeSensitiveWords(content, undefined, language).found.reduce((total, hit) => total + hit.count, 0);
 }
 
-function buildHealthWarnings(sensitiveWordCount: number, knownConflictCount: number): BookHealthWarning[] {
+function buildHealthWarnings(sensitiveWordCount: number): BookHealthWarning[] {
   const warnings: BookHealthWarning[] = [];
   if (sensitiveWordCount > 0) {
     warnings.push({ type: "敏感词", message: `检测到 ${sensitiveWordCount} 处敏感词命中` });
-  }
-  if (knownConflictCount > 0) {
-    warnings.push({ type: "矛盾", message: `已登记 ${knownConflictCount} 个矛盾条目，请结合矛盾地图判断状态` });
   }
   return warnings;
 }

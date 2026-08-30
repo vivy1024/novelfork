@@ -25,15 +25,6 @@ export { analyzeDialogue } from "./analysis/dialogue-analyzer.js";
 export type { BookHealthSummary, ChapterAuditLog } from "./health/health-types.js";
 export { persistChapterAuditLog, type PersistAuditLogInput } from "./health/audit-log-persist.js";
 export { buildBookHealthSummary } from "./health/book-health-summary.js";
-export type {
-  ConflictDialecticExtension,
-  ConflictNature,
-  ConflictRank,
-  ConflictResolutionState,
-  ConflictTransformation,
-} from "./conflicts/conflict-types.js";
-export type { ConflictMapEntry, MainConflictDrift } from "./conflicts/conflict-tracker.js";
-export { buildConflictMap, detectMainConflictDrift } from "./conflicts/conflict-tracker.js";
 export type { ArcBeat, ArcBeatDirection, ArcBeatSource, ArcType, CharacterArc } from "./arcs/arc-types.js";
 export type { ArcInconsistency, StagnantArc } from "./arcs/character-arc-tracker.js";
 export { detectArcInconsistency, detectStagnantArc } from "./arcs/character-arc-tracker.js";

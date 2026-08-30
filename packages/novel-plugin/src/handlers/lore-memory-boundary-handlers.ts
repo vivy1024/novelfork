@@ -5,7 +5,7 @@ import { buildNarrativeContext } from "../engine/narrative-memory/build-narrativ
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { createNarrativeEvent, persistNarrativeEvents } from "../engine/narrative-memory/events.js";
-import { ensureNarrativeMemorySchema, listPendingNarrativeEvents, queryNarrativeFacts, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
+import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativeEvents, queryNarrativeFacts, updateNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
 import type { NarrativeEvent, NarrativeEventType, NarrativeFactLayer, NarrativeRetrievalPurpose } from "../engine/narrative-memory/types.js";
 import { handleJingweiRead, type JingweiReadInput, type JingweiReadResult } from "./jingwei-read-unified.js";
 import { handleJingweiWrite, type JingweiWriteInput, type JingweiWriteResult } from "./jingwei-write-handler.js";
@@ -38,6 +38,10 @@ export interface MemoryGraphInput {
   view: "relationship" | "timeline" | "character_arc" | "foreshadowing" | "conflict" | "event_chain" | "wave";
   focusEntity?: string;
   chapterRange?: readonly [number | undefined, number | undefined] | readonly number[];
+  /** 默认返回前 200 条；传 0 返回当前筛选下的全部数据。 */
+  limit?: number;
+  /** 分页偏移，和 limit 一起使用。 */
+  offset?: number;
 }
 
 export interface MemoryEventsInput {
@@ -172,6 +176,44 @@ function matchesFocus(event: Record<string, unknown>, focusEntity?: string): boo
   return [event.subject, event.object].some((value) => typeof value === "string" && value.includes(focusEntity));
 }
 
+const DEFAULT_GRAPH_LIMIT = 200;
+const MAX_GRAPH_LIMIT = 500;
+
+type GraphPageMetadata = {
+  readonly total: number;
+  readonly returned: number;
+  readonly offset: number;
+  readonly limit: number | null;
+  readonly truncated: boolean;
+};
+
+type GraphPage<T> = {
+  readonly items: T[];
+  readonly pagination: GraphPageMetadata;
+};
+
+function graphPage<T>(items: T[], limit: unknown, offset: unknown): GraphPage<T> {
+  const parsedLimit = Number(limit);
+  const pageLimit = limit === undefined
+    ? DEFAULT_GRAPH_LIMIT
+    : Number.isFinite(parsedLimit) && parsedLimit >= 0
+      ? Math.min(Math.trunc(parsedLimit), MAX_GRAPH_LIMIT)
+      : DEFAULT_GRAPH_LIMIT;
+  const parsedOffset = Number(offset);
+  const pageOffset = Number.isFinite(parsedOffset) && parsedOffset >= 0 ? Math.trunc(parsedOffset) : 0;
+  const pageItems = pageLimit === 0 ? items.slice(pageOffset) : items.slice(pageOffset, pageOffset + pageLimit);
+  return {
+    items: pageItems,
+    pagination: {
+      total: items.length,
+      returned: pageItems.length,
+      offset: pageOffset,
+      limit: pageLimit === 0 ? null : pageLimit,
+      truncated: pageOffset > 0 || pageItems.length < items.length - pageOffset,
+    },
+  };
+}
+
 export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
   const bookId = String(input.bookId || "").trim();
   if (!bookId) return { ok: false, error: "invalid-input", summary: "bookId 必填。" };
@@ -184,7 +226,11 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
   const entities = input.focusEntity ? [input.focusEntity] : undefined;
   const eventTypeFilter = graphEventTypes(input.view);
   const factCategoryFilter = graphFactCategories(input.view);
-  const facts = queryNarrativeFacts(storage, { bookId, entities, limit: 200 })
+
+  // 先全量读取再过滤。不能把 limit 放在 SQL/存储查询之前，否则大书中排在
+  // 前 200/500 条之外的目标实体或章节会被静默丢掉。
+  const allFacts = queryNarrativeFacts(storage, { bookId, entities, limit: 0 });
+  const filteredFacts = allFacts
     .filter((fact) => !factCategoryFilter || factCategoryFilter.has(fact.category))
     .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange));
   const allEvents = storage.sqlite.prepare(`
@@ -194,36 +240,38 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
     FROM narrative_event
     WHERE book_id = ?
     ORDER BY chapter_number DESC, created_at DESC
-    LIMIT 500
   `).all(bookId) as Record<string, unknown>[];
-  const events = allEvents
+  const filteredEvents = allEvents
     .filter((event) => !eventTypeFilter || eventTypeFilter.has(String(event.eventType)))
     .filter((event) => withinChapterRange(event.chapterNumber, input.chapterRange))
-    .filter((event) => matchesFocus(event, input.focusEntity))
-    .slice(0, 200);
+    .filter((event) => matchesFocus(event, input.focusEntity));
+  const factPage = graphPage(filteredFacts, input.limit, input.offset);
+  const eventPage = graphPage(filteredEvents, input.limit, input.offset);
+  const truncationSummary = factPage.pagination.truncated || eventPage.pagination.truncated
+    ? ` 当前结果已分页（事实 ${factPage.pagination.total} 条、事件 ${eventPage.pagination.total} 条），可传 limit=0 获取全部数据。`
+    : "";
 
   return {
     ok: true,
-    summary: `已读取 ${input.view} 记忆图谱：${facts.length} 条事实，${events.length} 个事件。`,
+    summary: `已读取 ${input.view} 记忆图谱：${factPage.items.length} 条事实，${eventPage.items.length} 个事件。${truncationSummary}`,
     data: {
       view: input.view,
       focusEntity: input.focusEntity,
       chapterRange: input.chapterRange,
-      facts,
-      events,
-      note: "第一版复用 NarrativeFact / NarrativeEvent 数据源，只读展示动态图谱语义，不修改 Lore。",
+      facts: factPage.items,
+      events: eventPage.items,
+      pagination: {
+        facts: factPage.pagination,
+        events: eventPage.pagination,
+      },
+      note: "复用 NarrativeFact / NarrativeEvent 数据源；先按书籍与筛选条件全量过滤，再按 limit/offset 分页，不静默丢失历史数据。",
     },
   };
 }
 
-function getPendingEventByBook(storage: ReturnType<typeof getStorageDatabase>, bookId: string, eventId: string): NarrativeEvent | undefined {
-  const row = storage.sqlite.prepare(`
-    SELECT id, book_id AS bookId, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
-           evidence_text AS evidenceText, confidence, source, status, risk_level AS riskLevel, created_at AS createdAt, applied_at AS appliedAt
-    FROM narrative_event
-    WHERE book_id = ? AND id = ? AND status = 'pending'
-  `).get(bookId, eventId) as Record<string, unknown> | undefined;
-  return row as NarrativeEvent | undefined;
+function getPendingEventByBook(storage: StorageDatabase, bookId: string, eventId: string): NarrativeEvent | undefined {
+  const event = getNarrativeEventById(storage, bookId, eventId);
+  return event?.status === "pending" ? event : undefined;
 }
 
 export async function handleMemoryEvents(input: MemoryEventsInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
@@ -275,21 +323,47 @@ export async function handleMemoryEvents(input: MemoryEventsInput, storageOverri
     const config = input.bookRoot?.trim()
       ? await loadNarrativeMemoryConfig(bookId, input.bookRoot).catch(() => null)
       : null;
-    const applied = applyNarrativeEvents(storage, bookId, [approvedEvent], {
-      closeSupersededFacts: config?.ledger.closeSupersededFacts ?? true,
-    });
-    if (applied.failedEvents.length > 0) {
-      return { ok: false, error: "event-apply-failed", summary: `批准事件 ${event.id} 失败：${applied.failedEvents[0]?.error ?? "unknown"}` };
+    type ApplyResult = ReturnType<typeof applyNarrativeEvents>;
+    class EventApprovalError extends Error {
+      constructor(readonly code: "event-apply-failed" | "event-not-applied", message: string, readonly applied?: ApplyResult) {
+        super(message);
+      }
     }
-    if (applied.skippedEventIds.includes(event.id)) {
-      const updated = updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
-      return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}；对应事实已存在，跳过重复写入。`, data: { event: updated ?? approvedEvent, applied, reason: input.reason } };
+    let applied: ApplyResult | undefined;
+    let updatedEvent: NarrativeEvent | undefined;
+    try {
+      storage.sqlite.transaction(() => {
+        // 先把作者修正后的字段写回 narrative_event，再让 reducer 用同一份值生成 fact。
+        // 整个 edit-approve 在一个 SQLite transaction 内完成，避免 event/fact 半成功。
+        updatedEvent = updateNarrativeEvent(storage, {
+          ...approvedEvent,
+          status: "pending",
+          appliedAt: undefined,
+        });
+        if (!updatedEvent) throw new EventApprovalError("event-not-applied", `事件 ${event.id} 不存在或已被其他操作处理。`);
+        applied = applyNarrativeEvents(storage, bookId, [approvedEvent], {
+          closeSupersededFacts: config?.ledger.closeSupersededFacts ?? true,
+        });
+        if (applied.failedEvents.length > 0) {
+          throw new EventApprovalError("event-apply-failed", `批准事件 ${event.id} 失败：${applied.failedEvents[0]?.error ?? "unknown"}`, applied);
+        }
+        if (applied.skippedEventIds.includes(event.id)) {
+          updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
+        } else if (!applied.appliedEventIds.includes(event.id)) {
+          throw new EventApprovalError("event-not-applied", `事件 ${event.id} 未写入 Narrative Memory facts，请检查事件状态与风险等级。`, applied);
+        }
+      })();
+    } catch (error) {
+      if (error instanceof EventApprovalError) {
+        return { ok: false, error: error.code, summary: error.message };
+      }
+      throw error;
     }
-    if (!applied.appliedEventIds.includes(event.id)) {
-      return { ok: false, error: "event-not-applied", summary: `事件 ${event.id} 未写入 Narrative Memory facts，请检查事件状态与风险等级。` };
+    const persisted = getNarrativeEventById(storage, bookId, event.id) ?? updatedEvent ?? approvedEvent;
+    if (applied?.skippedEventIds.includes(event.id)) {
+      return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}；对应事实已存在，跳过重复写入。`, data: { event: persisted, applied, reason: input.reason } };
     }
-    const updated = updateNarrativeEventStatus(storage, { id: event.id, status: "applied" });
-    return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}，并写入 Narrative Memory facts。`, data: { event: updated ?? approvedEvent, applied, reason: input.reason } };
+    return { ok: true, summary: `已批准 Pending NarrativeEvent：${event.id}，并写入 Narrative Memory facts。`, data: { event: persisted, applied, reason: input.reason } };
   }
   if (action === "reject") {
     const event = getPendingEventByBook(storage, bookId, input.eventId);

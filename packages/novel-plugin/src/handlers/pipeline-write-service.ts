@@ -16,6 +16,7 @@ import type { AuditResult } from "../engine/agents/continuity.js";
 import { evaluateGate, selectFactContinuityIssues } from "../engine/agents/severity-gate.js";
 import { createWritingResourceService } from "../engine/writing-resource/service.js";
 import { resolveChapterVolumeDirectory } from "./outline-volume.js";
+import { createHash } from "node:crypto";
 import { dirname, join } from "node:path";
 import type { SceneSpec } from "./scene-spec-handler.js";
 import { renderBeatBudget, checkBeatBudget } from "./beat-budget.js";
@@ -30,6 +31,7 @@ import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/s
 import { persistChapterAuditLog } from "../engine/tools/health/audit-log-persist.js";
 import { selectDueHooks, type DueHookInput } from "../engine/narrative-memory/foreshadow-phase.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { isPlaceholderFocusDoc, readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
@@ -90,6 +92,13 @@ export interface PipelineWriteInput {
    * 仅用于出口合规检查里的依赖加载完整性提醒，不作为写章前的阻断条件。
    */
   readonly loadedSkills?: readonly RuntimeLoadedSkill[];
+  /** 已有章节的内容指纹；提供时仅在指纹仍匹配时允许覆盖。缺省保持旧调用方兼容。 */
+  readonly expectedHash?: string;
+  /** 已有章节版本号；提供时仅在版本仍匹配时允许覆盖。 */
+  readonly expectedVersion?: number;
+  /** 更明确的兼容别名；与 expectedHash/expectedVersion 二选一即可。 */
+  readonly expectedChapterHash?: string;
+  readonly expectedChapterVersion?: number;
 }
 
 export interface PipelineAuditIssueCategories {
@@ -181,7 +190,9 @@ export interface PipelineWriteError {
     | "preflight-execution-failed"
     | "skill-verification-failed"
     | "fact-check-failed"
-    | "volume-range-violation";
+    | "volume-range-violation"
+    | "chapter-conflict"
+    | "book-locked";
   readonly error: string;
   readonly summary?: string;
   readonly explanation?: string;
@@ -502,7 +513,7 @@ export function buildPipelineContextPackage(input: BuildPipelineContextPackageIn
       // 卷目标这一层此前是空的：卷纲只进 preflight 结果与 UI 标签，从不进生成上下文，
       // 于是章节内容与本卷主线脱节。锚点顺序必须是 全书 → 本卷 → 近 1-3 章 → 本章。
       ...(input.volumeFocusDoc ? [{ source: "outline/volume", reason: "本卷目标与章号区间（本章必须服务于本卷主线，不得提前收束或越卷取材）", excerpt: input.volumeFocusDoc }] : []),
-      ...(input.currentFocusDoc ? [{ source: "story/current_focus.md", reason: "近 1-3 章焦点，本章应优先推进的方向", excerpt: input.currentFocusDoc }] : []),
+      ...(input.currentFocusDoc ? [{ source: "jingwei:current-focus", reason: "创作罗盘：本章目标 / 必须守住 / 必须避开（近 1-3 章焦点）", excerpt: input.currentFocusDoc }] : []),
       { source: "scene.spec", reason: "本章结构化写作蓝图", excerpt: JSON.stringify(input.sceneSpec) },
       // 预算单独给一段可读文本：JSON 里的数字模型容易忽略，
       // 显式列出「哪一拍该展开、哪一拍带过」才能真正约束章内节奏。
@@ -542,7 +553,7 @@ export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]):
   return `检测到 ${highRisk.length} 条高风险 pending NarrativeEvents（仅提醒，默认不阻断写作；作者可在叙事记忆历史查看/处理）。系统不会自动修改正文或经纬 canon。\n${items}${more}`;
 }
 
-export async function executePipelineWrite(
+async function executePipelineWriteUnlocked(
   input: PipelineWriteInput,
   options: PipelineWriteOptions,
 ): Promise<PipelineWriteResult> {
@@ -589,6 +600,39 @@ export async function executePipelineWrite(
       continueWithHighRiskPending = !(memoryConfig?.settlement.blockWriteOnHighRiskPending ?? false);
     }
     const chapterNumber = sceneSpec.chapter ?? await state.getNextChapterNumber(bookId);
+
+    // 已有章节覆盖采用可选的乐观保护：旧调用方不传 hash/version 时保持兼容，
+    // 传入时必须仍指向同一份正文/版本，避免并发编辑静默覆盖新稿。
+    const expectedHash = nonEmpty(input.expectedHash) ?? nonEmpty(input.expectedChapterHash);
+    const expectedVersion = input.expectedVersion ?? input.expectedChapterVersion;
+    if (expectedHash !== undefined || expectedVersion !== undefined) {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const storage = getStorageDatabase();
+      const guardedResourceService = createWritingResourceService({
+        storage,
+        resolveBookDir: (requestedBookId: string) => {
+          if (requestedBookId !== bookId) throw new Error("Writing resource book binding mismatch");
+          return bookDir;
+        },
+        resolveChapterVolumeDirectory: (requestedBookId, requestedChapterNumber) => resolveChapterVolumeDirectory(
+          storage,
+          requestedBookId,
+          requestedChapterNumber,
+        ),
+      });
+      const existing = await guardedResourceService.findAcceptedChapter(bookId, chapterNumber);
+      const actualHash = existing ? createHash("sha256").update(existing.content, "utf8").digest("hex") : undefined;
+      const versionMismatch = expectedVersion !== undefined && existing?.version !== expectedVersion;
+      const hashMismatch = expectedHash !== undefined && actualHash !== expectedHash;
+      if (!existing || versionMismatch || hashMismatch) {
+        return {
+          ok: false,
+          code: "chapter-conflict",
+          error: `第${chapterNumber}章已被其他写入更新，拒绝覆盖：期望版本 ${expectedVersion ?? "未提供"} / 实际版本 ${existing?.version ?? "不存在"}，期望 hash ${expectedHash ?? "未提供"} / 实际 hash ${actualHash ?? "不存在"}。请重新读取章节后重试。`,
+          summary: "章节版本冲突，未保存正式章节。",
+        };
+      }
+    }
 
     // 写前硬门：已有正式章但近章记忆/摘要为空时禁止继续硬写（软质量不在此拦）。
     if (!skipContextGate) {
@@ -736,9 +780,19 @@ export async function executePipelineWrite(
     let currentFocusDoc = "";
     let volumeRanges: ReadonlyArray<{ readonly from: number; readonly to: number }> | undefined;
     try {
+      const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+      const compass = readCurrentFocusDocFromStorage(getStorageDatabase(), bookId);
+      if (compass) currentFocusDoc = truncateDoc(compass);
+    } catch (err) {
+      logger?.warn(`[pipeline.write] Failed to load jingwei current-focus: ${err}`);
+    }
+    try {
       const ctrl = await state.loadControlDocuments(bookId);
       authorIntentDoc = truncateDoc(ctrl.authorIntent);
-      currentFocusDoc = truncateDoc(ctrl.currentFocus);
+      if (!currentFocusDoc) {
+        const markdownFocus = truncateDoc(ctrl.currentFocus);
+        currentFocusDoc = isPlaceholderFocusDoc(markdownFocus) ? "" : markdownFocus;
+      }
     } catch (err) {
       logger?.warn(`[pipeline.write] Failed to load control documents: ${err}`);
     }
@@ -1226,5 +1280,41 @@ export async function executePipelineWrite(
     };
   } catch (err) {
     return { ok: false, code: "generation-failed", error: `写作管线执行失败: ${err instanceof Error ? err.message : String(err)}` };
+  }
+}
+
+/**
+ * 书级写锁包住从取章号到正式章节保存、章后结算 dispatch 的完整临界区。
+ * 旧调用方无需显式传 lock；锁竞争/获取失败返回机器可判断的 book-locked。
+ */
+export async function executePipelineWrite(
+  input: PipelineWriteInput,
+  options: PipelineWriteOptions,
+): Promise<PipelineWriteResult> {
+  const state = createPipelineState(options, input.bookId);
+  let release: (() => Promise<void>) | undefined;
+  try {
+    release = await state.acquireBookLock(input.bookId);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    options.logger?.warn(`[pipeline.write] book lock acquisition failed: ${detail}`);
+    return {
+      ok: false,
+      code: "book-locked",
+      error: detail,
+      summary: "本书正在被另一写入任务使用，未保存章节。",
+    };
+  }
+
+  try {
+    return await executePipelineWriteUnlocked(input, options);
+  } finally {
+    if (release) {
+      try {
+        await release();
+      } catch (error) {
+        options.logger?.warn(`[pipeline.write] book lock release failed: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
   }
 }

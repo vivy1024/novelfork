@@ -5,7 +5,6 @@ import type {
   BookHealthSummary,
   ChapterAuditLog,
   CharacterArc,
-  ConflictDialecticExtension,
   DialogueAnalysis,
   GeneratedHook,
   HookGeneratorInput,
@@ -121,26 +120,9 @@ describe("writing tools type contracts", () => {
       pacingDiversityScore: 68,
       emotionCurve: ["tense", "relaxed"],
       sensitiveWordTotal: 0,
-      stalledConflicts: [],
       hookDebtWarnings: [],
       fatigueWarnings: [],
       povGapWarnings: [{ character: "林青", gap: 12 }],
-      mainConflictDrift: { conflictId: "conflict-1", stalledChapters: 6 },
-    };
-    const dialectic: ConflictDialecticExtension = {
-      rank: "primary",
-      nature: "antagonistic",
-      sides: ["凡人", "仙道不公"],
-      controllingIdea: "顺为凡，逆为仙",
-      transformations: [
-        {
-          chapter: 12,
-          fromState: "escalating",
-          toState: "transforming",
-          trigger: "宗门审判",
-          rankChange: { from: "secondary", to: "primary" },
-        },
-      ],
     };
     const arcBeat: ArcBeat = {
       chapter: 12,
@@ -171,8 +153,7 @@ describe("writing tools type contracts", () => {
     expect(rhythm.issues[0]?.type).toBe("uniform-length");
     expect(dialogue.isHealthy).toBe(true);
     expect(auditLog.conflictsAdvanced).toEqual(["conflict-1"]);
-    expect(health.mainConflictDrift?.stalledChapters).toBe(6);
-    expect(dialectic.rank).toBe("primary");
+    expect(health.sensitiveWordTotal).toBe(0);
     expect(characterArc.beats[0]).toEqual(arcBeat);
     expect(tone.isSignificant).toBe(true);
     expectTypeOf(hook.style).toEqualTypeOf<HookStyle>();

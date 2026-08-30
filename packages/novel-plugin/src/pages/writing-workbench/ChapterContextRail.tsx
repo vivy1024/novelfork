@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 import { AlertTriangle, Loader2, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useApi } from "@/hooks/use-api";
@@ -33,6 +33,25 @@ interface CockpitChapterResult {
 
 interface CockpitChapterResultsResponse {
   readonly items?: readonly CockpitChapterResult[];
+}
+
+interface ChapterEventLite {
+  readonly subject?: string;
+  readonly object?: string;
+  readonly subjectEntryId?: string;
+  readonly objectEntryId?: string;
+}
+
+interface ChapterEventsResponse {
+  readonly events?: readonly ChapterEventLite[];
+}
+
+export interface AppearingCharacter {
+  readonly id: string;
+  readonly name: string;
+  readonly motive?: string;
+  readonly fear?: string;
+  readonly injury?: string;
 }
 
 export interface DueForeshadowing {
@@ -105,6 +124,40 @@ function avatarColor(name: string): string {
     hash = (hash * 31 + name.charCodeAt(index)) | 0;
   }
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+}
+
+/**
+ * 本章出场角色 = 本章结算事件实体 ∩ 经纬角色。
+ * 优先按 subjectEntryId/objectEntryId 命中，回退按主体/客体名匹配。
+ * 没有本章事件时返回空——禁止把经纬全量角色冒充出场。
+ */
+export function selectAppearingCharacters(
+  entries: readonly ContextEntry[],
+  events: readonly ChapterEventLite[],
+): AppearingCharacter[] {
+  const active = entries.filter(isActiveEntry);
+  if (active.length === 0 || events.length === 0) return [];
+  const entryIds = new Set<string>();
+  const names = new Set<string>();
+  for (const event of events) {
+    if (event.subjectEntryId?.trim()) entryIds.add(event.subjectEntryId.trim());
+    if (event.objectEntryId?.trim()) entryIds.add(event.objectEntryId.trim());
+    if (event.subject?.trim()) names.add(event.subject.trim());
+    if (event.object?.trim()) names.add(event.object.trim());
+  }
+  if (entryIds.size === 0 && names.size === 0) return [];
+  return active
+    .map((entry) => {
+      const fields = parseFields(entry);
+      return {
+        id: entry.id,
+        name: entryName(entry, fields),
+        motive: textField(fields, "core_motive"),
+        fear: textField(fields, "core_fear"),
+        injury: textField(fields, "injury") ?? textField(fields, "fields.injury"),
+      };
+    })
+    .filter((character) => entryIds.has(character.id) || names.has(character.name));
 }
 
 export function selectDueForeshadowings(
@@ -205,13 +258,18 @@ export function ChapterContextRail({
   className,
 }: ChapterContextRailProps) {
   const characterQuery = useApi<EntriesResponse>(
-    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=characters&limit=10`,
+    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=characters&limit=200`,
   );
   const foreshadowingQuery = useApi<EntriesResponse>(
-    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=foreshadowing&limit=10`,
+    `/api/books/${encodeURIComponent(bookId)}/jingwei/entries?category=foreshadowing&limit=200`,
   );
   const cockpitQuery = useApi<CockpitChapterResultsResponse>(
     `/api/books/${encodeURIComponent(bookId)}/cockpit/recent-chapter-results?limit=50`,
+  );
+  const chapterEventsQuery = useApi<ChapterEventsResponse>(
+    typeof chapterNumber === "number"
+      ? `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?view=timeline&chapterFrom=${chapterNumber}&chapterTo=${chapterNumber}`
+      : null,
   );
 
   const reload = useCallback(() => {
@@ -219,23 +277,18 @@ export function ChapterContextRail({
       characterQuery.refetch(),
       foreshadowingQuery.refetch(),
       cockpitQuery.refetch(),
+      chapterEventsQuery.refetch(),
     ]);
-  }, [characterQuery, cockpitQuery, foreshadowingQuery]);
+  }, [characterQuery, chapterEventsQuery, cockpitQuery, foreshadowingQuery]);
 
-  const characterEntries = (characterQuery.data?.entries ?? []).filter(isActiveEntry);
-  const characterModels = characterEntries.map((entry) => {
-    const fields = parseFields(entry);
-    return {
-      id: entry.id,
-      name: entryName(entry, fields),
-      motive: textField(fields, "core_motive"),
-      fear: textField(fields, "core_fear"),
-      injury: textField(fields, "injury") ?? textField(fields, "fields.injury"),
-    };
-  });
+  const characterModels = useMemo(
+    () => selectAppearingCharacters(characterQuery.data?.entries ?? [], chapterEventsQuery.data?.events ?? []),
+    [characterQuery.data?.entries, chapterEventsQuery.data?.events],
+  );
   const dueForeshadowings = selectDueForeshadowings(foreshadowingQuery.data?.entries ?? [], chapterNumber);
   const wordCount = cockpitQuery.data?.items?.find((item) => item.chapterNumber === chapterNumber)?.wordCount;
-  const isReloading = characterQuery.loading || foreshadowingQuery.loading || cockpitQuery.loading;
+  const isReloading = characterQuery.loading || foreshadowingQuery.loading || cockpitQuery.loading || chapterEventsQuery.loading;
+  const charactersLoading = characterQuery.loading || chapterEventsQuery.loading;
 
   const openEntry = (entryId: string) => {
     onOpenJingweiEntry?.(entryId);
@@ -243,7 +296,7 @@ export function ChapterContextRail({
 
   return (
     <aside
-      className={cn("flex h-full min-h-0 w-[280px] shrink-0 flex-col overflow-y-auto bg-card text-card-foreground", className)}
+      className={cn("flex h-full min-h-0 w-[clamp(220px,28vw,320px)] shrink-0 flex-col overflow-y-auto bg-card text-card-foreground", className)}
       data-testid="chapter-context-rail"
     >
       <header className="flex shrink-0 items-start justify-between gap-2 border-b border-border px-3 py-2">
@@ -282,9 +335,30 @@ export function ChapterContextRail({
       </header>
 
       <section className="shrink-0 border-b border-border">
+        <SectionHeader title="本章到期伏笔" loading={foreshadowingQuery.loading} count={dueForeshadowings.length} />
+        {foreshadowingQuery.error ? <SectionError error={foreshadowingQuery.error} onRetry={() => void foreshadowingQuery.refetch()} /> : null}
+        {!foreshadowingQuery.error && foreshadowingQuery.loading && dueForeshadowings.length === 0 ? <SectionSkeleton kind="rows" /> : null}
+        {!foreshadowingQuery.error && !foreshadowingQuery.loading && dueForeshadowings.length === 0 ? (
+          <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无到期伏笔</p>
+        ) : null}
+        {dueForeshadowings.length > 0 ? (
+          <ul className="flex flex-col gap-1.5 px-3 py-2.5">
+            {dueForeshadowings.map((foreshadowing) => (
+              <li key={foreshadowing.id} className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+                <span className="min-w-0 flex-1 truncate text-[11px] text-foreground" title={foreshadowing.name}>{foreshadowing.name}</span>
+                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+                  已埋 {foreshadowing.suspenseChapters} 章
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+
+      <section className="shrink-0 border-b border-border">
         <SectionHeader
           title="出场角色内核"
-          loading={characterQuery.loading}
+          loading={charactersLoading}
           count={characterModels.length}
           action={characterModels[0] && onOpenJingweiEntry ? (
             <button
@@ -296,9 +370,17 @@ export function ChapterContextRail({
             </button>
           ) : null}
         />
-        {characterQuery.error ? <SectionError error={characterQuery.error} onRetry={() => void characterQuery.refetch()} /> : null}
-        {!characterQuery.error && characterQuery.loading && characterModels.length === 0 ? <SectionSkeleton kind="avatars" /> : null}
-        {!characterQuery.error && !characterQuery.loading && characterModels.length === 0 ? (
+        {characterQuery.error || chapterEventsQuery.error ? (
+          <SectionError
+            error={characterQuery.error ?? chapterEventsQuery.error ?? "加载失败"}
+            onRetry={() => {
+              void characterQuery.refetch();
+              void chapterEventsQuery.refetch();
+            }}
+          />
+        ) : null}
+        {!characterQuery.error && !chapterEventsQuery.error && charactersLoading && characterModels.length === 0 ? <SectionSkeleton kind="avatars" /> : null}
+        {!characterQuery.error && !chapterEventsQuery.error && !charactersLoading && characterModels.length === 0 ? (
           <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无出场角色</p>
         ) : null}
         {characterModels.length > 0 ? (
@@ -335,27 +417,6 @@ export function ChapterContextRail({
               </button>
             ) : null}
           </div>
-        ) : null}
-      </section>
-
-      <section className="shrink-0 border-b border-border">
-        <SectionHeader title="本章到期伏笔" loading={foreshadowingQuery.loading} count={dueForeshadowings.length} />
-        {foreshadowingQuery.error ? <SectionError error={foreshadowingQuery.error} onRetry={() => void foreshadowingQuery.refetch()} /> : null}
-        {!foreshadowingQuery.error && foreshadowingQuery.loading && dueForeshadowings.length === 0 ? <SectionSkeleton kind="rows" /> : null}
-        {!foreshadowingQuery.error && !foreshadowingQuery.loading && dueForeshadowings.length === 0 ? (
-          <p className="px-3 py-3 text-[11px] text-muted-foreground">暂无到期伏笔</p>
-        ) : null}
-        {dueForeshadowings.length > 0 ? (
-          <ul className="flex flex-col gap-1.5 px-3 py-2.5">
-            {dueForeshadowings.map((foreshadowing) => (
-              <li key={foreshadowing.id} className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
-                <span className="min-w-0 flex-1 truncate text-[11px] text-foreground" title={foreshadowing.name}>{foreshadowing.name}</span>
-                <span className="shrink-0 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] text-amber-600 dark:text-amber-400">
-                  已埋 {foreshadowing.suspenseChapters} 章
-                </span>
-              </li>
-            ))}
-          </ul>
         ) : null}
       </section>
 

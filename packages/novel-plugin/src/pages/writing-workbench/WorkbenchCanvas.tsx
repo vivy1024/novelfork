@@ -231,7 +231,7 @@ function ToolPanelView({ toolPanel, bookId, bookPlatform, repositoryPath, curren
         <Suspense fallback={<ToolPanelLoading />}>
           <QualityCenterPanel
             bookId={bookId}
-            currentChapter={resolveCurrentChapter(nodes)}
+            currentChapter={currentChapter}
             onJumpToChapter={onJumpToChapter}
             onOpenJingweiEntry={onOpenJingweiEntry}
           />
@@ -436,6 +436,7 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
             runtimeFetch={runtimeFetch}
             onOpenChapter={onJumpToChapter}
             onOpenEntityDetail={onOpenEntityDetail}
+            onSendToNarrator={onSendToNarrator}
             onPromoteOutlineNode={(storyMapNode) => {
               if (onPromoteOutline) {
                 onPromoteOutline({
@@ -460,15 +461,9 @@ export function WorkbenchCanvas({ node, nodes = [], bookId, repositoryPath, runt
         <Suspense fallback={<ToolPanelLoading />}>
           <NarrativeMemoryPanel
             bookId={bookId}
+            currentChapter={resolveCurrentChapter(nodes)}
             onOpenDevelopmentTimeline={() => onOpenResourceNode?.(createStoryProgressionNode(bookId, "evolution"))}
-            onOpenForeshadowingLedger={() => onOpenResourceNode?.({
-              id: "tool:foreshadowing",
-              kind: "tool",
-              title: "伏笔看板",
-              content: "",
-              capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-              metadata: { toolPanel: "foreshadowing", bookId },
-            })}
+            onOpenChapter={onJumpToChapter}
           />
         </Suspense>
       </div>

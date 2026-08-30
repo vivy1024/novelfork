@@ -182,17 +182,6 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
     required: ["bookId", "fromChapter", "toChapter", "confirm"],
     additionalProperties: false,
   },
-  "pgi.ask": {
-    type: "object",
-    properties: {
-      bookId: stringSchema("当前书籍 ID。"),
-      chapterNumber: numberSchema("目标章节序号（可选）。"),
-      chapterIntent: stringSchema("本章写作意图或用户请求（可选）。"),
-      maxQuestions: numberSchema("最多生成的问题数量（可选）。"),
-    },
-    required: ["bookId"],
-    additionalProperties: false,
-  },
   "narrative.read_line": {
     type: "object",
     properties: {
@@ -796,6 +785,37 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       reason: stringSchema("推进依据（必填，如 第 N 章正文证据）。"),
     },
     required: ["bookId", "fieldKey", "newValue", "reason"],
+    additionalProperties: false,
+  },
+  "market.scan": {
+    type: "object",
+    properties: {
+      platform: enumSchema(["qidian", "fanqie", "all"], "平台：qidian / fanqie / all。默认 all，每平台最多扫 2 个榜单。"),
+      rankTypes: arraySchema("榜单键。起点：sanjiang/strong/newbook/hotsales；番茄：male_read/male_new/female_read/female_new。", { type: "string" }),
+      maxPages: numberSchema("每个榜单最多翻页数（默认 5，最大 5）。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  "market.query": {
+    type: "object",
+    properties: {
+      platform: enumSchema(["qidian", "fanqie"], "平台过滤。"),
+      rankType: stringSchema("榜单键过滤。"),
+      fromDate: stringSchema("起始日期 YYYY-MM-DD。"),
+      toDate: stringSchema("结束日期 YYYY-MM-DD。"),
+      analyze: booleanSchema("是否基于历史快照生成题材/标题/字数分析。"),
+    },
+    required: [],
+    additionalProperties: false,
+  },
+  "market.sample_public_chapters": {
+    type: "object",
+    properties: {
+      fanqieBookId: stringSchema("番茄公开书籍 ID。只采样前 N 章结构指标，不保存正文。不是当前作品 bookId。"),
+      maxChapters: numberSchema("最多采样章数（默认 3，最大 3）。"),
+    },
+    required: ["fanqieBookId"],
     additionalProperties: false,
   },
 };

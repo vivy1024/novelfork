@@ -1,352 +1,186 @@
 /**
- * StoryMapCanvas — 全功能长篇网文故事主支线 DAG 画布
+ * StoryMapCanvas — 章 × 线索情节板
  *
- * 吸收 OpenWrite（Story Map）与 PlotPilot（Storyline DAG）最佳实践：
- * 1. 【X轴时间推进】基于真实 NarrativeLineSnapshot 中的章节/事件/冲突/伏笔节点排布；
- * 2. 【Y轴故事线分层】主线（chapter/event）、支线（character-arc/setting）、冲突与高潮（conflict/payoff）、伏笔（foreshadow）；
- * 3. 【真实数据驱动】彻底移除假数据，消费 GET /api/books/:bookId/narrative-line；
- * 4. 【双向跳章与一键提拔】章节节点跳回手稿正文，规划节点由上层 handler 执行提拔立项。
+ * X 轴是章，Y 轴是冲突 / 伏笔 / 角色弧线。格子是该线索在该章的节拍。
+ * 不再把章节、冲突、伏笔、弧线混成一张 DAG。
  */
 
-import { useCallback, useMemo, useState, useEffect } from "react";
-import {
-  Background,
-  BackgroundVariant,
-  Controls,
-  Handle,
-  MiniMap,
-  Panel,
-  Position,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
   BookOpen,
+  Columns3,
   FilePlus2,
-  GitFork,
   Loader2,
   RotateCcw,
   Sparkles,
-  UserRound,
-  Zap,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { fetchJson } from "@/hooks/use-api";
-import type {
-  NarrativeEdge,
-  NarrativeLineSnapshot,
-  NarrativeNode,
-  NarrativeNodeType,
-} from "../../handlers/narrative-line-types";
+import type { NarrativeLineSnapshot } from "../../handlers/narrative-line-types";
+import {
+  beatsForChapter,
+  buildStoryMapPlanPrompt,
+  computeMissingPlanningKinds,
+  hasPlanningNodes,
+  snapshotToPlotBoard,
+  storyMapBeatToNodeData,
+  type StoryMapBeat,
+  type StoryMapBoard,
+  type StoryMapNodeData,
+  type StoryMapThread,
+  type StoryMapThreadKind,
+} from "./story-map-board";
 
-export type StoryMapLane = "main" | "character_arc" | "conflict" | "foreshadow";
+export {
+  buildStoryMapPlanPrompt,
+  computeMissingPlanningKinds,
+  hasPlanningNodes,
+  resolveStoryMapLane,
+  snapshotToPlotBoard,
+  type MissingPlanningKind,
+  type StoryMapBoard,
+  type StoryMapLane,
+  type StoryMapNodeData,
+  type StoryMapThread,
+  type StoryMapThreadKind,
+} from "./story-map-board";
 
-export interface StoryMapNodeData extends Record<string, unknown> {
-  id: string;
-  title: string;
-  summary?: string;
-  lane: StoryMapLane;
-  laneLabel: string;
-  nodeType: NarrativeNodeType;
-  chapterNumber?: number;
-  status?: string;
-  characters?: readonly string[];
-  hooks?: readonly string[];
-  onPromote?: (node: StoryMapNodeData) => void;
-  onOpenChapter?: (chapterNumber: number) => void;
-}
-
-export const LANE_METAS: Record<StoryMapLane, { border: string; bg: string; text: string; label: string; yOffset: number }> = {
-  main: {
-    border: "border-primary/60",
-    bg: "bg-primary/[0.06]",
-    text: "text-primary",
-    label: "主线推进",
-    yOffset: 100,
-  },
-  character_arc: {
-    border: "border-amber-500/60",
-    bg: "bg-amber-500/[0.06]",
-    text: "text-amber-600 dark:text-amber-400",
-    label: "角色·支线",
-    yOffset: 270,
-  },
-  conflict: {
-    border: "border-rose-500/60",
-    bg: "bg-rose-500/[0.08]",
-    text: "text-rose-600 dark:text-rose-400",
-    label: "冲突·高潮",
-    yOffset: 440,
-  },
-  foreshadow: {
-    border: "border-sky-500/60",
-    bg: "bg-sky-500/[0.06]",
-    text: "text-sky-600 dark:text-sky-400",
-    label: "伏笔·回收",
-    yOffset: 610,
-  },
+const THREAD_TONE: Record<StoryMapThreadKind, string> = {
+  conflict: "border-rose-500/40 bg-rose-500/[0.06] text-rose-700 dark:text-rose-300",
+  foreshadow: "border-sky-500/40 bg-sky-500/[0.06] text-sky-700 dark:text-sky-300",
+  character_arc: "border-amber-500/40 bg-amber-500/[0.06] text-amber-700 dark:text-amber-300",
 };
 
-export function resolveStoryMapLane(nodeType: NarrativeNodeType): StoryMapLane {
-  switch (nodeType) {
-    case "chapter":
-    case "event":
-      return "main";
-    case "character-arc":
-    case "setting":
-      return "character_arc";
-    case "conflict":
-    case "payoff":
-      return "conflict";
-    case "foreshadow":
-      return "foreshadow";
-    default:
-      return "main";
-  }
-}
+const THREAD_LABEL: Record<StoryMapThreadKind, string> = {
+  conflict: "冲突",
+  foreshadow: "伏笔",
+  character_arc: "弧线",
+};
 
-/**
- * 快照里是否存在「规划类」节点（角色支线/冲突/伏笔等）。
- *
- * IA 收敛后的空态纪律：只有章节节点时 DAG 没有信息量（纯跳转卡），
- * 此时故事地图显示明确空态引导，而不是渲染一张假功能的画布。
- */
-export function hasPlanningNodes(snapshot: NarrativeLineSnapshot | null | undefined): boolean {
-  if (!snapshot || !Array.isArray(snapshot.nodes)) return false;
-  return snapshot.nodes.some((node) => {
-    const lane = resolveStoryMapLane(node.type);
-    return lane !== "main" || (node.type !== "chapter" && node.type !== "event");
-  });
-}
-
-/**
- * 纯函数：将 NarrativeLineSnapshot 转换成 React Flow 的 nodes 与 edges。
- */
+/** 兼容旧测试：情节板不再产出 React Flow 节点，但保留同名导出。 */
 export function snapshotToFlowElements(
   snapshot: NarrativeLineSnapshot | null | undefined,
-  callbacks?: {
-    onOpenChapter?: (chapterNumber: number) => void;
-    onPromote?: (node: StoryMapNodeData) => void;
-  },
-): { nodes: Node<StoryMapNodeData>[]; edges: Edge[] } {
-  if (!snapshot || !Array.isArray(snapshot.nodes) || snapshot.nodes.length === 0) {
-    return { nodes: [], edges: [] };
-  }
-
-  const rawNodes = snapshot.nodes;
-  const rawEdges = Array.isArray(snapshot.edges) ? snapshot.edges : [];
-
-  // 1. 建立节点 ID 集合用于边合法性校验
-  const validNodeIds = new Set(rawNodes.map((n) => n.id));
-
-  // 2. 排序与 X 坐标排布：优先使用 chapterNumber，未带 chapterNumber 的排在后面
-  const sortedNodes = [...rawNodes].sort((a, b) => {
-    const aChap = a.chapterNumber ?? 99999;
-    const bChap = b.chapterNumber ?? 99999;
-    if (aChap !== bChap) return aChap - bChap;
-    return a.title.localeCompare(b.title, "zh");
+): { nodes: Array<{ id: string; data: StoryMapNodeData }>; edges: Array<{ id: string; source: string; target: string }> } {
+  const board = snapshotToPlotBoard(snapshot);
+  const nodes = board.threads.flatMap((thread) => {
+    const scheduled = Object.values(thread.beatsByChapter).flat();
+    return [...scheduled, ...thread.unscheduled].map((beat) => ({
+      id: beat.id,
+      data: { ...storyMapBeatToNodeData(beat), lane: beat.lane, laneLabel: THREAD_LABEL[beat.lane] },
+    }));
   });
-
-  // 3. 构建 React Flow Nodes
-  const flowNodes: Node<StoryMapNodeData>[] = sortedNodes.map((node, index) => {
-    const lane = resolveStoryMapLane(node.type);
-    const laneMeta = LANE_METAS[lane];
-    const x = index * 340 + 60;
-    const y = laneMeta.yOffset;
-
-    // 关联伏笔/冲突等上下文元数据提取
-    const hooks = node.type === "foreshadow" ? [node.title] : undefined;
-
-    return {
-      id: node.id,
-      type: "storyNode",
-      position: { x, y },
-      data: {
-        id: node.id,
-        title: node.title,
-        summary: node.summary,
-        lane,
-        laneLabel: laneMeta.label,
-        nodeType: node.type,
-        chapterNumber: node.chapterNumber,
-        status: node.status,
-        hooks,
-        onOpenChapter: callbacks?.onOpenChapter,
-        onPromote: callbacks?.onPromote,
-      },
-    };
-  });
-
-  // 4. 构建 React Flow Edges（保留快照真实边类型与置信度）
-  const flowEdges: Edge[] = rawEdges
-    .filter((e: NarrativeEdge) => validNodeIds.has(e.fromNodeId) && validNodeIds.has(e.toNodeId))
-    .map((e: NarrativeEdge) => {
-      const isCauses = e.type === "causes" || e.type === "escalates" || e.type === "pays-off";
-      return {
-        id: e.id,
-        source: e.fromNodeId,
-        target: e.toNodeId,
-        animated: isCauses,
-        label: e.label || (e.type !== "supports" ? e.type : undefined),
-        style: {
-          stroke: isCauses ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
-          strokeWidth: e.confidence === "explicit" ? 2 : 1.5,
-          strokeDasharray: e.confidence === "inferred" ? "4 4" : undefined,
-        },
-      };
-    });
-
-  return { nodes: flowNodes, edges: flowEdges };
+  return { nodes, edges: [] };
 }
 
-function StoryCardNode({ data }: NodeProps<Node<StoryMapNodeData>>) {
-  const laneMeta = LANE_METAS[data.lane] ?? LANE_METAS.main;
-  const isChapter = data.nodeType === "chapter" && typeof data.chapterNumber === "number";
-
+function BeatCard({
+  beat,
+  onOpenChapter,
+  onPromote,
+}: {
+  beat: StoryMapBeat;
+  onOpenChapter?: (chapterNumber: number) => void;
+  onPromote?: (node: StoryMapNodeData) => void;
+}) {
+  const canJump = typeof beat.chapterNumber === "number" && onOpenChapter;
   return (
     <div
-      className={`relative w-72 rounded-xl border-2 p-3 shadow-md backdrop-blur-sm transition-all hover:shadow-lg ${laneMeta.border} ${laneMeta.bg} bg-card/95`}
-      data-testid={`story-map-node-${data.id}`}
+      className={`rounded-md border p-2 text-left ${THREAD_TONE[beat.lane]}`}
+      data-testid={`story-map-node-${beat.id}`}
     >
-      <Handle type="target" position={Position.Left} className="!size-2.5 !bg-primary" />
-
-      {/* 头部：故事线轨道 + 章节/节点类型 */}
-      <div className="flex items-center justify-between gap-1.5 pb-2 border-b border-border/50">
-        <div className="flex items-center gap-1.5">
-          <Badge variant="outline" className={`text-[9px] px-1.5 py-0 h-4 font-semibold ${laneMeta.text}`}>
-            {laneMeta.label}
-          </Badge>
-          {data.chapterNumber ? (
-            <span className="text-[10px] font-bold text-muted-foreground">第 {data.chapterNumber} 章</span>
-          ) : (
-            <span className="text-[10px] text-muted-foreground">{data.nodeType}</span>
-          )}
-        </div>
-
-        <Badge
-          variant="secondary"
-          className={`text-[9px] px-1.5 h-4 ${
-            isChapter
-              ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/30"
-              : "bg-muted text-muted-foreground"
-          }`}
-        >
-          {isChapter ? "已落盘" : (data.status || "规划中")}
-        </Badge>
+      <div className="flex items-center justify-between gap-1">
+        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{THREAD_LABEL[beat.lane]}</Badge>
+        {beat.status ? <span className="text-[9px] text-muted-foreground">{beat.status}</span> : null}
       </div>
-
-      {/* 主体：节点标题与剧情摘要 */}
-      <div className="py-2 space-y-1">
-        <h4 className="text-xs font-bold text-foreground leading-snug line-clamp-1">{data.title}</h4>
-        <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed">
-          {data.summary || "暂无详细情节描述"}
-        </p>
-      </div>
-
-      {/* 挂载数据：涉及人物与伏笔 */}
-      <div className="flex flex-wrap items-center gap-1 pt-1 text-[9px] text-muted-foreground border-t border-border/40">
-        {data.characters && data.characters.length > 0 ? (
-          <div className="flex items-center gap-1 rounded bg-muted/60 px-1 py-0.5">
-            <UserRound className="size-2.5 text-primary" />
-            <span className="truncate max-w-28">{data.characters.join("、")}</span>
-          </div>
-        ) : null}
-
-        {data.hooks && data.hooks.length > 0 ? (
-          <div className="flex items-center gap-1 rounded bg-muted/60 px-1 py-0.5 text-amber-600 dark:text-amber-400">
-            <Zap className="size-2.5" />
-            <span className="truncate max-w-24">{data.hooks[0]}</span>
-          </div>
-        ) : null}
-      </div>
-
-      {/* 底部操作区：一键提拔手稿 / 跳转章节 */}
-      <div className="mt-2.5 flex items-center justify-between gap-1 pt-2 border-t border-border/50">
-        {isChapter && data.onOpenChapter ? (
+      <p className="mt-1 text-[11px] font-medium leading-snug">{beat.title}</p>
+      {beat.summary ? <p className="mt-0.5 line-clamp-2 text-[10px] text-muted-foreground">{beat.summary}</p> : null}
+      <div className="mt-1.5 flex flex-wrap items-center gap-1">
+        {canJump ? (
           <Button
             size="xs"
             variant="ghost"
-            className="h-6 text-[10px] gap-1 px-1.5 text-primary hover:text-primary/90"
-            onClick={() => data.onOpenChapter?.(data.chapterNumber!)}
+            className="h-5 px-1.5 text-[10px]"
+            data-testid={`jump-btn-${beat.id}`}
+            onClick={() => onOpenChapter?.(beat.chapterNumber!)}
           >
-            <BookOpen className="size-3" />
-            查看章节
+            <BookOpen className="mr-1 size-3" />跳转章节
           </Button>
-        ) : data.onPromote ? (
+        ) : null}
+        {onPromote ? (
           <Button
             size="xs"
-            variant="default"
-            className="h-6 text-[10px] gap-1 px-2 font-medium bg-primary text-primary-foreground shadow-2xs"
-            onClick={() => data.onPromote?.(data)}
+            variant="ghost"
+            className="h-5 px-1.5 text-[10px]"
+            data-testid={`promote-btn-${beat.id}`}
+            onClick={() => onPromote(storyMapBeatToNodeData(beat))}
           >
-            <FilePlus2 className="size-3" />
-            提拔落稿
+            <FilePlus2 className="mr-1 size-3" />提拔落稿
           </Button>
-        ) : <span />}
+        ) : null}
       </div>
-
-      <Handle type="source" position={Position.Right} className="!size-2.5 !bg-primary" />
     </div>
   );
 }
-
-const nodeTypes = {
-  storyNode: StoryCardNode,
-};
 
 export interface StoryMapCanvasProps {
   bookId: string;
   runtimeFetch?: (input: string, init?: RequestInit) => Promise<unknown>;
   onOpenChapter?: (chapterNumber: number) => void;
   onPromote?: (node: StoryMapNodeData) => void;
+  onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
-export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote }: StoryMapCanvasProps) {
+export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote, onSendToNarrator }: StoryMapCanvasProps) {
   const [snapshot, setSnapshot] = useState<NarrativeLineSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadGenerationRef = useRef(0);
+  const loadAbortRef = useRef<AbortController | null>(null);
 
   const loadStoryMap = useCallback(async () => {
+    const generation = ++loadGenerationRef.current;
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
     setLoading(true);
     setError(null);
     try {
       const url = `/api/books/${encodeURIComponent(bookId)}/narrative-line`;
       let resData: { snapshot?: NarrativeLineSnapshot };
-
       if (runtimeFetch) {
-        resData = (await runtimeFetch(url)) as { snapshot?: NarrativeLineSnapshot };
+        resData = (await runtimeFetch(url, { signal: controller.signal })) as { snapshot?: NarrativeLineSnapshot };
       } else {
-        resData = await fetchJson<{ snapshot?: NarrativeLineSnapshot }>(url);
+        resData = await fetchJson<{ snapshot?: NarrativeLineSnapshot }>(url, { signal: controller.signal });
       }
-
+      if (controller.signal.aborted || generation !== loadGenerationRef.current) return;
       setSnapshot(resData.snapshot ?? null);
     } catch (err) {
+      if (controller.signal.aborted || generation !== loadGenerationRef.current) return;
       setError(err instanceof Error ? err.message : "加载故事主支线失败");
       setSnapshot(null);
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted && generation === loadGenerationRef.current) setLoading(false);
     }
   }, [bookId, runtimeFetch]);
 
   useEffect(() => {
     void loadStoryMap();
+    return () => {
+      loadGenerationRef.current += 1;
+      loadAbortRef.current?.abort();
+    };
   }, [loadStoryMap]);
 
-  const callbacks = useMemo(() => ({ onOpenChapter, onPromote }), [onOpenChapter, onPromote]);
-  const { nodes, edges } = useMemo(() => snapshotToFlowElements(snapshot, callbacks), [snapshot, callbacks]);
+  const board = useMemo(() => snapshotToPlotBoard(snapshot), [snapshot]);
+  const chapterCount = snapshot?.nodes.filter((node) => node.type === "chapter").length ?? 0;
 
   if (loading) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background" data-testid="story-map-loading">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Loader2 className="size-4 animate-spin text-primary" />
-          <span>正在加载故事主支线…</span>
+          <span>正在加载情节板…</span>
         </div>
       </div>
     );
@@ -357,7 +191,7 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote 
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center bg-background" data-testid="story-map-error">
         <AlertCircle className="size-6 text-destructive" />
         <div className="space-y-1">
-          <p className="text-xs font-semibold text-foreground">故事主支线加载失败</p>
+          <p className="text-xs font-semibold text-foreground">情节板加载失败</p>
           <p className="text-[11px] text-muted-foreground max-w-sm">{error}</p>
         </div>
         <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
@@ -368,16 +202,16 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote 
     );
   }
 
-  if (nodes.length === 0) {
+  if (!snapshot || snapshot.nodes.length === 0) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center bg-background" data-testid="story-map-empty">
         <div className="flex size-10 items-center justify-center rounded-full bg-muted/80 text-muted-foreground">
-          <GitFork className="size-5" />
+          <Columns3 className="size-5" />
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-foreground">暂无故事主支线数据</p>
           <p className="text-[11px] text-muted-foreground max-w-xs leading-relaxed">
-            当前书籍尚未生成章节或叙事线节点。开始写作或在大纲中添加规划后将自动生成主支线图。
+            当前书籍尚未生成章节或叙事线节点。开始写作或在大纲中添加规划后将自动生成情节板。
           </p>
         </div>
         <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
@@ -388,65 +222,122 @@ export function StoryMapCanvas({ bookId, runtimeFetch, onOpenChapter, onPromote 
     );
   }
 
-  // 只有章节节点、没有任何规划节点：DAG 退化为纯跳转卡，没有信息量 —— 显示诚实空态引导。
   if (!hasPlanningNodes(snapshot)) {
-    const chapterCount = nodes.length;
+    const missing = computeMissingPlanningKinds(snapshot);
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-3 p-6 text-center bg-background" data-testid="story-map-empty-planning">
         <div className="flex size-10 items-center justify-center rounded-full bg-muted/80 text-muted-foreground">
-          <GitFork className="size-5" />
+          <Columns3 className="size-5" />
         </div>
         <div className="space-y-1">
           <p className="text-xs font-medium text-foreground">叙事线暂无规划节点</p>
           <p className="text-[11px] text-muted-foreground max-w-sm leading-relaxed">
-            当前快照仅包含 {chapterCount} 个章节节点。在对话中让叙述者规划叙事线的
-            事件 / 冲突 / 伏笔节点后，这里会展示完整的主支线 DAG 与一键提拔落稿。
+            当前快照仅包含 {chapterCount} 个章节节点，缺少：{missing.join(" / ")}。
+            规划节点来自经纬账本，需要先拆解正文与抽取弧线才会点亮情节板。
           </p>
         </div>
-        <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
-          <RotateCcw className="size-3" />
-          刷新
-        </Button>
+        <div className="flex items-center gap-2">
+          {onSendToNarrator ? (
+            <Button
+              size="xs"
+              variant="default"
+              className="h-7 text-xs gap-1 bg-primary text-primary-foreground shadow-2xs"
+              data-testid="story-map-start-planning"
+              onClick={() => void onSendToNarrator(buildStoryMapPlanPrompt(chapterCount, missing))}
+            >
+              <Sparkles className="size-3" />
+              发起主支线梳理
+            </Button>
+          ) : null}
+          <Button size="xs" variant="outline" className="h-7 text-xs gap-1" onClick={() => void loadStoryMap()}>
+            <RotateCcw className="size-3" />
+            刷新
+          </Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="relative h-full w-full bg-background" data-testid="story-map-canvas">
-      <ReactFlowProvider>
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          fitView
-          minZoom={0.2}
-          maxZoom={1.8}
-          /* 只读叙事画布：节点可拖拽/缩放/点击，但停用连线手柄等未使用的写操作 */
-          nodesConnectable={false}
-          edgesFocusable={false}
-          zoomOnDoubleClick={false}
+    <div className="relative h-full w-full overflow-auto bg-background" data-testid="story-map-canvas">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card/90 px-3 py-2 backdrop-blur-md">
+        <Sparkles className="size-4 text-primary" />
+        <span className="text-xs font-bold text-foreground">故事情节板 · 章 × 线索</span>
+        <Button size="xs" variant="outline" className="ml-auto h-7 text-[11px] gap-1" onClick={() => void loadStoryMap()}>
+          <RotateCcw className="size-3" />
+          刷新
+        </Button>
+      </div>
+      <div className="min-w-max p-3" data-testid="story-map-board">
+        <div
+          className="grid gap-2"
+          style={{ gridTemplateColumns: `10rem repeat(${Math.max(board.chapters.length, 1)}, minmax(11rem, 1fr))` }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1.2} />
-          <Controls />
-          <MiniMap
-            nodeColor={(n: Node<StoryMapNodeData>) => (n.data?.lane === "main" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))")}
-            className="!border-border !bg-card"
-          />
-
-          {/* 顶部控制面板 */}
-          <Panel position="top-left" className="m-3 flex items-center gap-2 rounded-lg border border-border bg-card/90 p-1.5 shadow-sm backdrop-blur-md">
-            <div className="flex items-center gap-1.5 px-2">
-              <Sparkles className="size-4 text-primary" />
-              <span className="text-xs font-bold text-foreground">故事全景推进画布 (Story Map)</span>
-            </div>
-            <div className="h-4 w-px bg-border" />
-            <Button size="xs" variant="outline" className="h-7 text-[11px] gap-1" onClick={() => void loadStoryMap()}>
-              <RotateCcw className="size-3" />
-              刷新
-            </Button>
-          </Panel>
-        </ReactFlow>
-      </ReactFlowProvider>
+          <div className="sticky left-0 z-[1] rounded-md bg-muted/70 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground">线索</div>
+          {board.chapters.map((chapter) => (
+            <button
+              key={chapter.chapterNumber}
+              type="button"
+              className="rounded-md bg-muted/40 px-2 py-1.5 text-left"
+              data-testid={`jump-btn-${chapter.nodeId ?? `chapter-${chapter.chapterNumber}`}`}
+              onClick={() => onOpenChapter?.(chapter.chapterNumber)}
+            >
+              <div className="text-[10px] font-semibold">第 {chapter.chapterNumber} 章</div>
+              <div className="truncate text-[10px] text-muted-foreground">{chapter.title}</div>
+            </button>
+          ))}
+          {board.threads.map((thread) => (
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              chapters={board.chapters}
+              onOpenChapter={onOpenChapter}
+              onPromote={onPromote}
+            />
+          ))}
+        </div>
+      </div>
     </div>
+  );
+}
+
+function ThreadRow({
+  thread,
+  chapters,
+  onOpenChapter,
+  onPromote,
+}: {
+  thread: StoryMapThread;
+  chapters: StoryMapBoard["chapters"];
+  onOpenChapter?: (chapterNumber: number) => void;
+  onPromote?: (node: StoryMapNodeData) => void;
+}) {
+  return (
+    <>
+      <div className={`sticky left-0 z-[1] rounded-md border px-2 py-2 ${THREAD_TONE[thread.kind]}`}>
+        <Badge variant="outline" className="h-4 px-1.5 text-[9px]">{THREAD_LABEL[thread.kind]}</Badge>
+        <p className="mt-1 text-[11px] font-medium leading-snug">{thread.title}</p>
+        {thread.status ? <p className="mt-0.5 text-[9px] text-muted-foreground">{thread.status}</p> : null}
+        {thread.unscheduled.length > 0 ? (
+          <div className="mt-1 space-y-1">
+            {thread.unscheduled.map((beat) => (
+              <BeatCard key={beat.id} beat={beat} onPromote={onPromote} />
+            ))}
+          </div>
+        ) : null}
+      </div>
+      {chapters.map((chapter) => {
+        const beats = beatsForChapter(thread, chapter.chapterNumber);
+        return (
+          <div key={`${thread.id}:${chapter.chapterNumber}`} className="min-h-16 space-y-1 rounded-md border border-dashed border-border/70 p-1.5">
+            {beats.length > 0
+              ? beats.map((beat) => (
+                <BeatCard key={beat.id} beat={beat} onOpenChapter={onOpenChapter} onPromote={onPromote} />
+              ))
+              : <p className="px-1 py-3 text-center text-[10px] text-muted-foreground/70">空</p>}
+          </div>
+        );
+      })}
+    </>
   );
 }

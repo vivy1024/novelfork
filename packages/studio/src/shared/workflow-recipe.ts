@@ -8,7 +8,6 @@
 
 export type WorkflowStepKind =
   | "context-load"
-  | "pgi"
   | "guided-plan"
   | "approval-gate"
   | "writer-generate"
@@ -49,13 +48,13 @@ export interface WorkflowRecipeConfig {
 
 /**
  * 默认 /novel:write-next workflow recipe
- * context → PGI → Guided Plan → approve → Writer chapter result → canvas open
+ * context → Guided Plan → approve → Writer chapter result → canvas open
  */
 export const DEFAULT_WRITE_NEXT_RECIPE: WorkflowRecipeConfig = {
   id: "write-next",
   name: "写下一章",
   commandId: "/novel:write-next",
-  description: "读取上下文 → PGI 追问 → 引导计划 → 用户批准 → 生成章节结果 → 画布打开",
+  description: "读取上下文 → 引导计划 → 用户批准 → 生成章节结果 → 画布打开；方向不明时用 AskUserQuestion",
   steps: [
     {
       id: "step-context",
@@ -65,14 +64,6 @@ export const DEFAULT_WRITE_NEXT_RECIPE: WorkflowRecipeConfig = {
       agentId: "explorer",
       tools: ["cockpit.snapshot", "narrative.read_line", "storyline.read"],
       onFailure: "stop",
-    },
-    {
-      id: "step-pgi",
-      kind: "pgi",
-      label: "生成前追问 (PGI)",
-      enabled: true,
-      tools: ["pgi.ask"],
-      onFailure: "skip",
     },
     {
       id: "step-guided-plan",

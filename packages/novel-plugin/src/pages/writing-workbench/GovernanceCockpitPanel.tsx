@@ -74,7 +74,6 @@ interface BookHealthResponse {
   health?: {
     hookRecoveryRate?: HealthMetric | null;
     consistencyScore?: HealthMetric | null;
-    knownConflictCount?: HealthMetric | null;
     warnings?: Array<{ type?: string; message?: string }>;
   };
 }

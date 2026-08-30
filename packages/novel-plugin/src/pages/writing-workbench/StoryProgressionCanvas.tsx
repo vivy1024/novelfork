@@ -16,7 +16,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import type { StoryMapNodeData } from "./StoryMapCanvas";
-import { DevelopmentTimelineView } from "./development-timeline";
 
 /** 故事地图体量大（React Flow），懒加载避免拖慢画布首帧。 */
 const StoryMapCanvas = lazy(() =>
@@ -27,13 +26,17 @@ const ChronicleHelixCanvas = lazy(() =>
   import("./ChronicleHelixCanvas").then((m) => ({ default: m.ChronicleHelixCanvas })),
 );
 
+const StoryNeuralCloudCanvas = lazy(() =>
+  import("./StoryNeuralCloudCanvas").then((m) => ({ default: m.StoryNeuralCloudCanvas })),
+);
+
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
 /**
  * 故事推进大屏画布的三种空间视图（IA 收敛后）：
- * - map       故事地图：叙事线规划节点 DAG 全屏缩放/拖拽
- * - evolution 发展历程：动态已发生事件 + 关系演化五主题图谱 ★发展历程唯一权威入口
- * - chronicle 双螺旋编年史：主线×角色弧线交缠沉浸图谱（G9）
+ * - map       故事地图：章 × 线索情节板
+ * - evolution 发展历程：世界网点云，点击沿关系传播
+ * - chronicle 编年史对照：表世界（章面）与里世界（角色内在）分轨对照
  *
  * 大纲总览已收敛至侧栏「章节与大纲」，不再是画布视图。
  */
@@ -47,9 +50,9 @@ export interface StoryProgressionViewDef {
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
-  { id: "evolution", label: "发展历程", description: "动态事件与角色演化图谱", icon: History },
-  { id: "chronicle", label: "双螺旋编年史", description: "主线×角色交缠沉浸图谱", icon: Dna },
-  { id: "map", label: "故事地图", description: "叙事线规划节点 DAG · 自由缩放拖拽", icon: GitFork },
+  { id: "evolution", label: "发展历程", description: "世界网点云 · 点击传播", icon: History },
+  { id: "chronicle", label: "双螺旋编年史", description: "里世界 / 表世界对照条", icon: Dna },
+  { id: "map", label: "故事地图", description: "章 × 线索情节板", icon: GitFork },
 ] as const;
 
 export function isStoryProgressionView(value: unknown): value is StoryProgressionView {
@@ -71,6 +74,8 @@ export interface StoryProgressionCanvasProps {
   readonly onPromoteOutlineNode?: (node: StoryMapNodeData) => void;
   /** 发展历程节点点击 → 打开实体详情抽屉；带 entryId 时宿主可直接跳角色卡。 */
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
+  /** 故事地图空态 → 把主支线梳理意图交给叙述者执行。 */
+  readonly onSendToNarrator?: (message: string) => Promise<void> | void;
 }
 
 // ─── 主组件 ───────────────────────────────────────────────────────────────
@@ -83,6 +88,7 @@ export function StoryProgressionCanvas({
   onOpenChapter,
   onPromoteOutlineNode,
   onOpenEntityDetail,
+  onSendToNarrator,
 }: StoryProgressionCanvasProps) {
   // 顶层状态管理当前视图；initialView 变化时同步（侧栏跳转同一 tab 换视图）。
   const [view, setView] = useState<StoryProgressionView>(
@@ -126,6 +132,7 @@ export function StoryProgressionCanvas({
           runtimeFetch={runtimeFetch}
           onOpenChapter={onOpenChapter}
           onPromote={onPromoteOutlineNode}
+          onSendToNarrator={onSendToNarrator}
         />
       </Suspense>
     </div>
@@ -133,15 +140,22 @@ export function StoryProgressionCanvas({
 
   const renderEvolutionView = () => (
     <div className="h-full min-h-[80vh]" data-testid="story-progression-evolution">
-      {/* key 绑定聚焦实体：切换聚焦时重建工作区以应用 initialFocusEntity */}
-      <DevelopmentTimelineView
-        key={`evolution:${appliedFocus || "all"}`}
-        bookId={bookId}
-        currentChapter={currentChapter}
-        frameClassName="h-full min-h-[80vh]"
-        initialFocusEntity={appliedFocus || undefined}
-        onOpenEntityDetail={onOpenEntityDetail}
-      />
+      <Suspense
+        fallback={
+          <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" /> 正在铺开世界网…
+          </div>
+        }
+      >
+        <StoryNeuralCloudCanvas
+          key={`evolution:${appliedFocus || "all"}`}
+          bookId={bookId}
+          currentChapter={currentChapter}
+          initialFocusEntity={appliedFocus || undefined}
+          onOpenEntityDetail={onOpenEntityDetail}
+          onOpenChapter={onOpenChapter}
+        />
+      </Suspense>
     </div>
   );
 
@@ -150,7 +164,7 @@ export function StoryProgressionCanvas({
       <Suspense
         fallback={
           <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在编织双螺旋编年史…
+            <Loader2 className="h-4 w-4 animate-spin" /> 正在铺开里/表世界对照…
           </div>
         }
       >

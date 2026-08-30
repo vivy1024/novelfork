@@ -151,9 +151,9 @@ function buildToolOrchestrationSop(): string {
 ### 1. 写章硬链（不可跳步）
 
 1. 会话开始或用户说「继续写/下一章」：先 cockpit.snapshot 建立全局进度、伏笔和健康度；只要纯章节目录就用 chapter.list，不要用它替代驾驶舱。
-2. 方向不完整：用 pgi.ask 追问；用户已有明确指示时不得为了“流程完整”多问。
+2. 方向不完整：用 AskUserQuestion 追问；用户已有明确指示时不得为了“流程完整”多问。
 3. 正式写章前：必须 write.preflight。blockers 非空立即停止写章：
-   - missing-directive：补至少 8 字本章目标，或 pgi.ask；只有接受 currentFocus 默认句时才传 acceptFocusDefault=true。
+   - missing-directive：补至少 8 字本章目标，或 AskUserQuestion；只有接受 currentFocus 默认句时才传 acceptFocusDefault=true。
    - empty-recent-progress：先 memory.settle_range，或 book.dissect(settle=true)；若是外部导入，优先 pipeline.import_chapters(autoSettle=true)。
    - high-risk-pending：先 memory.events / memory.bulk_approve 处理待审事件；不能把 pending 当 confirmed memory。
    - book-not-found：停止并报告绑定/书籍不可读，不得猜路径或换 bookId。
@@ -182,7 +182,7 @@ function buildToolOrchestrationSop(): string {
 - 工具：memory.settle_range；何时：已有正式章但近章摘要/事实/时间线为空，或用户要求回填历史；前置：目标章节范围明确、正文存在；失败回退：保留已存在数据，报告失败章节并重试，或改用 book.dissect(settle=true)，不要把废稿结算进正史。
 - 工具：memory.settle_chapter；何时：pipeline.write 保存后的章后结算，或结算失败重试；前置：正文已落盘且章号明确；失败回退：只重试本工具，正文已保存，不重复 pipeline.write；chapter-not-persisted 时先保存正文。
 - 工具：chapter.discard_range；何时：用户明确把一段试写章作废并清掉章域记忆；前置：显式范围、确认策略和 confirm=true；失败回退：不做部分猜删，先用 resource.manage/memory.list 盘点并报告；不可用时保留原稿。
-- 工具：pgi.ask；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
+- 工具：AskUserQuestion；何时：目标、视角、冲突或取舍确实不明确，需要用户选择；前置：先说明缺少哪个决策；失败回退：保留问题并停在等待用户回答，不擅自替用户定方向；指令完整时跳过。
 - 工具：narrative.read_line；何时：查看叙事线节点、边和 warnings；前置：明确要检查的故事线；失败回退：用 memory.graph/memory.read 查看动态事件，不能直接提出修改。
 - 工具：narrative.propose_change；何时：需要新增/删除/调整叙事线时先出差异草案；前置：先 narrative.read_line，变更原因和目标节点明确；失败回退：保留正式叙事线，修正草案或重新读取，不直接写入。
 - 工具：narrative.approve_change；何时：对 narrative.propose_change 的预览作批准或驳回；前置：对应草案、用户明确结论；失败回退：驳回则保留原线，需改动时重新 propose，不重复提交旧草案。
@@ -234,7 +234,7 @@ function buildToolOrchestrationSop(): string {
 - 确认写失败/用户拒绝：停止当前分支并报告，不降级为未经批准的写入。
 - 正文已保存但后处理失败：优先重试后处理工具；正文、章节结果和记忆结算状态分开报告。
 - 批量部分失败：记录成功/失败/跳过明细，只重试失败项，禁止重复执行已成功的破坏性操作。
-- 任何工具都不能替代用户决策：方向不明用 pgi.ask，canon 冲突停下来报告，安全/权限/绑定错误直接阻断。`;
+- 任何工具都不能替代用户决策：方向不明用 AskUserQuestion，canon 冲突停下来报告，安全/权限/绑定错误直接阻断。`;
 }
 
 function buildLengthGuidance(lengthSpec: LengthSpec, language: "zh" | "en"): string {

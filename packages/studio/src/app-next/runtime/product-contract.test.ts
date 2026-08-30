@@ -348,6 +348,43 @@ describe("Runtime product contract", () => {
     expect(narrator).toMatchObject({ id: "narrator-2", bookId: "book/1", title: "第二个会话" });
   });
 
+  it("透传可选 AbortSignal 到叙述者和工作区变更请求", async () => {
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith("/narrators")) {
+        return response({ narrators: [] });
+      }
+      if (path.endsWith("/workspace/resources/chapter%3A1")) {
+        return response({
+          resource: {
+            id: "chapter:1",
+            kind: "chapter",
+            title: "第 1 章",
+            content: "新正文",
+            capabilities: { read: true, update: true },
+          },
+        });
+      }
+      return response({
+        book: { id: "book-1", title: "测试", capabilities: { read: true } },
+        resources: [],
+        capabilities: { read: true },
+      });
+    });
+    const client = createRuntimeProductClient({ fetch: { fetchImpl } });
+    const controller = new AbortController();
+
+    await client.listNarrators("book-1", { signal: controller.signal });
+    await client.getWorkspace("book-1", { signal: controller.signal });
+    await client.saveWorkspaceResource("book-1", "chapter:1", "新正文", { signal: controller.signal });
+
+    expect(fetchImpl.mock.calls.map(([, init]) => init?.signal)).toEqual([
+      controller.signal,
+      controller.signal,
+      controller.signal,
+    ]);
+  });
+
   it("fails closed for an unknown contract version and malformed workspace DTOs", async () => {
     const mapped = mapRuntimeBootstrap({
       ...bootstrap,

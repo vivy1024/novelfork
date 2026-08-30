@@ -45,10 +45,15 @@ import { clearEditorState } from "./editor-state-cache";
 import { useWorkbenchDialogs } from "./use-workbench-dialogs";
 import { toast } from "@/components/ui/toast";
 import {
+  defaultIdePaneVisibility,
+  ideLayoutModeFromWidth,
   ideLayoutSizesToArray,
+  idePanesUseOverlay,
+  initialIdeLayoutMode,
   loadIdeLayoutSizes,
   mergeIdeLayoutSizes,
   saveIdeLayoutSizes,
+  type IdeLayoutMode,
 } from "./ide-layout-state";
 
 /**
@@ -213,6 +218,10 @@ function filePathOf(node: WorkbenchResourceNode): string {
   return String(node.metadata?.filePath ?? node.path ?? "").replace(/\\/g, "/");
 }
 
+export function loadedFileKey(bookId: string | undefined, nodeId: string): string {
+  return `${bookId ?? "global"}:${nodeId}`;
+}
+
 /** 只从文件树裁剪 chapters/，不读取正文，也不带入其它目录。 */
 function collectChapterTreeNodes(
   nodes: readonly WorkbenchResourceNode[],
@@ -271,12 +280,16 @@ export function IdeWorkbench({
   runtimeFetch,
 }: IdeWorkbenchProps) {
   // --- Layout state ---
-  const [sidebarVisible, setSidebarVisible] = useState(true);
-  const [chatVisible, setChatVisible] = useState(true);
+  const [layoutMode, setLayoutMode] = useState<IdeLayoutMode>(() => initialIdeLayoutMode());
+  const [sidebarVisible, setSidebarVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).sidebar);
+  const [chatVisible, setChatVisible] = useState(() => defaultIdePaneVisibility(initialIdeLayoutMode()).chat);
   const [showSettings, setShowSettings] = useState(false);
   const layoutStorageId = bookId ?? "global";
   const initialLayoutSizes = useMemo(() => loadIdeLayoutSizes(layoutStorageId), [layoutStorageId]);
   const layoutSizesRef = useRef(initialLayoutSizes);
+  const layoutHostRef = useRef<HTMLDivElement>(null);
+  const layoutModeRef = useRef(layoutMode);
+  layoutModeRef.current = layoutMode;
   useEffect(() => {
     layoutSizesRef.current = initialLayoutSizes;
   }, [initialLayoutSizes]);
@@ -285,6 +298,27 @@ export function IdeWorkbench({
     layoutSizesRef.current = next;
     saveIdeLayoutSizes(layoutStorageId, next);
   }, [layoutStorageId]);
+  useEffect(() => {
+    const host = layoutHostRef.current;
+    if (!host) return;
+    const applyWidth = (width: number) => {
+      const nextMode = ideLayoutModeFromWidth(width);
+      if (nextMode === layoutModeRef.current) return;
+      layoutModeRef.current = nextMode;
+      setLayoutMode(nextMode);
+      const visibility = defaultIdePaneVisibility(nextMode);
+      setSidebarVisible(visibility.sidebar);
+      setChatVisible(visibility.chat);
+    };
+    applyWidth(host.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      const width = entries[0]?.contentRect.width;
+      if (typeof width === "number") applyWidth(width);
+    });
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
   // 写作视图「一键修」跳设置时要落到具体分区（如 Writing Skills），不是只打开长表单。
   const [settingsSection, setSettingsSection] = useState<BookSettingsSection | undefined>(undefined);
   const [splitNodeId, setSplitNodeId] = useState<string | null>(null);
@@ -300,7 +334,8 @@ export function IdeWorkbench({
   const [paletteMode, setPaletteMode] = useState<"commands" | "files">("commands");
 
   // --- 命令式面板管理(纯 DOM 操作,学 VS Code CompositePart) ---
-  const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer");
+  const overlayPanes = idePanesUseOverlay(layoutMode);
+  const { activeView, showPanel, hostRef, getContainer, ready: panelsReady } = usePanelManager("explorer", overlayPanes ? "overlay" : "split");
   // handleOpen 需要在不重建 callback 链的前提下读取当前视图（它被 handleOpenJingweiEntry/
   // handleJumpToChapter/handleResourceAction 等层层引用，activeView 进依赖会全链路重建）。
   const activeViewRef = useRef(activeView);
@@ -320,8 +355,14 @@ export function IdeWorkbench({
   const [jingweiSections, setJingweiSections] = useState<WorkbenchResourceNode[]>([]);
   const [narrativeMemorySections, setNarrativeMemorySections] = useState<WorkbenchResourceNode[]>([]);
   const [entityFacts, setEntityFacts] = useState<readonly EntityFactLite[]>([]);
+  const loreLoadGenerationRef = useRef(0);
+  const loreLoadAbortRef = useRef<AbortController | null>(null);
   const loadLoreSections = useCallback(async () => {
     if (!bookId) return;
+    const generation = ++loreLoadGenerationRef.current;
+    loreLoadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loreLoadAbortRef.current = controller;
     try {
       const fetchJson = runtimeFetch ?? (async (input: string, init?: RequestInit) => {
         const response = await fetch(input, init);
@@ -329,9 +370,13 @@ export function IdeWorkbench({
         return response.json();
       });
       const [entRes, factsRes] = await Promise.all([
-        fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`),
-        fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`).catch(() => ({ facts: [] })),
+        fetchJson(`/api/books/${encodeURIComponent(bookId)}/jingwei/entries`, { signal: controller.signal }),
+        fetchJson(`/api/books/${encodeURIComponent(bookId)}/narrative-memory/facts`, { signal: controller.signal }).catch((error) => {
+          if (controller.signal.aborted) throw error;
+          return { facts: [] };
+        }),
       ]);
+      if (controller.signal.aborted || generation !== loreLoadGenerationRef.current) return;
       const entries: Array<{
         id: string;
         title: string;
@@ -442,14 +487,21 @@ export function IdeWorkbench({
       setNarrativeMemorySections(memoryNodes);
       setEntityFacts(memoryFacts);
     } catch {
+      if (controller.signal.aborted || generation !== loreLoadGenerationRef.current) return;
       setJingweiSections([]);
       setNarrativeMemorySections([]);
       setEntityFacts([]);
+    } finally {
+      if (loreLoadAbortRef.current === controller) loreLoadAbortRef.current = null;
     }
   }, [bookId, runtimeFetch]);
 
   useEffect(() => {
     void loadLoreSections();
+    return () => {
+      loreLoadGenerationRef.current += 1;
+      loreLoadAbortRef.current?.abort();
+    };
   }, [loadLoreSections]);
 
   // Runtime books use the same bound, server-authorized IDE filesystem gateway
@@ -484,6 +536,12 @@ export function IdeWorkbench({
     return Number.isFinite(target) && target > 0 ? target : 0;
   }, [bookRoot]);
 
+  const bookTargetChapters = useMemo(() => {
+    const book = bookRoot?.metadata?.book as { targetChapters?: unknown } | undefined;
+    const target = Number(book?.targetChapters);
+    return Number.isFinite(target) && target > 0 ? target : undefined;
+  }, [bookRoot]);
+
   // 工具面板节点（资源管理器"工具"视图 + Tab 解析都需要）
   const toolNodes = useMemo(() => {
     const root = createToolSectionNodes();
@@ -496,20 +554,6 @@ export function IdeWorkbench({
   const memoryCenterNode = useMemo(() => (bookId ? createMemoryCenterNode(bookId) : null), [bookId]);
   // 故事推进大屏画布的默认节点（evolution 视图）；侧栏跳转会以带 preferredView 的节点覆盖缓存。
   const storyProgressionNode = useMemo(() => (bookId ? createStoryProgressionNode(bookId) : null), [bookId]);
-  // 伏笔看板唯一入口在「故事推进」侧栏；工具面板已不再收录该条目（避免双入口），
-  // 因此这里直接构造节点而非从 toolNodes 中查找。
-  const foreshadowingNode = useMemo<WorkbenchResourceNode | null>(() => (
-    bookId
-      ? {
-        id: "tool:foreshadowing",
-        kind: "tool",
-        title: "伏笔看板",
-        content: "",
-        capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
-        metadata: { toolPanel: "foreshadowing", bookId },
-      }
-      : null
-  ), [bookId]);
 
   const resourceMap = useMemo(() => {
     const map = new Map<string, WorkbenchResourceNode>();
@@ -523,36 +567,47 @@ export function IdeWorkbench({
     toolNodes.forEach(walk);
     if (memoryCenterNode) map.set(memoryCenterNode.id, memoryCenterNode);
     if (storyProgressionNode) map.set(storyProgressionNode.id, storyProgressionNode);
-    // 伏笔看板节点不在 toolNodes 里（入口收敛到故事推进侧栏），但 ?panel=foreshadowing
-    // 直达与 activeNode 解析仍需能取到它。
-    if (foreshadowingNode) map.set(foreshadowingNode.id, foreshadowingNode);
     return map;
-  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode, foreshadowingNode]);
+  }, [nodes, fileTree.nodes, jingweiSections, narrativeMemorySections, toolNodes, memoryCenterNode, storyProgressionNode]);
 
-  // 文件树节点点击后加载的内容缓存
+  // 文件树节点点击后加载的内容缓存；key 带 bookId，避免跨书复用同名资源。
   const [loadedFiles, setLoadedFiles] = useState<Map<string, WorkbenchResourceNode>>(new Map());
+  const fileReadGenerationRef = useRef(0);
+  const fileReadControllersRef = useRef(new Set<AbortController>());
+  const currentBookIdRef = useRef(bookId);
+  currentBookIdRef.current = bookId;
+  const abortFileReads = useCallback(() => {
+    fileReadGenerationRef.current += 1;
+    for (const controller of fileReadControllersRef.current) controller.abort();
+    fileReadControllersRef.current.clear();
+  }, []);
+  useEffect(() => {
+    abortFileReads();
+    setLoadedFiles(new Map());
+    return () => abortFileReads();
+  }, [abortFileReads, bookId]);
 
   const activeNode = useMemo(() => {
     if (!ideTabs.activeTabId) return null;
-    return loadedFiles.get(ideTabs.activeTabId) ?? resourceMap.get(ideTabs.activeTabId) ?? null;
-  }, [ideTabs.activeTabId, resourceMap, loadedFiles]);
+    return loadedFiles.get(loadedFileKey(bookId, ideTabs.activeTabId)) ?? resourceMap.get(ideTabs.activeTabId) ?? null;
+  }, [bookId, ideTabs.activeTabId, resourceMap, loadedFiles]);
 
   // 分屏节点解析
   const splitNode = useMemo(() => {
     if (!splitNodeId) return null;
-    return loadedFiles.get(splitNodeId) ?? resourceMap.get(splitNodeId) ?? null;
-  }, [splitNodeId, resourceMap, loadedFiles]);
+    return loadedFiles.get(loadedFileKey(bookId, splitNodeId)) ?? resourceMap.get(splitNodeId) ?? null;
+  }, [bookId, splitNodeId, resourceMap, loadedFiles]);
 
   // 多实例条件渲染：收集所有需要保持 mount 的 Tab 节点
   const multiTabNodes = useMemo(() => {
     return ideTabs.tabs
       .map(tab => {
-        const node = loadedFiles.get(tab.id) ?? resourceMap.get(tab.id) ?? null;
+        const node = loadedFiles.get(loadedFileKey(bookId, tab.id)) ?? resourceMap.get(tab.id) ?? null;
         if (!node) return null;
         return { tabId: tab.id, node };
       })
       .filter((x): x is { tabId: string; node: WorkbenchResourceNode } => x !== null);
-  }, [ideTabs.tabs, resourceMap, loadedFiles]);
+  }, [bookId, ideTabs.tabs, resourceMap, loadedFiles]);
 
   // 恢复的文件 Tab 懒加载内容：active 节点是文件但尚未加载过内容时拉取一次
   useEffect(() => {
@@ -560,17 +615,24 @@ export function IdeWorkbench({
     if (!node || !bookId) return;
     const filePath = node.metadata?.filePath;
     if (!node.metadata?.isFile || typeof filePath !== "string") return;
-    if (loadedFiles.has(node.id)) return; // 已加载
-    let cancelled = false;
-    fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`)
-      .then(r => r.json())
-      .then((data: { content?: string }) => {
-        if (cancelled) return;
-        const loaded: WorkbenchResourceNode = { ...node, content: data.content ?? "" };
-        setLoadedFiles(prev => new Map(prev).set(node.id, loaded));
+    const cacheKey = loadedFileKey(bookId, node.id);
+    if (loadedFiles.has(cacheKey)) return; // 已加载
+    const generation = fileReadGenerationRef.current;
+    const controller = new AbortController();
+    fileReadControllersRef.current.add(controller);
+    fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`请求失败：${response.status}`);
+        return response.json() as Promise<{ content?: string }>;
       })
-      .catch(() => { /* ignore */ });
-    return () => { cancelled = true; };
+      .then((data) => {
+        if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
+        const loaded: WorkbenchResourceNode = { ...node, content: data.content ?? "" };
+        setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
+      })
+      .catch(() => { /* ignore aborted/stale reads */ })
+      .finally(() => fileReadControllersRef.current.delete(controller));
+    return () => controller.abort();
   }, [activeNode, bookId, loadedFiles]);
 
   // --- Tab 关闭:dirty 时弹确认 + 清理缓存 ---
@@ -587,10 +649,11 @@ export function IdeWorkbench({
     }
     ideTabs.closeTab(tabId);
     clearEditorState(tabId);
+    const cacheKey = loadedFileKey(bookId, tabId);
     setLoadedFiles(prev => {
-      if (!prev.has(tabId)) return prev;
+      if (!prev.has(cacheKey)) return prev;
       const next = new Map(prev);
-      next.delete(tabId);
+      next.delete(cacheKey);
       return next;
     });
   }, [ideTabs.closeTab, confirmDialog]);
@@ -602,8 +665,11 @@ export function IdeWorkbench({
     // 主区看起来"没有反应"。
     const revealTab = (kind: TabKind, view: TabView) => {
       ideTabsRef.current.openTab(node.id, node.title, kind, view);
-      if (view !== activeViewRef.current) {
-        showPanel(view);
+      if (view !== activeViewRef.current) showPanel(view);
+      if (idePanesUseOverlay(layoutModeRef.current)) {
+        setSidebarVisible(false);
+        setChatVisible(false);
+      } else if (view !== activeViewRef.current) {
         setSidebarVisible(true);
       }
     };
@@ -615,9 +681,16 @@ export function IdeWorkbench({
         onOpen(node);
         return;
       }
-      fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`)
-        .then(r => r.json())
-        .then((data: { content?: string }) => {
+      const generation = fileReadGenerationRef.current;
+      const controller = new AbortController();
+      fileReadControllersRef.current.add(controller);
+      void fetch(`/api/books/${encodeURIComponent(bookId)}/files/read?path=${encodeURIComponent(filePath)}`, { signal: controller.signal })
+        .then(async (response) => {
+          if (!response.ok) throw new Error(`请求失败：${response.status}`);
+          return response.json() as Promise<{ content?: string }>;
+        })
+        .then((data) => {
+          if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
           let content = data.content ?? "";
           // 性能保护:超过 500KB 的文件截断显示,避免 TipTap 卡死
           const MAX_CHARS = 500_000;
@@ -625,14 +698,17 @@ export function IdeWorkbench({
             content = content.slice(0, MAX_CHARS) + `\n\n---\n⚠️ 文件过大(${(content.length / 1000).toFixed(0)}K 字符),仅显示前 ${MAX_CHARS / 1000}K。请使用外部编辑器打开完整文件。`;
           }
           const loaded: WorkbenchResourceNode = { ...node, content };
-          setLoadedFiles(prev => new Map(prev).set(node.id, loaded));
+          const cacheKey = loadedFileKey(bookId, node.id);
+          setLoadedFiles(prev => new Map(prev).set(cacheKey, loaded));
           revealTab("file", "explorer");
           onOpen(loaded);
         })
         .catch(() => {
+          if (controller.signal.aborted || generation !== fileReadGenerationRef.current || currentBookIdRef.current !== bookId) return;
           revealTab("file", "explorer");
           onOpen(node);
-        });
+        })
+        .finally(() => fileReadControllersRef.current.delete(controller));
       return;
     }
     // 搜索/结算历史生成的叙事记忆详情节点不在静态资源树中；缓存完整节点，
@@ -644,7 +720,7 @@ export function IdeWorkbench({
       // 否则同一 tab 二次跳转时 activeNode 解析回 resourceMap 默认视图，视图切换失效。
       node.metadata?.isStoryProgression === true
     ) {
-      setLoadedFiles((previous) => new Map(previous).set(node.id, node));
+      setLoadedFiles((previous) => new Map(previous).set(loadedFileKey(bookId, node.id), node));
     }
     if (node.capabilities.open) revealTab(toTabKind(node), toTabView(node));
     onOpen(node);
@@ -747,6 +823,7 @@ export function IdeWorkbench({
         if (payload.category !== undefined) body.category = payload.category;
         if (payload.aliases !== undefined) body.aliases = payload.aliases;
         if (payload.relatedEntryIds !== undefined) body.relatedEntryIds = payload.relatedEntryIds;
+        if (payload.fields !== undefined) body.fields = payload.fields;
         if (payload.visibility !== undefined || payload.visibleAfterChapter !== undefined || payload.visibleUntilChapter !== undefined) {
           body.visibilityRule = {
             type: payload.visibility ?? "tracked",
@@ -820,7 +897,15 @@ export function IdeWorkbench({
     }
     showPanel(view);
     setSidebarVisible(true);
+    if (idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
   }, [activeView, sidebarVisible, showPanel]);
+  const handleChatToggle = useCallback(() => {
+    setChatVisible((visible) => {
+      const next = !visible;
+      if (next && idePanesUseOverlay(layoutModeRef.current)) setSidebarVisible(false);
+      return next;
+    });
+  }, []);
 
   // ── 写作视图：只读就绪查询 + 少数一键修工具 ──
   const writeViewCallTool = useCallback(async (tool: string, input: Record<string, unknown>) => {
@@ -907,6 +992,7 @@ export function IdeWorkbench({
     setShowSettings(false);
     showPanel("characters-lore");
     setSidebarVisible(true);
+    if (idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
     if (category) {
       const findCategory = (items: readonly WorkbenchResourceNode[]): WorkbenchResourceNode | null => {
         for (const item of items) {
@@ -930,11 +1016,23 @@ export function IdeWorkbench({
       const tabId = ideTabsRef.current.activeTabId;
       if (tabId) {
         ideTabsRef.current.closeTab(tabId);
-        setLoadedFiles(prev => { if (!prev.has(tabId)) return prev; const n = new Map(prev); n.delete(tabId); return n; });
+        setLoadedFiles(prev => {
+          const cacheKey = loadedFileKey(bookId, tabId);
+          if (!prev.has(cacheKey)) return prev;
+          const next = new Map(prev);
+          next.delete(cacheKey);
+          return next;
+        });
       }
     },
-    toggleSidebar: () => setSidebarVisible(v => !v),
-    toggleChat: () => setChatVisible(v => !v),
+    toggleSidebar: () => {
+      setSidebarVisible((visible) => {
+        const next = !visible;
+        if (next && idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
+        return next;
+      });
+    },
+    toggleChat: handleChatToggle,
     nextTab: () => {
       const { tabs, activeTabId, activateTab } = ideTabsRef.current;
       if (tabs.length <= 1) return;
@@ -951,6 +1049,7 @@ export function IdeWorkbench({
       setShowSettings(false);
       showPanel(view);
       setSidebarVisible(true);
+      if (idePanesUseOverlay(layoutModeRef.current)) setChatVisible(false);
     },
     openCommandPalette: () => {
       setPaletteMode("commands");
@@ -960,7 +1059,7 @@ export function IdeWorkbench({
       setPaletteMode("files");
       setPaletteOpen(true);
     },
-  }), []);
+  }), [handleChatToggle]);
   useIdeKeybindings(keybindingActions);
 
   // ── 命令面板 ──
@@ -1253,7 +1352,15 @@ export function IdeWorkbench({
 
   return (
     <>
-      <div className="flex h-full w-full bg-background" style={{ minHeight: 0 }}>
+      <div
+        className="flex h-full w-full bg-background"
+        style={{ minHeight: 0 }}
+        data-testid="ide-workbench"
+        data-layout-mode={layoutMode}
+        data-pane-overlay={overlayPanes ? "true" : "false"}
+        data-sidebar-visible={sidebarVisible ? "true" : "false"}
+        data-chat-visible={chatVisible ? "true" : "false"}
+      >
       {/* ── ActivityBar（VS Code 规范：48px 宽，48px 项高，左侧 2px 强调条，背景加重区分） ── */}
       <div className="flex h-full w-12 shrink-0 flex-col justify-between items-center border-r border-border bg-secondary">
         <div className="flex flex-col items-center gap-1 pt-2">
@@ -1272,7 +1379,7 @@ export function IdeWorkbench({
             icon={MessageSquare}
             label="AI 对话"
             active={chatVisible && !showSettings}
-            onClick={() => setChatVisible(v => !v)}
+            onClick={handleChatToggle}
           />
           <ActivityBarItem
             icon={Settings}
@@ -1284,7 +1391,7 @@ export function IdeWorkbench({
       </div>
 
       {/* ── Main Area（Sidebar + Editor + Chat） ── */}
-      <div className="relative flex-1" style={{ minWidth: 0, minHeight: 0, height: "100%" }}>
+      <div ref={layoutHostRef} className="relative flex-1" style={{ minWidth: 0, minHeight: 0, height: "100%" }}>
         <Allotment
           key={`outer-layout:${layoutStorageId}`}
           proportionalLayout={false}
@@ -1292,7 +1399,7 @@ export function IdeWorkbench({
           onDragEnd={handleOuterLayoutDragEnd}
         >
           {/* Sidebar — 纯 DOM 面板管理,React 通过 portal 渲染内容 */}
-          <Allotment.Pane minSize={150} preferredSize={220} visible={sidebarVisible}>
+          <Allotment.Pane minSize={150} preferredSize={220} visible={!overlayPanes && sidebarVisible}>
             <div className="flex h-full flex-col border-r border-border bg-card">
               {/* Sidebar 标题 */}
               <div className="flex h-[35px] shrink-0 items-center border-b border-border px-2">
@@ -1301,7 +1408,7 @@ export function IdeWorkbench({
                 </span>
               </div>
               {/* PanelManager 宿主:面板容器由 JS 创建,React 通过 portal 往里渲染 */}
-              <div ref={hostRef} className="flex-1 relative" />
+              <div ref={overlayPanes ? undefined : hostRef} className="flex-1 relative" />
               {/* Portal 渲染各面板内容到 PanelManager 创建的 DOM 容器 */}
               {panelsReady && getContainer("write") && createPortal(
                 <WriteViewPanel
@@ -1313,6 +1420,7 @@ export function IdeWorkbench({
                   onSendToNarrator={onSendToNarrator}
                   onRunWrite={handleRunWrite}
                   chapterWordTarget={bookChapterWordTarget}
+                  onJumpToChapter={handleJumpToChapter}
                   visible={activeView === "write" && sidebarVisible && !showSettings}
                 />,
                 getContainer("write")!
@@ -1351,13 +1459,14 @@ export function IdeWorkbench({
                       bookId={bookId}
                       chapterTreeNodes={chapterTreeNodes}
                       outlineTreeNodes={outlineTreeNodes}
-                      memoryNodes={narrativeMemorySections}
-                      foreshadowingNode={foreshadowingNode}
                       selectedNodeId={activeNode?.id ?? null}
                       onOpen={handleOpen}
                       onSwitchView={(view) => keybindingActions.switchView(view)}
                       onAction={handleResourceAction}
                       onOpenEntityDetail={handleOpenEntityFromGraph}
+                      onSendToNarrator={onSendToNarrator}
+                      bookTargetChapters={bookTargetChapters}
+                      onJumpToChapter={handleJumpToChapter}
                     />
                   : <div className="flex h-full items-center justify-center p-4 text-center">
                       <span className="text-xs text-muted-foreground">先打开一本书，再查看故事推进。</span>
@@ -1528,7 +1637,7 @@ export function IdeWorkbench({
           </Allotment.Pane>
 
           {/* Chat Panel（右侧辅助栏，类似 VS Code AuxiliaryBar） */}
-          <Allotment.Pane minSize={200} preferredSize={320} visible={chatVisible}>
+          <Allotment.Pane minSize={200} preferredSize={320} visible={!overlayPanes && chatVisible}>
             <div className="flex h-full flex-col border-l border-border bg-card">
               <ChatHeader
                 sessions={bookSessions}
@@ -1559,6 +1668,66 @@ export function IdeWorkbench({
             </div>
           </Allotment.Pane>
         </Allotment>
+        {overlayPanes && (sidebarVisible || chatVisible) ? (
+          <button
+            type="button"
+            className="absolute inset-0 z-20 bg-black/20"
+            aria-label="关闭面板"
+            data-testid="ide-overlay-backdrop"
+            onClick={() => {
+              setSidebarVisible(false);
+              setChatVisible(false);
+            }}
+          />
+        ) : null}
+        {overlayPanes ? (
+          <div
+            className={`absolute inset-y-0 left-0 z-30 flex w-[min(20rem,calc(100%_-_3rem))] flex-col border-r border-border bg-card shadow-lg transition-transform duration-200 ${sidebarVisible ? "translate-x-0" : "invisible -translate-x-full"}`}
+            data-testid="ide-sidebar-overlay"
+            aria-hidden={!sidebarVisible}
+          >
+            <div className="flex h-[35px] shrink-0 items-center justify-between border-b border-border px-2">
+              <span className="text-[11px] font-semibold text-foreground uppercase tracking-wide pl-3">
+                {SIDEBAR_VIEWS.find(v => v.id === activeView)?.title ?? "资源管理器"}
+              </span>
+              <button type="button" className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-muted/50" aria-label="关闭侧栏" onClick={() => setSidebarVisible(false)}>
+                <X className="size-3.5" />
+              </button>
+            </div>
+            <div ref={hostRef} className="flex-1 relative min-h-0" />
+          </div>
+        ) : null}
+        {overlayPanes && chatVisible ? (
+          <div className="absolute inset-y-0 right-0 z-30 flex w-[min(22rem,calc(100%_-_3rem))] flex-col border-l border-border bg-card shadow-lg" data-testid="ide-chat-overlay">
+            <ChatHeader
+              sessions={bookSessions}
+              activeSessionId={activeSessionId}
+              onSwitchSession={onSwitchSession}
+              onCreateSession={onCreateSession}
+              onSwitchToAgent={onSwitchToAgent}
+              onClose={() => setChatVisible(false)}
+            />
+            <div className="flex-1 min-h-0 overflow-hidden">
+              {chatSlot ?? (
+                <div className="flex h-full flex-col items-center justify-center p-6 gap-4">
+                  <div className="flex size-10 items-center justify-center rounded-full bg-primary/10">
+                    <Sparkles className="size-5 text-primary" />
+                  </div>
+                  <ChatEmptyTip />
+                  {onCreateSession && (
+                    <button
+                      type="button"
+                      onClick={onCreateSession}
+                      className="mt-1 rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground hover:bg-primary/90 transition-colors"
+                    >
+                      新建对话
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
 
@@ -1618,12 +1787,14 @@ function ChatHeader({
   onSwitchSession,
   onCreateSession,
   onSwitchToAgent,
+  onClose,
 }: {
   sessions?: readonly { id: string; title: string; updatedAt?: string }[];
   activeSessionId?: string | null;
   onSwitchSession?: (id: string) => void;
   onCreateSession?: () => void;
   onSwitchToAgent?: () => void;
+  onClose?: () => void;
 }) {
   const [showHistory, setShowHistory] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -1655,6 +1826,12 @@ function ChatHeader({
             <button type="button" title="切换到 Agent 对话模式" aria-label="切换到 Agent 对话模式" onClick={onSwitchToAgent}
               className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
               <MessageSquare className="size-4" />
+            </button>
+          )}
+          {onClose && (
+            <button type="button" title="关闭对话" aria-label="关闭对话" onClick={onClose}
+              className="flex size-7 items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-muted/50">
+              <X className="size-4" />
             </button>
           )}
         </div>

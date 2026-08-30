@@ -81,6 +81,16 @@ describe("novel tool registry lore/memory boundary", () => {
     expect(description).toContain("章后结算");
   });
 
+  it("registers market research tools as book-agnostic public ranking tools", () => {
+    expect(tool("market.scan")?.description).toContain("公开榜单");
+    expect(tool("market.scan")?.description).toContain("经纬/Lore");
+    expect(tool("market.scan")?.risk).toBe("read");
+    expect(tool("market.scan")?.scope).toBe("universal");
+    expect(tool("market.query")?.description).toContain("历史快照");
+    expect(tool("market.sample_public_chapters")?.description).toContain("fanqieBookId");
+    expect(tool("market.sample_public_chapters")?.description).toContain("不入库");
+  });
+
   it("registers write context gate and settlement/discard tools", () => {
     expect(tool("write.preflight")?.risk).toBe("read");
     expect(tool("memory.settle_range")?.risk).toBe("confirmed-write");

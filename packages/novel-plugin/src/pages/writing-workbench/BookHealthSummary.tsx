@@ -20,7 +20,6 @@ interface BookHealthResponse {
     readonly totalWords: MeasuredMetric;
     readonly chapterWordTarget: MeasuredMetric;
     readonly sensitiveWordCount: MeasuredMetric;
-    readonly knownConflictCount: MeasuredMetric;
     readonly consistencyScore: MeasuredMetric | null;
     readonly hookRecoveryRate: MeasuredMetric | null;
     readonly aiTasteMean: MeasuredMetric | null;
@@ -132,12 +131,6 @@ export function BookHealthSummary({ bookId }: BookHealthSummaryProps) {
           value={String(h.sensitiveWordCount.value)}
           suffix="处"
           good={h.sensitiveWordCount.value === 0}
-        />
-        <MetricRow
-          label="矛盾条目"
-          value={String(h.knownConflictCount.value)}
-          suffix="个"
-          good={h.knownConflictCount.value === 0}
         />
       </div>
 

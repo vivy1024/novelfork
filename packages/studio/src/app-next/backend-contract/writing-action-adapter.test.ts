@@ -76,7 +76,7 @@ describe("writing action contract adapter", () => {
     ]);
     expect(descriptors[0]).toMatchObject({
       outputBoundary: "chapter-artifact",
-      chain: ["cockpit.snapshot", "pgi.ask", "AskUserQuestion", "pipeline.write"],
+      chain: ["cockpit.snapshot", "AskUserQuestion", "pipeline.write"],
       writesFormalChapter: true,
       capability: { status: "current" },
     });

@@ -11,7 +11,8 @@ export type ShellRoute =
   | { readonly kind: "knowledge" }
   | { readonly kind: "scheduled-tasks" }
   | { readonly kind: "settings"; readonly section?: string }
-  | { readonly kind: "learn" };
+  | { readonly kind: "learn" }
+  | { readonly kind: "market" };
 
 export type ShellRouteKind = ShellRoute["kind"];
 
@@ -97,6 +98,7 @@ export function parseShellRoute(pathname = globalThis.location?.pathname ?? STUD
   if (section === "scheduled-tasks") return { kind: "scheduled-tasks" };
   if (section === "settings") return { kind: "settings", ...(id ? { section: decodeSegment(id) } : {}) };
   if (section === "learn") return { kind: "learn" };
+  if (section === "market") return { kind: "market" };
   return { kind: "home" };
 }
 
@@ -124,6 +126,8 @@ export function toShellPath(route: ShellRoute): string {
         : `${STUDIO_NEXT_BASE_PATH}/settings`;
     case "learn":
       return `${STUDIO_NEXT_BASE_PATH}/learn`;
+    case "market":
+      return `${STUDIO_NEXT_BASE_PATH}/market`;
     case "home":
     default:
       return STUDIO_NEXT_BASE_PATH;
@@ -149,6 +153,7 @@ export function getShellNavItems({
     { id: "knowledge", label: "知识库", group: "global", route: { kind: "knowledge" } },
     { id: "scheduled-tasks", label: "定时任务", group: "global", route: { kind: "scheduled-tasks" } },
     { id: "learn", label: "学习", group: "global", route: { kind: "learn" } },
+    { id: "market", label: "市场", group: "global", route: { kind: "market" } },
     { id: "settings", label: "设置", group: "global", route: { kind: "settings" } },
   ];
 }

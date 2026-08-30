@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertical, LogOut, MessageSquareText, PackageMinus, Search, Settings, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X } from "lucide-react";
+import { BookMarked, BookOpen, CalendarClock, ChevronDown, ChevronUp, GripVertical, LogOut, MessageSquareText, PackageMinus, Search, Settings, TrendingUp, Wrench, PanelLeftClose, PanelLeftOpen, PanelRightOpen, Pin, Trash2, X } from "lucide-react";
 
 import { getShellNavItems, isShellNavItemActive, recentTabKey, type ShellBookItem, type ShellNavItem, type ShellRecentTabItem, type ShellRoute, type ShellSessionItem } from "./shell-route";
 import { resolveRecentNarrators } from "./NarratorWorkspaceDrawer";
@@ -190,6 +190,7 @@ function globalNavIcon(kind: ShellRoute["kind"]) {
     case "knowledge": return BookMarked;
     case "scheduled-tasks": return CalendarClock;
     case "learn": return BookOpen;
+    case "market": return TrendingUp;
     default: return Settings;
   }
 }

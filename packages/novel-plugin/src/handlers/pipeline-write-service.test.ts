@@ -264,6 +264,7 @@ describe("pipeline.write narrative context integration helpers", () => {
     ]));
     expect(contextPackage.selectedContext.find((item) => item.source === "narrative-memory/hard")?.excerpt).toContain("<hard_constraints>");
     expect(contextPackage.selectedContext.find((item) => item.source === "prev_chapter_tail")?.excerpt).toBe("前章尾部");
+    expect(contextPackage.selectedContext.find((item) => item.source === "jingwei:current-focus")?.excerpt).toBe("当前焦点");
   });
 
   it("keeps legacy jingweiContext when narrative context is absent", () => {

@@ -12,6 +12,7 @@ import {
   insertRetrievalLog,
   listHighRiskPendingNarrativeEvents,
   queryNarrativeFacts,
+  updateNarrativeEvent,
   updateNarrativeEventStatus,
 } from "./storage.js";
 import type { NarrativeEvent, NarrativeFact, NarrativeRetrievalDiagnostics } from "./types.js";
@@ -220,6 +221,19 @@ describe("Narrative Memory storage", () => {
     }
   });
 
+  it("supports limit=0 as an internal full-scan mode", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      for (let index = 0; index < 3; index += 1) {
+        insertNarrativeFact(storage, fact({ id: `all-${index}`, subject: `人物-${index}`, predicate: "状态", object: "正常" }));
+      }
+      expect(queryNarrativeFacts(storage, { bookId: "book-1", limit: 0 })).toHaveLength(3);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("inserts events and updates their reducer status", async () => {
     const storage = await createStorage();
     try {
@@ -233,6 +247,32 @@ describe("Narrative Memory storage", () => {
       });
       expect(updated?.status).toBe("applied");
       expect(updated?.appliedAt).toBe("2026-06-22T01:00:00.000Z");
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("updates the complete event row only after schema validation", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      insertNarrativeEvent(storage, event({ id: "e-edit", subject: "韩立", predicate: "状态", object: "谨慎" }));
+
+      const updated = updateNarrativeEvent(storage, event({
+        id: "e-edit",
+        subject: "韩立（伪装）",
+        predicate: "心理状态",
+        object: "更加谨慎",
+        evidenceText: "收敛气息，继续隐忍。",
+        source: "import",
+        status: "applied",
+        appliedAt: "2026-06-22T01:00:00.000Z",
+      }));
+      expect(updated).toMatchObject({ id: "e-edit", subject: "韩立（伪装）", predicate: "心理状态", object: "更加谨慎", evidenceText: "收敛气息，继续隐忍。", source: "import", status: "applied" });
+
+      expect(() => updateNarrativeEvent(storage, event({ id: "e-edit", subject: "", predicate: "心理状态", object: "更加谨慎" }))).toThrow();
+      const reread = storage.sqlite.prepare(`SELECT subject, predicate, object, source, status FROM narrative_event WHERE id = 'e-edit'`).get() as Record<string, unknown>;
+      expect(reread).toMatchObject({ subject: "韩立（伪装）", source: "import", status: "applied" });
     } finally {
       storage.close();
     }

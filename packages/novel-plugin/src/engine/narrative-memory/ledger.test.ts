@@ -85,6 +85,53 @@ describe("narrative memory ledger", () => {
     );
   });
 
+  it("folds all matching history before applying the requested limit", async () => {
+    const storage = await createStorage();
+    try {
+      for (let index = 0; index < 499; index += 1) {
+        upsertNarrativeFact(storage, fact({
+          id: `f-${index}`,
+          subject: `角色-${index}`,
+          predicate: "状态",
+          object: "存活",
+          confidence: 0.95,
+          sourceChapter: index + 1,
+          validFromChapter: index + 1,
+          updatedAt: "2026-07-22T02:00:00.000Z",
+        }));
+      }
+      // The superseded row sorts into the old 500-row pre-fold window while
+      // the actual current row is low-confidence and would be outside it.
+      upsertNarrativeFact(storage, fact({
+        id: "target-old",
+        subject: "目标角色",
+        predicate: "状态",
+        object: "旧状态",
+        confidence: 0.95,
+        sourceChapter: 1,
+        validFromChapter: 1,
+        validUntilChapter: 2,
+        updatedAt: "2026-07-22T03:00:00.000Z",
+      }));
+      upsertNarrativeFact(storage, fact({
+        id: "target-current",
+        subject: "目标角色",
+        predicate: "状态",
+        object: "新状态",
+        confidence: 0.1,
+        sourceChapter: 3,
+        validFromChapter: 3,
+        updatedAt: "2026-07-22T00:00:00.000Z",
+      }));
+
+      const current = queryCurrentNarrativeLedger(storage, { bookId: "book-1", limit: 501 });
+      expect(current.items).toHaveLength(500);
+      expect(current.items.find((item) => item.subject === "目标角色")).toMatchObject({ id: "target-current", object: "新状态" });
+    } finally {
+      storage.close();
+    }
+  });
+
   it("closes superseded open facts and returns only current ledger rows", async () => {
     const storage = await createStorage();
     try {

@@ -72,7 +72,6 @@ export function buildBookHealthSummary(
     pacingDiversityScore: agg?.avg_rhythm ?? 0,
     emotionCurve: [],
     sensitiveWordTotal: agg?.total_sensitive ?? 0,
-    stalledConflicts: [],
     hookDebtWarnings: [],
     fatigueWarnings: [],
     povGapWarnings: [],

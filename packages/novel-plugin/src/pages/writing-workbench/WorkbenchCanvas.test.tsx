@@ -2,10 +2,23 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./NarrativeMemoryPanel", () => ({
-  NarrativeMemoryPanel: ({ bookId, onOpenDevelopmentTimeline }: { bookId?: string; onOpenDevelopmentTimeline?: () => void }) => (
-    <button type="button" data-testid="mock-narrative-memory-panel" onClick={() => onOpenDevelopmentTimeline?.()}>
-      {bookId}
-    </button>
+  NarrativeMemoryPanel: ({
+    bookId,
+    onOpenDevelopmentTimeline,
+    onOpenChapter,
+  }: {
+    bookId?: string;
+    onOpenDevelopmentTimeline?: () => void;
+    onOpenChapter?: (chapterNumber: number) => void;
+  }) => (
+    <div>
+      <button type="button" data-testid="mock-narrative-memory-panel" onClick={() => onOpenDevelopmentTimeline?.()}>
+        {bookId}
+      </button>
+      <button type="button" data-testid="mock-memory-open-chapter" onClick={() => onOpenChapter?.(7)}>
+        打开来源第 7 章
+      </button>
+    </div>
   ),
 }));
 
@@ -245,6 +258,28 @@ describe("WorkbenchCanvas", () => {
     // 跳转目标是发展历程权威入口（故事画布 + evolution 视图）
     expect(opened.id).toBe("story-progression:book-1");
     expect(opened.metadata?.preferredView).toBe("evolution");
+  });
+
+  it("章后事实面板把来源章回跳接到 onJumpToChapter", async () => {
+    const onJumpToChapter = vi.fn();
+    render(
+      <WorkbenchCanvas
+        node={node({
+          id: "memory-center:book-1",
+          kind: "file",
+          title: "章后事实",
+          content: undefined,
+          metadata: { isMemoryCenter: true, bookId: "book-1" },
+          capabilities: { open: true, readonly: true, unsupported: false, edit: false, delete: false, apply: false },
+        })}
+        bookId="book-1"
+        onSave={vi.fn()}
+        onJumpToChapter={onJumpToChapter}
+      />,
+    );
+
+    fireEvent.click(await screen.findByTestId("mock-memory-open-chapter"));
+    expect(onJumpToChapter).toHaveBeenCalledWith(7);
   });
 
   it("保存失败时保持 dirty 并显示真实错误", async () => {

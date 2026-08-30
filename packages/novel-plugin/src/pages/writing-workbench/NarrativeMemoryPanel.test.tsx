@@ -88,19 +88,16 @@ describe("NarrativeMemoryPanelShell", () => {
       />,
     );
 
-    // IA 收敛后为单页平铺：故事状态 / 关系矩阵 / 结算历史同屏，不再有主 tab。
-    for (const label of ["当前故事状态", "关系矩阵", "结算历史"]) {
+    // IA 收敛后为单页平铺：故事状态 / 关系矩阵 / 伏笔事实 / 结算历史同屏，不再有主 tab。
+    for (const label of ["当前故事状态", "关系矩阵", "伏笔事实", "结算历史"]) {
       expect(html).toContain(label);
     }
-    // 旧的三主 tab 已删除：发展历程与伏笔账本收敛为外部权威入口的跳转按钮。
+    // 旧的三主 tab 已删除：发展历程收敛为外部权威入口的跳转按钮。
     expect(html).not.toContain("📋 大纲");
     expect(html).not.toContain("📜 发展历程");
-    expect(html).not.toContain("📌 伏笔账本");
     // 未提供跳转回调时不渲染跳转区。
     expect(html).not.toContain("narrative-memory-jump-links");
 
-    // 伏笔已收敛到唯一入口「伏笔看板」（经纬为源），记忆面板不再提供伏笔视图。
-    expect(html).not.toContain("伏笔板");
     expect(html).not.toContain("伏笔网络");
 
     expect(html).toContain("当前故事状态");
@@ -113,7 +110,7 @@ describe("NarrativeMemoryPanelShell", () => {
     expect(html).not.toContain("存储概览");
   });
 
-  it("renders story status, relationship matrix and settlement history flat on one page", () => {
+  it("renders story status, relationship matrix, hook facts, and settlement history flat on one page", () => {
     render(
       <NarrativeMemoryPanelShell
         bookId="book-1"
@@ -123,28 +120,157 @@ describe("NarrativeMemoryPanelShell", () => {
         events={[]}
         stateFacts={[
           { kind: "fact", id: "f-state", title: "韩立 状态 谨慎", category: "character_state", subject: "韩立", predicate: "状态", object: "谨慎" },
-          { kind: "fact", id: "f-hook", title: "伏笔：神秘石符", category: "hook", evidenceText: "石符泛起微光" },
+          { kind: "fact", id: "f-hook", title: "伏笔：神秘石符", category: "hook", subject: "韩立", predicate: "持有", object: "神秘石符", evidenceText: "石符泛起微光" },
         ]}
         entityGroups={[{
           entity: "韩立",
-          facts: [{ id: "f-state", subject: "韩立", predicate: "状态", object: "谨慎", category: "character_state" }],
+          facts: [
+            { id: "f-state", subject: "韩立", predicate: "状态", object: "谨慎", category: "character_state", sourceChapter: 3, evidenceText: "韩立压住呼吸，神色谨慎。", confidence: 0.91 },
+            { id: "f-hook", subject: "韩立", predicate: "持有", object: "神秘石符", category: "hook" },
+          ],
         }]}
         historyEvents={[{ kind: "event", id: "applied-1", title: "韩立 抵达 药园", status: "applied", chapterNumber: 7, category: "location_changed" }]}
         onRefresh={() => undefined}
       />,
     );
 
-    // 单页平铺：三类内容同屏可见，无需任何 tab 切换。
+    // 单页平铺：内容同屏可见，无需任何 tab 切换。
     expect(screen.getByText("当前故事状态")).toBeTruthy();
     expect(screen.getByText("关系矩阵")).toBeTruthy();
+    expect(screen.getByTestId("narrative-memory-hook-section")).toBeTruthy();
     expect(screen.getByTestId("narrative-memory-history")).toBeTruthy();
     // 同一条结算同时出现在「最近结算」摘要与下方完整历史里。
     expect(screen.getAllByText("韩立 抵达 药园").length).toBeGreaterThanOrEqual(2);
   });
 
-  it("exposes jump links to the authoritative 发展历程/伏笔账本 entries when callbacks are provided", async () => {
+  it("shows source chapter, evidence, confidence and jumps to the source chapter", () => {
+    const onOpenChapter = vi.fn();
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        stateFacts={[{
+          kind: "fact",
+          id: "f-state",
+          title: "韩立 状态 谨慎",
+          category: "character_state",
+          subject: "韩立",
+          predicate: "状态",
+          object: "谨慎",
+          sourceChapter: 3,
+          evidenceText: "韩立压住呼吸，神色谨慎。",
+          confidence: 0.91,
+        }]}
+        events={[{
+          id: "pending-1",
+          eventType: "character_state_changed",
+          entity: "韩立",
+          confidence: 0.42,
+          chapterNumber: 12,
+          evidence: "韩立把小瓶藏进袖中。",
+          risk: "high",
+        }]}
+        entityGroups={[{
+          entity: "韩立",
+          facts: [{
+            id: "f-state",
+            subject: "韩立",
+            predicate: "状态",
+            object: "谨慎",
+            category: "character_state",
+            sourceChapter: 3,
+            evidenceText: "韩立压住呼吸，神色谨慎。",
+            confidence: 0.91,
+          }],
+        }]}
+        historyEvents={[{
+          kind: "event",
+          id: "applied-1",
+          title: "韩立 抵达 药园",
+          status: "applied",
+          chapterNumber: 7,
+          category: "location_changed",
+          evidenceText: "韩立走进药园。",
+          confidence: 0.88,
+        }]}
+        onOpenChapter={onOpenChapter}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(screen.getByTestId("memory-fact-evidence-f-state")).toBeTruthy();
+    expect(screen.getByText("韩立压住呼吸，神色谨慎。")).toBeTruthy();
+    expect(screen.getByText("置信 0.91")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("打开来源第 3 章"));
+    expect(onOpenChapter).toHaveBeenCalledWith(3);
+    fireEvent.click(screen.getByTitle("打开来源第 12 章"));
+    expect(onOpenChapter).toHaveBeenCalledWith(12);
+    // 最近结算摘要与完整历史各展示一次证据片段。
+    expect(screen.getAllByText("韩立走进药园。").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("shows closed/corrected fact status and search-result evidence with chapter jump", () => {
+    const onOpenChapter = vi.fn();
+    render(
+      <NarrativeMemoryPanelShell
+        bookId="book-1"
+        diagnostics={null}
+        empty={false}
+        error={null}
+        searchQuery="药园"
+        searchResults={[{
+          kind: "event",
+          id: "search-1",
+          title: "韩立 抵达 药园",
+          chapterNumber: 7,
+          evidenceText: "韩立走进药园。",
+          confidence: 0.88,
+        }]}
+        stateFacts={[{
+          kind: "fact",
+          id: "f-closed",
+          title: "韩立 状态 谨慎",
+          category: "character_state",
+          subject: "韩立",
+          predicate: "状态",
+          object: "谨慎",
+          sourceChapter: 3,
+          validUntilChapter: 9,
+          sourceType: "manual",
+          evidenceText: "韩立压住呼吸，神色谨慎。",
+          confidence: 0.91,
+        }]}
+        entityGroups={[{
+          entity: "韩立",
+          facts: [{
+            id: "f-closed",
+            subject: "韩立",
+            predicate: "状态",
+            object: "谨慎",
+            category: "character_state",
+            sourceChapter: 3,
+            validUntilChapter: 9,
+            sourceType: "manual",
+            evidenceText: "韩立压住呼吸，神色谨慎。",
+            confidence: 0.91,
+          }],
+        }]}
+        events={[]}
+        onOpenChapter={onOpenChapter}
+        onRefresh={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText("已纠正/关闭")).toBeTruthy();
+    expect(screen.getByText("韩立走进药园。")).toBeTruthy();
+    fireEvent.click(screen.getByTitle("打开来源第 7 章"));
+    expect(onOpenChapter).toHaveBeenCalledWith(7);
+  });
+
+  it("exposes jump links to the authoritative 发展历程 entry when callback is provided", async () => {
     const onOpenDevelopmentTimeline = vi.fn();
-    const onOpenForeshadowingLedger = vi.fn();
     const { rerender } = render(
       <NarrativeMemoryPanelShell
         bookId="book-1"
@@ -153,19 +279,16 @@ describe("NarrativeMemoryPanelShell", () => {
         error={null}
         events={[]}
         onOpenDevelopmentTimeline={onOpenDevelopmentTimeline}
-        onOpenForeshadowingLedger={onOpenForeshadowingLedger}
         onRefresh={() => undefined}
       />,
     );
 
-    // 顶部只放轻量跳转，不再内嵌重复内容。
+    // 顶部只放发展历程轻量跳转。
     const jumpArea = screen.getByTestId("narrative-memory-jump-links");
     fireEvent.click(within(jumpArea).getByRole("button", { name: /发展历程/u }));
     expect(onOpenDevelopmentTimeline).toHaveBeenCalledTimes(1);
-    fireEvent.click(within(jumpArea).getByRole("button", { name: /伏笔账本/u }));
-    expect(onOpenForeshadowingLedger).toHaveBeenCalledTimes(1);
 
-    // 面板内不再渲染发展历程工作区与伏笔证据列表。
+    // 未提供回调时跳转区整体不渲染。
     rerender(
       <NarrativeMemoryPanelShell
         bookId="book-1"
@@ -177,10 +300,8 @@ describe("NarrativeMemoryPanelShell", () => {
         onRefresh={() => undefined}
       />,
     );
-    // 未提供回调时跳转区整体不渲染，面板内也不再有发展历程/伏笔证据内容。
     expect(screen.queryByTestId("narrative-memory-jump-links")).toBeNull();
     expect(screen.queryByTestId("development-timeline-view")).toBeNull();
-    expect(screen.queryByTestId("narrative-memory-hook-ledger")).toBeNull();
   });
 
   it("shows story status, settlement history, and pending review actions", () => {

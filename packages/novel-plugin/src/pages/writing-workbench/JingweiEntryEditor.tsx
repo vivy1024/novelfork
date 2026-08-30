@@ -13,8 +13,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Save, Trash2, Loader2, FileText, Link2, History, Eye, Pencil, RotateCcw, X,
 } from "lucide-react";
-import { CATEGORY_SCHEMAS } from "./jingwei/category-schemas";
+import { CATEGORY_SCHEMAS, getCategorySchema, type CategoryFieldSchema } from "./jingwei/category-schemas";
 import { WorldCardPage, isWorldCardCategory } from "./WorldCardPage";
+import { Textarea } from "@/components/ui/textarea";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -87,6 +88,7 @@ export interface JingweiEntrySavePayload {
   visibility?: "global" | "tracked" | "nested";
   visibleAfterChapter?: number | null;
   visibleUntilChapter?: number | null;
+  fields?: Record<string, unknown>;
 }
 
 export interface JingweiEntryEditorProps {
@@ -127,6 +129,86 @@ function parseStringArray(value: unknown): string[] {
   } catch {
     return [];
   }
+}
+
+function fieldValueToInput(value: unknown, field: CategoryFieldSchema): string {
+  if (value == null) return "";
+  if (field.type === "tags" || field.type === "multi-select") {
+    return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string").join("，") : String(value);
+  }
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return "";
+}
+
+function parseFieldInput(field: CategoryFieldSchema, raw: string): unknown {
+  if (field.type === "number" || field.type === "chapter") {
+    if (raw.trim() === "") return "";
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) ? parsed : raw;
+  }
+  if (field.type === "boolean") return raw === "true";
+  if (field.type === "tags" || field.type === "multi-select") {
+    return raw.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+  }
+  return raw;
+}
+
+function JingweiSchemaField({
+  field,
+  value,
+  onChange,
+}: {
+  field: CategoryFieldSchema;
+  value: unknown;
+  onChange: (value: unknown) => void;
+}) {
+  const inputId = `jingwei-field-${field.key}`;
+  const display = fieldValueToInput(value, field);
+  const controlClass = "w-full h-8 text-xs rounded-md border border-input bg-background px-2";
+  return (
+    <div>
+      <label htmlFor={inputId} className="text-xs text-muted-foreground mb-1 block">{field.label}{field.required ? " *" : ""}</label>
+      {field.type === "textarea" ? (
+        <Textarea
+          id={inputId}
+          value={display}
+          onChange={(event) => onChange(parseFieldInput(field, event.target.value))}
+          className="min-h-16 text-xs"
+        />
+      ) : field.type === "select" ? (
+        <select
+          id={inputId}
+          value={display}
+          onChange={(event) => onChange(parseFieldInput(field, event.target.value))}
+          className={controlClass}
+        >
+          <option value="">未选择</option>
+          {(field.options ?? []).map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      ) : field.type === "boolean" ? (
+        <select
+          id={inputId}
+          value={display === "true" ? "true" : "false"}
+          onChange={(event) => onChange(parseFieldInput(field, event.target.value))}
+          className={controlClass}
+        >
+          <option value="false">否</option>
+          <option value="true">是</option>
+        </select>
+      ) : (
+        <Input
+          id={inputId}
+          type={field.type === "number" || field.type === "chapter" ? "number" : "text"}
+          value={display}
+          onChange={(event) => onChange(parseFieldInput(field, event.target.value))}
+          className="h-8 text-xs"
+        />
+      )}
+      {field.helpText ? <p className="mt-1 text-[10px] text-muted-foreground">{field.helpText}</p> : null}
+    </div>
+  );
 }
 
 // ─── Component ────────────────────────────────────────────────────────────
@@ -186,6 +268,8 @@ function JingweiEntryEditorForm({
   const [resolvedRelatedEntries, setResolvedRelatedEntries] = useState<RelatedEntryItem[]>([]);
   const [relatedEntryIds, setRelatedEntryIds] = useState<string[]>(entry.relatedEntryIds ?? []);
   const [savedRelatedEntryIds, setSavedRelatedEntryIds] = useState<string[]>(entry.relatedEntryIds ?? []);
+  const [fields, setFields] = useState<Record<string, unknown>>(entry.fields ?? {});
+  const [savedFields, setSavedFields] = useState<Record<string, unknown>>(entry.fields ?? {});
   const [relationSearch, setRelationSearch] = useState("");
   const [relationSearchResults, setRelationSearchResults] = useState<RelatedEntryItem[]>([]);
   const [relationAdding, setRelationAdding] = useState(false);
@@ -193,10 +277,12 @@ function JingweiEntryEditorForm({
   const [conflictDetail, setConflictDetail] = useState(entry.conflictDetail);
   const [revertingRevisionId, setRevertingRevisionId] = useState<string | null>(null);
 
+  const schemaFields = (getCategorySchema(category)?.fields ?? []).filter((field) => field.key !== "name");
   const dirty = title !== savedTitle || content !== savedContent || priorityTier !== savedPriorityTier
     || layer !== savedLayer || visibility !== savedVisibility || status !== savedStatus
     || category !== savedCategory || aliases.join("\u0000") !== savedAliases.join("\u0000")
-    || relatedEntryIds.join("\u0000") !== savedRelatedEntryIds.join("\u0000");
+    || relatedEntryIds.join("\u0000") !== savedRelatedEntryIds.join("\u0000")
+    || JSON.stringify(fields) !== JSON.stringify(savedFields);
   const relationItems = relatedEntries && relatedEntries.length > 0 ? relatedEntries : resolvedRelatedEntries;
   const historyCount = revisionRecords.length;
   const relatedEntryIdsKey = (entry.relatedEntryIds ?? []).join("\u0000");
@@ -258,6 +344,8 @@ function JingweiEntryEditorForm({
     setCategory(entry.category ?? "unclassified");
     setAliases(entry.aliases ?? []);
     setRelatedEntryIds(entry.relatedEntryIds ?? []);
+    setFields(entry.fields ?? {});
+    setSavedFields(entry.fields ?? {});
     setSavedTitle(entry.title);
     setSavedContent(entry.contentMd);
     setSavedPriorityTier(entry.priorityTier ?? "auto");
@@ -341,6 +429,10 @@ function JingweiEntryEditorForm({
     setSaving(true);
     setError(null);
     try {
+      const nextFields: Record<string, unknown> = { ...fields };
+      if ((getCategorySchema(category)?.fields ?? []).some((field) => field.key === "name") && !String(nextFields.name ?? "").trim()) {
+        nextFields.name = title.trim();
+      }
       await onSave(entry.id, {
         title: title.trim(),
         contentMd: content,
@@ -351,6 +443,7 @@ function JingweiEntryEditorForm({
         aliases,
         relatedEntryIds,
         visibility,
+        fields: nextFields,
         // 章节窗口不在编辑器里修改，但保存时必须带上原值：
         // 服务端会把 visibilityRule 整体重写，漏传就会把已有的窗口字段清掉。
         visibleAfterChapter: entry.visibleAfterChapter ?? null,
@@ -364,6 +457,8 @@ function JingweiEntryEditorForm({
       setSavedCategory(category);
       setSavedAliases(aliases);
       setSavedRelatedEntryIds(relatedEntryIds);
+      setFields(nextFields);
+      setSavedFields(nextFields);
       await loadRevisions();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "保存失败");
@@ -600,6 +695,20 @@ function JingweiEntryEditorForm({
               className="text-sm"
             />
           </div>
+
+          {isJingweiEntry && schemaFields.length > 0 ? (
+            <div className="grid grid-cols-2 gap-3" data-testid="jingwei-entry-fields">
+              {schemaFields.map((field) => (
+                <div key={field.key} className={field.type === "textarea" ? "col-span-2" : undefined}>
+                  <JingweiSchemaField
+                    field={field}
+                    value={fields[field.key]}
+                    onChange={(value) => setFields((current) => ({ ...current, [field.key]: value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          ) : null}
 
           {/* 内容编辑 — TipTap 富文本 */}
           <div>

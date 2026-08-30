@@ -211,12 +211,113 @@ describe("publish.check 投稿风险自检卡", () => {
   });
 });
 
+describe("publish.export 发布包卡", () => {
+  it("展示写出目录、包含项和未混入的内容", () => {
+    render(<>{renderToolResult({
+      toolName: "publish.export",
+      result: {
+        renderer: "publish.export",
+        data: {
+          ok: true,
+          outputDir: "export/publish",
+          files: ["README.md", "book.json", "catalog.md", "chapters/0001_山门.md", "publish-advice.md"],
+          chapters: [{ number: 1, title: "山门", fileName: "0001_山门.md", wordCount: 2200 }],
+          included: ["作品信息", "目录", "章节正文", "投稿准备建议"],
+          excluded: ["附件 / 图片 / 音视频", "Narrative Memory（facts/events/logs）"],
+          adviceIncluded: true,
+          adviceStatus: "has-warnings",
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("tool-result-publish-export")).toBeTruthy();
+    expect(screen.getByText("发布包已写出")).toBeTruthy();
+    expect(screen.getByText("export/publish")).toBeTruthy();
+    expect(screen.getByText("作品信息")).toBeTruthy();
+    expect(screen.getByText("投稿建议状态：has-warnings（仅供人工复核）")).toBeTruthy();
+    expect(screen.getByText(/未混入：附件/)).toBeTruthy();
+  });
+});
+
 describe("卡片健壮性", () => {
   it("载荷缺失时退回 generic 而不是崩", () => {
-    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "publish.check"]) {
+    for (const renderer of ["write.preflight", "book.dissect", "outline.volume", "publish.check", "publish.export"]) {
       cleanup();
       render(<>{renderToolResult({ toolName: renderer, result: { renderer, data: null } })}</>);
       expect(screen.getByTestId("tool-result-generic")).toBeTruthy();
     }
+  });
+});
+
+describe("pipeline.write 结果卡", () => {
+  it("展示真实阶段状态、技能结果、结算重试和人工复核建议", () => {
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: {
+        renderer: "pipeline.chapter-result",
+        data: {
+          title: "药园试探",
+          chapterNumber: 12,
+          wordCount: 3200,
+          auditPassed: false,
+          needsHumanReview: true,
+          auditIssueCategories: { critical: 1, warning: 2, info: 0, byType: { continuity: 1 } },
+          pipelineStages: [
+            { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
+            { stage: "Skills 合规", status: "warning", detail: "1 条技能提醒" },
+            { stage: "章后结算", status: "failed", detail: "memory.settle_chapter：抽取器超时" },
+          ],
+          publishHint: {
+            status: "has-warnings",
+            warnings: [
+              "Writing Skill「压力账本」：关键债务无证据结清",
+              "审计仍有 critical/S2，建议人工复核后再发布。",
+            ],
+          },
+          settlementDispatch: { toolName: "memory.settle_chapter", ok: false, dispatched: "tool-call" },
+          settlementError: "第12章正文已保存，但章后结算失败。",
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("tool-result-pipeline")).toBeTruthy();
+    expect(screen.getByTestId("pipeline-stages")).toBeTruthy();
+    expect(screen.getByText("写前预检")).toBeTruthy();
+    expect(screen.getByText("通过")).toBeTruthy();
+    expect(screen.getByText("有提醒")).toBeTruthy();
+    expect(screen.getByText("1 通过 · 1 提醒 · 1 失败")).toBeTruthy();
+    expect(screen.getByText("章后结算")).toBeTruthy();
+    expect(screen.getByTestId("pipeline-settlement-dispatch")).toBeTruthy();
+    expect(screen.getByText("结算失败")).toBeTruthy();
+    expect(screen.getByTestId("pipeline-skill-results")).toBeTruthy();
+    expect(screen.getByText("Writing Skill「压力账本」：关键债务无证据结清")).toBeTruthy();
+    expect(screen.getByTestId("pipeline-human-review")).toBeTruthy();
+    expect(screen.getByText("需要人工干预")).toBeTruthy();
+    expect(screen.getByTestId("pipeline-settlement-retry")).toBeTruthy();
+    expect(screen.getByText(/重试 memory.settle_chapter/)).toBeTruthy();
+  });
+
+  it("失败结果展示错误信息和对应恢复建议，不假装已保存", () => {
+    render(<>{renderToolResult({
+      toolName: "pipeline.write",
+      result: {
+        renderer: "pipeline.chapter-result",
+        ok: false,
+        error: "context-not-ready",
+        summary: "已有 11 章进度，但近章摘要为空。",
+        data: {
+          ok: false,
+          code: "context-not-ready",
+          error: "已有 11 章进度，但近章摘要为空。",
+          explanation: "近章记忆是空的，写下去会自行编造前情。",
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("pipeline-failure")).toBeTruthy();
+    expect(screen.getByText("近章记忆未就绪")).toBeTruthy();
+    expect(screen.getByText("已有 11 章进度，但近章摘要为空。")).toBeTruthy();
+    expect(screen.getByText(/先用 memory.settle_range 回填近章/)).toBeTruthy();
+    expect(screen.queryByText("审计通过")).toBeNull();
   });
 });

@@ -240,12 +240,9 @@ export async function applyNarrativeEventsForChapterResult(
   if (!Array.isArray(rawEvents)) return undefined;
   const parsed = NarrativeEventSchema.array().safeParse(rawEvents);
   if (!parsed.success || parsed.data.length === 0) return undefined;
-  let persisted = parsed.data;
-  try {
-    persisted = persistNarrativeEvents(storage, parsed.data);
-  } catch {
-    // 事件日志写入失败（例如重复 ID）不阻断正式章节写入；reducer 仍按事件 ID 幂等处理。
-    persisted = parsed.data;
-  }
+  // Event persistence is the durable boundary. Never reduce an event that was
+  // not written successfully: doing so leaves facts without an auditable event
+  // and makes a later retry impossible to reason about.
+  const persisted = persistNarrativeEvents(storage, parsed.data);
   return applyNarrativeEvents(storage, bookId, persisted);
 }

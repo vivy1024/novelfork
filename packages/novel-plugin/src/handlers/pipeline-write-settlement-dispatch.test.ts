@@ -7,6 +7,7 @@
  *    比源码里的字符串位置断言强：它排除了「代码顺序对、运行时顺序错」的情况；
  * 3. 结算失败时正文仍然保留，pipeline.write 仍然 ok，只在 settlementError 里如实报告。
  */
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,9 +17,11 @@ import {
   initializeStorageDatabase,
   runStorageMigrations,
 } from "@vivy1024/novelfork-core";
+import type { ToolExecutionContext } from "@vivy1024/novelfork-core/plugins";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
+import { executeRuntimeDomainTool } from "./runtime-domain-tools.js";
 import { executePipelineWrite, type PipelineToolCallDispatcher } from "./pipeline-write-service.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { SETTLE_CHAPTER_TOOL_NAME } from "./memory-settle-chapter.js";
@@ -253,5 +256,122 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     // 正文落盘是结算的前置条件，二者都成立。
     const index = JSON.parse(await readFile(join(bookRoot, "chapters", "index.json"), "utf8")) as { number: number }[];
     expect(index.map((entry) => entry.number)).toContain(4);
+  });
+
+  it("同书并发写章时第二个请求被书级锁拒绝，结算完成后锁会释放", async () => {
+    const { projectRoot, bookRoot } = await createBook();
+    const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    seedRecentProgress(storage);
+
+    let releaseDispatch!: () => void;
+    const dispatchHold = new Promise<void>((resolve) => { releaseDispatch = resolve; });
+    let markDispatchStarted!: () => void;
+    const dispatchStarted = new Promise<void>((resolve) => { markDispatchStarted = resolve; });
+    const dispatchToolCall: PipelineToolCallDispatcher = async () => {
+      markDispatchStarted();
+      await dispatchHold;
+      return { ok: true, summary: "章后结算完成。", data: { settlement: { status: "completed", chapterNumber: 4 } } };
+    };
+
+    const first = executePipelineWrite(
+      { bookId: "trusted", sceneSpec, content: CHAPTER_TEXT },
+      { root: projectRoot, bookRoot, dispatchToolCall },
+    );
+    await dispatchStarted;
+
+    const second = await executePipelineWrite(
+      { bookId: "trusted", sceneSpec: { ...sceneSpec, chapter: 5 }, content: CHAPTER_TEXT },
+      { root: projectRoot, bookRoot, dispatchToolCall: async () => ({ ok: true }) },
+    );
+    expect(second).toMatchObject({ ok: false, code: "book-locked" });
+
+    releaseDispatch();
+    const firstResult = await first;
+    expect(firstResult.ok).toBe(true);
+
+    // finally 释放锁后，新的写入可以继续获得同一本书的锁。
+    const afterRelease = await executePipelineWrite(
+      { bookId: "trusted", sceneSpec: { ...sceneSpec, chapter: 5 }, content: CHAPTER_TEXT },
+      { root: projectRoot, bookRoot, dispatchToolCall: async () => ({ ok: true, summary: "章后结算完成。" }) },
+    );
+    expect(afterRelease.ok).toBe(true);
+  });
+
+  it("已有章节提供 expected hash/version 时拒绝覆盖过期版本", async () => {
+    const { projectRoot, bookRoot } = await createBook();
+    const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    seedRecentProgress(storage);
+    const originalContent = "旧正文。".repeat(800);
+    const expectedHash = createHash("sha256").update(originalContent, "utf8").digest("hex");
+
+    const hashConflict = await executePipelineWrite(
+      {
+        bookId: "trusted",
+        sceneSpec: { ...sceneSpec, chapter: 1 },
+        content: CHAPTER_TEXT,
+        expectedChapterHash: `${expectedHash.slice(0, -1)}0`,
+      },
+      { root: projectRoot, bookRoot },
+    );
+    expect(hashConflict).toMatchObject({ ok: false, code: "chapter-conflict" });
+
+    const versionConflict = await executePipelineWrite(
+      {
+        bookId: "trusted",
+        sceneSpec: { ...sceneSpec, chapter: 1 },
+        content: CHAPTER_TEXT,
+        expectedChapterVersion: 2,
+      },
+      { root: projectRoot, bookRoot },
+    );
+    expect(versionConflict).toMatchObject({ ok: false, code: "chapter-conflict" });
+
+    const read = await handleChapterRead({ bookId: "trusted", chapterNumber: 1 }, undefined, { bookRoot, storage });
+    expect(read.ok).toBe(true);
+    expect(read.data?.content).toBe(originalContent);
+  });
+
+  it("runtime pipelineWrite 在结算失败时返回部分失败并保留 saved/chapter metadata", async () => {
+    const { projectRoot, bookRoot } = await createBook();
+    const storage = initializeStorageDatabase({ databasePath: join(projectRoot, "novelfork.db") });
+    runStorageMigrations(storage);
+    ensureNarrativeMemorySchema(storage);
+    seedRecentProgress(storage);
+
+    const context: ToolExecutionContext = {
+      runtimeProjectId: "pipeline-test",
+      projectRoot,
+      projectType: "novel",
+      enabledPluginIds: ["novel-plugin"],
+      resourceBindings: {},
+      generateText: async () => { throw new Error("extractor unavailable"); },
+    };
+    const result = await executeRuntimeDomainTool(
+      "pipeline.write",
+      { sceneSpec, content: CHAPTER_TEXT },
+      { bookId: "trusted", root: bookRoot },
+      context,
+    );
+
+    expect(result).not.toBeNull();
+    expect(result?.ok).toBe(false);
+    expect(result?.error).toBe("settlement-pending");
+    expect(result?.data).toMatchObject({
+      saved: true,
+      chapterNumber: 4,
+      chapterId: "chapter:4",
+      code: "settlement-pending",
+      needsSettlementRetry: true,
+      settlementDispatch: { ok: false, toolName: SETTLE_CHAPTER_TOOL_NAME },
+    });
+    expect((result?.data as { settlementError?: string }).settlementError).toContain("正文已保存");
+
+    const read = await handleChapterRead({ bookId: "trusted", chapterNumber: 4 }, undefined, { bookRoot, storage });
+    expect(read.ok).toBe(true);
+    expect(read.data?.content).toContain("青铜铃");
   });
 });

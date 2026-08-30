@@ -24,6 +24,9 @@ describe("novel domain product routes", () => {
 		// Compliance panel
 		expect(paths.some((p) => p.includes("/compliance/"))).toBe(true);
 		expect(paths).toContain("POST /api/filter/scan");
+		expect(paths).toContain("GET /api/market/ranks");
+		expect(paths).toContain("GET /api/market/snapshots");
+		expect(paths).toContain("POST /api/market/scan");
 	});
 
 	test("resolveDomainBookRoot falls back when storage is unavailable", () => {

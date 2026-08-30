@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { upsertNarrativeFact } from "./facts.js";
@@ -38,7 +40,13 @@ function factCategoryFor(eventType: NarrativeEventType): string {
 }
 
 function idPart(value: string): string {
-  return value.trim().replace(/\s+/gu, "-").replace(/[^\p{L}\p{N}_:-]+/gu, "").slice(0, 48) || "value";
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  if (!normalized) return "value";
+  // Keep a readable prefix and digest the complete value so truncation cannot
+  // make distinct long subjects/predicates/objects share a fact id.
+  const readable = encodeURIComponent(normalized).slice(0, 48);
+  const digest = createHash("sha256").update(normalized, "utf8").digest("hex").slice(0, 16);
+  return `${readable || "value"}-${digest}`;
 }
 
 function tupleKey(event: NarrativeEvent): string {
@@ -68,7 +76,9 @@ function slotLockedByManualFact(storage: StorageDatabase, event: NarrativeEvent)
   if (event.source === "manual") return false;
   const probe = eventToFact(event);
   const slot = narrativeFactSlotKey(probe);
-  return queryNarrativeFacts(storage, { bookId: event.bookId, categories: [probe.category], limit: 200 })
+  // 先读取该 category 的完整历史再判断作者手动值，不能让大书的前 200 条记录
+  // 把更早/更旧的 manual fact 挤掉，导致机器事件绕过作者权威保护。
+  return queryNarrativeFacts(storage, { bookId: event.bookId, categories: [probe.category], limit: 0 })
     .some((fact) =>
       fact.sourceType === "manual"
       && (fact.validUntilChapter === undefined || fact.validUntilChapter === null)

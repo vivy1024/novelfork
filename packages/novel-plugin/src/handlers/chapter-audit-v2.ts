@@ -14,6 +14,8 @@
  */
 
 import type { JingweiLayer, StoryJingweiEntryRecord } from "../engine/jingwei/types.js";
+import { detectIntraChapterDupParagraphs } from "../engine/agents/post-write-validator.js";
+import { detectPressureLedgerIssues, type PressureLedgerItem } from "../engine/agents/pressure-ledger-gate.js";
 
 export interface AuditV2Input {
   readonly bookId: string;
@@ -28,6 +30,9 @@ export interface AuditV2Input {
     }>;
     readonly constraints?: readonly string[];
     readonly wordTarget?: number;
+  };
+  readonly pressureLedger?: {
+    readonly items?: ReadonlyArray<PressureLedgerItem>;
   };
   readonly canonEntries?: ReadonlyArray<{
     readonly title: string;
@@ -142,6 +147,31 @@ function checkPovViolations(content: string, sceneSpec: AuditV2Input["sceneSpec"
 
 function checkSoftConstraints(content: string, input: AuditV2Input): AuditV2Violation[] {
   const violations: AuditV2Violation[] = [];
+
+  // S6: 章内同段落复制粘贴（正文同一段在重复出现，黄金三章里尤其致命——第 1 章曾出现第 57/62 行同段回贴）
+  for (const dup of detectIntraChapterDupParagraphs(content)) {
+    violations.push({
+      ruleId: "S6",
+      severity: "soft",
+      description: dup.description,
+      suggestion: dup.suggestion,
+    });
+  }
+
+  // S7: 压力账本闸。虚假结清/状态倒退硬拦，遗忘只警告。
+  for (const issue of detectPressureLedgerIssues({
+    chapterNumber: input.chapterNumber,
+    content,
+    items: input.pressureLedger?.items,
+  })) {
+    violations.push({
+      ruleId: "S7",
+      severity: issue.severity === "error" ? "hard" : "soft",
+      description: issue.description,
+      suggestion: issue.suggestion,
+    });
+  }
+
   const wordCount = countWords(content);
   const target = input.wordTarget ?? input.sceneSpec?.wordTarget ?? 3000;
 
@@ -209,16 +239,24 @@ export function handleChapterAuditV2(input: AuditV2Input): AuditV2Result {
   const runCanon = !enabledChecks || enabledChecks.has("canon") || enabledChecks.has("continuity");
   const runPov = !enabledChecks || enabledChecks.has("pov") || enabledChecks.has("continuity");
 
+  const ledgerEnabled = !enabledChecks || enabledChecks.has("ledger") || enabledChecks.has("continuity");
+  const ledgerViolations = ledgerEnabled
+    ? checkSoftConstraints(content, input).filter((v) => v.ruleId === "S7")
+    : [];
+
   const hardViolations = [
     ...(runCanon ? checkCanonViolations(content, canonEntries) : []),
     ...(runPov ? checkPovViolations(content, sceneSpec, povCharacter) : []),
+    ...ledgerViolations.filter((v) => v.severity === "hard"),
   ];
 
   const softViolations = checkSoftConstraints(content, input).filter((v) => {
+    if (v.ruleId === "S7") return ledgerEnabled && v.severity === "soft";
     if (!enabledChecks) return true;
     if (v.ruleId === "S1") return enabledChecks.has("rhythm") || enabledChecks.has("continuity");
     if (v.ruleId === "S2") return enabledChecks.has("ai_taste");
     if (v.ruleId === "S5") return enabledChecks.has("character") || enabledChecks.has("continuity");
+    if (v.ruleId === "S6") return enabledChecks.has("repetition") || enabledChecks.has("continuity");
     return true;
   });
 

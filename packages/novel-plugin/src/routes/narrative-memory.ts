@@ -656,6 +656,8 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
         view: view as MemoryGraphInput["view"],
         focusEntity: queryText(c, "focusEntity", "focus"),
         chapterRange: queryChapterRange(c),
+        ...(queryLimit(c) !== undefined ? { limit: queryLimit(c) } : {}),
+        ...(queryInteger(c, "offset") !== undefined ? { offset: queryInteger(c, "offset") } : {}),
       }, storage());
       return respondHandler(c, result);
     } catch (error) {

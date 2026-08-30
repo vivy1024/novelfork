@@ -116,14 +116,15 @@ interface NarrativeMemoryPanelProps {
   bookId: string;
   memoryNodes?: WorkbenchResourceNode[];
   selectedNodeId?: string | null;
+  currentChapter?: number;
   onOpen?: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
   /** 打开实体详情抽屉：作者与叙述者看到同一条实体状态入口；带 entryId 时宿主可直接跳角色卡。 */
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   /** 顶部轻量跳转：打开故事画布发展历程视图（有回调才显示按钮）。 */
   onOpenDevelopmentTimeline?: () => void;
-  /** 顶部轻量跳转：打开伏笔账本全屏看板（有回调才显示按钮）。 */
-  onOpenForeshadowingLedger?: () => void;
+  /** 来源章节回跳：有来源章时打开对应章节。 */
+  onOpenChapter?: (chapterNumber: number) => void;
 }
 
 interface NarrativeMemoryPanelShellProps {
@@ -148,6 +149,7 @@ interface NarrativeMemoryPanelShellProps {
   error: string | null;
   memoryNodes?: WorkbenchResourceNode[];
   selectedNodeId?: string | null;
+  currentChapter?: number;
   onOpen?: (node: WorkbenchResourceNode) => void;
   onAction?: (action: ResourceTreeAction) => void;
   onSearch?: (query: string) => void;
@@ -163,8 +165,8 @@ interface NarrativeMemoryPanelShellProps {
   onRetireFact?: (fact: EntityFact) => void;
   /** 顶部轻量跳转：打开故事画布发展历程视图（有回调才显示按钮）。 */
   onOpenDevelopmentTimeline?: () => void;
-  /** 顶部轻量跳转：打开伏笔账本全屏看板（有回调才显示按钮）。 */
-  onOpenForeshadowingLedger?: () => void;
+  /** 来源章节回跳：有来源章时打开对应章节。 */
+  onOpenChapter?: (chapterNumber: number) => void;
   onRefresh: () => void;
   /** 结算历史 / 审批台账 / 搜索的追加式分页。 */
   historyHasMore?: boolean;
@@ -316,6 +318,7 @@ function StoryStatusSummary({
   onOpenEntityDetail,
   onCorrectFact,
   onRetireFact,
+  onOpenChapter,
 }: {
   bookId: string;
   stateFacts: MemoryEntry[];
@@ -328,6 +331,7 @@ function StoryStatusSummary({
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
   onCorrectFact?: (fact: EntityFact, newObject: string) => void;
   onRetireFact?: (fact: EntityFact) => void;
+  onOpenChapter?: (chapterNumber: number) => void;
 }) {
   const highRiskCount = events.filter((event) => event.risk === "high").length;
   const factPreview = stateFacts.slice(0, 8);
@@ -376,6 +380,7 @@ function StoryStatusSummary({
           onRetire={onRetireFact}
           onOpen={onOpenFact}
           onOpenEntityDetail={onOpenEntityDetail}
+          onOpenChapter={onOpenChapter}
         />
       ) : (
         <div className="space-y-2">
@@ -390,6 +395,11 @@ function StoryStatusSummary({
                   className="block w-full rounded border border-border/50 px-2 py-1.5 text-left hover:bg-muted"
                 >
                   <div className="truncate text-[11px] font-medium">{entryTitle(fact)}</div>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                    <OpenSourceChapterButton chapterNumber={fact.sourceChapter ?? fact.validFromChapter} onOpenChapter={onOpenChapter} nested />
+                    {typeof fact.confidence === "number" ? <span>置信 {fact.confidence.toFixed(2)}</span> : null}
+                  </div>
+                  {fact.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{fact.evidenceText}</div> : null}
                   {fact.summary ? <div className="truncate text-[10px] text-muted-foreground">{fact.summary}</div> : null}
                 </button>
               ))}
@@ -414,6 +424,7 @@ function EntityStatusBoard({
   onRetire,
   onOpen,
   onOpenEntityDetail,
+  onOpenChapter,
 }: {
   bookId: string;
   groups: EntityFactsGroup[];
@@ -422,6 +433,7 @@ function EntityStatusBoard({
   onRetire?: (fact: EntityFact) => void;
   onOpen?: (entry: MemoryEntry) => void;
   onOpenEntityDetail?: (entity: string, entryId?: string) => void;
+  onOpenChapter?: (chapterNumber: number) => void;
 }) {
   return (
     <div className="space-y-3">
@@ -457,6 +469,7 @@ function EntityStatusBoard({
                 editing={editingId === fact.id}
                 onCorrect={onCorrect}
                 onRetire={onRetire}
+                onOpenChapter={onOpenChapter}
               />
             ))}
           </div>
@@ -466,18 +479,77 @@ function EntityStatusBoard({
   );
 }
 
+function factSourceChapter(fact: Pick<EntityFact, "sourceChapter" | "validFromChapter">): number | undefined {
+  return fact.sourceChapter ?? fact.validFromChapter;
+}
+
+function factConflictLabel(fact: EntityFact): string | null {
+  if (fact.validUntilChapter !== undefined && fact.validUntilChapter !== null) {
+    return fact.sourceType === "manual" ? "已纠正/关闭" : "已关闭";
+  }
+  if (fact.sourceType === "manual") return "作者纠正";
+  return null;
+}
+
+function OpenSourceChapterButton({
+  chapterNumber,
+  onOpenChapter,
+  nested = false,
+}: {
+  chapterNumber?: number;
+  onOpenChapter?: (chapterNumber: number) => void;
+  nested?: boolean;
+}) {
+  if (!chapterNumber) return null;
+  if (!onOpenChapter) return <span className="shrink-0 text-[10px] text-muted-foreground">第 {chapterNumber} 章</span>;
+  if (nested) {
+    return (
+      <span
+        role="link"
+        tabIndex={0}
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenChapter(chapterNumber);
+        }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          event.stopPropagation();
+          onOpenChapter(chapterNumber);
+        }}
+        className="shrink-0 cursor-pointer rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted"
+        title={`打开来源第 ${chapterNumber} 章`}
+      >
+        第 {chapterNumber} 章
+      </span>
+    );
+  }
+  return (
+    <button
+      type="button"
+      onClick={() => onOpenChapter(chapterNumber)}
+      className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-primary hover:bg-muted"
+      title={`打开来源第 ${chapterNumber} 章`}
+    >
+      第 {chapterNumber} 章
+    </button>
+  );
+}
+
 function EditableFactRow({
   bookId,
   fact,
   editing,
   onCorrect,
   onRetire,
+  onOpenChapter,
 }: {
   bookId: string;
   fact: EntityFact;
   editing: boolean;
   onCorrect?: (fact: EntityFact, newObject: string) => void;
   onRetire?: (fact: EntityFact) => void;
+  onOpenChapter?: (chapterNumber: number) => void;
 }) {
   const [draft, setDraft] = useState(fact.object);
   const [open, setOpen] = useState(false);
@@ -514,11 +586,16 @@ function EditableFactRow({
     );
   }
 
+  const sourceChapter = factSourceChapter(fact);
+  const conflictLabel = factConflictLabel(fact);
   return (
-    <div className="space-y-1">
+    <div className="space-y-1" data-testid={`memory-fact-row-${fact.id}`}>
       <div className="flex items-center gap-1.5 rounded border border-border/50 px-2 py-1">
         <span className="shrink-0 text-[10px] text-muted-foreground">{fact.predicate}</span>
         <span className="min-w-0 flex-1 truncate text-[11px] font-medium">{fact.object}</span>
+        {conflictLabel ? <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{conflictLabel}</span> : null}
+        {typeof fact.confidence === "number" ? <span className="shrink-0 text-[10px] text-muted-foreground">置信 {fact.confidence.toFixed(2)}</span> : null}
+        <OpenSourceChapterButton chapterNumber={sourceChapter} onOpenChapter={onOpenChapter} />
         <button type="button" onClick={() => setShowHistory((value) => !value)} className="shrink-0 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground hover:bg-muted" title="查看变迁史">
           历史
         </button>
@@ -533,7 +610,8 @@ function EditableFactRow({
           </button>
         ) : null}
       </div>
-      {showHistory ? <FactHistoryPanel bookId={bookId} fact={fact} onClose={() => setShowHistory(false)} /> : null}
+      {fact.evidenceText ? <div className="px-2 text-[10px] text-muted-foreground" data-testid={`memory-fact-evidence-${fact.id}`}>{fact.evidenceText}</div> : null}
+      {showHistory ? <FactHistoryPanel bookId={bookId} fact={fact} onClose={() => setShowHistory(false)} onOpenChapter={onOpenChapter} /> : null}
     </div>
   );
 }
@@ -545,6 +623,7 @@ function SearchResults({
   hasMore,
   onLoadMore,
   onOpen,
+  onOpenChapter,
 }: {
   results: MemoryEntry[];
   query: string;
@@ -552,6 +631,7 @@ function SearchResults({
   hasMore?: boolean;
   onLoadMore?: () => void;
   onOpen?: (entry: MemoryEntry) => void;
+  onOpenChapter?: (chapterNumber: number) => void;
 }) {
   if (!query) return null;
   return (
@@ -568,7 +648,12 @@ function SearchResults({
             <span className="font-medium">{entryTitle(entry)}</span>
             <span className="text-[10px] text-muted-foreground">{entry.kind}</span>
           </div>
-          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.summary ?? entryPredicateText(entry)}</div>
+          <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-[10px] text-muted-foreground">
+            <OpenSourceChapterButton chapterNumber={entry.sourceChapter ?? entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
+            {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
+            {entry.summary || entryPredicateText(entry) ? <span>· {entry.summary ?? entryPredicateText(entry)}</span> : null}
+          </div>
+          {entry.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
         </button>
       ))}
       {hasMore && (
@@ -656,6 +741,7 @@ function PendingEventCard({
   onToggleSelect,
   onApprove,
   onReject,
+  onOpenChapter,
 }: {
   event: PendingEvent;
   loading: boolean;
@@ -664,6 +750,7 @@ function PendingEventCard({
   onToggleSelect?: (event: PendingEvent) => void;
   onApprove?: (event: PendingEvent, edit?: PendingEventEdit) => void;
   onReject?: (event: PendingEvent) => void;
+  onOpenChapter?: (chapterNumber: number) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<PendingEventEdit>(() => ({
@@ -722,8 +809,10 @@ function PendingEventCard({
         </div>
         <span className={`shrink-0 text-[10px] ${event.risk === "high" ? "text-amber-600" : "text-muted-foreground"}`}>{riskLabel(event.risk)}</span>
       </div>
-      <div className="text-[10px] text-muted-foreground">
-        {event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"} · 第 {event.chapterNumber ?? "—"} 章
+      <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+        <span>{event.entity ?? "未命名实体"} · 置信度 {event.confidence ?? "—"}</span>
+        <OpenSourceChapterButton chapterNumber={event.chapterNumber} onOpenChapter={onOpenChapter} />
+        {!event.chapterNumber ? <span>第 — 章</span> : null}
       </div>
       {event.predicate || event.object ? (
         <div className="text-[11px]">
@@ -829,10 +918,53 @@ function RelationshipMatrix({ facts }: { facts: EntityFact[] }) {
 }
 
 /**
+ * 伏笔板：category=hook 的当前 open fact，按 object 分组。
+ * 用 sourceChapter 判断「距今多久没推进」，超期（>20 章）自动标黄。
+ */
+function HookBoard({ facts, currentChapter, onOpenChapter }: { facts: EntityFact[]; currentChapter?: number; onOpenChapter?: (chapterNumber: number) => void }) {
+  const hooks = useMemo(() => {
+    const list = facts.filter((fact) => fact.category === "hook");
+    return list.sort((a, b) => (a.sourceChapter ?? a.validFromChapter ?? 0) - (b.sourceChapter ?? b.validFromChapter ?? 0));
+  }, [facts]);
+
+  if (hooks.length === 0) {
+    return <p className="text-[11px] text-muted-foreground">还没有伏笔事实。伏笔的埋设与推进会在章后结算自动沉淀。</p>;
+  }
+
+  return (
+    <div className="space-y-1.5" data-testid="narrative-memory-hook-board">
+      {hooks.map((hook) => {
+        const planted = hook.sourceChapter ?? hook.validFromChapter;
+        const stale = currentChapter !== undefined && planted !== undefined && currentChapter - planted > 20;
+        return (
+          <div key={hook.id} className={`flex items-center gap-2 rounded border p-2 ${stale ? "border-amber-400/60 bg-amber-50 dark:bg-amber-950/20" : "border-border/60"}`}>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[11px] font-medium">{hook.object}</div>
+              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                <span>{hook.subject} · {hook.predicate} · 埋于</span>
+                <OpenSourceChapterButton chapterNumber={planted} onOpenChapter={onOpenChapter} />
+                {!planted ? <span>第 — 章</span> : null}
+                {typeof hook.confidence === "number" ? <span>· 置信 {hook.confidence.toFixed(2)}</span> : null}
+              </div>
+              {hook.evidenceText ? <div className="truncate text-[10px] text-muted-foreground">{hook.evidenceText}</div> : null}
+            </div>
+            {stale ? (
+              <span className="shrink-0 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] text-amber-700 dark:text-amber-400">
+                超期未推进
+              </span>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
  * 变迁史：某 slot 的完整变迁轨迹（含已关闭值），点击事实后按章节升序展示。
  * 复用后端 /facts/:id/history，作者能回溯「这条状态从第几章变成了什么」。
  */
-function FactHistoryPanel({ bookId, fact, onClose }: { bookId: string; fact: EntityFact; onClose: () => void }) {
+function FactHistoryPanel({ bookId, fact, onClose, onOpenChapter }: { bookId: string; fact: EntityFact; onClose: () => void; onOpenChapter?: (chapterNumber: number) => void }) {
   const [items, setItems] = useState<EntityFact[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -856,20 +988,27 @@ function FactHistoryPanel({ bookId, fact, onClose }: { bookId: string; fact: Ent
       </div>
       {loading ? <Loader2 className="size-3.5 animate-spin" /> : error ? <p className="text-[11px] text-destructive">{error}</p> : items.length === 0 ? <p className="text-[11px] text-muted-foreground">暂无变迁记录。</p> : (
         <div className="space-y-1">
-          {items.map((item, index) => (
-            <div key={item.id ?? index} className="flex items-center gap-2 text-[11px]">
-              <span className="shrink-0 text-[10px] text-muted-foreground">第 {item.validFromChapter ?? "—"} 章</span>
-              <span>{item.object}</span>
-              {item.validUntilChapter !== undefined ? <span className="text-[10px] text-muted-foreground">→ 第 {item.validUntilChapter} 章</span> : <span className="text-[10px] text-emerald-600">当前</span>}
-            </div>
-          ))}
+          {items.map((item, index) => {
+            const chapter = factSourceChapter(item);
+            const closed = item.validUntilChapter !== undefined && item.validUntilChapter !== null;
+            return (
+              <div key={item.id ?? index} className="flex flex-wrap items-center gap-2 text-[11px]">
+                <OpenSourceChapterButton chapterNumber={chapter} onOpenChapter={onOpenChapter} />
+                {!chapter ? <span className="shrink-0 text-[10px] text-muted-foreground">第 — 章</span> : null}
+                <span>{item.object}</span>
+                {typeof item.confidence === "number" ? <span className="text-[10px] text-muted-foreground">置信 {item.confidence.toFixed(2)}</span> : null}
+                {closed ? <span className="text-[10px] text-muted-foreground">{item.sourceType === "manual" ? "已纠正" : "已关闭"} → 第 {item.validUntilChapter} 章</span> : <span className="text-[10px] text-emerald-600">当前</span>}
+                {item.evidenceText ? <span className="w-full text-[10px] text-muted-foreground">{item.evidenceText}</span> : null}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOpen, onAction, onOpenEntityDetail, onOpenDevelopmentTimeline, onOpenForeshadowingLedger }: NarrativeMemoryPanelProps) {
+export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, currentChapter, onOpen, onAction, onOpenEntityDetail, onOpenDevelopmentTimeline, onOpenChapter }: NarrativeMemoryPanelProps) {
   const [diagnostics, setDiagnostics] = useState<DiagnosticsSummary | null>(null);
   const [events, setEvents] = useState<PendingEvent[]>([]);
   const [historyEvents, setHistoryEvents] = useState<MemoryEntry[]>([]);
@@ -1172,6 +1311,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       error={error}
       memoryNodes={memoryNodes}
       selectedNodeId={selectedNodeId}
+      currentChapter={currentChapter}
       onOpen={onOpen}
       onAction={onAction}
       onSearch={(query) => void search(query)}
@@ -1183,7 +1323,7 @@ export function NarrativeMemoryPanel({ bookId, memoryNodes, selectedNodeId, onOp
       onSearchEntryOpen={openSearchEntry}
       onOpenEntityDetail={onOpenEntityDetail}
       onOpenDevelopmentTimeline={onOpenDevelopmentTimeline}
-      onOpenForeshadowingLedger={onOpenForeshadowingLedger}
+      onOpenChapter={onOpenChapter}
       onCorrectFact={(fact, newObject) => void correctFactRow(fact, newObject)}
       onRetireFact={(fact) => void retireFactRow(fact)}
       historyHasMore={historyHasMore}
@@ -1219,6 +1359,7 @@ export function NarrativeMemoryPanelShell({
   error,
   memoryNodes = [],
   selectedNodeId = null,
+  currentChapter,
   onOpen,
   onSearch,
   onApprove,
@@ -1231,7 +1372,7 @@ export function NarrativeMemoryPanelShell({
   onCorrectFact,
   onRetireFact,
   onOpenDevelopmentTimeline,
-  onOpenForeshadowingLedger,
+  onOpenChapter,
   historyHasMore = false,
   historyLoadingMore = false,
   onLoadMoreHistory,
@@ -1341,32 +1482,18 @@ export function NarrativeMemoryPanelShell({
       </div>
 
       {/* 轻量跳转：发展历程与伏笔证据的权威入口在别处，这里只给跳转按钮，不内嵌重复内容。 */}
-      {(onOpenDevelopmentTimeline || onOpenForeshadowingLedger) && (
+      {onOpenDevelopmentTimeline && (
         <div className="flex flex-wrap gap-1.5" data-testid="narrative-memory-jump-links">
-          {onOpenDevelopmentTimeline && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onOpenDevelopmentTimeline}
-              className="h-7 gap-1 text-[11px]"
-            >
-              <ExternalLink className="size-3" />
-              发展历程
-            </Button>
-          )}
-          {onOpenForeshadowingLedger && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onOpenForeshadowingLedger}
-              className="h-7 gap-1 text-[11px]"
-            >
-              <ExternalLink className="size-3" />
-              伏笔账本
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onOpenDevelopmentTimeline}
+            className="h-7 gap-1 text-[11px]"
+          >
+            <ExternalLink className="size-3" />
+            发展历程
+          </Button>
         </div>
       )}
 
@@ -1406,6 +1533,7 @@ export function NarrativeMemoryPanelShell({
             hasMore={searchHasMore}
             onLoadMore={onLoadMoreSearch}
             onOpen={onSearchEntryOpen}
+            onOpenChapter={onOpenChapter}
           />
 
           <StoryStatusSummary
@@ -1420,6 +1548,7 @@ export function NarrativeMemoryPanelShell({
             onOpenEntityDetail={onOpenEntityDetail}
             onCorrectFact={onCorrectFact}
             onRetireFact={onRetireFact}
+            onOpenChapter={onOpenChapter}
           />
 
           {memoryNodes.length > 0 && (
@@ -1447,9 +1576,12 @@ export function NarrativeMemoryPanelShell({
                   <span className="font-medium">{entryTitle(entry)}</span>
                   <span className="text-[10px] text-muted-foreground">{entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status}</span>
                 </div>
-                <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                  第 {entry.chapterNumber ?? "—"} 章 · {entryCategoryLabel(entry)}
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 truncate text-[10px] text-muted-foreground">
+                  <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
+                  <span>· {entryCategoryLabel(entry)}</span>
+                  {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
                 </div>
+                {entry.evidenceText ? <div className="mt-0.5 truncate text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
               </button>
             ))}
           </section>
@@ -1544,6 +1676,7 @@ export function NarrativeMemoryPanelShell({
                 onToggleSelect={toggleSelect}
                 onApprove={onApprove}
                 onReject={onReject}
+                onOpenChapter={onOpenChapter}
               />
             ))}
             {!pendingOpen && confidenceFilter === "all" && otherPending.length > 0 && highRiskEvents.length > 0 && (
@@ -1559,6 +1692,14 @@ export function NarrativeMemoryPanelShell({
               <span className="text-[10px] text-muted-foreground">当前关系值 · 点击故事状态里的「历史」回溯变迁</span>
             </div>
             <RelationshipMatrix facts={allEntityFacts} />
+          </section>
+
+          <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-hook-section">
+            <div className="flex items-center justify-between">
+              <h3 className="text-xs font-semibold">伏笔事实 ({allEntityFacts.filter((f) => f.category === "hook").length})</h3>
+              <span className="text-[10px] text-muted-foreground">章后沉淀的伏笔事实与推进</span>
+            </div>
+            <HookBoard facts={allEntityFacts} currentChapter={currentChapter} onOpenChapter={onOpenChapter} />
           </section>
 
           <section className="rounded-lg border border-border bg-card p-3 space-y-2" data-testid="narrative-memory-history-full">
@@ -1582,10 +1723,13 @@ export function NarrativeMemoryPanelShell({
                   {entry.status === "applied" ? "已应用" : entry.status === "rejected" ? "已拒绝" : entry.status ?? "history"}
                 </span>
               </div>
-              <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-                第 {entry.chapterNumber ?? "—"} 章 · {entryCategoryLabel(entry)}
-                {entry.summary ? ` · ${entry.summary}` : ""}
+              <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[10px] text-muted-foreground">
+                <OpenSourceChapterButton chapterNumber={entry.chapterNumber} onOpenChapter={onOpenChapter} nested />
+                <span>· {entryCategoryLabel(entry)}</span>
+                {typeof entry.confidence === "number" ? <span>· 置信 {entry.confidence.toFixed(2)}</span> : null}
+                {entry.summary ? <span>· {entry.summary}</span> : null}
               </div>
+              {entry.evidenceText ? <div className="mt-0.5 text-[10px] text-muted-foreground">{entry.evidenceText}</div> : null}
             </button>
           ))}
           {historyHasMore && (

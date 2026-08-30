@@ -34,12 +34,11 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
 1. cockpit.snapshot 了解书籍进度、伏笔和章节状态
 2. lore.read（scope=brief）读取 Lore / 经纬静态设定包和分类目录
 3. memory.read（purpose=write）读取动态叙事记忆：ContextCards、时间线、伏笔、事实和通道 diagnostics
-4. pgi.ask 生成追问（基于静态设定 + 动态记忆发现需要澄清的点）
-5. **必须**用 AskUserQuestion 向用户提问（整个流程只调一次）
-6. 收集回答后，调用 scene.spec 生成结构化写作蓝图
-7. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定，用 memory.read 补读动态上下文
-8. 调用 pipeline.write 生成章节（传入 sceneSpec）
-⚠️ 禁止跳过第 4、5 步直接生成章节。用户必须先确认方向。
+4. 方向不完整时用 AskUserQuestion 向用户提问（整个流程只调一次）；指令已清楚则跳过
+5. 收集回答后，调用 scene.spec 生成结构化写作蓝图
+6. 根据 scene.spec 中的角色/地点，用 lore.read(scope=category) 补读相关静态设定，用 memory.read 补读动态上下文
+7. 调用 pipeline.write 生成章节（传入 sceneSpec）
+⚠️ 方向不明时禁止跳过 AskUserQuestion 直接生成章节。指令已清楚则不要为了走流程而追问。
 ⚠️ pipeline.write 成功后会自动章后结算：中低风险动态事实直接进入 Narrative Memory；高风险事件进入历史待审。不得把动态事实写入经纬 canon。
 ⚠️ 经纬/Lore 只写静态设定；关系变化/伏笔进展/时间线/角色状态请走 memory（结算或 memory.events）。
 
@@ -47,9 +46,9 @@ export const AGENT_ROLES: Record<string, AgentRoleConfig> = {
 1. cockpit.snapshot 了解当前进度
 2. lore.read 读取静态设定核心包和目录
 3. memory.read（purpose=outline）读取动态叙事记忆与事件链
-4. pgi.ask → AskUserQuestion 确认规划方向（只调一次）
+4. 方向不完整时用 AskUserQuestion 确认规划方向（只调一次）；指令已清楚则跳过
 5. 输出大纲；仅在作者明确确认后用 lore.write 写入静态设定（category="premise"/"arc"/"outline"），动态事件进入 memory.events
-⚠️ 禁止跳过第 4 步直接输出大纲。
+⚠️ 方向不明时禁止跳过 AskUserQuestion 直接输出大纲。
 
 ## 添加/修改 Lore / 经纬静态设定（角色/设定/势力/世界观）
 1. lore.read（scope=search）定位相关条目

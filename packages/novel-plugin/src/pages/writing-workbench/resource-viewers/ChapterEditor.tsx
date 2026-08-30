@@ -11,9 +11,10 @@ import {
 } from "@vivy1024/novelfork-core/utils/length-metrics";
 import { Loader2 } from "lucide-react";
 import { fetchJson } from "@/hooks/use-api";
-import { SearchExtension } from "../ide/SearchExtension";
+import { SearchExtension, scrollToCurrentMatch } from "../ide/SearchExtension";
 import { SearchBar } from "../ide/SearchBar";
 import { EditorMinimap } from "./EditorMinimap";
+import { LOCATE_IN_EDITOR_EVENT } from "../audit-issue-actions";
 
 // ---------------------------------------------------------------------------
 // BubbleMenu AI actions
@@ -419,6 +420,22 @@ export function ChapterEditor({
   const handleCloseSearch = useCallback(() => {
     setSearchMode(null);
   }, []);
+
+  useEffect(() => {
+    if (!editor) return;
+    const onLocate = (event: Event) => {
+      const quote = (event as CustomEvent<{ quote?: string }>).detail?.quote?.trim();
+      if (!quote) return;
+      setSearchMode("search");
+      editor.chain().setSearchQuery(quote).run();
+      const container = editor.view.dom.closest(".chapter-editor");
+      if (container) {
+        requestAnimationFrame(() => scrollToCurrentMatch(editor, container as HTMLElement));
+      }
+    };
+    window.addEventListener(LOCATE_IN_EDITOR_EVENT, onLocate);
+    return () => window.removeEventListener(LOCATE_IN_EDITOR_EVENT, onLocate);
+  }, [editor]);
 
   if (!editor) return null;
 

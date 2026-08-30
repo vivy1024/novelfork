@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
@@ -8,12 +8,14 @@ vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
     mode,
     dataScope,
     currentChapter,
+    onOpenChapter,
   }: {
     bookId: string;
     initialView?: string;
     mode?: string;
     dataScope?: string;
     currentChapter?: number;
+    onOpenChapter?: (chapterNumber: number) => void;
   }) => (
     <div
       data-testid="development-timeline-graph-probe"
@@ -22,7 +24,9 @@ vi.mock("./NarrativeMemoryGraphWorkspace", () => ({
       data-mode={mode}
       data-scope={dataScope}
       data-current-chapter={currentChapter}
-    />
+    >
+      <button type="button" onClick={() => onOpenChapter?.(12)}>打开来源第 12 章</button>
+    </div>
   ),
 }));
 
@@ -43,5 +47,12 @@ describe("DevelopmentTimelineView", () => {
     expect(graph.getAttribute("data-mode")).toBe("development");
     expect(graph.getAttribute("data-scope")).toBe("read");
     expect(graph.getAttribute("data-current-chapter")).toBe("18");
+  });
+
+  it("把来源章节回跳回调透传到图谱工作区", () => {
+    const onOpenChapter = vi.fn();
+    render(<DevelopmentTimelineView bookId="book-1" onOpenChapter={onOpenChapter} />);
+    fireEvent.click(screen.getByRole("button", { name: "打开来源第 12 章" }));
+    expect(onOpenChapter).toHaveBeenCalledWith(12);
   });
 });

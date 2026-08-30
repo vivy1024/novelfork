@@ -1,6 +1,7 @@
 import type { BookConfig, ChapterMeta, StorageDatabase } from "@vivy1024/novelfork-core";
 import { getStorageDatabase } from "@vivy1024/novelfork-core";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
+import { readCurrentFocusDocFromStorage } from "../engine/jingwei/current-focus.js";
 import { computeForeshadowingDebt, toCockpitHookRisk } from "../engine/jingwei/foreshadowing-debt.js";
 
 export type CockpitDataStatus = "available" | "empty" | "missing" | "unsupported";
@@ -215,21 +216,15 @@ export class CockpitService {
   private async readCurrentFocusFromJingwei(bookId: string): Promise<CockpitCurrentFocusSummary> {
     try {
       const storage = this.getStorage();
-      // 查找 category='focus' 或 category='current-focus' 的最新条目
-      const row = storage.sqlite.prepare(`
-        SELECT title, content_md FROM story_jingwei_entry
-        WHERE book_id = ? AND category IN ('focus', 'current-focus', 'outline') AND deleted_at IS NULL
-        ORDER BY updated_at DESC LIMIT 1
-      `).get(bookId) as { title: string; content_md: string } | undefined;
-
-      if (row?.content_md?.trim()) {
-        return { status: "available", content: row.content_md, sourceFile: "jingwei:focus" };
+      const compass = readCurrentFocusDocFromStorage(storage, bookId);
+      if (compass) {
+        return { status: "available", content: compass, sourceFile: "jingwei:current-focus" };
       }
 
-      // fallback: 查找最新的大纲/规划条目
+      // fallback: 查找最新的大纲/规划条目（不含创作罗盘，避免把卷纲当本章焦点）
       const outlineRow = storage.sqlite.prepare(`
         SELECT title, content_md FROM story_jingwei_entry
-        WHERE book_id = ? AND category IN ('outline', 'plot', 'worldview') AND deleted_at IS NULL
+        WHERE book_id = ? AND category IN ('outline', 'plot') AND deleted_at IS NULL
         ORDER BY updated_at DESC LIMIT 1
       `).get(bookId) as { title: string; content_md: string } | undefined;
 
@@ -237,7 +232,7 @@ export class CockpitService {
         return { status: "available", content: `【${outlineRow.title}】\n${outlineRow.content_md}`, sourceFile: "jingwei:outline" };
       }
 
-      return { status: "empty", content: null, reason: "经纬中暂无焦点/大纲数据。" };
+      return { status: "empty", content: null, reason: "经纬中暂无创作罗盘/大纲数据。" };
     } catch {
       return { status: "missing", content: null, reason: "无法读取经纬数据库。" };
     }

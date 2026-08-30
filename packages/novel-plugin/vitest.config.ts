@@ -21,6 +21,9 @@ export default {
       // useApi 内部走 react-query，novel-plugin 自身未安装，测试里钉到 studio 那份（与 react 同款）。
       "@tanstack/react-query": resolve(__dirname, "../studio/node_modules/@tanstack/react-query"),
       "@vivy1024/novelfork-core/utils/length-metrics": resolve(__dirname, "../core/src/utils/length-metrics.ts"),
+      "@vivy1024/novelfork-core/models/genre-profiles": resolve(__dirname, "../core/src/models/genre-profiles.ts"),
+      "@vivy1024/novelfork-core/storage": resolve(__dirname, "../core/src/storage/index.ts"),
+      "@vivy1024/novelfork-core": resolve(__dirname, "../core/src/index.ts"),
       "@": resolve(__dirname, "../studio/src"),
     },
     dedupe: ["react", "react-dom", "@tiptap/react"],

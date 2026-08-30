@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 
-import { ChapterContextRail, selectDueForeshadowings } from "./ChapterContextRail";
+import { ChapterContextRail, selectAppearingCharacters, selectDueForeshadowings } from "./ChapterContextRail";
 
 const refetch = vi.fn(async () => undefined);
 
@@ -33,6 +33,14 @@ vi.mock("@/hooks/use-api", () => ({
             { id: "fs-2", title: "已回收伏笔", fields: { status: "已回收", plantedChapter: 1 } },
           ],
         },
+        loading: false,
+        error: null,
+        refetch,
+      };
+    }
+    if (path?.includes("narrative-memory/graph")) {
+      return {
+        data: { events: [{ subject: "林舟", subjectEntryId: "char-1", object: "青铜戒指" }] },
         loading: false,
         error: null,
         refetch,
@@ -70,6 +78,22 @@ describe("ChapterContextRail", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "打开角色 林舟" }));
     expect(onOpenJingweiEntry).toHaveBeenCalledWith("char-1");
+  });
+
+  it("出场角色取本章结算事件实体与经纬角色的交集，不把全量角色当作出场", () => {
+    const appearing = selectAppearingCharacters(
+      [
+        { id: "char-1", title: "林舟", lifecycle: "active" },
+        { id: "char-2", title: "沈砚", lifecycle: "active" },
+        { id: "char-3", title: "路人甲", lifecycle: "active" },
+      ],
+      [{ subject: "林舟", subjectEntryId: "char-1", object: "青铜戒指" }],
+    );
+    expect(appearing.map((item) => item.name)).toEqual(["林舟"]);
+    expect(selectAppearingCharacters(
+      [{ id: "char-1", title: "林舟", lifecycle: "active" }],
+      [],
+    )).toEqual([]);
   });
 
   it("独立计算三章以上未推进且排除已结清状态", () => {

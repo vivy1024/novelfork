@@ -15,6 +15,8 @@ export interface DevelopmentTimelineViewProps {
   readonly scope?: "read";
   readonly onSelectNode?: (nodeId: string) => void;
   readonly onOpenEntityDetail?: (entity: string, entryId?: string) => void;
+  /** 来源章节回跳：透传到图谱 Inspector。 */
+  readonly onOpenChapter?: (chapterNumber: number) => void;
   /**
    * 外层容器高度类。默认保持面板内嵌的 72vh 高度；
    * 大屏画布（StoryProgressionCanvas）传入 "h-full min-h-[80vh]" 以铺满流视图标准。
@@ -30,6 +32,7 @@ export function DevelopmentTimelineView({
   scope = "read",
   onSelectNode,
   onOpenEntityDetail,
+  onOpenChapter,
   frameClassName = "h-[min(72vh,720px)] min-h-[440px]",
   initialFocusEntity,
 }: DevelopmentTimelineViewProps) {
@@ -51,6 +54,7 @@ export function DevelopmentTimelineView({
         initialFocusEntity={initialFocusEntity}
         onSelectNode={onSelectNode}
         onOpenEntityDetail={onOpenEntityDetail}
+        onOpenChapter={onOpenChapter}
       />
     </section>
   );

@@ -90,6 +90,15 @@ if (!existsSync(runtimeRoot) || !statSync(runtimeRoot).isDirectory()) {
 }
 
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+// Do not use `pnpm -r test` here: Bun/pnpm can discover the local reference copy
+// under 酒馆预设兼容/ and execute every public package twice. Keep this list
+// explicit so the canonical root entry runs each current public package once.
+const publicWorkspaceFilters = [
+	"@vivy1024/novelfork-core",
+	"@vivy1024/novelfork-novel-plugin",
+	"@vivy1024/novelfork-product-runtime",
+	"@vivy1024/novelfork-studio",
+] as const;
 // Bun's isolated linker records the installation path in its package links. Keep
 // the short Runtime junction alive for public packages too, because they import
 // Runtime modules through the canonical product path.
@@ -97,11 +106,19 @@ const runtimeExecutionRoot = prepareRuntimeExecutionRoot(runtimeRoot);
 let publicExitCode = 1;
 let runtimeExitCode = 0;
 try {
-	const publicTests = Bun.spawn([pnpm, "-r", "test"], {
-		cwd: repositoryRoot,
-		env: testEnvironment("public"),
-		stdio: ["inherit", "inherit", "inherit"],
-	});
+	const publicTests = Bun.spawn(
+		[
+			pnpm,
+			...publicWorkspaceFilters.flatMap((filter) => ["--filter", filter]),
+			"run",
+			"test",
+		],
+		{
+			cwd: repositoryRoot,
+			env: testEnvironment("public"),
+			stdio: ["inherit", "inherit", "inherit"],
+		},
+	);
 	publicExitCode = await publicTests.exited;
 	if (publicExitCode === 0) {
 		// Keep Runtime's real-timer recovery tests deterministic on Windows while

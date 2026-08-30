@@ -11,10 +11,9 @@ import {
 describe("workflow recipe", () => {
   it("provides a default /novel:write-next recipe with 5 enabled steps and a disabled guided-plan legacy seam", () => {
     expect(DEFAULT_WRITE_NEXT_RECIPE.commandId).toBe("/novel:write-next");
-    expect(DEFAULT_WRITE_NEXT_RECIPE.steps).toHaveLength(6);
+    expect(DEFAULT_WRITE_NEXT_RECIPE.steps).toHaveLength(5);
     expect(DEFAULT_WRITE_NEXT_RECIPE.steps.map((s) => s.kind)).toEqual([
       "context-load",
-      "pgi",
       "guided-plan",
       "approval-gate",
       "writer-generate",
@@ -22,7 +21,6 @@ describe("workflow recipe", () => {
     ]);
     expect(getEnabledSteps(DEFAULT_WRITE_NEXT_RECIPE).map((s) => s.kind)).toEqual([
       "context-load",
-      "pgi",
       "approval-gate",
       "writer-generate",
       "canvas-open",
@@ -51,13 +49,13 @@ describe("workflow recipe", () => {
     const modified: WorkflowRecipeConfig = {
       ...DEFAULT_WRITE_NEXT_RECIPE,
       steps: DEFAULT_WRITE_NEXT_RECIPE.steps.map((step) =>
-        step.kind === "pgi" ? { ...step, enabled: false } : step,
+        step.kind === "approval-gate" ? { ...step, enabled: false } : step,
       ),
     };
 
     const enabled = getEnabledSteps(modified);
-    expect(enabled).toHaveLength(4);
-    expect(enabled.find((s) => s.kind === "pgi")).toBeUndefined();
+    expect(enabled).toHaveLength(3);
+    expect(enabled.find((s) => s.kind === "approval-gate")).toBeUndefined();
   });
 
   it("assigns agent roles to appropriate steps", () => {

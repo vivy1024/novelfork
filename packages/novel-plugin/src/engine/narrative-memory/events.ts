@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
+
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
-import { insertNarrativeEvent } from "./storage.js";
+import { ensureNarrativeMemorySchema, insertNarrativeEvent } from "./storage.js";
 import { NarrativeEventSchema, type NarrativeEvent, type NarrativeEventRiskLevel, type NarrativeEventStatus, type NarrativeEventType, type NarrativeFactLayer } from "./types.js";
 
 export type NarrativeEventRiskInput = Readonly<{
@@ -35,7 +37,14 @@ function clampConfidence(confidence: number): number {
 }
 
 function idPart(value: string): string {
-  return value.trim().replace(/\s+/gu, "-").replace(/[^\p{L}\p{N}_:-]+/gu, "").slice(0, 48) || "event";
+  const normalized = value.trim().replace(/\s+/gu, " ");
+  if (!normalized) return "event";
+  // Keep a readable prefix, but append a digest of the complete value. The
+  // digest prevents long values sharing the same 48-character prefix from
+  // colliding while avoiding unbounded primary-key growth.
+  const readable = encodeURIComponent(normalized).slice(0, 48);
+  const digest = createHash("sha256").update(normalized, "utf8").digest("hex").slice(0, 16);
+  return `${readable || "event"}-${digest}`;
 }
 
 function defaultEventId(input: CreateNarrativeEventInput): string {
@@ -92,5 +101,12 @@ export function createNarrativeEvent(input: CreateNarrativeEventInput): Narrativ
 }
 
 export function persistNarrativeEvents(storage: StorageDatabase, events: readonly NarrativeEvent[]): NarrativeEvent[] {
-  return events.map((event) => insertNarrativeEvent(storage, event));
+  // Initialize the schema outside the transaction. Otherwise a first-ever
+  // batch whose insert later fails would roll back table creation as well.
+  ensureNarrativeMemorySchema(storage);
+  // Persist the complete batch atomically. If one event fails (for example a
+  // duplicate ID), no prefix of the batch remains durable and the caller must
+  // not proceed to reduction with an incomplete event log.
+  const persist = storage.sqlite.transaction(() => events.map((event) => insertNarrativeEvent(storage, event)));
+  return persist();
 }
