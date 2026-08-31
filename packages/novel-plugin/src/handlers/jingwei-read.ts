@@ -72,6 +72,7 @@ export interface JingweiReadCategoryResponse {
 export interface JingweiSearchInput {
   bookId: string;
   query: string;
+  entryKey?: string;
   categories?: string[];
   chapterNumber?: number;
   tokenBudget?: number;

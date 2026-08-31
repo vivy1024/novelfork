@@ -238,3 +238,78 @@ describe("story jingwei entry authority and revisions", () => {
     expect(await repo.listRevisions("book-1", "entry-1")).toHaveLength(2);
   });
 });
+
+describe("story jingwei entry identity and source refs", () => {
+  it("creates a stable entryKey and sourceRefs, then keeps the key when the title changes", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    const created = await repo.create({
+      id: "entry-identity",
+      bookId: "book-1",
+      sectionId: "section-1",
+      title: "旧标题",
+      contentMd: "旧正文",
+      tags: [],
+      aliases: [" 韩 立 ", "韩立"],
+      customFields: {},
+      relatedChapterNumbers: [],
+      relatedEntryIds: [],
+      visibilityRule: { type: "tracked" },
+      participatesInAi: true,
+      tokenBudget: null,
+      sourceRefs: [{ chapterNumber: 1, excerpt: "首次出场" }],
+      createdAt: new Date("2026-08-01T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T01:00:00.000Z"),
+    });
+
+    expect(created.entryKey).toBe("characters:旧标题");
+    expect(created.aliases).toEqual(["韩 立"]);
+    expect(created.sourceRefs).toEqual([{ chapterNumber: 1, excerpt: "首次出场" }]);
+
+    const updated = await repo.update("book-1", "entry-identity", {
+      title: "新标题",
+      sourceRefs: [{ chapterNumber: 2, excerpt: "二次出场" }],
+      source: "user",
+    });
+    expect(updated?.entryKey).toBe("characters:旧标题");
+    expect(updated?.sourceRefs).toEqual([
+      { chapterNumber: 1, excerpt: "首次出场" },
+      { chapterNumber: 2, excerpt: "二次出场" },
+    ]);
+  });
+
+  it("uses a stable chapter-summary key and restores identity from revision snapshots", async () => {
+    const storage = await createStorage();
+    const repo = createStoryJingweiEntryRepository(storage);
+    const created = await repo.create({
+      id: "entry-summary",
+      bookId: "book-1",
+      sectionId: "section-1",
+      title: "第12章",
+      contentMd: "摘要正文",
+      category: "chapter-summaries",
+      tags: [],
+      aliases: [],
+      fields: { chapterNumber: 12 },
+      customFields: { chapterNumber: 12 },
+      relatedChapterNumbers: [12],
+      relatedEntryIds: [],
+      visibilityRule: { type: "nested" },
+      participatesInAi: true,
+      tokenBudget: null,
+      sourceRefs: [{ chapterNumber: 12, excerpt: "本章摘要" }],
+      createdAt: new Date("2026-08-01T01:00:00.000Z"),
+      updatedAt: new Date("2026-08-01T01:00:00.000Z"),
+    });
+    expect(created.entryKey).toBe("chapter-summaries:chapter:12");
+
+    await repo.update("book-1", "entry-summary", {
+      title: "第12章摘要：药园试探",
+      source: "auto-settle",
+    });
+    const target = (await repo.listRevisions("book-1", "entry-summary"))[0]!;
+    const reverted = await repo.revertToRevision("book-1", "entry-summary", target.id);
+    expect(reverted?.entryKey).toBe("chapter-summaries:chapter:12");
+    expect(reverted?.sourceRefs).toEqual([{ chapterNumber: 12, excerpt: "本章摘要" }]);
+  });
+});

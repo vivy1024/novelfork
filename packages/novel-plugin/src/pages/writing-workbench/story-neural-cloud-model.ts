@@ -231,7 +231,7 @@ export function buildNeuralCloudModel(input: {
   const dataChapters = [
     ...[...nodes.values()].map((node) => node.chapterNumber),
     input.currentChapter,
-  ].filter((chapter): chapter is number => Number.isInteger(chapter) && chapter > 0);
+  ].filter((chapter): chapter is number => Number.isInteger(chapter) && (chapter ?? 0) > 0);
   const hasSetting = settingEntries.length > 0 || relationEntries.length > 0;
   const chapters = [...new Set(hasSetting ? dataChapters : [])].sort((a, b) => a - b);
 

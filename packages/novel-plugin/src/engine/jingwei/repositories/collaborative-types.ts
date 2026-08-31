@@ -19,6 +19,10 @@ export interface JingweiRevisionSnapshot {
   fields: Record<string, unknown>;
   tags: string[];
   aliases: string[];
+  /** 条目稳定唯一标识；旧 snapshot 可能缺失此字段 */
+  entryKey?: string | null;
+  /** 条目出处引用；旧 snapshot 可能缺失此字段 */
+  sourceRefs?: Array<{ chapterNumber: number; excerpt: string }>;
   relatedChapterNumbers: number[];
   relatedEntryIds: string[];
   visibilityRule: {

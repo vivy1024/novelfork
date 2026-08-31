@@ -34,6 +34,26 @@ describe("scene.spec deterministic contract", () => {
     expect(result.data.beatBudget?.ok).toBe(false);
   });
 
+  it("记录点名实体，供 write profile 超上限时定向保留", async () => {
+    const result = await handleSceneSpec({
+      bookId: "book-1",
+      chapterNumber: 5,
+      userDirectives: "让林舟在雨夜跟踪三轮车，并盯紧账本线索",
+      skipContextGate: true,
+      cockpitSnapshot: { bookConfig: { chapterWordCount: 3000 } },
+      namedEntities: ["账本"],
+      sceneSpec: spec(5, "雨夜", [
+        { summary: "铺垫", density: "normal", words: 900 },
+        { summary: "冲突升级", density: "dense", words: 1200 },
+        { summary: "信息揭示", density: "dense", words: 900 },
+      ]),
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.namedEntities).toEqual(expect.arrayContaining(["账本", "林舟"]));
+    expect(result.summary).toContain("点名实体");
+  });
+
   it("接受合规蓝图且不调用模型", async () => {
     const result = await handleSceneSpec({
       bookId: "book-1",

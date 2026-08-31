@@ -1,4 +1,5 @@
 import type { RuntimeStateSnapshot } from "@vivy1024/novelfork-core";
+import { emptyChapterStateProjection, loadChapterStateProjection } from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import type { SceneSpec } from "../../handlers/scene-spec-handler.js";
@@ -15,6 +16,11 @@ import { createStyleChannel, type StyleSnippet } from "./channels/style-channel.
 import { createTimelineChannel } from "./channels/timeline-channel.js";
 import { buildKernelCards, type KernelChannelInput } from "./channels/kernel-channel.js";
 import { buildNarrativeRetrievalDiagnostics, formatNarrativeSections, persistNarrativeRetrievalLog } from "./diagnostics.js";
+import {
+  applyWriteProfileCountCaps,
+  buildWriteProfile,
+  DEFAULT_WRITE_PROFILE_CAPS,
+} from "./write-profile.js";
 import { buildStorylineStateCard } from "./storyline-state-card.js";
 import { mergeNarrativeContextCards } from "./merge.js";
 import {
@@ -43,6 +49,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   bookRulesText?: string;
   complianceRules?: readonly string[];
   styleGuideText?: string;
+  authorHabitsText?: string;
+  bookDesignText?: string;
   channelTimeoutMs?: number;
   retrievalLogId?: string;
   budgetPolicy?: NarrativeBudgetPolicy;
@@ -53,6 +61,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   enabledChannels?: Partial<Record<NarrativeContextChannel, boolean>>;
   /** 角色内核配置；enabled=false 或缺省时 character-kernel 通道跳过。 */
   characterKernelConfig?: CharacterKernelConfig;
+  /** scene.spec / memory.read 点名实体，write profile 超上限时仍保留。 */
+  namedEntities?: readonly string[];
 }>;
 
 function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult {
@@ -171,7 +181,12 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     maxTokens: input.maxTokens,
   });
   const sceneSpec = asSceneSpec(parsed.sceneSpec);
-  const entities = uniqueStrings([...(parsed.entities ?? []), ...collectSceneEntities(sceneSpec)]);
+  const entities = uniqueStrings([
+    ...(parsed.entities ?? []),
+    ...(input.namedEntities ?? []),
+    ...collectSceneEntities(sceneSpec),
+  ]);
+  const namedEntities = uniqueStrings([...(input.namedEntities ?? []), ...(parsed.entities ?? []), ...collectSceneEntities(sceneSpec)]);
   const currentChapter = parsed.chapterNumber;
   const startedAt = performance.now();
   const timeoutMs = input.channelTimeoutMs ?? 2500;
@@ -194,6 +209,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         sceneText: parsed.sceneText,
         entities,
         runtimeSnapshot: input.runtimeSnapshot,
+        limit: Math.max(DEFAULT_WRITE_PROFILE_CAPS.coreCharacters * 4, 24),
       }, timeoutMs)
       : disabledChannelResult("state"),
     isOptionalChannelEnabled(input, "hooks")
@@ -206,6 +222,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         sceneSpec,
         sceneText: parsed.sceneText,
         entities,
+        limit: Math.max(DEFAULT_WRITE_PROFILE_CAPS.activeHooks * 4, 24),
       }, timeoutMs)
       : disabledChannelResult("hooks"),
     isOptionalChannelEnabled(input, "timeline")
@@ -245,6 +262,8 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         bookId: parsed.bookId,
         styleGuideText: input.styleGuideText,
         complianceRules: input.complianceRules,
+        authorHabitsText: input.authorHabitsText,
+        bookDesignText: input.bookDesignText,
       }, timeoutMs)
       : disabledChannelResult("style"),
     // 角色内核通道：config.characterKernel.enabled 且本书 channels["character-kernel"] 未关闭时注入。
@@ -270,6 +289,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         storage: input.storage,
         bookId: parsed.bookId,
         currentChapter,
+        limit: DEFAULT_WRITE_PROFILE_CAPS.recentSummaries,
       }, timeoutMs)
       : disabledChannelResult("recent-summary"),
   ]);
@@ -279,7 +299,21 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     queryEntities: entities,
   });
   const wave = applyWaveMemory(merged, entities, input.waveConfig, currentChapter);
-  const budget = packNarrativeContext(wave.cards, {
+  let projection = emptyChapterStateProjection();
+  try {
+    projection = loadChapterStateProjection(input.storage, parsed.bookId);
+  } catch {
+    projection = emptyChapterStateProjection();
+  }
+  const writeProfile = buildWriteProfile({
+    projection,
+    cards: wave.cards,
+    namedEntities,
+    currentChapter,
+    caps: DEFAULT_WRITE_PROFILE_CAPS,
+  });
+  const capped = applyWriteProfileCountCaps(wave.cards, writeProfile);
+  const budget = packNarrativeContext(capped.cards, {
     maxTokens: parsed.maxTokens,
     ...(input.budgetPolicy ?? {}),
   });
@@ -299,12 +333,29 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
   } catch {
     // 状态卡是增强项，失败只跳过不阻断召回。
   }
+  const trimReasons = [
+    ...writeProfile.trimReasons,
+    ...capped.trimReasons,
+    ...budget.droppedCards.map((card) => ({
+      id: card.id,
+      reason: "token 预算不足，卡片被丢弃。",
+      channel: card.channel,
+      kind: "token-budget" as const,
+    })),
+    ...budget.degradedCards.map((item) => ({
+      id: item.id,
+      reason: `token 预算不足，从 ${item.from} 降到 ${item.to}。`,
+      kind: "degraded" as const,
+    })),
+  ];
   const diagnostics = buildNarrativeRetrievalDiagnostics({
     startedAt,
     endedAt: performance.now(),
     channelResults,
     budget,
     wave: wave.diagnostics,
+    trimReasons,
+    writeProfile,
   });
 
   persistNarrativeRetrievalLog(input.storage, {
@@ -322,5 +373,6 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     cards: budget.cards.map((item) => item.card),
     sections,
     diagnostics,
+    writeProfile,
   });
 }

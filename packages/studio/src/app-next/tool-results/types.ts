@@ -7,10 +7,17 @@ export interface ToolResultArtifact {
   [key: string]: unknown;
 }
 
+export interface ToolResultAction {
+  type: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
 export interface ToolResultRendererContext {
   toolName: string;
   result: unknown;
   onOpenArtifact?: (artifact: ToolResultArtifact) => void;
+  onAction?: (action: ToolResultAction) => Promise<unknown> | unknown;
 }
 
 export type ToolResultRenderer = (context: ToolResultRendererContext) => ReactNode;

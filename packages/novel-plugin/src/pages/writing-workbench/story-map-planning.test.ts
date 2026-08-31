@@ -39,6 +39,29 @@ describe("hasPlanningNodes", () => {
 });
 
 describe("snapshotToPlotBoard", () => {
+  it("把派生伏笔和角色弧按章入格，作者备注不覆盖派生线索", () => {
+    const board = snapshotToPlotBoard({
+      bookId: "b",
+      nodes: [
+        { id: "c1", bookId: "b", type: "chapter", title: "第一章", chapterNumber: 1, layer: "derived" },
+        { id: "foreshadow:small-bottle", bookId: "b", type: "foreshadow", title: "小瓶来历", chapterNumber: 1, status: "open", layer: "derived" },
+        { id: "character-arc:han-li", bookId: "b", type: "character-arc", title: "韩立 · 人物弧光", chapterNumber: 1, layer: "derived" },
+        { id: "note-1", bookId: "b", type: "event", title: "作者备注", layer: "annotation" },
+      ],
+      edges: [],
+      foreshadowThreads: [{
+        id: "foreshadow:small-bottle",
+        bookId: "b",
+        title: "小瓶来历",
+        status: "open",
+        setupNodeIds: ["foreshadow:small-bottle"],
+      }],
+      warnings: [],
+    });
+    expect(board.threads.map((thread) => thread.kind).sort()).toEqual(["character_arc", "foreshadow"]);
+    expect(board.threads.find((thread) => thread.kind === "foreshadow")?.beatsByChapter[1]?.[0]?.title).toBe("小瓶来历");
+  });
+
   it("冲突线程按章入格，不产出 DAG 边", () => {
     const board = snapshotToPlotBoard({
       bookId: "b",

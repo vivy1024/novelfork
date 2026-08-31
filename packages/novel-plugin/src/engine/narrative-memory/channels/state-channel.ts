@@ -105,7 +105,7 @@ export function createStateChannel(): NarrativeRetrievalChannel<StateChannelInpu
       const sectionById = new Map(sections.map((section) => [section.id, section]));
       const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
       const scoredEntries = entries
-        .filter((entry) => entry.participatesInAi && isVisibleEntry(entry, input.currentChapter))
+        .filter((entry) => entry.participatesInAi && entry.status === "confirmed" && isVisibleEntry(entry, input.currentChapter))
         .map((entry) => ({ entry, section: sectionById.get(entry.sectionId), category: entryCategory(entry, sectionById.get(entry.sectionId)) }))
         .filter(({ entry, category }) => entry.layer !== "canon" && isStateCategory(category))
         .map((item) => ({ ...item, score: matchScore(item.entry, item.section, input, queryEntities) }))

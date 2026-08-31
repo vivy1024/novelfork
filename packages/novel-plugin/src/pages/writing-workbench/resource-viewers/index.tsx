@@ -380,6 +380,7 @@ interface NarrativeNodeData {
   readonly summary?: string;
   readonly chapterNumber?: number;
   readonly status?: string;
+  readonly layer?: "derived" | "annotation";
 }
 
 interface NarrativeEdgeData {
@@ -582,15 +583,16 @@ function NarrativeLineStructuredView({ snapshot, bookId }: { snapshot: Narrative
               <div key={n.id} className="rounded border border-border p-2 text-xs group">
                 <div className="flex items-center gap-1.5">
                   <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-mono">{NODE_TYPE_LABELS[n.type] ?? n.type}</span>
+                  {n.layer === "annotation" ? <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-800 dark:bg-amber-900/40 dark:text-amber-200">备注</span> : <span className="rounded bg-sky-100 px-1 py-0.5 text-[10px] text-sky-800 dark:bg-sky-900/40 dark:text-sky-200">派生</span>}
                   <span className="font-medium">{n.title}</span>
                   {n.chapterNumber != null && <span className="text-muted-foreground ml-auto mr-1">第{n.chapterNumber}章</span>}
-                  {bookId && (
+                  {bookId && n.layer !== "derived" && (
                     <button
                       type="button"
                       className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive ml-auto"
                       onClick={() => void handleDeleteNode(n.id, n.title)}
                       disabled={submitting}
-                      title={`删除节点 ${n.title}`}
+                      title={`删除备注 ${n.title}`}
                     >
                       <Trash2 className="size-3" />
                     </button>

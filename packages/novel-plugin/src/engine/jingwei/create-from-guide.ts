@@ -8,6 +8,7 @@
  */
 
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
+import { generateEntryKey } from "./entry-identity.js";
 import { createStoryJingweiEntryRepository } from "./repositories/entry-repo.js";
 import { createStoryJingweiSectionRepository } from "./repositories/section-repo.js";
 import type { GenreTemplate } from "./genre-templates.js";
@@ -95,6 +96,7 @@ export async function createJingweiEntriesFromGuide(
       contentMd,
       tags: [],
       aliases: [],
+      entryKey: generateEntryKey(category, title, customFields),
       customFields: { ...customFields, subcategory: customFields.subcategory },
       relatedChapterNumbers: [],
       relatedEntryIds: [],

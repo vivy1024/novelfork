@@ -54,6 +54,7 @@ export const books = sqliteTable("book", {
   name: text("name").notNull(),
   jingweiMode: text("jingwei_mode", { enum: ["static", "dynamic"] }).notNull().default("static"),
   currentChapter: integer("current_chapter").notNull().default(0),
+  stateRevision: integer("state_revision").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
   updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
 });
@@ -384,6 +385,9 @@ export const storyJingweiEntries = sqliteTable(
     revisionHistory: text("revision_history").notNull().default("[]"),
     conflictStatus: text("conflict_status", { enum: ["none", "pending", "resolved"] }).notNull().default("none"),
     conflictDetail: text("conflict_detail"),
+    // 条目身份与来源引用（0030 migration）
+    entryKey: text("entry_key").notNull().default(""),
+    sourceRefsJson: text("source_refs_json").notNull().default("[]"),
     createdAt: integer("created_at", { mode: "timestamp_ms" }).notNull(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" }).notNull(),
     deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
@@ -391,6 +395,7 @@ export const storyJingweiEntries = sqliteTable(
   (table) => [
     index("story_jingwei_entry_book_section_updated_idx").on(table.bookId, table.sectionId, table.updatedAt),
     index("story_jingwei_entry_book_ai_idx").on(table.bookId, table.participatesInAi),
+    index("story_jingwei_entry_book_entry_key_idx").on(table.bookId, table.entryKey),
   ],
 );
 

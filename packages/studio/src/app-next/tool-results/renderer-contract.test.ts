@@ -33,6 +33,10 @@ const GENERIC_BY_DESIGN = new Set<string>([
   "jingwei.audit",
   "jingwei.read",
   "jingwei.write",
+  // 市场扫榜/查询/抽样目前走市场页，不在对话结果卡里做专属 UI。
+  "market.query",
+  "market.sample_public_chapters",
+  "market.scan",
   // narrative.mutationPreview（propose_change / approve_change）暂无专属差异预览卡，
   // NarrativeLineCard 只覆盖 narrative.read_line 的只读快照，故此项仍显式走 generic。
   "narrative.mutationPreview",

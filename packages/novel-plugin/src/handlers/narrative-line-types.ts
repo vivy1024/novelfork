@@ -19,6 +19,9 @@ export type NarrativeEdgeType =
 
 export type NarrativeEdgeConfidence = "explicit" | "inferred" | "agent-proposed";
 
+/** derived = Delta/事件归约出的剧情事实；annotation = 作者手工备注，不得覆盖 derived。 */
+export type NarrativeLayer = "derived" | "annotation";
+
 export interface NarrativeResourceRef {
   readonly kind: string;
   readonly id: string;
@@ -47,6 +50,7 @@ export interface NarrativeNode {
   readonly sourceRef?: NarrativeResourceRef;
   readonly chapterNumber?: number;
   readonly status?: string;
+  readonly layer?: NarrativeLayer;
 }
 
 export interface NarrativeEdge {
@@ -57,6 +61,7 @@ export interface NarrativeEdge {
   readonly type: NarrativeEdgeType;
   readonly label?: string;
   readonly confidence: NarrativeEdgeConfidence;
+  readonly layer?: NarrativeLayer;
 }
 
 export interface StoryBeat {
@@ -113,6 +118,7 @@ export interface NarrativeLineSnapshot {
   readonly payoffLinks?: readonly PayoffLink[];
   readonly warnings: readonly NarrativeWarning[];
   readonly generatedAt?: string;
+  readonly stateRevision?: number;
 }
 
 export interface NarrativeLineMutationPreview {

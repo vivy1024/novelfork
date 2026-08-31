@@ -70,9 +70,18 @@ export async function applyChapterChanges(
       try {
         const fields = JSON.parse(entry.fields_json || "{}");
         fields[change.fieldKey] = change.newValue;
-        storage.sqlite.prepare(
-          "UPDATE story_jingwei_entry SET fields_json = ? WHERE id = ?"
-        ).run(JSON.stringify(fields), entry.id);
+        const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info('story_jingwei_entry')`).all() as Array<{ name: string }>).map((row) => row.name));
+        const setClauses = ["fields_json = ?"];
+        const values: unknown[] = [JSON.stringify(fields)];
+        if (columns.has("updated_at")) {
+          setClauses.push("updated_at = ?");
+          values.push(Date.now());
+        }
+        if (columns.has("version")) setClauses.push("version = COALESCE(version, 1) + 1");
+        if (columns.has("entry_key")) setClauses.push("entry_key = COALESCE(entry_key, id)");
+        if (columns.has("source_refs_json")) setClauses.push("source_refs_json = COALESCE(source_refs_json, '[]')");
+        values.push(entry.id);
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
       } catch { /* ignore parse errors */ }
     }
 

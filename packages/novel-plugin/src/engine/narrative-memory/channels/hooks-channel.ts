@@ -140,7 +140,7 @@ export function createHooksChannel(): NarrativeRetrievalChannel<HooksChannelInpu
       const entries = await createStoryJingweiEntryRepository(input.storage).listByBook(input.bookId);
       for (const entry of entries) {
         const section = sectionById.get(entry.sectionId);
-        if (!entry.participatesInAi || !entryVisible(entry, input.currentChapter) || !entryLooksLikeHook(entry, section)) continue;
+        if (!entry.participatesInAi || entry.status !== "confirmed" || !entryVisible(entry, input.currentChapter) || !entryLooksLikeHook(entry, section)) continue;
         const haystack = [entry.title, entry.contentMd, entry.summaryMd ?? "", entry.summaryL0 ?? "", ...entry.tags, ...entry.aliases].join("\n");
         const score = 45 + textMatches(haystack, terms) + (entry.importance ?? 40) / 2;
         if (score <= 45) continue;

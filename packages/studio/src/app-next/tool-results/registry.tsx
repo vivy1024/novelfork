@@ -11,6 +11,7 @@ import { MemoryReadCard } from "./MemoryReadCard";
 import { NarrativeLineCard } from "./NarrativeLineCard";
 import { OutlineVolumeCard } from "./OutlineVolumeCard";
 import { PipelineChapterResultCard } from "./PipelineChapterResultCard";
+import { PublishExportCard } from "./PublishExportCard";
 import { PublishReadinessCard } from "./PublishReadinessCard";
 import { QuestionnaireCard } from "./QuestionnaireCard";
 import { SceneSpecCard } from "./SceneSpecCard";
@@ -31,6 +32,7 @@ export const RESERVED_TOOL_RESULT_RENDERERS = [
   "book-dissect",
   "outline-volume",
   "publish-readiness",
+  "publish-export",
   "scene-spec",
   "chapter-audit",
   "memory-read",
@@ -49,6 +51,7 @@ const DEFAULT_RENDERERS: Record<(typeof RESERVED_TOOL_RESULT_RENDERERS)[number],
   "book-dissect": BookDissectCard,
   "outline-volume": OutlineVolumeCard,
   "publish-readiness": PublishReadinessCard,
+  "publish-export": PublishExportCard,
   "scene-spec": SceneSpecCard,
   "chapter-audit": ChapterAuditCard,
   "memory-read": MemoryReadCard,
@@ -77,6 +80,8 @@ const EXACT_RUNTIME_RENDERERS: Record<string, (typeof RESERVED_TOOL_RESULT_RENDE
   "publish.check": "publish-readiness",
   "publish-readiness": "publish-readiness",
   "compliance.publish-readiness": "publish-readiness",
+  "publish.export": "publish-export",
+  "publish-export": "publish-export",
   "scene.spec": "scene-spec",
   "scene-spec": "scene-spec",
   "chapter.audit": "chapter-audit",
@@ -120,4 +125,4 @@ export function renderToolResult(context: ToolResultRendererContext): ReactNode 
 }
 
 export { GenericToolResultRenderer };
-export type { ToolResultArtifact, ToolResultRenderer, ToolResultRendererContext } from "./types";
+export type { ToolResultAction, ToolResultArtifact, ToolResultRenderer, ToolResultRendererContext } from "./types";

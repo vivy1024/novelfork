@@ -219,7 +219,7 @@ export type {
   VolumeStatus,
 } from "./outline-volume.js";
 
-export { handleArcCharacter, summarizeArcs } from "./arc-character.js";
+export { handleArcCharacter, summarizeArcs, derivedCharacterToArcRecord } from "./arc-character.js";
 export type {
   ArcCharacterInput,
   ArcCharacterResult,

@@ -1,6 +1,6 @@
 /**
  * book.dissect / import 闭环辅助：从已有正文抽取续写所需的最小草案。
- * 默认只出草案；apply=true 时写入经纬 dynamic 账本（hooks 文本 / focus / 章摘要旁路导出）。
+ * 默认只出草案；apply=true 时写入 dissection_staging，确认前不进正式经纬。
  */
 
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -20,7 +20,15 @@ import {
   type DissectKnowledgePack,
   type DissectWorldCategory,
 } from "./dissect-knowledge.js";
-import { upsertLedgerEntry, type LedgerKind } from "./jingwei-ledger-store.js";
+import { listLedgerEntries, type LedgerKind } from "./jingwei-ledger-store.js";
+import {
+  findDuplicateJingweiEntries,
+  insertDissectionStaging,
+  isInvalidEntityTitle,
+  type DissectionStagingKind,
+  type DissectionStagingRecord,
+  type DissectionSourceRef,
+} from "../engine/jingwei/dissection-staging.js";
 
 /** 世界要素分类 → 经纬分类。 */
 const WORLD_CATEGORY_MAP: Record<DissectWorldCategory, LedgerKind> = {
@@ -40,7 +48,7 @@ export interface BookDissectInput {
   readonly fromChapter?: number;
   readonly toChapter?: number;
   readonly targets?: readonly DissectTarget[];
-  /** 默认 false：只返回草案；true 时写入 story 草稿文件（非 canon lore）。 */
+  /** 默认 false：只返回草案；true 时写入 dissection_staging（非正式经纬）。 */
   readonly apply?: boolean;
   readonly settle?: boolean;
   readonly storage?: StorageDatabase;
@@ -76,6 +84,8 @@ export interface BookDissectResult {
   readonly preflight?: Awaited<ReturnType<typeof handleWritePreflight>>;
   readonly settlementSummary?: string;
   readonly writtenFiles: readonly string[];
+  readonly staging?: readonly DissectionStagingRecord[];
+  readonly rejectedCandidates?: readonly { readonly title: string; readonly reason: string }[];
   readonly summary: string;
   readonly error?: string;
 }
@@ -112,6 +122,45 @@ export function extractDissectDraftFromTexts(
   chapters: readonly { number: number; title: string; content: string }[],
 ): DissectDraft {
   return toFlatDraft(extractKnowledgePack(chapters));
+}
+
+function sourceRefs(chapterNumber: number, excerpt?: string): DissectionSourceRef[] {
+  const text = excerpt?.trim() ?? "";
+  return text ? [{ chapterNumber, excerpt: text.slice(0, 180) }] : [];
+}
+
+function existingLookups(storage: StorageDatabase, bookId: string, category: LedgerKind) {
+  return listLedgerEntries(storage, bookId, category).map((entry) => ({
+    id: entry.id,
+    title: entry.title,
+    aliases: Array.isArray(entry.fields.aliases)
+      ? entry.fields.aliases.filter((item): item is string => typeof item === "string")
+      : [],
+    category,
+  }));
+}
+
+function tryStage(
+  storage: StorageDatabase,
+  input: Parameters<typeof insertDissectionStaging>[1],
+  staged: DissectionStagingRecord[],
+  rejected: Array<{ title: string; reason: string }>,
+): void {
+  const invalid = isInvalidEntityTitle(input.proposedTitle, input.kind);
+  if (invalid) {
+    rejected.push({ title: input.proposedTitle, reason: invalid });
+    return;
+  }
+  try {
+    staged.push(insertDissectionStaging(storage, input));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    if (/^(invalid-entity:|missing-evidence)/u.test(reason)) {
+      rejected.push({ title: input.proposedTitle, reason });
+      return;
+    }
+    throw error;
+  }
 }
 
 function toFlatDraft(pack: DissectKnowledgePack): DissectDraft {
@@ -296,19 +345,28 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
   }
 
   const writtenFiles: string[] = [];
+  const staged: DissectionStagingRecord[] = [];
+  const rejectedCandidates: Array<{ title: string; reason: string }> = [];
   if (input.apply) {
     const createdAt = new Date().toISOString();
     const now = () => new Date(createdAt);
 
-    // 权威写入：StorageDatabase SQLite 真实事务包裹经纬批量写。
-    // 若数据库事务提交失败，取消权威提交；DB权威提交成功后，派生文件导出失败不影响/不污染权威 DB 状态。
-    const applyDBWrite = () => {
+    const applyStagingWrite = () => {
       if (want.has("all") || want.has("hooks")) {
-        for (const [index, hook] of knowledge.openHooks.entries()) {
-          upsertLedgerEntry(storage, {
+        const existing = existingLookups(storage, bookId, "foreshadowing");
+        for (const hook of knowledge.openHooks) {
+          const title = hook.description.slice(0, 24) || `伏笔`;
+          const refs = sourceRefs(hook.plantedChapter, hook.evidence || hook.description);
+          tryStage(storage, {
             bookId,
+            kind: "foreshadowing",
             category: "foreshadowing",
-            title: hook.description.slice(0, 60) || `伏笔 ${index + 1}`,
+            proposedTitle: title,
+            aliases: [],
+            sourceRefs: refs,
+            classificationReason: "拆书抽取未回收线索",
+            confidence: 0.4,
+            duplicateCandidates: findDuplicateJingweiEntries(existing, { title, category: "foreshadowing" }),
             contentMd: [
               `- 埋设章：第${hook.plantedChapter}章`,
               `- 状态：${hook.status === "progressed" ? "已有进展" : "未回收"}`,
@@ -318,115 +376,119 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
             fields: {
               hookStatus: hook.status === "progressed" ? "progressed" : "pending",
               plantedChapter: hook.plantedChapter,
-              evidence: hook.evidence,
-              speculation: hook.speculation,
               source: "book.dissect",
             },
-            status: "needs-review",
             now,
-          });
+          }, staged, rejectedCandidates);
         }
-        if (knowledge.openHooks.length > 0) writtenFiles.push(`jingwei:foreshadowing × ${knowledge.openHooks.length}`);
       }
 
       if (want.has("all") || want.has("summaries")) {
+        const existing = existingLookups(storage, bookId, "chapter-summaries");
         for (const summary of knowledge.detailedSummaries) {
-          upsertLedgerEntry(storage, {
+          const title = `第${summary.number}章`;
+          tryStage(storage, {
             bookId,
+            kind: "chapter-summaries",
             category: "chapter-summaries",
-            title: `第${summary.number}章摘要`,
+            proposedTitle: title,
+            sourceRefs: sourceRefs(summary.number, summary.summary),
+            classificationReason: "拆书抽取章摘要",
+            confidence: 0.5,
+            duplicateCandidates: findDuplicateJingweiEntries(existing, { title, category: "chapter-summaries" }),
             contentMd: [
               summary.summary,
               summary.keyEvents.length > 0 ? `\n关键事件：\n${summary.keyEvents.map((item) => `- ${item}`).join("\n")}` : "",
             ].filter(Boolean).join("\n"),
-            fields: {
-              chapterNumber: summary.number,
-              keyEvents: summary.keyEvents,
-              source: "book.dissect",
-            },
-            status: "needs-review",
+            fields: { chapterNumber: summary.number, keyEvents: summary.keyEvents, source: "book.dissect" },
             now,
-          });
-        }
-        if (knowledge.detailedSummaries.length > 0) {
-          writtenFiles.push(`jingwei:chapter-summaries × ${knowledge.detailedSummaries.length}`);
+          }, staged, rejectedCandidates);
         }
       }
 
       if (want.has("all") || want.has("characters")) {
+        const existing = existingLookups(storage, bookId, "characters");
         for (const card of knowledge.characterCards) {
-          upsertLedgerEntry(storage, {
+          tryStage(storage, {
             bookId,
+            kind: "characters",
             category: "characters",
-            title: card.name,
+            proposedTitle: card.name,
+            aliases: card.aliases,
+            sourceRefs: sourceRefs(card.firstAppearance, card.identity),
+            classificationReason: "拆书抽取角色",
+            confidence: card.confidence,
+            duplicateCandidates: findDuplicateJingweiEntries(existing, {
+              title: card.name,
+              aliases: card.aliases,
+              category: "characters",
+            }),
             contentMd: [
               `- 身份：${card.identity}`,
               card.aliases.length > 0 ? `- 别名：${card.aliases.join("、")}` : "",
               `- 首次出现：第${card.firstAppearance}章`,
-              card.relationships.length > 0
-                ? `- 关系：${card.relationships.map((rel) => `${rel.target}（${rel.relation}）`).join("、")}`
-                : "",
             ].filter(Boolean).join("\n"),
             fields: {
               aliases: card.aliases,
               role: card.role,
               firstAppearance: card.firstAppearance,
-              frequency: card.frequency,
-              confidence: card.confidence,
-              relationships: card.relationships,
               source: "book.dissect",
             },
-            status: "needs-review",
             now,
-          });
-        }
-        if (knowledge.characterCards.length > 0) {
-          writtenFiles.push(`jingwei:characters × ${knowledge.characterCards.length}`);
+          }, staged, rejectedCandidates);
         }
       }
 
       if (want.has("all") || want.has("world")) {
         for (const element of knowledge.worldElements) {
-          upsertLedgerEntry(storage, {
+          const category = WORLD_CATEGORY_MAP[element.category] ?? "world-model";
+          const kind = (category === "locations" || category === "factions" || category === "power-system" || category === "rules" || category === "props" || category === "world-model"
+            ? category
+            : "world-model") as DissectionStagingKind;
+          const existing = existingLookups(storage, bookId, category);
+          const excerpt = element.description;
+          const chapterNumber = element.sourceChapters[0] ?? range.from;
+          tryStage(storage, {
             bookId,
-            category: WORLD_CATEGORY_MAP[element.category] ?? "world-model",
-            title: element.name,
+            kind,
+            category,
+            proposedTitle: element.name,
+            sourceRefs: sourceRefs(chapterNumber, excerpt),
+            classificationReason: `拆书抽取世界要素（${element.category}）`,
+            confidence: 0.4,
+            duplicateCandidates: findDuplicateJingweiEntries(existing, { title: element.name, category }),
             contentMd: [
               element.description,
               element.sourceChapters.length > 0 ? `\n出处章节：${element.sourceChapters.join("、")}` : "",
             ].filter(Boolean).join("\n"),
-            fields: {
-              worldCategory: element.category,
-              sourceChapters: element.sourceChapters,
-              source: "book.dissect",
-            },
-            status: "needs-review",
+            fields: { worldCategory: element.category, sourceChapters: element.sourceChapters, source: "book.dissect" },
             now,
-          });
-        }
-        if (knowledge.worldElements.length > 0) {
-          writtenFiles.push(`jingwei:world × ${knowledge.worldElements.length}`);
+          }, staged, rejectedCandidates);
         }
 
+        const existingRelations = existingLookups(storage, bookId, "relationships");
         for (const edge of knowledge.relationshipGraph) {
-          upsertLedgerEntry(storage, {
+          const title = `${edge.source}与${edge.target}`;
+          tryStage(storage, {
             bookId,
+            kind: "relationships",
             category: "relationships",
-            title: `${edge.source} ↔ ${edge.target}`,
+            proposedTitle: title,
+            sourceRefs: sourceRefs(range.from, edge.description),
+            classificationReason: "拆书抽取共现关系，待确认",
+            confidence: 0.3,
+            duplicateCandidates: findDuplicateJingweiEntries(existingRelations, { title, category: "relationships" }),
             contentMd: edge.description,
             fields: { source: edge.source, target: edge.target, origin: "book.dissect" },
-            status: "needs-review",
             now,
-          });
-        }
-        if (knowledge.relationshipGraph.length > 0) {
-          writtenFiles.push(`jingwei:relationships × ${knowledge.relationshipGraph.length}`);
+          }, staged, rejectedCandidates);
         }
       }
+      if (staged.length > 0) writtenFiles.push(`dissection_staging × ${staged.length}`);
     };
 
     try {
-      const runInTx = storage.sqlite.transaction(applyDBWrite);
+      const runInTx = storage.sqlite.transaction(applyStagingWrite);
       runInTx();
     } catch (txError) {
       return {
@@ -438,47 +500,24 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
         settled,
         draft,
         writtenFiles: [],
-        summary: `经纬权威事务写入失败，数据已完全回滚：${txError instanceof Error ? txError.message : String(txError)}`,
+        staging: [],
+        rejectedCandidates,
+        summary: `拆书暂存事务写入失败，数据已完全回滚：${txError instanceof Error ? txError.message : String(txError)}`,
         error: "dissect-transaction-failed",
       };
     }
 
-    // DB 权威提交已成功。派生文件导出为可重建补偿导出，导出失败捕获记录，不污染/回滚权威 DB。
     try {
       const storyDir = join(input.bookRoot, "story");
       await mkdir(storyDir, { recursive: true });
-
-      if (want.has("all") || want.has("hooks")) {
-        const hooksPath = join(storyDir, "pending_hooks.md");
-        const existing = await readFile(hooksPath, "utf8").catch(() => "");
-        const lines = knowledge.openHooks.map((hook, index) =>
-          `- [${hook.status === "progressed" ? "~" : " "}] [dissect-${index + 1}] 第${hook.plantedChapter}章：${hook.description}`,
-        );
-        const next = existing.trim()
-          ? `${existing.trimEnd()}\n\n# dissect ${createdAt}（导出）\n${lines.join("\n")}\n`
-          : `# 伏笔追踪（导出；权威源在经纬 foreshadowing）\n\n${lines.join("\n")}\n`;
-        await writeFile(hooksPath, next, "utf8");
-        writtenFiles.push("story/pending_hooks.md（导出）");
-      }
-
-      if ((want.has("all") || want.has("summaries") || want.has("characters")) && knowledge.suggestedFocus) {
-        const focusPath = join(storyDir, "current_focus.md");
-        const existingFocus = await readFile(focusPath, "utf8").catch(() => "");
-        if (!existingFocus.trim()) {
-          await writeFile(focusPath, `${knowledge.suggestedFocus}\n`, "utf8");
-          writtenFiles.push("story/current_focus.md（导出）");
-        }
-      }
-
-      // 调试快照（非权威源）
       await writeFile(
         join(storyDir, "dissect_draft.json"),
-        `${JSON.stringify({ bookId, range, createdAt, note: "调试快照；权威源在经纬", draft, knowledge }, null, 2)}\n`,
+        `${JSON.stringify({ bookId, range, createdAt, note: "调试快照；权威候选在 dissection_staging", draft, knowledge, staging: staged }, null, 2)}\n`,
         "utf8",
       );
       writtenFiles.push("story/dissect_draft.json（快照）");
     } catch (exportError) {
-      writtenFiles.push(`export:warning - 派生导出文件写入失败（可随时从 DB 经纬重建）: ${exportError instanceof Error ? exportError.message : String(exportError)}`);
+      writtenFiles.push(`export:warning - 派生导出失败（不影响暂存）：${exportError instanceof Error ? exportError.message : String(exportError)}`);
     }
   }
 
@@ -502,12 +541,13 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
     preflight,
     settlementSummary,
     writtenFiles,
+    ...(input.apply ? { staging: staged, rejectedCandidates } : {}),
     summary: [
       `已拆解第 ${range.from}-${range.to} 章（有效正文 ${chapters.length} 章）`,
       `角色卡 ${knowledge.characterCards.length} / 设定 ${knowledge.worldElements.length} / 钩子 ${knowledge.openHooks.length} / 摘要 ${knowledge.detailedSummaries.length}`,
       settled ? "已 settle" : "未 settle",
       input.apply
-        ? `已写入经纬 needs-review（${writtenFiles.length} 项，待作者确认）`
+        ? `已写入暂存 ${staged.length} 条（待确认）；拒绝 ${rejectedCandidates.length} 条脏候选`
         : "仅草案未落盘",
       preflight.ok ? "preflight 就绪" : `preflight 未就绪：${preflight.blockers.map((item) => item.code).join(",") || "unknown"}`,
     ].join("；"),

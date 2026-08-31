@@ -84,6 +84,7 @@ export const NOVEL_RUNTIME_SYSTEM_PROMPT = `# NovelFork 小说创作运行时
 - 经纬（Jingwei，静态设定）：这本书"是什么"——角色人设、世界观、力量体系、势力门派、卷纲大纲、伏笔。权威源在经纬数据库，用 lore.read 查询、lore.write 录入/更新；写前必查相关设定，改设定必须经作者确认。
 - 叙事记忆（Narrative Memory，动态事实）：这本书"发生了什么"——时间线、事实、事件、角色状态、近章进展。用 memory.* 查询；写前查近章与相关事实，写后由 pipeline.write 自动发起 memory.settle_chapter 结算（历史空洞用 memory.settle_range 回填）；高风险/待确认事件不得冒充已确认事实。
 - 写作技能（Writing Skills，通用方法论）：怎么写好——文风、节奏、钩子、去 AI 味、平台规则。启用即物化在 .novelfork/skills/<slug>/SKILL.md，由本会话的 Skill 工具加载；写前先读相关技能，写后由 writing-skills.check_compliance 按技能规则校验。
+- 作者层 / 书籍层 / 规则层必须分开：跨书习惯只存在作者目录，且仅当本书开启 authorProfileEnabled 才注入；本书立项/大纲/当前聚焦属于 Book Design；强制约束与禁忌属于书籍规则。禁止把一本的口吻泄漏到另一本。
 - 边界：经纬只写静态设定，动态事实只进叙事记忆；方法论是"怎么写"，设定是"是什么"，两者不互相充当。
 
 ## 三层闭环：每次写作都让这本书更「记得住」

@@ -125,7 +125,8 @@ describe("lore.write / jingwei.write retire", () => {
 		expect(row.deleted_at).not.toBeNull();
 		expect(row.lifecycle).toBe("archived");
 		expect(row.status).toBe("needs-review");
-		expect(row.conflict_status).toBe("superseded");
+		// retire 退出 AI，不改 layer/正文；conflict_status 权威枚举是 none|pending|resolved，退役不是协同冲突。
+		expect(row.conflict_status).toBe("none");
 		const rev = storage.sqlite
 			.prepare(`SELECT reason, changed_by FROM jingwei_revision WHERE entry_id = 'canon-bad'`)
 			.get() as { reason: string; changed_by: string };

@@ -5,6 +5,7 @@ import { Hono } from "hono";
 import {
   buildStructuredErrorEnvelope,
   getStorageDatabase,
+  loadChapterStateProjection,
   requireModelForAiAction,
   type StyleProfile,
 } from "@vivy1024/novelfork-core";
@@ -212,9 +213,19 @@ export function createWritingToolsRouter(ctx: RouterContext): Hono {
     const bookId = c.req.param("bookId");
     await ctx.state.loadBookConfig(bookId);
     const storage = getStorageDatabase();
-    const { createJingweiCharacterArcRepository } = await import("../engine/index.js");
-    const arcs = await createJingweiCharacterArcRepository(storage).listByBook(bookId);
-    return c.json({ arcs });
+    const { derivedCharacterToArcRecord, summarizeArcs } = await import("../handlers/arc-character.js");
+    const projection = loadChapterStateProjection(storage, bookId);
+    const names = new Map(projection.characters.map((item) => [item.characterId, item.name ?? item.characterId] as const));
+    const { items } = summarizeArcs({
+      arcs: projection.characters.map(derivedCharacterToArcRecord),
+      names,
+      currentChapter: projection.lastChapter,
+    });
+    return c.json({
+      arcs: items,
+      stateRevision: projection.stateRevision,
+      layer: "derived",
+    });
   });
 
   app.post("/api/books/:bookId/chapters/:ch/tone-check", async (c) => {

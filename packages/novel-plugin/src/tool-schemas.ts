@@ -510,6 +510,16 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       action: stringSchema(
         "操作类型：create（创建）| update（更新）| delete（删除非 canon）| retire（退役，含错误/过期 canon：退出 AI，不改 layer/正文）。默认根据标题自动判断创建或更新。",
       ),
+      entryKey: stringSchema("条目的唯一标识，通常由系统生成（可选）。"),
+      sourceRefs: arraySchema("证据来源数组，通常在拆书暂存提升时系统透传，包含 chapterNumber 和 excerpt。", {
+        type: "object",
+        properties: {
+          chapterNumber: numberSchema("章节号"),
+          excerpt: stringSchema("摘录正文"),
+        },
+        required: ["chapterNumber", "excerpt"],
+        additionalProperties: false,
+      }),
       title: stringSchema("条目标题（用于匹配已有条目，标题相同则更新）。"),
       contentMd: stringSchema("条目内容（Markdown 格式）。delete/retire 时不需要。"),
       summaryMd: stringSchema("条目短摘要（可选；未提供时自动截断生成）。"),
@@ -526,6 +536,8 @@ export const NOVEL_TOOL_SCHEMAS: Record<string, ToolInputSchema> = {
       source: stringSchema("设定来源；写入 canon 或 rules 类静态设定时需提供 source 或 evidence。"),
       evidence: stringSchema("证据摘录；写入 canon 或 rules 类静态设定时需提供 source 或 evidence。"),
       status: { type: "string", enum: ["draft", "confirmed", "needs-review"], description: "条目状态（默认 confirmed）" },
+      stagingId: stringSchema("拆书暂存候选 ID（确认提升或拒绝时传入）。"),
+      stagingDecision: enumSchema(["promote", "reject"], "对 staging 候选的处理：promote（确认提升）| reject（拒绝，不进正式库）。"),
     },
     required: ["bookId", "title"],
     additionalProperties: false,

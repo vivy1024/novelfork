@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
+import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
 import { createManualNarrativeFact } from "../engine/narrative-memory/fact-mutations.js";
 import { readChapterSettlementRecord } from "../engine/narrative-memory/settlement-idempotency.js";
 import { settleConfirmedChapter } from "./chapter-settlement-service.js";
@@ -92,6 +93,79 @@ describe("chapter settlement service", () => {
       expect(result).toMatchObject({ status: "completed", extracted: 1, autoApplied: 1, pending: 0, highRiskPending: 0 });
       expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact WHERE subject = ? AND object = ?").get("韩立", "药园")?.count).toBe(1);
       expect(storage.sqlite.prepare<{ status: string; riskLevel: string }>("SELECT status, risk_level AS riskLevel FROM narrative_event LIMIT 1").get()).toEqual({ status: "applied", riskLevel: "low" });
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("事实写入失败时整体回滚，不登记结算台账", async () => {
+    const storage = await createStorage();
+    try {
+      ensureNarrativeMemorySchema(storage);
+      storage.sqlite.exec(`
+        CREATE TRIGGER fail_narrative_fact_insert
+        BEFORE INSERT ON narrative_fact
+        BEGIN
+          SELECT RAISE(FAIL, 'simulated-fact-write-error');
+        END;
+      `);
+
+      const result = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content: "【地点】韩立抵达药园",
+      }, {
+        storage,
+        llmExtractor: async () => [{
+          eventType: "location_changed",
+          subject: "韩立",
+          predicate: "抵达",
+          object: "药园",
+          evidenceText: "【地点】韩立抵达药园",
+          confidence: 0.9,
+          source: "settle",
+        }],
+      });
+
+      expect(result.status).toBe("failed");
+      expect(result.error).toBe("settlement-commit-failed");
+      expect(result.explanation?.whatHappened).toContain("整体回滚");
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event").get()?.count).toBe(0);
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_fact").get()?.count).toBe(0);
+      expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 12 })).toBeUndefined();
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_settlement_artifact").get()?.count).toBe(0);
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("结算成功后递增书级 stateRevision，过期 expectedStateRevision 冲突回滚", async () => {
+    const storage = await createSummaryStorage();
+    try {
+      const content = "【地点】韩立抵达药园";
+      const first = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 12,
+        content,
+        expectedStateRevision: 0,
+      }, { storage, llmExtractor: markerExtractor(content) });
+
+      expect(first.status).toBe("completed");
+      expect(first.stateRevision).toBe(1);
+      expect(first.stateFingerprint).toMatch(/^[0-9a-f]{64}$/u);
+      expect(storage.sqlite.prepare<{ state_revision: number }>("SELECT state_revision FROM book WHERE id = ?").get("book-1")?.state_revision).toBe(1);
+
+      const conflict = await settleConfirmedChapter({
+        bookId: "book-1",
+        chapterNumber: 13,
+        content: "【地点】韩立抵达后山",
+        expectedStateRevision: 0,
+      }, { storage, llmExtractor: markerExtractor("【地点】韩立抵达后山") });
+
+      expect(conflict.status).toBe("failed");
+      expect(conflict.error).toBe("state-revision-conflict");
+      expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event WHERE chapter_number = 13").get()?.count).toBe(0);
+      expect(storage.sqlite.prepare<{ state_revision: number }>("SELECT state_revision FROM book WHERE id = ?").get("book-1")?.state_revision).toBe(1);
     } finally {
       storage.close();
     }

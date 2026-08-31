@@ -31,7 +31,7 @@ function makeStorage(): { storage: StorageDatabase; bookId: string } {
       "related_chapter_numbers_json" TEXT NOT NULL DEFAULT '[]', "related_entry_ids_json" TEXT NOT NULL DEFAULT '[]',
       "visibility_rule_json" TEXT NOT NULL DEFAULT '{"type":"tracked"}', "participates_in_ai" INTEGER NOT NULL DEFAULT 1,
       "token_budget" INTEGER, "priority_tier" TEXT, "layer" TEXT, "importance" INTEGER,
-      "summary_l0" TEXT, "source" TEXT, "revision_history" TEXT, "conflict_status" TEXT,
+      "summary_l0" TEXT, "entry_key" TEXT, "source_refs_json" TEXT NOT NULL DEFAULT '[]', "source" TEXT, "revision_history" TEXT, "conflict_status" TEXT,
       "conflict_detail" TEXT, "created_at" INTEGER NOT NULL, "updated_at" INTEGER NOT NULL, "deleted_at" INTEGER
     );
     CREATE TABLE IF NOT EXISTS "jingwei_revision" (
@@ -146,7 +146,7 @@ describe("ensureBookFtsFresh / rebuildBookFts", () => {
     const { storage, bookId } = makeStorage();
     storage.sqlite
       .prepare(
-        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}')`,
+        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "entry_key", "status") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', NULL, 'confirmed')`,
       )
       .run("e-raw", bookId, "sec-1", "南宫婉", "南宫婉与韩立同门", 1_700_000_000_000, 1_700_000_000_000);
     expect(ensureBookFtsFresh(storage, bookId)).toBe(true);
@@ -158,12 +158,12 @@ describe("ensureBookFtsFresh / rebuildBookFts", () => {
     const { storage, bookId } = makeStorage();
     storage.sqlite
       .prepare(
-        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "status") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 'confirmed')`,
+        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "status", "entry_key") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 'confirmed', NULL)`,
       )
       .run("legacy-text-time", bookId, "sec-1", "旧格式条目", "文本时间戳也应稳定索引", 1_700_000_000_000, "2026-07-22 10:33:44");
     storage.sqlite
       .prepare(
-        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "status") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 'confirmed')`,
+        `INSERT INTO "story_jingwei_entry" ("id", "book_id", "section_id", "title", "content_md", "created_at", "updated_at", "tags_json", "aliases_json", "custom_fields_json", "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "status", "entry_key") VALUES (?, ?, ?, ?, ?, ?, ?, '[]', '[]', '{}', '[]', '[]', '{"type":"tracked"}', 'confirmed', NULL)`,
       )
       .run("modern-integer-time", bookId, "sec-1", "新格式条目", "整数时间戳应与旧格式共同参与比较", 1_700_000_000_000, 1_700_000_000_000);
 

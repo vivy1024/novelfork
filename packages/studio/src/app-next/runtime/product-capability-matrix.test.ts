@@ -200,7 +200,7 @@ describe("NovelFork Runtime product capability matrix", () => {
 			),
 			"utf8",
 		);
-		expect(mountSource).toContain("toolResultRenderer={renderToolResult}");
+		expect(mountSource).toContain("toolResultRenderer={renderToolResultWithAction}");
 		expect(nativeToolCardSource).toContain("runtimeRenderer");
 		expect(nativeToolCardSource).toContain("data-runtime-renderer");
 		expect(nativeMessageListSource).toContain("useRuntimeToolResultRenderer");

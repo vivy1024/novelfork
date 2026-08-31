@@ -11,6 +11,14 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
+import {
+  generateEntryKey,
+  resolveEntryKey,
+  mergeSourceRefs,
+  mergeAliases,
+  type EntrySourceRef,
+} from "../engine/jingwei/entry-identity.js";
+
 
 export function ensureJingweiLedgerSchema(storage: StorageDatabase): void {
   ensureNarrativeMemorySchema(storage);
@@ -104,6 +112,9 @@ export interface LedgerWriteInput {
   readonly reason?: string;
   readonly changedBy?: string;
   readonly now?: () => Date;
+  readonly entryKey?: string;
+  readonly aliases?: readonly string[];
+  readonly sourceRefs?: readonly EntrySourceRef[];
 }
 
 const CATEGORY_NAMES: Record<LedgerKind, string> = {
@@ -285,8 +296,21 @@ export function findLedgerEntryByTitle(
   bookId: string,
   category: LedgerKind,
   title: string,
+  entryKey?: string | null,
 ): LedgerEntry | null {
-  return listLedgerEntries(storage, bookId, category).find((entry) => entry.title === title) ?? null;
+  const targetKey = resolveEntryKey({ entryKey, category, title });
+  const entries = listLedgerEntries(storage, bookId, category);
+  if (tableHasColumn(storage, "story_jingwei_entry", "entry_key")) {
+     const byKey = storage.sqlite.prepare(`
+       SELECT id FROM story_jingwei_entry
+       WHERE book_id = ? AND entry_key = ? AND deleted_at IS NULL
+       LIMIT 1
+     `).get(bookId, targetKey) as { id: string } | undefined;
+     if (byKey) {
+       return entries.find((e) => e.id === byKey.id) ?? null;
+     }
+  }
+  return entries.find((entry) => entry.title === title) ?? null;
 }
 
 /** 按 ID 查找账本条目。 */
@@ -338,10 +362,32 @@ export function upsertLedgerEntry(
   const now = (input.now?.() ?? new Date()).getTime();
   const status = input.status ?? "confirmed";
   const fieldsJson = JSON.stringify(input.fields ?? {});
-  const existing = findLedgerEntryByTitle(storage, bookId, category, title);
+  const existing = findLedgerEntryByTitle(storage, bookId, category, title, input.entryKey);
+
+  const targetKey = resolveEntryKey({ entryKey: input.entryKey, category, title, fields: input.fields });
 
   if (existing) {
+    let finalKey = targetKey;
+    let nextAliases = input.aliases ? mergeAliases([], input.aliases) : [];
+    let nextSourceRefs = input.sourceRefs ? mergeSourceRefs([], input.sourceRefs) : [];
+    if (tableHasColumn(storage, "story_jingwei_entry", "entry_key")) {
+      const row = storage.sqlite.prepare(`SELECT entry_key, aliases_json, source_refs_json FROM story_jingwei_entry WHERE id = ? AND book_id = ?`).get(existing.id, bookId) as any;
+      finalKey = resolveEntryKey({ entryKey: input.entryKey, category, title, fields: input.fields }, { entryKey: row?.entry_key });
+      const parseArray = (val: any) => {
+          if (typeof val !== "string") return [];
+          try {
+              const p = JSON.parse(val);
+              return Array.isArray(p) ? p : [];
+          } catch {
+              return [];
+          }
+      };
+      nextAliases = input.aliases ? mergeAliases(parseArray(row?.aliases_json), input.aliases) : parseArray(row?.aliases_json);
+      nextSourceRefs = input.sourceRefs ? mergeSourceRefs(parseArray(row?.source_refs_json), input.sourceRefs) : parseArray(row?.source_refs_json);
+    }
+
     const updateClauses = [
+      "title = ?",
       "content_md = ?",
       "fields_json = ?",
       "custom_fields_json = ?",
@@ -349,13 +395,25 @@ export function upsertLedgerEntry(
       "layer = 'dynamic'",
       "updated_at = ?",
     ];
-    const updateValues: unknown[] = [input.contentMd, fieldsJson, fieldsJson, status, now];
+    const updateValues: unknown[] = [input.title ?? existing.title, input.contentMd, fieldsJson, fieldsJson, status, now];
     if (tableHasColumn(storage, "story_jingwei_entry", "source")) {
       updateClauses.push("source = ?");
       updateValues.push(input.changedBy ?? "auto-settle");
     }
     if (tableHasColumn(storage, "story_jingwei_entry", "version")) {
       updateClauses.push("version = COALESCE(version, 1) + 1");
+    }
+    if (tableHasColumn(storage, "story_jingwei_entry", "entry_key")) {
+      updateClauses.push("entry_key = ?");
+      updateValues.push(finalKey);
+    }
+    if (tableHasColumn(storage, "story_jingwei_entry", "aliases_json")) {
+      updateClauses.push("aliases_json = ?");
+      updateValues.push(JSON.stringify(nextAliases));
+    }
+    if (tableHasColumn(storage, "story_jingwei_entry", "source_refs_json")) {
+      updateClauses.push("source_refs_json = ?");
+      updateValues.push(JSON.stringify(nextSourceRefs));
     }
     const run = storage.sqlite.transaction(() => {
       recordLedgerRevision(storage, bookId, existing.id, {
@@ -370,10 +428,14 @@ export function upsertLedgerEntry(
       `).run(...updateValues, existing.id, bookId);
     });
     run();
-    return { ...existing, contentMd: input.contentMd, fields: input.fields, status, updatedAt: now };
+    return { ...existing, title: input.title ?? existing.title, contentMd: input.contentMd, fields: input.fields, status, updatedAt: now };
   }
 
   const id = crypto.randomUUID();
+  const finalKey = resolveEntryKey({ entryKey: input.entryKey, category, title, fields: input.fields });
+  const nextAliases = input.aliases ? mergeAliases([], input.aliases) : [];
+  const nextSourceRefs = input.sourceRefs ? mergeSourceRefs([], input.sourceRefs) : [];
+
   const insertColumns = [
     "id", "book_id", "section_id", "category", "title", "content_md", "summary_md",
     "tags_json", "aliases_json", "custom_fields_json", "fields_json",
@@ -390,13 +452,13 @@ export function upsertLedgerEntry(
     input.contentMd,
     ledgerSummary(title, input.fields ?? {}),
     "[]",
-    "[]",
+    JSON.stringify(nextAliases),
     fieldsJson,
     fieldsJson,
     "[]",
     "[]",
     '{"type":"tracked"}',
-    1,
+    status === "needs-review" ? 0 : 1,
     null,
     "dynamic",
     "auto",
@@ -415,6 +477,14 @@ export function upsertLedgerEntry(
   if (tableHasColumn(storage, "story_jingwei_entry", "version")) {
     insertColumns.push("version");
     insertValues.push(1);
+  }
+  if (tableHasColumn(storage, "story_jingwei_entry", "entry_key")) {
+    insertColumns.push("entry_key");
+    insertValues.push(finalKey);
+  }
+  if (tableHasColumn(storage, "story_jingwei_entry", "source_refs_json")) {
+    insertColumns.push("source_refs_json");
+    insertValues.push(JSON.stringify(nextSourceRefs));
   }
   storage.sqlite.prepare(`
     INSERT INTO story_jingwei_entry (${insertColumns.map((column) => `"${column}"`).join(", ")})

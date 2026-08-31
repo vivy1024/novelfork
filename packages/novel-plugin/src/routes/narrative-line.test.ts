@@ -63,6 +63,29 @@ describe("GET /api/books/:bookId/narrative-line", () => {
     // 章节派生节点应该在快照里。
     expect(payload.snapshot?.nodes?.length).toBeGreaterThan(0);
   });
+
+  it("keeps author overlay nodes as annotation and does not let them overwrite derived chapters", async () => {
+    await mkdir(join(bookRoot, "story"), { recursive: true });
+    await writeFile(join(bookRoot, "story", "narrative_line.json"), JSON.stringify({
+      version: 1,
+      nodes: [
+        { id: `chapter:${BOOK_ID}:1`, type: "chapter", title: "作者想覆盖派生章" },
+        { id: "note-1", type: "event", title: "作者备注" },
+      ],
+      edges: [],
+      appliedMutations: [],
+    }, null, 2), "utf8");
+
+    const response = await app().request(base());
+    const payload = await response.json() as {
+      snapshot?: { nodes?: Array<{ id: string; title: string; layer?: string }> };
+    };
+    const chapter = payload.snapshot?.nodes?.find((node) => node.id === `chapter:${BOOK_ID}:1`);
+    const note = payload.snapshot?.nodes?.find((node) => node.id === "note-1");
+    expect(chapter?.title).toContain("开篇");
+    expect(chapter?.layer).toBe("derived");
+    expect(note).toMatchObject({ title: "作者备注", layer: "annotation" });
+  });
 });
 
 describe("POST /narrative-line/propose", () => {

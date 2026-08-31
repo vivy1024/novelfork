@@ -88,6 +88,30 @@ describe("hard channel", () => {
         createdAt: new Date("2026-06-22T00:00:00.000Z"),
         updatedAt: new Date("2026-06-22T00:00:00.000Z"),
       });
+      await entries.create({
+        id: "needs-review-rule",
+        bookId: "book-1",
+        sectionId: "sec-rules",
+        title: "待审规则",
+        contentMd: "这条内容即使被误开 AI 也不应注入。",
+        summaryMd: null,
+        tags: ["book_rules"],
+        aliases: [],
+        customFields: { category: "rules" },
+        relatedChapterNumbers: [],
+        relatedEntryIds: [],
+        visibilityRule: { type: "global" },
+        participatesInAi: true,
+        tokenBudget: null,
+        priorityTier: "core",
+        layer: "canon",
+        importance: 95,
+        summaryL0: null,
+        status: "needs-review",
+        createdAt: new Date("2026-06-22T00:00:00.000Z"),
+        updatedAt: new Date("2026-06-22T00:00:00.000Z"),
+      });
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET participates_in_ai = 1 WHERE id = 'needs-review-rule'`).run();
 
       const result = await createHardChannel().run({
         storage,

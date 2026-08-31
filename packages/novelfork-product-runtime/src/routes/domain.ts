@@ -17,6 +17,7 @@ import {
 	createOverviewRouter,
 	createQualityTrendRouter,
 	createWriteReadinessRouter,
+	createWritingLayersRouter,
 	createWritingModesRouter,
 	createWritingResourceRouter,
 	createWritingSkillsRouter,
@@ -128,6 +129,15 @@ novelDomainRoutes.route("", asRuntimeRouter(createFilterRouter()));
 // Writing Skills 全局目录与作者副本编辑。内容权威源始终是 SKILL.md 文件，
 // 作品级生效状态由可信根目录 `.novelfork/skills` 自动扫描决定。
 novelDomainRoutes.route("", asRuntimeRouter(createWritingSkillsRouter()));
+novelDomainRoutes.route(
+	"",
+	asRuntimeRouter(
+		createWritingLayersRouter(productRouterContext, {
+			resolveBookRoot: resolveDomainBookRoot,
+			home: process.env.NOVELFORK_PROJECT_ROOT,
+		}),
+	),
+);
 // 质量趋势（章级 AI 味/漂移分/质量分时间序列）和写作模式（文风漂移检测基线）。
 novelDomainRoutes.route("", asRuntimeRouter(createQualityTrendRouter(productRouterContext)));
 novelDomainRoutes.route("", asRuntimeRouter(createWritingModesRouter(productRouterContext)));

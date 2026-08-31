@@ -6,7 +6,7 @@ import type { NarrativeMemoryView } from "./narrative-memory-graph-model";
  *
  * 它不另建数据接口，直接复用 NarrativeMemoryGraphWorkspace 的
  * `/narrative-memory/graph` 读取链路；scope=read 仅显式标记该视图不会写入
- * Narrative Memory。默认从时间线开始，其他四个既有图谱由工作区的固定主题切换承载。
+ * Narrative Memory。默认从时间线开始，关系演化与矛盾冲突由工作区主题切换承载。
  */
 export interface DevelopmentTimelineViewProps {
   readonly bookId: string;

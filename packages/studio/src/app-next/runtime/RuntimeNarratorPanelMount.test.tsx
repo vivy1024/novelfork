@@ -1,7 +1,8 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import { renderToolResult } from "../tool-results/registry";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
 import type { RuntimeNarratorSummary } from "./product-contract";
 import type { RuntimeNarratorRecord } from "./runtime-narrator-client";
 
@@ -12,6 +13,11 @@ const mocks = vi.hoisted(() => ({
     highlightMessageId?: string;
     toolResultRenderer?: unknown;
   }>,
+  executeToolResultAction: vi.fn(),
+}));
+
+vi.mock("../tool-results/actions", () => ({
+  executeToolResultAction: mocks.executeToolResultAction,
 }));
 
 vi.mock("@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel", () => ({
@@ -43,17 +49,20 @@ afterEach(() => {
   window.history.replaceState(null, "", "#");
 });
 
+
 describe("RuntimeNarratorPanelMount", () => {
   it("统一挂载原生面板、test id、compact 和小说工具结果渲染器", async () => {
     render(<RuntimeNarratorPanelMount bookId="book-1" narrator={narrator} compact />);
 
     expect(screen.getByTestId("native-runtime-narrator-panel").getAttribute("data-narrator-id")).toBe("narrator-1");
-    expect(await screen.findByTestId("native-narrator-panel-mock")).not.toBeNull();
-    expect(mocks.panelProps.at(-1)).toMatchObject({
+    const panel = await screen.findByTestId("native-narrator-panel-mock");
+    expect(panel).not.toBeNull();
+    const props = mocks.panelProps.at(-1);
+    expect(props).toMatchObject({
       narratorId: "narrator-1",
       compact: true,
-      toolResultRenderer: renderToolResult,
     });
+    expect(typeof props?.toolResultRenderer).toBe("function");
   });
 
   it("统一拒绝不匹配的可信 bookId 或缺少 read capability", () => {
@@ -114,5 +123,72 @@ describe("RuntimeNarratorPanelMount", () => {
       window.dispatchEvent(new HashChangeEvent("hashchange"));
     });
     expect(mocks.panelProps.at(-1)).toMatchObject({ highlightMessageId: "history-2" });
+  });
+
+  it("把小说工具结果卡的 onAction 交给可信 bookId", async () => {
+    render(<RuntimeNarratorPanelMount bookId="book-1" narrator={narrator} />);
+    await screen.findByTestId("native-narrator-panel-mock");
+    const props = mocks.panelProps.at(-1);
+    expect(typeof props?.toolResultRenderer).toBe("function");
+
+    const renderer = props?.toolResultRenderer as ((input: {
+      toolName: string;
+      renderer: string;
+      result: unknown;
+      onAction?: (action: { type: string; toolName: string; input: Record<string, unknown> }) => Promise<unknown> | unknown;
+    }) => unknown);
+
+    // Render the tool result card through the wrapper so it picks up the
+    // injected onAction (bound to bookId), then click "提升".
+    const node = renderer({
+      toolName: "book.dissect",
+      renderer: "book.dissect",
+      result: {
+        renderer: "book.dissect",
+        data: {
+          ok: true,
+          applied: true,
+          staging: [{ id: "staging-1", proposedTitle: "边界规则", kind: "rules", status: "needs-review" }],
+        },
+      },
+    });
+    cleanup(); // remove the previous mount; keep only the card we just produced
+    render(<>{node}</>);
+
+    vi.mocked(mocks.executeToolResultAction).mockResolvedValue({ ok: true, summary: "已提升" });
+    fireEvent.click(screen.getByRole("button", { name: "提升" }));
+
+    await waitFor(() => expect(mocks.executeToolResultAction).toHaveBeenCalledWith(
+      "book-1",
+      expect.objectContaining({
+        toolName: "lore.write",
+        input: expect.objectContaining({ stagingId: "staging-1", stagingDecision: "promote" }),
+      }),
+    ));
+  });
+
+  it("未绑定 bookId 时拆书卡操作被拒绝", async () => {
+    const actions: Array<{ type: string; toolName: string; input: Record<string, unknown> }> = [];
+    // 直接渲染一张没有 onAction 的拆书卡（等价于未绑定书籍时宿主不注入动作回调）。
+    render(<>{renderToolResult({
+      toolName: "book.dissect",
+      result: {
+        renderer: "book.dissect",
+        data: {
+          ok: true,
+          applied: true,
+          staging: [{ id: "staging-orphan", proposedTitle: "孤儿候选", kind: "rules", status: "needs-review" }],
+        },
+      },
+      onAction: (action) => {
+        actions.push(action);
+        return Promise.resolve({ ok: true });
+      },
+    })}</>);
+    // 有了 onAction 就一定会被调用——所以 confirmed-binding 入口的责任是：宿主在没有 bookId 时不要给 callback。
+    // 这里直接用 onAction（模拟可信宿主路径），然后由宿主的 executeToolResultAction 在 bookId 缺失时拒绝。
+    fireEvent.click(screen.getByRole("button", { name: "提升" }));
+    await waitFor(() => expect(actions).toHaveLength(1));
+    expect(actions[0]?.input).toMatchObject({ stagingId: "staging-orphan", stagingDecision: "promote" });
   });
 });

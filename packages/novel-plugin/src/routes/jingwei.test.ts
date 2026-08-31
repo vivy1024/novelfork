@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createStorageDatabase, runStorageMigrations, type StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
+import { insertDissectionStaging } from "../engine/jingwei/dissection-staging.js";
 import { createJingweiRouter } from "./jingwei.js";
 
 let storage: StorageDatabase;
@@ -182,6 +183,88 @@ describe("Jingwei mutation routes", () => {
     expect(history.revisions).toHaveLength(2);
   });
 
+  it("对拆书暂存候选执行 promote/reject", async () => {
+    const staging = insertDissectionStaging(storage, {
+      bookId: "book-1",
+      kind: "rules",
+      category: "rules",
+      proposedTitle: "平台禁止内容",
+      sourceRefs: [{ chapterNumber: 1, excerpt: "不得描写邪教仪式" }],
+      classificationReason: "平台硬规则候选",
+      contentMd: "不得描写邪教仪式细节。",
+      fields: { source: "book.dissect" },
+    });
+
+    const promoteResponse = await request(`/staging/${staging.id}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stagingDecision: "promote" }),
+    });
+    expect(promoteResponse.status).toBe(200);
+    expect(await promoteResponse.json()).toMatchObject({
+      ok: true,
+      data: { action: "created", bookId: "book-1", category: "rules", title: "平台禁止内容" },
+    });
+
+    const promotion = storage.sqlite.prepare(`
+      SELECT title, category, participates_in_ai FROM story_jingwei_entry
+      WHERE book_id = ? AND title = ?
+    `).get("book-1", "平台禁止内容") as { title: string; category: string; participates_in_ai: number } | undefined;
+    expect(promotion?.category).toBe("rules");
+    expect(promotion?.participates_in_ai).toBe(1);
+
+    const alreadyProcessed = storage.sqlite.prepare(`SELECT status FROM dissection_staging WHERE id = ?`).get(staging.id) as { status: string } | undefined;
+    expect(alreadyProcessed?.status).toBe("accepted");
+
+    const rejectCandidate = insertDissectionStaging(storage, {
+      bookId: "book-1",
+      kind: "foreshadowing",
+      category: "foreshadowing",
+      proposedTitle: "废案伏笔",
+      sourceRefs: [{ chapterNumber: 2, excerpt: "旧伤来历" }],
+      classificationReason: "废弃候选",
+      contentMd: "旧伤来历已作废。",
+      fields: { source: "book.dissect" },
+    });
+    const rejectResponse = await request(`/staging/${rejectCandidate.id}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stagingDecision: "reject" }),
+    });
+    expect(rejectResponse.status).toBe(200);
+    const rejected = storage.sqlite.prepare(`SELECT status FROM dissection_staging WHERE id = ?`).get(rejectCandidate.id) as { status: string } | undefined;
+    expect(rejected?.status).toBe("rejected");
+
+    const repeatResponse = await request(`/staging/${rejectCandidate.id}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stagingDecision: "promote" }),
+    });
+    expect(repeatResponse.status).toBe(409);
+  });
+
+  it("拒绝包含宿主字段的 staging 决策", async () => {
+    const staging = insertDissectionStaging(storage, {
+      bookId: "book-1",
+      kind: "rules",
+      category: "rules",
+      proposedTitle: "宿主守卫",
+      sourceRefs: [{ chapterNumber: 1, excerpt: "证据" }],
+      classificationReason: "守卫",
+      contentMd: "守卫",
+      fields: {},
+    });
+
+    const response = await request(`/staging/${staging.id}/decision`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ stagingDecision: "promote", bookId: "other-book" }),
+    });
+    expect(response.status).toBe(400);
+    const body = await response.json() as { error: { code: string } };
+    expect(body.error.code).toBe("FORGED_HOST_FIELD");
+  });
+
   it("reverts the complete snapshot and returns the restored entry", async () => {
     const created = await postEntry();
     await request(`/entries/${created.id}`, {
@@ -259,4 +342,46 @@ describe("Jingwei mutation routes", () => {
     };
     expect(detail.entry.fields).toEqual({ phase: "canonical", status: "已回收" });
   });
+
+  describe("P0.5 import deduplication and merge suggestions", () => {
+    let bookId: string;
+    beforeEach(async () => {
+      bookId = "book-merge-test";
+    });
+
+    it("GET /api/books/:bookId/jingwei/merge-suggestions returns suggestions without writing to DB", async () => {
+      const res = await request(`/merge-suggestions`);
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.ok).toBe(true);
+      expect(Array.isArray(data.groups)).toBe(true);
+    });
+
+    it("import preserves entryKey and sourceRefs", async () => {
+      const res = await request(`/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          entries: [{
+            title: "Test Entry",
+            contentMd: "Content",
+            category: "characters",
+            entryKey: "custom:test",
+            sourceRefs: [{ chapterNumber: 0, excerpt: "content", path: "test.md", fileName: "test.md" }],
+          }]
+        })
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json() as { ok: boolean; imported: number };
+      expect(data).toMatchObject({ ok: true, imported: 1 });
+      const row = storage.sqlite.prepare<{ entry_key: string; source_refs_json: string }>(`
+        SELECT entry_key, source_refs_json FROM story_jingwei_entry WHERE book_id = ? AND title = ?
+      `).get("book-1", "Test Entry");
+      expect(row?.entry_key).toBe("custom:test");
+      expect(JSON.parse(row?.source_refs_json ?? "[]")).toEqual([
+        { chapterNumber: 0, excerpt: "content", path: "test.md", fileName: "test.md" },
+      ]);
+    });
+  });
+
 });

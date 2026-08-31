@@ -6,7 +6,6 @@ import { Badge } from "@/components/ui/badge";
 import { ApiRequestError, fetchJson } from "@/hooks/use-api";
 
 import type { WorkbenchResourceNode } from "./useWorkbenchResources";
-import { DevelopmentTimelineView } from "./development-timeline";
 // 待审事件的取数与审批与写作视图共用一条通道，避免两处审批语义漂移。
 import {
   bulkMutatePendingEvents,
