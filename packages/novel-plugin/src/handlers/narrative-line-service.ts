@@ -3,15 +3,14 @@ import { join } from "node:path";
 
 import type { ChapterMeta, StorageDatabase } from "@vivy1024/novelfork-core";
 import {
+  emptyChapterStateProjection,
   getStorageDatabase,
+  loadChapterStateProjection,
+  type ChapterStateProjection,
+  type DerivedCharacterState,
+  type DerivedHook,
+  type DerivedRelationship,
 } from "@vivy1024/novelfork-core";
-import {
-  createJingweiCharacterArcRepository,
-  createJingweiChapterSummaryRepository,
-  createJingweiConflictRepository,
-  createJingweiEventRepository,
-  createJingweiSettingRepository,
-} from "../engine/jingwei/index.js";
 
 import type { CreateResourceCheckpointInput, ResourceCheckpointResult } from "./resource-checkpoint-service.js";
 
@@ -48,59 +47,6 @@ interface ChapterSummaryItem {
   readonly number: number;
   readonly title?: string;
   readonly summary: string;
-}
-
-interface EventRecord {
-  readonly id: string;
-  readonly bookId?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly summary?: string;
-  readonly eventType?: string;
-  readonly chapterStart?: number | null;
-  readonly chapterEnd?: number | null;
-  readonly foreshadowState?: string | null;
-}
-
-interface SettingRecord {
-  readonly id: string;
-  readonly bookId?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly category?: string;
-  readonly content?: string;
-}
-
-interface ConflictRecord {
-  readonly id: string;
-  readonly bookId?: string;
-  readonly name?: string;
-  readonly title?: string;
-  readonly stakes?: string;
-  readonly resolutionState?: string;
-  readonly evolutionPathJson?: string;
-}
-
-interface CharacterArcRecord {
-  readonly id: string;
-  readonly bookId?: string;
-  readonly characterId?: string;
-  readonly arcType?: string;
-  readonly currentPosition?: string;
-  readonly startingState?: string;
-  readonly endingState?: string;
-}
-
-interface PendingHookItem {
-  readonly id: string;
-  readonly text: string;
-  readonly sourceChapter: number;
-}
-
-interface ConflictEvolutionStep {
-  readonly chapter?: number;
-  readonly state?: string;
-  readonly summary?: string;
 }
 
 interface NarrativeLineApplyAudit {
@@ -159,33 +105,44 @@ export class NarrativeLineService {
     const generatedAt = this.now().toISOString();
     const chapters = await this.loadChapters(input.bookId);
     const currentChapter = Math.max(0, ...chapters.map((chapter) => chapter.number));
-    const [chapterSummaries, pendingHooks, events, settings, conflicts, arcs] = await Promise.all([
-      this.loadChapterSummaries(input.bookId),
-      this.loadPendingHooks(input.bookId),
-      this.loadEvents(input.bookId),
-      this.loadSettings(input.bookId),
-      this.loadConflicts(input.bookId),
-      this.loadCharacterArcs(input.bookId),
-    ]);
-    const summaryByChapter = new Map(chapterSummaries.map((summary) => [summary.number, summary]));
+    const projection = await this.loadProjection(input.bookId);
+    const summaryByChapter = new Map(projection.summaries.map((summary) => [summary.chapter, {
+      number: summary.chapter,
+      title: summary.title,
+      summary: [summary.events, summary.stateChanges].filter(Boolean).join("；"),
+    } satisfies ChapterSummaryItem]));
 
-    const chapterNodes = chapters.map((chapter) => chapterNode(input.bookId, chapter, summaryByChapter.get(chapter.number)));
-    const eventNodes = events.map((event) => eventNode(input.bookId, event));
-    const settingNodes = settings.map((setting) => settingNode(input.bookId, setting));
-    const conflictNodes = conflicts.map((conflict) => conflictNode(input.bookId, conflict));
-    const arcNodes = arcs.map((arc) => characterArcNode(input.bookId, arc));
+    const derivedNodes = [
+      ...chapters.map((chapter) => chapterNode(input.bookId, chapter, summaryByChapter.get(chapter.number))),
+      ...projection.characters.map((character) => characterArcNodeFromDelta(input.bookId, character)),
+      ...projection.relationships.map((relationship) => relationshipNode(input.bookId, relationship)),
+      ...projection.hooks.map((hook) => hookNode(input.bookId, hook)),
+      ...projection.timeline.map((entry) => timelineNode(input.bookId, entry)),
+    ];
     const store = await this.loadStore(input.bookId);
-    const nodes = mergeNodes([...chapterNodes, ...eventNodes, ...settingNodes, ...conflictNodes, ...arcNodes], store.nodes);
+    const annotationNodes = store.nodes.map((node) => ({ ...node, layer: "annotation" as const }));
+    const derivedIds = new Set(derivedNodes.map((node) => node.id));
+    const nodes = [...derivedNodes, ...annotationNodes.filter((node) => !derivedIds.has(node.id))];
 
     const beats = chapters.map((chapter) => storyBeat(input.bookId, chapter, summaryByChapter.get(chapter.number)));
-    const foreshadowThreads = [
-      ...pendingHooks.map((hook) => pendingHookThread(input.bookId, hook, currentChapter)),
-      ...events.filter(isOpenForeshadowEvent).map((event) => eventForeshadowThread(input.bookId, event, currentChapter)),
+    const foreshadowThreads = projection.hooks.map((hook) => derivedHookThread(input.bookId, hook, currentChapter));
+    const payoffLinks = projection.hooks
+      .filter((hook) => hook.status === "resolved")
+      .map((hook) => derivedPayoffLink(input.bookId, hook));
+    const conflictThreads = projection.relationships
+      .filter((relationship) => relationship.sentiment === "hostile" || relationship.status === "evolving")
+      .map((relationship) => derivedConflictThread(input.bookId, relationship));
+    const derivedEdges = [
+      ...buildChapterEdges(input.bookId, chapters),
+      ...buildDerivedEdges(input.bookId, projection),
     ];
-    const payoffLinks = events.filter(isPayoffEvent).map((event) => payoffLink(input.bookId, event));
-    const conflictThreads = conflicts.map((conflict) => conflictThread(input.bookId, conflict));
-    const edges = mergeEdges(buildEdges(input.bookId, chapters, events, conflicts), store.edges);
-    const warnings = input.includeWarnings === false ? [] : buildWarnings({ chapters, currentChapter, foreshadowThreads, conflicts });
+    const annotationEdges = store.edges
+      .map((edge) => ({ ...edge, layer: "annotation" as const, confidence: edge.confidence === "explicit" ? "agent-proposed" as const : edge.confidence }))
+      .filter((edge) => !derivedEdges.some((derived) => derived.id === edge.id));
+    const edges = [...derivedEdges, ...annotationEdges];
+    const warnings = input.includeWarnings === false
+      ? []
+      : buildWarnings({ chapters, currentChapter, foreshadowThreads, conflictThreads });
     const lines = buildLines(input.bookId, nodes, edges);
 
     return {
@@ -199,6 +156,7 @@ export class NarrativeLineService {
       payoffLinks,
       warnings,
       generatedAt,
+      stateRevision: projection.stateRevision,
     };
   }
 
@@ -330,67 +288,13 @@ export class NarrativeLineService {
     }
   }
 
-  private async loadChapterSummaries(bookId: string): Promise<readonly ChapterSummaryItem[]> {
-    const fromFile = parseChapterSummaries(await this.readStoryFile(bookId, "chapter_summaries.md"));
+  private async loadProjection(bookId: string): Promise<ChapterStateProjection> {
     const storage = await this.resolveStorage();
-    if (!storage) return fromFile;
+    if (!storage) return emptyChapterStateProjection();
     try {
-      const rows = await createJingweiChapterSummaryRepository(storage).listByBook(bookId);
-      const fromStorage = rows.map((row) => ({
-        number: Number(row.chapterNumber),
-        title: typeof row.title === "string" ? row.title : undefined,
-        summary: typeof row.summary === "string" ? row.summary : "",
-      })).filter((summary: { number: number; summary: string }) => Number.isFinite(summary.number) && summary.summary.trim().length > 0);
-      const merged = new Map<number, ChapterSummaryItem>();
-      for (const summary of fromFile) merged.set(summary.number, summary);
-      for (const summary of fromStorage) merged.set(summary.number, summary);
-      return [...merged.values()].sort((left, right) => left.number - right.number);
+      return loadChapterStateProjection(storage, bookId);
     } catch {
-      return fromFile;
-    }
-  }
-
-  private async loadPendingHooks(bookId: string): Promise<readonly PendingHookItem[]> {
-    return parsePendingHooks(await this.readStoryFile(bookId, "pending_hooks.md"));
-  }
-
-  private async loadEvents(bookId: string): Promise<readonly EventRecord[]> {
-    const storage = await this.resolveStorage();
-    if (!storage) return [];
-    try {
-      return await createJingweiEventRepository(storage).listByBook(bookId) as EventRecord[];
-    } catch {
-      return [];
-    }
-  }
-
-  private async loadSettings(bookId: string): Promise<readonly SettingRecord[]> {
-    const storage = await this.resolveStorage();
-    if (!storage) return [];
-    try {
-      return await createJingweiSettingRepository(storage).listByBook(bookId) as SettingRecord[];
-    } catch {
-      return [];
-    }
-  }
-
-  private async loadConflicts(bookId: string): Promise<readonly ConflictRecord[]> {
-    const storage = await this.resolveStorage();
-    if (!storage) return [];
-    try {
-      return await createJingweiConflictRepository(storage).listByBook(bookId) as ConflictRecord[];
-    } catch {
-      return [];
-    }
-  }
-
-  private async loadCharacterArcs(bookId: string): Promise<readonly CharacterArcRecord[]> {
-    const storage = await this.resolveStorage();
-    if (!storage) return [];
-    try {
-      return await createJingweiCharacterArcRepository(storage).listByBook(bookId) as CharacterArcRecord[];
-    } catch {
-      return [];
+      return emptyChapterStateProjection();
     }
   }
 
@@ -507,8 +411,8 @@ function uniqueIds(values: readonly string[]): readonly string[] {
 /**
  * 删除请求的可执行性检查。
  *
- * 章节、经纬事件等派生节点由权威源计算得出，删除 store 里的覆盖项不会让它们
- * 从快照消失。与其静默无效，不如在 preview 阶段就说清楚。
+   * 章节、Delta 派生节点由权威源计算得出，删除 store 里的覆盖项不会让它们
+   * 从快照消失。与其静默无效，不如在 preview 阶段就说清楚。
  */
 function validateRemovals(
   store: NarrativeLineStore,
@@ -521,7 +425,7 @@ function validateRemovals(
     ...removeNodeIds.flatMap((id) => authorNodeIds.has(id) ? [] : [{
       type: "mutation-preview-risk",
       severity: "warning" as const,
-      summary: `节点 ${id} 不在作者叙事线覆盖层中：它可能来自章节或经纬等权威源，删除请求不会生效。请到对应权威源处理。`,
+      summary: `节点 ${id} 不在作者备注层中：它可能来自章节或 Delta 派生事实，删除请求不会生效。请到对应权威源处理。`,
       nodeIds: [id],
     }]),
     ...removeEdgeIds.flatMap((id) => authorEdgeIds.has(id) ? [] : [{
@@ -542,6 +446,7 @@ function normalizeProposedNodes(bookId: string, values: readonly unknown[]): rea
       bookId,
       type,
       title,
+      layer: "annotation",
       ...(typeof value.summary === "string" ? { summary: value.summary } : {}),
       ...(normalizeChapterNumber(value.chapterNumber) ? { chapterNumber: normalizeChapterNumber(value.chapterNumber) } : {}),
       ...(typeof value.status === "string" ? { status: value.status } : {}),
@@ -560,6 +465,7 @@ function normalizeProposedEdges(bookId: string, values: readonly unknown[]): rea
       type: normalizeEdgeType(value.type),
       ...(typeof value.label === "string" ? { label: value.label } : {}),
       confidence: "agent-proposed",
+      layer: "annotation",
     }];
   });
 }
@@ -617,57 +523,70 @@ function chapterNode(bookId: string, chapter: ChapterMeta, summary?: ChapterSumm
     summary: summary?.summary,
     chapterNumber: chapter.number,
     status: chapter.status,
+    layer: "derived",
     sourceRef: { kind: "chapter", id: `chapter:${bookId}:${chapter.number}`, bookId, title: chapter.title },
   };
 }
 
-function eventNode(bookId: string, event: EventRecord): NarrativeNode {
-  const type = isPayoffEvent(event) ? "payoff" : isForeshadowEvent(event) ? "foreshadow" : "event";
+function characterArcNodeFromDelta(bookId: string, character: DerivedCharacterState): NarrativeNode {
+  const titleName = character.name ?? character.characterId;
   return {
-    id: `event:${event.id}`,
-    bookId,
-    type,
-    title: event.name ?? event.title ?? event.id,
-    summary: event.summary,
-    chapterNumber: normalizeChapterNumber(event.chapterStart ?? event.chapterEnd),
-    status: event.foreshadowState ?? event.eventType,
-    sourceRef: { kind: "jingwei", id: event.id, bookId, title: event.name ?? event.title ?? event.id },
-  };
-}
-
-function settingNode(bookId: string, setting: SettingRecord): NarrativeNode {
-  return {
-    id: `setting:${setting.id}`,
-    bookId,
-    type: "setting",
-    title: setting.name ?? setting.title ?? setting.id,
-    summary: setting.content,
-    status: setting.category,
-    sourceRef: { kind: "jingwei", id: setting.id, bookId, title: setting.name ?? setting.title ?? setting.id },
-  };
-}
-
-function conflictNode(bookId: string, conflict: ConflictRecord): NarrativeNode {
-  return {
-    id: `conflict:${conflict.id}`,
-    bookId,
-    type: "conflict",
-    title: conflict.name ?? conflict.title ?? conflict.id,
-    summary: conflict.stakes,
-    status: conflict.resolutionState,
-    sourceRef: { kind: "jingwei", id: conflict.id, bookId, title: conflict.name ?? conflict.title ?? conflict.id },
-  };
-}
-
-function characterArcNode(bookId: string, arc: CharacterArcRecord): NarrativeNode {
-  return {
-    id: `character-arc:${arc.id}`,
+    id: `character-arc:${character.characterId}`,
     bookId,
     type: "character-arc",
-    title: `${arc.characterId ?? "角色"} · ${arc.arcType ?? "人物弧光"}`,
-    summary: arc.currentPosition ?? arc.endingState ?? arc.startingState,
-    sourceRef: { kind: "jingwei", id: arc.id, bookId, title: arc.arcType ?? arc.id },
+    title: `${titleName} · 人物弧光`,
+    summary: character.currentState ?? character.arcProgress ?? character.currentGoal,
+    chapterNumber: character.lastChapter,
+    status: character.arcProgress ?? character.currentState,
+    layer: "derived",
+    sourceRef: { kind: "delta", id: character.characterId, bookId, title: titleName, chapterNumber: character.lastChapter },
   };
+}
+
+function relationshipNode(bookId: string, relationship: DerivedRelationship): NarrativeNode {
+  return {
+    id: relationshipNodeId(relationship),
+    bookId,
+    type: "conflict",
+    title: `${relationship.source} → ${relationship.target}`,
+    summary: relationship.description || relationship.relationType,
+    chapterNumber: relationship.lastChapter,
+    status: relationship.status,
+    layer: "derived",
+    sourceRef: { kind: "delta", id: relationshipNodeId(relationship), bookId, title: relationship.relationType, chapterNumber: relationship.lastChapter },
+  };
+}
+
+function hookNode(bookId: string, hook: DerivedHook): NarrativeNode {
+  return {
+    id: `foreshadow:${hook.hookId}`,
+    bookId,
+    type: hook.status === "resolved" ? "payoff" : "foreshadow",
+    title: hook.expectedPayoff || hook.notes || hook.hookId,
+    summary: hook.notes || hook.expectedPayoff,
+    chapterNumber: hook.lastAdvancedChapter,
+    status: hook.status,
+    layer: "derived",
+    sourceRef: { kind: "delta", id: hook.hookId, bookId, title: hook.hookId, chapterNumber: hook.startChapter },
+  };
+}
+
+function timelineNode(bookId: string, entry: { readonly chapter: number; readonly storyTime?: string; readonly label?: string }): NarrativeNode {
+  return {
+    id: `timeline:${bookId}:${entry.chapter}`,
+    bookId,
+    type: "event",
+    title: entry.label || entry.storyTime || `第${entry.chapter}章时间`,
+    summary: [entry.storyTime, entry.label].filter(Boolean).join(" · "),
+    chapterNumber: entry.chapter,
+    status: "timeline",
+    layer: "derived",
+    sourceRef: { kind: "delta", id: `timeline:${entry.chapter}`, bookId, title: entry.label, chapterNumber: entry.chapter },
+  };
+}
+
+function relationshipNodeId(relationship: DerivedRelationship): string {
+  return `relationship:${relationship.source}:${relationship.target}:${relationship.relationType}`;
 }
 
 function storyBeat(bookId: string, chapter: ChapterMeta, summary?: ChapterSummaryItem): StoryBeat {
@@ -681,50 +600,55 @@ function storyBeat(bookId: string, chapter: ChapterMeta, summary?: ChapterSummar
   };
 }
 
-function pendingHookThread(bookId: string, hook: PendingHookItem, currentChapter: number): ForeshadowThread {
-  const dueChapter = hook.sourceChapter > 0 ? hook.sourceChapter + FORESHADOW_DUE_GAP : undefined;
+function derivedHookThread(bookId: string, hook: DerivedHook, currentChapter: number): ForeshadowThread {
+  const dueChapter = hook.startChapter > 0 ? hook.startChapter + FORESHADOW_DUE_GAP : undefined;
+  const status = hook.status === "resolved"
+    ? "paid-off"
+    : dueChapter && currentChapter >= dueChapter && hook.status !== "deferred"
+      ? "due"
+      : hook.status === "deferred"
+        ? "abandoned"
+        : "open";
   return {
-    id: `foreshadow:${hook.id}`,
+    id: `foreshadow:${hook.hookId}`,
     bookId,
-    title: hook.text,
-    status: dueChapter && currentChapter >= dueChapter ? "due" : "open",
-    setupNodeIds: hook.sourceChapter > 0 ? [`chapter:${bookId}:${hook.sourceChapter}`] : [],
+    title: hook.expectedPayoff || hook.notes || hook.hookId,
+    status,
+    setupNodeIds: [
+      ...(hook.startChapter > 0 ? [`chapter:${bookId}:${hook.startChapter}`] : []),
+      `foreshadow:${hook.hookId}`,
+    ],
     ...(dueChapter ? { dueChapter } : {}),
   };
 }
 
-function eventForeshadowThread(bookId: string, event: EventRecord, currentChapter: number): ForeshadowThread {
-  const sourceChapter = normalizeChapterNumber(event.chapterStart ?? event.chapterEnd);
-  const dueChapter = sourceChapter ? sourceChapter + FORESHADOW_DUE_GAP : undefined;
+function derivedPayoffLink(bookId: string, hook: DerivedHook): PayoffLink {
   return {
-    id: `foreshadow:${event.id}`,
+    id: `payoff:${hook.hookId}`,
     bookId,
-    title: event.name ?? event.title ?? event.id,
-    status: event.foreshadowState === "paid-off" ? "paid-off" : dueChapter && currentChapter >= dueChapter ? "due" : "open",
-    setupNodeIds: sourceChapter ? [`chapter:${bookId}:${sourceChapter}`, `event:${event.id}`] : [`event:${event.id}`],
-    ...(dueChapter ? { dueChapter } : {}),
+    foreshadowThreadId: `foreshadow:${hook.hookId}`,
+    payoffNodeId: `foreshadow:${hook.hookId}`,
+    summary: hook.notes || hook.expectedPayoff,
   };
 }
 
-function payoffLink(bookId: string, event: EventRecord): PayoffLink {
+function derivedConflictThread(bookId: string, relationship: DerivedRelationship): ConflictThread {
   return {
-    id: `payoff:${event.id}`,
+    id: `conflict-thread:${relationshipNodeId(relationship)}`,
     bookId,
-    foreshadowThreadId: `foreshadow:${event.id}`,
-    payoffNodeId: `event:${event.id}`,
-    summary: event.summary,
-  };
-}
-
-function conflictThread(bookId: string, conflict: ConflictRecord): ConflictThread {
-  const evolution = parseEvolutionPath(conflict.evolutionPathJson);
-  return {
-    id: `conflict-thread:${conflict.id}`,
-    bookId,
-    title: conflict.name ?? conflict.title ?? conflict.id,
-    status: normalizeConflictStatus(conflict.resolutionState),
-    nodeIds: [`conflict:${conflict.id}`, ...evolution.flatMap((step) => typeof step.chapter === "number" ? [`chapter:${bookId}:${step.chapter}`] : [])],
-    nextExpectedChapter: nextConflictChapter(evolution),
+    title: `${relationship.source} / ${relationship.target}`,
+    status: relationship.status === "broken"
+      ? "resolved"
+      : relationship.status === "dormant"
+        ? "paused"
+        : relationship.status === "evolving" || relationship.sentiment === "hostile"
+          ? "escalating"
+          : "open",
+    nodeIds: [
+      relationshipNodeId(relationship),
+      `chapter:${bookId}:${relationship.lastChapter}`,
+    ],
+    nextExpectedChapter: relationship.lastChapter + STALLED_CONFLICT_GAP,
   };
 }
 
@@ -739,7 +663,7 @@ function buildLines(bookId: string, nodes: readonly NarrativeNode[], edges: read
   }];
 }
 
-function buildEdges(bookId: string, chapters: readonly ChapterMeta[], events: readonly EventRecord[], conflicts: readonly ConflictRecord[]): readonly NarrativeEdge[] {
+function buildChapterEdges(bookId: string, chapters: readonly ChapterMeta[]): readonly NarrativeEdge[] {
   const edges: NarrativeEdge[] = [];
   for (let index = 1; index < chapters.length; index += 1) {
     const previous = chapters[index - 1]!;
@@ -752,33 +676,61 @@ function buildEdges(bookId: string, chapters: readonly ChapterMeta[], events: re
       type: "causes",
       label: "章节推进",
       confidence: "inferred",
+      layer: "derived",
     });
   }
-  for (const event of events) {
-    const chapter = normalizeChapterNumber(event.chapterStart ?? event.chapterEnd);
-    if (!chapter) continue;
+  return edges;
+}
+
+function buildDerivedEdges(bookId: string, projection: ChapterStateProjection): readonly NarrativeEdge[] {
+  const edges: NarrativeEdge[] = [];
+  for (const character of projection.characters) {
     edges.push({
-      id: `edge:${bookId}:chapter:${chapter}->event:${event.id}`,
+      id: `edge:${bookId}:chapter:${character.lastChapter}->character:${character.characterId}`,
       bookId,
-      fromNodeId: `chapter:${bookId}:${chapter}`,
-      toNodeId: `event:${event.id}`,
-      type: isPayoffEvent(event) ? "pays-off" : isForeshadowEvent(event) ? "foreshadows" : "causes",
+      fromNodeId: `chapter:${bookId}:${character.lastChapter}`,
+      toNodeId: `character-arc:${character.characterId}`,
+      type: "reveals",
+      label: character.currentState ?? "角色状态",
       confidence: "explicit",
+      layer: "derived",
     });
   }
-  for (const conflict of conflicts) {
-    for (const step of parseEvolutionPath(conflict.evolutionPathJson)) {
-      if (typeof step.chapter !== "number") continue;
-      edges.push({
-        id: `edge:${bookId}:conflict:${conflict.id}->chapter:${step.chapter}`,
-        bookId,
-        fromNodeId: `conflict:${conflict.id}`,
-        toNodeId: `chapter:${bookId}:${step.chapter}`,
-        type: "escalates",
-        label: step.summary,
-        confidence: "explicit",
-      });
-    }
+  for (const relationship of projection.relationships) {
+    edges.push({
+      id: `edge:${bookId}:chapter:${relationship.lastChapter}->${relationshipNodeId(relationship)}`,
+      bookId,
+      fromNodeId: `chapter:${bookId}:${relationship.lastChapter}`,
+      toNodeId: relationshipNodeId(relationship),
+      type: relationship.sentiment === "hostile" ? "escalates" : relationship.status === "broken" ? "resolves" : "supports",
+      label: relationship.relationType,
+      confidence: "explicit",
+      layer: "derived",
+    });
+  }
+  for (const hook of projection.hooks) {
+    edges.push({
+      id: `edge:${bookId}:chapter:${hook.startChapter}->foreshadow:${hook.hookId}`,
+      bookId,
+      fromNodeId: `chapter:${bookId}:${hook.startChapter}`,
+      toNodeId: `foreshadow:${hook.hookId}`,
+      type: hook.status === "resolved" ? "pays-off" : "foreshadows",
+      label: hook.status,
+      confidence: "explicit",
+      layer: "derived",
+    });
+  }
+  for (const entry of projection.timeline) {
+    edges.push({
+      id: `edge:${bookId}:chapter:${entry.chapter}->timeline:${entry.chapter}`,
+      bookId,
+      fromNodeId: `chapter:${bookId}:${entry.chapter}`,
+      toNodeId: `timeline:${bookId}:${entry.chapter}`,
+      type: "causes",
+      label: entry.storyTime || "时间推进",
+      confidence: "explicit",
+      layer: "derived",
+    });
   }
   return edges;
 }
@@ -787,12 +739,12 @@ function buildWarnings({
   chapters,
   currentChapter,
   foreshadowThreads,
-  conflicts,
+  conflictThreads,
 }: {
   readonly chapters: readonly ChapterMeta[];
   readonly currentChapter: number;
   readonly foreshadowThreads: readonly ForeshadowThread[];
-  readonly conflicts: readonly ConflictRecord[];
+  readonly conflictThreads: readonly ConflictThread[];
 }): readonly NarrativeWarning[] {
   const warnings: NarrativeWarning[] = [];
   if (chapters.length === 0) {
@@ -813,83 +765,21 @@ function buildWarnings({
       warnings.push({ type: "missing-payoff", severity: "warning", summary: `伏笔已到回收窗口：${thread.title}`, nodeIds: thread.setupNodeIds });
     }
   }
-  for (const conflict of conflicts) {
-    const status = normalizeConflictStatus(conflict.resolutionState);
-    const lastChapter = lastConflictChapter(parseEvolutionPath(conflict.evolutionPathJson));
-    if ((status === "open" || status === "escalating") && lastChapter > 0 && currentChapter - lastChapter >= STALLED_CONFLICT_GAP) {
-      warnings.push({ type: "stalled-conflict", severity: "warning", summary: `冲突长期未推进：${conflict.name ?? conflict.title ?? conflict.id}`, nodeIds: [`conflict:${conflict.id}`] });
+  for (const thread of conflictThreads) {
+    const lastChapter = Math.max(0, ...thread.nodeIds.flatMap((id) => {
+      const match = id.match(/:(\d+)$/);
+      return match ? [Number.parseInt(match[1]!, 10)] : [];
+    }));
+    if ((thread.status === "open" || thread.status === "escalating") && lastChapter > 0 && currentChapter - lastChapter >= STALLED_CONFLICT_GAP) {
+      warnings.push({ type: "stalled-conflict", severity: "warning", summary: `冲突长期未推进：${thread.title}`, nodeIds: thread.nodeIds });
     }
   }
-  if (chapters.length >= 3 && conflicts.length === 0) {
+  if (chapters.length >= 3 && conflictThreads.length === 0) {
     warnings.push({ type: "mainline-risk", severity: "info", summary: "当前章节已有推进，但未记录主线冲突。" });
   }
   return warnings;
 }
 
-function parseChapterSummaries(content: string | null): readonly ChapterSummaryItem[] {
-  if (!content) return [];
-  return content.split(/\r?\n/).flatMap((line) => {
-    const match = line.trim().match(/^-\s*第\s*(\d+)\s*章[：:](.+)$/);
-    if (!match) return [];
-    return [{ number: Number.parseInt(match[1]!, 10), summary: match[2]!.trim() }];
-  });
-}
-
-function parsePendingHooks(content: string | null): readonly PendingHookItem[] {
-  if (!content) return [];
-  return content.split(/\r?\n/).flatMap((line, index) => {
-    const trimmed = line.trim();
-    if (!trimmed.startsWith("- [ ]")) return [];
-    const text = trimmed.replace(/^- \[ \]\s*/, "").trim();
-    if (!text) return [];
-    const chapterMatch = text.match(/第\s*(\d+)\s*章/);
-    return [{
-      id: `pending-hook-${index + 1}`,
-      text,
-      sourceChapter: chapterMatch ? Number.parseInt(chapterMatch[1]!, 10) : 0,
-    }];
-  });
-}
-
-function isForeshadowEvent(event: EventRecord): boolean {
-  return event.eventType === "foreshadow" || Boolean(event.foreshadowState);
-}
-
-function isOpenForeshadowEvent(event: EventRecord): boolean {
-  return isForeshadowEvent(event) && event.foreshadowState !== "paid-off" && event.foreshadowState !== "resolved";
-}
-
-function isPayoffEvent(event: EventRecord): boolean {
-  return event.eventType === "payoff" || event.foreshadowState === "paid-off" || event.foreshadowState === "resolved";
-}
-
 function normalizeChapterNumber(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) && value > 0 ? Math.floor(value) : undefined;
-}
-
-function parseEvolutionPath(raw: string | undefined): readonly ConflictEvolutionStep[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is ConflictEvolutionStep => typeof item === "object" && item !== null);
-  } catch {
-    return [];
-  }
-}
-
-function normalizeConflictStatus(value: string | undefined): ConflictThread["status"] {
-  if (value === "resolved") return "resolved";
-  if (value === "paused") return "paused";
-  if (value === "escalating") return "escalating";
-  return "open";
-}
-
-function lastConflictChapter(evolution: readonly ConflictEvolutionStep[]): number {
-  return Math.max(0, ...evolution.map((step) => typeof step.chapter === "number" ? step.chapter : 0));
-}
-
-function nextConflictChapter(evolution: readonly ConflictEvolutionStep[]): number | undefined {
-  const last = lastConflictChapter(evolution);
-  return last > 0 ? last + STALLED_CONFLICT_GAP : undefined;
 }

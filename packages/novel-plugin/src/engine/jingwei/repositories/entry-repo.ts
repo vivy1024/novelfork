@@ -18,6 +18,13 @@ import type {
   JingweiRevisionSnapshot,
 } from "./collaborative-types.js";
 import { removeEntryFts, syncEntryFts, type FtsSyncFields } from "../search/fts-index.js";
+import {
+  deduplicateSourceRefs,
+  mergeAliases,
+  mergeSourceRefs,
+  resolveEntryKey,
+  type EntrySourceRef,
+} from "../entry-identity.js";
 
 interface StoryJingweiEntryRow {
   id: string;
@@ -45,6 +52,8 @@ interface StoryJingweiEntryRow {
   layer?: JingweiLayer;
   importance?: number;
   summary_l0?: string | null;
+  entry_key?: string | null;
+  source_refs_json?: string | null;
   source?: string;
   revision_history?: string;
   conflict_status?: string;
@@ -67,15 +76,32 @@ interface JingweiRevisionRow {
   created_at: number;
 }
 
-const selectColumns = `
+const identityColumnCache = new WeakMap<object, boolean>();
+
+function hasEntryIdentityColumns(storage: StorageDatabase): boolean {
+  const cached = identityColumnCache.get(storage.sqlite);
+  if (cached !== undefined) return cached;
+  const rows = storage.sqlite.prepare(`PRAGMA table_info("story_jingwei_entry")`).all() as Array<{ name: string }>;
+  const has = rows.some((row) => row.name === "entry_key") && rows.some((row) => row.name === "source_refs_json");
+  identityColumnCache.set(storage.sqlite, has);
+  return has;
+}
+
+function selectColumns(storage: StorageDatabase): string {
+  const identity = hasEntryIdentityColumns(storage)
+    ? `"entry_key", COALESCE("source_refs_json", '[]') AS "source_refs_json",`
+    : `'' AS "entry_key", '[]' AS "source_refs_json",`;
+  return `
   "id", "book_id", "section_id", "title", "content_md", "summary_md", "category", "fields_json",
   "custom_fields_json", "parent_id", "sort_order", "lifecycle", "status", "version", "tags_json", "aliases_json",
   "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "participates_in_ai", "token_budget",
   COALESCE("priority_tier", 'auto') AS "priority_tier", COALESCE("layer", 'dynamic') AS "layer",
-  COALESCE("importance", 40) AS "importance", "summary_l0", COALESCE("source", 'user') AS "source",
+  COALESCE("importance", 40) AS "importance", "summary_l0", ${identity}
+  COALESCE("source", 'user') AS "source",
   COALESCE("revision_history", '[]') AS "revision_history", COALESCE("conflict_status", 'none') AS "conflict_status",
   "conflict_detail", "created_at", "updated_at", "deleted_at"
 `;
+}
 
 function parseJson<T>(value: string | null | undefined, fallback: T): T {
   if (!value) return fallback;
@@ -131,6 +157,8 @@ function toEntry(row: StoryJingweiEntryRow): StoryJingweiEntryRecord {
     layer: normalizeLayer(row.layer),
     importance: typeof row.importance === "number" ? row.importance : 40,
     summaryL0: row.summary_l0 ?? null,
+    entryKey: row.entry_key?.trim() || null,
+    sourceRefs: parseJson<EntrySourceRef[]>(row.source_refs_json, []),
     source: (row.source ?? "user") as EntrySource,
     revisionHistory: parseJson<EntryRevision[]>(row.revision_history, []),
     conflictStatus: (row.conflict_status ?? "none") as ConflictStatus,
@@ -152,6 +180,8 @@ function snapshotEntry(entry: StoryJingweiEntryRecord): JingweiRevisionSnapshot 
     fields: entry.fields,
     tags: entry.tags,
     aliases: entry.aliases,
+    entryKey: entry.entryKey ?? null,
+    sourceRefs: [...(entry.sourceRefs ?? [])],
     relatedChapterNumbers: entry.relatedChapterNumbers,
     relatedEntryIds: entry.relatedEntryIds,
     visibilityRule: entry.visibilityRule,
@@ -184,7 +214,7 @@ function toRevision(row: JingweiRevisionRow): JingweiRevisionRecord {
 
 function readEntry(storage: StorageDatabase, bookId: string, id: string): StoryJingweiEntryRecord | null {
   const row = storage.sqlite.prepare(`
-    SELECT ${selectColumns}
+    SELECT ${selectColumns(storage)}
     FROM "story_jingwei_entry"
     WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
   `).get(bookId, id) as StoryJingweiEntryRow | undefined;
@@ -261,15 +291,25 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           : (typeof fields.category === "string" && fields.category.trim()
               ? fields.category.trim()
               : (resolveCategory(sectionCategory?.builtin_kind ?? sectionCategory?.key ?? "unclassified") ?? null));
-      storage.sqlite.prepare(`
-        INSERT INTO "story_jingwei_entry" (
-          "id", "book_id", "section_id", "title", "content_md", "summary_md", "category", "fields_json",
-          "custom_fields_json", "parent_id", "sort_order", "lifecycle", "status", "version", "tags_json", "aliases_json",
-          "related_chapter_numbers_json", "related_entry_ids_json", "visibility_rule_json", "participates_in_ai", "token_budget",
-          "priority_tier", "layer", "importance", "summary_l0", "source", "revision_history", "conflict_status",
-          "conflict_detail", "created_at", "updated_at", "deleted_at"
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '[]', ?, ?, ?, ?, NULL)
-      `).run(
+      const nextStatus = input.status ?? "confirmed";
+      const nextParticipatesInAi = nextStatus === "needs-review" ? false : Boolean(input.participatesInAi);
+      const entryKey = resolveEntryKey({
+        entryKey: input.entryKey,
+        category: category ?? "unclassified",
+        title: input.title,
+        fields,
+      });
+      const aliases = mergeAliases([], input.aliases ?? [], input.title);
+      const sourceRefs = deduplicateSourceRefs(input.sourceRefs ?? []);
+      const identityColumns = hasEntryIdentityColumns(storage);
+      const insertColumns = [
+        `"id"`, `"book_id"`, `"section_id"`, `"title"`, `"content_md"`, `"summary_md"`, `"category"`, `"fields_json"`,
+        `"custom_fields_json"`, `"parent_id"`, `"sort_order"`, `"lifecycle"`, `"status"`, `"version"`, `"tags_json"`, `"aliases_json"`,
+        `"related_chapter_numbers_json"`, `"related_entry_ids_json"`, `"visibility_rule_json"`, `"participates_in_ai"`, `"token_budget"`,
+        `"priority_tier"`, `"layer"`, `"importance"`, `"summary_l0"`, `"source"`, `"revision_history"`, `"conflict_status"`,
+        `"conflict_detail"`, `"created_at"`, `"updated_at"`, `"deleted_at"`,
+      ];
+      const insertValues: unknown[] = [
         input.id,
         input.bookId,
         input.sectionId,
@@ -282,25 +322,35 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         input.parentId ?? null,
         input.sortOrder ?? 0,
         input.lifecycle ?? "active",
-        input.status ?? "confirmed",
+        nextStatus,
         input.version ?? 1,
         serializeJson(input.tags),
-        serializeJson(input.aliases),
+        serializeJson(aliases),
         serializeJson(input.relatedChapterNumbers),
         serializeJson(input.relatedEntryIds),
         serializeJson(input.visibilityRule),
-        input.participatesInAi ? 1 : 0,
+        nextParticipatesInAi ? 1 : 0,
         input.tokenBudget ?? null,
         input.priorityTier ?? "auto",
         input.layer ?? "dynamic",
         typeof input.importance === "number" ? input.importance : 40,
         input.summaryL0 ?? null,
         input.source ?? "user",
+        "[]",
         input.conflictStatus ?? "none",
         input.conflictDetail ?? null,
         input.createdAt.getTime(),
         input.updatedAt.getTime(),
-      );
+        null,
+      ];
+      if (identityColumns) {
+        insertColumns.splice(25, 0, `"entry_key"`, `"source_refs_json"`);
+        insertValues.splice(25, 0, entryKey, serializeJson(sourceRefs));
+      }
+      storage.sqlite.prepare(`
+        INSERT INTO "story_jingwei_entry" (${insertColumns.join(", ")})
+        VALUES (${insertColumns.map(() => "?").join(", ")})
+      `).run(...insertValues);
       const created = readEntry(storage, input.bookId, input.id);
       if (!created) throw new Error("Inserted story jingwei entry could not be read back.");
       syncEntryFts(storage, toFtsFields(created));
@@ -317,7 +367,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       if (ids.length === 0) return result;
       const placeholders = ids.map(() => "?").join(", ");
       const rows = storage.sqlite.prepare(`
-        SELECT ${selectColumns}
+        SELECT ${selectColumns(storage)}
         FROM "story_jingwei_entry"
         WHERE "book_id" = ? AND "id" IN (${placeholders}) AND "deleted_at" IS NULL
       `).all(bookId, ...ids) as StoryJingweiEntryRow[];
@@ -330,7 +380,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
 
     async listByBook(bookId: string): Promise<StoryJingweiEntryRecord[]> {
       const rows = storage.sqlite.prepare(`
-        SELECT ${selectColumns}
+        SELECT ${selectColumns(storage)}
         FROM "story_jingwei_entry"
         WHERE "book_id" = ? AND "deleted_at" IS NULL
         ORDER BY "sort_order" ASC, "updated_at" DESC, "title" ASC
@@ -340,7 +390,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
 
     async listBySection(bookId: string, sectionId: string): Promise<StoryJingweiEntryRecord[]> {
       const rows = storage.sqlite.prepare(`
-        SELECT ${selectColumns}
+        SELECT ${selectColumns(storage)}
         FROM "story_jingwei_entry"
         WHERE "book_id" = ? AND "section_id" = ? AND "deleted_at" IS NULL
         ORDER BY "sort_order" ASC, "updated_at" DESC, "title" ASC
@@ -369,7 +419,7 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
         params.push(options.category);
       }
       const orderClause = `ORDER BY "sort_order" ASC, "updated_at" DESC, "title" ASC`;
-      let sql = `SELECT ${selectColumns}\nFROM "story_jingwei_entry"\nWHERE ${clauses.join("\n  AND ")}\n${orderClause}`;
+      let sql = `SELECT ${selectColumns(storage)}\nFROM "story_jingwei_entry"\nWHERE ${clauses.join("\n  AND ")}\n${orderClause}`;
       if (options.limit !== undefined || options.offset !== undefined) {
         const limit = options.limit ?? 1000;
         const offset = options.offset ?? 0;
@@ -398,6 +448,22 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
       const changedFields = Object.keys(updates).filter((key) => !["source", "updatedAt", "revisionReason", "changedBy"].includes(key));
       const hasChanges = changedFields.length > 0;
       const fields = resolveFields(updates, current.fields);
+      const nextStatus = updates.status ?? current.status;
+      const nextParticipatesInAi = nextStatus === "needs-review"
+        ? false
+        : (updates.participatesInAi ?? current.participatesInAi);
+      const nextTitle = updates.title ?? current.title;
+      const nextCategory = updates.category ?? current.category;
+      const nextEntryKey = resolveEntryKey(
+        { entryKey: updates.entryKey, category: nextCategory, title: nextTitle, fields },
+        { entryKey: current.entryKey },
+      );
+      const nextAliases = updates.aliases !== undefined
+        ? mergeAliases([], updates.aliases, nextTitle)
+        : current.aliases;
+      const nextSourceRefs = updates.sourceRefs !== undefined
+        ? mergeSourceRefs(current.sourceRefs ?? [], updates.sourceRefs)
+        : (current.sourceRefs ?? []);
       const updatedAt = updates.updatedAt ?? (hasChanges ? new Date() : current.updatedAt);
 
       let conflictStatus: ConflictStatus = updates.conflictStatus ?? current.conflictStatus ?? "none";
@@ -418,45 +484,48 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
             createdAt: updatedAt.getTime(),
           });
         }
-        storage.sqlite.prepare(`
-          UPDATE "story_jingwei_entry"
-          SET "section_id" = ?, "title" = ?, "content_md" = ?, "summary_md" = ?, "category" = ?, "fields_json" = ?,
-            "custom_fields_json" = ?, "parent_id" = ?, "sort_order" = ?, "lifecycle" = ?, "status" = ?, "tags_json" = ?,
-            "aliases_json" = ?, "related_chapter_numbers_json" = ?, "related_entry_ids_json" = ?, "visibility_rule_json" = ?,
-            "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "layer" = ?, "importance" = ?, "summary_l0" = ?,
-            "source" = ?, "conflict_status" = ?, "conflict_detail" = ?, "version" = COALESCE("version", 1) + ?, "updated_at" = ?
-          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-        `).run(
+        const identityColumns = hasEntryIdentityColumns(storage);
+        const setClauses = [
+          `"section_id" = ?`, `"title" = ?`, `"content_md" = ?`, `"summary_md" = ?`, `"category" = ?`, `"fields_json" = ?`,
+          `"custom_fields_json" = ?`, `"parent_id" = ?`, `"sort_order" = ?`, `"lifecycle" = ?`, `"status" = ?`, `"tags_json" = ?`,
+          `"aliases_json" = ?`, `"related_chapter_numbers_json" = ?`, `"related_entry_ids_json" = ?`, `"visibility_rule_json" = ?`,
+          `"participates_in_ai" = ?`, `"token_budget" = ?`, `"priority_tier" = ?`, `"layer" = ?`, `"importance" = ?`, `"summary_l0" = ?`,
+        ];
+        const values: unknown[] = [
           updates.sectionId ?? current.sectionId,
-          updates.title ?? current.title,
+          nextTitle,
           updates.contentMd ?? current.contentMd,
           updates.summaryMd ?? current.summaryMd ?? null,
-          updates.category ?? current.category,
+          nextCategory,
           serializeJson(fields),
           serializeJson(fields),
           updates.parentId !== undefined ? updates.parentId : current.parentId,
           updates.sortOrder ?? current.sortOrder,
           updates.lifecycle ?? current.lifecycle,
-          updates.status ?? current.status,
+          nextStatus,
           serializeJson(updates.tags ?? current.tags),
-          serializeJson(updates.aliases ?? current.aliases),
+          serializeJson(nextAliases),
           serializeJson(updates.relatedChapterNumbers ?? current.relatedChapterNumbers),
           serializeJson(updates.relatedEntryIds ?? current.relatedEntryIds),
           serializeJson(updates.visibilityRule ?? current.visibilityRule),
-          (updates.participatesInAi ?? current.participatesInAi) ? 1 : 0,
+          nextParticipatesInAi ? 1 : 0,
           updates.tokenBudget !== undefined ? updates.tokenBudget : current.tokenBudget,
           updates.priorityTier ?? current.priorityTier,
           updates.layer ?? current.layer,
           updates.importance ?? current.importance,
           updates.summaryL0 !== undefined ? updates.summaryL0 : current.summaryL0 ?? null,
-          source,
-          conflictStatus,
-          conflictDetail,
-          hasChanges ? 1 : 0,
-          updatedAt.getTime(),
-          bookId,
-          id,
-        );
+        ];
+        if (identityColumns) {
+          setClauses.push(`"entry_key" = ?`, `"source_refs_json" = ?`);
+          values.push(nextEntryKey, serializeJson(nextSourceRefs));
+        }
+        setClauses.push(`"source" = ?`, `"conflict_status" = ?`, `"conflict_detail" = ?`, `"version" = COALESCE("version", 1) + ?`, `"updated_at" = ?`);
+        values.push(source, conflictStatus, conflictDetail, hasChanges ? 1 : 0, updatedAt.getTime(), bookId, id);
+        storage.sqlite.prepare(`
+          UPDATE "story_jingwei_entry"
+          SET ${setClauses.join(", ")}
+          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
+        `).run(...values);
         const updated = readEntry(storage, bookId, id);
         if (updated) syncEntryFts(storage, toFtsFields(updated));
       });
@@ -495,16 +564,20 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           changedBy,
           createdAt: updatedAt.getTime(),
         });
-        storage.sqlite.prepare(`
-          UPDATE "story_jingwei_entry"
-          SET "section_id" = ?, "title" = ?, "content_md" = ?, "summary_md" = ?, "category" = ?, "fields_json" = ?,
-            "custom_fields_json" = ?, "parent_id" = ?, "sort_order" = ?, "lifecycle" = ?, "status" = ?, "tags_json" = ?,
-            "aliases_json" = ?, "related_chapter_numbers_json" = ?, "related_entry_ids_json" = ?, "visibility_rule_json" = ?,
-            "participates_in_ai" = ?, "token_budget" = ?, "priority_tier" = ?, "layer" = ?, "importance" = ?, "summary_l0" = ?,
-            "source" = ?, "conflict_status" = 'none', "conflict_detail" = NULL,
-            "version" = COALESCE("version", 1) + 1, "updated_at" = ?
-          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
-        `).run(
+        const revertEntryKey = snapshot.entryKey ?? current.entryKey ?? resolveEntryKey({
+          category: snapshot.category,
+          title: snapshot.title,
+          fields: snapshot.fields,
+        });
+        const revertSourceRefs = snapshot.sourceRefs ?? current.sourceRefs ?? [];
+        const identityColumns = hasEntryIdentityColumns(storage);
+        const setClauses = [
+          `"section_id" = ?`, `"title" = ?`, `"content_md" = ?`, `"summary_md" = ?`, `"category" = ?`, `"fields_json" = ?`,
+          `"custom_fields_json" = ?`, `"parent_id" = ?`, `"sort_order" = ?`, `"lifecycle" = ?`, `"status" = ?`, `"tags_json" = ?`,
+          `"aliases_json" = ?`, `"related_chapter_numbers_json" = ?`, `"related_entry_ids_json" = ?`, `"visibility_rule_json" = ?`,
+          `"participates_in_ai" = ?`, `"token_budget" = ?`, `"priority_tier" = ?`, `"layer" = ?`, `"importance" = ?`, `"summary_l0" = ?`,
+        ];
+        const values: unknown[] = [
           snapshot.sectionId,
           snapshot.title,
           snapshot.contentMd,
@@ -521,17 +594,24 @@ export function createStoryJingweiEntryRepository(storage: StorageDatabase) {
           serializeJson(snapshot.relatedChapterNumbers),
           serializeJson(snapshot.relatedEntryIds),
           serializeJson(snapshot.visibilityRule),
-          snapshot.participatesInAi ? 1 : 0,
+          snapshot.participatesInAi && snapshot.status !== "needs-review" ? 1 : 0,
           snapshot.tokenBudget,
           snapshot.priorityTier,
           snapshot.layer,
           snapshot.importance,
           snapshot.summaryL0,
-          changedBy,
-          updatedAt.getTime(),
-          bookId,
-          entryId,
-        );
+        ];
+        if (identityColumns) {
+          setClauses.push(`"entry_key" = ?`, `"source_refs_json" = ?`);
+          values.push(revertEntryKey, serializeJson(revertSourceRefs));
+        }
+        setClauses.push(`"source" = ?`, `"conflict_status" = 'none'`, `"conflict_detail" = NULL`, `"version" = COALESCE("version", 1) + 1`, `"updated_at" = ?`);
+        values.push(changedBy, updatedAt.getTime(), bookId, entryId);
+        storage.sqlite.prepare(`
+          UPDATE "story_jingwei_entry"
+          SET ${setClauses.join(", ")}
+          WHERE "book_id" = ? AND "id" = ? AND "deleted_at" IS NULL
+        `).run(...values);
         const reverted = readEntry(storage, bookId, entryId);
         if (reverted) syncEntryFts(storage, toFtsFields(reverted));
       });

@@ -12,11 +12,29 @@ let activeStorage: StorageDatabase | undefined;
 
 // 本文件只依赖 getStorageDatabase。残缺 mock 可能污染同进程后续文件，
 // 验证时请单独跑本文件，或与 pipeline 分进程执行。
+const emptyProjection = {
+  lastChapter: 0,
+  stateRevision: 0,
+  characters: [],
+  relationships: [],
+  hooks: [],
+  timeline: [],
+  commitments: [],
+  summaries: [],
+  resources: [],
+  knowledge: [],
+};
+
 vi.mock("@vivy1024/novelfork-core", () => ({
   getStorageDatabase: () => {
     if (!activeStorage) throw new Error("test storage not initialized");
     return activeStorage;
   },
+  emptyChapterStateProjection: (overrides: Record<string, unknown> = {}) => ({ ...emptyProjection, ...overrides }),
+  loadChapterStateProjection: () => emptyProjection,
+  parseBookRules: (raw: string) => ({ rules: {}, body: raw.trim() }),
+  parseAuthorProfile: (value: unknown) => value ?? {},
+  formatAuthorProfileForInjection: () => "",
 }));
 
 const tempDirs: string[] = [];

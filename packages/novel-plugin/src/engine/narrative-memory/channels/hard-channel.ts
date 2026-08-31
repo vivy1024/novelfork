@@ -69,7 +69,7 @@ export function createHardChannel(): NarrativeRetrievalChannel<HardChannelInput>
         const category = typeof entry.customFields.category === "string" ? entry.customFields.category.toLowerCase() : "";
         const isCanon = entry.layer === "canon" || entry.priorityTier === "core";
         const isRule = isHardEntryCategory(section) || /rule|rules|canon|book_rules|premise|world/u.test(category) || entry.tags.some((tag) => /rule|canon|book_rules|硬规则|规则/u.test(tag));
-        if (!entry.participatesInAi || (!isCanon && !isRule)) continue;
+        if (!entry.participatesInAi || entry.status !== "confirmed" || (!isCanon && !isRule)) continue;
         const card = jingweiEntryToContextCard({
           entry,
           sectionKey: section?.key,

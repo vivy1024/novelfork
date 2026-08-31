@@ -79,6 +79,8 @@ export function createRecentSummaryChannel(): NarrativeRetrievalChannel<RecentSu
            WHERE book_id = ?
              AND category IN (${sqlInPlaceholders(categories)})
              AND deleted_at IS NULL
+             AND COALESCE(status, 'confirmed') = 'confirmed'
+             AND participates_in_ai = 1
            ORDER BY updated_at DESC LIMIT 50`
         ).all(input.bookId, ...categories) as Array<RawSummaryRow>;
 

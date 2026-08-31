@@ -280,6 +280,47 @@ export type WaveMemoryDiagnostics = Readonly<{
   fallbackLevel: string;
 }>;
 
+export const WriteProfileTrimReasonSchema = z.object({
+  id: nonEmptyString,
+  reason: nonEmptyString,
+  channel: z.string().optional(),
+  kind: z.enum(["count-cap", "token-budget", "aged", "degraded", "named-keep"]),
+});
+
+export const WriteProfileItemSchema = z.object({
+  id: nonEmptyString,
+  title: nonEmptyString,
+  summary: z.string().default(""),
+  chapter: z.number().optional(),
+  named: z.boolean().optional(),
+});
+
+export const WriteProfileColumnSchema = z.object({
+  key: nonEmptyString,
+  title: nonEmptyString,
+  items: z.array(WriteProfileItemSchema).default([]),
+  candidateCount: nonNegativeInteger.default(0),
+  trimmed: nonNegativeInteger.default(0),
+  cap: z.number().int().min(0).optional(),
+});
+
+export const WriteProfileSchema = z.object({
+  locationAndTime: WriteProfileColumnSchema,
+  hardConstraints: WriteProfileColumnSchema,
+  coreCharacters: WriteProfileColumnSchema,
+  activeHooks: WriteProfileColumnSchema,
+  recentSummaries: WriteProfileColumnSchema,
+  nextCommitments: WriteProfileColumnSchema,
+  continuityRisks: WriteProfileColumnSchema,
+  caps: z.object({
+    coreCharacters: z.number().int().min(0),
+    activeHooks: z.number().int().min(0),
+    recentSummaries: z.number().int().min(0),
+  }),
+  namedEntities: z.array(z.string()).default([]),
+  trimReasons: z.array(WriteProfileTrimReasonSchema).default([]),
+});
+
 export const NarrativeRetrievalDiagnosticsSchema = z.object({
   totalMs: nonNegativeNumber,
   totalEstimatedTokens: nonNegativeInteger,
@@ -289,6 +330,8 @@ export const NarrativeRetrievalDiagnosticsSchema = z.object({
   degradedCards: z.array(z.object({ id: nonEmptyString, from: nonEmptyString, to: nonEmptyString })).default([]),
   warnings: z.array(z.string()).default([]),
   wave: WaveMemoryDiagnosticsSchema.optional(),
+  trimReasons: z.array(WriteProfileTrimReasonSchema).default([]),
+  writeProfile: WriteProfileSchema.optional(),
 });
 export type NarrativeRetrievalDiagnostics = Readonly<{
   totalMs: number;
@@ -299,6 +342,13 @@ export type NarrativeRetrievalDiagnostics = Readonly<{
   degradedCards: readonly Readonly<{ id: string; from: string; to: string }>[];
   warnings: readonly string[];
   wave?: WaveMemoryDiagnostics;
+  trimReasons?: readonly Readonly<{
+    id: string;
+    reason: string;
+    channel?: string;
+    kind: "count-cap" | "token-budget" | "aged" | "degraded" | "named-keep";
+  }>[];
+  writeProfile?: unknown;
 }>;
 
 export const BuildNarrativeContextInputSchema = z.object({
@@ -337,6 +387,7 @@ export const NarrativeContextPackageSchema = z.object({
     "recent-summary": z.string().default(""),
   }),
   diagnostics: NarrativeRetrievalDiagnosticsSchema,
+  writeProfile: WriteProfileSchema.optional(),
 });
 export type NarrativeContextPackage = Readonly<{
   bookId: string;
@@ -355,6 +406,7 @@ export type NarrativeContextPackage = Readonly<{
     "recent-summary": string;
   }>;
   diagnostics: NarrativeRetrievalDiagnostics;
+  writeProfile?: unknown;
 }>;
 
 // ─── 角色内核（Character Kernel）─────────────────────────────────────

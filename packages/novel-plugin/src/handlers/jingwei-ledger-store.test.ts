@@ -93,4 +93,42 @@ describe("Jingwei ledger revision authority", () => {
     expect(revision.reason).toBe("ledger-soft-delete");
     expect(JSON.parse(revision.snapshot_json)).toMatchObject({ contentMd: "尚未回收", fields: { status: "planted" } });
   });
+
+  it("upsertLedgerEntry matches by entryKey and unions aliases/sourceRefs", async () => {
+    const storage = await setup();
+    const e1 = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "outline",
+      title: "原标题",
+      contentMd: "内容",
+      fields: {},
+      entryKey: "custom:123",
+      aliases: ["小名1"],
+      sourceRefs: [{ chapterNumber: 1, excerpt: "出处1" }],
+    });
+    expect(e1.title).toBe("原标题");
+    // update by custom entryKey
+    const e2 = upsertLedgerEntry(storage, {
+      bookId: "book-1",
+      category: "outline",
+      title: "新标题",
+      contentMd: "新内容",
+      fields: {},
+      entryKey: "custom:123",
+      aliases: ["小名2"],
+      sourceRefs: [{ chapterNumber: 2, excerpt: "出处2" }],
+    });
+    expect(e2.id).toBe(e1.id); // Same row
+    expect(e2.title).toBe("新标题");
+
+    const row = storage.sqlite.prepare<{ entry_key: string, aliases_json: string, source_refs_json: string }>(`
+      SELECT entry_key, aliases_json, source_refs_json FROM story_jingwei_entry WHERE id = ?
+    `).get(e1.id)!;
+    expect(row.entry_key).toBe("custom:123");
+    expect(JSON.parse(row.aliases_json)).toEqual(["小名1", "小名2"]);
+    expect(JSON.parse(row.source_refs_json)).toEqual([
+      { chapterNumber: 1, excerpt: "出处1" },
+      { chapterNumber: 2, excerpt: "出处2" }
+    ]);
+  });
 });

@@ -8,6 +8,7 @@ import { buildObserverSystemPrompt, buildObserverUserPrompt } from "./observer-p
 import { parseSettlerDeltaOutput } from "./settler-delta-parser.js";
 import { parseSettlementOutput } from "./settler-parser.js";
 import { readGenreProfile, readBookRules } from "./rules-reader.js";
+import { resolveWritingLayers } from "../writing-layers/layer-store.js";
 import {
   detectCrossChapterRepetition,
   detectIntraChapterDupParagraphs,
@@ -143,7 +144,6 @@ export class WriterAgent extends BaseAgent {
     // Writer 仍允许直接单测/工具调用缺省上下文，此时只保留规则、外部指令与近章正文。
     const storyBible = "";
     const volumeOutline = "";
-    const styleGuide = "";
     const currentState = "";
     const ledger = "";
     const hooks = "";
@@ -151,9 +151,13 @@ export class WriterAgent extends BaseAgent {
     const subplotBoard = "";
     const emotionalArcs = "";
     const characterMatrix = "";
-    const styleProfileRaw = "";
     const parentCanon = "";
     const fanficCanonRaw = "";
+    const writingLayers = await resolveWritingLayers({ bookRoot: bookDir, book });
+    const styleGuide = writingLayers.styleGuideText;
+    const styleProfileRaw = writingLayers.bookDesign.styleProfileRaw;
+    const authorHabits = writingLayers.authorHabitsText;
+    const bookDesign = writingLayers.bookDesignText;
 
     const recentChapters = await this.loadRecentChapters(bookDir, chapterNumber);
     // Load more chapters for dialogue fingerprint extraction (voice consistency over longer span)
@@ -168,7 +172,7 @@ export class WriterAgent extends BaseAgent {
     // Load genre profile + book rules
     const { profile: genreProfile, body: genreBody } =
       await readGenreProfile(this.ctx.projectRoot, book.genre);
-    const parsedBookRules = await readBookRules(bookDir);
+    const parsedBookRules = writingLayers.bookRules ?? await readBookRules(bookDir);
     const bookRules = parsedBookRules?.rules ?? null;
     const bookRulesBody = parsedBookRules?.body ?? "";
 
@@ -206,6 +210,8 @@ export class WriterAgent extends BaseAgent {
       chapterNumber, "creative", fanficContext, resolvedLanguage,
       "governed",
       resolvedLengthSpec,
+      authorHabits,
+      bookDesign,
     );
 
     const creativeUserPrompt = (input.chapterIntent && input.contextPackage && input.ruleStack

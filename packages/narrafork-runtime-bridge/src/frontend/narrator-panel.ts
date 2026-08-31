@@ -1,8 +1,18 @@
+/** Host-owned follow-up from a product tool-result card. */
+export interface RuntimeToolResultAction {
+	readonly type: string;
+	readonly toolName: string;
+	readonly input: Readonly<Record<string, unknown>>;
+}
+
 /** Public input for a host-provided Runtime tool-result renderer. */
 export interface RuntimeToolResultRendererInput {
 	readonly toolName: string;
 	readonly renderer: string;
 	readonly result: unknown;
+	readonly onAction?: (
+		action: RuntimeToolResultAction,
+	) => Promise<unknown> | unknown;
 }
 
 /** Optional presentation hook supplied by a product shell. */

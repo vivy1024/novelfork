@@ -200,39 +200,50 @@ export function searchFtsCandidates(
   expr: string,
   limit: number,
   titleFirst = false,
+  includeUnconfirmed = false,
 ): FtsCandidate[] {
   if (expr.length === 0 || limit <= 0) return [];
 
   const queryAll = (ftsExpr: string, cap: number): FtsCandidate[] => {
-    // book_id 过滤不能放外层 WHERE（先全表 JOIN 再 bm25 排序会到 ~700ms）；
-    // 先在 FTS 子查询内 MATCH + bm25 排序 + LIMIT，再按主键 JOIN 映射表（<5ms）。
-    const rows = storage.sqlite
-      .prepare(
-        `SELECT d."entry_id" AS entryId, x."score" AS score
+    const statusClause = includeUnconfirmed ? "" : `AND COALESCE(d."entry_status", 'confirmed') = 'confirmed'`;
+    const sql = `SELECT d."entry_id" AS entryId, x."score" AS score
          FROM (SELECT "rowid", bm25("jingwei_entry_fts", 10.0, 8.0, 6.0, 5.0, 4.0, 1.0) * -1 AS score
                FROM "jingwei_entry_fts"
                WHERE "jingwei_entry_fts" MATCH ?
                ORDER BY score DESC
                LIMIT ?) x
          JOIN "jingwei_fts_doc" d ON d."doc_id" = x."rowid"
-         WHERE d."book_id" = ?
+         WHERE d."book_id" = ? ${statusClause}
          ORDER BY x."score" DESC
-         LIMIT ?`,
-      )
+         LIMIT ?`;
+    const rows = storage.sqlite
+      .prepare(sql)
       .all(ftsExpr, cap, bookId, cap) as Array<{ entryId: string; score: number }>;
     return rows.map((row) => ({ entryId: row.entryId, bookId, score: row.score }));
   };
 
   if (!titleFirst) return queryAll(expr, limit);
 
-  // 标题/别名列限定命中（数量少但优先）：两次列查询合并
-  const titleHits: Array<{ entryId: string; score: number }> = [];
   const bareExpr = expr.replace(/^"|"$/gu, "").replace(/"/gu, '""');
+  const titleHits: Array<{ entryId: string; score: number }> = [];
+  const statusClause = includeUnconfirmed ? "" : `AND COALESCE(d."entry_status", 'confirmed') = 'confirmed'`;
   for (const column of ["title_g", "alias_g"] as const) {
     try {
-      titleHits.push(...queryAll(`${column}:"${bareExpr}"`, Math.max(limit * 4, 50)));
+      const sql = `SELECT d."entry_id" AS entryId, x."score" AS score
+           FROM (SELECT "rowid", bm25("jingwei_entry_fts") * -1 AS score
+                 FROM "jingwei_entry_fts"
+                 WHERE "${column}" MATCH ?
+                 ORDER BY score DESC
+                 LIMIT ?) x
+           JOIN "jingwei_fts_doc" d ON d."doc_id" = x."rowid"
+           WHERE d."book_id" = ? ${statusClause}
+           ORDER BY x."score" DESC`;
+      const hits = storage.sqlite
+        .prepare(sql)
+        .all(`"${bareExpr}"`, limit, bookId) as Array<{ entryId: string; score: number }>;
+      titleHits.push(...hits);
     } catch {
-      // 列限定查询失败时忽略（如短语含特殊字符），继续走全字段路径
+      // ignore MATCH parsing errors for fragments
     }
   }
   if (titleHits.length === 0) {

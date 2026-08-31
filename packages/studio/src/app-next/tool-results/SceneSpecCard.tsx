@@ -114,6 +114,7 @@ export const SceneSpecCard: ToolResultRenderer = (context: ToolResultRendererCon
   const ceiling = getNumber(budget?.ceiling) ?? (wordTarget ? Math.round(wordTarget * 1.1) : 0);
   const findings = readBudgetFindings(budget?.findings);
   const blockers = findings.filter((finding) => finding.severity === "block");
+  const namedEntities = getStringArray(data.namedEntities);
 
   return (
     <ToolResultSurface
@@ -123,6 +124,11 @@ export const SceneSpecCard: ToolResultRenderer = (context: ToolResultRendererCon
       meta={`${scenes.length} 个场景${wordTarget ? ` · 目标 ${wordTarget} 字` : ""}`}
     >
       {specTitle && <p className="text-xs text-foreground">章标题：{specTitle}</p>}
+      {namedEntities.length > 0 && (
+        <p className="text-xs text-muted-foreground" data-testid="scene-spec-named-entities">
+          点名实体：{namedEntities.join("、")}
+        </p>
+      )}
 
       <ul className="flex flex-col gap-1.5">
         {scenes.map((scene, index) => (

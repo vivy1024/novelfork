@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 
 const EmbeddedNarratorDockHost = lazy(() =>
 	import("@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel").then(
@@ -8,13 +8,18 @@ const EmbeddedNarratorDockHost = lazy(() =>
 	),
 );
 
+import type { RuntimeToolResultAction } from "@vivy1024/narrafork-runtime-bridge/frontend/narrator-panel";
+
+import { executeToolResultAction } from "../tool-results/actions";
 import { renderToolResult } from "../tool-results/registry";
+import type { ToolResultAction } from "../tool-results/types";
 import type { RuntimeNarratorSummary } from "./product-contract";
 import type { RuntimeNarratorRecord } from "./runtime-narrator-client";
 
 export interface RuntimeNativeNarratorPanelMountProps {
 	readonly narratorId: string;
 	readonly compact?: boolean;
+	readonly bookId?: string;
 }
 
 export interface RuntimeNarratorPanelMountProps {
@@ -39,9 +44,32 @@ function readHighlightMessageId(): string | undefined {
 export function RuntimeNativeNarratorPanelMount({
 	narratorId,
 	compact,
+	bookId,
 }: RuntimeNativeNarratorPanelMountProps) {
 	const [highlightMessageId, setHighlightMessageId] = useState(
 		readHighlightMessageId,
+	);
+	const onAction = useCallback(
+		(action: ToolResultAction) => {
+			if (!bookId) {
+				return Promise.reject(new Error("当前面板没有可信书籍绑定，无法执行结果卡操作。"));
+			}
+			return executeToolResultAction(bookId, action);
+		},
+		[bookId],
+	);
+	const renderToolResultWithAction = useCallback(
+		(input: {
+			toolName: string;
+			renderer: string;
+			result: unknown;
+			onAction?: (action: RuntimeToolResultAction) => Promise<unknown> | unknown;
+		}) => renderToolResult({
+			toolName: input.toolName,
+			result: input.result,
+			onAction: input.onAction ?? onAction,
+		}),
+		[onAction],
 	);
 
 	useEffect(() => {
@@ -75,7 +103,7 @@ export function RuntimeNativeNarratorPanelMount({
 					narratorId={narratorId}
 					highlightMessageId={highlightMessageId}
 					compact={compact}
-					toolResultRenderer={renderToolResult}
+					toolResultRenderer={renderToolResultWithAction}
 				/>
 			</Suspense>
 		</section>
@@ -99,6 +127,7 @@ export function RuntimeNarratorPanelMount({
 		<RuntimeNativeNarratorPanelMount
 			narratorId={narrator.id}
 			compact={compact}
+			bookId={bookId}
 		/>
 	);
 }

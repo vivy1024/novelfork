@@ -5,8 +5,9 @@ import { parseGenreProfile, type ParsedGenreProfile } from "@vivy1024/novelfork-
 // 走窄入口：core barrel 含 node 专属模块（config-loader 用 os.homedir），
 // 从 barrel 导入会把它拉进 Studio 的浏览器构建并导致 rollup 解析失败。
 import { BUNDLED_GENRE_PROFILES } from "@vivy1024/novelfork-core/models/genre-profiles";
-import { parseBookRules, type ParsedBookRules } from "@vivy1024/novelfork-core";
+import type { ParsedBookRules } from "@vivy1024/novelfork-core";
 import { z } from "zod";
+import { loadBookRules } from "../writing-layers/layer-store.js";
 
 function resolveBuiltinGenresDir(): string {
   try {
@@ -132,9 +133,7 @@ export function getBuiltinGenresDir(): string {
  * Returns null if the file doesn't exist.
  */
 export async function readBookRules(bookDir: string): Promise<ParsedBookRules | null> {
-  const raw = await tryReadFile(join(bookDir, "story/book_rules.md"));
-  if (!raw) return null;
-  return parseBookRules(raw);
+  return loadBookRules(bookDir);
 }
 
 export async function readBookLanguage(bookDir: string): Promise<"zh" | "en" | undefined> {

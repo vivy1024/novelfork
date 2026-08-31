@@ -57,6 +57,8 @@ export interface SceneSpecInput {
   bookRoot?: string;
   /** 当前 Runtime Agent 显式提交的蓝图；工具只校验，不替模型生成。 */
   sceneSpec?: unknown;
+  /** 点名实体：write profile / facts 一跳扩展时超过 6/8/3 上限仍保留。 */
+  namedEntities?: string[];
 }
 
 export interface SceneSpecSuccess {
@@ -66,6 +68,15 @@ export interface SceneSpecSuccess {
     sceneSpec: SceneSpec;
     /** 情节点预算校验结果；未提供 beatBudget 时也会给，用于提示未拆点。 */
     beatBudget?: BeatBudgetReport;
+    namedEntities?: readonly string[];
+    entityExpansion?: {
+      readonly facts: ReadonlyArray<{
+        readonly id: string;
+        readonly subject: string;
+        readonly predicate: string;
+        readonly object: string;
+      }>;
+    };
     /**
      * 已启用 Writing Skills 的硬性约束摘要，与出口合规校验同源。
      * 已并入 sceneSpec.constraints，这里另给结构化版本便于渲染与下游复用。
@@ -335,13 +346,74 @@ export async function handleSceneSpec(input: SceneSpecInput): Promise<SceneSpecR
   const skillNote = writingSkillConstraints.items.length > 0
     ? ` 已并入 ${writingSkillConstraints.items.length} 条 Writing Skills 可机器校验约束（其中 ${writingSkillConstraints.blockingCount} 条硬性，保存前会逐条校验）。`
     : "";
+  const namedEntities = uniqueNamedEntities(input.namedEntities, sceneSpec);
+  let entityExpansion: Awaited<ReturnType<typeof expandNamedEntities>> | undefined;
+  if (namedEntities.length > 0) {
+    try {
+      entityExpansion = await expandNamedEntities({
+        bookId,
+        chapterNumber,
+        namedEntities,
+        bookRoot: input.bookRoot,
+      });
+    } catch {
+      entityExpansion = undefined;
+    }
+  }
+  const expansionNote = entityExpansion
+    ? ` 已按点名实体扩展 ${namedEntities.join("、")}：事实 ${entityExpansion.facts.length} 条。`
+    : namedEntities.length > 0
+      ? ` 点名实体 ${namedEntities.join("、")} 已记录，召回超上限时仍保留。`
+      : "";
   return {
     ok: true,
-    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}`,
+    summary: `已生成第${chapterNumber}章写作蓝图（${source}）：${sceneSpec.scenes.length} 个场景，目标 ${wordTarget} 字。${budget.summary}${gateNote}${skillNote}${expansionNote}`,
     data: {
       sceneSpec,
       beatBudget: budget,
+      namedEntities,
+      ...(entityExpansion ? { entityExpansion } : {}),
       ...(writingSkillConstraints.items.length > 0 ? { writingSkillConstraints } : {}),
     },
+  };
+}
+
+function uniqueNamedEntities(explicit: unknown, sceneSpec: SceneSpec): string[] {
+  const fromScenes = sceneSpec.scenes.flatMap((scene) => [...scene.characters, ...scene.hooks_used, ...scene.hooks_planted]);
+  const extra = Array.isArray(explicit) ? explicit.filter((item): item is string => typeof item === "string") : [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of [...extra, ...fromScenes]) {
+    const normalized = value.trim();
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+async function expandNamedEntities(input: {
+  readonly bookId: string;
+  readonly chapterNumber: number;
+  readonly namedEntities: readonly string[];
+  readonly bookRoot?: string;
+}): Promise<{ facts: Array<{ id: string; subject: string; predicate: string; object: string }> }> {
+  const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
+  const { expandFactsOneHop } = await import("../engine/narrative-memory/facts.js");
+  const storage = getStorageDatabase();
+  const facts = expandFactsOneHop(storage, {
+    bookId: input.bookId,
+    entities: input.namedEntities,
+    currentChapter: input.chapterNumber,
+    maxPerEntity: 4,
+    limit: 24,
+  });
+  return {
+    facts: facts.map((fact) => ({
+      id: fact.id,
+      subject: fact.subject,
+      predicate: fact.predicate,
+      object: fact.object,
+    })),
   };
 }

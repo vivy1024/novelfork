@@ -6,6 +6,7 @@ import { createStorageDatabase, type StorageDatabase } from "@vivy1024/novelfork
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ensureNarrativeMemorySchema } from "../engine/narrative-memory/storage.js";
+import { ensureDissectionStagingSchema } from "../engine/jingwei/dissection-staging.js";
 import { extractDissectDraftFromTexts, handleBookDissect } from "./book-dissect.js";
 
 // 不 mock core：handleBookDissect 全链路都接受显式 storage，
@@ -117,7 +118,7 @@ describe("handleBookDissect", () => {
     expect(result.draft.chapterSummaries.length).toBe(1);
   });
 
-  it("writes into jingwei as dynamic needs-review when apply=true", async () => {
+  it("writes into dissection_staging, not official jingwei, when apply=true", async () => {
     const bookRoot = await createBook([
       { number: 1, content: "韩立走道药园，淡淡道：「将来再议。」殊不知小瓶另有秘密。" },
       { number: 2, content: "【地点】韩立回到洞府。秘密尚未揭开。" },
@@ -141,23 +142,19 @@ describe("handleBookDissect", () => {
     expect(result.ok).toBe(true);
     expect(result.applied).toBe(true);
 
-    // 权威源在经纬：全部 dynamic + needs-review，不进 canon
-    const rows = activeStorage!.sqlite.prepare(
-      `SELECT category, layer, status FROM story_jingwei_entry WHERE book_id = ?`,
-    ).all("book-1") as Array<{ category: string; layer: string; status: string }>;
-    expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((row) => row.layer === "dynamic")).toBe(true);
-    expect(rows.every((row) => row.status === "needs-review")).toBe(true);
-    expect(rows.some((row) => row.category === "chapter-summaries")).toBe(true);
-
-    // 不再写 pending_hooks.json / chapter_summaries.json 作权威
+    const jingwei = activeStorage!.sqlite.prepare(
+      `SELECT id FROM story_jingwei_entry WHERE book_id = ?`,
+    ).all("book-1") as Array<{ id: string }>;
+    expect(jingwei.length).toBe(0);
+    const staged = activeStorage!.sqlite.prepare(
+      `SELECT proposed_title, status, participates_in_ai FROM dissection_staging WHERE book_id = ?`,
+    ).all("book-1") as Array<{ proposed_title: string; status: string; participates_in_ai: number }>;
+    expect(staged.length).toBeGreaterThan(0);
+    expect(staged.every((row) => row.status === "needs-review")).toBe(true);
+    expect(staged.every((row) => row.participates_in_ai === 0)).toBe(true);
     expect(result.writtenFiles.some((file) => file.includes("pending_hooks.json"))).toBe(false);
-    expect(result.writtenFiles.some((file) => file.includes("chapter_summaries.json"))).toBe(false);
-
-    // 调试快照仍写
     const draftFile = await readFile(join(bookRoot, "story", "dissect_draft.json"), "utf8");
-    expect(draftFile).toContain("book-1");
-    expect(draftFile).toContain("权威源在经纬");
+    expect(draftFile).toContain("dissection_staging");
   });
 
   it("rolls back all jingwei data if database transaction fails", async () => {
@@ -165,9 +162,9 @@ describe("handleBookDissect", () => {
       { number: 1, content: "韩立走道药园，淡淡道：「将来再议。」殊不知小瓶另有秘密。" },
     ]);
 
-    // Install a temporary trigger that intentionally breaks SQLite insert into story_jingwei_entry
+    ensureDissectionStagingSchema(activeStorage!);
     activeStorage!.sqlite.exec(`
-      CREATE TRIGGER fail_jingwei_insert BEFORE INSERT ON story_jingwei_entry
+      CREATE TRIGGER fail_staging_insert BEFORE INSERT ON dissection_staging
       BEGIN
         SELECT RAISE(FAIL, 'simulated-db-error');
       END;
@@ -182,13 +179,16 @@ describe("handleBookDissect", () => {
 
     expect(result.ok).toBe(false);
     expect(result.error).toBe("dissect-transaction-failed");
-    expect(result.summary).toContain("经纬权威事务写入失败");
+    expect(result.summary).toContain("拆书暂存事务写入失败");
 
-    // Verify 0 rows persisted in story_jingwei_entry
-    const rows = activeStorage!.sqlite.prepare(
+    const jingwei = activeStorage!.sqlite.prepare(
       `SELECT id FROM story_jingwei_entry WHERE book_id = ?`,
     ).all("book-1") as Array<{ id: string }>;
-    expect(rows.length).toBe(0);
+    expect(jingwei.length).toBe(0);
+    const staged = activeStorage!.sqlite.prepare(
+      `SELECT id FROM dissection_staging WHERE book_id = ?`,
+    ).all("book-1") as Array<{ id: string }>;
+    expect(staged.length).toBe(0);
   });
 
   it("retains authority DB commit even if derived file export fails", async () => {
@@ -220,9 +220,9 @@ describe("handleBookDissect", () => {
 
     // Verify DB transaction committed successfully
     const rows = activeStorage!.sqlite.prepare(
-      `SELECT category, status FROM story_jingwei_entry WHERE book_id = ?`,
-    ).all("book-1") as Array<{ category: string; status: string }>;
+      `SELECT status, participates_in_ai FROM dissection_staging WHERE book_id = ?`,
+    ).all("book-1") as Array<{ status: string; participates_in_ai: number }>;
     expect(rows.length).toBeGreaterThan(0);
-    expect(rows.every((row) => row.status === "needs-review")).toBe(true);
+    expect(rows.every((row) => row.status === "needs-review" && row.participates_in_ai === 0)).toBe(true);
   });
 });

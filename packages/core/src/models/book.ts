@@ -55,6 +55,11 @@ export const BookConfigSchema = z.object({
   visibleCategories: z.array(z.string()).optional(),
   /** 叙事契约：全书承诺、核心问题、主题锚点与揭示预算。 */
   narrativeContract: NarrativeContractSchema.optional(),
+  /**
+   * 是否把作者级跨书习惯注入本书。默认关闭，避免把一本的口吻泄漏到另一本。
+   * 存量书籍没有该字段时按 false 处理。
+   */
+  authorProfileEnabled: z.boolean().optional().default(false),
 });
 
 export type BookConfig = z.infer<typeof BookConfigSchema>;

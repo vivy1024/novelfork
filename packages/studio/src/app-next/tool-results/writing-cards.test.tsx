@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { renderToolResult } from "./registry";
+import type { ToolResultAction } from "./registry";
 
 afterEach(() => cleanup());
 
@@ -104,7 +105,85 @@ describe("book.dissect 采纳卡", () => {
       result: { renderer: "book.dissect", data: { ok: true, applied: false, draft: { characters: ["林舟"] } } },
     })}</>);
 
-    expect(screen.getByText(/仅预览，未写入经纬/)).toBeTruthy();
+    expect(screen.getByText(/仅预览，未写入暂存/)).toBeTruthy();
+  });
+
+  it("staging 卡可直接触发 promote/reject，且不转交 bookId", async () => {
+    const actions: ToolResultAction[] = [];
+    const renderCard = (id: string) =>
+      render(<>{renderToolResult({
+        toolName: "book.dissect",
+        result: {
+          renderer: "book.dissect",
+          data: {
+            ok: true,
+            applied: true,
+            staging: [{
+              id,
+              proposedTitle: "边界规则",
+              kind: "rules",
+              status: "needs-review",
+              bookId: "forged-book",
+            }],
+            knowledge: { characterCards: [{ name: "林舟" }] },
+          },
+        },
+        onAction: (action) => {
+          actions.push(action);
+          return Promise.resolve({ ok: true, summary: `已处理「边界规则」。` });
+        },
+      })}</>);
+
+    // 先拒绝一条独立候选（验收拒绝路径，不依赖 promote 先行完成）
+    renderCard("staging-reject");
+    fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    await waitFor(() => expect(actions).toHaveLength(1));
+    expect(actions[0]).toEqual({
+      type: "lore.write.staging",
+      toolName: "lore.write",
+      input: { stagingId: "staging-reject", stagingDecision: "reject", title: "边界规则" },
+    });
+    expect(actions[0]?.input).not.toHaveProperty("bookId");
+    cleanup();
+
+    // 再渲染一条独立候选点提升
+    renderCard("staging-promote");
+    fireEvent.click(screen.getByRole("button", { name: "提升" }));
+    await waitFor(() => expect(actions).toHaveLength(2));
+    expect(actions[1]).toEqual({
+      type: "lore.write.staging",
+      toolName: "lore.write",
+      input: { stagingId: "staging-promote", stagingDecision: "promote", title: "边界规则" },
+    });
+    expect(actions[1]?.input).not.toHaveProperty("bookId");
+    await waitFor(() => expect(screen.getByText("已提升").textContent).toBe("已提升"));
+  });
+
+  it("staging 操作失败时展示错误但不吞掉后续点击", async () => {
+    const onAction = vi.fn((action: ToolResultAction) => {
+      if (action.input.stagingDecision === "promote") {
+        return Promise.reject(new Error("写入失败：已回滚"));
+      }
+      return Promise.resolve({ ok: true, summary: "已拒绝「边界规则」。" });
+    });
+    render(<>{renderToolResult({
+      toolName: "book.dissect",
+      result: {
+        renderer: "book.dissect",
+        data: {
+          ok: true,
+          applied: true,
+          staging: [{ id: "staging-2", proposedTitle: "边界规则", kind: "rules", status: "needs-review" }],
+        },
+      },
+      onAction,
+    })}</>);
+
+    fireEvent.click(screen.getByRole("button", { name: "提升" }));
+    await waitFor(() => expect(screen.getByText("写入失败：已回滚")).toBeTruthy());
+    fireEvent.click(screen.getByRole("button", { name: "拒绝" }));
+    await waitFor(() => expect(screen.getByText("已拒绝").textContent).toBe("已拒绝"));
+    expect(onAction).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -319,5 +398,59 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByText("已有 11 章进度，但近章摘要为空。")).toBeTruthy();
     expect(screen.getByText(/先用 memory.settle_range 回填近章/)).toBeTruthy();
     expect(screen.queryByText("审计通过")).toBeNull();
+  });
+});
+
+describe("memory.read 七栏 write profile", () => {
+  it("展示核心角色/伏笔/近章上限与裁剪原因", () => {
+    render(<>{renderToolResult({
+      toolName: "memory.read",
+      result: {
+        renderer: "narrative-memory.read",
+        data: {
+          cards: [{ id: "c1", title: "韩立", channel: "state", brief: "抵达药园", reason: "点名实体", estimatedTokens: 12 }],
+          diagnostics: { totalEstimatedTokens: 12, warnings: [], trimReasons: [{ id: "c2", reason: "核心角色超过上限 6。" }] },
+          writeProfile: {
+            locationAndTime: { title: "当前位置与故事时间", items: [{ title: "药园", summary: "入门第三日黄昏" }] },
+            hardConstraints: { title: "硬约束", items: [{ title: "不得暴露小瓶" }] },
+            coreCharacters: { title: "核心角色", items: [{ title: "韩立", named: true }], cap: 6, trimmed: 2, candidateCount: 8 },
+            activeHooks: { title: "活跃伏笔", items: [{ title: "小瓶来历" }], cap: 8, trimmed: 0 },
+            recentSummaries: { title: "近三章速记", items: [{ title: "第12章" }], cap: 3 },
+            nextCommitments: { title: "下一章承诺", items: [{ title: "确认墨大夫是否察觉" }] },
+            continuityRisks: { title: "连贯性风险", items: [] },
+          },
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("write-profile")).toBeTruthy();
+    expect(screen.getByText("核心角色")).toBeTruthy();
+    expect(screen.getByText("1/6")).toBeTruthy();
+    expect(screen.getByText("点名")).toBeTruthy();
+    expect(screen.getByText(/裁剪原因/)).toBeTruthy();
+  });
+});
+
+describe("scene.spec 点名实体", () => {
+  it("展示 namedEntities", () => {
+    render(<>{renderToolResult({
+      toolName: "scene.spec",
+      result: {
+        renderer: "scene.spec",
+        data: {
+          sceneSpec: {
+            chapter: 5,
+            title: "雨夜",
+            wordTarget: 3000,
+            scenes: [{ characters: ["林舟"], location: "旧巷", conflict: "跟踪", mood: "紧绷", outcome: "锁定仓库", hooks_used: [], hooks_planted: [] }],
+            constraints: [],
+          },
+          namedEntities: ["账本", "林舟"],
+        },
+      },
+    })}</>);
+
+    expect(screen.getByTestId("scene-spec-named-entities")).toBeTruthy();
+    expect(screen.getByText(/点名实体：账本、林舟/)).toBeTruthy();
   });
 });

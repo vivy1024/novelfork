@@ -25,6 +25,7 @@ import { handleWritingSkillsCheckCompliance } from "./writing-skill-handlers.js"
 import type { WritingSkillAcknowledgement } from "./writing-skill-acknowledgement.js";
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
+import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
 import { runtimeDeltaToNarrativeEvents } from "../engine/narrative-memory/runtime-delta-events.js";
 import type { NarrativeContextPackage, NarrativeEvent, NarrativeRetrievalDiagnostics } from "../engine/narrative-memory/types.js";
 import { listHighRiskPendingNarrativeEvents } from "../engine/narrative-memory/storage.js";
@@ -752,6 +753,7 @@ async function executePipelineWriteUnlocked(
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
+        const writingLayers = await resolveWritingLayers({ bookRoot: bookDir, book }).catch(() => null);
         narrativeContext = await buildNarrativeContext({
           storage,
           bookId,
@@ -766,6 +768,10 @@ async function executePipelineWriteUnlocked(
           enabledChannels: memoryConfig?.retrieval.channels,
           waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
           semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+          ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
+          ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
+          ...(writingLayers?.authorHabitsText ? { authorHabitsText: writingLayers.authorHabitsText } : {}),
+          ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
           // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
           ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
         });

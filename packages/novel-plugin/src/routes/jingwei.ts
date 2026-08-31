@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
 import { ApiError, getStorageDatabase, isSafeBookId, type StorageDatabase } from "@vivy1024/novelfork-core";
+import { handleJingweiWrite } from "../handlers/jingwei-write-handler.js";
 import type {
   JingweiEntryLifecycle,
   JingweiEntryStatus,
@@ -778,6 +779,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
         if (existing) {
           await entryRepo.update(bookId, existing.id, {
             contentMd: content,
+            sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: join("books", bookId, "story", fileName), fileName }],
             updatedAt: timestamp,
           });
           updated++;
@@ -785,7 +787,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
       } else {
         // 创建新条目
         const entryId = crypto.randomUUID();
-        await entryRepo.create({
+          await entryRepo.create({
           id: entryId,
           bookId,
           sectionId,
@@ -795,6 +797,7 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
           fields: {},
           tags: [],
           aliases: [],
+          sourceRefs: [{ chapterNumber: 0, excerpt: content.slice(0, 240), path: join("books", bookId, "story", fileName), fileName }],
           customFields: {},
           relatedChapterNumbers: [],
           relatedEntryIds: [],
@@ -1071,12 +1074,87 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
     return c.json({ ok: true });
   });
 
+  app.get("/api/books/:bookId/jingwei/merge-suggestions", async (c) => {
+    const bookId = c.req.param("bookId");
+    const storage = await resolveStorage(options);
+    await ensureBook(storage, bookId);
+
+    const { createStoryJingweiEntryRepository } = await loadEngine();
+    const { generateMergeSuggestions } = await import("../engine/jingwei/merge-suggestions.js");
+    const repo = createStoryJingweiEntryRepository(storage);
+    const existingEntries = await repo.listByBook(bookId);
+
+    const url = new URL(c.req.url);
+    const filterCategory = url.searchParams.get("category");
+    const filterEntryKey = url.searchParams.get("entryKey");
+    const filterTitle = url.searchParams.get("title");
+    const limit = url.searchParams.has("limit") ? parseInt(url.searchParams.get("limit") || "10", 10) : undefined;
+
+    let entriesToMerge = existingEntries.map(e => ({
+      id: e.id,
+      bookId: e.bookId,
+      category: e.category,
+      title: e.title,
+      aliases: e.aliases || [],
+      fields: e.fields,
+      relatedChapterNumbers: e.relatedChapterNumbers || [],
+      sourceRefs: (e.sourceRefs) || [],
+      entryKey: e.entryKey ?? undefined,
+      isCanonical: true
+    }));
+
+    if (filterCategory) entriesToMerge = entriesToMerge.filter(e => e.category === filterCategory);
+    if (filterEntryKey) entriesToMerge = entriesToMerge.filter(e => e.entryKey === filterEntryKey);
+    if (filterTitle) entriesToMerge = entriesToMerge.filter(e => e.title.includes(filterTitle));
+
+    const mergeResult = generateMergeSuggestions(entriesToMerge, { bookId });
+    let groups = mergeResult.groups;
+    if (limit !== undefined && limit > 0) {
+      groups = groups.slice(0, limit);
+    }
+
+    return c.json({ ok: true, groups, ungrouped: mergeResult.ungrouped });
+  });
+
+  app.post("/api/books/:bookId/jingwei/staging/:stagingId/decision", async (c) => {
+    const bookId = c.req.param("bookId");
+    const stagingId = c.req.param("stagingId");
+    const storage = await resolveStorage(options);
+    await ensureBook(storage, bookId);
+    const body = await readJson(c);
+    if ("bookId" in body || "bookRoot" in body || "sessionId" in body) {
+      throw new ApiError(400, "FORGED_HOST_FIELD", "bookId、sessionId 和 bookRoot 只能由路径绑定，不能由请求体提供。");
+    }
+    const stagingDecision = body.stagingDecision === "promote" || body.stagingDecision === "reject"
+      ? body.stagingDecision
+      : undefined;
+    if (!stagingDecision) {
+      throw new ApiError(400, "STAGING_DECISION_REQUIRED", "stagingDecision 必须是 promote 或 reject。");
+    }
+    const result = await handleJingweiWrite({
+      bookId,
+      title: "",
+      stagingId,
+      stagingDecision,
+    }, { storage });
+    if (!result.ok) {
+      const status = result.error === "staging-not-found" || result.error === "book-not-found"
+        ? 404
+        : result.error === "staging-not-pending"
+          ? 409
+          : 400;
+      throw new ApiError(status, result.error.replaceAll("-", "_").toUpperCase(), result.summary);
+    }
+    return c.json(result);
+  });
+
   // --- Jingwei v2: Import from markdown ---
   app.post("/api/books/:bookId/jingwei/import", async (c) => {
     const bookId = c.req.param("bookId");
     const storage = await resolveStorage(options);
     await ensureBook(storage, bookId);
-    const body = await c.req.json<{ entries: Array<{ title: string; contentMd: string; category: string; layer?: string }> }>();
+    const body = await c.req.json<{ entries: Array<{ title: string; contentMd: string; category: string; layer?: string; entryKey?: string; aliases?: string[]; sourceRefs?: any[] }> }>();
+    const { generateEntryKey } = await import("../engine/jingwei/entry-identity.js");
 
     // 走 repo.create（自动同步 FTS 索引 + 分类规范化），不再直插 SQL。
     // sectionId 必须来自按 category 查找/创建的真实 section，不能再写空串。
@@ -1136,7 +1214,9 @@ export function createJingweiRouter(options: CreateJingweiRouterOptions = {}): H
         status: "draft",
         version: 1,
         tags: [],
-        aliases: [],
+        aliases: Array.isArray(entry.aliases) ? entry.aliases : [],
+        entryKey: entry.entryKey ?? generateEntryKey(category, entry.title),
+        sourceRefs: Array.isArray(entry.sourceRefs) ? entry.sourceRefs : [],
         relatedChapterNumbers: [],
         relatedEntryIds: [],
         visibilityRule: { type: section.defaultVisibility },

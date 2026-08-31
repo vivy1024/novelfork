@@ -94,6 +94,7 @@ export type ProductBookBasicSettingsPatch = {
 	targetChapters?: number | null;
 	arcTrackingMode?: "off" | "rule" | "llm";
 	customSensitiveWords?: string;
+	authorProfileEnabled?: boolean;
 };
 
 export type ProductActor = { userId: string; role: "admin" | "user" };
@@ -773,6 +774,7 @@ function buildBookConfig(operation: ProvisionOperation): Record<string, unknown>
 		chapterWordCount: input.chapterWordCount ?? 3000,
 		...(input.targetChapters ? { targetChapters: input.targetChapters } : {}),
 		...(input.language ? { language: input.language } : {}),
+		authorProfileEnabled: false,
 		...(isExternalWorkspace ? { [EXTERNAL_BOOK_WORKSPACE_MARKER]: true } : {}),
 		createdAt: operation.createdAt,
 		updatedAt: now(),

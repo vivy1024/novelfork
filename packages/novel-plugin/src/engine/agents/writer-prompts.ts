@@ -30,6 +30,8 @@ export function buildWriterSystemPrompt(
   languageOverride?: "zh" | "en",
   inputProfile: "legacy" | "governed" = "legacy",
   lengthSpec?: LengthSpec,
+  authorHabits?: string,
+  bookDesign?: string,
 ): string {
   const isEnglish = (languageOverride ?? genreProfile.language) === "en";
   const governed = inputProfile === "governed";
@@ -51,6 +53,8 @@ export function buildWriterSystemPrompt(
         buildGenreRules(genreProfile, genreBody),
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
+        buildBookDesignSection(bookDesign),
+        buildAuthorHabits(authorHabits),
         buildStyleGuide(styleGuide),
         buildStyleFingerprint(styleFingerprint),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
@@ -76,6 +80,8 @@ export function buildWriterSystemPrompt(
         buildGenreRules(genreProfile, genreBody),
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
+        buildBookDesignSection(bookDesign),
+        buildAuthorHabits(authorHabits),
         buildStyleGuide(styleGuide),
         buildStyleFingerprint(styleFingerprint),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
@@ -226,6 +232,9 @@ function buildToolOrchestrationSop(): string {
 - 工具：scene.spec；何时：write.preflight 通过后生成结构化场景蓝图；前置：userDirectives 至少 8 字或明确接受 focus 默认句，scenes 每项必须有 characters/location/conflict/outcome；失败回退：修正缺字段/预算后重调，不能直接调用 pipeline.write。
 - 工具：jingwei.read；何时：兼容旧调用方读静态经纬；前置：同 lore.read，优先迁移调用到 lore.read；失败回退：动态内容转 memory.read/memory.graph，不把别名当独立权威源。
 - 工具：resource.manage；何时：列出、归档或永久删除正式章节结果；前置：list 先盘点，archive/delete 需目标和确认；失败回退：删除失败保留原结果并报告，若目标是废稿连同章域记忆清理则改用 chapter.discard_range。
+- 工具：market.scan；何时：用户要求扫描起点/番茄公开榜单并留存市场快照；前置：平台或榜单范围明确；失败回退：报告采集失败，不把缺失榜单当成市场结论。
+- 工具：market.query；何时：读取已留存的市场快照并分析题材、标题、字数趋势；前置：先确认平台和日期范围；失败回退：缩小范围或报告暂无快照，不凭空补数据。
+- 工具：market.sample_public_chapters；何时：对指定公开书籍采样前几章结构指标；前置：仅传公开书籍 ID，不保存正文；失败回退：报告采样失败，不把未采样内容当成事实。
 
 ### 4. 失败回退总则
 
@@ -614,6 +623,16 @@ function buildProtagonistRules(bookRules: BookRules | null): string {
 function buildBookRulesBody(body: string): string {
   if (!body) return "";
   return `## 本书专属规则\n\n${body}`;
+}
+
+function buildBookDesignSection(bookDesign?: string): string {
+  if (!bookDesign?.trim()) return "";
+  return `## 本书设计（立项/大纲/当前聚焦）\n\n${bookDesign.trim()}`;
+}
+
+function buildAuthorHabits(authorHabits?: string): string {
+  if (!authorHabits?.trim()) return "";
+  return `## 作者跨书习惯（仅本书已开启）\n\n${authorHabits.trim()}`;
 }
 
 // ---------------------------------------------------------------------------

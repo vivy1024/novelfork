@@ -35,7 +35,18 @@ export async function updateCharacterLifecycles(bookId: string, currentChapter: 
     }
 
     if (newLifecycle !== char.lifecycle) {
-      storage.sqlite.prepare("UPDATE story_jingwei_entry SET lifecycle = ? WHERE id = ?").run(newLifecycle, char.id);
+      const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info('story_jingwei_entry')`).all() as Array<{ name: string }>).map((row) => row.name));
+      const setClauses = ["lifecycle = ?"];
+      const values: unknown[] = [newLifecycle];
+      if (columns.has("updated_at")) {
+        setClauses.push("updated_at = ?");
+        values.push(Date.now());
+      }
+      if (columns.has("version")) setClauses.push("version = COALESCE(version, 1) + 1");
+      if (columns.has("entry_key")) setClauses.push("entry_key = COALESCE(entry_key, id)");
+      if (columns.has("source_refs_json")) setClauses.push("source_refs_json = COALESCE(source_refs_json, '[]')");
+      values.push(char.id);
+      storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
       downgraded++;
     }
   }

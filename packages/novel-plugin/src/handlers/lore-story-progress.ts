@@ -218,11 +218,18 @@ export function handleLoreProgress(input: LoreProgressInput): LoreProgressResult
   const progressionId = crypto.randomUUID();
 
   const write = storage.sqlite.transaction(() => {
-    storage.sqlite.prepare(`
-      UPDATE story_jingwei_entry
-      SET fields_json = ?, updated_at = ?
-      WHERE id = ? AND book_id = ?
-    `).run(JSON.stringify(nextFields), Date.now(), entry.id, bookId);
+    const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info('story_jingwei_entry')`).all() as Array<{ name: string }>).map((row) => row.name));
+    const setClauses = ["fields_json = ?"];
+    const values: unknown[] = [JSON.stringify(nextFields)];
+    if (columns.has("updated_at")) {
+      setClauses.push("updated_at = ?");
+      values.push(Date.now());
+    }
+    if (columns.has("version")) setClauses.push("version = COALESCE(version, 1) + 1");
+    if (columns.has("entry_key")) setClauses.push("entry_key = COALESCE(entry_key, id)");
+    if (columns.has("source_refs_json")) setClauses.push("source_refs_json = COALESCE(source_refs_json, '[]')");
+    values.push(entry.id, bookId);
+    storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ? AND book_id = ?`).run(...values);
     storage.sqlite.prepare(`
       INSERT INTO "jingwei_progressions" (
         "id", "book_id", "entry_id", "field_key", "old_value", "new_value", "chapter_number", "description", "created_at"

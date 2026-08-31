@@ -1,5 +1,10 @@
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import {
+  RevisionConflictError,
+  commitChapterStateDelta,
+  getStorageDatabase,
+  type ChapterStateDelta,
+} from "@vivy1024/novelfork-core";
 
 import { extractNarrativeEventsFromChapter, type ChapterEventExtractorInput, type ChapterEventExtractionResult } from "../engine/narrative-memory/chapter-event-extractor.js";
 import {
@@ -31,6 +36,7 @@ import {
   type NarrativeEventDraft,
   type SettlementRiskDecision,
 } from "../engine/narrative-memory/settlement-risk-gate.js";
+import { chapterSummaryKey } from "../engine/jingwei/entry-identity.js";
 import { createBookRepository } from "../engine/jingwei/repositories/book-repo.js";
 import { getJingweiCategoryAliases, sqlInPlaceholders } from "../engine/jingwei/category-compat.js";
 import { createStoryJingweiEntryRepository } from "../engine/jingwei/repositories/entry-repo.js";
@@ -122,15 +128,16 @@ export function matchesChapterSummaryTitle(title: string, chapterNumber: number)
 function findChapterSummaryEntryId(storage: StorageDatabase, bookId: string, chapterNumber: number): string | undefined {
   const categories = getJingweiCategoryAliases("chapter-summaries");
   const stableId = `summary:${idPart(bookId)}:${chapterNumber}`;
-  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null }>(`
-    SELECT "id", "title", "fields_json"
+  const stableKey = chapterSummaryKey(chapterNumber);
+  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null; entry_key: string | null }>(`
+    SELECT "id", "title", "fields_json", "entry_key"
     FROM "story_jingwei_entry"
     WHERE "book_id" = ?
       AND "category" IN (${sqlInPlaceholders(categories)})
       AND "deleted_at" IS NULL
-  `).all(bookId, ...categories) as Array<{ id: string; title: string; fields_json: string | null }>;
+  `).all(bookId, ...categories) as Array<{ id: string; title: string; fields_json: string | null; entry_key: string | null }>;
 
-  const stable = rows.find((row) => row.id === stableId);
+  const stable = rows.find((row) => row.id === stableId || row.entry_key === stableKey);
   if (stable) return stable.id;
   const byChapter = rows.find((row) => {
     const fields = parseSummaryFields(row.fields_json);
@@ -145,16 +152,18 @@ function findChapterSummaryEntryId(storage: StorageDatabase, bookId: string, cha
 /** 同章其余重复摘要条目（双轨自愈：upsert 时软删，保证每章只留一条权威摘要）。 */
 function findDuplicateChapterSummaryIds(storage: StorageDatabase, bookId: string, chapterNumber: number, keepId: string): string[] {
   const categories = getJingweiCategoryAliases("chapter-summaries");
-  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null }>(`
-    SELECT "id", "title", "fields_json"
+  const stableKey = chapterSummaryKey(chapterNumber);
+  const rows = storage.sqlite.prepare<{ id: string; title: string; fields_json: string | null; entry_key: string | null }>(`
+    SELECT "id", "title", "fields_json", "entry_key"
     FROM "story_jingwei_entry"
     WHERE "book_id" = ?
       AND "category" IN (${sqlInPlaceholders(categories)})
       AND "deleted_at" IS NULL
       AND "id" != ?
-  `).all(bookId, ...categories, keepId) as Array<{ id: string; title: string; fields_json: string | null }>;
+  `).all(bookId, ...categories, keepId) as Array<{ id: string; title: string; fields_json: string | null; entry_key: string | null }>;
 
   return rows.filter((row) => {
+    if (row.entry_key === stableKey) return true;
     const fields = parseSummaryFields(row.fields_json);
     const value = fields.chapterNumber ?? fields.chapter_number;
     if (typeof value === "number") return value === chapterNumber;
@@ -177,6 +186,7 @@ async function upsertChapterSummaryEntry(input: {
   const sectionId = ensureChapterSummarySection(input.storage, input.bookId, input.now);
   const entryRepo = createStoryJingweiEntryRepository(input.storage);
   const stableId = `summary:${idPart(input.bookId)}:${input.chapterNumber}`;
+  const stableKey = chapterSummaryKey(input.chapterNumber);
   const fields = {
     chapterNumber: input.chapterNumber,
     title: input.title ?? "",
@@ -206,6 +216,8 @@ async function upsertChapterSummaryEntry(input: {
     changedBy: "auto-settle",
     revisionReason: "auto-chapter-summary",
     updatedAt: input.now,
+    entryKey: stableKey,
+    sourceRefs: input.summary.trim() ? [{ chapterNumber: input.chapterNumber, excerpt: input.summary }] : [],
   };
 
   if (entryId) {
@@ -645,72 +657,160 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     events.push(event);
   }
 
-  const persisted = persistSettlementEvents(storage, events, warnings);
-  const eventResults = [...persisted.all];
-
-  const applied = applyNarrativeEvents(storage, input.bookId, persisted.reducible, {
-    closeSupersededFacts: config.ledger.closeSupersededFacts,
-  });
-  const downgradedPendingIds: string[] = [];
-  for (const failed of applied.failedEvents) {
-    const failedEvent = persisted.reducible.find((event) => event.id === failed.id);
-    if (failedEvent?.status === "applied") {
-      const updated = updateNarrativeEventStatus(storage, { id: failed.id, status: "pending" });
-      if (updated) {
-        const index = eventResults.findIndex((event) => event.id === failed.id);
-        if (index >= 0) eventResults[index] = updated;
-      }
-      downgradedPendingIds.push(failed.id);
-      warnings.push(`事件 ${failed.id} 自动应用失败，已降级为 pending：${failed.error}`);
-    } else {
-      warnings.push(`事件 ${failed.id} 处理失败：${failed.error}`);
-    }
-  }
-
-  // 结算真正跑完才登记台账：登记的是「这份正文已被结算」，下一次同内容调用据此跳过。
-  // 事件的 applied/pending/rejected 计数不落盘，读取时从 narrative_event 现算，
-  // 避免与作者后续的批准/驳回形成两份互相矛盾的计数。
   const settledAt = (input.confirmedAt ? new Date(input.confirmedAt) : (options.now?.() ?? new Date())).toISOString();
-  const record = recordChapterSettlement(storage, {
-    bookId: input.bookId,
+  const chapterStateDelta: ChapterStateDelta = {
     chapterNumber: input.chapterNumber,
-    contentFingerprint: idempotency.fingerprint,
-    eventIds: eventResults.map((event) => event.id),
-    settledAt,
-    ...(idempotency.record ? { previousRecord: idempotency.record } : {}),
-  });
-
-  // T4 证据链落盘：原始草案+逐条决策随指纹持久化，回答「为什么抽出这些事件」。
-  // 同一指纹重结算覆盖（INSERT OR REPLACE 幂等）；失败仅告警不阻断。
+    origin: `settle:${idempotency.fingerprint}:${idempotency.record ? idempotency.record.settlementCount + 1 : 1}`,
+    ...(input.title ? { title: input.title } : {}),
+    characters: events
+      .filter((event) => event.eventType === "character_state_changed")
+      .map((event) => ({
+        characterId: event.subject,
+        currentState: event.object,
+        knowledge: [],
+      })),
+    relationships: events
+      .filter((event) => event.eventType === "relationship_changed")
+      .map((event) => ({
+        source: event.subject,
+        target: event.object,
+        relationType: event.predicate,
+        sentiment: "neutral" as const,
+        status: "evolving" as const,
+        description: event.evidenceText,
+      })),
+    hooks: events.flatMap((event) => {
+      if (event.eventType !== "hook_planted" && event.eventType !== "hook_progressed" && event.eventType !== "hook_resolved") {
+        return [];
+      }
+      return [{
+        hookId: event.subject,
+        action: event.eventType === "hook_planted" ? "upsert" as const : event.eventType === "hook_resolved" ? "resolve" as const : "mention" as const,
+        type: event.predicate,
+        status: event.eventType === "hook_resolved" ? "resolved" as const : event.eventType === "hook_planted" ? "open" as const : "progressing" as const,
+        expectedPayoff: event.object,
+        notes: event.evidenceText || event.object,
+      }];
+    }),
+    ...(events.find((event) => event.eventType === "timeline_advanced")
+      ? {
+        timeline: {
+          chapter: input.chapterNumber,
+          storyTime: events.find((event) => event.eventType === "timeline_advanced")!.object,
+          label: events.find((event) => event.eventType === "timeline_advanced")!.predicate,
+          durationFromPrev: "",
+        },
+      }
+      : {}),
+    commitments: [],
+    resources: [],
+    knowledge: [],
+    notes: warnings.slice(0, 8),
+  };
+  let commit: {
+    readonly persisted: PersistedSettlementEvents;
+    readonly applied: ReturnType<typeof applyNarrativeEvents>;
+    readonly eventResults: NarrativeEvent[];
+    readonly downgradedPendingIds: string[];
+    readonly record: ReturnType<typeof recordChapterSettlement>;
+    readonly stateRevision: number;
+    readonly stateFingerprint: string;
+  };
   try {
-    const appliedById = new Map(eventResults.map((event) => [event.id, event.status] as const));
-    const artifact = {
-      chapterNumber: input.chapterNumber,
-      chapterTitle: input.title ?? null,
-      settledAt,
-      sandboxIntercepted,
-      drafts: evidenceDrafts.map((entry) => {
-        const eventStatus = entry.eventId ? appliedById.get(entry.eventId) : undefined;
-        return {
-          ...entry,
-          ...(eventStatus ? { eventStatus } : {}),
+    const committed = commitChapterStateDelta(storage, {
+      bookId: input.bookId,
+      delta: chapterStateDelta,
+      ...(typeof input.expectedStateRevision === "number" ? { expectedStateRevision: input.expectedStateRevision } : {}),
+      now: () => Date.parse(settledAt) || Date.now(),
+      project: () => {
+        const persisted = persistSettlementEvents(storage, events, warnings);
+        const eventResults = [...persisted.all];
+
+        const applied = applyNarrativeEvents(storage, input.bookId, persisted.reducible, {
+          closeSupersededFacts: config.ledger.closeSupersededFacts,
+        });
+        if (applied.failedEvents.length > 0) {
+          const details = applied.failedEvents
+            .map((failed) => `${failed.id}: ${failed.error}`)
+            .join("；");
+          // reducer 已捕获底层写入异常，但章后结算不能把“事实未写成”的结果
+          // 当成 pending 后登记为已结算；抛出后由外层 SQLite 事务整体回滚，保留可重试性。
+          throw new Error(`narrative-reducer-failed: ${details}`);
+        }
+        const downgradedPendingIds: string[] = [];
+
+        // 结算真正跑完才登记台账：登记的是「这份正文已被结算」，下一次同内容调用据此跳过。
+        const record = recordChapterSettlement(storage, {
+          bookId: input.bookId,
+          chapterNumber: input.chapterNumber,
+          contentFingerprint: idempotency.fingerprint,
+          eventIds: eventResults.map((event) => event.id),
+          settledAt,
+          ...(idempotency.record ? { previousRecord: idempotency.record } : {}),
+        });
+
+        // T4 证据链与事件、事实、结算台账同事务提交，避免留下半套记忆。
+        const appliedById = new Map(eventResults.map((event) => [event.id, event.status] as const));
+        const artifact = {
+          chapterNumber: input.chapterNumber,
+          chapterTitle: input.title ?? null,
+          settledAt,
+          sandboxIntercepted,
+          drafts: evidenceDrafts.map((entry) => {
+            const eventStatus = entry.eventId ? appliedById.get(entry.eventId) : undefined;
+            return {
+              ...entry,
+              ...(eventStatus ? { eventStatus } : {}),
+            };
+          }),
         };
-      }),
+        storage.sqlite.prepare(`
+          INSERT OR REPLACE INTO narrative_settlement_artifact
+            (book_id, chapter_number, content_fingerprint, artifact_json, created_at)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(
+          input.bookId,
+          input.chapterNumber,
+          idempotency.fingerprint,
+          JSON.stringify(artifact),
+          settledAt,
+        );
+
+        return { persisted, applied, eventResults, downgradedPendingIds, record };
+      },
+    });
+    if (committed.idempotent || !committed.projection) {
+      throw new Error("chapter-state-delta-replayed-without-projection");
+    }
+    commit = {
+      ...committed.projection,
+      stateRevision: committed.resultingRevision,
+      stateFingerprint: committed.fingerprint,
     };
-    storage.sqlite.prepare(`
-      INSERT OR REPLACE INTO narrative_settlement_artifact
-        (book_id, chapter_number, content_fingerprint, artifact_json, created_at)
-      VALUES (?, ?, ?, ?, ?)
-    `).run(
-      input.bookId,
-      input.chapterNumber,
-      idempotency.fingerprint,
-      JSON.stringify(artifact),
-      settledAt,
-    );
   } catch (error) {
-    warnings.push(`结算证据链落盘失败（不影响结算主体）：${error instanceof Error ? error.message : String(error)}`);
+    if (error instanceof RevisionConflictError) {
+      return failed(
+        input,
+        "state-revision-conflict",
+        {
+          whatHappened: `第${input.chapterNumber}章状态提交冲突：期望版本 ${error.expectedRevision}，当前版本 ${error.currentRevision}。`,
+          whyItMatters: "书级 stateRevision 已被其他写入推进；覆盖提交会丢掉并发结算或手工修订。",
+          suggestedAction: `用当前版本 ${error.currentRevision} 作为 expectedStateRevision 重试 memory.settle_chapter。`,
+        },
+      );
+    }
+    return failed(
+      input,
+      "settlement-commit-failed",
+      {
+        whatHappened: `第${input.chapterNumber}章记忆写入事务失败，已整体回滚：${error instanceof Error ? error.message : String(error)}`,
+        whyItMatters: "事件、事实、结算台账和书级状态版本必须一起写成功；只写一半会让记忆和台账对不上。正文已保存，不会丢稿。",
+        suggestedAction: "修复存储后直接重试 memory.settle_chapter；由于台账未登记，该章仍可安全重结算。",
+      },
+    );
   }
+
+  const { persisted, applied, eventResults, downgradedPendingIds, record, stateRevision, stateFingerprint } = commit;
 
   // 角色内核重算（CharacterKernelConfig.enabled 时才生效）。
   // 失败只 warn 不阻断：内核是增强信息，结算主体（facts/events）已成功落库。
@@ -878,6 +978,8 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
     warnings,
     events: eventResults,
     idempotency: idempotencyInfo,
+    stateRevision,
+    stateFingerprint,
     ...(resettled ? { explanation: explainResettled(input, idempotency, persisted.authorDecidedPreserved) } : {}),
   };
 }

@@ -691,7 +691,7 @@ export function CharacterCardPage(props: CharacterCardPageProps) {
       visibility: entry.visibility,
       visibleAfterChapter: entry.visibleAfterChapter ?? null,
       visibleUntilChapter: entry.visibleUntilChapter ?? null,
-      // @ts-expect-error - fields 不在官方类型里,但后端接受
+      // - fields 不在官方类型里,但后端接受
       fields: mergedFields,
     });
   };

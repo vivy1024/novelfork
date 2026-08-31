@@ -9,6 +9,13 @@ export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionC
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
 export { type GenreProfile, type ParsedGenreProfile, GenreProfileSchema, parseGenreProfile } from "./models/genre-profile.js";
 export { type BookRules, type ParsedBookRules, BookRulesSchema, parseBookRules } from "./models/book-rules.js";
+export {
+  type AuthorProfile,
+  AuthorProfileSchema,
+  emptyAuthorProfile,
+  parseAuthorProfile,
+  formatAuthorProfileForInjection,
+} from "./models/author-profile.js";
 export { type StyleProfile } from "./models/style-profile.js";
 export { type LengthCountingMode, type LengthNormalizeMode, type LengthSpec, type LengthTelemetry, type LengthWarning, LengthCountingModeSchema, LengthNormalizeModeSchema, LengthSpecSchema, LengthTelemetrySchema, LengthWarningSchema } from "./models/length-governance.js";
 export { type AuditResult, type AuditIssue, type PlanChapterOutput, type WriteChapterOutput, type PostWriteViolation, type ReviseMode } from "./models/agent-types.js";
@@ -55,6 +62,21 @@ export {
   type TimelineState,
   RuntimeStateDeltaSchema,
 } from "./models/runtime-state.js";
+export {
+  type CharacterStateUpdate,
+  type RelationshipDelta,
+  type HookDeltaOp,
+  type HookDelta,
+  type CommitmentDelta,
+  type ChapterStateDelta,
+  CharacterStateUpdateSchema,
+  RelationshipDeltaSchema,
+  HookDeltaOpSchema,
+  HookDeltaSchema,
+  CommitmentDeltaSchema,
+  ChapterStateDeltaSchema,
+  computeDeltaFingerprint,
+} from "./models/chapter-state-delta.js";
 export {
   type ChapterConflict,
   type HookMovement,
@@ -158,6 +180,30 @@ export { migrateChaptersToBindingDir, type BindingMigrationResult } from "./stat
 export { bootstrapStructuredStateFromMarkdown, rewriteStructuredStateFromMarkdown, resolveDurableStoryProgress } from "./state/state-bootstrap.js";
 export { renderCurrentStateProjection, renderHooksProjection, renderChapterSummariesProjection } from "./state/state-projections.js";
 export { applyRuntimeStateDelta, findKnowledgeViolations, findTimelineConflicts, type RuntimeStateSnapshot, type ResourceLedgerWarning } from "./state/state-reducer.js";
+export {
+  RevisionConflictError,
+  commitChapterStateDelta,
+  ensureChapterStateDeltaSchema,
+  getBookStateRevision,
+  getChapterStateDeltaByFingerprint,
+  listChapterStateDeltas,
+  type ChapterStateCommitContext,
+  type ChapterStateDeltaRecord,
+  type CommitChapterStateInput,
+  type CommitChapterStateResult,
+} from "./state/chapter-state-commit.js";
+export {
+  emptyChapterStateProjection,
+  loadChapterStateProjection,
+  reduceChapterStateDeltas,
+  reduceChapterStateRecords,
+  type ChapterStateProjection,
+  type DerivedCharacterBeat,
+  type DerivedCharacterState,
+  type DerivedCommitment,
+  type DerivedHook,
+  type DerivedRelationship,
+} from "./state/chapter-state-reduce.js";
 export { validateRuntimeState, type RuntimeStateValidationIssue } from "./state/state-validator.js";
 
 // Storage

@@ -85,4 +85,21 @@ describe("style channel", () => {
     expect(result.cards).toEqual([]);
     expect(result.warnings?.[0]).toContain("style channel 为空");
   });
+
+  it("does not inject author habits unless the book supplied them", async () => {
+    const isolated = await createStyleChannel().run({
+      bookId: "book-b",
+      bookDesignText: "B 的长期方向。",
+    });
+    expect(isolated.cards.map((item) => item.title)).toEqual(["本书设计"]);
+    expect(isolated.cards.some((item) => item.tags.includes("author-profile"))).toBe(false);
+
+    const enabled = await createStyleChannel().run({
+      bookId: "book-a",
+      authorHabitsText: "短句推进，少抒情。",
+      bookDesignText: "A 的长期方向。",
+    });
+    expect(enabled.cards.map((item) => item.title)).toEqual(["本书设计", "作者跨书习惯"]);
+    expect(enabled.cards.find((item) => item.id === "style:author-habits")?.content).toContain("短句推进");
+  });
 });

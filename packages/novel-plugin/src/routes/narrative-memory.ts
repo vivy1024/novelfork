@@ -92,6 +92,8 @@ function diagnosticsSummary(log: NarrativeRetrievalLogRecord) {
     degradedCount: diagnostics.degradedCards.length,
     warnings: diagnostics.warnings,
     wave: diagnostics.wave,
+    trimReasons: diagnostics.trimReasons ?? [],
+    writeProfile: diagnostics.writeProfile,
   };
 }
 

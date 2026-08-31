@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { summarizeArcs } from "./arc-character.js";
+import { derivedCharacterToArcRecord, summarizeArcs } from "./arc-character.js";
+import type { DerivedCharacterState } from "@vivy1024/novelfork-core";
 
 function arcRecord(overrides: {
   characterId: string;
@@ -93,5 +94,35 @@ describe("summarizeArcs", () => {
     });
     expect(items[0]?.beatCount).toBe(0);
     expect(items[0]?.lastBeatChapter).toBeNull();
+  });
+});
+
+describe("derivedCharacterToArcRecord", () => {
+  it("turns reduced character deltas into arc beats without jingwei records", () => {
+    const character: DerivedCharacterState = {
+      characterId: "han-li",
+      name: "韩立",
+      currentState: "抵达药园",
+      knowledge: ["小瓶仍在"],
+      firstChapter: 1,
+      lastChapter: 12,
+      beats: [
+        { chapter: 1, state: "入门" },
+        { chapter: 12, state: "抵达药园", goal: "确认小瓶" },
+      ],
+    };
+    const record = derivedCharacterToArcRecord(character);
+    const { items } = summarizeArcs({
+      arcs: [record],
+      names: new Map([["han-li", "韩立"]]),
+      currentChapter: 12,
+    });
+    expect(items[0]).toMatchObject({
+      id: "character-arc:han-li",
+      characterName: "韩立",
+      beatCount: 2,
+      lastBeatChapter: 12,
+      layer: "derived",
+    });
   });
 });

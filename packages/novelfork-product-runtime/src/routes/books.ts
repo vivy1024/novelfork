@@ -59,6 +59,7 @@ const bookBasicSettingsPatchSchema = z
 		targetChapters: z.number().int().min(1).max(100_000).nullable().optional(),
 		arcTrackingMode: z.enum(["off", "rule", "llm"]).optional(),
 		customSensitiveWords: z.string().max(50_000).optional(),
+		authorProfileEnabled: z.boolean().optional(),
 	})
 	.strict()
 	.refine((value) => Object.keys(value).length > 0, "至少提供一项可保存的书籍设置");

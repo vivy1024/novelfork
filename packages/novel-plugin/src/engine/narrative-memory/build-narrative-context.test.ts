@@ -142,6 +142,10 @@ describe("buildNarrativeContext", () => {
       expect(result.sections.semantic).toContain("<semantic_memory>");
       expect(result.diagnostics.channelStats.map((item) => item.channel)).toEqual(expect.arrayContaining(["scene-spec", "hard", "state", "timeline", "hooks", "facts", "style"]));
       expect(result.diagnostics.totalEstimatedTokens).toBeGreaterThan(0);
+      expect(result.writeProfile).toEqual(expect.objectContaining({
+        caps: { coreCharacters: 6, activeHooks: 8, recentSummaries: 3 },
+      }));
+      expect(result.diagnostics.trimReasons).toEqual(expect.any(Array));
       const logRows = storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_retrieval_log").get();
       expect(logRows?.count).toBe(1);
     } finally {

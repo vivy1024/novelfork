@@ -1,19 +1,21 @@
 /**
  * arc.character — 角色弧线只读状态 / 从正文同步 / LLM 精修。
  *
- * 包装 engine/tools/arcs（rule engine + arc-sync + tracker），不新建第二套弧线引擎。
- * 不写 lore canon：beats 落在 jingwei_character_arc 表（dynamic）。
+ * 只读状态从 ChapterStateDelta 归约；sync/refine 仍可跑正文抽取，
+ * 但不再把抽取结果写成经纬 canon。手工备注留在 annotation 层。
  */
 
 import type { RuntimeTextGenerator } from "@vivy1024/novelfork-core/plugins";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import {
+  getStorageDatabase,
+  loadChapterStateProjection,
+  type DerivedCharacterState,
+} from "@vivy1024/novelfork-core";
 
 import type { ArcBeat, CharacterArc } from "../engine/tools/arcs/arc-types.js";
 import { detectArcInconsistency, detectStagnantArc } from "../engine/tools/arcs/character-arc-tracker.js";
 import { syncCharacterArcs, type ArcTrackingMode } from "../engine/tools/arcs/arc-sync.js";
-import { createJingweiCharacterArcRepository } from "../engine/jingwei/repositories/character-arc-repo.js";
-import { createJingweiCharacterRepository } from "../engine/jingwei/repositories/character-repo.js";
 import { handleChapterRead } from "./chapter-read.js";
 
 export type ArcCharacterAction = "status" | "sync" | "refine";
@@ -34,13 +36,18 @@ export interface ArcCharacterInput {
 }
 
 export interface ArcCharacterStatusItem {
+  readonly id: string;
   readonly characterId: string;
   readonly characterName: string;
   readonly arcType: string;
   readonly currentPhase: string;
+  readonly startingState: string;
+  readonly endingState: string;
+  readonly keyTurningPointsJson: string;
   readonly beatCount: number;
   readonly lastBeatChapter: number | null;
   readonly warnings: readonly string[];
+  readonly layer: "derived";
 }
 
 export interface ArcCharacterResult {
@@ -91,6 +98,41 @@ async function latestChapterNumber(bookRoot: string): Promise<number | undefined
   }
 }
 
+function beatDirection(beat: DerivedCharacterState["beats"][number], previous?: DerivedCharacterState["beats"][number]): ArcBeat["direction"] {
+  if (!previous) return "advance";
+  const previousText = previous.state ?? previous.arcProgress ?? "";
+  const currentText = beat.state ?? beat.arcProgress ?? "";
+  if (!previousText || !currentText || previousText === currentText) return "neutral";
+  if ((beat.arcProgress ?? "").includes("回退") || (beat.state ?? "").includes("失去")) return "regression";
+  return "advance";
+}
+
+export function derivedCharacterToArcRecord(character: DerivedCharacterState): {
+  readonly characterId: string;
+  readonly arcType: string;
+  readonly startingState: string;
+  readonly endingState: string;
+  readonly currentPosition: string;
+  readonly keyTurningPointsJson: string;
+} {
+  const beats: ArcBeat[] = character.beats.map((beat, index) => ({
+    chapter: beat.chapter,
+    event: beat.state ?? beat.arcProgress ?? beat.goal ?? `第${beat.chapter}章状态`,
+    change: beat.goal ?? beat.emotionalState ?? beat.arcProgress ?? beat.state ?? "",
+    direction: beatDirection(beat, character.beats[index - 1]),
+    source: "auto-rule",
+  }));
+  const first = character.beats[0];
+  return {
+    characterId: character.characterId,
+    arcType: "positive-growth",
+    startingState: first?.state ?? character.currentState ?? "",
+    endingState: character.currentState ?? character.arcProgress ?? "",
+    currentPosition: character.arcProgress ?? character.currentState ?? "",
+    keyTurningPointsJson: JSON.stringify(beats),
+  };
+}
+
 /** 汇总角色弧状态并跑一致性/停滞检测。 */
 export function summarizeArcs(input: {
   readonly arcs: readonly {
@@ -126,14 +168,20 @@ export function summarizeArcs(input: {
       if (stagnant) itemWarnings.push(stagnant.message);
     }
     warnings.push(...itemWarnings);
+    const characterName = input.names.get(record.characterId) ?? record.characterId;
     items.push({
+      id: `character-arc:${record.characterId}`,
       characterId: record.characterId,
-      characterName: input.names.get(record.characterId) ?? record.characterId,
+      characterName,
       arcType: record.arcType,
       currentPhase: record.currentPosition,
+      startingState: record.startingState,
+      endingState: record.endingState,
+      keyTurningPointsJson: record.keyTurningPointsJson,
       beatCount: beats.length,
       lastBeatChapter: beats.length > 0 ? Math.max(...beats.map((beat) => beat.chapter)) : null,
       warnings: itemWarnings,
+      layer: "derived",
     });
   }
 
@@ -157,16 +205,8 @@ export async function handleArcCharacter(input: ArcCharacterInput): Promise<ArcC
   }
 
   const storage = input.storage ?? getStorageDatabase();
-  const arcRepo = createJingweiCharacterArcRepository(storage);
-  const characterRepo = createJingweiCharacterRepository(storage);
-
-  let characters: Array<{ id: string; name: string }> = [];
-  try {
-    characters = (await characterRepo.listByBook(bookId)).map((item) => ({ id: item.id, name: item.name }));
-  } catch {
-    characters = [];
-  }
-  const names = new Map(characters.map((item) => [item.id, item.name] as const));
+  const projection = loadChapterStateProjection(storage, bookId);
+  const names = new Map(projection.characters.map((item) => [item.characterId, item.name ?? item.characterId] as const));
 
   const latest = await latestChapterNumber(input.bookRoot);
   const chapterNumber = typeof input.chapterNumber === "number" && input.chapterNumber > 0
@@ -216,17 +256,11 @@ export async function handleArcCharacter(input: ArcCharacterInput): Promise<ArcC
     }
   }
 
-  let arcRecords: Awaited<ReturnType<typeof arcRepo.listByBook>> = [];
-  try {
-    arcRecords = await arcRepo.listByBook(bookId);
-  } catch {
-    arcRecords = [];
-  }
-
   const targetName = trimText(input.characterName);
-  const filtered = targetName
-    ? arcRecords.filter((record) => (names.get(record.characterId) ?? record.characterId).includes(targetName))
-    : arcRecords;
+  const filtered = (targetName
+    ? projection.characters.filter((character) => (character.name ?? character.characterId).includes(targetName))
+    : projection.characters
+  ).map(derivedCharacterToArcRecord);
 
   const { items, warnings } = summarizeArcs({
     arcs: filtered,

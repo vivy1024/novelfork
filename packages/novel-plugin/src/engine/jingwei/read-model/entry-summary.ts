@@ -102,6 +102,7 @@ export function toJingweiReadableItem(
     priorityTier,
     layer: entry.layer,
     status: entry.status,
+    entryKey: entry.entryKey ?? null,
   };
 }
 

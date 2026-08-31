@@ -34,7 +34,7 @@ export default {
     include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
     // 少数用例走 bun:test（需要真实文件系统与 bun 运行时），vitest 无法解析
     // "bun:test" 说明符，收进 include 只会得到一条假失败。它们由 `bun test` 执行。
-    exclude: ["src/handlers/jingwei-write-retire.test.ts"],
+    exclude: ["src/handlers/jingwei-write-retire.test.ts", "src/handlers/jingwei-write-staging.test.ts"],
     fileParallelism: false,
     minWorkers: 1,
     maxWorkers: 1,

@@ -1,8 +1,16 @@
-import { getStorageDatabase } from "@vivy1024/novelfork-core";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+
+import {
+  getStorageDatabase,
+  loadChapterStateProjection,
+  type ChapterStateProjection,
+} from "@vivy1024/novelfork-core";
 import type { StorageDatabase } from "@vivy1024/novelfork-core/storage";
 
 import { buildNarrativeContext } from "../engine/narrative-memory/build-narrative-context.js";
 import { loadNarrativeMemoryConfig } from "../engine/narrative-memory/config.js";
+import { resolveWritingLayers } from "../engine/writing-layers/layer-store.js";
 import { applyNarrativeEvents } from "../engine/narrative-memory/reducer.js";
 import { createNarrativeEvent, persistNarrativeEvents } from "../engine/narrative-memory/events.js";
 import { ensureNarrativeMemorySchema, getNarrativeEventById, listPendingNarrativeEvents, queryNarrativeFacts, updateNarrativeEvent, updateNarrativeEventStatus } from "../engine/narrative-memory/storage.js";
@@ -26,6 +34,8 @@ export interface MemoryReadInput {
   purpose: "write" | "revise" | "audit" | "outline" | "diagnose";
   chapterNumber?: number;
   entities?: string[];
+  /** 点名实体：write profile 超 6/8/3 上限时仍保留。 */
+  namedEntities?: string[];
   sceneText?: string;
   budgetTokens?: number;
   channels?: string[];
@@ -100,10 +110,20 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
   }
 
   const storage = getStorageDatabase();
-  const memoryConfig = input.bookRoot?.trim()
-    ? await loadNarrativeMemoryConfig(bookId, input.bookRoot).catch(() => null)
+  const bookRoot = input.bookRoot?.trim() || undefined;
+  const memoryConfig = bookRoot
+    ? await loadNarrativeMemoryConfig(bookId, bookRoot).catch(() => null)
+    : null;
+  const writingLayers = bookRoot
+    ? await resolveWritingLayers({
+      bookRoot,
+      book: await readFile(join(bookRoot, "book.json"), "utf8")
+        .then((raw) => JSON.parse(raw) as Record<string, unknown>)
+        .catch(() => null),
+    }).catch(() => null)
     : null;
   const maxTokens = input.budgetTokens ?? memoryConfig?.retrieval.maxTokens;
+  const namedEntities = [...(input.namedEntities ?? []), ...(input.entities ?? [])];
   const result = await buildNarrativeContext({
     storage,
     bookId,
@@ -111,24 +131,35 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     chapterNumber: input.chapterNumber,
     sceneText: input.sceneText,
     entities: input.entities ?? [],
+    namedEntities,
     maxTokens,
     budgetPolicy: channelBudgetPolicy({ ...input, budgetTokens: maxTokens }),
     enabledChannels: memoryConfig?.retrieval.channels,
     waveConfig: { enabled: memoryConfig?.retrieval.waveEnabled ?? false },
     semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
+    ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
+    ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
+    ...(writingLayers?.authorHabitsText ? { authorHabitsText: writingLayers.authorHabitsText } : {}),
+    ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
     // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
   });
 
+  const profile = result.writeProfile as { coreCharacters?: { items?: unknown[] }; activeHooks?: { items?: unknown[] }; recentSummaries?: { items?: unknown[] } } | undefined;
+  const profileSummary = profile
+    ? ` 七栏 write profile：角色 ${profile.coreCharacters?.items?.length ?? 0}/6，伏笔 ${profile.activeHooks?.items?.length ?? 0}/8，近章 ${profile.recentSummaries?.items?.length ?? 0}/3。`
+    : "";
   return {
     ok: true,
-    summary: `已召回动态叙事记忆：${result.cards.length} 张 ContextCard，约 ${result.diagnostics.totalEstimatedTokens} tokens。`,
+    summary: `已召回动态叙事记忆：${result.cards.length} 张 ContextCard，约 ${result.diagnostics.totalEstimatedTokens} tokens。${profileSummary}`,
     data: {
       package: result,
       diagnostics: result.diagnostics,
       sections: result.sections,
       cards: result.cards,
       warnings: result.diagnostics.warnings,
+      writeProfile: result.writeProfile,
+      trimReasons: result.diagnostics.trimReasons ?? [],
     },
   };
 }
@@ -214,7 +245,11 @@ function graphPage<T>(items: T[], limit: unknown, offset: unknown): GraphPage<T>
   };
 }
 
-export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride?: StorageDatabase): Promise<ToolResult> {
+export async function handleMemoryGraph(
+  input: MemoryGraphInput,
+  storageOverride?: StorageDatabase,
+  projectionOverride?: ChapterStateProjection,
+): Promise<ToolResult> {
   const bookId = String(input.bookId || "").trim();
   if (!bookId) return { ok: false, error: "invalid-input", summary: "bookId 必填。" };
   if (!["relationship", "timeline", "character_arc", "foreshadowing", "conflict", "event_chain", "wave"].includes(input.view)) {
@@ -226,13 +261,16 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
   const entities = input.focusEntity ? [input.focusEntity] : undefined;
   const eventTypeFilter = graphEventTypes(input.view);
   const factCategoryFilter = graphFactCategories(input.view);
+  const projection = projectionOverride ?? loadChapterStateProjection(storage, bookId);
+  const derivedFacts = derivedFactsFromProjection(bookId, projection);
 
   // 先全量读取再过滤。不能把 limit 放在 SQL/存储查询之前，否则大书中排在
   // 前 200/500 条之外的目标实体或章节会被静默丢掉。
-  const allFacts = queryNarrativeFacts(storage, { bookId, entities, limit: 0 });
+  const allFacts = [...derivedFacts, ...queryNarrativeFacts(storage, { bookId, entities, limit: 0 })];
   const filteredFacts = allFacts
     .filter((fact) => !factCategoryFilter || factCategoryFilter.has(fact.category))
-    .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange));
+    .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange))
+    .filter((fact) => !input.focusEntity || [fact.subject, fact.object].some((value) => value.includes(input.focusEntity!)));
   const allEvents = storage.sqlite.prepare(`
     SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
            subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
@@ -264,9 +302,88 @@ export async function handleMemoryGraph(input: MemoryGraphInput, storageOverride
         facts: factPage.pagination,
         events: eventPage.pagination,
       },
-      note: "复用 NarrativeFact / NarrativeEvent 数据源；先按书籍与筛选条件全量过滤，再按 limit/offset 分页，不静默丢失历史数据。",
+      note: "角色/关系/伏笔/时间线优先从 ChapterStateDelta 归约；NarrativeEvent 作为历史证据。手工备注不进入本图。",
+      stateRevision: projection.stateRevision,
+      derived: {
+        characters: projection.characters.length,
+        relationships: projection.relationships.length,
+        hooks: projection.hooks.length,
+        timeline: projection.timeline.length,
+      },
     },
   };
+}
+
+export function derivedFactsFromProjection(bookId: string, projection: ChapterStateProjection) {
+  const now = "1970-01-01T00:00:00.000Z";
+  return [
+    ...projection.characters.map((character) => ({
+      id: `derived:character:${character.characterId}`,
+      bookId,
+      subject: character.name ?? character.characterId,
+      predicate: "状态",
+      object: character.currentState ?? character.arcProgress ?? character.currentGoal ?? character.characterId,
+      category: "character_state",
+      layer: "dynamic" as const,
+      confidence: 1,
+      sourceType: "runtime-state" as const,
+      sourceId: character.characterId,
+      sourceChapter: character.lastChapter,
+      validFromChapter: character.lastChapter,
+      createdAt: now,
+      updatedAt: now,
+    })),
+    ...projection.relationships.map((relationship) => ({
+      id: `derived:relationship:${relationship.source}:${relationship.target}:${relationship.relationType}`,
+      bookId,
+      subject: relationship.source,
+      predicate: relationship.relationType,
+      object: relationship.target,
+      category: "relationship",
+      layer: "dynamic" as const,
+      confidence: 1,
+      sourceType: "runtime-state" as const,
+      sourceId: `${relationship.source}:${relationship.target}`,
+      sourceChapter: relationship.lastChapter,
+      evidenceText: relationship.description,
+      validFromChapter: relationship.lastChapter,
+      createdAt: now,
+      updatedAt: now,
+    })),
+    ...projection.hooks.map((hook) => ({
+      id: `derived:hook:${hook.hookId}`,
+      bookId,
+      subject: hook.hookId,
+      predicate: hook.status,
+      object: hook.expectedPayoff || hook.notes || hook.hookId,
+      category: "hook",
+      layer: "dynamic" as const,
+      confidence: 1,
+      sourceType: "runtime-state" as const,
+      sourceId: hook.hookId,
+      sourceChapter: hook.lastAdvancedChapter,
+      evidenceText: hook.notes,
+      validFromChapter: hook.startChapter,
+      createdAt: now,
+      updatedAt: now,
+    })),
+    ...projection.timeline.map((entry) => ({
+      id: `derived:timeline:${entry.chapter}`,
+      bookId,
+      subject: "时间线",
+      predicate: entry.label || "推进",
+      object: entry.storyTime || `第${entry.chapter}章`,
+      category: "timeline",
+      layer: "dynamic" as const,
+      confidence: 1,
+      sourceType: "runtime-state" as const,
+      sourceId: `timeline:${entry.chapter}`,
+      sourceChapter: entry.chapter,
+      validFromChapter: entry.chapter,
+      createdAt: now,
+      updatedAt: now,
+    })),
+  ];
 }
 
 function getPendingEventByBook(storage: StorageDatabase, bookId: string, eventId: string): NarrativeEvent | undefined {

@@ -1,4 +1,5 @@
 import type { EntrySource, EntryRevision, ConflictStatus } from "./repositories/collaborative-types.js";
+import type { EntrySourceRef } from "./entry-identity.js";
 
 export type JingweiTemplateId = "blank" | "basic" | "enhanced" | "genre-recommended";
 
@@ -122,6 +123,10 @@ export interface StoryJingweiEntryRecord {
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;
+  /** 条目稳定唯一标识（category:normalizedTitle），用于拆书去重与跨源溯源 */
+  entryKey?: string | null;
+  /** 条目首次出处引用（章节号+原文片段） */
+  sourceRefs?: readonly EntrySourceRef[];
 }
 
 export type { EntrySource, EntryRevision, ConflictStatus, JingweiRevisionRecord, JingweiRevisionSnapshot } from "./repositories/collaborative-types.js";
@@ -214,6 +219,7 @@ export interface JingweiReadableItem {
   layer?: JingweiLayer;
   /** 条目状态（confirmed/draft/needs-review），检索结果展示用 */
   status?: JingweiEntryStatus;
+  entryKey?: string | null;
   score?: number;
   matchReason?: string;
 }

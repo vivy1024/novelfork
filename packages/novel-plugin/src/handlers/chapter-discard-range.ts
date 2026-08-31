@@ -210,18 +210,37 @@ async function resetHooksInRange(
         }
         fields.hookStatus = "planned";
         fields.resetByDiscardRange = { fromChapter, toChapter };
-        storage.sqlite.prepare(`
-          UPDATE story_jingwei_entry
-          SET fields_json = ?, updated_at = ?
-          WHERE id = ?
-        `).run(JSON.stringify(fields), new Date().toISOString(), row.id);
+        const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info('story_jingwei_entry')`).all() as Array<{ name: string }>).map((item) => item.name));
+        const setClauses = ["fields_json = ?"];
+        const values: unknown[] = [JSON.stringify(fields)];
+        if (columns.has("updated_at")) {
+          setClauses.push("updated_at = ?");
+          values.push(new Date().toISOString());
+        }
+        if (columns.has("version")) setClauses.push("version = COALESCE(version, 1) + 1");
+        if (columns.has("entry_key")) setClauses.push("entry_key = COALESCE(entry_key, id)");
+        if (columns.has("source_refs_json")) setClauses.push("source_refs_json = COALESCE(source_refs_json, '[]')");
+        values.push(row.id);
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
       } else {
         // untouched：软归档，避免假「待埋设」继续污染驾驶舱
-        storage.sqlite.prepare(`
-          UPDATE story_jingwei_entry
-          SET lifecycle = 'archived', deleted_at = ?, updated_at = ?
-          WHERE id = ?
-        `).run(new Date().toISOString(), new Date().toISOString(), row.id);
+        const columns = new Set((storage.sqlite.prepare(`PRAGMA table_info('story_jingwei_entry')`).all() as Array<{ name: string }>).map((item) => item.name));
+        const nowIso = new Date().toISOString();
+        const setClauses = ["lifecycle = 'archived'"];
+        const values: unknown[] = [];
+        if (columns.has("deleted_at")) {
+          setClauses.push("deleted_at = ?");
+          values.push(nowIso);
+        }
+        if (columns.has("updated_at")) {
+          setClauses.push("updated_at = ?");
+          values.push(nowIso);
+        }
+        if (columns.has("version")) setClauses.push("version = COALESCE(version, 1) + 1");
+        if (columns.has("entry_key")) setClauses.push("entry_key = COALESCE(entry_key, id)");
+        if (columns.has("source_refs_json")) setClauses.push("source_refs_json = COALESCE(source_refs_json, '[]')");
+        values.push(row.id);
+        storage.sqlite.prepare(`UPDATE story_jingwei_entry SET ${setClauses.join(", ")} WHERE id = ?`).run(...values);
       }
       hooksReset += 1;
       notes.push(`${strategy}: ${row.title} (${row.id})`);

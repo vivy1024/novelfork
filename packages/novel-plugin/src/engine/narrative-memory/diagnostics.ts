@@ -38,6 +38,8 @@ export type BuildNarrativeRetrievalDiagnosticsInput = Readonly<{
   budget: NarrativeBudgetResult;
   warnings?: readonly string[];
   wave?: WaveMemoryDiagnostics;
+  trimReasons?: NarrativeRetrievalDiagnostics["trimReasons"];
+  writeProfile?: unknown;
 }>;
 
 export type PersistNarrativeRetrievalLogInput = Readonly<{
@@ -128,6 +130,8 @@ export function buildNarrativeRetrievalDiagnostics(input: BuildNarrativeRetrieva
     degradedCards: input.budget.degradedCards,
     warnings: uniqueStrings([...channelWarnings, ...input.budget.warnings, ...errors, ...(input.warnings ?? [])]),
     wave: input.wave,
+    trimReasons: input.trimReasons ?? [],
+    ...(input.writeProfile ? { writeProfile: input.writeProfile } : {}),
   };
   return NarrativeRetrievalDiagnosticsSchema.parse(diagnostics);
 }

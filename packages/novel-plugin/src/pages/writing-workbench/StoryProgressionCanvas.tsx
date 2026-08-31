@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 import type { StoryMapNodeData } from "./StoryMapCanvas";
+import { DevelopmentTimelineView } from "./development-timeline";
 
 /** 故事地图体量大（React Flow），懒加载避免拖慢画布首帧。 */
 const StoryMapCanvas = lazy(() =>
@@ -26,19 +27,16 @@ const ChronicleHelixCanvas = lazy(() =>
   import("./ChronicleHelixCanvas").then((m) => ({ default: m.ChronicleHelixCanvas })),
 );
 
-const StoryNeuralCloudCanvas = lazy(() =>
-  import("./StoryNeuralCloudCanvas").then((m) => ({ default: m.StoryNeuralCloudCanvas })),
-);
-
 // ─── 视图定义 ─────────────────────────────────────────────────────────────
 
 /**
  * 故事推进大屏画布的三种空间视图（IA 收敛后）：
  * - map       故事地图：章 × 线索情节板
- * - evolution 发展历程：世界网点云，点击沿关系传播
+ * - evolution 发展历程：叙事记忆时间线（只读聚合，默认 timeline）
  * - chronicle 编年史对照：表世界（章面）与里世界（角色内在）分轨对照
  *
  * 大纲总览已收敛至侧栏「章节与大纲」，不再是画布视图。
+ * 世界网点云仍作为独立组件保留，不占用发展历程权威入口。
  */
 export type StoryProgressionView = "map" | "evolution" | "chronicle";
 
@@ -50,7 +48,7 @@ export interface StoryProgressionViewDef {
 }
 
 export const STORY_PROGRESSION_VIEWS: readonly StoryProgressionViewDef[] = [
-  { id: "evolution", label: "发展历程", description: "世界网点云 · 点击传播", icon: History },
+  { id: "evolution", label: "发展历程", description: "动态事件与角色演化时间线", icon: History },
   { id: "chronicle", label: "双螺旋编年史", description: "里世界 / 表世界对照条", icon: Dna },
   { id: "map", label: "故事地图", description: "章 × 线索情节板", icon: GitFork },
 ] as const;
@@ -140,22 +138,16 @@ export function StoryProgressionCanvas({
 
   const renderEvolutionView = () => (
     <div className="h-full min-h-[80vh]" data-testid="story-progression-evolution">
-      <Suspense
-        fallback={
-          <div className="flex h-full min-h-[80vh] items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" /> 正在铺开世界网…
-          </div>
-        }
-      >
-        <StoryNeuralCloudCanvas
-          key={`evolution:${appliedFocus || "all"}`}
-          bookId={bookId}
-          currentChapter={currentChapter}
-          initialFocusEntity={appliedFocus || undefined}
-          onOpenEntityDetail={onOpenEntityDetail}
-          onOpenChapter={onOpenChapter}
-        />
-      </Suspense>
+      {/* key 绑定聚焦实体：切换聚焦时重建工作区以应用 initialFocusEntity */}
+      <DevelopmentTimelineView
+        key={`evolution:${appliedFocus || "all"}`}
+        bookId={bookId}
+        currentChapter={currentChapter}
+        frameClassName="h-full min-h-[80vh]"
+        initialFocusEntity={appliedFocus || undefined}
+        onOpenEntityDetail={onOpenEntityDetail}
+        onOpenChapter={onOpenChapter}
+      />
     </div>
   );
 

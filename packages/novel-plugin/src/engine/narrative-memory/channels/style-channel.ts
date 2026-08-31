@@ -13,6 +13,8 @@ export interface StyleChannelInput {
   readonly bookId: string;
   readonly styleGuideText?: string;
   readonly complianceRules?: readonly string[];
+  readonly authorHabitsText?: string;
+  readonly bookDesignText?: string;
 }
 
 function nonEmpty(value?: string): string | undefined {
@@ -41,7 +43,31 @@ export function createStyleChannel(): NarrativeRetrievalChannel<StyleChannelInpu
           title: "文风指南",
           text: styleGuide,
           tags: ["style-guide"],
-          reason: "style channel 注入文风指南，用于保持叙述口吻与句式偏好。",
+          reason: "style channel 注入本书文风指纹，不承载作者跨书习惯。",
+        })));
+      }
+
+      const bookDesign = nonEmpty(input.bookDesignText);
+      if (bookDesign) {
+        cards.push(lowPriority(styleTextToContextCard({
+          bookId: input.bookId,
+          id: "book-design",
+          title: "本书设计",
+          text: bookDesign,
+          tags: ["book-design"],
+          reason: "style channel 注入本书立项/大纲/当前聚焦，属于书籍层而非作者跨书习惯。",
+        })));
+      }
+
+      const authorHabits = nonEmpty(input.authorHabitsText);
+      if (authorHabits) {
+        cards.push(lowPriority(styleTextToContextCard({
+          bookId: input.bookId,
+          id: "author-habits",
+          title: "作者跨书习惯",
+          text: authorHabits,
+          tags: ["author-profile"],
+          reason: "本书已开启作者习惯注入；跨书口吻只在显式授权后进入。",
         })));
       }
 

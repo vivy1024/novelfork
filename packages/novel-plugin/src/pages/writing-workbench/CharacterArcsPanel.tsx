@@ -17,11 +17,14 @@ interface ArcBeat {
 interface CharacterArc {
   readonly id: string;
   readonly characterId: string;
+  readonly characterName?: string;
   readonly arcType: string;
   readonly startingState: string;
   readonly endingState: string;
-  readonly currentPosition: string;
+  readonly currentPosition?: string;
+  readonly currentPhase?: string;
   readonly keyTurningPointsJson: string;
+  readonly layer?: "derived" | "annotation";
 }
 
 interface ArcsResponse {
@@ -153,15 +156,16 @@ export function CharacterArcsPanel({ bookId, onClose }: CharacterArcsPanelProps)
                 className="flex items-center gap-2 w-full p-2 text-left hover:bg-muted/50 transition-colors"
               >
                 {expanded ? <ChevronDown className="size-3 shrink-0" /> : <ChevronRight className="size-3 shrink-0" />}
-                <span className="text-xs font-medium flex-1 truncate">{arc.characterId}</span>
+                <span className="text-xs font-medium flex-1 truncate">{arc.characterName ?? arc.characterId}</span>
                 <Badge variant="outline" className="text-[9px] h-4 shrink-0">{arcTypeLabel(arc.arcType)}</Badge>
+                <Badge variant="secondary" className="text-[8px] h-4 shrink-0">{arc.layer === "annotation" ? "备注" : "派生"}</Badge>
               </button>
 
               {expanded && (
                 <div className="px-2 pb-2 space-y-1.5 border-t border-border pt-1.5">
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                     <span>当前阶段：</span>
-                    <span className="text-foreground font-medium">{arc.currentPosition || "未知"}</span>
+                    <span className="text-foreground font-medium">{arc.currentPhase || arc.currentPosition || "未知"}</span>
                   </div>
                   <div className="flex items-center gap-2 text-[10px] text-muted-foreground">
                     <span>{arc.startingState}</span>

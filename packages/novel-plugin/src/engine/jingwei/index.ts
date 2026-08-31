@@ -42,6 +42,19 @@ export { updateCharacterLifecycles } from "./context/lifecycle-manager.js";
 // Preset reflection
 export { buildPresetReflectionPrompt, parsePresetSuggestions, type PresetSuggestion } from "./context/preset-reflection.js";
 
+// Merge suggestions (read-only duplicate detection)
+export {
+  generateMergeSuggestions,
+  normalizeTitle,
+  makeCanonicalKey,
+  type MergeEntry,
+  type MergeMatchReason,
+  type MergeMatchSignal,
+  type MergeFieldConflict,
+  type MergeSuggestionGroup,
+  type MergeSuggestionResult,
+} from "./merge-suggestions.js";
+
 // Associative layer
 export { extractChapterEntities, updateCooccurrence, type CooccurrenceEdge } from "./associative/cooccurrence.js";
 export { propagateSpikes, type SpikeResult } from "./associative/spike-routing.js";

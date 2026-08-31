@@ -97,7 +97,7 @@ export function createTimelineChannel(): NarrativeRetrievalChannel<TimelineChann
       const visibleChapter = visibleChapterFor(input.currentChapter);
       const minRecentChapter = visibleChapter === undefined ? undefined : Math.max(0, visibleChapter - recentChapterCount + 1);
       const summaryEntries = entries
-        .filter((entry) => entry.participatesInAi)
+        .filter((entry) => entry.participatesInAi && entry.status === "confirmed")
         .map((entry) => ({ entry, section: sectionById.get(entry.sectionId), chapter: entryChapter(entry) }))
         .filter(({ entry, section, chapter }) => isSummaryEntry(entry, section) && isVisibleChapter(chapter, input.currentChapter))
         .filter(({ chapter }) => minRecentChapter === undefined || chapter === undefined || chapter >= minRecentChapter)

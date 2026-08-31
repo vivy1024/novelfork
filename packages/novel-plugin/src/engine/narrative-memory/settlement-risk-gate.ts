@@ -8,6 +8,8 @@ export type ChapterSettlementInput = Readonly<{
   title?: string;
   content: string;
   confirmedAt?: string;
+  /** 乐观锁：与当前 book.state_revision 不一致时拒绝提交并整体回滚。 */
+  expectedStateRevision?: number;
   /**
    * 正文未变时强制重新结算（P5 幂等的逃生口）。
    * 上一次抽取漏抽/抽错时用它重跑；默认 false，即同章同内容会被幂等跳过。
@@ -90,6 +92,10 @@ export type ChapterSettlementResult = Readonly<{
   explanation?: DiagnosticExplanation;
   /** 本次结算与幂等台账的关系；skipped-duplicate 时说明「已结算过，本次跳过」。 */
   idempotency?: ChapterSettlementIdempotency;
+  /** 书级状态版本；completed 时返回提交后的 revision。 */
+  stateRevision?: number;
+  /** 本次 ChapterStateDelta 内容指纹。 */
+  stateFingerprint?: string;
 }>;
 
 const REQUIRED_FIELDS: readonly (keyof Pick<NarrativeEventDraft, "subject" | "predicate" | "object" | "evidenceText">)[] = ["subject", "predicate", "object", "evidenceText"];

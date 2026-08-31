@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("allotment", async () => {
@@ -103,38 +103,54 @@ describe("IdeWorkbench 文件缓存", () => {
   });
 });
 
+function stubHostWidth(width: number) {
+  Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
+    configurable: true,
+    value: () => ({
+      width,
+      height: 720,
+      top: 0,
+      left: 0,
+      right: width,
+      bottom: 720,
+      x: 0,
+      y: 0,
+      toJSON: () => ({}),
+    }),
+  });
+}
+
+function renderWorkbench() {
+  const runtimeFetch = vi.fn(async (input: string) => (
+    input.includes("narrative-memory/facts") ? jsonResponse({ facts: [] }).json() : { entries: [] }
+  ));
+  return render(
+    <IdeWorkbench
+      bookId="book-1"
+      nodes={[]}
+      selectedNode={null}
+      onOpen={vi.fn()}
+      onSave={vi.fn()}
+      runtimeFetch={runtimeFetch}
+      chatSlot={<div data-testid="chat-slot">对话内容</div>}
+      bookSessions={[{ id: "session-1", title: "测试对话" }]}
+      activeSessionId="session-1"
+    />,
+  );
+}
+
 describe("IdeWorkbench 窄屏覆盖层", () => {
   const originalRect = HTMLElement.prototype.getBoundingClientRect;
 
-  beforeEach(() => {
-    Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", {
-      configurable: true,
-      value: () => ({ width: 390, height: 720, top: 0, left: 0, right: 390, bottom: 720, x: 0, y: 0, toJSON: () => ({}) }),
-    });
-  });
-
   afterEach(() => {
+    cleanup();
     Object.defineProperty(HTMLElement.prototype, "getBoundingClientRect", { configurable: true, value: originalRect });
     vi.restoreAllMocks();
   });
 
   it("窄屏默认只保留编辑区，打开侧栏和对话时互斥覆盖且可由遮罩关闭", async () => {
-    const runtimeFetch = vi.fn(async (input: string) => (
-      input.includes("narrative-memory/facts") ? jsonResponse({ facts: [] }).json() : { entries: [] }
-    ));
-    render(
-      <IdeWorkbench
-        bookId="book-1"
-        nodes={[]}
-        selectedNode={null}
-        onOpen={vi.fn()}
-        onSave={vi.fn()}
-        runtimeFetch={runtimeFetch}
-        chatSlot={<div data-testid="chat-slot">对话内容</div>}
-        bookSessions={[{ id: "session-1", title: "测试对话" }]}
-        activeSessionId="session-1"
-      />,
-    );
+    stubHostWidth(390);
+    renderWorkbench();
 
     const workbench = await screen.findByTestId("ide-workbench");
     await waitFor(() => expect(workbench.getAttribute("data-layout-mode")).toBe("narrow"));
@@ -157,5 +173,24 @@ describe("IdeWorkbench 窄屏覆盖层", () => {
     fireEvent.click(screen.getByTestId("ide-overlay-backdrop"));
     expect(workbench.getAttribute("data-sidebar-visible")).toBe("false");
     expect(workbench.getAttribute("data-chat-visible")).toBe("false");
+  });
+
+  it("紧凑屏保留侧栏、默认收起对话，且不启用覆盖层", async () => {
+    stubHostWidth(900);
+    renderWorkbench();
+
+    const workbench = await screen.findByTestId("ide-workbench");
+    await waitFor(() => expect(workbench.getAttribute("data-layout-mode")).toBe("compact"));
+    expect(workbench.getAttribute("data-pane-overlay")).toBe("false");
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
+    expect(workbench.getAttribute("data-chat-visible")).toBe("false");
+    expect(screen.queryByTestId("ide-overlay-backdrop")).toBeNull();
+    expect(screen.queryByTestId("ide-sidebar-overlay")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "AI 对话" }));
+    expect(workbench.getAttribute("data-sidebar-visible")).toBe("true");
+    expect(workbench.getAttribute("data-chat-visible")).toBe("true");
+    expect(screen.queryByTestId("ide-chat-overlay")).toBeNull();
+    expect(screen.getByTestId("chat-slot")).not.toBeNull();
   });
 });

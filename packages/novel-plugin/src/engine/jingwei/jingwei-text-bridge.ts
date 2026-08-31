@@ -66,6 +66,8 @@ function queryByCategory(storage: StorageDatabase, bookId: string, category: str
     WHERE e."book_id" = ?
       AND e."deleted_at" IS NULL
       AND e."participates_in_ai" = 1
+      AND COALESCE(e."status", 'confirmed') = 'confirmed'
+      AND COALESCE(e."lifecycle", 'active') NOT IN ('archived', 'inactive', 'retired')
       AND (
         e."category" = ?
         OR e."section_id" IN (
@@ -85,6 +87,8 @@ function queryAllForAi(storage: StorageDatabase, bookId: string): RawEntryRow[] 
     WHERE e."book_id" = ?
       AND e."deleted_at" IS NULL
       AND e."participates_in_ai" = 1
+      AND COALESCE(e."status", 'confirmed') = 'confirmed'
+      AND COALESCE(e."lifecycle", 'active') NOT IN ('archived', 'inactive', 'retired')
   `;
   return storage.sqlite.prepare(sql).all(bookId) as RawEntryRow[];
 }

@@ -309,6 +309,7 @@ export type GuidedGenerationState = {
 export type NarrativeNodeType = "chapter" | "event" | "conflict" | "foreshadow" | "payoff" | "character-arc" | "setting";
 export type NarrativeEdgeType = "causes" | "reveals" | "escalates" | "resolves" | "foreshadows" | "pays-off" | "contradicts" | "supports";
 export type NarrativeEdgeConfidence = "explicit" | "inferred" | "agent-proposed";
+export type NarrativeLayer = "derived" | "annotation";
 
 export type NarrativeLine = {
   readonly id: string;
@@ -329,6 +330,7 @@ export type NarrativeNode = {
   readonly sourceRef?: WorkspaceResourceRef;
   readonly chapterNumber?: number;
   readonly status?: string;
+  readonly layer?: NarrativeLayer;
 };
 
 export type NarrativeEdge = {
@@ -339,6 +341,7 @@ export type NarrativeEdge = {
   readonly type: NarrativeEdgeType;
   readonly label?: string;
   readonly confidence: NarrativeEdgeConfidence;
+  readonly layer?: NarrativeLayer;
 };
 
 export type StoryBeat = {
@@ -395,6 +398,7 @@ export type NarrativeLineSnapshot = {
   readonly payoffLinks?: readonly PayoffLink[];
   readonly warnings: readonly NarrativeWarning[];
   readonly generatedAt?: string;
+  readonly stateRevision?: number;
 };
 
 export type NarrativeLineMutationPreview = {

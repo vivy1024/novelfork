@@ -18,6 +18,7 @@ import { ensureBookFtsFresh, searchFtsCandidates } from "../search/fts-index.js"
 export interface SearchJingweiInput {
   readonly bookId: string;
   readonly query: string;
+  readonly entryKey?: string;
   readonly categories?: readonly string[];
   readonly chapterNumber?: number;
   readonly tokenBudget?: number;
@@ -121,7 +122,7 @@ export async function searchJingwei(input: SearchJingweiInput): Promise<JingweiS
   const fts = toFtsQuery(query);
 
   // 2) FTS 候选（标题/别名命中优先，窗口放宽到 limit×20）
-  const candidates = searchFtsCandidates(storage, input.bookId, fts.expr, limit * 20, true);
+  const candidates = searchFtsCandidates(storage, input.bookId, fts.expr, limit * 20, true, input.includeUnconfirmed);
 
   // 3) 按 ID 批量取行（保持 AI 可见性边界；避免逐条查询）
   const repo = createStoryJingweiEntryRepository(storage);
@@ -138,6 +139,7 @@ export async function searchJingwei(input: SearchJingweiInput): Promise<JingweiS
   for (const candidate of candidates) {
     const entry = entryById.get(candidate.entryId);
     if (!entry) continue;
+    if (input.entryKey && entry.entryKey !== input.entryKey) continue;
     if (!entry.participatesInAi) continue;
     if (entry.lifecycle !== "active") continue;
     if (!input.includeUnconfirmed && entry.status !== "confirmed") continue;
@@ -162,11 +164,20 @@ export async function searchJingwei(input: SearchJingweiInput): Promise<JingweiS
     });
   }
 
-  // 5) 兜底：FTS 无可信结果时（空 expr / 假阳性全被剔除），降级为全量 LIKE 扫描
-  const effectiveRanked =
+  // 5) 兜底：FTS 无可信结果时（空 expr / 假阳性全被剔除），降级为全量 LIKE 扫描。
+  // 作者侧 includeUnconfirmed 还要补扫 draft/needs-review：FTS 已命中 confirmed 时，
+  // 不能因为 ranked 非空就跳过未确认条目。
+  let effectiveRanked =
     ranked.length > 0
       ? ranked
       : await fallbackLikeSearch(input, storage, currentChapter, categoryFilter, sectionById, repo, limit * 4, query);
+  if (input.includeUnconfirmed && ranked.length > 0) {
+    const extra = await fallbackLikeSearch(input, storage, currentChapter, categoryFilter, sectionById, repo, limit * 4, query);
+    const seen = new Set(effectiveRanked.map((item) => item.item.id));
+    for (const item of extra) {
+      if (!seen.has(item.item.id)) effectiveRanked.push(item);
+    }
+  }
 
   const sorted = effectiveRanked.sort(
     (a, b) => b.score - a.score || b.item.priority - a.item.priority || b.item.updatedAtMs - a.item.updatedAtMs || a.item.title.localeCompare(b.item.title),
@@ -208,12 +219,16 @@ async function fallbackLikeSearch(
 ): Promise<RankedItem[]> {
   const detailLevel = input.detailLevel ?? "summary";
   const sections = await createStoryJingweiSectionRepository(storage).listEnabledForAi(input.bookId);
-  const entries = await repo.listForAi(input.bookId, sections.map((section) => section.id));
+  const entries = input.includeUnconfirmed
+    ? (await repo.listByBook(input.bookId)).filter((entry) =>
+      entry.participatesInAi && entry.lifecycle === "active" && sections.some((section) => section.id === entry.sectionId))
+    : await repo.listForAi(input.bookId, sections.map((section) => section.id));
   const terms = query.split(/\s+/u).filter((part) => part.length > 0);
   if (terms.length === 0) return [];
 
   const ranked: RankedItem[] = [];
   for (const entry of entries) {
+    if (input.entryKey && entry.entryKey !== input.entryKey) continue;
     if (!isVisibleAtChapter(entry, currentChapter)) continue;
     const section = sectionById.get(entry.sectionId);
     if (!section) continue;
