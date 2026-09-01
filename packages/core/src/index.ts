@@ -9,13 +9,6 @@ export { type ProjectConfig, type LLMConfig, type NotifyChannel, type DetectionC
 export { type CurrentState, type ParticleLedger, type PendingHooks, type PendingHook, type LedgerEntry } from "./models/state.js";
 export { type GenreProfile, type ParsedGenreProfile, GenreProfileSchema, parseGenreProfile } from "./models/genre-profile.js";
 export { type BookRules, type ParsedBookRules, BookRulesSchema, parseBookRules } from "./models/book-rules.js";
-export {
-  type AuthorProfile,
-  AuthorProfileSchema,
-  emptyAuthorProfile,
-  parseAuthorProfile,
-  formatAuthorProfileForInjection,
-} from "./models/author-profile.js";
 export { type StyleProfile } from "./models/style-profile.js";
 export { type LengthCountingMode, type LengthNormalizeMode, type LengthSpec, type LengthTelemetry, type LengthWarning, LengthCountingModeSchema, LengthNormalizeModeSchema, LengthSpecSchema, LengthTelemetrySchema, LengthWarningSchema } from "./models/length-governance.js";
 export { type AuditResult, type AuditIssue, type PlanChapterOutput, type WriteChapterOutput, type PostWriteViolation, type ReviseMode } from "./models/agent-types.js";

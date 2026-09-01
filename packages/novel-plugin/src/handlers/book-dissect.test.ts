@@ -116,6 +116,60 @@ describe("handleBookDissect", () => {
     expect(result.settled).toBe(true);
     expect(result.writtenFiles).toEqual([]);
     expect(result.draft.chapterSummaries.length).toBe(1);
+    expect(result.purpose).toBe("continue");
+    expect(result.purposeLabel).toBe("写后续");
+  });
+
+  it("rejects an unknown dissect purpose", async () => {
+    const bookRoot = await createBook([
+      { number: 1, content: "韩立冷声道：「日后自有分晓。」他来到药园。" },
+    ]);
+    const result = await handleBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      purpose: "unknown-purpose",
+      storage: activeStorage,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.error).toBe("invalid-purpose");
+  });
+
+  it("stages original-cast entities for fanfic, not sequel hooks or chapter summaries", async () => {
+    const bookRoot = await createBook([
+      { number: 1, content: "韩立冷声道：「日后自有分晓。」他来到药园，不知为何心神不宁。" },
+    ]);
+    const result = await handleBookDissect({
+      bookId: "book-1",
+      bookRoot,
+      purpose: "同人",
+      apply: true,
+      settle: true,
+      storage: activeStorage,
+      llmExtractor: async () => [{
+        eventType: "location_changed",
+        subject: "韩立",
+        predicate: "来到",
+        object: "药园",
+        evidenceText: "他来到药园",
+        confidence: 0.9,
+        source: "settle",
+      }],
+    });
+    expect(result.ok).toBe(true);
+    expect(result.purpose).toBe("fanfic");
+    expect(result.settled).toBe(true);
+    expect(result.draft.hooks).toEqual([]);
+    expect(result.draft.chapterSummaries).toEqual([]);
+    const kinds = (activeStorage!.sqlite.prepare(
+      `SELECT DISTINCT kind FROM dissection_staging WHERE book_id = ?`,
+    ).all("book-1") as Array<{ kind: string }>).map((row) => row.kind);
+    expect(kinds).not.toContain("foreshadowing");
+    expect(kinds).not.toContain("chapter-summaries");
+    expect(kinds.some((kind) => kind === "characters" || kind === "locations")).toBe(true);
+    const jingwei = activeStorage!.sqlite.prepare(
+      `SELECT id FROM story_jingwei_entry WHERE book_id = ?`,
+    ).all("book-1") as Array<{ id: string }>;
+    expect(jingwei.length).toBe(0);
   });
 
   it("writes into dissection_staging, not official jingwei, when apply=true", async () => {

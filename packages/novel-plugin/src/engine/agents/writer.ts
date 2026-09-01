@@ -153,10 +153,9 @@ export class WriterAgent extends BaseAgent {
     const characterMatrix = "";
     const parentCanon = "";
     const fanficCanonRaw = "";
-    const writingLayers = await resolveWritingLayers({ bookRoot: bookDir, book });
+    const writingLayers = await resolveWritingLayers({ bookRoot: bookDir });
     const styleGuide = writingLayers.styleGuideText;
     const styleProfileRaw = writingLayers.bookDesign.styleProfileRaw;
-    const authorHabits = writingLayers.authorHabitsText;
     const bookDesign = writingLayers.bookDesignText;
 
     const recentChapters = await this.loadRecentChapters(bookDir, chapterNumber);
@@ -210,7 +209,6 @@ export class WriterAgent extends BaseAgent {
       chapterNumber, "creative", fanficContext, resolvedLanguage,
       "governed",
       resolvedLengthSpec,
-      authorHabits,
       bookDesign,
     );
 

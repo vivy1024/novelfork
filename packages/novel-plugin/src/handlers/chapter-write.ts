@@ -161,7 +161,7 @@ async function validateCompleteChapterWrite(
     return {
       ok: false,
       error: "writing-skill-compliance-failed",
-      summary: `第 ${input.chapterNumber} 章触发 ${errors.length} 条 Writing Skills 硬性违规；正文和章节索引均未修改。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
+      summary: `第 ${input.chapterNumber} 章触发 ${errors.length} 条写作技能硬性违规；正文和章节索引均未修改。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
       data: { length, writingSkillViolations: violations },
     };
   }

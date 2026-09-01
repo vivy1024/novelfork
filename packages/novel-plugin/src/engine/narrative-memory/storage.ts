@@ -65,6 +65,8 @@ const nonNegativeInteger = z.number().int().min(0);
 export const QueryNarrativeFactsInputSchema = z.object({
   bookId: nonEmptyString,
   entities: z.array(z.string()).optional(),
+  /** 经纬条目 id：匹配 subject_entry_id / object_entry_id，不走名字或别名。 */
+  entryIds: z.array(z.string()).optional(),
   categories: z.array(z.string()).optional(),
   predicates: z.array(z.string()).optional(),
   layer: NarrativeFactSchema.shape.layer.optional(),
@@ -75,6 +77,7 @@ export const QueryNarrativeFactsInputSchema = z.object({
 export type QueryNarrativeFactsInput = Readonly<{
   bookId: string;
   entities?: readonly string[];
+  entryIds?: readonly string[];
   categories?: readonly string[];
   predicates?: readonly string[];
   layer?: NarrativeFact["layer"];
@@ -542,6 +545,11 @@ export function queryNarrativeFacts(storage: StorageDatabase, input: QueryNarrat
   if (parsed.entities && parsed.entities.length > 0) {
     clauses.push(`(subject IN (${placeholders(parsed.entities.length)}) OR object IN (${placeholders(parsed.entities.length)}))`);
     params.push(...parsed.entities, ...parsed.entities);
+  }
+
+  if (parsed.entryIds && parsed.entryIds.length > 0) {
+    clauses.push(`(subject_entry_id IN (${placeholders(parsed.entryIds.length)}) OR object_entry_id IN (${placeholders(parsed.entryIds.length)}))`);
+    params.push(...parsed.entryIds, ...parsed.entryIds);
   }
 
   if (parsed.categories && parsed.categories.length > 0) {

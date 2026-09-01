@@ -431,6 +431,7 @@ async function bookDissect(
     ...(typeof input.fromChapter === "number" ? { fromChapter: input.fromChapter } : {}),
     ...(typeof input.toChapter === "number" ? { toChapter: input.toChapter } : {}),
     ...(targets ? { targets: targets as never } : {}),
+    ...(typeof input.purpose === "string" ? { purpose: input.purpose } : {}),
     apply: input.apply === true,
     settle: input.settle === true,
     generateText: generator,

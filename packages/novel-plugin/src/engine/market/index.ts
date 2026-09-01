@@ -4,6 +4,13 @@ import { scrapeFanqieRanks } from "./fanqie.js";
 import { scrapeQidianRanks } from "./qidian.js";
 import { samplePublicChapters } from "./public-chapter-sampler.js";
 import {
+  inspectSnapshot,
+  latestSnapshots,
+  summarizeScan,
+  type MarketScanReport,
+  type RankScanReport,
+} from "./report.js";
+import {
   listSnapshots,
   MarketSnapshotStore,
   saveSnapshots,
@@ -19,6 +26,7 @@ export * from "./fanqie.js";
 export * from "./qidian.js";
 export * from "./snapshot-store.js";
 export * from "./analysis.js";
+export * from "./report.js";
 export * from "./public-chapter-sampler.js";
 
 export interface MarketScanInput {
@@ -67,6 +75,14 @@ export async function scanMarket(
   return snapshots;
 }
 
+export async function scanMarketWithReport(
+  input: MarketScanInput = {},
+  options: MarketFetchOptions & { readonly store?: MarketSnapshotStore } = {},
+): Promise<{ readonly snapshots: BookSnapshot[]; readonly report: MarketScanReport }> {
+  const snapshots = await scanMarket(input, options);
+  return { snapshots, report: summarizeScan(snapshots, options.now?.() ?? new Date()) };
+}
+
 export async function queryMarket(
   input: MarketQueryInput = {},
   options: { readonly store?: MarketSnapshotStore; readonly now?: () => Date } = {},
@@ -78,11 +94,14 @@ export async function queryMarket(
     ...(input.toDate ? { toDate: input.toDate } : {}),
   };
   const store = options.store ?? new MarketSnapshotStore();
+  const now = options.now?.() ?? new Date();
   const snapshots = await listSnapshots(filter, store);
+  const latest = latestSnapshots(snapshots);
+  const ranks: RankScanReport[] = latest.map((snapshot) => inspectSnapshot(snapshot, now));
   const analysis = input.analyze && input.platform
     ? await generateAnalysis(input.platform, { filter, now: options.now })
     : undefined;
-  return { snapshots, analysis };
+  return { snapshots, latest, ranks, analysis };
 }
 
 export { samplePublicChapters };

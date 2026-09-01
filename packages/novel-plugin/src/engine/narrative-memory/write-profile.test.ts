@@ -95,6 +95,21 @@ describe("buildWriteProfile", () => {
     expect(profile.trimReasons.some((item) => item.kind === "count-cap")).toBe(true);
     expect(profile.trimReasons.some((item) => item.kind === "named-keep")).toBe(true);
   });
+
+  it("honors custom write-profile caps and retitles recent summaries", () => {
+    const profile = buildWriteProfile({
+      projection: projection(),
+      currentChapter: 21,
+      caps: { coreCharacters: 2, activeHooks: 4, recentSummaries: 5 },
+    });
+    expect(profile.coreCharacters.cap).toBe(2);
+    expect(profile.coreCharacters.items).toHaveLength(2);
+    expect(profile.activeHooks.cap).toBe(4);
+    expect(profile.activeHooks.items).toHaveLength(4);
+    expect(profile.recentSummaries.cap).toBe(5);
+    expect(profile.recentSummaries.items).toHaveLength(5);
+    expect(profile.recentSummaries.title).toBe("近5章速记");
+  });
 });
 
 describe("applyWriteProfileCountCaps", () => {

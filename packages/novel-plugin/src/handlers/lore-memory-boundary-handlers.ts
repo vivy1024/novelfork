@@ -1,6 +1,3 @@
-import { readFile } from "node:fs/promises";
-import { join } from "node:path";
-
 import {
   getStorageDatabase,
   loadChapterStateProjection,
@@ -47,6 +44,8 @@ export interface MemoryGraphInput {
   bookId: string;
   view: "relationship" | "timeline" | "character_arc" | "foreshadowing" | "conflict" | "event_chain" | "wave";
   focusEntity?: string;
+  /** 经纬条目 id。有值时按身份链过滤，不扫名字或别名。 */
+  focusEntryId?: string;
   chapterRange?: readonly [number | undefined, number | undefined] | readonly number[];
   /** 默认返回前 200 条；传 0 返回当前筛选下的全部数据。 */
   limit?: number;
@@ -115,12 +114,7 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     ? await loadNarrativeMemoryConfig(bookId, bookRoot).catch(() => null)
     : null;
   const writingLayers = bookRoot
-    ? await resolveWritingLayers({
-      bookRoot,
-      book: await readFile(join(bookRoot, "book.json"), "utf8")
-        .then((raw) => JSON.parse(raw) as Record<string, unknown>)
-        .catch(() => null),
-    }).catch(() => null)
+    ? await resolveWritingLayers({ bookRoot }).catch(() => null)
     : null;
   const maxTokens = input.budgetTokens ?? memoryConfig?.retrieval.maxTokens;
   const namedEntities = [...(input.namedEntities ?? []), ...(input.entities ?? [])];
@@ -139,15 +133,22 @@ export async function handleMemoryRead(input: MemoryReadInput): Promise<ToolResu
     semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
     ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
     ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
-    ...(writingLayers?.authorHabitsText ? { authorHabitsText: writingLayers.authorHabitsText } : {}),
     ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
     // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
     ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
+    ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
   });
 
-  const profile = result.writeProfile as { coreCharacters?: { items?: unknown[] }; activeHooks?: { items?: unknown[] }; recentSummaries?: { items?: unknown[] } } | undefined;
+  const profile = result.writeProfile as {
+    coreCharacters?: { items?: unknown[]; cap?: number };
+    activeHooks?: { items?: unknown[]; cap?: number };
+    recentSummaries?: { items?: unknown[]; cap?: number };
+  } | undefined;
+  const characterCap = profile?.coreCharacters?.cap ?? 6;
+  const hookCap = profile?.activeHooks?.cap ?? 8;
+  const summaryCap = profile?.recentSummaries?.cap ?? 3;
   const profileSummary = profile
-    ? ` 七栏 write profile：角色 ${profile.coreCharacters?.items?.length ?? 0}/6，伏笔 ${profile.activeHooks?.items?.length ?? 0}/8，近章 ${profile.recentSummaries?.items?.length ?? 0}/3。`
+    ? ` 七栏 write profile：角色 ${profile.coreCharacters?.items?.length ?? 0}/${characterCap}，伏笔 ${profile.activeHooks?.items?.length ?? 0}/${hookCap}，近章 ${profile.recentSummaries?.items?.length ?? 0}/${summaryCap}。`
     : "";
   return {
     ok: true,
@@ -202,9 +203,30 @@ function withinChapterRange(
     && (to === undefined || value <= to);
 }
 
-function matchesFocus(event: Record<string, unknown>, focusEntity?: string): boolean {
+function matchesFocusEvent(
+  event: Record<string, unknown>,
+  focusEntity?: string,
+  focusEntryId?: string,
+): boolean {
+  const entryId = focusEntryId?.trim();
+  if (entryId) {
+    return event.subjectEntryId === entryId || event.objectEntryId === entryId;
+  }
   if (!focusEntity) return true;
   return [event.subject, event.object].some((value) => typeof value === "string" && value.includes(focusEntity));
+}
+
+function matchesFocusFact(
+  fact: { subject: string; object: string; subjectEntryId?: string; objectEntryId?: string; sourceId?: string },
+  focusEntity?: string,
+  focusEntryId?: string,
+): boolean {
+  const entryId = focusEntryId?.trim();
+  if (entryId) {
+    return fact.subjectEntryId === entryId || fact.objectEntryId === entryId || fact.sourceId === entryId;
+  }
+  if (!focusEntity) return true;
+  return [fact.subject, fact.object].some((value) => value.includes(focusEntity));
 }
 
 const DEFAULT_GRAPH_LIMIT = 200;
@@ -258,7 +280,8 @@ export async function handleMemoryGraph(
 
   const storage = storageOverride ?? getStorageDatabase();
   ensureNarrativeMemorySchema(storage);
-  const entities = input.focusEntity ? [input.focusEntity] : undefined;
+  const focusEntryId = input.focusEntryId?.trim() || undefined;
+  const entities = !focusEntryId && input.focusEntity ? [input.focusEntity] : undefined;
   const eventTypeFilter = graphEventTypes(input.view);
   const factCategoryFilter = graphFactCategories(input.view);
   const projection = projectionOverride ?? loadChapterStateProjection(storage, bookId);
@@ -266,11 +289,16 @@ export async function handleMemoryGraph(
 
   // 先全量读取再过滤。不能把 limit 放在 SQL/存储查询之前，否则大书中排在
   // 前 200/500 条之外的目标实体或章节会被静默丢掉。
-  const allFacts = [...derivedFacts, ...queryNarrativeFacts(storage, { bookId, entities, limit: 0 })];
+  const allFacts = [...derivedFacts, ...queryNarrativeFacts(storage, {
+    bookId,
+    entities,
+    ...(focusEntryId ? { entryIds: [focusEntryId] } : {}),
+    limit: 0,
+  })];
   const filteredFacts = allFacts
     .filter((fact) => !factCategoryFilter || factCategoryFilter.has(fact.category))
     .filter((fact) => withinChapterRange(fact.sourceChapter ?? fact.validFromChapter, input.chapterRange))
-    .filter((fact) => !input.focusEntity || [fact.subject, fact.object].some((value) => value.includes(input.focusEntity!)));
+    .filter((fact) => matchesFocusFact(fact, input.focusEntity, focusEntryId));
   const allEvents = storage.sqlite.prepare(`
     SELECT id, chapter_number AS chapterNumber, event_type AS eventType, subject, predicate, object,
            subject_entry_id AS subjectEntryId, object_entry_id AS objectEntryId,
@@ -282,7 +310,7 @@ export async function handleMemoryGraph(
   const filteredEvents = allEvents
     .filter((event) => !eventTypeFilter || eventTypeFilter.has(String(event.eventType)))
     .filter((event) => withinChapterRange(event.chapterNumber, input.chapterRange))
-    .filter((event) => matchesFocus(event, input.focusEntity));
+    .filter((event) => matchesFocusEvent(event, input.focusEntity, focusEntryId));
   const factPage = graphPage(filteredFacts, input.limit, input.offset);
   const eventPage = graphPage(filteredEvents, input.limit, input.offset);
   const truncationSummary = factPage.pagination.truncated || eventPage.pagination.truncated
@@ -295,6 +323,7 @@ export async function handleMemoryGraph(
     data: {
       view: input.view,
       focusEntity: input.focusEntity,
+      focusEntryId,
       chapterRange: input.chapterRange,
       facts: factPage.items,
       events: eventPage.items,

@@ -59,8 +59,20 @@ interface AnalysisReport {
   readonly markdown: string;
 }
 
+interface RankScanReport {
+  readonly platform: "qidian" | "fanqie";
+  readonly rankType: string;
+  readonly source: string;
+  readonly observedAt: string;
+  readonly health: "ok" | "stale" | "parse_fail" | "empty";
+  readonly bookCount: number;
+  readonly reason: string;
+}
+
 interface SnapshotQuery {
   readonly snapshots: readonly BookSnapshot[];
+  readonly latest?: readonly BookSnapshot[];
+  readonly ranks?: readonly RankScanReport[];
   readonly analysis?: AnalysisReport;
 }
 
@@ -88,12 +100,32 @@ export function MarketResearchPage() {
 
   const [rankKeys, setRankKeys] = useState<string[]>(["newbook"]);
 
+  const ranks = snapshotsQuery.data?.ranks ?? [];
+  const latestSnapshots = snapshotsQuery.data?.latest ?? [];
+  const healthByKey = useMemo(() => {
+    const map = new Map<string, RankScanReport>();
+    for (const rank of ranks) map.set(`${rank.platform}-${rank.rankType}`, rank);
+    return map;
+  }, [ranks]);
   const latestRecords = useMemo(() => {
-    const snapshots = snapshotsQuery.data?.snapshots ?? [];
-    return snapshots
-      .flatMap((snapshot) => snapshot.records.filter((record) => record.source_status === "ok" && record.book_id))
+    return latestSnapshots
+      .filter((snapshot) => {
+        const health = healthByKey.get(`${snapshot.platform}-${snapshot.rank_type}`)?.health;
+        if (!health) {
+          return snapshot.records.some((record) => record.source_status === "ok" && record.book_id);
+        }
+        return health === "ok";
+      })
+      .flatMap((snapshot) => {
+        const source = healthByKey.get(`${snapshot.platform}-${snapshot.rank_type}`)?.source
+          ?? `${PLATFORM_LABEL[snapshot.platform] ?? snapshot.platform} · ${snapshot.rank_type}`;
+        return snapshot.records
+          .filter((record) => record.source_status === "ok" && record.book_id)
+          .map((record) => ({ ...record, source }));
+      })
       .sort((a, b) => a.rank - b.rank);
-  }, [snapshotsQuery.data]);
+  }, [healthByKey, latestSnapshots]);
+  const failedRanks = ranks.filter((rank) => rank.health !== "ok");
 
   async function scanNow() {
     setScanning(true);
@@ -109,7 +141,11 @@ export function MarketResearchPage() {
           maxPages: 1,
         }),
       });
-      setScanSummary(result.summary ?? "扫榜完成，已写入本机快照。");
+      if (result.ok === false) {
+        setScanError(result.summary ?? result.error ?? "这次没有扫到有效榜。");
+      } else {
+        setScanSummary(result.summary ?? "扫榜完成，已写入本机快照。");
+      }
       await snapshotsQuery.refetch();
     } catch (error) {
       setScanError(error instanceof Error ? error.message : String(error));
@@ -179,8 +215,20 @@ export function MarketResearchPage() {
               );
             })}
           </div>
-          {scanSummary ? <Alert><AlertTitle>已留存</AlertTitle><AlertDescription>{scanSummary}</AlertDescription></Alert> : null}
-          {scanError ? <Alert className="border-destructive/40"><AlertTitle>扫榜失败</AlertTitle><AlertDescription>{scanError}</AlertDescription></Alert> : null}
+          {scanSummary ? <Alert data-testid="market-scan-summary"><AlertTitle>已留存</AlertTitle><AlertDescription>{scanSummary}</AlertDescription></Alert> : null}
+          {scanError ? <Alert className="border-destructive/40" data-testid="market-scan-error"><AlertTitle>扫榜失败</AlertTitle><AlertDescription>{scanError}</AlertDescription></Alert> : null}
+          {failedRanks.length > 0 ? (
+            <Alert data-testid="market-rank-health">
+              <AlertTitle>来源与时效</AlertTitle>
+              <AlertDescription>
+                <ul className="mt-1 list-disc pl-5">
+                  {failedRanks.map((rank) => (
+                    <li key={`${rank.platform}-${rank.rankType}`}>{rank.reason}</li>
+                  ))}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -189,8 +237,11 @@ export function MarketResearchPage() {
           <CardHeader>
             <CardTitle>最新快照</CardTitle>
             <CardDescription>
-              {snapshotsQuery.data?.snapshots.length ?? 0} 份历史快照
-              {latestRecords[0] ? `，最近观察日 ${latestRecords[0].observed_at}` : ""}
+              {latestRecords.length > 0
+                ? `只展示仍算最新的有效榜，共 ${latestRecords.length} 本${latestRecords[0] ? `，最近观察日 ${latestRecords[0].observed_at}` : ""}`
+                : failedRanks.length > 0
+                  ? "最近一次扫榜没有仍算最新的有效榜，不能拿旧快照当今天的市场结论。"
+                  : `${snapshotsQuery.data?.snapshots.length ?? 0} 份历史快照`}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -209,7 +260,7 @@ export function MarketResearchPage() {
                     <TableHead>书名</TableHead>
                     <TableHead>作者</TableHead>
                     <TableHead>题材</TableHead>
-                    <TableHead>平台</TableHead>
+                    <TableHead>来源</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -220,7 +271,7 @@ export function MarketResearchPage() {
                       <TableCell>{record.author || "—"}</TableCell>
                       <TableCell>{record.category || "未分类"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline">{PLATFORM_LABEL[record.platform] ?? record.platform}/{record.rank_type}</Badge>
+                        <Badge variant="outline">{record.source}</Badge>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -232,7 +283,7 @@ export function MarketResearchPage() {
         <Card>
           <CardHeader>
             <CardTitle>题材摘要</CardTitle>
-            <CardDescription>基于已留存快照，不是实时网页。</CardDescription>
+            <CardDescription>基于仍算最新的有效快照，不是实时网页。</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-2 text-sm">
             <div>书籍 {analysis?.summary.total_books ?? 0} 本</div>

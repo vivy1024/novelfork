@@ -67,6 +67,8 @@ function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subjec
     evidenceText: input.evidenceText ?? "事实证据",
     validFromChapter: input.validFromChapter,
     validUntilChapter: input.validUntilChapter,
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     updatedAt: input.updatedAt ?? "2026-06-22T00:00:00.000Z",
   };
@@ -144,6 +146,48 @@ describe("narrative memory observability router", () => {
 
       const otherBook = await app.request("http://localhost/api/books/book-1/narrative-memory/search?q=%E9%9F%A9%E7%AB%8B&kind=fact&limit=10");
       expect((await otherBook.json()).entries).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: "fact-other-book" })]));
+    } finally {
+      storage.close();
+    }
+  });
+
+  it("filters graph and facts/by-entity by jingwei entry id, not aliases", async () => {
+    const storage = await createStorage();
+    try {
+      insertNarrativeFact(storage, fact({
+        id: "fact-alias",
+        subject: "韩老魔",
+        predicate: "敌对",
+        object: "墨大夫",
+        subjectEntryId: "entry-han",
+      }));
+      insertNarrativeFact(storage, fact({
+        id: "fact-name-only",
+        subject: "韩立",
+        predicate: "敌对",
+        object: "墨大夫",
+      }));
+      insertNarrativeEvent(storage, event({
+        id: "event-alias",
+        eventType: "relationship_changed",
+        subject: "韩老魔",
+        predicate: "敌对",
+        object: "墨大夫",
+        subjectEntryId: "entry-han",
+      }));
+
+      const app = createNarrativeMemoryRouter({ storage });
+      const graph = await app.request("http://localhost/api/books/book-1/narrative-memory/graph?view=relationship&focusEntryId=entry-han");
+      expect(graph.status).toBe(200);
+      expect(await graph.json()).toMatchObject({
+        facts: [expect.objectContaining({ id: "fact-alias" })],
+        events: [expect.objectContaining({ id: "event-alias" })],
+      });
+
+      const byEntry = await app.request("http://localhost/api/books/book-1/narrative-memory/facts/by-entity?entryId=entry-han");
+      expect(byEntry.status).toBe(200);
+      const byEntryPayload = await byEntry.json() as { groups: Array<{ facts: Array<{ id: string }> }> };
+      expect(byEntryPayload.groups[0]?.facts.map((item) => item.id)).toEqual(["fact-alias"]);
     } finally {
       storage.close();
     }

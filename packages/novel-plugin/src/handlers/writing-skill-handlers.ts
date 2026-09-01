@@ -463,7 +463,7 @@ export async function handleWritingSkillsCheckCompliance(
 ): Promise<HandlerResult> {
   try {
     const content = input.content.trim();
-    if (!content) return fail("invalid-input", "正文不能为空，无法执行 Writing Skills 合规检查。");
+    if (!content) return fail("invalid-input", "正文不能为空，无法执行写作技能合规检查。");
     const active = await loadActiveWritingSkillsForBook(input.bookId, options);
     const violations: WritingSkillComplianceViolation[] = [];
     const loadedNames = new Set((input.loadedSkills ?? []).map((evidence) => evidence.name.trim()));
@@ -485,7 +485,7 @@ export async function handleWritingSkillsCheckCompliance(
           violation,
           severity: checkSeverity(check),
           explanation: check.message?.trim()
-            || `Writing Skill「${skill.name}」声明了检查「${rule}」；当前正文不满足它，请按该 Skill 的方法调整或关闭这条 Skill。`,
+            || `写作技能「${skill.name}」声明了检查「${rule}」；当前正文不满足它，请按该技能的方法调整或关闭这条技能。`,
         });
       }
 
@@ -515,10 +515,10 @@ export async function handleWritingSkillsCheckCompliance(
     return {
       ok: true,
       summary: errorCount > 0
-        ? `Writing Skills 检出 ${violations.length} 条问题，其中 ${errorCount} 条为硬性违规。`
+        ? `写作技能检出 ${violations.length} 条问题，其中 ${errorCount} 条为硬性违规。`
         : violations.length > 0
-          ? `Writing Skills 检出 ${violations.length} 条提醒。`
-          : "已通过当前启用 Writing Skills 的声明式检查。",
+          ? `写作技能检出 ${violations.length} 条提醒。`
+          : "已通过当前启用写作技能的声明式检查。",
       data: {
         bookId: normalizeBookId(input.bookId),
         ...(input.chapterNumber ? { chapterNumber: input.chapterNumber } : {}),
@@ -530,7 +530,7 @@ export async function handleWritingSkillsCheckCompliance(
   } catch (error) {
     return fail(
       "writing-skills-check-failed",
-      `Writing Skills 合规检查失败：${error instanceof Error ? error.message : String(error)}`,
+      `写作技能合规检查失败：${error instanceof Error ? error.message : String(error)}`,
     );
   }
 }

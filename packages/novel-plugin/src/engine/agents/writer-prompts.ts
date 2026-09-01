@@ -30,7 +30,6 @@ export function buildWriterSystemPrompt(
   languageOverride?: "zh" | "en",
   inputProfile: "legacy" | "governed" = "legacy",
   lengthSpec?: LengthSpec,
-  authorHabits?: string,
   bookDesign?: string,
 ): string {
   const isEnglish = (languageOverride ?? genreProfile.language) === "en";
@@ -54,7 +53,6 @@ export function buildWriterSystemPrompt(
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
         buildBookDesignSection(bookDesign),
-        buildAuthorHabits(authorHabits),
         buildStyleGuide(styleGuide),
         buildStyleFingerprint(styleFingerprint),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
@@ -81,7 +79,6 @@ export function buildWriterSystemPrompt(
         buildProtagonistRules(bookRules),
         buildBookRulesBody(bookRulesBody),
         buildBookDesignSection(bookDesign),
-        buildAuthorHabits(authorHabits),
         buildStyleGuide(styleGuide),
         buildStyleFingerprint(styleFingerprint),
         fanficContext ? buildFanficCanonSection(fanficContext.fanficCanon, fanficContext.fanficMode) : "",
@@ -628,11 +625,6 @@ function buildBookRulesBody(body: string): string {
 function buildBookDesignSection(bookDesign?: string): string {
   if (!bookDesign?.trim()) return "";
   return `## 本书设计（立项/大纲/当前聚焦）\n\n${bookDesign.trim()}`;
-}
-
-function buildAuthorHabits(authorHabits?: string): string {
-  if (!authorHabits?.trim()) return "";
-  return `## 作者跨书习惯（仅本书已开启）\n\n${authorHabits.trim()}`;
 }
 
 // ---------------------------------------------------------------------------

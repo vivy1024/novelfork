@@ -9,7 +9,7 @@ vi.mock("@tiptap/react", () => ({
   EditorContent: () => null,
 }));
 
-import { CharacterCardPage } from "./CharacterCardPage";
+import { CharacterCardPage, resetCharacterDevelopmentCache } from "./CharacterCardPage";
 
 const entry = {
   id: "character-1",
@@ -26,6 +26,7 @@ const entry = {
 afterEach(() => {
   cleanup();
   fetchJsonMock.mockReset();
+  resetCharacterDevelopmentCache();
 });
 
 describe("CharacterCardPage", () => {
@@ -57,5 +58,25 @@ describe("CharacterCardPage", () => {
     expect(screen.getByText("薛行之为救白起受伤。")).toBeTruthy();
     expect(screen.getByText("关系演化")).toBeTruthy();
     expect(fetchJsonMock).toHaveBeenCalledTimes(3);
+    const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.every((url) => url.includes("entryId=character-1") || url.includes("focusEntryId=character-1"))).toBe(true);
+    expect(urls.some((url) => url.includes("focusEntity=") || url.includes("entity=%E8%96%9B"))).toBe(false);
+  });
+
+  it("does not query narrative memory by aliases", async () => {
+    fetchJsonMock.mockResolvedValue({ groups: [], events: [], facts: [] });
+    render(<CharacterCardPage entry={{
+      ...entry,
+      title: "薛行之（主角）",
+      aliases: ["行之", "薛公子"],
+      fields: { ...entry.fields, aliases: ["行之", "薛公子"] },
+    }} bookId="book-alias" saving={false} onSave={vi.fn(async () => undefined)} />);
+
+    await waitFor(() => expect(screen.getByText(/该角色暂无任何章后结算记录/)).toBeTruthy());
+    expect(screen.getByText(/别名: 行之 \/ 薛公子/)).toBeTruthy();
+    const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.length).toBeGreaterThan(0);
+    expect(urls.every((url) => url.includes("character-1"))).toBe(true);
+    expect(urls.some((url) => decodeURIComponent(url).includes("行之") || decodeURIComponent(url).includes("薛公子"))).toBe(false);
   });
 });

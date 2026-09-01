@@ -5,7 +5,7 @@ import {
   generateAnalysis,
   queryMarket,
   samplePublicChapters,
-  scanMarket,
+  scanMarketWithReport,
 } from "../engine/market/index.js";
 
 function asString(value: unknown): string | undefined {
@@ -59,7 +59,12 @@ export function createMarketRouter(): Hono {
       ?? (asBoolean(c.req.query("analyze")) === true
         ? await generateAnalysis(platform ?? "qidian")
         : undefined);
-    return c.json({ snapshots: result.snapshots, analysis });
+    return c.json({
+      snapshots: result.snapshots,
+      latest: result.latest,
+      ranks: result.ranks,
+      analysis,
+    });
   });
 
   app.get("/api/market/analysis", async (c) => {
@@ -77,16 +82,18 @@ export function createMarketRouter(): Hono {
 
   app.post("/api/market/scan", async (c) => {
     const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
-    const snapshots = await scanMarket({
+    const { snapshots, report } = await scanMarketWithReport({
       platform: asString(body.platform) as "qidian" | "fanqie" | "all" | undefined,
       rankTypes: asStringArray(body.rankTypes),
       maxPages: asNumber(body.maxPages),
     });
     return c.json({
-      ok: true,
+      ok: report.ok,
       snapshots,
-      summary: `已扫描 ${snapshots.length} 个榜单快照，并写入 ~/.novelfork/market/snapshots/。`,
-    });
+      report,
+      summary: report.summary,
+      ...(report.ok ? {} : { error: "market-scan-failed" }),
+    }, report.ok ? 200 : 502);
   });
 
   app.post("/api/market/sample-public-chapters", async (c) => {

@@ -99,8 +99,8 @@ describe("writer prompt writing-skill/style channel boundary", () => {
     }
   });
 
-  it("keeps author habits out of the prompt unless the book explicitly enabled them", () => {
-    const withoutHabits = buildWriterSystemPrompt(
+  it("injects book design and rules without any author-habit section", () => {
+    const prompt = buildWriterSystemPrompt(
       BOOK,
       GENRE,
       null,
@@ -114,32 +114,11 @@ describe("writer prompt writing-skill/style channel boundary", () => {
       "zh",
       "governed",
       buildLengthSpec(2200, "zh"),
-      "",
       "### 作者意图\n全书追求真仙长生。",
     );
-    expect(withoutHabits).toContain("## 本书专属规则");
-    expect(withoutHabits).toContain("## 本书设计（立项/大纲/当前聚焦）");
-    expect(withoutHabits).not.toContain("## 作者跨书习惯（仅本书已开启）");
-
-    const withHabits = buildWriterSystemPrompt(
-      { ...BOOK, authorProfileEnabled: true },
-      GENRE,
-      null,
-      "主角必须隐忍",
-      "# Genre Body",
-      "# Style Guide",
-      undefined,
-      3,
-      "creative",
-      undefined,
-      "zh",
-      "governed",
-      buildLengthSpec(2200, "zh"),
-      "短句推进，少抒情。",
-      "### 作者意图\n全书追求真仙长生。",
-    );
-    expect(withHabits).toContain("## 作者跨书习惯（仅本书已开启）");
-    expect(withHabits).toContain("短句推进，少抒情。");
-    expect(withHabits).toContain("全书追求真仙长生。");
+    expect(prompt).toContain("## 本书专属规则");
+    expect(prompt).toContain("## 本书设计（立项/大纲/当前聚焦）");
+    expect(prompt).toContain("全书追求真仙长生。");
+    expect(prompt).not.toContain("作者跨书习惯");
   });
 });

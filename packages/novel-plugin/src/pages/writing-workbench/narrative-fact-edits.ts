@@ -53,16 +53,17 @@ function memoryBase(bookId: string): string {
 /**
  * 按实体聚合当前 open fact。
  *
- * 不传 entity 时维持人物状态板的「按主体分组」视图；传 entity 时，后端同时匹配
- * subject / object，供实体详情抽屉查看关系两端的完整动态状态。
+ * 不传 entity / entryId 时维持人物状态板的「按主体分组」视图。
+ * 角色卡请传 entryId（经纬条目 id）；entity 只按显示名精确匹配，不扫别名。
  */
 export async function fetchFactsByEntity(
   bookId: string,
-  options: { readonly asOfChapter?: number; readonly entity?: string; readonly fetchImpl?: typeof fetch } = {},
+  options: { readonly asOfChapter?: number; readonly entity?: string; readonly entryId?: string; readonly fetchImpl?: typeof fetch } = {},
 ): Promise<EntityFactsGroup[]> {
   const queryParts: string[] = [];
   if (options.asOfChapter !== undefined) queryParts.push(`asOfChapter=${encodeURIComponent(String(options.asOfChapter))}`);
-  if (options.entity?.trim()) queryParts.push(`entity=${encodeURIComponent(options.entity.trim())}`);
+  if (options.entryId?.trim()) queryParts.push(`entryId=${encodeURIComponent(options.entryId.trim())}`);
+  else if (options.entity?.trim()) queryParts.push(`entity=${encodeURIComponent(options.entity.trim())}`);
   const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
   const payload = await fetchJson<ByEntityResponse>(`${memoryBase(bookId)}/facts/by-entity${query}`, {}, { fetchImpl: options.fetchImpl });
   return payload.groups ?? [];

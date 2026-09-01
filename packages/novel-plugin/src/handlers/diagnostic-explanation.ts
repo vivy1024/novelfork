@@ -28,57 +28,57 @@ type ExplanationTemplate = DiagnosticExplanation & { readonly kind: ExplainedDia
 const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
   "missing-directive": {
     kind: "persistent",
-    whatHappened: "本次没有拿到可用的本章目标：既没有用户一句指示，经纬里也没有可用的 currentFocus/大纲。",
+    whatHappened: "本次没有拿到可用的本章目标：既没有用户一句指示，经纬里也没有可用的本章焦点或大纲。",
     whyItMatters: "没有明确目标时，模型只能靠猜或用写作理论填字数，写出来的章节大概率跑偏且难修。",
-    suggestedAction: "给一句本章要发生什么（≥8 字），或先在经纬写 focus/大纲后重试 write.preflight。",
+    suggestedAction: "给一句本章要发生什么（至少 8 个字），或先在经纬写好本章焦点/大纲后再做写前检查。",
   },
   "empty-recent-progress": {
     kind: "persistent",
     whatHappened: "这本书已有正式章节，但近章摘要与时间线记忆都是空的。",
     whyItMatters: "写手看不到前文事实，会自行编造前情，导致与已发布章节冲突。",
-    suggestedAction: "先 memory.settle_range 或 book.dissect(settle=true) 回填近章记忆；若这些章是废稿则用 chapter.discard_range。",
+    suggestedAction: "先让叙述者补结算近章记忆；若这些章是废稿，先清掉空进度再写。",
   },
   "high-risk-pending": {
     kind: "persistent",
-    whatHappened: "存在高风险的待确认叙事事件（pending NarrativeEvents）。",
+    whatHappened: "存在高风险的待确认叙事事件。",
     whyItMatters: "这些事件尚未成为可信事实；若直接续写，可能把未确认设定当既定事实用。",
-    suggestedAction: "在叙事记忆面板或 memory.events 里逐条批准/拒绝后再写。",
+    suggestedAction: "在叙事记忆面板里逐条批准或拒绝后再写。",
   },
   "book-not-found": {
     kind: "persistent",
     whatHappened: "无法读取当前书籍的驾驶舱数据。",
     whyItMatters: "缺少书籍元数据时无法判断进度、卷纲与平台，写前检查不可信。",
-    suggestedAction: "确认书籍绑定正常；必要时在「我的作品」重新校验 Runtime 绑定。",
+    suggestedAction: "确认书籍绑定正常；必要时在「我的作品」重新校验绑定。",
   },
   "style-disabled": {
     kind: "advisory",
-    whatHappened: "本书没有启用任何 Writing Skills，style 通道为空。",
+    whatHappened: "本书没有启用任何写作技能，文风通道是空的。",
     whyItMatters: "缺少文风约束时，语言容易向模型默认腔调漂移，出现 AI 味。",
-    suggestedAction: "用 writing-skills.write 创建并启用文风技能，或在 Writing Skills 面板启用 1–2 个技法。",
+    suggestedAction: "在写作技能面板启用 1–2 个技法，或新建一条文风技能后再写。",
   },
   "hooks-overdue": {
     kind: "advisory",
     whatHappened: "有到期或临近到期的伏笔尚未处理。",
     whyItMatters: "长期悬置的伏笔会让读者感到承诺未兑现；越拖越难自然回收。",
-    suggestedAction: "在本章安排推进或兑现，或在经纬 foreshadowing 里更新其状态与期限。",
+    suggestedAction: "在本章安排推进或兑现，或在经纬伏笔里更新其状态与期限。",
   },
   "volume-focus-missing": {
     kind: "advisory",
-    whatHappened: "经纬 outline 中没有设置卷纲。",
+    whatHappened: "经纬大纲里没有设置卷纲。",
     whyItMatters: "缺少本卷目标时，中盘容易失去方向，章节各自为战。",
-    suggestedAction: "用 outline.volume(action=suggest) 生成草案，确认后 action=set 写入经纬。",
+    suggestedAction: "先生成卷纲草案，确认后再写入经纬。",
   },
   "volume-range-drift": {
     kind: "advisory",
     whatHappened: "要写的章号不在当前卷的章号区间内。",
-    whyItMatters: "卷纲与实际进度已脱节。带着错卷的目标写下去，本章会服务于错误的主线，卷末收束时对不上；pipeline.write 会以 volume-range-violation 直接拦下，这一次生成会白跑。",
-    suggestedAction: "用 outline.volume 把覆盖该章号的卷设为 active，或修正卷区间后再写。",
+    whyItMatters: "卷纲与实际进度已脱节。带着错卷的目标写下去，本章会服务于错误的主线，卷末收束时对不上；写章会被拦住，这一次会白跑。",
+    suggestedAction: "把覆盖该章号的卷设为当前卷，或修正卷区间后再写。",
   },
   "platform-target-mismatch": {
     kind: "advisory",
     whatHappened: "本书设定的章目标字数不在目标平台的建议区间内。",
     whyItMatters: "章长明显偏离平台习惯会影响读者留存与推荐表现。",
-    suggestedAction: "在书籍设置里调整 chapterWordCount，或改用更匹配的平台设置。",
+    suggestedAction: "在书籍设置里调整每章目标字数，或改用更匹配的平台设置。",
   },
   "short-directive": {
     kind: "advisory",
@@ -88,27 +88,27 @@ const PREFLIGHT_EXPLANATIONS: Record<string, ExplanationTemplate> = {
   },
   "focus-default-only": {
     kind: "advisory",
-    whatHappened: "本次没有用户指示，已用 currentFocus 生成了默认目标。",
+    whatHappened: "本次没有用户指示，已用经纬里的本章焦点生成了默认目标。",
     whyItMatters: "默认目标可能与你当下的意图不同，写完再改成本更高。",
-    suggestedAction: "确认这个默认目标，或补一句自己的指示；接受默认时传 acceptFocusDefault=true。",
+    suggestedAction: "确认这个默认目标，或补一句自己的指示。",
   },
   "empty-chapter-summary": {
     kind: "advisory",
-    whatHappened: "经纬 chapter-summaries 为空。",
+    whatHappened: "经纬里还没有章节摘要。",
     whyItMatters: "写前只能依赖叙事记忆事件，前情颗粒度更粗。",
-    suggestedAction: "用 book.dissect(apply=true) 或章后结算补齐章摘要。",
+    suggestedAction: "拆书入库或做一次章后结算，把章摘要补齐。",
   },
   "skills-not-acknowledged": {
     kind: "advisory",
-    whatHappened: "本章相关的 Writing Skills 里，有一部分当前会话还没有实际加载过（Runtime 没有记录到对应的 Skill 调用）。",
-    whyItMatters: "这只是告知，不阻断写章：入口验证的是「读过没有」，而真正的把关在出口——章节保存前会按技能声明的检查项逐条校验，硬性违规会以 writing-skill-compliance-failed 拒绝保存。没读技能不等于写不合规，读了也不等于写得合规。",
-    suggestedAction: "按 description 判断哪些技能与本章确实相关，用 Skill 工具读取后再写；相关条目的可机器校验规则已随 writingSkillConstraints 一并给出，可直接按它写。",
+    whatHappened: "本章相关的写作技能里，有一部分当前会话还没有实际读过。",
+    whyItMatters: "这只是告知，不阻断写章：入口只看有没有读过，真正把关在保存前——硬性违规会拒绝保存。没读技能不等于写不合规，读了也不等于写得合规。",
+    suggestedAction: "先判断哪些技能与本章确实相关，读过后再写。",
   },
   "audit-stale": {
     kind: "advisory",
     whatHappened: "有章节在审计之后又被修改过，现有审计结论已经不对应当前正文。",
     whyItMatters: "那些章显示「审计通过」，但结论是对修改前的正文得出的，问题可能仍然存在。",
-    suggestedAction: "对这些章重新跑 chapter.audit，再据新结论决定是否修订。",
+    suggestedAction: "对这些章重新做一次审计，再据新结论决定是否修订。",
   },
 };
 
@@ -116,7 +116,7 @@ const FALLBACK: ExplanationTemplate = {
   kind: "advisory",
   whatHappened: "检测到一个需要关注的问题。",
   whyItMatters: "它可能影响本章的连续性或发布合规。",
-  suggestedAction: "查看详情信息并按提示处理；不确定时可先运行 write.preflight 或 publish.check。",
+  suggestedAction: "查看详情信息并按提示处理；不确定时先做写前检查或发布检查。",
 };
 
 /** 按 code 取解释；未登记的 code 返回兜底解释而不是空。 */
@@ -147,6 +147,28 @@ export function listExplainedDiagnosticCodes(): string[] {
   return Object.keys(PREFLIGHT_EXPLANATIONS);
 }
 
+/** 把三段式解释拼成作者可读的一整段，前端与叙述者都走这里，避免各写各的。 */
+export function formatAuthorExplanation(explanation: DiagnosticExplanation): string {
+  return [
+    `发生了什么：${explanation.whatHappened}`,
+    `为什么要看：${explanation.whyItMatters}`,
+    `建议怎么做：${explanation.suggestedAction}`,
+  ].join("\n");
+}
+
+/**
+ * 作者可见文案里不该再出现错误码、工具名或抽取器这类内部词。
+ * 机器码仍可走独立的 `code` / `error` 字段，不拼进 explanation。
+ */
+export function isAuthorFacingDetail(text: string | undefined): boolean {
+  const value = text?.trim() ?? "";
+  if (!value) return false;
+  if (/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)+$/i.test(value)) return false;
+  if (/\b(generateText|extractor|LLM|force=true|useLlmExtraction|pipeline\.write|memory\.(settle_chapter|settle_range|events|bulk_approve))\b/i.test(value)) return false;
+  if (/抽取器|错误码|hash|version\b/i.test(value)) return false;
+  return true;
+}
+
 /** 叙事事件风险等级 → 解释（供 memory pending 展示）。 */
 export function explainNarrativeEventRisk(input: {
   readonly riskLevel: string;
@@ -156,10 +178,10 @@ export function explainNarrativeEventRisk(input: {
   const high = input.riskLevel === "high";
   return {
     code: `narrative-event-${input.riskLevel}`,
-    message: `第${input.chapterNumber}章的 ${input.eventType} 事件（风险 ${input.riskLevel}）待确认。`,
+    message: `第${input.chapterNumber}章抽出一条待确认事件（风险 ${high ? "高" : input.riskLevel === "low" ? "低" : "中"}）。`,
     kind: high ? "persistent" : "advisory",
     explanation: {
-      whatHappened: `章后结算从第${input.chapterNumber}章抽出一条 ${input.eventType} 事件，风险等级 ${input.riskLevel}，尚未沉淀为事实。`,
+      whatHappened: `章后结算从第${input.chapterNumber}章抽出一条待确认事件，风险${high ? "较高" : "不高"}，还没有记成既定事实。`,
       whyItMatters: high
         ? "高风险事件可能改写世界规则或人物设定；未确认就被当事实使用会造成后续大范围冲突。"
         : "未确认事件不会进入写作上下文，相关信息在续写时可能缺失。",

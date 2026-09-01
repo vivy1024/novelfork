@@ -64,4 +64,18 @@ describe("qidian ranking parser", () => {
     expect(snapshot.records[0]?.title).toBe("夜的命名术");
     expect(snapshot.rank_type).toBe("newbook");
   });
+
+  it("records parse_fail instead of pretending the blocked page is an empty ranking", async () => {
+    const fetchImpl: typeof fetch = async () => new Response("WAF拦截页面 probe.js", { status: 200 });
+    const snapshot = await scrapeQidianRank("newbook", {
+      fetchImpl,
+      delay: async () => undefined,
+      now: () => new Date("2026-06-22T00:00:00.000Z"),
+      maxPages: 1,
+    });
+    expect(snapshot.records).toEqual([expect.objectContaining({
+      book_id: "",
+      source_status: "parse_fail",
+    })]);
+  });
 });

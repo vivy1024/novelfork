@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const accountClientMock = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
-const authorProfileClientMock = vi.hoisted(() => ({ get: vi.fn(), save: vi.fn() }));
 const preferencesClientMock = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn() }));
 const settingsClientMock = vi.hoisted(() => ({ get: vi.fn(), patch: vi.fn(), testModel: vi.fn(), generateTls: vi.fn(), checkUpdate: vi.fn(), addRetryRule: vi.fn() }));
 const soundsClientMock = vi.hoisted(() => ({ upload: vi.fn(), delete: vi.fn() }));
@@ -10,7 +9,6 @@ const soundsClientMock = vi.hoisted(() => ({ upload: vi.fn(), delete: vi.fn() })
 vi.mock("../runtime-admin", async (importOriginal) => ({
   ...await importOriginal<typeof import("../runtime-admin")>(),
   createAccountProfileClient: () => accountClientMock,
-  createAuthorWritingProfileClient: () => authorProfileClientMock,
   createUserPreferencesClient: () => preferencesClientMock,
   createSettingsClient: () => settingsClientMock,
   createNotificationSoundsClient: () => soundsClientMock,
@@ -125,12 +123,6 @@ beforeEach(() => {
   let preferences = { ...initialPreferences };
   accountClientMock.get.mockResolvedValue(account);
   accountClientMock.patch.mockResolvedValue({ ok: true });
-  authorProfileClientMock.get.mockResolvedValue({
-    profile: { version: 1, habits: "短句推进", styleNotes: "", avoidances: ["圣母"] },
-  });
-  authorProfileClientMock.save.mockResolvedValue({
-    profile: { version: 1, habits: "短句推进", styleNotes: "", avoidances: ["圣母"] },
-  });
   preferencesClientMock.get.mockImplementation(async () => preferences);
   preferencesClientMock.patch.mockImplementation(async (patch) => {
     preferences = { ...preferences, ...patch };
@@ -164,16 +156,11 @@ describe("SettingsSectionContent Runtime-native settings", () => {
     await waitFor(() => expect(accountClientMock.patch).toHaveBeenCalledWith({ gitUsername: "New Name" }));
   });
 
-  it("saves cross-book writing habits through the author-profile API", async () => {
+  it("does not expose cross-book writing habits on the profile page", async () => {
     render(<SettingsSectionContent sectionId="profile" />);
-    expect(await screen.findByDisplayValue("短句推进")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("跨书写作习惯"), { target: { value: "对话少解释" } });
-    fireEvent.click(screen.getByRole("button", { name: "保存跨书习惯" }));
-    await waitFor(() => expect(authorProfileClientMock.save).toHaveBeenCalledWith({
-      habits: "对话少解释",
-      styleNotes: "",
-      avoidances: ["圣母"],
-    }));
+    expect(await screen.findByDisplayValue("writer")).toBeTruthy();
+    expect(screen.queryByTestId("author-writing-habits")).toBeNull();
+    expect(screen.queryByLabelText("跨书写作习惯")).toBeNull();
   });
 
   it("keeps theme browser-local and PATCHes Runtime appearance fields individually", async () => {

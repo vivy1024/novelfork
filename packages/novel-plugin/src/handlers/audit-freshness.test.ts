@@ -22,7 +22,7 @@ describe("checkAuditFreshness", () => {
     expect(result.freshness).toBe("stale");
     expect(result.whatHappened).toContain("1 小时");
     expect(result.whyItMatters).toContain("并不代表当前正文没问题");
-    expect(result.suggestedAction).toContain("chapter.audit");
+    expect(result.suggestedAction).toContain("再做一次审计");
   });
 
   it("保存与审计几乎同时发生时不误判", () => {
@@ -43,7 +43,7 @@ describe("checkAuditFreshness", () => {
   it("从未审计时给出明确状态", () => {
     const result = checkAuditFreshness({ chapterUpdatedAt: AUDIT, auditedAt: null });
     expect(result.freshness).toBe("never-audited");
-    expect(result.suggestedAction).toContain("chapter.audit");
+    expect(result.suggestedAction).toContain("再做一次审计");
   });
 
   it("拿不到正文时间时判 unknown 而不是假装通过", () => {

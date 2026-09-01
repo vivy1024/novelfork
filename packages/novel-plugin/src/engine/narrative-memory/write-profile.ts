@@ -154,8 +154,12 @@ function commitmentItem(commitment: DerivedCommitment): WriteProfileItem {
   };
 }
 
+export function recentSummaryColumnTitle(cap: number): string {
+  return cap === 3 ? "近三章速记" : `近${cap}章速记`;
+}
+
 /**
- * 七栏写前热上下文。6/8/3 是条目上限，不是硬截断：
+ * 七栏写前热上下文。角色/伏笔/近章上限可配，默认 6/8/3，不是硬截断：
  * scene.spec / memory.read 点名的实体始终保留，即使超过上限。
  */
 export function buildWriteProfile(input: BuildWriteProfileInput): WriteProfile {
@@ -268,7 +272,7 @@ export function buildWriteProfile(input: BuildWriteProfileInput): WriteProfile {
   }
   const recentSummaries = column(
     "recentSummaries",
-    "近三章速记",
+    recentSummaryColumnTitle(caps.recentSummaries),
     summaryCap.kept.map((row) => ({
       id: `summary:${row.chapter}`,
       title: `第${row.chapter}章 ${row.title}`,
@@ -352,7 +356,7 @@ function cardTouchesNamed(card: NarrativeContextCard, named: readonly string[]):
 }
 
 /**
- * 条目上限裁剪：默认 6/8/3。点名实体卡片始终保留，即使超过上限。
+ * 条目上限裁剪：按 write profile caps。点名实体卡片始终保留，即使超过上限。
  */
 export function applyWriteProfileCountCaps(
   cards: readonly NarrativeContextCard[],

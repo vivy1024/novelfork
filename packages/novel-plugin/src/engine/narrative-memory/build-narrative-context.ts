@@ -20,6 +20,7 @@ import {
   applyWriteProfileCountCaps,
   buildWriteProfile,
   DEFAULT_WRITE_PROFILE_CAPS,
+  type WriteProfileCaps,
 } from "./write-profile.js";
 import { buildStorylineStateCard } from "./storyline-state-card.js";
 import { mergeNarrativeContextCards } from "./merge.js";
@@ -49,7 +50,6 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   bookRulesText?: string;
   complianceRules?: readonly string[];
   styleGuideText?: string;
-  authorHabitsText?: string;
   bookDesignText?: string;
   channelTimeoutMs?: number;
   retrievalLogId?: string;
@@ -63,6 +63,8 @@ export type BuildNarrativeContextRuntimeInput = BuildNarrativeContextInput & Rea
   characterKernelConfig?: CharacterKernelConfig;
   /** scene.spec / memory.read 点名实体，write profile 超上限时仍保留。 */
   namedEntities?: readonly string[];
+  /** 写前七栏条目上限；缺省为 6/8/3。 */
+  writeProfileCaps?: Partial<WriteProfileCaps>;
 }>;
 
 function disabledChannelResult(channel: NarrativeContextChannel): ChannelResult {
@@ -187,6 +189,11 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     ...collectSceneEntities(sceneSpec),
   ]);
   const namedEntities = uniqueStrings([...(input.namedEntities ?? []), ...(parsed.entities ?? []), ...collectSceneEntities(sceneSpec)]);
+  const writeProfileCaps: WriteProfileCaps = {
+    coreCharacters: input.writeProfileCaps?.coreCharacters ?? DEFAULT_WRITE_PROFILE_CAPS.coreCharacters,
+    activeHooks: input.writeProfileCaps?.activeHooks ?? DEFAULT_WRITE_PROFILE_CAPS.activeHooks,
+    recentSummaries: input.writeProfileCaps?.recentSummaries ?? DEFAULT_WRITE_PROFILE_CAPS.recentSummaries,
+  };
   const currentChapter = parsed.chapterNumber;
   const startedAt = performance.now();
   const timeoutMs = input.channelTimeoutMs ?? 2500;
@@ -262,7 +269,6 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         bookId: parsed.bookId,
         styleGuideText: input.styleGuideText,
         complianceRules: input.complianceRules,
-        authorHabitsText: input.authorHabitsText,
         bookDesignText: input.bookDesignText,
       }, timeoutMs)
       : disabledChannelResult("style"),
@@ -289,7 +295,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
         storage: input.storage,
         bookId: parsed.bookId,
         currentChapter,
-        limit: DEFAULT_WRITE_PROFILE_CAPS.recentSummaries,
+        limit: writeProfileCaps.recentSummaries,
       }, timeoutMs)
       : disabledChannelResult("recent-summary"),
   ]);
@@ -310,7 +316,7 @@ export async function buildNarrativeContext(input: BuildNarrativeContextRuntimeI
     cards: wave.cards,
     namedEntities,
     currentChapter,
-    caps: DEFAULT_WRITE_PROFILE_CAPS,
+    caps: writeProfileCaps,
   });
   const capped = applyWriteProfileCountCaps(wave.cards, writeProfile);
   const budget = packNarrativeContext(capped.cards, {

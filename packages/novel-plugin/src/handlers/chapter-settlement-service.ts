@@ -416,7 +416,7 @@ function explainAlreadySettled(
   return {
     whatHappened: `第${input.chapterNumber}章的正文与上一次结算（${settledAt}）时完全一致，本次没有重新抽取，也没有写入任何叙事记忆。${breakdown}。`,
     whyItMatters: "重复结算同一份正文只会反复写入同样的事实、反复往待审队列塞同样的条目。跳过是为了让台账与待审队列保持干净，这不是失败。",
-    suggestedAction: `无需处理，这一章的记忆已是最新。若正文确实改过请先保存再结算；若上次抽取有遗漏，用 force=true 强制重结算；若要处理待审条目，去叙事记忆面板或 memory.bulk_approve。`,
+    suggestedAction: "不用处理，这一章的记忆已经是最新。若正文确实改过，先保存再结算；若上次漏记了，结算时勾选强制重算；待审条目去叙事记忆面板处理。",
   };
 }
 
@@ -428,10 +428,10 @@ function explainResettled(
 ): DiagnosticExplanation {
   const preserved = authorDecidedPreserved > 0
     ? `你此前批准/驳回过的 ${authorDecidedPreserved} 条事件保留原裁决，未被本次结算改动。`
-    : "作者手动纠正过的事实（manual）不会被本次结算覆盖。";
+    : "你手工纠正过的事实不会被本次结算覆盖。";
   return {
     whatHappened: decision.forced
-      ? `第${input.chapterNumber}章正文未变，但本次以 force=true 强制重新结算。`
+      ? `第${input.chapterNumber}章正文没变，但这次按你的要求强制重新结算。`
       : `第${input.chapterNumber}章正文自上次结算后已被改写，因此本次重新抽取了叙事事件。`,
     whyItMatters: "内容变了，旧的结算结论就不再对应当前正文；这种重结算是正常的，不属于重复结算。",
     suggestedAction: `${preserved}检查新增的待审条目后批准或驳回即可。`,
@@ -456,7 +456,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   }
 
   if (!input.content.trim()) {
-    return skipped(input, "章节正文为空，跳过 Narrative Memory 结算。", { skipReason: "empty-content" });
+    return skipped(input, "章节正文是空的，跳过了本章记忆结算。", { skipReason: "empty-content" });
   }
 
   // P5 幂等门：必须在任何抽取之前判定。
@@ -501,13 +501,13 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   if (!config.settlement.useLlmExtraction) {
     return skipped(
       input,
-      "本书配置已关闭 LLM 抽取（settlement.useLlmExtraction=false），本次结算未执行。",
+      "这本书关掉了从正文自动抽记忆，本次没有结算。",
       {
         skipReason: "extraction-disabled",
         explanation: {
-          whatHappened: `第${input.chapterNumber}章未结算：这本书的叙事记忆配置关闭了 LLM 抽取。`,
-          whyItMatters: "没有 LLM 抽取就没有叙事事件来源；静默跳过比假结算更安全，本章记忆不会产生虚假记录。",
-          suggestedAction: "若确实需要结算，请在写作设置的叙事记忆配置里重新打开 LLM 抽取，再重新执行结算工具。",
+          whatHappened: `第${input.chapterNumber}章没有结算：这本书关掉了从正文自动抽记忆。`,
+          whyItMatters: "关掉之后不会凭空记假账，所以本章记忆还是空的。",
+          suggestedAction: "若需要跟上记忆，打开写作设置里的叙事记忆自动抽取，再让叙述者结算这一章。",
         },
       },
     );
@@ -518,9 +518,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       input,
       "settlement-extractor-unavailable",
       {
-        whatHappened: `第${input.chapterNumber}章结算失败：当前会话没有可用的 LLM 抽取器（generateText 缺失）。`,
-        whyItMatters: "叙事事件只能由 LLM 从正文抽取，没有抽取器就无法产生可信事实；本次未写入任何记忆，也未登记结算。",
-        suggestedAction: "检查会话模型配置后重新调用结算工具即可，本章仍保持未结算状态、可安全重试。",
+        whatHappened: `第${input.chapterNumber}章的记忆没写上：当前会话没法从正文里读出人物位置、伏笔这些事。`,
+        whyItMatters: "没有抽出来就没法记下本章发生了什么；这次没有写入任何记忆，也没有当成已经结算。",
+        suggestedAction: "确认模型可用后，让叙述者再结算这一章。正文已经保存，不会丢稿。",
       },
     );
   }
@@ -539,15 +539,14 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       entityDictionary,
       llmExtractor: options.llmExtractor,
     });
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : String(error);
+  } catch {
     return failed(
       input,
       "settlement-extraction-failed",
       {
-        whatHappened: `第${input.chapterNumber}章结算失败：LLM 事件抽取调用未完成（${detail}）。`,
-        whyItMatters: "抽取失败时若继续结算，只能写进空账或错误事实；本次未写入任何记忆，也未登记结算。",
-        suggestedAction: "直接重新调用结算工具重试即可（例如 memory.settle_chapter 或 memory.settle_range），本章仍保持未结算状态。",
+        whatHappened: `第${input.chapterNumber}章的记忆没抽出来：从正文里读人物位置、伏笔这些事时中断了。`,
+        whyItMatters: "抽失败时如果继续结算，只能记空账或记错。这次没有写入任何记忆，也没有当成已经结算。",
+        suggestedAction: "让叙述者再结算这一章即可。正文已经保存，不会丢稿。",
       },
     );
   }
@@ -793,9 +792,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
         input,
         "state-revision-conflict",
         {
-          whatHappened: `第${input.chapterNumber}章状态提交冲突：期望版本 ${error.expectedRevision}，当前版本 ${error.currentRevision}。`,
-          whyItMatters: "书级 stateRevision 已被其他写入推进；覆盖提交会丢掉并发结算或手工修订。",
-          suggestedAction: `用当前版本 ${error.currentRevision} 作为 expectedStateRevision 重试 memory.settle_chapter。`,
+          whatHappened: `第${input.chapterNumber}章的记忆没写上：这本书的故事状态刚被另一次结算或手工修订改过。`,
+          whyItMatters: "强行覆盖会丢掉刚才那次改动，人物位置、伏笔或修为可能对不上。正文已经保存，不会丢稿。",
+          suggestedAction: "直接再结算一次这一章即可，系统会按最新状态接着写；不要手工填版本号。",
         },
       );
     }
@@ -803,9 +802,9 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
       input,
       "settlement-commit-failed",
       {
-        whatHappened: `第${input.chapterNumber}章记忆写入事务失败，已整体回滚：${error instanceof Error ? error.message : String(error)}`,
-        whyItMatters: "事件、事实、结算台账和书级状态版本必须一起写成功；只写一半会让记忆和台账对不上。正文已保存，不会丢稿。",
-        suggestedAction: "修复存储后直接重试 memory.settle_chapter；由于台账未登记，该章仍可安全重结算。",
+        whatHappened: `第${input.chapterNumber}章的记忆没写上，已经整体回滚，没有留下半成品。`,
+        whyItMatters: "人物位置、伏笔和结算记录必须一次写完；只写一半会对不上。正文已经保存，不会丢稿。",
+        suggestedAction: "让叙述者再结算这一章即可。这次没有记成已结算，可以安全重试。",
       },
     );
   }
@@ -816,7 +815,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   // 失败只 warn 不阻断：内核是增强信息，结算主体（facts/events）已成功落库。
   if (config.characterKernel.enabled) {
     if (!options.kernelGenerateText) {
-      warnings.push("角色内核已启用但当前会话没有可用的 generateText，本章内核未重算。");
+      warnings.push("角色内核已启用，但当前会话没法重算角色状态，本章先跳过。");
     } else {
       const chapterCharacters = new Set<string>();
       for (const event of eventResults) {
@@ -838,7 +837,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
             ...(options.now ? { now: options.now } : {}),
           });
           if (!result.ok && result.reason === "llm-failed") {
-            warnings.push(`角色「${character}」内核重算 LLM 调用失败：${result.error ?? "unknown"}`);
+            warnings.push(`角色「${character}」的状态没能重算出来，本章先跳过。`);
           } else if (!result.ok && result.reason === "parse-failed") {
             warnings.push(`角色「${character}」内核重算输出无法解析：${result.error ?? "unknown"}`);
           } else if (result.ok) {
@@ -870,7 +869,7 @@ export async function settleConfirmedChapter(input: ChapterSettlementInput, opti
   if (config.settlement.autoChapterSummary === false) {
     // 作者显式关闭时不调用 LLM，也不产生额外告警。
   } else if (!options.kernelGenerateText) {
-    warnings.push("本章自动摘要已启用但当前会话没有可用的 generateText，已跳过摘要生成。");
+    warnings.push("本章自动摘要已启用，但当前会话没法生成摘要，先跳过。");
   } else {
     try {
       const summaryResponse = await options.kernelGenerateText({

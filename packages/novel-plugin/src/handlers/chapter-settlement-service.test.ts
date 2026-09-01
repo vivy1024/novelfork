@@ -164,6 +164,8 @@ describe("chapter settlement service", () => {
 
       expect(conflict.status).toBe("failed");
       expect(conflict.error).toBe("state-revision-conflict");
+      expect(conflict.explanation?.whatHappened).toContain("记忆没写上");
+      expect(conflict.explanation?.suggestedAction).toContain("再结算一次");
       expect(storage.sqlite.prepare<{ count: number }>("SELECT COUNT(*) AS count FROM narrative_event WHERE chapter_number = 13").get()?.count).toBe(0);
       expect(storage.sqlite.prepare<{ state_revision: number }>("SELECT state_revision FROM book WHERE id = ?").get("book-1")?.state_revision).toBe(1);
     } finally {
@@ -879,7 +881,8 @@ describe("章后结算幂等", () => {
       );
 
       expect(result).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });
-      expect(result.explanation?.whatHappened).toContain("LLM unavailable");
+      expect(result.explanation?.whatHappened).toContain("记忆没抽出来");
+      expect(result.explanation?.suggestedAction).toContain("再结算这一章");
       expect(readChapterSettlementRecord(storage, { bookId: "book-1", chapterNumber: 7 })).toBeUndefined();
     } finally {
       storage.close();

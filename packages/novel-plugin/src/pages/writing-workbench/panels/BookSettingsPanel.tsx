@@ -4,7 +4,6 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Loader2, AlertCircle } from "lucide-react";
-import { Switch } from "@/components/ui/switch";
 import { fetchJson } from "@/hooks/use-api";
 import { NarrativeMemorySettingsSection } from "../../writing-config/WritingConfigSection";
 
@@ -17,7 +16,6 @@ interface BookConfig {
   chapterWordCount: number;
   arcTrackingMode: "off" | "rule" | "llm";
   customSensitiveWords: string;
-  authorProfileEnabled: boolean;
 }
 
 interface BookWritingLayers {
@@ -103,7 +101,6 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
           chapterWordCount: typeof book.chapterWordCount === "number" ? book.chapterWordCount : 2000,
           arcTrackingMode: book.arcTrackingMode === "rule" || book.arcTrackingMode === "llm" ? book.arcTrackingMode : "off",
           customSensitiveWords: typeof book.customSensitiveWords === "string" ? book.customSensitiveWords : "",
-          authorProfileEnabled: book.authorProfileEnabled === true,
         });
         setConfigLoading(false);
       })
@@ -216,13 +213,6 @@ export function BookSettingsPanel({ bookId, onBack, initialSection }: BookSettin
             <label className="block space-y-1 text-xs text-muted-foreground">每章字数<Input type="number" min={500} value={config.chapterWordCount} onChange={(event) => updateConfig("chapterWordCount", Number(event.target.value))} /></label>
             <label className="block space-y-1 text-xs text-muted-foreground">角色弧线追踪<Select value={config.arcTrackingMode} onValueChange={(value) => updateConfig("arcTrackingMode", value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ARC_TRACKING_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select></label>
             <label className="block space-y-1 text-xs text-muted-foreground">敏感词（每行一个）<Textarea value={config.customSensitiveWords} onChange={(event) => updateConfig("customSensitiveWords", event.target.value)} className="min-h-20" /></label>
-            <div data-testid="author-profile-toggle" className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2.5">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-foreground">注入作者跨书习惯</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">默认关闭；开启后才会把个人资料中的跨书习惯/口吻注入本书，避免跨书泄漏。</p>
-              </div>
-              <Switch checked={config.authorProfileEnabled} onCheckedChange={(checked) => updateConfig("authorProfileEnabled", checked)} aria-label="注入作者跨书习惯" className="shrink-0" />
-            </div>
           </div>}
         </section>
 

@@ -47,6 +47,8 @@ export type CurrentLedgerQuery = Readonly<{
   asOfChapter?: number;
   limit?: number;
   categories?: readonly string[];
+  /** 经纬条目 id：只返回挂在这些条目上的 open fact。 */
+  entryIds?: readonly string[];
 }>;
 
 export type CurrentLedgerResult = Readonly<{
@@ -68,6 +70,7 @@ export function queryCurrentNarrativeLedger(
   const facts = queryNarrativeFacts(storage, {
     bookId: input.bookId,
     categories: input.categories ? [...input.categories] : undefined,
+    entryIds: input.entryIds ? [...input.entryIds] : undefined,
     // Fold the complete matching history to current slots before limiting.
     limit: 0,
     ...(input.asOfChapter !== undefined ? { currentChapter: input.asOfChapter + 1 } : {}),

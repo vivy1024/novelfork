@@ -189,9 +189,9 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.settlementDispatch).toMatchObject({ ok: false, toolName: SETTLE_CHAPTER_TOOL_NAME });
-      expect(result.settlementError).toContain("正文已保存");
-      expect(result.settlementError).toContain(SETTLE_CHAPTER_TOOL_NAME);
-      expect(result.settlementError).toContain("重试不会丢稿");
+      expect(result.settlementError).toContain("正文已经保存");
+      expect(result.settlementError).toContain("不会丢稿");
+      expect(result.settlementError).toContain("叙事记忆");
     }
 
     // 正文确实还在，且能读回来。
@@ -219,7 +219,9 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.settlementDispatch?.ok).toBe(false);
-      expect(result.settlementError).toContain("runtime tool bus down");
+      expect(result.settlementError).toContain("正文已经保存");
+      expect(result.settlementError).toContain("叙事记忆");
+      expect(result.settlementError).not.toContain("runtime tool bus down");
     }
     const read = await handleChapterRead({ bookId: "trusted", chapterNumber: 4 }, undefined, { bookRoot, storage });
     expect(read.ok).toBe(true);
@@ -318,6 +320,8 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
       { root: projectRoot, bookRoot },
     );
     expect(hashConflict).toMatchObject({ ok: false, code: "chapter-conflict" });
+    expect(hashConflict.ok === false && hashConflict.error).toContain("没有保存");
+    expect(hashConflict.ok === false && hashConflict.explanation).toContain("重新读取这一章");
 
     const versionConflict = await executePipelineWrite(
       {
@@ -368,7 +372,8 @@ describe("pipeline.write 把章后结算发起为显式工具调用", () => {
       needsSettlementRetry: true,
       settlementDispatch: { ok: false, toolName: SETTLE_CHAPTER_TOOL_NAME },
     });
-    expect((result?.data as { settlementError?: string }).settlementError).toContain("正文已保存");
+    expect((result?.data as { settlementError?: string }).settlementError).toContain("正文已经保存");
+    expect((result?.data as { settlementError?: string }).settlementError).toContain("叙事记忆");
 
     const read = await handleChapterRead({ bookId: "trusted", chapterNumber: 4 }, undefined, { bookRoot, storage });
     expect(read.ok).toBe(true);

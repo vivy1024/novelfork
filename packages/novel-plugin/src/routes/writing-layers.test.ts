@@ -19,36 +19,16 @@ afterEach(async () => {
 });
 
 describe("createWritingLayersRouter", () => {
-  it("GET/PUT /api/author-profile reads and writes author home profile", async () => {
-    const home = await tempDir("novelfork-route-author-");
+  it("does not expose the removed author-profile API", async () => {
     const projectRoot = await tempDir("novelfork-route-project-");
     const state = new StateManager(projectRoot);
-    const router = createWritingLayersRouter({ state, root: projectRoot } as never, { home });
+    const router = createWritingLayersRouter({ state, root: projectRoot } as never);
 
-    const getRes1 = await router.request("/api/author-profile");
-    expect(getRes1.status).toBe(200);
-    const data1 = await getRes1.json() as { profile: { habits: string } };
-    expect(data1.profile.habits).toBe("");
-
-    const putRes = await router.request("/api/author-profile", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        habits: "短句为主，多动作少说理。",
-        styleNotes: "硬朗写实",
-        avoidances: ["煽情"],
-      }),
-    });
-    expect(putRes.status).toBe(200);
-
-    const getRes2 = await router.request("/api/author-profile");
-    const data2 = await getRes2.json() as { profile: { habits: string; avoidances: string[] } };
-    expect(data2.profile.habits).toContain("短句为主");
-    expect(data2.profile.avoidances).toEqual(["煽情"]);
+    const getRes = await router.request("/api/author-profile");
+    expect(getRes.status).toBe(404);
   });
 
   it("GET/PUT /api/books/:bookId/writing-layers isolates book design and rules", async () => {
-    const home = await tempDir("novelfork-route-author-");
     const projectRoot = await tempDir("novelfork-route-project-");
     const bookDir = join(projectRoot, "books", "book-1");
     await mkdir(join(bookDir, "story"), { recursive: true });
@@ -58,7 +38,6 @@ describe("createWritingLayersRouter", () => {
       platform: "tomato",
       genre: "xianxia",
       status: "active",
-      authorProfileEnabled: false,
       createdAt: "2026-01-01T00:00:00.000Z",
       updatedAt: "2026-01-01T00:00:00.000Z",
     }), "utf8");
@@ -74,12 +53,11 @@ describe("createWritingLayersRouter", () => {
           platform: "tomato",
           genre: "xianxia",
           status: "active",
-          authorProfileEnabled: false,
           createdAt: "2026-01-01T00:00:00.000Z",
           updatedAt: "2026-01-01T00:00:00.000Z",
         }),
       } as never,
-      { home, resolveBookRoot: () => bookDir },
+      { resolveBookRoot: () => bookDir },
     );
 
     const putRes = await router.request("/api/books/book-1/writing-layers", {
@@ -99,14 +77,12 @@ describe("createWritingLayersRouter", () => {
     const getRes = await router.request("/api/books/book-1/writing-layers");
     expect(getRes.status).toBe(200);
     const data = await getRes.json() as {
-      authorProfileEnabled: boolean;
-      authorHabitsText: string;
       bookDesign: { authorIntent: string; currentFocus: string };
       bookRulesRaw: string;
       bookRulesText: string;
     };
-    expect(data.authorProfileEnabled).toBe(false);
-    expect(data.authorHabitsText).toBe("");
+    expect(data).not.toHaveProperty("authorProfileEnabled");
+    expect(data).not.toHaveProperty("authorHabitsText");
     expect(data.bookDesign.authorIntent).toContain("全书追求真仙长生");
     expect(data.bookRulesRaw).toContain("不得越级杀敌");
     expect(data.bookRulesText).toContain("不得越级杀敌");

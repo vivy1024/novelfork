@@ -87,4 +87,35 @@ describe("WritingConfigSection", () => {
     expect((screen.getByLabelText("显示名 1") as HTMLInputElement).value).toBe("核心动机");
     expect(screen.getAllByTestId("kernel-field-row").length).toBeGreaterThanOrEqual(5);
   });
+
+  it("写前七栏上限改动后预览栏标题和 0/cap 跟着变", async () => {
+    stubs[`/api/books/${BOOK_ID}/narrative-memory/config`] = {
+      config: {
+        version: 1,
+        settlement: { enabled: true, autoApplyLowRisk: true, autoApplyMediumRisk: false, highRiskAlwaysPending: true, minConfidence: 0.7, blockWriteOnHighRiskPending: false, useLlmExtraction: true },
+        ledger: { closeSupersededFacts: true, currentViewLimit: 50 },
+        retrieval: { maxTokens: 6000, channels: { state: true, timeline: true, hooks: true, facts: true, style: false, semantic: false }, waveEnabled: false, semanticEnabled: false },
+        characterKernel: { enabled: false, injectBudgetRatio: 0.1, stateSummaryMaxChars: 200 },
+      },
+    };
+    const { fireEvent, render, screen } = await import("@testing-library/react");
+    const { WritingConfigSection } = await import("./WritingConfigSection");
+    render(<WritingConfigSection bookId={BOOK_ID} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "叙事记忆" })[0]!);
+    expect(await screen.findByTestId("write-profile-preview")).toBeTruthy();
+    expect(screen.getByText("0/6")).toBeTruthy();
+    expect(screen.getByText("0/8")).toBeTruthy();
+    expect(screen.getByText("近三章速记")).toBeTruthy();
+    expect(screen.getByText("0/3")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("核心角色上限"), { target: { value: "4" } });
+    fireEvent.change(screen.getByLabelText("活跃伏笔上限"), { target: { value: "10" } });
+    fireEvent.change(screen.getByLabelText("近章速记上限"), { target: { value: "5" } });
+
+    expect(screen.getByText("0/4")).toBeTruthy();
+    expect(screen.getByText("0/10")).toBeTruthy();
+    expect(screen.getByText("近5章速记")).toBeTruthy();
+    expect(screen.getByText("0/5")).toBeTruthy();
+  });
 });

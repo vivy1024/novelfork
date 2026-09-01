@@ -1,18 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 import {
-  formatAuthorProfileForInjection,
-  parseAuthorProfile,
   parseBookRules,
-  type AuthorProfile,
-  type BookConfig,
   type ParsedBookRules,
 } from "@vivy1024/novelfork-core";
 
-/** 相对 NovelFork 作者目录（生产为 `~/.novelfork`，隔离实例为 `NOVELFORK_PROJECT_ROOT`）。 */
-export const AUTHOR_PROFILE_RELATIVE_PATH = "author-profile.json";
 export const BOOK_RULES_RELATIVE_PATH = join("story", "book_rules.md");
 export const BOOK_DESIGN_RELATIVE_PATHS = {
   authorIntent: join("story", "author_intent.md"),
@@ -21,7 +14,7 @@ export const BOOK_DESIGN_RELATIVE_PATHS = {
   styleProfile: join("story", "style_profile.json"),
 } as const;
 
-export type WritingLayerKind = "author" | "book-design" | "book-rules";
+export type WritingLayerKind = "book-design" | "book-rules";
 
 export interface BookDesignDocuments {
   readonly authorIntent: string;
@@ -31,31 +24,12 @@ export interface BookDesignDocuments {
 }
 
 export interface ResolvedWritingLayers {
-  readonly authorProfile: AuthorProfile;
-  readonly authorProfileEnabled: boolean;
-  readonly authorHabitsText: string;
   readonly bookDesign: BookDesignDocuments;
   readonly bookDesignText: string;
   readonly bookRules: ParsedBookRules | null;
   readonly bookRulesRaw: string;
   readonly bookRulesText: string;
   readonly styleGuideText: string;
-}
-
-/**
- * 作者目录：显式传入 > 产品/隔离实例的 `NOVELFORK_PROJECT_ROOT` > `~/.novelfork`。
- * 禁止在隔离 Runtime 里回落到 os.homedir()，否则会写进真实用户目录。
- */
-export function resolveAuthorHome(explicit?: string): string {
-  const trimmed = explicit?.trim();
-  if (trimmed) return trimmed;
-  const projectRoot = process.env.NOVELFORK_PROJECT_ROOT?.trim();
-  if (projectRoot) return projectRoot;
-  return join(homedir(), ".novelfork");
-}
-
-function authorProfilePath(home?: string): string {
-  return join(resolveAuthorHome(home), AUTHOR_PROFILE_RELATIVE_PATH);
 }
 
 async function tryReadFile(path: string): Promise<string> {
@@ -68,26 +42,6 @@ async function tryReadFile(path: string): Promise<string> {
 
 function nonEmpty(value: string | undefined | null): string {
   return value?.trim() ?? "";
-}
-
-export function isAuthorProfileEnabled(book: Pick<BookConfig, "authorProfileEnabled"> | Record<string, unknown> | null | undefined): boolean {
-  return book?.authorProfileEnabled === true;
-}
-
-export async function loadAuthorProfile(home?: string): Promise<AuthorProfile> {
-  const raw = await tryReadFile(authorProfilePath(home));
-  return parseAuthorProfile(raw || {});
-}
-
-export async function saveAuthorProfile(profile: AuthorProfile, home?: string): Promise<AuthorProfile> {
-  const next: AuthorProfile = {
-    ...parseAuthorProfile(profile),
-    updatedAt: new Date().toISOString(),
-  };
-  const path = authorProfilePath(home);
-  await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, `${JSON.stringify(next, null, 2)}\n`, "utf8");
-  return next;
 }
 
 export async function loadBookRulesRaw(bookRoot: string): Promise<string> {
@@ -175,26 +129,16 @@ export function formatStyleGuideForInjection(design: BookDesignDocuments): strin
   return fingerprint;
 }
 
-/**
- * 组装写前三层。作者习惯只在本书显式开启时进入；书籍设计与书籍规则始终按本书目录读取。
- */
+/** 组装本书设计与规则。文风只走书内导入/拆书，不再注入跨书作者习惯。 */
 export async function resolveWritingLayers(input: {
   readonly bookRoot: string;
-  readonly book?: Pick<BookConfig, "authorProfileEnabled"> | Record<string, unknown> | null;
-  readonly home?: string;
 }): Promise<ResolvedWritingLayers> {
-  const authorProfileEnabled = isAuthorProfileEnabled(input.book);
-  const [authorProfile, bookDesign, bookRulesRaw] = await Promise.all([
-    loadAuthorProfile(input.home),
+  const [bookDesign, bookRulesRaw] = await Promise.all([
     loadBookDesign(input.bookRoot),
     loadBookRulesRaw(input.bookRoot),
   ]);
   const bookRules = bookRulesRaw.trim() ? parseBookRules(bookRulesRaw) : null;
-  const authorHabitsText = authorProfileEnabled ? formatAuthorProfileForInjection(authorProfile) : "";
   return {
-    authorProfile,
-    authorProfileEnabled,
-    authorHabitsText,
     bookDesign,
     bookDesignText: formatBookDesignForInjection(bookDesign),
     bookRules,

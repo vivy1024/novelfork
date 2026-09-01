@@ -56,12 +56,26 @@ describe("narrative memory config", () => {
     expect(saved.retrieval.waveEnabled).toBe(true);
     expect(saved.retrieval.channels.facts).toBe(false);
     expect(saved.retrieval.channels.timeline).toBe(true);
+    expect(saved.retrieval.writeProfile).toEqual({ coreCharacters: 6, activeHooks: 8, recentSummaries: 3 });
     expect(saved.settlement.autoApplyMediumRisk).toBe(false);
 
     const raw = JSON.parse(await readFile(join(root, "book.json"), "utf8")) as {
       narrativeMemory?: { retrieval?: { maxTokens?: number } };
     };
     expect(raw.narrativeMemory?.retrieval?.maxTokens).toBe(5000);
+  });
+
+  it("persists write-profile caps independently of other retrieval fields", async () => {
+    const root = await tempBook("book-1");
+    const saved = await saveNarrativeMemoryConfig("book-1", root, {
+      retrieval: { writeProfile: { coreCharacters: 4, recentSummaries: 5 } },
+    });
+    expect(saved.retrieval.writeProfile).toEqual({ coreCharacters: 4, activeHooks: 8, recentSummaries: 5 });
+    expect(saved.retrieval.maxTokens).toBe(DEFAULT_NARRATIVE_MEMORY_CONFIG.retrieval.maxTokens);
+
+    const reloaded = await loadNarrativeMemoryConfig("book-1", root);
+    expect(reloaded.retrieval.writeProfile.coreCharacters).toBe(4);
+    expect(reloaded.retrieval.writeProfile.recentSummaries).toBe(5);
   });
 
   it("rejects invalid patch values", () => {

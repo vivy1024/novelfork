@@ -254,7 +254,7 @@ export const NOVEL_RUNTIME_TOOL_CATALOG: readonly NovelRuntimeToolCatalogEntry[]
   sessionTool({
     name: "book.dissect",
     description:
-      "按确定性规则拆解已有正文为续写知识包（角色卡/世界要素/关系/伏笔/章摘要/建议 focus）。\n\n默认只返回草案；apply=true 写入**经纬 dynamic 层且 status=needs-review**（待作者确认，不进 canon）；settle=true 可同时批量结算叙事记忆。\n\n权威源：伏笔→经纬 foreshadowing；章摘要→chapter-summaries；角色→characters；世界→world-model/locations/factions/power-system/rules。story/*.md 仅为导出物。",
+      "按目的拆解已有正文，抽出经纬草稿。purpose：写后续 / 同人 / 改编 / AI漫剧剧本（默认写后续）。\n\n实体（人物、地点、势力、规则）进 dissection_staging，确认前不进正式经纬。动态事实（谁在哪、伏笔状态）走 settle，不写进经纬。\n\n默认只返回草案；apply=true 才写入经纬草稿；settle=true 才结算叙事记忆。",
     inputSchema: toJsonObjectSchema(NOVEL_TOOL_SCHEMAS["book.dissect"]),
     risk: "draft-write",
     resolveRisk: (input) => input?.apply === true || input?.settle === true ? "draft-write" : "read",

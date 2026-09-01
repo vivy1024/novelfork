@@ -57,7 +57,7 @@ export function checkAuditFreshness(input: AuditFreshnessInput): AuditFreshnessR
       driftMs: 0,
       whatHappened: "这一章还没有审计记录。",
       whyItMatters: "没有审计就没有连续性与事实核查结论，问题要到读者或后续章节才暴露。",
-      suggestedAction: "对这一章跑一次 chapter.audit。",
+      suggestedAction: "对这一章再做一次审计。",
     };
   }
 
@@ -78,7 +78,7 @@ export function checkAuditFreshness(input: AuditFreshnessInput): AuditFreshnessR
       driftMs: drift,
       whatHappened: `正文在审计之后又被修改过（晚 ${formatDrift(drift)}）。`,
       whyItMatters: "现有审计结论是对修改前的正文得出的。它显示「通过」并不代表当前正文没问题。",
-      suggestedAction: "重新跑 chapter.audit，再据新结论决定是否需要修订。",
+      suggestedAction: "对这一章再做一次审计，再据新结论决定是否修订。",
     };
   }
 

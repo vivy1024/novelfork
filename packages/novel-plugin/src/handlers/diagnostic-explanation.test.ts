@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   explainDiagnostic,
   explainNarrativeEventRisk,
+  formatAuthorExplanation,
   hasDiagnosticExplanation,
+  isAuthorFacingDetail,
   listExplainedDiagnosticCodes,
 } from "./diagnostic-explanation.js";
 
@@ -51,6 +53,36 @@ describe("diagnostic explanation contract", () => {
     expect(result.explanation.suggestedAction.length).toBeGreaterThan(0);
     expect(hasDiagnosticExplanation("brand-new-code")).toBe(false);
   });
+
+  it("keeps registered explanations free of internal tool names and error codes", () => {
+    for (const code of listExplainedDiagnosticCodes()) {
+      const { explanation } = explainDiagnostic(code, "msg");
+      expect(isAuthorFacingDetail(explanation.whatHappened), code).toBe(true);
+      expect(isAuthorFacingDetail(explanation.whyItMatters), code).toBe(true);
+      expect(isAuthorFacingDetail(explanation.suggestedAction), code).toBe(true);
+    }
+  });
+
+  it("formats the three-part explanation for authors", () => {
+    const text = formatAuthorExplanation({
+      whatHappened: "这一章的记忆没写上。",
+      whyItMatters: "续写会接不上人物位置和伏笔。",
+      suggestedAction: "让叙述者再结算这一章。",
+    });
+    expect(text).toContain("发生了什么：这一章的记忆没写上。");
+    expect(text).toContain("为什么要看：续写会接不上人物位置和伏笔。");
+    expect(text).toContain("建议怎么做：让叙述者再结算这一章。");
+  });
+});
+
+describe("isAuthorFacingDetail", () => {
+  it("rejects internal codes, tool names and extractor jargon", () => {
+    expect(isAuthorFacingDetail("settlement-extraction-failed")).toBe(false);
+    expect(isAuthorFacingDetail("memory.settle_chapter")).toBe(false);
+    expect(isAuthorFacingDetail("抽取器不可用。")).toBe(false);
+    expect(isAuthorFacingDetail("LLM 事件抽取调用未完成（extractor unavailable）。")).toBe(false);
+    expect(isAuthorFacingDetail("正文已经保存，不会丢稿。")).toBe(true);
+  });
 });
 
 describe("explainNarrativeEventRisk", () => {
@@ -64,6 +96,7 @@ describe("explainNarrativeEventRisk", () => {
   it("treats low risk as advisory", () => {
     const result = explainNarrativeEventRisk({ riskLevel: "low", eventType: "location_changed", chapterNumber: 3 });
     expect(result.kind).toBe("advisory");
-    expect(result.message).toContain("location_changed");
+    expect(result.message).toContain("第3章");
+    expect(result.message).toContain("待确认");
   });
 });

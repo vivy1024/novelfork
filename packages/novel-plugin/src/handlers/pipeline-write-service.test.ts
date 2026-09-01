@@ -196,10 +196,10 @@ describe("pipeline.write high-risk pending reminder", () => {
       createdAt: "2026-07-02T00:00:00.000Z",
     }]);
 
-    expect(reminder).toContain("高风险 pending NarrativeEvents");
-    expect(reminder).toContain("event-1");
+    expect(reminder).toContain("高风险待审事件");
+    expect(reminder).not.toContain("event-1");
     expect(reminder).toContain("灵根可被后天逆转");
-    expect(reminder).toContain("默认不阻断写作");
+    expect(reminder).toContain("默认不拦写作");
   });
 });
 
@@ -330,8 +330,8 @@ describe("pipeline.write settlement degradation", () => {
 
     // 结算失败绝不能回滚/丢弃已保存的正文：失败只进 settlementError，不改 ok。
     expect(source).toContain("settlementDispatch && !settlementDispatch.ok");
-    expect(source).toContain("正文已保存");
-    expect(source).toContain("重试不会丢稿");
+    expect(source).toContain("正文已经保存");
+    expect(source).toContain("不会丢稿");
     // 失败路径不得返回错误码把整次写章判失败。
     expect(source).not.toContain("code: \"settlement-failed\"");
   });
