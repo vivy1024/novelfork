@@ -10,6 +10,25 @@ export const CONSECUTIVE_403_THRESHOLD = 3;
 export const MAX_RANKS_PER_PLATFORM_SCAN = 2;
 export const MAX_PUBLIC_CHAPTER_SAMPLES = 3;
 export const SNAPSHOT_RETENTION_DAYS = 30;
+/** 超过这个天数的快照不再当「最新榜」用，只能当历史参考。 */
+export const SNAPSHOT_FRESH_DAYS = 2;
+
+export const PLATFORM_LABEL: Record<"qidian" | "fanqie", string> = {
+  qidian: "起点",
+  fanqie: "番茄",
+};
+
+export function platformLabel(platform: string): string {
+  return PLATFORM_LABEL[platform as "qidian" | "fanqie"] ?? platform;
+}
+
+export function rankLabel(rankType: string): string {
+  return [...QIDIAN_RANKS, ...FANQIE_RANKS].find((rank) => rank.key === rankType)?.name ?? rankType;
+}
+
+export function sourceLabel(platform: string, rankType: string): string {
+  return `${platformLabel(platform)} · ${rankLabel(rankType)}`;
+}
 
 export const USER_AGENTS = [
   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",

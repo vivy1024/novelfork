@@ -223,20 +223,34 @@ export type EntityFactsGroup = Readonly<{
   facts: readonly NarrativeFact[];
 }>;
 
-/** 按实体聚合当前 open fact；传 entity 时按 subject/object 双端匹配。 */
+function matchesFactEntryId(fact: NarrativeFact, entryId: string): boolean {
+  return fact.subjectEntryId === entryId || fact.objectEntryId === entryId;
+}
+
+/** 按实体聚合当前 open fact。entryId 走经纬条目身份链；entity 只按显示名精确匹配，不扫别名。 */
 export function queryFactsByEntity(storage: StorageDatabase, input: {
   bookId: string;
   asOfChapter?: number;
   categories?: readonly string[];
   limit?: number;
   entity?: string;
+  /** 经纬条目 id。有值时只返回挂在该条目上的 fact，忽略 entity 名字。 */
+  entryId?: string;
 }): EntityFactsGroup[] {
+  const entryId = input.entryId?.trim();
   const ledger = queryCurrentNarrativeLedger(storage, {
     bookId: input.bookId,
     asOfChapter: input.asOfChapter,
     categories: input.categories,
     limit: input.limit ?? 500,
+    ...(entryId ? { entryIds: [entryId] } : {}),
   });
+  if (entryId) {
+    const facts = ledger.items
+      .filter((fact) => matchesFactEntryId(fact, entryId))
+      .sort((a, b) => a.predicate.localeCompare(b.predicate));
+    return facts.length > 0 ? [{ entity: entryId, facts }] : [];
+  }
   const target = input.entity?.trim();
   if (target) {
     const facts = ledger.items

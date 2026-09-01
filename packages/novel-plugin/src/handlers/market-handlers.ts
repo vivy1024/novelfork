@@ -2,9 +2,11 @@ import {
   MAX_PUBLIC_CHAPTER_SAMPLES,
   queryMarket,
   samplePublicChapters,
-  scanMarket,
+  scanMarketWithReport,
   type BookSnapshot,
+  type MarketScanReport,
   type PublicChapterSample,
+  type RankScanReport,
 } from "../engine/market/index.js";
 
 export interface MarketScanToolInput {
@@ -30,25 +32,27 @@ type ToolSuccess<T> = { ok: true; summary: string; data: T };
 type ToolFailure = { ok: false; error: string; summary: string };
 type ToolResult<T> = ToolSuccess<T> | ToolFailure;
 
-function okRecords(snapshots: readonly BookSnapshot[]): number {
-  return snapshots.reduce(
-    (sum, snapshot) => sum + snapshot.records.filter((record) => record.source_status === "ok" && record.book_id).length,
-    0,
-  );
-}
-
-export async function handleMarketScan(input: MarketScanToolInput = {}): Promise<ToolResult<{ snapshots: BookSnapshot[] }>> {
+export async function handleMarketScan(input: MarketScanToolInput = {}): Promise<ToolResult<{
+  snapshots: BookSnapshot[];
+  report: MarketScanReport;
+}>> {
   try {
-    const snapshots = await scanMarket({
+    const { snapshots, report } = await scanMarketWithReport({
       platform: input.platform,
       rankTypes: input.rankTypes,
       maxPages: input.maxPages,
     });
-    const books = okRecords(snapshots);
+    if (!report.ok) {
+      return {
+        ok: false,
+        error: "market-scan-failed",
+        summary: report.summary,
+      };
+    }
     return {
       ok: true,
-      summary: `已扫描 ${snapshots.length} 个榜单快照，有效书籍 ${books} 本。榜单数据与经纬/Lore 分离，未写入设定库。`,
-      data: { snapshots },
+      summary: report.summary,
+      data: { snapshots, report },
     };
   } catch (error) {
     return {
@@ -68,9 +72,13 @@ export async function handleMarketQuery(input: MarketQueryToolInput = {}): Promi
       toDate: input.toDate,
       analyze: input.analyze,
     });
+    const staleOrFailed = (result.ranks ?? []).filter((rank: RankScanReport) => rank.health !== "ok");
+    const extra = staleOrFailed.length > 0
+      ? `其中 ${staleOrFailed.length} 个榜失败或过期：${staleOrFailed.map((rank) => rank.reason).join(" ")}`
+      : "当前展示的是仍算最新的有效榜。";
     return {
       ok: true,
-      summary: `查到 ${result.snapshots.length} 个历史快照${result.analysis ? "，并生成题材分析" : ""}。`,
+      summary: `查到 ${result.snapshots.length} 个历史快照${result.analysis ? "，并生成题材分析" : ""}。${extra}`,
       data: result,
     };
   } catch (error) {

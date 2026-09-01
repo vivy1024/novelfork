@@ -1,5 +1,4 @@
 export * from "./account-profile";
-export * from "./author-profile";
 export * from "./authentication";
 export * from "./client";
 export * from "./chapter-containers";

@@ -267,7 +267,7 @@ export function findTimelineConflicts(
       conflicts.push({
         chapter: cur.chapter,
         prevChapter: prev.chapter,
-        issue: `第${cur.chapter}章故事时间(${cur.storyTime || cur.ordinal})早于第${prev.chapter}章(${prev.storyTime || prev.ordinal})，时间倒流`,
+        issue: `第${cur.chapter}章的故事时间${cur.storyTime ? `（${cur.storyTime}）` : ""}早于第${prev.chapter}章${prev.storyTime ? `（${prev.storyTime}）` : ""}，时间倒流了。`,
       });
     }
   }

@@ -100,10 +100,11 @@ describe("novel tool registry lore/memory boundary", () => {
 
   it("registers import closed-loop and book.dissect tools", () => {
     const dissect = tool("book.dissect")?.description ?? "";
-    expect(dissect).toContain("续写知识包");
-    // 拆书产物必须写经纬 dynamic/needs-review，不能进 canon
-    expect(dissect).toContain("needs-review");
-    expect(dissect).toContain("权威源");
+    expect(dissect).toContain("写后续");
+    expect(dissect).toContain("同人");
+    expect(dissect).toContain("改编");
+    expect(dissect).toContain("经纬草稿");
+    expect(dissect).toContain("settle");
     expect(tool("pipeline.import_chapters")?.description).toContain("autoSettle");
     // 内部调模型的 style.import / rewrite.segment / outline.suggest_next 已下线
     expect(tool("style.import")).toBeUndefined();

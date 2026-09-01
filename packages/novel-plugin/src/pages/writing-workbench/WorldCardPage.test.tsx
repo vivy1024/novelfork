@@ -71,6 +71,9 @@ describe("WorldCardPage", () => {
     // 关联角色来自关系图对端实体（去重后）。
     expect(screen.getByText("血魔教")).toBeTruthy();
     expect(screen.getByText("白起")).toBeTruthy();
+    const urls = fetchJsonMock.mock.calls.map((call) => String(call[0]));
+    expect(urls.every((url) => url.includes("entryId=loc-1") || url.includes("focusEntryId=loc-1"))).toBe(true);
+    expect(urls.some((url) => url.includes("focusEntity=") || url.includes("entity=%E9%9D%92"))).toBe(false);
   });
 
   it("三路动态数据全空时显示诚实空态，不误报故障", async () => {

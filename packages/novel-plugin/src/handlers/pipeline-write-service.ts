@@ -38,6 +38,7 @@ import type { ChapterSettlementResult } from "../engine/narrative-memory/settlem
 import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chapter-event-extractor.js";
 import type { StyleSnippet } from "../engine/narrative-memory/channels/style-channel.js";
 import type { ParsedWritingSkill } from "../engine/writing-skills/types.js";
+import { formatAuthorExplanation, isAuthorFacingDetail } from "./diagnostic-explanation.js";
 
 export interface PipelineCanvasArtifact {
   readonly id: string;
@@ -144,7 +145,7 @@ export interface PipelineWriteOutput {
   readonly settlementDispatch?: PipelineSettlementDispatch;
   /**
    * 章后状态结算失败原因。正文已保存，但叙事记忆未更新；
-   * 重试 memory.settle_chapter 即可（正文已在库，重试不丢稿）。
+   * 让叙述者再结算这一章即可（正文已在库，重试不丢稿）。
    */
   readonly settlementError?: string;
   /**
@@ -275,6 +276,18 @@ export type PipelineToolCallDispatcher = (call: {
   readonly data?: unknown;
 }>;
 
+function composeAuthorSettlementError(dispatch: PipelineSettlementDispatch): string {
+  const explanation = dispatch.settlement?.explanation;
+  const lines = [
+    explanation
+      ? formatAuthorExplanation(explanation)
+      : (isAuthorFacingDetail(dispatch.summary) ? dispatch.summary : undefined),
+    "正文已经保存，不会丢稿。叙事记忆（谁在哪、伏笔状态）还没跟上这一章。",
+    "建议：让叙述者再结算这一章；如果前后几章也空着，就按范围补结算。",
+  ].filter((line): line is string => Boolean(line));
+  return [...new Set(lines)].join("\n");
+}
+
 /** 从工具调用返回的 data 里取回结算摘要；宿主可能已把它 JSON 序列化过一轮。 */
 function readSettlementFromToolData(data: unknown): ChapterSettlementResult | undefined {
   if (!data || typeof data !== "object") return undefined;
@@ -333,7 +346,7 @@ async function dispatchChapterSettlement(input: {
         toolName: SETTLE_CHAPTER_TOOL_NAME,
         ok: false,
         dispatched: "tool-call",
-        summary: "章后结算工具调用未能完成。",
+        summary: "章后记忆没写上：结算这一步没跑完。",
         error: detail,
       };
     }
@@ -450,15 +463,15 @@ type BuildPipelineContextPackageInput = Readonly<{
 }>;
 
 const NARRATIVE_SECTION_REASONS: Record<keyof NarrativeContextPackage["sections"], string> = {
-  hard: "Narrative Memory hard constraints：canon/硬规则/SceneSpec constraints，不可直接丢弃。",
-  state: "Narrative Memory state：当前角色、地点、组织、动态事实与场景状态。",
-  timeline: "Narrative Memory timeline：最近章节、前章尾部与时间线连续性。",
-  hooks: "Narrative Memory hooks：当前活跃/长期未推进伏笔。",
-  facts: "Narrative Memory facts：结构化叙事事实与一跳扩展。",
-  style: "Narrative Memory style：文风、Writing Skills 与合规风格提示。",
-  semantic: "Narrative Memory semantic：语义记忆召回。",
-  "character-kernel": "Narrative Memory character kernel：出场角色的动机/情绪/矛盾轴/状态摘要。",
-  "recent-summary": "Narrative Memory recent-summary：最近章节的手动剧情摘要（chapter-summaries 类目），保持前情连续。",
+  hard: "硬规则与场景约束，写的时候不能直接丢掉。",
+  state: "当前角色、地点、组织和正在发生的事。",
+  timeline: "最近几章与时间线，用来接上前情。",
+  hooks: "还没收回的伏笔。",
+  facts: "已经记下的叙事事实。",
+  style: "文风与写作技能提示。",
+  semantic: "按语义召回的相关记忆。",
+  "character-kernel": "出场角色此刻的动机、情绪和矛盾。",
+  "recent-summary": "最近几章的剧情摘要，用来保持前情连续。",
 };
 
 function narrativeSectionContext(narrativeContext?: NarrativeContextPackage): ContextPackage["selectedContext"] {
@@ -547,11 +560,11 @@ export function buildHighRiskPendingReminder(events: readonly NarrativeEvent[]):
   const highRisk = events.filter((event) => event.status === "pending" && event.riskLevel === "high");
   if (highRisk.length === 0) return "";
   const items = highRisk.slice(0, 5).map((event) => [
-    `- ${event.id}｜第${event.chapterNumber}章｜${event.subject} ${event.predicate} ${event.object}`,
-    `  evidence: ${event.evidenceText}`,
-  ].join("\n")).join("\n");
-  const more = highRisk.length > 5 ? `\n...以及另外 ${highRisk.length - 5} 条高风险 pending。` : "";
-  return `检测到 ${highRisk.length} 条高风险 pending NarrativeEvents（仅提醒，默认不阻断写作；作者可在叙事记忆历史查看/处理）。系统不会自动修改正文或经纬 canon。\n${items}${more}`;
+    `- 第${event.chapterNumber}章：${event.subject} ${event.predicate} ${event.object}`,
+    event.evidenceText ? `  正文依据：${event.evidenceText}` : "",
+  ].filter(Boolean).join("\n")).join("\n");
+  const more = highRisk.length > 5 ? `\n……另外还有 ${highRisk.length - 5} 条高风险待审。` : "";
+  return `检测到 ${highRisk.length} 条高风险待审事件（只提醒，默认不拦写作；去叙事记忆面板处理）。系统不会自动改正文或经纬设定。\n${items}${more}`;
 }
 
 async function executePipelineWriteUnlocked(
@@ -626,11 +639,20 @@ async function executePipelineWriteUnlocked(
       const versionMismatch = expectedVersion !== undefined && existing?.version !== expectedVersion;
       const hashMismatch = expectedHash !== undefined && actualHash !== expectedHash;
       if (!existing || versionMismatch || hashMismatch) {
+        const missing = !existing;
+        const reason = missing
+          ? "你要覆盖的这一章已经不在正式稿里（可能被删或尚未保存成功）。"
+          : "这一章的正式稿在你提交后又被改过，当前提交基于的是旧稿。";
         return {
           ok: false,
           code: "chapter-conflict",
-          error: `第${chapterNumber}章已被其他写入更新，拒绝覆盖：期望版本 ${expectedVersion ?? "未提供"} / 实际版本 ${existing?.version ?? "不存在"}，期望 hash ${expectedHash ?? "未提供"} / 实际 hash ${actualHash ?? "不存在"}。请重新读取章节后重试。`,
-          summary: "章节版本冲突，未保存正式章节。",
+          error: `第${chapterNumber}章没有保存。${reason}重新打开这一章看最新正文，确认后再提交。`,
+          summary: "章节已被更新，未覆盖保存。",
+          explanation: [
+            `发生了什么：第${chapterNumber}章${missing ? "当前没有正式稿可覆盖" : "的正式稿已不是你刚才读到的那一版"}。`,
+            "为什么要看：直接覆盖会丢掉别人刚改的句子，或把已删除的章节写回去。",
+            "建议怎么做：重新读取这一章，核对最新正文后再提交。",
+          ].join("\n"),
         };
       }
     }
@@ -753,7 +775,7 @@ async function executePipelineWriteUnlocked(
         const { getStorageDatabase } = await import("@vivy1024/novelfork-core");
         const storage = getStorageDatabase();
         const runtimeSnapshot = await loadRuntimeStateSnapshot(bookDir).catch(() => undefined);
-        const writingLayers = await resolveWritingLayers({ bookRoot: bookDir, book }).catch(() => null);
+        const writingLayers = await resolveWritingLayers({ bookRoot: bookDir }).catch(() => null);
         narrativeContext = await buildNarrativeContext({
           storage,
           bookId,
@@ -770,10 +792,10 @@ async function executePipelineWriteUnlocked(
           semanticConfig: { enabled: memoryConfig?.retrieval.semanticEnabled ?? false },
           ...(writingLayers?.bookRulesText ? { bookRulesText: writingLayers.bookRulesText } : {}),
           ...(writingLayers?.styleGuideText ? { styleGuideText: writingLayers.styleGuideText } : {}),
-          ...(writingLayers?.authorHabitsText ? { authorHabitsText: writingLayers.authorHabitsText } : {}),
           ...(writingLayers?.bookDesignText ? { bookDesignText: writingLayers.bookDesignText } : {}),
           // 角色内核：config.characterKernel.enabled=false（默认）时通道内部直接跳过。
           ...(memoryConfig?.characterKernel ? { characterKernelConfig: memoryConfig.characterKernel } : {}),
+          ...(memoryConfig?.retrieval.writeProfile ? { writeProfileCaps: memoryConfig.retrieval.writeProfile } : {}),
         });
       } catch (err) {
         logger?.warn(`[pipeline.write] Failed to build NarrativeContextPackage, falling back to legacy context: ${err instanceof Error ? err.message : String(err)}`);
@@ -970,7 +992,7 @@ async function executePipelineWriteUnlocked(
         return {
           ok: false,
           code: "writing-skill-compliance-failed",
-          error: `第${chapterNumber}章触发 ${errors.length} 条 Writing Skills 硬性违规；未保存正式章节。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
+          error: `第${chapterNumber}章触发 ${errors.length} 条写作技能硬性违规；未保存正式章节。${errors.map((violation) => ` ${violation.skillName}：${violation.violation}`).join("")}`,
         };
       }
       writingSkillWarnings = violations.filter((violation) => violation.severity === "warning");
@@ -978,7 +1000,7 @@ async function executePipelineWriteUnlocked(
       return {
         ok: false,
         code: "writing-skill-compliance-failed",
-        error: `Writing Skills 合规检查失败，拒绝保存正式章节：${error instanceof Error ? error.message : String(error)}`,
+        error: `写作技能合规检查失败，拒绝保存正式章节：${error instanceof Error ? error.message : String(error)}`,
       };
     }
 
@@ -1000,7 +1022,7 @@ async function executePipelineWriteUnlocked(
       if (povCharacterId && runtimeSnapshot.knowledge.events.length > 0) {
         const violations = findKnowledgeViolations(runtimeSnapshot.knowledge, povCharacterId, chapterNumber);
         if (violations.length > 0) {
-          knowledgeWarnings = violations.map((v) => `[知识越界] ${povCharacterId} 在第${chapterNumber}章不应知道「${v.fact}」（第${v.learnedAtChapter}章才习得）`);
+          knowledgeWarnings = violations.map((v) => `${povCharacterId} 在第${chapterNumber}章已经用到「${v.fact}」，但这件事要到第${v.learnedAtChapter}章才学到。`);
           logger?.warn(`[pipeline.write] Knowledge violations: ${knowledgeWarnings.length} found for POV="${povCharacterId}"`);
         }
       }
@@ -1018,16 +1040,22 @@ async function executePipelineWriteUnlocked(
 
     // 4.1. 平台发布向单章轻检（保存前）：默认只 warn；仅当 profile 要求且存在 block 级敏感命中时拒绝保存。
     const publishWarnings: string[] = [];
-    if (needsHumanReview) publishWarnings.push("审计仍有 critical/S2，建议人工复核后再发布。");
+    if (needsHumanReview) publishWarnings.push("审计仍有必须先改或建议修订的问题，建议人工复核后再发布。");
     if (factCheckRevised) publishWarnings.push("已执行事实/连续性专项修订，请抽查关键事实。");
     if (writingSkillWarnings.length > 0) {
       // 逐条列出违反了哪个技能的哪条要求：只报数量作者无法据此改稿。
       for (const violation of writingSkillWarnings) {
-        publishWarnings.push(`Writing Skill「${violation.skillName}」：${violation.violation}`);
+        publishWarnings.push(`写作技能「${violation.skillName}」：${violation.violation}`);
       }
     }
-    if (knowledgeWarnings.length > 0) publishWarnings.push(`知识边界警告 ${knowledgeWarnings.length} 条。`);
-    if (timelineWarnings.length > 0) publishWarnings.push(`时间线警告 ${timelineWarnings.length} 条。`);
+    if (knowledgeWarnings.length > 0) {
+      publishWarnings.push(`人物不该提前知道的事（${knowledgeWarnings.length} 条）：`);
+      publishWarnings.push(...knowledgeWarnings);
+    }
+    if (timelineWarnings.length > 0) {
+      publishWarnings.push(`故事时间对不上（${timelineWarnings.length} 条）：`);
+      publishWarnings.push(...timelineWarnings);
+    }
 
     let publishStatus: "ready" | "has-warnings" | "needs-review" | "skipped" = "ready";
     let publishPlatform: string | undefined;
@@ -1195,8 +1223,8 @@ async function executePipelineWriteUnlocked(
       readonly detail?: string;
     }[] = [
       skipContextGate
-        ? { stage: "写前预检", status: "skipped", detail: "调用方显式跳过上下文门禁" }
-        : { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
+        ? { stage: "写前预检", status: "skipped", detail: "这次按调用方要求跳过了写前检查" }
+        : { stage: "写前预检", status: "ok", detail: "硬门槛已经通过" },
       beatBudgetWarning
         ? { stage: "情节点预算", status: "warning", detail: beatBudgetWarning }
         : { stage: "情节点预算", status: "ok", detail: sceneSpec.beatBudget ? `${sceneSpec.beatBudget.length} 个情节点` : undefined },
@@ -1204,21 +1232,24 @@ async function executePipelineWriteUnlocked(
       {
         stage: "一致性审计",
         status: auditResult.passed ? "ok" : "warning",
-        detail: `critical ${auditIssueCategories.critical} / warning ${auditIssueCategories.warning} / info ${auditIssueCategories.info}`,
+        detail: `严重 ${auditIssueCategories.critical} / 提醒 ${auditIssueCategories.warning} / 备忘 ${auditIssueCategories.info}`,
       },
       {
         stage: "严重度门禁",
         status: needsHumanReview ? "warning" : "ok",
-        detail: `S1 ${finalGate.counts.S1} / S2 ${finalGate.counts.S2}`,
+        detail: `必须先改 ${finalGate.counts.S1} / 建议修订 ${finalGate.counts.S2}`,
       },
       writingSkillWarnings.length > 0
-        ? { stage: "Skills 合规", status: "warning", detail: `${writingSkillWarnings.length} 条技能提醒` }
-        : { stage: "Skills 合规", status: "ok" },
+        ? { stage: "技能合规", status: "warning", detail: `${writingSkillWarnings.length} 条技能提醒` }
+        : { stage: "技能合规", status: "ok" },
       ...(knowledgeWarnings.length > 0 || timelineWarnings.length > 0
         ? [{
-            stage: "知识/时间线校验",
+            stage: "人物知情 / 时间线",
             status: "warning" as const,
-            detail: `知识越界 ${knowledgeWarnings.length} / 时间线冲突 ${timelineWarnings.length}`,
+            detail: [
+              ...(knowledgeWarnings.length > 0 ? [`有人提前知道了还不该知道的事（${knowledgeWarnings.length}）`] : []),
+              ...(timelineWarnings.length > 0 ? [`后面章节的时间早于前面（${timelineWarnings.length}）`] : []),
+            ].join("；"),
           }]
         : []),
       {
@@ -1226,16 +1257,24 @@ async function executePipelineWriteUnlocked(
         status: publishHint.status === "skipped"
           ? "skipped"
           : publishHint.status === "ready" ? "ok" : "warning",
-        detail: publishHint.platform ? `平台 ${publishHint.platform} · ${publishHint.status}` : publishHint.status,
+        detail: [
+          publishHint.platform ? `平台 ${publishHint.platform}` : undefined,
+          publishHint.status === "ready" ? "可以发布"
+            : publishHint.status === "has-warnings" ? "有提醒"
+            : publishHint.status === "needs-review" ? "需要复核"
+            : "本次未检查",
+        ].filter(Boolean).join(" · "),
       },
-      { stage: "正文落盘", status: "ok", detail: chapterId },
+      { stage: "正文落盘", status: "ok", detail: `第${chapterNumber}章已保存` },
       ...(settlementDispatch
         ? [{
             stage: "章后结算",
             status: (settlementDispatch.ok ? "ok" : "failed") as "ok" | "failed",
             detail: settlementDispatch.ok
-              ? settlementDispatch.toolName
-              : `${settlementDispatch.toolName}：${settlementDispatch.error ?? settlementDispatch.summary}`,
+              ? "本章记忆已跟上"
+              : (isAuthorFacingDetail(settlementDispatch.summary)
+                ? settlementDispatch.summary
+                : "章后记忆没写上"),
           }]
         : [{ stage: "章后结算", status: "skipped" as const, detail: "本次未派发结算" }]),
     ];
@@ -1263,10 +1302,7 @@ async function executePipelineWriteUnlocked(
       ...(settlementDispatch ? { settlementDispatch } : {}),
       ...(settlementDispatch && !settlementDispatch.ok
         ? {
-            settlementError: [
-              `第${chapterNumber}章正文已保存，但章后结算（${settlementDispatch.toolName}）失败：${settlementDispatch.error ?? settlementDispatch.summary}`,
-              `叙事记忆与伏笔状态未更新。请重试 ${settlementDispatch.toolName}（正文已在库，重试不会丢稿）；若该章需要连同前后章一并回填，用 memory.settle_range。`,
-            ].join("\n"),
+            settlementError: composeAuthorSettlementError(settlementDispatch),
           }
         : {}),
       artifact: {

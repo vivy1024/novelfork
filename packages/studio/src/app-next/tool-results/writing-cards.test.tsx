@@ -21,7 +21,7 @@ describe("write.preflight 预检卡", () => {
             explanation: {
               whatHappened: "近章记忆是空的。",
               whyItMatters: "写手会自行编造前情，越写越偏。",
-              suggestedAction: "先用 memory.settle_range 回填 1–11 章。",
+              suggestedAction: "先让叙述者补结算 1–11 章的近章记忆。",
             },
           }],
           warningItems: [],
@@ -34,7 +34,7 @@ describe("write.preflight 预检卡", () => {
     expect(screen.getByText("写前检查未通过 · 第12章")).toBeTruthy();
     expect(screen.getByText("近章记忆是空的。")).toBeTruthy();
     expect(screen.getByText("写手会自行编造前情，越写越偏。")).toBeTruthy();
-    expect(screen.getByText("先用 memory.settle_range 回填 1–11 章。")).toBeTruthy();
+    expect(screen.getByText("先让叙述者补结算 1–11 章的近章记忆。")).toBeTruthy();
     // 不把内部 code 甩给用户
     expect(screen.queryByText("empty-recent-progress")).toBeNull();
   });
@@ -342,19 +342,19 @@ describe("pipeline.write 结果卡", () => {
           needsHumanReview: true,
           auditIssueCategories: { critical: 1, warning: 2, info: 0, byType: { continuity: 1 } },
           pipelineStages: [
-            { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
-            { stage: "Skills 合规", status: "warning", detail: "1 条技能提醒" },
-            { stage: "章后结算", status: "failed", detail: "memory.settle_chapter：抽取器超时" },
+            { stage: "写前预检", status: "ok", detail: "硬门槛已经通过" },
+            { stage: "技能合规", status: "warning", detail: "1 条技能提醒" },
+            { stage: "章后结算", status: "failed", detail: "章后记忆没写上：抽取超时。" },
           ],
           publishHint: {
             status: "has-warnings",
             warnings: [
-              "Writing Skill「压力账本」：关键债务无证据结清",
-              "审计仍有 critical/S2，建议人工复核后再发布。",
+              "写作技能「压力账本」：关键债务无证据结清",
+              "审计仍有必须先改或建议修订的问题，建议人工复核后再发布。",
             ],
           },
           settlementDispatch: { toolName: "memory.settle_chapter", ok: false, dispatched: "tool-call" },
-          settlementError: "第12章正文已保存，但章后结算失败。",
+          settlementError: "第12章正文已保存。叙事记忆还没跟上这一章。",
         },
       },
     })}</>);
@@ -369,11 +369,12 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByTestId("pipeline-settlement-dispatch")).toBeTruthy();
     expect(screen.getByText("结算失败")).toBeTruthy();
     expect(screen.getByTestId("pipeline-skill-results")).toBeTruthy();
-    expect(screen.getByText("Writing Skill「压力账本」：关键债务无证据结清")).toBeTruthy();
+    expect(screen.getByText("写作技能「压力账本」：关键债务无证据结清")).toBeTruthy();
     expect(screen.getByTestId("pipeline-human-review")).toBeTruthy();
     expect(screen.getByText("需要人工干预")).toBeTruthy();
     expect(screen.getByTestId("pipeline-settlement-retry")).toBeTruthy();
-    expect(screen.getByText(/重试 memory.settle_chapter/)).toBeTruthy();
+    expect(screen.getByText("章后记忆没跟上")).toBeTruthy();
+    expect(screen.getByText(/再结算这一章/)).toBeTruthy();
   });
 
   it("失败结果展示错误信息和对应恢复建议，不假装已保存", () => {
@@ -396,7 +397,7 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByTestId("pipeline-failure")).toBeTruthy();
     expect(screen.getByText("近章记忆未就绪")).toBeTruthy();
     expect(screen.getByText("已有 11 章进度，但近章摘要为空。")).toBeTruthy();
-    expect(screen.getByText(/先用 memory.settle_range 回填近章/)).toBeTruthy();
+    expect(screen.getByText(/补结算近章记忆/)).toBeTruthy();
     expect(screen.queryByText("审计通过")).toBeNull();
   });
 });

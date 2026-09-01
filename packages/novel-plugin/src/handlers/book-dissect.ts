@@ -20,6 +20,15 @@ import {
   type DissectKnowledgePack,
   type DissectWorldCategory,
 } from "./dissect-knowledge.js";
+import {
+  dissectPurposeProfile,
+  filterKnowledgeForPurpose,
+  resolveDissectPurpose,
+  resolveDissectTargets,
+  shouldStageKind,
+  type DissectPurpose,
+  type DissectTarget,
+} from "./dissect-purpose.js";
 import { listLedgerEntries, type LedgerKind } from "./jingwei-ledger-store.js";
 import {
   findDuplicateJingweiEntries,
@@ -40,7 +49,7 @@ const WORLD_CATEGORY_MAP: Record<DissectWorldCategory, LedgerKind> = {
   timeline: "world-model",
 };
 
-export type DissectTarget = "characters" | "world" | "hooks" | "summaries" | "style" | "all";
+export type { DissectPurpose, DissectTarget } from "./dissect-purpose.js";
 
 export interface BookDissectInput {
   readonly bookId: string;
@@ -48,6 +57,8 @@ export interface BookDissectInput {
   readonly fromChapter?: number;
   readonly toChapter?: number;
   readonly targets?: readonly DissectTarget[];
+  /** 拆书目的：写后续 / 同人 / 改编 / AI漫剧剧本。默认写后续。 */
+  readonly purpose?: string;
   /** 默认 false：只返回草案；true 时写入 dissection_staging（非正式经纬）。 */
   readonly apply?: boolean;
   readonly settle?: boolean;
@@ -77,6 +88,8 @@ export interface BookDissectResult {
   readonly toChapter: number;
   readonly applied: boolean;
   readonly settled: boolean;
+  readonly purpose?: DissectPurpose;
+  readonly purposeLabel?: string;
   /** 兼容字段：扁平草案（等于 knowledge 的兼容视图） */
   readonly draft: DissectDraft;
   /** 结构化续写知识包 */
@@ -99,9 +112,8 @@ const EMPTY_DRAFT: DissectDraft = {
   notes: [],
 };
 
-function targetsOf(input: BookDissectInput): Set<DissectTarget | "all"> {
-  const list = input.targets?.length ? input.targets : (["all"] as const);
-  return new Set(list);
+function targetsOf(input: BookDissectInput, purpose: DissectPurpose): Set<DissectTarget | "all"> {
+  return resolveDissectTargets(purpose, input.targets);
 }
 
 function uniqueStrings(values: readonly string[], limit = 40): string[] {
@@ -227,6 +239,7 @@ async function maybeLlmEnrichPack(
   chapters: readonly { number: number; title: string; content: string }[],
   range: { from: number; to: number },
   generateText: BookDissectInput["generateText"],
+  purposeHint?: string,
 ): Promise<DissectKnowledgePack> {
   if (!generateText || chapters.length === 0) return pack;
   const sampleChapters = chapters.slice(-4);
@@ -243,6 +256,7 @@ async function maybeLlmEnrichPack(
             chapters: sampleChapters,
             fromChapter: range.from,
             toChapter: range.to,
+            ...(purposeHint ? { purposeHint } : {}),
           }),
         },
       ],
@@ -305,8 +319,25 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
     };
   }
 
+  const purposeOrInvalid = resolveDissectPurpose(input.purpose);
+  if (purposeOrInvalid === "invalid") {
+    return {
+      ok: false,
+      bookId,
+      fromChapter: range.from,
+      toChapter: range.to,
+      applied: false,
+      settled: false,
+      draft: EMPTY_DRAFT,
+      writtenFiles: [],
+      summary: "拆书目的只能是写后续、同人、改编或 AI 漫剧剧本。",
+      error: "invalid-purpose",
+    };
+  }
+  const purpose = purposeOrInvalid;
+  const purposeProfile = dissectPurposeProfile(purpose);
   const storage = input.storage ?? getStorageDatabase();
-  const want = targetsOf(input);
+  const want = targetsOf(input, purpose);
   const chapters = await listChapterRange(bookId, input.bookRoot, range.from, range.to, storage);
   if (chapters.length === 0) {
     return {
@@ -325,8 +356,9 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
 
   let knowledge = extractKnowledgePack(chapters);
   if (want.has("all") || want.has("characters") || want.has("hooks") || want.has("world") || want.has("summaries")) {
-    knowledge = await maybeLlmEnrichPack(knowledge, chapters, range, input.generateText);
+    knowledge = await maybeLlmEnrichPack(knowledge, chapters, range, input.generateText, purposeProfile.promptHint);
   }
+  knowledge = filterKnowledgeForPurpose(knowledge, purpose);
   const draft = toFlatDraft(knowledge);
 
   let settled = false;
@@ -352,7 +384,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
     const now = () => new Date(createdAt);
 
     const applyStagingWrite = () => {
-      if (want.has("all") || want.has("hooks")) {
+      if ((want.has("all") || want.has("hooks")) && shouldStageKind(purpose, "foreshadowing")) {
         const existing = existingLookups(storage, bookId, "foreshadowing");
         for (const hook of knowledge.openHooks) {
           const title = hook.description.slice(0, 24) || `伏笔`;
@@ -383,7 +415,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
         }
       }
 
-      if (want.has("all") || want.has("summaries")) {
+      if ((want.has("all") || want.has("summaries")) && shouldStageKind(purpose, "chapter-summaries")) {
         const existing = existingLookups(storage, bookId, "chapter-summaries");
         for (const summary of knowledge.detailedSummaries) {
           const title = `第${summary.number}章`;
@@ -406,7 +438,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
         }
       }
 
-      if (want.has("all") || want.has("characters")) {
+      if ((want.has("all") || want.has("characters")) && shouldStageKind(purpose, "characters")) {
         const existing = existingLookups(storage, bookId, "characters");
         for (const card of knowledge.characterCards) {
           tryStage(storage, {
@@ -445,6 +477,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
           const kind = (category === "locations" || category === "factions" || category === "power-system" || category === "rules" || category === "props" || category === "world-model"
             ? category
             : "world-model") as DissectionStagingKind;
+          if (!shouldStageKind(purpose, kind)) continue;
           const existing = existingLookups(storage, bookId, category);
           const excerpt = element.description;
           const chapterNumber = element.sourceChapters[0] ?? range.from;
@@ -466,22 +499,24 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
           }, staged, rejectedCandidates);
         }
 
-        const existingRelations = existingLookups(storage, bookId, "relationships");
-        for (const edge of knowledge.relationshipGraph) {
-          const title = `${edge.source}与${edge.target}`;
-          tryStage(storage, {
-            bookId,
-            kind: "relationships",
-            category: "relationships",
-            proposedTitle: title,
-            sourceRefs: sourceRefs(range.from, edge.description),
-            classificationReason: "拆书抽取共现关系，待确认",
-            confidence: 0.3,
-            duplicateCandidates: findDuplicateJingweiEntries(existingRelations, { title, category: "relationships" }),
-            contentMd: edge.description,
-            fields: { source: edge.source, target: edge.target, origin: "book.dissect" },
-            now,
-          }, staged, rejectedCandidates);
+        if (shouldStageKind(purpose, "relationships")) {
+          const existingRelations = existingLookups(storage, bookId, "relationships");
+          for (const edge of knowledge.relationshipGraph) {
+            const title = `${edge.source}与${edge.target}`;
+            tryStage(storage, {
+              bookId,
+              kind: "relationships",
+              category: "relationships",
+              proposedTitle: title,
+              sourceRefs: sourceRefs(range.from, edge.description),
+              classificationReason: "拆书抽取共现关系，待确认",
+              confidence: 0.3,
+              duplicateCandidates: findDuplicateJingweiEntries(existingRelations, { title, category: "relationships" }),
+              contentMd: edge.description,
+              fields: { source: edge.source, target: edge.target, origin: "book.dissect" },
+              now,
+            }, staged, rejectedCandidates);
+          }
         }
       }
       if (staged.length > 0) writtenFiles.push(`dissection_staging × ${staged.length}`);
@@ -512,7 +547,7 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
       await mkdir(storyDir, { recursive: true });
       await writeFile(
         join(storyDir, "dissect_draft.json"),
-        `${JSON.stringify({ bookId, range, createdAt, note: "调试快照；权威候选在 dissection_staging", draft, knowledge, staging: staged }, null, 2)}\n`,
+        `${JSON.stringify({ bookId, range, purpose, purposeLabel: purposeProfile.label, createdAt, note: "调试快照；权威候选在 dissection_staging", draft, knowledge, staging: staged }, null, 2)}\n`,
         "utf8",
       );
       writtenFiles.push("story/dissect_draft.json（快照）");
@@ -536,6 +571,8 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
     toChapter: range.to,
     applied: Boolean(input.apply),
     settled,
+    purpose,
+    purposeLabel: purposeProfile.label,
     draft,
     knowledge,
     preflight,
@@ -543,13 +580,13 @@ export async function handleBookDissect(input: BookDissectInput): Promise<BookDi
     writtenFiles,
     ...(input.apply ? { staging: staged, rejectedCandidates } : {}),
     summary: [
-      `已拆解第 ${range.from}-${range.to} 章（有效正文 ${chapters.length} 章）`,
+      `按「${purposeProfile.label}」拆解第 ${range.from}-${range.to} 章（有效正文 ${chapters.length} 章）`,
       `角色卡 ${knowledge.characterCards.length} / 设定 ${knowledge.worldElements.length} / 钩子 ${knowledge.openHooks.length} / 摘要 ${knowledge.detailedSummaries.length}`,
-      settled ? "已 settle" : "未 settle",
+      settled ? "动态记忆已结算" : "动态记忆未结算",
       input.apply
-        ? `已写入暂存 ${staged.length} 条（待确认）；拒绝 ${rejectedCandidates.length} 条脏候选`
+        ? `实体已写入经纬草稿 ${staged.length} 条（待确认）；拒绝 ${rejectedCandidates.length} 条脏候选`
         : "仅草案未落盘",
-      preflight.ok ? "preflight 就绪" : `preflight 未就绪：${preflight.blockers.map((item) => item.code).join(",") || "unknown"}`,
+      preflight.ok ? "写前检查就绪" : `写前检查未就绪：${preflight.blockers.map((item) => item.code).join(",") || "unknown"}`,
     ].join("；"),
   };
 }

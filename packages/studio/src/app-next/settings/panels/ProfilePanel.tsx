@@ -5,15 +5,12 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
   createAccountProfileClient,
-  createAuthorWritingProfileClient,
   type AccountProfile,
 } from "../../runtime-admin";
 
 const profileClient = createAccountProfileClient();
-const authorWritingProfileClient = createAuthorWritingProfileClient();
 
 export function ProfilePanel() {
   const [profile, setProfile] = useState<AccountProfile | null>(null);
@@ -25,11 +22,6 @@ export function ProfilePanel() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [habits, setHabits] = useState("");
-  const [styleNotes, setStyleNotes] = useState("");
-  const [avoidancesText, setAvoidancesText] = useState("");
-  const [habitsSaving, setHabitsSaving] = useState(false);
-  const [habitsSaved, setHabitsSaved] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -45,16 +37,6 @@ export function ProfilePanel() {
       })
       .finally(() => {
         if (active) setLoading(false);
-      });
-    void authorWritingProfileClient.get()
-      .then((data) => {
-        if (!active) return;
-        setHabits(data.profile.habits ?? "");
-        setStyleNotes(data.profile.styleNotes ?? "");
-        setAvoidancesText((data.profile.avoidances ?? []).join("\n"));
-      })
-      .catch(() => {
-        // 作者习惯文件尚未创建时保持空表单。
       });
     return () => { active = false; };
   }, []);
@@ -138,7 +120,7 @@ export function ProfilePanel() {
     <div className="flex flex-col gap-6">
       <div>
         <h2 className="text-lg font-semibold text-foreground">个人资料</h2>
-        <p className="text-sm text-muted-foreground">管理头像、账户信息、Git 提交身份，以及默认不注入各书的跨书写作习惯。</p>
+        <p className="text-sm text-muted-foreground">管理头像、账户信息和 Git 提交身份。文风只走本书导入或拆书，不跨书注入。</p>
       </div>
 
       {error ? (
@@ -221,65 +203,6 @@ export function ProfilePanel() {
           </Card>
         </>
       ) : null}
-
-      <Card data-testid="author-writing-habits">
-        <CardHeader>
-          <CardTitle>跨书写作习惯</CardTitle>
-          <CardDescription>保存在作者目录，不写入任何一本书。默认不注入；要在某本书里生效，需到该书设置里显式开启。</CardDescription>
-        </CardHeader>
-        <CardContent className="flex flex-col gap-4">
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="font-medium">习惯与口吻</span>
-            <Textarea
-              aria-label="跨书写作习惯"
-              value={habits}
-              onChange={(event) => { setHabits(event.target.value); setHabitsSaved(false); }}
-              className="min-h-24"
-              placeholder="例如：短句推进，对话少解释，避免抒情堆砌。"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="font-medium">文风备忘</span>
-            <Textarea
-              aria-label="跨书文风备忘"
-              value={styleNotes}
-              onChange={(event) => { setStyleNotes(event.target.value); setHabitsSaved(false); }}
-              className="min-h-20"
-              placeholder="跨书通用的句式或节奏备忘，不替代单书文风指纹。"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm">
-            <span className="font-medium">习惯性回避（每行一条）</span>
-            <Textarea
-              aria-label="跨书习惯性回避"
-              value={avoidancesText}
-              onChange={(event) => { setAvoidancesText(event.target.value); setHabitsSaved(false); }}
-              className="min-h-20"
-              placeholder="例如：圣母光环"
-            />
-          </label>
-        </CardContent>
-        <CardFooter className="justify-between gap-3">
-          <span className="text-xs text-muted-foreground">{habitsSaved ? "已保存到作者目录" : "不会自动写进任何作品"}</span>
-          <Button
-            onClick={() => {
-              setHabitsSaving(true);
-              setHabitsSaved(false);
-              void authorWritingProfileClient.save({
-                habits,
-                styleNotes,
-                avoidances: avoidancesText.split("\n").map((item) => item.trim()).filter(Boolean),
-              }).then(() => setHabitsSaved(true)).catch((reason) => {
-                setError(reason instanceof Error ? reason.message : String(reason));
-              }).finally(() => setHabitsSaving(false));
-            }}
-            disabled={habitsSaving}
-          >
-            <Save data-icon="inline-start" />
-            {habitsSaving ? "保存中…" : "保存跨书习惯"}
-          </Button>
-        </CardFooter>
-      </Card>
     </div>
   );
 }

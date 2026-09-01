@@ -195,6 +195,39 @@ describe("narrative fact mutations", () => {
     }
   });
 
+  it("filters open facts by jingwei entry id and ignores aliases", async () => {
+    const storage = await createStorage();
+    try {
+      const named = createManualNarrativeFact(storage, {
+        bookId: "book-1",
+        subject: "林渊",
+        predicate: "修为",
+        object: "结丹期",
+        category: "character_state",
+      });
+      const aliased = createManualNarrativeFact(storage, {
+        bookId: "book-1",
+        subject: "渊哥",
+        predicate: "位置",
+        object: "青云宗",
+        category: "location",
+      });
+      expect(named.ok && aliased.ok).toBe(true);
+      storage.sqlite.prepare(`UPDATE narrative_fact SET subject_entry_id = ? WHERE id = ?`).run("entry-lin", aliased.fact!.id);
+
+      const byEntry = queryFactsByEntity(storage, { bookId: "book-1", entryId: "entry-lin" });
+      expect(byEntry).toHaveLength(1);
+      expect(byEntry[0]?.facts.map((fact) => fact.object)).toEqual(["青云宗"]);
+
+      const byAliasName = queryFactsByEntity(storage, { bookId: "book-1", entity: "渊哥" });
+      expect(byAliasName[0]?.facts).toHaveLength(1);
+      const byDisplayName = queryFactsByEntity(storage, { bookId: "book-1", entity: "林渊" });
+      expect(byDisplayName[0]?.facts.map((fact) => fact.object)).toEqual(["结丹期"]);
+    } finally {
+      storage.close();
+    }
+  });
+
   it("keeps machine events pending when the slot holds a manual fact", async () => {
     const storage = await createStorage();
     try {

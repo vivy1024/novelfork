@@ -17,7 +17,7 @@ describe("MemoryReadCard", () => {
             hardConstraints: { title: "硬约束", items: [{ title: "不得暴露小瓶" }] },
             coreCharacters: { title: "核心角色", items: [{ title: "韩立", named: true }], cap: 6, trimmed: 2, candidateCount: 8 },
             activeHooks: { title: "活跃伏笔", items: [{ title: "小瓶来历" }], cap: 8, trimmed: 0 },
-            recentSummaries: { title: "近三章速记", items: [{ title: "第12章" }], cap: 3 },
+            recentSummaries: { title: "近5章速记", items: [{ title: "第12章" }], cap: 5 },
             nextCommitments: { title: "下一章承诺", items: [{ title: "确认墨大夫是否察觉" }] },
             continuityRisks: { title: "连贯性风险", items: [] },
           },
@@ -28,6 +28,8 @@ describe("MemoryReadCard", () => {
     expect(screen.getByTestId("write-profile")).toBeTruthy();
     expect(screen.getByText("核心角色")).toBeTruthy();
     expect(screen.getByText("1/6")).toBeTruthy();
+    expect(screen.getByText("近5章速记")).toBeTruthy();
+    expect(screen.getByText("1/5")).toBeTruthy();
     expect(screen.getByText("点名")).toBeTruthy();
     expect(screen.getByText(/裁剪原因/)).toBeTruthy();
   });

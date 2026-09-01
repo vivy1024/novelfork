@@ -18,6 +18,7 @@ import type { ChapterEventExtractorInput } from "../engine/narrative-memory/chap
 import type { ChapterSettlementResult } from "../engine/narrative-memory/settlement-risk-gate.js";
 import { handleChapterRead } from "./chapter-read.js";
 import { settleConfirmedChapter } from "./chapter-settlement-service.js";
+import { formatAuthorExplanation } from "./diagnostic-explanation.js";
 
 /** 工具名与 renderer 的单一来源；tool-registry 的声明必须与之一致（见 memory-settle-chapter.test.ts）。 */
 export const SETTLE_CHAPTER_TOOL_NAME = "memory.settle_chapter";
@@ -64,11 +65,7 @@ export interface MemorySettleChapterResult {
 function summarizeSettlement(chapterNumber: number, settlement: ChapterSettlementResult): string {
   if (settlement.status === "skipped") {
     if (settlement.skipReason === "already-settled" && settlement.explanation) {
-      return [
-        `发生了什么：${settlement.explanation.whatHappened}`,
-        `为什么要看：${settlement.explanation.whyItMatters}`,
-        `建议怎么做：${settlement.explanation.suggestedAction}`,
-      ].join("\n");
+      return formatAuthorExplanation(settlement.explanation);
     }
     return `第${chapterNumber}章未结算：${settlement.warnings[0] ?? "结算被跳过"}。`;
   }
@@ -112,11 +109,11 @@ export async function handleMemorySettleChapter(input: MemorySettleChapterInput)
     return {
       ok: false,
       error: "chapter-not-persisted",
-      summary: [
-        `发生了什么：第${chapterNumber}章没有可读的已落盘正文，章后结算无法进行。`,
-        "为什么要看：结算只允许基于正式章节正文；否则叙事记忆会记下正文里并不存在的事实。",
-        `建议怎么做：先确认第${chapterNumber}章正文已保存成功，再重新执行 ${SETTLE_CHAPTER_TOOL_NAME}。`,
-      ].join("\n"),
+      summary: formatAuthorExplanation({
+        whatHappened: `第${chapterNumber}章没有可读的已保存正文，章后结算没法进行。`,
+        whyItMatters: "结算只能根据正式章节正文来记；否则记忆会记下正文里并不存在的事实。",
+        suggestedAction: `先确认第${chapterNumber}章正文已经保存成功，再让叙述者结算这一章。`,
+      }),
       chapterNumber,
     };
   }
@@ -147,11 +144,7 @@ export async function handleMemorySettleChapter(input: MemorySettleChapterInput)
       ok: false,
       error: settlement.error ?? "settlement-failed",
       summary: settlement.explanation
-        ? [
-            `发生了什么：${settlement.explanation.whatHappened}`,
-            `为什么要看：${settlement.explanation.whyItMatters}`,
-            `建议怎么做：${settlement.explanation.suggestedAction}`,
-          ].join("\n")
+        ? formatAuthorExplanation(settlement.explanation)
         : (settlement.warnings[0] ?? "结算失败，请重试。"),
       chapterNumber,
       settlement,

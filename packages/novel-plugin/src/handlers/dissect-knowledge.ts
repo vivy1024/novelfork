@@ -423,6 +423,7 @@ export function buildDissectLlmUserPrompt(input: {
   readonly fromChapter: number;
   readonly toChapter: number;
   readonly maxChars?: number;
+  readonly purposeHint?: string;
 }): string {
   const maxChars = input.maxChars ?? 12000;
   const perChapter = Math.max(600, Math.floor(maxChars / Math.max(1, input.chapters.length)));
@@ -440,6 +441,7 @@ export function buildDissectLlmUserPrompt(input: {
     "【规则抽取初稿（仅参考，可修正）】",
     JSON.stringify(heuristic),
     "",
+    input.purposeHint ? `【拆书目的】${input.purposeHint}` : "",
     `【正文范围】第 ${input.fromChapter}-${input.toChapter} 章`,
     body,
     "",

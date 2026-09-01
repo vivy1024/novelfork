@@ -34,16 +34,11 @@ export { FanqieRadarSource, QidianRadarSource, TextRadarSource } from "./agents/
 export type { RadarSource, PlatformRankings, RankingEntry } from "./agents/radar-source.js";
 export { readGenreProfile, readBookRules, listAvailableGenres, getBuiltinGenresDir } from "./agents/rules-reader.js";
 export {
-  AUTHOR_PROFILE_RELATIVE_PATH,
-  resolveAuthorHome,
-  loadAuthorProfile,
-  saveAuthorProfile,
   loadBookDesign,
   saveBookDesign,
   loadBookRules,
   saveBookRules,
   resolveWritingLayers,
-  isAuthorProfileEnabled,
 } from "./writing-layers/layer-store.js";
 export type { BookDesignDocuments, ResolvedWritingLayers } from "./writing-layers/layer-store.js";
 export { buildWriterSystemPrompt } from "./agents/writer-prompts.js";

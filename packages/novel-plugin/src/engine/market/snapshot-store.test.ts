@@ -75,7 +75,23 @@ describe("market snapshot store", () => {
     expect(analysis.summary.total_books).toBe(2);
     expect(analysis.summary.top_categories).toEqual(expect.arrayContaining(["玄幻", "都市"]));
     expect(analysis.markdown).toContain("题材分布");
+    expect(analysis.markdown).toContain("来源与时效");
+    expect(analysis.markdown).toContain("起点 · 三江推荐");
     expect(analysis.markdown).toContain("修仙");
     expect(analysis.markdown).not.toMatch(/content|正文/);
+  });
+
+  it("does not treat stale snapshots as today's market conclusion", async () => {
+    const rootDir = await mkdtemp(join(tmpdir(), "novelfork-market-"));
+    roots.push(rootDir);
+    const store = new MarketSnapshotStore({ rootDir });
+    await store.saveSnapshot(snapshot({
+      rank_type: "sanjiang",
+      observed_at: "2026-06-22",
+    }));
+    const analysis = await generateAnalysis("qidian", { store, now: () => new Date("2026-06-26T00:00:00.000Z") });
+    expect(analysis.summary.total_books).toBe(0);
+    expect(analysis.markdown).toContain("只能当历史参考");
+    expect(analysis.markdown).toContain("没有仍算最新的有效榜");
   });
 });

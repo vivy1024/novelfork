@@ -7,6 +7,7 @@ import {
   DEFAULT_CHARACTER_KERNEL_CONFIG,
   type CharacterKernelConfig,
 } from "./types.js";
+import { DEFAULT_WRITE_PROFILE_CAPS, type WriteProfileCaps } from "./write-profile.js";
 
 const DEFAULT_SETTLEMENT_CONFIG = {
   enabled: true,
@@ -40,6 +41,7 @@ const DEFAULT_RETRIEVAL_CONFIG = {
   channels: DEFAULT_RETRIEVAL_CHANNELS_CONFIG,
   waveEnabled: false,
   semanticEnabled: false,
+  writeProfile: DEFAULT_WRITE_PROFILE_CAPS,
 };
 
 const SettlementConfigSchema = z.object({
@@ -69,6 +71,12 @@ const RetrievalChannelsConfigSchema = z.object({
   "recent-summary": z.boolean().default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG["recent-summary"]),
 }).default(DEFAULT_RETRIEVAL_CHANNELS_CONFIG);
 
+const WriteProfileCapsSchema = z.object({
+  coreCharacters: z.number().int().min(1).max(30).default(DEFAULT_WRITE_PROFILE_CAPS.coreCharacters),
+  activeHooks: z.number().int().min(1).max(40).default(DEFAULT_WRITE_PROFILE_CAPS.activeHooks),
+  recentSummaries: z.number().int().min(1).max(20).default(DEFAULT_WRITE_PROFILE_CAPS.recentSummaries),
+}).default(DEFAULT_WRITE_PROFILE_CAPS);
+
 const RetrievalConfigSchema = z.object({
   maxTokens: z.number().int().min(500).max(100_000).default(DEFAULT_RETRIEVAL_CONFIG.maxTokens),
   /** Per-channel recall switches; hard constraints are intentionally excluded. */
@@ -76,6 +84,8 @@ const RetrievalConfigSchema = z.object({
   waveEnabled: z.boolean().default(DEFAULT_RETRIEVAL_CONFIG.waveEnabled),
   /** Enables the embedding-backed semantic channel when that channel is switched on. */
   semanticEnabled: z.boolean().default(DEFAULT_RETRIEVAL_CONFIG.semanticEnabled),
+  /** 写前七栏条目上限：角色 / 伏笔 / 近章。点名实体仍可超过上限保留。 */
+  writeProfile: WriteProfileCapsSchema,
 }).default(DEFAULT_RETRIEVAL_CONFIG);
 
 export const NarrativeMemoryConfigSchema = z.object({
@@ -94,8 +104,9 @@ export type NarrativeMemoryConfigPatch = {
   version?: 1;
   settlement?: Partial<NarrativeMemoryConfig["settlement"]>;
   ledger?: Partial<NarrativeMemoryConfig["ledger"]>;
-  retrieval?: Omit<Partial<NarrativeMemoryConfig["retrieval"]>, "channels"> & {
+  retrieval?: Omit<Partial<NarrativeMemoryConfig["retrieval"]>, "channels" | "writeProfile"> & {
     channels?: Partial<NarrativeMemoryConfig["retrieval"]["channels"]>;
+    writeProfile?: Partial<WriteProfileCaps>;
   };
   characterKernel?: Partial<CharacterKernelConfig>;
 };
@@ -121,6 +132,10 @@ function deepMergeConfig(
       channels: {
         ...base.retrieval.channels,
         ...(patch.retrieval?.channels ?? {}),
+      },
+      writeProfile: {
+        ...base.retrieval.writeProfile,
+        ...(patch.retrieval?.writeProfile ?? {}),
       },
     },
     characterKernel: { ...base.characterKernel, ...(patch.characterKernel ?? {}) },

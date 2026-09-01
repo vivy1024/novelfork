@@ -78,6 +78,7 @@ type NarrativeMemorySettings = {
     channels: { state: boolean; timeline: boolean; hooks: boolean; facts: boolean; style: boolean; semantic: boolean };
     waveEnabled: boolean;
     semanticEnabled: boolean;
+    writeProfile?: { coreCharacters: number; activeHooks: number; recentSummaries: number };
   };
   characterKernel: {
     enabled: boolean;
@@ -87,6 +88,30 @@ type NarrativeMemorySettings = {
   /** 仅前端草稿态：保存时并入 PUT body 的 characterKernel.fields，后端 zod 负责最终校验。 */
   characterKernelFields?: KernelFieldSpec[];
 };
+
+const DEFAULT_WRITE_PROFILE_CAPS = {
+  coreCharacters: 6,
+  activeHooks: 8,
+  recentSummaries: 3,
+} as const;
+
+function clampWriteProfileCap(value: number, min: number, max: number, fallback: number): number {
+  if (!Number.isInteger(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function writeProfileCapsOf(config: NarrativeMemorySettings): { coreCharacters: number; activeHooks: number; recentSummaries: number } {
+  const caps = config.retrieval.writeProfile;
+  return {
+    coreCharacters: clampWriteProfileCap(caps?.coreCharacters ?? DEFAULT_WRITE_PROFILE_CAPS.coreCharacters, 1, 30, DEFAULT_WRITE_PROFILE_CAPS.coreCharacters),
+    activeHooks: clampWriteProfileCap(caps?.activeHooks ?? DEFAULT_WRITE_PROFILE_CAPS.activeHooks, 1, 40, DEFAULT_WRITE_PROFILE_CAPS.activeHooks),
+    recentSummaries: clampWriteProfileCap(caps?.recentSummaries ?? DEFAULT_WRITE_PROFILE_CAPS.recentSummaries, 1, 20, DEFAULT_WRITE_PROFILE_CAPS.recentSummaries),
+  };
+}
+
+function recentSummaryColumnTitle(cap: number): string {
+  return cap === 3 ? "近三章速记" : `近${cap}章速记`;
+}
 
 function NarrativeMemoryToggle({ label, description, checked, onCheckedChange, disabled }: {
   label: string;
@@ -202,6 +227,14 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
   const updateSettlement = (patch: Partial<NarrativeMemorySettings["settlement"]>) => update((current) => ({ ...current, settlement: { ...current.settlement, ...patch } }));
   const updateLedger = (patch: Partial<NarrativeMemorySettings["ledger"]>) => update((current) => ({ ...current, ledger: { ...current.ledger, ...patch } }));
   const updateRetrieval = (patch: Partial<NarrativeMemorySettings["retrieval"]>) => update((current) => ({ ...current, retrieval: { ...current.retrieval, ...patch } }));
+  const writeProfileCaps = writeProfileCapsOf(config);
+  const updateWriteProfile = (patch: Partial<NonNullable<NarrativeMemorySettings["retrieval"]["writeProfile"]>>) => update((current) => ({
+    ...current,
+    retrieval: {
+      ...current.retrieval,
+      writeProfile: { ...writeProfileCapsOf(current), ...patch },
+    },
+  }));
   const updateChannel = (channel: keyof NarrativeMemorySettings["retrieval"]["channels"], checked: boolean) => update((current) => ({
     ...current,
     retrieval: { ...current.retrieval, channels: { ...current.retrieval.channels, [channel]: checked } },
@@ -283,6 +316,49 @@ export function NarrativeMemorySettingsSection({ bookId }: { bookId: string }) {
         <NarrativeMemoryToggle label="风格通道" description="召回文风和已启用 Writing Skills 的提示。" checked={config.retrieval.channels.style} onCheckedChange={(checked) => updateChannel("style", checked)} />
         <NarrativeMemoryToggle label="语义召回" description="使用向量/语义候选；需要书籍可用的语义索引或提供方。" checked={config.retrieval.semanticEnabled && config.retrieval.channels.semantic} onCheckedChange={(checked) => updateRetrieval({ semanticEnabled: checked, channels: { ...config.retrieval.channels, semantic: checked } })} />
         <NarrativeMemoryToggle label="Wave 重排" description="对已召回上下文进行关联扩展和能量重排，默认关闭以保证稳定预算。" checked={config.retrieval.waveEnabled} onCheckedChange={(checked) => updateRetrieval({ waveEnabled: checked })} />
+        <div className="rounded-md border border-border p-3" data-testid="write-profile-caps">
+          <p className="text-sm font-medium">写前七栏上限</p>
+          <p className="mt-0.5 text-[11px] text-muted-foreground">控制写作前注入的角色、伏笔和近章条数。点名实体仍会保留，即使超过上限。</p>
+          <div className="mt-2 grid gap-2 sm:grid-cols-3">
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">核心角色
+              <Input aria-label="核心角色上限" type="number" min={1} max={30} value={writeProfileCaps.coreCharacters} onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isInteger(value) && value >= 1 && value <= 30) updateWriteProfile({ coreCharacters: value });
+              }} className="h-8" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">活跃伏笔
+              <Input aria-label="活跃伏笔上限" type="number" min={1} max={40} value={writeProfileCaps.activeHooks} onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isInteger(value) && value >= 1 && value <= 40) updateWriteProfile({ activeHooks: value });
+              }} className="h-8" />
+            </label>
+            <label className="flex flex-col gap-1 text-xs text-muted-foreground">近章速记
+              <Input aria-label="近章速记上限" type="number" min={1} max={20} value={writeProfileCaps.recentSummaries} onChange={(event) => {
+                const value = Number(event.target.value);
+                if (Number.isInteger(value) && value >= 1 && value <= 20) updateWriteProfile({ recentSummaries: value });
+              }} className="h-8" />
+            </label>
+          </div>
+          <div data-testid="write-profile-preview" className="mt-3 grid gap-2 sm:grid-cols-2">
+            {[
+              { key: "locationAndTime", title: "当前位置与故事时间" },
+              { key: "hardConstraints", title: "硬约束" },
+              { key: "coreCharacters", title: "核心角色", cap: writeProfileCaps.coreCharacters },
+              { key: "activeHooks", title: "活跃伏笔", cap: writeProfileCaps.activeHooks },
+              { key: "recentSummaries", title: recentSummaryColumnTitle(writeProfileCaps.recentSummaries), cap: writeProfileCaps.recentSummaries },
+              { key: "nextCommitments", title: "下一章承诺" },
+              { key: "continuityRisks", title: "连贯性风险" },
+            ].map((column) => (
+              <section key={column.key} className="rounded border border-border p-2">
+                <p className="flex flex-wrap items-center gap-1 text-xs font-medium">
+                  <span>{column.title}</span>
+                  {typeof column.cap === "number" ? <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">0/{column.cap}</span> : null}
+                </p>
+                <p className="mt-1 text-[11px] text-muted-foreground">写作召回时在此栏展示</p>
+              </section>
+            ))}
+          </div>
+        </div>
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-border pt-3">

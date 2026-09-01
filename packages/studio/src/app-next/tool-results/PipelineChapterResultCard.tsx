@@ -119,24 +119,26 @@ function readStages(value: unknown): StageRow[] {
 
 /** 失败码对应的恢复建议。只覆盖 pipeline.write 已经会返回的 code，不编造未实现的按钮。 */
 const PIPELINE_RECOVERY: Record<string, { readonly title: string; readonly action: string }> = {
-  "invalid-input": { title: "输入不完整", action: "补全 scene.spec 后重新提交 pipeline.write。" },
-  "content-required": { title: "缺少正文", action: "pipeline.write 不生成正文。由当前 Runtime Agent 提交已完成的 content。" },
+  "invalid-input": { title: "输入不完整", action: "把本章场景蓝图补全后再提交。" },
+  "content-required": { title: "缺少正文", action: "写章工具不生成正文。由当前叙述者提交已经写好的正文。" },
   "book-not-found": { title: "找不到这本书", action: "确认当前书籍绑定后再重试。" },
-  "spec-invalid": { title: "Scene Spec 不完整", action: "每个场景都要有人物、地点、冲突和结果，补全后重提。" },
-  "beat-budget-invalid": { title: "情节点预算不合规", action: "回到 scene.spec 重排 beatBudget，不要硬写。" },
-  "context-not-ready": { title: "近章记忆未就绪", action: "先用 memory.settle_range 回填近章，或用 chapter.discard_range 清掉空进度后再写。" },
+  "spec-invalid": { title: "场景蓝图不完整", action: "每个场景都要有人物、地点、冲突和结果，补全后再提交。" },
+  "beat-budget-invalid": { title: "情节点预算不合规", action: "回到场景蓝图重排情节点字数，不要硬写。" },
+  "context-not-ready": { title: "近章记忆未就绪", action: "先让叙述者补结算近章记忆；若这些章是废稿，先清掉空进度再写。" },
   "preflight-execution-failed": { title: "写前预检未能执行", action: "预检失败即拒绝保存。修好写前检查后再重试。" },
-  "high-risk-pending": { title: "高风险待审事件阻断", action: "先在叙事记忆里处理 pending，或明确 continueWithHighRiskPending 后再写。" },
+  "high-risk-pending": { title: "高风险待审事件阻断", action: "先在叙事记忆里处理待审条目，确认后再写。" },
   "length-out-of-range": { title: "字数超出硬范围", action: "按本书硬范围改字数后重新提交。正文未保存。" },
-  "writing-skill-compliance-failed": { title: "Writing Skills 硬性违规", action: "按错误里的技能条目改稿后重新提交 pipeline.write。" },
-  "fact-check-failed": { title: "事实/连续性未通过", action: "修订关键事实后重新提交；requireFactCheckPass 开启时不会保存。" },
-  "volume-range-violation": { title: "章号不在当前卷区间", action: "用 outline.volume 修正当前卷或章号后再写。" },
-  "generation-failed": { title: "落盘或执行失败", action: "查看错误详情，修复存储或正文后重试 pipeline.write。" },
-  timeout: { title: "管线超时", action: "稍后重试 pipeline.write；若反复超时，先缩小本章正文再提交。" },
+  "writing-skill-compliance-failed": { title: "写作技能硬性违规", action: "按错误里的技能条目改稿后重新提交。" },
+  "fact-check-failed": { title: "事实/连续性未通过", action: "修订关键事实后重新提交；开启强制过检时不会保存。" },
+  "volume-range-violation": { title: "章号不在当前卷区间", action: "修正当前卷或章号后再写。" },
+  "generation-failed": { title: "落盘或执行失败", action: "查看错误详情，修复存储或正文后重试。" },
+  timeout: { title: "管线超时", action: "稍后重试；若反复超时，先缩小本章正文再提交。" },
+  "chapter-conflict": { title: "这一章已被更新", action: "重新打开这一章看最新正文，确认后再提交，避免覆盖别人刚改的句子。" },
+  "book-locked": { title: "这本书正在被写入", action: "等当前写入完成后再提交；不要同时保存同一章。" },
 };
 
 function readSkillWarnings(warnings: readonly string[]): string[] {
-  return warnings.filter((warning) => warning.includes("Writing Skill"));
+  return warnings.filter((warning) => warning.includes("写作技能") || warning.includes("Writing Skill"));
 }
 
 function NextStep({ children }: { readonly children: string }) {
@@ -254,7 +256,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
               {failureExplanation && failureExplanation !== failureMessage && (
                 <p className="whitespace-pre-wrap">{failureExplanation}</p>
               )}
-              <NextStep>{recovery?.action ?? "按错误信息处理后，让叙述者重新调用 pipeline.write。"}</NextStep>
+              <NextStep>{recovery?.action ?? "按错误信息处理后，让叙述者重新提交这一章。"}</NextStep>
             </AlertDescription>
           </Alert>
         )}
@@ -278,7 +280,15 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
                 需要人工复核
               </Badge>
             )}
-            {publishStatus && <Badge variant="outline">发布检查：{publishStatus}</Badge>}
+            {publishStatus && (
+              <Badge variant="outline">
+                发布检查：{publishStatus === "ready" ? "可以发布"
+                  : publishStatus === "has-warnings" ? "有提醒"
+                  : publishStatus === "needs-review" ? "需要复核"
+                  : publishStatus === "skipped" ? "本次未检查"
+                  : publishStatus}
+              </Badge>
+            )}
           </div>
         )}
 
@@ -287,9 +297,9 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
             <div className="flex items-center gap-2 text-muted-foreground">
               <ShieldCheck className="size-3.5" />
               <span className="font-medium text-foreground">审计分类</span>
-              <span>{auditCounts.critical} critical</span>
-              <span>{auditCounts.warning} warning</span>
-              <span>{auditCounts.info} info</span>
+              <span>{auditCounts.critical} 严重</span>
+              <span>{auditCounts.warning} 提醒</span>
+              <span>{auditCounts.info} 备忘</span>
             </div>
             {auditCounts.byType.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
@@ -303,7 +313,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
 
         {settlement && (
           <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-            <span className="font-medium text-foreground">Narrative Memory</span>
+            <span className="font-medium text-foreground">叙事记忆</span>
             <span>抽取 {getNumber(settlement.extracted) ?? 0}</span>
             <span>自动沉淀 {getNumber(settlement.autoApplied) ?? 0}</span>
             <span>待审 {getNumber(settlement.pending) ?? 0}</span>
@@ -316,12 +326,9 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
             <span className={settlementDispatch.ok === false ? "text-destructive" : "text-muted-foreground"}>
               {settlementDispatch.ok === false ? "结算失败" : "已完成"}
             </span>
-            {getString(settlementDispatch.toolName) && (
-              <span className="text-muted-foreground">{getString(settlementDispatch.toolName)}</span>
-            )}
             {getString(settlementDispatch.dispatched) && (
               <span className="text-muted-foreground">
-                {getString(settlementDispatch.dispatched) === "tool-call" ? "面板可见工具调用" : "进程内回退"}
+                {getString(settlementDispatch.dispatched) === "tool-call" ? "已单独结算" : "随写章一起结算"}
               </span>
             )}
           </div>
@@ -390,7 +397,7 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
             <AlertTitle>需要人工干预</AlertTitle>
             <AlertDescription className="flex flex-col gap-1">
               <p>审计仍有可修订问题。正文已保存，但不要直接发布。</p>
-              <NextStep>打开画布复核正文，按审计分类修订后重新提交 pipeline.write。</NextStep>
+              <NextStep>打开画布复核正文，按审计分类修订后再提交这一章。</NextStep>
             </AlertDescription>
           </Alert>
         )}
@@ -398,10 +405,10 @@ export const PipelineChapterResultCard: ToolResultRenderer = (context: ToolResul
         {settlementError && (
           <Alert className="border-destructive/40 bg-destructive/5" data-testid="pipeline-settlement-retry">
             <XCircle className="size-4 text-destructive" />
-            <AlertTitle className="text-destructive">章后结算未完成</AlertTitle>
+            <AlertTitle className="text-destructive">章后记忆没跟上</AlertTitle>
             <AlertDescription className="flex flex-col gap-1">
               <p className="whitespace-pre-wrap">{settlementError}</p>
-              <NextStep>重试 memory.settle_chapter（正文已在库，不会丢稿）。若要连同前后章回填，用 memory.settle_range。</NextStep>
+              <NextStep>正文已保存。让叙述者再结算这一章；如果前后几章也空着，就按范围补结算。</NextStep>
             </AlertDescription>
           </Alert>
         )}

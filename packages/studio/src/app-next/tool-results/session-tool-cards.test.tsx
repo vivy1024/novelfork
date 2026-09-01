@@ -190,7 +190,7 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByText("第4章 铃声之后")).toBeTruthy();
     expect(screen.getByText("自动修订 1 轮")).toBeTruthy();
     expect(screen.getByText("需要人工复核")).toBeTruthy();
-    expect(screen.getByText("Narrative Memory")).toBeTruthy();
+    expect(screen.getByText("叙事记忆")).toBeTruthy();
     expect(screen.getByText("2 次")).toBeTruthy();
     expect(screen.getByText("3000 tokens")).toBeTruthy();
     expect(screen.getByText("建议抽查关键事实。")).toBeTruthy();
@@ -211,9 +211,9 @@ describe("pipeline.write 结果卡", () => {
             { source: "narrative-memory/state", reason: "角色当前状态与位置", chars: 460 },
           ],
           pipelineStages: [
-            { stage: "写前预检", status: "ok", detail: "硬门 blockers 已清空" },
+            { stage: "写前预检", status: "ok", detail: "硬门槛已经通过" },
             { stage: "情节点预算", status: "warning", detail: "预算总和低于本章目标" },
-            { stage: "章后结算", status: "failed", detail: "memory.settle_chapter：写入失败" },
+            { stage: "章后结算", status: "failed", detail: "章后记忆没写上" },
           ],
         },
       },
@@ -229,7 +229,7 @@ describe("pipeline.write 结果卡", () => {
     expect(screen.getByText("写前预检")).toBeTruthy();
     expect(screen.getByText("有提醒")).toBeTruthy();
     expect(screen.getByText("失败")).toBeTruthy();
-    expect(screen.getByText("memory.settle_chapter：写入失败")).toBeTruthy();
+    expect(screen.getByText("章后记忆没写上")).toBeTruthy();
   });
 
   it("后端没返回上下文来源与阶段时不渲染这两块，不伪造内容", () => {

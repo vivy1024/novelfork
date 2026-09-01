@@ -33,8 +33,6 @@ vi.mock("@vivy1024/novelfork-core", () => ({
   emptyChapterStateProjection: (overrides: Record<string, unknown> = {}) => ({ ...emptyProjection, ...overrides }),
   loadChapterStateProjection: () => emptyProjection,
   parseBookRules: (raw: string) => ({ rules: {}, body: raw.trim() }),
-  parseAuthorProfile: (value: unknown) => value ?? {},
-  formatAuthorProfileForInjection: () => "",
 }));
 
 const tempDirs: string[] = [];
@@ -96,6 +94,8 @@ function fact(input: Partial<NarrativeFact> & Pick<NarrativeFact, "id" | "subjec
     evidenceText: input.evidenceText,
     validFromChapter: input.validFromChapter,
     validUntilChapter: input.validUntilChapter,
+    subjectEntryId: input.subjectEntryId,
+    objectEntryId: input.objectEntryId,
     createdAt: input.createdAt ?? "2026-06-22T00:00:00.000Z",
     updatedAt: input.updatedAt ?? "2026-06-22T00:00:00.000Z",
   };
@@ -216,6 +216,56 @@ describe("lore-memory-boundary handlers", () => {
     if (!result.ok) return;
     expect((result.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["e-rel"]);
     expect((result.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-rel"]);
+  });
+
+  it("filters memory.graph by jingwei entry id instead of display names or aliases", async () => {
+    const { handleMemoryGraph } = await import("./lore-memory-boundary-handlers.js");
+    insertNarrativeFact(activeStorage!, fact({
+      id: "f-named",
+      subject: "韩立",
+      predicate: "敌对",
+      object: "墨大夫",
+      category: "relationship",
+      sourceChapter: 12,
+    }));
+    insertNarrativeFact(activeStorage!, fact({
+      id: "f-id",
+      subject: "韩老魔",
+      predicate: "敌对",
+      object: "墨大夫",
+      category: "relationship",
+      sourceChapter: 12,
+      subjectEntryId: "entry-han",
+    }));
+    insertNarrativeEvent(activeStorage!, event({
+      id: "e-named",
+      eventType: "relationship_changed",
+      subject: "韩立",
+      predicate: "敌对",
+      object: "墨大夫",
+      chapterNumber: 12,
+    }));
+    insertNarrativeEvent(activeStorage!, event({
+      id: "e-id",
+      eventType: "relationship_changed",
+      subject: "韩老魔",
+      predicate: "敌对",
+      object: "墨大夫",
+      chapterNumber: 12,
+      subjectEntryId: "entry-han",
+    }));
+
+    const byName = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntity: "韩立" });
+    const byEntry = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntryId: "entry-han" });
+    const byAliasWouldMiss = await handleMemoryGraph({ bookId: "book-1", view: "relationship", focusEntity: "韩老魔" });
+
+    expect(byName.ok && byEntry.ok && byAliasWouldMiss.ok).toBe(true);
+    if (!byName.ok || !byEntry.ok || !byAliasWouldMiss.ok) return;
+    expect((byName.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-named"]);
+    expect((byName.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["e-named"]);
+    expect((byEntry.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-id"]);
+    expect((byEntry.data.events as Array<{ id: string }>).map((item) => item.id)).toEqual(["e-id"]);
+    expect((byAliasWouldMiss.data.facts as Array<{ id: string }>).map((item) => item.id)).toEqual(["f-id"]);
   });
 
   it("filters the complete graph before applying the response page", async () => {

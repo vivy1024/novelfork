@@ -1,12 +1,9 @@
-import { FANQIE_RANKS, QIDIAN_RANKS } from "./config.js";
+import { platformLabel, rankLabel } from "./config.js";
+import { inspectSnapshot, latestSnapshots, snapshotHealthLines } from "./report.js";
 import { listSnapshots, loadRankAppearances, okRecords, type SnapshotFilter } from "./snapshot-store.js";
-import type { AnalysisReport, BookSnapshot, RankRecord } from "./types.js";
+import type { AnalysisReport, RankRecord } from "./types.js";
 
 const TITLE_STOP_WORDS = new Set(["的", "了", "我", "你", "他", "她", "是", "在", "和", "与", "之"]);
-
-function rankLabel(rankType: string): string {
-  return [...QIDIAN_RANKS, ...FANQIE_RANKS].find((rank) => rank.key === rankType)?.name ?? rankType;
-}
 
 function countBy(values: readonly string[]): Array<[string, number]> {
   const map = new Map<string, number>();
@@ -23,16 +20,6 @@ function titleTokens(title: string): string[] {
     .filter((token) => !TITLE_STOP_WORDS.has(token));
 }
 
-function latestSnapshots(snapshots: readonly BookSnapshot[]): BookSnapshot[] {
-  const latest = new Map<string, BookSnapshot>();
-  for (const snapshot of snapshots) {
-    const key = `${snapshot.platform}-${snapshot.rank_type}`;
-    const current = latest.get(key);
-    if (!current || snapshot.observed_at >= current.observed_at) latest.set(key, snapshot);
-  }
-  return [...latest.values()];
-}
-
 function wordBucket(wordCount: number | undefined): string {
   if (!wordCount || wordCount <= 0) return "未知";
   if (wordCount < 100_000) return "<10万";
@@ -47,9 +34,11 @@ export async function generateAnalysis(
   options: { readonly filter?: SnapshotFilter; readonly now?: () => Date; readonly store?: Parameters<typeof listSnapshots>[1] } = {},
 ): Promise<AnalysisReport> {
   const filter = { ...options.filter, platform };
+  const now = options.now?.() ?? new Date();
   const snapshots = await listSnapshots(filter, options.store);
   const latest = latestSnapshots(snapshots);
-  const records = latest.flatMap((snapshot) => okRecords(snapshot.records));
+  const fresh = latest.filter((snapshot) => inspectSnapshot(snapshot, now).health === "ok");
+  const records = fresh.flatMap((snapshot) => okRecords(snapshot.records));
   const uniqueBooks = new Map<string, RankRecord>();
   for (const record of records) {
     if (!uniqueBooks.has(record.book_id)) uniqueBooks.set(record.book_id, record);
@@ -62,14 +51,18 @@ export async function generateAnalysis(
     .filter(([, count]) => count > 1)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10);
-  const generatedAt = (options.now?.() ?? new Date()).toISOString();
+  const generatedAt = now.toISOString();
   const topCategories = categories.slice(0, 8).map(([name]) => name);
+  const healthLines = snapshotHealthLines(snapshots, now);
   const markdown = [
-    `# ${platform === "fanqie" ? "番茄" : platform === "qidian" ? "起点" : platform}市场快照分析`,
+    `# ${platformLabel(platform)}市场快照分析`,
     "",
     `- 生成时间：${generatedAt}`,
     `- 快照数：${snapshots.length}`,
-    `- 最新在榜书：${uniqueBooks.size}`,
+    `- 仍算最新的在榜书：${uniqueBooks.size}`,
+    "",
+    "## 来源与时效",
+    ...(healthLines.length > 0 ? healthLines.map((line) => `- ${line}`) : ["- 还没有快照"]),
     "",
     "## 题材分布",
     ...categories.slice(0, 12).map(([name, count]) => `- ${name}：${count}`),
@@ -89,11 +82,12 @@ export async function generateAnalysis(
       : ["- 暂无跨榜重复"]),
     "",
     "## 最新榜单样本",
-    ...latest.flatMap((snapshot) => [
+    ...fresh.flatMap((snapshot) => [
       `### ${rankLabel(snapshot.rank_type)}（${snapshot.observed_at}）`,
       ...okRecords(snapshot.records).slice(0, 10).map((record) => `- ${record.rank}. ${record.title} / ${record.author} / ${record.category || "未分类"}`),
       "",
     ]),
+    ...(fresh.length === 0 ? ["- 没有仍算最新的有效榜，不能拿旧快照当今天的市场结论。", ""] : []),
   ].join("\n");
 
   return {

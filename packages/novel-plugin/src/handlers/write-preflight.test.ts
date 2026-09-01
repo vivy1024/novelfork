@@ -204,7 +204,7 @@ describe("write.preflight", () => {
     const blocker = result.blockers.find((item) => item.code === "empty-recent-progress");
     expect(blocker?.kind).toBe("persistent");
     expect(blocker?.explanation?.whatHappened).toBeTruthy();
-    expect(blocker?.explanation?.suggestedAction).toContain("settle_range");
+    expect(blocker?.explanation?.suggestedAction).toContain("补结算近章记忆");
 
     const warning = result.warningItems.find((item) => item.code === "style-disabled");
     expect(warning?.kind).toBe("advisory");

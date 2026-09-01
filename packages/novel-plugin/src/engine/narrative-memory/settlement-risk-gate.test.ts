@@ -63,13 +63,13 @@ describe("settlement risk gate", () => {
       autoApplied: 0,
       pending: 0,
       highRiskPending: 0,
-      warnings: ["第12章结算失败：LLM 事件抽取调用未完成。"],
+      warnings: ["第12章的记忆没抽出来：从正文里读人物位置、伏笔这些事时中断了。"],
       events: [],
       error: "settlement-extraction-failed",
       explanation: {
-        whatHappened: "第12章结算失败：LLM 事件抽取调用未完成。",
-        whyItMatters: "本次未写入任何记忆，也未登记结算。",
-        suggestedAction: "重新调用结算工具重试。",
+        whatHappened: "第12章的记忆没抽出来：从正文里读人物位置、伏笔这些事时中断了。",
+        whyItMatters: "抽失败时如果继续结算，只能记空账或记错。这次没有写入任何记忆，也没有当成已经结算。",
+        suggestedAction: "让叙述者再结算这一章即可。正文已经保存，不会丢稿。",
       },
     };
     expect(failedResult).toMatchObject({ status: "failed", error: "settlement-extraction-failed" });

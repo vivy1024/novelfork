@@ -7,9 +7,9 @@
  *  - 下半：实体动态区（叙事记忆只读召回，按分类抽取"当前状态"、发展历程、关联角色）
  *
  * 复用既有导出，不复制第二套取数逻辑：
- *  - 发展历程 → CharacterCardPage 的 loadEvolution（graph view=event_chain）
- *  - 当前状态 → narrative-fact-edits 的 fetchFactsByEntity（facts/by-entity）
- *  - 关联角色 → graph view=relationship 的对端实体
+ *  - 发展历程 → CharacterCardPage 的 loadEvolution（graph view=event_chain，按经纬条目 id）
+ *  - 当前状态 → narrative-fact-edits 的 fetchFactsByEntity（facts/by-entity?entryId=）
+ *  - 关联角色 → graph view=relationship 的对端实体（focusEntryId）
  *
  * 三路请求各自容错：任一路失败只让该子区显示不可用，静态编辑区永远可用。
  */
@@ -19,8 +19,6 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import { Markdown } from "tiptap-markdown";
-
-import { useDebouncedValue } from "./use-debounced-value";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -156,26 +154,27 @@ export function factText(fact: EntityFact): string {
   return parts.join("：") || fact.evidenceText?.trim() || "已记录动态事实";
 }
 
-/** 从关系图两侧取出"对端"实体，即与本实体有过交互的角色。 */
+/** 从已按条目 id 过滤的关系图里取出对端显示名。selfName 只用于去掉本实体，不参与查询。 */
 export function extractRelatedCharacters(
   payload: GraphRelationshipResponse,
-  entityName: string,
+  selfName?: string,
 ): RelatedCharacter[] {
-  const target = entityName.trim();
+  const self = selfName?.trim();
   const collected: RelatedCharacter[] = [];
   for (const record of [...(payload.facts ?? []), ...(payload.events ?? [])]) {
     const subject = record.subject?.trim();
     const object = record.object?.trim();
     if (!subject || !object) continue;
-    const counterpart = subject === target ? object : object === target ? subject : undefined;
-    if (!counterpart || counterpart === target) continue;
-    if (collected.some((item) => item.name === counterpart)) continue;
-    const chapter = record.sourceChapter ?? record.chapterNumber;
-    collected.push({
-      name: counterpart,
-      label: [record.predicate?.trim(), record.evidenceText?.trim()].filter(Boolean).join("：") || "与本实体有交互",
-      ...(typeof chapter === "number" && Number.isFinite(chapter) ? { chapter } : {}),
-    });
+    for (const counterpart of [subject, object]) {
+      if (self && counterpart === self) continue;
+      if (collected.some((item) => item.name === counterpart)) continue;
+      const chapter = record.sourceChapter ?? record.chapterNumber;
+      collected.push({
+        name: counterpart,
+        label: [record.predicate?.trim(), record.evidenceText?.trim()].filter(Boolean).join("：") || "与本实体有交互",
+        ...(typeof chapter === "number" && Number.isFinite(chapter) ? { chapter } : {}),
+      });
+    }
   }
   return collected.slice(0, 8);
 }
@@ -188,23 +187,23 @@ type DynamicsState =
  * 实体动态区取数。与角色卡同源接口，但按世界分类抽取"当前状态"。
  * 三路请求并发，各自 catch：单路失败不会让整个动态区变成错误态。
  */
-function useWorldDynamics(bookId: string | undefined, entityName: string, keywords: readonly string[]) {
+function useWorldDynamics(bookId: string | undefined, entryId: string, selfName: string, keywords: readonly string[]) {
   const [state, setState] = useState<DynamicsState>({ status: "idle" });
   const keywordKey = keywords.join("|");
 
   const load = useCallback(async () => {
-    const name = entityName.trim();
-    if (!bookId?.trim() || !name) {
+    const id = entryId.trim();
+    if (!bookId?.trim() || !id) {
       setState({ status: "ready", snapshot: { stateFacts: [], otherFacts: [], evolution: [], relatedCharacters: [] } });
       return;
     }
     setState({ status: "loading" });
     const activeKeywords = keywordKey ? keywordKey.split("|") : [];
     const [groups, evolution, relationships] = await Promise.all([
-      fetchFactsByEntity(bookId, { entity: name }).catch(() => []),
-      loadEvolution(bookId, name).catch(() => []),
+      fetchFactsByEntity(bookId, { entryId: id }).catch(() => []),
+      loadEvolution(bookId, id).catch(() => []),
       fetchJson<GraphRelationshipResponse>(
-        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?view=relationship&focusEntity=${encodeURIComponent(name)}`,
+        `/api/books/${encodeURIComponent(bookId)}/narrative-memory/graph?view=relationship&focusEntryId=${encodeURIComponent(id)}`,
       ).catch(() => ({} as GraphRelationshipResponse)),
     ]);
     const facts = groups.flatMap((group) => group.facts ?? []);
@@ -214,10 +213,10 @@ function useWorldDynamics(bookId: string | undefined, entityName: string, keywor
         stateFacts: facts.filter((fact) => factMatchesKeywords(fact, activeKeywords)).slice(0, 6),
         otherFacts: facts.filter((fact) => !factMatchesKeywords(fact, activeKeywords)).slice(0, 6),
         evolution: evolution.slice(-10),
-        relatedCharacters: extractRelatedCharacters(relationships, name),
+        relatedCharacters: extractRelatedCharacters(relationships, selfName),
       },
     });
-  }, [bookId, entityName, keywordKey]);
+  }, [bookId, entryId, selfName, keywordKey]);
 
   useEffect(() => { void load(); }, [load]);
 
@@ -236,16 +235,16 @@ function FactLine({ fact }: { fact: EntityFact }) {
 
 function WorldDynamicsSection({
   bookId,
-  entityName,
+  entryId,
+  selfName,
   presentation,
 }: {
   bookId?: string;
-  entityName: string;
+  entryId: string;
+  selfName: string;
   presentation: CategoryPresentation;
 }) {
-  // entityName 来自标题输入框实时值：不防抖的话每敲一个字就触发三路 fetch。
-  const debouncedEntityName = useDebouncedValue(entityName.trim(), 300);
-  const { state, refresh } = useWorldDynamics(bookId, debouncedEntityName, presentation.stateKeywords);
+  const { state, refresh } = useWorldDynamics(bookId, entryId, selfName, presentation.stateKeywords);
   const snapshot = state.status === "ready" ? state.snapshot : undefined;
   const isEmpty = snapshot
     && snapshot.stateFacts.length === 0
@@ -288,7 +287,7 @@ function WorldDynamicsSection({
               <div className="rounded-md border border-amber-500/40 bg-amber-500/[0.05] px-4 py-4 text-center" data-testid="world-dynamics-empty">
                 <p className="text-sm font-medium text-amber-700 dark:text-amber-400">该实体暂无章后结算记录</p>
                 <p className="mx-auto mt-1 max-w-md text-xs leading-relaxed text-muted-foreground">
-                  叙事记忆只收录正文中实际出现并经章后结算的动态。「{entityName.trim() || "该实体"}」可能尚未登场，
+                  叙事记忆只收录正文中实际出现并经章后结算的动态。「{selfName.trim() || "该实体"}」可能尚未登场，
                   或结算器未从正文识别到与它相关的变化。静态设定不受影响。
                 </p>
               </div>
@@ -480,7 +479,7 @@ export function WorldCardPage({ entry, bookId, saving = false, onSave }: WorldCa
             </CardContent>
           </Card>
 
-          <WorldDynamicsSection bookId={bookId} entityName={title.trim() || entry.title} presentation={presentation} />
+          <WorldDynamicsSection bookId={bookId} entryId={entry.id} selfName={entry.title} presentation={presentation} />
         </div>
       </div>
     </div>

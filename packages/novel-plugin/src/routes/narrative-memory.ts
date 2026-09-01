@@ -559,12 +559,13 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
     }
     const categories = queryText(c, "categories")?.split(",").map((item) => item.trim()).filter(Boolean);
     const entity = queryText(c, "entity");
+    const entryId = queryText(c, "entryId");
     const groups = queryFactsByEntity(storage(), {
       bookId,
       ...(asOfChapter !== undefined ? { asOfChapter } : {}),
       ...(categories?.length ? { categories } : {}),
       ...(queryLimit(c) !== undefined ? { limit: queryLimit(c) } : {}),
-      ...(entity ? { entity } : {}),
+      ...(entryId ? { entryId } : entity ? { entity } : {}),
     });
     return c.json({ groups, total: groups.reduce((sum, group) => sum + group.facts.length, 0) });
   });
@@ -657,6 +658,7 @@ export function createNarrativeMemoryRouter(options: NarrativeMemoryRouterOption
         bookId: c.req.param("bookId"),
         view: view as MemoryGraphInput["view"],
         focusEntity: queryText(c, "focusEntity", "focus"),
+        focusEntryId: queryText(c, "focusEntryId", "entryId"),
         chapterRange: queryChapterRange(c),
         ...(queryLimit(c) !== undefined ? { limit: queryLimit(c) } : {}),
         ...(queryInteger(c, "offset") !== undefined ? { offset: queryInteger(c, "offset") } : {}),
