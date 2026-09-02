@@ -48,3 +48,15 @@ export const createRequire = unavailable("module.createRequire");
 // ── node:os ─────────────────────────────────────────────────────────
 export const homedir = unavailable("os.homedir") as unknown as () => string;
 export const tmpdir = unavailable("os.tmpdir") as unknown as () => string;
+
+// ── node:events ─────────────────────────────────────────────────────
+// MCP stdio/sse transport 经 core 根入口进入模块图；`extends EventEmitter`
+// 只要构造器形状，真正 new 才抛错。
+export class EventEmitter {
+  constructor() {
+    throw new Error("[browser-stub] node:events.EventEmitter 在浏览器端不可用（该调用应只发生在 server 侧）");
+  }
+}
+
+// ── node:zlib ───────────────────────────────────────────────────────
+export const inflateRawSync = unavailable("zlib.inflateRawSync") as unknown as (data: Uint8Array) => Uint8Array;

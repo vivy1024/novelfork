@@ -78,7 +78,7 @@ NovelFork 目前仍处于**初始开发与工程验证阶段**，尚未达到正
 - 写前强制注入已触发伏笔；`chapter.audit` / 故事推进展示结构打分。
 - 叙事记忆补共现、显式因果、实体向量、角色提及与四张 tidy-tree 正图；设置页增加独立 Embedding 提供商（密钥落产品库）。
 - 隔离环境 Browser 验证：壳层 48px、工作台 1232px comfortable 三栏全开；进度事件后工作台仍在、无加载态。Vite 需给 `writing-progress-event` 单独 alias。
-- 前端打包补 `node:os` 浏览器桩；`global-env` 改为懒解析 `~/.novelfork`，避免 Vite 因 `homedir` 空壳硬崩。
+- 前端打包补 `node:os` / `node:events` / `node:zlib` 浏览器桩；`global-env` 改为懒解析 `~/.novelfork`，避免 Vite 因 node 内置空壳硬崩。
 
 ### 版本与验证范围
 
